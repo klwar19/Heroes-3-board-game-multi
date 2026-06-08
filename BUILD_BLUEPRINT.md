@@ -17,8 +17,6 @@ Build a browser-based multiplayer board game app with:
 
 The project is intended for non-profit use only.
 
-Keep a saved copy of the Archon/Discord permission message allowing use of art and rules for non-profit use. Do not commit private Discord screenshots if they contain personal/private details; instead keep them locally or in private storage.
-
 The app must include:
 
 - A visible credits page.
