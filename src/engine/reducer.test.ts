@@ -44,13 +44,13 @@ function setActiveUnit(state: GameState, playerId: PlayerId, unitId: string): vo
 }
 
 describe("rules engine prototype", () => {
-  it("lists active-unit combat actions, move-and-attack actions, and spell actions for the active player", () => {
+  it("lists active-unit combat actions, movement actions, and spell cards for the active player", () => {
     const state = createInitialGameState();
     const legalActions = getLegalActions(state, "p1");
     const actionTypes = legalActions.map((item) => item.action.type);
 
     expect(state.combat?.activeUnitId).toBe("unit_p1_griffins");
-    expect(actionTypes).toContain("MOVE_AND_ATTACK_UNIT");
+    expect(actionTypes).not.toContain("MOVE_AND_ATTACK_UNIT");
     expect(actionTypes).toContain("MOVE_UNIT");
     expect(actionTypes).toContain("DEFEND_UNIT");
     expect(actionTypes).toContain("CAST_SPELL");
@@ -155,18 +155,23 @@ describe("rules engine prototype", () => {
     });
   });
 
-  it("resolves move-and-attack after Attack and Defense cards modify the roll", () => {
+  it("lets a unit move, then attack after Attack and Defense cards modify the roll", () => {
     const state = createInitialGameState();
     if (!state.combat) {
       throw new Error("Expected combat setup.");
     }
     state.combat.units.unit_p2_pit_lords.damage = 3;
 
-    const declared = applyOk(state, {
-      type: "MOVE_AND_ATTACK_UNIT",
+    const moved = applyOk(state, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+      destination: 10
+    });
+    const declared = applyOk(moved, {
+      type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      destination: 10,
       defenderId: "unit_p2_pit_lords"
     });
     const attackBoosted = applyOk(declared, {
@@ -184,6 +189,8 @@ describe("rules engine prototype", () => {
     expect(resolved.reactionWindow).toBeNull();
     expect(resolved.phase).toBe("combat");
     expect(resolved.combat?.units.unit_p1_griffins.position).toBe(10);
+    expect(resolved.combat?.units.unit_p1_griffins.movedThisActivation).toBe(true);
+    expect(resolved.combat?.units.unit_p1_griffins.activatedThisRound).toBe(true);
     expect(resolved.combat?.units.unit_p2_pit_lords.damage).toBe(6);
     expect(resolved.combat?.activeUnitId).toBe("unit_p1_elves");
     expect(resolved.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
@@ -203,11 +210,16 @@ describe("rules engine prototype", () => {
     state.players.p1.hand = [];
     state.players.p2.hand = [];
 
-    const result = applyAction(state, {
-      type: "MOVE_AND_ATTACK_UNIT",
+    const moved = applyOk(state, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+      destination: 10
+    });
+    const result = applyAction(moved, {
+      type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      destination: 10,
       defenderId: "unit_p2_pit_lords"
     });
 
@@ -267,6 +279,33 @@ describe("rules engine prototype", () => {
     expect(attackTargets).not.toContain("unit_p2_magogs");
   });
 
+  it("applies ranged melee disadvantage by rolling two dice and taking the lower result", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.combat.units.unit_p1_elves.position = 10;
+    state.combat.units.unit_p2_pit_lords.position = 14;
+    state.combat.units.unit_p1_griffins.activatedThisRound = true;
+    setActiveUnit(state, "p1", "unit_p1_elves");
+
+    const result = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_elves",
+      defenderId: "unit_p2_pit_lords"
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(findEvent(result.state, "ATTACK_ROLLED")).toMatchObject({
+      rolls: [0, 1],
+      roll: 0,
+      rollMode: "disadvantage"
+    });
+  });
+
   it("ends combat when an attack defeats the last opposing unit", () => {
     const state = createInitialGameState();
     if (!state.combat) {
@@ -293,22 +332,30 @@ describe("rules engine prototype", () => {
     expect(result.state.combat?.activeUnitId).toBeNull();
   });
 
-  it("lets the active unit move into the four-square crossing row", () => {
+  it("lets the active unit move, then stay active to attack or defend", () => {
     const result = applyAction(createInitialGameState(), {
       type: "MOVE_UNIT",
       playerId: "p1",
       unitId: "unit_p1_griffins",
-      destination: 9
+      destination: 10
     });
 
     expect(result.errors).toEqual([]);
-    expect(result.state.combat?.units.unit_p1_griffins.position).toBe(9);
-    expect(result.state.combat?.units.unit_p1_griffins.activatedThisRound).toBe(true);
-    expect(result.state.combat?.activeUnitId).toBe("unit_p1_elves");
+    expect(result.state.combat?.units.unit_p1_griffins.position).toBe(10);
+    expect(result.state.combat?.units.unit_p1_griffins.movedThisActivation).toBe(true);
+    expect(result.state.combat?.units.unit_p1_griffins.activatedThisRound).toBe(false);
+    expect(result.state.combat?.activeUnitId).toBe("unit_p1_griffins");
+    expect(
+      getLegalActions(result.state, "p1").some(
+        (legal) => legal.action.type === "ATTACK_UNIT" && legal.action.defenderId === "unit_p2_pit_lords"
+      )
+    ).toBe(true);
+    expect(getLegalActions(result.state, "p1").some((legal) => legal.action.type === "DEFEND_UNIT")).toBe(true);
+    expect(getLegalActions(result.state, "p1").some((legal) => legal.action.type === "MOVE_UNIT")).toBe(false);
     expect(findEvent(result.state, "UNIT_MOVED")).toMatchObject({
       unitId: "unit_p1_griffins",
       from: 5,
-      to: 9
+      to: 10
     });
   });
 
@@ -358,6 +405,103 @@ describe("rules engine prototype", () => {
     expect(findEvent(result.state, "UNIT_DEFENDED")).toBeDefined();
   });
 
+  it("creates an ongoing Archery effect for ranged attacks and expires it at combat round end", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = ["ability.archery"];
+    state.players.p2.hand = [];
+    state.combat.units.unit_p1_griffins.activatedThisRound = true;
+    setActiveUnit(state, "p1", "unit_p1_elves");
+
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_elves",
+      defenderId: "unit_p2_pit_lords"
+    });
+    const resolved = applyOk(declared, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "ability.archery"
+    });
+
+    expect(resolved.reactionWindow).toBeNull();
+    expect(resolved.activeEffects).toHaveLength(1);
+    expect(findEvent(resolved, "ACTIVE_EFFECT_CREATED")).toMatchObject({
+      name: "Archery",
+      controllerId: "p1"
+    });
+    expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({
+      attackerId: "unit_p1_elves",
+      defenderId: "unit_p2_pit_lords",
+      attackBonus: 1,
+      damage: 3
+    });
+
+    if (!resolved.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    resolved.combat.activeUnitId = null;
+    resolved.activePlayerId = "p1";
+
+    const nextRound = applyOk(resolved, {
+      type: "END_COMBAT_ROUND",
+      playerId: "p1"
+    });
+
+    expect(nextRound.activeEffects).toEqual([]);
+    expect(findEvent(nextRound, "ACTIVE_EFFECT_EXPIRED")).toMatchObject({
+      reason: "combat-round-ended"
+    });
+  });
+
+  it("allows opening simultaneous town actions before ordered turns begin", () => {
+    const state = createInitialGameState();
+    state.phase = "simultaneous-turns";
+    state.combat = null;
+
+    expect(getLegalActions(state, "p2").map((legal) => legal.action.type)).toContain("BUILD_STRUCTURE");
+
+    const built = applyOk(state, {
+      type: "BUILD_STRUCTURE",
+      playerId: "p2",
+      townId: "town_p2",
+      buildingId: "marketplace"
+    });
+    expect(built.players.p2.resources.gold).toBe(8);
+    expect(built.players.p2.resources.buildingMaterials).toBe(4);
+    expect(built.players.p2.resources.valuables).toBe(2);
+    expect(built.towns.town_p2.buildings).toContain("marketplace");
+
+    const p1Done = applyOk(built, { type: "COMPLETE_SIMULTANEOUS_TURN", playerId: "p1" });
+    const roundAdvanced = applyOk(p1Done, { type: "COMPLETE_SIMULTANEOUS_TURN", playerId: "p2" });
+
+    expect(roundAdvanced.round).toBe(2);
+    expect(roundAdvanced.turn.mode).toBe("simultaneous");
+    expect(roundAdvanced.turn.completedPlayerIds).toEqual([]);
+  });
+
+  it("switches from simultaneous setup to ordered observable turns after round four", () => {
+    const state = createInitialGameState();
+    state.phase = "simultaneous-turns";
+    state.combat = null;
+    state.round = 4;
+
+    const p1Done = applyOk(state, { type: "COMPLETE_SIMULTANEOUS_TURN", playerId: "p1" });
+    const ordered = applyOk(p1Done, { type: "COMPLETE_SIMULTANEOUS_TURN", playerId: "p2" });
+
+    expect(ordered.round).toBe(4);
+    expect(ordered.phase).toBe("player-turn");
+    expect(ordered.turn.mode).toBe("ordered");
+    expect(ordered.activePlayerId).toBe("p1");
+    expect(ordered.turn.observingPlayerId).toBe("p1");
+    expect(findEvent(ordered, "ORDERED_TURNS_STARTED")).toMatchObject({
+      activePlayerId: "p1"
+    });
+  });
+
   it("rejects illegal actions with a useful rules error", () => {
     const state = createInitialGameState();
     const result = applyAction(state, {
@@ -390,8 +534,8 @@ describe("rules engine prototype", () => {
     const p1View = getPlayerView(casted, "p1");
     const p2View = getPlayerView(casted, "p2");
 
-    expect(p1View.players.p1.hand).toEqual(["stat.attack", "stat.power"]);
-    expect(p1View.players.p1.handCount).toBe(2);
+    expect(p1View.players.p1.hand).toEqual(["stat.attack", "stat.power", "ability.archery"]);
+    expect(p1View.players.p1.handCount).toBe(3);
     expect(p1View.players.p2.hand).toEqual([]);
     expect(p1View.players.p2.handCount).toBe(3);
     expect(p1View.decks.p1.drawCount).toBe(2);

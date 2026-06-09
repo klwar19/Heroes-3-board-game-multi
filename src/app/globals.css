@@ -444,13 +444,15 @@ button.battleCell {
 }
 
 .seatList,
-.diceRows {
+.diceRows,
+.flowRows {
   display: grid;
   gap: 7px;
 }
 
 .seatList article,
-.diceRows div {
+.diceRows div,
+.flowRows div {
   min-height: 42px;
   display: grid;
   gap: 5px;
@@ -465,7 +467,8 @@ button.battleCell {
 }
 
 .seatList strong,
-.diceRows strong {
+.diceRows strong,
+.flowRows strong {
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: 13px;
@@ -478,10 +481,97 @@ button.battleCell {
 }
 
 .seatList span,
-.diceRows span {
+.diceRows span,
+.flowRows span {
   color: var(--muted);
   font-size: 11px;
   text-transform: uppercase;
+}
+
+.diceAnimation {
+  min-height: 66px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 74px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.diceTrack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  perspective: 420px;
+}
+
+.die {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgb(255 238 166 / 72%);
+  border-radius: 7px;
+  color: var(--ink);
+  background:
+    linear-gradient(145deg, #f3efe4, #d5a84f);
+  box-shadow: 0 8px 14px rgb(0 0 0 / 28%);
+  font-weight: 900;
+  transform-style: preserve-3d;
+}
+
+.die.rolling {
+  animation: diceSpin 560ms cubic-bezier(0.26, 0.7, 0.3, 1) infinite;
+}
+
+.die.empty {
+  color: var(--muted);
+  background: rgb(13 15 16 / 34%);
+}
+
+.diceResult {
+  min-height: 50px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  border: 1px solid rgb(243 239 228 / 10%);
+  background: rgb(13 15 16 / 30%);
+}
+
+.diceResult span {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.diceResult strong {
+  font-size: 20px;
+}
+
+@keyframes diceSpin {
+  0% {
+    transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg) translateY(0);
+    filter: brightness(1);
+  }
+
+  25% {
+    transform: rotateX(160deg) rotateY(110deg) rotateZ(-12deg) translateY(-4px);
+    filter: brightness(1.12);
+  }
+
+  50% {
+    transform: rotateX(310deg) rotateY(220deg) rotateZ(10deg) translateY(0);
+    filter: brightness(0.94);
+  }
+
+  75% {
+    transform: rotateX(500deg) rotateY(310deg) rotateZ(-8deg) translateY(-3px);
+    filter: brightness(1.08);
+  }
+
+  100% {
+    transform: rotateX(720deg) rotateY(360deg) rotateZ(0deg) translateY(0);
+    filter: brightness(1);
+  }
 }
 
 .metricWithIcon {
@@ -700,6 +790,71 @@ button.battleCell {
   font-weight: 800;
 }
 
+.abilityList,
+.completionList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.abilityList span,
+.completionList span {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 7px;
+  border: 1px solid rgb(243 239 228 / 12%);
+  border-radius: 5px;
+  color: var(--muted);
+  background: rgb(13 15 16 / 34%);
+  font-size: 11px;
+}
+
+.abilityList span.implemented,
+.completionList span.done {
+  color: var(--ink);
+  border-color: rgb(93 135 100 / 70%);
+  background: var(--green);
+}
+
+.abilityList span.pending {
+  border-color: rgb(213 168 79 / 44%);
+  color: var(--gold);
+}
+
+.effectList {
+  display: grid;
+  gap: 7px;
+}
+
+.effectList article {
+  min-height: 52px;
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid rgb(243 239 228 / 10%);
+  background: rgb(13 15 16 / 30%);
+}
+
+.effectList strong,
+.effectList span,
+.effectList small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.effectList span,
+.effectList small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.emptySlot.compact {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
 .handGrid {
   grid-column: 1 / -1;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -728,6 +883,8 @@ button.battleCell {
 .handCard.playable {
   border-color: var(--gold);
   box-shadow: inset 0 0 0 1px rgb(213 168 79 / 35%);
+  background:
+    linear-gradient(180deg, rgb(48 43 31 / 98%), rgb(22 23 23 / 98%));
 }
 
 .handCardImage {
@@ -741,6 +898,27 @@ button.battleCell {
 .handCard strong {
   display: block;
   margin-bottom: 6px;
+}
+
+.handCardTitle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.handCardTitle small,
+.cardTiming {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.handCardTitle small {
+  padding: 3px 5px;
+  border: 1px solid rgb(243 239 228 / 11%);
+  border-radius: 4px;
+  background: rgb(13 15 16 / 34%);
 }
 
 .cardActions {
@@ -763,6 +941,10 @@ button.battleCell {
   cursor: pointer;
 }
 
+.cardUseButton {
+  width: 100%;
+}
+
 .cardActions span {
   min-width: 0;
   overflow: hidden;
@@ -771,6 +953,11 @@ button.battleCell {
   color: inherit;
   font-size: 12px;
   font-weight: 800;
+}
+
+.cardTiming {
+  display: inline-block;
+  margin-top: 9px;
 }
 
 .emptySlot {

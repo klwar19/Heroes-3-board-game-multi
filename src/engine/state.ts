@@ -3,12 +3,14 @@ export type CardId = string;
 export type UnitId = string;
 export type HeroId = string;
 export type TownId = string;
+export type BuildingId = string;
 export type DeckId = string;
 export type MapSpaceId = string;
 
 export type GamePhase =
   | "setup"
   | "round-start"
+  | "simultaneous-turns"
   | "player-turn"
   | "ai-turn"
   | "map"
@@ -30,6 +32,47 @@ export type UnitType = "ground" | "ranged" | "flying";
 export type CombatStat = "attack" | "defense" | "power";
 export type CardPlayMode = "basic" | "expert";
 export type AttackRollMode = "normal" | "advantage" | "disadvantage";
+export type ResourceKind = "gold" | "buildingMaterials" | "valuables";
+export type ResourceCost = Partial<Record<ResourceKind, number>>;
+
+export type TargetDefinition =
+  | { type: "enemy-unit" }
+  | { type: "friendly-unit" }
+  | { type: "any-unit" }
+  | { type: "none" };
+
+export type EffectDurationDefinition =
+  | { type: "instant" }
+  | { type: "current-combat-round" }
+  | { type: "next-combat-round" }
+  | { type: "current-turn" }
+  | { type: "combat" }
+  | { type: "permanent" };
+
+export type ActiveEffectModifier =
+  | {
+      type: "RANGED_ATTACK_BONUS";
+      amount: number;
+      nonAdjacentOnly: boolean;
+    }
+  | {
+      type: "RANGED_INITIATIVE_BONUS";
+      amount: number;
+    }
+  | {
+      type: "ATTACK_DIE_REROLL";
+      maxUsesPerRoll: number;
+    }
+  | {
+      type: "UNIT_CANNOT_MOVE";
+    };
+
+export type ActiveEffectDefinition = {
+  name: string;
+  scope: "player" | "unit" | "global";
+  modifiers: ActiveEffectModifier[];
+  duration: EffectDurationDefinition;
+};
 
 export type EffectDefinition =
   | {
@@ -38,9 +81,19 @@ export type EffectDefinition =
       amountByPower?: Record<number, number>;
       damageKind: DamageKind;
     }
+  | {
+      type: "HEAL_DAMAGE";
+      amount?: number;
+      amountByPower?: Record<number, number>;
+    }
   | { type: "CANCEL_SPELL"; maxPower?: number }
   | { type: "ADD_COMBAT_STAT"; stat: "attack" | "defense"; amount: number; expertAmount?: number }
-  | { type: "ADD_SPELL_POWER"; amount: number; expertAmount?: number };
+  | { type: "ADD_SPELL_POWER"; amount: number; expertAmount?: number }
+  | {
+      type: "CREATE_ACTIVE_EFFECT";
+      effect: ActiveEffectDefinition;
+      expertEffect?: ActiveEffectDefinition;
+    };
 
 export type TriggerDefinition = {
   event: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED";
@@ -56,6 +109,7 @@ export type CardDefinition = {
   tags: string[];
   power?: number;
   trigger?: TriggerDefinition;
+  target?: TargetDefinition;
   effect: EffectDefinition;
   assets?: {
     cardImage?: string;
@@ -71,6 +125,26 @@ export type CardDefinition = {
 
 export type CardLibrary = Record<CardId, CardDefinition>;
 
+export type BuildingEffectDefinition =
+  | { type: "GAIN_RESOURCE"; resource: ResourceKind; amount: number }
+  | { type: "ADD_EXPERT_USE_LIMIT"; amount: number };
+
+export type BuildingDefinition = {
+  id: BuildingId;
+  name: string;
+  cost: ResourceCost;
+  prerequisites?: BuildingId[];
+  effect?: BuildingEffectDefinition;
+  implementationStatus: "implemented" | "not-implemented";
+  source: {
+    product: string;
+    credit: string;
+    url?: string;
+  };
+};
+
+export type BuildingLibrary = Record<BuildingId, BuildingDefinition>;
+
 export type GameAction =
   | { type: "CAST_SPELL"; playerId: PlayerId; cardId: CardId; target: TargetRef }
   | { type: "ATTACK_UNIT"; playerId: PlayerId; attackerId: UnitId; defenderId: UnitId }
@@ -84,6 +158,8 @@ export type GameAction =
   | { type: "MOVE_UNIT"; playerId: PlayerId; unitId: UnitId; destination: number }
   | { type: "DEFEND_UNIT"; playerId: PlayerId; unitId: UnitId }
   | { type: "END_COMBAT_ROUND"; playerId: PlayerId }
+  | { type: "BUILD_STRUCTURE"; playerId: PlayerId; townId: TownId; buildingId: BuildingId }
+  | { type: "COMPLETE_SIMULTANEOUS_TURN"; playerId: PlayerId }
   | { type: "PLAY_REACTION"; playerId: PlayerId; cardId: CardId; mode?: CardPlayMode }
   | { type: "PASS_REACTION"; playerId: PlayerId }
   | { type: "END_TURN"; playerId: PlayerId };
@@ -228,6 +304,21 @@ export type GameEvent =
     }
   | {
       id: string;
+      type: "DAMAGE_HEALED";
+      source: SourceRef;
+      target: TargetRef;
+      amount: number;
+    }
+  | {
+      id: string;
+      type: "UNIT_ABILITY_TRIGGERED";
+      unitId: UnitId;
+      abilityId: string;
+      targetUnitId?: UnitId;
+      message: string;
+    }
+  | {
+      id: string;
       type: "CARD_PLAYED";
       playerId: PlayerId;
       cardId: CardId;
@@ -254,6 +345,47 @@ export type GameEvent =
       type: "REACTION_WINDOW_CLOSED";
       windowId: string;
       reason: "all-pass" | "reaction-played";
+    }
+  | {
+      id: string;
+      type: "STRUCTURE_BUILT";
+      playerId: PlayerId;
+      townId: TownId;
+      buildingId: BuildingId;
+      cost: ResourceCost;
+    }
+  | {
+      id: string;
+      type: "BUILDING_EFFECT_APPLIED";
+      playerId: PlayerId;
+      townId: TownId;
+      buildingId: BuildingId;
+      effect: BuildingEffectDefinition;
+    }
+  | {
+      id: string;
+      type: "ACTIVE_EFFECT_CREATED";
+      effectId: string;
+      controllerId: PlayerId;
+      name: string;
+      duration: EffectDurationDefinition;
+    }
+  | {
+      id: string;
+      type: "ACTIVE_EFFECT_EXPIRED";
+      effectId: string;
+      reason: "combat-round-ended" | "turn-ended" | "combat-ended";
+    }
+  | {
+      id: string;
+      type: "SIMULTANEOUS_TURN_COMPLETED";
+      playerId: PlayerId;
+      completedPlayerIds: PlayerId[];
+    }
+  | {
+      id: string;
+      type: "ORDERED_TURNS_STARTED";
+      activePlayerId: PlayerId;
     };
 
 export type ResolutionStackItem = {
@@ -280,15 +412,32 @@ export type ReactionWindow = {
   closesWhen: "all-pass" | "one-reaction" | "choice-made";
 };
 
+export type ActiveEffectState = ActiveEffectDefinition & {
+  id: string;
+  source: SourceRef;
+  controllerId: PlayerId;
+  target?: TargetRef;
+  startedRound: number;
+  startedCombatRound?: number;
+  expiresAtCombatRoundEnd?: number;
+  expiresAtTurnEndPlayerId?: PlayerId;
+  usedRollEventIds: string[];
+};
+
+export type TurnState = {
+  mode: "simultaneous" | "ordered";
+  simultaneousRoundLimit: number;
+  completedPlayerIds: PlayerId[];
+  observingPlayerId: PlayerId | null;
+};
+
 export type PlayerState = {
   id: PlayerId;
   name: string;
   hand: CardId[];
   discard: CardId[];
   resources: {
-    gold: number;
-    buildingMaterials: number;
-    valuables: number;
+    [key in ResourceKind]: number;
   };
   limits: {
     hand: number;
@@ -315,6 +464,7 @@ export type CombatUnitState = {
   initiative: number;
   position: number;
   activatedThisRound: boolean;
+  movedThisActivation: boolean;
   retaliatedThisRound: boolean;
   defenseToken: boolean;
   abilities: string[];
@@ -383,8 +533,10 @@ export type GameState = {
   decks: Record<DeckId, DeckState>;
   stack: ResolutionStackItem[];
   reactionWindow: ReactionWindow | null;
+  activeEffects: ActiveEffectState[];
   eventLog: GameEvent[];
   pendingChoice: PendingChoice;
+  turn: TurnState;
 };
 
 export type PlayerVisiblePlayerState = Omit<PlayerState, "hand"> & {
