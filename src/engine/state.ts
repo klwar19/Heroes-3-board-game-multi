@@ -225,6 +225,7 @@ export type GameAction =
   | { type: "USE_UNIT_ABILITY"; playerId: PlayerId; unitId: UnitId; abilityId: string; target: TargetRef }
   | { type: "USE_ACTIVE_EFFECT"; playerId: PlayerId; effectId: string; target: TargetRef }
   | { type: "DEFEND_UNIT"; playerId: PlayerId; unitId: UnitId }
+  | { type: "END_ACTIVATION"; playerId: PlayerId; unitId: UnitId }
   | { type: "END_COMBAT_ROUND"; playerId: PlayerId }
   | { type: "BUILD_STRUCTURE"; playerId: PlayerId; townId: TownId; buildingId: BuildingId }
   | { type: "COMPLETE_SIMULTANEOUS_TURN"; playerId: PlayerId }
@@ -337,6 +338,12 @@ export type GameEvent =
   | {
       id: string;
       type: "UNIT_DEFENDED";
+      playerId: PlayerId;
+      unitId: UnitId;
+    }
+  | {
+      id: string;
+      type: "UNIT_ACTIVATION_ENDED";
       playerId: PlayerId;
       unitId: UnitId;
     }
@@ -577,6 +584,7 @@ export type CombatUnitState = {
   position: number;
   activatedThisRound: boolean;
   movedThisActivation: boolean;
+  attackedThisActivation?: boolean;
   retaliatedThisRound: boolean;
   defenseToken: boolean;
   abilities: string[];
@@ -585,6 +593,20 @@ export type CombatUnitState = {
     imageAlt?: string;
     wikiUrl?: string;
   };
+};
+
+export type CombatDice = {
+  /** The faces of the physical attack die, e.g. [-1, -1, 0, 0, 1, 1]. */
+  faces: number[];
+  /** Seed used to derive each roll deterministically (server-authoritative). */
+  seed: string;
+  /** Number of single dice rolled so far; advances the deterministic sequence. */
+  rollCount: number;
+  /**
+   * Optional forced roll results consumed in order before falling back to the
+   * seeded die. Used by tests and scripted tutorials; undefined in normal play.
+   */
+  scriptedRolls?: number[];
 };
 
 export type CombatState = {
@@ -598,8 +620,7 @@ export type CombatState = {
     defeatedPlayerId: PlayerId;
     reason: "all-enemy-units-defeated";
   } | null;
-  attackDie: number[];
-  attackDieIndex: number;
+  dice: CombatDice;
   units: Record<UnitId, CombatUnitState>;
 };
 

@@ -1,3 +1,4 @@
+import { ATTACK_DIE_FACES } from "./battlefield";
 import type { GameState } from "./state";
 import { sampleCombatUnits } from "@/data/units/sample";
 
@@ -113,8 +114,11 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
       defenderPlayerId: "p2",
       activeUnitId: "unit_p1_griffins",
       outcome: null,
-      attackDie: [0, 1, -1, 0, 1, 0, -1, 1],
-      attackDieIndex: 0,
+      dice: {
+        faces: [...ATTACK_DIE_FACES],
+        seed: `${seed}-attack-die`,
+        rollCount: 0
+      },
       units
     },
     decks: {},

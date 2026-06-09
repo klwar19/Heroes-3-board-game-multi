@@ -2,6 +2,7 @@ export { sampleCards } from "@/data/cards/sample";
 export { sampleBuildings } from "@/data/towns/buildings";
 export { unitAbilities } from "@/data/units/abilities";
 export {
+  ATTACK_DIE_FACES,
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
   BATTLEFIELD_CROSSING_ROW,
@@ -70,6 +71,7 @@ export type {
   CardId,
   CardPlayMode,
   CardLibrary,
+  CombatDice,
   CombatStat,
   CombatState,
   CombatUnitState,
