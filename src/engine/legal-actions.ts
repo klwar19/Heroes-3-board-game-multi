@@ -540,7 +540,11 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
     return;
   }
 
-  addUnitAbilityActions(actions, state, playerId, activeUnit);
+  const alreadyAttacked = Boolean(activeUnit.attackedThisActivation);
+
+  if (!alreadyAttacked) {
+    addUnitAbilityActions(actions, state, playerId, activeUnit);
+  }
 
   for (const destination of getLegalMoveDestinations(combat, activeUnit, state)) {
     actions.push({
@@ -554,30 +558,45 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
     });
   }
 
-  for (const defender of Object.values(combat.units)) {
-    if (!canUnitAttack(combat, activeUnit, defender)) {
-      continue;
+  if (!alreadyAttacked) {
+    for (const defender of Object.values(combat.units)) {
+      if (!canUnitAttack(combat, activeUnit, defender)) {
+        continue;
+      }
+
+      actions.push({
+        label: `${activeUnit.name} attack ${defender.name}`,
+        action: {
+          type: "ATTACK_UNIT",
+          playerId,
+          attackerId: activeUnit.id,
+          defenderId: defender.id
+        }
+      });
     }
 
     actions.push({
-      label: `${activeUnit.name} attack ${defender.name}`,
+      label: `${activeUnit.name} defend`,
       action: {
-        type: "ATTACK_UNIT",
+        type: "DEFEND_UNIT",
         playerId,
-        attackerId: activeUnit.id,
-        defenderId: defender.id
+        unitId: activeUnit.id
       }
     });
   }
 
-  actions.push({
-    label: `${activeUnit.name} defend`,
-    action: {
-      type: "DEFEND_UNIT",
-      playerId,
-      unitId: activeUnit.id
-    }
-  });
+  // Once a unit has begun acting (moved or fired), it may finish its activation
+  // without forcing an attack or defend — e.g. a ranged unit holding after a shot.
+  if (alreadyAttacked || activeUnit.movedThisActivation) {
+    actions.push({
+      label: `${activeUnit.name} hold position`,
+      action: {
+        type: "END_ACTIVATION",
+        playerId,
+        unitId: activeUnit.id
+      }
+    });
+  }
 }
 
 function hasResources(

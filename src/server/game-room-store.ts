@@ -21,11 +21,15 @@ function cloneSerializable<T>(value: T): T {
 }
 
 function makeRoom(roomId: string): GameRoomRecord {
+  // Add a fresh nonce so each created/reset room rolls a new deterministic die
+  // sequence instead of replaying the same rolls every game. The seed is stored
+  // in the state, so the server stays authoritative and every client agrees.
+  const nonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   return {
     roomId,
     version: 1,
     updatedAt: new Date().toISOString(),
-    state: createInitialGameState(`room-${roomId}`)
+    state: createInitialGameState(`room-${roomId}-${nonce}`)
   };
 }
 
