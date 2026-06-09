@@ -17,6 +17,7 @@ describe("rules engine prototype", () => {
 
     expect(state.combat?.activeUnitId).toBe("unit_p1_griffins");
     expect(actionTypes).toContain("ATTACK_UNIT");
+    expect(actionTypes).toContain("MOVE_UNIT");
     expect(actionTypes).toContain("DEFEND_UNIT");
     expect(actionTypes).toContain("CAST_SPELL");
     expect(actionTypes).not.toContain("END_TURN");
@@ -70,7 +71,7 @@ describe("rules engine prototype", () => {
     });
   });
 
-  it("resolves unit attacks with defense and adjacent retaliation", () => {
+  it("resolves a flying unit attack across the crossing lane", () => {
     const state = createInitialGameState();
     const result = applyAction(state, {
       type: "ATTACK_UNIT",
@@ -81,12 +82,60 @@ describe("rules engine prototype", () => {
 
     expect(result.errors).toEqual([]);
     expect(result.state.combat?.units.unit_p2_pit_lords.damage).toBe(2);
-    expect(result.state.combat?.units.unit_p1_griffins.damage).toBe(4);
+    expect(result.state.combat?.units.unit_p1_griffins.damage).toBe(0);
     expect(result.state.combat?.activeUnitId).toBe("unit_p1_elves");
-    expect(findEvent(result.state, "RETALIATION_ATTACKED")).toMatchObject({
-      attackerId: "unit_p2_pit_lords",
-      defenderId: "unit_p1_griffins"
+    expect(findEvent(result.state, "RETALIATION_ATTACKED")).toBeUndefined();
+  });
+
+  it("lets the active unit move into the four-square crossing row", () => {
+    const result = applyAction(createInitialGameState(), {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+      destination: 9
     });
+
+    expect(result.errors).toEqual([]);
+    expect(result.state.combat?.units.unit_p1_griffins.position).toBe(9);
+    expect(result.state.combat?.units.unit_p1_griffins.activatedThisRound).toBe(true);
+    expect(result.state.combat?.activeUnitId).toBe("unit_p1_elves");
+    expect(findEvent(result.state, "UNIT_MOVED")).toMatchObject({
+      unitId: "unit_p1_griffins",
+      from: 5,
+      to: 9
+    });
+  });
+
+  it("requires non-flying units to use the crossing row before switching sides", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+
+    state.activePlayerId = "p2";
+    state.combat.activeUnitId = "unit_p2_pit_lords";
+
+    const illegalDirectCrossing = applyAction(state, {
+      type: "MOVE_UNIT",
+      playerId: "p2",
+      unitId: "unit_p2_pit_lords",
+      destination: 6
+    });
+    const legalLaneMove = applyAction(state, {
+      type: "MOVE_UNIT",
+      playerId: "p2",
+      unitId: "unit_p2_pit_lords",
+      destination: 10
+    });
+
+    expect(illegalDirectCrossing.errors).toEqual([
+      {
+        code: "ACTION_NOT_LEGAL",
+        message: "That action is not legal in the current game state."
+      }
+    ]);
+    expect(legalLaneMove.errors).toEqual([]);
+    expect(legalLaneMove.state.combat?.units.unit_p2_pit_lords.position).toBe(10);
   });
 
   it("lets a unit defend and advances activation", () => {
@@ -121,4 +170,3 @@ describe("rules engine prototype", () => {
     ]);
   });
 });
-

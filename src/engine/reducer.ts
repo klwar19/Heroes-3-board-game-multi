@@ -2,6 +2,7 @@ import { sampleCards } from "@/data/cards/sample";
 import { appendEvent } from "./events";
 import {
   canUnitAttack,
+  canUnitMoveTo,
   getLegalActions,
   getLegalReactionsForTrigger,
   getNextUnitToActivate,
@@ -447,6 +448,28 @@ function attackUnit(state: GameState, action: Extract<GameAction, { type: "ATTAC
   advanceActiveUnit(state);
 }
 
+function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UNIT" }>): void {
+  const combat = state.combat;
+  const unit = combat?.units[action.unitId];
+  if (!combat || !unit || unit.controllerId !== action.playerId || !canUnitMoveTo(combat, unit, action.destination)) {
+    throw new Error("That unit cannot move to the selected space.");
+  }
+
+  const from = unit.position;
+  unit.position = action.destination;
+  unit.activatedThisRound = true;
+
+  appendEvent(state, {
+    type: "UNIT_MOVED",
+    playerId: action.playerId,
+    unitId: unit.id,
+    from,
+    to: action.destination
+  });
+
+  advanceActiveUnit(state);
+}
+
 function defendUnit(state: GameState, action: Extract<GameAction, { type: "DEFEND_UNIT" }>): void {
   const combat = state.combat;
   const unit = combat?.units[action.unitId];
@@ -525,6 +548,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "ATTACK_UNIT":
         attackUnit(nextState, action);
         break;
+      case "MOVE_UNIT":
+        moveUnit(nextState, action);
+        break;
       case "DEFEND_UNIT":
         defendUnit(nextState, action);
         break;
@@ -557,4 +583,3 @@ export function findEvent<T extends GameEvent["type"]>(
 ): Extract<GameEvent, { type: T }> | undefined {
   return state.eventLog.find((event): event is Extract<GameEvent, { type: T }> => event.type === type);
 }
-

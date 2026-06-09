@@ -5,6 +5,7 @@
 import {
   CircleOff,
   Crosshair,
+  Footprints,
   RotateCcw,
   Shield,
   Sparkles,
@@ -15,7 +16,10 @@ import {
 import { useMemo, useState } from "react";
 import {
   applyAction,
+  BATTLEFIELD_CELL_COUNT,
   createInitialGameState,
+  getBattlefieldLabel,
+  getBattlefieldTerrain,
   getLegalActions,
   isUnitAlive,
   sampleCards,
@@ -34,6 +38,8 @@ function getActionIcon(action: GameAction) {
       return <Sparkles aria-hidden="true" size={16} />;
     case "ATTACK_UNIT":
       return <Crosshair aria-hidden="true" size={16} />;
+    case "MOVE_UNIT":
+      return <Footprints aria-hidden="true" size={16} />;
     case "DEFEND_UNIT":
       return <Shield aria-hidden="true" size={16} />;
     case "END_COMBAT_ROUND":
@@ -69,6 +75,8 @@ function formatEvent(event: GameEvent, state: GameState): string {
       return `${event.isRetaliation ? "Retaliation" : "Attack"} roll ${event.roll >= 0 ? "+" : ""}${event.roll}: ${event.attackValue} vs ${event.defenseValue}, ${event.damage} damage.`;
     case "RETALIATION_ATTACKED":
       return `${unitName(state, event.attackerId)} retaliates against ${unitName(state, event.defenderId)}.`;
+    case "UNIT_MOVED":
+      return `${unitName(state, event.unitId)} moves from ${getBattlefieldLabel(event.from)} to ${getBattlefieldLabel(event.to)}.`;
     case "UNIT_DEFENDED":
       return `${unitName(state, event.unitId)} takes defense.`;
     case "UNIT_REMOVED":
@@ -116,6 +124,8 @@ function actionLabel(action: GameAction, state: GameState): string {
   switch (action.type) {
     case "ATTACK_UNIT":
       return `Attack ${unitName(state, action.defenderId)}`;
+    case "MOVE_UNIT":
+      return `Move to ${getBattlefieldLabel(action.destination)}`;
     case "DEFEND_UNIT":
       return "Defend";
     case "CAST_SPELL":
@@ -237,15 +247,28 @@ function UnitReferenceCard({
   );
 }
 
-function Battlefield({ state }: { state: GameState }) {
+function Battlefield({
+  state,
+  legalActions,
+  onAction
+}: {
+  state: GameState;
+  legalActions: LegalAction[];
+  onAction: (action: GameAction) => void;
+}) {
   const combat = state.combat;
   const unitsByPosition = new Map<number, CombatUnitState>();
-  const columns = 5;
+  const moveActionsByDestination = new Map<number, GameAction>();
   if (combat) {
     for (const unit of Object.values(combat.units)) {
       if (isUnitAlive(unit)) {
         unitsByPosition.set(unit.position, unit);
       }
+    }
+  }
+  for (const legal of legalActions) {
+    if (legal.action.type === "MOVE_UNIT") {
+      moveActionsByDestination.set(legal.action.destination, legal.action);
     }
   }
 
@@ -256,42 +279,51 @@ function Battlefield({ state }: { state: GameState }) {
         <span>Round {combat?.round ?? 0}</span>
       </div>
       <div className="battlefieldFrame">
-        <div className="boardRuleText left">
-          Ranged lines and ground lanes
-          <span>Rampart side</span>
-        </div>
-        <div className="boardRuleText right">
-          Retaliation resolves after adjacent attacks
-          <span>Inferno side</span>
-        </div>
         <div className="battlefield">
-          {Array.from({ length: 20 }, (_, index) => {
+          {Array.from({ length: BATTLEFIELD_CELL_COUNT }, (_, index) => {
             const unit = unitsByPosition.get(index);
-            const column = index % columns;
-            const terrain = column <= 1 ? "grass" : column === 2 ? "stone" : "waste";
+            const terrain = getBattlefieldTerrain(index);
+            const moveAction = moveActionsByDestination.get(index);
             const isActive = Boolean(unit && combat?.activeUnitId === unit.id);
+            const className = `battleCell ${terrain} ${unit?.controllerId ?? ""} ${
+              isActive ? "active" : ""
+            } ${moveAction ? "moveTarget" : ""}`;
+            const content = unit ? (
+              <article className={`boardCard ${unit.controllerId}`}>
+                <CardImage
+                  alt={unit.assets?.imageAlt ?? unit.cardName}
+                  className="boardCardImage"
+                  src={unit.assets?.cardImage}
+                />
+                <div className="boardCardHud">
+                  <strong>{unit.name}</strong>
+                  <span>
+                    {Math.max(0, unit.maxHealth - unit.damage)}/{unit.maxHealth} HP
+                  </span>
+                </div>
+              </article>
+            ) : (
+              <span className="emptyBoardMark" aria-hidden="true" />
+            );
+
+            if (moveAction && !unit) {
+              return (
+                <button
+                  aria-label={`Move active unit to ${getBattlefieldLabel(index)}`}
+                  className={className}
+                  key={index}
+                  onClick={() => onAction(moveAction)}
+                  title={`Move to ${getBattlefieldLabel(index)}`}
+                  type="button"
+                >
+                  {content}
+                </button>
+              );
+            }
+
             return (
-              <div
-                className={`battleCell ${terrain} ${unit?.controllerId ?? ""} ${isActive ? "active" : ""}`}
-                key={index}
-              >
-                {unit ? (
-                  <article className="boardCard">
-                    <CardImage
-                      alt={unit.assets?.imageAlt ?? unit.cardName}
-                      className="boardCardImage"
-                      src={unit.assets?.cardImage}
-                    />
-                    <div className="boardCardHud">
-                      <strong>{unit.name}</strong>
-                      <span>
-                        {Math.max(0, unit.maxHealth - unit.damage)}/{unit.maxHealth} HP
-                      </span>
-                    </div>
-                  </article>
-                ) : (
-                  <span className="emptyBoardMark">{terrain === "stone" ? "ruins" : ""}</span>
-                )}
+              <div aria-label={`${terrain} battlefield cell ${getBattlefieldLabel(index)}`} className={className} key={index}>
+                {content}
               </div>
             );
           })}
@@ -336,6 +368,8 @@ function ActionPanel({
   onAction: (action: GameAction) => void;
   onReset: () => void;
 }) {
+  const commandActions = legalActions.filter((legal) => legal.action.type !== "MOVE_UNIT");
+
   return (
     <section className="panel actionPanel" aria-label="Legal actions">
       <div className="panelHeader">
@@ -343,7 +377,7 @@ function ActionPanel({
         <span>{state.players[actingPlayer]?.name ?? actingPlayer}</span>
       </div>
       <div className="actionGrid">
-        {legalActions.map((legal) => (
+        {commandActions.map((legal) => (
           <button
             className="actionButton"
             key={actionKey(legal.action)}
@@ -436,7 +470,7 @@ export default function Home() {
       ) : null}
 
       <div className="tableGrid">
-        <Battlefield state={state} />
+        <Battlefield legalActions={legalActions} onAction={submitAction} state={state} />
         <div className="sideStack">
           <ActionPanel
             actingPlayer={actingPlayer}

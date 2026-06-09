@@ -64,6 +64,7 @@ export type CardLibrary = Record<CardId, CardDefinition>;
 export type GameAction =
   | { type: "CAST_SPELL"; playerId: PlayerId; cardId: CardId; target: TargetRef }
   | { type: "ATTACK_UNIT"; playerId: PlayerId; attackerId: UnitId; defenderId: UnitId }
+  | { type: "MOVE_UNIT"; playerId: PlayerId; unitId: UnitId; destination: number }
   | { type: "DEFEND_UNIT"; playerId: PlayerId; unitId: UnitId }
   | { type: "END_COMBAT_ROUND"; playerId: PlayerId }
   | { type: "PLAY_REACTION"; playerId: PlayerId; cardId: CardId }
@@ -129,6 +130,14 @@ export type GameEvent =
       type: "RETALIATION_ATTACKED";
       attackerId: UnitId;
       defenderId: UnitId;
+    }
+  | {
+      id: string;
+      type: "UNIT_MOVED";
+      playerId: PlayerId;
+      unitId: UnitId;
+      from: number;
+      to: number;
     }
   | {
       id: string;
