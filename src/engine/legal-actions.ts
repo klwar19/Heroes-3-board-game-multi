@@ -220,6 +220,10 @@ export function getLegalActions(
   playerId: PlayerId,
   cards: CardLibrary = sampleCards
 ): LegalAction[] {
+  if (state.phase === "game-over") {
+    return [];
+  }
+
   if (state.reactionWindow) {
     if (state.reactionWindow.priorityPlayerId !== playerId) {
       return [];

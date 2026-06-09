@@ -5,6 +5,8 @@
 import {
   CircleOff,
   Crosshair,
+  Eye,
+  EyeOff,
   Footprints,
   RotateCcw,
   Shield,
@@ -21,6 +23,7 @@ import {
   getBattlefieldLabel,
   getBattlefieldTerrain,
   getLegalActions,
+  getPlayerView,
   isUnitAlive,
   sampleCards,
   sortUnitsForActivation,
@@ -29,7 +32,8 @@ import {
   type GameAction,
   type GameEvent,
   type GameState,
-  type LegalAction
+  type LegalAction,
+  type PlayerVisibleState
 } from "@/engine";
 
 function getActionIcon(action: GameAction) {
@@ -83,6 +87,8 @@ function formatEvent(event: GameEvent, state: GameState): string {
       return `${unitName(state, event.unitId)} is removed.`;
     case "COMBAT_ROUND_ENDED":
       return `Combat round ${event.round} ends. Round ${event.nextRound} begins.`;
+    case "COMBAT_ENDED":
+      return `${state.players[event.winnerPlayerId]?.name ?? event.winnerPlayerId} wins the combat.`;
     case "TURN_ENDED":
       return `${event.playerId} ended turn. ${event.nextPlayerId} is active.`;
     case "SPELL_CAST_STARTED":
@@ -158,22 +164,28 @@ function CardImage({
 }
 
 function PlayerHand({
-  state,
+  view,
   playerId
 }: {
-  state: GameState;
+  view: PlayerVisibleState;
   playerId: "p1" | "p2";
 }) {
-  const player = state.players[playerId];
+  const player = view.players[playerId];
+  const isViewer = view.viewerPlayerId === playerId;
 
   return (
     <section className="panel handPanel" aria-label={`${player.name} hand`}>
       <div className="panelHeader">
         <h2>{player.name}</h2>
-        <span>{player.hand.length} cards</span>
+        <span>{isViewer ? `${player.hand.length} cards` : `${player.handCount} hidden`}</span>
       </div>
       <div className="handCards">
-        {player.hand.length === 0 ? (
+        {!isViewer ? (
+          <div className="emptySlot hiddenHand">
+            <EyeOff aria-hidden="true" size={18} />
+            <span>{player.handCount} hidden cards</span>
+          </div>
+        ) : player.hand.length === 0 ? (
           <div className="emptySlot">Empty hand</div>
         ) : (
           player.hand.map((cardId) => {
@@ -193,6 +205,40 @@ function PlayerHand({
             );
           })
         )}
+      </div>
+    </section>
+  );
+}
+
+function ViewAsControl({
+  state,
+  viewerPlayerId,
+  onChange
+}: {
+  state: GameState;
+  viewerPlayerId: "p1" | "p2";
+  onChange: (playerId: "p1" | "p2") => void;
+}) {
+  return (
+    <section className="panel viewPanel" aria-label="Player view">
+      <div className="panelHeader">
+        <h2>View As</h2>
+        <Eye aria-hidden="true" size={18} />
+      </div>
+      <div className="viewToggle">
+        {(["p1", "p2"] as const).map((playerId) => (
+          <button
+            aria-pressed={viewerPlayerId === playerId}
+            className={`viewButton ${viewerPlayerId === playerId ? "selected" : ""}`}
+            key={playerId}
+            onClick={() => onChange(playerId)}
+            title={`View as ${state.players[playerId].name}`}
+            type="button"
+          >
+            <Eye aria-hidden="true" size={15} />
+            <span>{state.players[playerId].name}</span>
+          </button>
+        ))}
       </div>
     </section>
   );
@@ -357,26 +403,36 @@ function InitiativePanel({ state }: { state: GameState }) {
 
 function ActionPanel({
   state,
-  actingPlayer,
+  viewerPlayerId,
+  currentActorId,
   legalActions,
   onAction,
   onReset
 }: {
   state: GameState;
-  actingPlayer: string;
+  viewerPlayerId: "p1" | "p2";
+  currentActorId: string;
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
   onReset: () => void;
 }) {
   const commandActions = legalActions.filter((legal) => legal.action.type !== "MOVE_UNIT");
+  const currentActorName = state.players[currentActorId]?.name ?? currentActorId;
+  const status =
+    state.phase === "game-over"
+      ? "Battle resolved"
+      : viewerPlayerId === currentActorId
+        ? "Your command"
+        : `Waiting for ${currentActorName}`;
 
   return (
     <section className="panel actionPanel" aria-label="Legal actions">
       <div className="panelHeader">
         <h2>Actions</h2>
-        <span>{state.players[actingPlayer]?.name ?? actingPlayer}</span>
+        <span>{status}</span>
       </div>
       <div className="actionGrid">
+        {commandActions.length === 0 ? <div className="emptyActions">{status}</div> : null}
         {commandActions.map((legal) => (
           <button
             className="actionButton"
@@ -418,10 +474,13 @@ function UnitGallery({ state }: { state: GameState }) {
 
 export default function Home() {
   const [state, setState] = useState(() => createInitialGameState());
+  const [viewerPlayerId, setViewerPlayerId] = useState<"p1" | "p2">("p1");
   const [errors, setErrors] = useState<string[]>([]);
-  const actingPlayer = state.reactionWindow?.priorityPlayerId ?? state.activePlayerId;
-  const legalActions = useMemo(() => getLegalActions(state, actingPlayer), [actingPlayer, state]);
+  const currentActorId = state.reactionWindow?.priorityPlayerId ?? state.activePlayerId;
+  const playerView = useMemo(() => getPlayerView(state, viewerPlayerId), [state, viewerPlayerId]);
+  const legalActions = useMemo(() => getLegalActions(state, viewerPlayerId), [viewerPlayerId, state]);
   const latestEvents = state.eventLog.slice(-10).reverse();
+  const outcome = state.combat?.outcome ?? null;
 
   const submitAction = (action: GameAction) => {
     const result = applyAction(state, action);
@@ -441,15 +500,25 @@ export default function Home() {
         </div>
         <div>
           <span>Active Unit</span>
-          <strong>{state.combat?.activeUnitId ? unitName(state, state.combat.activeUnitId) : "round end"}</strong>
+          <strong>
+            {outcome
+              ? "combat complete"
+              : state.combat?.activeUnitId
+                ? unitName(state, state.combat.activeUnitId)
+                : "round end"}
+          </strong>
         </div>
         <div>
           <span>Priority</span>
           <strong>{state.priorityPlayerId ? state.players[state.priorityPlayerId]?.name : "none"}</strong>
         </div>
         <div>
-          <span>Attack Die</span>
-          <strong>{state.combat?.attackDie[state.combat.attackDieIndex % state.combat.attackDie.length] ?? 0}</strong>
+          <span>{outcome ? "Winner" : "Attack Die"}</span>
+          <strong>
+            {outcome
+              ? state.players[outcome.winnerPlayerId]?.name
+              : (state.combat?.attackDie[state.combat.attackDieIndex % state.combat.attackDie.length] ?? 0)}
+          </strong>
         </div>
       </section>
 
@@ -472,8 +541,9 @@ export default function Home() {
       <div className="tableGrid">
         <Battlefield legalActions={legalActions} onAction={submitAction} state={state} />
         <div className="sideStack">
+          <ViewAsControl onChange={setViewerPlayerId} state={state} viewerPlayerId={viewerPlayerId} />
           <ActionPanel
-            actingPlayer={actingPlayer}
+            currentActorId={currentActorId}
             legalActions={legalActions}
             onAction={submitAction}
             onReset={() => {
@@ -481,13 +551,14 @@ export default function Home() {
               setErrors([]);
             }}
             state={state}
+            viewerPlayerId={viewerPlayerId}
           />
           <InitiativePanel state={state} />
         </div>
         <UnitGallery state={state} />
         <div className="handGrid">
-          <PlayerHand playerId="p1" state={state} />
-          <PlayerHand playerId="p2" state={state} />
+          <PlayerHand playerId="p1" view={playerView} />
+          <PlayerHand playerId="p2" view={playerView} />
         </div>
         <section className="panel logPanel" aria-label="Rules log">
           <div className="panelHeader">

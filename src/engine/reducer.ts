@@ -131,6 +131,52 @@ function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState): void 
   });
 }
 
+function livingControllerIds(combat: CombatState): Set<PlayerId> {
+  return new Set(
+    Object.values(combat.units)
+      .filter(isUnitAlive)
+      .map((unit) => unit.controllerId)
+  );
+}
+
+function finishCombatIfNeeded(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat || combat.outcome) {
+    return Boolean(combat?.outcome);
+  }
+
+  const livingControllers = livingControllerIds(combat);
+  const attackerAlive = livingControllers.has(combat.attackerPlayerId);
+  const defenderAlive = livingControllers.has(combat.defenderPlayerId);
+
+  if (attackerAlive === defenderAlive) {
+    return false;
+  }
+
+  const winnerPlayerId = attackerAlive ? combat.attackerPlayerId : combat.defenderPlayerId;
+  const defeatedPlayerId = attackerAlive ? combat.defenderPlayerId : combat.attackerPlayerId;
+  const reason = "all-enemy-units-defeated";
+
+  combat.outcome = {
+    winnerPlayerId,
+    defeatedPlayerId,
+    reason
+  };
+  combat.activeUnitId = null;
+  state.phase = "game-over";
+  state.activePlayerId = winnerPlayerId;
+  state.priorityPlayerId = null;
+
+  appendEvent(state, {
+    type: "COMBAT_ENDED",
+    winnerPlayerId,
+    defeatedPlayerId,
+    reason
+  });
+
+  return true;
+}
+
 function applyAttackDamage(
   state: GameState,
   attacker: CombatUnitState,
@@ -260,6 +306,9 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
 
   stackItem.status = "resolved";
   state.stack.pop();
+  if (finishCombatIfNeeded(state)) {
+    return;
+  }
   state.phase = "combat";
   state.priorityPlayerId = null;
 }
@@ -404,6 +453,9 @@ function playReaction(
   }
 
   closeReactionWindow(state, "reaction-played");
+  if (finishCombatIfNeeded(state)) {
+    return;
+  }
   state.phase = "combat";
 }
 
@@ -443,6 +495,10 @@ function attackUnit(state: GameState, action: Extract<GameAction, { type: "ATTAC
     });
     applyAttackDamage(state, defender, attacker, true);
     defender.retaliatedThisRound = true;
+  }
+
+  if (finishCombatIfNeeded(state)) {
+    return;
   }
 
   advanceActiveUnit(state);

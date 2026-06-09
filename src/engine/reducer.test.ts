@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createInitialGameState, findEvent, getLegalActions } from "./index";
+import { applyAction, createInitialGameState, findEvent, getLegalActions, getPlayerView } from "./index";
 import type { GameAction } from "./state";
 
 const castMagicArrow = {
@@ -51,6 +51,33 @@ describe("rules engine prototype", () => {
     expect(findEvent(result.state, "SPELL_CAST_RESOLVED")).toBeDefined();
   });
 
+  it("ends combat when spell damage defeats the last opposing unit", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+
+    state.combat.units.unit_p2_pit_lords.damage = 4;
+    state.combat.units.unit_p2_magogs.damage = 3;
+
+    const casted = applyAction(state, castMagicArrow).state;
+    const result = applyAction(casted, { type: "PASS_REACTION", playerId: "p2" });
+
+    expect(result.errors).toEqual([]);
+    expect(result.state.phase).toBe("game-over");
+    expect(result.state.combat?.activeUnitId).toBeNull();
+    expect(result.state.combat?.outcome).toEqual({
+      winnerPlayerId: "p1",
+      defeatedPlayerId: "p2",
+      reason: "all-enemy-units-defeated"
+    });
+    expect(getLegalActions(result.state, "p1")).toEqual([]);
+    expect(findEvent(result.state, "COMBAT_ENDED")).toMatchObject({
+      winnerPlayerId: "p1",
+      defeatedPlayerId: "p2"
+    });
+  });
+
   it("lets Resistance cancel a pending spell", () => {
     const casted = applyAction(createInitialGameState(), castMagicArrow).state;
     const result = applyAction(casted, {
@@ -85,6 +112,29 @@ describe("rules engine prototype", () => {
     expect(result.state.combat?.units.unit_p1_griffins.damage).toBe(0);
     expect(result.state.combat?.activeUnitId).toBe("unit_p1_elves");
     expect(findEvent(result.state, "RETALIATION_ATTACKED")).toBeUndefined();
+  });
+
+  it("ends combat when an attack defeats the last opposing unit", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+
+    state.combat.units.unit_p2_pit_lords.damage = 5;
+    state.combat.units.unit_p2_magogs.damage = 3;
+
+    const result = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_pit_lords"
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.state.phase).toBe("game-over");
+    expect(result.state.activePlayerId).toBe("p1");
+    expect(result.state.combat?.outcome?.winnerPlayerId).toBe("p1");
+    expect(result.state.combat?.activeUnitId).toBeNull();
   });
 
   it("lets the active unit move into the four-square crossing row", () => {
@@ -168,5 +218,36 @@ describe("rules engine prototype", () => {
         message: "That action is not legal in the current game state."
       }
     ]);
+  });
+
+  it("builds a player view without leaking opponent hands, deck order, or reaction choices", () => {
+    const state = createInitialGameState();
+    state.decks = {
+      p1: {
+        id: "p1",
+        drawPile: ["spell.magic_arrow", "ability.resistance"],
+        discardPile: ["spell.magic_arrow"]
+      }
+    };
+
+    const casted = applyAction(state, castMagicArrow).state;
+    const p1View = getPlayerView(casted, "p1");
+    const p2View = getPlayerView(casted, "p2");
+
+    expect(p1View.players.p1.hand).toEqual([]);
+    expect(p1View.players.p1.handCount).toBe(0);
+    expect(p1View.players.p2.hand).toEqual([]);
+    expect(p1View.players.p2.handCount).toBe(1);
+    expect(p1View.decks.p1.drawCount).toBe(2);
+    expect(Object.hasOwn(p1View.decks.p1, "drawPile")).toBe(false);
+    expect(p1View.reactionWindow?.legalReactions.p2).toBeUndefined();
+    expect(p2View.reactionWindow?.legalReactions.p2?.[0]?.action).toEqual({
+      type: "PLAY_REACTION",
+      playerId: "p2",
+      cardId: "ability.resistance"
+    });
+
+    p2View.players.p2.hand.push("spell.magic_arrow");
+    expect(casted.players.p2.hand).toEqual(["ability.resistance"]);
   });
 });
