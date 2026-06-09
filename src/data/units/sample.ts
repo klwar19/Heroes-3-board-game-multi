@@ -112,7 +112,7 @@ export const sampleCombatUnits: Record<string, CombatUnitState> = {
     attack: 5,
     defense: 2,
     maxHealth: 6,
-    damage: 6,
+    damage: 0,
     initiative: 5,
     position: 19,
     activatedThisRound: false,

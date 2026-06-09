@@ -10,6 +10,9 @@ This note captures the working model for future development. Treat the official 
 - Wiki scenarios list: https://en.homm3bg.wiki/scenarios/
 - Wiki units reference: https://en.homm3bg.wiki/units/
 - Wiki combat keyword page: https://en.homm3bg.wiki/keywords/combat/
+- Wiki dice keyword page (attack die faces): https://en.homm3bg.wiki/keywords/dice/
+- Wiki morale keyword page: https://en.homm3bg.wiki/keywords/morale/
+- Wiki Griffins unit page (stat verification): https://en.homm3bg.wiki/units/griffins/
 - Resistance card page: https://en.homm3bg.wiki/abilities/resistance/
 - Magic Arrow card page: https://en.homm3bg.wiki/spells/magic_arrow/
 - Bloodlust spell page: https://en.homm3bg.wiki/spells/bloodlust/
@@ -58,10 +61,15 @@ This note captures the working model for future development. Treat the official 
 
 ## Combat Model
 
+- The battlefield is a 4-wide by 5-tall grid (20 spaces). Adjacency and movement are orthogonal: a diagonal space is not adjacent, so reaching it costs two spaces. The engine measures distance with Manhattan distance, not Chebyshev.
 - Units have attack, defense, health points, and initiative. Higher initiative activates first; ties favor the attacking player.
 - A combat round is a full cycle in which eligible units normally activate once.
-- On activation, a unit may move and attack according to its type, or defend.
+- On activation, a unit may move and attack according to its type, or defend (or hold position once it has begun acting).
+- Movement points: melee (ground) and flying units have 3; ranged units have 1.
 - Ground units move on the ground and attack adjacent targets. Ranged units can attack non-adjacent targets unless engaged by an adjacent enemy. Flying units can move over blocked spaces but must end on an empty space.
+- A ranged unit may spend its move after shooting (shoot-then-reposition), as long as it has not already moved this activation. Melee/flying units move first, then attack; attacking ends their activation.
+- The attack die has six faces — two `-1`, two `0`, and two `+1` (source: https://en.homm3bg.wiki/keywords/dice/). A normal attack rolls one die; advantage/disadvantage rolls two dice and takes the higher/lower face. Each roll modifies the attacker's attack value before defense is subtracted. The app rolls this die from a per-combat seed so results are deterministic for every client (server-authoritative) yet not previewable by players.
+- Morale (not yet modeled) lets a player reroll any die they have thrown, among other off-combat uses (source: https://en.homm3bg.wiki/keywords/morale/). Reroll mechanics currently come only from card effects such as Fortune and Luck.
 - Damage is tracked directly on health. Defense reduces non-magical attack values, but direct damage from spell/effect sources should not be reduced unless the effect says so.
 - Healing and effect removal should operate on represented damage/effect state. Cure removes damage by power and removes represented negative/removable effects from the selected friendly unit.
 - First Aid Tent is a permanent war machine effect that can remove 1 damage from a selected friendly unit once during each combat round.

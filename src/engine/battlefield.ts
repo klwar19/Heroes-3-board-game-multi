@@ -3,6 +3,14 @@ export const BATTLEFIELD_ROWS = 5;
 export const BATTLEFIELD_CELL_COUNT = BATTLEFIELD_COLUMNS * BATTLEFIELD_ROWS;
 export const BATTLEFIELD_CROSSING_ROW = 2;
 
+/**
+ * The physical combat attack die from Heroes 3: The Board Game.
+ * It has six faces: two showing -1, two showing 0, and two showing +1.
+ * Each face modifies the attacking unit's attack value before defense is applied.
+ * Source: https://en.homm3bg.wiki/keywords/dice/
+ */
+export const ATTACK_DIE_FACES: readonly number[] = [-1, -1, 0, 0, 1, 1];
+
 export type BattlefieldTerrain = "grass" | "crossing" | "dirt";
 
 export type BattlefieldCoordinates = {
@@ -39,7 +47,9 @@ export function getBattlefieldDistance(leftPosition: number, rightPosition: numb
   const left = getBattlefieldCoordinates(leftPosition);
   const right = getBattlefieldCoordinates(rightPosition);
 
-  return Math.max(Math.abs(left.row - right.row), Math.abs(left.column - right.column));
+  // Movement and adjacency are orthogonal in the board game: a diagonal step
+  // is not adjacent, so it costs two spaces. Use Manhattan distance, not Chebyshev.
+  return Math.abs(left.row - right.row) + Math.abs(left.column - right.column);
 }
 
 export function getBattlefieldLabel(position: number): string {

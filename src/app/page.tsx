@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
+  ATTACK_DIE_FACES,
   BATTLEFIELD_CELL_COUNT,
   createInitialGameState,
   describeCardEffect,
@@ -65,6 +66,8 @@ function getActionIcon(action: GameAction) {
       return <Sparkles aria-hidden="true" size={16} />;
     case "DEFEND_UNIT":
       return <Shield aria-hidden="true" size={16} />;
+    case "END_ACTIVATION":
+      return <Hand aria-hidden="true" size={16} />;
     case "END_COMBAT_ROUND":
       return <StepForward aria-hidden="true" size={16} />;
     case "BUILD_STRUCTURE":
@@ -185,6 +188,8 @@ function formatEvent(event: GameEvent, state: GameState): string {
       return `${unitName(state, event.unitId)} moves from ${getBattlefieldLabel(event.from)} to ${getBattlefieldLabel(event.to)}.`;
     case "UNIT_DEFENDED":
       return `${unitName(state, event.unitId)} takes defense.`;
+    case "UNIT_ACTIVATION_ENDED":
+      return `${unitName(state, event.unitId)} holds position.`;
     case "UNIT_REMOVED":
       return `${unitName(state, event.unitId)} is removed.`;
     case "COMBAT_ROUND_ENDED":
@@ -281,6 +286,8 @@ function actionLabel(action: GameAction, state: GameState): string {
       return `Move to ${getBattlefieldLabel(action.destination)}`;
     case "DEFEND_UNIT":
       return "Defend";
+    case "END_ACTIVATION":
+      return "Hold Position";
     case "CAST_SPELL":
       return `${cardName(action.cardId)} -> ${targetName(state, action.target)}`;
     case "PLAY_CARD":
@@ -523,6 +530,10 @@ function TurnPanel({ state }: { state: GameState }) {
   );
 }
 
+function formatDieFace(face: number): string {
+  return `${face >= 0 ? "+" : ""}${face}`;
+}
+
 function DicePanel({ state }: { state: GameState }) {
   const combat = state.combat;
   const lastRoll = [...state.eventLog]
@@ -530,9 +541,7 @@ function DicePanel({ state }: { state: GameState }) {
     .find((event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> => event.type === "ATTACK_ROLLED");
   const [animatedRolls, setAnimatedRolls] = useState<number[]>(lastRoll?.rolls ?? []);
   const [isRolling, setIsRolling] = useState(false);
-  const upcomingRolls = combat
-    ? Array.from({ length: 4 }, (_, index) => combat.attackDie[(combat.attackDieIndex + index) % combat.attackDie.length])
-    : [];
+  const dieFaces = combat?.dice.faces.length ? combat.dice.faces : [...ATTACK_DIE_FACES];
   const visibleRolls = lastRoll ? (isRolling ? animatedRolls : lastRoll.rolls) : [];
   const visibleSelectedRoll = lastRoll
     ? isRolling
@@ -594,14 +603,14 @@ function DicePanel({ state }: { state: GameState }) {
       </div>
       <div className="diceRows">
         <div>
-          <span>Next</span>
-          <strong>{upcomingRolls.map((roll) => `${roll >= 0 ? "+" : ""}${roll}`).join("  ")}</strong>
+          <span>Die faces</span>
+          <strong>{dieFaces.map(formatDieFace).join("  ")}</strong>
         </div>
         <div>
           <span>Last</span>
           <strong>
             {lastRoll
-              ? `${lastRoll.rolls.map((roll) => `${roll >= 0 ? "+" : ""}${roll}`).join("/")} -> ${lastRoll.roll >= 0 ? "+" : ""}${lastRoll.roll}`
+              ? `${lastRoll.rolls.map(formatDieFace).join("/")} -> ${formatDieFace(lastRoll.roll)}`
               : "none"}
           </strong>
         </div>
@@ -1200,7 +1209,9 @@ export default function Home() {
           <strong>
             {outcome
               ? state.players[outcome.winnerPlayerId]?.name
-              : (state.combat?.attackDie[state.combat.attackDieIndex % state.combat.attackDie.length] ?? 0)}
+              : (state.combat?.dice.faces.length ? state.combat.dice.faces : [...ATTACK_DIE_FACES])
+                  .map((face) => (face >= 0 ? `+${face}` : `${face}`))
+                  .join(" ")}
           </strong>
         </div>
       </section>
