@@ -1,0 +1,75 @@
+# Heroes 3 Board Game Rules Understanding
+
+This note captures the working model for future development. Treat the official rulebook as primary, the homm3bg wiki as a searchable fan database/clarification layer, and the playthrough transcript as practical examples of how turns feel at the table.
+
+## Sources Read
+
+- Official Archon rulebook PDF: https://archon-studio.com/files/manuals/homm/homm-rulebook_EN.pdf
+- Fan card/database wiki: https://en.homm3bg.wiki/
+- Wiki content index: https://en.homm3bg.wiki/content/
+- Wiki scenarios list: https://en.homm3bg.wiki/scenarios/
+- Wiki units reference: https://en.homm3bg.wiki/units/
+- Wiki combat keyword page: https://en.homm3bg.wiki/keywords/combat/
+- Resistance card page: https://en.homm3bg.wiki/abilities/resistance/
+- Magic Arrow card page: https://en.homm3bg.wiki/spells/magic_arrow/
+- Might and Magic Fandom overview: https://mightandmagic.fandom.com/wiki/Heroes_of_Might_and_Magic_III%3A_The_Board_Game
+- Local playthrough transcript: `C:\Users\klwar\Desktop\tai lieu nhap hoc sp\youtube script\Heroes of Might and Magic 3 The Board Game - Playthrough.txt`
+
+## Source Confidence
+
+- Rulebook-derived mechanics are the source of truth for turn order, player turns, movement, town actions, deck flow, and combat timing.
+- The homm3bg wiki is a fan project and says its card data was entered by hand, so imported card text should be validated against owned/official components before being treated as final.
+- The playthrough is useful for UX and edge-case flow examples, especially simultaneous-feeling town actions, neutral combat pacing, scenario timers, and siege finale flow.
+
+## Core Game Model
+
+- The app should model the board game as a scenario-driven, turn-based adventure game with map exploration, town economy, deckbuilding, and tactical combat.
+- Core-box player count is 1-3, while expansions and future app features may support more. The app architecture should not hardcode a two-player-only model.
+- The map is scenario-shaped from tiles. Each map tile has multiple fields/spaces, many start hidden, and heroes reveal or place tiles through movement actions.
+- Players own a faction, main hero, town board, unit cards, resources, income markers, and a deck of Might & Magic cards.
+- Main heroes use the player deck, gain experience, level up, and normally have 3 movement points per turn. Secondary heroes are lighter map pieces and do not use the deck.
+- Town actions are once per round per player and can happen during another player's turn, but not during combat. The core town action buckets are Build, Population, and Spell Book.
+
+## Round And Turn Flow
+
+- Rounds alternate between resource rounds and Astrologers' rounds.
+- Resource rounds grant income from town buildings, settlements, and mines.
+- Astrologers' rounds draw and resolve a global event card.
+- At the start of a player turn, that player becomes active, may discard any number of hand cards, then draws up to hand limit.
+- Player turn actions include spending movement points to move, reveal nearby tiles, place scenario tiles, and continue neutral combat for another round if needed.
+- Scenario timers and victory/loss conditions can trigger from round numbers or game events, so scenarios need their own rule hooks rather than UI-only checks.
+
+## Cards, Timing, And Reactions
+
+- The player deck starts from hero statistics, starting spell(s), starting ability, and specialty cards. Artifacts/spells/abilities are later added through rewards and town actions.
+- Hero level controls hand limit, specialty additions, ability searches, and the number of expert effects usable per round.
+- Combat normally limits a player to one spell card per combat round, while specialty cards do not count against that spell limit.
+- Instant cards create the most important engine requirement. The engine must pause resolution, expose legal reactions, accept pass/reaction actions, and then resume the original action.
+- Resistance is the prototype reaction: it is played immediately after an enemy spell is cast and can ignore the spell effect under its stated power/expert conditions.
+- Do not implement instant cards as UI shortcuts. They should be data definitions with triggers, conditions, targets, and effects handled by the engine.
+
+## Combat Model
+
+- Units have attack, defense, health points, and initiative. Higher initiative activates first; ties favor the attacking player.
+- A combat round is a full cycle in which eligible units normally activate once.
+- On activation, a unit may move and attack according to its type, or defend.
+- Ground units move on the ground and attack adjacent targets. Ranged units can attack non-adjacent targets unless engaged by an adjacent enemy. Flying units can move over blocked spaces but must end on an empty space.
+- Damage is tracked directly on health. Defense reduces non-magical attack values, but direct damage from spell/effect sources should not be reduced unless the effect says so.
+- Combat timing has important windows: activation cards before attack, instant attack/defense cards before the attack roll, then attack roll and resolution as a protected segment.
+- Neutral combat uses difficulty-based neutral decks. Player combat uses recruited units. Siege and expansion battlefields add special participants such as walls, gates, arrow towers, war machines, and obstacles.
+
+## Data Import Implications
+
+- Data should be imported incrementally: factions, heroes, units, spells, abilities, artifacts, fields, scenarios, events, and expansion content.
+- Every imported record needs source/credit metadata. Official art/card images must not enter the repo without clear permission and attribution.
+- Current development UI uses remote wiki image URLs for visual reference only; images are not copied into the repository. Keep this source metadata with every card/unit record.
+- Cards that cannot be represented by existing handlers should be marked not implemented with notes about missing timing/effect support.
+- Wiki pages are useful for IDs, grouping, and community notes, but official components/rulebooks should win when there is a conflict.
+
+## Engine Priorities
+
+- Keep state serializable and server-authoritative.
+- The UI must ask for legal actions and submit actions; it must not decide rules.
+- Hidden information needs a player-visible state projection before serious multiplayer work.
+- Event logs should be first-class because they power replay, debugging, reaction triggers, AI explanations, and "why was this legal" UX.
+- AI should consume the same legal action list as humans. No special AI-only rule path unless a scenario explicitly defines one.
