@@ -115,6 +115,99 @@ export const sampleCards: CardLibrary = {
       url: "https://en.homm3bg.wiki/spells/magic_arrow/"
     }
   },
+  "spell.bloodlust": {
+    id: "spell.bloodlust",
+    name: "Bloodlust",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: ["spell", "buff", "attack", "wiki-reference"],
+    power: 1,
+    target: { type: "friendly-unit", unitTypes: ["ground", "flying"] },
+    effect: {
+      type: "CREATE_ATTACK_BUFF",
+      name: "Bloodlust",
+      amountByPower: {
+        0: 1,
+        1: 2,
+        2: 3
+      },
+      duration: { type: "combat" },
+      polarity: "positive",
+      removable: true
+    },
+    assets: {
+      cardImage: "https://en.homm3bg.wiki/assets/spells-bloodlust.webp",
+      imageAlt: "Bloodlust card"
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: wikiCredit,
+      url: "https://en.homm3bg.wiki/spells/bloodlust/"
+    }
+  },
+  "spell.cure": {
+    id: "spell.cure",
+    name: "Cure",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: ["spell", "heal", "effect-removal", "wiki-reference"],
+    power: 1,
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "HEAL_DAMAGE_AND_REMOVE_EFFECTS",
+      amountByPower: {
+        0: 1,
+        1: 2,
+        2: 3
+      },
+      removePolarity: "negative"
+    },
+    assets: {
+      cardImage: "https://en.homm3bg.wiki/assets/spells-cure.webp",
+      imageAlt: "Cure card"
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: wikiCredit,
+      url: "https://en.homm3bg.wiki/spells/cure/"
+    }
+  },
+  "spell.fortune": {
+    id: "spell.fortune",
+    name: "Fortune",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: ["spell", "reroll", "attack-die", "wiki-reference"],
+    power: 1,
+    target: { type: "none" },
+    effect: {
+      type: "CREATE_ATTACK_DIE_REROLL",
+      name: "Fortune",
+      basicRerolls: 1,
+      rerollsByPower: {
+        0: 1,
+        1: 2,
+        2: 3
+      },
+      duration: { type: "current-turn" },
+      consumeEffectOnUse: true
+    },
+    assets: {
+      cardImage: "https://en.homm3bg.wiki/assets/spells-fortune.webp",
+      imageAlt: "Fortune card"
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: wikiCredit,
+      url: "https://homm3bg.wiki/spells/fortune/"
+    }
+  },
   "ability.resistance": {
     id: "ability.resistance",
     name: "Resistance",
@@ -176,6 +269,68 @@ export const sampleCards: CardLibrary = {
       product: "Heroes of Might and Magic III: The Board Game",
       credit: wikiCredit,
       url: "https://en.homm3bg.wiki/abilities/archery/"
+    }
+  },
+  "ability.luck": {
+    id: "ability.luck",
+    name: "Luck",
+    kind: "ability",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: ["ability", "reroll", "attack-die", "wiki-reference"],
+    target: { type: "none" },
+    effect: {
+      type: "CREATE_ATTACK_DIE_REROLL",
+      name: "Luck",
+      basicRerolls: 0,
+      expertRerolls: 1,
+      duration: { type: "current-turn" },
+      consumeEffectOnUse: false
+    },
+    assets: {
+      cardImage: "https://en.homm3bg.wiki/assets/abilities-luck.webp",
+      imageAlt: "Luck card"
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: wikiCredit,
+      url: "https://homm3bg.wiki/abilities/luck/"
+    }
+  },
+  "war_machine.first_aid_tent": {
+    id: "war_machine.first_aid_tent",
+    name: "First Aid Tent",
+    kind: "war-machine",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: ["war-machine", "permanent", "heal", "wiki-reference"],
+    target: { type: "none" },
+    effect: {
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: "First Aid Tent",
+        scope: "player",
+        duration: { type: "permanent" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [
+          {
+            type: "HEAL_ONCE_PER_COMBAT_ROUND",
+            amount: 1
+          }
+        ]
+      }
+    },
+    assets: {
+      cardImage: "https://en.homm3bg.wiki/assets/war_machines-first_aid_tent.webp",
+      imageAlt: "First Aid Tent war machine card"
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: wikiCredit,
+      url: "https://homm3bg.wiki/war_machines/first_aid_tent/"
     }
   }
 };

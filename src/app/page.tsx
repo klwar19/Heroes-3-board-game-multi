@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
-  applyAction,
   BATTLEFIELD_CELL_COUNT,
   createInitialGameState,
   describeCardEffect,
@@ -35,18 +34,22 @@ import {
   sortUnitsForActivation,
   type BuildingEffectDefinition,
   type CombatUnitState,
+  type EngineResult,
   type GameAction,
   type GameEvent,
   type GameState,
   type LegalAction,
   type PlayerVisibleState,
   type ResourceCost,
-  type ResourceKind
+  type ResourceKind,
+  type TargetRef
 } from "@/engine";
 
 function getActionIcon(action: GameAction) {
   switch (action.type) {
     case "CAST_SPELL":
+      return <Sparkles aria-hidden="true" size={16} />;
+    case "PLAY_CARD":
       return <Sparkles aria-hidden="true" size={16} />;
     case "ATTACK_UNIT":
       return <Crosshair aria-hidden="true" size={16} />;
@@ -54,6 +57,10 @@ function getActionIcon(action: GameAction) {
       return <Swords aria-hidden="true" size={16} />;
     case "MOVE_UNIT":
       return <Footprints aria-hidden="true" size={16} />;
+    case "USE_UNIT_ABILITY":
+      return <Hand aria-hidden="true" size={16} />;
+    case "USE_ACTIVE_EFFECT":
+      return <Sparkles aria-hidden="true" size={16} />;
     case "DEFEND_UNIT":
       return <Shield aria-hidden="true" size={16} />;
     case "END_COMBAT_ROUND":
@@ -62,6 +69,10 @@ function getActionIcon(action: GameAction) {
       return <Hammer aria-hidden="true" size={16} />;
     case "COMPLETE_SIMULTANEOUS_TURN":
       return <StepForward aria-hidden="true" size={16} />;
+    case "REROLL_PENDING_CHOICE":
+      return <Dices aria-hidden="true" size={16} />;
+    case "CHOOSE_PENDING_ROLL":
+      return <Dices aria-hidden="true" size={16} />;
     case "PLAY_REACTION":
       return <Undo2 aria-hidden="true" size={16} />;
     case "PASS_REACTION":
@@ -73,6 +84,10 @@ function getActionIcon(action: GameAction) {
 
 function unitName(state: GameState, unitId: string): string {
   return state.combat?.units[unitId]?.name ?? unitId;
+}
+
+function targetName(state: GameState, target: TargetRef): string {
+  return target.type === "unit" ? unitName(state, target.unitId) : "no target";
 }
 
 function cardName(cardId: string): string {
@@ -119,6 +134,12 @@ function formatEvent(event: GameEvent, state: GameState): string {
       return `${unitName(state, event.attackerId)} ${event.isRetaliation ? "retaliates against" : "attacks"} ${unitName(state, event.defenderId)} (${event.attackKind}, ${event.rollMode}).`;
     case "ATTACK_ROLLED":
       return `${event.isRetaliation ? "Retaliation" : "Attack"} roll ${event.rolls.map((roll) => `${roll >= 0 ? "+" : ""}${roll}`).join("/")} -> ${event.roll >= 0 ? "+" : ""}${event.roll}: ${event.attackValue} vs ${event.defenseValue}, ${event.damage} damage.`;
+    case "PENDING_CHOICE_CREATED":
+      return event.message;
+    case "ATTACK_REROLLED":
+      return `${event.playerId} rerolls ${event.rolls.map((roll) => `${roll >= 0 ? "+" : ""}${roll}`).join("/")} -> ${event.roll >= 0 ? "+" : ""}${event.roll}.`;
+    case "PENDING_CHOICE_RESOLVED":
+      return `${event.playerId} chooses roll option ${event.selectedIndex + 1}.`;
     case "RETALIATION_ATTACKED":
       return `${unitName(state, event.attackerId)} retaliates against ${unitName(state, event.defenderId)}.`;
     case "UNIT_MOVED":
@@ -134,7 +155,7 @@ function formatEvent(event: GameEvent, state: GameState): string {
     case "TURN_ENDED":
       return `${event.playerId} ended turn. ${event.nextPlayerId} is active.`;
     case "SPELL_CAST_STARTED":
-      return `${event.playerId} casts ${cardName(event.spellCardId)} at ${unitName(state, event.target.unitId)}.`;
+      return `${event.playerId} casts ${cardName(event.spellCardId)} at ${targetName(state, event.target)}.`;
     case "REACTION_WINDOW_OPENED":
       return `Reaction priority passes to ${event.priorityPlayerId}.`;
     case "REACTION_PASSED":
@@ -146,9 +167,11 @@ function formatEvent(event: GameEvent, state: GameState): string {
     case "SPELL_CAST_CANCELLED":
       return `${event.cancelledByPlayerId} cancels ${cardName(event.spellCardId)} with ${cardName(event.cancelledByCardId)}.`;
     case "DAMAGE_ASSIGNED":
-      return `${event.amount} ${event.damageKind} damage assigned to ${unitName(state, event.target.unitId)}.`;
+      return `${event.amount} ${event.damageKind} damage assigned to ${targetName(state, event.target)}.`;
     case "DAMAGE_HEALED":
-      return `${event.amount} damage removed from ${unitName(state, event.target.unitId)}.`;
+      return `${event.amount} damage removed from ${targetName(state, event.target)}.`;
+    case "ACTIVE_EFFECTS_REMOVED":
+      return `${event.effectIds.length} effect${event.effectIds.length === 1 ? "" : "s"} removed from ${targetName(state, event.target)}.`;
     case "SPELL_CAST_RESOLVED":
       return `${cardName(event.spellCardId)} resolves at power ${event.power}.`;
     case "UNIT_ABILITY_TRIGGERED":
@@ -159,6 +182,8 @@ function formatEvent(event: GameEvent, state: GameState): string {
       return `${event.buildingId} effect: ${formatBuildingEffect(event.effect)}.`;
     case "ACTIVE_EFFECT_CREATED":
       return `${event.name} is active.`;
+    case "ACTIVE_EFFECT_USED":
+      return `${event.playerId} uses ${event.effectId} on ${targetName(state, event.target)}.`;
     case "ACTIVE_EFFECT_EXPIRED":
       return `${event.effectId} expires by ${event.reason}.`;
     case "SIMULTANEOUS_TURN_COMPLETED":
@@ -173,11 +198,38 @@ function actionKey(action: GameAction): string {
 }
 
 type CardLegalAction = LegalAction & {
-  action: Extract<GameAction, { type: "CAST_SPELL" | "PLAY_REACTION" }>;
+  action: Extract<GameAction, { type: "CAST_SPELL" | "PLAY_REACTION" | "PLAY_CARD" }>;
 };
 
 function isCardLegalAction(legal: LegalAction): legal is CardLegalAction {
-  return legal.action.type === "CAST_SPELL" || legal.action.type === "PLAY_REACTION";
+  return legal.action.type === "CAST_SPELL" || legal.action.type === "PLAY_REACTION" || legal.action.type === "PLAY_CARD";
+}
+
+type BoardTargetCardAction = Extract<GameAction, { type: "CAST_SPELL" | "PLAY_CARD" }> & {
+  target: { type: "unit"; unitId: string };
+};
+
+function isBoardTargetCardAction(action: GameAction): action is BoardTargetCardAction {
+  return (
+    (action.type === "CAST_SPELL" || action.type === "PLAY_CARD") &&
+    Boolean(action.target && action.target.type === "unit")
+  );
+}
+
+function cardSelectionKey(action: Extract<GameAction, { type: "CAST_SPELL" | "PLAY_CARD" }>): string {
+  return JSON.stringify({
+    type: action.type,
+    playerId: action.playerId,
+    cardId: action.cardId,
+    mode: "mode" in action ? (action.mode ?? "basic") : "basic"
+  });
+}
+
+function sameCardSelection(
+  selected: Extract<GameAction, { type: "CAST_SPELL" | "PLAY_CARD" }> | null,
+  action: Extract<GameAction, { type: "CAST_SPELL" | "PLAY_CARD" }>
+): boolean {
+  return Boolean(selected && cardSelectionKey(selected) === cardSelectionKey(action));
 }
 
 function actionLabel(action: GameAction, state: GameState): string {
@@ -191,7 +243,17 @@ function actionLabel(action: GameAction, state: GameState): string {
     case "DEFEND_UNIT":
       return "Defend";
     case "CAST_SPELL":
-      return `${cardName(action.cardId)} -> ${unitName(state, action.target.unitId)}`;
+      return `${cardName(action.cardId)} -> ${targetName(state, action.target)}`;
+    case "PLAY_CARD":
+      return `${cardName(action.cardId)}${action.target ? ` -> ${targetName(state, action.target)}` : ""}`;
+    case "USE_UNIT_ABILITY":
+      return `${unitName(state, action.unitId)} ability -> ${targetName(state, action.target)}`;
+    case "USE_ACTIVE_EFFECT":
+      return `Use effect -> ${targetName(state, action.target)}`;
+    case "REROLL_PENDING_CHOICE":
+      return "Reroll";
+    case "CHOOSE_PENDING_ROLL":
+      return `Choose roll ${action.candidateIndex + 1}`;
     case "PLAY_REACTION":
       return `${cardName(action.cardId)}${action.mode === "expert" ? " Expert" : ""}`;
     case "PASS_REACTION":
@@ -207,9 +269,13 @@ function actionLabel(action: GameAction, state: GameState): string {
   }
 }
 
-function cardActionLabel(action: Extract<GameAction, { type: "CAST_SPELL" | "PLAY_REACTION" }>, state: GameState): string {
+function cardActionLabel(action: Extract<GameAction, { type: "CAST_SPELL" | "PLAY_REACTION" | "PLAY_CARD" }>, state: GameState): string {
   if (action.type === "CAST_SPELL") {
-    return `Target ${unitName(state, action.target.unitId)}`;
+    return action.target.type === "unit" ? `Target ${targetName(state, action.target)}` : "Use";
+  }
+
+  if (action.type === "PLAY_CARD") {
+    return action.target?.type === "unit" ? `Target ${targetName(state, action.target)}` : action.mode === "expert" ? "Use expert" : "Use";
   }
 
   return action.mode === "expert" ? "Use expert" : "Use";
@@ -236,12 +302,16 @@ function PlayerHand({
   playerId,
   state,
   legalActions,
+  selectedCardAction,
+  onSelectCardAction,
   onAction
 }: {
   view: PlayerVisibleState;
   playerId: "p1" | "p2";
   state: GameState;
   legalActions: LegalAction[];
+  selectedCardAction: Extract<GameAction, { type: "CAST_SPELL" | "PLAY_CARD" }> | null;
+  onSelectCardAction: (action: Extract<GameAction, { type: "CAST_SPELL" | "PLAY_CARD" }> | null) => void;
   onAction: (action: GameAction) => void;
 }) {
   const player = view.players[playerId];
@@ -268,8 +338,16 @@ function PlayerHand({
           player.hand.map((cardId) => {
             const card = sampleCards[cardId];
             const cardActions = legalCardActions.filter((legal) => legal.action.cardId === cardId);
+            const boardTargetActions = cardActions
+              .map((legal) => legal.action)
+              .filter(isBoardTargetCardAction);
+            const boardTargetSelections = Array.from(
+              new Map(boardTargetActions.map((action) => [cardSelectionKey(action), action])).values()
+            );
+            const immediateActions = cardActions.filter((legal) => !isBoardTargetCardAction(legal.action));
+            const isSelected = boardTargetSelections.some((action) => sameCardSelection(selectedCardAction, action));
             return (
-              <article className={`handCard ${cardActions.length > 0 ? "playable" : ""}`} key={cardId}>
+              <article className={`handCard ${cardActions.length > 0 ? "playable" : ""} ${isSelected ? "selected" : ""}`} key={cardId}>
                 <CardImage
                   alt={card?.assets?.imageAlt ?? cardId}
                   className="handCardImage"
@@ -283,7 +361,25 @@ function PlayerHand({
                   <span>{card ? describeCardEffect(card) : cardId}</span>
                   {cardActions.length > 0 ? (
                     <div className="cardActions">
-                      {cardActions.map((legal) => (
+                      {boardTargetSelections.map((action) => (
+                        <button
+                          className="cardUseButton"
+                          key={cardSelectionKey(action)}
+                          onClick={() => onSelectCardAction(sameCardSelection(selectedCardAction, action) ? null : action)}
+                          title={`Select ${card?.name ?? cardId}, then click a highlighted unit`}
+                          type="button"
+                        >
+                          {getActionIcon(action)}
+                          <span>
+                            {sameCardSelection(selectedCardAction, action)
+                              ? "Selected"
+                              : "mode" in action && action.mode === "expert"
+                                ? "Select expert"
+                                : "Select target"}
+                          </span>
+                        </button>
+                      ))}
+                      {immediateActions.map((legal) => (
                         <button
                           className="cardUseButton"
                           key={actionKey(legal.action)}
@@ -529,16 +625,19 @@ function UnitReferenceCard({
 function Battlefield({
   state,
   legalActions,
+  selectedCardAction,
   onAction
 }: {
   state: GameState;
   legalActions: LegalAction[];
+  selectedCardAction: Extract<GameAction, { type: "CAST_SPELL" | "PLAY_CARD" }> | null;
   onAction: (action: GameAction) => void;
 }) {
   const combat = state.combat;
   const unitsByPosition = new Map<number, CombatUnitState>();
   const moveActionsByDestination = new Map<number, GameAction>();
   const attackActionsByDefender = new Map<string, GameAction>();
+  const cardActionsByTarget = new Map<string, GameAction>();
   if (combat) {
     for (const unit of Object.values(combat.units)) {
       if (isUnitAlive(unit)) {
@@ -552,6 +651,9 @@ function Battlefield({
     }
     if (legal.action.type === "ATTACK_UNIT") {
       attackActionsByDefender.set(legal.action.defenderId, legal.action);
+    }
+    if (selectedCardAction && isBoardTargetCardAction(legal.action) && sameCardSelection(selectedCardAction, legal.action)) {
+      cardActionsByTarget.set(legal.action.target.unitId, legal.action);
     }
   }
 
@@ -568,10 +670,11 @@ function Battlefield({
             const terrain = getBattlefieldTerrain(index);
             const moveAction = moveActionsByDestination.get(index);
             const attackAction = unit ? attackActionsByDefender.get(unit.id) : undefined;
+            const cardAction = unit ? cardActionsByTarget.get(unit.id) : undefined;
             const isActive = Boolean(unit && combat?.activeUnitId === unit.id);
             const className = `battleCell ${terrain} ${unit?.controllerId ?? ""} ${
               isActive ? "active" : ""
-            } ${moveAction ? "moveTarget" : ""} ${attackAction ? "attackTarget" : ""}`;
+            } ${moveAction && !selectedCardAction ? "moveTarget" : ""} ${attackAction && !selectedCardAction ? "attackTarget" : ""} ${cardAction ? "cardTarget" : ""}`;
             const content = unit ? (
               <article className={`boardCard ${unit.controllerId}`}>
                 <CardImage
@@ -590,7 +693,22 @@ function Battlefield({
               <span className="emptyBoardMark" aria-hidden="true" />
             );
 
-            if (moveAction && !unit) {
+            if (cardAction && unit) {
+              return (
+                <button
+                  aria-label={`Target ${unit.name}`}
+                  className={className}
+                  key={index}
+                  onClick={() => onAction(cardAction)}
+                  title={`Target ${unit.name}`}
+                  type="button"
+                >
+                  {content}
+                </button>
+              );
+            }
+
+            if (moveAction && !unit && !selectedCardAction) {
               return (
                 <button
                   aria-label={`Move active unit to ${getBattlefieldLabel(index)}`}
@@ -605,7 +723,7 @@ function Battlefield({
               );
             }
 
-            if (attackAction && unit) {
+            if (attackAction && unit && !selectedCardAction) {
               return (
                 <button
                   aria-label={`Attack ${unit.name}`}
@@ -672,6 +790,46 @@ function formatEffectDuration(effect: GameState["activeEffects"][number]): strin
   }
 
   return effect.duration.type;
+}
+
+function RoomPanel({
+  roomId,
+  roomInput,
+  roomVersion,
+  syncStatus,
+  onRoomInput,
+  onJoin
+}: {
+  roomId: string;
+  roomInput: string;
+  roomVersion: number;
+  syncStatus: string;
+  onRoomInput: (roomId: string) => void;
+  onJoin: () => void;
+}) {
+  return (
+    <section className="panel roomPanel" aria-label="Room sync">
+      <div className="panelHeader">
+        <h2>Room</h2>
+        <span>v{roomVersion}</span>
+      </div>
+      <div className="roomControls">
+        <input
+          aria-label="Room ID"
+          onChange={(event) => onRoomInput(event.target.value)}
+          value={roomInput}
+        />
+        <button className="actionButton secondary" onClick={onJoin} title="Join room" type="button">
+          <StepForward aria-hidden="true" size={16} />
+          <span>Join</span>
+        </button>
+      </div>
+      <div className="roomStatus">
+        <strong>{roomId}</strong>
+        <span>{syncStatus}</span>
+      </div>
+    </section>
+  );
 }
 
 function MultiplayerPanel({ state }: { state: GameState }) {
@@ -800,23 +958,167 @@ function UnitGallery({ state }: { state: GameState }) {
   );
 }
 
+type GameRoomSnapshot = {
+  roomId: string;
+  version: number;
+  updatedAt: string;
+  state: GameState;
+};
+
+async function fetchRoom(roomId: string): Promise<GameRoomSnapshot> {
+  const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error("Could not load room.");
+  }
+
+  return (await response.json()) as GameRoomSnapshot;
+}
+
+function getInitialRoomId(): string {
+  if (typeof window === "undefined") {
+    return "dev-room";
+  }
+
+  return new URLSearchParams(window.location.search).get("room") || "dev-room";
+}
+
 export default function Home() {
   const [state, setState] = useState(() => createInitialGameState());
   const [viewerPlayerId, setViewerPlayerId] = useState<"p1" | "p2">("p1");
   const [errors, setErrors] = useState<string[]>([]);
-  const currentActorId = state.reactionWindow?.priorityPlayerId ?? state.activePlayerId;
+  const [roomId, setRoomId] = useState("dev-room");
+  const [roomInput, setRoomInput] = useState("dev-room");
+  const [roomVersion, setRoomVersion] = useState(0);
+  const [syncStatus, setSyncStatus] = useState("connecting");
+  const [selectedCardAction, setSelectedCardAction] = useState<Extract<GameAction, { type: "CAST_SPELL" | "PLAY_CARD" }> | null>(null);
+  const currentActorId = state.pendingChoice?.playerId ?? state.reactionWindow?.priorityPlayerId ?? state.activePlayerId;
   const playerView = useMemo(() => getPlayerView(state, viewerPlayerId), [state, viewerPlayerId]);
   const legalActions = useMemo(() => getLegalActions(state, viewerPlayerId), [viewerPlayerId, state]);
+  const selectedCardTargetCount = selectedCardAction
+    ? legalActions.filter((legal) => isBoardTargetCardAction(legal.action) && sameCardSelection(selectedCardAction, legal.action)).length
+    : 0;
   const latestEvents = state.eventLog.slice(-10).reverse();
   const outcome = state.combat?.outcome ?? null;
 
-  const submitAction = (action: GameAction) => {
-    const result = applyAction(state, action);
-    setErrors(result.errors.map((error) => error.message));
-
-    if (result.errors.length === 0) {
-      setState(result.state);
+  useEffect(() => {
+    const initialRoomId = getInitialRoomId();
+    if (initialRoomId === roomId) {
+      return;
     }
+
+    window.setTimeout(() => {
+      setRoomId(initialRoomId);
+      setRoomInput(initialRoomId);
+    }, 0);
+  }, [roomId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchRoom(roomId)
+      .then((snapshot) => {
+        if (cancelled) {
+          return;
+        }
+
+        setState(snapshot.state);
+        setRoomVersion(snapshot.version);
+        setSyncStatus(`synced v${snapshot.version}`);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setSyncStatus(error instanceof Error ? error.message : "room sync failed");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      fetchRoom(roomId)
+        .then((snapshot) => {
+          setRoomVersion((currentVersion) => {
+            if (snapshot.version > currentVersion) {
+              setState(snapshot.state);
+              setSelectedCardAction(null);
+              setSyncStatus(`synced v${snapshot.version}`);
+              return snapshot.version;
+            }
+
+            setSyncStatus(`synced v${currentVersion}`);
+            return currentVersion;
+          });
+        })
+        .catch(() => setSyncStatus("room sync failed"));
+    }, 1200);
+
+    return () => window.clearInterval(intervalId);
+  }, [roomId]);
+
+  const submitAction = async (action: GameAction) => {
+    setSyncStatus("submitting");
+    const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/actions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ action })
+    });
+
+    if (!response.ok) {
+      setErrors(["Server rejected the action request."]);
+      setSyncStatus("submit failed");
+      return;
+    }
+
+    const payload = (await response.json()) as {
+      snapshot: GameRoomSnapshot;
+      result: EngineResult;
+    };
+    setErrors(payload.result.errors.map((error) => error.message));
+    setState(payload.snapshot.state);
+    setRoomVersion(payload.snapshot.version);
+    setSyncStatus(`synced v${payload.snapshot.version}`);
+
+    if (payload.result.errors.length === 0) {
+      setSelectedCardAction(null);
+    }
+  };
+
+  const resetRoom = async () => {
+    const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ reset: true })
+    });
+
+    if (!response.ok) {
+      setErrors(["Could not reset the room."]);
+      return;
+    }
+
+    const snapshot = (await response.json()) as GameRoomSnapshot;
+    setState(snapshot.state);
+    setRoomVersion(snapshot.version);
+    setErrors([]);
+    setSelectedCardAction(null);
+    setSyncStatus(`synced v${snapshot.version}`);
+  };
+
+  const joinRoom = () => {
+    const nextRoomId = roomInput.trim() || "dev-room";
+    window.history.replaceState(null, "", `?room=${encodeURIComponent(nextRoomId)}`);
+    setErrors([]);
+    setSelectedCardAction(null);
+    setRoomId(nextRoomId);
   };
 
   return (
@@ -858,6 +1160,26 @@ export default function Home() {
         </section>
       ) : null}
 
+      {selectedCardAction ? (
+        <section className="targetBanner" aria-label="Selected card target">
+          <Crosshair aria-hidden="true" size={18} />
+          <strong>{cardName(selectedCardAction.cardId)}</strong>
+          <span>{selectedCardTargetCount > 0 ? "Click a highlighted unit" : "No legal board target"}</span>
+        </section>
+      ) : null}
+
+      {state.pendingChoice ? (
+        <section className="choiceBanner" aria-label="Pending choice">
+          <Dices aria-hidden="true" size={18} />
+          <strong>Pending Reroll</strong>
+          <span>
+            {state.pendingChoice.candidates
+              .map((candidate, index) => `${index + 1}: ${candidate.roll >= 0 ? "+" : ""}${candidate.roll}`)
+              .join("  ")}
+          </span>
+        </section>
+      ) : null}
+
       {errors.length > 0 ? (
         <section className="errorBanner" aria-label="Rules errors">
           {errors.map((error) => (
@@ -867,9 +1189,22 @@ export default function Home() {
       ) : null}
 
       <div className="tableGrid">
-        <Battlefield legalActions={legalActions} onAction={submitAction} state={state} />
+        <Battlefield
+          legalActions={legalActions}
+          onAction={submitAction}
+          selectedCardAction={selectedCardAction}
+          state={state}
+        />
         <div className="sideStack">
           <ViewAsControl onChange={setViewerPlayerId} state={state} viewerPlayerId={viewerPlayerId} />
+          <RoomPanel
+            onJoin={joinRoom}
+            onRoomInput={setRoomInput}
+            roomId={roomId}
+            roomInput={roomInput}
+            roomVersion={roomVersion}
+            syncStatus={syncStatus}
+          />
           <TurnPanel state={state} />
           <DicePanel state={state} />
           <MultiplayerPanel state={state} />
@@ -878,10 +1213,7 @@ export default function Home() {
             currentActorId={currentActorId}
             legalActions={legalActions}
             onAction={submitAction}
-            onReset={() => {
-              setState(createInitialGameState());
-              setErrors([]);
-            }}
+            onReset={resetRoom}
             state={state}
             viewerPlayerId={viewerPlayerId}
           />
@@ -891,14 +1223,18 @@ export default function Home() {
           <PlayerHand
             legalActions={legalActions}
             onAction={submitAction}
+            onSelectCardAction={setSelectedCardAction}
             playerId="p1"
+            selectedCardAction={selectedCardAction}
             state={state}
             view={playerView}
           />
           <PlayerHand
             legalActions={legalActions}
             onAction={submitAction}
+            onSelectCardAction={setSelectedCardAction}
             playerId="p2"
+            selectedCardAction={selectedCardAction}
             state={state}
             view={playerView}
           />

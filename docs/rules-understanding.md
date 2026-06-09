@@ -12,6 +12,13 @@ This note captures the working model for future development. Treat the official 
 - Wiki combat keyword page: https://en.homm3bg.wiki/keywords/combat/
 - Resistance card page: https://en.homm3bg.wiki/abilities/resistance/
 - Magic Arrow card page: https://en.homm3bg.wiki/spells/magic_arrow/
+- Bloodlust spell page: https://en.homm3bg.wiki/spells/bloodlust/
+- Cure spell page: https://en.homm3bg.wiki/spells/cure/
+- Fortune spell page: https://homm3bg.wiki/spells/fortune/
+- Luck ability page: https://homm3bg.wiki/abilities/luck/
+- First Aid ability page: https://homm3bg.wiki/abilities/first_aid/
+- First Aid Tent war machine page: https://homm3bg.wiki/war_machines/first_aid_tent/
+- Ogres unit page: https://en.homm3bg.wiki/units/ogres/
 - Might and Magic Fandom overview: https://mightandmagic.fandom.com/wiki/Heroes_of_Might_and_Magic_III%3A_The_Board_Game
 - Local playthrough transcript: `C:\Users\klwar\Desktop\tai lieu nhap hoc sp\youtube script\Heroes of Might and Magic 3 The Board Game - Playthrough.txt`
 
@@ -46,6 +53,7 @@ This note captures the working model for future development. Treat the official 
 - Combat normally limits a player to one spell card per combat round, while specialty cards do not count against that spell limit.
 - Instant cards create the most important engine requirement. The engine must pause resolution, expose legal reactions, accept pass/reaction actions, and then resume the original action.
 - Resistance is the prototype reaction: it is played immediately after an enemy spell is cast and can ignore the spell effect under its stated power/expert conditions.
+- Reroll effects need a pending-choice step. Fortune is played before the die roll and lets the player reroll an Attack die according to its power, while Luck's expert effect can apply to Attack dice during the turn.
 - Do not implement instant cards as UI shortcuts. They should be data definitions with triggers, conditions, targets, and effects handled by the engine.
 
 ## Combat Model
@@ -55,7 +63,10 @@ This note captures the working model for future development. Treat the official 
 - On activation, a unit may move and attack according to its type, or defend.
 - Ground units move on the ground and attack adjacent targets. Ranged units can attack non-adjacent targets unless engaged by an adjacent enemy. Flying units can move over blocked spaces but must end on an empty space.
 - Damage is tracked directly on health. Defense reduces non-magical attack values, but direct damage from spell/effect sources should not be reduced unless the effect says so.
+- Healing and effect removal should operate on represented damage/effect state. Cure removes damage by power and removes represented negative/removable effects from the selected friendly unit.
+- First Aid Tent is a permanent war machine effect that can remove 1 damage from a selected friendly unit once during each combat round.
 - Combat timing has important windows: activation cards before attack, instant attack/defense cards before the attack roll, then attack roll and resolution as a protected segment.
+- Unit "other" actions, such as Ogres placing an attack token, are activation actions instead of moving and attacking. They should create the represented buff effect and end that unit's activation.
 - Neutral combat uses difficulty-based neutral decks. Player combat uses recruited units. Siege and expansion battlefields add special participants such as walls, gates, arrow towers, war machines, and obstacles.
 
 ## Data Import Implications

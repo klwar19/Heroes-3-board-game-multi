@@ -3,10 +3,13 @@ import type { CardDefinition, CardPlayMode, EffectDefinition } from "./state";
 export const implementedCardEffectTypes = [
   "DEAL_DAMAGE",
   "HEAL_DAMAGE",
+  "HEAL_DAMAGE_AND_REMOVE_EFFECTS",
   "CANCEL_SPELL",
   "ADD_COMBAT_STAT",
   "ADD_SPELL_POWER",
-  "CREATE_ACTIVE_EFFECT"
+  "CREATE_ACTIVE_EFFECT",
+  "CREATE_ATTACK_BUFF",
+  "CREATE_ATTACK_DIE_REROLL"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {
@@ -14,7 +17,11 @@ export function isImplementedCardEffect(effect: EffectDefinition): boolean {
 }
 
 export function getSpellDamageAmount(card: CardDefinition, power: number): number {
-  if (card.effect.type !== "DEAL_DAMAGE" && card.effect.type !== "HEAL_DAMAGE") {
+  if (
+    card.effect.type !== "DEAL_DAMAGE" &&
+    card.effect.type !== "HEAL_DAMAGE" &&
+    card.effect.type !== "HEAL_DAMAGE_AND_REMOVE_EFFECTS"
+  ) {
     return 0;
   }
 
@@ -66,6 +73,17 @@ export function describeCardEffect(card: CardDefinition): string {
     return `heal ${card.effect.amount ?? 0} damage`;
   }
 
+  if (card.effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS") {
+    if (card.effect.amountByPower) {
+      const breakpoints = Object.entries(card.effect.amountByPower)
+        .map(([power, amount]) => `${power}:${amount}`)
+        .join(", ");
+      return `heal by power (${breakpoints}) and remove effects`;
+    }
+
+    return `heal ${card.effect.amount ?? 0} damage and remove effects`;
+  }
+
   if (card.effect.type === "CANCEL_SPELL") {
     return `Cancel spell up to ${card.effect.maxPower ?? "any"} power`;
   }
@@ -81,6 +99,29 @@ export function describeCardEffect(card: CardDefinition): string {
   if (card.effect.type === "CREATE_ACTIVE_EFFECT") {
     const expertName = card.effect.expertEffect ? `, expert ${card.effect.expertEffect.name}` : "";
     return `${card.effect.effect.name}${expertName}`;
+  }
+
+  if (card.effect.type === "CREATE_ATTACK_BUFF") {
+    if (card.effect.amountByPower) {
+      const breakpoints = Object.entries(card.effect.amountByPower)
+        .map(([power, amount]) => `${power}:+${amount}`)
+        .join(", ");
+      return `${card.effect.name} attack by power (${breakpoints})`;
+    }
+
+    return `${card.effect.name} +${card.effect.amount ?? 0} attack`;
+  }
+
+  if (card.effect.type === "CREATE_ATTACK_DIE_REROLL") {
+    const expert = card.effect.expertRerolls ? `, expert ${card.effect.expertRerolls} attack reroll` : "";
+    if (card.effect.rerollsByPower) {
+      const breakpoints = Object.entries(card.effect.rerollsByPower)
+        .map(([power, amount]) => `${power}:${amount}`)
+        .join(", ");
+      return `${card.effect.name} attack rerolls by power (${breakpoints})`;
+    }
+
+    return `${card.effect.name} ${card.effect.basicRerolls} attack reroll${expert}`;
   }
 
   return card.kind;

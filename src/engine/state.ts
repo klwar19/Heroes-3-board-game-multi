@@ -17,10 +17,11 @@ export type GamePhase =
   | "town"
   | "combat"
   | "reaction"
+  | "choice"
   | "cleanup"
   | "game-over";
 
-export type TargetRef = { type: "unit"; unitId: UnitId };
+export type TargetRef = { type: "unit"; unitId: UnitId } | { type: "none" };
 
 export type SourceRef =
   | { type: "card"; cardId: CardId; controllerId: PlayerId }
@@ -36,20 +37,25 @@ export type ResourceKind = "gold" | "buildingMaterials" | "valuables";
 export type ResourceCost = Partial<Record<ResourceKind, number>>;
 
 export type TargetDefinition =
-  | { type: "enemy-unit" }
-  | { type: "friendly-unit" }
-  | { type: "any-unit" }
+  | { type: "enemy-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
+  | { type: "friendly-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
+  | { type: "any-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
   | { type: "none" };
 
 export type EffectDurationDefinition =
   | { type: "instant" }
   | { type: "current-combat-round" }
   | { type: "next-combat-round" }
+  | { type: "combat-rounds"; rounds: number }
   | { type: "current-turn" }
   | { type: "combat" }
   | { type: "permanent" };
 
 export type ActiveEffectModifier =
+  | {
+      type: "ATTACK_BONUS";
+      amount: number;
+    }
   | {
       type: "RANGED_ATTACK_BONUS";
       amount: number;
@@ -62,6 +68,11 @@ export type ActiveEffectModifier =
   | {
       type: "ATTACK_DIE_REROLL";
       maxUsesPerRoll: number;
+      consumeEffectOnUse: boolean;
+    }
+  | {
+      type: "HEAL_ONCE_PER_COMBAT_ROUND";
+      amount: number;
     }
   | {
       type: "UNIT_CANNOT_MOVE";
@@ -72,6 +83,8 @@ export type ActiveEffectDefinition = {
   scope: "player" | "unit" | "global";
   modifiers: ActiveEffectModifier[];
   duration: EffectDurationDefinition;
+  polarity?: "positive" | "negative" | "neutral";
+  removable?: boolean;
 };
 
 export type EffectDefinition =
@@ -86,6 +99,12 @@ export type EffectDefinition =
       amount?: number;
       amountByPower?: Record<number, number>;
     }
+  | {
+      type: "HEAL_DAMAGE_AND_REMOVE_EFFECTS";
+      amount?: number;
+      amountByPower?: Record<number, number>;
+      removePolarity: "negative" | "any-removable";
+    }
   | { type: "CANCEL_SPELL"; maxPower?: number }
   | { type: "ADD_COMBAT_STAT"; stat: "attack" | "defense"; amount: number; expertAmount?: number }
   | { type: "ADD_SPELL_POWER"; amount: number; expertAmount?: number }
@@ -93,6 +112,24 @@ export type EffectDefinition =
       type: "CREATE_ACTIVE_EFFECT";
       effect: ActiveEffectDefinition;
       expertEffect?: ActiveEffectDefinition;
+    }
+  | {
+      type: "CREATE_ATTACK_BUFF";
+      name: string;
+      amount?: number;
+      amountByPower?: Record<number, number>;
+      duration: EffectDurationDefinition;
+      polarity?: "positive" | "negative" | "neutral";
+      removable?: boolean;
+    }
+  | {
+      type: "CREATE_ATTACK_DIE_REROLL";
+      name: string;
+      basicRerolls: number;
+      expertRerolls?: number;
+      rerollsByPower?: Record<number, number>;
+      duration: EffectDurationDefinition;
+      consumeEffectOnUse: boolean;
     };
 
 export type TriggerDefinition = {
@@ -103,7 +140,7 @@ export type TriggerDefinition = {
 export type CardDefinition = {
   id: CardId;
   name: string;
-  kind: "spell" | "ability" | "artifact" | "hero-specialty" | "ai" | "unit" | "statistic";
+  kind: "spell" | "ability" | "artifact" | "hero-specialty" | "ai" | "unit" | "statistic" | "war-machine";
   timing: "action" | "instant" | "reaction" | "passive" | "map" | "combat" | "town";
   phaseLimit?: GamePhase[];
   tags: string[];
@@ -147,6 +184,7 @@ export type BuildingLibrary = Record<BuildingId, BuildingDefinition>;
 
 export type GameAction =
   | { type: "CAST_SPELL"; playerId: PlayerId; cardId: CardId; target: TargetRef }
+  | { type: "PLAY_CARD"; playerId: PlayerId; cardId: CardId; target?: TargetRef; mode?: CardPlayMode }
   | { type: "ATTACK_UNIT"; playerId: PlayerId; attackerId: UnitId; defenderId: UnitId }
   | {
       type: "MOVE_AND_ATTACK_UNIT";
@@ -156,10 +194,14 @@ export type GameAction =
       defenderId: UnitId;
     }
   | { type: "MOVE_UNIT"; playerId: PlayerId; unitId: UnitId; destination: number }
+  | { type: "USE_UNIT_ABILITY"; playerId: PlayerId; unitId: UnitId; abilityId: string; target: TargetRef }
+  | { type: "USE_ACTIVE_EFFECT"; playerId: PlayerId; effectId: string; target: TargetRef }
   | { type: "DEFEND_UNIT"; playerId: PlayerId; unitId: UnitId }
   | { type: "END_COMBAT_ROUND"; playerId: PlayerId }
   | { type: "BUILD_STRUCTURE"; playerId: PlayerId; townId: TownId; buildingId: BuildingId }
   | { type: "COMPLETE_SIMULTANEOUS_TURN"; playerId: PlayerId }
+  | { type: "REROLL_PENDING_CHOICE"; playerId: PlayerId; choiceId: string }
+  | { type: "CHOOSE_PENDING_ROLL"; playerId: PlayerId; choiceId: string; candidateIndex: number }
   | { type: "PLAY_REACTION"; playerId: PlayerId; cardId: CardId; mode?: CardPlayMode }
   | { type: "PASS_REACTION"; playerId: PlayerId }
   | { type: "END_TURN"; playerId: PlayerId };
@@ -224,6 +266,31 @@ export type GameEvent =
       defenseValue: number;
       damage: number;
       isRetaliation: boolean;
+    }
+  | {
+      id: string;
+      type: "PENDING_CHOICE_CREATED";
+      choiceId: string;
+      choiceType: "ATTACK_DIE_REROLL";
+      playerId: PlayerId;
+      sourceEffectIds: string[];
+      message: string;
+    }
+  | {
+      id: string;
+      type: "ATTACK_REROLLED";
+      choiceId: string;
+      playerId: PlayerId;
+      rolls: number[];
+      roll: number;
+      remainingRerolls: number;
+    }
+  | {
+      id: string;
+      type: "PENDING_CHOICE_RESOLVED";
+      choiceId: string;
+      playerId: PlayerId;
+      selectedIndex: number;
     }
   | {
       id: string;
@@ -311,6 +378,13 @@ export type GameEvent =
     }
   | {
       id: string;
+      type: "ACTIVE_EFFECTS_REMOVED";
+      source: SourceRef;
+      target: TargetRef;
+      effectIds: string[];
+    }
+  | {
+      id: string;
       type: "UNIT_ABILITY_TRIGGERED";
       unitId: UnitId;
       abilityId: string;
@@ -372,6 +446,13 @@ export type GameEvent =
     }
   | {
       id: string;
+      type: "ACTIVE_EFFECT_USED";
+      effectId: string;
+      playerId: PlayerId;
+      target: TargetRef;
+    }
+  | {
+      id: string;
       type: "ACTIVE_EFFECT_EXPIRED";
       effectId: string;
       reason: "combat-round-ended" | "turn-ended" | "combat-ended";
@@ -422,6 +503,8 @@ export type ActiveEffectState = ActiveEffectDefinition & {
   expiresAtCombatRoundEnd?: number;
   expiresAtTurnEndPlayerId?: PlayerId;
   usedRollEventIds: string[];
+  usedChoiceIds: string[];
+  usedCombatRoundNumbers: number[];
 };
 
 export type TurnState = {
@@ -515,7 +598,29 @@ export type HeroState = {
   spaceId: MapSpaceId | null;
 };
 
-export type PendingChoice = null;
+export type AttackRollCandidate = {
+  rolls: number[];
+  roll: number;
+};
+
+export type PendingChoice =
+  | {
+      id: string;
+      type: "ATTACK_DIE_REROLL";
+      playerId: PlayerId;
+      stackItemId: string;
+      attackerId: UnitId;
+      defenderId: UnitId;
+      isRetaliation: boolean;
+      attackKind: "melee" | "ranged";
+      rollMode: AttackRollMode;
+      attackBonus: number;
+      defenseBonus: number;
+      candidates: AttackRollCandidate[];
+      remainingRerolls: number;
+      sourceEffectIds: string[];
+    }
+  | null;
 
 export type GameState = {
   id: string;

@@ -457,6 +457,239 @@ describe("rules engine prototype", () => {
     });
   });
 
+  it("opens a pending reroll choice from Fortune before attack damage is assigned", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = ["spell.fortune"];
+    state.players.p2.hand = [];
+
+    const fortune = applyOk(state, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.fortune",
+      target: { type: "none" }
+    });
+    expect(fortune.activeEffects).toHaveLength(1);
+    expect(fortune.activeEffects[0]).toMatchObject({
+      name: "Fortune"
+    });
+
+    const moved = applyOk(fortune, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+      destination: 10
+    });
+    const pending = applyOk(moved, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_pit_lords"
+    });
+
+    expect(pending.phase).toBe("choice");
+    expect(pending.pendingChoice).toMatchObject({
+      type: "ATTACK_DIE_REROLL",
+      playerId: "p1",
+      remainingRerolls: 2,
+      candidates: [{ roll: 0 }]
+    });
+    expect(pending.combat?.units.unit_p2_pit_lords.damage).toBe(0);
+
+    const rerolled = applyOk(pending, {
+      type: "REROLL_PENDING_CHOICE",
+      playerId: "p1",
+      choiceId: pending.pendingChoice?.id ?? ""
+    });
+    expect(rerolled.pendingChoice).toMatchObject({
+      remainingRerolls: 1,
+      candidates: [{ roll: 0 }, { roll: 1 }]
+    });
+
+    const resolved = applyOk(rerolled, {
+      type: "CHOOSE_PENDING_ROLL",
+      playerId: "p1",
+      choiceId: rerolled.pendingChoice?.id ?? "",
+      candidateIndex: 1
+    });
+
+    expect(resolved.pendingChoice).toBeNull();
+    expect(resolved.activeEffects).toEqual([]);
+    expect(resolved.combat?.units.unit_p2_pit_lords.damage).toBe(3);
+    expect(findEvent(resolved, "ATTACK_REROLLED")).toMatchObject({
+      roll: 1
+    });
+    expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({
+      roll: 1,
+      damage: 3
+    });
+  });
+
+  it("lets Cure heal damage and remove represented negative unit effects", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = ["spell.cure"];
+    state.players.p2.hand = [];
+    state.combat.units.unit_p1_griffins.damage = 3;
+    state.activeEffects.push({
+      id: "effect_curse",
+      name: "Curse",
+      scope: "unit",
+      duration: { type: "combat" },
+      polarity: "negative",
+      removable: true,
+      modifiers: [{ type: "ATTACK_BONUS", amount: -1 }],
+      source: { type: "system" },
+      controllerId: "p2",
+      target: { type: "unit", unitId: "unit_p1_griffins" },
+      startedRound: state.round,
+      startedCombatRound: state.combat.round,
+      usedRollEventIds: [],
+      usedChoiceIds: [],
+      usedCombatRoundNumbers: []
+    });
+
+    const result = applyOk(state, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.cure",
+      target: { type: "unit", unitId: "unit_p1_griffins" }
+    });
+
+    expect(result.combat?.units.unit_p1_griffins.damage).toBe(1);
+    expect(result.activeEffects).toEqual([]);
+    expect(findEvent(result, "DAMAGE_HEALED")).toMatchObject({
+      amount: 2
+    });
+    expect(findEvent(result, "ACTIVE_EFFECTS_REMOVED")).toMatchObject({
+      effectIds: ["effect_curse"]
+    });
+  });
+
+  it("creates a First Aid Tent permanent effect and limits healing to once each combat round", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = ["war_machine.first_aid_tent"];
+    state.combat.units.unit_p1_griffins.damage = 2;
+
+    const played = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "war_machine.first_aid_tent",
+      target: { type: "none" }
+    });
+    const tent = played.activeEffects.find((effect) => effect.name === "First Aid Tent");
+    expect(tent).toBeDefined();
+    expect(tent?.duration).toEqual({ type: "permanent" });
+
+    const healed = applyOk(played, {
+      type: "USE_ACTIVE_EFFECT",
+      playerId: "p1",
+      effectId: tent?.id ?? "",
+      target: { type: "unit", unitId: "unit_p1_griffins" }
+    });
+    expect(healed.combat?.units.unit_p1_griffins.damage).toBe(1);
+
+    const secondUse = applyAction(healed, {
+      type: "USE_ACTIVE_EFFECT",
+      playerId: "p1",
+      effectId: tent?.id ?? "",
+      target: { type: "unit", unitId: "unit_p1_griffins" }
+    });
+    expect(secondUse.errors).toEqual([
+      {
+        code: "ACTION_NOT_LEGAL",
+        message: "That action is not legal in the current game state."
+      }
+    ]);
+
+    healed.combat!.activeUnitId = null;
+    healed.activePlayerId = "p1";
+    const nextRound = applyOk(healed, {
+      type: "END_COMBAT_ROUND",
+      playerId: "p1"
+    });
+    const healedAgain = applyOk(nextRound, {
+      type: "USE_ACTIVE_EFFECT",
+      playerId: "p1",
+      effectId: tent?.id ?? "",
+      target: { type: "unit", unitId: "unit_p1_griffins" }
+    });
+    expect(healedAgain.combat?.units.unit_p1_griffins.damage).toBe(0);
+  });
+
+  it("uses an Ogres-style unit ability as an action that buffs then prevents movement", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.combat.units.unit_p1_ogres = {
+      id: "unit_p1_ogres",
+      controllerId: "p1",
+      name: "Ogres",
+      cardName: "Pack of Ogres",
+      variant: "pack",
+      type: "ground",
+      attack: 3,
+      defense: 2,
+      maxHealth: 6,
+      damage: 0,
+      initiative: 5,
+      position: 4,
+      activatedThisRound: false,
+      movedThisActivation: false,
+      retaliatedThisRound: false,
+      defenseToken: false,
+      abilities: ["ogres-attack-token-pack"]
+    };
+    setActiveUnit(state, "p1", "unit_p1_ogres");
+
+    const legalAbility = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "USE_UNIT_ABILITY" && legal.action.target.type === "unit"
+    );
+    expect(legalAbility?.action).toMatchObject({
+      type: "USE_UNIT_ABILITY",
+      unitId: "unit_p1_ogres"
+    });
+
+    const used = applyOk(state, {
+      type: "USE_UNIT_ABILITY",
+      playerId: "p1",
+      unitId: "unit_p1_ogres",
+      abilityId: "ogres-attack-token-pack",
+      target: { type: "unit", unitId: "unit_p1_griffins" }
+    });
+
+    expect(used.combat?.units.unit_p1_ogres.activatedThisRound).toBe(true);
+    expect(used.activeEffects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Ogre Attack Token",
+          target: { type: "unit", unitId: "unit_p1_griffins" },
+          modifiers: [{ type: "ATTACK_BONUS", amount: 2 }]
+        }),
+        expect.objectContaining({
+          target: { type: "unit", unitId: "unit_p1_ogres" },
+          modifiers: [{ type: "UNIT_CANNOT_MOVE" }]
+        })
+      ])
+    );
+
+    used.combat!.activeUnitId = "unit_p1_ogres";
+    used.activePlayerId = "p1";
+    used.combat!.units.unit_p1_ogres.activatedThisRound = false;
+
+    expect(getLegalActions(used, "p1").some((legal) => legal.action.type === "MOVE_UNIT")).toBe(false);
+  });
+
   it("allows opening simultaneous town actions before ordered turns begin", () => {
     const state = createInitialGameState();
     state.phase = "simultaneous-turns";
@@ -534,8 +767,17 @@ describe("rules engine prototype", () => {
     const p1View = getPlayerView(casted, "p1");
     const p2View = getPlayerView(casted, "p2");
 
-    expect(p1View.players.p1.hand).toEqual(["stat.attack", "stat.power", "ability.archery"]);
-    expect(p1View.players.p1.handCount).toBe(3);
+    expect(p1View.players.p1.hand).toEqual([
+      "spell.bloodlust",
+      "spell.cure",
+      "spell.fortune",
+      "stat.attack",
+      "stat.power",
+      "ability.archery",
+      "ability.luck",
+      "war_machine.first_aid_tent"
+    ]);
+    expect(p1View.players.p1.handCount).toBe(8);
     expect(p1View.players.p2.hand).toEqual([]);
     expect(p1View.players.p2.handCount).toBe(3);
     expect(p1View.decks.p1.drawCount).toBe(2);

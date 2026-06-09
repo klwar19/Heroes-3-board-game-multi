@@ -11,8 +11,11 @@ import {
 } from "./battlefield";
 import type {
   AttackRollMode,
+  ActiveEffectState,
   BuildingId,
   BuildingLibrary,
+  CardDefinition,
+  CardPlayMode,
   CardLibrary,
   CombatState,
   CombatUnitState,
@@ -23,11 +26,12 @@ import type {
   PlayerId,
   ResourceCost,
   ResourceKind,
+  TargetDefinition,
   TargetRef,
   TownId,
   UnitId
 } from "./state";
-import { hasUnitAbilityEffect } from "./unit-abilities";
+import { getUnitAbilityDefinitions, hasUnitAbilityEffect } from "./unit-abilities";
 
 export function isUnitAlive(unit: CombatUnitState): boolean {
   return unit.damage < unit.maxHealth;
@@ -68,8 +72,39 @@ function changesSideWithoutCrossing(unit: CombatUnitState, destination: number):
   );
 }
 
-export function canUnitMoveTo(combat: CombatState, unit: CombatUnitState, destination: number): boolean {
+function activeEffectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitState): boolean {
+  if (effect.scope === "global") {
+    return true;
+  }
+
+  if (effect.scope === "player") {
+    return effect.controllerId === unit.controllerId;
+  }
+
+  return effect.target?.type === "unit" && effect.target.unitId === unit.id;
+}
+
+function hasCannotMoveEffect(state: GameState | undefined, unit: CombatUnitState): boolean {
+  return Boolean(
+    state?.activeEffects.some(
+      (effect) =>
+        activeEffectAppliesToUnit(effect, unit) &&
+        effect.modifiers.some((modifier) => modifier.type === "UNIT_CANNOT_MOVE")
+    )
+  );
+}
+
+export function canUnitMoveTo(
+  combat: CombatState,
+  unit: CombatUnitState,
+  destination: number,
+  state?: GameState
+): boolean {
   if (!isUnitAlive(unit) || unit.activatedThisRound || unit.movedThisActivation || !isBattlefieldPosition(destination)) {
+    return false;
+  }
+
+  if (hasCannotMoveEffect(state, unit)) {
     return false;
   }
 
@@ -85,9 +120,9 @@ export function canUnitMoveTo(combat: CombatState, unit: CombatUnitState, destin
   return distance > 0 && distance <= getUnitMoveRange(unit);
 }
 
-export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitState): number[] {
+export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitState, state?: GameState): number[] {
   return Array.from({ length: BATTLEFIELD_CELL_COUNT }, (_, position) => position).filter((position) =>
-    canUnitMoveTo(combat, unit, position)
+    canUnitMoveTo(combat, unit, position, state)
   );
 }
 
@@ -187,9 +222,10 @@ export function canUnitMoveAndAttack(
   combat: CombatState,
   attacker: CombatUnitState,
   destination: number,
-  defender: CombatUnitState
+  defender: CombatUnitState,
+  state?: GameState
 ): boolean {
-  if (attacker.type === "ranged" || !canUnitMoveTo(combat, attacker, destination)) {
+  if (attacker.type === "ranged" || !canUnitMoveTo(combat, attacker, destination, state)) {
     return false;
   }
 
@@ -208,7 +244,23 @@ export function canUnitMoveAndAttack(
   return canUnitAttack(virtualCombat, movedAttacker, defender);
 }
 
-function getEnemyTargets(state: GameState, playerId: PlayerId): TargetRef[] {
+function unitMatchesTarget(unit: CombatUnitState, target: Exclude<TargetDefinition, { type: "none" }>): boolean {
+  if (target.unitTypes && !target.unitTypes.includes(unit.type)) {
+    return false;
+  }
+
+  if (target.damagedOnly && unit.damage <= 0) {
+    return false;
+  }
+
+  return true;
+}
+
+function getEnemyTargets(
+  state: GameState,
+  playerId: PlayerId,
+  target: Exclude<TargetDefinition, { type: "none" }>
+): TargetRef[] {
   if (!state.combat) {
     return [];
   }
@@ -216,10 +268,15 @@ function getEnemyTargets(state: GameState, playerId: PlayerId): TargetRef[] {
   return Object.values(state.combat.units)
     .filter((unit) => unit.controllerId !== playerId)
     .filter(isUnitAlive)
+    .filter((unit) => unitMatchesTarget(unit, target))
     .map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
 }
 
-function getFriendlyTargets(state: GameState, playerId: PlayerId): TargetRef[] {
+function getFriendlyTargets(
+  state: GameState,
+  playerId: PlayerId,
+  target: Exclude<TargetDefinition, { type: "none" }>
+): TargetRef[] {
   if (!state.combat) {
     return [];
   }
@@ -227,6 +284,7 @@ function getFriendlyTargets(state: GameState, playerId: PlayerId): TargetRef[] {
   return Object.values(state.combat.units)
     .filter((unit) => unit.controllerId === playerId)
     .filter(isUnitAlive)
+    .filter((unit) => unitMatchesTarget(unit, target))
     .map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
 }
 
@@ -241,18 +299,70 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
         : "enemy-unit");
 
   if (targetType === "none") {
-    return [];
+    return [{ type: "none" }];
   }
 
-  if (targetType === "friendly-unit") {
-    return getFriendlyTargets(state, playerId);
+  const target =
+    card?.target && card.target.type !== "none"
+      ? card.target
+      : ({ type: targetType } as Exclude<TargetDefinition, { type: "none" }>);
+
+  if (target.type === "friendly-unit") {
+    return getFriendlyTargets(state, playerId, target);
   }
 
-  if (targetType === "any-unit") {
-    return [...getFriendlyTargets(state, playerId), ...getEnemyTargets(state, playerId)];
+  if (target.type === "any-unit") {
+    return [...getFriendlyTargets(state, playerId, target), ...getEnemyTargets(state, playerId, target)];
   }
 
-  return getEnemyTargets(state, playerId);
+  return getEnemyTargets(state, playerId, target);
+}
+
+function isPhaseAllowedForCard(state: GameState, card: CardDefinition): boolean {
+  return !card.phaseLimit || card.phaseLimit.includes(state.phase);
+}
+
+function getAttackRerollsForMode(card: CardDefinition, mode: CardPlayMode): number {
+  if (card.effect.type !== "CREATE_ATTACK_DIE_REROLL") {
+    return 0;
+  }
+
+  if (mode === "expert") {
+    return card.effect.expertRerolls ?? card.effect.basicRerolls;
+  }
+
+  return card.effect.basicRerolls;
+}
+
+function getPlayableModesForCard(state: GameState, playerId: PlayerId, card: CardDefinition): CardPlayMode[] {
+  if (card.effect.type === "CREATE_ATTACK_DIE_REROLL" && card.effect.basicRerolls <= 0) {
+    return card.effect.expertRerolls && state.players[playerId].combatStats.expertUsesSpentThisRound < state.players[playerId].limits.expertUses
+      ? ["expert"]
+      : [];
+  }
+
+  const modes: CardPlayMode[] = ["basic"];
+
+  if (
+    (card.effect.type === "ADD_COMBAT_STAT" ||
+      card.effect.type === "ADD_SPELL_POWER" ||
+      card.effect.type === "CREATE_ACTIVE_EFFECT" ||
+      card.effect.type === "CREATE_ATTACK_DIE_REROLL") &&
+    ((card.effect.type === "CREATE_ACTIVE_EFFECT" && card.effect.expertEffect) ||
+      (card.effect.type === "CREATE_ATTACK_DIE_REROLL" && card.effect.expertRerolls && card.effect.expertRerolls > 0) ||
+      ("expertAmount" in card.effect && card.effect.expertAmount !== undefined)) &&
+    state.players[playerId].combatStats.expertUsesSpentThisRound < state.players[playerId].limits.expertUses
+  ) {
+    modes.push("expert");
+  }
+
+  return modes.filter((mode) => {
+    if (card.effect.type !== "CREATE_ATTACK_DIE_REROLL") {
+      return true;
+    }
+
+    return getAttackRerollsForMode(card, mode) > 0;
+  });
 }
 
 function addSpellActions(
@@ -273,9 +383,13 @@ function addSpellActions(
       continue;
     }
 
+    if (!isPhaseAllowedForCard(state, card)) {
+      continue;
+    }
+
     for (const target of getTargetsForCard(state, playerId, cardId, cards)) {
       actions.push({
-        label: `Cast ${card.name}`,
+        label: target.type === "unit" ? `Cast ${card.name}` : `Cast ${card.name}`,
         action: {
           type: "CAST_SPELL",
           playerId,
@@ -283,6 +397,50 @@ function addSpellActions(
           target
         }
       });
+    }
+  }
+}
+
+function addPlayableCardActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  cards: CardLibrary
+): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+
+  for (const cardId of player.hand) {
+    const card = cards[cardId];
+    if (
+      !card ||
+      card.kind === "spell" ||
+      card.trigger ||
+      card.implementationStatus !== "implemented" ||
+      !isPhaseAllowedForCard(state, card)
+    ) {
+      continue;
+    }
+
+    if (card.timing !== "combat" && card.timing !== "instant" && card.timing !== "action") {
+      continue;
+    }
+
+    for (const mode of getPlayableModesForCard(state, playerId, card)) {
+      for (const target of getTargetsForCard(state, playerId, cardId, cards)) {
+        actions.push({
+          label: `Play ${card.name}${mode === "expert" ? " expert" : ""}`,
+          action: {
+            type: "PLAY_CARD",
+            playerId,
+            cardId,
+            mode,
+            target
+          }
+        });
+      }
     }
   }
 }
@@ -295,6 +453,74 @@ function isSimultaneousTurnAvailable(state: GameState, playerId: PlayerId): bool
     state.phase !== "reaction" &&
     !state.turn.completedPlayerIds.includes(playerId)
   );
+}
+
+function addActiveEffectActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  const combat = state.combat;
+  if (!combat || state.phase !== "combat" || state.stack.length > 0 || state.reactionWindow || state.pendingChoice) {
+    return;
+  }
+
+  for (const effect of state.activeEffects) {
+    if (effect.controllerId !== playerId || effect.usedCombatRoundNumbers.includes(combat.round)) {
+      continue;
+    }
+
+    const healModifier = effect.modifiers.find((modifier) => modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND");
+    if (!healModifier) {
+      continue;
+    }
+
+    for (const unit of Object.values(combat.units)) {
+      if (unit.controllerId !== playerId || !isUnitAlive(unit) || unit.damage <= 0) {
+        continue;
+      }
+
+      actions.push({
+        label: `${effect.name} heal ${unit.name}`,
+        action: {
+          type: "USE_ACTIVE_EFFECT",
+          playerId,
+          effectId: effect.id,
+          target: { type: "unit", unitId: unit.id }
+        }
+      });
+    }
+  }
+}
+
+function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerId: PlayerId, activeUnit: CombatUnitState): void {
+  const combat = state.combat;
+  if (!combat || activeUnit.movedThisActivation) {
+    return;
+  }
+
+  for (const ability of getUnitAbilityDefinitions(activeUnit)) {
+    if (ability.implementationStatus !== "implemented" || ability.effect?.type !== "ACTIVATION_ATTACK_BUFF") {
+      continue;
+    }
+
+    for (const target of Object.values(combat.units)) {
+      if (
+        target.controllerId !== playerId ||
+        !isUnitAlive(target) ||
+        !ability.effect.targetTypes.includes(target.type)
+      ) {
+        continue;
+      }
+
+      actions.push({
+        label: `${activeUnit.name} use ${ability.name} on ${target.name}`,
+        action: {
+          type: "USE_UNIT_ABILITY",
+          playerId,
+          unitId: activeUnit.id,
+          abilityId: ability.id,
+          target: { type: "unit", unitId: target.id }
+        }
+      });
+    }
+  }
 }
 
 function addUnitActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
@@ -314,7 +540,9 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
     return;
   }
 
-  for (const destination of getLegalMoveDestinations(combat, activeUnit)) {
+  addUnitAbilityActions(actions, state, playerId, activeUnit);
+
+  for (const destination of getLegalMoveDestinations(combat, activeUnit, state)) {
     actions.push({
       label: `${activeUnit.name} move to ${getBattlefieldLabel(destination)}`,
       action: {
@@ -426,6 +654,35 @@ export function getLegalActions(
     return [];
   }
 
+  if (state.pendingChoice) {
+    if (state.pendingChoice.playerId !== playerId) {
+      return [];
+    }
+
+    const actions: LegalAction[] = state.pendingChoice.candidates.map((candidate, candidateIndex) => ({
+      label: `Choose attack roll ${candidate.roll >= 0 ? "+" : ""}${candidate.roll}`,
+      action: {
+        type: "CHOOSE_PENDING_ROLL",
+        playerId,
+        choiceId: state.pendingChoice?.id ?? "",
+        candidateIndex
+      }
+    }));
+
+    if (state.pendingChoice.remainingRerolls > 0) {
+      actions.push({
+        label: "Reroll attack die",
+        action: {
+          type: "REROLL_PENDING_CHOICE",
+          playerId,
+          choiceId: state.pendingChoice.id
+        }
+      });
+    }
+
+    return actions;
+  }
+
   if (state.reactionWindow) {
     if (state.reactionWindow.priorityPlayerId !== playerId) {
       return [];
@@ -463,10 +720,13 @@ export function getLegalActions(
   }
 
   if (state.activePlayerId !== playerId) {
-    return [];
+    const anytimeActions: LegalAction[] = [];
+    addActiveEffectActions(anytimeActions, state, playerId);
+    return anytimeActions;
   }
 
   const actions: LegalAction[] = [];
+  addActiveEffectActions(actions, state, playerId);
 
   if (state.phase === "town") {
     addTownBuildActions(actions, state, playerId, buildings);
@@ -487,6 +747,7 @@ export function getLegalActions(
 
   addUnitActions(actions, state, playerId);
   addSpellActions(actions, state, playerId, cards);
+  addPlayableCardActions(actions, state, playerId, cards);
 
   return actions;
 }

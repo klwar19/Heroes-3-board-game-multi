@@ -5,6 +5,7 @@ import {
   expireEffectsForCombatRoundEnd,
   expireEffectsForTurnEnd,
   getActiveAttackBonus,
+  getAttackRerollEffects,
   makeActiveEffect
 } from "./active-effects";
 import { appendEvent } from "./events";
@@ -22,9 +23,11 @@ import {
   isAdjacent,
   isUnitAlive
 } from "./legal-actions";
-import { getPostAttackAbilityDamageEffects, hasUnitAbilityEffect } from "./unit-abilities";
+import { getPostAttackAbilityDamageEffects, getUnitAbilityDefinitions, hasUnitAbilityEffect } from "./unit-abilities";
 import type {
+  ActiveEffectDefinition,
   ActiveEffectState,
+  AttackRollCandidate,
   AttackRollMode,
   BuildingLibrary,
   CardDefinition,
@@ -37,6 +40,7 @@ import type {
   GameState,
   LegalAction,
   PlayerId,
+  PendingChoice,
   ResourceCost,
   ResourceKind,
   ResolutionStackItem,
@@ -74,6 +78,16 @@ function normalizeActionForMatch(action: GameAction): GameAction {
     return {
       ...action,
       mode: "basic"
+    };
+  }
+
+  if (action.type === "PLAY_CARD" && !action.mode) {
+    return {
+      type: "PLAY_CARD",
+      playerId: action.playerId,
+      cardId: action.cardId,
+      mode: "basic",
+      ...(action.target ? { target: action.target } : {})
     };
   }
 
@@ -219,6 +233,29 @@ function appendExpiredEffectEvents(
   }
 }
 
+function appendActiveEffectCreatedEvent(state: GameState, activeEffect: ActiveEffectState): void {
+  appendEvent(state, {
+    type: "ACTIVE_EFFECT_CREATED",
+    effectId: activeEffect.id,
+    controllerId: activeEffect.controllerId,
+    name: activeEffect.name,
+    duration: activeEffect.duration
+  });
+}
+
+function createActiveEffect(
+  state: GameState,
+  effectDefinition: ActiveEffectDefinition,
+  source: ActiveEffectState["source"],
+  controllerId: PlayerId,
+  target?: { type: "unit"; unitId: UnitId }
+): ActiveEffectState {
+  const activeEffect = makeActiveEffect(state, effectDefinition, source, controllerId, target);
+  state.activeEffects.push(activeEffect);
+  appendActiveEffectCreatedEvent(state, activeEffect);
+  return activeEffect;
+}
+
 function createActiveEffectFromCard(
   state: GameState,
   card: CardDefinition,
@@ -231,7 +268,7 @@ function createActiveEffectFromCard(
   }
 
   const effectDefinition = mode === "expert" ? (card.effect.expertEffect ?? card.effect.effect) : card.effect.effect;
-  const activeEffect = makeActiveEffect(
+  createActiveEffect(
     state,
     effectDefinition,
     {
@@ -242,14 +279,158 @@ function createActiveEffectFromCard(
     playerId,
     target
   );
-  state.activeEffects.push(activeEffect);
+}
+
+function getAmountByPower(amountByPower: Record<number, number> | undefined, fallback: number, power: number): number {
+  if (!amountByPower) {
+    return fallback;
+  }
+
+  const powerBreakpoints = Object.keys(amountByPower)
+    .map(Number)
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right);
+  const matchingPower = powerBreakpoints.filter((value) => value <= power).at(-1) ?? powerBreakpoints[0];
+
+  return matchingPower === undefined ? fallback : (amountByPower[matchingPower] ?? fallback);
+}
+
+function createAttackBuffFromCard(
+  state: GameState,
+  card: CardDefinition,
+  playerId: PlayerId,
+  power: number,
+  target: { type: "unit"; unitId: UnitId }
+): void {
+  if (card.effect.type !== "CREATE_ATTACK_BUFF") {
+    return;
+  }
+
+  const amount = getAmountByPower(card.effect.amountByPower, card.effect.amount ?? 0, power);
+  createActiveEffect(
+    state,
+    {
+      name: card.effect.name,
+      scope: "unit",
+      duration: card.effect.duration,
+      polarity: card.effect.polarity ?? "positive",
+      removable: card.effect.removable ?? true,
+      modifiers: [
+        {
+          type: "ATTACK_BONUS",
+          amount
+        }
+      ]
+    },
+    {
+      type: "card",
+      cardId: card.id,
+      controllerId: playerId
+    },
+    playerId,
+    target
+  );
+}
+
+function createAttackRerollEffectFromCard(
+  state: GameState,
+  card: CardDefinition,
+  playerId: PlayerId,
+  mode: "basic" | "expert",
+  power?: number
+): void {
+  if (card.effect.type !== "CREATE_ATTACK_DIE_REROLL") {
+    return;
+  }
+
+  const maxUsesPerRoll =
+    power === undefined
+      ? mode === "expert"
+        ? (card.effect.expertRerolls ?? card.effect.basicRerolls)
+        : card.effect.basicRerolls
+      : getAmountByPower(card.effect.rerollsByPower, card.effect.basicRerolls, power);
+
+  if (maxUsesPerRoll <= 0) {
+    return;
+  }
+
+  createActiveEffect(
+    state,
+    {
+      name: card.effect.name,
+      scope: "player",
+      duration: card.effect.duration,
+      polarity: "positive",
+      removable: false,
+      modifiers: [
+        {
+          type: "ATTACK_DIE_REROLL",
+          maxUsesPerRoll,
+          consumeEffectOnUse: card.effect.consumeEffectOnUse
+        }
+      ]
+    },
+    {
+      type: "card",
+      cardId: card.id,
+      controllerId: playerId
+    },
+    playerId
+  );
+}
+
+function removeEffectsFromTarget(
+  state: GameState,
+  source: ActiveEffectState["source"],
+  target: { type: "unit"; unitId: UnitId },
+  removePolarity: "negative" | "any-removable"
+): void {
+  const removed = state.activeEffects.filter((effect) => {
+    if (effect.target?.type !== "unit" || effect.target.unitId !== target.unitId || effect.removable === false) {
+      return false;
+    }
+
+    if (removePolarity === "any-removable") {
+      return true;
+    }
+
+    return effect.polarity === "negative";
+  });
+
+  if (removed.length === 0) {
+    return;
+  }
+
+  const removedIds = new Set(removed.map((effect) => effect.id));
+  state.activeEffects = state.activeEffects.filter((effect) => !removedIds.has(effect.id));
 
   appendEvent(state, {
-    type: "ACTIVE_EFFECT_CREATED",
-    effectId: activeEffect.id,
-    controllerId: playerId,
-    name: activeEffect.name,
-    duration: activeEffect.duration
+    type: "ACTIVE_EFFECTS_REMOVED",
+    source,
+    target,
+    effectIds: [...removedIds]
+  });
+}
+
+function healUnitDamage(
+  state: GameState,
+  source: ActiveEffectState["source"],
+  target: { type: "unit"; unitId: UnitId },
+  amount: number
+): void {
+  const unit = state.combat?.units[target.unitId];
+  if (!unit) {
+    return;
+  }
+
+  const healedAmount = Math.min(amount, unit.damage);
+  unit.damage = Math.max(0, unit.damage - amount);
+
+  appendEvent(state, {
+    type: "DAMAGE_HEALED",
+    source,
+    target,
+    amount: healedAmount
   });
 }
 
@@ -300,23 +481,53 @@ function finishCombatIfNeeded(state: GameState): boolean {
   return true;
 }
 
-function applyAttackDamage(
+function rollAttackCandidate(combat: CombatState, rollMode: AttackRollMode): AttackRollCandidate {
+  const { rolls, selectedRoll } = rollAttackDice(combat, rollMode);
+  return {
+    rolls,
+    roll: selectedRoll
+  };
+}
+
+function getAttackDamagePreview(
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  roll: number,
+  attackBonus: number,
+  defenseBonus: number
+): { attackValue: number; defenseValue: number; damage: number } {
+  const attackValue = Math.max(0, attacker.attack + attackBonus + roll);
+  const defenseValue = defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonus;
+  const damage = Math.max(0, attackValue - defenseValue);
+
+  return {
+    attackValue,
+    defenseValue,
+    damage
+  };
+}
+
+function applyAttackDamageFromCandidate(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
   isRetaliation: boolean,
   rollMode: AttackRollMode,
   attackBonus: number,
-  defenseBonus: number
+  defenseBonus: number,
+  candidate: AttackRollCandidate
 ): { damage: number; roll: number } {
   if (!state.combat) {
     return { damage: 0, roll: 0 };
   }
 
-  const { rolls, selectedRoll } = rollAttackDice(state.combat, rollMode);
-  const attackValue = Math.max(0, attacker.attack + attackBonus + selectedRoll);
-  const defenseValue = defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonus;
-  const damage = Math.max(0, attackValue - defenseValue);
+  const { attackValue, defenseValue, damage } = getAttackDamagePreview(
+    attacker,
+    defender,
+    candidate.roll,
+    attackBonus,
+    defenseBonus
+  );
 
   defender.damage = Math.min(defender.maxHealth, defender.damage + damage);
 
@@ -324,8 +535,8 @@ function applyAttackDamage(
     type: "ATTACK_ROLLED",
     attackerId: attacker.id,
     defenderId: defender.id,
-    rolls,
-    roll: selectedRoll,
+    rolls: candidate.rolls,
+    roll: candidate.roll,
     rollMode,
     attackBonus,
     defenseBonus,
@@ -350,7 +561,7 @@ function applyAttackDamage(
   }
 
   markUnitRemovedIfNeeded(state, defender);
-  return { damage, roll: selectedRoll };
+  return { damage, roll: candidate.roll };
 }
 
 function applyPostAttackAbilityDamage(
@@ -407,6 +618,189 @@ function applyPostAttackAbilityDamage(
 
     markUnitRemovedIfNeeded(state, target);
   }
+}
+
+function getAttackStackDetails(
+  state: GameState,
+  stackItem: ResolutionStackItem
+):
+  | {
+      attacker: CombatUnitState;
+      defender: CombatUnitState;
+      isRetaliation: boolean;
+      attackKind: "melee" | "ranged";
+      rollMode: AttackRollMode;
+      attackBonus: number;
+      defenseBonus: number;
+    }
+  | null {
+  const combat = state.combat;
+  if (!combat || (stackItem.action.type !== "ATTACK_UNIT" && stackItem.action.type !== "MOVE_AND_ATTACK_UNIT")) {
+    return null;
+  }
+
+  const attacker = combat.units[stackItem.action.attackerId];
+  const defender = combat.units[stackItem.action.defenderId];
+  if (!attacker || !defender) {
+    return null;
+  }
+
+  const triggerEvent = stackItem.triggerEventIds
+    .map((eventId) => state.eventLog.find((event) => event.id === eventId))
+    .find((event): event is Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }> => event?.type === "UNIT_ATTACK_DECLARED");
+  const isRetaliation = triggerEvent?.isRetaliation ?? false;
+  const attackKind = triggerEvent?.attackKind ?? getAttackKind(attacker, defender);
+  const rollMode = triggerEvent?.rollMode ?? getAttackRollMode(attacker, defender);
+  const activeAttackBonus = getActiveAttackBonus(state, {
+    attacker,
+    defender,
+    attackKind
+  });
+
+  return {
+    attacker,
+    defender,
+    isRetaliation,
+    attackKind,
+    rollMode,
+    attackBonus: stackItem.modifiers.attackBonus + activeAttackBonus,
+    defenseBonus: stackItem.modifiers.defenseBonus
+  };
+}
+
+function getRerollUsesForEffects(effects: ActiveEffectState[]): number {
+  return effects.reduce((total, effect) => {
+    const bestModifier = effect.modifiers
+      .filter((modifier) => modifier.type === "ATTACK_DIE_REROLL")
+      .reduce((best, modifier) => Math.max(best, modifier.maxUsesPerRoll), 0);
+
+    return Math.max(total, bestModifier);
+  }, 0);
+}
+
+function openAttackRerollChoice(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  details: NonNullable<ReturnType<typeof getAttackStackDetails>>,
+  candidate: AttackRollCandidate,
+  rerollEffects: ActiveEffectState[]
+): void {
+  const choiceId = `choice_${state.eventLog.length + 1}`;
+  const remainingRerolls = getRerollUsesForEffects(rerollEffects);
+  const sourceEffectIds = rerollEffects.map((effect) => effect.id);
+
+  state.pendingChoice = {
+    id: choiceId,
+    type: "ATTACK_DIE_REROLL",
+    playerId: details.attacker.controllerId,
+    stackItemId: stackItem.id,
+    attackerId: details.attacker.id,
+    defenderId: details.defender.id,
+    isRetaliation: details.isRetaliation,
+    attackKind: details.attackKind,
+    rollMode: details.rollMode,
+    attackBonus: details.attackBonus,
+    defenseBonus: details.defenseBonus,
+    candidates: [candidate],
+    remainingRerolls,
+    sourceEffectIds
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = details.attacker.controllerId;
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ATTACK_DIE_REROLL",
+    playerId: details.attacker.controllerId,
+    sourceEffectIds,
+    message: `${details.attacker.name} may reroll the attack die.`
+  });
+}
+
+function closePendingChoice(state: GameState, choice: NonNullable<PendingChoice>, selectedIndex: number): void {
+  for (const effectId of choice.sourceEffectIds) {
+    const effect = state.activeEffects.find((candidate) => candidate.id === effectId);
+    if (!effect) {
+      continue;
+    }
+
+    effect.usedChoiceIds.push(choice.id);
+    effect.usedRollEventIds.push(choice.id);
+  }
+
+  const consumedEffectIds = new Set(
+    state.activeEffects
+      .filter((effect) => choice.sourceEffectIds.includes(effect.id))
+      .filter((effect) =>
+        effect.modifiers.some(
+          (modifier) => modifier.type === "ATTACK_DIE_REROLL" && modifier.consumeEffectOnUse
+        )
+      )
+      .map((effect) => effect.id)
+  );
+
+  if (consumedEffectIds.size > 0) {
+    state.activeEffects = state.activeEffects.filter((effect) => !consumedEffectIds.has(effect.id));
+  }
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: choice.playerId,
+    selectedIndex
+  });
+
+  state.pendingChoice = null;
+}
+
+function finishResolvedAttack(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  details: NonNullable<ReturnType<typeof getAttackStackDetails>>,
+  candidate: AttackRollCandidate,
+  cards: CardLibrary
+): void {
+  const attackResult = applyAttackDamageFromCandidate(
+    state,
+    details.attacker,
+    details.defender,
+    details.isRetaliation,
+    details.rollMode,
+    details.attackBonus,
+    details.defenseBonus,
+    candidate
+  );
+  applyPostAttackAbilityDamage(
+    state,
+    details.attacker,
+    details.defender,
+    details.attackKind,
+    attackResult.roll,
+    attackResult.damage
+  );
+
+  if (details.isRetaliation) {
+    details.attacker.retaliatedThisRound = true;
+  } else {
+    details.attacker.activatedThisRound = true;
+  }
+
+  stackItem.status = "resolved";
+  state.stack.pop();
+
+  if (finishCombatIfNeeded(state)) {
+    return;
+  }
+
+  if (!details.isRetaliation && shouldRetaliate(details.attacker, details.defender, details.attackKind)) {
+    openRetaliationWindow(state, details.attacker, details.defender, cards);
+    return;
+  }
+
+  advanceActiveUnit(state);
+  state.phase = "combat";
+  state.priorityPlayerId = null;
 }
 
 function setActiveUnit(state: GameState, unitId: UnitId | null): void {
@@ -581,60 +975,24 @@ function openRetaliationWindow(
 
 function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem, cards: CardLibrary): void {
   const combat = state.combat;
-  if (!combat || (stackItem.action.type !== "ATTACK_UNIT" && stackItem.action.type !== "MOVE_AND_ATTACK_UNIT")) {
+  const details = getAttackStackDetails(state, stackItem);
+  if (!combat || !details) {
     return;
   }
 
-  const attacker = combat.units[stackItem.action.attackerId];
-  const defender = combat.units[stackItem.action.defenderId];
-  if (!attacker || !defender) {
+  const candidate = rollAttackCandidate(combat, details.rollMode);
+  const rerollEffects = getAttackRerollEffects(state, {
+    attacker: details.attacker,
+    defender: details.defender,
+    attackKind: details.attackKind
+  }).filter((effect) => !effect.usedChoiceIds.includes(stackItem.id));
+
+  if (rerollEffects.length > 0) {
+    openAttackRerollChoice(state, stackItem, details, candidate, rerollEffects);
     return;
   }
 
-  const triggerEvent = stackItem.triggerEventIds
-    .map((eventId) => state.eventLog.find((event) => event.id === eventId))
-    .find((event): event is Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }> => event?.type === "UNIT_ATTACK_DECLARED");
-  const isRetaliation = triggerEvent?.isRetaliation ?? false;
-  const attackKind = triggerEvent?.attackKind ?? getAttackKind(attacker, defender);
-  const rollMode = triggerEvent?.rollMode ?? getAttackRollMode(attacker, defender);
-  const activeAttackBonus = getActiveAttackBonus(state, {
-    attacker,
-    defender,
-    attackKind
-  });
-
-  const attackResult = applyAttackDamage(
-    state,
-    attacker,
-    defender,
-    isRetaliation,
-    rollMode,
-    stackItem.modifiers.attackBonus + activeAttackBonus,
-    stackItem.modifiers.defenseBonus
-  );
-  applyPostAttackAbilityDamage(state, attacker, defender, attackKind, attackResult.roll, attackResult.damage);
-
-  if (isRetaliation) {
-    attacker.retaliatedThisRound = true;
-  } else {
-    attacker.activatedThisRound = true;
-  }
-
-  stackItem.status = "resolved";
-  state.stack.pop();
-
-  if (finishCombatIfNeeded(state)) {
-    return;
-  }
-
-  if (!isRetaliation && shouldRetaliate(attacker, defender, attackKind)) {
-    openRetaliationWindow(state, attacker, defender, cards);
-    return;
-  }
-
-  advanceActiveUnit(state);
-  state.phase = "combat";
-  state.priorityPlayerId = null;
+  finishResolvedAttack(state, stackItem, details, candidate, cards);
 }
 
 function resolveTopStack(state: GameState, cards: CardLibrary): void {
@@ -649,7 +1007,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
 
   if (stackItem.action.type === "CAST_SPELL") {
     const card = cards[stackItem.action.cardId];
-    if (card?.effect.type === "DEAL_DAMAGE" && state.combat) {
+    if (card?.effect.type === "DEAL_DAMAGE" && state.combat && stackItem.action.target.type === "unit") {
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target) {
         const power = getCurrentSpellPower(stackItem, cards);
@@ -670,28 +1028,64 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       }
     }
 
-    if (card?.effect.type === "HEAL_DAMAGE" && state.combat) {
+    if (card?.effect.type === "HEAL_DAMAGE" && state.combat && stackItem.action.target.type === "unit") {
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target) {
         const power = getCurrentSpellPower(stackItem, cards);
         const amount = getSpellDamageAmount(card, power);
-        const healedAmount = Math.min(amount, target.damage);
-        target.damage = Math.max(0, target.damage - amount);
-        appendEvent(state, {
-          type: "DAMAGE_HEALED",
-          source: {
+        healUnitDamage(
+          state,
+          {
             type: "card",
             cardId: card.id,
             controllerId: stackItem.action.playerId
           },
-          target: stackItem.action.target,
-          amount: healedAmount
-        });
+          stackItem.action.target,
+          amount
+        );
       }
     }
 
+    if (card?.effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(stackItem, cards);
+      const amount = getSpellDamageAmount(card, power);
+      const source = {
+        type: "card" as const,
+        cardId: card.id,
+        controllerId: stackItem.action.playerId
+      };
+      healUnitDamage(state, source, stackItem.action.target, amount);
+      removeEffectsFromTarget(state, source, stackItem.action.target, card.effect.removePolarity);
+    }
+
     if (card?.effect.type === "CREATE_ACTIVE_EFFECT") {
-      createActiveEffectFromCard(state, card, stackItem.action.playerId, "basic", stackItem.action.target);
+      createActiveEffectFromCard(
+        state,
+        card,
+        stackItem.action.playerId,
+        "basic",
+        stackItem.action.target.type === "unit" ? stackItem.action.target : undefined
+      );
+    }
+
+    if (card?.effect.type === "CREATE_ATTACK_BUFF" && stackItem.action.target.type === "unit") {
+      createAttackBuffFromCard(
+        state,
+        card,
+        stackItem.action.playerId,
+        getCurrentSpellPower(stackItem, cards),
+        stackItem.action.target
+      );
+    }
+
+    if (card?.effect.type === "CREATE_ATTACK_DIE_REROLL") {
+      createAttackRerollEffectFromCard(
+        state,
+        card,
+        stackItem.action.playerId,
+        "basic",
+        getCurrentSpellPower(stackItem, cards)
+      );
     }
 
     appendEvent(state, {
@@ -917,6 +1311,261 @@ function playReaction(
   state.priorityPlayerId = allowedPlayerIds[nextIndex];
 }
 
+function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CARD" }>, cards: CardLibrary): void {
+  const card = cards[action.cardId];
+  if (!card) {
+    throw new Error(`Unknown card ${action.cardId}.`);
+  }
+
+  const mode = action.mode ?? "basic";
+  if (mode === "expert" && !hasExpertUseAvailable(state, action.playerId)) {
+    throw new Error("No expert uses are available this combat round.");
+  }
+
+  const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
+  if (moveError) {
+    throw new Error(moveError.message);
+  }
+
+  if (mode === "expert") {
+    state.players[action.playerId].combatStats.expertUsesSpentThisRound += 1;
+  }
+
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId: action.playerId,
+    cardId: action.cardId,
+    timing: card.timing,
+    mode,
+    effectAmount: getCardEffectAmount(card, mode) || undefined
+  });
+
+  const target = action.target?.type === "unit" ? action.target : undefined;
+
+  if (card.effect.type === "HEAL_DAMAGE" && target) {
+    healUnitDamage(
+      state,
+      {
+        type: "card",
+        cardId: card.id,
+        controllerId: action.playerId
+      },
+      target,
+      getSpellDamageAmount(card, card.power ?? 0)
+    );
+  }
+
+  if (card.effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS" && target) {
+    const source = {
+      type: "card" as const,
+      cardId: card.id,
+      controllerId: action.playerId
+    };
+    healUnitDamage(state, source, target, getSpellDamageAmount(card, card.power ?? 0));
+    removeEffectsFromTarget(state, source, target, card.effect.removePolarity);
+  }
+
+  if (card.effect.type === "CREATE_ACTIVE_EFFECT") {
+    createActiveEffectFromCard(state, card, action.playerId, mode, target);
+  }
+
+  if (card.effect.type === "CREATE_ATTACK_BUFF" && target) {
+    createAttackBuffFromCard(state, card, action.playerId, card.power ?? 0, target);
+  }
+
+  if (card.effect.type === "CREATE_ATTACK_DIE_REROLL") {
+    createAttackRerollEffectFromCard(state, card, action.playerId, mode);
+  }
+
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+}
+
+function applyActiveEffectAction(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_ACTIVE_EFFECT" }>
+): void {
+  const combat = state.combat;
+  const effect = state.activeEffects.find((candidate) => candidate.id === action.effectId);
+  if (!combat || !effect || effect.controllerId !== action.playerId || action.target.type !== "unit") {
+    throw new Error("That active effect cannot be used now.");
+  }
+
+  if (effect.usedCombatRoundNumbers.includes(combat.round)) {
+    throw new Error("That active effect has already been used this combat round.");
+  }
+
+  const healModifier = effect.modifiers.find((modifier) => modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND");
+  const target = combat.units[action.target.unitId];
+  if (!healModifier || !target || target.controllerId !== action.playerId || !isUnitAlive(target) || target.damage <= 0) {
+    throw new Error("That active effect target is not legal.");
+  }
+
+  healUnitDamage(
+    state,
+    effect.source,
+    action.target,
+    healModifier.amount
+  );
+  effect.usedCombatRoundNumbers.push(combat.round);
+
+  appendEvent(state, {
+    type: "ACTIVE_EFFECT_USED",
+    effectId: effect.id,
+    playerId: action.playerId,
+    target: action.target
+  });
+
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+}
+
+function applyUnitAbilityAction(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_UNIT_ABILITY" }>
+): void {
+  const combat = state.combat;
+  const unit = combat?.units[action.unitId];
+  const target = action.target.type === "unit" ? combat?.units[action.target.unitId] : undefined;
+  const ability = unit ? getUnitAbilityDefinitions(unit).find((candidate) => candidate.id === action.abilityId) : undefined;
+
+  if (
+    !combat ||
+    !unit ||
+    !target ||
+    unit.controllerId !== action.playerId ||
+    target.controllerId !== action.playerId ||
+    unit.activatedThisRound ||
+    unit.movedThisActivation ||
+    ability?.implementationStatus !== "implemented" ||
+    ability.effect?.type !== "ACTIVATION_ATTACK_BUFF" ||
+    !ability.effect.targetTypes.includes(target.type)
+  ) {
+    throw new Error("That unit ability cannot be used now.");
+  }
+
+  createActiveEffect(
+    state,
+    {
+      name: ability.name,
+      scope: "unit",
+      duration: ability.effect.duration,
+      polarity: "positive",
+      removable: true,
+      modifiers: [
+        {
+          type: "ATTACK_BONUS",
+          amount: ability.effect.amount
+        }
+      ]
+    },
+    {
+      type: "unit",
+      unitId: unit.id,
+      controllerId: action.playerId
+    },
+    action.playerId,
+    { type: "unit", unitId: target.id }
+  );
+
+  if (ability.effect.preventsMovement) {
+    createActiveEffect(
+      state,
+      {
+        name: `${ability.name} used`,
+        scope: "unit",
+        duration: { type: "current-combat-round" },
+        polarity: "neutral",
+        removable: false,
+        modifiers: [{ type: "UNIT_CANNOT_MOVE" }]
+      },
+      {
+        type: "unit",
+        unitId: unit.id,
+        controllerId: action.playerId
+      },
+      action.playerId,
+      { type: "unit", unitId: unit.id }
+    );
+  }
+
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: unit.id,
+    abilityId: ability.id,
+    targetUnitId: target.id,
+    message: `${unit.name} uses ${ability.name} on ${target.name}.`
+  });
+
+  if (ability.effect.endsActivation) {
+    unit.activatedThisRound = true;
+    advanceActiveUnit(state);
+  }
+
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+}
+
+function rerollPendingChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "REROLL_PENDING_CHOICE" }>
+): void {
+  const choice = state.pendingChoice;
+  const combat = state.combat;
+  if (!choice || !combat || choice.id !== action.choiceId || choice.playerId !== action.playerId) {
+    throw new Error("That pending choice cannot be rerolled.");
+  }
+
+  if (choice.remainingRerolls <= 0) {
+    throw new Error("No rerolls remain for that choice.");
+  }
+
+  const candidate = rollAttackCandidate(combat, choice.rollMode);
+  choice.candidates.push(candidate);
+  choice.remainingRerolls -= 1;
+
+  appendEvent(state, {
+    type: "ATTACK_REROLLED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    rolls: candidate.rolls,
+    roll: candidate.roll,
+    remainingRerolls: choice.remainingRerolls
+  });
+
+  state.phase = "choice";
+  state.priorityPlayerId = action.playerId;
+}
+
+function choosePendingRoll(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_PENDING_ROLL" }>,
+  cards: CardLibrary
+): void {
+  const choice = state.pendingChoice;
+  if (!choice || choice.id !== action.choiceId || choice.playerId !== action.playerId) {
+    throw new Error("That pending choice cannot be resolved.");
+  }
+
+  const candidate = choice.candidates[action.candidateIndex];
+  if (!candidate) {
+    throw new Error("That roll choice is not available.");
+  }
+
+  const stackItem = state.stack.find((item) => item.id === choice.stackItemId);
+  if (!stackItem) {
+    throw new Error("The pending attack is no longer available.");
+  }
+
+  const details = getAttackStackDetails(state, stackItem);
+  if (!details) {
+    throw new Error("The pending attack cannot be resolved.");
+  }
+
+  closePendingChoice(state, choice, action.candidateIndex);
+  finishResolvedAttack(state, stackItem, details, candidate, cards);
+}
+
 function declareAttack(
   state: GameState,
   action: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>,
@@ -976,7 +1625,7 @@ function moveAndAttackUnit(
     !attacker ||
     !defender ||
     attacker.controllerId !== action.playerId ||
-    !canUnitMoveAndAttack(combat, attacker, action.destination, defender)
+    !canUnitMoveAndAttack(combat, attacker, action.destination, defender, state)
   ) {
     throw new Error("That unit cannot move and attack the selected target.");
   }
@@ -999,7 +1648,7 @@ function moveAndAttackUnit(
 function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UNIT" }>): void {
   const combat = state.combat;
   const unit = combat?.units[action.unitId];
-  if (!combat || !unit || unit.controllerId !== action.playerId || !canUnitMoveTo(combat, unit, action.destination)) {
+  if (!combat || !unit || unit.controllerId !== action.playerId || !canUnitMoveTo(combat, unit, action.destination, state)) {
     throw new Error("That unit cannot move to the selected space.");
   }
 
@@ -1209,6 +1858,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "CAST_SPELL":
         castSpell(nextState, action, cards);
         break;
+      case "PLAY_CARD":
+        playCard(nextState, action, cards);
+        break;
       case "ATTACK_UNIT":
         attackUnit(nextState, action, cards);
         break;
@@ -1217,6 +1869,12 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "MOVE_UNIT":
         moveUnit(nextState, action);
+        break;
+      case "USE_UNIT_ABILITY":
+        applyUnitAbilityAction(nextState, action);
+        break;
+      case "USE_ACTIVE_EFFECT":
+        applyActiveEffectAction(nextState, action);
         break;
       case "DEFEND_UNIT":
         defendUnit(nextState, action);
@@ -1229,6 +1887,12 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "COMPLETE_SIMULTANEOUS_TURN":
         completeSimultaneousTurn(nextState, action);
+        break;
+      case "REROLL_PENDING_CHOICE":
+        rerollPendingChoice(nextState, action);
+        break;
+      case "CHOOSE_PENDING_ROLL":
+        choosePendingRoll(nextState, action, cards);
         break;
       case "PASS_REACTION":
         passReaction(nextState, action, cards);
