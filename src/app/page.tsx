@@ -33,12 +33,14 @@ import {
   sampleCards,
   sortUnitsForActivation,
   type BuildingEffectDefinition,
+  type CardDefinition,
   type CombatUnitState,
   type EngineResult,
   type GameAction,
   type GameEvent,
   type GameState,
   type LegalAction,
+  type PlayerId,
   type PlayerVisibleState,
   type ResourceCost,
   type ResourceKind,
@@ -92,6 +94,43 @@ function targetName(state: GameState, target: TargetRef): string {
 
 function cardName(cardId: string): string {
   return sampleCards[cardId]?.name ?? cardId;
+}
+
+function titleCase(value: string): string {
+  return value
+    .split(/[-_ ]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function getCardMetaLabels(card: CardDefinition): string[] {
+  const labels = [titleCase(card.kind)];
+
+  if (card.kind === "spell") {
+    if (card.spellLevel) {
+      labels.push(`${titleCase(card.spellLevel)} spell`);
+    }
+
+    if (card.spellSchools?.length) {
+      labels.push(card.spellSchools.map(titleCase).join("/"));
+    }
+  }
+
+  if (card.kind === "artifact" && card.artifactTier) {
+    labels.push(`${titleCase(card.artifactTier)} artifact`);
+  }
+
+  if (card.kind === "statistic" && card.statisticType) {
+    labels.push(titleCase(card.statisticType));
+  }
+
+  if (card.kind === "ability" && card.abilityClass) {
+    labels.push(titleCase(card.abilityClass));
+  }
+
+  labels.push(titleCase(card.timing));
+  return Array.from(new Set(labels));
 }
 
 function formatResourceName(resource: ResourceKind): string {
@@ -307,7 +346,7 @@ function PlayerHand({
   onAction
 }: {
   view: PlayerVisibleState;
-  playerId: "p1" | "p2";
+  playerId: PlayerId;
   state: GameState;
   legalActions: LegalAction[];
   selectedCardAction: Extract<GameAction, { type: "CAST_SPELL" | "PLAY_CARD" }> | null;
@@ -315,6 +354,10 @@ function PlayerHand({
   onAction: (action: GameAction) => void;
 }) {
   const player = view.players[playerId];
+  if (!player) {
+    return null;
+  }
+
   const isViewer = view.viewerPlayerId === playerId;
   const legalCardActions = legalActions
     .filter(isCardLegalAction)
@@ -337,6 +380,7 @@ function PlayerHand({
         ) : (
           player.hand.map((cardId) => {
             const card = sampleCards[cardId];
+            const metaLabels = card ? getCardMetaLabels(card) : [];
             const cardActions = legalCardActions.filter((legal) => legal.action.cardId === cardId);
             const boardTargetActions = cardActions
               .map((legal) => legal.action)
@@ -358,6 +402,13 @@ function PlayerHand({
                     <strong>{card?.name ?? cardId}</strong>
                     <small>{card?.timing ?? "card"}</small>
                   </div>
+                  {metaLabels.length > 0 ? (
+                    <div className="cardMeta" aria-label={`${card?.name ?? cardId} categories`}>
+                      {metaLabels.map((label) => (
+                        <span key={label}>{label}</span>
+                      ))}
+                    </div>
+                  ) : null}
                   <span>{card ? describeCardEffect(card) : cardId}</span>
                   {cardActions.length > 0 ? (
                     <div className="cardActions">
@@ -411,8 +462,8 @@ function ViewAsControl({
   onChange
 }: {
   state: GameState;
-  viewerPlayerId: "p1" | "p2";
-  onChange: (playerId: "p1" | "p2") => void;
+  viewerPlayerId: PlayerId;
+  onChange: (playerId: PlayerId) => void;
 }) {
   return (
     <section className="panel viewPanel" aria-label="Player view">
@@ -421,17 +472,17 @@ function ViewAsControl({
         <Eye aria-hidden="true" size={18} />
       </div>
       <div className="viewToggle">
-        {(["p1", "p2"] as const).map((playerId) => (
+        {state.turnOrder.map((playerId) => (
           <button
             aria-pressed={viewerPlayerId === playerId}
             className={`viewButton ${viewerPlayerId === playerId ? "selected" : ""}`}
             key={playerId}
             onClick={() => onChange(playerId)}
-            title={`View as ${state.players[playerId].name}`}
+            title={`View as ${state.players[playerId]?.name ?? playerId}`}
             type="button"
           >
             <Eye aria-hidden="true" size={15} />
-            <span>{state.players[playerId].name}</span>
+            <span>{state.players[playerId]?.name ?? playerId}</span>
           </button>
         ))}
       </div>
@@ -579,7 +630,9 @@ function UnitReferenceCard({
       <div className="unitReferenceBody">
         <div className="unitTitle">
           <strong>{unit.cardName}</strong>
-          <span>{unit.type}</span>
+          <span>
+            {unit.grade} {unit.type}
+          </span>
         </div>
         <div className="healthBar" aria-label={`${unit.name} health`}>
           <span style={{ width: `${(health / unit.maxHealth) * 100}%` }} />
@@ -896,7 +949,7 @@ function ActionPanel({
   onReset
 }: {
   state: GameState;
-  viewerPlayerId: "p1" | "p2";
+  viewerPlayerId: PlayerId;
   currentActorId: string;
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
@@ -987,7 +1040,7 @@ function getInitialRoomId(): string {
 
 export default function Home() {
   const [state, setState] = useState(() => createInitialGameState());
-  const [viewerPlayerId, setViewerPlayerId] = useState<"p1" | "p2">("p1");
+  const [viewerPlayerId, setViewerPlayerId] = useState<PlayerId>("p1");
   const [errors, setErrors] = useState<string[]>([]);
   const [roomId, setRoomId] = useState("dev-room");
   const [roomInput, setRoomInput] = useState("dev-room");
@@ -1220,24 +1273,18 @@ export default function Home() {
           <InitiativePanel state={state} />
         </div>
         <div className="handGrid">
-          <PlayerHand
-            legalActions={legalActions}
-            onAction={submitAction}
-            onSelectCardAction={setSelectedCardAction}
-            playerId="p1"
-            selectedCardAction={selectedCardAction}
-            state={state}
-            view={playerView}
-          />
-          <PlayerHand
-            legalActions={legalActions}
-            onAction={submitAction}
-            onSelectCardAction={setSelectedCardAction}
-            playerId="p2"
-            selectedCardAction={selectedCardAction}
-            state={state}
-            view={playerView}
-          />
+          {state.turnOrder.map((playerId) => (
+            <PlayerHand
+              key={playerId}
+              legalActions={legalActions}
+              onAction={submitAction}
+              onSelectCardAction={setSelectedCardAction}
+              playerId={playerId}
+              selectedCardAction={selectedCardAction}
+              state={state}
+              view={playerView}
+            />
+          ))}
         </div>
         <UnitGallery state={state} />
         <section className="panel logPanel" aria-label="Rules log">

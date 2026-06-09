@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createInitialGameState, findEvent, getLegalActions, getPlayerView } from "./index";
+import { applyAction, createInitialGameState, findEvent, getLegalActions, getPlayerView, sampleCards } from "./index";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 const castMagicArrow = {
@@ -44,6 +44,31 @@ function setActiveUnit(state: GameState, playerId: PlayerId, unitId: string): vo
 }
 
 describe("rules engine prototype", () => {
+  it("keeps board-game card and unit categories explicit in sample data", () => {
+    const state = createInitialGameState();
+    const spellSchools = new Set(
+      Object.values(sampleCards)
+        .flatMap((card) => card.spellSchools ?? [])
+        .filter((school) => school !== "any")
+    );
+    const artifactTiers = new Set(
+      Object.values(sampleCards)
+        .map((card) => card.artifactTier)
+        .filter(Boolean)
+    );
+    const unitGrades = new Set(Object.values(state.combat?.units ?? {}).map((unit) => unit.grade));
+
+    expect(sampleCards["spell.fireball"]).toMatchObject({
+      kind: "spell",
+      spellLevel: "expert",
+      spellSchools: ["fire"],
+      implementationStatus: "not-implemented"
+    });
+    expect(spellSchools).toEqual(new Set(["air", "earth", "fire", "water"]));
+    expect(artifactTiers).toEqual(new Set(["minor", "major", "relic"]));
+    expect(unitGrades).toEqual(new Set(["bronze", "silver", "gold"]));
+  });
+
   it("lists active-unit combat actions, movement actions, and spell cards for the active player", () => {
     const state = createInitialGameState();
     const legalActions = getLegalActions(state, "p1");
@@ -134,11 +159,15 @@ describe("rules engine prototype", () => {
 
   it("uses a crown for expert Power and pushes Magic Arrow above Resistance", () => {
     const casted = applyAction(createInitialGameState(), castMagicArrow).state;
-    const result = applyOk(casted, {
+    const powered = applyOk(casted, {
       type: "PLAY_REACTION",
       playerId: "p1",
       cardId: "stat.power",
       mode: "expert"
+    });
+    const result = applyOk(powered, {
+      type: "PASS_REACTION",
+      playerId: "p1"
     });
 
     expect(result.reactionWindow).toBeNull();
@@ -155,11 +184,35 @@ describe("rules engine prototype", () => {
     });
   });
 
+  it("lets Knowledge recall a just-cast spell and expert increases the combat round spell limit", () => {
+    const state = createInitialGameState();
+    state.players.p1.hand = ["spell.magic_arrow", "stat.knowledge"];
+    state.players.p2.hand = [];
+
+    const casted = applyOk(state, castMagicArrow);
+    const resolved = applyOk(casted, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "stat.knowledge",
+      mode: "expert"
+    });
+
+    expect(resolved.phase).toBe("combat");
+    expect(resolved.reactionWindow).toBeNull();
+    expect(resolved.players.p1.hand).toContain("spell.magic_arrow");
+    expect(resolved.players.p1.discard).toEqual(["stat.knowledge"]);
+    expect(resolved.players.p1.combatStats.spellLimitBonusThisRound).toBe(1);
+    expect(resolved.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+    expect(resolved.combat?.units.unit_p2_pit_lords.damage).toBe(2);
+  });
+
   it("lets a unit move, then attack after Attack and Defense cards modify the roll", () => {
     const state = createInitialGameState();
     if (!state.combat) {
       throw new Error("Expected combat setup.");
     }
+    state.players.p1.hand = ["stat.attack"];
+    state.players.p2.hand = ["stat.defense"];
     state.combat.units.unit_p2_pit_lords.damage = 3;
 
     const moved = applyOk(state, {
@@ -405,34 +458,44 @@ describe("rules engine prototype", () => {
     expect(findEvent(result.state, "UNIT_DEFENDED")).toBeDefined();
   });
 
-  it("creates an ongoing Archery effect for ranged attacks and expires it at combat round end", () => {
+  it("plays an ongoing Archery effect only on the active player's turn and expires it at combat round end", () => {
     const state = createInitialGameState();
     if (!state.combat) {
       throw new Error("Expected combat setup.");
     }
     state.players.p1.hand = ["ability.archery"];
-    state.players.p2.hand = [];
+    state.players.p2.hand = ["ability.archery"];
     state.combat.units.unit_p1_griffins.activatedThisRound = true;
     setActiveUnit(state, "p1", "unit_p1_elves");
 
-    const declared = applyOk(state, {
+    expect(
+      getLegalActions(state, "p2").some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.archery"
+      )
+    ).toBe(false);
+    state.players.p2.hand = [];
+
+    const played = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "ability.archery",
+      target: { type: "none" }
+    });
+    expect(played.activeEffects).toHaveLength(1);
+    expect(findEvent(played, "ACTIVE_EFFECT_CREATED")).toMatchObject({
+      name: "Archery",
+      controllerId: "p1"
+    });
+
+    const resolved = applyOk(played, {
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_elves",
       defenderId: "unit_p2_pit_lords"
     });
-    const resolved = applyOk(declared, {
-      type: "PLAY_REACTION",
-      playerId: "p1",
-      cardId: "ability.archery"
-    });
 
     expect(resolved.reactionWindow).toBeNull();
     expect(resolved.activeEffects).toHaveLength(1);
-    expect(findEvent(resolved, "ACTIVE_EFFECT_CREATED")).toMatchObject({
-      name: "Archery",
-      controllerId: "p1"
-    });
     expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({
       attackerId: "unit_p1_elves",
       defenderId: "unit_p2_pit_lords",
@@ -637,6 +700,7 @@ describe("rules engine prototype", () => {
       name: "Ogres",
       cardName: "Pack of Ogres",
       variant: "pack",
+      grade: "silver",
       type: "ground",
       attack: 3,
       defense: 2,
@@ -768,18 +832,25 @@ describe("rules engine prototype", () => {
     const p2View = getPlayerView(casted, "p2");
 
     expect(p1View.players.p1.hand).toEqual([
+      "spell.lightning_bolt",
+      "spell.stone_skin",
       "spell.bloodlust",
       "spell.cure",
       "spell.fortune",
       "stat.attack",
       "stat.power",
+      "stat.knowledge",
       "ability.archery",
+      "ability.offense",
       "ability.luck",
+      "artifact.centaurs_axe",
+      "artifact.ogres_club_of_havoc",
+      "artifact.titans_gladius",
       "war_machine.first_aid_tent"
     ]);
-    expect(p1View.players.p1.handCount).toBe(8);
+    expect(p1View.players.p1.handCount).toBe(15);
     expect(p1View.players.p2.hand).toEqual([]);
-    expect(p1View.players.p2.handCount).toBe(3);
+    expect(p1View.players.p2.handCount).toBe(4);
     expect(p1View.decks.p1.drawCount).toBe(2);
     expect(Object.hasOwn(p1View.decks.p1, "drawPile")).toBe(false);
     expect(p1View.reactionWindow?.legalReactions.p2).toBeUndefined();
@@ -797,6 +868,11 @@ describe("rules engine prototype", () => {
     });
 
     p2View.players.p2.hand.push("spell.magic_arrow");
-    expect(casted.players.p2.hand).toEqual(["ability.resistance", "stat.defense", "stat.attack"]);
+    expect(casted.players.p2.hand).toEqual([
+      "ability.resistance",
+      "stat.defense",
+      "stat.attack",
+      "artifact.buckler_of_the_gnoll_king"
+    ]);
   });
 });

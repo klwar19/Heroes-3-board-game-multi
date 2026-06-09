@@ -5,6 +5,7 @@ import {
   expireEffectsForCombatRoundEnd,
   expireEffectsForTurnEnd,
   getActiveAttackBonus,
+  getActiveDefenseBonus,
   getAttackRerollEffects,
   makeActiveEffect
 } from "./active-effects";
@@ -318,6 +319,43 @@ function createAttackBuffFromCard(
       modifiers: [
         {
           type: "ATTACK_BONUS",
+          amount
+        }
+      ]
+    },
+    {
+      type: "card",
+      cardId: card.id,
+      controllerId: playerId
+    },
+    playerId,
+    target
+  );
+}
+
+function createDefenseBuffFromCard(
+  state: GameState,
+  card: CardDefinition,
+  playerId: PlayerId,
+  power: number,
+  target: { type: "unit"; unitId: UnitId }
+): void {
+  if (card.effect.type !== "CREATE_DEFENSE_BUFF") {
+    return;
+  }
+
+  const amount = getAmountByPower(card.effect.amountByPower, card.effect.amount ?? 0, power);
+  createActiveEffect(
+    state,
+    {
+      name: card.effect.name,
+      scope: "unit",
+      duration: card.effect.duration,
+      polarity: card.effect.polarity ?? "positive",
+      removable: card.effect.removable ?? true,
+      modifiers: [
+        {
+          type: "DEFENSE_BONUS",
           amount
         }
       ]
@@ -656,6 +694,7 @@ function getAttackStackDetails(
     defender,
     attackKind
   });
+  const activeDefenseBonus = getActiveDefenseBonus(state, defender);
 
   return {
     attacker,
@@ -664,7 +703,7 @@ function getAttackStackDetails(
     attackKind,
     rollMode,
     attackBonus: stackItem.modifiers.attackBonus + activeAttackBonus,
-    defenseBonus: stackItem.modifiers.defenseBonus
+    defenseBonus: stackItem.modifiers.defenseBonus + activeDefenseBonus
   };
 }
 
@@ -1078,6 +1117,16 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       );
     }
 
+    if (card?.effect.type === "CREATE_DEFENSE_BUFF" && stackItem.action.target.type === "unit") {
+      createDefenseBuffFromCard(
+        state,
+        card,
+        stackItem.action.playerId,
+        getCurrentSpellPower(stackItem, cards),
+        stackItem.action.target
+      );
+    }
+
     if (card?.effect.type === "CREATE_ATTACK_DIE_REROLL") {
       createAttackRerollEffectFromCard(
         state,
@@ -1220,7 +1269,10 @@ function playReaction(
       (card.effect.type !== "ADD_COMBAT_STAT" && card.effect.type !== "ADD_SPELL_POWER") ||
       ("expertAmount" in card.effect && card.effect.expertAmount === undefined)
     ) {
-      if (card.effect.type !== "CREATE_ACTIVE_EFFECT" || !card.effect.expertEffect) {
+      if (
+        (card.effect.type !== "CREATE_ACTIVE_EFFECT" || !card.effect.expertEffect) &&
+        (card.effect.type !== "RECALL_SPELL" || !card.effect.expertSpellLimitBonus)
+      ) {
         throw new Error(`${card.name} does not have an expert effect.`);
       }
     }
@@ -1289,6 +1341,26 @@ function playReaction(
   if (card.effect.type === "CREATE_ACTIVE_EFFECT") {
     createActiveEffectFromCard(state, card, action.playerId, mode);
     stackItem?.modifiers.playedCardIds.push(action.cardId);
+  }
+
+  if (card.effect.type === "RECALL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
+    const player = state.players[action.playerId];
+    const spellCardId = stackItem.action.cardId;
+    const discardIndex = player.discard.lastIndexOf(spellCardId);
+
+    if (discardIndex !== -1) {
+      player.discard.splice(discardIndex, 1);
+    }
+
+    if (!player.hand.includes(spellCardId)) {
+      player.hand.push(spellCardId);
+    }
+
+    if (mode === "expert") {
+      player.combatStats.spellLimitBonusThisRound += card.effect.expertSpellLimitBonus ?? 0;
+    }
+
+    stackItem.modifiers.playedCardIds.push(action.cardId);
   }
 
   if (!state.reactionWindow) {
@@ -1371,6 +1443,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (card.effect.type === "CREATE_ATTACK_BUFF" && target) {
     createAttackBuffFromCard(state, card, action.playerId, card.power ?? 0, target);
+  }
+
+  if (card.effect.type === "CREATE_DEFENSE_BUFF" && target) {
+    createDefenseBuffFromCard(state, card, action.playerId, card.power ?? 0, target);
   }
 
   if (card.effect.type === "CREATE_ATTACK_DIE_REROLL") {

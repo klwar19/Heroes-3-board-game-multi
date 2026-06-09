@@ -380,10 +380,10 @@ button.battleCell {
 }
 
 .boardCard.p1 .boardCardHud {
-  top: -8px;
+  top: 0;
   right: auto;
   bottom: auto;
-  left: -8px;
+  left: 0;
   transform: rotate(180deg);
 }
 
@@ -397,9 +397,10 @@ button.battleCell {
 
 .boardCardHud {
   position: absolute;
-  right: -8px;
-  bottom: -8px;
+  right: 0;
+  bottom: 0;
   min-width: 58px;
+  max-width: 100%;
   display: grid;
   gap: 1px;
   padding: 4px 5px;
@@ -414,8 +415,9 @@ button.battleCell {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   font-size: 10px;
+  line-height: 1.05;
 }
 
 .boardCardHud span,
@@ -928,7 +930,7 @@ button.battleCell {
 
 .handGrid {
   grid-column: 1 / -1;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
 .handCards {
@@ -997,6 +999,26 @@ button.battleCell {
   border: 1px solid rgb(243 239 228 / 11%);
   border-radius: 4px;
   background: rgb(13 15 16 / 34%);
+}
+
+.cardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 6px;
+}
+
+.cardMeta span {
+  min-width: 0;
+  padding: 2px 5px;
+  border: 1px solid rgb(243 239 228 / 12%);
+  border-radius: 4px;
+  color: var(--muted);
+  background: rgb(13 15 16 / 36%);
+  font-size: 10px;
+  line-height: 1.15;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
 }
 
 .cardActions {
@@ -1131,8 +1153,8 @@ button.battleCell {
   }
 
   .boardCardHud {
-    right: -4px;
-    bottom: -6px;
+    right: 0;
+    bottom: 0;
     min-width: 44px;
     padding: 3px;
   }
