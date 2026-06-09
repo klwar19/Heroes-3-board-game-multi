@@ -16,7 +16,7 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
       p1: {
         id: "p1",
         name: "Rampart Alliance",
-        hand: ["spell.magic_arrow", "stat.attack", "stat.power"],
+        hand: ["spell.magic_arrow", "stat.attack", "stat.power", "ability.archery"],
         discard: [],
         resources: {
           gold: 10,
@@ -103,6 +103,7 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
     decks: {},
     stack: [],
     reactionWindow: null,
+    activeEffects: [],
     eventLog: [
       {
         id: "evt_1",
@@ -110,6 +111,12 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
         message: "Created local development game state."
       }
     ],
-    pendingChoice: null
+    pendingChoice: null,
+    turn: {
+      mode: "simultaneous",
+      simultaneousRoundLimit: 4,
+      completedPlayerIds: [],
+      observingPlayerId: null
+    }
   };
 }

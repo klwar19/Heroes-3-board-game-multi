@@ -1,4 +1,5 @@
 import { sampleCards } from "@/data/cards/sample";
+import { sampleBuildings } from "@/data/towns/buildings";
 import {
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
@@ -10,6 +11,8 @@ import {
 } from "./battlefield";
 import type {
   AttackRollMode,
+  BuildingId,
+  BuildingLibrary,
   CardLibrary,
   CombatState,
   CombatUnitState,
@@ -18,9 +21,13 @@ import type {
   GameState,
   LegalAction,
   PlayerId,
+  ResourceCost,
+  ResourceKind,
   TargetRef,
+  TownId,
   UnitId
 } from "./state";
+import { hasUnitAbilityEffect } from "./unit-abilities";
 
 export function isUnitAlive(unit: CombatUnitState): boolean {
   return unit.damage < unit.maxHealth;
@@ -62,7 +69,7 @@ function changesSideWithoutCrossing(unit: CombatUnitState, destination: number):
 }
 
 export function canUnitMoveTo(combat: CombatState, unit: CombatUnitState, destination: number): boolean {
-  if (!isUnitAlive(unit) || unit.activatedThisRound || !isBattlefieldPosition(destination)) {
+  if (!isUnitAlive(unit) || unit.activatedThisRound || unit.movedThisActivation || !isBattlefieldPosition(destination)) {
     return false;
   }
 
@@ -137,7 +144,12 @@ function isOppositeBackRow(leftPosition: number, rightPosition: number): boolean
 }
 
 export function getAttackRollMode(attacker: CombatUnitState, defender: CombatUnitState): AttackRollMode {
-  const ignoresPenalty = attacker.abilities.includes("ignore-combat-penalties");
+  const ignoresPenalty = hasUnitAbilityEffect(attacker, "IGNORE_RANGED_BACK_ROW_PENALTY");
+
+  if (attacker.type === "ranged" && getAttackKind(attacker, defender) === "melee" && !ignoresPenalty) {
+    return "disadvantage";
+  }
+
   if (
     getAttackKind(attacker, defender) === "ranged" &&
     !ignoresPenalty &&
@@ -207,6 +219,42 @@ function getEnemyTargets(state: GameState, playerId: PlayerId): TargetRef[] {
     .map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
 }
 
+function getFriendlyTargets(state: GameState, playerId: PlayerId): TargetRef[] {
+  if (!state.combat) {
+    return [];
+  }
+
+  return Object.values(state.combat.units)
+    .filter((unit) => unit.controllerId === playerId)
+    .filter(isUnitAlive)
+    .map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
+}
+
+function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string, cards: CardLibrary): TargetRef[] {
+  const card = cards[cardId];
+  const targetType =
+    card?.target?.type ??
+    (card?.effect.type === "HEAL_DAMAGE"
+      ? "friendly-unit"
+      : card?.effect.type === "CREATE_ACTIVE_EFFECT"
+        ? "none"
+        : "enemy-unit");
+
+  if (targetType === "none") {
+    return [];
+  }
+
+  if (targetType === "friendly-unit") {
+    return getFriendlyTargets(state, playerId);
+  }
+
+  if (targetType === "any-unit") {
+    return [...getFriendlyTargets(state, playerId), ...getEnemyTargets(state, playerId)];
+  }
+
+  return getEnemyTargets(state, playerId);
+}
+
 function addSpellActions(
   actions: LegalAction[],
   state: GameState,
@@ -225,7 +273,7 @@ function addSpellActions(
       continue;
     }
 
-    for (const target of getEnemyTargets(state, playerId)) {
+    for (const target of getTargetsForCard(state, playerId, cardId, cards)) {
       actions.push({
         label: `Cast ${card.name}`,
         action: {
@@ -237,6 +285,16 @@ function addSpellActions(
       });
     }
   }
+}
+
+function isSimultaneousTurnAvailable(state: GameState, playerId: PlayerId): boolean {
+  return (
+    state.turn.mode === "simultaneous" &&
+    state.round <= state.turn.simultaneousRoundLimit &&
+    state.phase !== "combat" &&
+    state.phase !== "reaction" &&
+    !state.turn.completedPlayerIds.includes(playerId)
+  );
 }
 
 function addUnitActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
@@ -284,27 +342,6 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
     });
   }
 
-  if (activeUnit.type !== "ranged") {
-    for (const destination of getLegalMoveDestinations(combat, activeUnit)) {
-      for (const defender of Object.values(combat.units)) {
-        if (!canUnitMoveAndAttack(combat, activeUnit, destination, defender)) {
-          continue;
-        }
-
-        actions.push({
-          label: `${activeUnit.name} move to ${getBattlefieldLabel(destination)} and attack ${defender.name}`,
-          action: {
-            type: "MOVE_AND_ATTACK_UNIT",
-            playerId,
-            attackerId: activeUnit.id,
-            destination,
-            defenderId: defender.id
-          }
-        });
-      }
-    }
-  }
-
   actions.push({
     label: `${activeUnit.name} defend`,
     action: {
@@ -315,10 +352,75 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
   });
 }
 
+function hasResources(
+  resources: Record<ResourceKind, number>,
+  cost: ResourceCost
+): boolean {
+  return (Object.entries(cost) as [ResourceKind, number][]).every(
+    ([resource, amount]) => resources[resource] >= amount
+  );
+}
+
+export function canPlayerBuildStructure(
+  state: GameState,
+  playerId: PlayerId,
+  townId: TownId,
+  buildingId: BuildingId,
+  buildings: BuildingLibrary = sampleBuildings
+): boolean {
+  const player = state.players[playerId];
+  const town = state.towns[townId];
+  const building = buildings[buildingId];
+
+  if (!player || !town || !building || building.implementationStatus !== "implemented") {
+    return false;
+  }
+
+  if (town.controllerId !== playerId || town.buildings.includes(buildingId)) {
+    return false;
+  }
+
+  if (!hasResources(player.resources, building.cost)) {
+    return false;
+  }
+
+  return (building.prerequisites ?? []).every((prerequisiteId) => town.buildings.includes(prerequisiteId));
+}
+
+function addTownBuildActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  buildings: BuildingLibrary
+): void {
+  for (const town of Object.values(state.towns)) {
+    if (town.controllerId !== playerId) {
+      continue;
+    }
+
+    for (const building of Object.values(buildings)) {
+      if (!canPlayerBuildStructure(state, playerId, town.id, building.id, buildings)) {
+        continue;
+      }
+
+      actions.push({
+        label: `Build ${building.name}`,
+        action: {
+          type: "BUILD_STRUCTURE",
+          playerId,
+          townId: town.id,
+          buildingId: building.id
+        }
+      });
+    }
+  }
+}
+
 export function getLegalActions(
   state: GameState,
   playerId: PlayerId,
-  cards: CardLibrary = sampleCards
+  cards: CardLibrary = sampleCards,
+  buildings: BuildingLibrary = sampleBuildings
 ): LegalAction[] {
   if (state.phase === "game-over") {
     return [];
@@ -332,10 +434,32 @@ export function getLegalActions(
     return [
       ...(state.reactionWindow.legalReactions[playerId] ?? []),
       {
-        label: "Pass reaction",
+        label:
+          state.reactionWindow.triggerEvent.type === "UNIT_ATTACK_DECLARED"
+            ? "Keep normal attack"
+            : "Pass reaction",
         action: { type: "PASS_REACTION", playerId }
       }
     ];
+  }
+
+  if (isSimultaneousTurnAvailable(state, playerId)) {
+    const actions: LegalAction[] = [];
+    addTownBuildActions(actions, state, playerId, buildings);
+    actions.push({
+      label: "Complete simultaneous turn",
+      action: { type: "COMPLETE_SIMULTANEOUS_TURN", playerId }
+    });
+    return actions;
+  }
+
+  if (
+    state.turn.mode === "simultaneous" &&
+    state.round <= state.turn.simultaneousRoundLimit &&
+    state.phase !== "combat" &&
+    state.phase !== "reaction"
+  ) {
+    return [];
   }
 
   if (state.activePlayerId !== playerId) {
@@ -343,6 +467,15 @@ export function getLegalActions(
   }
 
   const actions: LegalAction[] = [];
+
+  if (state.phase === "town") {
+    addTownBuildActions(actions, state, playerId, buildings);
+    actions.push({
+      label: "End turn",
+      action: { type: "END_TURN", playerId }
+    });
+    return actions;
+  }
 
   if (!state.combat || state.phase !== "combat") {
     actions.push({
@@ -445,6 +578,10 @@ function getExpertAmount(effect: CardLibrary[string]["effect"]): number | null {
     return effect.expertAmount ?? null;
   }
 
+  if (effect.type === "CREATE_ACTIVE_EFFECT") {
+    return effect.expertEffect ? 0 : null;
+  }
+
   return null;
 }
 
@@ -494,7 +631,25 @@ function isCardEffectLegalForTrigger(
     const combat = state.combat;
     const attacker = combat?.units[triggerEvent.attackerId];
     const defender = combat?.units[triggerEvent.defenderId];
-    if (!attacker || !defender || card.effect.type !== "ADD_COMBAT_STAT") {
+    if (!attacker || !defender) {
+      return false;
+    }
+
+    if (card.effect.type === "CREATE_ACTIVE_EFFECT") {
+      return card.effect.effect.modifiers.every((modifier) => {
+        if (modifier.type !== "RANGED_ATTACK_BONUS") {
+          return true;
+        }
+
+        if (attacker.type !== "ranged") {
+          return false;
+        }
+
+        return !modifier.nonAdjacentOnly || !isAdjacent(attacker.position, defender.position);
+      });
+    }
+
+    if (card.effect.type !== "ADD_COMBAT_STAT") {
       return false;
     }
 

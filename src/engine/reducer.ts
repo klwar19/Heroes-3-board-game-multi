@@ -1,9 +1,19 @@
 import { sampleCards } from "@/data/cards/sample";
+import { sampleBuildings } from "@/data/towns/buildings";
+import {
+  expireEffectsForCombatEnd,
+  expireEffectsForCombatRoundEnd,
+  expireEffectsForTurnEnd,
+  getActiveAttackBonus,
+  makeActiveEffect
+} from "./active-effects";
 import { appendEvent } from "./events";
+import { getCardEffectAmount, getSpellDamageAmount } from "./effects";
 import {
   canUnitAttack,
   canUnitMoveAndAttack,
   canUnitMoveTo,
+  canPlayerBuildStructure,
   getAttackKind,
   getAttackRollMode,
   getLegalActions,
@@ -12,8 +22,11 @@ import {
   isAdjacent,
   isUnitAlive
 } from "./legal-actions";
+import { getPostAttackAbilityDamageEffects, hasUnitAbilityEffect } from "./unit-abilities";
 import type {
+  ActiveEffectState,
   AttackRollMode,
+  BuildingLibrary,
   CardDefinition,
   CardLibrary,
   CombatState,
@@ -24,6 +37,8 @@ import type {
   GameState,
   LegalAction,
   PlayerId,
+  ResourceCost,
+  ResourceKind,
   ResolutionStackItem,
   RulesError,
   UnitId
@@ -31,6 +46,7 @@ import type {
 
 type ReducerOptions = {
   cards?: CardLibrary;
+  buildings?: BuildingLibrary;
 };
 
 function cloneState(state: GameState): GameState {
@@ -68,8 +84,13 @@ function actionsMatch(left: GameAction, right: GameAction): boolean {
   return JSON.stringify(normalizeActionForMatch(left)) === JSON.stringify(normalizeActionForMatch(right));
 }
 
-function assertLegal(state: GameState, action: GameAction, cards: CardLibrary): RulesError | null {
-  const legalActions = getLegalActions(state, action.playerId, cards);
+function assertLegal(
+  state: GameState,
+  action: GameAction,
+  cards: CardLibrary,
+  buildings: BuildingLibrary
+): RulesError | null {
+  const legalActions = getLegalActions(state, action.playerId, cards, buildings);
   const isLegal = legalActions.some((legal) => actionsMatch(legal.action, action));
 
   if (isLegal) {
@@ -167,36 +188,6 @@ function rollAttackDice(combat: CombatState, rollMode: AttackRollMode): { rolls:
   };
 }
 
-function getSpellDamageAmount(card: CardDefinition, power: number): number {
-  if (card.effect.type !== "DEAL_DAMAGE") {
-    return 0;
-  }
-
-  if (card.effect.amountByPower) {
-    const powerBreakpoints = Object.keys(card.effect.amountByPower)
-      .map(Number)
-      .filter((value) => Number.isFinite(value))
-      .sort((left, right) => left - right);
-    const matchingPower = powerBreakpoints.filter((value) => value <= power).at(-1) ?? powerBreakpoints[0];
-
-    return matchingPower === undefined ? 0 : (card.effect.amountByPower[matchingPower] ?? 0);
-  }
-
-  return card.effect.amount ?? 0;
-}
-
-function getCardEffectAmount(card: CardDefinition, mode: "basic" | "expert"): number {
-  if (card.effect.type !== "ADD_COMBAT_STAT" && card.effect.type !== "ADD_SPELL_POWER") {
-    return 0;
-  }
-
-  if (mode === "expert") {
-    return card.effect.expertAmount ?? card.effect.amount;
-  }
-
-  return card.effect.amount;
-}
-
 function hasExpertUseAvailable(state: GameState, playerId: PlayerId): boolean {
   const player = state.players[playerId];
   return Boolean(player && player.combatStats.expertUsesSpentThisRound < player.limits.expertUses);
@@ -211,6 +202,54 @@ function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState): void 
     type: "UNIT_REMOVED",
     unitId: unit.id,
     playerId: unit.controllerId
+  });
+}
+
+function appendExpiredEffectEvents(
+  state: GameState,
+  effects: ActiveEffectState[],
+  reason: "combat-round-ended" | "turn-ended" | "combat-ended"
+): void {
+  for (const effect of effects) {
+    appendEvent(state, {
+      type: "ACTIVE_EFFECT_EXPIRED",
+      effectId: effect.id,
+      reason
+    });
+  }
+}
+
+function createActiveEffectFromCard(
+  state: GameState,
+  card: CardDefinition,
+  playerId: PlayerId,
+  mode: "basic" | "expert",
+  target?: { type: "unit"; unitId: UnitId }
+): void {
+  if (card.effect.type !== "CREATE_ACTIVE_EFFECT") {
+    return;
+  }
+
+  const effectDefinition = mode === "expert" ? (card.effect.expertEffect ?? card.effect.effect) : card.effect.effect;
+  const activeEffect = makeActiveEffect(
+    state,
+    effectDefinition,
+    {
+      type: "card",
+      cardId: card.id,
+      controllerId: playerId
+    },
+    playerId,
+    target
+  );
+  state.activeEffects.push(activeEffect);
+
+  appendEvent(state, {
+    type: "ACTIVE_EFFECT_CREATED",
+    effectId: activeEffect.id,
+    controllerId: playerId,
+    name: activeEffect.name,
+    duration: activeEffect.duration
   });
 }
 
@@ -245,6 +284,7 @@ function finishCombatIfNeeded(state: GameState): boolean {
     defeatedPlayerId,
     reason
   };
+  appendExpiredEffectEvents(state, expireEffectsForCombatEnd(state), "combat-ended");
   combat.activeUnitId = null;
   state.phase = "game-over";
   state.activePlayerId = winnerPlayerId;
@@ -268,9 +308,9 @@ function applyAttackDamage(
   rollMode: AttackRollMode,
   attackBonus: number,
   defenseBonus: number
-): number {
+): { damage: number; roll: number } {
   if (!state.combat) {
-    return 0;
+    return { damage: 0, roll: 0 };
   }
 
   const { rolls, selectedRoll } = rollAttackDice(state.combat, rollMode);
@@ -310,7 +350,63 @@ function applyAttackDamage(
   }
 
   markUnitRemovedIfNeeded(state, defender);
-  return damage;
+  return { damage, roll: selectedRoll };
+}
+
+function applyPostAttackAbilityDamage(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  attackKind: "melee" | "ranged",
+  roll: number,
+  damage: number
+): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  const damageEffects = getPostAttackAbilityDamageEffects(combat, {
+    attacker,
+    defender,
+    attackKind,
+    roll,
+    damage
+  });
+
+  for (const effect of damageEffects) {
+    const target = combat.units[effect.targetUnitId];
+    if (!target || !isUnitAlive(target)) {
+      continue;
+    }
+
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: effect.sourceUnitId,
+      abilityId: effect.abilityId,
+      targetUnitId: effect.targetUnitId,
+      message: effect.message
+    });
+
+    const assignedDamage = Math.min(effect.amount, target.maxHealth - target.damage);
+    target.damage = Math.min(target.maxHealth, target.damage + effect.amount);
+
+    if (assignedDamage > 0) {
+      appendEvent(state, {
+        type: "DAMAGE_ASSIGNED",
+        source: {
+          type: "unit",
+          unitId: effect.sourceUnitId,
+          controllerId: attacker.controllerId
+        },
+        target: { type: "unit", unitId: target.id },
+        amount: assignedDamage,
+        damageKind: effect.damageKind
+      });
+    }
+
+    markUnitRemovedIfNeeded(state, target);
+  }
 }
 
 function setActiveUnit(state: GameState, unitId: UnitId | null): void {
@@ -327,6 +423,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
 
   const activeUnit = state.combat.units[unitId];
   state.activePlayerId = activeUnit.controllerId;
+  activeUnit.movedThisActivation = false;
 
   if (activeUnit.defenseToken) {
     activeUnit.defenseToken = false;
@@ -350,6 +447,7 @@ function advanceActiveUnit(state: GameState): void {
 function resetCombatRound(combat: CombatState): void {
   for (const unit of Object.values(combat.units)) {
     unit.activatedThisRound = false;
+    unit.movedThisActivation = false;
     unit.retaliatedThisRound = false;
     unit.defenseToken = false;
   }
@@ -434,7 +532,7 @@ function shouldRetaliate(
     attackKind === "melee" &&
     isAdjacent(attacker.position, defender.position) &&
     !attacker.abilities.includes("ignores-retaliation") &&
-    (!defender.retaliatedThisRound || defender.abilities.includes("unlimited-retaliation"))
+    (!defender.retaliatedThisRound || hasUnitAbilityEffect(defender, "ALLOW_UNLIMITED_RETALIATION"))
   );
 }
 
@@ -499,16 +597,22 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   const isRetaliation = triggerEvent?.isRetaliation ?? false;
   const attackKind = triggerEvent?.attackKind ?? getAttackKind(attacker, defender);
   const rollMode = triggerEvent?.rollMode ?? getAttackRollMode(attacker, defender);
+  const activeAttackBonus = getActiveAttackBonus(state, {
+    attacker,
+    defender,
+    attackKind
+  });
 
-  applyAttackDamage(
+  const attackResult = applyAttackDamage(
     state,
     attacker,
     defender,
     isRetaliation,
     rollMode,
-    stackItem.modifiers.attackBonus,
+    stackItem.modifiers.attackBonus + activeAttackBonus,
     stackItem.modifiers.defenseBonus
   );
+  applyPostAttackAbilityDamage(state, attacker, defender, attackKind, attackResult.roll, attackResult.damage);
 
   if (isRetaliation) {
     attacker.retaliatedThisRound = true;
@@ -564,6 +668,30 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         });
         markUnitRemovedIfNeeded(state, target);
       }
+    }
+
+    if (card?.effect.type === "HEAL_DAMAGE" && state.combat) {
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target) {
+        const power = getCurrentSpellPower(stackItem, cards);
+        const amount = getSpellDamageAmount(card, power);
+        const healedAmount = Math.min(amount, target.damage);
+        target.damage = Math.max(0, target.damage - amount);
+        appendEvent(state, {
+          type: "DAMAGE_HEALED",
+          source: {
+            type: "card",
+            cardId: card.id,
+            controllerId: stackItem.action.playerId
+          },
+          target: stackItem.action.target,
+          amount: healedAmount
+        });
+      }
+    }
+
+    if (card?.effect.type === "CREATE_ACTIVE_EFFECT") {
+      createActiveEffectFromCard(state, card, stackItem.action.playerId, "basic", stackItem.action.target);
     }
 
     appendEvent(state, {
@@ -696,9 +824,11 @@ function playReaction(
   if (mode === "expert") {
     if (
       (card.effect.type !== "ADD_COMBAT_STAT" && card.effect.type !== "ADD_SPELL_POWER") ||
-      card.effect.expertAmount === undefined
+      ("expertAmount" in card.effect && card.effect.expertAmount === undefined)
     ) {
-      throw new Error(`${card.name} does not have an expert effect.`);
+      if (card.effect.type !== "CREATE_ACTIVE_EFFECT" || !card.effect.expertEffect) {
+        throw new Error(`${card.name} does not have an expert effect.`);
+      }
     }
 
     if (!hasExpertUseAvailable(state, action.playerId)) {
@@ -760,6 +890,11 @@ function playReaction(
       stackItem.modifiers.defenseBonus += effectAmount;
     }
     stackItem.modifiers.playedCardIds.push(action.cardId);
+  }
+
+  if (card.effect.type === "CREATE_ACTIVE_EFFECT") {
+    createActiveEffectFromCard(state, card, action.playerId, mode);
+    stackItem?.modifiers.playedCardIds.push(action.cardId);
   }
 
   if (!state.reactionWindow) {
@@ -848,6 +983,7 @@ function moveAndAttackUnit(
 
   const from = attacker.position;
   attacker.position = action.destination;
+  attacker.movedThisActivation = true;
 
   appendEvent(state, {
     type: "UNIT_MOVED",
@@ -869,7 +1005,7 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
 
   const from = unit.position;
   unit.position = action.destination;
-  unit.activatedThisRound = true;
+  unit.movedThisActivation = true;
 
   appendEvent(state, {
     type: "UNIT_MOVED",
@@ -879,7 +1015,8 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
     to: action.destination
   });
 
-  advanceActiveUnit(state);
+  state.phase = "combat";
+  state.priorityPlayerId = null;
 }
 
 function defendUnit(state: GameState, action: Extract<GameAction, { type: "DEFEND_UNIT" }>): void {
@@ -909,6 +1046,7 @@ function endCombatRound(state: GameState, action: Extract<GameAction, { type: "E
   const finishedRound = state.combat.round;
   state.combat.round += 1;
   resetCombatRound(state.combat);
+  appendExpiredEffectEvents(state, expireEffectsForCombatRoundEnd(state, finishedRound), "combat-round-ended");
   for (const player of Object.values(state.players)) {
     player.combatStats.spellsCastThisRound = 0;
     player.combatStats.spellLimitBonusThisRound = 0;
@@ -935,9 +1073,119 @@ function endCombatRound(state: GameState, action: Extract<GameAction, { type: "E
   }
 }
 
+function spendResources(resources: Record<ResourceKind, number>, cost: ResourceCost): void {
+  for (const [resource, amount] of Object.entries(cost) as [ResourceKind, number][]) {
+    resources[resource] -= amount;
+  }
+}
+
+function applyBuildingEffect(
+  state: GameState,
+  action: Extract<GameAction, { type: "BUILD_STRUCTURE" }>,
+  buildings: BuildingLibrary
+): void {
+  const building = buildings[action.buildingId];
+  const effect = building?.effect;
+  const player = state.players[action.playerId];
+  if (!building || !effect || !player) {
+    return;
+  }
+
+  if (effect.type === "GAIN_RESOURCE") {
+    player.resources[effect.resource] += effect.amount;
+  }
+
+  if (effect.type === "ADD_EXPERT_USE_LIMIT") {
+    player.limits.expertUses += effect.amount;
+  }
+
+  appendEvent(state, {
+    type: "BUILDING_EFFECT_APPLIED",
+    playerId: action.playerId,
+    townId: action.townId,
+    buildingId: action.buildingId,
+    effect
+  });
+}
+
+function buildStructure(
+  state: GameState,
+  action: Extract<GameAction, { type: "BUILD_STRUCTURE" }>,
+  buildings: BuildingLibrary
+): void {
+  if (!canPlayerBuildStructure(state, action.playerId, action.townId, action.buildingId, buildings)) {
+    throw new Error("That structure cannot be built right now.");
+  }
+
+  const player = state.players[action.playerId];
+  const town = state.towns[action.townId];
+  const building = buildings[action.buildingId];
+  if (!player || !town || !building) {
+    throw new Error("That structure cannot be built right now.");
+  }
+
+  spendResources(player.resources, building.cost);
+  town.buildings.push(action.buildingId);
+
+  appendEvent(state, {
+    type: "STRUCTURE_BUILT",
+    playerId: action.playerId,
+    townId: action.townId,
+    buildingId: action.buildingId,
+    cost: building.cost
+  });
+
+  applyBuildingEffect(state, action, buildings);
+}
+
+function completeSimultaneousTurn(
+  state: GameState,
+  action: Extract<GameAction, { type: "COMPLETE_SIMULTANEOUS_TURN" }>
+): void {
+  if (state.turn.mode !== "simultaneous" || state.round > state.turn.simultaneousRoundLimit) {
+    throw new Error("Simultaneous turns are not active.");
+  }
+
+  if (!state.turn.completedPlayerIds.includes(action.playerId)) {
+    state.turn.completedPlayerIds.push(action.playerId);
+  }
+
+  appendEvent(state, {
+    type: "SIMULTANEOUS_TURN_COMPLETED",
+    playerId: action.playerId,
+    completedPlayerIds: [...state.turn.completedPlayerIds]
+  });
+
+  const allPlayersComplete = state.turnOrder.every((playerId) => state.turn.completedPlayerIds.includes(playerId));
+  if (!allPlayersComplete) {
+    return;
+  }
+
+  state.turn.completedPlayerIds = [];
+
+  if (state.round >= state.turn.simultaneousRoundLimit) {
+    state.turn.mode = "ordered";
+    state.phase = "player-turn";
+    state.activePlayerId = state.turnOrder[0];
+    state.turn.observingPlayerId = state.activePlayerId;
+    appendEvent(state, {
+      type: "ORDERED_TURNS_STARTED",
+      activePlayerId: state.activePlayerId
+    });
+    return;
+  }
+
+  state.round += 1;
+  state.phase = "simultaneous-turns";
+}
+
 function endTurn(state: GameState, action: Extract<GameAction, { type: "END_TURN" }>): void {
+  appendExpiredEffectEvents(state, expireEffectsForTurnEnd(state, action.playerId), "turn-ended");
   const nextPlayer = nextPlayerId(state, action.playerId);
   state.activePlayerId = nextPlayer;
+  if (state.turn.mode === "ordered") {
+    state.turn.observingPlayerId = nextPlayer;
+  }
   appendEvent(state, {
     type: "TURN_ENDED",
     playerId: action.playerId,
@@ -947,7 +1195,8 @@ function endTurn(state: GameState, action: Extract<GameAction, { type: "END_TURN
 
 export function applyAction(state: GameState, action: GameAction, options: ReducerOptions = {}): EngineResult {
   const cards = options.cards ?? sampleCards;
-  const legalError = assertLegal(state, action, cards);
+  const buildings = options.buildings ?? sampleBuildings;
+  const legalError = assertLegal(state, action, cards, buildings);
   if (legalError) {
     return fail(state, legalError);
   }
@@ -974,6 +1223,12 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "END_COMBAT_ROUND":
         endCombatRound(nextState, action);
+        break;
+      case "BUILD_STRUCTURE":
+        buildStructure(nextState, action, buildings);
+        break;
+      case "COMPLETE_SIMULTANEOUS_TURN":
+        completeSimultaneousTurn(nextState, action);
         break;
       case "PASS_REACTION":
         passReaction(nextState, action, cards);

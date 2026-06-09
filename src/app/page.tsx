@@ -11,6 +11,7 @@ import {
   EyeOff,
   Footprints,
   Hand,
+  Hammer,
   RotateCcw,
   Shield,
   Sparkles,
@@ -18,25 +19,29 @@ import {
   Swords,
   Undo2
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   applyAction,
   BATTLEFIELD_CELL_COUNT,
   createInitialGameState,
+  describeCardEffect,
   getBattlefieldLabel,
   getBattlefieldTerrain,
   getLegalActions,
   getPlayerView,
+  getUnitAbilityDefinitions,
   isUnitAlive,
   sampleCards,
   sortUnitsForActivation,
-  type CardDefinition,
+  type BuildingEffectDefinition,
   type CombatUnitState,
   type GameAction,
   type GameEvent,
   type GameState,
   type LegalAction,
-  type PlayerVisibleState
+  type PlayerVisibleState,
+  type ResourceCost,
+  type ResourceKind
 } from "@/engine";
 
 function getActionIcon(action: GameAction) {
@@ -53,6 +58,10 @@ function getActionIcon(action: GameAction) {
       return <Shield aria-hidden="true" size={16} />;
     case "END_COMBAT_ROUND":
       return <StepForward aria-hidden="true" size={16} />;
+    case "BUILD_STRUCTURE":
+      return <Hammer aria-hidden="true" size={16} />;
+    case "COMPLETE_SIMULTANEOUS_TURN":
+      return <StepForward aria-hidden="true" size={16} />;
     case "PLAY_REACTION":
       return <Undo2 aria-hidden="true" size={16} />;
     case "PASS_REACTION":
@@ -68,6 +77,34 @@ function unitName(state: GameState, unitId: string): string {
 
 function cardName(cardId: string): string {
   return sampleCards[cardId]?.name ?? cardId;
+}
+
+function formatResourceName(resource: ResourceKind): string {
+  if (resource === "buildingMaterials") {
+    return "materials";
+  }
+
+  return resource;
+}
+
+function formatCost(cost: ResourceCost): string {
+  const parts = (Object.entries(cost) as [ResourceKind, number][])
+    .filter(([, amount]) => amount > 0)
+    .map(([resource, amount]) => `${amount} ${formatResourceName(resource)}`);
+
+  return parts.length > 0 ? parts.join(", ") : "free";
+}
+
+function formatBuildingEffect(effect: BuildingEffectDefinition): string {
+  if (effect.type === "GAIN_RESOURCE") {
+    return `gain ${effect.amount} ${formatResourceName(effect.resource)}`;
+  }
+
+  if (effect.type === "ADD_EXPERT_USE_LIMIT") {
+    return `expert limit +${effect.amount}`;
+  }
+
+  return "building effect";
 }
 
 function formatEvent(event: GameEvent, state: GameState): string {
@@ -110,33 +147,25 @@ function formatEvent(event: GameEvent, state: GameState): string {
       return `${event.cancelledByPlayerId} cancels ${cardName(event.spellCardId)} with ${cardName(event.cancelledByCardId)}.`;
     case "DAMAGE_ASSIGNED":
       return `${event.amount} ${event.damageKind} damage assigned to ${unitName(state, event.target.unitId)}.`;
+    case "DAMAGE_HEALED":
+      return `${event.amount} damage removed from ${unitName(state, event.target.unitId)}.`;
     case "SPELL_CAST_RESOLVED":
       return `${cardName(event.spellCardId)} resolves at power ${event.power}.`;
+    case "UNIT_ABILITY_TRIGGERED":
+      return event.message;
+    case "STRUCTURE_BUILT":
+      return `${state.players[event.playerId]?.name ?? event.playerId} builds ${event.buildingId} in ${event.townId} for ${formatCost(event.cost)}.`;
+    case "BUILDING_EFFECT_APPLIED":
+      return `${event.buildingId} effect: ${formatBuildingEffect(event.effect)}.`;
+    case "ACTIVE_EFFECT_CREATED":
+      return `${event.name} is active.`;
+    case "ACTIVE_EFFECT_EXPIRED":
+      return `${event.effectId} expires by ${event.reason}.`;
+    case "SIMULTANEOUS_TURN_COMPLETED":
+      return `${state.players[event.playerId]?.name ?? event.playerId} completes their simultaneous turn.`;
+    case "ORDERED_TURNS_STARTED":
+      return `Ordered turns begin with ${state.players[event.activePlayerId]?.name ?? event.activePlayerId}.`;
   }
-}
-
-function describeCard(card: CardDefinition): string {
-  if (card.effect.type === "DEAL_DAMAGE") {
-    if (card.effect.amountByPower) {
-      return `scales by power, base power ${card.power ?? 0}`;
-    }
-
-    return `${card.effect.amount ?? 0} ${card.effect.damageKind} damage at ${card.power ?? 0} power`;
-  }
-
-  if (card.effect.type === "CANCEL_SPELL") {
-    return `Ignore spell effect up to ${card.effect.maxPower ?? "any"} power`;
-  }
-
-  if (card.effect.type === "ADD_COMBAT_STAT") {
-    return `+${card.effect.amount} ${card.effect.stat}, expert +${card.effect.expertAmount ?? card.effect.amount}`;
-  }
-
-  if (card.effect.type === "ADD_SPELL_POWER") {
-    return `+${card.effect.amount} power, expert +${card.effect.expertAmount ?? card.effect.amount}`;
-  }
-
-  return card.kind;
 }
 
 function actionKey(action: GameAction): string {
@@ -166,12 +195,24 @@ function actionLabel(action: GameAction, state: GameState): string {
     case "PLAY_REACTION":
       return `${cardName(action.cardId)}${action.mode === "expert" ? " Expert" : ""}`;
     case "PASS_REACTION":
-      return "Pass";
+      return state.reactionWindow?.triggerEvent.type === "UNIT_ATTACK_DECLARED" ? "Normal attack" : "Pass";
+    case "BUILD_STRUCTURE":
+      return `Build ${action.buildingId}`;
+    case "COMPLETE_SIMULTANEOUS_TURN":
+      return "Ready";
     case "END_COMBAT_ROUND":
       return "Next Round";
     case "END_TURN":
       return "End Turn";
   }
+}
+
+function cardActionLabel(action: Extract<GameAction, { type: "CAST_SPELL" | "PLAY_REACTION" }>, state: GameState): string {
+  if (action.type === "CAST_SPELL") {
+    return `Target ${unitName(state, action.target.unitId)}`;
+  }
+
+  return action.mode === "expert" ? "Use expert" : "Use";
 }
 
 function CardImage({
@@ -235,23 +276,29 @@ function PlayerHand({
                   src={card?.assets?.cardImage}
                 />
                 <div>
-                  <strong>{card?.name ?? cardId}</strong>
-                  <span>{card ? describeCard(card) : cardId}</span>
+                  <div className="handCardTitle">
+                    <strong>{card?.name ?? cardId}</strong>
+                    <small>{card?.timing ?? "card"}</small>
+                  </div>
+                  <span>{card ? describeCardEffect(card) : cardId}</span>
                   {cardActions.length > 0 ? (
                     <div className="cardActions">
                       {cardActions.map((legal) => (
                         <button
+                          className="cardUseButton"
                           key={actionKey(legal.action)}
                           onClick={() => onAction(legal.action)}
                           title={legal.label}
                           type="button"
                         >
                           {getActionIcon(legal.action)}
-                          <span>{actionLabel(legal.action, state)}</span>
+                          <span>{cardActionLabel(legal.action, state)}</span>
                         </button>
                       ))}
                     </div>
-                  ) : null}
+                  ) : (
+                    <small className="cardTiming">No legal timing</small>
+                  )}
                 </div>
               </article>
             );
@@ -334,15 +381,69 @@ function DicePanel({ state }: { state: GameState }) {
   const lastRoll = [...state.eventLog]
     .reverse()
     .find((event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> => event.type === "ATTACK_ROLLED");
+  const [animatedRolls, setAnimatedRolls] = useState<number[]>(lastRoll?.rolls ?? []);
+  const [isRolling, setIsRolling] = useState(false);
   const upcomingRolls = combat
     ? Array.from({ length: 4 }, (_, index) => combat.attackDie[(combat.attackDieIndex + index) % combat.attackDie.length])
     : [];
+  const visibleRolls = lastRoll ? (isRolling ? animatedRolls : lastRoll.rolls) : [];
+  const visibleSelectedRoll = lastRoll
+    ? isRolling
+      ? (animatedRolls[0] ?? lastRoll.roll)
+      : lastRoll.roll
+    : null;
+
+  useEffect(() => {
+    if (!lastRoll) {
+      return;
+    }
+
+    const cycle = [-1, 0, 1, 0];
+    let frame = 0;
+    const timeoutId = window.setTimeout(() => {
+      setIsRolling(true);
+      setAnimatedRolls(lastRoll.rolls.map((_, index) => cycle[index % cycle.length] ?? 0));
+    }, 0);
+
+    const intervalId = window.setInterval(() => {
+      frame += 1;
+      setAnimatedRolls(lastRoll.rolls.map((_, index) => cycle[(frame + index) % cycle.length] ?? 0));
+
+      if (frame >= 9) {
+        window.clearInterval(intervalId);
+        setAnimatedRolls(lastRoll.rolls);
+        setIsRolling(false);
+      }
+    }, 64);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
+    };
+  }, [lastRoll]);
 
   return (
     <section className="panel dicePanel" aria-label="Attack dice">
       <div className="panelHeader">
         <h2>Dice</h2>
         <Dices aria-hidden="true" size={18} />
+      </div>
+      <div className="diceAnimation" aria-live="polite">
+        <div className="diceTrack">
+          {visibleRolls.length > 0 ? (
+            visibleRolls.map((roll, index) => (
+              <span className={`die ${isRolling ? "rolling" : ""}`} key={`${lastRoll?.id ?? "roll"}-${index}`}>
+                {roll >= 0 ? `+${roll}` : roll}
+              </span>
+            ))
+          ) : (
+            <span className="die empty">-</span>
+          )}
+        </div>
+        <div className="diceResult">
+          <span>result</span>
+          <strong>{visibleSelectedRoll === null ? "-" : visibleSelectedRoll >= 0 ? `+${visibleSelectedRoll}` : visibleSelectedRoll}</strong>
+        </div>
       </div>
       <div className="diceRows">
         <div>
@@ -370,6 +471,7 @@ function UnitReferenceCard({
   active: boolean;
 }) {
   const health = Math.max(0, unit.maxHealth - unit.damage);
+  const abilities = getUnitAbilityDefinitions(unit);
 
   return (
     <article className={`unitReference ${unit.controllerId} ${active ? "active" : ""}`}>
@@ -406,6 +508,19 @@ function UnitReferenceCard({
             <dd>{unit.initiative}</dd>
           </div>
         </dl>
+        {abilities.length > 0 ? (
+          <div className="abilityList" aria-label={`${unit.name} abilities`}>
+            {abilities.map((ability) => (
+              <span
+                className={ability.implementationStatus === "implemented" ? "implemented" : "pending"}
+                key={ability.id}
+                title={ability.text}
+              >
+                {ability.name}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     </article>
   );
@@ -539,6 +654,81 @@ function InitiativePanel({ state }: { state: GameState }) {
   );
 }
 
+function formatEffectDuration(effect: GameState["activeEffects"][number]): string {
+  if (effect.expiresAtCombatRoundEnd !== undefined) {
+    return `through combat round ${effect.expiresAtCombatRoundEnd}`;
+  }
+
+  if (effect.expiresAtTurnEndPlayerId) {
+    return `until ${effect.expiresAtTurnEndPlayerId} turn end`;
+  }
+
+  if (effect.duration.type === "combat") {
+    return "until combat ends";
+  }
+
+  if (effect.duration.type === "permanent") {
+    return "permanent";
+  }
+
+  return effect.duration.type;
+}
+
+function MultiplayerPanel({ state }: { state: GameState }) {
+  const completed = new Set(state.turn.completedPlayerIds);
+
+  return (
+    <section className="panel multiplayerPanel" aria-label="Multiplayer flow">
+      <div className="panelHeader">
+        <h2>Multiplayer</h2>
+        <span>{state.turn.mode}</span>
+      </div>
+      <div className="flowRows">
+        <div>
+          <span>Opening</span>
+          <strong>
+            rounds 1-{state.turn.simultaneousRoundLimit} {state.round <= state.turn.simultaneousRoundLimit ? "private" : "done"}
+          </strong>
+        </div>
+        <div>
+          <span>Observe</span>
+          <strong>{state.turn.observingPlayerId ? state.players[state.turn.observingPlayerId]?.name : "private turns"}</strong>
+        </div>
+      </div>
+      {state.turn.mode === "simultaneous" ? (
+        <div className="completionList">
+          {state.turnOrder.map((playerId) => (
+            <span className={completed.has(playerId) ? "done" : ""} key={playerId}>
+              {state.players[playerId]?.name ?? playerId}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ActiveEffectsPanel({ state }: { state: GameState }) {
+  return (
+    <section className="panel activeEffectsPanel" aria-label="Active effects">
+      <div className="panelHeader">
+        <h2>Effects</h2>
+        <Sparkles aria-hidden="true" size={18} />
+      </div>
+      <div className="effectList">
+        {state.activeEffects.length === 0 ? <div className="emptySlot compact">No active effects</div> : null}
+        {state.activeEffects.map((effect) => (
+          <article key={effect.id}>
+            <strong>{effect.name}</strong>
+            <span>{state.players[effect.controllerId]?.name ?? effect.controllerId}</span>
+            <small>{formatEffectDuration(effect)}</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function ActionPanel({
   state,
   viewerPlayerId,
@@ -554,7 +744,7 @@ function ActionPanel({
   onAction: (action: GameAction) => void;
   onReset: () => void;
 }) {
-  const commandActions = legalActions.filter((legal) => legal.action.type !== "MOVE_UNIT");
+  const commandActions = legalActions.filter((legal) => !isCardLegalAction(legal) && legal.action.type !== "MOVE_UNIT");
   const currentActorName = state.players[currentActorId]?.name ?? currentActorId;
   const status =
     state.phase === "game-over"
@@ -566,7 +756,7 @@ function ActionPanel({
   return (
     <section className="panel actionPanel" aria-label="Legal actions">
       <div className="panelHeader">
-        <h2>Actions</h2>
+        <h2>Unit Commands</h2>
         <span>{status}</span>
       </div>
       <div className="actionGrid">
@@ -682,6 +872,8 @@ export default function Home() {
           <ViewAsControl onChange={setViewerPlayerId} state={state} viewerPlayerId={viewerPlayerId} />
           <TurnPanel state={state} />
           <DicePanel state={state} />
+          <MultiplayerPanel state={state} />
+          <ActiveEffectsPanel state={state} />
           <ActionPanel
             currentActorId={currentActorId}
             legalActions={legalActions}
@@ -695,7 +887,6 @@ export default function Home() {
           />
           <InitiativePanel state={state} />
         </div>
-        <UnitGallery state={state} />
         <div className="handGrid">
           <PlayerHand
             legalActions={legalActions}
@@ -712,6 +903,7 @@ export default function Home() {
             view={playerView}
           />
         </div>
+        <UnitGallery state={state} />
         <section className="panel logPanel" aria-label="Rules log">
           <div className="panelHeader">
             <h2>Rules Log</h2>

@@ -140,5 +140,42 @@ export const sampleCards: CardLibrary = {
       credit: wikiCredit,
       url: "https://en.homm3bg.wiki/abilities/resistance/"
     }
+  },
+  "ability.archery": {
+    id: "ability.archery",
+    name: "Archery",
+    kind: "ability",
+    timing: "reaction",
+    phaseLimit: ["reaction", "combat"],
+    tags: ["ability", "ongoing", "ranged", "attack", "wiki-reference"],
+    trigger: {
+      event: "UNIT_ATTACK_DECLARED",
+      controller: "self"
+    },
+    effect: {
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: "Archery",
+        scope: "player",
+        duration: { type: "current-combat-round" },
+        modifiers: [
+          {
+            type: "RANGED_ATTACK_BONUS",
+            amount: 1,
+            nonAdjacentOnly: true
+          }
+        ]
+      }
+    },
+    assets: {
+      cardImage: "https://en.homm3bg.wiki/assets/abilities-archery.webp",
+      imageAlt: "Archery card"
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: wikiCredit,
+      url: "https://en.homm3bg.wiki/abilities/archery/"
+    }
   }
 };
