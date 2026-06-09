@@ -159,6 +159,13 @@ export type GameEvent =
     }
   | {
       id: string;
+      type: "COMBAT_ENDED";
+      winnerPlayerId: PlayerId;
+      defeatedPlayerId: PlayerId;
+      reason: "all-enemy-units-defeated";
+    }
+  | {
+      id: string;
       type: "TURN_ENDED";
       playerId: PlayerId;
       nextPlayerId: PlayerId;
@@ -289,6 +296,11 @@ export type CombatState = {
   attackerPlayerId: PlayerId;
   defenderPlayerId: PlayerId;
   activeUnitId: UnitId | null;
+  outcome: {
+    winnerPlayerId: PlayerId;
+    defeatedPlayerId: PlayerId;
+    reason: "all-enemy-units-defeated";
+  } | null;
   attackDie: number[];
   attackDieIndex: number;
   units: Record<UnitId, CombatUnitState>;
@@ -338,6 +350,22 @@ export type GameState = {
   reactionWindow: ReactionWindow | null;
   eventLog: GameEvent[];
   pendingChoice: PendingChoice;
+};
+
+export type PlayerVisiblePlayerState = Omit<PlayerState, "hand"> & {
+  hand: CardId[];
+  handCount: number;
+};
+
+export type PlayerVisibleDeckState = Omit<DeckState, "drawPile"> & {
+  drawCount: number;
+};
+
+export type PlayerVisibleState = Omit<GameState, "players" | "decks" | "reactionWindow"> & {
+  viewerPlayerId: PlayerId;
+  players: Record<PlayerId, PlayerVisiblePlayerState>;
+  decks: Record<DeckId, PlayerVisibleDeckState>;
+  reactionWindow: ReactionWindow | null;
 };
 
 export type EngineResult = {

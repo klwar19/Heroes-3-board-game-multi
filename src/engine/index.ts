@@ -11,6 +11,7 @@ export {
   isBattlefieldPosition
 } from "./battlefield";
 export { applyAction, findEvent } from "./reducer";
+export { getPlayerView } from "./player-view";
 export { createSeededRandom } from "./random";
 export { createInitialGameState } from "./setup";
 export {
@@ -48,6 +49,9 @@ export type {
   MapState,
   PlayerId,
   PlayerState,
+  PlayerVisibleDeckState,
+  PlayerVisiblePlayerState,
+  PlayerVisibleState,
   ReactionWindow,
   ResolutionStackItem,
   RulesError,

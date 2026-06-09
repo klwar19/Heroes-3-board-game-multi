@@ -91,6 +91,7 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
       attackerPlayerId: "p1",
       defenderPlayerId: "p2",
       activeUnitId: "unit_p1_griffins",
+      outcome: null,
       attackDie: [0, 1, -1, 0, 1, 0, -1, 1],
       attackDieIndex: 0,
       units

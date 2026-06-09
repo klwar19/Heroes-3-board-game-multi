@@ -387,10 +387,60 @@ button.battleCell {
   min-height: 210px;
 }
 
+.viewPanel {
+  min-height: 112px;
+}
+
+.viewToggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.viewButton {
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+.viewButton.selected {
+  border-color: var(--gold);
+  color: var(--ink);
+  background: var(--gold);
+}
+
+.viewButton span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: left;
+  font-weight: 800;
+  font-size: 13px;
+}
+
 .actionGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.emptyActions {
+  min-height: 44px;
+  display: grid;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  background: rgb(13 15 16 / 30%);
+  font-size: 13px;
 }
 
 .actionButton {
@@ -627,6 +677,12 @@ button.battleCell {
   grid-template-columns: 1fr;
   color: var(--muted);
   border-style: dashed;
+}
+
+.hiddenHand {
+  justify-items: start;
+  align-content: center;
+  gap: 8px;
 }
 
 .logPanel {
