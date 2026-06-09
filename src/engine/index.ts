@@ -1,17 +1,32 @@
 export { sampleCards } from "@/data/cards/sample";
+export {
+  BATTLEFIELD_CELL_COUNT,
+  BATTLEFIELD_COLUMNS,
+  BATTLEFIELD_CROSSING_ROW,
+  BATTLEFIELD_ROWS,
+  getBattlefieldCoordinates,
+  getBattlefieldDistance,
+  getBattlefieldLabel,
+  getBattlefieldTerrain,
+  isBattlefieldPosition
+} from "./battlefield";
 export { applyAction, findEvent } from "./reducer";
 export { createSeededRandom } from "./random";
 export { createInitialGameState } from "./setup";
 export {
   canUnitAttack,
+  canUnitMoveTo,
   getActiveUnitId,
   getLegalActions,
+  getLegalMoveDestinations,
   getLegalReactionsForTrigger,
   getNextUnitToActivate,
+  getUnitMoveRange,
   isAdjacent,
   isUnitAlive,
   sortUnitsForActivation
 } from "./legal-actions";
+export type { BattlefieldCoordinates, BattlefieldTerrain } from "./battlefield";
 export type {
   CardDefinition,
   CardId,

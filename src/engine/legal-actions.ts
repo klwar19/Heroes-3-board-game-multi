@@ -1,4 +1,12 @@
 import { sampleCards } from "@/data/cards/sample";
+import {
+  BATTLEFIELD_CELL_COUNT,
+  BATTLEFIELD_COLUMNS,
+  getBattlefieldDistance,
+  getBattlefieldLabel,
+  getBattlefieldTerrain,
+  isBattlefieldPosition
+} from "./battlefield";
 import type {
   CardLibrary,
   CombatState,
@@ -16,13 +24,58 @@ export function isUnitAlive(unit: CombatUnitState): boolean {
   return unit.damage < unit.maxHealth;
 }
 
-export function isAdjacent(leftPosition: number, rightPosition: number, columns = 5): boolean {
+export function isAdjacent(leftPosition: number, rightPosition: number, columns = BATTLEFIELD_COLUMNS): boolean {
   const leftRow = Math.floor(leftPosition / columns);
   const leftColumn = leftPosition % columns;
   const rightRow = Math.floor(rightPosition / columns);
   const rightColumn = rightPosition % columns;
 
   return Math.abs(leftRow - rightRow) <= 1 && Math.abs(leftColumn - rightColumn) <= 1;
+}
+
+export function getUnitMoveRange(unit: CombatUnitState): number {
+  return unit.type === "flying" ? unit.initiative : Math.min(3, unit.initiative);
+}
+
+function isPositionOccupied(combat: CombatState, position: number): boolean {
+  return Object.values(combat.units).some((unit) => isUnitAlive(unit) && unit.position === position);
+}
+
+function changesSideWithoutCrossing(unit: CombatUnitState, destination: number): boolean {
+  if (unit.type === "flying") {
+    return false;
+  }
+
+  const fromTerrain = getBattlefieldTerrain(unit.position);
+  const toTerrain = getBattlefieldTerrain(destination);
+
+  return (
+    (fromTerrain === "grass" && toTerrain === "dirt") ||
+    (fromTerrain === "dirt" && toTerrain === "grass")
+  );
+}
+
+export function canUnitMoveTo(combat: CombatState, unit: CombatUnitState, destination: number): boolean {
+  if (!isUnitAlive(unit) || unit.activatedThisRound || !isBattlefieldPosition(destination)) {
+    return false;
+  }
+
+  if (unit.position === destination || isPositionOccupied(combat, destination)) {
+    return false;
+  }
+
+  if (changesSideWithoutCrossing(unit, destination)) {
+    return false;
+  }
+
+  const distance = getBattlefieldDistance(unit.position, destination);
+  return distance > 0 && distance <= getUnitMoveRange(unit);
+}
+
+export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitState): number[] {
+  return Array.from({ length: BATTLEFIELD_CELL_COUNT }, (_, position) => position).filter((position) =>
+    canUnitMoveTo(combat, unit, position)
+  );
 }
 
 export function sortUnitsForActivation(combat: CombatState): CombatUnitState[] {
@@ -122,6 +175,18 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
   const activeUnit = combat.units[combat.activeUnitId];
   if (!activeUnit || activeUnit.controllerId !== playerId || activeUnit.activatedThisRound) {
     return;
+  }
+
+  for (const destination of getLegalMoveDestinations(combat, activeUnit)) {
+    actions.push({
+      label: `${activeUnit.name} move to ${getBattlefieldLabel(destination)}`,
+      action: {
+        type: "MOVE_UNIT",
+        playerId,
+        unitId: activeUnit.id,
+        destination
+      }
+    });
   }
 
   for (const defender of Object.values(combat.units)) {

@@ -13,6 +13,9 @@ export default function CreditsPage() {
           Card and unit images are loaded from the community wiki/database by remote URL for development
           reference. They are not copied into this repository.
         </p>
+        <p>
+          The combat board terrain texture is original generated project art created for this prototype.
+        </p>
       </section>
 
       <section className="panel creditsPanel">

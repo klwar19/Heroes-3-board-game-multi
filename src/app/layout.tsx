@@ -28,7 +28,7 @@ export default function RootLayout({
           </header>
           {children}
           <footer className="footerNotice">
-            Non-profit fan tool. Visual references are loaded from credited wiki URLs for development.
+            Non-profit fan tool. Unit/card references load from credited wiki URLs; board terrain is original project art.
           </footer>
         </div>
       </body>
