@@ -2,7 +2,10 @@ import { sampleCards } from "@/data/cards/sample";
 import { appendEvent } from "./events";
 import {
   canUnitAttack,
+  canUnitMoveAndAttack,
   canUnitMoveTo,
+  getAttackKind,
+  getAttackRollMode,
   getLegalActions,
   getLegalReactionsForTrigger,
   getNextUnitToActivate,
@@ -10,6 +13,8 @@ import {
   isUnitAlive
 } from "./legal-actions";
 import type {
+  AttackRollMode,
+  CardDefinition,
   CardLibrary,
   CombatState,
   CombatUnitState,
@@ -48,8 +53,19 @@ function fail(state: GameState, error: RulesError): EngineResult {
   };
 }
 
+function normalizeActionForMatch(action: GameAction): GameAction {
+  if (action.type === "PLAY_REACTION" && !action.mode) {
+    return {
+      ...action,
+      mode: "basic"
+    };
+  }
+
+  return action;
+}
+
 function actionsMatch(left: GameAction, right: GameAction): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  return JSON.stringify(normalizeActionForMatch(left)) === JSON.stringify(normalizeActionForMatch(right));
 }
 
 function assertLegal(state: GameState, action: GameAction, cards: CardLibrary): RulesError | null {
@@ -102,10 +118,18 @@ function makeStackItem(state: GameState, action: GameAction): ResolutionStackIte
     source:
       action.type === "CAST_SPELL"
         ? { type: "card", cardId: action.cardId, controllerId: action.playerId }
+        : action.type === "ATTACK_UNIT" || action.type === "MOVE_AND_ATTACK_UNIT"
+          ? { type: "unit", unitId: action.attackerId, controllerId: action.playerId }
         : { type: "system" },
     action,
     status: "pending",
-    triggerEventIds: []
+    triggerEventIds: [],
+    modifiers: {
+      spellPowerBonus: 0,
+      attackBonus: 0,
+      defenseBonus: 0,
+      playedCardIds: []
+    }
   };
 }
 
@@ -117,6 +141,65 @@ function rollAttackDie(combat: CombatState): number {
   const roll = combat.attackDie[combat.attackDieIndex % combat.attackDie.length] ?? 0;
   combat.attackDieIndex += 1;
   return roll;
+}
+
+function rollAttackDice(combat: CombatState, rollMode: AttackRollMode): { rolls: number[]; selectedRoll: number } {
+  const rollCount = rollMode === "normal" ? 1 : 2;
+  const rolls = Array.from({ length: rollCount }, () => rollAttackDie(combat));
+
+  if (rollMode === "advantage") {
+    return {
+      rolls,
+      selectedRoll: Math.max(...rolls)
+    };
+  }
+
+  if (rollMode === "disadvantage") {
+    return {
+      rolls,
+      selectedRoll: Math.min(...rolls)
+    };
+  }
+
+  return {
+    rolls,
+    selectedRoll: rolls[0] ?? 0
+  };
+}
+
+function getSpellDamageAmount(card: CardDefinition, power: number): number {
+  if (card.effect.type !== "DEAL_DAMAGE") {
+    return 0;
+  }
+
+  if (card.effect.amountByPower) {
+    const powerBreakpoints = Object.keys(card.effect.amountByPower)
+      .map(Number)
+      .filter((value) => Number.isFinite(value))
+      .sort((left, right) => left - right);
+    const matchingPower = powerBreakpoints.filter((value) => value <= power).at(-1) ?? powerBreakpoints[0];
+
+    return matchingPower === undefined ? 0 : (card.effect.amountByPower[matchingPower] ?? 0);
+  }
+
+  return card.effect.amount ?? 0;
+}
+
+function getCardEffectAmount(card: CardDefinition, mode: "basic" | "expert"): number {
+  if (card.effect.type !== "ADD_COMBAT_STAT" && card.effect.type !== "ADD_SPELL_POWER") {
+    return 0;
+  }
+
+  if (mode === "expert") {
+    return card.effect.expertAmount ?? card.effect.amount;
+  }
+
+  return card.effect.amount;
+}
+
+function hasExpertUseAvailable(state: GameState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  return Boolean(player && player.combatStats.expertUsesSpentThisRound < player.limits.expertUses);
 }
 
 function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState): void {
@@ -181,15 +264,18 @@ function applyAttackDamage(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  isRetaliation: boolean
+  isRetaliation: boolean,
+  rollMode: AttackRollMode,
+  attackBonus: number,
+  defenseBonus: number
 ): number {
   if (!state.combat) {
     return 0;
   }
 
-  const roll = rollAttackDie(state.combat);
-  const attackValue = Math.max(0, attacker.attack + roll);
-  const defenseValue = defender.defense + (defender.defenseToken ? 1 : 0);
+  const { rolls, selectedRoll } = rollAttackDice(state.combat, rollMode);
+  const attackValue = Math.max(0, attacker.attack + attackBonus + selectedRoll);
+  const defenseValue = defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonus;
   const damage = Math.max(0, attackValue - defenseValue);
 
   defender.damage = Math.min(defender.maxHealth, defender.damage + damage);
@@ -198,7 +284,11 @@ function applyAttackDamage(
     type: "ATTACK_ROLLED",
     attackerId: attacker.id,
     defenderId: defender.id,
-    roll,
+    rolls,
+    roll: selectedRoll,
+    rollMode,
+    attackBonus,
+    defenseBonus,
     attackValue,
     defenseValue,
     damage,
@@ -265,6 +355,184 @@ function resetCombatRound(combat: CombatState): void {
   }
 }
 
+function refreshReactionWindowLegalReactions(state: GameState, cards: CardLibrary): void {
+  if (!state.reactionWindow) {
+    return;
+  }
+
+  const legalReactions = getLegalReactionsForTrigger(state, state.reactionWindow.triggerEvent, cards);
+  const allowedPlayerIds = reactionPlayerOrder(state, legalReactions);
+
+  state.reactionWindow.legalReactions = legalReactions;
+  state.reactionWindow.allowedPlayerIds = allowedPlayerIds;
+  state.reactionWindow.passedPlayerIds = state.reactionWindow.passedPlayerIds.filter((playerId) =>
+    allowedPlayerIds.includes(playerId)
+  );
+
+  if (!allowedPlayerIds.includes(state.reactionWindow.priorityPlayerId)) {
+    state.reactionWindow.priorityPlayerId = allowedPlayerIds[0] ?? state.reactionWindow.priorityPlayerId;
+  }
+
+  state.priorityPlayerId = state.reactionWindow.priorityPlayerId;
+}
+
+function openReactionWindowForTrigger(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  triggerEvent: GameEvent,
+  cards: CardLibrary
+): boolean {
+  const legalReactions = getLegalReactionsForTrigger(state, triggerEvent, cards);
+  const allowedPlayerIds = reactionPlayerOrder(state, legalReactions);
+
+  if (allowedPlayerIds.length === 0) {
+    return false;
+  }
+
+  const windowId = `reaction_${triggerEvent.id}`;
+  stackItem.status = "waiting-for-reaction";
+  state.reactionWindow = {
+    id: windowId,
+    triggerEvent,
+    allowedPlayerIds,
+    priorityPlayerId: allowedPlayerIds[0],
+    legalReactions,
+    passedPlayerIds: [],
+    closesWhen: "all-pass"
+  };
+  state.priorityPlayerId = allowedPlayerIds[0];
+  state.phase = "reaction";
+
+  appendEvent(state, {
+    type: "REACTION_WINDOW_OPENED",
+    windowId,
+    triggerEventId: triggerEvent.id,
+    priorityPlayerId: allowedPlayerIds[0],
+    allowedPlayerIds
+  });
+
+  return true;
+}
+
+function getCurrentSpellPower(stackItem: ResolutionStackItem, cards: CardLibrary): number {
+  if (stackItem.action.type !== "CAST_SPELL") {
+    return 0;
+  }
+
+  const card = cards[stackItem.action.cardId];
+  return (card?.power ?? 0) + stackItem.modifiers.spellPowerBonus;
+}
+
+function shouldRetaliate(
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  attackKind: "melee" | "ranged"
+): boolean {
+  return (
+    isUnitAlive(attacker) &&
+    isUnitAlive(defender) &&
+    attackKind === "melee" &&
+    isAdjacent(attacker.position, defender.position) &&
+    !attacker.abilities.includes("ignores-retaliation") &&
+    (!defender.retaliatedThisRound || defender.abilities.includes("unlimited-retaliation"))
+  );
+}
+
+function openRetaliationWindow(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  cards: CardLibrary
+): void {
+  if (!state.combat) {
+    return;
+  }
+
+  appendEvent(state, {
+    type: "RETALIATION_ATTACKED",
+    attackerId: defender.id,
+    defenderId: attacker.id
+  });
+
+  const retaliationAction: Extract<GameAction, { type: "ATTACK_UNIT" }> = {
+    type: "ATTACK_UNIT",
+    playerId: defender.controllerId,
+    attackerId: defender.id,
+    defenderId: attacker.id
+  };
+  const stackItem = makeStackItem(state, retaliationAction);
+  state.stack.push(stackItem);
+
+  const attackKind = getAttackKind(defender, attacker);
+  const rollMode = getAttackRollMode(defender, attacker);
+  const attackDeclared = appendEvent(state, {
+    type: "UNIT_ATTACK_DECLARED",
+    playerId: defender.controllerId,
+    attackerId: defender.id,
+    defenderId: attacker.id,
+    isRetaliation: true,
+    attackKind,
+    rollMode
+  });
+  stackItem.triggerEventIds.push(attackDeclared.id);
+
+  if (!openReactionWindowForTrigger(state, stackItem, attackDeclared, cards)) {
+    resolveTopStack(state, cards);
+  }
+}
+
+function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem, cards: CardLibrary): void {
+  const combat = state.combat;
+  if (!combat || (stackItem.action.type !== "ATTACK_UNIT" && stackItem.action.type !== "MOVE_AND_ATTACK_UNIT")) {
+    return;
+  }
+
+  const attacker = combat.units[stackItem.action.attackerId];
+  const defender = combat.units[stackItem.action.defenderId];
+  if (!attacker || !defender) {
+    return;
+  }
+
+  const triggerEvent = stackItem.triggerEventIds
+    .map((eventId) => state.eventLog.find((event) => event.id === eventId))
+    .find((event): event is Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }> => event?.type === "UNIT_ATTACK_DECLARED");
+  const isRetaliation = triggerEvent?.isRetaliation ?? false;
+  const attackKind = triggerEvent?.attackKind ?? getAttackKind(attacker, defender);
+  const rollMode = triggerEvent?.rollMode ?? getAttackRollMode(attacker, defender);
+
+  applyAttackDamage(
+    state,
+    attacker,
+    defender,
+    isRetaliation,
+    rollMode,
+    stackItem.modifiers.attackBonus,
+    stackItem.modifiers.defenseBonus
+  );
+
+  if (isRetaliation) {
+    attacker.retaliatedThisRound = true;
+  } else {
+    attacker.activatedThisRound = true;
+  }
+
+  stackItem.status = "resolved";
+  state.stack.pop();
+
+  if (finishCombatIfNeeded(state)) {
+    return;
+  }
+
+  if (!isRetaliation && shouldRetaliate(attacker, defender, attackKind)) {
+    openRetaliationWindow(state, attacker, defender, cards);
+    return;
+  }
+
+  advanceActiveUnit(state);
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+}
+
 function resolveTopStack(state: GameState, cards: CardLibrary): void {
   const stackItem = state.stack.at(-1);
   if (!stackItem) {
@@ -280,7 +548,9 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     if (card?.effect.type === "DEAL_DAMAGE" && state.combat) {
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target) {
-        target.damage = Math.min(target.maxHealth, target.damage + card.effect.amount);
+        const power = getCurrentSpellPower(stackItem, cards);
+        const amount = getSpellDamageAmount(card, power);
+        target.damage = Math.min(target.maxHealth, target.damage + amount);
         appendEvent(state, {
           type: "DAMAGE_ASSIGNED",
           source: {
@@ -289,7 +559,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
             controllerId: stackItem.action.playerId
           },
           target: stackItem.action.target,
-          amount: card.effect.amount,
+          amount,
           damageKind: card.effect.damageKind
         });
         markUnitRemovedIfNeeded(state, target);
@@ -300,8 +570,25 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       type: "SPELL_CAST_RESOLVED",
       playerId: stackItem.action.playerId,
       spellCardId: stackItem.action.cardId,
-      target: stackItem.action.target
+      target: stackItem.action.target,
+      power: getCurrentSpellPower(stackItem, cards)
     });
+
+    stackItem.status = "resolved";
+    state.stack.pop();
+
+    if (finishCombatIfNeeded(state)) {
+      return;
+    }
+
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    return;
+  }
+
+  if (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT") {
+    resolveAttackStackItem(state, stackItem, cards);
+    return;
   }
 
   stackItem.status = "resolved";
@@ -353,34 +640,12 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
   stackItem.triggerEventIds.push(spellStarted.id);
 
   const legalReactions = getLegalReactionsForTrigger(state, spellStarted, cards);
-  const allowedPlayerIds = reactionPlayerOrder(state, legalReactions);
-
-  if (allowedPlayerIds.length === 0) {
+  if (reactionPlayerOrder(state, legalReactions).length === 0) {
     resolveTopStack(state, cards);
     return;
   }
 
-  const windowId = `reaction_${spellStarted.id}`;
-  stackItem.status = "waiting-for-reaction";
-  state.reactionWindow = {
-    id: windowId,
-    triggerEvent: spellStarted,
-    allowedPlayerIds,
-    priorityPlayerId: allowedPlayerIds[0],
-    legalReactions,
-    passedPlayerIds: [],
-    closesWhen: "one-reaction"
-  };
-  state.priorityPlayerId = allowedPlayerIds[0];
-  state.phase = "reaction";
-
-  appendEvent(state, {
-    type: "REACTION_WINDOW_OPENED",
-    windowId,
-    triggerEventId: spellStarted.id,
-    priorityPlayerId: allowedPlayerIds[0],
-    allowedPlayerIds
-  });
+  openReactionWindowForTrigger(state, stackItem, spellStarted, cards);
 }
 
 function passReaction(state: GameState, action: Extract<GameAction, { type: "PASS_REACTION" }>, cards: CardLibrary): void {
@@ -427,16 +692,37 @@ function playReaction(
     throw new Error(`Unknown reaction card ${action.cardId}.`);
   }
 
+  const mode = action.mode ?? "basic";
+  if (mode === "expert") {
+    if (
+      (card.effect.type !== "ADD_COMBAT_STAT" && card.effect.type !== "ADD_SPELL_POWER") ||
+      card.effect.expertAmount === undefined
+    ) {
+      throw new Error(`${card.name} does not have an expert effect.`);
+    }
+
+    if (!hasExpertUseAvailable(state, action.playerId)) {
+      throw new Error("No expert uses are available this combat round.");
+    }
+  }
+
   const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
   if (moveError) {
     throw new Error(moveError.message);
+  }
+
+  const effectAmount = getCardEffectAmount(card, mode);
+  if (mode === "expert") {
+    state.players[action.playerId].combatStats.expertUsesSpentThisRound += 1;
   }
 
   appendEvent(state, {
     type: "CARD_PLAYED",
     playerId: action.playerId,
     cardId: action.cardId,
-    timing: card.timing
+    timing: card.timing,
+    mode,
+    effectAmount: effectAmount || undefined
   });
 
   const stackItem = state.stack.at(-1);
@@ -450,16 +736,58 @@ function playReaction(
       cancelledByCardId: action.cardId
     });
     state.stack.pop();
-  }
 
-  closeReactionWindow(state, "reaction-played");
-  if (finishCombatIfNeeded(state)) {
+    closeReactionWindow(state, "reaction-played");
+    if (finishCombatIfNeeded(state)) {
+      return;
+    }
+    state.phase = "combat";
     return;
   }
-  state.phase = "combat";
+
+  if (card.effect.type === "ADD_SPELL_POWER" && stackItem?.action.type === "CAST_SPELL") {
+    stackItem.modifiers.spellPowerBonus += effectAmount;
+    stackItem.modifiers.playedCardIds.push(action.cardId);
+  }
+
+  if (
+    card.effect.type === "ADD_COMBAT_STAT" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    if (card.effect.stat === "attack") {
+      stackItem.modifiers.attackBonus += effectAmount;
+    } else {
+      stackItem.modifiers.defenseBonus += effectAmount;
+    }
+    stackItem.modifiers.playedCardIds.push(action.cardId);
+  }
+
+  if (!state.reactionWindow) {
+    return;
+  }
+
+  state.reactionWindow.passedPlayerIds = [];
+  refreshReactionWindowLegalReactions(state, cards);
+
+  if (state.reactionWindow.allowedPlayerIds.length === 0) {
+    closeReactionWindow(state, "all-pass");
+    resolveTopStack(state, cards);
+    return;
+  }
+
+  const allowedPlayerIds = state.reactionWindow.allowedPlayerIds;
+  const currentIndex = allowedPlayerIds.indexOf(action.playerId);
+  const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % allowedPlayerIds.length;
+  state.reactionWindow.priorityPlayerId = allowedPlayerIds[nextIndex];
+  state.priorityPlayerId = allowedPlayerIds[nextIndex];
 }
 
-function attackUnit(state: GameState, action: Extract<GameAction, { type: "ATTACK_UNIT" }>): void {
+function declareAttack(
+  state: GameState,
+  action: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>,
+  cards: CardLibrary,
+  isRetaliation = false
+): void {
   const combat = state.combat;
   if (!combat) {
     throw new Error("Combat is not active.");
@@ -467,41 +795,69 @@ function attackUnit(state: GameState, action: Extract<GameAction, { type: "ATTAC
 
   const attacker = combat.units[action.attackerId];
   const defender = combat.units[action.defenderId];
-  if (!attacker || !defender || !canUnitAttack(attacker, defender)) {
+  if (!attacker || !defender || !canUnitAttack(combat, attacker, defender)) {
     throw new Error("That unit cannot attack the selected target.");
   }
 
-  appendEvent(state, {
+  const stackItem = makeStackItem(state, action);
+  state.stack.push(stackItem);
+
+  const attackKind = getAttackKind(attacker, defender);
+  const rollMode = getAttackRollMode(attacker, defender);
+  const attackDeclared = appendEvent(state, {
     type: "UNIT_ATTACK_DECLARED",
     playerId: action.playerId,
     attackerId: attacker.id,
-    defenderId: defender.id
+    defenderId: defender.id,
+    isRetaliation,
+    attackKind,
+    rollMode
+  });
+  stackItem.triggerEventIds.push(attackDeclared.id);
+
+  if (!openReactionWindowForTrigger(state, stackItem, attackDeclared, cards)) {
+    resolveTopStack(state, cards);
+  }
+}
+
+function attackUnit(
+  state: GameState,
+  action: Extract<GameAction, { type: "ATTACK_UNIT" }>,
+  cards: CardLibrary
+): void {
+  declareAttack(state, action, cards);
+}
+
+function moveAndAttackUnit(
+  state: GameState,
+  action: Extract<GameAction, { type: "MOVE_AND_ATTACK_UNIT" }>,
+  cards: CardLibrary
+): void {
+  const combat = state.combat;
+  const attacker = combat?.units[action.attackerId];
+  const defender = combat?.units[action.defenderId];
+  if (
+    !combat ||
+    !attacker ||
+    !defender ||
+    attacker.controllerId !== action.playerId ||
+    !canUnitMoveAndAttack(combat, attacker, action.destination, defender)
+  ) {
+    throw new Error("That unit cannot move and attack the selected target.");
+  }
+
+  const from = attacker.position;
+  attacker.position = action.destination;
+
+  appendEvent(state, {
+    type: "UNIT_MOVED",
+    playerId: action.playerId,
+    unitId: attacker.id,
+    from,
+    to: action.destination
   });
 
-  applyAttackDamage(state, attacker, defender, false);
-  attacker.activatedThisRound = true;
-
-  const defenderCanRetaliate =
-    isUnitAlive(attacker) &&
-    isUnitAlive(defender) &&
-    isAdjacent(attacker.position, defender.position) &&
-    (!defender.retaliatedThisRound || defender.abilities.includes("unlimited-retaliation"));
-
-  if (defenderCanRetaliate) {
-    appendEvent(state, {
-      type: "RETALIATION_ATTACKED",
-      attackerId: defender.id,
-      defenderId: attacker.id
-    });
-    applyAttackDamage(state, defender, attacker, true);
-    defender.retaliatedThisRound = true;
-  }
-
-  if (finishCombatIfNeeded(state)) {
-    return;
-  }
-
-  advanceActiveUnit(state);
+  declareAttack(state, action, cards);
 }
 
 function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UNIT" }>): void {
@@ -553,8 +909,11 @@ function endCombatRound(state: GameState, action: Extract<GameAction, { type: "E
   const finishedRound = state.combat.round;
   state.combat.round += 1;
   resetCombatRound(state.combat);
-  state.players.p1.combatStats.spellsCastThisRound = 0;
-  state.players.p2.combatStats.spellsCastThisRound = 0;
+  for (const player of Object.values(state.players)) {
+    player.combatStats.spellsCastThisRound = 0;
+    player.combatStats.spellLimitBonusThisRound = 0;
+    player.combatStats.expertUsesSpentThisRound = 0;
+  }
 
   appendEvent(state, {
     type: "COMBAT_ROUND_ENDED",
@@ -602,7 +961,10 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         castSpell(nextState, action, cards);
         break;
       case "ATTACK_UNIT":
-        attackUnit(nextState, action);
+        attackUnit(nextState, action, cards);
+        break;
+      case "MOVE_AND_ATTACK_UNIT":
+        moveAndAttackUnit(nextState, action, cards);
         break;
       case "MOVE_UNIT":
         moveUnit(nextState, action);

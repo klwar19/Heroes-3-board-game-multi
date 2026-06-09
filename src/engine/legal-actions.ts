@@ -2,12 +2,14 @@ import { sampleCards } from "@/data/cards/sample";
 import {
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
+  BATTLEFIELD_ROWS,
   getBattlefieldDistance,
   getBattlefieldLabel,
   getBattlefieldTerrain,
   isBattlefieldPosition
 } from "./battlefield";
 import type {
+  AttackRollMode,
   CardLibrary,
   CombatState,
   CombatUnitState,
@@ -30,11 +32,15 @@ export function isAdjacent(leftPosition: number, rightPosition: number, columns 
   const rightRow = Math.floor(rightPosition / columns);
   const rightColumn = rightPosition % columns;
 
-  return Math.abs(leftRow - rightRow) <= 1 && Math.abs(leftColumn - rightColumn) <= 1;
+  return Math.abs(leftRow - rightRow) + Math.abs(leftColumn - rightColumn) === 1;
 }
 
 export function getUnitMoveRange(unit: CombatUnitState): number {
-  return unit.type === "flying" ? unit.initiative : Math.min(3, unit.initiative);
+  if (unit.type === "ranged") {
+    return 1;
+  }
+
+  return 3;
 }
 
 function isPositionOccupied(combat: CombatState, position: number): boolean {
@@ -102,7 +108,50 @@ export function getNextUnitToActivate(combat: CombatState): CombatUnitState | nu
   return sortUnitsForActivation(combat).find((unit) => !unit.activatedThisRound) ?? null;
 }
 
-export function canUnitAttack(attacker: CombatUnitState, defender: CombatUnitState): boolean {
+function hasAdjacentEnemy(combat: CombatState, unit: CombatUnitState): boolean {
+  return Object.values(combat.units).some(
+    (candidate) =>
+      candidate.controllerId !== unit.controllerId &&
+      isUnitAlive(candidate) &&
+      isAdjacent(candidate.position, unit.position)
+  );
+}
+
+export function getAttackKind(attacker: CombatUnitState, defender: CombatUnitState): "melee" | "ranged" {
+  return attacker.type === "ranged" && !isAdjacent(attacker.position, defender.position) ? "ranged" : "melee";
+}
+
+function isBackRow(position: number): boolean {
+  const row = Math.floor(position / BATTLEFIELD_COLUMNS);
+  return row === 0 || row === BATTLEFIELD_ROWS - 1;
+}
+
+function isOppositeBackRow(leftPosition: number, rightPosition: number): boolean {
+  const leftRow = Math.floor(leftPosition / BATTLEFIELD_COLUMNS);
+  const rightRow = Math.floor(rightPosition / BATTLEFIELD_COLUMNS);
+
+  return (
+    (leftRow === 0 && rightRow === BATTLEFIELD_ROWS - 1) ||
+    (leftRow === BATTLEFIELD_ROWS - 1 && rightRow === 0)
+  );
+}
+
+export function getAttackRollMode(attacker: CombatUnitState, defender: CombatUnitState): AttackRollMode {
+  const ignoresPenalty = attacker.abilities.includes("ignore-combat-penalties");
+  if (
+    getAttackKind(attacker, defender) === "ranged" &&
+    !ignoresPenalty &&
+    isBackRow(attacker.position) &&
+    isBackRow(defender.position) &&
+    isOppositeBackRow(attacker.position, defender.position)
+  ) {
+    return "disadvantage";
+  }
+
+  return "normal";
+}
+
+export function canUnitAttack(combat: CombatState, attacker: CombatUnitState, defender: CombatUnitState): boolean {
   if (!isUnitAlive(attacker) || !isUnitAlive(defender)) {
     return false;
   }
@@ -111,11 +160,40 @@ export function canUnitAttack(attacker: CombatUnitState, defender: CombatUnitSta
     return false;
   }
 
-  if (attacker.type === "ranged" || attacker.type === "flying") {
+  if (attacker.type === "ranged") {
+    if (hasAdjacentEnemy(combat, attacker)) {
+      return isAdjacent(attacker.position, defender.position);
+    }
+
     return true;
   }
 
   return isAdjacent(attacker.position, defender.position);
+}
+
+export function canUnitMoveAndAttack(
+  combat: CombatState,
+  attacker: CombatUnitState,
+  destination: number,
+  defender: CombatUnitState
+): boolean {
+  if (attacker.type === "ranged" || !canUnitMoveTo(combat, attacker, destination)) {
+    return false;
+  }
+
+  const movedAttacker = {
+    ...attacker,
+    position: destination
+  };
+  const virtualCombat = {
+    ...combat,
+    units: {
+      ...combat.units,
+      [attacker.id]: movedAttacker
+    }
+  };
+
+  return canUnitAttack(virtualCombat, movedAttacker, defender);
 }
 
 function getEnemyTargets(state: GameState, playerId: PlayerId): TargetRef[] {
@@ -136,7 +214,8 @@ function addSpellActions(
   cards: CardLibrary
 ): void {
   const player = state.players[playerId];
-  if (!player || player.combatStats.spellsCastThisRound > 0) {
+  const spellLimit = 1 + (player?.combatStats.spellLimitBonusThisRound ?? 0);
+  if (!player || player.combatStats.spellsCastThisRound >= spellLimit) {
     return;
   }
 
@@ -190,7 +269,7 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
   }
 
   for (const defender of Object.values(combat.units)) {
-    if (!canUnitAttack(activeUnit, defender)) {
+    if (!canUnitAttack(combat, activeUnit, defender)) {
       continue;
     }
 
@@ -203,6 +282,27 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
         defenderId: defender.id
       }
     });
+  }
+
+  if (activeUnit.type !== "ranged") {
+    for (const destination of getLegalMoveDestinations(combat, activeUnit)) {
+      for (const defender of Object.values(combat.units)) {
+        if (!canUnitMoveAndAttack(combat, activeUnit, destination, defender)) {
+          continue;
+        }
+
+        actions.push({
+          label: `${activeUnit.name} move to ${getBattlefieldLabel(destination)} and attack ${defender.name}`,
+          action: {
+            type: "MOVE_AND_ATTACK_UNIT",
+            playerId,
+            attackerId: activeUnit.id,
+            destination,
+            defenderId: defender.id
+          }
+        });
+      }
+    }
   }
 
   actions.push({
@@ -263,7 +363,7 @@ export function getLegalReactionsForTrigger(
   triggerEvent: GameEvent,
   cards: CardLibrary = sampleCards
 ): Record<PlayerId, LegalAction[]> {
-  if (triggerEvent.type !== "SPELL_CAST_STARTED") {
+  if (triggerEvent.type !== "SPELL_CAST_STARTED" && triggerEvent.type !== "UNIT_ATTACK_DECLARED") {
     return {};
   }
 
@@ -272,7 +372,11 @@ export function getLegalReactionsForTrigger(
   for (const player of Object.values(state.players)) {
     const reactions = player.hand.flatMap((cardId) => {
       const card = cards[cardId];
-      if (!card || card.timing !== "reaction" || card.implementationStatus !== "implemented") {
+      if (
+        !card ||
+        (card.timing !== "reaction" && card.timing !== "instant") ||
+        card.implementationStatus !== "implemented"
+      ) {
         return [];
       }
 
@@ -289,22 +393,34 @@ export function getLegalReactionsForTrigger(
         return [];
       }
 
-      if (card.effect.type === "CANCEL_SPELL" && card.effect.maxPower !== undefined) {
-        if (triggerEvent.power > card.effect.maxPower) {
-          return [];
-        }
+      if (!isCardEffectLegalForTrigger(state, player.id, cardId, triggerEvent, cards)) {
+        return [];
       }
 
-      return [
-        {
-          label: `Play ${card.name}`,
-          action: {
+      const actions: LegalAction[] = [
+        makeReactionAction(card.name, {
+          type: "PLAY_REACTION",
+          playerId: player.id,
+          cardId,
+          mode: "basic"
+        })
+      ];
+
+      if (
+        getExpertAmount(card.effect) !== null &&
+        player.combatStats.expertUsesSpentThisRound < player.limits.expertUses
+      ) {
+        actions.push(
+          makeReactionAction(`${card.name} expert`, {
             type: "PLAY_REACTION",
             playerId: player.id,
-            cardId
-          } satisfies GameAction
-        }
-      ];
+            cardId,
+            mode: "expert"
+          })
+        );
+      }
+
+      return actions;
     });
 
     if (reactions.length > 0) {
@@ -313,6 +429,83 @@ export function getLegalReactionsForTrigger(
   }
 
   return result;
+}
+
+function getPendingStackItem(state: GameState, triggerEvent: GameEvent) {
+  return state.stack.find((item) => item.triggerEventIds.includes(triggerEvent.id));
+}
+
+function getPendingSpellPower(state: GameState, triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" }>): number {
+  const stackItem = getPendingStackItem(state, triggerEvent);
+  return triggerEvent.power + (stackItem?.modifiers.spellPowerBonus ?? 0);
+}
+
+function getExpertAmount(effect: CardLibrary[string]["effect"]): number | null {
+  if (effect.type === "ADD_COMBAT_STAT" || effect.type === "ADD_SPELL_POWER") {
+    return effect.expertAmount ?? null;
+  }
+
+  return null;
+}
+
+function makeReactionAction(label: string, action: Extract<GameAction, { type: "PLAY_REACTION" }>): LegalAction {
+  const modeLabel = action.mode === "expert" ? " (expert)" : "";
+  return {
+    label: `Play ${label}${modeLabel}`,
+    action
+  };
+}
+
+function isCardEffectLegalForTrigger(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: string,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" }>,
+  cards: CardLibrary
+): boolean {
+  const card = cards[cardId];
+  if (!card) {
+    return false;
+  }
+
+  if (triggerEvent.type === "SPELL_CAST_STARTED") {
+    if (card.effect.type === "ADD_SPELL_POWER") {
+      return triggerEvent.playerId === playerId;
+    }
+
+    if (card.effect.type === "CANCEL_SPELL") {
+      if (triggerEvent.playerId === playerId) {
+        return false;
+      }
+
+      if (card.effect.maxPower !== undefined) {
+        if (getPendingSpellPower(state, triggerEvent) > card.effect.maxPower) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    return false;
+  }
+
+  if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
+    const combat = state.combat;
+    const attacker = combat?.units[triggerEvent.attackerId];
+    const defender = combat?.units[triggerEvent.defenderId];
+    if (!attacker || !defender || card.effect.type !== "ADD_COMBAT_STAT") {
+      return false;
+    }
+
+    if (card.effect.stat === "attack") {
+      return attacker.controllerId === playerId;
+    }
+
+    return defender.controllerId === playerId;
+  }
+
+  return false;
 }
 
 export function getActiveUnitId(state: GameState): UnitId | null {

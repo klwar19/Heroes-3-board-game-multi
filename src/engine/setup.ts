@@ -16,7 +16,7 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
       p1: {
         id: "p1",
         name: "Rampart Alliance",
-        hand: ["spell.magic_arrow"],
+        hand: ["spell.magic_arrow", "stat.attack", "stat.power"],
         discard: [],
         resources: {
           gold: 10,
@@ -28,13 +28,15 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
           expertUses: 1
         },
         combatStats: {
-          spellsCastThisRound: 0
+          spellsCastThisRound: 0,
+          spellLimitBonusThisRound: 0,
+          expertUsesSpentThisRound: 0
         }
       },
       p2: {
         id: "p2",
         name: "Inferno Warband",
-        hand: ["ability.resistance"],
+        hand: ["ability.resistance", "stat.defense", "stat.attack"],
         discard: [],
         resources: {
           gold: 10,
@@ -46,7 +48,9 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
           expertUses: 1
         },
         combatStats: {
-          spellsCastThisRound: 0
+          spellsCastThisRound: 0,
+          spellLimitBonusThisRound: 0,
+          expertUsesSpentThisRound: 0
         }
       }
     },
