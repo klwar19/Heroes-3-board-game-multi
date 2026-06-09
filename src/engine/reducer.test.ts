@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createInitialGameState, findEvent, getLegalActions, getPlayerView, sampleCards } from "./index";
+import {
+  applyAction,
+  ATTACK_DIE_FACES,
+  createInitialGameState,
+  findEvent,
+  getBattlefieldDistance,
+  getLegalActions,
+  getPlayerView,
+  getUnitMoveRange,
+  sampleCards
+} from "./index";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 const castMagicArrow = {
@@ -41,6 +51,15 @@ function setActiveUnit(state: GameState, playerId: PlayerId, unitId: string): vo
 
   state.activePlayerId = playerId;
   state.combat.activeUnitId = unitId;
+}
+
+function scriptDice(state: GameState, rolls: number[]): void {
+  if (!state.combat) {
+    throw new Error("Expected combat setup.");
+  }
+
+  state.combat.dice.scriptedRolls = rolls;
+  state.combat.dice.rollCount = 0;
 }
 
 describe("rules engine prototype", () => {
@@ -119,6 +138,7 @@ describe("rules engine prototype", () => {
 
     state.combat.units.unit_p2_pit_lords.damage = 4;
     state.combat.units.unit_p2_magogs.damage = 3;
+    state.combat.units.unit_p2_dread_knights.damage = 6;
 
     const casted = applyAction(state, castMagicArrow).state;
     const result = passAllReactions(casted);
@@ -214,6 +234,7 @@ describe("rules engine prototype", () => {
     state.players.p1.hand = ["stat.attack"];
     state.players.p2.hand = ["stat.defense"];
     state.combat.units.unit_p2_pit_lords.damage = 3;
+    scriptDice(state, [0]);
 
     const moved = applyOk(state, {
       type: "MOVE_UNIT",
@@ -293,6 +314,7 @@ describe("rules engine prototype", () => {
     state.players.p2.hand = [];
     state.combat.units.unit_p1_griffins.activatedThisRound = true;
     setActiveUnit(state, "p1", "unit_p1_elves");
+    scriptDice(state, [0, 1]);
 
     const result = applyAction(state, {
       type: "ATTACK_UNIT",
@@ -343,6 +365,7 @@ describe("rules engine prototype", () => {
     state.combat.units.unit_p2_pit_lords.position = 14;
     state.combat.units.unit_p1_griffins.activatedThisRound = true;
     setActiveUnit(state, "p1", "unit_p1_elves");
+    scriptDice(state, [0, 1]);
 
     const result = applyAction(state, {
       type: "ATTACK_UNIT",
@@ -369,6 +392,7 @@ describe("rules engine prototype", () => {
     state.combat.units.unit_p1_griffins.activatedThisRound = true;
     state.combat.units.unit_p2_pit_lords.damage = 6;
     state.combat.units.unit_p2_magogs.damage = 2;
+    state.combat.units.unit_p2_dread_knights.damage = 6;
     setActiveUnit(state, "p1", "unit_p1_elves");
 
     const result = applyAction(state, {
@@ -467,6 +491,7 @@ describe("rules engine prototype", () => {
     state.players.p2.hand = ["ability.archery"];
     state.combat.units.unit_p1_griffins.activatedThisRound = true;
     setActiveUnit(state, "p1", "unit_p1_elves");
+    scriptDice(state, [0]);
 
     expect(
       getLegalActions(state, "p2").some(
@@ -527,6 +552,7 @@ describe("rules engine prototype", () => {
     }
     state.players.p1.hand = ["spell.fortune"];
     state.players.p2.hand = [];
+    scriptDice(state, [0, 1]);
 
     const fortune = applyOk(state, {
       type: "CAST_SPELL",
@@ -874,5 +900,172 @@ describe("rules engine prototype", () => {
       "stat.attack",
       "artifact.buckler_of_the_gnoll_king"
     ]);
+  });
+
+  it("uses the real six-face attack die (two -1, two 0, two +1) for unscripted rolls", () => {
+    expect(ATTACK_DIE_FACES).toEqual([-1, -1, 0, 0, 1, 1]);
+
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    expect(state.combat.dice.faces).toEqual([-1, -1, 0, 0, 1, 1]);
+    expect(state.combat.dice.scriptedRolls).toBeUndefined();
+
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    const moved = applyOk(state, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+      destination: 10
+    });
+    const attacked = applyOk(moved, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_pit_lords"
+    });
+
+    const rolled = findEvent(attacked, "ATTACK_ROLLED");
+    expect(rolled).toBeDefined();
+    expect([-1, 0, 1]).toContain(rolled?.roll);
+    expect(attacked.combat?.dice.rollCount).toBeGreaterThan(0);
+  });
+
+  it("rolls a deterministic attack-die sequence from the combat seed", () => {
+    const rollFirstAttack = (seed: string): number | undefined => {
+      const state = createInitialGameState(seed);
+      state.players.p1.hand = [];
+      state.players.p2.hand = [];
+      const moved = applyOk(state, {
+        type: "MOVE_UNIT",
+        playerId: "p1",
+        unitId: "unit_p1_griffins",
+        destination: 10
+      });
+      const attacked = applyOk(moved, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: "unit_p1_griffins",
+        defenderId: "unit_p2_pit_lords"
+      });
+      return findEvent(attacked, "ATTACK_ROLLED")?.roll;
+    };
+
+    expect(rollFirstAttack("seed-alpha")).toBe(rollFirstAttack("seed-alpha"));
+  });
+
+  it("measures movement orthogonally so diagonal steps cost two spaces", () => {
+    expect(getBattlefieldDistance(0, 1)).toBe(1);
+    expect(getBattlefieldDistance(0, 4)).toBe(1);
+    expect(getBattlefieldDistance(0, 5)).toBe(2);
+
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    // Elves have an orthogonal move range of 1 and start at position 1 (row 0, col 1).
+    state.combat.units.unit_p1_griffins.activatedThisRound = true;
+    setActiveUnit(state, "p1", "unit_p1_elves");
+
+    const destinations = getLegalActions(state, "p1")
+      .map((legal) => legal.action)
+      .filter((action): action is Extract<GameAction, { type: "MOVE_UNIT" }> => action.type === "MOVE_UNIT")
+      .map((action) => action.destination);
+
+    expect(destinations).toContain(0);
+    expect(destinations).toContain(2);
+    expect(destinations).not.toContain(4);
+    expect(destinations).not.toContain(6);
+  });
+
+  it("gives melee and flying units 3 movement points and ranged units 1", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+
+    expect(getUnitMoveRange(state.combat.units.unit_p1_griffins)).toBe(3); // flying
+    expect(getUnitMoveRange(state.combat.units.unit_p2_pit_lords)).toBe(3); // ground
+    expect(getUnitMoveRange(state.combat.units.unit_p1_elves)).toBe(1); // ranged
+  });
+
+  it("lets a ranged unit reposition after shooting", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.combat.units.unit_p1_griffins.activatedThisRound = true;
+    setActiveUnit(state, "p1", "unit_p1_elves");
+    scriptDice(state, [0]);
+
+    const shot = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_elves",
+      defenderId: "unit_p2_pit_lords"
+    });
+
+    // The shooter stays active and may still spend its move.
+    expect(shot.combat?.activeUnitId).toBe("unit_p1_elves");
+    expect(shot.combat?.units.unit_p1_elves.attackedThisActivation).toBe(true);
+    expect(shot.combat?.units.unit_p1_elves.activatedThisRound).toBe(false);
+    // 2 from the shot (3 attack + 0 roll - 1 defense) plus 1 from the Elves'
+    // low-roll extra shot ability (roll of 0).
+    expect(shot.combat?.units.unit_p2_pit_lords.damage).toBe(3);
+
+    const elfActions = getLegalActions(shot, "p1").map((legal) => legal.action.type);
+    expect(elfActions).toContain("MOVE_UNIT");
+    expect(elfActions).toContain("END_ACTIVATION");
+    expect(elfActions).not.toContain("ATTACK_UNIT");
+    expect(elfActions).not.toContain("DEFEND_UNIT");
+
+    const moved = applyOk(shot, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_elves",
+      destination: 0
+    });
+
+    // After moving, the ranged unit's activation is complete.
+    expect(moved.combat?.units.unit_p1_elves.position).toBe(0);
+    expect(moved.combat?.units.unit_p1_elves.activatedThisRound).toBe(true);
+    expect(moved.combat?.activeUnitId).not.toBe("unit_p1_elves");
+  });
+
+  it("ends a ranged unit's activation when it moves before shooting", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.combat.units.unit_p1_griffins.activatedThisRound = true;
+    setActiveUnit(state, "p1", "unit_p1_elves");
+    scriptDice(state, [0]);
+
+    // Move first (range 1), then the unit may still shoot.
+    const moved = applyOk(state, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_elves",
+      destination: 2
+    });
+    expect(moved.combat?.activeUnitId).toBe("unit_p1_elves");
+    expect(moved.combat?.units.unit_p1_elves.movedThisActivation).toBe(true);
+
+    const shot = applyOk(moved, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_elves",
+      defenderId: "unit_p2_pit_lords"
+    });
+
+    // Having already moved, the shot ends the activation (no second move).
+    expect(shot.combat?.units.unit_p1_elves.activatedThisRound).toBe(true);
+    expect(shot.combat?.activeUnitId).not.toBe("unit_p1_elves");
   });
 });

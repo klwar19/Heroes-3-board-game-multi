@@ -1,5 +1,7 @@
 import { sampleCards } from "@/data/cards/sample";
 import { sampleBuildings } from "@/data/towns/buildings";
+import { ATTACK_DIE_FACES } from "./battlefield";
+import { createSeededRandom } from "./random";
 import {
   expireEffectsForCombatEnd,
   expireEffectsForCombatRoundEnd,
@@ -19,6 +21,7 @@ import {
   getAttackKind,
   getAttackRollMode,
   getLegalActions,
+  getLegalMoveDestinations,
   getLegalReactionsForTrigger,
   getNextUnitToActivate,
   isAdjacent,
@@ -174,9 +177,20 @@ function reactionPlayerOrder(state: GameState, legalReactions: Record<PlayerId, 
 }
 
 function rollAttackDie(combat: CombatState): number {
-  const roll = combat.attackDie[combat.attackDieIndex % combat.attackDie.length] ?? 0;
-  combat.attackDieIndex += 1;
-  return roll;
+  const dice = combat.dice;
+  const rollIndex = dice.rollCount;
+  dice.rollCount += 1;
+
+  if (dice.scriptedRolls && rollIndex < dice.scriptedRolls.length) {
+    return dice.scriptedRolls[rollIndex] ?? 0;
+  }
+
+  const faces = dice.faces.length > 0 ? dice.faces : ATTACK_DIE_FACES;
+  // Derive each roll from the combat seed and the roll index so the sequence is
+  // deterministic for every client (server-authoritative) yet unpredictable to
+  // players, who cannot peek at future rolls.
+  const random = createSeededRandom(`${dice.seed}#${rollIndex}`);
+  return faces[random.nextInt(0, faces.length - 1)] ?? 0;
 }
 
 function rollAttackDice(combat: CombatState, rollMode: AttackRollMode): { rolls: number[]; selectedRoll: number } {
@@ -822,7 +836,7 @@ function finishResolvedAttack(
   if (details.isRetaliation) {
     details.attacker.retaliatedThisRound = true;
   } else {
-    details.attacker.activatedThisRound = true;
+    details.attacker.attackedThisActivation = true;
   }
 
   stackItem.status = "resolved";
@@ -832,8 +846,32 @@ function finishResolvedAttack(
     return;
   }
 
+  // A ranged unit that shoots (a true ranged attack never provokes retaliation)
+  // may still spend its move to reposition afterwards, as long as it has not
+  // already moved this activation and a legal destination exists.
+  const combat = state.combat;
+  const canRangedReposition =
+    !details.isRetaliation &&
+    details.attackKind === "ranged" &&
+    Boolean(combat) &&
+    isUnitAlive(details.attacker) &&
+    !details.attacker.movedThisActivation &&
+    combat !== null &&
+    getLegalMoveDestinations(combat, details.attacker, state).length > 0;
+
+  if (!details.isRetaliation && !canRangedReposition) {
+    details.attacker.activatedThisRound = true;
+  }
+
   if (!details.isRetaliation && shouldRetaliate(details.attacker, details.defender, details.attackKind)) {
     openRetaliationWindow(state, details.attacker, details.defender, cards);
+    return;
+  }
+
+  if (canRangedReposition) {
+    // Keep the shooter active so the player may move it after firing.
+    state.phase = "combat";
+    state.priorityPlayerId = null;
     return;
   }
 
@@ -857,6 +895,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   const activeUnit = state.combat.units[unitId];
   state.activePlayerId = activeUnit.controllerId;
   activeUnit.movedThisActivation = false;
+  activeUnit.attackedThisActivation = false;
 
   if (activeUnit.defenseToken) {
     activeUnit.defenseToken = false;
@@ -881,6 +920,7 @@ function resetCombatRound(combat: CombatState): void {
   for (const unit of Object.values(combat.units)) {
     unit.activatedThisRound = false;
     unit.movedThisActivation = false;
+    unit.attackedThisActivation = false;
     unit.retaliatedThisRound = false;
     unit.defenseToken = false;
   }
@@ -1740,6 +1780,13 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
     to: action.destination
   });
 
+  // If the unit already fired this activation (a ranged unit repositioning after
+  // shooting), the move spends the rest of its activation.
+  if (unit.attackedThisActivation) {
+    unit.activatedThisRound = true;
+    advanceActiveUnit(state);
+  }
+
   state.phase = "combat";
   state.priorityPlayerId = null;
 }
@@ -1761,6 +1808,26 @@ function defendUnit(state: GameState, action: Extract<GameAction, { type: "DEFEN
   });
 
   advanceActiveUnit(state);
+}
+
+function endActivation(state: GameState, action: Extract<GameAction, { type: "END_ACTIVATION" }>): void {
+  const combat = state.combat;
+  const unit = combat?.units[action.unitId];
+  if (!combat || !unit || unit.controllerId !== action.playerId || combat.activeUnitId !== unit.id) {
+    throw new Error("That unit cannot end its activation now.");
+  }
+
+  unit.activatedThisRound = true;
+
+  appendEvent(state, {
+    type: "UNIT_ACTIVATION_ENDED",
+    playerId: action.playerId,
+    unitId: unit.id
+  });
+
+  advanceActiveUnit(state);
+  state.phase = "combat";
+  state.priorityPlayerId = null;
 }
 
 function endCombatRound(state: GameState, action: Extract<GameAction, { type: "END_COMBAT_ROUND" }>): void {
@@ -1954,6 +2021,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "DEFEND_UNIT":
         defendUnit(nextState, action);
+        break;
+      case "END_ACTIVATION":
+        endActivation(nextState, action);
         break;
       case "END_COMBAT_ROUND":
         endCombatRound(nextState, action);
