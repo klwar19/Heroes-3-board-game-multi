@@ -16,8 +16,11 @@ export { createSeededRandom } from "./random";
 export { createInitialGameState } from "./setup";
 export {
   canUnitAttack,
+  canUnitMoveAndAttack,
   canUnitMoveTo,
   getActiveUnitId,
+  getAttackKind,
+  getAttackRollMode,
   getLegalActions,
   getLegalMoveDestinations,
   getLegalReactionsForTrigger,
@@ -29,9 +32,12 @@ export {
 } from "./legal-actions";
 export type { BattlefieldCoordinates, BattlefieldTerrain } from "./battlefield";
 export type {
+  AttackRollMode,
   CardDefinition,
   CardId,
+  CardPlayMode,
   CardLibrary,
+  CombatStat,
   CombatState,
   CombatUnitState,
   DamageKind,

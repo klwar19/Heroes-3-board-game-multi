@@ -27,20 +27,30 @@ export type SourceRef =
 
 export type DamageKind = "attack" | "spell" | "effect";
 export type UnitType = "ground" | "ranged" | "flying";
+export type CombatStat = "attack" | "defense" | "power";
+export type CardPlayMode = "basic" | "expert";
+export type AttackRollMode = "normal" | "advantage" | "disadvantage";
 
 export type EffectDefinition =
-  | { type: "DEAL_DAMAGE"; amount: number; damageKind: DamageKind }
-  | { type: "CANCEL_SPELL"; maxPower?: number };
+  | {
+      type: "DEAL_DAMAGE";
+      amount?: number;
+      amountByPower?: Record<number, number>;
+      damageKind: DamageKind;
+    }
+  | { type: "CANCEL_SPELL"; maxPower?: number }
+  | { type: "ADD_COMBAT_STAT"; stat: "attack" | "defense"; amount: number; expertAmount?: number }
+  | { type: "ADD_SPELL_POWER"; amount: number; expertAmount?: number };
 
 export type TriggerDefinition = {
-  event: "SPELL_CAST_STARTED";
+  event: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED";
   controller: "self" | "opponent" | "any";
 };
 
 export type CardDefinition = {
   id: CardId;
   name: string;
-  kind: "spell" | "ability" | "artifact" | "hero-specialty" | "ai" | "unit";
+  kind: "spell" | "ability" | "artifact" | "hero-specialty" | "ai" | "unit" | "statistic";
   timing: "action" | "instant" | "reaction" | "passive" | "map" | "combat" | "town";
   phaseLimit?: GamePhase[];
   tags: string[];
@@ -64,10 +74,17 @@ export type CardLibrary = Record<CardId, CardDefinition>;
 export type GameAction =
   | { type: "CAST_SPELL"; playerId: PlayerId; cardId: CardId; target: TargetRef }
   | { type: "ATTACK_UNIT"; playerId: PlayerId; attackerId: UnitId; defenderId: UnitId }
+  | {
+      type: "MOVE_AND_ATTACK_UNIT";
+      playerId: PlayerId;
+      attackerId: UnitId;
+      destination: number;
+      defenderId: UnitId;
+    }
   | { type: "MOVE_UNIT"; playerId: PlayerId; unitId: UnitId; destination: number }
   | { type: "DEFEND_UNIT"; playerId: PlayerId; unitId: UnitId }
   | { type: "END_COMBAT_ROUND"; playerId: PlayerId }
-  | { type: "PLAY_REACTION"; playerId: PlayerId; cardId: CardId }
+  | { type: "PLAY_REACTION"; playerId: PlayerId; cardId: CardId; mode?: CardPlayMode }
   | { type: "PASS_REACTION"; playerId: PlayerId }
   | { type: "END_TURN"; playerId: PlayerId };
 
@@ -113,13 +130,20 @@ export type GameEvent =
       playerId: PlayerId;
       attackerId: UnitId;
       defenderId: UnitId;
+      isRetaliation: boolean;
+      attackKind: "melee" | "ranged";
+      rollMode: AttackRollMode;
     }
   | {
       id: string;
       type: "ATTACK_ROLLED";
       attackerId: UnitId;
       defenderId: UnitId;
+      rolls: number[];
       roll: number;
+      rollMode: AttackRollMode;
+      attackBonus: number;
+      defenseBonus: number;
       attackValue: number;
       defenseValue: number;
       damage: number;
@@ -184,6 +208,7 @@ export type GameEvent =
       playerId: PlayerId;
       spellCardId: CardId;
       target: TargetRef;
+      power: number;
     }
   | {
       id: string;
@@ -207,6 +232,8 @@ export type GameEvent =
       playerId: PlayerId;
       cardId: CardId;
       timing: CardDefinition["timing"];
+      mode: CardPlayMode;
+      effectAmount?: number;
     }
   | {
       id: string;
@@ -235,6 +262,12 @@ export type ResolutionStackItem = {
   action: GameAction;
   status: "pending" | "waiting-for-reaction" | "resolving" | "resolved" | "cancelled";
   triggerEventIds: string[];
+  modifiers: {
+    spellPowerBonus: number;
+    attackBonus: number;
+    defenseBonus: number;
+    playedCardIds: CardId[];
+  };
 };
 
 export type ReactionWindow = {
@@ -263,6 +296,8 @@ export type PlayerState = {
   };
   combatStats: {
     spellsCastThisRound: number;
+    spellLimitBonusThisRound: number;
+    expertUsesSpentThisRound: number;
   };
 };
 

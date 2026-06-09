@@ -312,8 +312,21 @@ button.battleCell {
     0 0 12px rgb(255 224 122 / 46%);
 }
 
+.battleCell.attackTarget::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 2px solid rgb(166 83 72 / 88%);
+  box-shadow:
+    inset 0 0 18px rgb(166 83 72 / 24%),
+    0 0 18px rgb(166 83 72 / 32%);
+  pointer-events: none;
+}
+
 .battleCell.moveTarget:hover,
-.battleCell.moveTarget:focus-visible {
+.battleCell.moveTarget:focus-visible,
+.battleCell.attackTarget:hover,
+.battleCell.attackTarget:focus-visible {
   background: rgb(255 237 166 / 11%);
   outline: 3px solid rgb(255 227 155 / 58%);
   outline-offset: -3px;
@@ -391,6 +404,11 @@ button.battleCell {
   min-height: 112px;
 }
 
+.turnPanel,
+.dicePanel {
+  min-height: 116px;
+}
+
 .viewToggle {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -423,6 +441,53 @@ button.battleCell {
   text-align: left;
   font-weight: 800;
   font-size: 13px;
+}
+
+.seatList,
+.diceRows {
+  display: grid;
+  gap: 7px;
+}
+
+.seatList article,
+.diceRows div {
+  min-height: 42px;
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid rgb(243 239 228 / 10%);
+  background: rgb(13 15 16 / 30%);
+}
+
+.seatList article.active {
+  border-color: var(--gold);
+  background: rgb(94 70 32 / 42%);
+}
+
+.seatList strong,
+.diceRows strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.seatList div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.seatList span,
+.diceRows span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.metricWithIcon {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .actionGrid {
@@ -660,6 +725,11 @@ button.battleCell {
   background: linear-gradient(180deg, rgb(32 35 38 / 98%), rgb(18 20 22 / 98%));
 }
 
+.handCard.playable {
+  border-color: var(--gold);
+  box-shadow: inset 0 0 0 1px rgb(213 168 79 / 35%);
+}
+
 .handCardImage {
   width: 96px;
   aspect-ratio: 5 / 7;
@@ -671,6 +741,36 @@ button.battleCell {
 .handCard strong {
   display: block;
   margin-bottom: 6px;
+}
+
+.cardActions {
+  display: grid;
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.cardActions button {
+  min-height: 30px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 5px 7px;
+  border: 1px solid rgb(213 168 79 / 58%);
+  border-radius: 5px;
+  color: var(--ink);
+  background: var(--gold);
+  cursor: pointer;
+}
+
+.cardActions span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .emptySlot {

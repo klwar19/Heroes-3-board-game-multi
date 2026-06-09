@@ -5,9 +5,12 @@
 import {
   CircleOff,
   Crosshair,
+  Crown,
+  Dices,
   Eye,
   EyeOff,
   Footprints,
+  Hand,
   RotateCcw,
   Shield,
   Sparkles,
@@ -42,6 +45,8 @@ function getActionIcon(action: GameAction) {
       return <Sparkles aria-hidden="true" size={16} />;
     case "ATTACK_UNIT":
       return <Crosshair aria-hidden="true" size={16} />;
+    case "MOVE_AND_ATTACK_UNIT":
+      return <Swords aria-hidden="true" size={16} />;
     case "MOVE_UNIT":
       return <Footprints aria-hidden="true" size={16} />;
     case "DEFEND_UNIT":
@@ -74,9 +79,9 @@ function formatEvent(event: GameEvent, state: GameState): string {
     case "UNIT_ACTIVATION_STARTED":
       return `${unitName(state, event.unitId)} activates.`;
     case "UNIT_ATTACK_DECLARED":
-      return `${unitName(state, event.attackerId)} attacks ${unitName(state, event.defenderId)}.`;
+      return `${unitName(state, event.attackerId)} ${event.isRetaliation ? "retaliates against" : "attacks"} ${unitName(state, event.defenderId)} (${event.attackKind}, ${event.rollMode}).`;
     case "ATTACK_ROLLED":
-      return `${event.isRetaliation ? "Retaliation" : "Attack"} roll ${event.roll >= 0 ? "+" : ""}${event.roll}: ${event.attackValue} vs ${event.defenseValue}, ${event.damage} damage.`;
+      return `${event.isRetaliation ? "Retaliation" : "Attack"} roll ${event.rolls.map((roll) => `${roll >= 0 ? "+" : ""}${roll}`).join("/")} -> ${event.roll >= 0 ? "+" : ""}${event.roll}: ${event.attackValue} vs ${event.defenseValue}, ${event.damage} damage.`;
     case "RETALIATION_ATTACKED":
       return `${unitName(state, event.attackerId)} retaliates against ${unitName(state, event.defenderId)}.`;
     case "UNIT_MOVED":
@@ -100,23 +105,35 @@ function formatEvent(event: GameEvent, state: GameState): string {
     case "REACTION_WINDOW_CLOSED":
       return `Reaction window closes by ${event.reason}.`;
     case "CARD_PLAYED":
-      return `${event.playerId} plays ${cardName(event.cardId)}.`;
+      return `${event.playerId} plays ${cardName(event.cardId)}${event.mode === "expert" ? " as expert" : ""}${event.effectAmount ? ` for +${event.effectAmount}` : ""}.`;
     case "SPELL_CAST_CANCELLED":
       return `${event.cancelledByPlayerId} cancels ${cardName(event.spellCardId)} with ${cardName(event.cancelledByCardId)}.`;
     case "DAMAGE_ASSIGNED":
       return `${event.amount} ${event.damageKind} damage assigned to ${unitName(state, event.target.unitId)}.`;
     case "SPELL_CAST_RESOLVED":
-      return `${cardName(event.spellCardId)} resolves.`;
+      return `${cardName(event.spellCardId)} resolves at power ${event.power}.`;
   }
 }
 
 function describeCard(card: CardDefinition): string {
   if (card.effect.type === "DEAL_DAMAGE") {
-    return `${card.effect.amount} ${card.effect.damageKind} damage at ${card.power ?? 0} power`;
+    if (card.effect.amountByPower) {
+      return `scales by power, base power ${card.power ?? 0}`;
+    }
+
+    return `${card.effect.amount ?? 0} ${card.effect.damageKind} damage at ${card.power ?? 0} power`;
   }
 
   if (card.effect.type === "CANCEL_SPELL") {
     return `Ignore spell effect up to ${card.effect.maxPower ?? "any"} power`;
+  }
+
+  if (card.effect.type === "ADD_COMBAT_STAT") {
+    return `+${card.effect.amount} ${card.effect.stat}, expert +${card.effect.expertAmount ?? card.effect.amount}`;
+  }
+
+  if (card.effect.type === "ADD_SPELL_POWER") {
+    return `+${card.effect.amount} power, expert +${card.effect.expertAmount ?? card.effect.amount}`;
   }
 
   return card.kind;
@@ -126,10 +143,20 @@ function actionKey(action: GameAction): string {
   return JSON.stringify(action);
 }
 
+type CardLegalAction = LegalAction & {
+  action: Extract<GameAction, { type: "CAST_SPELL" | "PLAY_REACTION" }>;
+};
+
+function isCardLegalAction(legal: LegalAction): legal is CardLegalAction {
+  return legal.action.type === "CAST_SPELL" || legal.action.type === "PLAY_REACTION";
+}
+
 function actionLabel(action: GameAction, state: GameState): string {
   switch (action.type) {
     case "ATTACK_UNIT":
       return `Attack ${unitName(state, action.defenderId)}`;
+    case "MOVE_AND_ATTACK_UNIT":
+      return `Move ${getBattlefieldLabel(action.destination)} + attack ${unitName(state, action.defenderId)}`;
     case "MOVE_UNIT":
       return `Move to ${getBattlefieldLabel(action.destination)}`;
     case "DEFEND_UNIT":
@@ -137,7 +164,7 @@ function actionLabel(action: GameAction, state: GameState): string {
     case "CAST_SPELL":
       return `${cardName(action.cardId)} -> ${unitName(state, action.target.unitId)}`;
     case "PLAY_REACTION":
-      return cardName(action.cardId);
+      return `${cardName(action.cardId)}${action.mode === "expert" ? " Expert" : ""}`;
     case "PASS_REACTION":
       return "Pass";
     case "END_COMBAT_ROUND":
@@ -165,13 +192,22 @@ function CardImage({
 
 function PlayerHand({
   view,
-  playerId
+  playerId,
+  state,
+  legalActions,
+  onAction
 }: {
   view: PlayerVisibleState;
   playerId: "p1" | "p2";
+  state: GameState;
+  legalActions: LegalAction[];
+  onAction: (action: GameAction) => void;
 }) {
   const player = view.players[playerId];
   const isViewer = view.viewerPlayerId === playerId;
+  const legalCardActions = legalActions
+    .filter(isCardLegalAction)
+    .filter((legal) => player.hand.includes(legal.action.cardId));
 
   return (
     <section className="panel handPanel" aria-label={`${player.name} hand`}>
@@ -190,8 +226,9 @@ function PlayerHand({
         ) : (
           player.hand.map((cardId) => {
             const card = sampleCards[cardId];
+            const cardActions = legalCardActions.filter((legal) => legal.action.cardId === cardId);
             return (
-              <article className="handCard" key={cardId}>
+              <article className={`handCard ${cardActions.length > 0 ? "playable" : ""}`} key={cardId}>
                 <CardImage
                   alt={card?.assets?.imageAlt ?? cardId}
                   className="handCardImage"
@@ -200,6 +237,21 @@ function PlayerHand({
                 <div>
                   <strong>{card?.name ?? cardId}</strong>
                   <span>{card ? describeCard(card) : cardId}</span>
+                  {cardActions.length > 0 ? (
+                    <div className="cardActions">
+                      {cardActions.map((legal) => (
+                        <button
+                          key={actionKey(legal.action)}
+                          onClick={() => onAction(legal.action)}
+                          title={legal.label}
+                          type="button"
+                        >
+                          {getActionIcon(legal.action)}
+                          <span>{actionLabel(legal.action, state)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               </article>
             );
@@ -239,6 +291,72 @@ function ViewAsControl({
             <span>{state.players[playerId].name}</span>
           </button>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function TurnPanel({ state }: { state: GameState }) {
+  return (
+    <section className="panel turnPanel" aria-label="Turn order">
+      <div className="panelHeader">
+        <h2>Seats</h2>
+        <Hand aria-hidden="true" size={18} />
+      </div>
+      <div className="seatList">
+        {state.turnOrder.map((playerId) => {
+          const player = state.players[playerId];
+          const spellLimit = 1 + player.combatStats.spellLimitBonusThisRound;
+
+          return (
+            <article className={state.activePlayerId === playerId ? "active" : ""} key={playerId}>
+              <strong>{player.name}</strong>
+              <div>
+                <span>{player.hand.length} hand</span>
+                <span>
+                  {player.combatStats.spellsCastThisRound}/{spellLimit} spells
+                </span>
+                <span className="metricWithIcon">
+                  <Crown aria-hidden="true" size={12} />
+                  {player.combatStats.expertUsesSpentThisRound}/{player.limits.expertUses} crowns
+                </span>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function DicePanel({ state }: { state: GameState }) {
+  const combat = state.combat;
+  const lastRoll = [...state.eventLog]
+    .reverse()
+    .find((event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> => event.type === "ATTACK_ROLLED");
+  const upcomingRolls = combat
+    ? Array.from({ length: 4 }, (_, index) => combat.attackDie[(combat.attackDieIndex + index) % combat.attackDie.length])
+    : [];
+
+  return (
+    <section className="panel dicePanel" aria-label="Attack dice">
+      <div className="panelHeader">
+        <h2>Dice</h2>
+        <Dices aria-hidden="true" size={18} />
+      </div>
+      <div className="diceRows">
+        <div>
+          <span>Next</span>
+          <strong>{upcomingRolls.map((roll) => `${roll >= 0 ? "+" : ""}${roll}`).join("  ")}</strong>
+        </div>
+        <div>
+          <span>Last</span>
+          <strong>
+            {lastRoll
+              ? `${lastRoll.rolls.map((roll) => `${roll >= 0 ? "+" : ""}${roll}`).join("/")} -> ${lastRoll.roll >= 0 ? "+" : ""}${lastRoll.roll}`
+              : "none"}
+          </strong>
+        </div>
       </div>
     </section>
   );
@@ -305,6 +423,7 @@ function Battlefield({
   const combat = state.combat;
   const unitsByPosition = new Map<number, CombatUnitState>();
   const moveActionsByDestination = new Map<number, GameAction>();
+  const attackActionsByDefender = new Map<string, GameAction>();
   if (combat) {
     for (const unit of Object.values(combat.units)) {
       if (isUnitAlive(unit)) {
@@ -315,6 +434,9 @@ function Battlefield({
   for (const legal of legalActions) {
     if (legal.action.type === "MOVE_UNIT") {
       moveActionsByDestination.set(legal.action.destination, legal.action);
+    }
+    if (legal.action.type === "ATTACK_UNIT") {
+      attackActionsByDefender.set(legal.action.defenderId, legal.action);
     }
   }
 
@@ -330,10 +452,11 @@ function Battlefield({
             const unit = unitsByPosition.get(index);
             const terrain = getBattlefieldTerrain(index);
             const moveAction = moveActionsByDestination.get(index);
+            const attackAction = unit ? attackActionsByDefender.get(unit.id) : undefined;
             const isActive = Boolean(unit && combat?.activeUnitId === unit.id);
             const className = `battleCell ${terrain} ${unit?.controllerId ?? ""} ${
               isActive ? "active" : ""
-            } ${moveAction ? "moveTarget" : ""}`;
+            } ${moveAction ? "moveTarget" : ""} ${attackAction ? "attackTarget" : ""}`;
             const content = unit ? (
               <article className={`boardCard ${unit.controllerId}`}>
                 <CardImage
@@ -360,6 +483,21 @@ function Battlefield({
                   key={index}
                   onClick={() => onAction(moveAction)}
                   title={`Move to ${getBattlefieldLabel(index)}`}
+                  type="button"
+                >
+                  {content}
+                </button>
+              );
+            }
+
+            if (attackAction && unit) {
+              return (
+                <button
+                  aria-label={`Attack ${unit.name}`}
+                  className={className}
+                  key={index}
+                  onClick={() => onAction(attackAction)}
+                  title={`Attack ${unit.name}`}
                   type="button"
                 >
                   {content}
@@ -542,6 +680,8 @@ export default function Home() {
         <Battlefield legalActions={legalActions} onAction={submitAction} state={state} />
         <div className="sideStack">
           <ViewAsControl onChange={setViewerPlayerId} state={state} viewerPlayerId={viewerPlayerId} />
+          <TurnPanel state={state} />
+          <DicePanel state={state} />
           <ActionPanel
             currentActorId={currentActorId}
             legalActions={legalActions}
@@ -557,8 +697,20 @@ export default function Home() {
         </div>
         <UnitGallery state={state} />
         <div className="handGrid">
-          <PlayerHand playerId="p1" view={playerView} />
-          <PlayerHand playerId="p2" view={playerView} />
+          <PlayerHand
+            legalActions={legalActions}
+            onAction={submitAction}
+            playerId="p1"
+            state={state}
+            view={playerView}
+          />
+          <PlayerHand
+            legalActions={legalActions}
+            onAction={submitAction}
+            playerId="p2"
+            state={state}
+            view={playerView}
+          />
         </div>
         <section className="panel logPanel" aria-label="Rules log">
           <div className="panelHeader">
