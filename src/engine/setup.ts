@@ -16,7 +16,17 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
       p1: {
         id: "p1",
         name: "Rampart Alliance",
-        hand: ["spell.magic_arrow", "stat.attack", "stat.power", "ability.archery"],
+        hand: [
+          "spell.magic_arrow",
+          "spell.bloodlust",
+          "spell.cure",
+          "spell.fortune",
+          "stat.attack",
+          "stat.power",
+          "ability.archery",
+          "ability.luck",
+          "war_machine.first_aid_tent"
+        ],
         discard: [],
         resources: {
           gold: 10,
@@ -24,7 +34,7 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
           valuables: 1
         },
         limits: {
-          hand: 4,
+          hand: 9,
           expertUses: 1
         },
         combatStats: {

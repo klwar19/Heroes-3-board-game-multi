@@ -18,6 +18,7 @@ export {
   expireEffectsForCombatRoundEnd,
   expireEffectsForTurnEnd,
   getActiveAttackBonus,
+  getAttackRerollEffects,
   makeActiveEffect
 } from "./active-effects";
 export {
@@ -88,6 +89,7 @@ export type {
   PlayerVisibleDeckState,
   PlayerVisiblePlayerState,
   PlayerVisibleState,
+  PendingChoice,
   ReactionWindow,
   ResolutionStackItem,
   ResourceCost,

@@ -1,8 +1,18 @@
+import type { EffectDurationDefinition, UnitType } from "@/engine/state";
+
 export type UnitAbilityEffectDefinition =
   | { type: "ALLOW_UNLIMITED_RETALIATION" }
   | { type: "IGNORE_RANGED_BACK_ROW_PENALTY" }
   | { type: "EXTRA_RANGED_DAMAGE_ON_LOW_ROLL"; maxRoll: number; amount: number }
-  | { type: "SPLASH_DAMAGE_ON_RANGED_HIT"; amount: number };
+  | { type: "SPLASH_DAMAGE_ON_RANGED_HIT"; amount: number }
+  | {
+      type: "ACTIVATION_ATTACK_BUFF";
+      amount: number;
+      targetTypes: UnitType[];
+      duration: EffectDurationDefinition;
+      endsActivation: boolean;
+      preventsMovement: boolean;
+    };
 
 export type UnitAbilityDefinition = {
   id: string;
@@ -39,6 +49,34 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Splash Damage",
     text: "After a ranged hit, deals 1 effect damage to adjacent enemy units around the defender.",
     effect: { type: "SPLASH_DAMAGE_ON_RANGED_HIT", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "ogres-attack-token-pack": {
+    id: "ogres-attack-token-pack",
+    name: "Ogre Attack Token",
+    text: "Place a +2 attack token on a chosen ground or flying unit for 2 combat rounds.",
+    effect: {
+      type: "ACTIVATION_ATTACK_BUFF",
+      amount: 2,
+      targetTypes: ["ground", "flying"],
+      duration: { type: "combat-rounds", rounds: 2 },
+      endsActivation: true,
+      preventsMovement: true
+    },
+    implementationStatus: "implemented"
+  },
+  "ogres-attack-token-few": {
+    id: "ogres-attack-token-few",
+    name: "Ogre Attack Token",
+    text: "Place a +1 attack token on a chosen ground or flying unit for 2 combat rounds.",
+    effect: {
+      type: "ACTIVATION_ATTACK_BUFF",
+      amount: 1,
+      targetTypes: ["ground", "flying"],
+      duration: { type: "combat-rounds", rounds: 2 },
+      endsActivation: true,
+      preventsMovement: true
+    },
     implementationStatus: "implemented"
   },
   "summon-demons": {
