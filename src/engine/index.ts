@@ -18,6 +18,7 @@ export {
   expireEffectsForCombatRoundEnd,
   expireEffectsForTurnEnd,
   getActiveAttackBonus,
+  getActiveDefenseBonus,
   getAttackRerollEffects,
   makeActiveEffect
 } from "./active-effects";
@@ -58,6 +59,8 @@ export type {
   ActiveEffectDefinition,
   ActiveEffectModifier,
   ActiveEffectState,
+  AbilityClass,
+  ArtifactTier,
   AttackRollMode,
   BuildingDefinition,
   BuildingEffectDefinition,
@@ -96,11 +99,15 @@ export type {
   ResourceKind,
   RulesError,
   SourceRef,
+  SpellLevel,
+  SpellSchool,
+  StatisticType,
   TargetRef,
   TownId,
   TownState,
   TriggerDefinition,
   TurnState,
+  UnitGrade,
   UnitType,
   UnitId
 } from "./state";

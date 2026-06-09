@@ -9,7 +9,9 @@ export const implementedCardEffectTypes = [
   "ADD_SPELL_POWER",
   "CREATE_ACTIVE_EFFECT",
   "CREATE_ATTACK_BUFF",
-  "CREATE_ATTACK_DIE_REROLL"
+  "CREATE_DEFENSE_BUFF",
+  "CREATE_ATTACK_DIE_REROLL",
+  "RECALL_SPELL"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {
@@ -112,6 +114,17 @@ export function describeCardEffect(card: CardDefinition): string {
     return `${card.effect.name} +${card.effect.amount ?? 0} attack`;
   }
 
+  if (card.effect.type === "CREATE_DEFENSE_BUFF") {
+    if (card.effect.amountByPower) {
+      const breakpoints = Object.entries(card.effect.amountByPower)
+        .map(([power, amount]) => `${power}:+${amount}`)
+        .join(", ");
+      return `${card.effect.name} defense by power (${breakpoints})`;
+    }
+
+    return `${card.effect.name} +${card.effect.amount ?? 0} defense`;
+  }
+
   if (card.effect.type === "CREATE_ATTACK_DIE_REROLL") {
     const expert = card.effect.expertRerolls ? `, expert ${card.effect.expertRerolls} attack reroll` : "";
     if (card.effect.rerollsByPower) {
@@ -122,6 +135,13 @@ export function describeCardEffect(card: CardDefinition): string {
     }
 
     return `${card.effect.name} ${card.effect.basicRerolls} attack reroll${expert}`;
+  }
+
+  if (card.effect.type === "RECALL_SPELL") {
+    const expert = card.effect.expertSpellLimitBonus
+      ? `, expert spell limit +${card.effect.expertSpellLimitBonus}`
+      : "";
+    return `return cast spell to hand${expert}`;
   }
 
   return card.kind;

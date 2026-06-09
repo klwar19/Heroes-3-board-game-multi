@@ -30,8 +30,14 @@ export type SourceRef =
 
 export type DamageKind = "attack" | "spell" | "effect";
 export type UnitType = "ground" | "ranged" | "flying";
+export type UnitGrade = "bronze" | "silver" | "gold";
 export type CombatStat = "attack" | "defense" | "power";
 export type CardPlayMode = "basic" | "expert";
+export type SpellLevel = "basic" | "expert";
+export type SpellSchool = "air" | "earth" | "fire" | "water" | "any";
+export type ArtifactTier = "minor" | "major" | "relic";
+export type StatisticType = "attack" | "defense" | "power" | "knowledge";
+export type AbilityClass = "might" | "magic" | "economy" | "adventure" | "combat";
 export type AttackRollMode = "normal" | "advantage" | "disadvantage";
 export type ResourceKind = "gold" | "buildingMaterials" | "valuables";
 export type ResourceCost = Partial<Record<ResourceKind, number>>;
@@ -54,6 +60,10 @@ export type EffectDurationDefinition =
 export type ActiveEffectModifier =
   | {
       type: "ATTACK_BONUS";
+      amount: number;
+    }
+  | {
+      type: "DEFENSE_BONUS";
       amount: number;
     }
   | {
@@ -123,6 +133,15 @@ export type EffectDefinition =
       removable?: boolean;
     }
   | {
+      type: "CREATE_DEFENSE_BUFF";
+      name: string;
+      amount?: number;
+      amountByPower?: Record<number, number>;
+      duration: EffectDurationDefinition;
+      polarity?: "positive" | "negative" | "neutral";
+      removable?: boolean;
+    }
+  | {
       type: "CREATE_ATTACK_DIE_REROLL";
       name: string;
       basicRerolls: number;
@@ -130,6 +149,10 @@ export type EffectDefinition =
       rerollsByPower?: Record<number, number>;
       duration: EffectDurationDefinition;
       consumeEffectOnUse: boolean;
+    }
+  | {
+      type: "RECALL_SPELL";
+      expertSpellLimitBonus?: number;
     };
 
 export type TriggerDefinition = {
@@ -141,8 +164,13 @@ export type CardDefinition = {
   id: CardId;
   name: string;
   kind: "spell" | "ability" | "artifact" | "hero-specialty" | "ai" | "unit" | "statistic" | "war-machine";
-  timing: "action" | "instant" | "reaction" | "passive" | "map" | "combat" | "town";
+  timing: "action" | "instant" | "reaction" | "ongoing" | "passive" | "map" | "combat" | "town";
   phaseLimit?: GamePhase[];
+  spellLevel?: SpellLevel;
+  spellSchools?: SpellSchool[];
+  artifactTier?: ArtifactTier;
+  statisticType?: StatisticType;
+  abilityClass?: AbilityClass;
   tags: string[];
   power?: number;
   trigger?: TriggerDefinition;
@@ -539,6 +567,7 @@ export type CombatUnitState = {
   name: string;
   cardName: string;
   variant: "few" | "pack" | "neutral";
+  grade: UnitGrade;
   type: UnitType;
   attack: number;
   defense: number;

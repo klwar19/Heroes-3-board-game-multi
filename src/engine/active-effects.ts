@@ -101,6 +101,25 @@ export function getActiveAttackBonus(state: GameState, context: AttackContext): 
   }, 0);
 }
 
+export function getActiveDefenseBonus(state: GameState, unit: CombatUnitState): number {
+  return state.activeEffects.reduce((total, effect) => {
+    if (!effectAppliesToUnit(effect, unit)) {
+      return total;
+    }
+
+    return (
+      total +
+      effect.modifiers.reduce((modifierTotal, modifier) => {
+        if (modifier.type !== "DEFENSE_BONUS") {
+          return modifierTotal;
+        }
+
+        return modifierTotal + modifier.amount;
+      }, 0)
+    );
+  }, 0);
+}
+
 export function getAttackRerollEffects(state: GameState, context: AttackContext): ActiveEffectState[] {
   return state.activeEffects.filter((effect) => {
     if (!effectAppliesToUnit(effect, context.attacker)) {

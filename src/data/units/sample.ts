@@ -7,6 +7,7 @@ export const sampleCombatUnits: Record<string, CombatUnitState> = {
     name: "Griffins",
     cardName: "Pack of Griffins",
     variant: "pack",
+    grade: "bronze",
     type: "flying",
     attack: 3,
     defense: 0,
@@ -31,6 +32,7 @@ export const sampleCombatUnits: Record<string, CombatUnitState> = {
     name: "Elves",
     cardName: "Pack of Elves",
     variant: "pack",
+    grade: "bronze",
     type: "ranged",
     attack: 3,
     defense: 1,
@@ -55,6 +57,7 @@ export const sampleCombatUnits: Record<string, CombatUnitState> = {
     name: "Pit Lords",
     cardName: "Pack of Pit Lords",
     variant: "pack",
+    grade: "silver",
     type: "ground",
     attack: 5,
     defense: 1,
@@ -79,6 +82,7 @@ export const sampleCombatUnits: Record<string, CombatUnitState> = {
     name: "Magogs",
     cardName: "Pack of Magogs",
     variant: "pack",
+    grade: "bronze",
     type: "ranged",
     attack: 2,
     defense: 0,
@@ -95,6 +99,31 @@ export const sampleCombatUnits: Record<string, CombatUnitState> = {
       cardImage: "https://en.homm3bg.wiki/assets/units-inferno-bronze-magogs-pack.webp",
       imageAlt: "Pack of Magogs unit card",
       wikiUrl: "https://en.homm3bg.wiki/units/magogs/"
+    }
+  },
+  unit_p2_dread_knights: {
+    id: "unit_p2_dread_knights",
+    controllerId: "p2",
+    name: "Dread Knights",
+    cardName: "Few Dread Knights",
+    variant: "few",
+    grade: "gold",
+    type: "ground",
+    attack: 5,
+    defense: 2,
+    maxHealth: 6,
+    damage: 6,
+    initiative: 5,
+    position: 19,
+    activatedThisRound: false,
+    movedThisActivation: false,
+    retaliatedThisRound: false,
+    defenseToken: false,
+    abilities: [],
+    assets: {
+      cardImage: "https://en.homm3bg.wiki/assets/units-necropolis-golden-dread_knights-few.webp",
+      imageAlt: "Few Dread Knights unit card",
+      wikiUrl: "https://en.homm3bg.wiki/units/dread_knights/"
     }
   }
 };

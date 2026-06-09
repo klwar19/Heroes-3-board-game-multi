@@ -18,13 +18,20 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
         name: "Rampart Alliance",
         hand: [
           "spell.magic_arrow",
+          "spell.lightning_bolt",
+          "spell.stone_skin",
           "spell.bloodlust",
           "spell.cure",
           "spell.fortune",
           "stat.attack",
           "stat.power",
+          "stat.knowledge",
           "ability.archery",
+          "ability.offense",
           "ability.luck",
+          "artifact.centaurs_axe",
+          "artifact.ogres_club_of_havoc",
+          "artifact.titans_gladius",
           "war_machine.first_aid_tent"
         ],
         discard: [],
@@ -34,7 +41,7 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
           valuables: 1
         },
         limits: {
-          hand: 9,
+          hand: 15,
           expertUses: 1
         },
         combatStats: {
@@ -46,7 +53,7 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
       p2: {
         id: "p2",
         name: "Inferno Warband",
-        hand: ["ability.resistance", "stat.defense", "stat.attack"],
+        hand: ["ability.resistance", "stat.defense", "stat.attack", "artifact.buckler_of_the_gnoll_king"],
         discard: [],
         resources: {
           gold: 10,
@@ -54,7 +61,7 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
           valuables: 1
         },
         limits: {
-          hand: 4,
+          hand: 5,
           expertUses: 1
         },
         combatStats: {

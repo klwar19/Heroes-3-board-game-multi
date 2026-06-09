@@ -424,7 +424,7 @@ function addPlayableCardActions(
       continue;
     }
 
-    if (card.timing !== "combat" && card.timing !== "instant" && card.timing !== "action") {
+    if (card.timing !== "combat" && card.timing !== "instant" && card.timing !== "ongoing" && card.timing !== "action") {
       continue;
     }
 
@@ -843,6 +843,10 @@ function getExpertAmount(effect: CardLibrary[string]["effect"]): number | null {
     return effect.expertEffect ? 0 : null;
   }
 
+  if (effect.type === "RECALL_SPELL") {
+    return effect.expertSpellLimitBonus ? 0 : null;
+  }
+
   return null;
 }
 
@@ -883,6 +887,10 @@ function isCardEffectLegalForTrigger(
       }
 
       return true;
+    }
+
+    if (card.effect.type === "RECALL_SPELL") {
+      return triggerEvent.playerId === playerId;
     }
 
     return false;
