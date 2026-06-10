@@ -628,6 +628,129 @@ describe("rules engine prototype", () => {
     });
   });
 
+  it("stacks Crusader-style ability rerolls with Luck and always spends Luck last", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.activeEffects.push({
+      id: "effect_luck",
+      name: "Luck",
+      scope: "player",
+      duration: { type: "current-turn" },
+      polarity: "positive",
+      removable: false,
+      modifiers: [{ type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: false }],
+      source: { type: "system" },
+      controllerId: "p1",
+      startedRound: state.round,
+      startedCombatRound: state.combat.round,
+      usedRollEventIds: [],
+      usedChoiceIds: [],
+      usedCombatRoundNumbers: []
+    });
+    state.combat.units.unit_p1_griffins.activatedThisRound = true;
+    setActiveUnit(state, "p1", "unit_p1_crusaders");
+    scriptDice(state, [-1, 0, 1]);
+
+    const moved = applyOk(state, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_crusaders",
+      destination: 10
+    });
+    const pending = applyOk(moved, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_crusaders",
+      defenderId: "unit_p2_pit_lords"
+    });
+
+    // Ability + Luck stack to two optional rerolls; Luck is queued last.
+    expect(pending.pendingChoice).toMatchObject({
+      type: "ATTACK_DIE_REROLL",
+      remainingRerolls: 2,
+      rerollSources: [
+        { name: "Attack Reroll", remaining: 1 },
+        { name: "Luck", effectId: "effect_luck", remaining: 1 }
+      ]
+    });
+
+    const firstReroll = applyOk(pending, {
+      type: "REROLL_PENDING_CHOICE",
+      playerId: "p1",
+      choiceId: pending.pendingChoice?.id ?? ""
+    });
+    expect(findEvent(firstReroll, "ATTACK_REROLLED")).toMatchObject({
+      sourceName: "Attack Reroll",
+      remainingRerolls: 1
+    });
+
+    const secondReroll = applyOk(firstReroll, {
+      type: "REROLL_PENDING_CHOICE",
+      playerId: "p1",
+      choiceId: firstReroll.pendingChoice?.id ?? ""
+    });
+    const rerollEvents = secondReroll.eventLog.filter((event) => event.type === "ATTACK_REROLLED");
+    expect(rerollEvents.at(-1)).toMatchObject({
+      sourceName: "Luck",
+      remainingRerolls: 0
+    });
+
+    const resolved = applyOk(secondReroll, {
+      type: "CHOOSE_PENDING_ROLL",
+      playerId: "p1",
+      choiceId: secondReroll.pendingChoice?.id ?? "",
+      candidateIndex: 2
+    });
+    expect(resolved.pendingChoice).toBeNull();
+    // Luck is not consumed on use; it stays active for later attacks this turn.
+    expect(resolved.activeEffects.map((effect) => effect.name)).toContain("Luck");
+    expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({ roll: 1 });
+  });
+
+  it("keeps one-shot reroll effects like Fortune when the player declines to reroll", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = ["spell.fortune"];
+    state.players.p2.hand = [];
+    scriptDice(state, [1]);
+
+    const fortune = applyOk(state, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.fortune",
+      target: { type: "none" }
+    });
+    const moved = applyOk(fortune, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+      destination: 10
+    });
+    const pending = applyOk(moved, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_pit_lords"
+    });
+    expect(pending.pendingChoice?.type).toBe("ATTACK_DIE_REROLL");
+
+    // Rerolling is optional: keeping the original roll spends nothing.
+    const resolved = applyOk(pending, {
+      type: "CHOOSE_PENDING_ROLL",
+      playerId: "p1",
+      choiceId: pending.pendingChoice?.id ?? "",
+      candidateIndex: 0
+    });
+    expect(resolved.pendingChoice).toBeNull();
+    expect(resolved.activeEffects.map((effect) => effect.name)).toContain("Fortune");
+  });
+
   it("lets Cure heal damage and remove represented negative unit effects", () => {
     const state = createInitialGameState();
     if (!state.combat) {
@@ -1176,8 +1299,9 @@ describe("rules engine prototype", () => {
     });
     expect(overspent.errors[0]?.message).toContain("crowns");
 
-    // Both copies as basic plays stack fine in one declaration.
-    const doublePower = applyOk(casted, {
+    // Spell power may only be buffed one time per cast, so a second copy in
+    // the same declaration is rejected.
+    const doublePower = applyAction(casted, {
       type: "PLAY_REACTIONS",
       playerId: "p1",
       plays: [
@@ -1185,7 +1309,15 @@ describe("rules engine prototype", () => {
         { cardId: "stat.power", mode: "basic" }
       ]
     });
-    expect(doublePower.stack.at(-1)?.modifiers.spellPowerBonus).toBe(2);
+    expect(doublePower.errors[0]?.message).toContain("once per spell");
+
+    // A single copy still applies.
+    const singlePower = applyOk(casted, {
+      type: "PLAY_REACTIONS",
+      playerId: "p1",
+      plays: [{ cardId: "stat.power", mode: "basic" }]
+    });
+    expect(singlePower.stack.at(-1)?.modifiers.spellPowerBonus).toBe(1);
 
     const p1Passed = passPriority(casted);
     const sneakyCancel = applyAction(p1Passed, {

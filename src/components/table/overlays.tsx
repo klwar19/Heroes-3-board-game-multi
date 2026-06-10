@@ -514,6 +514,7 @@ export function RerollModal({
 
   const chooseActions = legalActions.filter((legal) => legal.action.type === "CHOOSE_PENDING_ROLL");
   const rerollAction = legalActions.find((legal) => legal.action.type === "REROLL_PENDING_CHOICE");
+  const nextRerollSource = choice.rerollSources.find((source) => source.remaining > 0);
 
   return (
     <div className="modalBackdrop" role="dialog" aria-label="Reroll choice">
@@ -547,7 +548,9 @@ export function RerollModal({
           {rerollAction ? (
             <button className="rerollDie again" onClick={() => onAction(rerollAction.action)} type="button">
               <Dices aria-hidden="true" size={22} />
-              <span>Reroll ({choice.remainingRerolls} left)</span>
+              <span>
+                Reroll{nextRerollSource ? ` with ${nextRerollSource.name}` : ""} ({choice.remainingRerolls} left)
+              </span>
             </button>
           ) : null}
         </div>
