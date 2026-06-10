@@ -828,8 +828,9 @@ export function getLegalActions(
     }));
 
     if (state.pendingChoice.remainingRerolls > 0) {
+      const nextSource = state.pendingChoice.rerollSources.find((source) => source.remaining > 0);
       actions.push({
-        label: "Reroll attack die",
+        label: nextSource ? `Reroll attack die (${nextSource.name})` : "Reroll attack die",
         action: {
           type: "REROLL_PENDING_CHOICE",
           playerId,
@@ -1062,7 +1063,10 @@ export function isEffectLegalForTrigger(
 
   if (triggerEvent.type === "SPELL_CAST_STARTED") {
     if (effect.type === "ADD_SPELL_POWER") {
-      return triggerEvent.playerId === playerId;
+      // Spell power may only be buffed one time per cast, unlike attack and
+      // defense buffs that can keep going back and forth between players.
+      const stackItem = getPendingStackItem(state, triggerEvent);
+      return triggerEvent.playerId === playerId && (stackItem?.modifiers.spellPowerBonus ?? 0) === 0;
     }
 
     if (effect.type === "CANCEL_SPELL") {

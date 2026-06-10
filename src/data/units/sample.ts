@@ -51,6 +51,31 @@ export const sampleCombatUnits: Record<string, CombatUnitState> = {
       wikiUrl: "https://en.homm3bg.wiki/units/elves/"
     }
   },
+  unit_p1_crusaders: {
+    id: "unit_p1_crusaders",
+    controllerId: "p1",
+    name: "Crusaders",
+    cardName: "Pack of Crusaders",
+    variant: "pack",
+    grade: "silver",
+    type: "ground",
+    attack: 4,
+    defense: 1,
+    maxHealth: 5,
+    damage: 0,
+    initiative: 6,
+    position: 6,
+    activatedThisRound: false,
+    movedThisActivation: false,
+    retaliatedThisRound: false,
+    defenseToken: false,
+    abilities: ["attack-die-reroll"],
+    assets: {
+      cardImage: "https://en.homm3bg.wiki/assets/units-castle-silver-crusaders-pack.webp",
+      imageAlt: "Pack of Crusaders unit card",
+      wikiUrl: "https://en.homm3bg.wiki/units/crusaders/"
+    }
+  },
   unit_p2_pit_lords: {
     id: "unit_p2_pit_lords",
     controllerId: "p2",

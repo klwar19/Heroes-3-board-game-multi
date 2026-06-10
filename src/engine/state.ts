@@ -359,6 +359,7 @@ export type GameEvent =
       rolls: number[];
       roll: number;
       remainingRerolls: number;
+      sourceName: string;
     }
   | {
       id: string;
@@ -738,6 +739,15 @@ export type AttackRollCandidate = {
   roll: number;
 };
 
+export type AttackRerollSource = {
+  /** Display name shown to the player (unit ability, Fortune, Luck, …). */
+  name: string;
+  /** Backing active effect; unit-ability rerolls have none. */
+  effectId?: string;
+  remaining: number;
+  used: number;
+};
+
 export type PendingChoice =
   | {
       id: string;
@@ -753,6 +763,8 @@ export type PendingChoice =
       defenseBonus: number;
       candidates: AttackRollCandidate[];
       remainingRerolls: number;
+      /** Reroll pools in spend order — Luck is always sorted last. */
+      rerollSources: AttackRerollSource[];
       sourceEffectIds: string[];
     }
   | {

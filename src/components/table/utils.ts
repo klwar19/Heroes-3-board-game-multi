@@ -111,7 +111,7 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "PENDING_CHOICE_CREATED":
       return event.message;
     case "ATTACK_REROLLED":
-      return `${playerName(state, event.playerId)} rerolls -> ${formatDieFace(event.roll)}.`;
+      return `${playerName(state, event.playerId)} rerolls with ${event.sourceName} -> ${formatDieFace(event.roll)}.`;
     case "PENDING_CHOICE_RESOLVED":
       return `${playerName(state, event.playerId)} keeps roll option ${event.selectedIndex + 1}.`;
     case "RETALIATION_ATTACKED":

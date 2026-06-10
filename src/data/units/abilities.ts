@@ -5,6 +5,7 @@ export type UnitAbilityEffectDefinition =
   | { type: "IGNORE_RANGED_BACK_ROW_PENALTY" }
   | { type: "EXTRA_RANGED_DAMAGE_ON_LOW_ROLL"; maxRoll: number; amount: number }
   | { type: "SPLASH_DAMAGE_ON_RANGED_HIT"; amount: number }
+  | { type: "ATTACK_DIE_REROLL"; rerollsPerAttack: number }
   | {
       type: "ACTIVATION_ATTACK_BUFF";
       amount: number;
@@ -77,6 +78,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
       endsActivation: true,
       preventsMovement: true
     },
+    implementationStatus: "implemented"
+  },
+  "attack-die-reroll": {
+    id: "attack-die-reroll",
+    name: "Attack Reroll",
+    text: "May reroll its attack die once per attack. Stacks with Luck and other rerolls; Luck is always spent last.",
+    effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1 },
     implementationStatus: "implemented"
   },
   "summon-demons": {

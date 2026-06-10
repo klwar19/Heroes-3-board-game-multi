@@ -28,10 +28,16 @@ import {
   isAdjacent,
   isUnitAlive
 } from "./legal-actions";
-import { getPostAttackAbilityDamageEffects, getUnitAbilityDefinitions, hasUnitAbilityEffect } from "./unit-abilities";
+import {
+  getPostAttackAbilityDamageEffects,
+  getUnitAbilityDefinitions,
+  getUnitAttackRerollSources,
+  hasUnitAbilityEffect
+} from "./unit-abilities";
 import type {
   ActiveEffectDefinition,
   ActiveEffectState,
+  AttackRerollSource,
   AttackRollCandidate,
   AttackRollMode,
   BuildingLibrary,
@@ -818,14 +824,40 @@ function getAttackStackDetails(
   };
 }
 
-function getRerollUsesForEffects(effects: ActiveEffectState[]): number {
-  return effects.reduce((total, effect) => {
-    const bestModifier = effect.modifiers
-      .filter((modifier) => modifier.type === "ATTACK_DIE_REROLL")
-      .reduce((best, modifier) => Math.max(best, modifier.maxUsesPerRoll), 0);
+function getRerollUsesForEffect(effect: ActiveEffectState): number {
+  return effect.modifiers
+    .filter((modifier) => modifier.type === "ATTACK_DIE_REROLL")
+    .reduce((best, modifier) => Math.max(best, modifier.maxUsesPerRoll), 0);
+}
 
-    return Math.max(total, bestModifier);
-  }, 0);
+/**
+ * Builds the spend-ordered reroll pools for one attack roll. Rerolls from
+ * different sources stack: unit abilities (e.g. Crusaders) are spent first,
+ * then one-shot effects like Fortune, and Luck is always spent last.
+ */
+function buildRerollSources(
+  attacker: CombatUnitState,
+  rerollEffects: ActiveEffectState[]
+): AttackRerollSource[] {
+  const abilitySources: AttackRerollSource[] = getUnitAttackRerollSources(attacker).map((source) => ({
+    name: source.name,
+    remaining: source.rerolls,
+    used: 0
+  }));
+
+  const orderedEffects = [...rerollEffects].sort(
+    (left, right) => Number(left.name === "Luck") - Number(right.name === "Luck")
+  );
+
+  return [
+    ...abilitySources,
+    ...orderedEffects.map((effect) => ({
+      name: effect.name,
+      effectId: effect.id,
+      remaining: getRerollUsesForEffect(effect),
+      used: 0
+    }))
+  ].filter((source) => source.remaining > 0);
 }
 
 function openAttackRerollChoice(
@@ -833,11 +865,11 @@ function openAttackRerollChoice(
   stackItem: ResolutionStackItem,
   details: NonNullable<ReturnType<typeof getAttackStackDetails>>,
   candidate: AttackRollCandidate,
-  rerollEffects: ActiveEffectState[]
+  rerollSources: AttackRerollSource[]
 ): void {
   const choiceId = `choice_${state.eventLog.length + 1}`;
-  const remainingRerolls = getRerollUsesForEffects(rerollEffects);
-  const sourceEffectIds = rerollEffects.map((effect) => effect.id);
+  const remainingRerolls = rerollSources.reduce((total, source) => total + source.remaining, 0);
+  const sourceEffectIds = rerollSources.flatMap((source) => (source.effectId ? [source.effectId] : []));
 
   state.pendingChoice = {
     id: choiceId,
@@ -853,6 +885,7 @@ function openAttackRerollChoice(
     defenseBonus: details.defenseBonus,
     candidates: [candidate],
     remainingRerolls,
+    rerollSources,
     sourceEffectIds
   };
   state.phase = "choice";
@@ -873,19 +906,27 @@ function closePendingChoice(
   choice: Extract<NonNullable<PendingChoice>, { type: "ATTACK_DIE_REROLL" }>,
   selectedIndex: number
 ): void {
-  for (const effectId of choice.sourceEffectIds) {
+  // Rerolling is optional: only the sources actually spent are marked used,
+  // so declining a reroll keeps one-shot effects like Fortune available.
+  const usedEffectIds = new Set(
+    choice.rerollSources
+      .filter((source) => source.used > 0 && source.effectId)
+      .map((source) => source.effectId as string)
+  );
+
+  for (const effectId of usedEffectIds) {
     const effect = state.activeEffects.find((candidate) => candidate.id === effectId);
     if (!effect) {
       continue;
     }
 
-    effect.usedChoiceIds.push(choice.id);
+    effect.usedChoiceIds.push(choice.id, choice.stackItemId);
     effect.usedRollEventIds.push(choice.id);
   }
 
   const consumedEffectIds = new Set(
     state.activeEffects
-      .filter((effect) => choice.sourceEffectIds.includes(effect.id))
+      .filter((effect) => usedEffectIds.has(effect.id))
       .filter((effect) =>
         effect.modifiers.some(
           (modifier) => modifier.type === "ATTACK_DIE_REROLL" && modifier.consumeEffectOnUse
@@ -1166,9 +1207,10 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     defender: details.defender,
     attackKind: details.attackKind
   }).filter((effect) => !effect.usedChoiceIds.includes(stackItem.id));
+  const rerollSources = buildRerollSources(details.attacker, rerollEffects);
 
-  if (rerollEffects.length > 0) {
-    openAttackRerollChoice(state, stackItem, details, candidate, rerollEffects);
+  if (rerollSources.length > 0) {
+    openAttackRerollChoice(state, stackItem, details, candidate, rerollSources);
     return;
   }
 
@@ -1462,6 +1504,16 @@ function applyReactionPlayCore(
     getCurrentSpellPower(stackItem, cards) > effect.maxPower
   ) {
     throw new Error(`${card.name} cannot end a spell above power ${effect.maxPower}.`);
+  }
+
+  // Spell power can only be buffed once per cast; attack/defense buffs may
+  // keep ping-ponging between players instead.
+  if (
+    effect.type === "ADD_SPELL_POWER" &&
+    stackItem?.action.type === "CAST_SPELL" &&
+    stackItem.modifiers.spellPowerBonus > 0
+  ) {
+    throw new Error("Spell power may only be increased once per spell.");
   }
 
   const moveError = moveCardFromHandToDiscard(state, playerId, play.cardId);
@@ -1837,13 +1889,16 @@ function rerollPendingChoice(
     throw new Error("That pending choice cannot be rerolled.");
   }
 
-  if (choice.remainingRerolls <= 0) {
+  const source = choice.rerollSources.find((candidate) => candidate.remaining > 0);
+  if (choice.remainingRerolls <= 0 || !source) {
     throw new Error("No rerolls remain for that choice.");
   }
 
   const candidate = rollAttackCandidate(combat, choice.rollMode);
   choice.candidates.push(candidate);
   choice.remainingRerolls -= 1;
+  source.remaining -= 1;
+  source.used += 1;
 
   appendEvent(state, {
     type: "ATTACK_REROLLED",
@@ -1851,7 +1906,8 @@ function rerollPendingChoice(
     playerId: action.playerId,
     rolls: candidate.rolls,
     roll: candidate.roll,
-    remainingRerolls: choice.remainingRerolls
+    remainingRerolls: choice.remainingRerolls,
+    sourceName: source.name
   });
 
   state.phase = "choice";

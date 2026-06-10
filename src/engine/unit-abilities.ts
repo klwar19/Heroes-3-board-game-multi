@@ -54,6 +54,14 @@ function getAbilitiesWithEffect(
   );
 }
 
+export function getUnitAttackRerollSources(unit: CombatUnitState): { name: string; rerolls: number }[] {
+  return getAbilitiesWithEffect(unit, "ATTACK_DIE_REROLL").flatMap((ability) =>
+    ability.effect?.type === "ATTACK_DIE_REROLL" && ability.effect.rerollsPerAttack > 0
+      ? [{ name: ability.name, rerolls: ability.effect.rerollsPerAttack }]
+      : []
+  );
+}
+
 export function getPostAttackAbilityDamageEffects(
   combat: CombatState,
   context: PostAttackContext
