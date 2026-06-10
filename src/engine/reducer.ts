@@ -12,7 +12,8 @@ import {
   makeActiveEffect
 } from "./active-effects";
 import { appendEvent } from "./events";
-import { getCardEffectAmount, getSpellDamageAmount } from "./effects";
+import { drawCardsForPlayer, isSharedDeckId } from "./decks";
+import { getEffectAmount, getEffectiveCardEffect, getSpellDamageAmount } from "./effects";
 import {
   canUnitAttack,
   canUnitMoveAndAttack,
@@ -78,19 +79,23 @@ function fail(state: GameState, error: RulesError): EngineResult {
 }
 
 function normalizeActionForMatch(action: GameAction): GameAction {
-  if (action.type === "PLAY_REACTION" && !action.mode) {
+  if (action.type === "PLAY_REACTION") {
     return {
-      ...action,
-      mode: "basic"
+      type: "PLAY_REACTION",
+      playerId: action.playerId,
+      cardId: action.cardId,
+      mode: action.mode ?? "basic",
+      ...(action.optionIndex !== undefined ? { optionIndex: action.optionIndex } : {})
     };
   }
 
-  if (action.type === "PLAY_CARD" && !action.mode) {
+  if (action.type === "PLAY_CARD") {
     return {
       type: "PLAY_CARD",
       playerId: action.playerId,
       cardId: action.cardId,
-      mode: "basic",
+      mode: action.mode ?? "basic",
+      ...(action.optionIndex !== undefined ? { optionIndex: action.optionIndex } : {}),
       ...(action.target ? { target: action.target } : {})
     };
   }
@@ -108,6 +113,10 @@ function assertLegal(
   cards: CardLibrary,
   buildings: BuildingLibrary
 ): RulesError | null {
+  if (action.type === "PLAY_REACTIONS") {
+    return assertBatchReactionLegal(state, action, cards, buildings);
+  }
+
   const legalActions = getLegalActions(state, action.playerId, cards, buildings);
   const isLegal = legalActions.some((legal) => actionsMatch(legal.action, action));
 
@@ -126,6 +135,94 @@ function assertLegal(
     code: "ACTION_NOT_LEGAL",
     message: "That action is not legal in the current game state."
   };
+}
+
+/**
+ * Batched instants resolve as one declaration, so legality is checked against
+ * the single-card reactions currently on offer: every play must be available,
+ * card copies and crowns must cover the batch, and window-ending effects
+ * (spell cancel/recall) must be played alone.
+ */
+function assertBatchReactionLegal(
+  state: GameState,
+  action: Extract<GameAction, { type: "PLAY_REACTIONS" }>,
+  cards: CardLibrary,
+  buildings: BuildingLibrary
+): RulesError | null {
+  if (!state.reactionWindow) {
+    return { code: "NO_REACTION_WINDOW", message: "No reaction window is open." };
+  }
+
+  if (state.reactionWindow.priorityPlayerId !== action.playerId) {
+    return {
+      code: "NOT_PRIORITY_PLAYER",
+      message: "Only the priority player can act during the current reaction window."
+    };
+  }
+
+  if (action.plays.length === 0) {
+    return { code: "ACTION_NOT_LEGAL", message: "A reaction batch needs at least one card." };
+  }
+
+  const legalActions = getLegalActions(state, action.playerId, cards, buildings);
+  const player = state.players[action.playerId];
+  const handCounts = new Map<string, number>();
+  for (const cardId of player?.hand ?? []) {
+    handCounts.set(cardId, (handCounts.get(cardId) ?? 0) + 1);
+  }
+
+  let expertUsesNeeded = 0;
+
+  for (const play of action.plays) {
+    const singleAction: GameAction = {
+      type: "PLAY_REACTION",
+      playerId: action.playerId,
+      cardId: play.cardId,
+      mode: play.mode ?? "basic",
+      ...(play.optionIndex !== undefined ? { optionIndex: play.optionIndex } : {})
+    };
+
+    if (!legalActions.some((legal) => actionsMatch(legal.action, singleAction))) {
+      return {
+        code: "ACTION_NOT_LEGAL",
+        message: `${cards[play.cardId]?.name ?? play.cardId} is not a legal reaction right now.`
+      };
+    }
+
+    const card = cards[play.cardId];
+    const effect = card ? getEffectiveCardEffect(card, play.optionIndex) : null;
+    if (!effect || effect.type === "CANCEL_SPELL" || effect.type === "RECALL_SPELL") {
+      return {
+        code: "ACTION_NOT_LEGAL",
+        message: "Spell-ending and recall cards must be played on their own."
+      };
+    }
+
+    const copiesLeft = handCounts.get(play.cardId) ?? 0;
+    if (copiesLeft <= 0) {
+      return {
+        code: "CARD_NOT_IN_HAND",
+        message: `Not enough copies of ${card?.name ?? play.cardId} in hand for that batch.`
+      };
+    }
+    handCounts.set(play.cardId, copiesLeft - 1);
+
+    if ((play.mode ?? "basic") === "expert") {
+      expertUsesNeeded += 1;
+    }
+  }
+
+  const expertUsesAvailable = player
+    ? player.limits.expertUses - player.combatStats.expertUsesSpentThisRound
+    : 0;
+  if (expertUsesNeeded > expertUsesAvailable) {
+    return {
+      code: "ACTION_NOT_LEGAL",
+      message: "Not enough crowns for that many expert plays this combat round."
+    };
+  }
+
+  return null;
 }
 
 function moveCardFromHandToDiscard(state: GameState, playerId: PlayerId, cardId: string): RulesError | null {
@@ -771,7 +868,11 @@ function openAttackRerollChoice(
   });
 }
 
-function closePendingChoice(state: GameState, choice: NonNullable<PendingChoice>, selectedIndex: number): void {
+function closePendingChoice(
+  state: GameState,
+  choice: Extract<NonNullable<PendingChoice>, { type: "ATTACK_DIE_REROLL" }>,
+  selectedIndex: number
+): void {
   for (const effectId of choice.sourceEffectIds) {
     const effect = state.activeEffects.find((candidate) => candidate.id === effectId);
     if (!effect) {
@@ -1177,6 +1278,10 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       );
     }
 
+    if (card?.effect.type === "DRAW_CARDS") {
+      drawCardsForPlayer(state, stackItem.action.playerId, getEffectAmount(card.effect, "basic"));
+    }
+
     appendEvent(state, {
       type: "SPELL_CAST_RESOLVED",
       playerId: stackItem.action.playerId,
@@ -1289,102 +1394,150 @@ function passReaction(state: GameState, action: Extract<GameAction, { type: "PAS
   state.priorityPlayerId = remainingPlayers[0];
 }
 
-function playReaction(
+function effectSupportsExpertPlay(effect: NonNullable<ReturnType<typeof getEffectiveCardEffect>>): boolean {
+  if (effect.type === "ADD_COMBAT_STAT" || effect.type === "ADD_SPELL_POWER" || effect.type === "DRAW_CARDS") {
+    return effect.expertAmount !== undefined;
+  }
+
+  if (effect.type === "CREATE_ACTIVE_EFFECT") {
+    return Boolean(effect.expertEffect);
+  }
+
+  if (effect.type === "RECALL_SPELL") {
+    return Boolean(effect.expertSpellLimitBonus);
+  }
+
+  if (effect.type === "CANCEL_SPELL") {
+    return Boolean(effect.expertIgnoresMaxPower);
+  }
+
+  return false;
+}
+
+/**
+ * Applies one instant card inside the open reaction window: pays costs,
+ * discards the card, and applies the effect to the pending stack item.
+ * Returns whether the play ended the window (spell-cancel).
+ */
+function applyReactionPlayCore(
   state: GameState,
-  action: Extract<GameAction, { type: "PLAY_REACTION" }>,
+  playerId: PlayerId,
+  play: { cardId: string; mode?: "basic" | "expert"; optionIndex?: number },
   cards: CardLibrary
-): void {
+): { windowEnded: boolean } {
   if (!state.reactionWindow) {
     throw new Error("No reaction window is open.");
   }
 
-  const card = cards[action.cardId];
+  const card = cards[play.cardId];
   if (!card) {
-    throw new Error(`Unknown reaction card ${action.cardId}.`);
+    throw new Error(`Unknown reaction card ${play.cardId}.`);
   }
 
-  const mode = action.mode ?? "basic";
+  const effect = getEffectiveCardEffect(card, play.optionIndex);
+  if (!effect) {
+    throw new Error(`${card.name} needs a chosen option.`);
+  }
+
+  const mode = play.mode ?? "basic";
   if (mode === "expert") {
-    if (
-      (card.effect.type !== "ADD_COMBAT_STAT" && card.effect.type !== "ADD_SPELL_POWER") ||
-      ("expertAmount" in card.effect && card.effect.expertAmount === undefined)
-    ) {
-      if (
-        (card.effect.type !== "CREATE_ACTIVE_EFFECT" || !card.effect.expertEffect) &&
-        (card.effect.type !== "RECALL_SPELL" || !card.effect.expertSpellLimitBonus)
-      ) {
-        throw new Error(`${card.name} does not have an expert effect.`);
-      }
+    if (!effectSupportsExpertPlay(effect)) {
+      throw new Error(`${card.name} does not have an expert effect.`);
     }
 
-    if (!hasExpertUseAvailable(state, action.playerId)) {
+    if (!hasExpertUseAvailable(state, playerId)) {
       throw new Error("No expert uses are available this combat round.");
     }
   }
 
-  const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
+  const stackItem = state.stack.at(-1);
+
+  // Re-check the printed power limit at resolution time: Power cards played
+  // earlier in this window may have pushed the spell above a basic cancel.
+  if (
+    effect.type === "CANCEL_SPELL" &&
+    stackItem?.action.type === "CAST_SPELL" &&
+    !(mode === "expert" && effect.expertIgnoresMaxPower) &&
+    effect.maxPower !== undefined &&
+    getCurrentSpellPower(stackItem, cards) > effect.maxPower
+  ) {
+    throw new Error(`${card.name} cannot end a spell above power ${effect.maxPower}.`);
+  }
+
+  const moveError = moveCardFromHandToDiscard(state, playerId, play.cardId);
   if (moveError) {
     throw new Error(moveError.message);
   }
 
-  const effectAmount = getCardEffectAmount(card, mode);
+  const effectAmount = getEffectAmount(effect, mode);
   if (mode === "expert") {
-    state.players[action.playerId].combatStats.expertUsesSpentThisRound += 1;
+    state.players[playerId].combatStats.expertUsesSpentThisRound += 1;
   }
+
+  const optionLabel =
+    card.effect.type === "CHOOSE_ONE" && play.optionIndex !== undefined
+      ? card.effect.options[play.optionIndex]?.label
+      : undefined;
 
   appendEvent(state, {
     type: "CARD_PLAYED",
-    playerId: action.playerId,
-    cardId: action.cardId,
+    playerId,
+    cardId: play.cardId,
     timing: card.timing,
     mode,
-    effectAmount: effectAmount || undefined
+    effectAmount: effectAmount || undefined,
+    optionLabel
   });
 
-  const stackItem = state.stack.at(-1);
-  if (card.effect.type === "CANCEL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
+  if (effect.type === "CANCEL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
+    // Resistance-style plays always end the spell once they apply: the stack
+    // item is cancelled and the reaction window closes immediately.
     stackItem.status = "cancelled";
     appendEvent(state, {
       type: "SPELL_CAST_CANCELLED",
       playerId: stackItem.action.playerId,
       spellCardId: stackItem.action.cardId,
-      cancelledByPlayerId: action.playerId,
-      cancelledByCardId: action.cardId
+      cancelledByPlayerId: playerId,
+      cancelledByCardId: play.cardId
     });
     state.stack.pop();
 
     closeReactionWindow(state, "reaction-played");
-    if (finishCombatIfNeeded(state)) {
-      return;
+    if (!finishCombatIfNeeded(state)) {
+      state.phase = "combat";
     }
-    state.phase = "combat";
-    return;
+    return { windowEnded: true };
   }
 
-  if (card.effect.type === "ADD_SPELL_POWER" && stackItem?.action.type === "CAST_SPELL") {
+  if (effect.type === "ADD_SPELL_POWER" && stackItem?.action.type === "CAST_SPELL") {
     stackItem.modifiers.spellPowerBonus += effectAmount;
-    stackItem.modifiers.playedCardIds.push(action.cardId);
+    stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
   if (
-    card.effect.type === "ADD_COMBAT_STAT" &&
+    effect.type === "ADD_COMBAT_STAT" &&
     (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
-    if (card.effect.stat === "attack") {
+    if (effect.stat === "attack") {
       stackItem.modifiers.attackBonus += effectAmount;
     } else {
       stackItem.modifiers.defenseBonus += effectAmount;
     }
-    stackItem.modifiers.playedCardIds.push(action.cardId);
+    stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
-  if (card.effect.type === "CREATE_ACTIVE_EFFECT") {
-    createActiveEffectFromCard(state, card, action.playerId, mode);
-    stackItem?.modifiers.playedCardIds.push(action.cardId);
+  if (effect.type === "CREATE_ACTIVE_EFFECT") {
+    createActiveEffectFromCard(state, card, playerId, mode);
+    stackItem?.modifiers.playedCardIds.push(play.cardId);
   }
 
-  if (card.effect.type === "RECALL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
-    const player = state.players[action.playerId];
+  if (effect.type === "DRAW_CARDS") {
+    drawCardsForPlayer(state, playerId, effectAmount);
+    stackItem?.modifiers.playedCardIds.push(play.cardId);
+  }
+
+  if (effect.type === "RECALL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
+    const player = state.players[playerId];
     const spellCardId = stackItem.action.cardId;
     const discardIndex = player.discard.lastIndexOf(spellCardId);
 
@@ -1397,12 +1550,16 @@ function playReaction(
     }
 
     if (mode === "expert") {
-      player.combatStats.spellLimitBonusThisRound += card.effect.expertSpellLimitBonus ?? 0;
+      player.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
     }
 
-    stackItem.modifiers.playedCardIds.push(action.cardId);
+    stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
+  return { windowEnded: false };
+}
+
+function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, cards: CardLibrary): void {
   if (!state.reactionWindow) {
     return;
   }
@@ -1417,16 +1574,48 @@ function playReaction(
   }
 
   const allowedPlayerIds = state.reactionWindow.allowedPlayerIds;
-  const currentIndex = allowedPlayerIds.indexOf(action.playerId);
+  const currentIndex = allowedPlayerIds.indexOf(playerId);
   const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % allowedPlayerIds.length;
   state.reactionWindow.priorityPlayerId = allowedPlayerIds[nextIndex];
   state.priorityPlayerId = allowedPlayerIds[nextIndex];
+}
+
+function playReaction(
+  state: GameState,
+  action: Extract<GameAction, { type: "PLAY_REACTION" }>,
+  cards: CardLibrary
+): void {
+  const { windowEnded } = applyReactionPlayCore(state, action.playerId, action, cards);
+  if (windowEnded) {
+    return;
+  }
+
+  advanceReactionWindowAfterPlay(state, action.playerId, cards);
+}
+
+function playReactions(
+  state: GameState,
+  action: Extract<GameAction, { type: "PLAY_REACTIONS" }>,
+  cards: CardLibrary
+): void {
+  // Batch legality (validated up front) excludes window-ending effects, so
+  // every play lands in the same window before priority moves on once.
+  for (const play of action.plays) {
+    applyReactionPlayCore(state, action.playerId, play, cards);
+  }
+
+  advanceReactionWindowAfterPlay(state, action.playerId, cards);
 }
 
 function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CARD" }>, cards: CardLibrary): void {
   const card = cards[action.cardId];
   if (!card) {
     throw new Error(`Unknown card ${action.cardId}.`);
+  }
+
+  const effect = getEffectiveCardEffect(card, action.optionIndex);
+  if (!effect) {
+    throw new Error(`${card.name} needs a chosen option.`);
   }
 
   const mode = action.mode ?? "basic";
@@ -1443,18 +1632,24 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     state.players[action.playerId].combatStats.expertUsesSpentThisRound += 1;
   }
 
+  const optionLabel =
+    card.effect.type === "CHOOSE_ONE" && action.optionIndex !== undefined
+      ? card.effect.options[action.optionIndex]?.label
+      : undefined;
+
   appendEvent(state, {
     type: "CARD_PLAYED",
     playerId: action.playerId,
     cardId: action.cardId,
     timing: card.timing,
     mode,
-    effectAmount: getCardEffectAmount(card, mode) || undefined
+    effectAmount: getEffectAmount(effect, mode) || undefined,
+    optionLabel
   });
 
   const target = action.target?.type === "unit" ? action.target : undefined;
 
-  if (card.effect.type === "HEAL_DAMAGE" && target) {
+  if (effect.type === "HEAL_DAMAGE" && target) {
     healUnitDamage(
       state,
       {
@@ -1467,30 +1662,34 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     );
   }
 
-  if (card.effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS" && target) {
+  if (effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS" && target) {
     const source = {
       type: "card" as const,
       cardId: card.id,
       controllerId: action.playerId
     };
     healUnitDamage(state, source, target, getSpellDamageAmount(card, card.power ?? 0));
-    removeEffectsFromTarget(state, source, target, card.effect.removePolarity);
+    removeEffectsFromTarget(state, source, target, effect.removePolarity);
   }
 
-  if (card.effect.type === "CREATE_ACTIVE_EFFECT") {
+  if (effect.type === "CREATE_ACTIVE_EFFECT") {
     createActiveEffectFromCard(state, card, action.playerId, mode, target);
   }
 
-  if (card.effect.type === "CREATE_ATTACK_BUFF" && target) {
+  if (effect.type === "CREATE_ATTACK_BUFF" && target) {
     createAttackBuffFromCard(state, card, action.playerId, card.power ?? 0, target);
   }
 
-  if (card.effect.type === "CREATE_DEFENSE_BUFF" && target) {
+  if (effect.type === "CREATE_DEFENSE_BUFF" && target) {
     createDefenseBuffFromCard(state, card, action.playerId, card.power ?? 0, target);
   }
 
-  if (card.effect.type === "CREATE_ATTACK_DIE_REROLL") {
+  if (effect.type === "CREATE_ATTACK_DIE_REROLL") {
     createAttackRerollEffectFromCard(state, card, action.playerId, mode);
+  }
+
+  if (effect.type === "DRAW_CARDS") {
+    drawCardsForPlayer(state, action.playerId, getEffectAmount(effect, mode));
   }
 
   state.phase = "combat";
@@ -1628,7 +1827,13 @@ function rerollPendingChoice(
 ): void {
   const choice = state.pendingChoice;
   const combat = state.combat;
-  if (!choice || !combat || choice.id !== action.choiceId || choice.playerId !== action.playerId) {
+  if (
+    !choice ||
+    choice.type !== "ATTACK_DIE_REROLL" ||
+    !combat ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId
+  ) {
     throw new Error("That pending choice cannot be rerolled.");
   }
 
@@ -1659,7 +1864,12 @@ function choosePendingRoll(
   cards: CardLibrary
 ): void {
   const choice = state.pendingChoice;
-  if (!choice || choice.id !== action.choiceId || choice.playerId !== action.playerId) {
+  if (
+    !choice ||
+    choice.type !== "ATTACK_DIE_REROLL" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId
+  ) {
     throw new Error("That pending choice cannot be resolved.");
   }
 
@@ -1971,6 +2181,135 @@ function completeSimultaneousTurn(
   state.phase = "simultaneous-turns";
 }
 
+function searchDeck(state: GameState, action: Extract<GameAction, { type: "SEARCH_DECK" }>): void {
+  const deck = state.decks[action.deckId];
+  if (!deck || !isSharedDeckId(action.deckId)) {
+    throw new Error("That deck cannot be searched.");
+  }
+
+  // Lift the top cards off the deck so opponents see an accurate pile count
+  // while the searcher decides. "Search X" reveals up to X cards.
+  const revealedCardIds: string[] = [];
+  for (let count = 0; count < action.count; count += 1) {
+    const cardId = deck.drawPile.pop();
+    if (!cardId) {
+      break;
+    }
+    revealedCardIds.push(cardId);
+  }
+
+  const canTakeDiscardTop = deck.discardPile.length > 0;
+  if (revealedCardIds.length === 0 && !canTakeDiscardTop) {
+    throw new Error("That deck has no cards left to search.");
+  }
+
+  const choiceId = `choice_${state.eventLog.length + 1}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "DECK_SEARCH",
+    playerId: action.playerId,
+    deckId: action.deckId,
+    revealedCardIds,
+    canTakeDiscardTop,
+    returnPhase: state.phase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = action.playerId;
+
+  appendEvent(state, {
+    type: "DECK_SEARCH_STARTED",
+    playerId: action.playerId,
+    deckId: action.deckId,
+    choiceId,
+    revealedCount: revealedCardIds.length
+  });
+}
+
+function resolveDeckSearch(
+  state: GameState,
+  action: Extract<GameAction, { type: "RESOLVE_DECK_SEARCH" }>
+): void {
+  const choice = state.pendingChoice;
+  if (!choice || choice.type !== "DECK_SEARCH" || choice.id !== action.choiceId || choice.playerId !== action.playerId) {
+    throw new Error("That deck search cannot be resolved.");
+  }
+
+  const deck = state.decks[choice.deckId];
+  const player = state.players[action.playerId];
+  if (!deck || !player) {
+    throw new Error("That deck search cannot be resolved.");
+  }
+
+  let discardedCardIds: string[];
+
+  if (action.pick.kind === "discard-top") {
+    if (!choice.canTakeDiscardTop) {
+      throw new Error("The discard pile is empty.");
+    }
+
+    const takenCardId = deck.discardPile.pop();
+    if (!takenCardId) {
+      throw new Error("The discard pile is empty.");
+    }
+
+    player.hand.push(takenCardId);
+    discardedCardIds = [...choice.revealedCardIds];
+  } else {
+    const keptCardId = choice.revealedCardIds[action.pick.index];
+    if (!keptCardId) {
+      throw new Error("That revealed card is not available.");
+    }
+
+    player.hand.push(keptCardId);
+    const keptIndex = action.pick.index;
+    discardedCardIds = choice.revealedCardIds.filter((_, index) => index !== keptIndex);
+  }
+
+  deck.discardPile.push(...discardedCardIds);
+
+  appendEvent(state, {
+    type: "DECK_SEARCH_RESOLVED",
+    playerId: action.playerId,
+    deckId: choice.deckId,
+    choiceId: choice.id,
+    pick: action.pick.kind,
+    discardedCardIds
+  });
+
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+}
+
+function moveHero(state: GameState, action: Extract<GameAction, { type: "MOVE_HERO" }>): void {
+  const hero = state.heroes[action.heroId];
+  if (!hero || hero.controllerId !== action.playerId || !hero.spaceId) {
+    throw new Error("That hero cannot move now.");
+  }
+
+  if (hero.movementPoints <= 0) {
+    throw new Error("That hero has no movement points left.");
+  }
+
+  const currentSpace = state.map.spaces[hero.spaceId];
+  if (!currentSpace?.adjacent.includes(action.to)) {
+    throw new Error("Heroes can only move to adjacent map fields.");
+  }
+
+  const from = hero.spaceId;
+  hero.spaceId = action.to;
+  hero.movementPoints -= 1;
+
+  appendEvent(state, {
+    type: "HERO_MOVED",
+    playerId: action.playerId,
+    heroId: hero.id,
+    from,
+    to: action.to,
+    movementLeft: hero.movementPoints
+  });
+}
+
 function endTurn(state: GameState, action: Extract<GameAction, { type: "END_TURN" }>): void {
   appendExpiredEffectEvents(state, expireEffectsForTurnEnd(state, action.playerId), "turn-ended");
   const nextPlayer = nextPlayerId(state, action.playerId);
@@ -2045,6 +2384,18 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "PLAY_REACTION":
         playReaction(nextState, action, cards);
+        break;
+      case "PLAY_REACTIONS":
+        playReactions(nextState, action, cards);
+        break;
+      case "SEARCH_DECK":
+        searchDeck(nextState, action);
+        break;
+      case "RESOLVE_DECK_SEARCH":
+        resolveDeckSearch(nextState, action);
+        break;
+      case "MOVE_HERO":
+        moveHero(nextState, action);
         break;
       case "END_TURN":
         endTurn(nextState, action);

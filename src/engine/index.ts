@@ -14,6 +14,8 @@ export {
   isBattlefieldPosition
 } from "./battlefield";
 export { applyAction, findEvent } from "./reducer";
+export { drawCardsForPlayer, isSharedDeckId, SHARED_DECK_IDS, shuffleCards } from "./decks";
+export type { SharedDeckId } from "./decks";
 export {
   expireEffectsForCombatEnd,
   expireEffectsForCombatRoundEnd,
@@ -26,6 +28,9 @@ export {
 export {
   describeCardEffect,
   getCardEffectAmount,
+  getCardOptions,
+  getEffectAmount,
+  getEffectiveCardEffect,
   getSpellDamageAmount,
   implementedCardEffectTypes,
   isImplementedCardEffect
@@ -38,15 +43,18 @@ export {
   canUnitMoveAndAttack,
   canUnitMoveTo,
   canPlayerBuildStructure,
+  effectHasExpertMode,
   getActiveUnitId,
   getAttackKind,
   getAttackRollMode,
+  getCardPlayVariants,
   getLegalActions,
   getLegalMoveDestinations,
   getLegalReactionsForTrigger,
   getNextUnitToActivate,
   getUnitMoveRange,
   isAdjacent,
+  isEffectLegalForTrigger,
   isUnitAlive,
   sortUnitsForActivation
 } from "./legal-actions";
@@ -69,9 +77,11 @@ export type {
   BuildingLibrary,
   CardDefinition,
   CardId,
+  CardOptionDefinition,
   CardPlayMode,
   CardLibrary,
   CombatDice,
+  DeckSearchPick,
   CombatStat,
   CombatState,
   CombatUnitState,
@@ -95,6 +105,7 @@ export type {
   PlayerVisiblePlayerState,
   PlayerVisibleState,
   PendingChoice,
+  ReactionPlay,
   ReactionWindow,
   ResolutionStackItem,
   ResourceCost,

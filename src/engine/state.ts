@@ -115,7 +115,18 @@ export type EffectDefinition =
       amountByPower?: Record<number, number>;
       removePolarity: "negative" | "any-removable";
     }
-  | { type: "CANCEL_SPELL"; maxPower?: number }
+  | { type: "CANCEL_SPELL"; maxPower?: number; expertIgnoresMaxPower?: boolean }
+  | { type: "DRAW_CARDS"; amount: number; expertAmount?: number }
+  | {
+      /**
+       * "OR" cards (mostly artifacts): the player chooses exactly one of the
+       * printed options when playing the card. Each option may carry its own
+       * timing trigger (e.g. "+1 Power" is only useful while casting a spell,
+       * while "Draw 1 card" is an anytime instant).
+       */
+      type: "CHOOSE_ONE";
+      options: CardOptionDefinition[];
+    }
   | { type: "ADD_COMBAT_STAT"; stat: "attack" | "defense"; amount: number; expertAmount?: number }
   | { type: "ADD_SPELL_POWER"; amount: number; expertAmount?: number }
   | {
@@ -158,6 +169,12 @@ export type EffectDefinition =
 export type TriggerDefinition = {
   event: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED";
   controller: "self" | "opponent" | "any";
+};
+
+export type CardOptionDefinition = {
+  label: string;
+  trigger?: TriggerDefinition;
+  effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
 };
 
 export type CardDefinition = {
@@ -210,9 +227,24 @@ export type BuildingDefinition = {
 
 export type BuildingLibrary = Record<BuildingId, BuildingDefinition>;
 
+export type ReactionPlay = {
+  cardId: CardId;
+  mode?: CardPlayMode;
+  optionIndex?: number;
+};
+
+export type DeckSearchPick = { kind: "revealed"; index: number } | { kind: "discard-top" };
+
 export type GameAction =
   | { type: "CAST_SPELL"; playerId: PlayerId; cardId: CardId; target: TargetRef }
-  | { type: "PLAY_CARD"; playerId: PlayerId; cardId: CardId; target?: TargetRef; mode?: CardPlayMode }
+  | {
+      type: "PLAY_CARD";
+      playerId: PlayerId;
+      cardId: CardId;
+      target?: TargetRef;
+      mode?: CardPlayMode;
+      optionIndex?: number;
+    }
   | { type: "ATTACK_UNIT"; playerId: PlayerId; attackerId: UnitId; defenderId: UnitId }
   | {
       type: "MOVE_AND_ATTACK_UNIT";
@@ -231,8 +263,22 @@ export type GameAction =
   | { type: "COMPLETE_SIMULTANEOUS_TURN"; playerId: PlayerId }
   | { type: "REROLL_PENDING_CHOICE"; playerId: PlayerId; choiceId: string }
   | { type: "CHOOSE_PENDING_ROLL"; playerId: PlayerId; choiceId: string; candidateIndex: number }
-  | { type: "PLAY_REACTION"; playerId: PlayerId; cardId: CardId; mode?: CardPlayMode }
+  | { type: "PLAY_REACTION"; playerId: PlayerId; cardId: CardId; mode?: CardPlayMode; optionIndex?: number }
+  | {
+      /**
+       * Plays several instant cards in one declaration (e.g. two Attack cards
+       * plus an artifact on the same attack), exactly like dropping a stack of
+       * instants on the table at once. Spell-cancel and recall effects must be
+       * played alone through PLAY_REACTION.
+       */
+      type: "PLAY_REACTIONS";
+      playerId: PlayerId;
+      plays: ReactionPlay[];
+    }
   | { type: "PASS_REACTION"; playerId: PlayerId }
+  | { type: "SEARCH_DECK"; playerId: PlayerId; deckId: DeckId; count: number }
+  | { type: "RESOLVE_DECK_SEARCH"; playerId: PlayerId; choiceId: string; pick: DeckSearchPick }
+  | { type: "MOVE_HERO"; playerId: PlayerId; heroId: HeroId; to: MapSpaceId }
   | { type: "END_TURN"; playerId: PlayerId };
 
 export type LegalAction = {
@@ -434,6 +480,41 @@ export type GameEvent =
       timing: CardDefinition["timing"];
       mode: CardPlayMode;
       effectAmount?: number;
+      optionLabel?: string;
+    }
+  | {
+      id: string;
+      type: "CARDS_DRAWN";
+      playerId: PlayerId;
+      count: number;
+      requested: number;
+      reshuffledDiscard: boolean;
+    }
+  | {
+      id: string;
+      type: "DECK_SEARCH_STARTED";
+      playerId: PlayerId;
+      deckId: DeckId;
+      choiceId: string;
+      revealedCount: number;
+    }
+  | {
+      id: string;
+      type: "DECK_SEARCH_RESOLVED";
+      playerId: PlayerId;
+      deckId: DeckId;
+      choiceId: string;
+      pick: "revealed" | "discard-top";
+      discardedCardIds: CardId[];
+    }
+  | {
+      id: string;
+      type: "HERO_MOVED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      from: MapSpaceId;
+      to: MapSpaceId;
+      movementLeft: number;
     }
   | {
       id: string;
@@ -552,8 +633,12 @@ export type TurnState = {
 export type PlayerState = {
   id: PlayerId;
   name: string;
+  /** Personal draw pile. The top of the pile is the last array element. */
+  deck: CardId[];
   hand: CardId[];
   discard: CardId[];
+  /** Cards removed from the game entirely (the "remove" keyword). */
+  removed: CardId[];
   resources: {
     [key in ResourceKind]: number;
   };
@@ -670,6 +755,16 @@ export type PendingChoice =
       remainingRerolls: number;
       sourceEffectIds: string[];
     }
+  | {
+      id: string;
+      type: "DECK_SEARCH";
+      playerId: PlayerId;
+      deckId: DeckId;
+      /** Cards lifted off the top of the deck; only the searcher may see them. */
+      revealedCardIds: CardId[];
+      canTakeDiscardTop: boolean;
+      returnPhase: GamePhase;
+    }
   | null;
 
 export type GameState = {
@@ -694,20 +789,24 @@ export type GameState = {
   turn: TurnState;
 };
 
-export type PlayerVisiblePlayerState = Omit<PlayerState, "hand"> & {
+export type PlayerVisiblePlayerState = Omit<PlayerState, "hand" | "deck"> & {
   hand: CardId[];
   handCount: number;
+  /** Deck order is hidden from every seat, including the owner. */
+  deck: CardId[];
+  deckCount: number;
 };
 
 export type PlayerVisibleDeckState = Omit<DeckState, "drawPile"> & {
   drawCount: number;
 };
 
-export type PlayerVisibleState = Omit<GameState, "players" | "decks" | "reactionWindow"> & {
+export type PlayerVisibleState = Omit<GameState, "players" | "decks" | "reactionWindow" | "pendingChoice"> & {
   viewerPlayerId: PlayerId;
   players: Record<PlayerId, PlayerVisiblePlayerState>;
   decks: Record<DeckId, PlayerVisibleDeckState>;
   reactionWindow: ReactionWindow | null;
+  pendingChoice: PendingChoice;
 };
 
 export type EngineResult = {
