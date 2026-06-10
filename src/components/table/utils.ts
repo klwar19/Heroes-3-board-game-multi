@@ -1,6 +1,6 @@
+import { cardLibrary } from "@/data/cards/library";
 import {
   getBattlefieldLabel,
-  sampleCards,
   type BuildingEffectDefinition,
   type CardDefinition,
   type GameAction,
@@ -20,7 +20,7 @@ export function targetName(state: GameState, target: TargetRef): string {
 }
 
 export function cardName(cardId: string): string {
-  return sampleCards[cardId]?.name ?? cardId;
+  return cardLibrary[cardId]?.name ?? cardId;
 }
 
 export function playerName(state: GameState, playerId: string): string {
@@ -174,6 +174,62 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} is ready.`;
     case "ORDERED_TURNS_STARTED":
       return `Ordered turns begin with ${playerName(state, event.activePlayerId)}.`;
+    case "ROUND_STARTED":
+      return `Round ${event.round} begins${event.kind === "resource" ? " (resource round)" : event.kind === "astrologers" ? " (Astrologers' round)" : ""}.`;
+    case "TURN_STARTED":
+      return `${playerName(state, event.playerId)} starts their turn.`;
+    case "HAND_REFRESHED":
+      return `${playerName(state, event.playerId)} refreshes their hand (discarded ${event.discarded}, drew ${event.drawn}).`;
+    case "TILE_REVEALED":
+      return `${playerName(state, event.playerId)} discovers map tile ${event.tileDefId}.`;
+    case "TILE_PLACED":
+      return `${playerName(state, event.playerId)} places map tile ${event.tileDefId}.`;
+    case "FIELD_VISITED":
+      return `${playerName(state, event.playerId)} ${event.revisit ? "revisits" : "visits"} ${titleCase(event.location)}.`;
+    case "FIELD_FLAGGED":
+      return `${playerName(state, event.playerId)} flags ${titleCase(event.location)}${event.previousOwnerId ? ` (taken from ${playerName(state, event.previousOwnerId)})` : ""}.`;
+    case "RESOURCES_GAINED": {
+      const parts = [
+        event.gold ? `${event.gold} gold` : null,
+        event.buildingMaterials ? `${event.buildingMaterials} materials` : null,
+        event.valuables ? `${event.valuables} valuables` : null
+      ].filter(Boolean);
+      return `${playerName(state, event.playerId)} gains ${parts.join(", ") || "nothing"} (${event.reason}).`;
+    }
+    case "RESOURCES_SPENT":
+      return `${playerName(state, event.playerId)} pays ${formatCost(event.cost)} (${event.reason}).`;
+    case "PRODUCTION_CHANGED":
+      return `${playerName(state, event.playerId)} ${event.amount >= 0 ? "+" : ""}${event.amount} ${formatResourceName(event.resource)} production.`;
+    case "ADVENTURE_DICE_ROLLED":
+      return `${playerName(state, event.playerId)} rolls ${event.dice} dice: ${event.results.join("; ")}.`;
+    case "EXPERIENCE_GAINED":
+      return `${playerName(state, event.playerId)} gains ${event.amount} experience (level ${event.level}).`;
+    case "HERO_LEVEL_UP":
+      return `${playerName(state, event.playerId)} reaches level ${event.level}${event.effects.length ? `: ${event.effects.join(", ")}` : ""}.`;
+    case "MORALE_CHANGED":
+      return `${playerName(state, event.playerId)} morale ${event.amount > 0 ? "+" : ""}${event.amount} (now ${event.total}).`;
+    case "NEUTRAL_COMBAT_STARTED":
+      return `${playerName(state, event.playerId)} fights level ${event.difficulty} guards (${event.unitDefIds.length} units).`;
+    case "PLAYER_COMBAT_STARTED":
+      return `${playerName(state, event.attackerPlayerId)} attacks ${playerName(state, event.defenderPlayerId)}!`;
+    case "QUICK_COMBAT_WON":
+      return `${playerName(state, event.playerId)} sweeps aside the level ${event.difficulty} guards (quick combat).`;
+    case "COMBAT_CONTINUED":
+      return `${playerName(state, event.playerId)} spends 1 MP to fight on (${event.movementLeft} left).`;
+    case "COMBAT_RETREATED":
+      return `${playerName(state, event.playerId)} retreats from the combat.`;
+    case "COMBAT_UNIT_PLACED":
+      return `${playerName(state, event.playerId)} deploys ${unitName(state, event.unitId)} at ${getBattlefieldLabel(event.position)}.`;
+    case "COMBAT_PLACEMENT_FINISHED":
+      return `${playerName(state, event.playerId)} is ready for battle.`;
+    case "UNIT_RECRUITED":
+      return `${playerName(state, event.playerId)} ${event.kind === "recruit" ? "recruits" : "reinforces"} ${event.unitDefId.split(".")[1] ?? event.unitDefId} for ${formatCost(event.cost)}.`;
+    case "SPELLS_PURCHASED":
+      return `${playerName(state, event.playerId)} buys spells for ${formatCost(event.cost)}.`;
+    case "TRADE_EXECUTED":
+      return `${playerName(state, event.playerId)} trades ${event.rateLabel}.`;
+    case "GAME_WON":
+      return `${playerName(state, event.playerId)} wins the game: ${event.reason}!`;
   }
 }
 

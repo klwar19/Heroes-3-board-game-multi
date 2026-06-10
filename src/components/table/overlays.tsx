@@ -2,10 +2,10 @@
 
 import { Check, CircleOff, Crown, Dices, Hourglass, Undo2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { cardLibrary } from "@/data/cards/library";
 import {
   getEffectAmount,
   getEffectiveCardEffect,
-  sampleCards,
   type CardPlayMode,
   type GameAction,
   type GameState,
@@ -38,7 +38,7 @@ function selectionPreview(selections: TraySelection[]): string[] {
   const totals = new Map<string, number>();
 
   for (const selection of selections) {
-    const card = sampleCards[selection.cardId];
+    const card = cardLibrary[selection.cardId];
     if (!card) {
       continue;
     }
@@ -113,7 +113,7 @@ export function ReactionTray({
   const groupsByCard = new Map<string, TrayGroup[]>();
   for (const action of reactionActions) {
     const key = `${action.cardId}#${action.optionIndex ?? -1}`;
-    const card = sampleCards[action.cardId];
+    const card = cardLibrary[action.cardId];
     const effect = card ? getEffectiveCardEffect(card, action.optionIndex) : null;
     const batchable = Boolean(effect && effect.type !== "CANCEL_SPELL" && effect.type !== "RECALL_SPELL");
     const cardGroups = groupsByCard.get(action.cardId) ?? [];

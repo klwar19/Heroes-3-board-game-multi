@@ -15,11 +15,16 @@ export type GamePhase =
   | "ai-turn"
   | "map"
   | "town"
+  | "combat-setup"
   | "combat"
   | "reaction"
   | "choice"
   | "cleanup"
   | "game-over";
+
+export type GameMode = "combat-sandbox" | "adventure";
+export type GameDifficulty = "easy" | "normal" | "hard" | "impossible";
+export type FactionId = "castle" | "necropolis" | "dungeon";
 
 export type TargetRef = { type: "unit"; unitId: UnitId } | { type: "none" };
 
@@ -30,7 +35,7 @@ export type SourceRef =
 
 export type DamageKind = "attack" | "spell" | "effect";
 export type UnitType = "ground" | "ranged" | "flying";
-export type UnitGrade = "bronze" | "silver" | "gold";
+export type UnitGrade = "bronze" | "silver" | "gold" | "azure";
 export type CombatStat = "attack" | "defense" | "power";
 export type CardPlayMode = "basic" | "expert";
 export type SpellLevel = "basic" | "expert";
@@ -128,7 +133,8 @@ export type EffectDefinition =
       options: CardOptionDefinition[];
     }
   | { type: "ADD_COMBAT_STAT"; stat: "attack" | "defense"; amount: number; expertAmount?: number }
-  | { type: "ADD_SPELL_POWER"; amount: number; expertAmount?: number }
+  | { type: "ADD_SPELL_POWER"; amount: number; expertAmount?: number; drawCards?: number }
+  | { type: "GAIN_MORALE"; amount: number; expertDrawCards?: number }
   | {
       type: "CREATE_ACTIVE_EFFECT";
       effect: ActiveEffectDefinition;
@@ -279,6 +285,50 @@ export type GameAction =
   | { type: "SEARCH_DECK"; playerId: PlayerId; deckId: DeckId; count: number }
   | { type: "RESOLVE_DECK_SEARCH"; playerId: PlayerId; choiceId: string; pick: DeckSearchPick }
   | { type: "MOVE_HERO"; playerId: PlayerId; heroId: HeroId; to: MapSpaceId }
+  | {
+      /** Start-of-turn hand refresh: discard any cards, then draw to hand limit. */
+      type: "REFRESH_HAND";
+      playerId: PlayerId;
+      discardCardIds: CardId[];
+    }
+  | { type: "REVISIT_FIELD"; playerId: PlayerId; heroId: HeroId }
+  | { type: "DISCOVER_TILE"; playerId: PlayerId; heroId: HeroId; tileInstanceId: string }
+  | {
+      type: "PLACE_TILE";
+      playerId: PlayerId;
+      heroId: HeroId;
+      tileDefId: string;
+      centerRow: number;
+      centerCol: number;
+      rotation: number;
+    }
+  | {
+      /** Resolves the current pending visit step (choice index / pay option / skip). */
+      type: "RESOLVE_VISIT_STEP";
+      playerId: PlayerId;
+      optionIndex?: number;
+      decline?: boolean;
+    }
+  | {
+      /** Trade resources at a Trading Post (rate index from TRADE_RATES). */
+      type: "TRADE_RESOURCES";
+      playerId: PlayerId;
+      rateIndex: number;
+    }
+  | { type: "PLACE_COMBAT_UNIT"; playerId: PlayerId; armyUnitId: string; position: number }
+  | { type: "UNPLACE_COMBAT_UNIT"; playerId: PlayerId; armyUnitId: string }
+  | { type: "FINISH_COMBAT_PLACEMENT"; playerId: PlayerId }
+  | { type: "CONTINUE_NEUTRAL_COMBAT"; playerId: PlayerId }
+  | { type: "RETREAT_FROM_COMBAT"; playerId: PlayerId }
+  | {
+      /** Population token: recruit and/or reinforce any number of units at once. */
+      type: "POPULATION_ACTION";
+      playerId: PlayerId;
+      purchases: { kind: "recruit" | "reinforce"; unitDefId: string; armyUnitId?: string }[];
+    }
+  | { type: "SPELL_BOOK_ACTION"; playerId: PlayerId }
+  | { type: "SPEND_MORALE"; playerId: PlayerId; benefit: "draw" }
+  | { type: "CHOOSE_OPTION"; playerId: PlayerId; choiceId: string; optionIndex: number }
   | { type: "END_TURN"; playerId: PlayerId };
 
 export type LegalAction = {
@@ -411,7 +461,7 @@ export type GameEvent =
       type: "COMBAT_ENDED";
       winnerPlayerId: PlayerId;
       defeatedPlayerId: PlayerId;
-      reason: "all-enemy-units-defeated";
+      reason: "all-enemy-units-defeated" | "retreat" | "surrender";
     }
   | {
       id: string;
@@ -584,6 +634,188 @@ export type GameEvent =
       id: string;
       type: "ORDERED_TURNS_STARTED";
       activePlayerId: PlayerId;
+    }
+  | {
+      id: string;
+      type: "ROUND_STARTED";
+      round: number;
+      kind: "first" | "resource" | "astrologers";
+    }
+  | {
+      id: string;
+      type: "TURN_STARTED";
+      playerId: PlayerId;
+      round: number;
+    }
+  | {
+      id: string;
+      type: "HAND_REFRESHED";
+      playerId: PlayerId;
+      discarded: number;
+      drawn: number;
+    }
+  | {
+      id: string;
+      type: "TILE_REVEALED";
+      playerId: PlayerId;
+      tileInstanceId: string;
+      tileDefId: string;
+    }
+  | {
+      id: string;
+      type: "TILE_PLACED";
+      playerId: PlayerId;
+      tileInstanceId: string;
+      tileDefId: string;
+      centerRow: number;
+      centerCol: number;
+      rotation: number;
+    }
+  | {
+      id: string;
+      type: "FIELD_VISITED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      fieldId: MapSpaceId;
+      location: string;
+      revisit: boolean;
+    }
+  | {
+      id: string;
+      type: "FIELD_FLAGGED";
+      playerId: PlayerId;
+      fieldId: MapSpaceId;
+      location: string;
+      previousOwnerId: PlayerId | null;
+    }
+  | {
+      id: string;
+      type: "RESOURCES_GAINED";
+      playerId: PlayerId;
+      gold: number;
+      buildingMaterials: number;
+      valuables: number;
+      reason: string;
+    }
+  | {
+      id: string;
+      type: "RESOURCES_SPENT";
+      playerId: PlayerId;
+      cost: ResourceCost;
+      reason: string;
+    }
+  | {
+      id: string;
+      type: "PRODUCTION_CHANGED";
+      playerId: PlayerId;
+      resource: ResourceKind;
+      amount: number;
+    }
+  | {
+      id: string;
+      type: "ADVENTURE_DICE_ROLLED";
+      playerId: PlayerId;
+      dice: "treasure" | "resource";
+      results: string[];
+    }
+  | {
+      id: string;
+      type: "EXPERIENCE_GAINED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      amount: number;
+      experience: number;
+      level: number;
+    }
+  | {
+      id: string;
+      type: "HERO_LEVEL_UP";
+      playerId: PlayerId;
+      heroId: HeroId;
+      level: number;
+      effects: string[];
+    }
+  | {
+      id: string;
+      type: "MORALE_CHANGED";
+      playerId: PlayerId;
+      amount: number;
+      total: number;
+    }
+  | {
+      id: string;
+      type: "NEUTRAL_COMBAT_STARTED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      fieldId: MapSpaceId;
+      difficulty: number;
+      unitDefIds: string[];
+    }
+  | {
+      id: string;
+      type: "PLAYER_COMBAT_STARTED";
+      attackerPlayerId: PlayerId;
+      defenderPlayerId: PlayerId;
+      fieldId: MapSpaceId;
+    }
+  | {
+      id: string;
+      type: "QUICK_COMBAT_WON";
+      playerId: PlayerId;
+      heroId: HeroId;
+      fieldId: MapSpaceId;
+      difficulty: number;
+    }
+  | {
+      id: string;
+      type: "COMBAT_CONTINUED";
+      playerId: PlayerId;
+      movementLeft: number;
+    }
+  | {
+      id: string;
+      type: "COMBAT_RETREATED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      returnedTo: MapSpaceId;
+    }
+  | {
+      id: string;
+      type: "COMBAT_UNIT_PLACED";
+      playerId: PlayerId;
+      unitId: UnitId;
+      position: number;
+    }
+  | {
+      id: string;
+      type: "COMBAT_PLACEMENT_FINISHED";
+      playerId: PlayerId;
+    }
+  | {
+      id: string;
+      type: "UNIT_RECRUITED";
+      playerId: PlayerId;
+      unitDefId: string;
+      kind: "recruit" | "reinforce";
+      cost: ResourceCost;
+    }
+  | {
+      id: string;
+      type: "SPELLS_PURCHASED";
+      playerId: PlayerId;
+      cost: ResourceCost;
+    }
+  | {
+      id: string;
+      type: "TRADE_EXECUTED";
+      playerId: PlayerId;
+      rateLabel: string;
+    }
+  | {
+      id: string;
+      type: "GAME_WON";
+      playerId: PlayerId;
+      reason: string;
     };
 
 export type ResolutionStackItem = {
@@ -631,18 +863,50 @@ export type TurnState = {
   observingPlayerId: PlayerId | null;
 };
 
+export type ArmyUnitState = {
+  /** Stable instance id of this unit card in the player's unit deck. */
+  id: string;
+  unitDefId: string;
+  side: "few" | "pack";
+};
+
+export type TownTokenState = {
+  build: boolean;
+  population: boolean;
+  spellBook: boolean;
+};
+
 export type PlayerState = {
   id: PlayerId;
   name: string;
+  /** Adventure mode: chosen faction and main hero definition ids. */
+  factionId?: FactionId;
+  heroDefId?: string;
   /** Personal draw pile. The top of the pile is the last array element. */
   deck: CardId[];
   hand: CardId[];
   discard: CardId[];
   /** Cards removed from the game entirely (the "remove" keyword). */
   removed: CardId[];
+  /** Unit deck: the army that fights the player's combats. */
+  army: ArmyUnitState[];
+  /** Scenario starting units, restored when the unit deck empties. */
+  startingArmy: { unitDefId: string; side: "few" | "pack" }[];
   resources: {
     [key in ResourceKind]: number;
   };
+  /** Per-round production gained during Resource Rounds. */
+  production: {
+    [key in ResourceKind]: number;
+  };
+  /** Town action tokens flip inactive when used, refresh each round. */
+  townTokens: TownTokenState;
+  /** Round number the Mage Guild was built (token unusable that round). */
+  mageGuildBuiltRound?: number;
+  /** +1 positive morale token (max 1) or any number of negative tokens. */
+  morale: number;
+  /** Whether the start-of-turn discard/draw refresh is still owed this turn. */
+  needsHandRefresh?: boolean;
   limits: {
     hand: number;
     expertUses: number;
@@ -674,6 +938,10 @@ export type CombatUnitState = {
   retaliatedThisRound: boolean;
   defenseToken: boolean;
   abilities: string[];
+  /** Adventure mode: unit definition this combat card represents. */
+  unitDefId?: string;
+  /** Adventure mode: army card instance this unit maps back to. */
+  armyUnitId?: string;
   assets?: {
     cardImage?: string;
     imageAlt?: string;
@@ -695,16 +963,51 @@ export type CombatDice = {
   scriptedRolls?: number[];
 };
 
+export type CombatContext =
+  | {
+      kind: "sandbox";
+    }
+  | {
+      kind: "neutral";
+      heroId: HeroId;
+      fieldId: MapSpaceId;
+      difficulty: number;
+      /** Highest tier present in the drawn neutral army (azure has no time limit). */
+      hasAzure: boolean;
+    }
+  | {
+      kind: "player";
+      attackerHeroId: HeroId;
+      defenderHeroId: HeroId | null;
+      fieldId: MapSpaceId;
+    };
+
+export type CombatSetupState = {
+  /** Player ids still to place units, in placement order. */
+  pendingPlayerIds: PlayerId[];
+  /** Army unit instance ids already placed this setup, per player. */
+  placedUnitIds: Record<PlayerId, string[]>;
+  /** Maximum units a side may field. */
+  unitLimit: number;
+};
+
 export type CombatState = {
   id: string;
   round: number;
   attackerPlayerId: PlayerId;
   defenderPlayerId: PlayerId;
   activeUnitId: UnitId | null;
+  context: CombatContext;
+  setup: CombatSetupState | null;
+  /**
+   * Set between combat rounds against neutrals: the attacking hero must spend
+   * 1 MP to continue for another round or retreat.
+   */
+  awaitingContinue: boolean;
   outcome: {
     winnerPlayerId: PlayerId;
     defeatedPlayerId: PlayerId;
-    reason: "all-enemy-units-defeated";
+    reason: "all-enemy-units-defeated" | "retreat" | "surrender";
   } | null;
   dice: CombatDice;
   units: Record<UnitId, CombatUnitState>;
@@ -720,17 +1023,98 @@ export type MapState = {
   spaces: Record<MapSpaceId, { id: MapSpaceId; adjacent: MapSpaceId[] }>;
 };
 
+export type MapTileState = {
+  id: string;
+  tileDefId: string;
+  centerRow: number;
+  centerCol: number;
+  rotation: number;
+  faceDown: boolean;
+};
+
+export type MapFieldState = {
+  spaceId: MapSpaceId;
+  tileInstanceId: string;
+  /** Tile slot 0-6 this field came from. */
+  slot: number;
+  location: string;
+  difficulty?: number;
+  resource?: ResourceKind;
+  amount?: number;
+  faction?: string;
+  /** Visitable fields get a black cube after the visit and then count as empty. */
+  blackCube: boolean;
+  flagOwnerId: PlayerId | null;
+  /** Whether the first-flag immediate income was already claimed. */
+  everFlagged: boolean;
+  /** Resource chosen for a flagged settlement. */
+  settlementResource: ResourceKind | null;
+};
+
+export type PendingVisit = {
+  heroId: HeroId;
+  playerId: PlayerId;
+  fieldId: MapSpaceId;
+  /** Steps still to resolve for this visit (front of array first). */
+  steps: VisitStep[];
+};
+
+export type AdventureReward =
+  | { playerId: PlayerId; kind: "shared-deck-search"; deckId: DeckId; count: number }
+  | { playerId: PlayerId; kind: "city-hall-choice"; buildingId: BuildingId };
+
+export type VisitStep =
+  | { type: "CHOOSE_ONE"; prompt: string; options: { label: string; steps: VisitStep[] }[] }
+  | { type: "PAY_TO"; prompt: string; costOptions: ResourceCost[]; steps: VisitStep[] }
+  | { type: "GAIN_RESOURCES"; gold?: number; buildingMaterials?: number; valuables?: number }
+  | { type: "GAIN_EXPERIENCE"; amount: number }
+  | { type: "GAIN_MOVEMENT"; amount: number }
+  | { type: "GAIN_MORALE"; amount: number }
+  | { type: "ROLL_RESOURCE_DICE"; count: number }
+  | { type: "ROLL_TREASURE_DICE"; count: number }
+  | { type: "SEARCH_SHARED_DECK"; deckId: DeckId; count: number }
+  | { type: "SETTLEMENT_CHOICE" }
+  | { type: "MAGIC_SPRING" }
+  | { type: "WITCH_HUT" }
+  | { type: "SCHOLAR" }
+  | { type: "TRADING_POST" }
+  | { type: "DISCOVER_ADJACENT_TILE" };
+
+export type AdventureState = {
+  difficulty: GameDifficulty;
+  tiles: Record<string, MapTileState>;
+  fields: Record<MapSpaceId, MapFieldState>;
+  /** Face-down Far tiles each player may place for 1 MP. */
+  playerFarTiles: Record<PlayerId, string[]>;
+  /** Field visit currently being resolved (choices pending). */
+  pendingVisit: PendingVisit | null;
+  /** Rewards waiting to resolve one at a time (level-up searches, City Halls). */
+  rewardQueue: AdventureReward[];
+  /** Last field each hero visited, where a retreating hero returns. */
+  lastVisitedField: Record<HeroId, MapSpaceId>;
+  /** Victory: flagging an enemy town wins the scenario (default skirmish). */
+  winnerPlayerId: PlayerId | null;
+};
+
 export type TownState = {
   id: TownId;
   controllerId: PlayerId;
   buildings: string[];
+  factionId?: FactionId;
+  /** Map field the town occupies in adventure mode. */
+  fieldId?: MapSpaceId;
 };
 
 export type HeroState = {
   id: HeroId;
   controllerId: PlayerId;
+  kind: "main" | "secondary";
+  heroDefId?: string;
   level: number;
+  /** Experience steps within the level track (2 per level). */
+  experience: number;
   movementPoints: number;
+  movementPointsMax: number;
   spaceId: MapSpaceId | null;
 };
 
@@ -777,11 +1161,21 @@ export type PendingChoice =
       canTakeDiscardTop: boolean;
       returnPhase: GamePhase;
     }
+  | {
+      id: string;
+      type: "OPTION_CHOICE";
+      playerId: PlayerId;
+      prompt: string;
+      options: { label: string }[];
+      context: "city-hall";
+      returnPhase: GamePhase;
+    }
   | null;
 
 export type GameState = {
   id: string;
   seed: string;
+  mode: GameMode;
   round: number;
   phase: GamePhase;
   activePlayerId: PlayerId;
@@ -789,6 +1183,7 @@ export type GameState = {
   turnOrder: PlayerId[];
   players: Record<PlayerId, PlayerState>;
   map: MapState;
+  adventure: AdventureState | null;
   towns: Record<TownId, TownState>;
   heroes: Record<HeroId, HeroState>;
   combat: CombatState | null;
@@ -800,6 +1195,9 @@ export type GameState = {
   pendingChoice: PendingChoice;
   turn: TurnState;
 };
+
+/** Reserved player id that controls neutral armies during map combats. */
+export const NEUTRAL_PLAYER_ID: PlayerId = "neutrals";
 
 export type PlayerVisiblePlayerState = Omit<PlayerState, "hand" | "deck"> & {
   hand: CardId[];

@@ -1,5 +1,23 @@
-import { sampleCards } from "@/data/cards/sample";
+import { cardLibrary } from "@/data/cards/library";
+import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
+import { coreUnitDefinitions } from "@/data/factions/units";
+import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { sampleBuildings } from "@/data/towns/buildings";
+import {
+  getTownOfPlayer,
+  getUnitSide,
+  hasResources as playerHasResources,
+  townHasBuildingEffect,
+  unlockedRecruitTiers
+} from "./adventure";
+import {
+  ATTACKER_BACKLINE,
+  ATTACKER_FRONTLINE,
+  DEFENDER_BACKLINE,
+  DEFENDER_FRONTLINE,
+  getHeroMoveDestinations,
+  isTileAdjacentToSpace
+} from "./adventure-reducer";
 import {
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
@@ -582,8 +600,12 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
 
 function addUnitActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const combat = state.combat;
+  if (combat && (combat.setup || combat.awaitingContinue)) {
+    return;
+  }
+
   if (!combat?.activeUnitId) {
-    if (combat && playerId === combat.attackerPlayerId) {
+    if (combat && playerId === combat.attackerPlayerId && state.mode !== "adventure") {
       actions.push({
         label: "Start next combat round",
         action: { type: "END_COMBAT_ROUND", playerId }
@@ -778,7 +800,7 @@ function addTownBuildActions(
 export function getLegalActions(
   state: GameState,
   playerId: PlayerId,
-  cards: CardLibrary = sampleCards,
+  cards: CardLibrary = cardLibrary,
   buildings: BuildingLibrary = sampleBuildings
 ): LegalAction[] {
   if (state.phase === "game-over") {
@@ -788,6 +810,19 @@ export function getLegalActions(
   if (state.pendingChoice) {
     if (state.pendingChoice.playerId !== playerId) {
       return [];
+    }
+
+    if (state.pendingChoice.type === "OPTION_CHOICE") {
+      const choice = state.pendingChoice;
+      return choice.options.map((option, optionIndex) => ({
+        label: option.label,
+        action: {
+          type: "CHOOSE_OPTION",
+          playerId,
+          choiceId: choice.id,
+          optionIndex
+        }
+      }));
     }
 
     if (state.pendingChoice.type === "DECK_SEARCH") {
@@ -859,6 +894,10 @@ export function getLegalActions(
     ];
   }
 
+  if (state.mode === "adventure") {
+    return getAdventureLegalActions(state, playerId, cards);
+  }
+
   if (isSimultaneousTurnAvailable(state, playerId)) {
     const actions: LegalAction[] = [];
     addTownBuildActions(actions, state, playerId, buildings);
@@ -917,7 +956,7 @@ export function getLegalActions(
 export function getLegalReactionsForTrigger(
   state: GameState,
   triggerEvent: GameEvent,
-  cards: CardLibrary = sampleCards
+  cards: CardLibrary = cardLibrary
 ): Record<PlayerId, LegalAction[]> {
   if (triggerEvent.type !== "SPELL_CAST_STARTED" && triggerEvent.type !== "UNIT_ATTACK_DECLARED") {
     return {};
@@ -1024,6 +1063,10 @@ function getPendingSpellPower(state: GameState, triggerEvent: Extract<GameEvent,
 export function effectHasExpertMode(effect: ConcreteEffect): boolean {
   if (effect.type === "ADD_COMBAT_STAT" || effect.type === "ADD_SPELL_POWER" || effect.type === "DRAW_CARDS") {
     return effect.expertAmount !== undefined;
+  }
+
+  if (effect.type === "GAIN_MORALE") {
+    return effect.expertDrawCards !== undefined;
   }
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
@@ -1133,4 +1176,389 @@ export function isEffectLegalForTrigger(
 
 export function getActiveUnitId(state: GameState): UnitId | null {
   return state.combat?.activeUnitId ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Adventure mode legal actions
+// ---------------------------------------------------------------------------
+
+function addVisitStepActions(actions: LegalAction[], state: GameState, playerId: PlayerId, cards: CardLibrary): void {
+  const adventure = state.adventure;
+  const visit = adventure?.pendingVisit;
+  const step = visit?.steps[0];
+  if (!adventure || !visit || !step || visit.playerId !== playerId) {
+    return;
+  }
+
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+
+  if (step.type === "CHOOSE_ONE") {
+    for (const [optionIndex, option] of step.options.entries()) {
+      actions.push({
+        label: option.label,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex }
+      });
+    }
+    return;
+  }
+
+  if (step.type === "PAY_TO") {
+    for (const [optionIndex, cost] of step.costOptions.entries()) {
+      if (!playerHasResources(player, cost)) {
+        continue;
+      }
+
+      const label = Object.entries(cost)
+        .map(([resource, amount]) => `${amount} ${resource}`)
+        .join(" + ");
+      actions.push({
+        label: `Pay ${label}`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex }
+      });
+    }
+    actions.push({
+      label: "Decline",
+      action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true }
+    });
+    return;
+  }
+
+  if (step.type === "SETTLEMENT_CHOICE") {
+    const field = adventure.fields[visit.fieldId];
+    const free = field ? !field.everFlagged : false;
+    actions.push(
+      { label: "Increase gold income by 1", action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 } },
+      {
+        label: "Increase building materials income by 1",
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 1 }
+      },
+      { label: "Increase valuables income by 1", action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 2 } }
+    );
+
+    const fewUnits = player.army.filter((unit) => {
+      if (unit.side !== "few" || !getUnitSide(unit.unitDefId, "pack")) {
+        return false;
+      }
+      const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
+      return tier === "bronze" || tier === "silver";
+    });
+    fewUnits.forEach((unit, index) => {
+      const packSide = getUnitSide(unit.unitDefId, "pack");
+      const halfCost = Object.entries(packSide?.cost ?? {})
+        .map(([resource, amount]) => `${Math.ceil((amount as number) / 2)} ${resource}`)
+        .join(" + ");
+      actions.push({
+        label: free
+          ? `Reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} for free`
+          : `Reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${halfCost})`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 3 + index }
+      });
+    });
+    return;
+  }
+
+  if (step.type === "WITCH_HUT") {
+    actions.push(
+      { label: "Take the top Ability card", action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 } },
+      {
+        label: "Discard the top Ability card",
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 1 }
+      },
+      { label: "Skip", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } }
+    );
+    return;
+  }
+
+  if (step.type === "MAGIC_SPRING") {
+    const topThree = player.discard.slice(-3).reverse();
+    topThree.forEach((cardId, index) => {
+      actions.push({
+        label: `Return ${cards[cardId]?.name ?? cardId} to hand`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
+      });
+    });
+    actions.push({ label: "Skip", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
+    return;
+  }
+
+  if (step.type === "TRADING_POST") {
+    for (const [rateIndex, rate] of TRADE_RATES.entries()) {
+      if (playerHasResources(player, rate.sell)) {
+        actions.push({
+          label: `Trade ${rate.label}`,
+          action: { type: "TRADE_RESOURCES", playerId, rateIndex }
+        });
+      }
+    }
+    actions.push({ label: "Done trading", action: { type: "RESOLVE_VISIT_STEP", playerId } });
+    return;
+  }
+
+  if (step.type === "DISCOVER_ADJACENT_TILE") {
+    const field = adventure.fields[visit.fieldId];
+    const tile = field ? adventure.tiles[field.tileInstanceId] : undefined;
+    const candidates = tile
+      ? Object.values(adventure.tiles).filter(
+          (candidate) =>
+            candidate.faceDown &&
+            Math.abs(candidate.centerRow - tile.centerRow) + Math.abs(candidate.centerCol - tile.centerCol) <= 6
+        )
+      : [];
+    candidates.forEach((candidate, index) => {
+      actions.push({
+        label: `Discover the face-down tile at (${candidate.centerRow}, ${candidate.centerCol})`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
+      });
+    });
+    actions.push({ label: "Skip", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
+  }
+}
+
+function addCombatSetupActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  const combat = state.combat;
+  const setup = combat?.setup;
+  const player = state.players[playerId];
+  if (!combat || !setup || !player || setup.pendingPlayerIds[0] !== playerId) {
+    return;
+  }
+
+  const placed = setup.placedUnitIds[playerId] ?? [];
+  const cells =
+    playerId === combat.attackerPlayerId
+      ? [...ATTACKER_FRONTLINE, ...ATTACKER_BACKLINE]
+      : [...DEFENDER_FRONTLINE, ...DEFENDER_BACKLINE];
+  const takenPositions = new Set(Object.values(combat.units).map((unit) => unit.position));
+
+  if (placed.length < setup.unitLimit) {
+    for (const armyUnit of player.army) {
+      if (placed.includes(armyUnit.id)) {
+        continue;
+      }
+
+      const unitName = coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
+      for (const position of cells) {
+        if (takenPositions.has(position)) {
+          continue;
+        }
+
+        actions.push({
+          label: `Place ${armyUnit.side} ${unitName} at ${getBattlefieldLabel(position)}`,
+          action: { type: "PLACE_COMBAT_UNIT", playerId, armyUnitId: armyUnit.id, position }
+        });
+      }
+    }
+  }
+
+  for (const armyUnitId of placed) {
+    const unitName = coreUnitDefinitions[player.army.find((unit) => unit.id === armyUnitId)?.unitDefId ?? ""]?.name;
+    actions.push({
+      label: `Take back ${unitName ?? armyUnitId}`,
+      action: { type: "UNPLACE_COMBAT_UNIT", playerId, armyUnitId }
+    });
+  }
+
+  if (placed.length > 0) {
+    actions.push({
+      label: "Ready for battle",
+      action: { type: "FINISH_COMBAT_PLACEMENT", playerId }
+    });
+  }
+}
+
+function addTownActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  const town = getTownOfPlayer(state, playerId);
+  if (!player || !town || state.combat) {
+    return;
+  }
+
+  if (player.townTokens.build) {
+    for (const buildingId of coreFactionDefinitions[player.factionId ?? ""]?.buildings ?? []) {
+      const building = coreBuildingDefinitions[buildingId];
+      if (
+        !building ||
+        building.implementationStatus !== "implemented" ||
+        town.buildings.includes(buildingId) ||
+        (building.prerequisites ?? []).some((prerequisite) => !town.buildings.includes(prerequisite)) ||
+        !playerHasResources(player, building.cost)
+      ) {
+        continue;
+      }
+
+      actions.push({
+        label: `Build ${building.name}`,
+        action: { type: "BUILD_STRUCTURE", playerId, townId: town.id, buildingId }
+      });
+    }
+  }
+
+  if (player.townTokens.population) {
+    const tiers = unlockedRecruitTiers(state, playerId);
+    const canReinforce = townHasBuildingEffect(state, playerId, "UNLOCK_REINFORCE");
+    const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
+
+    for (const unitDefId of faction?.units ?? []) {
+      const unit = coreUnitDefinitions[unitDefId];
+      const fewSide = unit?.few;
+      if (!unit || !fewSide || !tiers.has(unit.tier)) {
+        continue;
+      }
+
+      if (playerHasResources(player, fewSide.cost)) {
+        actions.push({
+          label: `Recruit few ${unit.name}`,
+          action: {
+            type: "POPULATION_ACTION",
+            playerId,
+            purchases: [{ kind: "recruit", unitDefId }]
+          }
+        });
+      }
+
+      if (canReinforce) {
+        const target = player.army.find((armyUnit) => armyUnit.unitDefId === unitDefId && armyUnit.side === "few");
+        const packSide = unit.pack;
+        if (target && packSide && playerHasResources(player, packSide.cost)) {
+          actions.push({
+            label: `Reinforce ${unit.name} to a pack`,
+            action: {
+              type: "POPULATION_ACTION",
+              playerId,
+              purchases: [{ kind: "reinforce", unitDefId, armyUnitId: target.id }]
+            }
+          });
+        }
+      }
+    }
+  }
+
+  if (player.townTokens.spellBook && townHasBuildingEffect(state, playerId, "MAGE_GUILD")) {
+    const mageGuild = town.buildings
+      .map((buildingId) => coreBuildingDefinitions[buildingId])
+      .find((building) => building?.effect?.type === "MAGE_GUILD");
+    const cost = mageGuild?.spellBookCost ?? 5;
+    if (player.mageGuildBuiltRound !== state.round && player.resources.gold >= cost) {
+      actions.push({
+        label: `Buy spells (${cost} gold, Search 2)`,
+        action: { type: "SPELL_BOOK_ACTION", playerId }
+      });
+    }
+  }
+
+  if (player.morale > 0) {
+    actions.push({
+      label: "Spend morale: draw a card",
+      action: { type: "SPEND_MORALE", playerId, benefit: "draw" }
+    });
+  }
+}
+
+function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: CardLibrary): LegalAction[] {
+  const actions: LegalAction[] = [];
+  const adventure = state.adventure;
+  const player = state.players[playerId];
+  if (!adventure || !player) {
+    return actions;
+  }
+
+  // Combat setup placement.
+  if (state.combat?.setup) {
+    addCombatSetupActions(actions, state, playerId);
+    return actions;
+  }
+
+  // The neutral combat time limit: continue for 1 MP or retreat.
+  if (state.combat?.awaitingContinue) {
+    const context = state.combat.context;
+    if (context.kind === "neutral") {
+      const hero = state.heroes[context.heroId];
+      if (hero?.controllerId === playerId) {
+        if (hero.movementPoints > 0) {
+          actions.push({
+            label: "Spend 1 MP: fight another combat round",
+            action: { type: "CONTINUE_NEUTRAL_COMBAT", playerId }
+          });
+        }
+        actions.push({
+          label: "Retreat to the last visited field",
+          action: { type: "RETREAT_FROM_COMBAT", playerId }
+        });
+      }
+    }
+    return actions;
+  }
+
+  // Active combat: the standard combat actions apply.
+  if (state.combat && state.phase === "combat") {
+    addActiveEffectActions(actions, state, playerId);
+    addUnitActions(actions, state, playerId);
+    addSpellActions(actions, state, playerId, cards);
+    addPlayableCardActions(actions, state, playerId, cards);
+    return actions;
+  }
+
+  // Pending field visit choices.
+  if (adventure.pendingVisit) {
+    addVisitStepActions(actions, state, playerId, cards);
+    return actions;
+  }
+
+  // Town and morale actions may happen during any player's turn.
+  addTownActions(actions, state, playerId);
+
+  if (state.activePlayerId !== playerId) {
+    return actions;
+  }
+
+  if (player.needsHandRefresh) {
+    return [
+      {
+        label: "Draw up to your hand limit",
+        action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
+      },
+      ...actions
+    ];
+  }
+
+  for (const hero of Object.values(state.heroes)) {
+    if (hero.controllerId !== playerId || !hero.spaceId) {
+      continue;
+    }
+
+    if (hero.movementPoints > 0) {
+      for (const destination of getHeroMoveDestinations(state, hero)) {
+        actions.push({
+          label: `Move hero to ${destination}`,
+          action: { type: "MOVE_HERO", playerId, heroId: hero.id, to: destination }
+        });
+      }
+
+      const field = adventure.fields[hero.spaceId];
+      if (field && locationDefinitions[field.location]?.category === "revisitable") {
+        actions.push({
+          label: `Revisit ${locationDefinitions[field.location]?.name ?? field.location}`,
+          action: { type: "REVISIT_FIELD", playerId, heroId: hero.id }
+        });
+      }
+
+      for (const tile of Object.values(adventure.tiles)) {
+        if (tile.faceDown && isTileAdjacentToSpace(state, tile.id, hero.spaceId)) {
+          actions.push({
+            label: `Discover the face-down tile at (${tile.centerRow}, ${tile.centerCol})`,
+            action: { type: "DISCOVER_TILE", playerId, heroId: hero.id, tileInstanceId: tile.id }
+          });
+        }
+      }
+    }
+  }
+
+  actions.push({
+    label: "End turn",
+    action: { type: "END_TURN", playerId }
+  });
+
+  return actions;
 }
