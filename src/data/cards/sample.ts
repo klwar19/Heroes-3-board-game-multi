@@ -354,9 +354,13 @@ export const sampleCards: CardLibrary = {
       event: "SPELL_CAST_STARTED",
       controller: "opponent"
     },
+    // Wiki card text: basic play ignores the spell if it was cast with 1
+    // power or less; the expert play ignores the spell regardless of power.
+    // Either way, once Resistance applies the spell always ends.
     effect: {
       type: "CANCEL_SPELL",
-      maxPower: 1
+      maxPower: 1,
+      expertIgnoresMaxPower: true
     },
     assets: {
       cardImage: "https://en.homm3bg.wiki/assets/abilities-resistance.webp",
@@ -558,6 +562,44 @@ export const sampleCards: CardLibrary = {
       product: "Heroes of Might and Magic III: The Board Game",
       credit: wikiCredit,
       url: "https://en.homm3bg.wiki/artifacts/titans_gladius/"
+    }
+  },
+  "artifact.breastplate_of_petrified_wood": {
+    id: "artifact.breastplate_of_petrified_wood",
+    name: "Breastplate of Petrified Wood",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "minor",
+    tags: ["artifact", "minor", "instant", "draw", "power", "or-choice", "wiki-reference"],
+    // Wiki card text: "Draw 1 card. — OR — +1 Power". The player picks
+    // exactly one printed option when the card is played.
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Draw 1 card",
+          effect: { type: "DRAW_CARDS", amount: 1 }
+        },
+        {
+          label: "+1 Power",
+          trigger: {
+            event: "SPELL_CAST_STARTED",
+            controller: "self"
+          },
+          effect: { type: "ADD_SPELL_POWER", amount: 1 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "https://en.homm3bg.wiki/assets/artifacts_minor-breastplate_of_petrified_wood.webp",
+      imageAlt: "Breastplate of Petrified Wood artifact card"
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: wikiCredit,
+      url: "https://en.homm3bg.wiki/artifacts/breastplate_of_petrified_wood/"
     }
   },
   "artifact.buckler_of_the_gnoll_king": {

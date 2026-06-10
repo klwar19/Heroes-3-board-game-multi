@@ -177,7 +177,7 @@ describe("rules engine prototype", () => {
     });
   });
 
-  it("uses a crown for expert Power and pushes Magic Arrow above Resistance", () => {
+  it("uses a crown for expert Power and pushes Magic Arrow above basic Resistance", () => {
     const casted = applyAction(createInitialGameState(), castMagicArrow).state;
     const powered = applyOk(casted, {
       type: "PLAY_REACTION",
@@ -185,10 +185,22 @@ describe("rules engine prototype", () => {
       cardId: "stat.power",
       mode: "expert"
     });
-    const result = applyOk(powered, {
-      type: "PASS_REACTION",
-      playerId: "p1"
-    });
+
+    // At power 3 the basic Resistance play is gone, but the expert play (end
+    // any spell) keeps the defender in the window until they pass.
+    const p2Reactions = getLegalActions(powered, "p2");
+    expect(
+      p2Reactions.some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.resistance" && legal.action.mode === "basic"
+      )
+    ).toBe(false);
+    expect(
+      p2Reactions.some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.resistance" && legal.action.mode === "expert"
+      )
+    ).toBe(true);
+
+    const result = passAllReactions(powered);
 
     expect(result.reactionWindow).toBeNull();
     expect(result.combat?.units.unit_p2_pit_lords.damage).toBe(3);
@@ -872,13 +884,18 @@ describe("rules engine prototype", () => {
       "artifact.centaurs_axe",
       "artifact.ogres_club_of_havoc",
       "artifact.titans_gladius",
+      "artifact.breastplate_of_petrified_wood",
       "war_machine.first_aid_tent"
     ]);
-    expect(p1View.players.p1.handCount).toBe(15);
+    expect(p1View.players.p1.handCount).toBe(16);
     expect(p1View.players.p2.hand).toEqual([]);
     expect(p1View.players.p2.handCount).toBe(4);
     expect(p1View.decks.p1.drawCount).toBe(2);
     expect(Object.hasOwn(p1View.decks.p1, "drawPile")).toBe(false);
+    expect(p1View.players.p1.deck).toEqual([]);
+    expect(p1View.players.p1.deckCount).toBe(6);
+    expect(p1View.players.p2.deck).toEqual([]);
+    expect(p1View.players.p2.deckCount).toBe(4);
     expect(p1View.reactionWindow?.legalReactions.p2).toBeUndefined();
     expect(p1View.reactionWindow?.legalReactions.p1?.[0]?.action).toEqual({
       type: "PLAY_REACTION",
@@ -1067,5 +1084,320 @@ describe("rules engine prototype", () => {
     // Having already moved, the shot ends the activation (no second move).
     expect(shot.combat?.units.unit_p1_elves.activatedThisRound).toBe(true);
     expect(shot.combat?.activeUnitId).not.toBe("unit_p1_elves");
+  });
+
+  it("plays several attack instants in one batch and rolls the die only after all buffs commit", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = ["stat.attack", "stat.attack", "ability.offense", "artifact.centaurs_axe"];
+    state.players.p2.hand = ["stat.defense", "artifact.buckler_of_the_gnoll_king"];
+    setActiveUnit(state, "p1", "unit_p1_griffins");
+    scriptDice(state, [0]);
+
+    const moved = applyOk(state, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+      destination: 10
+    });
+    const declared = applyOk(moved, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_pit_lords"
+    });
+    expect(declared.phase).toBe("reaction");
+    expect(declared.reactionWindow?.priorityPlayerId).toBe("p1");
+
+    // Attacker drops three attack instants at once (two copies of the same
+    // statistic plus an ability), keeping the artifact in hand.
+    const attackerBatch = applyOk(declared, {
+      type: "PLAY_REACTIONS",
+      playerId: "p1",
+      plays: [
+        { cardId: "stat.attack", mode: "basic" },
+        { cardId: "stat.attack", mode: "basic" },
+        { cardId: "ability.offense", mode: "basic" }
+      ]
+    });
+    expect(attackerBatch.stack.at(-1)?.modifiers.attackBonus).toBe(3);
+    expect(attackerBatch.players.p1.discard).toEqual(["stat.attack", "stat.attack", "ability.offense"]);
+    // No dice rolled yet: the defender still gets a chance to respond.
+    expect(findEvent(attackerBatch, "ATTACK_ROLLED")).toBeUndefined();
+    expect(attackerBatch.reactionWindow?.priorityPlayerId).toBe("p2");
+
+    // Defender answers with both defense instants at once.
+    const defenderBatch = applyOk(attackerBatch, {
+      type: "PLAY_REACTIONS",
+      playerId: "p2",
+      plays: [
+        { cardId: "stat.defense", mode: "basic" },
+        { cardId: "artifact.buckler_of_the_gnoll_king", mode: "basic" }
+      ]
+    });
+    expect(defenderBatch.stack.at(-1)?.modifiers.defenseBonus).toBe(2);
+    expect(findEvent(defenderBatch, "ATTACK_ROLLED")).toBeUndefined();
+    // The attacker still holds a legal instant, so the window stays open.
+    expect(defenderBatch.reactionWindow?.priorityPlayerId).toBe("p1");
+
+    const resolved = passAllReactions(defenderBatch);
+    const rolled = findEvent(resolved, "ATTACK_ROLLED");
+
+    // Griffins 3 attack + 3 buffs + 0 roll vs Pit Lords 1 defense + 2 buffs.
+    expect(rolled).toMatchObject({
+      attackBonus: 3,
+      defenseBonus: 2,
+      attackValue: 6,
+      defenseValue: 3,
+      damage: 3
+    });
+
+    // The roll happened strictly after every card play in the event log.
+    const eventTypes = resolved.eventLog.map((event) => event.type);
+    const lastCardPlayed = eventTypes.lastIndexOf("CARD_PLAYED");
+    expect(eventTypes.indexOf("ATTACK_ROLLED")).toBeGreaterThan(lastCardPlayed);
+  });
+
+  it("rejects batches that overspend crowns or sneak in spell-enders", () => {
+    const state = createInitialGameState();
+    state.players.p1.hand = ["spell.magic_arrow", "stat.power", "stat.power"];
+    const casted = applyAction(state, castMagicArrow).state;
+
+    // p1 only has one crown: two expert plays must fail as one declaration.
+    const overspent = applyAction(casted, {
+      type: "PLAY_REACTIONS",
+      playerId: "p1",
+      plays: [
+        { cardId: "stat.power", mode: "expert" },
+        { cardId: "stat.power", mode: "expert" }
+      ]
+    });
+    expect(overspent.errors[0]?.message).toContain("crowns");
+
+    // Both copies as basic plays stack fine in one declaration.
+    const doublePower = applyOk(casted, {
+      type: "PLAY_REACTIONS",
+      playerId: "p1",
+      plays: [
+        { cardId: "stat.power", mode: "basic" },
+        { cardId: "stat.power", mode: "basic" }
+      ]
+    });
+    expect(doublePower.stack.at(-1)?.modifiers.spellPowerBonus).toBe(2);
+
+    const p1Passed = passPriority(casted);
+    const sneakyCancel = applyAction(p1Passed, {
+      type: "PLAY_REACTIONS",
+      playerId: "p2",
+      plays: [{ cardId: "ability.resistance", mode: "basic" }]
+    });
+    expect(sneakyCancel.errors[0]?.message).toContain("on their own");
+  });
+
+  it("lets expert Resistance end a spell of any power, while basic stays capped", () => {
+    const casted = applyAction(createInitialGameState(), castMagicArrow).state;
+    const powered = applyOk(casted, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "stat.power",
+      mode: "expert"
+    });
+
+    // Spell is now power 3. Basic Resistance (cap 1) must be rejected.
+    const basicAttempt = applyAction(powered, {
+      type: "PLAY_REACTION",
+      playerId: "p2",
+      cardId: "ability.resistance",
+      mode: "basic"
+    });
+    expect(basicAttempt.errors).not.toEqual([]);
+
+    // Expert Resistance always ends the spell.
+    const result = applyOk(powered, {
+      type: "PLAY_REACTION",
+      playerId: "p2",
+      cardId: "ability.resistance",
+      mode: "expert"
+    });
+    expect(result.reactionWindow).toBeNull();
+    expect(result.stack).toEqual([]);
+    expect(result.combat?.units.unit_p2_pit_lords.damage).toBe(0);
+    expect(result.players.p2.combatStats.expertUsesSpentThisRound).toBe(1);
+    expect(findEvent(result, "SPELL_CAST_CANCELLED")).toMatchObject({
+      cancelledByCardId: "ability.resistance"
+    });
+  });
+
+  it("lets an OR artifact choose +1 Power during a spell or draw a card outside one", () => {
+    const state = createInitialGameState();
+    state.players.p1.hand = ["spell.magic_arrow", "artifact.breastplate_of_petrified_wood"];
+    state.players.p2.hand = [];
+
+    // Option 2 (+1 Power) is offered inside the caster's spell window.
+    const casted = applyOk(state, castMagicArrow);
+    const reactions = getLegalActions(casted, "p1");
+    const powerOption = reactions.find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "artifact.breastplate_of_petrified_wood" &&
+        legal.action.optionIndex === 1
+    );
+    expect(powerOption).toBeDefined();
+
+    // With no other reactions left the window closes and the spell resolves
+    // immediately at boosted power.
+    const boosted = applyOk(casted, powerOption!.action);
+    expect(findEvent(boosted, "CARD_PLAYED")).toMatchObject({
+      cardId: "artifact.breastplate_of_petrified_wood",
+      optionLabel: "+1 Power"
+    });
+    expect(findEvent(boosted, "SPELL_CAST_RESOLVED")).toMatchObject({ power: 2 });
+
+    // Fresh state: option 1 (Draw 1 card) plays as a direct instant.
+    const drawState = createInitialGameState();
+    drawState.players.p1.hand = ["artifact.breastplate_of_petrified_wood"];
+    drawState.players.p2.hand = [];
+    const deckBefore = drawState.players.p1.deck.length;
+
+    const drawn = applyOk(drawState, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "artifact.breastplate_of_petrified_wood",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "none" }
+    });
+    expect(drawn.players.p1.deck.length).toBe(deckBefore - 1);
+    expect(drawn.players.p1.hand.length).toBe(1);
+    expect(drawn.players.p1.discard).toEqual(["artifact.breastplate_of_petrified_wood"]);
+    expect(findEvent(drawn, "CARDS_DRAWN")).toMatchObject({
+      playerId: "p1",
+      count: 1
+    });
+  });
+
+  it("reshuffles the discard pile into the draw deck when a draw runs dry", () => {
+    const state = createInitialGameState();
+    state.players.p1.hand = ["artifact.breastplate_of_petrified_wood"];
+    state.players.p1.deck = [];
+    state.players.p1.discard = ["stat.attack", "stat.defense"];
+    state.players.p2.hand = [];
+
+    const drawn = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "artifact.breastplate_of_petrified_wood",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "none" }
+    });
+
+    // The played card joins the discard first, then the old discard becomes
+    // the new deck, one card is drawn, and one remains in the pile.
+    expect(findEvent(drawn, "CARDS_DRAWN")).toMatchObject({ count: 1, reshuffledDiscard: true });
+    expect(drawn.players.p1.hand.length).toBe(1);
+    expect(drawn.players.p1.deck.length).toBe(2);
+    expect(drawn.players.p1.discard).toEqual([]);
+  });
+
+  it("searches a shared deck, keeps one reveal, and discards the rest", () => {
+    const state = createInitialGameState();
+    state.players.p2.hand = [];
+    const spellsBefore = [...state.decks.spells.drawPile];
+
+    const searching = applyOk(state, {
+      type: "SEARCH_DECK",
+      playerId: "p1",
+      deckId: "spells",
+      count: 2
+    });
+    expect(searching.phase).toBe("choice");
+    expect(searching.pendingChoice).toMatchObject({ type: "DECK_SEARCH", playerId: "p1" });
+    expect(searching.decks.spells.drawPile.length).toBe(spellsBefore.length - 2);
+
+    // Opponents never see which cards were lifted off the deck.
+    const p2View = getPlayerView(searching, "p2");
+    expect(
+      p2View.pendingChoice?.type === "DECK_SEARCH" ? p2View.pendingChoice.revealedCardIds : []
+    ).toEqual(["hidden", "hidden"]);
+
+    const choice = searching.pendingChoice;
+    if (choice?.type !== "DECK_SEARCH") {
+      throw new Error("Expected a deck search choice.");
+    }
+
+    const handBefore = searching.players.p1.hand.length;
+    const resolved = applyOk(searching, {
+      type: "RESOLVE_DECK_SEARCH",
+      playerId: "p1",
+      choiceId: choice.id,
+      pick: { kind: "revealed", index: 0 }
+    });
+
+    expect(resolved.phase).toBe("combat");
+    expect(resolved.players.p1.hand.length).toBe(handBefore + 1);
+    expect(resolved.players.p1.hand).toContain(choice.revealedCardIds[0]);
+    expect(resolved.decks.spells.discardPile).toEqual([choice.revealedCardIds[1]]);
+
+    // A later search may take the now-public discard top instead.
+    const searchingAgain = applyOk(resolved, {
+      type: "SEARCH_DECK",
+      playerId: "p1",
+      deckId: "spells",
+      count: 2
+    });
+    const secondChoice = searchingAgain.pendingChoice;
+    if (secondChoice?.type !== "DECK_SEARCH") {
+      throw new Error("Expected a deck search choice.");
+    }
+    expect(secondChoice.canTakeDiscardTop).toBe(true);
+
+    const tookDiscard = applyOk(searchingAgain, {
+      type: "RESOLVE_DECK_SEARCH",
+      playerId: "p1",
+      choiceId: secondChoice.id,
+      pick: { kind: "discard-top" }
+    });
+    expect(tookDiscard.players.p1.hand).toContain(choice.revealedCardIds[1]);
+    expect(tookDiscard.decks.spells.discardPile).toEqual(secondChoice.revealedCardIds);
+  });
+
+  it("moves a hero across adjacent map fields and spends movement points", () => {
+    const state = createInitialGameState();
+    state.combat = null;
+    state.phase = "player-turn";
+    state.turn.mode = "ordered";
+
+    const legalMoves = getLegalActions(state, "p1").filter((legal) => legal.action.type === "MOVE_HERO");
+    expect(legalMoves.map((legal) => (legal.action.type === "MOVE_HERO" ? legal.action.to : ""))).toEqual([
+      "town_p1",
+      "town_p2"
+    ]);
+
+    const moved = applyOk(state, {
+      type: "MOVE_HERO",
+      playerId: "p1",
+      heroId: "hero_p1",
+      to: "town_p1"
+    });
+    expect(moved.heroes.hero_p1.spaceId).toBe("town_p1");
+    expect(moved.heroes.hero_p1.movementPoints).toBe(2);
+    expect(findEvent(moved, "HERO_MOVED")).toMatchObject({
+      heroId: "hero_p1",
+      from: "field_center",
+      to: "town_p1",
+      movementLeft: 2
+    });
+
+    // Non-adjacent jumps stay illegal.
+    const jump = applyAction(moved, {
+      type: "MOVE_HERO",
+      playerId: "p1",
+      heroId: "hero_p1",
+      to: "town_p2"
+    });
+    expect(jump.errors).not.toEqual([]);
   });
 });

@@ -22,8 +22,11 @@ This note captures the working model for future development. Treat the official 
 - First Aid ability page: https://homm3bg.wiki/abilities/first_aid/
 - First Aid Tent war machine page: https://homm3bg.wiki/war_machines/first_aid_tent/
 - Ogres unit page: https://en.homm3bg.wiki/units/ogres/
+- Breastplate of Petrified Wood ("OR" artifact) page: https://en.homm3bg.wiki/artifacts/breastplate_of_petrified_wood/
+- Attack statistic card page: https://en.homm3bg.wiki/statistics/attack/
+- Wiki keywords index (Search, Remove, Empower, etc.): https://en.homm3bg.wiki/keywords/
 - Might and Magic Fandom overview: https://mightandmagic.fandom.com/wiki/Heroes_of_Might_and_Magic_III%3A_The_Board_Game
-- Local playthrough transcript: `C:\Users\klwar\Desktop\tai lieu nhap hoc sp\youtube script\Heroes of Might and Magic 3 The Board Game - Playthrough.txt`
+- Local playthrough transcript: `C:\Users\klwar\Desktop\tai lieu nhap hoc sp\youtube script\Heroes of Might and Magic 3 The Board Game - Playthrough.txt` (Homecoming solo playthrough)
 
 ## Source Confidence
 
@@ -53,9 +56,12 @@ This note captures the working model for future development. Treat the official 
 
 - The player deck starts from hero statistics, starting spell(s), starting ability, and specialty cards. Artifacts/spells/abilities are later added through rewards and town actions.
 - Hero level controls hand limit, specialty additions, ability searches, and the number of expert effects usable per round.
-- Combat normally limits a player to one spell card per combat round, while specialty cards do not count against that spell limit.
-- Instant cards create the most important engine requirement. The engine must pause resolution, expose legal reactions, accept pass/reaction actions, and then resume the original action.
-- Resistance is the prototype reaction: it is played immediately after an enemy spell is cast and can ignore the spell effect under its stated power/expert conditions.
+- Combat normally limits a player to one spell card per combat round, while specialty cards do not count against that spell limit. Instant cards (statistics, instant artifacts/abilities) are NOT limited to one per window: a player may commit one or several instants on the same attack/spell declaration, paying a crown for each expert play. The engine supports this both as repeated single plays and as one batched declaration (`PLAY_REACTIONS`).
+- Resistance card text (wiki): basic — "Play this card immediately after the enemy casts a spell. If the spell was cast with 1 power or less, ignore the Spell card's effect."; expert — "...Ignore the Spell card's effect." Whenever Resistance applies (basic under its power cap, expert always), the spell ends immediately: the pending spell is cancelled and the instant window closes. Power cards already committed are counted when checking the basic cap.
+- "OR" cards (mostly artifacts, e.g. Breastplate of Petrified Wood: "Draw 1 card. — OR — +1 Power") give the player a choice of exactly one printed option when played. Options can carry their own timing (the +1 Power side only matters during your own spell cast; the draw side is an anytime instant).
+- Some cards draw more cards (`DRAW_CARDS`). Draws come from the owner's personal draw deck; when it empties mid-draw, the discard pile is shuffled (seeded) into a new draw pile and drawing continues.
+- Deck layout on the table: each player has a draw deck + discard pile (+ removed-from-game pile), and the table has three shared decks — Spells, Abilities, Artifacts — each with its own discard pile. "Search X" (wiki keyword + playthrough): reveal the top X cards of the named deck, keep one in hand, discard the rest to that deck's discard pile — or take the top card of that discard pile instead.
+- Instant cards create the most important engine requirement. The engine must pause resolution, expose legal reactions, accept pass/reaction actions, and then resume the original action. The attack die is rolled only after every instant window closes — buffs first, dice last, then damage.
 - Reroll effects need a pending-choice step. Fortune is played before the die roll and lets the player reroll an Attack die according to its power, while Luck's expert effect can apply to Attack dice during the turn.
 - Do not implement instant cards as UI shortcuts. They should be data definitions with triggers, conditions, targets, and effects handled by the engine.
 

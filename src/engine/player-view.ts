@@ -1,6 +1,7 @@
 import type {
   DeckId,
   GameState,
+  PendingChoice,
   PlayerId,
   PlayerVisibleDeckState,
   PlayerVisiblePlayerState,
@@ -28,6 +29,23 @@ function getVisibleReactionWindow(window: ReactionWindow | null, viewerPlayerId:
   };
 }
 
+function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId): PendingChoice {
+  if (!choice) {
+    return null;
+  }
+
+  // Search reveals stay private to the searcher; opponents only learn how
+  // many cards were lifted off the deck.
+  if (choice.type === "DECK_SEARCH" && choice.playerId !== viewerPlayerId) {
+    return {
+      ...cloneSerializable(choice),
+      revealedCardIds: choice.revealedCardIds.map(() => "hidden")
+    };
+  }
+
+  return cloneSerializable(choice);
+}
+
 export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): PlayerVisibleState {
   const base = cloneSerializable(state);
   const players = Object.fromEntries(
@@ -37,7 +55,11 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
         ...player,
         hand: playerId === viewerPlayerId ? [...player.hand] : [],
         handCount: player.hand.length,
-        discard: [...player.discard]
+        // Nobody, including the owner, may read the draw pile order.
+        deck: [],
+        deckCount: player.deck.length,
+        discard: [...player.discard],
+        removed: [...player.removed]
       }
     ])
   );
@@ -57,6 +79,7 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
     viewerPlayerId,
     players,
     decks,
-    reactionWindow: getVisibleReactionWindow(base.reactionWindow, viewerPlayerId)
+    reactionWindow: getVisibleReactionWindow(base.reactionWindow, viewerPlayerId),
+    pendingChoice: getVisiblePendingChoice(base.pendingChoice, viewerPlayerId)
   };
 }

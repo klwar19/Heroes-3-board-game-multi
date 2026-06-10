@@ -40,6 +40,14 @@ export default function CreditsPage() {
             <a href="https://en.homm3bg.wiki/abilities/resistance/">Resistance card reference</a>
           </li>
           <li>
+            <a href="https://en.homm3bg.wiki/artifacts/breastplate_of_petrified_wood/">
+              Breastplate of Petrified Wood card reference
+            </a>
+          </li>
+          <li>
+            <a href="https://en.homm3bg.wiki/keywords/">Wiki keywords reference (Search, Dice, Remove)</a>
+          </li>
+          <li>
             <a href="https://en.homm3bg.wiki/units/elves/">Elves unit reference</a>
           </li>
           <li>

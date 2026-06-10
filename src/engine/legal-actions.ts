@@ -9,6 +9,7 @@ import {
   getBattlefieldTerrain,
   isBattlefieldPosition
 } from "./battlefield";
+import { SHARED_DECK_IDS } from "./decks";
 import type {
   AttackRollMode,
   ActiveEffectState,
@@ -19,6 +20,7 @@ import type {
   CardLibrary,
   CombatState,
   CombatUnitState,
+  EffectDefinition,
   GameAction,
   GameEvent,
   GameState,
@@ -29,9 +31,41 @@ import type {
   TargetDefinition,
   TargetRef,
   TownId,
+  TriggerDefinition,
   UnitId
 } from "./state";
 import { getUnitAbilityDefinitions, hasUnitAbilityEffect } from "./unit-abilities";
+
+type ConcreteEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
+
+/**
+ * One playable face of a card: regular cards expose a single variant, while
+ * "OR" cards expose one variant per printed option.
+ */
+type CardPlayVariant = {
+  trigger?: TriggerDefinition;
+  effect: ConcreteEffect;
+  optionIndex?: number;
+  optionLabel?: string;
+};
+
+export function getCardPlayVariants(card: CardDefinition): CardPlayVariant[] {
+  if (card.effect.type === "CHOOSE_ONE") {
+    return card.effect.options.map((option, optionIndex) => ({
+      trigger: option.trigger,
+      effect: option.effect,
+      optionIndex,
+      optionLabel: option.label
+    }));
+  }
+
+  return [
+    {
+      trigger: card.trigger,
+      effect: card.effect
+    }
+  ];
+}
 
 export function isUnitAlive(unit: CombatUnitState): boolean {
   return unit.damage < unit.maxHealth;
@@ -377,7 +411,7 @@ function addSpellActions(
     return;
   }
 
-  for (const cardId of player.hand) {
+  for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
     if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
       continue;
@@ -412,7 +446,7 @@ function addPlayableCardActions(
     return;
   }
 
-  for (const cardId of player.hand) {
+  for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
     if (
       !card ||
@@ -425,6 +459,29 @@ function addPlayableCardActions(
     }
 
     if (card.timing !== "combat" && card.timing !== "instant" && card.timing !== "ongoing" && card.timing !== "action") {
+      continue;
+    }
+
+    if (card.effect.type === "CHOOSE_ONE") {
+      // Options that carry a trigger wait for their reaction window; the
+      // remaining options (currently card draws) play as direct instants.
+      for (const [optionIndex, option] of card.effect.options.entries()) {
+        if (option.trigger || option.effect.type !== "DRAW_CARDS") {
+          continue;
+        }
+
+        actions.push({
+          label: `${card.name}: ${option.label}`,
+          action: {
+            type: "PLAY_CARD",
+            playerId,
+            cardId,
+            mode: "basic",
+            optionIndex,
+            target: { type: "none" }
+          }
+        });
+      }
       continue;
     }
 
@@ -599,6 +656,61 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
   }
 }
 
+function addDeckSearchActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  // Searches are normally granted by rewards (level ups, treasure fields,
+  // town actions). Until the adventure-map reward loop is implemented, the
+  // active player may demo the full search flow from the table decks.
+  if (state.reactionWindow || state.pendingChoice || state.stack.length > 0) {
+    return;
+  }
+
+  if (state.activePlayerId !== playerId) {
+    return;
+  }
+
+  for (const deckId of SHARED_DECK_IDS) {
+    const deck = state.decks[deckId];
+    if (!deck || deck.drawPile.length + deck.discardPile.length === 0) {
+      continue;
+    }
+
+    actions.push({
+      label: `Search 2 in the ${deckId} deck`,
+      action: {
+        type: "SEARCH_DECK",
+        playerId,
+        deckId,
+        count: 2
+      }
+    });
+  }
+}
+
+function addHeroMoveActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  if (state.combat || (state.phase !== "map" && state.phase !== "player-turn")) {
+    return;
+  }
+
+  for (const hero of Object.values(state.heroes)) {
+    if (hero.controllerId !== playerId || hero.movementPoints <= 0 || !hero.spaceId) {
+      continue;
+    }
+
+    const space = state.map.spaces[hero.spaceId];
+    for (const adjacentSpaceId of space?.adjacent ?? []) {
+      actions.push({
+        label: `Move hero to ${adjacentSpaceId}`,
+        action: {
+          type: "MOVE_HERO",
+          playerId,
+          heroId: hero.id,
+          to: adjacentSpaceId
+        }
+      });
+    }
+  }
+}
+
 function hasResources(
   resources: Record<ResourceKind, number>,
   cost: ResourceCost
@@ -676,6 +788,33 @@ export function getLegalActions(
   if (state.pendingChoice) {
     if (state.pendingChoice.playerId !== playerId) {
       return [];
+    }
+
+    if (state.pendingChoice.type === "DECK_SEARCH") {
+      const choice = state.pendingChoice;
+      const actions: LegalAction[] = choice.revealedCardIds.map((cardId, index) => ({
+        label: `Keep ${cards[cardId]?.name ?? cardId}`,
+        action: {
+          type: "RESOLVE_DECK_SEARCH",
+          playerId,
+          choiceId: choice.id,
+          pick: { kind: "revealed", index }
+        }
+      }));
+
+      if (choice.canTakeDiscardTop) {
+        actions.push({
+          label: "Take the top discard instead",
+          action: {
+            type: "RESOLVE_DECK_SEARCH",
+            playerId,
+            choiceId: choice.id,
+            pick: { kind: "discard-top" }
+          }
+        });
+      }
+
+      return actions;
     }
 
     const actions: LegalAction[] = state.pendingChoice.candidates.map((candidate, candidateIndex) => ({
@@ -757,6 +896,8 @@ export function getLegalActions(
   }
 
   if (!state.combat || state.phase !== "combat") {
+    addHeroMoveActions(actions, state, playerId);
+    addDeckSearchActions(actions, state, playerId);
     actions.push({
       label: "End turn",
       action: { type: "END_TURN", playerId }
@@ -767,6 +908,7 @@ export function getLegalActions(
   addUnitActions(actions, state, playerId);
   addSpellActions(actions, state, playerId, cards);
   addPlayableCardActions(actions, state, playerId, cards);
+  addDeckSearchActions(actions, state, playerId);
 
   return actions;
 }
@@ -783,7 +925,7 @@ export function getLegalReactionsForTrigger(
   const result: Record<PlayerId, LegalAction[]> = {};
 
   for (const player of Object.values(state.players)) {
-    const reactions = player.hand.flatMap((cardId) => {
+    const reactions = [...new Set(player.hand)].flatMap((cardId) => {
       const card = cards[cardId];
       if (
         !card ||
@@ -793,44 +935,42 @@ export function getLegalReactionsForTrigger(
         return [];
       }
 
-      if (!card.trigger || card.trigger.event !== triggerEvent.type) {
-        return [];
-      }
+      const actions: LegalAction[] = [];
 
-      const isSelf = triggerEvent.playerId === player.id;
-      if (card.trigger.controller === "self" && !isSelf) {
-        return [];
-      }
+      for (const variant of getCardPlayVariants(card)) {
+        if (!variantMatchesTrigger(variant, triggerEvent, player.id)) {
+          continue;
+        }
 
-      if (card.trigger.controller === "opponent" && isSelf) {
-        return [];
-      }
+        const variantName = variant.optionLabel ? `${card.name}: ${variant.optionLabel}` : card.name;
 
-      if (!isCardEffectLegalForTrigger(state, player.id, cardId, triggerEvent, cards)) {
-        return [];
-      }
+        if (isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic")) {
+          actions.push(
+            makeReactionAction(variantName, {
+              type: "PLAY_REACTION",
+              playerId: player.id,
+              cardId,
+              mode: "basic",
+              ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
+            })
+          );
+        }
 
-      const actions: LegalAction[] = [
-        makeReactionAction(card.name, {
-          type: "PLAY_REACTION",
-          playerId: player.id,
-          cardId,
-          mode: "basic"
-        })
-      ];
-
-      if (
-        getExpertAmount(card.effect) !== null &&
-        player.combatStats.expertUsesSpentThisRound < player.limits.expertUses
-      ) {
-        actions.push(
-          makeReactionAction(`${card.name} expert`, {
-            type: "PLAY_REACTION",
-            playerId: player.id,
-            cardId,
-            mode: "expert"
-          })
-        );
+        if (
+          effectHasExpertMode(variant.effect) &&
+          player.combatStats.expertUsesSpentThisRound < player.limits.expertUses &&
+          isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "expert")
+        ) {
+          actions.push(
+            makeReactionAction(`${variantName} expert`, {
+              type: "PLAY_REACTION",
+              playerId: player.id,
+              cardId,
+              mode: "expert",
+              ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
+            })
+          );
+        }
       }
 
       return actions;
@@ -844,6 +984,33 @@ export function getLegalReactionsForTrigger(
   return result;
 }
 
+function variantMatchesTrigger(
+  variant: CardPlayVariant,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" }>,
+  playerId: PlayerId
+): boolean {
+  if (!variant.trigger) {
+    // Trigger-free instants (currently card draws) may be slotted into any
+    // open timing window, mirroring how instants work at the table.
+    return variant.effect.type === "DRAW_CARDS";
+  }
+
+  if (variant.trigger.event !== triggerEvent.type) {
+    return false;
+  }
+
+  const isSelf = triggerEvent.playerId === playerId;
+  if (variant.trigger.controller === "self" && !isSelf) {
+    return false;
+  }
+
+  if (variant.trigger.controller === "opponent" && isSelf) {
+    return false;
+  }
+
+  return true;
+}
+
 function getPendingStackItem(state: GameState, triggerEvent: GameEvent) {
   return state.stack.find((item) => item.triggerEventIds.includes(triggerEvent.id));
 }
@@ -853,20 +1020,24 @@ function getPendingSpellPower(state: GameState, triggerEvent: Extract<GameEvent,
   return triggerEvent.power + (stackItem?.modifiers.spellPowerBonus ?? 0);
 }
 
-function getExpertAmount(effect: CardLibrary[string]["effect"]): number | null {
-  if (effect.type === "ADD_COMBAT_STAT" || effect.type === "ADD_SPELL_POWER") {
-    return effect.expertAmount ?? null;
+export function effectHasExpertMode(effect: ConcreteEffect): boolean {
+  if (effect.type === "ADD_COMBAT_STAT" || effect.type === "ADD_SPELL_POWER" || effect.type === "DRAW_CARDS") {
+    return effect.expertAmount !== undefined;
   }
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
-    return effect.expertEffect ? 0 : null;
+    return Boolean(effect.expertEffect);
   }
 
   if (effect.type === "RECALL_SPELL") {
-    return effect.expertSpellLimitBonus ? 0 : null;
+    return Boolean(effect.expertSpellLimitBonus);
   }
 
-  return null;
+  if (effect.type === "CANCEL_SPELL") {
+    return Boolean(effect.expertIgnoresMaxPower);
+  }
+
+  return false;
 }
 
 function makeReactionAction(label: string, action: Extract<GameAction, { type: "PLAY_REACTION" }>): LegalAction {
@@ -877,38 +1048,43 @@ function makeReactionAction(label: string, action: Extract<GameAction, { type: "
   };
 }
 
-function isCardEffectLegalForTrigger(
+export function isEffectLegalForTrigger(
   state: GameState,
   playerId: PlayerId,
-  cardId: string,
+  effect: ConcreteEffect,
   triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" }>,
-  cards: CardLibrary
+  mode: CardPlayMode
 ): boolean {
-  const card = cards[cardId];
-  if (!card) {
-    return false;
+  // Card draws are timing-free instants: they fit inside any open window.
+  if (effect.type === "DRAW_CARDS") {
+    return true;
   }
 
   if (triggerEvent.type === "SPELL_CAST_STARTED") {
-    if (card.effect.type === "ADD_SPELL_POWER") {
+    if (effect.type === "ADD_SPELL_POWER") {
       return triggerEvent.playerId === playerId;
     }
 
-    if (card.effect.type === "CANCEL_SPELL") {
+    if (effect.type === "CANCEL_SPELL") {
       if (triggerEvent.playerId === playerId) {
         return false;
       }
 
-      if (card.effect.maxPower !== undefined) {
-        if (getPendingSpellPower(state, triggerEvent) > card.effect.maxPower) {
-          return false;
-        }
+      // Expert play (e.g. Expert Resistance) ends a spell of any power. The
+      // basic play only applies while the spell's current power, including
+      // Power cards already committed, is at or below the printed limit.
+      if (mode === "expert" && effect.expertIgnoresMaxPower) {
+        return true;
+      }
+
+      if (effect.maxPower !== undefined && getPendingSpellPower(state, triggerEvent) > effect.maxPower) {
+        return false;
       }
 
       return true;
     }
 
-    if (card.effect.type === "RECALL_SPELL") {
+    if (effect.type === "RECALL_SPELL") {
       return triggerEvent.playerId === playerId;
     }
 
@@ -923,8 +1099,8 @@ function isCardEffectLegalForTrigger(
       return false;
     }
 
-    if (card.effect.type === "CREATE_ACTIVE_EFFECT") {
-      return card.effect.effect.modifiers.every((modifier) => {
+    if (effect.type === "CREATE_ACTIVE_EFFECT") {
+      return effect.effect.modifiers.every((modifier) => {
         if (modifier.type !== "RANGED_ATTACK_BONUS") {
           return true;
         }
@@ -937,11 +1113,11 @@ function isCardEffectLegalForTrigger(
       });
     }
 
-    if (card.effect.type !== "ADD_COMBAT_STAT") {
+    if (effect.type !== "ADD_COMBAT_STAT") {
       return false;
     }
 
-    if (card.effect.stat === "attack") {
+    if (effect.stat === "attack") {
       return attacker.controllerId === playerId;
     }
 

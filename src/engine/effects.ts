@@ -1,10 +1,12 @@
-import type { CardDefinition, CardPlayMode, EffectDefinition } from "./state";
+import type { CardDefinition, CardOptionDefinition, CardPlayMode, EffectDefinition } from "./state";
 
 export const implementedCardEffectTypes = [
   "DEAL_DAMAGE",
   "HEAL_DAMAGE",
   "HEAL_DAMAGE_AND_REMOVE_EFFECTS",
   "CANCEL_SPELL",
+  "DRAW_CARDS",
+  "CHOOSE_ONE",
   "ADD_COMBAT_STAT",
   "ADD_SPELL_POWER",
   "CREATE_ACTIVE_EFFECT",
@@ -15,7 +17,34 @@ export const implementedCardEffectTypes = [
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {
+  if (effect.type === "CHOOSE_ONE") {
+    return effect.options.every((option) => implementedCardEffectTypes.includes(option.effect.type));
+  }
+
   return implementedCardEffectTypes.includes(effect.type);
+}
+
+export function getCardOptions(card: CardDefinition): CardOptionDefinition[] {
+  return card.effect.type === "CHOOSE_ONE" ? card.effect.options : [];
+}
+
+/**
+ * Resolves the concrete effect a play applies: for "OR" cards this is the
+ * chosen option's effect, otherwise the card's printed effect.
+ */
+export function getEffectiveCardEffect(
+  card: CardDefinition,
+  optionIndex?: number
+): Exclude<EffectDefinition, { type: "CHOOSE_ONE" }> | null {
+  if (card.effect.type !== "CHOOSE_ONE") {
+    return card.effect;
+  }
+
+  if (optionIndex === undefined) {
+    return null;
+  }
+
+  return card.effect.options[optionIndex]?.effect ?? null;
 }
 
 export function getSpellDamageAmount(card: CardDefinition, power: number): number {
@@ -40,19 +69,37 @@ export function getSpellDamageAmount(card: CardDefinition, power: number): numbe
   return card.effect.amount ?? 0;
 }
 
-export function getCardEffectAmount(card: CardDefinition, mode: CardPlayMode): number {
-  if (card.effect.type !== "ADD_COMBAT_STAT" && card.effect.type !== "ADD_SPELL_POWER") {
+export function getEffectAmount(effect: EffectDefinition, mode: CardPlayMode): number {
+  if (
+    effect.type !== "ADD_COMBAT_STAT" &&
+    effect.type !== "ADD_SPELL_POWER" &&
+    effect.type !== "DRAW_CARDS"
+  ) {
     return 0;
   }
 
   if (mode === "expert") {
-    return card.effect.expertAmount ?? card.effect.amount;
+    return effect.expertAmount ?? effect.amount;
   }
 
-  return card.effect.amount;
+  return effect.amount;
+}
+
+export function getCardEffectAmount(card: CardDefinition, mode: CardPlayMode, optionIndex?: number): number {
+  const effect = getEffectiveCardEffect(card, optionIndex);
+  return effect ? getEffectAmount(effect, mode) : 0;
 }
 
 export function describeCardEffect(card: CardDefinition): string {
+  if (card.effect.type === "CHOOSE_ONE") {
+    return card.effect.options.map((option) => option.label).join(" OR ");
+  }
+
+  if (card.effect.type === "DRAW_CARDS") {
+    const expert = card.effect.expertAmount ? `, expert draw ${card.effect.expertAmount}` : "";
+    return `draw ${card.effect.amount} card${card.effect.amount === 1 ? "" : "s"}${expert}`;
+  }
+
   if (card.effect.type === "DEAL_DAMAGE") {
     if (card.effect.amountByPower) {
       const breakpoints = Object.entries(card.effect.amountByPower)
@@ -87,7 +134,8 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "CANCEL_SPELL") {
-    return `Cancel spell up to ${card.effect.maxPower ?? "any"} power`;
+    const expert = card.effect.expertIgnoresMaxPower ? ", expert ends any spell" : "";
+    return `End spell up to ${card.effect.maxPower ?? "any"} power${expert}`;
   }
 
   if (card.effect.type === "ADD_COMBAT_STAT") {

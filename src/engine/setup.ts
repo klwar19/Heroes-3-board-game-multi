@@ -1,6 +1,15 @@
 import { ATTACK_DIE_FACES } from "./battlefield";
-import type { GameState } from "./state";
+import { shuffleCards } from "./decks";
+import type { DeckState, GameState } from "./state";
 import { sampleCombatUnits } from "@/data/units/sample";
+
+function makeSharedDeck(id: string, cardIds: string[], seed: string): DeckState {
+  return {
+    id,
+    drawPile: shuffleCards(cardIds, `${seed}#deck#${id}`),
+    discardPile: []
+  };
+}
 
 export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
   const units = JSON.parse(JSON.stringify(sampleCombatUnits)) as typeof sampleCombatUnits;
@@ -17,6 +26,17 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
       p1: {
         id: "p1",
         name: "Rampart Alliance",
+        // Personal draw pile (top = last element). Draw effects and the
+        // round-start draw-up pull from here and reshuffle the discard
+        // when it runs dry.
+        deck: [
+          "stat.defense",
+          "spell.magic_arrow",
+          "stat.attack",
+          "stat.power",
+          "stat.defense",
+          "stat.attack"
+        ],
         hand: [
           "spell.magic_arrow",
           "spell.lightning_bolt",
@@ -33,16 +53,18 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
           "artifact.centaurs_axe",
           "artifact.ogres_club_of_havoc",
           "artifact.titans_gladius",
+          "artifact.breastplate_of_petrified_wood",
           "war_machine.first_aid_tent"
         ],
         discard: [],
+        removed: [],
         resources: {
           gold: 10,
           buildingMaterials: 5,
           valuables: 1
         },
         limits: {
-          hand: 15,
+          hand: 17,
           expertUses: 1
         },
         combatStats: {
@@ -54,8 +76,10 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
       p2: {
         id: "p2",
         name: "Inferno Warband",
+        deck: ["stat.defense", "ability.resistance", "stat.attack", "stat.defense"],
         hand: ["ability.resistance", "stat.defense", "stat.attack", "artifact.buckler_of_the_gnoll_king"],
         discard: [],
+        removed: [],
         resources: {
           gold: 10,
           buildingMaterials: 5,
@@ -121,7 +145,39 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
       },
       units
     },
-    decks: {},
+    // Shared table decks. Search effects reveal from the draw pile and feed
+    // the matching discard pile, exactly like the physical card wells.
+    decks: {
+      spells: makeSharedDeck(
+        "spells",
+        [
+          "spell.magic_arrow",
+          "spell.magic_arrow",
+          "spell.lightning_bolt",
+          "spell.stone_skin",
+          "spell.bloodlust",
+          "spell.cure",
+          "spell.fortune"
+        ],
+        seed
+      ),
+      abilities: makeSharedDeck(
+        "abilities",
+        ["ability.resistance", "ability.archery", "ability.offense", "ability.luck"],
+        seed
+      ),
+      artifacts: makeSharedDeck(
+        "artifacts",
+        [
+          "artifact.centaurs_axe",
+          "artifact.ogres_club_of_havoc",
+          "artifact.titans_gladius",
+          "artifact.buckler_of_the_gnoll_king",
+          "artifact.breastplate_of_petrified_wood"
+        ],
+        seed
+      )
+    },
     stack: [],
     reactionWindow: null,
     activeEffects: [],
