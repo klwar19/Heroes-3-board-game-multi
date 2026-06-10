@@ -17,6 +17,7 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
   return {
     id: "local-dev-game",
     seed,
+    mode: "combat-sandbox",
     round: 1,
     phase: "combat",
     activePlayerId: "p1",
@@ -58,6 +59,19 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
         ],
         discard: [],
         removed: [],
+        army: [],
+        startingArmy: [],
+        production: {
+          gold: 0,
+          buildingMaterials: 0,
+          valuables: 0
+        },
+        townTokens: {
+          build: true,
+          population: true,
+          spellBook: true
+        },
+        morale: 0,
         resources: {
           gold: 10,
           buildingMaterials: 5,
@@ -80,6 +94,19 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
         hand: ["ability.resistance", "stat.defense", "stat.attack", "artifact.buckler_of_the_gnoll_king"],
         discard: [],
         removed: [],
+        army: [],
+        startingArmy: [],
+        production: {
+          gold: 0,
+          buildingMaterials: 0,
+          valuables: 0
+        },
+        townTokens: {
+          build: true,
+          population: true,
+          spellBook: true
+        },
+        morale: 0,
         resources: {
           gold: 10,
           buildingMaterials: 5,
@@ -96,6 +123,7 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
         }
       }
     },
+    adventure: null,
     map: {
       spaces: {
         town_p1: { id: "town_p1", adjacent: ["field_center"] },
@@ -119,15 +147,21 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
       hero_p1: {
         id: "hero_p1",
         controllerId: "p1",
+        kind: "main",
         level: 1,
+        experience: 0,
         movementPoints: 3,
+        movementPointsMax: 3,
         spaceId: "field_center"
       },
       hero_p2: {
         id: "hero_p2",
         controllerId: "p2",
+        kind: "main",
         level: 1,
+        experience: 0,
         movementPoints: 3,
+        movementPointsMax: 3,
         spaceId: "field_center"
       }
     },
@@ -137,6 +171,9 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
       attackerPlayerId: "p1",
       defenderPlayerId: "p2",
       activeUnitId: "unit_p1_griffins",
+      context: { kind: "sandbox" },
+      setup: null,
+      awaitingContinue: false,
       outcome: null,
       dice: {
         faces: [...ATTACK_DIE_FACES],

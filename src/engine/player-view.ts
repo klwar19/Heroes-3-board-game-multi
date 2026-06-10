@@ -74,11 +74,32 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
     ])
   );
 
+  // Hidden adventure information: face-down tiles keep their position but
+  // not their identity, and only the owner sees which Far tiles they hold.
+  const adventure = base.adventure
+    ? {
+        ...base.adventure,
+        tiles: Object.fromEntries(
+          Object.entries(base.adventure.tiles).map(([tileId, tile]) => [
+            tileId,
+            tile.faceDown ? { ...tile, tileDefId: "hidden" } : tile
+          ])
+        ),
+        playerFarTiles: Object.fromEntries(
+          Object.entries(base.adventure.playerFarTiles).map(([playerId, tiles]) => [
+            playerId,
+            playerId === viewerPlayerId ? tiles : tiles.map(() => "hidden")
+          ])
+        )
+      }
+    : null;
+
   return {
     ...base,
     viewerPlayerId,
     players,
     decks,
+    adventure,
     reactionWindow: getVisibleReactionWindow(base.reactionWindow, viewerPlayerId),
     pendingChoice: getVisiblePendingChoice(base.pendingChoice, viewerPlayerId)
   };

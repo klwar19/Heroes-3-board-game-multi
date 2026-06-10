@@ -1,6 +1,31 @@
-import { sampleCards } from "@/data/cards/sample";
+import { cardLibrary } from "@/data/cards/library";
 import { sampleBuildings } from "@/data/towns/buildings";
+import { changeMorale, getUnitSide } from "./adventure";
+import {
+  buildStructureAdventure,
+  chooseOption,
+  continueNeutralCombat,
+  discoverTile,
+  finalizeAdventureCombat,
+  finishCombatPlacement,
+  moveHeroAdventure,
+  placeCombatUnit,
+  placeTile,
+  populationAction,
+  pumpAdventureQueues,
+  refreshHand,
+  rehydrateCityHallChoice,
+  resolveVisitStep,
+  retreatFromCombat,
+  revisitField,
+  spellBookAction,
+  spendMorale,
+  tradeResources,
+  unplaceCombatUnit,
+  endTurnAdventure
+} from "./adventure-reducer";
 import { ATTACK_DIE_FACES } from "./battlefield";
+import { isNeutralUnit, planNeutralActivation } from "./neutral-ai";
 import { createSeededRandom } from "./random";
 import {
   expireEffectsForCombatEnd,
@@ -328,6 +353,30 @@ function hasExpertUseAvailable(state: GameState, playerId: PlayerId): boolean {
 function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState): void {
   if (unit.damage < unit.maxHealth) {
     return;
+  }
+
+  // Defeated "Pack" units flip to their "Few" side with the excess damage
+  // instead of leaving the battle (adventure-mode armies only).
+  if (unit.variant === "pack" && unit.unitDefId) {
+    const fewSide = getUnitSide(unit.unitDefId, "few");
+    if (fewSide) {
+      const excess = unit.damage - unit.maxHealth;
+      unit.variant = "few";
+      unit.cardName = `Few ${unit.name}`;
+      unit.attack = fewSide.attack;
+      unit.defense = fewSide.defense;
+      unit.maxHealth = fewSide.health;
+      unit.initiative = fewSide.initiative;
+      unit.abilities = fewSide.abilities;
+      unit.damage = Math.min(fewSide.health, Math.max(0, excess));
+      if (unit.assets && fewSide.cardImage) {
+        unit.assets.cardImage = fewSide.cardImage;
+      }
+
+      if (unit.damage < unit.maxHealth) {
+        return;
+      }
+    }
   }
 
   appendEvent(state, {
@@ -1441,6 +1490,10 @@ function effectSupportsExpertPlay(effect: NonNullable<ReturnType<typeof getEffec
     return effect.expertAmount !== undefined;
   }
 
+  if (effect.type === "GAIN_MORALE") {
+    return effect.expertDrawCards !== undefined;
+  }
+
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
     return Boolean(effect.expertEffect);
   }
@@ -1564,6 +1617,16 @@ function applyReactionPlayCore(
   if (effect.type === "ADD_SPELL_POWER" && stackItem?.action.type === "CAST_SPELL") {
     stackItem.modifiers.spellPowerBonus += effectAmount;
     stackItem.modifiers.playedCardIds.push(play.cardId);
+    if (effect.drawCards) {
+      drawCardsForPlayer(state, playerId, effect.drawCards);
+    }
+  }
+
+  if (effect.type === "GAIN_MORALE") {
+    if (mode === "expert" && effect.expertDrawCards) {
+      drawCardsForPlayer(state, playerId, effect.expertDrawCards);
+    }
+    changeMorale(state, playerId, effect.amount);
   }
 
   if (
@@ -1744,7 +1807,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     drawCardsForPlayer(state, action.playerId, getEffectAmount(effect, mode));
   }
 
-  state.phase = "combat";
+  if (effect.type === "GAIN_MORALE") {
+    if (mode === "expert" && effect.expertDrawCards) {
+      drawCardsForPlayer(state, action.playerId, effect.expertDrawCards);
+    }
+    changeMorale(state, action.playerId, effect.amount);
+  }
+
+  if (state.phase === "combat" || state.combat) {
+    state.phase = "combat";
+  }
   state.priorityPlayerId = null;
 }
 
@@ -2096,7 +2168,7 @@ function endActivation(state: GameState, action: Extract<GameAction, { type: "EN
   state.priorityPlayerId = null;
 }
 
-function endCombatRound(state: GameState, action: Extract<GameAction, { type: "END_COMBAT_ROUND" }>): void {
+function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   if (!state.combat) {
     throw new Error("Combat is not active.");
   }
@@ -2125,10 +2197,14 @@ function endCombatRound(state: GameState, action: Extract<GameAction, { type: "E
   });
 
   setActiveUnit(state, nextUnit?.id ?? null);
-  state.activePlayerId = action.playerId;
+  state.activePlayerId = byPlayerId;
   if (nextUnit) {
     state.activePlayerId = nextUnit.controllerId;
   }
+}
+
+function endCombatRound(state: GameState, action: Extract<GameAction, { type: "END_COMBAT_ROUND" }>): void {
+  advanceCombatRound(state, action.playerId);
 }
 
 function spendResources(resources: Record<ResourceKind, number>, cost: ResourceCost): void {
@@ -2380,10 +2456,181 @@ function endTurn(state: GameState, action: Extract<GameAction, { type: "END_TURN
   });
 }
 
+/**
+ * Executes one queued neutral activation according to the AI rules. The pump
+ * pauses whenever a reaction window or pending choice opens for a human.
+ */
+function executeNeutralActivation(
+  state: GameState,
+  unit: CombatUnitState,
+  cards: CardLibrary
+): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  const intent = planNeutralActivation(state, combat, unit);
+
+  if (intent.kind === "pass") {
+    unit.activatedThisRound = true;
+    appendEvent(state, {
+      type: "UNIT_ACTIVATION_ENDED",
+      playerId: unit.controllerId,
+      unitId: unit.id
+    });
+    advanceActiveUnit(state);
+    return;
+  }
+
+  if (intent.kind === "move") {
+    const from = unit.position;
+    unit.position = intent.destination;
+    unit.movedThisActivation = true;
+    unit.activatedThisRound = true;
+    appendEvent(state, {
+      type: "UNIT_MOVED",
+      playerId: unit.controllerId,
+      unitId: unit.id,
+      from,
+      to: intent.destination
+    });
+    advanceActiveUnit(state);
+    return;
+  }
+
+  if (intent.kind === "move-and-attack") {
+    const from = unit.position;
+    unit.position = intent.destination;
+    unit.movedThisActivation = true;
+    appendEvent(state, {
+      type: "UNIT_MOVED",
+      playerId: unit.controllerId,
+      unitId: unit.id,
+      from,
+      to: intent.destination
+    });
+  }
+
+  declareAttack(
+    state,
+    {
+      type: "ATTACK_UNIT",
+      playerId: unit.controllerId,
+      attackerId: unit.id,
+      defenderId: intent.defenderId
+    },
+    cards
+  );
+}
+
+/**
+ * Adventure-mode engine pump, run after every applied action: advances
+ * neutral activations, gates the neutral combat time limit, finalizes
+ * adventure combats, and opens queued rewards. Stops whenever a human
+ * decision (reaction window, pending choice, placement, continue/retreat)
+ * is required.
+ */
+function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
+  if (!state.adventure) {
+    return;
+  }
+
+  rehydrateCityHallChoice(state);
+
+  let safety = 300;
+  while (safety > 0) {
+    safety -= 1;
+    const combat = state.combat;
+
+    if (
+      combat &&
+      !combat.outcome &&
+      !combat.setup &&
+      !combat.awaitingContinue &&
+      !state.reactionWindow &&
+      !state.pendingChoice &&
+      state.stack.length === 0
+    ) {
+      if (!combat.activeUnitId) {
+        const nextUnit = getNextUnitToActivate(combat);
+        if (nextUnit) {
+          setActiveUnit(state, nextUnit.id);
+          continue;
+        }
+
+        // All units acted: neutral combats hit their one-round time limit,
+        // player combats roll straight into the next round.
+        if (combat.context.kind === "neutral" && !combat.context.hasAzure) {
+          combat.awaitingContinue = true;
+          state.priorityPlayerId = combat.attackerPlayerId;
+          state.activePlayerId = combat.attackerPlayerId;
+          continue;
+        }
+
+        advanceCombatRound(state, combat.attackerPlayerId);
+        continue;
+      }
+
+      const active = combat.units[combat.activeUnitId];
+      if (active && isNeutralUnit(active) && !active.activatedThisRound && isUnitAlive(active)) {
+        executeNeutralActivation(state, active, cards);
+        continue;
+      }
+    }
+
+    if (combat?.outcome && combat.context.kind !== "sandbox") {
+      finalizeAdventureCombat(state);
+      continue;
+    }
+
+    if (!state.combat && !state.pendingChoice && !state.reactionWindow) {
+      const queueLength = state.adventure.rewardQueue.length;
+      const hadVisit = Boolean(state.adventure.pendingVisit);
+      pumpAdventureQueues(state);
+      if (state.adventure.rewardQueue.length !== queueLength || hadVisit !== Boolean(state.adventure.pendingVisit)) {
+        continue;
+      }
+    }
+
+    break;
+  }
+}
+
+/** Adventure actions are validated inside their handlers, not by enumeration. */
+const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
+  "REFRESH_HAND",
+  "REVISIT_FIELD",
+  "DISCOVER_TILE",
+  "PLACE_TILE",
+  "RESOLVE_VISIT_STEP",
+  "TRADE_RESOURCES",
+  "PLACE_COMBAT_UNIT",
+  "UNPLACE_COMBAT_UNIT",
+  "FINISH_COMBAT_PLACEMENT",
+  "CONTINUE_NEUTRAL_COMBAT",
+  "RETREAT_FROM_COMBAT",
+  "POPULATION_ACTION",
+  "SPELL_BOOK_ACTION",
+  "SPEND_MORALE",
+  "CHOOSE_OPTION"
+]);
+
+function isHandlerValidated(state: GameState, action: GameAction): boolean {
+  if (HANDLER_VALIDATED_ACTIONS.has(action.type)) {
+    return true;
+  }
+
+  return (
+    state.mode === "adventure" &&
+    (action.type === "MOVE_HERO" || action.type === "BUILD_STRUCTURE" || action.type === "END_TURN")
+  );
+}
+
 export function applyAction(state: GameState, action: GameAction, options: ReducerOptions = {}): EngineResult {
-  const cards = options.cards ?? sampleCards;
+  const cards = options.cards ?? cardLibrary;
   const buildings = options.buildings ?? sampleBuildings;
-  const legalError = assertLegal(state, action, cards, buildings);
+  const legalError = isHandlerValidated(state, action) ? null : assertLegal(state, action, cards, buildings);
   if (legalError) {
     return fail(state, legalError);
   }
@@ -2424,7 +2671,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         endCombatRound(nextState, action);
         break;
       case "BUILD_STRUCTURE":
-        buildStructure(nextState, action, buildings);
+        if (nextState.mode === "adventure") {
+          buildStructureAdventure(nextState, action);
+        } else {
+          buildStructure(nextState, action, buildings);
+        }
         break;
       case "COMPLETE_SIMULTANEOUS_TURN":
         completeSimultaneousTurn(nextState, action);
@@ -2451,16 +2702,82 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         resolveDeckSearch(nextState, action);
         break;
       case "MOVE_HERO":
-        moveHero(nextState, action);
+        if (nextState.mode === "adventure") {
+          moveHeroAdventure(nextState, action);
+        } else {
+          moveHero(nextState, action);
+        }
+        break;
+      case "REFRESH_HAND":
+        refreshHand(nextState, action);
+        break;
+      case "REVISIT_FIELD":
+        revisitField(nextState, action);
+        break;
+      case "DISCOVER_TILE":
+        discoverTile(nextState, action);
+        break;
+      case "PLACE_TILE":
+        placeTile(nextState, action);
+        break;
+      case "RESOLVE_VISIT_STEP":
+        resolveVisitStep(nextState, action);
+        break;
+      case "TRADE_RESOURCES":
+        tradeResources(nextState, action);
+        break;
+      case "PLACE_COMBAT_UNIT":
+        placeCombatUnit(nextState, action);
+        break;
+      case "UNPLACE_COMBAT_UNIT":
+        unplaceCombatUnit(nextState, action);
+        break;
+      case "FINISH_COMBAT_PLACEMENT":
+        finishCombatPlacement(nextState, action);
+        break;
+      case "CONTINUE_NEUTRAL_COMBAT":
+        continueNeutralCombat(nextState, action);
+        advanceCombatRound(nextState, action.playerId);
+        break;
+      case "RETREAT_FROM_COMBAT":
+        retreatFromCombat(nextState, action);
+        break;
+      case "POPULATION_ACTION":
+        populationAction(nextState, action);
+        break;
+      case "SPELL_BOOK_ACTION":
+        spellBookAction(nextState, action);
+        break;
+      case "SPEND_MORALE":
+        spendMorale(nextState, action);
+        break;
+      case "CHOOSE_OPTION":
+        chooseOption(nextState, action);
         break;
       case "END_TURN":
-        endTurn(nextState, action);
+        if (nextState.mode === "adventure") {
+          endTurnAdventure(nextState, action);
+        } else {
+          endTurn(nextState, action);
+        }
         break;
     }
   } catch (error) {
     return fail(state, {
       code: "ACTION_NOT_LEGAL",
       message: error instanceof Error ? error.message : "The action could not be applied."
+    });
+  }
+
+  try {
+    runAdventureAutomations(nextState, cards);
+  } catch (error) {
+    return fail(state, {
+      code: "ACTION_NOT_LEGAL",
+      message:
+        error instanceof Error
+          ? `Automation failed: ${error.message}`
+          : "The action could not complete its automatic follow-up."
     });
   }
 

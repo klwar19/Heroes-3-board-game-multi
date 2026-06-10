@@ -4,8 +4,8 @@
 
 import { Crown, Layers, Search, Sparkles } from "lucide-react";
 import { useState } from "react";
+import { cardLibrary } from "@/data/cards/library";
 import {
-  sampleCards,
   describeCardEffect,
   type GameAction,
   type GameState,
@@ -34,7 +34,7 @@ export function CardFrame({
   className: string;
   title?: string;
 }) {
-  const card = cardId ? sampleCards[cardId] : undefined;
+  const card = cardId ? cardLibrary[cardId] : undefined;
   const src = card?.assets?.cardImage;
   const alt = card?.assets?.imageAlt ?? card?.name ?? cardId ?? "card";
 
@@ -113,7 +113,7 @@ export function HandFan({
     <div className={`handFan ${trayActive ? "muted" : ""}`} aria-label="Your hand">
       {entries.length === 0 ? <div className="handEmpty">Empty hand</div> : null}
       {entries.map((entry) => {
-        const card = sampleCards[entry.cardId];
+        const card = cardLibrary[entry.cardId];
         const playable = !trayActive && (entry.boardSelections.length > 0 || entry.immediateActions.length > 0);
         const selected = entry.boardSelections.some((action) => sameCardSelection(selectedCardAction, action));
         const open = openIndex === entry.handIndex;

@@ -1744,3 +1744,755 @@ button.battleCell {
     width: 98vw;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Adventure map screen                                                */
+/* ------------------------------------------------------------------ */
+
+.adventureRoot {
+  gap: 8px;
+}
+
+.advHud {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  background: linear-gradient(180deg, rgba(43, 31, 18, 0.92), rgba(28, 20, 12, 0.94));
+  border: 1px solid rgba(170, 130, 70, 0.35);
+  border-radius: 10px;
+  min-height: 56px;
+}
+
+.advHudCell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-right: 14px;
+  border-right: 1px solid rgba(170, 130, 70, 0.2);
+}
+
+.advHudCell strong {
+  font-size: 13px;
+  color: #f0dcb8;
+}
+
+.advHudCell small {
+  font-size: 11px;
+  color: #b89f78;
+}
+
+.advHudCell.resources {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #ecd9b0;
+}
+
+.advHudCell.winner strong {
+  color: #ffd76a;
+}
+
+.advHudButtons {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.menuRow.resetRow {
+  display: flex;
+  gap: 6px;
+}
+
+.menuRow.resetRow button {
+  flex: 1;
+  font-size: 11px;
+}
+
+.adventureMidRow {
+  display: grid;
+  grid-template-columns: 170px 1fr 300px;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+.mapColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.hexMapWrap {
+  flex: 1;
+  min-height: 420px;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(84, 64, 38, 0.5), transparent 60%),
+    linear-gradient(180deg, #1d2433, #141a26);
+  border: 1px solid rgba(170, 130, 70, 0.35);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.hexMapSvg {
+  width: 100%;
+  height: 100%;
+}
+
+.hexCell {
+  stroke: rgba(20, 14, 8, 0.85);
+  stroke-width: 1.6;
+  transition: filter 0.12s ease;
+}
+
+.hexCell.blocked {
+  filter: brightness(0.45) saturate(0.4);
+}
+
+.hexCell.moveTarget {
+  cursor: pointer;
+  stroke: #ffd76a;
+  stroke-width: 2.4;
+  filter: brightness(1.18);
+}
+
+.hexCell.moveTarget:hover {
+  filter: brightness(1.45);
+}
+
+.hexFaceDown {
+  fill: #2c2316;
+  stroke: rgba(120, 95, 55, 0.8);
+  stroke-width: 1.6;
+}
+
+.hexFaceDown.discoverable {
+  cursor: pointer;
+  stroke: #ffd76a;
+  fill: #3a2d1a;
+}
+
+.hexFaceDown.discoverable:hover {
+  fill: #4b3a21;
+}
+
+.hexFaceDownLabel {
+  fill: #c8a96d;
+  font-size: 11px;
+  pointer-events: none;
+  font-weight: 600;
+}
+
+.hexGlyph {
+  font-size: 17px;
+  pointer-events: none;
+}
+
+.hexDifficulty {
+  fill: #ffe9bd;
+  font-size: 12px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: rgba(20, 12, 4, 0.9);
+  stroke-width: 2.6;
+  pointer-events: none;
+}
+
+.hexProduction {
+  fill: #ffe9bd;
+  font-size: 10px;
+  paint-order: stroke;
+  stroke: rgba(20, 12, 4, 0.85);
+  stroke-width: 2.2;
+  pointer-events: none;
+}
+
+.blackCube {
+  fill: #14100c;
+  stroke: rgba(220, 190, 130, 0.6);
+  stroke-width: 0.8;
+  pointer-events: none;
+}
+
+.flagPole,
+.heroFlagPole {
+  stroke: #1d1206;
+  stroke-width: 1.6;
+}
+
+.heroPawnBase {
+  fill: #14100c;
+}
+
+.placementGhost {
+  fill: rgba(255, 215, 106, 0.18);
+  stroke: #ffd76a;
+  stroke-dasharray: 5 4;
+  stroke-width: 1.6;
+  cursor: pointer;
+}
+
+.placementGhost:hover {
+  fill: rgba(255, 215, 106, 0.35);
+}
+
+.farTileTray {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(33, 25, 15, 0.9);
+  border: 1px solid rgba(170, 130, 70, 0.3);
+  border-radius: 8px;
+}
+
+.farTileTray small {
+  color: #b89f78;
+}
+
+.commandButton.selected {
+  outline: 2px solid #ffd76a;
+}
+
+.commandButton.primary {
+  background: linear-gradient(180deg, #8c6a2c, #6e5122);
+  color: #ffe9bd;
+}
+
+.adventureRail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* Hero board */
+.heroBoard {
+  background: linear-gradient(180deg, rgba(46, 34, 20, 0.95), rgba(30, 22, 13, 0.95));
+  border: 1px solid rgba(170, 130, 70, 0.35);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.heroBoard header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.heroBoard header div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.heroBoard header strong {
+  color: #f0dcb8;
+  font-size: 14px;
+}
+
+.heroBoard header small {
+  color: #b89f78;
+  font-size: 11px;
+}
+
+.heroPortrait {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  object-position: left top;
+  border-radius: 8px;
+  border: 1px solid rgba(170, 130, 70, 0.5);
+}
+
+.levelTrack {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.levelSlot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 2px;
+  border-radius: 6px;
+  background: rgba(20, 14, 9, 0.8);
+  border: 1px solid rgba(140, 110, 65, 0.3);
+  min-height: 40px;
+}
+
+.levelSlot.gold span {
+  color: #ffd76a;
+}
+
+.levelSlot.silver span {
+  color: #cfd4de;
+}
+
+.levelSlot.reached {
+  border-color: rgba(255, 215, 106, 0.55);
+}
+
+.levelSlot small {
+  font-size: 9px;
+  color: #b89f78;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.levelCube {
+  position: absolute;
+  bottom: -5px;
+  width: 12px;
+  height: 12px;
+  border: 1px solid #140d05;
+  border-radius: 2px;
+  box-shadow: 0 0 6px rgba(255, 215, 106, 0.6);
+}
+
+.heroXp {
+  color: #b89f78;
+  font-size: 11px;
+}
+
+/* Army + town panels */
+.armyPanel,
+.townPanel {
+  background: rgba(33, 25, 15, 0.92);
+  border: 1px solid rgba(170, 130, 70, 0.3);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.armyPanel h3,
+.townPanel h3,
+.townPanel h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: #e8d3a8;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.armyPanel ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.armyPanel li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #d8c49b;
+}
+
+.armyPanel li small {
+  color: #99835f;
+  margin-left: auto;
+}
+
+.tierDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1px solid rgba(20, 12, 4, 0.8);
+  flex: none;
+}
+
+.tierDot.bronze {
+  background: #b46f33;
+}
+
+.tierDot.silver {
+  background: #c7ccd6;
+}
+
+.tierDot.gold {
+  background: #e7b73c;
+}
+
+.tierDot.azure {
+  background: #3f7fd6;
+}
+
+.townBuildings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.townBuilding {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px;
+  border-radius: 8px;
+  background: rgba(20, 14, 9, 0.75);
+  border: 1px solid rgba(140, 110, 65, 0.3);
+  font-size: 11px;
+  color: #d8c49b;
+}
+
+.townBuilding.built {
+  border-color: rgba(120, 200, 120, 0.5);
+}
+
+.townBuilding small {
+  color: #99835f;
+  font-size: 10px;
+}
+
+.townBuilding .todoTag {
+  color: #c4814d;
+}
+
+.townRecruits {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.townFooter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* Decks and discard piles */
+.advDecks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(33, 25, 15, 0.92);
+  border: 1px solid rgba(170, 130, 70, 0.3);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.advDeckRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.advDeck {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.advDeck small,
+.advDiscard small {
+  font-size: 10px;
+  color: #b89f78;
+}
+
+.cardBack.small {
+  width: 44px;
+  height: 62px;
+  font-size: 13px;
+}
+
+.cardBack.small.shared {
+  background: linear-gradient(160deg, #2c3a55, #1a2335);
+}
+
+.advDiscard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 62px;
+  border-radius: 7px;
+  border: 1px dashed rgba(190, 150, 90, 0.6);
+  background: rgba(20, 14, 9, 0.6);
+  color: #e8d3a8;
+  cursor: pointer;
+}
+
+.advDiscard:hover {
+  background: rgba(60, 44, 24, 0.7);
+}
+
+.advDeckRow.neutral {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.neutralDeck {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 5px 2px;
+  border-radius: 7px;
+  border: 1px solid rgba(140, 110, 65, 0.4);
+  background: rgba(20, 14, 9, 0.7);
+  color: #e8d3a8;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.neutralDeck small {
+  font-size: 9px;
+  color: #b89f78;
+  text-transform: capitalize;
+}
+
+.neutralDeck.bronze {
+  border-color: #b46f33;
+}
+
+.neutralDeck.silver {
+  border-color: #c7ccd6;
+}
+
+.neutralDeck.gold {
+  border-color: #e7b73c;
+}
+
+.neutralDeck.azure {
+  border-color: #3f7fd6;
+}
+
+/* Adventure hand strip */
+.adventureHand {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(33, 25, 15, 0.92);
+  border: 1px solid rgba(170, 130, 70, 0.3);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.refreshBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #e8d3a8;
+  font-size: 12px;
+}
+
+.adventureHandCards {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.adventureHandCard {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 8px;
+  flex: none;
+}
+
+.adventureHandCard .handCardImage {
+  width: 92px;
+  border-radius: 8px;
+  display: block;
+}
+
+.adventureHandCard.discarding {
+  outline: 2px solid #d05050;
+  filter: saturate(0.4) brightness(0.7);
+}
+
+/* Prompt tray */
+.promptTray {
+  position: fixed;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 340px;
+  max-width: 660px;
+  padding: 12px 16px;
+  background: linear-gradient(180deg, rgba(48, 36, 21, 0.98), rgba(32, 23, 13, 0.98));
+  border: 1px solid rgba(220, 175, 95, 0.5);
+  border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+  color: #f0dcb8;
+}
+
+.promptOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* Pile modal */
+.pileModalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 6, 3, 0.7);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pileModal {
+  width: min(720px, 92vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: linear-gradient(180deg, #2c2114, #1d160d);
+  border: 1px solid rgba(220, 175, 95, 0.5);
+  border-radius: 12px;
+  padding: 14px;
+  color: #f0dcb8;
+}
+
+.pileModal header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.pileModal ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.pileModal li {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+}
+
+.pileModal li img {
+  width: 100%;
+  border-radius: 8px;
+}
+
+.pileModal li small {
+  font-size: 10px;
+  color: #b89f78;
+  text-align: center;
+}
+
+.pileFallback {
+  width: 100%;
+  aspect-ratio: 5 / 7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 11px;
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(140, 110, 65, 0.5);
+  background: rgba(20, 14, 9, 0.8);
+}
+
+/* Combat placement */
+.placementPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: rgba(33, 25, 15, 0.95);
+  border: 1px solid rgba(220, 175, 95, 0.45);
+  border-radius: 10px;
+  color: #f0dcb8;
+  font-size: 12px;
+}
+
+.placementUnits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.placementUnit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(140, 110, 65, 0.5);
+  background: rgba(20, 14, 9, 0.8);
+  color: #e8d3a8;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.placementUnit.selected {
+  outline: 2px solid #ffd76a;
+}
+
+.placementUnit.placed {
+  border-color: rgba(120, 200, 120, 0.6);
+}
+
+.placementUnit:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.placementCells {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.combatContextBanner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(64, 34, 24, 0.85);
+  border: 1px solid rgba(220, 140, 90, 0.4);
+  border-radius: 8px;
+  color: #f3d9c0;
+  font-size: 12px;
+}
+
+.observerNote {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #b89f78;
+  font-size: 12px;
+}
+
+@media (max-width: 1100px) {
+  .adventureMidRow {
+    grid-template-columns: 150px 1fr 240px;
+  }
+}

@@ -9,6 +9,7 @@ export const implementedCardEffectTypes = [
   "CHOOSE_ONE",
   "ADD_COMBAT_STAT",
   "ADD_SPELL_POWER",
+  "GAIN_MORALE",
   "CREATE_ACTIVE_EFFECT",
   "CREATE_ATTACK_BUFF",
   "CREATE_DEFENSE_BUFF",
@@ -190,6 +191,11 @@ export function describeCardEffect(card: CardDefinition): string {
       ? `, expert spell limit +${card.effect.expertSpellLimitBonus}`
       : "";
     return `return cast spell to hand${expert}`;
+  }
+
+  if (card.effect.type === "GAIN_MORALE") {
+    const expert = card.effect.expertDrawCards ? `, expert also draws ${card.effect.expertDrawCards}` : "";
+    return `gain ${card.effect.amount} morale${expert}`;
   }
 
   return card.kind;
