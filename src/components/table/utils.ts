@@ -234,6 +234,22 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} trades ${event.rateLabel}.`;
     case "GAME_WON":
       return `${playerName(state, event.playerId)} wins the game: ${event.reason}!`;
+    case "TILE_ROTATION_SET":
+      return `${playerName(state, event.playerId)} sets ${event.tileDefId} to ${event.rotation * 60}°.`;
+    case "ASTROLOGERS_DRAWN":
+      return `Astrologers proclaim: ${event.name} — ${event.text}`;
+    case "ARMY_UNIT_FLIPPED":
+      return `${playerName(state, event.playerId)}'s ${event.unitDefId.split(".")[1] ?? event.unitDefId} pack flips to Few (${event.reason}).`;
+    case "SPELL_RETURNED_TO_HAND":
+      return `${cardName(event.cardId)} returns to ${playerName(state, event.playerId)}'s hand (${event.reason}).`;
+    case "NEUTRAL_DRAW_SWAPPED":
+      return `${playerName(state, event.playerId)} swaps ${event.fromUnitDefId.split(".")[1] ?? event.fromUnitDefId} for ${event.toUnitDefId.split(".")[1] ?? event.toUnitDefId}.`;
+    case "MORALE_SPENT":
+      return `${playerName(state, event.playerId)} spends the morale token (${event.benefit}).`;
+    case "FACTION_CHOSEN":
+      return `${playerName(state, event.playerId)} picks ${titleCase(event.factionId)} with ${titleCase(event.heroDefId)}.`;
+    case "ADVENTURE_STARTED":
+      return `The adventure begins (${event.scenarioId}).`;
   }
 }
 

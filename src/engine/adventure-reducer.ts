@@ -1,15 +1,19 @@
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
+import { coreTileDefinitions } from "@/data/map/tile-defs";
 import {
   addArmyUnit,
   beginFieldVisit,
   canCrossEdge,
   canPlaceTileAt,
   changeMorale,
+  classifyHeroStep,
   drawNeutralArmy,
+  effectiveHandLimit,
   gainExperience,
   gainResources,
+  getActiveAstrologersCard,
   getAdjacentSpaceIds,
   getMainHero,
   getTileFootprintSpaceIds,
@@ -31,12 +35,14 @@ import {
   startAdventureRound,
   startPlayerTurn,
   townHasBuildingEffect,
-  unlockedRecruitTiers
+  unlockedRecruitTiers,
+  type NeutralDraw
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { drawCardsForPlayer } from "./decks";
 import { appendEvent } from "./events";
 import { expireEffectsForTurnEnd } from "./active-effects";
+import { hexNeighbor, hexSpaceId, slotDirection, tileFootprint } from "./hex";
 import type {
   CombatState,
   GameAction,
@@ -44,8 +50,10 @@ import type {
   HeroState,
   MapFieldState,
   MapSpaceId,
+  MapTileState,
   PlayerId,
-  ResourceCost
+  ResourceCost,
+  VisitStep
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 
@@ -81,6 +89,10 @@ function assertNoPendingInput(state: GameState): void {
   if (state.pendingChoice || state.reactionWindow || state.adventure?.pendingVisit) {
     throw new Error("Resolve the pending choice first.");
   }
+
+  if (state.adventure?.pendingTileChoice) {
+    throw new Error("Confirm the rotation of the new tile first.");
+  }
 }
 
 function assertActiveTurn(state: GameState, playerId: PlayerId): void {
@@ -91,21 +103,38 @@ function assertActiveTurn(state: GameState, playerId: PlayerId): void {
 
 function assertHandRefreshed(state: GameState, playerId: PlayerId): void {
   if (state.players[playerId]?.needsHandRefresh) {
-    throw new Error("Refresh your hand first: discard any cards, then draw up to your hand limit.");
+    throw new Error("Discard down to your hand limit before acting.");
+  }
+}
+
+/** The start-of-turn mulligan closes the moment the player really acts. */
+function closeMulliganWindow(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (player?.canMulligan) {
+    player.canMulligan = false;
   }
 }
 
 // ---------------------------------------------------------------------------
-// Hand refresh
+// Hand refresh (start-of-turn discard/redraw)
 // ---------------------------------------------------------------------------
 
+/**
+ * Discards the listed cards and draws that many back (never past the hand
+ * limit). Used both for the forced discard-down when over the limit and for
+ * the optional start-of-turn mulligan.
+ */
 export function refreshHand(state: GameState, action: Extract<GameAction, { type: "REFRESH_HAND" }>): void {
   const player = state.players[action.playerId];
-  if (!player || !player.needsHandRefresh) {
-    throw new Error("No hand refresh is pending.");
+  if (!player) {
+    throw new Error("Unknown player.");
   }
 
   assertActiveTurn(state, action.playerId);
+
+  if (!player.needsHandRefresh && !player.canMulligan) {
+    throw new Error("Cards can only be redrawn at the start of your turn (or by spending morale).");
+  }
 
   const handCounts = new Map<string, number>();
   for (const cardId of player.hand) {
@@ -126,13 +155,15 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
     player.discard.push(cardId);
   }
 
-  if (player.hand.length > player.limits.hand) {
-    throw new Error(`Discard down to your hand limit of ${player.limits.hand} first.`);
+  const limit = effectiveHandLimit(state, action.playerId);
+  if (player.hand.length > limit) {
+    throw new Error(`Discard down to your hand limit of ${limit} first.`);
   }
 
-  const toDraw = Math.max(0, player.limits.hand - player.hand.length);
+  const toDraw = Math.min(action.discardCardIds.length, Math.max(0, limit - player.hand.length));
   const drawn = toDraw > 0 ? drawCardsForPlayer(state, action.playerId, toDraw) : 0;
   player.needsHandRefresh = false;
+  player.canMulligan = false;
 
   appendEvent(state, {
     type: "HAND_REFRESHED",
@@ -174,8 +205,66 @@ export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapS
   });
 }
 
-export function moveHeroAdventure(state: GameState, action: Extract<GameAction, { type: "MOVE_HERO" }>): void {
+/**
+ * Executes one paid step onto an adjacent field and resolves what lives
+ * there: enemy heroes start a combat, guards start a neutral encounter,
+ * everything else is visited. `passThrough` steps (crossing an allied hero)
+ * move without visiting, as the rulebook prescribes.
+ */
+function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, passThrough: boolean): void {
   const adventure = requireAdventure(state);
+  const from = hero.spaceId ?? to;
+  hero.spaceId = to;
+  hero.movementPoints -= 1;
+
+  appendEvent(state, {
+    type: "HERO_MOVED",
+    playerId: hero.controllerId,
+    heroId: hero.id,
+    from,
+    to,
+    movementLeft: hero.movementPoints
+  });
+
+  if (passThrough) {
+    return;
+  }
+
+  const enemyHero = heroAtSpace(state, to, hero.id);
+  if (enemyHero && enemyHero.controllerId !== hero.controllerId) {
+    startPlayerCombat(state, hero, enemyHero, to);
+    return;
+  }
+
+  const field = adventure.fields[to];
+  if (!field) {
+    return;
+  }
+
+  if (isFieldGuarded(field) && field.flagOwnerId !== hero.controllerId) {
+    startNeutralEncounter(state, hero, field);
+    return;
+  }
+
+  beginFieldVisit(state, hero.id, to, false);
+}
+
+/** Whether the walk must pause for player input after a step resolved. */
+function heroStepNeedsInput(state: GameState): boolean {
+  const adventure = state.adventure;
+  return Boolean(
+    state.combat ||
+      state.pendingChoice ||
+      state.reactionWindow ||
+      adventure?.pendingVisit ||
+      adventure?.pendingTileChoice ||
+      (adventure?.rewardQueue.length ?? 0) > 0 ||
+      state.phase === "game-over"
+  );
+}
+
+export function moveHeroAdventure(state: GameState, action: Extract<GameAction, { type: "MOVE_HERO" }>): void {
+  requireAdventure(state);
   assertActiveTurn(state, action.playerId);
   assertHandRefreshed(state, action.playerId);
   assertNoPendingInput(state);
@@ -193,36 +282,74 @@ export function moveHeroAdventure(state: GameState, action: Extract<GameAction, 
     throw new Error("Heroes can only move to adjacent, passable fields.");
   }
 
-  const from = hero.spaceId;
-  hero.spaceId = action.to;
-  hero.movementPoints -= 1;
+  closeMulliganWindow(state, action.playerId);
+  performHeroStep(state, hero, action.to, false);
+}
 
-  appendEvent(state, {
-    type: "HERO_MOVED",
-    playerId: action.playerId,
-    heroId: hero.id,
-    from,
-    to: action.to,
-    movementLeft: hero.movementPoints
-  });
+/**
+ * Click-to-move: walks the hero field by field along the requested path.
+ * Every step costs 1 MP and resolves its field; the walk stops early when a
+ * combat or choice opens, or movement points run out. Allied heroes may be
+ * crossed mid-path but the walk cannot end on them.
+ */
+export function moveHeroPathAdventure(state: GameState, action: Extract<GameAction, { type: "MOVE_HERO_PATH" }>): void {
+  requireAdventure(state);
+  assertActiveTurn(state, action.playerId);
+  assertHandRefreshed(state, action.playerId);
+  assertNoPendingInput(state);
 
-  const enemyHero = heroAtSpace(state, action.to, hero.id);
-  if (enemyHero && enemyHero.controllerId !== action.playerId) {
-    startPlayerCombat(state, hero, enemyHero, action.to);
-    return;
+  const hero = requireHero(state, action.playerId, action.heroId);
+  if (!hero.spaceId) {
+    throw new Error("That hero is not on the map.");
   }
 
-  const field = adventure.fields[action.to];
-  if (!field) {
-    return;
+  if (action.path.length === 0) {
+    throw new Error("The movement path is empty.");
   }
 
-  if (isFieldGuarded(field) && field.flagOwnerId !== action.playerId) {
-    startNeutralEncounter(state, hero, field);
-    return;
+  if (hero.movementPoints <= 0) {
+    throw new Error("That hero has no movement points left.");
   }
 
-  beginFieldVisit(state, hero.id, action.to, false);
+  // Validate the whole path before moving: consecutive, crossable, and only
+  // the final field may stop the hero.
+  let cursor = hero.spaceId;
+  for (const [index, step] of action.path.entries()) {
+    if (!getAdjacentSpaceIds(cursor).includes(step)) {
+      throw new Error("Each path step must be adjacent to the previous field.");
+    }
+    if (!canCrossEdge(state, cursor, step)) {
+      throw new Error("The path crosses a sealed tile border or a blocked field.");
+    }
+
+    const kind = classifyHeroStep(state, hero, step);
+    const isLast = index === action.path.length - 1;
+    if (kind === "block") {
+      throw new Error("The path crosses an impassable field.");
+    }
+    if (kind === "stop" && !isLast) {
+      throw new Error("A field along the path would stop the hero; walk there first.");
+    }
+    if (kind === "pass-only" && isLast) {
+      throw new Error("The walk cannot end on an allied hero.");
+    }
+    cursor = step;
+  }
+
+  closeMulliganWindow(state, action.playerId);
+
+  for (const step of action.path) {
+    if (hero.movementPoints <= 0) {
+      break;
+    }
+
+    const passThrough = classifyHeroStep(state, hero, step) === "pass-only";
+    performHeroStep(state, hero, step, passThrough);
+
+    if (heroStepNeedsInput(state)) {
+      break;
+    }
+  }
 }
 
 export function revisitField(state: GameState, action: Extract<GameAction, { type: "REVISIT_FIELD" }>): void {
@@ -245,6 +372,7 @@ export function revisitField(state: GameState, action: Extract<GameAction, { typ
     throw new Error("Only revisitable fields can be visited again.");
   }
 
+  closeMulliganWindow(state, action.playerId);
   hero.movementPoints -= 1;
   beginFieldVisit(state, hero.id, hero.spaceId, true);
 }
@@ -260,6 +388,7 @@ export function discoverTile(state: GameState, action: Extract<GameAction, { typ
     throw new Error("Discovering a tile costs 1 movement point.");
   }
 
+  closeMulliganWindow(state, action.playerId);
   hero.movementPoints -= 1;
   revealTileForHero(state, action.playerId, hero, action.tileInstanceId);
 }
@@ -280,14 +409,140 @@ export function revealTileForHero(
     throw new Error("Heroes can only discover tiles next to them.");
   }
 
+  beginTileRotation(state, playerId, tile, "reveal");
+}
+
+/**
+ * Flips a tile face up and hands the rotation choice to the player ("You may
+ * always rotate Map Tiles when placing or revealing them"). Fields only
+ * materialize once SET_TILE_ROTATION confirms the orientation.
+ */
+function beginTileRotation(state: GameState, playerId: PlayerId, tile: MapTileState, kind: "reveal" | "place"): void {
+  const adventure = requireAdventure(state);
   tile.faceDown = false;
+  tile.awaitingRotation = true;
+  adventure.pendingTileChoice = { tileInstanceId: tile.id, playerId, kind };
+
+  if (kind === "reveal") {
+    appendEvent(state, {
+      type: "TILE_REVEALED",
+      playerId,
+      tileInstanceId: tile.id,
+      tileDefId: tile.tileDefId
+    });
+  } else {
+    appendEvent(state, {
+      type: "TILE_PLACED",
+      playerId,
+      tileInstanceId: tile.id,
+      tileDefId: tile.tileDefId,
+      centerRow: tile.centerRow,
+      centerCol: tile.centerCol,
+      rotation: tile.rotation
+    });
+  }
+}
+
+/**
+ * Whether `rotation` leaves at least one crossable doorway between the tile
+ * and the already-materialized fields around it — the practical reading of
+ * "New Tiles must be positioned so that there is a valid path that
+ * eventually connects them with all other Tiles" for border-lined tiles.
+ */
+export function isTileRotationConnected(state: GameState, tile: MapTileState, rotation: number): boolean {
+  const adventure = state.adventure;
+  const def = coreTileDefinitions[tile.tileDefId];
+  if (!adventure || !def) {
+    return true;
+  }
+
+  const center = { row: tile.centerRow, col: tile.centerCol };
+  const footprint = tileFootprint(center, rotation);
+  const footprintIds = new Set(footprint.map(hexSpaceId));
+
+  for (let slot = 1; slot < footprint.length; slot += 1) {
+    const fieldDef = def.fields[slot];
+    if (!fieldDef || locationDefinitions[fieldDef.location]?.category === "blocked") {
+      continue;
+    }
+
+    // The slot's own outer border must be open…
+    if (def.outerImpassable[slot - 1]) {
+      continue;
+    }
+
+    // …and at least one neighbouring hex outside the tile must be an open,
+    // already-revealed field whose own border is not sealed either.
+    const cell = footprint[slot];
+    for (let direction = 0; direction < 6; direction += 1) {
+      const neighborId = hexSpaceId(hexNeighbor(cell, direction));
+      if (footprintIds.has(neighborId)) {
+        continue;
+      }
+
+      const neighborField = adventure.fields[neighborId];
+      if (!neighborField) {
+        continue;
+      }
+      if (locationDefinitions[neighborField.location]?.category === "blocked") {
+        continue;
+      }
+      if (isNeighborOuterEdgeSealed(adventure, neighborField)) {
+        continue;
+      }
+
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isNeighborOuterEdgeSealed(state: NonNullable<GameState["adventure"]>, field: MapFieldState): boolean {
+  if (field.slot === 0) {
+    return false;
+  }
+
+  const tile = state.tiles[field.tileInstanceId];
+  const def = tile ? coreTileDefinitions[tile.tileDefId] : undefined;
+  if (!tile || !def) {
+    return false;
+  }
+
+  const direction = slotDirection(field.slot, 0);
+  return direction === null ? false : Boolean(def.outerImpassable[direction]);
+}
+
+/** Confirms the rotation of a freshly revealed or placed tile. */
+export function setTileRotation(state: GameState, action: Extract<GameAction, { type: "SET_TILE_ROTATION" }>): void {
+  const adventure = requireAdventure(state);
+  const pending = adventure.pendingTileChoice;
+  if (!pending || pending.playerId !== action.playerId || pending.tileInstanceId !== action.tileInstanceId) {
+    throw new Error("There is no tile rotation to confirm for that player.");
+  }
+
+  const tile = adventure.tiles[action.tileInstanceId];
+  if (!tile) {
+    throw new Error("That tile no longer exists.");
+  }
+
+  const rotation = ((action.rotation % 6) + 6) % 6;
+  const anyConnected = [0, 1, 2, 3, 4, 5].some((candidate) => isTileRotationConnected(state, tile, candidate));
+  if (anyConnected && !isTileRotationConnected(state, tile, rotation)) {
+    throw new Error("Rotate the tile so a path connects it to the rest of the map (border lines cannot seal it off).");
+  }
+
+  tile.rotation = rotation;
+  tile.awaitingRotation = false;
+  adventure.pendingTileChoice = null;
   materializeTileFields(adventure, tile);
 
   appendEvent(state, {
-    type: "TILE_REVEALED",
-    playerId,
-    tileInstanceId,
-    tileDefId: tile.tileDefId
+    type: "TILE_ROTATION_SET",
+    playerId: action.playerId,
+    tileInstanceId: tile.id,
+    tileDefId: tile.tileDefId,
+    rotation
   });
 }
 
@@ -314,31 +569,23 @@ export function placeTile(state: GameState, action: Extract<GameAction, { type: 
   }
 
   const supply = adventure.playerFarTiles[action.playerId] ?? [];
-  if (!supply.includes(action.tileDefId)) {
-    throw new Error("That tile is not in your supply.");
+  const tileDefId = supply[action.supplyIndex];
+  if (!tileDefId) {
+    throw new Error("That Far tile is not in your supply.");
   }
 
-  const rotation = ((action.rotation % 6) + 6) % 6;
   const center = { row: action.centerRow, col: action.centerCol };
-  if (!canPlaceTileAt(state, hero, center, rotation)) {
+  if (!canPlaceTileAt(state, hero, center, 0)) {
     throw new Error(
       "New tiles must touch at least two existing tiles, sit next to your hero, and must not overlap."
     );
   }
 
-  supply.splice(supply.indexOf(action.tileDefId), 1);
+  closeMulliganWindow(state, action.playerId);
+  supply.splice(action.supplyIndex, 1);
   hero.movementPoints -= 1;
-  const tile = instantiateTile(adventure, action.tileDefId, center, rotation, false);
-
-  appendEvent(state, {
-    type: "TILE_PLACED",
-    playerId: action.playerId,
-    tileInstanceId: tile.id,
-    tileDefId: tile.tileDefId,
-    centerRow: tile.centerRow,
-    centerCol: tile.centerCol,
-    rotation: tile.rotation
-  });
+  const tile = instantiateTile(adventure, tileDefId, center, 0, false, { materialize: false });
+  beginTileRotation(state, action.playerId, tile, "place");
 }
 
 // ---------------------------------------------------------------------------
@@ -617,14 +864,7 @@ function resolveObservatoryDiscover(
     return;
   }
 
-  target.faceDown = false;
-  materializeTileFields(adventure, target);
-  appendEvent(state, {
-    type: "TILE_REVEALED",
-    playerId: action.playerId,
-    tileInstanceId: target.id,
-    tileDefId: target.tileDefId
-  });
+  beginTileRotation(state, action.playerId, target, "reveal");
 }
 
 export function tradeResources(state: GameState, action: Extract<GameAction, { type: "TRADE_RESOURCES" }>): void {
@@ -674,6 +914,7 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
 }
 
 export function startNeutralEncounter(state: GameState, hero: HeroState, field: MapFieldState): void {
+  const adventure = requireAdventure(state);
   const playerId = hero.controllerId;
   const difficulty = field.difficulty ?? 1;
 
@@ -694,11 +935,50 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
   restoreStartingArmyIfEmpty(state, playerId);
 
   const draws = drawNeutralArmy(state, difficulty);
+
+  // Groovy Satyr: the attacker may swap one drawn card for another of the
+  // same tier before the fight is set up.
+  const satyrActive = getActiveAstrologersCard(state)?.effect.type === "NEUTRAL_DRAW_SWAP";
+  if (satyrActive && draws.length > 0) {
+    adventure.pendingEncounter = { heroId: hero.id, fieldId: field.spaceId, difficulty, draws };
+    adventure.pendingVisit = {
+      heroId: hero.id,
+      playerId,
+      fieldId: field.spaceId,
+      steps: [
+        {
+          type: "CHOOSE_ONE",
+          prompt: "Groovy Satyr: swap one drawn neutral for a fresh card of the same tier?",
+          options: [
+            { label: "Keep the drawn army", steps: [] },
+            ...draws.map((draw, index) => ({
+              label: `Swap ${coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId} (${draw.tier})`,
+              steps: [{ type: "SATYR_SWAP", drawIndex: index } as VisitStep]
+            }))
+          ]
+        }
+      ]
+    };
+    return;
+  }
+
+  createNeutralCombat(state, hero, field.spaceId, difficulty, draws);
+}
+
+/** Builds and opens the neutral combat once the drawn army is final. */
+function createNeutralCombat(
+  state: GameState,
+  hero: HeroState,
+  fieldId: MapSpaceId,
+  difficulty: number,
+  draws: NeutralDraw[]
+): void {
+  const playerId = hero.controllerId;
   const combat = makeCombatShell(state, playerId, NEUTRAL_PLAYER_ID);
   combat.context = {
     kind: "neutral",
     heroId: hero.id,
-    fieldId: field.spaceId,
+    fieldId,
     difficulty,
     hasAzure: draws.some((draw) => draw.tier === "azure")
   };
@@ -726,10 +1006,30 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
     type: "NEUTRAL_COMBAT_STARTED",
     playerId,
     heroId: hero.id,
-    fieldId: field.spaceId,
+    fieldId,
     difficulty,
     unitDefIds: draws.map((draw) => draw.unitDefId)
   });
+}
+
+/**
+ * Called by the automation loop once the Groovy Satyr choice resolved: the
+ * paused encounter turns into a real combat.
+ */
+export function startPendingEncounter(state: GameState): void {
+  const adventure = state.adventure;
+  const pending = adventure?.pendingEncounter;
+  if (!adventure || !pending) {
+    return;
+  }
+
+  const hero = state.heroes[pending.heroId];
+  adventure.pendingEncounter = null;
+  if (!hero) {
+    return;
+  }
+
+  createNeutralCombat(state, hero, pending.fieldId, pending.difficulty, pending.draws);
 }
 
 export function startPlayerCombat(state: GameState, attacker: HeroState, defender: HeroState, fieldId: MapSpaceId): void {
@@ -1128,6 +1428,7 @@ export function buildStructureAdventure(
   }
 
   spendResources(state, action.playerId, building.cost, `built ${building.name}`);
+  closeMulliganWindow(state, action.playerId);
   player.townTokens.build = false;
   town.buildings.push(action.buildingId);
 
@@ -1222,6 +1523,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
   }
 
   spendResources(state, action.playerId, totalCost, "population action");
+  closeMulliganWindow(state, action.playerId);
   player.townTokens.population = false;
 
   for (const purchase of action.purchases) {
@@ -1290,6 +1592,7 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
   }
 
   spendResources(state, action.playerId, cost, "spell book");
+  closeMulliganWindow(state, action.playerId);
   player.townTokens.spellBook = false;
   appendEvent(state, { type: "SPELLS_PURCHASED", playerId: action.playerId, cost });
 
@@ -1301,18 +1604,52 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
   });
 }
 
+/**
+ * Positive morale token, by the book: "Draw a card from your Deck" or
+ * "Discard any number of cards, then draw that many cards" — at any time.
+ * (The third option, rerolling a die, is offered inside the dice flows.)
+ */
 export function spendMorale(state: GameState, action: Extract<GameAction, { type: "SPEND_MORALE" }>): void {
   const player = state.players[action.playerId];
   if (!player || player.morale < 1) {
     throw new Error("No positive morale token to spend.");
   }
 
-  player.morale -= 1;
-  appendEvent(state, { type: "MORALE_CHANGED", playerId: action.playerId, amount: -1, total: player.morale });
+  if (action.benefit === "redraw") {
+    const discards = action.discardCardIds ?? [];
+    if (discards.length === 0) {
+      throw new Error("Choose at least one card to discard and redraw.");
+    }
 
-  if (action.benefit === "draw") {
-    drawCardsForPlayer(state, action.playerId, 1);
+    const handCounts = new Map<string, number>();
+    for (const cardId of player.hand) {
+      handCounts.set(cardId, (handCounts.get(cardId) ?? 0) + 1);
+    }
+    for (const cardId of discards) {
+      const left = handCounts.get(cardId) ?? 0;
+      if (left <= 0) {
+        throw new Error("Cannot discard a card that is not in hand.");
+      }
+      handCounts.set(cardId, left - 1);
+    }
+
+    player.morale -= 1;
+    appendEvent(state, { type: "MORALE_SPENT", playerId: action.playerId, benefit: "redraw" });
+    appendEvent(state, { type: "MORALE_CHANGED", playerId: action.playerId, amount: -1, total: player.morale });
+
+    for (const cardId of discards) {
+      const index = player.hand.indexOf(cardId);
+      player.hand.splice(index, 1);
+      player.discard.push(cardId);
+    }
+    drawCardsForPlayer(state, action.playerId, discards.length);
+    return;
   }
+
+  player.morale -= 1;
+  appendEvent(state, { type: "MORALE_SPENT", playerId: action.playerId, benefit: "draw" });
+  appendEvent(state, { type: "MORALE_CHANGED", playerId: action.playerId, amount: -1, total: player.morale });
+  drawCardsForPlayer(state, action.playerId, 1);
 }
 
 export function chooseOption(state: GameState, action: Extract<GameAction, { type: "CHOOSE_OPTION" }>): void {
@@ -1394,6 +1731,24 @@ export function endTurnAdventure(state: GameState, action: Extract<GameAction, {
   assertActiveTurn(state, action.playerId);
   assertNoPendingInput(state);
 
+  const player = state.players[action.playerId];
+  if (player) {
+    player.canMulligan = false;
+    // The second negative morale token: the hand is discarded at turn end.
+    if (player.discardHandAtTurnEnd) {
+      const discarded = player.hand.length;
+      player.discard.push(...player.hand);
+      player.hand = [];
+      player.discardHandAtTurnEnd = false;
+      appendEvent(state, {
+        type: "HAND_REFRESHED",
+        playerId: action.playerId,
+        discarded,
+        drawn: 0
+      });
+    }
+  }
+
   const expired = expireEffectsForTurnEnd(state, action.playerId);
   for (const effect of expired) {
     appendEvent(state, { type: "ACTIVE_EFFECT_EXPIRED", effectId: effect.id, reason: "turn-ended" });
@@ -1450,6 +1805,22 @@ export function pumpAdventureQueues(state: GameState): void {
 
   while (!state.pendingChoice && adventure.rewardQueue.length > 0) {
     const reward = adventure.rewardQueue[0];
+
+    if (reward.kind === "visit-steps") {
+      adventure.rewardQueue.shift();
+      const hero = getMainHero(state, reward.playerId);
+      adventure.pendingVisit = {
+        heroId: hero?.id ?? "",
+        playerId: reward.playerId,
+        fieldId: hero?.spaceId ?? "",
+        steps: [...reward.steps]
+      };
+      processPendingVisit(state);
+      if (state.pendingChoice || adventure.pendingVisit) {
+        return;
+      }
+      continue;
+    }
 
     if (reward.kind === "shared-deck-search") {
       const deck = state.decks[reward.deckId];

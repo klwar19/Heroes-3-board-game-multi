@@ -2879,3 +2879,509 @@ button.battleCell {
   transition: transform 0.55s cubic-bezier(0.3, 0.8, 0.3, 1);
   pointer-events: none;
 }
+
+/* ---------------------------------------------------------------------------
+   Adventure map v2: pan/zoom, click-to-move arrows, tile art, rotation flow
+--------------------------------------------------------------------------- */
+
+.loadingRoot {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+}
+
+.hexMapWrap {
+  position: relative;
+}
+
+.hexMapSvg {
+  cursor: grab;
+  touch-action: none;
+}
+
+.hexMapSvg.dragging {
+  cursor: grabbing;
+}
+
+.tileArt {
+  pointer-events: none;
+  opacity: 0.96;
+}
+
+/* With real art under it, the hex grid becomes a light interactive lens. */
+.hexCell.withArt {
+  fill-opacity: 0.16;
+}
+
+.hexCell.withArt.moveTarget {
+  fill-opacity: 0.4;
+}
+
+.hexCell.selectedTarget {
+  stroke: #7fe07f;
+  stroke-width: 3;
+  filter: brightness(1.5);
+}
+
+.hexCell.rotating {
+  stroke: #ffd76a;
+  stroke-dasharray: 4 3;
+  animation: rotatingPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes rotatingPulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.35);
+  }
+}
+
+.rotatingHalo {
+  fill: none;
+  stroke: rgba(255, 215, 106, 0.4);
+  stroke-width: 2.5;
+  stroke-dasharray: 8 6;
+  pointer-events: none;
+  animation: rotatingPulse 1.4s ease-in-out infinite;
+}
+
+.hexBackNumeral {
+  fill: #d8b97e;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: rgba(15, 10, 4, 0.9);
+  stroke-width: 3px;
+}
+
+.ghostNumeral {
+  opacity: 0.75;
+}
+
+.tileBorderLine {
+  stroke: #e8c554;
+  stroke-width: 4;
+  stroke-linecap: round;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.placementGhostFlower {
+  cursor: pointer;
+}
+
+.placementGhostFlower .ghostHex {
+  fill: rgba(255, 215, 106, 0.12);
+  stroke: #ffd76a;
+  stroke-dasharray: 5 4;
+  stroke-width: 1.4;
+}
+
+.placementGhostFlower:hover .ghostHex {
+  fill: rgba(255, 215, 106, 0.3);
+}
+
+.heroPawnRing {
+  fill: none;
+  stroke-width: 2.4;
+}
+
+.heroSprite {
+  pointer-events: none;
+}
+
+.pathArrow {
+  fill: none;
+  stroke: #ffd766;
+  stroke-width: 3.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 7 6;
+  pointer-events: none;
+  animation: pathMarch 0.9s linear infinite;
+}
+
+@keyframes pathMarch {
+  to {
+    stroke-dashoffset: -13;
+  }
+}
+
+.pathArrowAnim {
+  fill: none;
+  stroke: #9fe08a;
+  stroke-width: 3.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 7 6;
+  pointer-events: none;
+  animation: pathMarch 0.5s linear infinite, pathFade 1.8s ease forwards;
+}
+
+@keyframes pathFade {
+  0% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.pathCostBadge {
+  fill: rgba(20, 14, 8, 0.92);
+  stroke: #ffd766;
+  stroke-width: 1.6;
+  pointer-events: none;
+}
+
+.pathCostText {
+  fill: #ffe9bd;
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.mapToolbar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  background: rgba(24, 18, 10, 0.85);
+  border: 1px solid rgba(170, 130, 70, 0.4);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.mapToolbar button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #d8c39a;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.mapToolbar button:hover {
+  border-color: rgba(255, 215, 106, 0.5);
+}
+
+.mapToolbar button.selected {
+  border-color: #ffd76a;
+  color: #ffe9bd;
+  background: rgba(140, 106, 44, 0.35);
+}
+
+.moveConfirmBar,
+.rotateBar {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(24, 18, 10, 0.94);
+  border: 1px solid rgba(255, 215, 106, 0.55);
+  border-radius: 10px;
+  color: #ffe9bd;
+  white-space: nowrap;
+  z-index: 5;
+}
+
+.rotateBar.passive {
+  border-color: rgba(170, 130, 70, 0.4);
+  color: #b89f78;
+}
+
+.rotateBar small {
+  color: #e0a05a;
+  white-space: normal;
+  max-width: 200px;
+}
+
+.rotateDegrees {
+  min-width: 38px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.advHudCell.astrologers {
+  background: rgba(58, 39, 84, 0.55);
+  border: 1px solid rgba(186, 142, 255, 0.45);
+  cursor: zoom-in;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+
+.advHudCell.astrologers strong {
+  color: #d9bfff;
+}
+
+.cardBack.small.astrologers {
+  background: linear-gradient(160deg, #3a2754, #241636);
+  border-color: rgba(186, 142, 255, 0.5);
+}
+
+.farTileBack {
+  width: 46px;
+  height: 62px;
+  border-radius: 7px;
+  background: linear-gradient(160deg, #3a2d1a, #241b0e);
+  border: 1.5px solid rgba(216, 185, 126, 0.6);
+  color: #d8b97e;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.farTileBack.selected {
+  outline: 2px solid #ffd76a;
+  transform: translateY(-3px);
+}
+
+.farTileHint {
+  color: #ffd76a;
+}
+
+/* Hand rail: mulligan / forced discard / morale actions */
+.handTopBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 4px 8px;
+}
+
+.handTopBar > small {
+  color: #b89f78;
+  font-weight: 600;
+}
+
+.handWarning {
+  color: #ffb04d;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.handButtons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+}
+
+.emptyHand {
+  color: #8d7a5c;
+  padding: 12px;
+}
+
+/* Town population basket */
+.recruitRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 12.5px;
+}
+
+.recruitRow .recruitName {
+  flex: 1;
+}
+
+.recruitRow small {
+  color: #b89f78;
+}
+
+.recruitCounter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.recruitCounter button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  background: rgba(140, 106, 44, 0.3);
+  border: 1px solid rgba(216, 185, 126, 0.4);
+  color: #ffe9bd;
+  cursor: pointer;
+}
+
+.recruitCounter button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.recruitCounter span {
+  min-width: 16px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.reinforceRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+.reinforceRow small {
+  color: #b89f78;
+}
+
+.basketFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(170, 130, 70, 0.35);
+}
+
+.basketHint {
+  display: block;
+  color: #8d7a5c;
+  margin-top: 4px;
+}
+
+/* Map-setup lobby */
+.setupLobby {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 22px;
+  max-width: 1080px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.setupLobby header h2 {
+  margin: 0 0 6px;
+  color: #ffe9bd;
+}
+
+.setupLobby header p {
+  margin: 0;
+  color: #b89f78;
+  max-width: 70ch;
+}
+
+.lobbySeats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lobbySeat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid rgba(170, 130, 70, 0.35);
+  border-radius: 8px;
+  background: rgba(33, 25, 15, 0.8);
+}
+
+.lobbySeat.mine {
+  border-color: #ffd76a;
+}
+
+.lobbySeat small {
+  color: #b89f78;
+}
+
+.factionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.factionCard {
+  border: 1.5px solid;
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(24, 18, 10, 0.85);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.factionCard.taken {
+  opacity: 0.45;
+}
+
+.factionCard small {
+  color: #b89f78;
+}
+
+.factionHeroes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lobbyHero {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  align-items: center;
+  text-align: left;
+  padding: 6px;
+  background: rgba(33, 25, 15, 0.7);
+  border: 1px solid rgba(170, 130, 70, 0.3);
+  border-radius: 8px;
+  color: #e8d9b8;
+  cursor: pointer;
+}
+
+.lobbyHero img {
+  grid-row: span 2;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.lobbyHero small {
+  color: #b89f78;
+}
+
+.lobbyHero.selected {
+  border-color: #ffd76a;
+  outline: 1.5px solid #ffd76a;
+}
+
+.lobbyHero:disabled {
+  cursor: default;
+}
+
+.startAdventure {
+  align-self: center;
+  font-size: 15px;
+  padding: 10px 22px;
+}

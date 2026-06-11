@@ -14,8 +14,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "next": "16.2.7",
     "lucide-react": "1.17.0",
+    "next": "16.2.7",
+    "partysocket": "^1.1.19",
     "react": "19.2.7",
     "react-dom": "19.2.7"
   },
@@ -29,6 +30,7 @@
     "eslint": "9.39.1",
     "eslint-config-next": "16.2.7",
     "jsdom": "27.3.0",
+    "partykit": "^0.0.115",
     "prettier": "3.7.4",
     "typescript": "5.9.3",
     "vitest": "4.1.8"

@@ -1,9 +1,12 @@
+import { astrologersCardDefinitions, type AstrologersCardDefinition } from "@/data/cards/astrologers";
+import { cardLibrary } from "@/data/cards/library";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import type { UnitDefinition, UnitSideDefinition } from "@/data/factions/types";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { coreTileDefinitions } from "@/data/map/tile-defs";
 import type { LocationInteraction } from "@/data/map/types";
+import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent } from "./events";
 import {
   hexNeighbors,
@@ -19,6 +22,7 @@ import { createSeededRandom } from "./random";
 import type {
   ActiveEffectState,
   AdventureState,
+  AstrologersState,
   CombatUnitState,
   GameDifficulty,
   GameState,
@@ -116,6 +120,58 @@ export const TREASURE_DIE_FACES: TreasureDieFace[] = [
   "double-resource-die"
 ];
 
+export const ASTROLOGERS_DECK_ID = "astrologers";
+
+/** Roman numerals printed on the physical tile backs, by tile group. */
+export const TILE_BACK_LABELS: Record<string, string> = {
+  starting: "Ⅰ",
+  far: "Ⅱ–Ⅲ",
+  near: "Ⅳ–Ⅴ",
+  center: "Ⅵ–Ⅶ"
+};
+
+export function getAstrologersState(state: GameState): AstrologersState | null {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return null;
+  }
+
+  if (!adventure.astrologers) {
+    adventure.astrologers = {
+      activeCardId: null,
+      nextResourceModifiers: { gold: 0, valuables: 0 },
+      crazyWizardUsedBy: [],
+      swiftWeaselUsedBy: []
+    };
+  }
+
+  return adventure.astrologers;
+}
+
+export function getActiveAstrologersCard(state: GameState): AstrologersCardDefinition | null {
+  const cardId = state.adventure?.astrologers?.activeCardId;
+  return cardId ? (astrologersCardDefinitions[cardId] ?? null) : null;
+}
+
+/** Hand limit including temporary Astrologers effects (Profuse Growth). */
+export function effectiveHandLimit(state: GameState, playerId: PlayerId): number {
+  const player = state.players[playerId];
+  if (!player) {
+    return 0;
+  }
+
+  const active = getActiveAstrologersCard(state);
+  const bonus = active?.effect.type === "HAND_LIMIT_MODIFIER" ? active.effect.amount : 0;
+  return Math.max(1, player.limits.hand + bonus);
+}
+
+/** Movement points a hero refreshes to, including Astrologers modifiers. */
+export function heroMovementMax(state: GameState, hero: HeroState): number {
+  const active = getActiveAstrologersCard(state);
+  const modifier = active?.effect.type === "MOVEMENT_MODIFIER" ? active.effect.amount : 0;
+  return Math.max(0, hero.movementPointsMax + modifier);
+}
+
 export function getUnitDefinition(unitDefId: string): UnitDefinition | undefined {
   return coreUnitDefinitions[unitDefId];
 }
@@ -144,21 +200,24 @@ export function instantiateTile(
   tileDefId: string,
   center: HexCoord,
   rotation: number,
-  faceDown: boolean
+  faceDown: boolean,
+  options: { materialize?: boolean } = {}
 ): MapTileState {
   tileCounter = Object.keys(adventure.tiles).length + 1;
   const id = `tile_${tileCounter}_${tileDefId}`;
+  const group = coreTileDefinitions[tileDefId]?.group;
   const tile: MapTileState = {
     id,
     tileDefId,
     centerRow: center.row,
     centerCol: center.col,
     rotation,
-    faceDown
+    faceDown,
+    backLabel: group ? TILE_BACK_LABELS[group] : undefined
   };
   adventure.tiles[id] = tile;
 
-  if (!faceDown) {
+  if (!faceDown && (options.materialize ?? true)) {
     materializeTileFields(adventure, tile);
   }
 
@@ -289,6 +348,113 @@ export function isFieldGuarded(field: MapFieldState): boolean {
   return Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
 }
 
+/**
+ * What happens when a hero walks into a field:
+ *  - "open": nothing stops the hero (empty, used-up, or own-flagged fields) —
+ *    valid as both a stop and a pass-through.
+ *  - "stop": entering triggers something (guards, enemy heroes, unvisited
+ *    locations, flags to steal) so the path must end here.
+ *  - "pass-only": an allied hero stands here; you may walk through but not stay.
+ *  - "block": never enterable (blocked fields, sanctuary-protected enemies).
+ */
+export type HeroStepKind = "open" | "stop" | "pass-only" | "block";
+
+export function classifyHeroStep(state: GameState, hero: HeroState, spaceId: MapSpaceId): HeroStepKind {
+  const adventure = state.adventure;
+  const field = adventure?.fields[spaceId];
+  if (!adventure || !field) {
+    return "block";
+  }
+
+  const playerId = hero.controllerId;
+  const location = locationDefinitions[field.location];
+  if (location?.category === "blocked") {
+    return "block";
+  }
+
+  const occupant = heroAtSpace(state, spaceId, hero.id);
+  if (occupant) {
+    if (occupant.controllerId === playerId) {
+      return "pass-only";
+    }
+    // Heroes inside a Sanctuary cannot be attacked.
+    return location?.passive?.protectsFromAttack ? "block" : "stop";
+  }
+
+  if (isFieldGuarded(field) && field.flagOwnerId !== playerId) {
+    return "stop";
+  }
+
+  if (!location || location.category === "empty") {
+    return "open";
+  }
+  if (location.category === "visitable") {
+    return field.blackCube ? "open" : "stop";
+  }
+  if (location.category === "revisitable") {
+    return "stop";
+  }
+  if (location.category === "flaggable") {
+    return field.flagOwnerId === playerId ? "open" : "stop";
+  }
+
+  return "stop";
+}
+
+export type HeroPathTarget = { spaceId: MapSpaceId; path: MapSpaceId[]; cost: number };
+
+/**
+ * Every field the hero can reach with the movement points left this turn,
+ * with the cheapest step-by-step path. Fields that stop the hero (guards,
+ * enemy heroes, locations to use) are valid destinations but never crossed;
+ * allied heroes can be walked through but not stood on.
+ */
+export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<MapSpaceId, HeroPathTarget> {
+  const results = new Map<MapSpaceId, HeroPathTarget>();
+  const adventure = state.adventure;
+  if (!adventure || !hero.spaceId || hero.movementPoints <= 0) {
+    return results;
+  }
+
+  const visited = new Set<MapSpaceId>([hero.spaceId]);
+  let frontier: { spaceId: MapSpaceId; path: MapSpaceId[] }[] = [{ spaceId: hero.spaceId, path: [] }];
+
+  for (let depth = 1; depth <= hero.movementPoints && frontier.length > 0; depth += 1) {
+    const next: typeof frontier = [];
+    for (const node of frontier) {
+      for (const neighbor of getAdjacentSpaceIds(node.spaceId)) {
+        if (visited.has(neighbor) || !canCrossEdge(state, node.spaceId, neighbor)) {
+          continue;
+        }
+
+        const kind = classifyHeroStep(state, hero, neighbor);
+        if (kind === "block") {
+          continue;
+        }
+
+        visited.add(neighbor);
+        const path = [...node.path, neighbor];
+
+        if (kind === "stop") {
+          results.set(neighbor, { spaceId: neighbor, path, cost: path.length });
+          continue;
+        }
+
+        if (kind === "pass-only") {
+          next.push({ spaceId: neighbor, path });
+          continue;
+        }
+
+        results.set(neighbor, { spaceId: neighbor, path, cost: path.length });
+        next.push({ spaceId: neighbor, path });
+      }
+    }
+    frontier = next;
+  }
+
+  return results;
+}
+
 export function canPlaceTileAt(
   state: GameState,
   hero: HeroState,
@@ -373,6 +539,11 @@ export function spendResources(state: GameState, playerId: PlayerId, cost: Resou
   appendEvent(state, { type: "RESOURCES_SPENT", playerId, cost, reason });
 }
 
+/**
+ * Morale tokens by the book: at most one positive token (+1) and one negative
+ * token (-1). Losing morale at -1 instead forces the hand to be discarded the
+ * next time the player ends their turn. Necropolis ignores morale entirely.
+ */
 export function changeMorale(state: GameState, playerId: PlayerId, amount: number): void {
   const player = state.players[playerId];
   if (!player || amount === 0) {
@@ -386,7 +557,14 @@ export function changeMorale(state: GameState, playerId: PlayerId, amount: numbe
 
   let next = player.morale;
   for (let step = 0; step < Math.abs(amount); step += 1) {
-    next = amount > 0 ? Math.min(1, next + 1) : next - 1;
+    if (amount > 0) {
+      next = Math.min(1, next + 1);
+    } else if (next <= -1) {
+      // A second negative token: discard the hand when the turn ends instead.
+      player.discardHandAtTurnEnd = true;
+    } else {
+      next -= 1;
+    }
   }
   player.morale = next;
 
@@ -640,13 +818,15 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
 
   adventure.lastVisitedField[heroId] = fieldId;
 
-  if (location.category === "visitable" && !revisit) {
-    // The black cube goes on even when the effect is declined or impossible.
+  if (location.category === "visitable") {
+    // "Treat it as an Empty Field as long as it has a Black Cube": a field
+    // that already carries its cube does nothing on re-entry. The cube goes
+    // on even when the effect is declined or impossible.
+    const alreadyUsed = field.blackCube;
     field.blackCube = true;
-  }
-
-  if (field.blackCube && location.category === "visitable" && revisit) {
-    return;
+    if (alreadyUsed) {
+      return;
+    }
   }
 
   if (location.id === "mine") {
@@ -761,6 +941,47 @@ export function processPendingVisit(state: GameState): void {
       case "CONSUME_LUCK":
         consumeLuckReroll(state, step.effectId, step.dice);
         break;
+      case "CONSUME_MORALE": {
+        const player = state.players[visit.playerId];
+        if (player && player.morale > 0) {
+          player.morale -= 1;
+          appendEvent(state, { type: "MORALE_SPENT", playerId: visit.playerId, benefit: "reroll" });
+          appendEvent(state, {
+            type: "MORALE_CHANGED",
+            playerId: visit.playerId,
+            amount: -1,
+            total: player.morale
+          });
+        }
+        break;
+      }
+      case "CONSUME_WEASEL": {
+        const astrologers = getAstrologersState(state);
+        if (astrologers && !astrologers.swiftWeaselUsedBy.includes(visit.playerId)) {
+          astrologers.swiftWeaselUsedBy.push(visit.playerId);
+        }
+        break;
+      }
+      case "FLIP_PACK_TO_FEW": {
+        const player = state.players[visit.playerId];
+        const armyUnit = player?.army.find((candidate) => candidate.id === step.armyUnitId);
+        if (player && armyUnit && armyUnit.side === "pack") {
+          armyUnit.side = "few";
+          appendEvent(state, {
+            type: "ARMY_UNIT_FLIPPED",
+            playerId: visit.playerId,
+            unitDefId: armyUnit.unitDefId,
+            reason: "Terrible Plague"
+          });
+        }
+        break;
+      }
+      case "REINFORCE_ARMY_UNIT":
+        reinforceArmyUnit(state, visit.playerId, step.armyUnitId, step.halfCost);
+        break;
+      case "SATYR_SWAP":
+        swapPendingEncounterDraw(state, visit.playerId, step.drawIndex);
+        break;
       case "SEARCH_SHARED_DECK":
         adventure.rewardQueue.push({
           playerId: visit.playerId,
@@ -841,6 +1062,40 @@ function consumeLuckReroll(state: GameState, effectId: string, dice: "treasure" 
   effect.usedChoiceIds.push(`luck:${dice}`);
 }
 
+/**
+ * Optional rerolls of an adventure die beyond Luck: the positive morale token
+ * ("Reroll any Die you have thrown") and the Swift Weasel Astrologers card
+ * (one free Treasure/Resource reroll per turn).
+ */
+function extraDieRerollOptions(
+  state: GameState,
+  visit: PendingVisit,
+  dice: "treasure" | "resource",
+  count: number
+): { label: string; steps: VisitStep[] }[] {
+  const rollStep: VisitStep =
+    dice === "resource" ? { type: "ROLL_RESOURCE_DICE", count } : { type: "ROLL_TREASURE_DICE", count };
+  const options: { label: string; steps: VisitStep[] }[] = [];
+
+  const astrologers = state.adventure?.astrologers;
+  const weaselActive = getActiveAstrologersCard(state)?.effect.type === "DIE_REROLL_PER_TURN";
+  if (weaselActive && astrologers && !astrologers.swiftWeaselUsedBy.includes(visit.playerId)) {
+    options.push({
+      label: `Swift Weasel: reroll the ${dice} ${count > 1 ? "dice" : "die"} (free, once per turn)`,
+      steps: [{ type: "CONSUME_WEASEL" }, rollStep]
+    });
+  }
+
+  if ((state.players[visit.playerId]?.morale ?? 0) > 0) {
+    options.push({
+      label: `Spend morale: reroll the ${dice} ${count > 1 ? "dice" : "die"}`,
+      steps: [{ type: "CONSUME_MORALE" }, rollStep]
+    });
+  }
+
+  return options;
+}
+
 function rollResourceDice(state: GameState, visit: PendingVisit, count: number): void {
   const random = adventureRandom(state, "resource-die");
   const rolls = Array.from({ length: count }, () => RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)]);
@@ -853,8 +1108,9 @@ function rollResourceDice(state: GameState, visit: PendingVisit, count: number):
   });
 
   const luck = getLuckRerollEffect(state, visit.playerId, "resource");
+  const extraOptions = extraDieRerollOptions(state, visit, "resource", count);
 
-  if (rolls.length === 1 && !luck) {
+  if (rolls.length === 1 && !luck && extraOptions.length === 0) {
     gainResources(state, visit.playerId, { [rolls[0].resource]: rolls[0].amount }, "resource die");
     return;
   }
@@ -873,6 +1129,7 @@ function rollResourceDice(state: GameState, visit: PendingVisit, count: number):
       ]
     });
   }
+  options.push(...extraOptions);
 
   visit.steps.unshift({
     type: "CHOOSE_ONE",
@@ -919,8 +1176,9 @@ function rollTreasureDice(state: GameState, visit: PendingVisit, count: number):
   });
 
   const luck = getLuckRerollEffect(state, visit.playerId, "treasure");
+  const extraOptions = extraDieRerollOptions(state, visit, "treasure", count);
 
-  if (rolls.length === 1 && !luck) {
+  if (rolls.length === 1 && !luck && extraOptions.length === 0) {
     visit.steps.unshift(...treasureFaceSteps(rolls[0]));
     return;
   }
@@ -939,6 +1197,7 @@ function rollTreasureDice(state: GameState, visit: PendingVisit, count: number):
       ]
     });
   }
+  options.push(...extraOptions);
 
   visit.steps.unshift({
     type: "CHOOSE_ONE",
@@ -989,6 +1248,26 @@ export const SCHOLAR_STAT_CARDS = ["stat.attack", "stat.defense", "stat.power", 
 
 export type NeutralDraw = { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" };
 
+/** Draws the top card of one neutral tier deck, reshuffling its discard if needed. */
+export function drawFromNeutralDeck(state: GameState, tier: "bronze" | "silver" | "gold" | "azure"): string | undefined {
+  const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+  if (!deck) {
+    return undefined;
+  }
+
+  if (deck.drawPile.length === 0 && deck.discardPile.length > 0) {
+    const random = adventureRandom(state, `neutral-reshuffle-${tier}`);
+    deck.drawPile = [...deck.discardPile];
+    deck.discardPile = [];
+    for (let i = deck.drawPile.length - 1; i > 0; i -= 1) {
+      const j = random.nextInt(0, i);
+      [deck.drawPile[i], deck.drawPile[j]] = [deck.drawPile[j], deck.drawPile[i]];
+    }
+  }
+
+  return deck.drawPile.pop();
+}
+
 /** Draws the neutral army for a guarded field from the four tier decks. */
 export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDraw[] {
   const adventure = state.adventure;
@@ -1003,23 +1282,8 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
 
   const draws: NeutralDraw[] = [];
   for (const tier of ["bronze", "silver", "gold", "azure"] as const) {
-    const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
-    if (!deck) {
-      continue;
-    }
-
     for (let index = 0; index < counts[tier]; index += 1) {
-      if (deck.drawPile.length === 0 && deck.discardPile.length > 0) {
-        const random = adventureRandom(state, `neutral-reshuffle-${tier}`);
-        deck.drawPile = [...deck.discardPile];
-        deck.discardPile = [];
-        for (let i = deck.drawPile.length - 1; i > 0; i -= 1) {
-          const j = random.nextInt(0, i);
-          [deck.drawPile[i], deck.drawPile[j]] = [deck.drawPile[j], deck.drawPile[i]];
-        }
-      }
-
-      const unitDefId = deck.drawPile.pop();
+      const unitDefId = drawFromNeutralDeck(state, tier);
       if (unitDefId) {
         draws.push({ unitDefId, tier });
       }
@@ -1222,44 +1486,52 @@ export function refreshRoundTokens(state: GameState): void {
   }
 
   for (const hero of Object.values(state.heroes)) {
-    hero.movementPoints = hero.movementPointsMax;
+    hero.movementPoints = heroMovementMax(state, hero);
   }
 }
 
 /**
- * Starts an adventure round: refresh tokens and MP, then pay Resource Round
- * income on odd rounds after the first (even rounds are Astrologers rounds;
- * the Astrologers Proclaim deck is not imported yet, so they pass with a log
- * entry).
+ * Starts an adventure round (rulebook round structure): refresh tokens, MP
+ * and expert effects; then even rounds draw an Astrologers Proclaim card and
+ * odd rounds after the first pay Resource Round income.
  */
 export function startAdventureRound(state: GameState): void {
-  refreshRoundTokens(state);
-
   const kind = state.round === 1 ? "first" : state.round % 2 === 1 ? "resource" : "astrologers";
+
+  if (kind === "astrologers") {
+    // The previous proclamation lasts "until the next Astrologers' round":
+    // expire it before tokens refresh so its movement modifier ends now.
+    expireActiveAstrologersCard(state);
+  }
+
+  refreshRoundTokens(state);
   appendEvent(state, { type: "ROUND_STARTED", round: state.round, kind });
+
+  if (kind === "astrologers") {
+    drawAstrologersCard(state);
+    return;
+  }
 
   if (kind !== "resource") {
     return;
   }
 
+  const astrologers = getAstrologersState(state);
+  const modifiers = astrologers?.nextResourceModifiers ?? { gold: 0, valuables: 0 };
+
   for (const playerId of state.turnOrder) {
     const player = state.players[playerId];
-    if (!player) {
+    if (!player || playerId === NEUTRAL_PLAYER_ID) {
       continue;
     }
 
-    const income = player.production;
+    const income = {
+      gold: Math.max(0, player.production.gold + modifiers.gold),
+      buildingMaterials: player.production.buildingMaterials,
+      valuables: Math.max(0, player.production.valuables + modifiers.valuables)
+    };
     if (income.gold || income.buildingMaterials || income.valuables) {
-      gainResources(
-        state,
-        playerId,
-        {
-          gold: income.gold,
-          buildingMaterials: income.buildingMaterials,
-          valuables: income.valuables
-        },
-        "resource round income"
-      );
+      gainResources(state, playerId, income, "resource round income");
     }
 
     const town = getTownOfPlayer(state, playerId);
@@ -1273,16 +1545,347 @@ export function startAdventureRound(state: GameState): void {
       }
     }
   }
+
+  if (astrologers) {
+    astrologers.nextResourceModifiers = { gold: 0, valuables: 0 };
+  }
 }
 
+/**
+ * Starts a player turn: the hand draws back up to the (effective) hand limit
+ * automatically; if the hand is over the limit the player must discard down
+ * first. The optional mulligan — discard any number, draw that many — stays
+ * open until the player takes their first real action.
+ */
 export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   if (!player) {
     return;
   }
 
-  player.needsHandRefresh = true;
+  const astrologers = state.adventure?.astrologers;
+  if (astrologers) {
+    astrologers.swiftWeaselUsedBy = [];
+  }
+  for (const candidate of Object.values(state.players)) {
+    candidate.combatStats.spellsCastThisTurn = 0;
+  }
+
   appendEvent(state, { type: "TURN_STARTED", playerId, round: state.round });
+
+  const limit = effectiveHandLimit(state, playerId);
+  if (player.hand.length > limit) {
+    player.needsHandRefresh = true;
+  } else {
+    player.needsHandRefresh = false;
+    if (player.hand.length < limit) {
+      drawCardsForPlayer(state, playerId, limit - player.hand.length);
+    }
+  }
+  player.canMulligan = true;
+}
+
+// ---------------------------------------------------------------------------
+// Astrologers Proclaim (even rounds)
+// ---------------------------------------------------------------------------
+
+function expireActiveAstrologersCard(state: GameState): void {
+  const astrologers = getAstrologersState(state);
+  const deck = state.decks[ASTROLOGERS_DECK_ID];
+  if (!astrologers || !astrologers.activeCardId) {
+    return;
+  }
+
+  deck?.discardPile.push(astrologers.activeCardId);
+  astrologers.activeCardId = null;
+  astrologers.crazyWizardUsedBy = [];
+  astrologers.swiftWeaselUsedBy = [];
+}
+
+function popAstrologersCard(state: GameState): string | undefined {
+  const deck = state.decks[ASTROLOGERS_DECK_ID];
+  if (!deck) {
+    return undefined;
+  }
+
+  if (deck.drawPile.length === 0 && deck.discardPile.length > 0) {
+    deck.drawPile = shuffleCards(deck.discardPile, `${state.seed}#astrologers-reshuffle#${state.eventLog.length}`);
+    deck.discardPile = [];
+  }
+
+  return deck.drawPile.pop();
+}
+
+export function drawAstrologersCard(state: GameState): void {
+  const astrologers = getAstrologersState(state);
+  if (!astrologers || !state.decks[ASTROLOGERS_DECK_ID]) {
+    return;
+  }
+
+  let cardId = popAstrologersCard(state);
+
+  // Friendly Beaver drawn on the first Astrologers round: discard it and
+  // draw another card (its printed exception).
+  if (cardId === "astrologers.friendly_beaver" && state.round === 2) {
+    state.decks[ASTROLOGERS_DECK_ID]?.discardPile.push(cardId);
+    cardId = popAstrologersCard(state);
+  }
+
+  if (!cardId) {
+    return;
+  }
+
+  const card = astrologersCardDefinitions[cardId];
+  astrologers.activeCardId = cardId;
+  appendEvent(state, {
+    type: "ASTROLOGERS_DRAWN",
+    cardId,
+    name: card?.name ?? cardId,
+    text: card?.text ?? "",
+    round: state.round
+  });
+
+  if (card) {
+    resolveAstrologersCard(state, card);
+  }
+}
+
+function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinition): void {
+  const astrologers = getAstrologersState(state);
+  const adventure = state.adventure;
+  if (!astrologers || !adventure) {
+    return;
+  }
+
+  const playerIds = state.turnOrder.filter((playerId) => playerId !== NEUTRAL_PLAYER_ID);
+
+  switch (card.effect.type) {
+    case "NONE":
+    case "HAND_LIMIT_MODIFIER":
+    case "DIE_REROLL_PER_TURN":
+    case "FIRST_SPELL_POWER_BONUS":
+    case "FIRST_SPELL_RETURNS":
+    case "NEUTRAL_DRAW_SWAP":
+      // Passive while the card stays face up.
+      break;
+    case "GAIN_MORALE_ALL":
+      for (const playerId of playerIds) {
+        changeMorale(state, playerId, card.effect.amount);
+      }
+      break;
+    case "ROLL_DICE_ALL": {
+      const step: VisitStep =
+        card.effect.dice === "treasure"
+          ? { type: "ROLL_TREASURE_DICE", count: card.effect.count }
+          : { type: "ROLL_RESOURCE_DICE", count: card.effect.count };
+      for (const playerId of playerIds) {
+        adventure.rewardQueue.push({ playerId, kind: "visit-steps", steps: [step] });
+      }
+      break;
+    }
+    case "REMOVE_BLACK_CUBES":
+      for (const field of Object.values(adventure.fields)) {
+        field.blackCube = false;
+      }
+      break;
+    case "NEXT_RESOURCE_ROUND":
+      astrologers.nextResourceModifiers.gold += card.effect.gold ?? 0;
+      astrologers.nextResourceModifiers.valuables += card.effect.valuables ?? 0;
+      break;
+    case "MOVEMENT_MODIFIER":
+      // Tokens already refreshed this round: apply the delta immediately.
+      for (const hero of Object.values(state.heroes)) {
+        hero.movementPoints = Math.max(0, hero.movementPoints + card.effect.amount);
+      }
+      break;
+    case "RESHUFFLE_ARTIFACTS_SPELLS":
+      for (const playerId of playerIds) {
+        reshuffleArtifactsAndSpells(state, playerId);
+      }
+      break;
+    case "PLAGUE_FLIP_ALL":
+      for (const playerId of playerIds) {
+        queuePlagueFlip(state, playerId);
+      }
+      break;
+    case "REINFORCE_HALF_COST_ALL":
+      for (const playerId of playerIds) {
+        queueHalfCostReinforce(state, playerId);
+      }
+      break;
+  }
+}
+
+/** Annoying Lizard: spells and artifacts shuffle back, redraw as many. */
+function reshuffleArtifactsAndSpells(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+
+  const moved: string[] = [];
+  player.hand = player.hand.filter((cardId) => {
+    const kind = cardLibrary[cardId]?.kind;
+    if (kind === "spell" || kind === "artifact") {
+      moved.push(cardId);
+      return false;
+    }
+    return true;
+  });
+
+  if (moved.length === 0) {
+    return;
+  }
+
+  player.deck = shuffleCards(
+    [...player.deck, ...moved],
+    `${state.seed}#annoying-lizard#${playerId}#${state.eventLog.length}`
+  );
+  drawCardsForPlayer(state, playerId, moved.length);
+}
+
+function queuePlagueFlip(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+
+  const packs = player.army.filter((unit) => unit.side === "pack");
+  if (packs.length === 0) {
+    return;
+  }
+
+  if (packs.length === 1) {
+    packs[0].side = "few";
+    appendEvent(state, {
+      type: "ARMY_UNIT_FLIPPED",
+      playerId,
+      unitDefId: packs[0].unitDefId,
+      reason: "Terrible Plague"
+    });
+    return;
+  }
+
+  state.adventure?.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt: "Terrible Plague: flip one of your packs to its Few side",
+        options: packs.map((unit) => ({
+          label: `Flip ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId}`,
+          steps: [{ type: "FLIP_PACK_TO_FEW", armyUnitId: unit.id }]
+        }))
+      }
+    ]
+  });
+}
+
+function queueHalfCostReinforce(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+
+  const options: { label: string; steps: VisitStep[] }[] = [];
+  for (const unit of player.army) {
+    if (unit.side !== "few") {
+      continue;
+    }
+
+    const packSide = getUnitSide(unit.unitDefId, "pack");
+    if (!packSide) {
+      continue;
+    }
+
+    const halfCost: ResourceCost = {};
+    for (const [resource, amount] of Object.entries(packSide.cost) as [ResourceKind, number][]) {
+      halfCost[resource] = Math.ceil(amount / 2);
+    }
+    if (!hasResources(player, halfCost)) {
+      continue;
+    }
+
+    const costLabel = Object.entries(halfCost)
+      .map(([resource, amount]) => `${amount} ${resource}`)
+      .join(" + ");
+    options.push({
+      label: `Reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${costLabel})`,
+      steps: [{ type: "REINFORCE_ARMY_UNIT", armyUnitId: unit.id, halfCost: true }]
+    });
+  }
+
+  if (options.length === 0) {
+    return;
+  }
+
+  options.push({ label: "Skip", steps: [] });
+  state.adventure?.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [{ type: "CHOOSE_ONE", prompt: "Isra's Friends: reinforce one Few unit at half cost", options }]
+  });
+}
+
+/** Flips a Few army card to its Pack side, paying its (half) cost. */
+export function reinforceArmyUnit(state: GameState, playerId: PlayerId, armyUnitId: string, halfCost: boolean): void {
+  const player = state.players[playerId];
+  const armyUnit = player?.army.find((candidate) => candidate.id === armyUnitId);
+  if (!player || !armyUnit || armyUnit.side !== "few") {
+    return;
+  }
+
+  const packSide = getUnitSide(armyUnit.unitDefId, "pack");
+  if (!packSide) {
+    return;
+  }
+
+  const cost: ResourceCost = {};
+  for (const [resource, amount] of Object.entries(packSide.cost) as [ResourceKind, number][]) {
+    cost[resource] = halfCost ? Math.ceil(amount / 2) : amount;
+  }
+  if (!hasResources(player, cost)) {
+    return;
+  }
+
+  spendResources(state, playerId, cost, halfCost ? "half-cost reinforcement" : "reinforcement");
+  armyUnit.side = "pack";
+  appendEvent(state, {
+    type: "UNIT_RECRUITED",
+    playerId,
+    unitDefId: armyUnit.unitDefId,
+    kind: "reinforce",
+    cost
+  });
+}
+
+/** Groovy Satyr: swap one drawn neutral card for a fresh one of the same tier. */
+function swapPendingEncounterDraw(state: GameState, playerId: PlayerId, drawIndex: number): void {
+  const pending = state.adventure?.pendingEncounter;
+  const draw = pending?.draws[drawIndex];
+  if (!pending || !draw) {
+    return;
+  }
+
+  const deck = state.decks[NEUTRAL_DECK_IDS[draw.tier]];
+  if (!deck) {
+    return;
+  }
+
+  deck.discardPile.push(draw.unitDefId);
+  const replacement = drawFromNeutralDeck(state, draw.tier);
+  if (!replacement) {
+    return;
+  }
+
+  pending.draws[drawIndex] = { unitDefId: replacement, tier: draw.tier };
+  appendEvent(state, {
+    type: "NEUTRAL_DRAW_SWAPPED",
+    playerId,
+    fromUnitDefId: draw.unitDefId,
+    toUnitDefId: replacement
+  });
 }
 
 export { TRADE_RATES };

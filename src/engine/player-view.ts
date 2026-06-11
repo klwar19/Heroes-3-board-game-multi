@@ -75,7 +75,9 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
   );
 
   // Hidden adventure information: face-down tiles keep their position but
-  // not their identity, and only the owner sees which Far tiles they hold.
+  // not their identity. Far tile supplies stay face down even for their
+  // owner ("All face-down Tiles should be kept hidden from all players until
+  // they are about to be placed or revealed") — only the II–III back shows.
   const adventure = base.adventure
     ? {
         ...base.adventure,
@@ -88,7 +90,7 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
         playerFarTiles: Object.fromEntries(
           Object.entries(base.adventure.playerFarTiles).map(([playerId, tiles]) => [
             playerId,
-            playerId === viewerPlayerId ? tiles : tiles.map(() => "hidden")
+            tiles.map(() => "hidden")
           ])
         )
       }

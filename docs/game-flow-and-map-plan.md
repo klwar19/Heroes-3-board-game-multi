@@ -18,19 +18,27 @@ This document scripts how a full game of Heroes 3: The Board Game should flow th
 ### 1.2 Round sequence
 
 ```
-Round start
-  ├─ Resource round  → income from town buildings, settlements, mines
-  └─ Astrologers round → draw + resolve a global event card
+Round start (except round 1)
+  ├─ refresh Build/Population/Spell Book tokens, MP, expert effects
+  ├─ ODD rounds (3, 5, …)  → Resource round: income from buildings,
+  │                          settlements, mines (± Astrologers modifiers)
+  └─ EVEN rounds (2, 4, …) → Astrologers round: draw + resolve an
+                             Astrologers Proclaim card (active till the next)
 Player turns (in turn order; town actions may interleave)
   └─ per player turn:
-       1. Discard any number of hand cards
-       2. Draw up to the hand limit (deck reshuffles from discard when empty)
-       3. Spend movement points (base 3): move, reveal/place tiles,
-          visit fields, flag mines/settlements, start combat
-       4. Town action window (once per round, may also happen during
-          another player's turn, never during combat)
+       1. Hand auto-draws to the hand limit (over the limit → discard down)
+       2. Optional mulligan before acting: discard N, draw N
+       3. Spend movement points (base 3 ± Astrologers): move (click a path),
+          reveal/place tiles (then rotate them), visit fields, flag
+          mines/settlements, start combat
+       4. Town actions (each token once per round, any player's turn,
+          never during combat); morale spends at any time
 End of round → advance round tracker, check scenario timers
 ```
+
+Implemented in the engine: see `startAdventureRound`, `startPlayerTurn`,
+`drawAstrologersCard` (adventure.ts) and `moveHeroPathAdventure`,
+`setTileRotation`, `refreshHand`, `spendMorale` (adventure-reducer.ts).
 
 ### 1.3 Combat flow (implemented in the engine today)
 

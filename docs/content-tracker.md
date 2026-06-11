@@ -12,7 +12,7 @@ Legend: ✅ playable · 🟡 data present, rules effect not implemented · 🔴 
 | --- | --- | --- | --- |
 | Starting | S1 (Necropolis), S2 (Dungeon), S3 (Castle) | ✅ | Field lists from the wiki; outer impassable edges from the editor geometry. |
 | Starting (expansion factions) | S4 (Rampart), S5 (Fortress), S6 (Inferno) | 🟡 | Data imported; factions not playable yet. |
-| Far | F1–F18 | ✅ | In the placement pool (2 dealt to each player). |
+| Far | F1–F18 | ✅ | Drafted 2 per player at setup (redrawing the last until one holds a Settlement, per the Mission Book rule); placed for 1 MP at the border touching two tiles, then rotated freely. |
 | Near | N1–N12 | ✅ | Face-down setup pool. |
 | Center | C1–C4 | ✅ | Face-down setup pool. |
 | Center | C5 | 🟡 | Inferno tile with Random Town — excluded from pools until Random Town rules exist. |
@@ -101,27 +101,29 @@ Hero board level track (verified against the wiki board scan): 2 XP per level; h
 | War machines: First Aid Tent | ✅ | |
 | Hero specialties (18) | see Heroes | I-level for might heroes + Rion implemented. |
 | Remaining official spell/ability/artifact decks | 🔴 | Dozens of cards still to import (see wiki indexes). |
-| Astrologers Proclaim deck | 🔴 | Astrologers rounds currently log and pass. |
+| Astrologers Proclaim deck (19 core cards) | ✅ | Drawn and resolved every even round; "until the next Astrologers round" effects (movement, hand limit, spell hooks, die rerolls, neutral-draw swaps) enforced by the engine; income modifiers apply at the next Resource round. Texts from the wiki (`src/data/cards/astrologers.ts`). |
 | Card backs | 🟡 | Placeholder "H3" back; owner will supply final back-side images. |
 
 ## Adventure rules engine (`src/engine/adventure*.ts`, `neutral-ai.ts`)
 
 | Rule | Status | Notes |
 | --- | --- | --- |
-| Hex map, 7-field tiles, rotation, edge sealing | ✅ | |
-| Movement actions (move/revisit/discover/place tile/continue combat) | ✅ | Tile placement enforces touch-2-tiles + next-to-hero; full path-connectivity check simplified to footprint adjacency. |
-| Allied heroes passing through each other | 🔴 | Moving onto your own hero's field is simply blocked. |
-| Hand refresh, hand limit by level | ✅ | |
-| Round structure (token refresh, resource income, timed events) | ✅/🔴 | Income + City Hall choices work; Astrologers and scenario timers 🔴. |
+| Hex map, 7-field tiles, rotation, edge sealing | ✅ | Printed border lines render on the map; reveals and placements ask the player for the rotation ("you may always rotate when placing or revealing"), rejecting rotations whose border lines seal the tile off. Starting tiles are fixed by faction + seat and never rotate. |
+| Movement actions (move/revisit/discover/place tile/continue combat) | ✅ | Click-to-move walks multi-field paths (1 MP per field) with arrow preview/confirm; intermediate fields must be "open" (used cubes, own flags, empties); guards/locations stop the walk. Tile placement enforces touch-2-tiles + next-to-hero. |
+| Allied heroes passing through each other | ✅ | Pass-through allowed mid-path, never as the final field; the crossed field is not visited. |
+| Hand flow (auto-draw, mulligan, hand limit by level) | ✅ | Starting hands dealt at setup; every turn auto-draws to the (effective) limit; discard-N-draw-N mulligan until the first real action; forced discard-down when over the limit. |
+| Round structure (token refresh, resource income, astrologers) | ✅/🟡 | Income + City Hall choices + Astrologers rounds work; scenario round-tracker timed events 🔴. |
 | Neutral combat: difficulty table, tier decks, AI placement, AI targeting, 1-round time limit (continue for 1 MP / retreat), quick combat, XP awards, neutral discards | ✅ | Targeting ties are broken deterministically (lowest board position) instead of "player chooses". Clash rule "player to your right controls neutrals" 🔴 (AI controls them). |
 | Player-vs-player combat on the map | ✅ | Attacker then defender placement, full card combat, loser pays 5 gold + negative morale, winner XP, defeated hero returns home. Surrender, town-action window before combat, siege 🔴. |
-| Morale | 🟡 | Tokens, Necropolis immunity, spend-to-draw. Discard-redraw + reroll spends and the double-negative hand discard 🔴. |
+| Morale | ✅ | All three printed spends: draw 1, discard-any-draw-that-many, reroll any die (attack die via the reroll window, Treasure/Resource dice via the roll prompt). Max one positive/negative token; a second negative discards the hand at turn end; Necropolis immune. |
 | Experience/level ups | ✅ | Searches queue one at a time; azure kill jumps to level VII. |
-| Default scenario | 🟡 | Built-in 2–3 player skirmish (flag the enemy town). Mission Book scenarios, starting resources/units per scenario 🔴 (dev defaults: 10g/5bm/2v, three bronze "few"). |
+| Scenario sheets (`src/data/map/scenarios.ts`) | 🟡 | Map-setup phase: pick faction + hero in the lobby, then the scenario builds the layout, starting resources/income/units/buildings and the far-tile draft. Built-in "Border Skirmish" uses development numbers (10g/5bm/2v, bronze "few" units) until the printed Mission Book sheets are transcribed. |
 
 ## Multiplayer / app
 
 - ✅ Server-authoritative rooms, SSE live stream + polling fallback, seat switching, observer seat (hands hidden, all combats watchable).
-- ✅ Discard-pile viewers (own pile, shared decks, neutral tier discards) and face-down deck visuals with counts.
+- ✅ Map ↔ battle switching during combats; hero-walk arrow animations on every seat; pan/zoom map with a tile-art layer (scenario-editor scans now, drop-in slot for real art).
+- ✅ PartyKit scaffold (`party/index.ts` + `src/lib/realtime.ts`): one Cloudflare Durable Object per room, WebSockets at the edge, Durable Object storage persistence; enabled via `NEXT_PUBLIC_PARTYKIT_HOST`.
+- ✅ Discard-pile viewers (own pile, shared decks, the Astrologers deck, neutral tier discards) and face-down deck visuals with counts.
 - 🟡 Seats are open (anyone can sit anywhere) — no auth/claiming yet.
-- 🔴 Persistence across server restarts (rooms are in-memory).
+- 🟡 Next.js fallback store is in-memory; the PartyKit backend persists rooms in Durable Object storage.

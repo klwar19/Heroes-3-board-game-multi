@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { coreTileDefinitions } from "@/data/map/tile-defs";
 import {
   applyAction,
   createAdventureGameState,
+  createAdventureLobbyState,
+  draftFarTiles,
   getLegalActions,
   getPlayerView,
+  getScenario,
   hexDistance,
   hexNeighbors,
   hexSpaceId,
@@ -96,27 +100,82 @@ describe("adventure setup", () => {
     expect(player.army.length).toBeGreaterThanOrEqual(3);
   });
 
-  it("hides face-down tiles and foreign far tile supplies in the player view", () => {
+  it("hides face-down tiles and every far tile supply in the player view", () => {
     const state = makeGame();
     const view = getPlayerView(state, "p1");
     const faceDown = Object.values(view.adventure?.tiles ?? {}).filter((tile) => tile.faceDown);
     expect(faceDown.length).toBeGreaterThan(0);
     for (const tile of faceDown) {
       expect(tile.tileDefId).toBe("hidden");
+      // The printed back (Ⅳ–Ⅴ / Ⅵ–Ⅶ) stays public information.
+      expect(tile.backLabel).toBeTruthy();
     }
+    // Far tiles are face down even for their owner: only the Ⅱ–Ⅲ back shows.
     expect(view.adventure?.playerFarTiles.p2.every((tileId) => tileId === "hidden")).toBe(true);
-    expect(view.adventure?.playerFarTiles.p1.every((tileId) => tileId !== "hidden")).toBe(true);
+    expect(view.adventure?.playerFarTiles.p1.every((tileId) => tileId === "hidden")).toBe(true);
+  });
+
+  it("drafts two far tiles per player, redrawing until one has a settlement", () => {
+    const state = makeGame();
+    const hasSettlement = (tileDefId: string) =>
+      Boolean(coreTileDefinitions[tileDefId]?.fields.some((field) => field.location === "settlement"));
+
+    for (const playerId of ["p1", "p2"]) {
+      const supply = state.adventure?.playerFarTiles[playerId] ?? [];
+      expect(supply).toHaveLength(2);
+      expect(supply.some(hasSettlement)).toBe(true);
+    }
+
+    // The draft helper itself: a pool whose top tiles lack settlements keeps
+    // redrawing the second tile until a settlement appears.
+    const noSettlement = Object.values(coreTileDefinitions)
+      .filter((tile) => tile.group === "far" && !tile.fields.some((field) => field.location === "settlement"))
+      .map((tile) => tile.id);
+    const withSettlement = Object.values(coreTileDefinitions)
+      .filter((tile) => tile.group === "far" && tile.fields.some((field) => field.location === "settlement"))
+      .map((tile) => tile.id);
+    expect(withSettlement.length).toBeGreaterThan(0);
+
+    const pool = [...withSettlement.slice(0, 1), ...noSettlement.slice(0, 3)]; // settlement at the bottom
+    const drafted = draftFarTiles(pool, getScenario("skirmish"));
+    expect(drafted).toHaveLength(2);
+    expect(drafted.some(hasSettlement)).toBe(true);
   });
 });
 
 describe("turns and movement", () => {
-  it("requires a hand refresh, then draws to the hand limit", () => {
-    let state = makeGame();
-    expect(state.players.p1.needsHandRefresh).toBe(true);
-
-    state = refreshP1(state);
+  it("deals starting hands at setup and auto-draws at turn start", () => {
+    const state = makeGame();
+    // Both players hold their starting hand from the first moment.
     expect(state.players.p1.hand).toHaveLength(4);
+    expect(state.players.p2.hand).toHaveLength(4);
     expect(state.players.p1.needsHandRefresh).toBe(false);
+    // The start-of-turn mulligan is open until the first real action.
+    expect(state.players.p1.canMulligan).toBe(true);
+  });
+
+  it("mulligans: discarding N cards draws N new ones, then the window closes", () => {
+    let state = makeGame();
+    const discards = state.players.p1.hand.slice(0, 2);
+    state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: discards });
+
+    expect(state.players.p1.hand).toHaveLength(4);
+    expect(state.players.p1.discard).toHaveLength(2);
+    expect(state.players.p1.canMulligan).toBe(false);
+
+    // A second mulligan in the same turn is rejected.
+    const again = applyAction(state, {
+      type: "REFRESH_HAND",
+      playerId: "p1",
+      discardCardIds: [state.players.p1.hand[0]]
+    });
+    expect(again.errors).toHaveLength(1);
+  });
+
+  it("closes the mulligan window once the hero moves", () => {
+    let state = makeGame();
+    state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:3" });
+    expect(state.players.p1.canMulligan).toBe(false);
   });
 
   it("moves one field for 1 MP and visits resource fields with a die roll", () => {
@@ -158,26 +217,262 @@ describe("turns and movement", () => {
     let state = refreshP1(makeGame());
     state.players.p1.production.gold = 3;
     state.players.p1.townTokens.build = false;
+    // Keep the Astrologers draw inert for this test.
+    state.decks.astrologers.drawPile.push("astrologers.dead_silence");
 
     state = apply(state, { type: "END_TURN", playerId: "p1" });
     expect(state.activePlayerId).toBe("p2");
-    state = apply(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [] });
     const goldBefore = state.players.p1.resources.gold;
     state = apply(state, { type: "END_TURN", playerId: "p2" });
 
-    // Round 2 is an Astrologers round: tokens refresh, no income.
+    // Round 2 is an Astrologers round: tokens refresh, a card is drawn,
+    // and no income is paid.
     expect(state.round).toBe(2);
     expect(state.players.p1.townTokens.build).toBe(true);
     expect(state.players.p1.resources.gold).toBe(goldBefore);
+    expect(state.adventure?.astrologers?.activeCardId).toBe("astrologers.dead_silence");
+    expect(state.eventLog.some((event) => event.type === "ASTROLOGERS_DRAWN")).toBe(true);
 
-    state = refreshP1(state);
     state = apply(state, { type: "END_TURN", playerId: "p1" });
-    state = apply(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [] });
     state = apply(state, { type: "END_TURN", playerId: "p2" });
 
     // Round 3 is a Resource round: production pays out.
     expect(state.round).toBe(3);
     expect(state.players.p1.resources.gold).toBe(goldBefore + 3);
+  });
+
+  it("walks a multi-step path with MOVE_HERO_PATH, stopping at the destination", () => {
+    let state = makeGame();
+    const before = state.players.p1.resources;
+    const totalBefore = before.gold + before.buildingMaterials + before.valuables;
+
+    // S3 town (8,2) -> empty NE field (7,2) -> Resources field (8,3).
+    state = apply(state, {
+      type: "MOVE_HERO_PATH",
+      playerId: "p1",
+      heroId: "hero_p1",
+      path: ["h:7:2", "h:8:3"]
+    });
+
+    expect(state.heroes.hero_p1.spaceId).toBe("h:8:3");
+    expect(state.heroes.hero_p1.movementPoints).toBe(1);
+    const after = state.players.p1.resources;
+    expect(after.gold + after.buildingMaterials + after.valuables).toBeGreaterThan(totalBefore);
+  });
+
+  it("rejects paths that cross a stopping field midway", () => {
+    const state = makeGame();
+    // (8,3) is an unvisited Resources field: it stops the hero, so it cannot
+    // be crossed on the way to (7,2)... build the reverse path to prove it.
+    const result = applyAction(state, {
+      type: "MOVE_HERO_PATH",
+      playerId: "p1",
+      heroId: "hero_p1",
+      path: ["h:8:3", "h:7:2"]
+    });
+    expect(result.errors).toHaveLength(1);
+  });
+});
+
+describe("astrologers rounds", () => {
+  function passRound(state: GameState): GameState {
+    state = apply(state, { type: "END_TURN", playerId: "p1" });
+    return apply(state, { type: "END_TURN", playerId: "p2" });
+  }
+
+  it("gold dragon pays all players 5 extra gold on the next resource round", () => {
+    let state = makeGame();
+    state.decks.astrologers.drawPile.push("astrologers.gold_dragon");
+    state.players.p1.production.gold = 2;
+
+    state = passRound(state); // round 2: draws Gold Dragon
+    expect(state.adventure?.astrologers?.activeCardId).toBe("astrologers.gold_dragon");
+    const goldBefore = state.players.p1.resources.gold;
+    const enemyGoldBefore = state.players.p2.resources.gold;
+
+    state = passRound(state); // round 3: resource round
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 2 + 5);
+    expect(state.players.p2.resources.gold).toBe(enemyGoldBefore + 5);
+    // The bonus is one-shot.
+    expect(state.adventure?.astrologers?.nextResourceModifiers.gold).toBe(0);
+  });
+
+  it("battalion's stallion grants +1 movement until the next astrologers round", () => {
+    let state = makeGame();
+    state.decks.astrologers.drawPile.push("astrologers.dead_silence", "astrologers.battalions_stallion");
+
+    state = passRound(state); // round 2: Stallion
+    expect(state.heroes.hero_p1.movementPoints).toBe(4);
+
+    state = passRound(state); // round 3: still active through the resource round
+    expect(state.heroes.hero_p1.movementPoints).toBe(4);
+
+    state = passRound(state); // round 4: replaced by Dead Silence
+    expect(state.heroes.hero_p1.movementPoints).toBe(3);
+    expect(state.decks.astrologers.discardPile).toContain("astrologers.battalions_stallion");
+  });
+
+  it("fancy pixie hands out morale, ignoring Necropolis", () => {
+    let state = makeGame();
+    state.decks.astrologers.drawPile.push("astrologers.fancy_pixie");
+
+    state = passRound(state);
+    expect(state.players.p1.morale).toBe(1);
+    // Sandro's Necropolis ignores all morale effects.
+    expect(state.players.p2.morale).toBe(0);
+  });
+});
+
+describe("morale actions", () => {
+  it("spends the token to discard any number of cards and draw that many", () => {
+    let state = makeGame();
+    state.players.p1.morale = 1;
+    const discards = state.players.p1.hand.slice(0, 3);
+
+    state = apply(state, {
+      type: "SPEND_MORALE",
+      playerId: "p1",
+      benefit: "redraw",
+      discardCardIds: discards
+    });
+
+    expect(state.players.p1.morale).toBe(0);
+    expect(state.players.p1.hand).toHaveLength(4);
+    expect(state.players.p1.discard).toHaveLength(3);
+  });
+
+  it("offers a morale reroll when an adventure die is rolled", () => {
+    let state = makeGame();
+    state.players.p1.morale = 1;
+
+    // Walking onto the Resources field rolls the Resource die; with a morale
+    // token in stock the engine must offer the reroll instead of auto-gaining.
+    state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:3" });
+    const visit = state.adventure?.pendingVisit;
+    expect(visit).toBeTruthy();
+    const step = visit?.steps[0];
+    expect(step?.type).toBe("CHOOSE_ONE");
+    if (step?.type === "CHOOSE_ONE") {
+      expect(step.options.some((option) => option.label.includes("morale"))).toBe(true);
+    }
+
+    // Taking the reroll spends the token and rerolls the die.
+    const actions = getLegalActions(state, "p1");
+    const reroll = actions.find((legal) => legal.label.includes("morale"));
+    expect(reroll).toBeTruthy();
+    state = apply(state, reroll!.action);
+    expect(state.players.p1.morale).toBe(0);
+  });
+});
+
+describe("tile discovery and placement", () => {
+  it("reveals a face-down tile, then the player rotates it before it lands", () => {
+    let state = makeGame();
+    // (7,2) is adjacent to the face-down Near tile centered at (5,3).
+    state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:7:2" });
+    const tile = Object.values(state.adventure!.tiles).find(
+      (candidate) => candidate.centerRow === 5 && candidate.centerCol === 3
+    );
+    expect(tile?.faceDown).toBe(true);
+
+    state = apply(state, { type: "DISCOVER_TILE", playerId: "p1", heroId: "hero_p1", tileInstanceId: tile!.id });
+    expect(state.heroes.hero_p1.movementPoints).toBe(1);
+    const revealed = state.adventure!.tiles[tile!.id];
+    expect(revealed.faceDown).toBe(false);
+    expect(revealed.awaitingRotation).toBe(true);
+    // Fields are not on the map until the rotation locks in.
+    expect(state.adventure!.fields["h:5:3"]).toBeUndefined();
+
+    // Other actions are blocked while the rotation is pending.
+    const blocked = applyAction(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:2" });
+    expect(blocked.errors).toHaveLength(1);
+
+    const rotations = getLegalActions(state, "p1").filter((legal) => legal.action.type === "SET_TILE_ROTATION");
+    expect(rotations.length).toBeGreaterThan(0);
+    state = apply(state, rotations[0].action);
+
+    expect(state.adventure!.tiles[tile!.id].awaitingRotation).toBe(false);
+    expect(state.adventure!.fields["h:5:3"]).toBeTruthy();
+  });
+
+  it("places a far tile at the border for 1 MP, touching two tiles, then rotates it", () => {
+    let state = makeGame();
+    state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:3" });
+    // Resolve the resource-die visit if it paused on a choice.
+    while (state.adventure?.pendingVisit) {
+      const actions = getLegalActions(state, "p1");
+      const gain = actions.find((legal) => !legal.label.includes("morale")) ?? actions[0];
+      state = apply(state, gain.action);
+    }
+
+    const supplyBefore = state.adventure!.playerFarTiles.p1.length;
+    expect(supplyBefore).toBe(2);
+
+    // Center (8,5) touches the two starting tiles and the near tile at (5,6).
+    state = apply(state, {
+      type: "PLACE_TILE",
+      playerId: "p1",
+      heroId: "hero_p1",
+      supplyIndex: 0,
+      centerRow: 8,
+      centerCol: 5
+    });
+
+    expect(state.adventure!.playerFarTiles.p1).toHaveLength(supplyBefore - 1);
+    expect(state.heroes.hero_p1.movementPoints).toBe(1);
+    expect(state.adventure!.pendingTileChoice?.kind).toBe("place");
+
+    const rotations = getLegalActions(state, "p1").filter((legal) => legal.action.type === "SET_TILE_ROTATION");
+    expect(rotations.length).toBeGreaterThan(0);
+    state = apply(state, rotations[0].action);
+    expect(state.adventure!.fields["h:8:5"]).toBeTruthy();
+  });
+
+  it("rejects placements that do not touch two tiles or sit away from the hero", () => {
+    const state = makeGame();
+    // (5,9) touches nothing near the hero.
+    const result = applyAction(state, {
+      type: "PLACE_TILE",
+      playerId: "p1",
+      heroId: "hero_p1",
+      supplyIndex: 0,
+      centerRow: 5,
+      centerCol: 9
+    });
+    expect(result.errors).toHaveLength(1);
+  });
+});
+
+describe("map setup lobby", () => {
+  it("collects faction picks, then builds the scenario map", () => {
+    let state = createAdventureLobbyState({ seed: "lobby-seed" });
+    expect(state.phase).toBe("setup");
+    expect(state.adventure).toBeNull();
+
+    state = apply(state, { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: "catherine" });
+    // Starting before everyone picked is rejected.
+    const early = applyAction(state, { type: "START_ADVENTURE", playerId: "p1" });
+    expect(early.errors).toHaveLength(1);
+
+    // A taken faction cannot be claimed twice.
+    const dupe = applyAction(state, {
+      type: "CHOOSE_FACTION",
+      playerId: "p2",
+      factionId: "castle",
+      heroDefId: "rion"
+    });
+    expect(dupe.errors).toHaveLength(1);
+
+    state = apply(state, { type: "CHOOSE_FACTION", playerId: "p2", factionId: "inferno", heroDefId: "xyron" });
+    state = apply(state, { type: "START_ADVENTURE", playerId: "p2" });
+
+    expect(state.phase).toBe("player-turn");
+    expect(state.setupLobby).toBeNull();
+    expect(state.adventure).not.toBeNull();
+    expect(state.players.p1.hand).toHaveLength(4);
+    expect(state.towns.town_p2.factionId).toBe("inferno");
+    // Scenario resources applied per the sheet.
+    expect(state.players.p1.resources.gold).toBe(10);
   });
 });
 
@@ -401,9 +696,10 @@ describe("town economy", () => {
 
     // Pass to the next round; the two searched spells push the hand over the
     // limit, so the start-of-turn refresh has to discard down to 4 first.
+    state.decks.astrologers.drawPile.push("astrologers.dead_silence");
     state = apply(state, { type: "END_TURN", playerId: "p1" });
-    state = apply(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [] });
     state = apply(state, { type: "END_TURN", playerId: "p2" });
+    expect(state.players.p1.needsHandRefresh).toBe(true);
     state = apply(state, {
       type: "REFRESH_HAND",
       playerId: "p1",

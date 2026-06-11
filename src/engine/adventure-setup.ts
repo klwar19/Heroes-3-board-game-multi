@@ -1,9 +1,32 @@
-import { coreFactionDefinitions, coreHeroDefinitions, neutralUnitIdsByTier, startingTileByFaction } from "@/data/factions/core";
+import { astrologersDeckCardIds } from "@/data/cards/astrologers";
+import {
+  coreFactionDefinitions,
+  coreHeroDefinitions,
+  neutralUnitIdsByTier,
+  startingTileByFaction
+} from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { coreTileDefinitions } from "@/data/map/tile-defs";
-import { addArmyUnit, instantiateTile, NEUTRAL_DECK_IDS, startAdventureRound, startPlayerTurn } from "./adventure";
-import { shuffleCards } from "./decks";
-import type { AdventureState, DeckState, FactionId, GameDifficulty, GameState, PlayerState } from "./state";
+import { DEFAULT_SCENARIO_ID, scenarioDefinitions, type ScenarioDefinition } from "@/data/map/scenarios";
+import {
+  addArmyUnit,
+  ASTROLOGERS_DECK_ID,
+  instantiateTile,
+  NEUTRAL_DECK_IDS,
+  startAdventureRound,
+  startPlayerTurn
+} from "./adventure";
+import { drawCardsForPlayer, shuffleCards } from "./decks";
+import { appendEvent } from "./events";
+import type {
+  AdventureState,
+  DeckState,
+  FactionId,
+  GameAction,
+  GameDifficulty,
+  GameState,
+  PlayerState
+} from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 
 export type AdventurePlayerConfig = {
@@ -16,6 +39,7 @@ export type AdventurePlayerConfig = {
 export type AdventureSetupOptions = {
   seed?: string;
   difficulty?: GameDifficulty;
+  scenarioId?: string;
   players?: AdventurePlayerConfig[];
 };
 
@@ -24,36 +48,9 @@ const DEFAULT_PLAYERS: AdventurePlayerConfig[] = [
   { id: "p2", name: "Sandro of Necropolis", factionId: "necropolis", heroDefId: "sandro" }
 ];
 
-/**
- * Default skirmish map layout: each player's starting tile, a chain of
- * face-down Near tiles between them, and a face-down Center tile to the
- * north. Tile centers sit at hex distance 3 so every neighbouring pair of
- * tiles touches edge-to-edge (see tileFootprintsTouch).
- */
-const TWO_PLAYER_LAYOUT = {
-  starts: [
-    { row: 8, col: 2 },
-    { row: 8, col: 8 }
-  ],
-  near: [
-    { row: 8, col: 5 },
-    { row: 5, col: 3 }
-  ],
-  center: [{ row: 5, col: 6 }]
-};
-
-const THREE_PLAYER_LAYOUT = {
-  starts: [
-    { row: 8, col: 2 },
-    { row: 8, col: 8 },
-    { row: 11, col: 5 }
-  ],
-  near: [
-    { row: 8, col: 5 },
-    { row: 5, col: 3 }
-  ],
-  center: [{ row: 5, col: 6 }]
-};
+export function getScenario(scenarioId?: string): ScenarioDefinition {
+  return scenarioDefinitions[scenarioId ?? DEFAULT_SCENARIO_ID] ?? scenarioDefinitions[DEFAULT_SCENARIO_ID];
+}
 
 function makeNeutralDecks(seed: string): Record<string, DeckState> {
   const decks: Record<string, DeckState> = {};
@@ -122,6 +119,14 @@ function makeSharedDecks(seed: string): Record<string, DeckState> {
   };
 }
 
+function makeAstrologersDeck(seed: string): DeckState {
+  return {
+    id: ASTROLOGERS_DECK_ID,
+    drawPile: shuffleCards(astrologersDeckCardIds, `${seed}#astrologers`),
+    discardPile: []
+  };
+}
+
 function makeStartingDeck(heroDefId: string): string[] {
   const hero = coreHeroDefinitions[heroDefId];
   if (!hero) {
@@ -153,7 +158,7 @@ function makeStartingDeck(heroDefId: string): string[] {
   return deck;
 }
 
-function makePlayer(config: AdventurePlayerConfig, seed: string): PlayerState {
+function makePlayer(config: AdventurePlayerConfig, seed: string, scenario: ScenarioDefinition): PlayerState {
   const heroDefId = config.heroDefId ?? coreFactionDefinitions[config.factionId].heroes[0];
   const deck = shuffleCards(makeStartingDeck(heroDefId), `${seed}#starting-deck#${config.id}`);
 
@@ -168,18 +173,8 @@ function makePlayer(config: AdventurePlayerConfig, seed: string): PlayerState {
     removed: [],
     army: [],
     startingArmy: [],
-    // Development defaults until the Mission Book scenarios are imported:
-    // starting resources are generous enough to build early.
-    resources: {
-      gold: 10,
-      buildingMaterials: 5,
-      valuables: 2
-    },
-    production: {
-      gold: 0,
-      buildingMaterials: 0,
-      valuables: 0
-    },
+    resources: { ...scenario.startingResources },
+    production: { ...scenario.startingProduction },
     townTokens: {
       build: true,
       population: true,
@@ -187,6 +182,7 @@ function makePlayer(config: AdventurePlayerConfig, seed: string): PlayerState {
     },
     morale: 0,
     needsHandRefresh: false,
+    canMulligan: false,
     limits: {
       hand: 4,
       expertUses: 0
@@ -194,16 +190,17 @@ function makePlayer(config: AdventurePlayerConfig, seed: string): PlayerState {
     combatStats: {
       spellsCastThisRound: 0,
       spellLimitBonusThisRound: 0,
-      expertUsesSpentThisRound: 0
+      expertUsesSpentThisRound: 0,
+      spellsCastThisTurn: 0
     }
   };
 
-  // Starting army (development default until scenarios are imported): one
-  // "few" card of each bronze unit of the faction.
+  // Scenario starting units: one "few" card of each faction unit of the
+  // scenario's tiers.
   const faction = coreFactionDefinitions[config.factionId];
   for (const unitDefId of faction.units) {
     const unit = coreUnitDefinitions[unitDefId];
-    if (unit?.tier === "bronze" && unit.few) {
+    if (unit && scenario.startingUnits.tiers.includes(unit.tier as "bronze" | "silver" | "gold") && unit.few) {
       addArmyUnit(player, unitDefId, "few");
       player.startingArmy.push({ unitDefId, side: "few" });
     }
@@ -235,21 +232,73 @@ function makeNeutralSeatPlayer(): PlayerState {
   };
 }
 
+function tileHasSettlement(tileDefId: string): boolean {
+  return Boolean(coreTileDefinitions[tileDefId]?.fields.some((field) => field.location === "settlement"));
+}
+
+/**
+ * Drafts a player's Far (II–III) tile supply. Mission Book draft rule: when
+ * the scenario guarantees a settlement and none of the drawn tiles has one,
+ * the last tile is redrawn (non-settlement tiles cycle to the bottom of the
+ * pool) until a settlement shows up.
+ */
+export function draftFarTiles(pool: string[], scenario: ScenarioDefinition): string[] {
+  const drawn: string[] = [];
+  for (let count = 0; count < scenario.farTiles.perPlayer && pool.length > 0; count += 1) {
+    drawn.push(pool.pop() as string);
+  }
+
+  if (!scenario.farTiles.guaranteeSettlement || drawn.length === 0) {
+    return drawn;
+  }
+
+  if (drawn.some(tileHasSettlement) || !pool.some(tileHasSettlement)) {
+    return drawn;
+  }
+
+  let safety = pool.length * 2;
+  while (safety > 0 && !tileHasSettlement(drawn[drawn.length - 1])) {
+    safety -= 1;
+    const rejected = drawn.pop() as string;
+    pool.unshift(rejected);
+    const next = pool.pop();
+    if (!next) {
+      drawn.push(rejected);
+      break;
+    }
+    drawn.push(next);
+  }
+
+  return drawn;
+}
+
 export function createAdventureGameState(options: AdventureSetupOptions = {}): GameState {
   const seed = options.seed ?? "homm3bg-adventure-seed";
-  const difficulty = options.difficulty ?? "normal";
-  const playerConfigs = (options.players?.length ? options.players : DEFAULT_PLAYERS).slice(0, 3);
-  const layout = playerConfigs.length >= 3 ? THREE_PLAYER_LAYOUT : TWO_PLAYER_LAYOUT;
+  const scenario = getScenario(options.scenarioId);
+  const difficulty = options.difficulty ?? scenario.difficulty;
+  const playerConfigs = (options.players?.length ? options.players : DEFAULT_PLAYERS).slice(
+    0,
+    Math.min(scenario.maxPlayers, scenario.layout.starts.length)
+  );
 
   const adventure: AdventureState = {
     difficulty,
+    scenarioId: scenario.id,
     tiles: {},
     fields: {},
     playerFarTiles: {},
     pendingVisit: null,
     rewardQueue: [],
     lastVisitedField: {},
-    winnerPlayerId: null
+    winnerPlayerId: null,
+    pendingTileChoice: null,
+    astrologers: {
+      activeCardId: null,
+      nextResourceModifiers: { gold: 0, valuables: 0 },
+      crazyWizardUsedBy: [],
+      swiftWeaselUsedBy: []
+    },
+    pendingEncounter: null
   };
 
   // Tile pools (face-down draws are secret until revealed).
@@ -282,17 +331,19 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     priorityPlayerId: null,
     turnOrder: playerConfigs.map((config) => config.id),
     players: Object.fromEntries([
-      ...playerConfigs.map((config) => [config.id, makePlayer(config, seed)] as const),
+      ...playerConfigs.map((config) => [config.id, makePlayer(config, seed, scenario)] as const),
       [NEUTRAL_PLAYER_ID, makeNeutralSeatPlayer()] as const
     ]),
     map: { spaces: {} },
     adventure,
+    setupLobby: null,
     towns: {},
     heroes: {},
     combat: null,
     decks: {
       ...makeSharedDecks(seed),
-      ...makeNeutralDecks(seed)
+      ...makeNeutralDecks(seed),
+      [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed)
     },
     stack: [],
     reactionWindow: null,
@@ -301,7 +352,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       {
         id: "evt_1",
         type: "GAME_CREATED",
-        message: `Created an adventure game for ${playerConfigs.length} players (${difficulty} difficulty).`
+        message: `Created "${scenario.name}" for ${playerConfigs.length} players (${difficulty} difficulty).`
       }
     ],
     pendingChoice: null,
@@ -313,10 +364,12 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     }
   };
 
-  // Starting tiles (face up) with towns and main heroes on the center field.
+  // Starting tiles: position fixed by the scenario seat, tile fixed by the
+  // chosen faction — no rotation choice. Towns and main heroes go on the
+  // tile's center field.
   playerConfigs.forEach((config, index) => {
     const startTileId = startingTileByFaction[config.factionId] ?? "S1";
-    const center = layout.starts[index];
+    const center = scenario.layout.starts[index];
     const tile = instantiateTile(adventure, startTileId, center, 0, false);
     const townFieldId = Object.values(adventure.fields).find(
       (field) => field.tileInstanceId === tile.id && field.slot === 0
@@ -330,7 +383,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       state.towns[`town_${config.id}`] = {
         id: `town_${config.id}`,
         controllerId: config.id,
-        buildings: [],
+        buildings: scenario.startingBuildings
+          .map((buildingId) => `${config.factionId}.${buildingId}`)
+          .filter((buildingId) => buildingId.length > 0),
         factionId: config.factionId,
         fieldId: townFieldId
       };
@@ -351,29 +406,200 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     }
   });
 
-  // Face-down Near and Center tiles between the players.
-  for (const center of layout.near) {
+  // Face-down Near (IV–V) and Center (VI–VII) tiles per the scenario layout.
+  for (const center of scenario.layout.near) {
     const tileDefId = nearPool.pop();
     if (tileDefId) {
       instantiateTile(adventure, tileDefId, center, 0, true);
     }
   }
-  for (const center of layout.center) {
+  for (const center of scenario.layout.center) {
     const tileDefId = centerPool.pop();
     if (tileDefId) {
       instantiateTile(adventure, tileDefId, center, 0, true);
     }
   }
 
-  // Each player holds two face-down Far tiles to place during play.
+  // Far (II–III) tile supplies, with the settlement draft guarantee.
   for (const config of playerConfigs) {
-    adventure.playerFarTiles[config.id] = [farPool.pop(), farPool.pop()].filter(
-      (tileDefId): tileDefId is string => Boolean(tileDefId)
-    );
+    adventure.playerFarTiles[config.id] = draftFarTiles(farPool, scenario);
+  }
+
+  // Everyone draws their starting hand at setup so it is visible from the
+  // first moment; the active player's turn then starts as usual.
+  for (const config of playerConfigs) {
+    drawCardsForPlayer(state, config.id, state.players[config.id].limits.hand);
   }
 
   startAdventureRound(state);
   startPlayerTurn(state, state.activePlayerId);
 
   return state;
+}
+
+// ---------------------------------------------------------------------------
+// Map-setup lobby: pick factions and heroes, then build the scenario map
+// ---------------------------------------------------------------------------
+
+const LOBBY_SEAT_NAMES = ["Player 1", "Player 2", "Player 3"];
+
+/** Opens a new room in the map-setup phase: seats wait for faction picks. */
+export function createAdventureLobbyState(options: AdventureSetupOptions = {}): GameState {
+  const seed = options.seed ?? `homm3bg-${Date.now().toString(36)}`;
+  const scenario = getScenario(options.scenarioId);
+  const seatCount = Math.min(2, scenario.maxPlayers);
+
+  const seats = Array.from({ length: seatCount }, (_, index) => ({
+    playerId: `p${index + 1}`,
+    name: LOBBY_SEAT_NAMES[index] ?? `Player ${index + 1}`,
+    factionId: null,
+    heroDefId: null
+  }));
+
+  const players = Object.fromEntries(
+    seats.map((seat) => {
+      const player: PlayerState = {
+        id: seat.playerId,
+        name: seat.name,
+        deck: [],
+        hand: [],
+        discard: [],
+        removed: [],
+        army: [],
+        startingArmy: [],
+        resources: { ...scenario.startingResources },
+        production: { ...scenario.startingProduction },
+        townTokens: { build: true, population: true, spellBook: true },
+        morale: 0,
+        limits: { hand: 4, expertUses: 0 },
+        combatStats: {
+          spellsCastThisRound: 0,
+          spellLimitBonusThisRound: 0,
+          expertUsesSpentThisRound: 0
+        }
+      };
+      return [seat.playerId, player] as const;
+    })
+  );
+
+  return {
+    id: "adventure-lobby",
+    seed,
+    mode: "adventure",
+    round: 0,
+    phase: "setup",
+    activePlayerId: seats[0].playerId,
+    priorityPlayerId: null,
+    turnOrder: seats.map((seat) => seat.playerId),
+    players,
+    map: { spaces: {} },
+    adventure: null,
+    setupLobby: { scenarioId: scenario.id, seats },
+    towns: {},
+    heroes: {},
+    combat: null,
+    decks: {},
+    stack: [],
+    reactionWindow: null,
+    activeEffects: [],
+    eventLog: [
+      {
+        id: "evt_1",
+        type: "GAME_CREATED",
+        message: `Map setup for "${scenario.name}": pick factions, then start the adventure.`
+      }
+    ],
+    pendingChoice: null,
+    turn: {
+      mode: "ordered",
+      simultaneousRoundLimit: 0,
+      completedPlayerIds: [],
+      observingPlayerId: seats[0].playerId
+    }
+  };
+}
+
+export function chooseFaction(state: GameState, action: Extract<GameAction, { type: "CHOOSE_FACTION" }>): void {
+  const lobby = state.setupLobby;
+  if (!lobby || state.phase !== "setup") {
+    throw new Error("Factions can only be chosen during map setup.");
+  }
+
+  const seat = lobby.seats.find((candidate) => candidate.playerId === action.playerId);
+  if (!seat) {
+    throw new Error("That seat does not exist in this scenario.");
+  }
+
+  const faction = coreFactionDefinitions[action.factionId];
+  if (!faction) {
+    throw new Error("Unknown faction.");
+  }
+
+  if (!faction.heroes.includes(action.heroDefId)) {
+    throw new Error("That hero does not lead this faction.");
+  }
+
+  const taken = lobby.seats.some(
+    (candidate) => candidate.playerId !== action.playerId && candidate.factionId === action.factionId
+  );
+  if (taken) {
+    throw new Error("Another player already picked that faction.");
+  }
+
+  seat.factionId = action.factionId;
+  seat.heroDefId = action.heroDefId;
+  const hero = coreHeroDefinitions[action.heroDefId];
+  const player = state.players[action.playerId];
+  if (player && hero) {
+    player.name = `${hero.name} of ${faction.name}`;
+  }
+
+  appendEvent(state, {
+    type: "FACTION_CHOSEN",
+    playerId: action.playerId,
+    factionId: action.factionId,
+    heroDefId: action.heroDefId
+  });
+}
+
+/** Builds the scenario map in place once every seat picked a faction. */
+export function startAdventureFromLobby(state: GameState, action: Extract<GameAction, { type: "START_ADVENTURE" }>): void {
+  const lobby = state.setupLobby;
+  if (!lobby || state.phase !== "setup") {
+    throw new Error("The adventure already started.");
+  }
+
+  if (!state.players[action.playerId]) {
+    throw new Error("Only seated players may start the adventure.");
+  }
+
+  if (lobby.seats.some((seat) => !seat.factionId || !seat.heroDefId)) {
+    throw new Error("Every seat needs a faction and hero before the adventure starts.");
+  }
+
+  const built = createAdventureGameState({
+    seed: state.seed,
+    scenarioId: lobby.scenarioId,
+    players: lobby.seats.map((seat) => ({
+      id: seat.playerId,
+      name: state.players[seat.playerId]?.name ?? seat.name,
+      factionId: seat.factionId as FactionId,
+      heroDefId: seat.heroDefId ?? undefined
+    }))
+  });
+
+  const previousLog = state.eventLog;
+  Object.assign(state, built);
+  state.setupLobby = null;
+  // Re-sequence ids so the combined log keeps every event id unique.
+  state.eventLog = [...previousLog, ...built.eventLog.slice(1)].map((event, index) => ({
+    ...event,
+    id: `evt_${index + 1}`
+  }));
+
+  appendEvent(state, {
+    type: "ADVENTURE_STARTED",
+    scenarioId: lobby.scenarioId,
+    playerIds: lobby.seats.map((seat) => seat.playerId)
+  });
 }

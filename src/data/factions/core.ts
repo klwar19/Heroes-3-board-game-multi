@@ -726,5 +726,5 @@ export const startingTileByFaction: Record<string, string> = {
   necropolis: "S1",
   dungeon: "S2",
   rampart: "S4",
-  inferno: "S5"
+  inferno: "S6"
 };

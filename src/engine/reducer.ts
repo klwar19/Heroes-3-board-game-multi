@@ -1,6 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
 import { sampleBuildings } from "@/data/towns/buildings";
-import { changeMorale, getUnitSide } from "./adventure";
+import { changeMorale, getActiveAstrologersCard, getUnitSide } from "./adventure";
 import {
   buildStructureAdventure,
   chooseOption,
@@ -9,6 +9,7 @@ import {
   finalizeAdventureCombat,
   finishCombatPlacement,
   moveHeroAdventure,
+  moveHeroPathAdventure,
   placeCombatUnit,
   placeTile,
   populationAction,
@@ -18,12 +19,15 @@ import {
   resolveVisitStep,
   retreatFromCombat,
   revisitField,
+  setTileRotation,
   spellBookAction,
   spendMorale,
+  startPendingEncounter,
   tradeResources,
   unplaceCombatUnit,
   endTurnAdventure
 } from "./adventure-reducer";
+import { chooseFaction, startAdventureFromLobby } from "./adventure-setup";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { isNeutralUnit, planNeutralActivation } from "./neutral-ai";
 import { createSeededRandom } from "./random";
@@ -899,9 +903,11 @@ function getRerollUsesForEffect(effect: ActiveEffectState): number {
 /**
  * Builds the spend-ordered reroll pools for one attack roll. Rerolls from
  * different sources stack: unit abilities (e.g. Crusaders) are spent first,
- * then one-shot effects like Fortune, and Luck is always spent last.
+ * then one-shot effects like Fortune, Luck is spent late, and the positive
+ * morale token ("Reroll any Die you have thrown") is always kept for last.
  */
 function buildRerollSources(
+  state: GameState,
   attacker: CombatUnitState,
   rerollEffects: ActiveEffectState[]
 ): AttackRerollSource[] {
@@ -915,6 +921,12 @@ function buildRerollSources(
     (left, right) => Number(left.name.includes("Luck")) - Number(right.name.includes("Luck"))
   );
 
+  const player = state.players[attacker.controllerId];
+  const moraleSources: AttackRerollSource[] =
+    state.mode === "adventure" && player && player.morale > 0
+      ? [{ name: "Positive morale token", morale: true, remaining: 1, used: 0 }]
+      : [];
+
   return [
     ...abilitySources,
     ...orderedEffects.map((effect) => ({
@@ -922,7 +934,8 @@ function buildRerollSources(
       effectId: effect.id,
       remaining: getRerollUsesForEffect(effect),
       used: 0
-    }))
+    })),
+    ...moraleSources
   ].filter((source) => source.remaining > 0);
 }
 
@@ -1346,7 +1359,7 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     defender: details.defender,
     attackKind: details.attackKind
   }).filter((effect) => !effect.usedChoiceIds.includes(stackItem.id));
-  const rerollSources = buildRerollSources(details.attacker, rerollEffects);
+  const rerollSources = buildRerollSources(state, details.attacker, rerollEffects);
 
   if (rerollSources.length > 0) {
     openAttackRerollChoice(state, stackItem, details, candidate, rerollSources);
@@ -1471,6 +1484,8 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       power: getCurrentSpellPower(stackItem, cards)
     });
 
+    maybeReturnFirstSpellToHand(state, stackItem.action.playerId, stackItem.action.cardId);
+
     stackItem.status = "resolved";
     state.stack.pop();
 
@@ -1495,6 +1510,38 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
   }
   state.phase = "combat";
   state.priorityPlayerId = null;
+}
+
+/**
+ * Astrologers — Crazy Wizard: until the next Astrologers round, the first
+ * spell card each player plays returns to their hand instead of staying in
+ * the discard pile.
+ */
+function maybeReturnFirstSpellToHand(state: GameState, playerId: PlayerId, cardId: string): void {
+  const astrologers = state.adventure?.astrologers;
+  if (!astrologers || getActiveAstrologersCard(state)?.effect.type !== "FIRST_SPELL_RETURNS") {
+    return;
+  }
+
+  if (astrologers.crazyWizardUsedBy.includes(playerId)) {
+    return;
+  }
+
+  const player = state.players[playerId];
+  const discardIndex = player?.discard.lastIndexOf(cardId) ?? -1;
+  if (!player || discardIndex === -1) {
+    return;
+  }
+
+  player.discard.splice(discardIndex, 1);
+  player.hand.push(cardId);
+  astrologers.crazyWizardUsedBy.push(playerId);
+  appendEvent(state, {
+    type: "SPELL_RETURNED_TO_HAND",
+    playerId,
+    cardId,
+    reason: "Crazy Wizard"
+  });
 }
 
 function closeReactionWindow(state: GameState, reason: "all-pass" | "reaction-played"): void {
@@ -1522,9 +1569,20 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     throw new Error(moveError.message);
   }
 
-  state.players[action.playerId].combatStats.spellsCastThisRound += 1;
+  const caster = state.players[action.playerId];
+  caster.combatStats.spellsCastThisRound += 1;
+  const isFirstSpellThisTurn = (caster.combatStats.spellsCastThisTurn ?? 0) === 0;
+  caster.combatStats.spellsCastThisTurn = (caster.combatStats.spellsCastThisTurn ?? 0) + 1;
 
   const stackItem = makeStackItem(state, action);
+
+  // Astrologers — Grim Warlock: the first spell in each player's turn gets
+  // +1 Power.
+  const astrologersCard = getActiveAstrologersCard(state);
+  if (isFirstSpellThisTurn && astrologersCard?.effect.type === "FIRST_SPELL_POWER_BONUS") {
+    stackItem.modifiers.spellPowerBonus += astrologersCard.effect.amount;
+  }
+
   state.stack.push(stackItem);
 
   const spellStarted = appendEvent(state, {
@@ -1695,6 +1753,7 @@ function applyReactionPlayCore(
       cancelledByPlayerId: playerId,
       cancelledByCardId: play.cardId
     });
+    maybeReturnFirstSpellToHand(state, stackItem.action.playerId, stackItem.action.cardId);
     state.stack.pop();
 
     closeReactionWindow(state, "reaction-played");
@@ -2109,6 +2168,21 @@ function rerollPendingChoice(
   choice.remainingRerolls -= 1;
   source.remaining -= 1;
   source.used += 1;
+
+  // The morale token is discarded the moment its reroll is taken.
+  if (source.morale && source.used === 1) {
+    const player = state.players[action.playerId];
+    if (player && player.morale > 0) {
+      player.morale -= 1;
+      appendEvent(state, { type: "MORALE_SPENT", playerId: action.playerId, benefit: "reroll" });
+      appendEvent(state, {
+        type: "MORALE_CHANGED",
+        playerId: action.playerId,
+        amount: -1,
+        total: player.morale
+      });
+    }
+  }
 
   appendEvent(state, {
     type: "ATTACK_REROLLED",
@@ -2723,6 +2797,18 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       continue;
     }
 
+    // The Groovy Satyr swap choice resolved: open the paused neutral combat.
+    if (
+      !state.combat &&
+      !state.pendingChoice &&
+      !state.reactionWindow &&
+      !state.adventure.pendingVisit &&
+      state.adventure.pendingEncounter
+    ) {
+      startPendingEncounter(state);
+      continue;
+    }
+
     if (!state.combat && !state.pendingChoice && !state.reactionWindow) {
       const queueLength = state.adventure.rewardQueue.length;
       const hadVisit = Boolean(state.adventure.pendingVisit);
@@ -2742,6 +2828,8 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "REVISIT_FIELD",
   "DISCOVER_TILE",
   "PLACE_TILE",
+  "SET_TILE_ROTATION",
+  "MOVE_HERO_PATH",
   "RESOLVE_VISIT_STEP",
   "TRADE_RESOURCES",
   "PLACE_COMBAT_UNIT",
@@ -2752,7 +2840,9 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "POPULATION_ACTION",
   "SPELL_BOOK_ACTION",
   "SPEND_MORALE",
-  "CHOOSE_OPTION"
+  "CHOOSE_OPTION",
+  "CHOOSE_FACTION",
+  "START_ADVENTURE"
 ]);
 
 function isHandlerValidated(state: GameState, action: GameAction): boolean {
@@ -2847,6 +2937,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           moveHero(nextState, action);
         }
         break;
+      case "MOVE_HERO_PATH":
+        moveHeroPathAdventure(nextState, action);
+        break;
       case "REFRESH_HAND":
         refreshHand(nextState, action);
         break;
@@ -2858,6 +2951,15 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "PLACE_TILE":
         placeTile(nextState, action);
+        break;
+      case "SET_TILE_ROTATION":
+        setTileRotation(nextState, action);
+        break;
+      case "CHOOSE_FACTION":
+        chooseFaction(nextState, action);
+        break;
+      case "START_ADVENTURE":
+        startAdventureFromLobby(nextState, action);
         break;
       case "RESOLVE_VISIT_STEP":
         resolveVisitStep(nextState, action);

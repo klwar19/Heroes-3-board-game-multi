@@ -1,13 +1,12 @@
 "use client";
 
-import { Crosshair, Eye, StepForward, Swords } from "lucide-react";
+import { Crosshair, Eye, Map as MapIcon, StepForward, Swords } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  createAdventureGameState,
+  effectiveHandLimit,
   getLegalActions,
   getPlayerView,
   NEUTRAL_PLAYER_ID,
-  type EngineResult,
   type GameAction,
   type GameEvent,
   type GameState,
@@ -42,16 +41,13 @@ import {
   PileModal,
   PlacementPanel,
   PromptTray,
-  TownPanel
+  SetupLobbyScreen,
+  TownPanel,
+  type HeroMoveCue,
+  type TilePlacementSelection
 } from "@/components/adventure/screen";
 import { cardName, unitName, type CardBoardAction } from "@/components/table/utils";
-
-type GameRoomSnapshot = {
-  roomId: string;
-  version: number;
-  updatedAt: string;
-  state: GameState;
-};
+import { connectRoom, type GameRoomSnapshot, type RoomConnection } from "@/lib/realtime";
 
 const OBSERVER_SEAT = "observer";
 
@@ -59,18 +55,6 @@ const OBSERVER_SEAT = "observer";
 function AdventureHandZoom({ cardId }: { cardId: string }) {
   const { zoomCard } = useCardZoom();
   return <ZoomButton label={`Read ${cardName(cardId)}`} onZoom={() => zoomCard(cardId)} />;
-}
-
-async function fetchRoom(roomId: string): Promise<GameRoomSnapshot> {
-  const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
-    cache: "no-store"
-  });
-
-  if (!response.ok) {
-    throw new Error("Could not load room.");
-  }
-
-  return (await response.json()) as GameRoomSnapshot;
 }
 
 function getInitialRoomId(): string {
@@ -99,38 +83,45 @@ function makeDiceCue(state: GameState, event: Extract<GameEvent, { type: "ATTACK
   };
 }
 
+/** How the hand rail is currently being used. */
+type HandMode = null | "mulligan" | "morale-redraw";
+
 export default function Home() {
-  const [state, setState] = useState(() => createAdventureGameState());
+  const [state, setState] = useState<GameState | null>(null);
   const [viewerPlayerId, setViewerPlayerId] = useState<PlayerId>("p1");
   const [errors, setErrors] = useState<string[]>([]);
-  const [roomId, setRoomId] = useState("dev-room");
-  const [roomInput, setRoomInput] = useState("dev-room");
+  const [roomId, setRoomId] = useState(getInitialRoomId);
+  const [roomInput, setRoomInput] = useState(getInitialRoomId);
   const [roomVersion, setRoomVersion] = useState(0);
   const [syncStatus, setSyncStatus] = useState("connecting");
   const [selectedCardAction, setSelectedCardAction] = useState<CardBoardAction | null>(null);
   const [inspectedUnitId, setInspectedUnitId] = useState<string | null>(null);
-  const [refreshDiscards, setRefreshDiscards] = useState<number[]>([]);
-  const [tilePlacement, setTilePlacement] = useState<{ tileDefId: string; rotation: number } | null>(null);
-  const [pile, setPile] = useState<{ title: string; cardIds: string[]; kind: "cards" | "units" } | null>(null);
+  const [handMode, setHandMode] = useState<HandMode>(null);
+  const [handDiscards, setHandDiscards] = useState<number[]>([]);
+  const [tilePlacement, setTilePlacement] = useState<TilePlacementSelection>(null);
+  const [combatTab, setCombatTab] = useState<"battle" | "map">("battle");
+  const [pile, setPile] = useState<{ title: string; cardIds: string[]; kind: "cards" | "units" | "astrologers" } | null>(null);
   const [dice, setDice] = useState<{ current: DiceCue | null; queue: DiceCue[] }>({
     current: null,
     queue: []
   });
   const [drawCue, setDrawCue] = useState<DrawCue | null>(null);
+  const [moveCue, setMoveCue] = useState<HeroMoveCue | null>(null);
   const [flippedUnitIds, setFlippedUnitIds] = useState<Set<string>>(new Set());
   const seenRollIdsRef = useRef<Set<string> | null>(null);
   const seenDrawIdsRef = useRef<Set<string>>(new Set());
   const seenFlipIdsRef = useRef<Set<string>>(new Set());
-  // The draw cue needs the live seat without resubscribing the SSE stream.
+  const seenMoveIdsRef = useRef<Set<string>>(new Set());
+  const connectionRef = useRef<RoomConnection | null>(null);
+  // The draw cue needs the live seat without resubscribing the stream.
   const viewerRef = useRef<PlayerId>("p1");
   useEffect(() => {
     viewerRef.current = viewerPlayerId;
   }, [viewerPlayerId]);
 
   // Every server snapshot funnels through here so new attack rolls, card
-  // draws and pack flips cue their animations on every seat. The first
-  // snapshot only primes the seen-sets, so a page reload does not replay
-  // old effects.
+  // draws, hero walks and pack flips cue their animations on every seat. The
+  // first snapshot only primes the seen-sets, so a reload replays nothing.
   const ingestServerState = useCallback((nextState: GameState) => {
     const rolls = nextState.eventLog.filter(
       (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> => event.type === "ATTACK_ROLLED"
@@ -141,11 +132,15 @@ export default function Home() {
     const flips = nextState.eventLog.filter(
       (event): event is Extract<GameEvent, { type: "UNIT_FLIPPED" }> => event.type === "UNIT_FLIPPED"
     );
+    const moves = nextState.eventLog.filter(
+      (event): event is Extract<GameEvent, { type: "HERO_MOVED" }> => event.type === "HERO_MOVED"
+    );
 
     if (!seenRollIdsRef.current) {
       seenRollIdsRef.current = new Set(rolls.map((event) => event.id));
       seenDrawIdsRef.current = new Set(draws.map((event) => event.id));
       seenFlipIdsRef.current = new Set(flips.map((event) => event.id));
+      seenMoveIdsRef.current = new Set(moves.map((event) => event.id));
     } else {
       const seen = seenRollIdsRef.current;
       const fresh = rolls.filter((event) => !seen.has(event.id));
@@ -163,8 +158,7 @@ export default function Home() {
         });
       }
 
-      // Draw effect: show the cards leaving the deck for the hand. Only the
-      // drawing seat sees the faces; everyone else sees card backs.
+      // Draw effect: show the cards leaving the deck for the hand.
       const freshDraw = draws.filter((event) => !seenDrawIdsRef.current.has(event.id)).at(-1);
       for (const event of draws) {
         seenDrawIdsRef.current.add(event.id);
@@ -179,6 +173,32 @@ export default function Home() {
           cardIds: isViewer ? (nextState.players[freshDraw.playerId]?.hand.slice(-freshDraw.count) ?? []) : [],
           reshuffled: freshDraw.reshuffledDiscard
         });
+      }
+
+      // Hero walks: chain this batch's steps into one animated arrow.
+      const freshMoves = moves.filter((event) => !seenMoveIdsRef.current.has(event.id));
+      for (const event of moves) {
+        seenMoveIdsRef.current.add(event.id);
+      }
+      if (freshMoves.length > 0) {
+        const byHero = new Map<string, { from: string; steps: string[] }>();
+        for (const event of freshMoves) {
+          const entry = byHero.get(event.heroId);
+          if (entry) {
+            entry.steps.push(event.to);
+          } else {
+            byHero.set(event.heroId, { from: event.from, steps: [event.to] });
+          }
+        }
+        const [heroId, walk] = [...byHero.entries()][0];
+        setMoveCue({
+          id: freshMoves[0].id,
+          heroId,
+          path: [walk.from, ...walk.steps]
+        });
+        window.setTimeout(() => {
+          setMoveCue((current) => (current?.id === freshMoves[0].id ? null : current));
+        }, 1800);
       }
 
       // Pack-to-Few flips get a short card-flip animation on the board.
@@ -214,7 +234,6 @@ export default function Home() {
       setRoomVersion((currentVersion) => {
         if (snapshot.version > currentVersion) {
           ingestServerState(snapshot.state);
-          setSyncStatus(`live v${snapshot.version}`);
           return snapshot.version;
         }
         return currentVersion;
@@ -231,15 +250,111 @@ export default function Home() {
     );
   }, []);
 
-  const isSeated = viewerPlayerId !== OBSERVER_SEAT && Boolean(state.players[viewerPlayerId]);
+  // One live connection per room: PartyKit edge socket when configured,
+  // otherwise the built-in API + SSE stream.
+  useEffect(() => {
+    seenRollIdsRef.current = null;
+
+    const connection = connectRoom(roomId, {
+      onSnapshot: ingestSnapshot,
+      onStatus: setSyncStatus
+    });
+    connectionRef.current = connection;
+
+    connection
+      .fetchSnapshot()
+      .then(ingestSnapshot)
+      .catch(() => setSyncStatus("room sync failed"));
+
+    return () => {
+      connection.close();
+      connectionRef.current = null;
+    };
+  }, [roomId, ingestSnapshot]);
+
+  const submitAction = async (action: GameAction) => {
+    const connection = connectionRef.current;
+    if (!connection) {
+      return;
+    }
+
+    setSyncStatus("submitting");
+    try {
+      const payload = await connection.submitAction(action);
+      setErrors(payload.result.errors.map((error) => error.message));
+      ingestSnapshot(payload.snapshot);
+      setSyncStatus(`synced v${payload.snapshot.version}`);
+
+      if (payload.result.errors.length === 0) {
+        setSelectedCardAction(null);
+        setHandMode(null);
+        setHandDiscards([]);
+        setTilePlacement(null);
+      }
+    } catch (error) {
+      setErrors([error instanceof Error ? error.message : "The action could not be submitted."]);
+      setSyncStatus("submit failed");
+    }
+  };
+
+  const resetRoom = async (mode: "adventure" | "combat-sandbox") => {
+    const connection = connectionRef.current;
+    if (!connection) {
+      return;
+    }
+
+    try {
+      const snapshot = await connection.resetRoom({ mode });
+      seenRollIdsRef.current = null;
+      ingestServerState(snapshot.state);
+      setRoomVersion(snapshot.version);
+      setErrors([]);
+      setSelectedCardAction(null);
+      setHandMode(null);
+      setHandDiscards([]);
+      setCombatTab("battle");
+      setDice({ current: null, queue: [] });
+      setSyncStatus(`synced v${snapshot.version}`);
+    } catch {
+      setErrors(["Could not reset the room."]);
+    }
+  };
+
+  const joinRoom = () => {
+    const nextRoomId = roomInput.trim() || "dev-room";
+    if (nextRoomId === roomId) {
+      return;
+    }
+    window.history.replaceState(null, "", `?room=${encodeURIComponent(nextRoomId)}`);
+    setErrors([]);
+    setSelectedCardAction(null);
+    // Fresh room: drop the old snapshot so lower version numbers apply.
+    setRoomVersion(0);
+    setState(null);
+    setRoomId(nextRoomId);
+  };
+
+  const isSeated = Boolean(state && viewerPlayerId !== OBSERVER_SEAT && state.players[viewerPlayerId]);
   const playerView = useMemo(
-    () => getPlayerView(state, isSeated ? viewerPlayerId : OBSERVER_SEAT),
+    () => (state ? getPlayerView(state, isSeated ? viewerPlayerId : OBSERVER_SEAT) : null),
     [state, viewerPlayerId, isSeated]
   );
   const legalActions = useMemo(
-    () => (isSeated ? getLegalActions(state, viewerPlayerId) : []),
+    () => (state && isSeated ? getLegalActions(state, viewerPlayerId) : []),
     [viewerPlayerId, state, isSeated]
   );
+
+  if (!state || !playerView) {
+    return (
+      <main className="tableRoot loadingRoot">
+        {/* The room id comes from the URL, which the server cannot see. */}
+        <p className="observerNote" suppressHydrationWarning>
+          Joining room “{roomId}”… {syncStatus}
+        </p>
+      </main>
+    );
+  }
+
   const selectedCardTargetCount = selectedCardAction
     ? legalActions.filter(
         (legal) =>
@@ -249,146 +364,11 @@ export default function Home() {
       ).length
     : 0;
 
-  useEffect(() => {
-    const initialRoomId = getInitialRoomId();
-    if (initialRoomId === roomId) {
-      return;
-    }
-
-    window.setTimeout(() => {
-      setRoomId(initialRoomId);
-      setRoomInput(initialRoomId);
-    }, 0);
-  }, [roomId]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    fetchRoom(roomId)
-      .then((snapshot) => {
-        if (cancelled) {
-          return;
-        }
-
-        seenRollIdsRef.current = null;
-        ingestServerState(snapshot.state);
-        setRoomVersion(snapshot.version);
-        setSyncStatus(`synced v${snapshot.version}`);
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setSyncStatus(error instanceof Error ? error.message : "room sync failed");
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [roomId, ingestServerState]);
-
-  // Real-time sync: a Server-Sent Events stream pushes every snapshot the
-  // moment any player acts; polling stays as a slow fallback for dropped
-  // streams.
-  useEffect(() => {
-    const source = new EventSource(`/api/rooms/${encodeURIComponent(roomId)}/stream`);
-    let streamHealthy = true;
-
-    source.onmessage = (message) => {
-      streamHealthy = true;
-      try {
-        ingestSnapshot(JSON.parse(message.data) as GameRoomSnapshot);
-      } catch {
-        // Ignore malformed keep-alives.
-      }
-    };
-    source.onerror = () => {
-      streamHealthy = false;
-      setSyncStatus("stream reconnecting");
-    };
-
-    const pollId = window.setInterval(() => {
-      if (streamHealthy) {
-        return;
-      }
-      fetchRoom(roomId)
-        .then(ingestSnapshot)
-        .catch(() => setSyncStatus("room sync failed"));
-    }, 4000);
-
-    return () => {
-      source.close();
-      window.clearInterval(pollId);
-    };
-  }, [roomId, ingestSnapshot]);
-
-  const submitAction = async (action: GameAction) => {
-    setSyncStatus("submitting");
-    const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/actions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ action })
-    });
-
-    if (!response.ok) {
-      setErrors(["Server rejected the action request."]);
-      setSyncStatus("submit failed");
-      return;
-    }
-
-    const payload = (await response.json()) as {
-      snapshot: GameRoomSnapshot;
-      result: EngineResult;
-    };
-    setErrors(payload.result.errors.map((error) => error.message));
-    ingestServerState(payload.snapshot.state);
-    setRoomVersion(payload.snapshot.version);
-    setSyncStatus(`synced v${payload.snapshot.version}`);
-
-    if (payload.result.errors.length === 0) {
-      setSelectedCardAction(null);
-      setRefreshDiscards([]);
-      setTilePlacement(null);
-    }
-  };
-
-  const resetRoom = async (mode: "adventure" | "combat-sandbox") => {
-    const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ reset: true, mode })
-    });
-
-    if (!response.ok) {
-      setErrors(["Could not reset the room."]);
-      return;
-    }
-
-    const snapshot = (await response.json()) as GameRoomSnapshot;
-    seenRollIdsRef.current = null;
-    ingestServerState(snapshot.state);
-    setRoomVersion(snapshot.version);
-    setErrors([]);
-    setSelectedCardAction(null);
-    setDice({ current: null, queue: [] });
-    setSyncStatus(`synced v${snapshot.version}`);
-  };
-
-  const joinRoom = () => {
-    const nextRoomId = roomInput.trim() || "dev-room";
-    window.history.replaceState(null, "", `?room=${encodeURIComponent(nextRoomId)}`);
-    setErrors([]);
-    setSelectedCardAction(null);
-    setRoomId(nextRoomId);
-  };
-
   const trayActive = Boolean(state.reactionWindow && state.reactionWindow.priorityPlayerId === viewerPlayerId);
   const seatIds = state.turnOrder.filter((playerId) => playerId !== NEUTRAL_PLAYER_ID);
   const combatVisible = Boolean(state.combat);
   const adventureMode = state.mode === "adventure";
+  const inLobby = Boolean(state.setupLobby) && state.phase === "setup";
 
   const tableMenu = (
     <div className="tableMenu" aria-label="Table controls">
@@ -418,19 +398,19 @@ export default function Home() {
         </button>
       </div>
       <div className="menuRow roomRow">
-        <input aria-label="Room ID" onChange={(event) => setRoomInput(event.target.value)} value={roomInput} />
+        <input aria-label="Room ID" onChange={(event) => setRoomInput(event.target.value)} suppressHydrationWarning value={roomInput} />
         <button onClick={joinRoom} title="Join room" type="button">
           <StepForward aria-hidden="true" size={13} />
         </button>
       </div>
       <div className="menuRow statusRow">
-        <span>{roomId}</span>
-        <small>
+        <span suppressHydrationWarning>{roomId}</span>
+        <small suppressHydrationWarning>
           v{roomVersion} · {syncStatus} · {state.phase}
         </small>
       </div>
       <div className="menuRow resetRow">
-        <button onClick={() => resetRoom("adventure")} title="Start a new adventure game" type="button">
+        <button onClick={() => resetRoom("adventure")} title="Start a new adventure (map setup first)" type="button">
           New adventure
         </button>
         <button onClick={() => resetRoom("combat-sandbox")} title="Open the combat sandbox" type="button">
@@ -449,133 +429,238 @@ export default function Home() {
       </div>
     ) : null;
 
-  // ---- Adventure map screen ----------------------------------------------
-  if (adventureMode && !combatVisible) {
+  // ---- Map-setup lobby ------------------------------------------------------
+  if (adventureMode && inLobby) {
+    return (
+      <CardZoomProvider>
+        <main className="tableRoot adventureRoot">
+          <div className="tableTopRow">
+            <div className="advHud">
+              <div className="advHudCell">
+                <strong>Map setup</strong>
+                <small>pick factions &amp; heroes</small>
+              </div>
+            </div>
+            {tableMenu}
+          </div>
+          {errorBanner}
+          <SetupLobbyScreen
+            onAction={submitAction}
+            state={state}
+            viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
+          />
+          <LogDrawer state={state} />
+        </main>
+      </CardZoomProvider>
+    );
+  }
+
+  // ---- Adventure map screen -------------------------------------------------
+  const showMapScreen = adventureMode && (!combatVisible || combatTab === "map");
+
+  if (showMapScreen) {
     const viewer = isSeated ? state.players[viewerPlayerId] : null;
-    const refreshPending = Boolean(viewer?.needsHandRefresh) && state.activePlayerId === viewerPlayerId;
     const handCards = isSeated ? (playerView.players[viewerPlayerId]?.hand ?? []) : [];
-    const overLimit = viewer ? handCards.length - refreshDiscards.length - viewer.limits.hand : 0;
+    const handLimit = viewer ? effectiveHandLimit(state, viewerPlayerId) : 0;
+    const forcedDiscard = Boolean(viewer?.needsHandRefresh) && state.activePlayerId === viewerPlayerId;
+    const canMulligan =
+      Boolean(viewer?.canMulligan) && state.activePlayerId === viewerPlayerId && !forcedDiscard && handCards.length > 0;
+    const hasMorale = (viewer?.morale ?? 0) > 0;
+    const overLimit = viewer ? handCards.length - handDiscards.length - handLimit : 0;
+    const selecting = handMode !== null || forcedDiscard;
+    const mapReadOnly = combatVisible;
+
+    const confirmHandAction = () => {
+      const discardCardIds = handDiscards.map((index) => handCards[index]);
+      if (handMode === "morale-redraw") {
+        void submitAction({ type: "SPEND_MORALE", playerId: viewerPlayerId, benefit: "redraw", discardCardIds });
+        return;
+      }
+      void submitAction({ type: "REFRESH_HAND", playerId: viewerPlayerId, discardCardIds });
+    };
 
     return (
       <CardZoomProvider>
-      <main className="tableRoot adventureRoot">
-        <div className="tableTopRow">
-          <AdventureHud
-            legalActions={legalActions.filter((legal) => legal.action.type !== "REFRESH_HAND" || !refreshPending)}
-            onAction={submitAction}
-            state={state}
-            viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
-          />
-          {tableMenu}
-        </div>
-
-        {errorBanner}
-
-        <div className="adventureMidRow">
-          <div className="leftRail">
-            <AdventureDecksPanel
-              onShowPile={(title, cardIds, kind) => setPile({ title, cardIds, kind })}
-              view={playerView}
-              viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
-            />
-          </div>
-          <div className="mapColumn">
-            <HexMapBoard
+        <main className="tableRoot adventureRoot">
+          <div className="tableTopRow">
+            <AdventureHud
               legalActions={legalActions}
               onAction={submitAction}
-              placement={tilePlacement}
               state={state}
-              viewerPlayerId={viewerPlayerId}
+              viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
             />
-            {isSeated ? (
-              <FarTileTray
-                onTogglePlacement={setTilePlacement}
+            {tableMenu}
+          </div>
+
+          {errorBanner}
+
+          {combatVisible ? (
+            <div className="combatContextBanner">
+              <Swords aria-hidden="true" size={14} />
+              <span>A combat is being fought on this map.</span>
+              <button className="commandButton" onClick={() => setCombatTab("battle")} type="button">
+                <Swords aria-hidden="true" size={12} /> Return to the battle
+              </button>
+            </div>
+          ) : null}
+
+          <div className="adventureMidRow">
+            <div className="leftRail">
+              <AdventureDecksPanel
+                onShowPile={(title, cardIds, kind) => setPile({ title, cardIds, kind })}
+                view={playerView}
+                viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
+              />
+            </div>
+            <div className="mapColumn">
+              <HexMapBoard
+                legalActions={legalActions}
+                moveCue={moveCue}
+                onAction={submitAction}
                 placement={tilePlacement}
+                readOnly={mapReadOnly || !isSeated}
                 state={state}
                 view={playerView}
-                viewerPlayerId={viewerPlayerId}
+                viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
               />
-            ) : null}
-          </div>
-          <div className="rightRail adventureRail">
-            {isSeated ? (
-              <>
-                <HeroBoardPanel playerId={viewerPlayerId} state={state} />
-                <TownPanel
-                  legalActions={legalActions}
-                  onAction={submitAction}
+              {isSeated && !mapReadOnly ? (
+                <FarTileTray
+                  onTogglePlacement={setTilePlacement}
+                  placement={tilePlacement}
                   state={state}
+                  view={playerView}
                   viewerPlayerId={viewerPlayerId}
                 />
-                <ArmyPanel playerId={viewerPlayerId} state={state} />
-              </>
-            ) : (
-              seatIds.map((playerId) => (
-                <div key={playerId}>
-                  <HeroBoardPanel playerId={playerId} state={state} />
-                  <ArmyPanel playerId={playerId} state={state} />
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {isSeated && handCards.length > 0 ? (
-          <div className={`adventureHand ${refreshPending ? "refreshing" : ""}`} aria-label="Your hand">
-            {refreshPending ? (
-              <div className="refreshBar">
-                <span>
-                  Discard any cards, then draw to {viewer?.limits.hand}.
-                  {overLimit > 0 ? ` Discard ${overLimit} more.` : ""}
-                </span>
-                <button
-                  className="commandButton primary"
-                  disabled={overLimit > 0}
-                  onClick={() =>
-                    submitAction({
-                      type: "REFRESH_HAND",
-                      playerId: viewerPlayerId,
-                      discardCardIds: refreshDiscards.map((index) => handCards[index])
-                    })
-                  }
-                  type="button"
-                >
-                  Draw up to {viewer?.limits.hand}
-                </button>
-              </div>
-            ) : null}
-            <div className="adventureHandCards">
-              {handCards.map((cardId, index) => (
-                <div className="adventureHandSlot" key={`${cardId}-${index}`}>
-                  <button
-                    className={`adventureHandCard ${refreshDiscards.includes(index) ? "discarding" : ""}`}
-                    onClick={() =>
-                      refreshPending
-                        ? setRefreshDiscards((current) =>
-                            current.includes(index)
-                              ? current.filter((value) => value !== index)
-                              : [...current, index]
-                          )
-                        : undefined
-                    }
-                    title={refreshPending ? `Toggle discard ${cardName(cardId)}` : cardName(cardId)}
-                    type="button"
-                  >
-                    <CardFrame cardId={cardId} className="handCardImage" />
-                  </button>
-                  <AdventureHandZoom cardId={cardId} />
-                </div>
-              ))}
+              ) : null}
+            </div>
+            <div className="rightRail adventureRail">
+              {isSeated ? (
+                <>
+                  <HeroBoardPanel playerId={viewerPlayerId} state={state} />
+                  <TownPanel
+                    legalActions={legalActions}
+                    onAction={submitAction}
+                    state={state}
+                    viewerPlayerId={viewerPlayerId}
+                  />
+                  <ArmyPanel playerId={viewerPlayerId} state={state} />
+                </>
+              ) : (
+                seatIds.map((playerId) => (
+                  <div key={playerId}>
+                    <HeroBoardPanel playerId={playerId} state={state} />
+                    <ArmyPanel playerId={playerId} state={state} />
+                  </div>
+                ))
+              )}
             </div>
           </div>
-        ) : null}
 
-        <PromptTray legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
-        <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
-        <LogDrawer state={state} />
-        {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
-        {drawCue ? <DrawOverlay cue={drawCue} key={drawCue.id} onDone={() => setDrawCue(null)} /> : null}
-      </main>
+          {isSeated ? (
+            <div className={`adventureHand ${selecting ? "refreshing" : ""}`} aria-label="Your hand">
+              <div className="handTopBar">
+                <small>
+                  Hand {handCards.length}/{handLimit}
+                </small>
+                {forcedDiscard ? (
+                  <span className="handWarning">
+                    Over the hand limit: discard down to {handLimit}.{overLimit > 0 ? ` Pick ${overLimit} more.` : ""}
+                  </span>
+                ) : null}
+                {!forcedDiscard && handMode === null ? (
+                  <div className="handButtons">
+                    {canMulligan ? (
+                      <button className="commandButton" onClick={() => setHandMode("mulligan")} type="button">
+                        Mulligan (discard &amp; draw)
+                      </button>
+                    ) : null}
+                    {hasMorale ? (
+                      <>
+                        <button
+                          className="commandButton"
+                          onClick={() => submitAction({ type: "SPEND_MORALE", playerId: viewerPlayerId, benefit: "draw" })}
+                          type="button"
+                        >
+                          Morale: draw 1
+                        </button>
+                        {handCards.length > 0 ? (
+                          <button className="commandButton" onClick={() => setHandMode("morale-redraw")} type="button">
+                            Morale: redraw cards
+                          </button>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
+                {selecting ? (
+                  <div className="handButtons">
+                    <span>
+                      {handMode === "morale-redraw"
+                        ? `Spend morale: discard ${handDiscards.length || "some"} and draw that many.`
+                        : forcedDiscard
+                          ? ""
+                          : `Discard ${handDiscards.length} card${handDiscards.length === 1 ? "" : "s"}, draw ${handDiscards.length}.`}
+                    </span>
+                    <button
+                      className="commandButton primary"
+                      disabled={forcedDiscard ? overLimit > 0 : handMode === "morale-redraw" && handDiscards.length === 0}
+                      onClick={confirmHandAction}
+                      type="button"
+                    >
+                      {forcedDiscard
+                        ? `Discard ${handDiscards.length}`
+                        : handMode === "morale-redraw"
+                          ? `Redraw ${handDiscards.length}`
+                          : `Draw ${handDiscards.length} new`}
+                    </button>
+                    {!forcedDiscard ? (
+                      <button
+                        className="commandButton ghost"
+                        onClick={() => {
+                          setHandMode(null);
+                          setHandDiscards([]);
+                        }}
+                        type="button"
+                      >
+                        Cancel
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+              <div className="adventureHandCards">
+                {handCards.length === 0 ? <small className="emptyHand">No cards in hand.</small> : null}
+                {handCards.map((cardId, index) => (
+                  <div className="adventureHandSlot" key={`${cardId}-${index}`}>
+                    <button
+                      className={`adventureHandCard ${handDiscards.includes(index) ? "discarding" : ""}`}
+                      onClick={() =>
+                        selecting
+                          ? setHandDiscards((current) =>
+                              current.includes(index)
+                                ? current.filter((value) => value !== index)
+                                : [...current, index]
+                            )
+                          : undefined
+                      }
+                      title={selecting ? `Toggle discard ${cardName(cardId)}` : cardName(cardId)}
+                      type="button"
+                    >
+                      <CardFrame cardId={cardId} className="handCardImage" />
+                    </button>
+                    <AdventureHandZoom cardId={cardId} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <PromptTray legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
+          <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
+          <LogDrawer state={state} />
+          {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
+          {drawCue ? <DrawOverlay cue={drawCue} key={drawCue.id} onDone={() => setDrawCue(null)} /> : null}
+        </main>
       </CardZoomProvider>
     );
   }
@@ -601,6 +686,9 @@ export default function Home() {
                 ? `${state.players[state.combat.attackerPlayerId]?.name} attacks ${state.players[state.combat.defenderPlayerId]?.name} — anyone may watch`
                 : "Combat sandbox"}
           </span>
+          <button className="commandButton" onClick={() => setCombatTab("map")} type="button">
+            <MapIcon aria-hidden="true" size={12} /> View the adventure map
+          </button>
         </div>
       ) : null}
 

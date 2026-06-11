@@ -1,5 +1,14 @@
 # Multiplayer Platform Plan (boardgame.io Path)
 
+> **Status update:** the edge backend now exists as a PartyKit scaffold —
+> `party/index.ts` runs one Cloudflare Durable Object per room (the
+> authoritative twin of `src/server/game-room-store.ts`), persists snapshots
+> in Durable Object storage, and broadcasts over WebSockets. The client picks
+> it up through `src/lib/realtime.ts` when `NEXT_PUBLIC_PARTYKIT_HOST` is set
+> and falls back to the built-in API + SSE store otherwise. Everything below
+> about lobbies, auth and seat claiming still applies as future work.
+
+
 The current prototype already plays like a shared table: a server-authoritative rules engine, REST rooms with **Server-Sent Events push** (polling only as fallback), seat switching, observer seats, and player-view filtering. This document plans the jump to a real multiplayer platform.
 
 ## Hosting alternatives beyond boardgame.io (2026 survey)
