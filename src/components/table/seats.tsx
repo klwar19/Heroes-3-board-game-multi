@@ -5,6 +5,7 @@
 import { Crown, Layers, Search, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
+import { coreHeroDefinitions } from "@/data/factions/core";
 import {
   describeCardEffect,
   type GameAction,
@@ -24,6 +25,7 @@ import {
   targetName,
   type CardBoardAction
 } from "./utils";
+import { useCardZoom, ZoomButton } from "./zoom";
 
 export function CardFrame({
   cardId,
@@ -84,6 +86,7 @@ export function HandFan({
   onAction: (action: GameAction) => void;
 }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const { zoomCard } = useCardZoom();
   const player = view.players[viewerPlayerId];
   if (!player) {
     return null;
@@ -93,6 +96,45 @@ export function HandFan({
     (legal): legal is LegalAction & { action: CardBoardAction } =>
       legal.action.type === "CAST_SPELL" || legal.action.type === "PLAY_CARD"
   );
+
+  const playerState = state.players[viewerPlayerId];
+  const spellLimit = 1 + (playerState?.combatStats.spellLimitBonusThisRound ?? 0);
+  const spellLimitReached = (playerState?.combatStats.spellsCastThisRound ?? 0) >= spellLimit;
+  const activeUnit = state.combat?.activeUnitId ? state.combat.units[state.combat.activeUnitId] : undefined;
+  const ownActivationOpen = Boolean(
+    activeUnit &&
+      activeUnit.controllerId === viewerPlayerId &&
+      !activeUnit.activatedThisRound &&
+      !activeUnit.attackedThisActivation
+  );
+
+  /** Why a card has no buttons right now, in table terms. */
+  const timingHint = (cardId: string): string => {
+    const card = cardLibrary[cardId];
+    if (!card) {
+      return "Unknown card";
+    }
+    if (card.implementationStatus === "not-implemented") {
+      return "Resolve this card manually — automation coming soon";
+    }
+    if (card.kind === "spell") {
+      return spellLimitReached
+        ? `Spell limit reached (${spellLimit} per combat round)`
+        : "Castable during combat, any activation";
+    }
+    if (card.trigger || card.timing === "instant") {
+      return "Instant: waits for its timing window (attack or spell)";
+    }
+    if (card.timing === "ongoing" || card.timing === "combat" || card.timing === "action") {
+      return ownActivationOpen
+        ? "Playable now"
+        : "Play during your own unit's activation, before it attacks";
+    }
+    if (card.timing === "map") {
+      return "Map effect: play on the adventure map during your turn";
+    }
+    return "No legal timing right now";
+  };
 
   const entries: HandCardEntry[] = player.hand.map((cardId, handIndex) => {
     const actionsForCard = cardActions.filter((legal) => legal.action.cardId === cardId);
@@ -131,6 +173,15 @@ export function HandFan({
                     ))}
                   </div>
                 ) : null}
+                <button
+                  onClick={() => {
+                    zoomCard(entry.cardId);
+                    setOpenIndex(null);
+                  }}
+                  type="button"
+                >
+                  Read card (large)
+                </button>
                 {entry.boardSelections.map((action) => (
                   <button
                     key={cardSelectionKey(action)}
@@ -168,7 +219,7 @@ export function HandFan({
                     </button>
                   );
                 })}
-                {!playable ? <small className="noTiming">No legal timing right now</small> : null}
+                {!playable ? <small className="noTiming">{timingHint(entry.cardId)}</small> : null}
                 <button className="ghost" onClick={() => setOpenIndex(null)} type="button">
                   Close
                 </button>
@@ -184,6 +235,7 @@ export function HandFan({
               <CardFrame cardId={entry.cardId} className="fanCardImage" />
               {playable ? <span className="playGlow" aria-hidden="true" /> : null}
             </button>
+            <ZoomButton label={`Read ${cardName(entry.cardId)}`} onZoom={() => zoomCard(entry.cardId)} />
           </div>
         );
       })}
@@ -296,6 +348,71 @@ export function PlayerDock({
         </span>
       </div>
     </div>
+  );
+}
+
+/**
+ * Hero card for the battle simulator: portrait, class, level, the four
+ * statistics and the hero's specialty cards (click a specialty to read it).
+ */
+export function HeroPanel({ state, playerId }: { state: GameState; playerId: PlayerId }) {
+  const { zoomCard } = useCardZoom();
+  const player = state.players[playerId];
+  const hero = Object.values(state.heroes).find(
+    (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
+  );
+  const heroDef = player?.heroDefId ? coreHeroDefinitions[player.heroDefId] : undefined;
+
+  if (!player || !hero || !heroDef) {
+    return null;
+  }
+
+  const specialtyIds = Object.entries(heroDef.specialtyCardIds)
+    .filter(([level]) => Number(level) <= hero.level)
+    .map(([, cardId]) => cardId);
+
+  return (
+    <section className="heroPanel" aria-label={`${heroDef.name} hero board`}>
+      {heroDef.portrait ? (
+        <img
+          alt={`${heroDef.name} portrait`}
+          className="heroPortrait"
+          loading="eager"
+          referrerPolicy="no-referrer"
+          src={heroDef.portrait}
+        />
+      ) : null}
+      <div className="heroPanelBody">
+        <strong>{heroDef.name}</strong>
+        <span className="heroClass">
+          {heroDef.class} · Level {hero.level}
+        </span>
+        <div className="heroStats" title="Starting statistic cards: Attack / Defense / Power / Knowledge">
+          <span title="Attack statistics">⚔ {heroDef.startingStats.attack}</span>
+          <span title="Defense statistics">🛡 {heroDef.startingStats.defense}</span>
+          <span title="Power statistics">✦ {heroDef.startingStats.power}</span>
+          <span title="Knowledge statistics">📖 {heroDef.startingStats.knowledge}</span>
+        </div>
+        <div className="heroMeta">
+          <span title="Hand limit at this level">
+            <Layers aria-hidden="true" size={12} /> {player.limits.hand} hand
+          </span>
+          <span title="Expert-effect crowns per combat round">
+            <Crown aria-hidden="true" size={12} /> {player.limits.expertUses} crowns
+          </span>
+        </div>
+        {specialtyIds.length > 0 ? (
+          <div className="heroSpecialties" aria-label="Specialty cards">
+            {specialtyIds.map((cardId) => (
+              <button key={cardId} onClick={() => zoomCard(cardId)} title="Read specialty card" type="button">
+                <Sparkles aria-hidden="true" size={11} />
+                <span>{cardName(cardId)}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
 }
 

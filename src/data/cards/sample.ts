@@ -456,18 +456,35 @@ export const sampleCards: CardLibrary = {
     id: "ability.luck",
     name: "Luck",
     kind: "ability",
-    timing: "combat",
-    phaseLimit: ["combat"],
-    abilityClass: "combat",
-    tags: ["ability", "reroll", "attack-die", "wiki-reference"],
+    // Wiki card text (Ongoing): basic "You can reroll a Treasure die and a
+    // Resource die once during this turn"; expert "You can reroll any die
+    // once during this turn". Ongoing cards are played during your own turn
+    // on the map or while activating one of your units in combat.
+    timing: "ongoing",
+    abilityClass: "adventure",
+    tags: ["ability", "ongoing", "reroll", "wiki-reference"],
     target: { type: "none" },
     effect: {
-      type: "CREATE_ATTACK_DIE_REROLL",
-      name: "Luck",
-      basicRerolls: 0,
-      expertRerolls: 1,
-      duration: { type: "current-turn" },
-      consumeEffectOnUse: false
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: "Luck",
+        scope: "player",
+        duration: { type: "current-turn" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "ADVENTURE_DIE_REROLL", dice: "treasure" }, { type: "ADVENTURE_DIE_REROLL", dice: "resource" }]
+      },
+      expertEffect: {
+        name: "Expert Luck",
+        scope: "player",
+        duration: { type: "current-turn" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [
+          { type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: true },
+          { type: "ADVENTURE_DIE_REROLL", dice: "any" }
+        ]
+      }
     },
     assets: {
       cardImage: "https://en.homm3bg.wiki/assets/abilities-luck.webp",
@@ -487,15 +504,30 @@ export const sampleCards: CardLibrary = {
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
     artifactTier: "minor",
-    tags: ["artifact", "minor", "instant", "attack", "wiki-reference"],
-    trigger: {
-      event: "UNIT_ATTACK_DECLARED",
-      controller: "self"
-    },
+    tags: ["artifact", "minor", "instant", "attack", "or-choice", "wiki-reference"],
+    // Wiki card text: "Triple the Attack die's outcome. — OR — +1 attack".
+    // Either fighter may play the tripling before the die is rolled; the flat
+    // bonus only helps the attacking player.
     effect: {
-      type: "ADD_COMBAT_STAT",
-      stat: "attack",
-      amount: 1
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Triple the Attack die's outcome",
+          trigger: {
+            event: "UNIT_ATTACK_DECLARED",
+            controller: "any"
+          },
+          effect: { type: "TRIPLE_ATTACK_DIE" }
+        },
+        {
+          label: "+1 attack",
+          trigger: {
+            event: "UNIT_ATTACK_DECLARED",
+            controller: "self"
+          },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
+        }
+      ]
     },
     assets: {
       cardImage: "https://en.homm3bg.wiki/assets/artifacts_minor-centaurs_axe.webp",

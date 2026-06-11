@@ -19,7 +19,11 @@ function heroSource(slug: string) {
   };
 }
 
-/** "+1 attack or +1 defense" specialty shared by the might heroes. */
+/**
+ * "+1 attack or +1 defense" specialty shared by the might heroes. The bonus
+ * doubles when it lands on the hero's signature unit (the unit attacking for
+ * the attack option, the unit being attacked for the defense option).
+ */
 function mightSpecialtyOne(heroSlug: string, heroName: string, doubledUnit: string): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.1`,
@@ -32,14 +36,14 @@ function mightSpecialtyOne(heroSlug: string, heroName: string, doubledUnit: stri
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "+1 attack",
+          label: `+1 attack (x2 for ${doubledUnit})`,
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, doubleForUnitName: doubledUnit }
         },
         {
-          label: "+1 defense",
+          label: `+1 defense (x2 for ${doubledUnit})`,
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1 }
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1, doubleForUnitName: doubledUnit }
         }
       ]
     },
@@ -47,24 +51,20 @@ function mightSpecialtyOne(heroSlug: string, heroName: string, doubledUnit: stri
       cardImage: `https://en.homm3bg.wiki/assets/hero_specialties-${heroSlug}-1.webp`,
       imageAlt: `${heroName} level I specialty card`
     },
-    // The printed doubling for the hero's signature unit is not modeled yet.
     implementationStatus: "implemented",
-    source: {
-      ...heroSource(heroSlug),
-      credit: `${wikiCredit} Doubled effect for ${doubledUnit} not modeled yet.`
-    }
+    source: heroSource(heroSlug)
   };
 }
 
 function notImplementedSpecialty(
   heroSlug: string,
   heroName: string,
-  level: 4 | 6,
+  level: 1 | 4 | 6,
   text: string
 ): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
-    name: `${heroName} ${level === 4 ? "IV" : "VI"}`,
+    name: `${heroName} ${level === 1 ? "I" : level === 4 ? "IV" : "VI"}`,
     kind: "hero-specialty",
     timing: "ongoing",
     tags: ["hero-specialty", heroSlug, "needs-implementation", text],
@@ -138,6 +138,46 @@ export const adventureCards: CardLibrary = {
     },
     implementationStatus: "not-implemented",
     source: abilitySource("wisdom")
+  },
+  "ability.first_aid": {
+    id: "ability.first_aid",
+    name: "First Aid",
+    kind: "ability",
+    timing: "instant",
+    phaseLimit: ["combat"],
+    abilityClass: "combat",
+    tags: ["ability", "instant", "heal", "wiki-reference"],
+    target: { type: "friendly-unit", damagedOnly: true },
+    effect: {
+      type: "HEAL_DAMAGE",
+      amount: 1
+    },
+    assets: {
+      cardImage: "https://en.homm3bg.wiki/assets/abilities-first_aid.webp",
+      imageAlt: "First Aid ability card"
+    },
+    implementationStatus: "implemented",
+    source: abilitySource("first_aid")
+  },
+  "ability.scholar": {
+    id: "ability.scholar",
+    name: "Scholar",
+    kind: "ability",
+    timing: "instant",
+    abilityClass: "adventure",
+    tags: [
+      "ability",
+      "map",
+      "needs-implementation",
+      "Exchange Statistic cards between your discard pile and hand when meeting an allied Hero."
+    ],
+    effect: { type: "DRAW_CARDS", amount: 0 },
+    assets: {
+      cardImage: "https://en.homm3bg.wiki/assets/abilities-scholar.webp",
+      imageAlt: "Scholar ability card"
+    },
+    implementationStatus: "not-implemented",
+    source: abilitySource("scholar")
   },
   "ability.tactics": {
     id: "ability.tactics",
@@ -231,12 +271,32 @@ export const adventureCards: CardLibrary = {
     6,
     "Remove up to 2 damage or paralysis from one of your units, then draw 2 cards and discard 1."
   ),
-  "specialty.sandro.1": notImplementedSpecialty(
-    "sandro",
-    "Cloak of the Undead King",
-    4,
-    "Replaces the Pack of Skeletons statistics with Horde of Skeletons (A3 D1 HP2 I6)."
-  ),
+  "specialty.sandro.1": {
+    id: "specialty.sandro.1",
+    name: "Cloak of the Undead King I",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["combat"],
+    tags: ["hero-specialty", "sandro", "transform"],
+    // Printed card: place onto a Pack of Skeletons, replacing its statistics
+    // with the Horde of Skeletons. Discard when its HP runs out.
+    effect: {
+      type: "TRANSFORM_UNIT",
+      targetUnitName: "Skeletons",
+      targetVariants: ["pack"],
+      newName: "Horde of Skeletons",
+      attack: 3,
+      defense: 1,
+      health: 2,
+      initiative: 6
+    },
+    assets: {
+      cardImage: "https://en.homm3bg.wiki/assets/hero_specialties-sandro-1.webp",
+      imageAlt: "Cloak of the Undead King level I specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("sandro")
+  },
   "specialty.sandro.4": notImplementedSpecialty(
     "sandro",
     "Cloak of the Undead King",
@@ -249,10 +309,52 @@ export const adventureCards: CardLibrary = {
     6,
     "Replaces the Skeletons statistics with Legion of Skeletons (A4 D1 HP2 I6)."
   ),
+  "specialty.gelu.1": mightSpecialtyOne("gelu", "Sharpshooters", "Sharpshooters"),
+  "specialty.gelu.4": notImplementedSpecialty(
+    "gelu",
+    "Sharpshooters",
+    4,
+    "Convert a bronze ranged unit into Sharpshooters."
+  ),
+  "specialty.gelu.6": notImplementedSpecialty(
+    "gelu",
+    "Sharpshooters",
+    6,
+    "For this Combat, your selected unit's initiative is increased by 1 (doubled for Sharpshooters)."
+  ),
+  "specialty.gem.1": notImplementedSpecialty(
+    "gem",
+    "First Aid",
+    1,
+    "Gain a First Aid Tent card for free, or draw 1 card if you already have one."
+  ),
+  "specialty.gem.4": notImplementedSpecialty("gem", "First Aid", 4, "Remove 2 damage from one of your units."),
+  "specialty.gem.6": notImplementedSpecialty("gem", "First Aid", 6, "Your First Aid Tent's effect doubles during Combat."),
+  "specialty.xyron.1": notImplementedSpecialty(
+    "xyron",
+    "Inferno",
+    1,
+    "Activation: deal damage to units on a selected space and adjacent spaces."
+  ),
+  "specialty.xyron.4": notImplementedSpecialty("xyron", "Inferno", 4, "Stronger area damage at reduced cost."),
+  "specialty.xyron.6": notImplementedSpecialty("xyron", "Inferno", 6, "Area damage at no cost."),
+  "specialty.rashka.1": mightSpecialtyOne("rashka", "Efreet", "Efreet"),
+  "specialty.rashka.4": notImplementedSpecialty(
+    "rashka",
+    "Efreet",
+    4,
+    "For this Combat, your selected unit's HP is increased by 1 (doubled for Efreet)."
+  ),
+  "specialty.rashka.6": notImplementedSpecialty(
+    "rashka",
+    "Efreet",
+    6,
+    "For this Combat, your selected unit's initiative is increased by 1 (doubled for Efreet)."
+  ),
   "specialty.alamar.1": notImplementedSpecialty(
     "alamar",
     "Resurrection",
-    4,
+    1,
     "Cancel an attack that would reduce your bronze (power 1) / silver (2) / gold (4) unit's HP to 0."
   ),
   "specialty.alamar.4": notImplementedSpecialty(
@@ -267,16 +369,4 @@ export const adventureCards: CardLibrary = {
     6,
     "Cancel a lethal attack: bronze power 0, silver 0, gold 2."
   )
-};
-
-// specialty.sandro.1 keys its level from the id, not the name shown above.
-adventureCards["specialty.sandro.1"] = {
-  ...adventureCards["specialty.sandro.1"],
-  id: "specialty.sandro.1",
-  name: "Cloak of the Undead King I"
-};
-adventureCards["specialty.alamar.1"] = {
-  ...adventureCards["specialty.alamar.1"],
-  id: "specialty.alamar.1",
-  name: "Resurrection I"
 };

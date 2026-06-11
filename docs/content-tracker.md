@@ -49,7 +49,9 @@ Legend: ✅ playable · 🟡 data present, rules effect not implemented · 🔴 
 | Castle | ✅ | City Hall (5 gold / +1 MP), Citadel, Mage Guild (6g spells), Towers / Holy Grounds / Glory of Erathia, Brotherhood of the Sword (+morale each resource round). Blacksmith 🟡. |
 | Necropolis | ✅ | City Hall (4 gold / free bronze reinforce), 5g Mage Guild, Old Cemetery / Mausoleum Domain / Vaults of Darkness. Ignores morale. Necromancy Amplifier, Cover of Darkness 🟡. |
 | Dungeon | ✅ | City Hall (5 gold / 1 valuables), 5g Mage Guild, Warrens / Inner Labyrinths / Ancient Lairs. Portal of Summoning, Mana Vortex 🟡. |
-| Tower/Rampart/Fortress/Inferno/etc. | 🔴 | Expansion factions. |
+| Rampart | ✅ | City Hall (7 gold), Citadel, 5g Mage Guild, Housing Estate / Spring upon Arches / Cliff behind the Glade. Mystic Pond, Saplings 🟡. Starting tile S4. |
+| Inferno | ✅ | City Hall (6 gold / 3 materials), Citadel (9g 4m 1v), 5g Mage Guild, Crucible of Sins / Gates of Abyss / Hellfire Palace. Castle Gate, Brimstone Stormclouds 🟡. Starting tile S5. |
+| Tower/Fortress/Cove/Stronghold/Conflux | 🔴 | Remaining expansion factions. |
 
 Citadel siege bonuses (3 Walls, 1 Gate, Arrow Tower) 🔴 — siege combat not implemented.
 
@@ -63,14 +65,20 @@ Citadel siege bonuses (3 Walls, 1 Gate, Arrow Tower) 🔴 — siege combat not i
 | Tamika (Death Knight, might, A1 D2 P2 K1) | Necropolis | ✅ | Specialty I implemented; IV/VI 🟡. |
 | Alamar (Warlock, magic, A0 D0 P3 K2) | Dungeon | ✅ | Resurrection specialties 🟡 (lethal-attack cancel not modeled). |
 | Mutare (Overlord, might, A2 D2 P1 K1) | Dungeon | ✅ | Specialty I implemented; IV/VI 🟡. |
+| Gelu (Ranger, might, A1 D3 P1 K1) | Rampart | ✅ | Specialty I implemented (doubles for Sharpshooters); IV/VI 🟡. Starting ability Archery. |
+| Gem (Druid, magic, A0 D2 P1 K2) | Rampart | ✅ | First Aid starting ability heals 1; specialties 🟡. |
+| Xyron (Heretic, magic, A1 D1 P2 K1) | Inferno | ✅ | Inferno area-damage specialties 🟡. Starting ability Wisdom. |
+| Rashka (Demoniac, might, A2 D2 P1 K1) | Inferno | ✅ | Specialty I implemented (doubles for Efreet); IV/VI 🟡. Starting ability Scholar 🟡. |
 
 Hero board level track (verified against the wiki board scan): 2 XP per level; hand limit 4→5(III)→6(V)→7(VII); expert effects +1 at II/IV/VI; ability Search (2) at II/III/V/VII; specialties at I/IV/VI. Secondary heroes 🔴 (hire via Population/Tavern, 2 MP, instant-defeat option).
 
 ## Units (`src/data/factions/units.ts`)
 
 - ✅ Full core rosters with few/pack stats and recruit/reinforce costs: Castle (Halberdiers, Marksmen, Griffins, Crusaders, Zealots, Champions, Archangels), Necropolis (Skeletons, Zombies, Wraiths, Vampires, Liches, Dread Knights, Ghost Dragons), Dungeon (Troglodytes, Harpies, Evil Eyes, Medusas, Minotaurs, Manticores, Black Dragons).
-- ✅ 34 core neutral units in four tier decks: 13 bronze, 9 silver, 10 gold, 2 azure.
-- Implemented unit abilities: Griffins' unlimited retaliation, Crusaders' (pack) attack reroll. **Every other printed ability is display-only** (`abilityText` on the definition) — e.g. Marksmen double shot, Halberdier discard-to-ignore-die, vampire drain, dragon breath. Each needs an engine ability before it plays correctly.
+- ✅ Rampart expansion roster: Centaurs, Dwarves, Elves, Pegasi, Dendroids, Unicorns, Gold Dragons (stats, costs, images).
+- ✅ Inferno expansion roster: Familiars, Magogs, Cerberi, Demons, Pit Lords, Efreet, Arch Devils (stats, costs, images).
+- ✅ 42 neutral units in four tier decks (core + Inferno/Rampart expansion neutrals incl. Faerie Dragons azure).
+- Implemented unit abilities: unlimited retaliation (Griffins), attack reroll (pack Crusaders), **double attack** (pack Marksmen — second shot at non-adjacent targets, stops at 2), **double attack on −1/0** (pack Elves), **no retaliation** (Vampires, pack Harpies, Cerberi, Arch Devils), **no adjacent-shot penalty** (pack Zealots/Evil Eyes/Medusas, Sharpshooters, Halflings), **splash damage** (pack Magogs, approximation: hits all adjacent enemies instead of one chosen), **teleport move** (pack Arch Devils). Remaining printed abilities are display-only (`abilityText`) — e.g. Halberdier discard-to-ignore-die, vampire drain heal, dragon breath line attack, Dendroid root.
 - Pack→Few flip with excess damage works in combat; defeated Few units leave the unit deck; empty deck restores the scenario's starting units.
 - Unit card images hot-link the wiki asset pattern `units-{faction}-{tier}-{slug}-{side}.webp`; neutral image URLs need spot-checking.
 
@@ -80,12 +88,16 @@ Hero board level track (verified against the wiki board scan): 2 XP per level; h
 | --- | --- | --- |
 | Statistics: Attack, Defense, Power, Knowledge | ✅ | |
 | Spells: Magic Arrow, Lightning Bolt, Stone Skin, Bloodlust, Cure, Fortune, Fireball | ✅ | Fireball splash uses single-target damage 🟡? (verify), others playable. |
-| Abilities: Resistance, Archery, Offense, Luck | ✅ | |
+| Abilities: Resistance, Archery, Offense | ✅ | |
+| Luck | ✅ | Ongoing, played on your turn/activation. Basic: Treasure + Resource die rerolls on the map. Expert: one reroll of any die (attack die included), consumed on use. |
+| First Aid (Gem) | ✅ | Instant heal 1. |
+| Scholar (Rashka) | 🟡 | Statistic exchange needs allied-hero meetings. |
 | Leadership | ✅ | Gain morale; expert draws 2 first. |
 | Sorcery | ✅ | +1/+2 power then draw 1. |
 | Wisdom | 🟡 | Town spell-price reduction needs the town layer hook. |
 | Tactics | 🟡 | Unit-swap timing not modeled. |
-| Artifacts: Centaur's Axe, Ogre's Club, Titan's Gladius, Buckler, Breastplate | ✅ | |
+| Artifacts: Ogre's Club, Titan's Gladius, Buckler, Breastplate | ✅ | |
+| Centaur's Axe | ✅ | Corrected to the printed card: "Triple the Attack die's outcome" OR "+1 attack" (either fighter may triple). |
 | War machines: First Aid Tent | ✅ | |
 | Hero specialties (18) | see Heroes | I-level for might heroes + Rion implemented. |
 | Remaining official spell/ability/artifact decks | 🔴 | Dozens of cards still to import (see wiki indexes). |

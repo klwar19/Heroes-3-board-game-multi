@@ -30,7 +30,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "bronze",
     type: "ranged",
     few: { attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 3 }, abilities: [], cardImage: "https://en.homm3bg.wiki/assets/units-castle-bronze-marksmen-few.webp" },
-    pack: { attack: 2, defense: 0, health: 2, initiative: 6, cost: { gold: 5 }, abilities: [], abilityText: "[unit_attack] If a target is a non-adjacent unit, attack this target again.", cardImage: "https://en.homm3bg.wiki/assets/units-castle-bronze-marksmen-pack.webp" },
+    pack: { attack: 2, defense: 0, health: 2, initiative: 6, cost: { gold: 5 }, abilities: ["double-attack"], abilityText: "[unit_attack] If a target is a non-adjacent unit, attack this target again.", cardImage: "https://en.homm3bg.wiki/assets/units-castle-bronze-marksmen-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/marksmen/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -75,7 +75,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "silver",
     type: "ranged",
     few: { attack: 3, defense: 1, health: 5, initiative: 5, cost: { gold: 8 }, abilities: [], cardImage: "https://en.homm3bg.wiki/assets/units-castle-silver-zealots-few.webp" },
-    pack: { attack: 4, defense: 1, health: 5, initiative: 7, cost: { gold: 12 }, abilities: [], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units.", cardImage: "https://en.homm3bg.wiki/assets/units-castle-silver-zealots-pack.webp" },
+    pack: { attack: 4, defense: 1, health: 5, initiative: 7, cost: { gold: 12 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units.", cardImage: "https://en.homm3bg.wiki/assets/units-castle-silver-zealots-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/zealots/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -164,8 +164,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "necropolis",
     tier: "silver",
     type: "flying",
-    few: { attack: 4, defense: 1, health: 4, initiative: 6, cost: { gold: 8 }, abilities: [], abilityText: "[unit_attack] Ignore the Retaliation Attack.", cardImage: "https://en.homm3bg.wiki/assets/units-necropolis-silver-vampires-few.webp" },
-    pack: { attack: 5, defense: 1, health: 4, initiative: 9, cost: { gold: 12 }, abilities: [], abilityText: "[unit_attack] Ignore the Retaliation Attack. Then remove up to 2 [damage] from this unit.", cardImage: "https://en.homm3bg.wiki/assets/units-necropolis-silver-vampires-pack.webp" },
+    few: { attack: 4, defense: 1, health: 4, initiative: 6, cost: { gold: 8 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack.", cardImage: "https://en.homm3bg.wiki/assets/units-necropolis-silver-vampires-few.webp" },
+    pack: { attack: 5, defense: 1, health: 4, initiative: 9, cost: { gold: 12 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack. Then remove up to 2 [damage] from this unit.", cardImage: "https://en.homm3bg.wiki/assets/units-necropolis-silver-vampires-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/vampires/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -240,7 +240,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "bronze",
     type: "flying",
     few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 3 }, abilities: [], abilityText: "[unit_attack] After the enemy's Retaliation Attack, this unit can return to the space from which it moved to attack.", cardImage: "https://en.homm3bg.wiki/assets/units-dungeon-bronze-harpies-few.webp" },
-    pack: { attack: 3, defense: 0, health: 3, initiative: 9, cost: { gold: 5 }, abilities: [], abilityText: "[unit_attack] Ignore the Retaliation Attack. This unit can return to the space from which it moved to attack.", cardImage: "https://en.homm3bg.wiki/assets/units-dungeon-bronze-harpies-pack.webp" },
+    pack: { attack: 3, defense: 0, health: 3, initiative: 9, cost: { gold: 5 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack. This unit can return to the space from which it moved to attack.", cardImage: "https://en.homm3bg.wiki/assets/units-dungeon-bronze-harpies-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/harpies/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -255,7 +255,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "bronze",
     type: "ranged",
     few: { attack: 3, defense: 0, health: 3, initiative: 5, cost: { gold: 4 }, abilities: [], cardImage: "https://en.homm3bg.wiki/assets/units-dungeon-bronze-evil_eyes-few.webp" },
-    pack: { attack: 3, defense: 1, health: 3, initiative: 7, cost: { gold: 6 }, abilities: [], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units.", cardImage: "https://en.homm3bg.wiki/assets/units-dungeon-bronze-evil_eyes-pack.webp" },
+    pack: { attack: 3, defense: 1, health: 3, initiative: 7, cost: { gold: 6 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units.", cardImage: "https://en.homm3bg.wiki/assets/units-dungeon-bronze-evil_eyes-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/evil_eyes/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -270,7 +270,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "silver",
     type: "ranged",
     few: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 6 }, abilities: [], abilityText: "[unit_passive] After the Retaliation Attack, roll an Attack die , on a \"0\" the target is [paralysis] .", cardImage: "https://en.homm3bg.wiki/assets/units-dungeon-silver-medusas-few.webp" },
-    pack: { attack: 4, defense: 1, health: 4, initiative: 6, cost: { gold: 12 }, abilities: [], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units. [unit_retaliation] The target gains [paralysis] .", cardImage: "https://en.homm3bg.wiki/assets/units-dungeon-silver-medusas-pack.webp" },
+    pack: { attack: 4, defense: 1, health: 4, initiative: 6, cost: { gold: 12 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units. [unit_retaliation] The target gains [paralysis] .", cardImage: "https://en.homm3bg.wiki/assets/units-dungeon-silver-medusas-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/medusas/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -323,6 +323,220 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
       url: "https://en.homm3bg.wiki/units/black_dragons/"
     }
   },
+  // ---- Rampart expansion -------------------------------------------------
+  "rampart.centaurs": {
+    id: "rampart.centaurs",
+    name: "Centaurs",
+    faction: "rampart",
+    tier: "bronze",
+    type: "ground",
+    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 2 }, abilities: [], cardImage: "https://en.homm3bg.wiki/assets/units-rampart-bronze-centaurs-few.webp" },
+    pack: { attack: 3, defense: 0, health: 3, initiative: 8, cost: { gold: 3 }, abilities: [], cardImage: "https://en.homm3bg.wiki/assets/units-rampart-bronze-centaurs-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/centaurs/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/centaurs/"
+    }
+  },
+  "rampart.dwarves": {
+    id: "rampart.dwarves",
+    name: "Dwarves",
+    faction: "rampart",
+    tier: "bronze",
+    type: "ground",
+    few: { attack: 2, defense: 1, health: 3, initiative: 3, cost: { gold: 3 }, abilities: [], abilityText: "[unit_passive] If this unit is targeted by any Spell or Specialty card, roll 1 Attack die. On a \"+1\" result, ignore the card's effect.", cardImage: "https://en.homm3bg.wiki/assets/units-rampart-bronze-dwarves-few.webp" },
+    pack: { attack: 3, defense: 1, health: 3, initiative: 5, cost: { gold: 4 }, abilities: [], abilityText: "[unit_passive] If this unit is targeted by any Spell or Specialty card, roll 1 Attack die. On a \"+1\" result, ignore the card's effect.", cardImage: "https://en.homm3bg.wiki/assets/units-rampart-bronze-dwarves-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/dwarves/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/dwarves/"
+    }
+  },
+  "rampart.elves": {
+    id: "rampart.elves",
+    name: "Elves",
+    faction: "rampart",
+    tier: "bronze",
+    type: "ranged",
+    few: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 4 }, abilities: [], cardImage: "https://en.homm3bg.wiki/assets/units-rampart-bronze-elves-few.webp" },
+    pack: { attack: 3, defense: 1, health: 3, initiative: 7, cost: { gold: 7 }, abilities: ["double-attack-low-roll"], abilityText: "[unit_attack] If a target is a non adjacent unit, on a \"-1\" or \"0\" result, attack this target again.", cardImage: "https://en.homm3bg.wiki/assets/units-rampart-bronze-elves-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/elves/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/elves/"
+    }
+  },
+  "rampart.pegasi": {
+    id: "rampart.pegasi",
+    name: "Pegasi",
+    faction: "rampart",
+    tier: "silver",
+    type: "flying",
+    few: { attack: 3, defense: 0, health: 5, initiative: 8, cost: { gold: 6 }, abilities: [], cardImage: "https://en.homm3bg.wiki/assets/units-rampart-silver-pegasi-few.webp" },
+    pack: { attack: 4, defense: 0, health: 6, initiative: 12, cost: { gold: 10 }, abilities: [], abilityText: "[unit_passive] The [power] of all enemy spells is reduced by 1 (to a minimum of 0).", cardImage: "https://en.homm3bg.wiki/assets/units-rampart-silver-pegasi-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/pegasi/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/pegasi/"
+    }
+  },
+  "rampart.dendroids": {
+    id: "rampart.dendroids",
+    name: "Dendroids",
+    faction: "rampart",
+    tier: "silver",
+    type: "ground",
+    few: { attack: 4, defense: 2, health: 5, initiative: 3, cost: { gold: 8 }, abilities: [], cardImage: "https://en.homm3bg.wiki/assets/units-rampart-silver-dendroids-few.webp" },
+    pack: { attack: 4, defense: 2, health: 6, initiative: 4, cost: { gold: 15 }, abilities: [], abilityText: "[unit_passive] Enemy units that start activation adjacent to this unit cannot move.", cardImage: "https://en.homm3bg.wiki/assets/units-rampart-silver-dendroids-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/dendroids/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/dendroids/"
+    }
+  },
+  "rampart.unicorns": {
+    id: "rampart.unicorns",
+    name: "Unicorns",
+    faction: "rampart",
+    tier: "gold",
+    type: "ground",
+    few: { attack: 5, defense: 1, health: 8, initiative: 7, cost: { gold: 11 }, abilities: [], abilityText: "[unit_passive] Reduce any [damage] from [spell] dealt to this unit by 1 (to a minimum of 0).", cardImage: "https://en.homm3bg.wiki/assets/units-rampart-golden-unicorns-few.webp" },
+    pack: { attack: 6, defense: 1, health: 8, initiative: 9, cost: { gold: 18, valuables: 1 }, abilities: [], abilityText: "1 [valuables] [unit_passive] Reduce any [damage] from [spell] dealt to this and adjacent friendly unit(s) by 1 (to a minimum of 0).", cardImage: "https://en.homm3bg.wiki/assets/units-rampart-golden-unicorns-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/unicorns/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/unicorns/"
+    }
+  },
+  "rampart.gold_dragons": {
+    id: "rampart.gold_dragons",
+    name: "Gold Dragons",
+    faction: "rampart",
+    tier: "gold",
+    type: "flying",
+    few: { attack: 5, defense: 3, health: 9, initiative: 10, cost: { gold: 22, valuables: 1 }, abilities: [], abilityText: "1 [valuables] [unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 2 [attack].", cardImage: "https://en.homm3bg.wiki/assets/units-rampart-golden-gold_dragons-few.webp" },
+    pack: { attack: 6, defense: 3, health: 10, initiative: 16, cost: { gold: 30, valuables: 2 }, abilities: [], abilityText: "2 [valuables] [unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 3 [attack].", cardImage: "https://en.homm3bg.wiki/assets/units-rampart-golden-gold_dragons-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/gold_dragons/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/gold_dragons/"
+    }
+  },
+
+  // ---- Inferno expansion ---------------------------------------------------
+  "inferno.familiars": {
+    id: "inferno.familiars",
+    name: "Familiars",
+    faction: "inferno",
+    tier: "bronze",
+    type: "ground",
+    few: { attack: 2, defense: 1, health: 2, initiative: 5, cost: { gold: 2 }, abilities: [], cardImage: "https://en.homm3bg.wiki/assets/units-inferno-bronze-familiars-few.webp" },
+    pack: { attack: 3, defense: 1, health: 2, initiative: 7, cost: { gold: 3 }, abilities: [], abilityText: "[unit_passive] Whenever an enemy casts a [spell] from hand, they must discard 1 card from hand.", cardImage: "https://en.homm3bg.wiki/assets/units-inferno-bronze-familiars-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/familiars/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/familiars/"
+    }
+  },
+  "inferno.magogs": {
+    id: "inferno.magogs",
+    name: "Magogs",
+    faction: "inferno",
+    tier: "bronze",
+    type: "ranged",
+    few: { attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 3 }, abilities: [], cardImage: "https://en.homm3bg.wiki/assets/units-inferno-bronze-magogs-few.webp" },
+    pack: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 5 }, abilities: ["splash-damage"], abilityText: "[unit_attack] When Magogs attack a target that is not adjacent to them, they also deal 1 [damage] to a unit adjacent to the target.", cardImage: "https://en.homm3bg.wiki/assets/units-inferno-bronze-magogs-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/magogs/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/magogs/"
+    }
+  },
+  "inferno.cerberi": {
+    id: "inferno.cerberi",
+    name: "Cerberi",
+    faction: "inferno",
+    tier: "bronze",
+    type: "ground",
+    few: { attack: 3, defense: 0, health: 4, initiative: 7, cost: { gold: 4 }, abilities: [], cardImage: "https://en.homm3bg.wiki/assets/units-inferno-bronze-cerberi-few.webp" },
+    pack: { attack: 3, defense: 1, health: 5, initiative: 8, cost: { gold: 7 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignores Retaliation Attacks. Additionally, deals 1 [damage] to another enemy unit adjacent to Cerberi.", cardImage: "https://en.homm3bg.wiki/assets/units-inferno-bronze-cerberi-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/cerberi/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/cerberi/"
+    }
+  },
+  "inferno.demons": {
+    id: "inferno.demons",
+    name: "Demons",
+    faction: "inferno",
+    tier: "silver",
+    type: "ground",
+    few: { attack: 3, defense: 2, health: 4, initiative: 5, cost: { gold: 6 }, abilities: [], cardImage: "https://en.homm3bg.wiki/assets/units-inferno-silver-demons-few.webp" },
+    pack: { attack: 3, defense: 2, health: 5, initiative: 6, cost: { gold: 8 }, abilities: [], cardImage: "https://en.homm3bg.wiki/assets/units-inferno-silver-demons-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/demons/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/demons/"
+    }
+  },
+  "inferno.pit_lords": {
+    id: "inferno.pit_lords",
+    name: "Pit Lords",
+    faction: "inferno",
+    tier: "silver",
+    type: "ground",
+    few: { attack: 4, defense: 1, health: 6, initiative: 6, cost: { gold: 8 }, abilities: [], cardImage: "https://en.homm3bg.wiki/assets/units-inferno-silver-pit_lords-few.webp" },
+    pack: { attack: 5, defense: 1, health: 6, initiative: 7, cost: { gold: 15 }, abilities: ["summon-demons"], abilityText: "[unit_other] If one of your units has been removed from the board during this Combat, Summon or Reinforce Demons.", cardImage: "https://en.homm3bg.wiki/assets/units-inferno-silver-pit_lords-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/pit_lords/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/pit_lords/"
+    }
+  },
+  "inferno.efreet": {
+    id: "inferno.efreet",
+    name: "Efreet",
+    faction: "inferno",
+    tier: "gold",
+    type: "flying",
+    few: { attack: 5, defense: 1, health: 7, initiative: 9, cost: { gold: 12 }, abilities: [], abilityText: "[unit_passive] Ignores any [damage] from Magic Arrows.", cardImage: "https://en.homm3bg.wiki/assets/units-inferno-golden-efreet-few.webp" },
+    pack: { attack: 6, defense: 1, health: 7, initiative: 13, cost: { gold: 18, valuables: 1 }, abilities: [], abilityText: "1 [valuables] [unit_passive] Ignores any [damage] from Magic Arrows or spells from the Fire School of Magic.", cardImage: "https://en.homm3bg.wiki/assets/units-inferno-golden-efreet-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/efreet/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/efreet/"
+    }
+  },
+  "inferno.arch_devils": {
+    id: "inferno.arch_devils",
+    name: "Arch Devils",
+    faction: "inferno",
+    tier: "gold",
+    type: "flying",
+    few: { attack: 6, defense: 3, health: 8, initiative: 11, cost: { gold: 22, valuables: 1 }, abilities: ["ignores-retaliation"], abilityText: "1 [valuables] [unit_attack] Ignores Retaliation Attacks.", cardImage: "https://en.homm3bg.wiki/assets/units-inferno-golden-arch_devils-few.webp" },
+    pack: { attack: 7, defense: 3, health: 9, initiative: 15, cost: { gold: 30, valuables: 2 }, abilities: ["ignores-retaliation", "teleport-move"], abilityText: "2 [valuables] [unit_attack] Ignores Retaliation Attacks. [unit_passive] As a regular movement, the Arch Devils can move to any empty space.", cardImage: "https://en.homm3bg.wiki/assets/units-inferno-golden-arch_devils-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/arch_devils/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/arch_devils/"
+    }
+  },
+
   "neutral.boars": {
     id: "neutral.boars",
     name: "Boars",
@@ -343,7 +557,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ranged",
-    neutral: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 6 }, abilities: [], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-bronze-evil_eyes.webp" },
+    neutral: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 6 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-bronze-evil_eyes.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/evil_eyes/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -385,7 +599,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ranged",
-    neutral: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 5 }, abilities: [], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one. Ignore combat penalties.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-bronze-halflings.webp" },
+    neutral: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 5 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one. Ignore combat penalties.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-bronze-halflings.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/halflings/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -399,7 +613,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "flying",
-    neutral: { attack: 2, defense: 0, health: 4, initiative: 8, cost: { gold: 5 }, abilities: [], abilityText: "[unit_attack] Ignore the Retaliation Attack. This unit can return to the space from which it moved to attack.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-bronze-harpies.webp" },
+    neutral: { attack: 2, defense: 0, health: 4, initiative: 8, cost: { gold: 5 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack. This unit can return to the space from which it moved to attack.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-bronze-harpies.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/harpies/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -413,7 +627,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ranged",
-    neutral: { attack: 2, defense: 0, health: 3, initiative: 5, cost: { gold: 7 }, abilities: [], abilityText: "[unit_attack] If a target is a non-adjacent unit, attack this target again.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-bronze-marksmen.webp" },
+    neutral: { attack: 2, defense: 0, health: 3, initiative: 5, cost: { gold: 7 }, abilities: ["double-attack"], abilityText: "[unit_attack] If a target is a non-adjacent unit, attack this target again.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-bronze-marksmen.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/marksmen/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -539,7 +753,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ranged",
-    neutral: { attack: 3, defense: 1, health: 4, initiative: 6, cost: { gold: 11 }, abilities: [], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units. [unit_retaliation] The target is [paralysis] .", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-silver-medusas.webp" },
+    neutral: { attack: 3, defense: 1, health: 4, initiative: 6, cost: { gold: 11 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units. [unit_retaliation] The target is [paralysis] .", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-silver-medusas.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/medusas/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -595,7 +809,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ranged",
-    neutral: { attack: 3, defense: 0, health: 6, initiative: 9, cost: { gold: 10 }, abilities: [], abilityText: "[unit_attack] Ignore the combat penalties.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-silver-sharpshooters.webp" },
+    neutral: { attack: 3, defense: 0, health: 6, initiative: 9, cost: { gold: 10 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_attack] Ignore the combat penalties.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-silver-sharpshooters.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/sharpshooters/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -609,7 +823,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "flying",
-    neutral: { attack: 3, defense: 0, health: 5, initiative: 8, cost: { gold: 9 }, abilities: [], abilityText: "[unit_attack] Ignore Enemy's Retaliation Attack. Then remove up to 2 [damage] from this unit.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-silver-vampires.webp" },
+    neutral: { attack: 3, defense: 0, health: 5, initiative: 8, cost: { gold: 9 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore Enemy's Retaliation Attack. Then remove up to 2 [damage] from this unit.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-silver-vampires.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/vampires/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -623,7 +837,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ranged",
-    neutral: { attack: 3, defense: 0, health: 5, initiative: 5, cost: { gold: 12 }, abilities: [], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-silver-zealots.webp" },
+    neutral: { attack: 3, defense: 0, health: 5, initiative: 5, cost: { gold: 12 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-silver-zealots.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/zealots/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -797,6 +1011,118 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
       credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
       url: "https://en.homm3bg.wiki/units/crystal_dragons/"
+    }
+  },
+  "neutral.cerberi": {
+    id: "neutral.cerberi",
+    name: "Cerberi",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ground",
+    neutral: { attack: 2, defense: 0, health: 5, initiative: 8, cost: { gold: 10 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignores Retaliation Attacks. Additionally, deals 1 [damage] to another enemy unit adjacent to Cerberi.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-bronze-cerberi.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/cerberi/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/cerberi/"
+    }
+  },
+  "neutral.familiars": {
+    id: "neutral.familiars",
+    name: "Familiars",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ground",
+    neutral: { attack: 3, defense: 1, health: 2, initiative: 7, cost: { gold: 6 }, abilities: [], abilityText: "[unit_passive] Whenever an enemy casts a [spell] from hand, they must discard 1 card from hand.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-bronze-familiars.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/familiars/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/familiars/"
+    }
+  },
+  "neutral.magogs": {
+    id: "neutral.magogs",
+    name: "Magogs",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ranged",
+    neutral: { attack: 2, defense: 0, health: 4, initiative: 6, cost: { gold: 8 }, abilities: ["splash-damage"], abilityText: "[unit_attack] When Magogs attack a target that is non adjacent to them, they also deal 1 [damage] to a unit adjacent to the target.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-bronze-magogs.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/magogs/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/magogs/"
+    }
+  },
+  "neutral.demons": {
+    id: "neutral.demons",
+    name: "Demons",
+    faction: "neutral",
+    tier: "silver",
+    type: "ground",
+    neutral: { attack: 3, defense: 0, health: 8, initiative: 6, cost: { gold: 13 }, abilities: [], cardImage: "https://en.homm3bg.wiki/assets/units-neutral-silver-demons.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/demons/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/demons/"
+    }
+  },
+  "neutral.pit_lords": {
+    id: "neutral.pit_lords",
+    name: "Pit Lords",
+    faction: "neutral",
+    tier: "silver",
+    type: "ground",
+    neutral: { attack: 4, defense: 1, health: 5, initiative: 7, cost: { gold: 15 }, abilities: [], cardImage: "https://en.homm3bg.wiki/assets/units-neutral-silver-pit_lords.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/pit_lords/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/pit_lords/"
+    }
+  },
+  "neutral.arch_devils": {
+    id: "neutral.arch_devils",
+    name: "Arch Devils",
+    faction: "neutral",
+    tier: "gold",
+    type: "flying",
+    neutral: { attack: 5, defense: 2, health: 7, initiative: 10, cost: { gold: 23 }, abilities: [], abilityText: "[unit_attack] When attacking Archangels, this unit gains +2 [attack].", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-golden-arch_devils.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/arch_devils/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/arch_devils/"
+    }
+  },
+  "neutral.efreet": {
+    id: "neutral.efreet",
+    name: "Efreet",
+    faction: "neutral",
+    tier: "gold",
+    type: "flying",
+    neutral: { attack: 4, defense: 2, health: 6, initiative: 13, cost: { gold: 20 }, abilities: [], abilityText: "[unit_passive] Ignores any [damage] from Magic Arrows or spells from the Fire School of Magic.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-golden-efreet.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/efreet/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/efreet/"
+    }
+  },
+  "neutral.faerie_dragons": {
+    id: "neutral.faerie_dragons",
+    name: "Faerie Dragons",
+    faction: "neutral",
+    tier: "azure",
+    type: "flying",
+    neutral: { attack: 5, defense: 2, health: 8, initiative: 15, cost: { gold: 35, valuables: 2 }, abilities: [], abilityText: "2 [valuables] [activation] The selected unit suffers 2 [damage]. This is a [spell] that does not count towards your spell limit.", cardImage: "https://en.homm3bg.wiki/assets/units-neutral-azure-faerie_dragons.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/faerie_dragons/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/faerie_dragons/"
     }
   },
 };

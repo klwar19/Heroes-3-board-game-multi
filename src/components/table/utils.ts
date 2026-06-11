@@ -124,6 +124,10 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${unitName(state, event.unitId)} holds position.`;
     case "UNIT_REMOVED":
       return `${unitName(state, event.unitId)} is defeated.`;
+    case "UNIT_FLIPPED":
+      return `${event.unitName} pack is broken: flips to its Few side${event.excessDamage > 0 ? ` with ${event.excessDamage} carried-over damage` : ""}.`;
+    case "UNIT_TRANSFORMED":
+      return `${playerName(state, event.playerId)} places ${cardName(event.byCardId)}: the unit becomes ${event.newName}.`;
     case "COMBAT_ROUND_ENDED":
       return `Combat round ${event.round} ends.`;
     case "COMBAT_ENDED":

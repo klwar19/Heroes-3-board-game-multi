@@ -25,6 +25,7 @@ import {
   type PlayerVisibleState
 } from "@/engine";
 import { actionKey, cardName, formatCost, titleCase } from "@/components/table/utils";
+import { useCardZoom } from "@/components/table/zoom";
 
 const HEX_SIZE = 34;
 
@@ -163,6 +164,7 @@ export function HexMapBoard({
   }
 
   const cells: ReactNode[] = [];
+  const heroPawns: ReactNode[] = [];
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -270,21 +272,30 @@ export function HexMapBoard({
               {field.amount}
             </text>
           ) : null}
-          {occupants.map((occupant, index) => (
-            <g key={occupant.heroId} transform={`translate(${x + index * 10 - 5}, ${y - 4})`}>
-              <circle className="heroPawnBase" r={9.5} />
-              <circle fill={playerColor(state, occupant.playerId)} r={7.5} />
-              <line className="heroFlagPole" x1={0} x2={0} y1={-7} y2={-22} />
-              <path
-                d={`M0 -21 L13 -17 L0 -13 Z`}
-                fill={playerColor(state, occupant.playerId)}
-                stroke="#160d04"
-                strokeWidth={0.8}
-              />
-            </g>
-          ))}
         </g>
       );
+
+      // Hero pawns render in a separate top layer keyed by hero id so a move
+      // glides between fields on every seat instead of teleporting.
+      for (const [index, occupant] of occupants.entries()) {
+        heroPawns.push(
+          <g
+            className="heroPawn"
+            key={occupant.heroId}
+            style={{ transform: `translate(${x + index * 10 - 5}px, ${y - 4}px)` }}
+          >
+            <circle className="heroPawnBase" r={9.5} />
+            <circle fill={playerColor(state, occupant.playerId)} r={7.5} />
+            <line className="heroFlagPole" x1={0} x2={0} y1={-7} y2={-22} />
+            <path
+              d={`M0 -21 L13 -17 L0 -13 Z`}
+              fill={playerColor(state, occupant.playerId)}
+              stroke="#160d04"
+              strokeWidth={0.8}
+            />
+          </g>
+        );
+      }
     }
   }
 
@@ -325,6 +336,7 @@ export function HexMapBoard({
     <div className="hexMapWrap" aria-label="Adventure map">
       <svg className="hexMapSvg" viewBox={`${minX} ${minY} ${maxX - minX} ${maxY - minY}`}>
         {cells}
+        {heroPawns}
       </svg>
     </div>
   );
@@ -460,6 +472,7 @@ export function HeroBoardPanel({ state, playerId }: { state: GameState; playerId
 }
 
 export function ArmyPanel({ state, playerId }: { state: GameState; playerId: PlayerId }) {
+  const { zoomContent } = useCardZoom();
   const player = state.players[playerId];
   if (!player || player.army.length === 0) {
     return (
@@ -478,16 +491,33 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
           const def = coreUnitDefinitions[unit.unitDefId];
           const side = unit.side === "few" ? def?.few : def?.pack;
           return (
-            <li key={unit.id} title={side?.abilityText ?? def?.name}>
-              <span className={`tierDot ${def?.tier}`} />
-              <strong>
-                {unit.side === "few" ? "Few" : "Pack"} {def?.name ?? unit.unitDefId}
-              </strong>
-              {side ? (
-                <small>
-                  A{side.attack} D{side.defense} HP{side.health} I{side.initiative}
-                </small>
-              ) : null}
+            <li key={unit.id}>
+              <button
+                className="armyUnitRow"
+                onClick={() =>
+                  zoomContent({
+                    title: `${unit.side === "few" ? "Few" : "Pack of"} ${def?.name ?? unit.unitDefId}`,
+                    image: side?.cardImage,
+                    subtitle: def ? `${def.tier} ${def.type}` : undefined,
+                    lines: [
+                      side ? `Attack ${side.attack} · Defense ${side.defense} · HP ${side.health} · Initiative ${side.initiative}` : "",
+                      side?.abilityText ?? ""
+                    ].filter(Boolean)
+                  })
+                }
+                title={side?.abilityText ?? `Read ${def?.name ?? unit.unitDefId}`}
+                type="button"
+              >
+                <span className={`tierDot ${def?.tier}`} />
+                <strong>
+                  {unit.side === "few" ? "Few" : "Pack"} {def?.name ?? unit.unitDefId}
+                </strong>
+                {side ? (
+                  <small>
+                    A{side.attack} D{side.defense} HP{side.health} I{side.initiative}
+                  </small>
+                ) : null}
+              </button>
             </li>
           );
         })}
@@ -792,28 +822,47 @@ export function PileModal({
           </button>
         </header>
         {cardIds.length === 0 ? <small>Empty.</small> : null}
-        <ul>
-          {[...cardIds].reverse().map((cardId, index) => {
-            const card = kind === "cards" ? cardLibrary[cardId] : undefined;
-            const unit = kind === "units" ? coreUnitDefinitions[cardId] : undefined;
-            const image = card?.assets?.cardImage ?? unit?.neutral?.cardImage;
-            return (
-              <li key={`${cardId}-${index}`}>
-                {image ? (
-                  <img alt={card?.name ?? unit?.name ?? cardId} loading="lazy" referrerPolicy="no-referrer" src={image} />
-                ) : (
-                  <div className="pileFallback">{card?.name ?? unit?.name ?? cardName(cardId)}</div>
-                )}
-                <small>
-                  {index === 0 ? "top · " : ""}
-                  {card?.name ?? unit?.name ?? cardId}
-                </small>
-              </li>
-            );
-          })}
-        </ul>
+        <PileModalCards cardIds={cardIds} kind={kind} />
       </div>
     </div>
+  );
+}
+
+function PileModalCards({ cardIds, kind }: { cardIds: string[]; kind: "cards" | "units" }) {
+  const { zoomCard, zoomContent } = useCardZoom();
+
+  return (
+    <ul>
+      {[...cardIds].reverse().map((cardId, index) => {
+        const card = kind === "cards" ? cardLibrary[cardId] : undefined;
+        const unit = kind === "units" ? coreUnitDefinitions[cardId] : undefined;
+        const image = card?.assets?.cardImage ?? unit?.neutral?.cardImage;
+        const zoom = () =>
+          card
+            ? zoomCard(cardId)
+            : zoomContent({
+                title: unit?.name ?? cardId,
+                image,
+                subtitle: unit ? `${unit.tier} ${unit.type}` : undefined,
+                lines: [unit?.neutral?.abilityText ?? ""].filter(Boolean)
+              });
+        return (
+          <li key={`${cardId}-${index}`}>
+            <button className="pileCardButton" onClick={zoom} title="Read card" type="button">
+              {image ? (
+                <img alt={card?.name ?? unit?.name ?? cardId} loading="lazy" referrerPolicy="no-referrer" src={image} />
+              ) : (
+                <div className="pileFallback">{card?.name ?? unit?.name ?? cardName(cardId)}</div>
+              )}
+              <small>
+                {index === 0 ? "top · " : ""}
+                {card?.name ?? unit?.name ?? cardId}
+              </small>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

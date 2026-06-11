@@ -21,14 +21,17 @@ import {
   InspectPanel,
   LogDrawer
 } from "@/components/table/board";
-import { CardFrame, DeckWells, HandFan, OpponentBar, PlayerDock } from "@/components/table/seats";
+import { CardFrame, DeckWells, HandFan, HeroPanel, OpponentBar, PlayerDock } from "@/components/table/seats";
 import {
   DiceOverlay,
+  DrawOverlay,
   ReactionTray,
   RerollModal,
   SearchModal,
-  type DiceCue
+  type DiceCue,
+  type DrawCue
 } from "@/components/table/overlays";
+import { CardZoomProvider, useCardZoom, ZoomButton } from "@/components/table/zoom";
 import {
   AdventureDecksPanel,
   AdventureHud,
@@ -51,6 +54,12 @@ type GameRoomSnapshot = {
 };
 
 const OBSERVER_SEAT = "observer";
+
+/** Magnifier for the adventure hand; lives inside the CardZoomProvider. */
+function AdventureHandZoom({ cardId }: { cardId: string }) {
+  const { zoomCard } = useCardZoom();
+  return <ZoomButton label={`Read ${cardName(cardId)}`} onZoom={() => zoomCard(cardId)} />;
+}
 
 async function fetchRoom(roomId: string): Promise<GameRoomSnapshot> {
   const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
@@ -77,6 +86,7 @@ function makeDiceCue(state: GameState, event: Extract<GameEvent, { type: "ATTACK
     id: event.id,
     rolls: event.rolls,
     roll: event.roll,
+    dieMultiplier: event.dieMultiplier ?? 1,
     rollMode: event.rollMode,
     attackerName: unitName(state, event.attackerId),
     defenderName: unitName(state, event.defenderId),
@@ -106,18 +116,36 @@ export default function Home() {
     current: null,
     queue: []
   });
+  const [drawCue, setDrawCue] = useState<DrawCue | null>(null);
+  const [flippedUnitIds, setFlippedUnitIds] = useState<Set<string>>(new Set());
   const seenRollIdsRef = useRef<Set<string> | null>(null);
+  const seenDrawIdsRef = useRef<Set<string>>(new Set());
+  const seenFlipIdsRef = useRef<Set<string>>(new Set());
+  // The draw cue needs the live seat without resubscribing the SSE stream.
+  const viewerRef = useRef<PlayerId>("p1");
+  useEffect(() => {
+    viewerRef.current = viewerPlayerId;
+  }, [viewerPlayerId]);
 
-  // Every server snapshot funnels through here so new attack rolls cue the
-  // dice cinematic on every seat. The first snapshot only primes the
-  // seen-set, so a page reload does not replay old rolls.
+  // Every server snapshot funnels through here so new attack rolls, card
+  // draws and pack flips cue their animations on every seat. The first
+  // snapshot only primes the seen-sets, so a page reload does not replay
+  // old effects.
   const ingestServerState = useCallback((nextState: GameState) => {
     const rolls = nextState.eventLog.filter(
       (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> => event.type === "ATTACK_ROLLED"
     );
+    const draws = nextState.eventLog.filter(
+      (event): event is Extract<GameEvent, { type: "CARDS_DRAWN" }> => event.type === "CARDS_DRAWN"
+    );
+    const flips = nextState.eventLog.filter(
+      (event): event is Extract<GameEvent, { type: "UNIT_FLIPPED" }> => event.type === "UNIT_FLIPPED"
+    );
 
     if (!seenRollIdsRef.current) {
       seenRollIdsRef.current = new Set(rolls.map((event) => event.id));
+      seenDrawIdsRef.current = new Set(draws.map((event) => event.id));
+      seenFlipIdsRef.current = new Set(flips.map((event) => event.id));
     } else {
       const seen = seenRollIdsRef.current;
       const fresh = rolls.filter((event) => !seen.has(event.id));
@@ -133,6 +161,48 @@ export default function Home() {
           }
           return { ...current, queue };
         });
+      }
+
+      // Draw effect: show the cards leaving the deck for the hand. Only the
+      // drawing seat sees the faces; everyone else sees card backs.
+      const freshDraw = draws.filter((event) => !seenDrawIdsRef.current.has(event.id)).at(-1);
+      for (const event of draws) {
+        seenDrawIdsRef.current.add(event.id);
+      }
+      if (freshDraw && freshDraw.count > 0) {
+        const isViewer = freshDraw.playerId === viewerRef.current;
+        setDrawCue({
+          id: freshDraw.id,
+          playerName: nextState.players[freshDraw.playerId]?.name ?? freshDraw.playerId,
+          isViewer,
+          count: freshDraw.count,
+          cardIds: isViewer ? (nextState.players[freshDraw.playerId]?.hand.slice(-freshDraw.count) ?? []) : [],
+          reshuffled: freshDraw.reshuffledDiscard
+        });
+      }
+
+      // Pack-to-Few flips get a short card-flip animation on the board.
+      const freshFlips = flips.filter((event) => !seenFlipIdsRef.current.has(event.id));
+      for (const event of freshFlips) {
+        seenFlipIdsRef.current.add(event.id);
+      }
+      if (freshFlips.length > 0) {
+        setFlippedUnitIds((current) => {
+          const next = new Set(current);
+          for (const event of freshFlips) {
+            next.add(event.unitId);
+          }
+          return next;
+        });
+        window.setTimeout(() => {
+          setFlippedUnitIds((current) => {
+            const next = new Set(current);
+            for (const event of freshFlips) {
+              next.delete(event.unitId);
+            }
+            return next;
+          });
+        }, 2400);
       }
     }
 
@@ -387,6 +457,7 @@ export default function Home() {
     const overLimit = viewer ? handCards.length - refreshDiscards.length - viewer.limits.hand : 0;
 
     return (
+      <CardZoomProvider>
       <main className="tableRoot adventureRoot">
         <div className="tableTopRow">
           <AdventureHud
@@ -475,23 +546,25 @@ export default function Home() {
             ) : null}
             <div className="adventureHandCards">
               {handCards.map((cardId, index) => (
-                <button
-                  className={`adventureHandCard ${refreshDiscards.includes(index) ? "discarding" : ""}`}
-                  key={`${cardId}-${index}`}
-                  onClick={() =>
-                    refreshPending
-                      ? setRefreshDiscards((current) =>
-                          current.includes(index)
-                            ? current.filter((value) => value !== index)
-                            : [...current, index]
-                        )
-                      : undefined
-                  }
-                  title={refreshPending ? `Toggle discard ${cardName(cardId)}` : cardName(cardId)}
-                  type="button"
-                >
-                  <CardFrame cardId={cardId} className="handCardImage" />
-                </button>
+                <div className="adventureHandSlot" key={`${cardId}-${index}`}>
+                  <button
+                    className={`adventureHandCard ${refreshDiscards.includes(index) ? "discarding" : ""}`}
+                    onClick={() =>
+                      refreshPending
+                        ? setRefreshDiscards((current) =>
+                            current.includes(index)
+                              ? current.filter((value) => value !== index)
+                              : [...current, index]
+                          )
+                        : undefined
+                    }
+                    title={refreshPending ? `Toggle discard ${cardName(cardId)}` : cardName(cardId)}
+                    type="button"
+                  >
+                    <CardFrame cardId={cardId} className="handCardImage" />
+                  </button>
+                  <AdventureHandZoom cardId={cardId} />
+                </div>
               ))}
             </div>
           </div>
@@ -501,12 +574,15 @@ export default function Home() {
         <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
         <LogDrawer state={state} />
         {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
+        {drawCue ? <DrawOverlay cue={drawCue} key={drawCue.id} onDone={() => setDrawCue(null)} /> : null}
       </main>
+      </CardZoomProvider>
     );
   }
 
   // ---- Combat table (sandbox games and adventure combats) ------------------
   return (
+    <CardZoomProvider>
     <main className="tableRoot">
       <div className="tableTopRow">
         {isSeated ? <OpponentBar state={state} view={playerView} viewerPlayerId={viewerPlayerId} /> : <div />}
@@ -547,6 +623,7 @@ export default function Home() {
         <div className="boardColumn">
           <InitiativeRail state={state} />
           <BattlefieldBoard
+            flippedUnitIds={flippedUnitIds}
             legalActions={legalActions}
             onAction={submitAction}
             onInspect={setInspectedUnitId}
@@ -564,6 +641,10 @@ export default function Home() {
           ) : null}
         </div>
         <div className="rightRail">
+          {!adventureMode
+            ? // Battle simulator: both level 5 hero boards stay on the table.
+              seatIds.map((playerId) => <HeroPanel key={playerId} playerId={playerId} state={state} />)
+            : null}
           <InspectPanel state={state} unitId={inspectedUnitId} />
           {isSeated ? (
             <CommandDock
@@ -609,7 +690,9 @@ export default function Home() {
       <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
       <RerollModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
       {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
+      {drawCue && !dice.current ? <DrawOverlay cue={drawCue} key={drawCue.id} onDone={() => setDrawCue(null)} /> : null}
       {dice.current ? <DiceOverlay cue={dice.current} key={dice.current.id} onDone={dismissDice} /> : null}
     </main>
+    </CardZoomProvider>
   );
 }

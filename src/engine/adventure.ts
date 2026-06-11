@@ -17,6 +17,7 @@ import {
 } from "./hex";
 import { createSeededRandom } from "./random";
 import type {
+  ActiveEffectState,
   AdventureState,
   CombatUnitState,
   GameDifficulty,
@@ -757,6 +758,9 @@ export function processPendingVisit(state: GameState): void {
       case "ROLL_TREASURE_DICE":
         rollTreasureDice(state, visit, step.count);
         break;
+      case "CONSUME_LUCK":
+        consumeLuckReroll(state, step.effectId, step.dice);
+        break;
       case "SEARCH_SHARED_DECK":
         adventure.rewardQueue.push({
           playerId: visit.playerId,
@@ -787,6 +791,56 @@ function fieldName(state: GameState, fieldId: MapSpaceId): string {
   return field ? (locationDefinitions[field.location]?.name ?? field.location) : fieldId;
 }
 
+/**
+ * Finds an unused Luck reroll for the given adventure die. Basic Luck offers
+ * one Treasure and one Resource reroll per turn; Expert Luck offers a single
+ * reroll of any die.
+ */
+function getLuckRerollEffect(
+  state: GameState,
+  playerId: PlayerId,
+  dice: "treasure" | "resource"
+): ActiveEffectState | null {
+  return (
+    state.activeEffects.find(
+      (effect) =>
+        effect.controllerId === playerId &&
+        !effect.usedChoiceIds.includes(`luck:${dice}`) &&
+        effect.modifiers.some(
+          (modifier) =>
+            modifier.type === "ADVENTURE_DIE_REROLL" && (modifier.dice === dice || modifier.dice === "any")
+        )
+    ) ?? null
+  );
+}
+
+function consumeLuckReroll(state: GameState, effectId: string, dice: "treasure" | "resource"): void {
+  const effect = state.activeEffects.find((candidate) => candidate.id === effectId);
+  if (!effect) {
+    return;
+  }
+
+  const isAnyDie = effect.modifiers.some(
+    (modifier) => modifier.type === "ADVENTURE_DIE_REROLL" && modifier.dice === "any"
+  );
+
+  appendEvent(state, {
+    type: "ACTIVE_EFFECT_USED",
+    effectId: effect.id,
+    playerId: effect.controllerId,
+    target: { type: "none" }
+  });
+
+  // Expert Luck is one reroll of any die: spend the whole card. Basic Luck
+  // tracks the treasure and resource rerolls separately.
+  if (isAnyDie) {
+    state.activeEffects = state.activeEffects.filter((candidate) => candidate.id !== effectId);
+    return;
+  }
+
+  effect.usedChoiceIds.push(`luck:${dice}`);
+}
+
 function rollResourceDice(state: GameState, visit: PendingVisit, count: number): void {
   const random = adventureRandom(state, "resource-die");
   const rolls = Array.from({ length: count }, () => RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)]);
@@ -798,18 +852,32 @@ function rollResourceDice(state: GameState, visit: PendingVisit, count: number):
     results: rolls.map((roll) => `${roll.amount} ${roll.resource}`)
   });
 
-  if (rolls.length === 1) {
+  const luck = getLuckRerollEffect(state, visit.playerId, "resource");
+
+  if (rolls.length === 1 && !luck) {
     gainResources(state, visit.playerId, { [rolls[0].resource]: rolls[0].amount }, "resource die");
     return;
   }
 
+  const options = rolls.map((roll) => ({
+    label: `${roll.amount} ${roll.resource}`,
+    steps: [{ type: "GAIN_RESOURCES", [roll.resource]: roll.amount } as VisitStep]
+  }));
+
+  if (luck) {
+    options.push({
+      label: `Luck: reroll the Resource ${count > 1 ? "dice" : "die"}`,
+      steps: [
+        { type: "CONSUME_LUCK", effectId: luck.id, dice: "resource" } as VisitStep,
+        { type: "ROLL_RESOURCE_DICE", count } as VisitStep
+      ]
+    });
+  }
+
   visit.steps.unshift({
     type: "CHOOSE_ONE",
-    prompt: "Choose one resource die result",
-    options: rolls.map((roll) => ({
-      label: `${roll.amount} ${roll.resource}`,
-      steps: [{ type: "GAIN_RESOURCES", [roll.resource]: roll.amount } as VisitStep]
-    }))
+    prompt: rolls.length > 1 ? "Choose one resource die result" : "Resource die result",
+    options
   });
 }
 
@@ -850,18 +918,32 @@ function rollTreasureDice(state: GameState, visit: PendingVisit, count: number):
     results: rolls.map(treasureFaceLabel)
   });
 
-  if (rolls.length === 1) {
+  const luck = getLuckRerollEffect(state, visit.playerId, "treasure");
+
+  if (rolls.length === 1 && !luck) {
     visit.steps.unshift(...treasureFaceSteps(rolls[0]));
     return;
   }
 
+  const options = rolls.map((face) => ({
+    label: treasureFaceLabel(face),
+    steps: treasureFaceSteps(face)
+  }));
+
+  if (luck) {
+    options.push({
+      label: `Luck: reroll the Treasure ${count > 1 ? "dice" : "die"}`,
+      steps: [
+        { type: "CONSUME_LUCK", effectId: luck.id, dice: "treasure" } as VisitStep,
+        { type: "ROLL_TREASURE_DICE", count } as VisitStep
+      ]
+    });
+  }
+
   visit.steps.unshift({
     type: "CHOOSE_ONE",
-    prompt: "Choose one treasure die result",
-    options: rolls.map((face) => ({
-      label: treasureFaceLabel(face),
-      steps: treasureFaceSteps(face)
-    }))
+    prompt: rolls.length > 1 ? "Choose one treasure die result" : "Treasure die result",
+    options
   });
 }
 

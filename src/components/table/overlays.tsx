@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CircleOff, Crown, Dices, Hourglass, Undo2 } from "lucide-react";
+import { Check, CircleOff, Crown, Dices, Hourglass, Layers, Undo2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
 import {
@@ -15,7 +15,8 @@ import {
   type ReactionPlay
 } from "@/engine";
 import { cardName, formatDieFace, formatEvent, unitName } from "./utils";
-import { CardFrame } from "./seats";
+import { CardBack, CardFrame } from "./seats";
+import { useCardZoom, ZoomButton } from "./zoom";
 
 type ReactionLegal = Extract<GameAction, { type: "PLAY_REACTION" }>;
 
@@ -82,6 +83,7 @@ export function ReactionTray({
   // selection naturally resets whenever the timing window changes hands.
   const window = state.reactionWindow;
   const [selections, setSelections] = useState<TraySelection[]>([]);
+  const { zoomCard } = useCardZoom();
 
   const reactionActions = useMemo(
     () =>
@@ -210,6 +212,7 @@ export function ReactionTray({
           return (
             <div className={`trayTile ${selection ? "selected" : ""}`} key={`${tile.cardId}-${tile.handIndex}`}>
               <CardFrame cardId={tile.cardId} className="trayCardImage" />
+              <ZoomButton label={`Read ${cardName(tile.cardId)}`} onZoom={() => zoomCard(tile.cardId)} />
               <div className="trayTileBody">
                 <strong>{cardName(tile.cardId)}</strong>
                 {tile.groups.map((group) => {
@@ -306,6 +309,8 @@ export type DiceCue = {
   id: string;
   rolls: number[];
   roll: number;
+  /** Centaur's Axe: the die outcome counts this many times (default 1). */
+  dieMultiplier: number;
   rollMode: "normal" | "advantage" | "disadvantage";
   attackerName: string;
   defenderName: string;
@@ -385,12 +390,17 @@ export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void 
               value={roll}
             />
           ))}
+          {cue.dieMultiplier !== 1 && !rolling ? (
+            <span className="dieMultiplier" title="Centaur's Axe: the outcome counts three times">
+              ×{cue.dieMultiplier}
+            </span>
+          ) : null}
         </div>
         <div className={`diceBreakdown ${rolling ? "hidden" : ""}`}>
           <span className="formula">
-            ⚔ {cue.attackValue - cue.roll - cue.attackBonus}
-            {cue.attackBonus !== 0 ? ` + ${cue.attackBonus}` : ""} {cue.roll >= 0 ? "+" : "−"} {Math.abs(cue.roll)} ={" "}
-            {cue.attackValue}
+            ⚔ {cue.attackValue - cue.roll * cue.dieMultiplier - cue.attackBonus}
+            {cue.attackBonus !== 0 ? ` + ${cue.attackBonus}` : ""} {cue.roll >= 0 ? "+" : "−"} {Math.abs(cue.roll)}
+            {cue.dieMultiplier !== 1 ? `×${cue.dieMultiplier}` : ""} = {cue.attackValue}
           </span>
           <span className="versus">vs</span>
           <span className="formula">
@@ -400,6 +410,51 @@ export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void 
           <strong className={`damageResult ${cue.damage > 0 ? "hit" : "blocked"}`}>
             {cue.damage > 0 ? `${cue.damage} damage` : "No damage"}
           </strong>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Draw-card cinematic: cards visibly travel from the deck to the hand. For
+ * the drawing seat the actual card faces flash up; everyone else sees backs.
+ */
+export type DrawCue = {
+  id: string;
+  playerName: string;
+  isViewer: boolean;
+  count: number;
+  cardIds: string[];
+  reshuffled: boolean;
+};
+
+export function DrawOverlay({ cue, onDone }: { cue: DrawCue; onDone: () => void }) {
+  useEffect(() => {
+    const doneId = setTimeout(onDone, cue.isViewer ? 2100 : 1300);
+    return () => clearTimeout(doneId);
+  }, [cue, onDone]);
+
+  return (
+    <div aria-label={`${cue.playerName} draws ${cue.count} cards`} className="drawOverlay" onClick={onDone} role="status">
+      <div className="drawStage">
+        <header>
+          <Layers aria-hidden="true" size={14} />
+          <span>
+            {cue.playerName} draws {cue.count} card{cue.count === 1 ? "" : "s"}
+            {cue.reshuffled ? " (discard reshuffled)" : ""}
+          </span>
+        </header>
+        <div className="drawCards">
+          {Array.from({ length: Math.min(cue.count, 5) }, (_, index) => (
+            <div className="drawCard" key={index} style={{ animationDelay: `${index * 130}ms` }}>
+              {cue.isViewer && cue.cardIds[index] ? (
+                <CardFrame cardId={cue.cardIds[index]} className="drawCardImage" />
+              ) : (
+                <CardBack className="drawCardImage" />
+              )}
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -417,6 +472,7 @@ export function SearchModal({
   viewerPlayerId: PlayerId;
   onAction: (action: GameAction) => void;
 }) {
+  const { zoomCard } = useCardZoom();
   const choice = view.pendingChoice;
   if (!choice || choice.type !== "DECK_SEARCH") {
     return null;
@@ -444,22 +500,24 @@ export function SearchModal({
         </header>
         <div className="searchCards">
           {choice.revealedCardIds.map((cardId, index) => (
-            <button
-              className="searchCard"
-              key={`${cardId}-${index}`}
-              onClick={() =>
-                onAction({
-                  type: "RESOLVE_DECK_SEARCH",
-                  playerId: viewerPlayerId,
-                  choiceId: choice.id,
-                  pick: { kind: "revealed", index }
-                })
-              }
-              type="button"
-            >
-              <CardFrame cardId={cardId} className="searchCardImage" />
-              <span>Keep {cardName(cardId)}</span>
-            </button>
+            <div className="searchCardWrap" key={`${cardId}-${index}`}>
+              <button
+                className="searchCard"
+                onClick={() =>
+                  onAction({
+                    type: "RESOLVE_DECK_SEARCH",
+                    playerId: viewerPlayerId,
+                    choiceId: choice.id,
+                    pick: { kind: "revealed", index }
+                  })
+                }
+                type="button"
+              >
+                <CardFrame cardId={cardId} className="searchCardImage" />
+                <span>Keep {cardName(cardId)}</span>
+              </button>
+              <ZoomButton label={`Read ${cardName(cardId)}`} onZoom={() => zoomCard(cardId)} />
+            </div>
           ))}
           {choice.canTakeDiscardTop ? (
             <button

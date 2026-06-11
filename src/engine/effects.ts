@@ -8,6 +8,8 @@ export const implementedCardEffectTypes = [
   "DRAW_CARDS",
   "CHOOSE_ONE",
   "ADD_COMBAT_STAT",
+  "TRIPLE_ATTACK_DIE",
+  "TRANSFORM_UNIT",
   "ADD_SPELL_POWER",
   "GAIN_MORALE",
   "CREATE_ACTIVE_EFFECT",
@@ -140,7 +142,16 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "ADD_COMBAT_STAT") {
-    return `+${card.effect.amount} ${card.effect.stat}, expert +${card.effect.expertAmount ?? card.effect.amount}`;
+    const doubled = card.effect.doubleForUnitName ? ` (x2 for ${card.effect.doubleForUnitName})` : "";
+    return `+${card.effect.amount} ${card.effect.stat}, expert +${card.effect.expertAmount ?? card.effect.amount}${doubled}`;
+  }
+
+  if (card.effect.type === "TRIPLE_ATTACK_DIE") {
+    return "triple the Attack die's outcome";
+  }
+
+  if (card.effect.type === "TRANSFORM_UNIT") {
+    return `place on ${card.effect.targetVariants.join("/")} ${card.effect.targetUnitName}: becomes ${card.effect.newName} (A${card.effect.attack} D${card.effect.defense} HP${card.effect.health} I${card.effect.initiative})`;
   }
 
   if (card.effect.type === "ADD_SPELL_POWER") {

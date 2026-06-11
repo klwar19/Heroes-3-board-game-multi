@@ -16,8 +16,16 @@ const castMagicArrow = {
   type: "CAST_SPELL",
   playerId: "p1",
   cardId: "spell.magic_arrow",
-  target: { type: "unit", unitId: "unit_p2_pit_lords" }
+  target: { type: "unit", unitId: "unit_p2_vampires" }
 } satisfies GameAction;
+
+/** Initial state with p1 holding Magic Arrow so the classic spell flow works. */
+function arrowState(): GameState {
+  const state = createInitialGameState();
+  state.players.p1.hand = ["spell.magic_arrow", "stat.power", "stat.power"];
+  state.players.p2.hand = ["ability.resistance", "stat.defense"];
+  return state;
+}
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -88,6 +96,32 @@ describe("rules engine prototype", () => {
     expect(unitGrades).toEqual(new Set(["bronze", "silver", "gold"]));
   });
 
+  it("sets up the level 5 battle simulator: 6-card hands with specialty, statistics, artifact and spell", () => {
+    const state = createInitialGameState();
+
+    expect(state.heroes.hero_p1).toMatchObject({ heroDefId: "catherine", level: 5 });
+    expect(state.heroes.hero_p2).toMatchObject({ heroDefId: "sandro", level: 5 });
+    expect(state.players.p1.limits).toEqual({ hand: 6, expertUses: 2 });
+    expect(state.players.p1.hand).toHaveLength(6);
+    expect(state.players.p1.hand).toContain("specialty.catherine.1");
+    expect(state.players.p1.hand).toContain("stat.attack");
+    expect(state.players.p1.hand).toContain("artifact.centaurs_axe");
+    expect(state.players.p1.hand).toContain("spell.bloodlust");
+    expect(state.players.p2.hand).toHaveLength(6);
+    expect(state.players.p2.hand).toContain("specialty.sandro.1");
+    expect(state.players.p2.hand).toContain("spell.magic_arrow");
+    expect(state.combat?.obstacles).toEqual([8, 11]);
+    // Units come from the real roster, so flips and abilities stay in sync.
+    expect(state.combat?.units.unit_p1_marksmen).toMatchObject({
+      unitDefId: "castle.marksmen",
+      abilities: ["double-attack"]
+    });
+    expect(state.combat?.units.unit_p2_vampires).toMatchObject({
+      unitDefId: "necropolis.vampires",
+      abilities: ["ignores-retaliation"]
+    });
+  });
+
   it("lists active-unit combat actions, movement actions, and spell cards for the active player", () => {
     const state = createInitialGameState();
     const legalActions = getLegalActions(state, "p1");
@@ -101,8 +135,48 @@ describe("rules engine prototype", () => {
     expect(actionTypes).not.toContain("END_TURN");
   });
 
+  it("lets the non-active player cast their one spell per combat round at any time", () => {
+    const state = createInitialGameState();
+    expect(state.combat?.activeUnitId).toBe("unit_p1_griffins");
+    expect(state.activePlayerId).toBe("p1");
+
+    // It's p1's activation, yet p2 may cast a spell right now.
+    const p2Actions = getLegalActions(state, "p2");
+    const p2Cast = p2Actions.find(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"
+    );
+    expect(p2Cast).toBeDefined();
+
+    const casted = applyOk(state, {
+      type: "CAST_SPELL",
+      playerId: "p2",
+      cardId: "spell.magic_arrow",
+      target: { type: "unit", unitId: "unit_p1_crusaders" }
+    });
+    const resolved = passAllReactions(casted);
+    expect(resolved.players.p2.combatStats.spellsCastThisRound).toBe(1);
+
+    // The limit of 1 spell per combat round now blocks a second cast.
+    resolved.players.p2.hand.push("spell.magic_arrow");
+    expect(
+      getLegalActions(resolved, "p2").some((legal) => legal.action.type === "CAST_SPELL")
+    ).toBe(false);
+
+    // A new combat round resets the limit.
+    if (!resolved.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    resolved.combat.activeUnitId = null;
+    resolved.activePlayerId = "p1";
+    const nextRound = applyOk(resolved, { type: "END_COMBAT_ROUND", playerId: "p1" });
+    expect(nextRound.players.p2.combatStats.spellsCastThisRound).toBe(0);
+    expect(
+      getLegalActions(nextRound, "p2").some((legal) => legal.action.type === "CAST_SPELL")
+    ).toBe(true);
+  });
+
   it("opens a reaction window after a spell is cast, starting with the caster's Power timing", () => {
-    const result = applyAction(createInitialGameState(), castMagicArrow);
+    const result = applyAction(arrowState(), castMagicArrow);
 
     expect(result.errors).toEqual([]);
     expect(result.state.phase).toBe("reaction");
@@ -114,13 +188,13 @@ describe("rules engine prototype", () => {
   });
 
   it("resolves Magic Arrow damage after all reactions pass", () => {
-    const casted = applyAction(createInitialGameState(), castMagicArrow).state;
+    const casted = applyAction(arrowState(), castMagicArrow).state;
     const result = passAllReactions(casted);
 
     expect(result.phase).toBe("combat");
     expect(result.reactionWindow).toBeNull();
     expect(result.stack).toEqual([]);
-    expect(result.combat?.units.unit_p2_pit_lords.damage).toBe(2);
+    expect(result.combat?.units.unit_p2_vampires.damage).toBe(2);
     expect(findEvent(result, "DAMAGE_ASSIGNED")).toMatchObject({
       amount: 2,
       damageKind: "spell"
@@ -131,14 +205,18 @@ describe("rules engine prototype", () => {
   });
 
   it("ends combat when spell damage defeats the last opposing unit", () => {
-    const state = createInitialGameState();
+    const state = arrowState();
     if (!state.combat) {
       throw new Error("Expected combat setup.");
     }
 
-    state.combat.units.unit_p2_pit_lords.damage = 4;
-    state.combat.units.unit_p2_magogs.damage = 3;
-    state.combat.units.unit_p2_dread_knights.damage = 6;
+    // Vampires sit on their Few side at 1 HP; everything else is defeated.
+    state.combat.units.unit_p2_vampires.variant = "few";
+    state.combat.units.unit_p2_vampires.maxHealth = 4;
+    state.combat.units.unit_p2_vampires.damage = 3;
+    state.combat.units.unit_p2_skeletons.damage = 2;
+    state.combat.units.unit_p2_skeletons.variant = "few";
+    state.combat.units.unit_p2_dread_knights.damage = 7;
 
     const casted = applyAction(state, castMagicArrow).state;
     const result = passAllReactions(casted);
@@ -157,8 +235,44 @@ describe("rules engine prototype", () => {
     });
   });
 
+  it("flips a defeated Pack to its Few side, carrying excess damage over", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    // Pack of Skeletons: 2 HP, defense 1. Griffins attack 3 + roll +1 = 4,
+    // so 3 damage hit a 2 HP pack: it flips to Few with 1 carried over.
+    state.combat.units.unit_p1_griffins.position = 9;
+    setActiveUnit(state, "p1", "unit_p1_griffins");
+    scriptDice(state, [1, -1]);
+
+    const result = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+
+    const skeletons = result.combat?.units.unit_p2_skeletons;
+    expect(findEvent(result, "UNIT_FLIPPED")).toMatchObject({
+      unitId: "unit_p2_skeletons",
+      excessDamage: 1
+    });
+    expect(skeletons).toMatchObject({
+      variant: "few",
+      cardName: "Few Skeletons",
+      maxHealth: 2,
+      damage: 1
+    });
+    expect(findEvent(result, "UNIT_REMOVED")).toBeUndefined();
+    // The flipped Few side is still in the fight and retaliates as normal.
+    expect(findEvent(result, "RETALIATION_ATTACKED")).toBeDefined();
+  });
+
   it("lets Resistance cancel a pending spell after the caster passes", () => {
-    const casted = applyAction(createInitialGameState(), castMagicArrow).state;
+    const casted = applyAction(arrowState(), castMagicArrow).state;
     const p1Passed = passPriority(casted);
     const result = applyOk(p1Passed, {
       type: "PLAY_REACTION",
@@ -169,7 +283,7 @@ describe("rules engine prototype", () => {
     expect(result.phase).toBe("combat");
     expect(result.reactionWindow).toBeNull();
     expect(result.stack).toEqual([]);
-    expect(result.combat?.units.unit_p2_pit_lords.damage).toBe(0);
+    expect(result.combat?.units.unit_p2_vampires.damage).toBe(0);
     expect(result.players.p2.discard).toContain("ability.resistance");
     expect(findEvent(result, "SPELL_CAST_CANCELLED")).toMatchObject({
       cancelledByPlayerId: "p2",
@@ -178,7 +292,7 @@ describe("rules engine prototype", () => {
   });
 
   it("uses a crown for expert Power and pushes Magic Arrow above basic Resistance", () => {
-    const casted = applyAction(createInitialGameState(), castMagicArrow).state;
+    const casted = applyAction(arrowState(), castMagicArrow).state;
     const powered = applyOk(casted, {
       type: "PLAY_REACTION",
       playerId: "p1",
@@ -203,7 +317,7 @@ describe("rules engine prototype", () => {
     const result = passAllReactions(powered);
 
     expect(result.reactionWindow).toBeNull();
-    expect(result.combat?.units.unit_p2_pit_lords.damage).toBe(3);
+    expect(result.combat?.units.unit_p2_vampires.damage).toBe(3);
     expect(result.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
     expect(result.players.p1.discard).toEqual(["spell.magic_arrow", "stat.power"]);
     expect(findEvent(result, "CARD_PLAYED")).toMatchObject({
@@ -235,7 +349,7 @@ describe("rules engine prototype", () => {
     expect(resolved.players.p1.discard).toEqual(["stat.knowledge"]);
     expect(resolved.players.p1.combatStats.spellLimitBonusThisRound).toBe(1);
     expect(resolved.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
-    expect(resolved.combat?.units.unit_p2_pit_lords.damage).toBe(2);
+    expect(resolved.combat?.units.unit_p2_vampires.damage).toBe(2);
   });
 
   it("lets a unit move, then attack after Attack and Defense cards modify the roll", () => {
@@ -245,7 +359,6 @@ describe("rules engine prototype", () => {
     }
     state.players.p1.hand = ["stat.attack"];
     state.players.p2.hand = ["stat.defense"];
-    state.combat.units.unit_p2_pit_lords.damage = 3;
     scriptDice(state, [0]);
 
     const moved = applyOk(state, {
@@ -258,7 +371,7 @@ describe("rules engine prototype", () => {
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_pit_lords"
+      defenderId: "unit_p2_vampires"
     });
     const attackBoosted = applyOk(declared, {
       type: "PLAY_REACTION",
@@ -277,12 +390,12 @@ describe("rules engine prototype", () => {
     expect(resolved.combat?.units.unit_p1_griffins.position).toBe(10);
     expect(resolved.combat?.units.unit_p1_griffins.movedThisActivation).toBe(true);
     expect(resolved.combat?.units.unit_p1_griffins.activatedThisRound).toBe(true);
-    expect(resolved.combat?.units.unit_p2_pit_lords.damage).toBe(6);
-    expect(resolved.combat?.activeUnitId).toBe("unit_p1_elves");
+    // Griffins 3 + 2 expert attack + roll 0 = 5 vs Vampires 1 + 1 defense = 2.
+    expect(resolved.combat?.units.unit_p2_vampires.damage).toBe(3);
     expect(resolved.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
     expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_pit_lords",
+      defenderId: "unit_p2_vampires",
       rolls: [0],
       roll: 0,
       attackBonus: 2,
@@ -306,15 +419,38 @@ describe("rules engine prototype", () => {
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_pit_lords"
+      defenderId: "unit_p2_vampires"
     });
 
     expect(result.errors).toEqual([]);
     expect(result.state.phase).toBe("combat");
     expect(result.state.priorityPlayerId).toBeNull();
     expect(result.state.reactionWindow).toBeNull();
-    expect(result.state.combat?.activeUnitId).toBe("unit_p1_elves");
+    expect(result.state.combat?.activeUnitId).toBe("unit_p2_vampires");
     expect(findEvent(result.state, "RETALIATION_ATTACKED")).toBeDefined();
+  });
+
+  it("never lets attacks against Vampires retaliate (No Retaliation ability)", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    // Vampires (ignores-retaliation) attack adjacent Crusaders.
+    state.combat.units.unit_p2_vampires.position = 10;
+    setActiveUnit(state, "p2", "unit_p2_vampires");
+    scriptDice(state, [0]);
+
+    const result = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: "unit_p2_vampires",
+      defenderId: "unit_p1_crusaders"
+    });
+
+    expect(findEvent(result, "RETALIATION_ATTACKED")).toBeUndefined();
+    expect(result.combat?.units.unit_p2_vampires.activatedThisRound).toBe(true);
   });
 
   it("applies ranged back-row disadvantage by rolling two dice and taking the lower result", () => {
@@ -324,24 +460,22 @@ describe("rules engine prototype", () => {
     }
     state.players.p1.hand = [];
     state.players.p2.hand = [];
-    state.combat.units.unit_p1_griffins.activatedThisRound = true;
-    setActiveUnit(state, "p1", "unit_p1_elves");
+    setActiveUnit(state, "p1", "unit_p1_marksmen");
     scriptDice(state, [0, 1]);
 
+    // Marksmen in their own backline shoot the opposite backline.
     const result = applyAction(state, {
       type: "ATTACK_UNIT",
       playerId: "p1",
-      attackerId: "unit_p1_elves",
-      defenderId: "unit_p2_magogs"
+      attackerId: "unit_p1_marksmen",
+      defenderId: "unit_p2_dread_knights"
     });
 
     expect(result.errors).toEqual([]);
-    expect(result.state.combat?.units.unit_p2_magogs.damage).toBe(3);
     expect(findEvent(result.state, "ATTACK_ROLLED")).toMatchObject({
       rolls: [0, 1],
       roll: 0,
-      rollMode: "disadvantage",
-      damage: 3
+      rollMode: "disadvantage"
     });
     expect(findEvent(result.state, "RETALIATION_ATTACKED")).toBeUndefined();
   });
@@ -351,10 +485,8 @@ describe("rules engine prototype", () => {
     if (!state.combat) {
       throw new Error("Expected combat setup.");
     }
-    state.combat.units.unit_p1_elves.position = 10;
-    state.combat.units.unit_p2_pit_lords.position = 14;
-    state.combat.units.unit_p1_griffins.activatedThisRound = true;
-    setActiveUnit(state, "p1", "unit_p1_elves");
+    state.combat.units.unit_p2_skeletons.position = 2;
+    setActiveUnit(state, "p1", "unit_p1_marksmen");
 
     const legalActions = getLegalActions(state, "p1");
     const attackTargets = legalActions
@@ -362,8 +494,9 @@ describe("rules engine prototype", () => {
       .filter((action): action is Extract<GameAction, { type: "ATTACK_UNIT" }> => action.type === "ATTACK_UNIT")
       .map((action) => action.defenderId);
 
-    expect(attackTargets).toContain("unit_p2_pit_lords");
-    expect(attackTargets).not.toContain("unit_p2_magogs");
+    expect(attackTargets).toContain("unit_p2_skeletons");
+    expect(attackTargets).not.toContain("unit_p2_vampires");
+    expect(attackTargets).not.toContain("unit_p2_dread_knights");
   });
 
   it("applies ranged melee disadvantage by rolling two dice and taking the lower result", () => {
@@ -373,17 +506,15 @@ describe("rules engine prototype", () => {
     }
     state.players.p1.hand = [];
     state.players.p2.hand = [];
-    state.combat.units.unit_p1_elves.position = 10;
-    state.combat.units.unit_p2_pit_lords.position = 14;
-    state.combat.units.unit_p1_griffins.activatedThisRound = true;
-    setActiveUnit(state, "p1", "unit_p1_elves");
+    state.combat.units.unit_p2_skeletons.position = 2;
+    setActiveUnit(state, "p1", "unit_p1_marksmen");
     scriptDice(state, [0, 1]);
 
     const result = applyAction(state, {
       type: "ATTACK_UNIT",
       playerId: "p1",
-      attackerId: "unit_p1_elves",
-      defenderId: "unit_p2_pit_lords"
+      attackerId: "unit_p1_marksmen",
+      defenderId: "unit_p2_skeletons"
     });
 
     expect(result.errors).toEqual([]);
@@ -394,6 +525,161 @@ describe("rules engine prototype", () => {
     });
   });
 
+  it("attacks a non-adjacent target twice with Double Attack and stops at the second attack", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    // Skeletons (Pack, 2 HP, defense 1) far from the Marksmen at position 1.
+    setActiveUnit(state, "p1", "unit_p1_marksmen");
+    scriptDice(state, [1, 1]);
+
+    const result = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_marksmen",
+      defenderId: "unit_p2_skeletons"
+    });
+
+    const attackRolls = result.eventLog.filter((event) => event.type === "ATTACK_ROLLED");
+    // Exactly two attacks: the printed second attack triggers once and never
+    // chains into a third.
+    expect(attackRolls).toHaveLength(2);
+    expect(result.combat?.units.unit_p1_marksmen.attacksThisActivation).toBe(2);
+    expect(findEvent(result, "UNIT_ABILITY_TRIGGERED")).toMatchObject({
+      abilityId: "double-attack"
+    });
+    // First hit (2+1-1=2) breaks the pack: it flips to Few; the second hit
+    // (2 damage vs 2 HP Few side) removes it.
+    expect(findEvent(result, "UNIT_FLIPPED")).toMatchObject({ unitId: "unit_p2_skeletons" });
+    expect(findEvent(result, "UNIT_REMOVED")).toMatchObject({ unitId: "unit_p2_skeletons" });
+    // The shooter still owes its 1-space step, so it stays active.
+    expect(result.combat?.activeUnitId).toBe("unit_p1_marksmen");
+  });
+
+  it("only triggers the Elves-style double attack on a -1 or 0 first roll", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.combat.units.unit_p1_marksmen.abilities = ["double-attack-low-roll"];
+    setActiveUnit(state, "p1", "unit_p1_marksmen");
+
+    // A +1 first roll does not trigger the follow-up shot (Vampires sit in
+    // row 4, so no backline-to-backline disadvantage muddies the roll).
+    scriptDice(state, [1]);
+    const highRoll = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_marksmen",
+      defenderId: "unit_p2_vampires"
+    });
+    expect(highRoll.eventLog.filter((event) => event.type === "ATTACK_ROLLED")).toHaveLength(1);
+
+    // A 0 first roll triggers exactly one follow-up.
+    const retry = createInitialGameState();
+    if (!retry.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    retry.players.p1.hand = [];
+    retry.players.p2.hand = [];
+    retry.combat.units.unit_p1_marksmen.abilities = ["double-attack-low-roll"];
+    setActiveUnit(retry, "p1", "unit_p1_marksmen");
+    scriptDice(retry, [0, 0]);
+    const lowRoll = applyOk(retry, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_marksmen",
+      defenderId: "unit_p2_vampires"
+    });
+    expect(lowRoll.eventLog.filter((event) => event.type === "ATTACK_ROLLED")).toHaveLength(2);
+  });
+
+  it("triples the attack die outcome with the Centaur's Axe", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = ["artifact.centaurs_axe"];
+    state.players.p2.hand = [];
+    scriptDice(state, [1]);
+
+    const moved = applyOk(state, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+      destination: 10
+    });
+    const declared = applyOk(moved, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_vampires"
+    });
+    expect(declared.phase).toBe("reaction");
+
+    const tripled = applyOk(declared, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "artifact.centaurs_axe",
+      optionIndex: 0
+    });
+    const resolved = passAllReactions(tripled);
+
+    // Griffins 3 attack + (+1 roll x3) = 6 vs Vampires defense 1 = 5 damage.
+    expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({
+      roll: 1,
+      dieMultiplier: 3,
+      attackValue: 6,
+      damage: 5
+    });
+  });
+
+  it("doubles Catherine's specialty bonus when Crusaders attack", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = ["specialty.catherine.1"];
+    state.players.p2.hand = [];
+    state.combat.units.unit_p1_crusaders.position = 10;
+    setActiveUnit(state, "p1", "unit_p1_crusaders");
+    scriptDice(state, [0, 0]);
+
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_crusaders",
+      defenderId: "unit_p2_vampires"
+    });
+    const boosted = applyOk(declared, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "specialty.catherine.1",
+      optionIndex: 0
+    });
+    // Crusaders carry their printed reroll, so keep the first roll.
+    const pending = passAllReactions(boosted);
+    expect(pending.pendingChoice?.type).toBe("ATTACK_DIE_REROLL");
+    const resolved = applyOk(pending, {
+      type: "CHOOSE_PENDING_ROLL",
+      playerId: "p1",
+      choiceId: pending.pendingChoice?.id ?? "",
+      candidateIndex: 0
+    });
+
+    // +1 attack doubles to +2 because the attacker is the Crusaders.
+    const rolls = resolved.eventLog.filter((event) => event.type === "ATTACK_ROLLED");
+    expect(rolls[0]).toMatchObject({
+      attackerId: "unit_p1_crusaders",
+      attackBonus: 2
+    });
+  });
+
   it("ends combat when an attack defeats the last opposing unit", () => {
     const state = createInitialGameState();
     if (!state.combat) {
@@ -401,17 +687,19 @@ describe("rules engine prototype", () => {
     }
     state.players.p1.hand = [];
     state.players.p2.hand = [];
-    state.combat.units.unit_p1_griffins.activatedThisRound = true;
-    state.combat.units.unit_p2_pit_lords.damage = 6;
-    state.combat.units.unit_p2_magogs.damage = 2;
+    state.combat.units.unit_p2_vampires.variant = "few";
+    state.combat.units.unit_p2_vampires.damage = 4;
+    state.combat.units.unit_p2_skeletons.variant = "few";
+    state.combat.units.unit_p2_skeletons.damage = 2;
     state.combat.units.unit_p2_dread_knights.damage = 6;
-    setActiveUnit(state, "p1", "unit_p1_elves");
+    setActiveUnit(state, "p1", "unit_p1_marksmen");
+    scriptDice(state, [1, 1]);
 
     const result = applyAction(state, {
       type: "ATTACK_UNIT",
       playerId: "p1",
-      attackerId: "unit_p1_elves",
-      defenderId: "unit_p2_magogs"
+      attackerId: "unit_p1_marksmen",
+      defenderId: "unit_p2_dread_knights"
     });
 
     expect(result.errors).toEqual([]);
@@ -436,7 +724,7 @@ describe("rules engine prototype", () => {
     expect(result.state.combat?.activeUnitId).toBe("unit_p1_griffins");
     expect(
       getLegalActions(result.state, "p1").some(
-        (legal) => legal.action.type === "ATTACK_UNIT" && legal.action.defenderId === "unit_p2_pit_lords"
+        (legal) => legal.action.type === "ATTACK_UNIT" && legal.action.defenderId === "unit_p2_vampires"
       )
     ).toBe(true);
     expect(getLegalActions(result.state, "p1").some((legal) => legal.action.type === "DEFEND_UNIT")).toBe(true);
@@ -448,36 +736,37 @@ describe("rules engine prototype", () => {
     });
   });
 
-  it("requires non-flying units to use the crossing row before switching sides", () => {
+  it("blocks ground movement paths with units and obstacle tokens, but not flying", () => {
     const state = createInitialGameState();
     if (!state.combat) {
       throw new Error("Expected combat setup.");
     }
+    // Crusaders (ground) at 7: position 15 is 2 steps away, but the only
+    // 3-step-or-less paths run through the obstacle at 11 or the occupied 14.
+    state.combat.units.unit_p1_crusaders.position = 7;
+    setActiveUnit(state, "p1", "unit_p1_crusaders");
 
-    state.activePlayerId = "p2";
-    state.combat.activeUnitId = "unit_p2_pit_lords";
+    const groundDestinations = getLegalActions(state, "p1")
+      .map((legal) => legal.action)
+      .filter((action): action is Extract<GameAction, { type: "MOVE_UNIT" }> => action.type === "MOVE_UNIT")
+      .map((action) => action.destination);
 
-    const illegalDirectCrossing = applyAction(state, {
-      type: "MOVE_UNIT",
-      playerId: "p2",
-      unitId: "unit_p2_pit_lords",
-      destination: 6
-    });
-    const legalLaneMove = applyAction(state, {
-      type: "MOVE_UNIT",
-      playerId: "p2",
-      unitId: "unit_p2_pit_lords",
-      destination: 10
-    });
+    expect(groundDestinations).not.toContain(11); // obstacle space itself
+    expect(groundDestinations).not.toContain(15); // blocked path
+    expect(groundDestinations).toContain(10); // open route through the middle
 
-    expect(illegalDirectCrossing.errors).toEqual([
-      {
-        code: "ACTION_NOT_LEGAL",
-        message: "That action is not legal in the current game state."
-      }
-    ]);
-    expect(legalLaneMove.errors).toEqual([]);
-    expect(legalLaneMove.state.combat?.units.unit_p2_pit_lords.position).toBe(10);
+    // Flying griffins from the same spot pass over the obstacle freely.
+    state.combat.units.unit_p1_crusaders.position = 6;
+    state.combat.units.unit_p1_griffins.position = 7;
+    setActiveUnit(state, "p1", "unit_p1_griffins");
+
+    const flyingDestinations = getLegalActions(state, "p1")
+      .map((legal) => legal.action)
+      .filter((action): action is Extract<GameAction, { type: "MOVE_UNIT" }> => action.type === "MOVE_UNIT")
+      .map((action) => action.destination);
+
+    expect(flyingDestinations).toContain(15);
+    expect(flyingDestinations).not.toContain(11); // still cannot land on it
   });
 
   it("lets a unit defend and advances activation", () => {
@@ -490,21 +779,59 @@ describe("rules engine prototype", () => {
     expect(result.errors).toEqual([]);
     expect(result.state.combat?.units.unit_p1_griffins.defenseToken).toBe(true);
     expect(result.state.combat?.units.unit_p1_griffins.activatedThisRound).toBe(true);
-    expect(result.state.combat?.activeUnitId).toBe("unit_p1_elves");
+    expect(result.state.combat?.activeUnitId).toBe("unit_p2_vampires");
     expect(findEvent(result.state, "UNIT_DEFENDED")).toBeDefined();
   });
 
-  it("plays an ongoing Archery effect only on the active player's turn and expires it at combat round end", () => {
+  it("keeps the defense token across the round end until the unit's next activation", () => {
+    const state = createInitialGameState();
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    setActiveUnit(state, "p1", "unit_p1_crusaders");
+
+    const defended = applyOk(state, {
+      type: "DEFEND_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_crusaders"
+    });
+    expect(defended.combat?.units.unit_p1_crusaders.defenseToken).toBe(true);
+
+    defended.combat!.activeUnitId = null;
+    defended.activePlayerId = "p1";
+    const nextRound = applyOk(defended, { type: "END_COMBAT_ROUND", playerId: "p1" });
+
+    // The token survives the round end (Griffins activate first)...
+    expect(nextRound.combat?.activeUnitId).toBe("unit_p1_griffins");
+    expect(nextRound.combat?.units.unit_p1_crusaders.defenseToken).toBe(true);
+
+    // ...and is discarded the moment the Crusaders activate again.
+    const afterGriffins = applyOk(nextRound, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    expect(afterGriffins.combat?.activeUnitId).toBe("unit_p2_vampires");
+    const afterVampires = applyOk(afterGriffins, { type: "DEFEND_UNIT", playerId: "p2", unitId: "unit_p2_vampires" });
+    expect(afterVampires.combat?.units.unit_p1_crusaders.defenseToken).toBe(true);
+    const afterDread = applyOk(afterVampires, {
+      type: "DEFEND_UNIT",
+      playerId: "p2",
+      unitId: "unit_p2_dread_knights"
+    });
+    expect(afterDread.combat?.activeUnitId).toBe("unit_p1_crusaders");
+    expect(afterDread.combat?.units.unit_p1_crusaders.defenseToken).toBe(false);
+  });
+
+  it("plays an ongoing Archery effect only on the active player's own activation and expires it at round end", () => {
     const state = createInitialGameState();
     if (!state.combat) {
       throw new Error("Expected combat setup.");
     }
     state.players.p1.hand = ["ability.archery"];
     state.players.p2.hand = ["ability.archery"];
-    state.combat.units.unit_p1_griffins.activatedThisRound = true;
-    setActiveUnit(state, "p1", "unit_p1_elves");
-    scriptDice(state, [0]);
+    setActiveUnit(state, "p1", "unit_p1_marksmen");
+    scriptDice(state, [0, 0]);
 
+    // Ongoing cards belong to your own unit's activation, never the enemy's.
     expect(
       getLegalActions(state, "p2").some(
         (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.archery"
@@ -527,17 +854,16 @@ describe("rules engine prototype", () => {
     const resolved = applyOk(played, {
       type: "ATTACK_UNIT",
       playerId: "p1",
-      attackerId: "unit_p1_elves",
-      defenderId: "unit_p2_pit_lords"
+      attackerId: "unit_p1_marksmen",
+      defenderId: "unit_p2_vampires"
     });
 
     expect(resolved.reactionWindow).toBeNull();
     expect(resolved.activeEffects).toHaveLength(1);
     expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({
-      attackerId: "unit_p1_elves",
-      defenderId: "unit_p2_pit_lords",
-      attackBonus: 1,
-      damage: 3
+      attackerId: "unit_p1_marksmen",
+      defenderId: "unit_p2_vampires",
+      attackBonus: 1
     });
 
     if (!resolved.combat) {
@@ -555,6 +881,59 @@ describe("rules engine prototype", () => {
     expect(findEvent(nextRound, "ACTIVE_EFFECT_EXPIRED")).toMatchObject({
       reason: "combat-round-ended"
     });
+  });
+
+  it("plays expert Luck at your own activation for one consumable any-die reroll", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = ["ability.luck"];
+    state.players.p2.hand = [];
+    scriptDice(state, [-1, 1]);
+
+    // Ongoing timing: legal during the controller's own activation.
+    const luckPlay = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.luck" && legal.action.mode === "expert"
+    );
+    expect(luckPlay).toBeDefined();
+
+    const played = applyOk(state, luckPlay!.action);
+    expect(played.activeEffects.map((effect) => effect.name)).toContain("Expert Luck");
+
+    const moved = applyOk(played, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+      destination: 10
+    });
+    const pending = applyOk(moved, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_vampires"
+    });
+    expect(pending.pendingChoice).toMatchObject({
+      type: "ATTACK_DIE_REROLL",
+      remainingRerolls: 1
+    });
+
+    const rerolled = applyOk(pending, {
+      type: "REROLL_PENDING_CHOICE",
+      playerId: "p1",
+      choiceId: pending.pendingChoice?.id ?? ""
+    });
+    const resolved = applyOk(rerolled, {
+      type: "CHOOSE_PENDING_ROLL",
+      playerId: "p1",
+      choiceId: rerolled.pendingChoice?.id ?? "",
+      candidateIndex: 1
+    });
+
+    // "Reroll any die once during this turn": the effect is spent.
+    expect(resolved.activeEffects.map((effect) => effect.name)).not.toContain("Expert Luck");
+    expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({ roll: 1 });
   });
 
   it("opens a pending reroll choice from Fortune before attack damage is assigned", () => {
@@ -587,7 +966,7 @@ describe("rules engine prototype", () => {
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_pit_lords"
+      defenderId: "unit_p2_vampires"
     });
 
     expect(pending.phase).toBe("choice");
@@ -597,7 +976,7 @@ describe("rules engine prototype", () => {
       remainingRerolls: 2,
       candidates: [{ roll: 0 }]
     });
-    expect(pending.combat?.units.unit_p2_pit_lords.damage).toBe(0);
+    expect(pending.combat?.units.unit_p2_vampires.damage).toBe(0);
 
     const rerolled = applyOk(pending, {
       type: "REROLL_PENDING_CHOICE",
@@ -618,7 +997,7 @@ describe("rules engine prototype", () => {
 
     expect(resolved.pendingChoice).toBeNull();
     expect(resolved.activeEffects).toEqual([]);
-    expect(resolved.combat?.units.unit_p2_pit_lords.damage).toBe(3);
+    expect(resolved.combat?.units.unit_p2_vampires.damage).toBe(3);
     expect(findEvent(resolved, "ATTACK_REROLLED")).toMatchObject({
       roll: 1
     });
@@ -651,7 +1030,6 @@ describe("rules engine prototype", () => {
       usedChoiceIds: [],
       usedCombatRoundNumbers: []
     });
-    state.combat.units.unit_p1_griffins.activatedThisRound = true;
     setActiveUnit(state, "p1", "unit_p1_crusaders");
     scriptDice(state, [-1, 0, 1]);
 
@@ -665,7 +1043,7 @@ describe("rules engine prototype", () => {
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_crusaders",
-      defenderId: "unit_p2_pit_lords"
+      defenderId: "unit_p2_vampires"
     });
 
     // Ability + Luck stack to two optional rerolls; Luck is queued last.
@@ -736,7 +1114,7 @@ describe("rules engine prototype", () => {
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_pit_lords"
+      defenderId: "unit_p2_vampires"
     });
     expect(pending.pendingChoice?.type).toBe("ATTACK_DIE_REROLL");
 
@@ -791,6 +1169,35 @@ describe("rules engine prototype", () => {
     });
     expect(findEvent(result, "ACTIVE_EFFECTS_REMOVED")).toMatchObject({
       effectIds: ["effect_curse"]
+    });
+  });
+
+  it("places Sandro's Cloak on the Pack of Skeletons and replaces its statistics", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p2.hand = ["specialty.sandro.1"];
+    state.players.p1.hand = [];
+    // Specialty cards play at your own unit's activation.
+    setActiveUnit(state, "p2", "unit_p2_skeletons");
+
+    const transformPlay = getLegalActions(state, "p2").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.sandro.1"
+    );
+    expect(transformPlay).toBeDefined();
+
+    const transformed = applyOk(state, transformPlay!.action);
+    expect(transformed.combat?.units.unit_p2_skeletons).toMatchObject({
+      name: "Horde of Skeletons",
+      attack: 3,
+      defense: 1,
+      maxHealth: 2,
+      initiative: 6
+    });
+    expect(findEvent(transformed, "UNIT_TRANSFORMED")).toMatchObject({
+      unitId: "unit_p2_skeletons",
+      newName: "Horde of Skeletons"
     });
   });
 
@@ -963,10 +1370,10 @@ describe("rules engine prototype", () => {
   it("rejects illegal actions with a useful rules error", () => {
     const state = createInitialGameState();
     const result = applyAction(state, {
-      type: "CAST_SPELL",
+      type: "ATTACK_UNIT",
       playerId: "p2",
-      cardId: "spell.magic_arrow",
-      target: { type: "unit", unitId: "unit_p1_griffins" }
+      attackerId: "unit_p2_vampires",
+      defenderId: "unit_p1_griffins"
     });
 
     expect(result.state).toBe(state);
@@ -979,7 +1386,7 @@ describe("rules engine prototype", () => {
   });
 
   it("builds a player view without leaking opponent hands, deck order, or reaction choices", () => {
-    const state = createInitialGameState();
+    const state = arrowState();
     state.decks = {
       p1: {
         id: "p1",
@@ -992,33 +1399,16 @@ describe("rules engine prototype", () => {
     const p1View = getPlayerView(casted, "p1");
     const p2View = getPlayerView(casted, "p2");
 
-    expect(p1View.players.p1.hand).toEqual([
-      "spell.lightning_bolt",
-      "spell.stone_skin",
-      "spell.bloodlust",
-      "spell.cure",
-      "spell.fortune",
-      "stat.attack",
-      "stat.power",
-      "stat.knowledge",
-      "ability.archery",
-      "ability.offense",
-      "ability.luck",
-      "artifact.centaurs_axe",
-      "artifact.ogres_club_of_havoc",
-      "artifact.titans_gladius",
-      "artifact.breastplate_of_petrified_wood",
-      "war_machine.first_aid_tent"
-    ]);
-    expect(p1View.players.p1.handCount).toBe(16);
+    expect(p1View.players.p1.hand).toEqual(["stat.power", "stat.power"]);
+    expect(p1View.players.p1.handCount).toBe(2);
     expect(p1View.players.p2.hand).toEqual([]);
-    expect(p1View.players.p2.handCount).toBe(4);
+    expect(p1View.players.p2.handCount).toBe(2);
     expect(p1View.decks.p1.drawCount).toBe(2);
     expect(Object.hasOwn(p1View.decks.p1, "drawPile")).toBe(false);
     expect(p1View.players.p1.deck).toEqual([]);
-    expect(p1View.players.p1.deckCount).toBe(6);
+    expect(p1View.players.p1.deckCount).toBe(8);
     expect(p1View.players.p2.deck).toEqual([]);
-    expect(p1View.players.p2.deckCount).toBe(4);
+    expect(p1View.players.p2.deckCount).toBe(7);
     expect(p1View.reactionWindow?.legalReactions.p2).toBeUndefined();
     expect(p1View.reactionWindow?.legalReactions.p1?.[0]?.action).toEqual({
       type: "PLAY_REACTION",
@@ -1034,12 +1424,7 @@ describe("rules engine prototype", () => {
     });
 
     p2View.players.p2.hand.push("spell.magic_arrow");
-    expect(casted.players.p2.hand).toEqual([
-      "ability.resistance",
-      "stat.defense",
-      "stat.attack",
-      "artifact.buckler_of_the_gnoll_king"
-    ]);
+    expect(casted.players.p2.hand).toEqual(["ability.resistance", "stat.defense"]);
   });
 
   it("uses the real six-face attack die (two -1, two 0, two +1) for unscripted rolls", () => {
@@ -1064,7 +1449,7 @@ describe("rules engine prototype", () => {
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_pit_lords"
+      defenderId: "unit_p2_vampires"
     });
 
     const rolled = findEvent(attacked, "ATTACK_ROLLED");
@@ -1088,7 +1473,7 @@ describe("rules engine prototype", () => {
         type: "ATTACK_UNIT",
         playerId: "p1",
         attackerId: "unit_p1_griffins",
-        defenderId: "unit_p2_pit_lords"
+        defenderId: "unit_p2_vampires"
       });
       return findEvent(attacked, "ATTACK_ROLLED")?.roll;
     };
@@ -1105,9 +1490,8 @@ describe("rules engine prototype", () => {
     if (!state.combat) {
       throw new Error("Expected combat setup.");
     }
-    // Elves have an orthogonal move range of 1 and start at position 1 (row 0, col 1).
-    state.combat.units.unit_p1_griffins.activatedThisRound = true;
-    setActiveUnit(state, "p1", "unit_p1_elves");
+    // Marksmen have an orthogonal move range of 1 and start at position 1.
+    setActiveUnit(state, "p1", "unit_p1_marksmen");
 
     const destinations = getLegalActions(state, "p1")
       .map((legal) => legal.action)
@@ -1116,8 +1500,8 @@ describe("rules engine prototype", () => {
 
     expect(destinations).toContain(0);
     expect(destinations).toContain(2);
-    expect(destinations).not.toContain(4);
-    expect(destinations).not.toContain(6);
+    expect(destinations).not.toContain(4); // diagonal
+    expect(destinations).not.toContain(6); // two steps
   });
 
   it("gives melee and flying units 3 movement points and ranged units 1", () => {
@@ -1127,8 +1511,8 @@ describe("rules engine prototype", () => {
     }
 
     expect(getUnitMoveRange(state.combat.units.unit_p1_griffins)).toBe(3); // flying
-    expect(getUnitMoveRange(state.combat.units.unit_p2_pit_lords)).toBe(3); // ground
-    expect(getUnitMoveRange(state.combat.units.unit_p1_elves)).toBe(1); // ranged
+    expect(getUnitMoveRange(state.combat.units.unit_p1_crusaders)).toBe(3); // ground
+    expect(getUnitMoveRange(state.combat.units.unit_p1_marksmen)).toBe(1); // ranged
   });
 
   it("lets a ranged unit reposition after shooting", () => {
@@ -1138,75 +1522,68 @@ describe("rules engine prototype", () => {
     }
     state.players.p1.hand = [];
     state.players.p2.hand = [];
-    state.combat.units.unit_p1_griffins.activatedThisRound = true;
-    setActiveUnit(state, "p1", "unit_p1_elves");
-    scriptDice(state, [0]);
+    setActiveUnit(state, "p1", "unit_p1_marksmen");
+    scriptDice(state, [-1, -1]);
 
     const shot = applyOk(state, {
       type: "ATTACK_UNIT",
       playerId: "p1",
-      attackerId: "unit_p1_elves",
-      defenderId: "unit_p2_pit_lords"
+      attackerId: "unit_p1_marksmen",
+      defenderId: "unit_p2_vampires"
     });
 
-    // The shooter stays active and may still spend its move.
-    expect(shot.combat?.activeUnitId).toBe("unit_p1_elves");
-    expect(shot.combat?.units.unit_p1_elves.attackedThisActivation).toBe(true);
-    expect(shot.combat?.units.unit_p1_elves.activatedThisRound).toBe(false);
-    // 2 from the shot (3 attack + 0 roll - 1 defense) plus 1 from the Elves'
-    // low-roll extra shot ability (roll of 0).
-    expect(shot.combat?.units.unit_p2_pit_lords.damage).toBe(3);
+    // The shooter stays active and may still spend its 1-space move.
+    expect(shot.combat?.activeUnitId).toBe("unit_p1_marksmen");
+    expect(shot.combat?.units.unit_p1_marksmen.attackedThisActivation).toBe(true);
+    expect(shot.combat?.units.unit_p1_marksmen.activatedThisRound).toBe(false);
 
-    const elfActions = getLegalActions(shot, "p1").map((legal) => legal.action.type);
-    expect(elfActions).toContain("MOVE_UNIT");
-    expect(elfActions).toContain("END_ACTIVATION");
-    expect(elfActions).not.toContain("ATTACK_UNIT");
-    expect(elfActions).not.toContain("DEFEND_UNIT");
+    const actionsAfterShot = getLegalActions(shot, "p1").map((legal) => legal.action.type);
+    expect(actionsAfterShot).toContain("MOVE_UNIT");
+    expect(actionsAfterShot).toContain("END_ACTIVATION");
+    expect(actionsAfterShot).not.toContain("ATTACK_UNIT");
+    expect(actionsAfterShot).not.toContain("DEFEND_UNIT");
 
     const moved = applyOk(shot, {
       type: "MOVE_UNIT",
       playerId: "p1",
-      unitId: "unit_p1_elves",
+      unitId: "unit_p1_marksmen",
       destination: 0
     });
 
     // After moving, the ranged unit's activation is complete.
-    expect(moved.combat?.units.unit_p1_elves.position).toBe(0);
-    expect(moved.combat?.units.unit_p1_elves.activatedThisRound).toBe(true);
-    expect(moved.combat?.activeUnitId).not.toBe("unit_p1_elves");
+    expect(moved.combat?.units.unit_p1_marksmen.position).toBe(0);
+    expect(moved.combat?.units.unit_p1_marksmen.activatedThisRound).toBe(true);
+    expect(moved.combat?.activeUnitId).not.toBe("unit_p1_marksmen");
   });
 
-  it("ends a ranged unit's activation when it moves before shooting", () => {
+  it("ends a ranged unit's activation immediately when it moves without shooting", () => {
     const state = createInitialGameState();
     if (!state.combat) {
       throw new Error("Expected combat setup.");
     }
     state.players.p1.hand = [];
     state.players.p2.hand = [];
-    state.combat.units.unit_p1_griffins.activatedThisRound = true;
-    setActiveUnit(state, "p1", "unit_p1_elves");
-    scriptDice(state, [0]);
+    setActiveUnit(state, "p1", "unit_p1_marksmen");
 
-    // Move first (range 1), then the unit may still shoot.
+    // "Move up to 1 space without attacking": the move spends the activation.
     const moved = applyOk(state, {
       type: "MOVE_UNIT",
       playerId: "p1",
-      unitId: "unit_p1_elves",
+      unitId: "unit_p1_marksmen",
       destination: 2
     });
-    expect(moved.combat?.activeUnitId).toBe("unit_p1_elves");
-    expect(moved.combat?.units.unit_p1_elves.movedThisActivation).toBe(true);
+    expect(moved.combat?.units.unit_p1_marksmen.movedThisActivation).toBe(true);
+    expect(moved.combat?.units.unit_p1_marksmen.activatedThisRound).toBe(true);
+    expect(moved.combat?.activeUnitId).not.toBe("unit_p1_marksmen");
 
-    const shot = applyOk(moved, {
+    // A ranged unit can never move first and then attack.
+    const sneakyShot = applyAction(moved, {
       type: "ATTACK_UNIT",
       playerId: "p1",
-      attackerId: "unit_p1_elves",
-      defenderId: "unit_p2_pit_lords"
+      attackerId: "unit_p1_marksmen",
+      defenderId: "unit_p2_vampires"
     });
-
-    // Having already moved, the shot ends the activation (no second move).
-    expect(shot.combat?.units.unit_p1_elves.activatedThisRound).toBe(true);
-    expect(shot.combat?.activeUnitId).not.toBe("unit_p1_elves");
+    expect(sneakyShot.errors).not.toEqual([]);
   });
 
   it("plays several attack instants in one batch and rolls the die only after all buffs commit", () => {
@@ -1229,7 +1606,7 @@ describe("rules engine prototype", () => {
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_pit_lords"
+      defenderId: "unit_p2_vampires"
     });
     expect(declared.phase).toBe("reaction");
     expect(declared.reactionWindow?.priorityPlayerId).toBe("p1");
@@ -1268,7 +1645,7 @@ describe("rules engine prototype", () => {
     const resolved = passAllReactions(defenderBatch);
     const rolled = findEvent(resolved, "ATTACK_ROLLED");
 
-    // Griffins 3 attack + 3 buffs + 0 roll vs Pit Lords 1 defense + 2 buffs.
+    // Griffins 3 attack + 3 buffs + 0 roll vs Vampires 1 defense + 2 buffs.
     expect(rolled).toMatchObject({
       attackBonus: 3,
       defenseBonus: 2,
@@ -1284,11 +1661,11 @@ describe("rules engine prototype", () => {
   });
 
   it("rejects batches that overspend crowns or sneak in spell-enders", () => {
-    const state = createInitialGameState();
-    state.players.p1.hand = ["spell.magic_arrow", "stat.power", "stat.power"];
+    const state = arrowState();
+    state.players.p1.limits.expertUses = 1;
     const casted = applyAction(state, castMagicArrow).state;
 
-    // p1 only has one crown: two expert plays must fail as one declaration.
+    // With only one crown, two expert plays must fail as one declaration.
     const overspent = applyAction(casted, {
       type: "PLAY_REACTIONS",
       playerId: "p1",
@@ -1329,7 +1706,7 @@ describe("rules engine prototype", () => {
   });
 
   it("lets expert Resistance end a spell of any power, while basic stays capped", () => {
-    const casted = applyAction(createInitialGameState(), castMagicArrow).state;
+    const casted = applyAction(arrowState(), castMagicArrow).state;
     const powered = applyOk(casted, {
       type: "PLAY_REACTION",
       playerId: "p1",
@@ -1355,7 +1732,7 @@ describe("rules engine prototype", () => {
     });
     expect(result.reactionWindow).toBeNull();
     expect(result.stack).toEqual([]);
-    expect(result.combat?.units.unit_p2_pit_lords.damage).toBe(0);
+    expect(result.combat?.units.unit_p2_vampires.damage).toBe(0);
     expect(result.players.p2.combatStats.expertUsesSpentThisRound).toBe(1);
     expect(findEvent(result, "SPELL_CAST_CANCELLED")).toMatchObject({
       cancelledByCardId: "ability.resistance"
