@@ -285,7 +285,19 @@ export type GameAction =
       mode?: CardPlayMode;
       optionIndex?: number;
     }
-  | { type: "ATTACK_UNIT"; playerId: PlayerId; attackerId: UnitId; defenderId: UnitId }
+  | {
+      type: "ATTACK_UNIT";
+      playerId: PlayerId;
+      attackerId: UnitId;
+      defenderId: UnitId;
+      /**
+       * Set when the attack is a printed-ability follow-up (Liches' Death
+       * Cloud): the base attack value replaces the unit's, the target may be
+       * any unit (friend, foe, or the attacker itself), and the attack never
+       * chains further follow-ups or retaliations of its own.
+       */
+      abilityAttack?: { abilityId: string; baseAttack: number };
+    }
   | {
       type: "MOVE_AND_ATTACK_UNIT";
       playerId: PlayerId;
@@ -398,11 +410,32 @@ export type GameAction =
     }
   | { type: "CHOOSE_OPTION"; playerId: PlayerId; choiceId: string; optionIndex: number }
   | {
+      /**
+       * Resolves an ABILITY_TARGET_CHOICE: picks the unit a printed attack
+       * ability hits (Magog fireball splash, Cerberi second head, Liches'
+       * Death Cloud) or, on AI target ties, the unit the neutrals attack.
+       */
+      type: "CHOOSE_ABILITY_TARGET";
+      playerId: PlayerId;
+      choiceId: string;
+      targetUnitId: UnitId;
+    }
+  | {
       /** Map-setup lobby: claim a faction and main hero for a seat. */
       type: "CHOOSE_FACTION";
       playerId: PlayerId;
       factionId: FactionId;
       heroDefId: string;
+    }
+  | {
+      /**
+       * Map-setup lobby: adjust the game options (scenario, neutral
+       * difficulty, starting resources/income/units/buildings) before the
+       * adventure starts. Any seated player may adjust them.
+       */
+      type: "SET_GAME_OPTIONS";
+      playerId: PlayerId;
+      options: Partial<GameSetupOptions>;
     }
   | {
       /** Map-setup lobby: build the scenario map once every seat has a faction. */
@@ -456,6 +489,8 @@ export type GameEvent =
       isRetaliation: boolean;
       attackKind: "melee" | "ranged";
       rollMode: AttackRollMode;
+      /** Set for printed-ability follow-up attacks (Liches' Death Cloud). */
+      abilityAttack?: { abilityId: string; baseAttack: number };
     }
   | {
       id: string;
@@ -478,7 +513,7 @@ export type GameEvent =
       id: string;
       type: "PENDING_CHOICE_CREATED";
       choiceId: string;
-      choiceType: "ATTACK_DIE_REROLL";
+      choiceType: "ATTACK_DIE_REROLL" | "ABILITY_TARGET_CHOICE";
       playerId: PlayerId;
       sourceEffectIds: string[];
       message: string;
@@ -907,6 +942,24 @@ export type GameEvent =
       unitDefIds: string[];
     }
   | {
+      /**
+       * The guard army is drawn and placed only after the player finishes
+       * their own placement (rulebook Combat Setup order).
+       */
+      id: string;
+      type: "NEUTRAL_ARMY_REVEALED";
+      playerId: PlayerId;
+      fieldId: MapSpaceId;
+      difficulty: number;
+      unitDefIds: string[];
+    }
+  | {
+      id: string;
+      type: "GAME_OPTIONS_CHANGED";
+      playerId: PlayerId;
+      message: string;
+    }
+  | {
       id: string;
       type: "PLAYER_COMBAT_STARTED";
       attackerPlayerId: PlayerId;
@@ -1162,6 +1215,20 @@ export type CombatSetupState = {
   unitLimit: number;
 };
 
+/**
+ * Follow-up bookkeeping for one resolved attack: printed attack abilities
+ * (splash, second heads, Death Cloud) resolve between the attack and the
+ * retaliation, so the retaliation is parked here until they finish.
+ */
+export type AttackSequenceState = {
+  attackerId: UnitId;
+  /** The original declared target (retaliation comes from this unit). */
+  defenderId: UnitId;
+  attackKind: "melee" | "ranged";
+  /** Whether the original target still owes its retaliation attack. */
+  retaliationPending: boolean;
+};
+
 export type CombatState = {
   id: string;
   round: number;
@@ -1170,6 +1237,13 @@ export type CombatState = {
   activeUnitId: UnitId | null;
   context: CombatContext;
   setup: CombatSetupState | null;
+  /** In-flight follow-ups of the attack that just resolved. */
+  attackSequence?: AttackSequenceState | null;
+  /**
+   * Neutral cards drawn after the player finished placement, awaiting the
+   * Groovy Satyr swap choice before the army is revealed and placed.
+   */
+  pendingNeutralDraws?: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[] | null;
   /**
    * Set between combat rounds against neutrals: the attacking hero must spend
    * 1 MP to continue for another round or retreat.
@@ -1287,11 +1361,6 @@ export type VisitStep =
       armyUnitId: string;
       halfCost: boolean;
     }
-  | {
-      /** Groovy Satyr: swap one drawn neutral for a fresh card of the same tier. */
-      type: "SATYR_SWAP";
-      drawIndex: number;
-    }
   | { type: "SEARCH_SHARED_DECK"; deckId: DeckId; count: number }
   | { type: "SETTLEMENT_CHOICE" }
   | { type: "MAGIC_SPRING" }
@@ -1318,13 +1387,6 @@ export type PendingTileChoice = {
   kind: "reveal" | "place";
 };
 
-export type PendingNeutralEncounter = {
-  heroId: HeroId;
-  fieldId: MapSpaceId;
-  difficulty: number;
-  draws: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
-};
-
 export type AdventureState = {
   difficulty: GameDifficulty;
   /** Scenario this map was built from (data/map/scenarios). */
@@ -1345,13 +1407,29 @@ export type AdventureState = {
   pendingTileChoice?: PendingTileChoice | null;
   /** Astrologers Proclaim deck state (even rounds). */
   astrologers?: AstrologersState;
-  /** Neutral encounter paused on a pre-combat choice (Groovy Satyr). */
-  pendingEncounter?: PendingNeutralEncounter | null;
+};
+
+/**
+ * Adjustable game options chosen during map setup (rulebook setup steps 1, 8,
+ * 9 and the difficulty choice): starting map, neutral difficulty (the Field
+ * Difficulty Level Table column — Impossible by default), starting resources,
+ * base income ("resource gain", 10 gold / 0 materials / 0 valuables by
+ * default), starting units and pre-built buildings.
+ */
+export type GameSetupOptions = {
+  scenarioId: string;
+  difficulty: GameDifficulty;
+  startingResources: { gold: number; buildingMaterials: number; valuables: number };
+  startingProduction: { gold: number; buildingMaterials: number; valuables: number };
+  startingUnitTiers: ("bronze" | "silver" | "gold")[];
+  /** Building ids without the faction prefix (e.g. "city_hall"). */
+  startingBuildings: string[];
 };
 
 /** Pre-game lobby: players pick factions and heroes before the map builds. */
 export type GameSetupState = {
   scenarioId: string;
+  options: GameSetupOptions;
   seats: {
     playerId: PlayerId;
     name: string;
@@ -1433,8 +1511,33 @@ export type PendingChoice =
       playerId: PlayerId;
       prompt: string;
       options: { label: string }[];
-      context: "city-hall";
+      context: "city-hall" | "satyr-swap";
       returnPhase: GamePhase;
+    }
+  | {
+      /**
+       * A printed attack ability needs a target: Magog splash (1 flat damage
+       * to a unit adjacent to the target), Cerberi second head (1 flat damage
+       * to another enemy adjacent to Cerberi), Liches' Death Cloud (a full
+       * second attack at base attack 2 against a unit adjacent to the
+       * original target), or a rulebook AI tie ("the player chooses which
+       * unit is attacked").
+       */
+      id: string;
+      type: "ABILITY_TARGET_CHOICE";
+      playerId: PlayerId;
+      kind: "flat-damage" | "second-attack" | "neutral-target";
+      abilityId: string | null;
+      abilityName: string;
+      prompt: string;
+      sourceUnitId: UnitId;
+      /** Original attack target the follow-up is anchored to (if any). */
+      anchorUnitId: UnitId | null;
+      candidateUnitIds: UnitId[];
+      /** Flat damage dealt on resolution (flat-damage kind). */
+      amount?: number;
+      /** Replacement base attack of the follow-up attack (second-attack kind). */
+      baseAttack?: number;
     }
   | null;
 

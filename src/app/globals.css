@@ -629,12 +629,40 @@ button.battleCell {
   }
 }
 
+/* Printed-ability target choice (Death Cloud, splash, neutral target tie). */
+.battleCell.abilityTarget::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 2px solid rgb(186 124 220 / 92%);
+  border-radius: 4px;
+  box-shadow:
+    inset 0 0 18px rgb(186 124 220 / 30%),
+    0 0 18px rgb(186 124 220 / 42%);
+  pointer-events: none;
+  animation: pulseTarget 1.2s ease-in-out infinite;
+}
+
+/* Deployment drop zones while dragging units from the placement panel. */
+.battleCell.dropTarget {
+  background: rgb(124 186 110 / 9%);
+  box-shadow:
+    inset 0 0 0 2px rgb(154 206 134 / 36%),
+    inset 0 0 16px rgb(0 0 0 / 10%);
+}
+
+.battleCell.dropTarget:hover {
+  background: rgb(154 206 134 / 18%);
+}
+
 .battleCell.moveTarget:hover,
 .battleCell.moveTarget:focus-visible,
 .battleCell.attackTarget:hover,
 .battleCell.attackTarget:focus-visible,
 .battleCell.cardTarget:hover,
-.battleCell.cardTarget:focus-visible {
+.battleCell.cardTarget:focus-visible,
+.battleCell.abilityTarget:hover,
+.battleCell.abilityTarget:focus-visible {
   background: rgb(255 237 166 / 11%);
   outline: 3px solid rgb(255 227 155 / 58%);
   outline-offset: -3px;
@@ -2464,6 +2492,18 @@ button.battleCell {
   cursor: default;
 }
 
+.placementUnit[draggable="true"] {
+  cursor: grab;
+}
+
+.placementUnit[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.placementNote {
+  color: #ddb96d;
+}
+
 .placementCells {
   display: flex;
   flex-wrap: wrap;
@@ -3384,4 +3424,171 @@ button.battleCell {
   align-self: center;
   font-size: 15px;
   padding: 10px 22px;
+}
+
+/* Map-setup game options (scenario, difficulty, resources, income, units). */
+.gameOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(33, 25, 15, 0.92);
+  border: 1px solid rgba(220, 175, 95, 0.4);
+  border-radius: 12px;
+  color: #ecd9b0;
+}
+
+.gameOptions h3 {
+  margin: 0;
+  font-size: 14px;
+  color: #ffd76a;
+}
+
+.optionRow {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.optionRow > small {
+  color: #c4a878;
+  font-size: 11px;
+}
+
+.optionButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.optionButtons button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 11.5px;
+  border-radius: 8px;
+  border: 1px solid rgba(140, 110, 65, 0.55);
+  background: rgba(20, 14, 9, 0.8);
+  color: #e8d3a8;
+  cursor: pointer;
+}
+
+.optionButtons button.selected {
+  border-color: #ffd76a;
+  outline: 1.5px solid #ffd76a;
+  color: #ffe9b0;
+}
+
+.optionSteppers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.optionStepper {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+}
+
+.optionStepper > small {
+  color: #c4a878;
+  font-size: 10.5px;
+}
+
+.optionStepper > div {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border: 1px solid rgba(140, 110, 65, 0.5);
+  border-radius: 8px;
+  background: rgba(20, 14, 9, 0.8);
+}
+
+.optionStepper button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 1px solid rgba(140, 110, 65, 0.55);
+  background: rgba(43, 31, 17, 0.9);
+  color: #e8d3a8;
+  cursor: pointer;
+}
+
+.optionStepper span {
+  min-width: 22px;
+  text-align: center;
+  font-size: 13px;
+  color: #ffe9b0;
+}
+
+/* Adventure event feed: what just happened, spelled out. */
+.adventureFeed {
+  position: fixed;
+  top: 64px;
+  right: 14px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(360px, 70vw);
+  pointer-events: none;
+}
+
+.feedItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  color: #f4e3bd;
+  background: rgba(28, 20, 11, 0.94);
+  border: 1px solid rgba(220, 175, 95, 0.5);
+  border-radius: 10px;
+  box-shadow: 0 10px 22px rgb(0 0 0 / 38%);
+  cursor: pointer;
+  pointer-events: auto;
+  animation: feedSlideIn 240ms ease-out;
+}
+
+.feedIcon {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+@keyframes feedSlideIn {
+  from {
+    transform: translateX(18px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Building art slot in the town panel (fills when assets land). */
+.townBuildingArt {
+  width: 100%;
+  border-radius: 6px;
+  object-fit: cover;
+  aspect-ratio: 7 / 4;
+}
+
+/* Start-of-turn mulligan hint in the hand bar. */
+.handHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #d8bd8a;
+  font-size: 11.5px;
 }

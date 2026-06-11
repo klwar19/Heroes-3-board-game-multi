@@ -8,6 +8,15 @@ import type { TileDefinition } from "./types";
  * `outerImpassable` marks ring directions whose outer tile edge cannot be
  * crossed (solid yellow border on the physical tile, or a blocked field).
  * Mine incomes follow the wiki mine table: +5 gold, +2 materials, +1 valuables.
+ *
+ * Yellow-border verification (tile scans, color analysis + visual check of
+ * all 41 tiles): the printed lines appear exactly as (1) complete rings
+ * around every blocked field and (2) full three-edge outer arcs on the
+ * directions listed in `outerImpassable` — starting tiles seal three
+ * passable ring fields plus the blocked field, every other tile only seals
+ * its blocked field. No internal border between two passable fields exists
+ * on any core/Rampart/Inferno tile, so no tile declares `internalBorders`
+ * (the engine supports them for future expansion tiles).
  */
 export const coreTileDefinitions: Record<string, TileDefinition> = {
   S1: {

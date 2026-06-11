@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import { coreTileDefinitions } from "@/data/map/tile-defs";
 import {
   applyAction,
@@ -19,7 +20,9 @@ import {
 } from "./index";
 
 function makeGame(): GameState {
-  return createAdventureGameState({ seed: "test-seed" });
+  // The lobby defaults to "impossible"; these fixtures pin "normal" so the
+  // guard armies stay small and deterministic.
+  return createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
 }
 
 function apply(state: GameState, action: GameAction): GameState {
@@ -154,7 +157,7 @@ describe("turns and movement", () => {
     expect(state.players.p1.canMulligan).toBe(true);
   });
 
-  it("mulligans: discarding N cards draws N new ones, then the window closes", () => {
+  it("mulligans once per turn: pick the cards, discard them together, draw that many", () => {
     let state = makeGame();
     const discards = state.players.p1.hand.slice(0, 2);
     state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: discards });
@@ -163,7 +166,7 @@ describe("turns and movement", () => {
     expect(state.players.p1.discard).toHaveLength(2);
     expect(state.players.p1.canMulligan).toBe(false);
 
-    // A second mulligan in the same turn is rejected.
+    // The mulligan is once per turn: a second one is rejected.
     const again = applyAction(state, {
       type: "REFRESH_HAND",
       playerId: "p1",
@@ -284,6 +287,7 @@ describe("astrologers rounds", () => {
     let state = makeGame();
     state.decks.astrologers.drawPile.push("astrologers.gold_dragon");
     state.players.p1.production.gold = 2;
+    const enemyIncome = state.players.p2.production.gold;
 
     state = passRound(state); // round 2: draws Gold Dragon
     expect(state.adventure?.astrologers?.activeCardId).toBe("astrologers.gold_dragon");
@@ -292,7 +296,7 @@ describe("astrologers rounds", () => {
 
     state = passRound(state); // round 3: resource round
     expect(state.players.p1.resources.gold).toBe(goldBefore + 2 + 5);
-    expect(state.players.p2.resources.gold).toBe(enemyGoldBefore + 5);
+    expect(state.players.p2.resources.gold).toBe(enemyGoldBefore + enemyIncome + 5);
     // The bonus is one-shot.
     expect(state.adventure?.astrologers?.nextResourceModifiers.gold).toBe(0);
   });
@@ -473,6 +477,87 @@ describe("map setup lobby", () => {
     expect(state.towns.town_p2.factionId).toBe("inferno");
     // Scenario resources applied per the sheet.
     expect(state.players.p1.resources.gold).toBe(10);
+    // Setup defaults: Impossible neutrals, base income 10 gold / 0 / 0.
+    expect(state.adventure?.difficulty).toBe("impossible");
+    expect(state.players.p1.production).toEqual({ gold: 10, buildingMaterials: 0, valuables: 0 });
+  });
+
+  it("lets seats adjust difficulty, resources, income, starting units and buildings before the start", () => {
+    let state = createAdventureLobbyState({ seed: "lobby-seed" });
+    expect(state.setupLobby?.options.difficulty).toBe("impossible");
+
+    state = apply(state, {
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: {
+        difficulty: "hard",
+        startingResources: { gold: 20, buildingMaterials: 6, valuables: 3 },
+        startingProduction: { gold: 12, buildingMaterials: 1, valuables: 0 },
+        startingUnitTiers: ["bronze", "silver"],
+        startingBuildings: ["city_hall"]
+      }
+    });
+
+    // An unseated player may not change the options.
+    const stranger = applyAction(state, {
+      type: "SET_GAME_OPTIONS",
+      playerId: "observer",
+      options: { difficulty: "easy" }
+    });
+    expect(stranger.errors).toHaveLength(1);
+
+    state = apply(state, { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: "catherine" });
+    state = apply(state, { type: "CHOOSE_FACTION", playerId: "p2", factionId: "necropolis", heroDefId: "sandro" });
+    state = apply(state, { type: "START_ADVENTURE", playerId: "p1" });
+
+    expect(state.adventure?.difficulty).toBe("hard");
+    expect(state.players.p1.resources).toEqual({ gold: 20, buildingMaterials: 6, valuables: 3 });
+    expect(state.players.p1.production).toEqual({ gold: 12, buildingMaterials: 1, valuables: 0 });
+    // Bronze + silver "few" units from the faction roster.
+    const tiers = new Set(
+      state.players.p1.army.map((unit) => coreUnitDefinitions[unit.unitDefId]?.tier).filter(Boolean)
+    );
+    expect(tiers).toEqual(new Set(["bronze", "silver"]));
+    // The chosen starting building stands pre-built, faction-prefixed.
+    expect(state.towns.town_p1.buildings).toContain("castle.city_hall");
+
+    // Options are locked once the adventure started.
+    const late = applyAction(state, {
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { difficulty: "easy" }
+    });
+    expect(late.errors).toHaveLength(1);
+  });
+});
+
+describe("printed internal borders", () => {
+  it("blocks same-tile movement across a declared internal border", () => {
+    const def = coreTileDefinitions.S3;
+    const saved = def.internalBorders;
+    def.internalBorders = [[0, 1]];
+    try {
+      const state = refreshP1(makeGame());
+      // S3's NE field (h:7:2) borders the town center across the new line.
+      const blocked = applyAction(state, {
+        type: "MOVE_HERO",
+        playerId: "p1",
+        heroId: "hero_p1",
+        to: "h:7:2"
+      });
+      expect(blocked.errors).toHaveLength(1);
+    } finally {
+      def.internalBorders = saved;
+    }
+
+    // Without the border the same step is legal.
+    const open = applyAction(refreshP1(makeGame()), {
+      type: "MOVE_HERO",
+      playerId: "p1",
+      heroId: "hero_p1",
+      to: "h:7:2"
+    });
+    expect(open.errors).toHaveLength(0);
   });
 });
 
@@ -482,18 +567,103 @@ describe("neutral combat", () => {
     return apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:9:1" });
   }
 
-  it("starts combat setup with the difficulty-table army", () => {
-    const state = moveOntoGuardedMine(refreshP1(makeGame()));
+  it("hides the guard army until the player finishes placement, then draws it from the difficulty table", () => {
+    let state = moveOntoGuardedMine(refreshP1(makeGame()));
     expect(state.phase).toBe("combat-setup");
     expect(state.combat).not.toBeNull();
     expect(state.combat?.context.kind).toBe("neutral");
 
-    // Normal difficulty, level I field: one bronze neutral.
+    // Rulebook Combat Setup order: the player places first; the guards are
+    // not drawn yet.
+    const hidden = Object.values(state.combat?.units ?? {}).filter(
+      (unit) => unit.controllerId === NEUTRAL_PLAYER_ID
+    );
+    expect(hidden).toHaveLength(0);
+
+    const armyUnit = state.players.p1.army[0];
+    state = apply(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: armyUnit.id, position: 13 });
+    state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+
+    // Normal difficulty, level I field: one bronze neutral, revealed now.
     const neutrals = Object.values(state.combat?.units ?? {}).filter(
       (unit) => unit.controllerId === NEUTRAL_PLAYER_ID
     );
     expect(neutrals).toHaveLength(1);
     expect(neutrals[0].grade).toBe("bronze");
+    expect(state.eventLog.some((event) => event.type === "NEUTRAL_ARMY_REVEALED")).toBe(true);
+  });
+
+  it("lets spells be cast in round 1 even after a spell was cast in an earlier fight", () => {
+    let state = refreshP1(makeGame());
+    // Stale counter from a combat fought earlier this turn.
+    state.players.p1.combatStats.spellsCastThisRound = 1;
+    state.players.p1.hand[0] = "spell.magic_arrow";
+
+    state = moveOntoGuardedMine(state);
+    const armyUnit = state.players.p1.army[0];
+    state = apply(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: armyUnit.id, position: 13 });
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.initiative = 99;
+    }
+    state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+
+    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(0);
+    const spells = getLegalActions(state, "p1").filter((legal) => legal.action.type === "CAST_SPELL");
+    expect(spells.length).toBeGreaterThan(0);
+  });
+
+  it("draws the impossible-difficulty column by default and sorts the guards by the rulebook", () => {
+    // Default lobby difficulty: Impossible (3 bronze guards on a level I field).
+    let state = createAdventureGameState({ seed: "test-seed" });
+    expect(state.adventure?.difficulty).toBe("impossible");
+    state = refreshP1(state);
+    state = moveOntoGuardedMine(state);
+
+    const armyUnit = state.players.p1.army[0];
+    state = apply(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: armyUnit.id, position: 13 });
+    // Freeze the board right after the reveal: the player's unit activates
+    // first, so no guard has moved off its starting space yet.
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.initiative = 99;
+    }
+    state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+
+    const neutrals = Object.values(state.combat?.units ?? {}).filter(
+      (unit) => unit.controllerId === NEUTRAL_PLAYER_ID
+    );
+    expect(neutrals).toHaveLength(3);
+    expect(neutrals.every((unit) => unit.grade === "bronze")).toBe(true);
+
+    // Placement order: ranged in the backline, ground/flying in the
+    // frontline, left to right in descending initiative (tier breaks ties).
+    const backline = [0, 1, 2, 3];
+    const frontline = [4, 5, 6, 7];
+    for (const unit of neutrals) {
+      if (unit.type === "ranged") {
+        expect(backline).toContain(unit.position);
+      } else {
+        expect(frontline.concat(backline)).toContain(unit.position);
+      }
+    }
+    const frontUnits = neutrals
+      .filter((unit) => frontline.includes(unit.position))
+      .sort((left, right) => left.position - right.position);
+    for (let index = 1; index < frontUnits.length; index += 1) {
+      expect(frontUnits[index - 1].initiative).toBeGreaterThanOrEqual(frontUnits[index].initiative);
+    }
+  });
+
+  it("lets a placed unit be dragged to another legal space before the fight starts", () => {
+    let state = moveOntoGuardedMine(refreshP1(makeGame()));
+    const armyUnit = state.players.p1.army[0];
+    state = apply(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: armyUnit.id, position: 13 });
+
+    // Same unit, new space: the unit moves instead of duplicating.
+    state = apply(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: armyUnit.id, position: 17 });
+    const placedUnits = Object.values(state.combat?.units ?? {}).filter((unit) => unit.controllerId === "p1");
+    expect(placedUnits).toHaveLength(1);
+    expect(placedUnits[0].position).toBe(17);
+    expect(state.combat?.setup?.placedUnitIds.p1).toHaveLength(1);
   });
 
   it("lets the hero place units, fights an automated neutral round, and gates on the time limit", () => {
@@ -576,6 +746,137 @@ describe("neutral combat", () => {
     expect(state.adventure?.fields["h:9:1"].flagOwnerId).toBe("p1");
     expect(state.players.p1.production.buildingMaterials).toBe(2);
     expect(state.phase).toBe("player-turn");
+  });
+
+  /**
+   * Places three units, finishes placement with the player units acting
+   * first (initiative 99), and hands back the revealed guard for reshaping.
+   */
+  function threeUnitFight(state: GameState): GameState {
+    const army = state.players.p1.army;
+    const marksmen = army.find((unit) => unit.unitDefId === "castle.marksmen")!;
+    const griffins = army.find((unit) => unit.unitDefId === "castle.griffins")!;
+    const halberdiers = army.find((unit) => unit.unitDefId === "castle.halberdiers")!;
+    state = apply(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: marksmen.id, position: 17 });
+    state = apply(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: griffins.id, position: 13 });
+    state = apply(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: halberdiers.id, position: 16 });
+    state.combat!.dice.scriptedRolls = [-1, -1, -1, -1, -1, -1, -1, -1];
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.initiative = 99;
+      unit.attack = 0;
+    }
+    return apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+  }
+
+  /**
+   * Defends every player unit so the guard's activation comes up, then
+   * passes the instant windows and keeps the rolled dice so the guard's
+   * attack fully resolves.
+   */
+  function defendThrough(state: GameState): GameState {
+    let safety = 20;
+    while (safety > 0) {
+      safety -= 1;
+      if (state.reactionWindow) {
+        state = apply(state, { type: "PASS_REACTION", playerId: state.reactionWindow.priorityPlayerId });
+        continue;
+      }
+      const choice = state.pendingChoice;
+      if (choice?.type === "ATTACK_DIE_REROLL") {
+        state = apply(state, {
+          type: "CHOOSE_PENDING_ROLL",
+          playerId: choice.playerId,
+          choiceId: choice.id,
+          candidateIndex: 0
+        });
+        continue;
+      }
+      const active = state.combat?.activeUnitId ? state.combat.units[state.combat.activeUnitId] : null;
+      if (!active || active.controllerId !== "p1" || state.pendingChoice) {
+        return state;
+      }
+      state = apply(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: active.id });
+    }
+    return state;
+  }
+
+  it("auto-resolves a neutral magog's splash target by the AI priority", () => {
+    let state = threeUnitFight(moveOntoGuardedMine(refreshP1(makeGame())));
+
+    // Reshape the revealed guard into a pack of Magogs aiming down the board.
+    const guard = Object.values(state.combat!.units).find((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)!;
+    guard.name = "Magogs";
+    guard.type = "ranged";
+    guard.abilities = ["magog-fireball-splash"];
+    guard.attack = 1;
+    guard.grade = "bronze";
+    guard.position = 1;
+    guard.initiative = 1;
+
+    // The player units all defend; the guard then shoots the ranged
+    // marksmen (AI: ranged hunts ranged) and the splash choice auto-resolves
+    // onto the closer griffins (both flanks are bronze; distance breaks it).
+    state = defendThrough(state);
+
+    expect(state.pendingChoice).toBeNull();
+    expect(
+      state.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "magog-fireball-splash"
+      )
+    ).toBe(true);
+    const griffins = Object.values(state.combat!.units).find((unit) => unit.name === "Griffins")!;
+    const halberdiers = Object.values(state.combat!.units).find((unit) => unit.name === "Halberdiers")!;
+    expect(griffins.damage).toBe(1);
+    expect(halberdiers.damage).toBe(0);
+  });
+
+  it("lets the player break a neutral target tie, then the guard commits to the pick", () => {
+    let state = threeUnitFight(moveOntoGuardedMine(refreshP1(makeGame())));
+
+    const guard = Object.values(state.combat!.units).find((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)!;
+    guard.type = "ground";
+    guard.abilities = [];
+    guard.grade = "bronze";
+    guard.position = 1;
+    guard.initiative = 1;
+    // Two bronze player units at equal distance 4 from the guard; the
+    // halberdiers sit farther away and are not equally valid.
+    const combat = state.combat!;
+    const marksmen = Object.values(combat.units).find((unit) => unit.name === "Marksmen")!;
+    const griffins = Object.values(combat.units).find((unit) => unit.name === "Griffins")!;
+    const halberdiers = Object.values(combat.units).find((unit) => unit.name === "Halberdiers")!;
+    marksmen.position = 12;
+    griffins.position = 14;
+    halberdiers.position = 19;
+
+    state = defendThrough(state);
+
+    // The rulebook tie: the table (attacking player) chooses the target.
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") {
+      return;
+    }
+    expect(choice.kind).toBe("neutral-target");
+    expect(choice.playerId).toBe("p1");
+    expect(new Set(choice.candidateUnitIds)).toEqual(new Set([marksmen.id, griffins.id]));
+
+    const guardDistanceBefore = Math.abs(Math.floor(guard.position / 4) - Math.floor(griffins.position / 4)) +
+      Math.abs((guard.position % 4) - (griffins.position % 4));
+    state = apply(state, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: choice.id,
+      targetUnitId: griffins.id
+    });
+
+    // The guard walked toward the chosen griffins.
+    const movedGuard = Object.values(state.combat!.units).find(
+      (unit) => unit.controllerId === NEUTRAL_PLAYER_ID
+    )!;
+    const guardDistanceAfter = Math.abs(Math.floor(movedGuard.position / 4) - Math.floor(griffins.position / 4)) +
+      Math.abs((movedGuard.position % 4) - (griffins.position % 4));
+    expect(guardDistanceAfter).toBeLessThan(guardDistanceBefore);
   });
 
   it("returns the hero on retreat and keeps the field guarded", () => {

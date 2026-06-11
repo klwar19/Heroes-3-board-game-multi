@@ -3,6 +3,7 @@ import { cardLibrary } from "@/data/cards/library";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import type { UnitDefinition, UnitSideDefinition } from "@/data/factions/types";
+import { hasInternalBorder } from "@/data/map/borders";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { coreTileDefinitions } from "@/data/map/tile-defs";
 import type { LocationInteraction } from "@/data/map/types";
@@ -303,6 +304,13 @@ export function canCrossEdge(state: GameState, from: MapSpaceId, to: MapSpaceId)
   }
 
   if (fromField.tileInstanceId === toField.tileInstanceId) {
+    // Printed yellow lines inside a tile block ground movement between the
+    // two fields (none on core tiles; expansion tiles may declare them).
+    const tile = adventure.tiles[fromField.tileInstanceId];
+    const def = tile ? coreTileDefinitions[tile.tileDefId] : undefined;
+    if (def && hasInternalBorder(def, fromField.slot, toField.slot)) {
+      return false;
+    }
     return true;
   }
 
@@ -978,9 +986,6 @@ export function processPendingVisit(state: GameState): void {
       }
       case "REINFORCE_ARMY_UNIT":
         reinforceArmyUnit(state, visit.playerId, step.armyUnitId, step.halfCost);
-        break;
-      case "SATYR_SWAP":
-        swapPendingEncounterDraw(state, visit.playerId, step.drawIndex);
         break;
       case "SEARCH_SHARED_DECK":
         adventure.rewardQueue.push({
@@ -1861,10 +1866,9 @@ export function reinforceArmyUnit(state: GameState, playerId: PlayerId, armyUnit
 }
 
 /** Groovy Satyr: swap one drawn neutral card for a fresh one of the same tier. */
-function swapPendingEncounterDraw(state: GameState, playerId: PlayerId, drawIndex: number): void {
-  const pending = state.adventure?.pendingEncounter;
-  const draw = pending?.draws[drawIndex];
-  if (!pending || !draw) {
+export function swapNeutralDraw(state: GameState, playerId: PlayerId, draws: NeutralDraw[], drawIndex: number): void {
+  const draw = draws[drawIndex];
+  if (!draw) {
     return;
   }
 
@@ -1879,7 +1883,7 @@ function swapPendingEncounterDraw(state: GameState, playerId: PlayerId, drawInde
     return;
   }
 
-  pending.draws[drawIndex] = { unitDefId: replacement, tier: draw.tier };
+  draws[drawIndex] = { unitDefId: replacement, tier: draw.tier };
   appendEvent(state, {
     type: "NEUTRAL_DRAW_SWAPPED",
     playerId,

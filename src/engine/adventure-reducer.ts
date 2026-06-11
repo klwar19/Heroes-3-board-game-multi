@@ -34,6 +34,7 @@ import {
   spendResources,
   startAdventureRound,
   startPlayerTurn,
+  swapNeutralDraw,
   townHasBuildingEffect,
   unlockedRecruitTiers,
   type NeutralDraw
@@ -52,8 +53,7 @@ import type {
   MapSpaceId,
   MapTileState,
   PlayerId,
-  ResourceCost,
-  VisitStep
+  ResourceCost
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 
@@ -160,6 +160,8 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
     throw new Error(`Discard down to your hand limit of ${limit} first.`);
   }
 
+  // One mulligan per turn: pick any number of cards, discard them together,
+  // draw that many — then the window closes for the rest of the turn.
   const toDraw = Math.min(action.discardCardIds.length, Math.max(0, limit - player.hand.length));
   const drawn = toDraw > 0 ? drawCardsForPlayer(state, action.playerId, toDraw) : 0;
   player.needsHandRefresh = false;
@@ -894,6 +896,18 @@ export function tradeResources(state: GameState, action: Extract<GameAction, { t
 // ---------------------------------------------------------------------------
 
 function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderPlayerId: PlayerId): CombatState {
+  // Per-combat-round limits start fresh in every fight: a spell cast (or
+  // crown spent) in an earlier combat this turn must not block round 1 of
+  // the next one.
+  for (const playerId of [attackerPlayerId, defenderPlayerId]) {
+    const player = state.players[playerId];
+    if (player) {
+      player.combatStats.spellsCastThisRound = 0;
+      player.combatStats.spellLimitBonusThisRound = 0;
+      player.combatStats.expertUsesSpentThisRound = 0;
+    }
+  }
+
   return {
     id: `combat_${state.eventLog.length + 1}`,
     round: 1,
@@ -914,7 +928,7 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
 }
 
 export function startNeutralEncounter(state: GameState, hero: HeroState, field: MapFieldState): void {
-  const adventure = requireAdventure(state);
+  requireAdventure(state);
   const playerId = hero.controllerId;
   const difficulty = field.difficulty ?? 1;
 
@@ -934,64 +948,16 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
 
   restoreStartingArmyIfEmpty(state, playerId);
 
-  const draws = drawNeutralArmy(state, difficulty);
-
-  // Groovy Satyr: the attacker may swap one drawn card for another of the
-  // same tier before the fight is set up.
-  const satyrActive = getActiveAstrologersCard(state)?.effect.type === "NEUTRAL_DRAW_SWAP";
-  if (satyrActive && draws.length > 0) {
-    adventure.pendingEncounter = { heroId: hero.id, fieldId: field.spaceId, difficulty, draws };
-    adventure.pendingVisit = {
-      heroId: hero.id,
-      playerId,
-      fieldId: field.spaceId,
-      steps: [
-        {
-          type: "CHOOSE_ONE",
-          prompt: "Groovy Satyr: swap one drawn neutral for a fresh card of the same tier?",
-          options: [
-            { label: "Keep the drawn army", steps: [] },
-            ...draws.map((draw, index) => ({
-              label: `Swap ${coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId} (${draw.tier})`,
-              steps: [{ type: "SATYR_SWAP", drawIndex: index } as VisitStep]
-            }))
-          ]
-        }
-      ]
-    };
-    return;
-  }
-
-  createNeutralCombat(state, hero, field.spaceId, difficulty, draws);
-}
-
-/** Builds and opens the neutral combat once the drawn army is final. */
-function createNeutralCombat(
-  state: GameState,
-  hero: HeroState,
-  fieldId: MapSpaceId,
-  difficulty: number,
-  draws: NeutralDraw[]
-): void {
-  const playerId = hero.controllerId;
+  // Rulebook Combat Setup order: the player places up to 5 units first; the
+  // guard army is drawn from the tier decks only after placement finishes.
   const combat = makeCombatShell(state, playerId, NEUTRAL_PLAYER_ID);
   combat.context = {
     kind: "neutral",
     heroId: hero.id,
-    fieldId,
+    fieldId: field.spaceId,
     difficulty,
-    hasAzure: draws.some((draw) => draw.tier === "azure")
+    hasAzure: false
   };
-
-  const neutralUnits = draws.flatMap((draw, index) => {
-    const unit = makeCombatUnitFromNeutral(draw, `neutral_${index + 1}_${draw.unitDefId.split(".")[1]}`, 0);
-    return unit ? [unit] : [];
-  });
-  placeNeutralUnits(neutralUnits, DEFENDER_BACKLINE, DEFENDER_FRONTLINE);
-  for (const unit of neutralUnits) {
-    combat.units[unit.id] = unit;
-  }
-
   combat.setup = {
     pendingPlayerIds: [playerId],
     placedUnitIds: { [playerId]: [] },
@@ -1006,30 +972,113 @@ function createNeutralCombat(
     type: "NEUTRAL_COMBAT_STARTED",
     playerId,
     heroId: hero.id,
-    fieldId,
+    fieldId: field.spaceId,
     difficulty,
-    unitDefIds: draws.map((draw) => draw.unitDefId)
+    unitDefIds: []
   });
 }
 
 /**
- * Called by the automation loop once the Groovy Satyr choice resolved: the
- * paused encounter turns into a real combat.
+ * Draws and reveals the guard army once the player's placement is locked in:
+ * checks the Field Difficulty Level Table, then places the cards by the
+ * rulebook AI rules — ranged in the backline, ground/flying in the
+ * frontline, left to right from the attacking player's perspective in
+ * descending initiative (higher tier first on ties).
  */
-export function startPendingEncounter(state: GameState): void {
-  const adventure = state.adventure;
-  const pending = adventure?.pendingEncounter;
-  if (!adventure || !pending) {
+function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void {
+  const combat = state.combat;
+  if (!combat || combat.context.kind !== "neutral") {
     return;
   }
 
-  const hero = state.heroes[pending.heroId];
-  adventure.pendingEncounter = null;
-  if (!hero) {
+  combat.pendingNeutralDraws = null;
+  combat.context.hasAzure = draws.some((draw) => draw.tier === "azure");
+
+  const neutralUnits = draws.flatMap((draw, index) => {
+    const unit = makeCombatUnitFromNeutral(draw, `neutral_${index + 1}_${draw.unitDefId.split(".")[1]}`, 0);
+    return unit ? [unit] : [];
+  });
+
+  if (neutralUnits.length === 0) {
+    // The tier decks ran dry: the guards never show up and the field falls.
+    combat.setup = null;
+    combat.outcome = {
+      winnerPlayerId: combat.attackerPlayerId,
+      defeatedPlayerId: NEUTRAL_PLAYER_ID,
+      reason: "all-enemy-units-defeated"
+    };
+    state.phase = "combat";
+    state.priorityPlayerId = null;
     return;
   }
 
-  createNeutralCombat(state, hero, pending.fieldId, pending.difficulty, pending.draws);
+  placeNeutralUnits(neutralUnits, DEFENDER_BACKLINE, DEFENDER_FRONTLINE);
+  for (const unit of neutralUnits) {
+    combat.units[unit.id] = unit;
+  }
+
+  appendEvent(state, {
+    type: "NEUTRAL_ARMY_REVEALED",
+    playerId: combat.attackerPlayerId,
+    fieldId: combat.context.fieldId,
+    difficulty: combat.context.difficulty,
+    unitDefIds: draws.map((draw) => draw.unitDefId)
+  });
+
+  combat.setup = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+
+  appendEvent(state, {
+    type: "COMBAT_ROUND_STARTED",
+    round: combat.round,
+    activeUnitId: null
+  });
+}
+
+/**
+ * Draws stashed while the Groovy Satyr swap choice is open; module-local
+ * mirror of combat.pendingNeutralDraws used to rebuild prompt labels.
+ */
+function openSatyrSwapChoice(state: GameState, draws: NeutralDraw[]): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  combat.pendingNeutralDraws = draws;
+  const choiceId = `choice_${state.eventLog.length + 1}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId: combat.attackerPlayerId,
+    prompt: "Groovy Satyr: swap one drawn neutral for a fresh card of the same tier?",
+    options: [
+      { label: "Keep the drawn army" },
+      ...draws.map((draw) => ({
+        label: `Swap ${coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId} (${draw.tier})`
+      }))
+    ],
+    context: "satyr-swap",
+    returnPhase: "combat-setup"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = combat.attackerPlayerId;
+}
+
+/** Resolves the Groovy Satyr swap and reveals the final guard army. */
+export function resolveSatyrSwap(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const combat = state.combat;
+  const draws = combat?.pendingNeutralDraws;
+  if (!combat || !draws) {
+    throw new Error("There is no drawn neutral army to swap.");
+  }
+
+  if (optionIndex > 0) {
+    swapNeutralDraw(state, playerId, draws, optionIndex - 1);
+  }
+
+  revealNeutralArmy(state, draws);
 }
 
 export function startPlayerCombat(state: GameState, attacker: HeroState, defender: HeroState, fieldId: MapSpaceId): void {
@@ -1084,22 +1133,39 @@ export function placeCombatUnit(state: GameState, action: Extract<GameAction, { 
     throw new Error("It is not that player's turn to place units.");
   }
 
-  const placed = setup.placedUnitIds[action.playerId] ?? [];
-  if (placed.length >= setup.unitLimit) {
-    throw new Error(`Only ${setup.unitLimit} units may join a combat.`);
-  }
-
-  const armyUnit = player.army.find((unit) => unit.id === action.armyUnitId);
-  if (!armyUnit || placed.includes(armyUnit.id)) {
-    throw new Error("That unit cannot be placed.");
-  }
-
   if (!placementCellsFor(state, action.playerId).includes(action.position)) {
     throw new Error("Units must start on your back or front line.");
   }
 
   if (Object.values(combat.units).some((unit) => unit.position === action.position)) {
     throw new Error("That space is already taken.");
+  }
+
+  const placed = setup.placedUnitIds[action.playerId] ?? [];
+  const armyUnit = player.army.find((unit) => unit.id === action.armyUnitId);
+  if (!armyUnit) {
+    throw new Error("That unit cannot be placed.");
+  }
+
+  // An already-placed unit moves to the new space instead (drag around your
+  // own deployment area freely until everything is locked in).
+  if (placed.includes(armyUnit.id)) {
+    const existing = Object.values(combat.units).find((unit) => unit.armyUnitId === armyUnit.id);
+    if (!existing) {
+      throw new Error("That unit is not on the board.");
+    }
+    existing.position = action.position;
+    appendEvent(state, {
+      type: "COMBAT_UNIT_PLACED",
+      playerId: action.playerId,
+      unitId: existing.id,
+      position: action.position
+    });
+    return;
+  }
+
+  if (placed.length >= setup.unitLimit) {
+    throw new Error(`Only ${setup.unitLimit} units may join a combat.`);
   }
 
   const combatUnit = makeCombatUnitFromArmy(
@@ -1160,6 +1226,21 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
 
   if (setup.pendingPlayerIds.length > 0) {
     state.priorityPlayerId = setup.pendingPlayerIds[0];
+    return;
+  }
+
+  // Against neutral guards, the army is drawn and revealed only now —
+  // rulebook Combat Setup: place your units, then check the Difficulty
+  // Table and draw the corresponding neutral cards.
+  if (combat.context.kind === "neutral") {
+    const draws = drawNeutralArmy(state, combat.context.difficulty);
+    const satyrActive = getActiveAstrologersCard(state)?.effect.type === "NEUTRAL_DRAW_SWAP";
+    if (satyrActive && draws.length > 0) {
+      openSatyrSwapChoice(state, draws);
+      return;
+    }
+
+    revealNeutralArmy(state, draws);
     return;
   }
 
@@ -1656,6 +1737,12 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
   const choice = state.pendingChoice;
   if (!choice || choice.type !== "OPTION_CHOICE" || choice.id !== action.choiceId || choice.playerId !== action.playerId) {
     throw new Error("That choice cannot be resolved.");
+  }
+
+  if (choice.context === "satyr-swap") {
+    state.pendingChoice = null;
+    resolveSatyrSwap(state, action.playerId, action.optionIndex);
+    return;
   }
 
   if (choice.context === "city-hall") {

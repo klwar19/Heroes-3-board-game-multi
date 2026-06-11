@@ -6,7 +6,40 @@ export type UnitAbilityEffectDefinition =
   | { type: "IGNORE_RANGED_BACK_ROW_PENALTY" }
   | { type: "MOVE_ANYWHERE" }
   | { type: "EXTRA_RANGED_DAMAGE_ON_LOW_ROLL"; maxRoll: number; amount: number }
-  | { type: "SPLASH_DAMAGE_ON_RANGED_HIT"; amount: number }
+  | {
+      /**
+       * Magogs (pack/neutral): "When Magogs attack a target that is not
+       * adjacent to them, they also deal 1 damage to a unit adjacent to the
+       * target." One unit, chosen by the attacker, friend or foe (per the
+       * wiki FAQ a lone adjacent friendly unit takes the hit). Mandatory when
+       * a candidate exists.
+       */
+      type: "FLAT_DAMAGE_ADJACENT_TO_TARGET";
+      amount: number;
+      /** Printed condition: only fires when the target is not adjacent. */
+      requiresNonAdjacentTarget: boolean;
+    }
+  | {
+      /**
+       * Cerberi (pack/neutral): "Additionally, deals 1 damage to another
+       * enemy unit adjacent to Cerberi." Enemy units only, anchored to the
+       * attacker, never the original target. Mandatory when one exists.
+       */
+      type: "FLAT_DAMAGE_ADJACENT_TO_SELF";
+      amount: number;
+    }
+  | {
+      /**
+       * Liches (pack/neutral): "Choose a unit adjacent to the target and
+       * attack it. For the purpose of this attack, your attack is 2." A full
+       * separate attack — instant windows open for both sides, the attack
+       * die rolls — that can and sometimes must hit friendly units or the
+       * Liches themselves (wiki FAQ). It resolves before the original
+       * target's retaliation and never chains another follow-up.
+       */
+      type: "SECOND_ATTACK_ADJACENT_TO_TARGET";
+      baseAttack: number;
+    }
   | { type: "ATTACK_DIE_REROLL"; rerollsPerAttack: number }
   | {
       /**
@@ -85,11 +118,25 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "MOVE_ANYWHERE" },
     implementationStatus: "implemented"
   },
-  "splash-damage": {
-    id: "splash-damage",
-    name: "Splash Damage",
-    text: "After a ranged hit, deals 1 effect damage to adjacent enemy units around the defender.",
-    effect: { type: "SPLASH_DAMAGE_ON_RANGED_HIT", amount: 1 },
+  "magog-fireball-splash": {
+    id: "magog-fireball-splash",
+    name: "Fireball Splash",
+    text: "When this unit attacks a target that is not adjacent to it, it also deals 1 damage to a unit adjacent to the target (the attacker chooses; a lone friendly unit takes the hit).",
+    effect: { type: "FLAT_DAMAGE_ADJACENT_TO_TARGET", amount: 1, requiresNonAdjacentTarget: true },
+    implementationStatus: "implemented"
+  },
+  "cerberi-second-head": {
+    id: "cerberi-second-head",
+    name: "Multi-Headed Bite",
+    text: "Additionally deals 1 damage to another enemy unit adjacent to this unit (the attacker chooses).",
+    effect: { type: "FLAT_DAMAGE_ADJACENT_TO_SELF", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "lich-death-cloud": {
+    id: "lich-death-cloud",
+    name: "Death Cloud",
+    text: "Choose a unit adjacent to the target and attack it. For the purpose of this attack, your attack is 2. (A full separate attack: instants may be played and the attack die rolls. It can — and with no other choice must — hit friendly units or the Liches themselves.)",
+    effect: { type: "SECOND_ATTACK_ADJACENT_TO_TARGET", baseAttack: 2 },
     implementationStatus: "implemented"
   },
   "ogres-attack-token-pack": {

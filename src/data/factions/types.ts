@@ -80,6 +80,15 @@ export type TownBuildingDefinition = {
   /** Gold the Spell Book token costs at this faction's Mage Guild. */
   spellBookCost?: number;
   implementationStatus: "implemented" | "not-implemented";
+  /**
+   * Art slots, ready for the real component scans: the building tile face
+   * and an optional icon. The town panel renders them as soon as a URL or
+   * /public path is filled in; everything works without them.
+   */
+  assets?: {
+    image?: string;
+    icon?: string;
+  };
   source: {
     product: string;
     credit: string;

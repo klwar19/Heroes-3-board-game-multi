@@ -19,12 +19,15 @@ import {
   getActiveAstrologersCard,
   getMainHero,
   getReachableHeroPaths,
+  getTileBorderSegments,
   hexDistance,
   hexToPixel,
   parseHexSpaceId,
+  scenarioDefinitions,
   tileFootprint,
   astrologersCardDefinitions,
   type GameAction,
+  type GameSetupOptions,
   type GameState,
   type HeroPathTarget,
   type LegalAction,
@@ -372,6 +375,10 @@ export function HexMapBoard({
     if (tile.awaitingRotation) {
       const rotation = iAmRotating && rotatingTile?.id === tile.id ? previewRotation : tile.rotation;
       renderTileArt(tile, rotation);
+      // With the printed art visible the built-in icons are redundant —
+      // the scan shows the real locations; only game-state markers stay.
+      const artShown = showArt && Boolean(tileDef?.assets?.tileImage);
+      const borderSegments = tileDef ? getTileBorderSegments(tileDef) : [];
       const footprint = tileFootprint(center, rotation);
       for (const [slot, coord] of footprint.entries()) {
         const fieldDef = tileDef?.fields[slot];
@@ -379,13 +386,13 @@ export function HexMapBoard({
         track(x, y);
         cells.push(
           <polygon
-            className={`hexCell rotating ${showArt && tileDef?.assets?.tileImage ? "withArt" : ""}`}
+            className={`hexCell rotating ${artShown ? "withArt" : ""}`}
             fill={terrain}
             key={`${tile.id}-rot-${slot}`}
             points={hexCorners(x, y, HEX_SIZE - 1.2)}
           />
         );
-        if (fieldDef) {
+        if (fieldDef && !artShown) {
           const glyph = LOCATION_GLYPHS[fieldDef.location] ?? "";
           if (glyph && fieldDef.location !== "empty_field") {
             overlays.push(
@@ -402,11 +409,17 @@ export function HexMapBoard({
             );
           }
         }
-        // Printed border lines move with the rotation preview.
-        if (slot > 0 && tileDef?.outerImpassable[slot - 1]) {
-          const direction = (slot - 1 + rotation) % 6;
+        // Printed yellow border lines (full arcs + blocked-field rings)
+        // move with the rotation preview.
+        for (const segment of borderSegments) {
+          if (segment.slot !== slot) {
+            continue;
+          }
+          const direction = (segment.edge + rotation) % 6;
           const edge = hexEdgeForDirection(x, y, HEX_SIZE - 1.2, direction);
-          overlays.push(<line className="tileBorderLine" key={`${tile.id}-rot-border-${slot}`} {...edge} />);
+          overlays.push(
+            <line className="tileBorderLine" key={`${tile.id}-rot-border-${slot}-${segment.edge}`} {...edge} />
+          );
         }
       }
       const centerPixel = hexToPixel(center, HEX_SIZE);
@@ -424,6 +437,11 @@ export function HexMapBoard({
 
     // --- Revealed, materialized tiles --------------------------------------
     renderTileArt(tile, tile.rotation);
+    // The printed scan already shows the locations, numerals and mine icons:
+    // hide the built-in markers and keep only live game state (cubes, flags,
+    // settlement production, movement) on top of the art.
+    const artShown = showArt && Boolean(tileDef?.assets?.tileImage);
+    const borderSegments = tileDef ? getTileBorderSegments(tileDef) : [];
     const footprint = tileFootprint(center, tile.rotation);
     for (const [slot, coord] of footprint.entries()) {
       const spaceId = `h:${coord.row}:${coord.col}`;
@@ -448,7 +466,7 @@ export function HexMapBoard({
             field.location === "blocked_field" ? "blocked" : "",
             target ? "moveTarget" : "",
             isSelected ? "selectedTarget" : "",
-            showArt && tileDef?.assets?.tileImage ? "withArt" : ""
+            artShown ? "withArt" : ""
           ].join(" ")}
           fill={terrain}
           key={spaceId}
@@ -472,14 +490,14 @@ export function HexMapBoard({
         </polygon>
       );
 
-      if (glyph && field.location !== "empty_field") {
+      if (!artShown && glyph && field.location !== "empty_field") {
         overlays.push(
           <text className="hexGlyph" key={`${spaceId}-glyph`} textAnchor="middle" x={x} y={y + 6}>
             {glyph}
           </text>
         );
       }
-      if (field.difficulty && guarded) {
+      if (!artShown && field.difficulty && guarded) {
         overlays.push(
           <text className="hexDifficulty" key={`${spaceId}-diff`} textAnchor="middle" x={x} y={y - HEX_SIZE * 0.45}>
             {ROMAN[field.difficulty]}
@@ -506,7 +524,7 @@ export function HexMapBoard({
           </text>
         );
       }
-      if (field.resource && field.location === "mine") {
+      if (!artShown && field.resource && field.location === "mine") {
         overlays.push(
           <text className="hexProduction" key={`${spaceId}-mine`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.72}>
             {field.resource === "buildingMaterials" ? "⚒" : field.resource === "gold" ? "🪙" : "♦"}
@@ -514,11 +532,15 @@ export function HexMapBoard({
           </text>
         );
       }
-      // Printed border lines (solid impassable tile edges).
-      if (slot > 0 && tileDef?.outerImpassable[slot - 1]) {
-        const direction = (slot - 1 + tile.rotation) % 6;
+      // Printed yellow border lines: outer arcs, blocked-field rings and any
+      // internal borders, exactly as scanned.
+      for (const segment of borderSegments) {
+        if (segment.slot !== slot) {
+          continue;
+        }
+        const direction = (segment.edge + tile.rotation) % 6;
         const edge = hexEdgeForDirection(x, y, HEX_SIZE - 1.2, direction);
-        overlays.push(<line className="tileBorderLine" key={`${spaceId}-border`} {...edge} />);
+        overlays.push(<line className="tileBorderLine" key={`${spaceId}-border-${segment.edge}`} {...edge} />);
       }
 
       // Hero pawns: separate top layer keyed by hero id so moves glide.
@@ -1155,6 +1177,16 @@ export function TownPanel({
           );
           return (
             <div className={`townBuilding ${built ? "built" : ""}`} key={buildingId} title={building?.source.credit}>
+              {/* Building art slot: fills in as soon as assets.image lands. */}
+              {building?.assets?.image ? (
+                <img
+                  alt={`${building.name} building tile`}
+                  className="townBuildingArt"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  src={building.assets.image}
+                />
+              ) : null}
               <strong>{building?.name}</strong>
               <small>{built ? "built" : formatCost(building?.cost ?? {})}</small>
               {building?.implementationStatus === "not-implemented" ? <small className="todoTag">data only</small> : null}
@@ -1275,6 +1307,7 @@ export function PromptTray({
     (legal) => legal.action.type === "RESOLVE_VISIT_STEP" || legal.action.type === "TRADE_RESOURCES"
   );
   const optionActions = legalActions.filter((legal) => legal.action.type === "CHOOSE_OPTION");
+  const abilityTargetActions = legalActions.filter((legal) => legal.action.type === "CHOOSE_ABILITY_TARGET");
   const combatGate = legalActions.filter(
     (legal) => legal.action.type === "CONTINUE_NEUTRAL_COMBAT" || legal.action.type === "RETREAT_FROM_COMBAT"
   );
@@ -1285,6 +1318,11 @@ export function PromptTray({
   if (choice?.type === "OPTION_CHOICE" && choice.playerId === viewerPlayerId) {
     title = choice.prompt;
     body = optionActions;
+  } else if (choice?.type === "ABILITY_TARGET_CHOICE" && choice.playerId === viewerPlayerId) {
+    // Magog splash / Cerberi bite / Liches' Death Cloud / neutral target tie:
+    // pick from the list here or click a glowing unit on the board.
+    title = choice.prompt;
+    body = abilityTargetActions;
   } else if (visit && visit.playerId === viewerPlayerId && visitActions.length > 0) {
     const step = visit.steps[0];
     const field = state.adventure?.fields[visit.fieldId];
@@ -1537,8 +1575,11 @@ function PileModalCards({ cardIds, kind }: { cardIds: string[]; kind: "cards" | 
 }
 
 // ---------------------------------------------------------------------------
-// Combat deployment panel (unchanged)
+// Combat deployment panel: drag units onto the board (click still works)
 // ---------------------------------------------------------------------------
+
+/** dataTransfer payload type for dragging an army unit onto the board. */
+export const ARMY_UNIT_DRAG_TYPE = "application/x-h3-army-unit";
 
 export function PlacementPanel({
   state,
@@ -1561,6 +1602,7 @@ export function PlacementPanel({
 
   const myTurn = setup.pendingPlayerIds[0] === viewerPlayerId;
   const placed = setup.placedUnitIds[viewerPlayerId] ?? [];
+  const versusNeutrals = combat.context.kind === "neutral";
 
   const placeActions = legalActions.filter(
     (legal): legal is LegalAction & { action: Extract<GameAction, { type: "PLACE_COMBAT_UNIT" }> } =>
@@ -1588,6 +1630,11 @@ export function PlacementPanel({
       <strong>
         Deploy up to {setup.unitLimit} units ({placed.length} placed)
       </strong>
+      {versusNeutrals ? (
+        <small className="placementNote">
+          The guard army is drawn and revealed only after you lock your deployment in (rulebook combat setup).
+        </small>
+      ) : null}
       <div className="placementUnits">
         {player.army.map((unit) => {
           const def = coreUnitDefinitions[unit.unitDefId];
@@ -1597,6 +1644,7 @@ export function PlacementPanel({
             <button
               className={`placementUnit ${selectedUnitId === unit.id ? "selected" : ""} ${isPlaced ? "placed" : ""}`}
               disabled={!canPlace && !isPlaced}
+              draggable={canPlace || isPlaced}
               key={unit.id}
               onClick={() => {
                 if (isPlaced) {
@@ -1610,6 +1658,11 @@ export function PlacementPanel({
                 }
                 setSelectedUnitId(selectedUnitId === unit.id ? null : unit.id);
               }}
+              onDragStart={(event) => {
+                event.dataTransfer.setData(ARMY_UNIT_DRAG_TYPE, unit.id);
+                event.dataTransfer.effectAllowed = "move";
+              }}
+              title={isPlaced ? "Drag to another space, or click to take back" : "Drag onto your two rows (or click, then pick a space)"}
               type="button"
             >
               <span className={`tierDot ${def?.tier}`} />
@@ -1637,11 +1690,11 @@ export function PlacementPanel({
           {cellsForSelected.length === 0 ? <small>No free spaces.</small> : null}
         </div>
       ) : (
-        <small>Pick a unit, then a deployment space. Back line: row E. Front line: row D.</small>
+        <small>Drag units onto your back and front lines — placed units can be dragged around freely until you lock in.</small>
       )}
       {finish ? (
         <button className="commandButton primary" onClick={() => onAction(finish.action)} type="button">
-          Ready for battle
+          {versusNeutrals ? "Lock in — reveal the guards" : "Ready for battle"}
         </button>
       ) : null}
     </div>
@@ -1649,8 +1702,217 @@ export function PlacementPanel({
 }
 
 // ---------------------------------------------------------------------------
-// Map-setup lobby: pick a faction and hero, then start the adventure
+// Map-setup lobby: pick a faction and hero, set the game options, start
 // ---------------------------------------------------------------------------
+
+const DIFFICULTY_CHOICES: { id: GameSetupOptions["difficulty"]; label: string; hint: string }[] = [
+  { id: "easy", label: "Easy", hint: "smallest guard armies" },
+  { id: "normal", label: "Normal", hint: "printed baseline" },
+  { id: "hard", label: "Hard", hint: "stronger guards" },
+  { id: "impossible", label: "Impossible", hint: "default — strongest guards" }
+];
+
+/** Building ids (without the faction prefix) offered as pre-built options. */
+const STARTING_BUILDING_CHOICES: { id: string; label: string }[] = [
+  { id: "city_hall", label: "City Hall" },
+  { id: "citadel", label: "Citadel (where the faction has one)" },
+  { id: "mage_guild", label: "Mage Guild" },
+  { id: "dwelling_bronze", label: "Bronze Dwelling" },
+  { id: "dwelling_silver", label: "Silver Dwelling" },
+  { id: "dwelling_gold", label: "Gold Dwelling" }
+];
+
+function ResourceStepper({
+  label,
+  value,
+  onChange
+}: {
+  label: string;
+  value: number;
+  onChange: (next: number) => void;
+}) {
+  return (
+    <div className="optionStepper">
+      <small>{label}</small>
+      <div>
+        <button aria-label={`Decrease ${label}`} onClick={() => onChange(Math.max(0, value - 1))} type="button">
+          <Minus size={11} />
+        </button>
+        <span>{value}</span>
+        <button aria-label={`Increase ${label}`} onClick={() => onChange(value + 1)} type="button">
+          <Plus size={11} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Adjustable setup: scenario, neutral difficulty (Impossible default),
+ * starting resources, base income (10 gold / 0 / 0 default), starting unit
+ * tiers and pre-built buildings. Any seated player may adjust; everything
+ * syncs through the same action stream as the rest of the game.
+ */
+function GameOptionsPanel({
+  state,
+  viewerPlayerId,
+  onAction
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  onAction: (action: GameAction) => void;
+}) {
+  const lobby = state.setupLobby;
+  if (!lobby) {
+    return null;
+  }
+
+  const options = lobby.options;
+  const send = (next: Partial<GameSetupOptions>) =>
+    onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
+
+  return (
+    <div className="gameOptions" aria-label="Game options">
+      <h3>Game options</h3>
+
+      <div className="optionRow">
+        <small>Starting map</small>
+        <div className="optionButtons">
+          {Object.values(scenarioDefinitions).map((scenario) => (
+            <button
+              aria-pressed={options.scenarioId === scenario.id}
+              className={options.scenarioId === scenario.id ? "selected" : ""}
+              key={scenario.id}
+              onClick={() => send({ scenarioId: scenario.id })}
+              title={scenario.description}
+              type="button"
+            >
+              {scenario.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="optionRow">
+        <small title="Field Difficulty Level Table column used when guards are drawn">Neutral difficulty</small>
+        <div className="optionButtons">
+          {DIFFICULTY_CHOICES.map((choice) => (
+            <button
+              aria-pressed={options.difficulty === choice.id}
+              className={options.difficulty === choice.id ? "selected" : ""}
+              key={choice.id}
+              onClick={() => send({ difficulty: choice.id })}
+              title={choice.hint}
+              type="button"
+            >
+              {choice.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="optionRow">
+        <small>Starting resources</small>
+        <div className="optionSteppers">
+          <ResourceStepper
+            label="🪙 gold"
+            onChange={(gold) => send({ startingResources: { ...options.startingResources, gold } })}
+            value={options.startingResources.gold}
+          />
+          <ResourceStepper
+            label="⚒ materials"
+            onChange={(buildingMaterials) =>
+              send({ startingResources: { ...options.startingResources, buildingMaterials } })
+            }
+            value={options.startingResources.buildingMaterials}
+          />
+          <ResourceStepper
+            label="♦ valuables"
+            onChange={(valuables) => send({ startingResources: { ...options.startingResources, valuables } })}
+            value={options.startingResources.valuables}
+          />
+        </div>
+      </div>
+
+      <div className="optionRow">
+        <small title="Base resource gain each Resource Round, before mines/settlements/buildings">
+          Resource gain (income base)
+        </small>
+        <div className="optionSteppers">
+          <ResourceStepper
+            label="🪙 gold"
+            onChange={(gold) => send({ startingProduction: { ...options.startingProduction, gold } })}
+            value={options.startingProduction.gold}
+          />
+          <ResourceStepper
+            label="⚒ materials"
+            onChange={(buildingMaterials) =>
+              send({ startingProduction: { ...options.startingProduction, buildingMaterials } })
+            }
+            value={options.startingProduction.buildingMaterials}
+          />
+          <ResourceStepper
+            label="♦ valuables"
+            onChange={(valuables) => send({ startingProduction: { ...options.startingProduction, valuables } })}
+            value={options.startingProduction.valuables}
+          />
+        </div>
+      </div>
+
+      <div className="optionRow">
+        <small>Starting units (one Few card of every faction unit of each tier)</small>
+        <div className="optionButtons">
+          {(["bronze", "silver", "gold"] as const).map((tier) => {
+            const checked = options.startingUnitTiers.includes(tier);
+            return (
+              <button
+                aria-pressed={checked}
+                className={checked ? "selected" : ""}
+                key={tier}
+                onClick={() =>
+                  send({
+                    startingUnitTiers: checked
+                      ? options.startingUnitTiers.filter((candidate) => candidate !== tier)
+                      : [...options.startingUnitTiers, tier]
+                  })
+                }
+                type="button"
+              >
+                <span className={`tierDot ${tier}`} /> {tier}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="optionRow">
+        <small>Pre-built buildings</small>
+        <div className="optionButtons">
+          {STARTING_BUILDING_CHOICES.map((building) => {
+            const checked = options.startingBuildings.includes(building.id);
+            return (
+              <button
+                aria-pressed={checked}
+                className={checked ? "selected" : ""}
+                key={building.id}
+                onClick={() =>
+                  send({
+                    startingBuildings: checked
+                      ? options.startingBuildings.filter((candidate) => candidate !== building.id)
+                      : [...options.startingBuildings, building.id]
+                  })
+                }
+                type="button"
+              >
+                {building.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function SetupLobbyScreen({
   state,
@@ -1671,14 +1933,16 @@ export function SetupLobbyScreen({
   const takenByOthers = new Set(
     lobby.seats.filter((seat) => seat.playerId !== viewerPlayerId).map((seat) => seat.factionId)
   );
+  const scenarioName = scenarioDefinitions[lobby.options.scenarioId]?.name ?? lobby.scenarioId;
 
   return (
     <section className="setupLobby" aria-label="Map setup">
       <header>
-        <h2>Map setup — {lobby.scenarioId}</h2>
+        <h2>Map setup — {scenarioName}</h2>
         <p>
-          Each seat picks a faction and main hero. The starting tile, town, units, resources and income come from the
-          scenario sheet; starting tiles sit at fixed map positions and are never rotated.
+          Each seat picks a faction and main hero, and the table sets the game options: starting map, neutral
+          difficulty (Impossible unless changed), starting resources, income, units and buildings. Starting tiles sit
+          at fixed map positions and are never rotated.
         </p>
       </header>
 
@@ -1700,6 +1964,8 @@ export function SetupLobbyScreen({
           );
         })}
       </div>
+
+      {mySeat ? <GameOptionsPanel onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} /> : null}
 
       {mySeat ? (
         <div className="factionGrid" aria-label="Pick a faction and hero">
@@ -1763,4 +2029,77 @@ export function SetupLobbyScreen({
 
 export function titleCaseLocation(location: string): string {
   return titleCase(location);
+}
+
+// ---------------------------------------------------------------------------
+// Adventure event feed: every visit, gain and fight outcome spelled out
+// ---------------------------------------------------------------------------
+
+/**
+ * Event types surfaced as toasts, with an icon and a sound-cue name. The cue
+ * names are the future audio hook: when sound lands, map each cue to a file
+ * and play it where the feed item is enqueued — nothing else has to change.
+ */
+export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; cue: string }>> = {
+  FIELD_VISITED: { icon: "📍", cue: "visit" },
+  FIELD_FLAGGED: { icon: "🚩", cue: "flag" },
+  RESOURCES_GAINED: { icon: "🪙", cue: "coins" },
+  RESOURCES_SPENT: { icon: "💸", cue: "pay" },
+  ADVENTURE_DICE_ROLLED: { icon: "🎲", cue: "dice" },
+  EXPERIENCE_GAINED: { icon: "📈", cue: "experience" },
+  HERO_LEVEL_UP: { icon: "⭐", cue: "level-up" },
+  MORALE_CHANGED: { icon: "🎺", cue: "morale" },
+  QUICK_COMBAT_WON: { icon: "⚡", cue: "quick-combat" },
+  NEUTRAL_COMBAT_STARTED: { icon: "⚔️", cue: "combat-start" },
+  NEUTRAL_ARMY_REVEALED: { icon: "👁", cue: "reveal" },
+  PLAYER_COMBAT_STARTED: { icon: "⚔️", cue: "combat-start" },
+  COMBAT_ENDED: { icon: "🏆", cue: "combat-end" },
+  COMBAT_RETREATED: { icon: "🏳", cue: "retreat" },
+  TRADE_EXECUTED: { icon: "⚖", cue: "trade" },
+  UNIT_RECRUITED: { icon: "🛡", cue: "recruit" },
+  PRODUCTION_CHANGED: { icon: "🏭", cue: "income" },
+  STRUCTURE_BUILT: { icon: "🔨", cue: "build" },
+  ASTROLOGERS_DRAWN: { icon: "🔭", cue: "astrologers" },
+  NEUTRAL_DRAW_SWAPPED: { icon: "🔄", cue: "swap" },
+  GAME_OPTIONS_CHANGED: { icon: "⚙️", cue: "options" },
+  GAME_WON: { icon: "👑", cue: "victory" }
+};
+
+type GameEventType = GameState["eventLog"][number]["type"];
+
+export type AdventureFeedItem = {
+  id: string;
+  icon: string;
+  text: string;
+  cue: string;
+};
+
+/**
+ * Floating feed of what just happened on the map — visits state their
+ * effects in words ("gains 3 gold (Resource die)" and so on), fights
+ * announce themselves, reveals and level-ups stand out. Click to dismiss.
+ */
+export function AdventureEventFeed({
+  items,
+  onDismiss
+}: {
+  items: AdventureFeedItem[];
+  onDismiss: (id: string) => void;
+}) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="adventureFeed" aria-label="What just happened" aria-live="polite">
+      {items.map((item) => (
+        <button className="feedItem" key={item.id} onClick={() => onDismiss(item.id)} title="Dismiss" type="button">
+          <span aria-hidden="true" className="feedIcon">
+            {item.icon}
+          </span>
+          <span>{item.text}</span>
+        </button>
+      ))}
+    </div>
+  );
 }

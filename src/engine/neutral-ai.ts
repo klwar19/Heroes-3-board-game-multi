@@ -1,6 +1,6 @@
 import { getBattlefieldDistance } from "./battlefield";
 import { canUnitAttack, canUnitMoveTo, getLegalMoveDestinations, isAdjacent, isUnitAlive } from "./legal-actions";
-import type { CombatState, CombatUnitState, GameState, UnitGrade } from "./state";
+import type { CombatState, CombatUnitState, GameState, UnitGrade, UnitId } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 
 /**
@@ -11,9 +11,9 @@ import { NEUTRAL_PLAYER_ID } from "./state";
  *   order.
  * - Ranged units prioritise other ranged units with the same tier order;
  *   only when no ranged target exists do they fall back to ground/flying.
- * - Among equally valid targets they attack the closest. Rule ties are left
- *   to the player at the table; online we break them deterministically by
- *   the lowest board position so every client agrees.
+ * - Among equally valid targets they attack the closest. When targets are
+ *   still tied after that, the rulebook says the player chooses — the
+ *   activation pauses on an ABILITY_TARGET_CHOICE so the table decides.
  * - Neutral units never defend.
  */
 
@@ -35,19 +35,24 @@ function tierPriority(attackerTier: UnitGrade, targetTier: UnitGrade): number {
   return 10 + (target - attacker);
 }
 
-export function pickNeutralTarget(combat: CombatState, attacker: CombatUnitState): CombatUnitState | null {
+/**
+ * The ranked target pool of a neutral unit: ranged attackers prefer ranged
+ * targets, everyone prefers same tier, then lower, then higher tiers, and
+ * closer targets beat farther ones.
+ */
+function rankedTargetPool(combat: CombatState, attacker: CombatUnitState): CombatUnitState[] {
   const enemies = Object.values(combat.units).filter(
     (unit) => unit.controllerId !== attacker.controllerId && isUnitAlive(unit)
   );
   if (enemies.length === 0) {
-    return null;
+    return [];
   }
 
   // Engaged ranged units must attack an adjacent enemy.
   if (attacker.type === "ranged") {
     const adjacent = enemies.filter((unit) => isAdjacent(attacker.position, unit.position));
     if (adjacent.length > 0) {
-      return sortCandidates(attacker, adjacent)[0];
+      return sortNeutralTargetCandidates(attacker, adjacent);
     }
   }
 
@@ -58,10 +63,38 @@ export function pickNeutralTarget(combat: CombatState, attacker: CombatUnitState
         : enemies
       : enemies;
 
-  return sortCandidates(attacker, pool)[0] ?? null;
+  return sortNeutralTargetCandidates(attacker, pool);
 }
 
-function sortCandidates(attacker: CombatUnitState, candidates: CombatUnitState[]): CombatUnitState[] {
+export function pickNeutralTarget(combat: CombatState, attacker: CombatUnitState): CombatUnitState | null {
+  return rankedTargetPool(combat, attacker)[0] ?? null;
+}
+
+/**
+ * Targets the rulebook leaves to the table: candidates that tie the best
+ * target on both priority class and distance. Returns 2+ entries only when
+ * there is a real tie.
+ */
+export function getNeutralTargetTies(combat: CombatState, attacker: CombatUnitState): CombatUnitState[] {
+  const pool = rankedTargetPool(combat, attacker);
+  if (pool.length < 2) {
+    return pool;
+  }
+
+  const best = pool[0];
+  const bestPriority = tierPriority(attacker.grade, best.grade);
+  const bestDistance = getBattlefieldDistance(attacker.position, best.position);
+  return pool.filter(
+    (unit) =>
+      tierPriority(attacker.grade, unit.grade) === bestPriority &&
+      getBattlefieldDistance(attacker.position, unit.position) === bestDistance
+  );
+}
+
+export function sortNeutralTargetCandidates(
+  attacker: CombatUnitState,
+  candidates: CombatUnitState[]
+): CombatUnitState[] {
   return [...candidates].sort((left, right) => {
     const priority = tierPriority(attacker.grade, left.grade) - tierPriority(attacker.grade, right.grade);
     if (priority !== 0) {
@@ -83,16 +116,45 @@ export type NeutralIntent =
   | { kind: "attack"; defenderId: string }
   | { kind: "move-and-attack"; destination: number; defenderId: string }
   | { kind: "move"; destination: number }
-  | { kind: "pass" };
+  | { kind: "pass" }
+  | {
+      /** Rulebook tie between equally valid targets: the player chooses. */
+      kind: "choose-target";
+      candidateIds: UnitId[];
+    };
 
-/** Decides what the active neutral unit does this activation. */
-export function planNeutralActivation(state: GameState, combat: CombatState, unit: CombatUnitState): NeutralIntent {
+/**
+ * Decides what the active neutral unit does this activation. With
+ * `forcedTargetId` set (the player already resolved a target tie) the unit
+ * commits to that target.
+ */
+export function planNeutralActivation(
+  state: GameState,
+  combat: CombatState,
+  unit: CombatUnitState,
+  forcedTargetId?: UnitId
+): NeutralIntent {
   // A neutral that already fired never repositions: its activation is over.
   if (unit.attackedThisActivation) {
     return { kind: "pass" };
   }
 
-  const target = pickNeutralTarget(combat, unit);
+  let target: CombatUnitState | null = null;
+  if (forcedTargetId) {
+    target = combat.units[forcedTargetId] ?? null;
+    if (target && !isUnitAlive(target)) {
+      target = null;
+    }
+  }
+
+  if (!target) {
+    const ties = getNeutralTargetTies(combat, unit);
+    if (!forcedTargetId && ties.length > 1) {
+      return { kind: "choose-target", candidateIds: ties.map((candidate) => candidate.id) };
+    }
+    target = ties[0] ?? null;
+  }
+
   if (!target) {
     return { kind: "pass" };
   }
