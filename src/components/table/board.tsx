@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { ChevronDown, ChevronUp, ScrollText, Shield, Swords } from "lucide-react";
+import { ChevronDown, ChevronUp, Crown, Mountain, ScrollText, Shield, Sparkles, Swords } from "lucide-react";
 import { useState } from "react";
 import {
   BATTLEFIELD_CELL_COUNT,
@@ -18,12 +18,14 @@ import {
   type PlayerId
 } from "@/engine";
 import { actionKey, formatEvent, isBoardTargetCardAction, sameCardSelection, unitName, type CardBoardAction } from "./utils";
+import { useCardZoom } from "./zoom";
 
 export function BattlefieldBoard({
   state,
   viewerPlayerId,
   legalActions,
   selectedCardAction,
+  flippedUnitIds,
   onAction,
   onInspect
 }: {
@@ -31,12 +33,15 @@ export function BattlefieldBoard({
   viewerPlayerId: PlayerId;
   legalActions: LegalAction[];
   selectedCardAction: CardBoardAction | null;
+  /** Units that just turned to their Few side; plays a flip animation. */
+  flippedUnitIds?: ReadonlySet<string>;
   onAction: (action: GameAction) => void;
   onInspect: (unitId: string) => void;
 }) {
   const combat = state.combat;
   const flipped = viewerPlayerId === "p1";
   const unitsByPosition = new Map<number, CombatUnitState>();
+  const obstacles = new Set(combat?.obstacles ?? []);
   const moveActionsByDestination = new Map<number, GameAction>();
   const attackActionsByDefender = new Map<string, GameAction>();
   const cardActionsByTarget = new Map<string, GameAction>();
@@ -67,17 +72,36 @@ export function BattlefieldBoard({
         {Array.from({ length: BATTLEFIELD_CELL_COUNT }, (_, index) => {
           const unit = unitsByPosition.get(index);
           const terrain = getBattlefieldTerrain(index);
+          const isObstacle = obstacles.has(index);
           const moveAction = moveActionsByDestination.get(index);
           const attackAction = unit ? attackActionsByDefender.get(unit.id) : undefined;
           const cardAction = unit ? cardActionsByTarget.get(unit.id) : undefined;
           const isActive = Boolean(unit && combat?.activeUnitId === unit.id);
+          const isFlipping = Boolean(unit && flippedUnitIds?.has(unit.id));
           const className = `battleCell ${terrain} ${unit?.controllerId ?? ""} ${isActive ? "active" : ""} ${
-            moveAction && !selectedCardAction ? "moveTarget" : ""
-          } ${attackAction && !selectedCardAction ? "attackTarget" : ""} ${cardAction ? "cardTarget" : ""}`;
+            isObstacle ? "obstacle" : ""
+          } ${moveAction && !selectedCardAction ? "moveTarget" : ""} ${
+            attackAction && !selectedCardAction ? "attackTarget" : ""
+          } ${cardAction ? "cardTarget" : ""}`;
           const health = unit ? Math.max(0, unit.maxHealth - unit.damage) : 0;
 
+          if (isObstacle) {
+            return (
+              <div
+                aria-label={`Obstacle at ${getBattlefieldLabel(index)}: blocks ground and ranged movement`}
+                className={className}
+                key={index}
+                title="Combat Obstacle — ground and ranged units must go around; flying units pass over"
+              >
+                <span className="obstacleMark">
+                  <Mountain aria-hidden="true" size={26} />
+                </span>
+              </div>
+            );
+          }
+
           const content = unit ? (
-            <article className={`boardCard ${unit.controllerId}`}>
+            <article className={`boardCard ${unit.controllerId} ${isFlipping ? "flipping" : ""}`}>
               {unit.assets?.cardImage ? (
                 <img
                   alt={unit.assets?.imageAlt ?? unit.cardName}
@@ -90,13 +114,14 @@ export function BattlefieldBoard({
                 <div className="boardCardImage cardFaceFallback">{unit.name}</div>
               )}
               <div className="boardCardHud">
-                <strong>{unit.name}</strong>
+                <strong>{unit.cardName}</strong>
                 <span>
                   {health}/{unit.maxHealth} HP
                   {unit.defenseToken ? " +DEF" : ""}
                 </span>
               </div>
               {isActive ? <span className="activeRing" aria-hidden="true" /> : null}
+              {isFlipping ? <span className="flipBadge">Flipped to Few</span> : null}
             </article>
           ) : (
             <span className="emptyBoardMark" aria-hidden="true" />
@@ -176,12 +201,13 @@ export function InitiativeRail({ state }: { state: GameState }) {
 }
 
 export function InspectPanel({ state, unitId }: { state: GameState; unitId: string | null }) {
+  const { zoomUnit } = useCardZoom();
   const unit = unitId ? state.combat?.units[unitId] : undefined;
 
   if (!unit) {
     return (
       <section className="inspectPanel empty" aria-label="Unit inspector">
-        <span>Hover a unit to read its card</span>
+        <span>Hover a unit to read its card — click it for a big view</span>
       </section>
     );
   }
@@ -191,17 +217,25 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
 
   return (
     <section className="inspectPanel" aria-label={`${unit.name} card`}>
-      {unit.assets?.cardImage ? (
-        <img
-          alt={unit.assets?.imageAlt ?? unit.cardName}
-          className="inspectImage"
-          loading="eager"
-          referrerPolicy="no-referrer"
-          src={unit.assets.cardImage}
-        />
-      ) : (
-        <div className="inspectImage cardFaceFallback">{unit.cardName}</div>
-      )}
+      <button
+        aria-label={`Read ${unit.cardName} at full size`}
+        className="inspectZoom"
+        onClick={() => zoomUnit(unit)}
+        title="Click to enlarge"
+        type="button"
+      >
+        {unit.assets?.cardImage ? (
+          <img
+            alt={unit.assets?.imageAlt ?? unit.cardName}
+            className="inspectImage"
+            loading="eager"
+            referrerPolicy="no-referrer"
+            src={unit.assets.cardImage}
+          />
+        ) : (
+          <div className="inspectImage cardFaceFallback">{unit.cardName}</div>
+        )}
+      </button>
       <div className="inspectBody">
         <strong>{unit.cardName}</strong>
         <span className="inspectKind">
@@ -325,17 +359,45 @@ export function CommandDock({
   const outcome = state.combat?.outcome;
   const waitingOn =
     state.pendingChoice?.playerId ?? state.reactionWindow?.priorityPlayerId ?? state.activePlayerId;
+  // A ranged unit that just fired may still take its 1-space step.
+  const postShotMove = Boolean(
+    activeUnit &&
+      activeUnit.controllerId === viewerPlayerId &&
+      activeUnit.attackedThisActivation &&
+      !activeUnit.activatedThisRound &&
+      activeUnit.type === "ranged"
+  );
   const status = outcome
     ? `${state.players[outcome.winnerPlayerId]?.name ?? outcome.winnerPlayerId} wins`
     : waitingOn === viewerPlayerId
       ? activeUnit && activeUnit.controllerId === viewerPlayerId
-        ? `${activeUnit.name} is active`
+        ? postShotMove
+          ? `${activeUnit.name} fired — step 1 space or hold`
+          : `${activeUnit.name} is active`
         : "Your move"
       : `Waiting for ${state.players[waitingOn]?.name ?? waitingOn}`;
+
+  const player = state.players[viewerPlayerId];
+  const spellLimit = 1 + (player?.combatStats.spellLimitBonusThisRound ?? 0);
+  const spellsCast = player?.combatStats.spellsCastThisRound ?? 0;
+  const crownsLeft = player ? player.limits.expertUses - player.combatStats.expertUsesSpentThisRound : 0;
 
   return (
     <div className="commandDock" aria-label="Commands">
       <span className="dockStatus">{status}</span>
+      {state.combat && !outcome ? (
+        <div className="dockLimits" aria-label="Per-round limits">
+          <span
+            className={spellsCast >= spellLimit ? "limitSpent" : ""}
+            title={`One spell per combat round${spellLimit > 1 ? ` (+${spellLimit - 1} from Knowledge)` : ""}. Hero specialties never count against it.`}
+          >
+            <Sparkles aria-hidden="true" size={12} /> Spell {spellsCast}/{spellLimit}
+          </span>
+          <span title="Expert-effect crowns left this combat round">
+            <Crown aria-hidden="true" size={12} /> {crownsLeft} crown{crownsLeft === 1 ? "" : "s"}
+          </span>
+        </div>
+      ) : null}
       {commands.map((legal) => (
         <button className="commandButton" key={actionKey(legal.action)} onClick={() => onAction(legal.action)} type="button">
           {commandLabel(legal)}

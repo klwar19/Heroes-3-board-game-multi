@@ -22,9 +22,8 @@ import {
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
   BATTLEFIELD_ROWS,
-  getBattlefieldDistance,
   getBattlefieldLabel,
-  getBattlefieldTerrain,
+  getReachableDestinations,
   isBattlefieldPosition
 } from "./battlefield";
 import { SHARED_DECK_IDS } from "./decks";
@@ -98,6 +97,10 @@ export function isAdjacent(leftPosition: number, rightPosition: number, columns 
   return Math.abs(leftRow - rightRow) + Math.abs(leftColumn - rightColumn) === 1;
 }
 
+/**
+ * Printed movement values: ground and flying units move up to 3 spaces,
+ * ranged units up to 1 space (after shooting or instead of attacking).
+ */
 export function getUnitMoveRange(unit: CombatUnitState): number {
   if (unit.type === "ranged") {
     return 1;
@@ -106,22 +109,24 @@ export function getUnitMoveRange(unit: CombatUnitState): number {
   return 3;
 }
 
-function isPositionOccupied(combat: CombatState, position: number): boolean {
-  return Object.values(combat.units).some((unit) => isUnitAlive(unit) && unit.position === position);
+export function getCombatObstacles(combat: CombatState): number[] {
+  return combat.obstacles ?? [];
 }
 
-function changesSideWithoutCrossing(unit: CombatUnitState, destination: number): boolean {
-  if (unit.type === "flying") {
-    return false;
+/**
+ * Every unit card and obstacle token on the board is a Combat Obstacle.
+ * They block movement paths for non-flying units and nobody can stop on them.
+ */
+function getBlockedSpaces(combat: CombatState, movingUnit?: CombatUnitState): Set<number> {
+  const blocked = new Set<number>(getCombatObstacles(combat));
+
+  for (const unit of Object.values(combat.units)) {
+    if (isUnitAlive(unit) && unit.id !== movingUnit?.id) {
+      blocked.add(unit.position);
+    }
   }
 
-  const fromTerrain = getBattlefieldTerrain(unit.position);
-  const toTerrain = getBattlefieldTerrain(destination);
-
-  return (
-    (fromTerrain === "grass" && toTerrain === "dirt") ||
-    (fromTerrain === "dirt" && toTerrain === "grass")
-  );
+  return blocked;
 }
 
 function activeEffectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitState): boolean {
@@ -152,30 +157,33 @@ export function canUnitMoveTo(
   destination: number,
   state?: GameState
 ): boolean {
-  if (!isUnitAlive(unit) || unit.activatedThisRound || unit.movedThisActivation || !isBattlefieldPosition(destination)) {
-    return false;
-  }
-
-  if (hasCannotMoveEffect(state, unit)) {
-    return false;
-  }
-
-  if (unit.position === destination || isPositionOccupied(combat, destination)) {
-    return false;
-  }
-
-  if (changesSideWithoutCrossing(unit, destination)) {
-    return false;
-  }
-
-  const distance = getBattlefieldDistance(unit.position, destination);
-  return distance > 0 && distance <= getUnitMoveRange(unit);
+  return getLegalMoveDestinations(combat, unit, state).includes(destination);
 }
 
 export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitState, state?: GameState): number[] {
-  return Array.from({ length: BATTLEFIELD_CELL_COUNT }, (_, position) => position).filter((position) =>
-    canUnitMoveTo(combat, unit, position, state)
-  );
+  if (!isUnitAlive(unit) || unit.activatedThisRound || unit.movedThisActivation) {
+    return [];
+  }
+
+  if (hasCannotMoveEffect(state, unit)) {
+    return [];
+  }
+
+  const blocked = getBlockedSpaces(combat, unit);
+
+  // Arch Devils teleport: a regular move may land on any empty space.
+  if (hasUnitAbilityEffect(unit, "MOVE_ANYWHERE")) {
+    return Array.from({ length: BATTLEFIELD_CELL_COUNT }, (_, position) => position).filter(
+      (position) => position !== unit.position && !blocked.has(position)
+    );
+  }
+
+  return getReachableDestinations(
+    unit.position,
+    getUnitMoveRange(unit),
+    blocked,
+    unit.type === "flying"
+  ).filter(isBattlefieldPosition);
 }
 
 export function sortUnitsForActivation(combat: CombatState): CombatUnitState[] {
@@ -260,6 +268,12 @@ export function canUnitAttack(combat: CombatState, attacker: CombatUnitState, de
   }
 
   if (attacker.type === "ranged") {
+    // Ranged units either shoot then step 1, or move 1 without attacking —
+    // a ranged unit that has already moved gave up its attack.
+    if (attacker.movedThisActivation) {
+      return false;
+    }
+
     if (hasAdjacentEnemy(combat, attacker)) {
       return isAdjacent(attacker.position, defender.position);
     }
@@ -417,12 +431,41 @@ function getPlayableModesForCard(state: GameState, playerId: PlayerId, card: Car
   });
 }
 
+/** True while combat is running and no attack, reaction or choice is resolving. */
+function isCombatCardWindowOpen(state: GameState): boolean {
+  return Boolean(
+    state.combat &&
+      !state.combat.outcome &&
+      !state.combat.setup &&
+      !state.combat.awaitingContinue &&
+      state.phase === "combat" &&
+      state.stack.length === 0 &&
+      !state.reactionWindow &&
+      !state.pendingChoice
+  );
+}
+
+function isCombatParticipant(state: GameState, playerId: PlayerId): boolean {
+  return Boolean(
+    state.combat && (state.combat.attackerPlayerId === playerId || state.combat.defenderPlayerId === playerId)
+  );
+}
+
+/**
+ * Spells may be cast at any moment of the combat (your own or the enemy's
+ * activation) as long as no attack is being resolved — limited to one Spell
+ * card per player per combat round. Knowledge raises that limit.
+ */
 function addSpellActions(
   actions: LegalAction[],
   state: GameState,
   playerId: PlayerId,
   cards: CardLibrary
 ): void {
+  if (!isCombatCardWindowOpen(state) || !isCombatParticipant(state, playerId)) {
+    return;
+  }
+
   const player = state.players[playerId];
   const spellLimit = 1 + (player?.combatStats.spellLimitBonusThisRound ?? 0);
   if (!player || player.combatStats.spellsCastThisRound >= spellLimit) {
@@ -441,7 +484,7 @@ function addSpellActions(
 
     for (const target of getTargetsForCard(state, playerId, cardId, cards)) {
       actions.push({
-        label: target.type === "unit" ? `Cast ${card.name}` : `Cast ${card.name}`,
+        label: `Cast ${card.name}`,
         action: {
           type: "CAST_SPELL",
           playerId,
@@ -453,6 +496,33 @@ function addSpellActions(
   }
 }
 
+function getTransformTargets(
+  state: GameState,
+  playerId: PlayerId,
+  effect: Extract<ConcreteEffect, { type: "TRANSFORM_UNIT" }>
+): TargetRef[] {
+  if (!state.combat) {
+    return [];
+  }
+
+  return Object.values(state.combat.units)
+    .filter(
+      (unit) =>
+        unit.controllerId === playerId &&
+        isUnitAlive(unit) &&
+        unit.name === effect.targetUnitName &&
+        (effect.targetVariants as string[]).includes(unit.variant)
+    )
+    .map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
+}
+
+/**
+ * Non-spell cards during combat, with the printed timing rules:
+ *  - Instant cards may be played at any time (both players), except while an
+ *    attack resolves — trigger cards wait for their reaction window instead.
+ *  - Ongoing and activation cards may only be played while one of your own
+ *    units is active and before it attacks.
+ */
 function addPlayableCardActions(
   actions: LegalAction[],
   state: GameState,
@@ -460,9 +530,18 @@ function addPlayableCardActions(
   cards: CardLibrary
 ): void {
   const player = state.players[playerId];
-  if (!player) {
+  const combat = state.combat;
+  if (!player || !combat || !isCombatCardWindowOpen(state) || !isCombatParticipant(state, playerId)) {
     return;
   }
+
+  const activeUnit = combat.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+  const ownActivationOpen = Boolean(
+    activeUnit &&
+      activeUnit.controllerId === playerId &&
+      !activeUnit.activatedThisRound &&
+      !activeUnit.attackedThisActivation
+  );
 
   for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
@@ -477,6 +556,11 @@ function addPlayableCardActions(
     }
 
     if (card.timing !== "combat" && card.timing !== "instant" && card.timing !== "ongoing" && card.timing !== "action") {
+      continue;
+    }
+
+    const needsOwnActivation = card.timing !== "instant";
+    if (needsOwnActivation && !ownActivationOpen) {
       continue;
     }
 
@@ -503,6 +587,16 @@ function addPlayableCardActions(
       continue;
     }
 
+    if (card.effect.type === "TRANSFORM_UNIT") {
+      for (const target of getTransformTargets(state, playerId, card.effect)) {
+        actions.push({
+          label: `Play ${card.name}`,
+          action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target }
+        });
+      }
+      continue;
+    }
+
     for (const mode of getPlayableModesForCard(state, playerId, card)) {
       for (const target of getTargetsForCard(state, playerId, cardId, cards)) {
         actions.push({
@@ -517,6 +611,74 @@ function addPlayableCardActions(
         });
       }
     }
+  }
+}
+
+/** Effects that do something useful when played on the adventure map. */
+function isMapPlayableEffect(card: CardDefinition, effect: ConcreteEffect): boolean {
+  if (card.timing === "map") {
+    return true;
+  }
+
+  if (effect.type === "DRAW_CARDS" || effect.type === "GAIN_MORALE") {
+    return true;
+  }
+
+  return (
+    effect.type === "CREATE_ACTIVE_EFFECT" &&
+    effect.effect.modifiers.some((modifier) => modifier.type === "ADVENTURE_DIE_REROLL")
+  );
+}
+
+/**
+ * Cards playable during your own map turn, outside combat: Instant and
+ * Ongoing cards (e.g. Luck before rolling treasure dice) plus Map effects.
+ * Map-timed cards can never be used during combat.
+ */
+function addTurnCardActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  cards: CardLibrary
+): void {
+  const player = state.players[playerId];
+  if (!player || state.combat || state.activePlayerId !== playerId || state.pendingChoice || state.reactionWindow) {
+    return;
+  }
+
+  for (const cardId of new Set(player.hand)) {
+    const card = cards[cardId];
+    if (!card || card.kind === "spell" || card.trigger || card.implementationStatus !== "implemented") {
+      continue;
+    }
+
+    if (card.timing !== "instant" && card.timing !== "ongoing" && card.timing !== "map") {
+      continue;
+    }
+
+    if (card.effect.type === "CHOOSE_ONE") {
+      for (const [optionIndex, option] of card.effect.options.entries()) {
+        if (option.trigger || option.effect.type !== "DRAW_CARDS") {
+          continue;
+        }
+
+        actions.push({
+          label: `${card.name}: ${option.label}`,
+          action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", optionIndex, target: { type: "none" } }
+        });
+      }
+      continue;
+    }
+
+    const effect = card.effect;
+    if (!isMapPlayableEffect(card, effect)) {
+      continue;
+    }
+
+    actions.push({
+      label: `Play ${card.name}`,
+      action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
+    });
   }
 }
 
@@ -637,6 +799,9 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
     });
   }
 
+  // Ranged units shoot first and may step afterwards; everyone else may move
+  // first and then attack an adjacent enemy. canUnitAttack enforces that a
+  // ranged unit that already moved gave up its attack.
   if (!alreadyAttacked) {
     for (const defender of Object.values(combat.units)) {
       if (!canUnitAttack(combat, activeUnit, defender)) {
@@ -653,7 +818,10 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
         }
       });
     }
+  }
 
+  if (!alreadyAttacked) {
+    // Defend replaces the attack, so a unit that already moved may still defend.
     actions.push({
       label: `${activeUnit.name} defend`,
       action: {
@@ -918,8 +1086,12 @@ export function getLegalActions(
   }
 
   if (state.activePlayerId !== playerId) {
+    // Even while the opponent's unit is active you may still cast your one
+    // spell per combat round and slot in trigger-free instants.
     const anytimeActions: LegalAction[] = [];
     addActiveEffectActions(anytimeActions, state, playerId);
+    addSpellActions(anytimeActions, state, playerId, cards);
+    addPlayableCardActions(anytimeActions, state, playerId, cards);
     return anytimeActions;
   }
 
@@ -1144,6 +1316,12 @@ export function isEffectLegalForTrigger(
     const defender = combat?.units[triggerEvent.defenderId];
     if (!attacker || !defender) {
       return false;
+    }
+
+    // Centaur's Axe: either fighter may triple the die — the attacker hoping
+    // for a +1, the defender fishing for a tripled -1.
+    if (effect.type === "TRIPLE_ATTACK_DIE") {
+      return attacker.controllerId === playerId || defender.controllerId === playerId;
     }
 
     if (effect.type === "CREATE_ACTIVE_EFFECT") {
@@ -1491,7 +1669,8 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
-  // Active combat: the standard combat actions apply.
+  // Active combat: the standard combat actions apply. Spells and instants
+  // stay available to both fighters whoever's unit is active.
   if (state.combat && state.phase === "combat") {
     addActiveEffectActions(actions, state, playerId);
     addUnitActions(actions, state, playerId);
@@ -1522,6 +1701,9 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       ...actions
     ];
   }
+
+  // Instant, Ongoing and Map cards may be played during your own map turn.
+  addTurnCardActions(actions, state, playerId, cards);
 
   for (const hero of Object.values(state.heroes)) {
     if (hero.controllerId !== playerId || !hero.spaceId) {

@@ -54,6 +54,7 @@ import {
   isUnitAlive
 } from "./legal-actions";
 import {
+  getDoubleAttackAbility,
   getPostAttackAbilityDamageEffects,
   getUnitAbilityDefinitions,
   getUnitAttackRerollSources,
@@ -355,8 +356,8 @@ function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState): void 
     return;
   }
 
-  // Defeated "Pack" units flip to their "Few" side with the excess damage
-  // instead of leaving the battle (adventure-mode armies only).
+  // Defeated "Pack" units flip to their "Few" side, carrying over any damage
+  // dealt beyond the pack's health.
   if (unit.variant === "pack" && unit.unitDefId) {
     const fewSide = getUnitSide(unit.unitDefId, "few");
     if (fewSide) {
@@ -372,6 +373,14 @@ function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState): void 
       if (unit.assets && fewSide.cardImage) {
         unit.assets.cardImage = fewSide.cardImage;
       }
+
+      appendEvent(state, {
+        type: "UNIT_FLIPPED",
+        unitId: unit.id,
+        playerId: unit.controllerId,
+        unitName: unit.name,
+        excessDamage: Math.max(0, excess)
+      });
 
       if (unit.damage < unit.maxHealth) {
         return;
@@ -698,9 +707,10 @@ function getAttackDamagePreview(
   defender: CombatUnitState,
   roll: number,
   attackBonus: number,
-  defenseBonus: number
+  defenseBonus: number,
+  dieMultiplier = 1
 ): { attackValue: number; defenseValue: number; damage: number } {
-  const attackValue = Math.max(0, attacker.attack + attackBonus + roll);
+  const attackValue = Math.max(0, attacker.attack + attackBonus + roll * dieMultiplier);
   const defenseValue = defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonus;
   const damage = Math.max(0, attackValue - defenseValue);
 
@@ -719,7 +729,8 @@ function applyAttackDamageFromCandidate(
   rollMode: AttackRollMode,
   attackBonus: number,
   defenseBonus: number,
-  candidate: AttackRollCandidate
+  candidate: AttackRollCandidate,
+  dieMultiplier = 1
 ): { damage: number; roll: number } {
   if (!state.combat) {
     return { damage: 0, roll: 0 };
@@ -730,10 +741,13 @@ function applyAttackDamageFromCandidate(
     defender,
     candidate.roll,
     attackBonus,
-    defenseBonus
+    defenseBonus,
+    dieMultiplier
   );
 
-  defender.damage = Math.min(defender.maxHealth, defender.damage + damage);
+  // Damage is not capped at the pack's health: the rulebook carries any
+  // excess over onto the Few side when the pack flips.
+  defender.damage += damage;
 
   appendEvent(state, {
     type: "ATTACK_ROLLED",
@@ -741,6 +755,7 @@ function applyAttackDamageFromCandidate(
     defenderId: defender.id,
     rolls: candidate.rolls,
     roll: candidate.roll,
+    ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
     rollMode,
     attackBonus,
     defenseBonus,
@@ -803,8 +818,8 @@ function applyPostAttackAbilityDamage(
       message: effect.message
     });
 
-    const assignedDamage = Math.min(effect.amount, target.maxHealth - target.damage);
-    target.damage = Math.min(target.maxHealth, target.damage + effect.amount);
+    const assignedDamage = Math.min(effect.amount, Math.max(0, target.maxHealth - target.damage));
+    target.damage += effect.amount;
 
     if (assignedDamage > 0) {
       appendEvent(state, {
@@ -836,6 +851,7 @@ function getAttackStackDetails(
       rollMode: AttackRollMode;
       attackBonus: number;
       defenseBonus: number;
+      dieMultiplier: number;
     }
   | null {
   const combat = state.combat;
@@ -869,7 +885,8 @@ function getAttackStackDetails(
     attackKind,
     rollMode,
     attackBonus: stackItem.modifiers.attackBonus + activeAttackBonus,
-    defenseBonus: stackItem.modifiers.defenseBonus + activeDefenseBonus
+    defenseBonus: stackItem.modifiers.defenseBonus + activeDefenseBonus,
+    dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1
   };
 }
 
@@ -895,7 +912,7 @@ function buildRerollSources(
   }));
 
   const orderedEffects = [...rerollEffects].sort(
-    (left, right) => Number(left.name === "Luck") - Number(right.name === "Luck")
+    (left, right) => Number(left.name.includes("Luck")) - Number(right.name.includes("Luck"))
   );
 
   return [
@@ -998,6 +1015,88 @@ function closePendingChoice(
   state.pendingChoice = null;
 }
 
+/**
+ * After an attack sequence (including any retaliation) finishes, the attacker
+ * may still owe actions: a ranged unit may step 1 space after shooting, and
+ * double-attack units strike the same target a second time. Otherwise the
+ * activation ends and the next unit comes up.
+ */
+function concludeAttackerActivation(state: GameState, attacker: CombatUnitState): void {
+  const combat = state.combat;
+
+  const canRangedReposition =
+    Boolean(combat) &&
+    combat !== null &&
+    attacker.type === "ranged" &&
+    isUnitAlive(attacker) &&
+    !attacker.movedThisActivation &&
+    !attacker.activatedThisRound &&
+    getLegalMoveDestinations(combat, attacker, state).length > 0;
+
+  if (canRangedReposition) {
+    // Keep the shooter active so the player may move it after firing.
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    return;
+  }
+
+  attacker.activatedThisRound = true;
+  advanceActiveUnit(state);
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+}
+
+/**
+ * Marksmen/Elves style abilities: after their first attack against a
+ * non-adjacent target, attack the same target again — exactly once, so the
+ * second attack never triggers a third.
+ */
+function maybeDeclareDoubleAttack(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  attackKind: "melee" | "ranged",
+  roll: number,
+  cards: CardLibrary
+): boolean {
+  if (attackKind !== "ranged" || (attacker.attacksThisActivation ?? 0) !== 1) {
+    return false;
+  }
+
+  const doubleAttack = getDoubleAttackAbility(attacker);
+  if (!doubleAttack) {
+    return false;
+  }
+
+  if (doubleAttack.maxRoll !== undefined && roll > doubleAttack.maxRoll) {
+    return false;
+  }
+
+  if (!isUnitAlive(attacker) || !isUnitAlive(defender) || isAdjacent(attacker.position, defender.position)) {
+    return false;
+  }
+
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: doubleAttack.abilityId,
+    targetUnitId: defender.id,
+    message: `${attacker.name} attack ${defender.name} a second time.`
+  });
+
+  declareAttack(
+    state,
+    {
+      type: "ATTACK_UNIT",
+      playerId: attacker.controllerId,
+      attackerId: attacker.id,
+      defenderId: defender.id
+    },
+    cards
+  );
+  return true;
+}
+
 function finishResolvedAttack(
   state: GameState,
   stackItem: ResolutionStackItem,
@@ -1013,7 +1112,8 @@ function finishResolvedAttack(
     details.rollMode,
     details.attackBonus,
     details.defenseBonus,
-    candidate
+    candidate,
+    details.dieMultiplier
   );
   applyPostAttackAbilityDamage(
     state,
@@ -1028,6 +1128,7 @@ function finishResolvedAttack(
     details.attacker.retaliatedThisRound = true;
   } else {
     details.attacker.attackedThisActivation = true;
+    details.attacker.attacksThisActivation = (details.attacker.attacksThisActivation ?? 0) + 1;
   }
 
   stackItem.status = "resolved";
@@ -1037,38 +1138,24 @@ function finishResolvedAttack(
     return;
   }
 
-  // A ranged unit that shoots (a true ranged attack never provokes retaliation)
-  // may still spend its move to reposition afterwards, as long as it has not
-  // already moved this activation and a legal destination exists.
-  const combat = state.combat;
-  const canRangedReposition =
-    !details.isRetaliation &&
-    details.attackKind === "ranged" &&
-    Boolean(combat) &&
-    isUnitAlive(details.attacker) &&
-    !details.attacker.movedThisActivation &&
-    combat !== null &&
-    getLegalMoveDestinations(combat, details.attacker, state).length > 0;
-
-  if (!details.isRetaliation && !canRangedReposition) {
-    details.attacker.activatedThisRound = true;
+  if (details.isRetaliation) {
+    // The retaliation has resolved; hand the activation back to the original
+    // attacker, who may still owe a post-attack step (ranged units).
+    const originalAttacker = details.defender;
+    concludeAttackerActivation(state, originalAttacker);
+    return;
   }
 
-  if (!details.isRetaliation && shouldRetaliate(details.attacker, details.defender, details.attackKind)) {
+  if (maybeDeclareDoubleAttack(state, details.attacker, details.defender, details.attackKind, attackResult.roll, cards)) {
+    return;
+  }
+
+  if (shouldRetaliate(details.attacker, details.defender, details.attackKind)) {
     openRetaliationWindow(state, details.attacker, details.defender, cards);
     return;
   }
 
-  if (canRangedReposition) {
-    // Keep the shooter active so the player may move it after firing.
-    state.phase = "combat";
-    state.priorityPlayerId = null;
-    return;
-  }
-
-  advanceActiveUnit(state);
-  state.phase = "combat";
-  state.priorityPlayerId = null;
+  concludeAttackerActivation(state, details.attacker);
 }
 
 function setActiveUnit(state: GameState, unitId: UnitId | null): void {
@@ -1087,6 +1174,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   state.activePlayerId = activeUnit.controllerId;
   activeUnit.movedThisActivation = false;
   activeUnit.attackedThisActivation = false;
+  activeUnit.attacksThisActivation = 0;
 
   if (activeUnit.defenseToken) {
     activeUnit.defenseToken = false;
@@ -1112,8 +1200,10 @@ function resetCombatRound(combat: CombatState): void {
     unit.activatedThisRound = false;
     unit.movedThisActivation = false;
     unit.attackedThisActivation = false;
+    unit.attacksThisActivation = 0;
     unit.retaliatedThisRound = false;
-    unit.defenseToken = false;
+    // Defense tokens persist into the next round: they are discarded at the
+    // start of the unit's next activation, not at the end of the round.
   }
 }
 
@@ -1195,7 +1285,7 @@ function shouldRetaliate(
     isUnitAlive(defender) &&
     attackKind === "melee" &&
     isAdjacent(attacker.position, defender.position) &&
-    !attacker.abilities.includes("ignores-retaliation") &&
+    !hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") &&
     (!defender.retaliatedThisRound || hasUnitAbilityEffect(defender, "ALLOW_UNLIMITED_RETALIATION"))
   );
 }
@@ -1283,7 +1373,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       if (target) {
         const power = getCurrentSpellPower(stackItem, cards);
         const amount = getSpellDamageAmount(card, power);
-        target.damage = Math.min(target.maxHealth, target.damage + amount);
+        target.damage += amount;
         appendEvent(state, {
           type: "DAMAGE_ASSIGNED",
           source: {
@@ -1633,11 +1723,27 @@ function applyReactionPlayCore(
     effect.type === "ADD_COMBAT_STAT" &&
     (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
+    // Hero specialties double their bonus when the signature unit is the one
+    // attacking (attack bonus) or being attacked (defense bonus).
+    const attacker = state.combat?.units[stackItem.action.attackerId];
+    const defender = state.combat?.units[stackItem.action.defenderId];
+    const affectedUnit = effect.stat === "attack" ? attacker : defender;
+    const appliedAmount =
+      effect.doubleForUnitName && affectedUnit?.name === effect.doubleForUnitName ? effectAmount * 2 : effectAmount;
+
     if (effect.stat === "attack") {
-      stackItem.modifiers.attackBonus += effectAmount;
+      stackItem.modifiers.attackBonus += appliedAmount;
     } else {
-      stackItem.modifiers.defenseBonus += effectAmount;
+      stackItem.modifiers.defenseBonus += appliedAmount;
     }
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
+  if (
+    effect.type === "TRIPLE_ATTACK_DIE" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    stackItem.modifiers.attackDieMultiplier = (stackItem.modifiers.attackDieMultiplier ?? 1) * 3;
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
@@ -1812,6 +1918,38 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       drawCardsForPlayer(state, action.playerId, effect.expertDrawCards);
     }
     changeMorale(state, action.playerId, effect.amount);
+  }
+
+  if (effect.type === "TRANSFORM_UNIT" && target && state.combat) {
+    const unit = state.combat.units[target.unitId];
+    if (
+      !unit ||
+      unit.controllerId !== action.playerId ||
+      unit.name !== effect.targetUnitName ||
+      !(effect.targetVariants as string[]).includes(unit.variant)
+    ) {
+      throw new Error(`${card.name} must be placed on a matching unit.`);
+    }
+
+    // The specialty card covers the unit card and replaces its statistics.
+    unit.name = effect.newName;
+    unit.cardName = effect.newName;
+    unit.attack = effect.attack;
+    unit.defense = effect.defense;
+    unit.maxHealth = effect.health;
+    unit.initiative = effect.initiative;
+    unit.damage = Math.min(unit.damage, effect.health);
+    if (unit.assets && effect.cardImage) {
+      unit.assets.cardImage = effect.cardImage;
+    }
+
+    appendEvent(state, {
+      type: "UNIT_TRANSFORMED",
+      unitId: unit.id,
+      playerId: action.playerId,
+      newName: effect.newName,
+      byCardId: card.id
+    });
   }
 
   if (state.phase === "combat" || state.combat) {
@@ -2118,9 +2256,10 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
     to: action.destination
   });
 
-  // If the unit already fired this activation (a ranged unit repositioning after
-  // shooting), the move spends the rest of its activation.
-  if (unit.attackedThisActivation) {
+  // Ranged units finish their activation with the move, whether it follows a
+  // shot or replaces it — they can never attack after moving. Ground and
+  // flying units stay active to attack an adjacent enemy or hold.
+  if (unit.type === "ranged") {
     unit.activatedThisRound = true;
     advanceActiveUnit(state);
   }

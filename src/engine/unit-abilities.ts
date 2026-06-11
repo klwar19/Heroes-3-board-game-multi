@@ -62,6 +62,17 @@ export function getUnitAttackRerollSources(unit: CombatUnitState): { name: strin
   );
 }
 
+/** Marksmen/Elves: attack the same non-adjacent target a second time. */
+export function getDoubleAttackAbility(unit: CombatUnitState): { abilityId: string; maxRoll?: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "DOUBLE_ATTACK")) {
+    if (ability.effect?.type === "DOUBLE_ATTACK") {
+      return { abilityId: ability.id, maxRoll: ability.effect.maxRoll };
+    }
+  }
+
+  return null;
+}
+
 export function getPostAttackAbilityDamageEffects(
   combat: CombatState,
   context: PostAttackContext

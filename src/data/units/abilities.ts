@@ -2,10 +2,22 @@ import type { EffectDurationDefinition, UnitType } from "@/engine/state";
 
 export type UnitAbilityEffectDefinition =
   | { type: "ALLOW_UNLIMITED_RETALIATION" }
+  | { type: "IGNORE_RETALIATION" }
   | { type: "IGNORE_RANGED_BACK_ROW_PENALTY" }
+  | { type: "MOVE_ANYWHERE" }
   | { type: "EXTRA_RANGED_DAMAGE_ON_LOW_ROLL"; maxRoll: number; amount: number }
   | { type: "SPLASH_DAMAGE_ON_RANGED_HIT"; amount: number }
   | { type: "ATTACK_DIE_REROLL"; rerollsPerAttack: number }
+  | {
+      /**
+       * Marksmen/Elves: after attacking a non-adjacent target, attack it
+       * again. The follow-up happens once — never a third attack. With
+       * maxRoll set, the second attack only triggers when the first attack's
+       * die outcome was at or below it (Elves: -1 or 0).
+       */
+      type: "DOUBLE_ATTACK";
+      maxRoll?: number;
+    }
   | {
       type: "ACTIVATION_ATTACK_BUFF";
       amount: number;
@@ -43,6 +55,34 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Low Roll Extra Shot",
     text: "After a ranged attack roll of 0 or lower, deals 1 extra attack damage to the defender.",
     effect: { type: "EXTRA_RANGED_DAMAGE_ON_LOW_ROLL", maxRoll: 0, amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "double-attack": {
+    id: "double-attack",
+    name: "Double Attack",
+    text: "If the target is a non-adjacent unit, attack this target again (once — the second attack never triggers a third).",
+    effect: { type: "DOUBLE_ATTACK" },
+    implementationStatus: "implemented"
+  },
+  "double-attack-low-roll": {
+    id: "double-attack-low-roll",
+    name: "Double Attack (−1/0)",
+    text: "If the target is a non-adjacent unit and the die shows −1 or 0, attack this target again (stops after the second attack).",
+    effect: { type: "DOUBLE_ATTACK", maxRoll: 0 },
+    implementationStatus: "implemented"
+  },
+  "ignores-retaliation": {
+    id: "ignores-retaliation",
+    name: "No Retaliation",
+    text: "Attacks by this unit never provoke a Retaliation Attack.",
+    effect: { type: "IGNORE_RETALIATION" },
+    implementationStatus: "implemented"
+  },
+  "teleport-move": {
+    id: "teleport-move",
+    name: "Teleport",
+    text: "As a regular movement, this unit can move to any empty space.",
+    effect: { type: "MOVE_ANYWHERE" },
     implementationStatus: "implemented"
   },
   "splash-damage": {

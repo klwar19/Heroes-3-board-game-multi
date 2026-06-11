@@ -24,7 +24,7 @@ export type GamePhase =
 
 export type GameMode = "combat-sandbox" | "adventure";
 export type GameDifficulty = "easy" | "normal" | "hard" | "impossible";
-export type FactionId = "castle" | "necropolis" | "dungeon";
+export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon";
 
 export type TargetRef = { type: "unit"; unitId: UnitId } | { type: "none" };
 
@@ -91,6 +91,14 @@ export type ActiveEffectModifier =
     }
   | {
       type: "UNIT_CANNOT_MOVE";
+    }
+  | {
+      /**
+       * Luck-style rerolls of the adventure dice. "any" also lets the
+       * attack-die reroll flow consume this effect (Expert Luck).
+       */
+      type: "ADVENTURE_DIE_REROLL";
+      dice: "treasure" | "resource" | "any";
     };
 
 export type ActiveEffectDefinition = {
@@ -132,7 +140,33 @@ export type EffectDefinition =
       type: "CHOOSE_ONE";
       options: CardOptionDefinition[];
     }
-  | { type: "ADD_COMBAT_STAT"; stat: "attack" | "defense"; amount: number; expertAmount?: number }
+  | {
+      type: "ADD_COMBAT_STAT";
+      stat: "attack" | "defense";
+      amount: number;
+      expertAmount?: number;
+      /** Hero specialties: the bonus doubles when the named unit is involved. */
+      doubleForUnitName?: string;
+    }
+  | {
+      /** Centaur's Axe: the attack die's outcome counts three times. */
+      type: "TRIPLE_ATTACK_DIE";
+    }
+  | {
+      /**
+       * Sandro's Cloak: the specialty card is placed on a matching unit and
+       * replaces its printed statistics for the rest of the combat.
+       */
+      type: "TRANSFORM_UNIT";
+      targetUnitName: string;
+      targetVariants: ("few" | "pack")[];
+      newName: string;
+      attack: number;
+      defense: number;
+      health: number;
+      initiative: number;
+      cardImage?: string;
+    }
   | { type: "ADD_SPELL_POWER"; amount: number; expertAmount?: number; drawCards?: number }
   | { type: "GAIN_MORALE"; amount: number; expertDrawCards?: number }
   | {
@@ -384,6 +418,8 @@ export type GameEvent =
       defenderId: UnitId;
       rolls: number[];
       roll: number;
+      /** Centaur's Axe: the die outcome is multiplied before it is applied. */
+      dieMultiplier?: number;
       rollMode: AttackRollMode;
       attackBonus: number;
       defenseBonus: number;
@@ -449,6 +485,23 @@ export type GameEvent =
       type: "UNIT_REMOVED";
       unitId: UnitId;
       playerId: PlayerId;
+    }
+  | {
+      /** A defeated Pack card turns to its Few side with the excess damage. */
+      id: string;
+      type: "UNIT_FLIPPED";
+      unitId: UnitId;
+      playerId: PlayerId;
+      unitName: string;
+      excessDamage: number;
+    }
+  | {
+      id: string;
+      type: "UNIT_TRANSFORMED";
+      unitId: UnitId;
+      playerId: PlayerId;
+      newName: string;
+      byCardId: CardId;
     }
   | {
       id: string;
@@ -828,6 +881,8 @@ export type ResolutionStackItem = {
     spellPowerBonus: number;
     attackBonus: number;
     defenseBonus: number;
+    /** Centaur's Axe: multiplies the rolled attack-die outcome (default 1). */
+    attackDieMultiplier?: number;
     playedCardIds: CardId[];
   };
 };
@@ -935,6 +990,8 @@ export type CombatUnitState = {
   activatedThisRound: boolean;
   movedThisActivation: boolean;
   attackedThisActivation?: boolean;
+  /** Attacks resolved during this activation (double-attack abilities stop at 2). */
+  attacksThisActivation?: number;
   retaliatedThisRound: boolean;
   defenseToken: boolean;
   abilities: string[];
@@ -1011,6 +1068,12 @@ export type CombatState = {
   } | null;
   dice: CombatDice;
   units: Record<UnitId, CombatUnitState>;
+  /**
+   * Battlefield spaces blocked by obstacle tokens. Ground and ranged units
+   * can neither enter nor move through them; flying units may fly over but
+   * not land on them. Unit cards themselves also count as combat obstacles.
+   */
+  obstacles?: number[];
 };
 
 export type DeckState = {
@@ -1072,6 +1135,12 @@ export type VisitStep =
   | { type: "GAIN_MORALE"; amount: number }
   | { type: "ROLL_RESOURCE_DICE"; count: number }
   | { type: "ROLL_TREASURE_DICE"; count: number }
+  | {
+      /** Marks one Luck reroll (per dice kind) as spent before re-rolling. */
+      type: "CONSUME_LUCK";
+      effectId: string;
+      dice: "treasure" | "resource";
+    }
   | { type: "SEARCH_SHARED_DECK"; deckId: DeckId; count: number }
   | { type: "SETTLEMENT_CHOICE" }
   | { type: "MAGIC_SPRING" }

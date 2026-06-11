@@ -56,3 +56,62 @@ export function getBattlefieldLabel(position: number): string {
   const { row, column } = getBattlefieldCoordinates(position);
   return `${String.fromCharCode(65 + column)}${row + 1}`;
 }
+
+export function getOrthogonalNeighbors(position: number): number[] {
+  const { row, column } = getBattlefieldCoordinates(position);
+  const neighbors: number[] = [];
+
+  if (row > 0) neighbors.push(position - BATTLEFIELD_COLUMNS);
+  if (row < BATTLEFIELD_ROWS - 1) neighbors.push(position + BATTLEFIELD_COLUMNS);
+  if (column > 0) neighbors.push(position - 1);
+  if (column < BATTLEFIELD_COLUMNS - 1) neighbors.push(position + 1);
+
+  return neighbors;
+}
+
+/**
+ * Spaces a unit can end a move on, following the printed movement rules:
+ * units step orthogonally up to `range` spaces. Other unit cards and obstacle
+ * tokens are Combat Obstacles — ground and ranged units must path around
+ * them, while flying units ignore them along the way. Nobody may end a move
+ * on an occupied or obstacle space.
+ */
+export function getReachableDestinations(
+  start: number,
+  range: number,
+  blockedSpaces: ReadonlySet<number>,
+  ignoresObstacles: boolean
+): number[] {
+  if (range <= 0 || !isBattlefieldPosition(start)) {
+    return [];
+  }
+
+  const reached = new Map<number, number>([[start, 0]]);
+  let frontier = [start];
+
+  for (let step = 1; step <= range && frontier.length > 0; step += 1) {
+    const next: number[] = [];
+
+    for (const position of frontier) {
+      for (const neighbor of getOrthogonalNeighbors(position)) {
+        if (reached.has(neighbor)) {
+          continue;
+        }
+
+        // Flying units pass over obstacles freely; everyone else must walk
+        // through empty spaces only.
+        if (!ignoresObstacles && blockedSpaces.has(neighbor)) {
+          continue;
+        }
+
+        reached.set(neighbor, step);
+        next.push(neighbor);
+      }
+    }
+
+    frontier = next;
+  }
+
+  reached.delete(start);
+  return [...reached.keys()].filter((position) => !blockedSpaces.has(position)).sort((a, b) => a - b);
+}

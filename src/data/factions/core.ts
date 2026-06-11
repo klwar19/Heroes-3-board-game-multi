@@ -201,6 +201,181 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     source: townSource("necropolis")
   },
 
+  // ---- Rampart (expansion) ----------------------------------------------
+  "rampart.city_hall": {
+    id: "rampart.city_hall",
+    name: "City Hall",
+    faction: "rampart",
+    cost: { gold: 10, buildingMaterials: 6 },
+    effect: {
+      type: "RESOURCE_ROUND_CHOICE",
+      options: [{ label: "Gain 7 gold", gold: 7 }]
+    },
+    implementationStatus: "implemented",
+    source: townSource("rampart")
+  },
+  "rampart.citadel": {
+    id: "rampart.citadel",
+    name: "Citadel",
+    faction: "rampart",
+    cost: { gold: 8, buildingMaterials: 5, valuables: 1 },
+    effect: { type: "UNLOCK_REINFORCE" },
+    implementationStatus: "implemented",
+    source: townSource("rampart")
+  },
+  "rampart.mage_guild": {
+    id: "rampart.mage_guild",
+    name: "Mage Guild",
+    faction: "rampart",
+    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
+    effect: { type: "MAGE_GUILD" },
+    spellBookCost: 5,
+    implementationStatus: "implemented",
+    source: townSource("rampart")
+  },
+  "rampart.dwelling_bronze": {
+    id: "rampart.dwelling_bronze",
+    name: "Housing Estate",
+    faction: "rampart",
+    cost: { gold: 5, buildingMaterials: 3, valuables: 1 },
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" },
+    implementationStatus: "implemented",
+    source: townSource("rampart")
+  },
+  "rampart.dwelling_silver": {
+    id: "rampart.dwelling_silver",
+    name: "Spring upon Arches",
+    faction: "rampart",
+    cost: { gold: 8, buildingMaterials: 6, valuables: 3 },
+    prerequisites: ["rampart.dwelling_bronze"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "silver" },
+    implementationStatus: "implemented",
+    source: townSource("rampart")
+  },
+  "rampart.dwelling_gold": {
+    id: "rampart.dwelling_gold",
+    name: "Cliff behind the Glade",
+    faction: "rampart",
+    cost: { gold: 10, buildingMaterials: 9, valuables: 4 },
+    prerequisites: ["rampart.dwelling_silver"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "gold" },
+    implementationStatus: "implemented",
+    source: townSource("rampart")
+  },
+  "rampart.mystic_pond": {
+    id: "rampart.mystic_pond",
+    name: "Mystic Pond",
+    faction: "rampart",
+    cost: { gold: 7, buildingMaterials: 4 },
+    effect: {
+      type: "NOT_IMPLEMENTED",
+      note: "At the beginning of each Resource round, roll a Resource die and gain its reward."
+    },
+    implementationStatus: "not-implemented",
+    source: townSource("rampart")
+  },
+  "rampart.saplings": {
+    id: "rampart.saplings",
+    name: "Saplings",
+    faction: "rampart",
+    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
+    effect: {
+      type: "NOT_IMPLEMENTED",
+      note: "During Astrologers' rounds, Reinforce bronze and silver units at half cost."
+    },
+    implementationStatus: "not-implemented",
+    source: townSource("rampart")
+  },
+
+  // ---- Inferno (expansion) -----------------------------------------------
+  "inferno.city_hall": {
+    id: "inferno.city_hall",
+    name: "City Hall",
+    faction: "inferno",
+    cost: { gold: 13, buildingMaterials: 5 },
+    effect: {
+      type: "RESOURCE_ROUND_CHOICE",
+      options: [
+        { label: "Gain 6 gold", gold: 6 },
+        { label: "Gain 3 building materials", buildingMaterials: 3 }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: townSource("inferno")
+  },
+  "inferno.citadel": {
+    id: "inferno.citadel",
+    name: "Citadel",
+    faction: "inferno",
+    cost: { gold: 9, buildingMaterials: 4, valuables: 1 },
+    effect: { type: "UNLOCK_REINFORCE" },
+    implementationStatus: "implemented",
+    source: townSource("inferno")
+  },
+  "inferno.mage_guild": {
+    id: "inferno.mage_guild",
+    name: "Mage Guild",
+    faction: "inferno",
+    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
+    effect: { type: "MAGE_GUILD" },
+    spellBookCost: 5,
+    implementationStatus: "implemented",
+    source: townSource("inferno")
+  },
+  "inferno.dwelling_bronze": {
+    id: "inferno.dwelling_bronze",
+    name: "Crucible of Sins",
+    faction: "inferno",
+    cost: { gold: 5, buildingMaterials: 3, valuables: 1 },
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" },
+    implementationStatus: "implemented",
+    source: townSource("inferno")
+  },
+  "inferno.dwelling_silver": {
+    id: "inferno.dwelling_silver",
+    name: "Gates of Abyss",
+    faction: "inferno",
+    cost: { gold: 9, buildingMaterials: 6, valuables: 3 },
+    prerequisites: ["inferno.dwelling_bronze"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "silver" },
+    implementationStatus: "implemented",
+    source: townSource("inferno")
+  },
+  "inferno.dwelling_gold": {
+    id: "inferno.dwelling_gold",
+    name: "Hellfire Palace",
+    faction: "inferno",
+    cost: { gold: 10, buildingMaterials: 9, valuables: 4 },
+    prerequisites: ["inferno.dwelling_silver"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "gold" },
+    implementationStatus: "implemented",
+    source: townSource("inferno")
+  },
+  "inferno.castle_gate": {
+    id: "inferno.castle_gate",
+    name: "Castle Gate",
+    faction: "inferno",
+    cost: { gold: 7, buildingMaterials: 5 },
+    effect: {
+      type: "NOT_IMPLEMENTED",
+      note: "During your turn: pay 3 gold to discard a random card from an opponent's hand, OR move your Hero between Towns you control."
+    },
+    implementationStatus: "not-implemented",
+    source: townSource("inferno")
+  },
+  "inferno.brimstone_stormclouds": {
+    id: "inferno.brimstone_stormclouds",
+    name: "Brimstone Stormclouds",
+    faction: "inferno",
+    cost: { gold: 6, buildingMaterials: 3, valuables: 2 },
+    effect: {
+      type: "NOT_IMPLEMENTED",
+      note: "Place Faction Cubes here (max 3) to gain +1 Power per cube during Combat."
+    },
+    implementationStatus: "not-implemented",
+    source: townSource("inferno")
+  },
+
   // ---- Dungeon ---------------------------------------------------------
   "dungeon.city_hall": {
     id: "dungeon.city_hall",
@@ -356,6 +531,70 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     portrait: "https://en.homm3bg.wiki/assets/heroes-necropolis-might-tamika.webp",
     source: heroSource("tamika")
   },
+  gelu: {
+    id: "gelu",
+    name: "Gelu",
+    faction: "rampart",
+    class: "Ranger",
+    type: "might",
+    startingStats: { attack: 1, defense: 3, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.archery",
+    specialtyCardIds: {
+      1: "specialty.gelu.1",
+      4: "specialty.gelu.4",
+      6: "specialty.gelu.6"
+    },
+    portrait: "https://en.homm3bg.wiki/assets/heroes-rampart-might-gelu.webp",
+    source: heroSource("gelu")
+  },
+  gem: {
+    id: "gem",
+    name: "Gem",
+    faction: "rampart",
+    class: "Druid",
+    type: "magic",
+    startingStats: { attack: 0, defense: 2, power: 1, knowledge: 2 },
+    startingAbilityCardId: "ability.first_aid",
+    specialtyCardIds: {
+      1: "specialty.gem.1",
+      4: "specialty.gem.4",
+      6: "specialty.gem.6"
+    },
+    portrait: "https://en.homm3bg.wiki/assets/heroes-rampart-magic-gem.webp",
+    source: heroSource("gem")
+  },
+  xyron: {
+    id: "xyron",
+    name: "Xyron",
+    faction: "inferno",
+    class: "Heretic",
+    type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 1 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: {
+      1: "specialty.xyron.1",
+      4: "specialty.xyron.4",
+      6: "specialty.xyron.6"
+    },
+    portrait: "https://en.homm3bg.wiki/assets/heroes-inferno-magic-xyron.webp",
+    source: heroSource("xyron")
+  },
+  rashka: {
+    id: "rashka",
+    name: "Rashka",
+    faction: "inferno",
+    class: "Demoniac",
+    type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.scholar",
+    specialtyCardIds: {
+      1: "specialty.rashka.1",
+      4: "specialty.rashka.4",
+      6: "specialty.rashka.6"
+    },
+    portrait: "https://en.homm3bg.wiki/assets/heroes-inferno-might-rashka.webp",
+    source: heroSource("rashka")
+  },
   alamar: {
     id: "alamar",
     name: "Alamar",
@@ -414,6 +653,28 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     townImage: "https://en.homm3bg.wiki/assets/towns-castle-empty.webp",
     source: townSource("castle")
   },
+  rampart: {
+    id: "rampart",
+    name: "Rampart",
+    color: "#2e9e57",
+    startingTileId: "S4",
+    heroes: ["gelu", "gem"],
+    buildings: buildingsOfFaction("rampart"),
+    units: unitsOfFaction("rampart"),
+    townImage: "https://en.homm3bg.wiki/assets/towns-rampart-empty.webp",
+    source: townSource("rampart")
+  },
+  inferno: {
+    id: "inferno",
+    name: "Inferno",
+    color: "#e07020",
+    startingTileId: "S5",
+    heroes: ["xyron", "rashka"],
+    buildings: buildingsOfFaction("inferno"),
+    units: unitsOfFaction("inferno"),
+    townImage: "https://en.homm3bg.wiki/assets/towns-inferno-empty.webp",
+    source: townSource("inferno")
+  },
   necropolis: {
     id: "necropolis",
     name: "Necropolis",
@@ -463,5 +724,7 @@ export const neutralUnitIdsByTier: Record<"bronze" | "silver" | "gold" | "azure"
 export const startingTileByFaction: Record<string, string> = {
   castle: "S3",
   necropolis: "S1",
-  dungeon: "S2"
+  dungeon: "S2",
+  rampart: "S4",
+  inferno: "S5"
 };

@@ -1331,6 +1331,9 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     if (option.gold) {
       gainResources(state, action.playerId, { gold: option.gold }, "City Hall");
     }
+    if (option.buildingMaterials) {
+      gainResources(state, action.playerId, { buildingMaterials: option.buildingMaterials }, "City Hall");
+    }
     if (option.valuables) {
       gainResources(state, action.playerId, { valuables: option.valuables }, "City Hall");
     }
@@ -1373,7 +1376,14 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
  * city-hall choice opens, including after a state reload.
  */
 let cityHallChoiceBeingResolved: {
-  options: { label: string; gold?: number; valuables?: number; movement?: number; reinforceBronzeFree?: boolean }[];
+  options: {
+    label: string;
+    gold?: number;
+    buildingMaterials?: number;
+    valuables?: number;
+    movement?: number;
+    reinforceBronzeFree?: boolean;
+  }[];
 } | null = null;
 
 // ---------------------------------------------------------------------------
