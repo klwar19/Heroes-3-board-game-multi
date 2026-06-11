@@ -1,5 +1,6 @@
 import { astrologersDeckCardIds } from "@/data/cards/astrologers";
 import {
+  coreBuildingDefinitions,
   coreFactionDefinitions,
   coreHeroDefinitions,
   neutralUnitIdsByTier,
@@ -24,6 +25,7 @@ import type {
   FactionId,
   GameAction,
   GameDifficulty,
+  GameSetupOptions,
   GameState,
   PlayerState
 } from "./state";
@@ -41,7 +43,27 @@ export type AdventureSetupOptions = {
   difficulty?: GameDifficulty;
   scenarioId?: string;
   players?: AdventurePlayerConfig[];
+  /** Lobby overrides for starting resources, income, units and buildings. */
+  startingResources?: { gold: number; buildingMaterials: number; valuables: number };
+  startingProduction?: { gold: number; buildingMaterials: number; valuables: number };
+  startingUnitTiers?: ("bronze" | "silver" | "gold")[];
+  startingBuildings?: string[];
 };
+
+/**
+ * Default game options of a fresh lobby: the scenario sheet's numbers with
+ * the Field Difficulty Level Table on its Impossible column.
+ */
+export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetupOptions {
+  return {
+    scenarioId: scenario.id,
+    difficulty: "impossible",
+    startingResources: { ...scenario.startingResources },
+    startingProduction: { ...scenario.startingProduction },
+    startingUnitTiers: [...scenario.startingUnits.tiers],
+    startingBuildings: [...scenario.startingBuildings]
+  };
+}
 
 const DEFAULT_PLAYERS: AdventurePlayerConfig[] = [
   { id: "p1", name: "Catherine of Castle", factionId: "castle", heroDefId: "catherine" },
@@ -158,7 +180,7 @@ function makeStartingDeck(heroDefId: string): string[] {
   return deck;
 }
 
-function makePlayer(config: AdventurePlayerConfig, seed: string, scenario: ScenarioDefinition): PlayerState {
+function makePlayer(config: AdventurePlayerConfig, seed: string, options: GameSetupOptions): PlayerState {
   const heroDefId = config.heroDefId ?? coreFactionDefinitions[config.factionId].heroes[0];
   const deck = shuffleCards(makeStartingDeck(heroDefId), `${seed}#starting-deck#${config.id}`);
 
@@ -173,8 +195,8 @@ function makePlayer(config: AdventurePlayerConfig, seed: string, scenario: Scena
     removed: [],
     army: [],
     startingArmy: [],
-    resources: { ...scenario.startingResources },
-    production: { ...scenario.startingProduction },
+    resources: { ...options.startingResources },
+    production: { ...options.startingProduction },
     townTokens: {
       build: true,
       population: true,
@@ -195,12 +217,11 @@ function makePlayer(config: AdventurePlayerConfig, seed: string, scenario: Scena
     }
   };
 
-  // Scenario starting units: one "few" card of each faction unit of the
-  // scenario's tiers.
+  // Starting units: one "few" card of each faction unit of the chosen tiers.
   const faction = coreFactionDefinitions[config.factionId];
   for (const unitDefId of faction.units) {
     const unit = coreUnitDefinitions[unitDefId];
-    if (unit && scenario.startingUnits.tiers.includes(unit.tier as "bronze" | "silver" | "gold") && unit.few) {
+    if (unit && options.startingUnitTiers.includes(unit.tier as "bronze" | "silver" | "gold") && unit.few) {
       addArmyUnit(player, unitDefId, "few");
       player.startingArmy.push({ unitDefId, side: "few" });
     }
@@ -275,7 +296,15 @@ export function draftFarTiles(pool: string[], scenario: ScenarioDefinition): str
 export function createAdventureGameState(options: AdventureSetupOptions = {}): GameState {
   const seed = options.seed ?? "homm3bg-adventure-seed";
   const scenario = getScenario(options.scenarioId);
-  const difficulty = options.difficulty ?? scenario.difficulty;
+  const setupOptions: GameSetupOptions = {
+    ...defaultGameSetupOptions(scenario),
+    ...(options.difficulty ? { difficulty: options.difficulty } : {}),
+    ...(options.startingResources ? { startingResources: options.startingResources } : {}),
+    ...(options.startingProduction ? { startingProduction: options.startingProduction } : {}),
+    ...(options.startingUnitTiers ? { startingUnitTiers: options.startingUnitTiers } : {}),
+    ...(options.startingBuildings ? { startingBuildings: options.startingBuildings } : {})
+  };
+  const difficulty = setupOptions.difficulty;
   const playerConfigs = (options.players?.length ? options.players : DEFAULT_PLAYERS).slice(
     0,
     Math.min(scenario.maxPlayers, scenario.layout.starts.length)
@@ -297,8 +326,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       nextResourceModifiers: { gold: 0, valuables: 0 },
       crazyWizardUsedBy: [],
       swiftWeaselUsedBy: []
-    },
-    pendingEncounter: null
+    }
   };
 
   // Tile pools (face-down draws are secret until revealed).
@@ -331,7 +359,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     priorityPlayerId: null,
     turnOrder: playerConfigs.map((config) => config.id),
     players: Object.fromEntries([
-      ...playerConfigs.map((config) => [config.id, makePlayer(config, seed, scenario)] as const),
+      ...playerConfigs.map((config) => [config.id, makePlayer(config, seed, setupOptions)] as const),
       [NEUTRAL_PLAYER_ID, makeNeutralSeatPlayer()] as const
     ]),
     map: { spaces: {} },
@@ -383,9 +411,12 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       state.towns[`town_${config.id}`] = {
         id: `town_${config.id}`,
         controllerId: config.id,
-        buildings: scenario.startingBuildings
+        buildings: setupOptions.startingBuildings
+          .filter((buildingId) => buildingId.length > 0)
           .map((buildingId) => `${config.factionId}.${buildingId}`)
-          .filter((buildingId) => buildingId.length > 0),
+          // Only buildings this faction actually has (e.g. not every town
+          // board carries a Citadel).
+          .filter((buildingId) => Boolean(coreBuildingDefinitions[buildingId])),
         factionId: config.factionId,
         fieldId: townFieldId
       };
@@ -448,6 +479,7 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   const seed = options.seed ?? `homm3bg-${Date.now().toString(36)}`;
   const scenario = getScenario(options.scenarioId);
   const seatCount = Math.min(2, scenario.maxPlayers);
+  const setupOptions = defaultGameSetupOptions(scenario);
 
   const seats = Array.from({ length: seatCount }, (_, index) => ({
     playerId: `p${index + 1}`,
@@ -467,8 +499,8 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
         removed: [],
         army: [],
         startingArmy: [],
-        resources: { ...scenario.startingResources },
-        production: { ...scenario.startingProduction },
+        resources: { ...setupOptions.startingResources },
+        production: { ...setupOptions.startingProduction },
         townTokens: { build: true, population: true, spellBook: true },
         morale: 0,
         limits: { hand: 4, expertUses: 0 },
@@ -494,7 +526,7 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
     players,
     map: { spaces: {} },
     adventure: null,
-    setupLobby: { scenarioId: scenario.id, seats },
+    setupLobby: { scenarioId: scenario.id, options: setupOptions, seats },
     towns: {},
     heroes: {},
     combat: null,
@@ -506,7 +538,7 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
       {
         id: "evt_1",
         type: "GAME_CREATED",
-        message: `Map setup for "${scenario.name}": pick factions, then start the adventure.`
+        message: `Map setup for "${scenario.name}": pick factions, set the options, then start the adventure.`
       }
     ],
     pendingChoice: null,
@@ -517,6 +549,102 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
       observingPlayerId: seats[0].playerId
     }
   };
+}
+
+const VALID_DIFFICULTIES: GameDifficulty[] = ["easy", "normal", "hard", "impossible"];
+const VALID_UNIT_TIERS = ["bronze", "silver", "gold"] as const;
+
+function sanitizeResources(value: {
+  gold: number;
+  buildingMaterials: number;
+  valuables: number;
+}): { gold: number; buildingMaterials: number; valuables: number } {
+  const clamp = (amount: number) => Math.max(0, Math.min(99, Math.floor(Number(amount) || 0)));
+  return {
+    gold: clamp(value.gold),
+    buildingMaterials: clamp(value.buildingMaterials),
+    valuables: clamp(value.valuables)
+  };
+}
+
+/**
+ * Map-setup lobby: adjust the adjustable setup steps — scenario, neutral
+ * difficulty (Impossible by default), starting resources, base income,
+ * starting units and pre-built buildings. Any seated player may adjust them
+ * until the adventure starts.
+ */
+export function setGameOptions(state: GameState, action: Extract<GameAction, { type: "SET_GAME_OPTIONS" }>): void {
+  const lobby = state.setupLobby;
+  if (!lobby || state.phase !== "setup") {
+    throw new Error("Game options can only change during map setup.");
+  }
+
+  if (!lobby.seats.some((seat) => seat.playerId === action.playerId)) {
+    throw new Error("Only seated players may change the game options.");
+  }
+
+  const next = action.options;
+  const changes: string[] = [];
+
+  if (next.scenarioId !== undefined) {
+    if (!scenarioDefinitions[next.scenarioId]) {
+      throw new Error("Unknown scenario.");
+    }
+    lobby.scenarioId = next.scenarioId;
+    lobby.options.scenarioId = next.scenarioId;
+    changes.push(`scenario ${scenarioDefinitions[next.scenarioId].name}`);
+  }
+
+  if (next.difficulty !== undefined) {
+    if (!VALID_DIFFICULTIES.includes(next.difficulty)) {
+      throw new Error("Unknown difficulty.");
+    }
+    lobby.options.difficulty = next.difficulty;
+    changes.push(`difficulty ${next.difficulty}`);
+  }
+
+  if (next.startingResources !== undefined) {
+    lobby.options.startingResources = sanitizeResources(next.startingResources);
+    const r = lobby.options.startingResources;
+    changes.push(`starting resources ${r.gold}g/${r.buildingMaterials}m/${r.valuables}v`);
+  }
+
+  if (next.startingProduction !== undefined) {
+    lobby.options.startingProduction = sanitizeResources(next.startingProduction);
+    const p = lobby.options.startingProduction;
+    changes.push(`income ${p.gold}g/${p.buildingMaterials}m/${p.valuables}v`);
+  }
+
+  if (next.startingUnitTiers !== undefined) {
+    lobby.options.startingUnitTiers = VALID_UNIT_TIERS.filter((tier) => next.startingUnitTiers?.includes(tier));
+    changes.push(`starting units ${lobby.options.startingUnitTiers.join("+") || "none"}`);
+  }
+
+  if (next.startingBuildings !== undefined) {
+    lobby.options.startingBuildings = next.startingBuildings.filter(
+      (buildingId): buildingId is string => typeof buildingId === "string" && buildingId.length > 0
+    );
+    changes.push(`starting buildings ${lobby.options.startingBuildings.join(", ") || "none"}`);
+  }
+
+  if (changes.length === 0) {
+    return;
+  }
+
+  // Keep the waiting lobby seats' resource preview in sync.
+  for (const seat of lobby.seats) {
+    const player = state.players[seat.playerId];
+    if (player) {
+      player.resources = { ...lobby.options.startingResources };
+      player.production = { ...lobby.options.startingProduction };
+    }
+  }
+
+  appendEvent(state, {
+    type: "GAME_OPTIONS_CHANGED",
+    playerId: action.playerId,
+    message: `${state.players[action.playerId]?.name ?? action.playerId} set ${changes.join("; ")}.`
+  });
 }
 
 export function chooseFaction(state: GameState, action: Extract<GameAction, { type: "CHOOSE_FACTION" }>): void {
@@ -579,7 +707,12 @@ export function startAdventureFromLobby(state: GameState, action: Extract<GameAc
 
   const built = createAdventureGameState({
     seed: state.seed,
-    scenarioId: lobby.scenarioId,
+    scenarioId: lobby.options.scenarioId,
+    difficulty: lobby.options.difficulty,
+    startingResources: lobby.options.startingResources,
+    startingProduction: lobby.options.startingProduction,
+    startingUnitTiers: lobby.options.startingUnitTiers,
+    startingBuildings: lobby.options.startingBuildings,
     players: lobby.seats.map((seat) => ({
       id: seat.playerId,
       name: state.players[seat.playerId]?.name ?? seat.name,

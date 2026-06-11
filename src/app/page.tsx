@@ -32,7 +32,9 @@ import {
 } from "@/components/table/overlays";
 import { CardZoomProvider, useCardZoom, ZoomButton } from "@/components/table/zoom";
 import {
+  ADVENTURE_FEED_CUES,
   AdventureDecksPanel,
+  AdventureEventFeed,
   AdventureHud,
   ArmyPanel,
   FarTileTray,
@@ -43,10 +45,11 @@ import {
   PromptTray,
   SetupLobbyScreen,
   TownPanel,
+  type AdventureFeedItem,
   type HeroMoveCue,
   type TilePlacementSelection
 } from "@/components/adventure/screen";
-import { cardName, unitName, type CardBoardAction } from "@/components/table/utils";
+import { cardName, formatEvent, unitName, type CardBoardAction } from "@/components/table/utils";
 import { connectRoom, type GameRoomSnapshot, type RoomConnection } from "@/lib/realtime";
 
 const OBSERVER_SEAT = "observer";
@@ -108,10 +111,12 @@ export default function Home() {
   const [drawCue, setDrawCue] = useState<DrawCue | null>(null);
   const [moveCue, setMoveCue] = useState<HeroMoveCue | null>(null);
   const [flippedUnitIds, setFlippedUnitIds] = useState<Set<string>>(new Set());
+  const [feedItems, setFeedItems] = useState<AdventureFeedItem[]>([]);
   const seenRollIdsRef = useRef<Set<string> | null>(null);
   const seenDrawIdsRef = useRef<Set<string>>(new Set());
   const seenFlipIdsRef = useRef<Set<string>>(new Set());
   const seenMoveIdsRef = useRef<Set<string>>(new Set());
+  const seenFeedIdsRef = useRef<Set<string>>(new Set());
   const connectionRef = useRef<RoomConnection | null>(null);
   // The draw cue needs the live seat without resubscribing the stream.
   const viewerRef = useRef<PlayerId>("p1");
@@ -135,13 +140,38 @@ export default function Home() {
     const moves = nextState.eventLog.filter(
       (event): event is Extract<GameEvent, { type: "HERO_MOVED" }> => event.type === "HERO_MOVED"
     );
+    const feedEvents = nextState.eventLog.filter((event) => ADVENTURE_FEED_CUES[event.type]);
 
     if (!seenRollIdsRef.current) {
       seenRollIdsRef.current = new Set(rolls.map((event) => event.id));
       seenDrawIdsRef.current = new Set(draws.map((event) => event.id));
       seenFlipIdsRef.current = new Set(flips.map((event) => event.id));
       seenMoveIdsRef.current = new Set(moves.map((event) => event.id));
+      seenFeedIdsRef.current = new Set(feedEvents.map((event) => event.id));
     } else {
+      // Adventure feed: spell out every visit effect, fight, gain and reveal
+      // as a toast. The cue name is the future audio hook.
+      const freshFeed = feedEvents.filter((event) => !seenFeedIdsRef.current.has(event.id));
+      for (const event of freshFeed) {
+        seenFeedIdsRef.current.add(event.id);
+      }
+      if (freshFeed.length > 0) {
+        const items = freshFeed.map((event) => {
+          const cue = ADVENTURE_FEED_CUES[event.type];
+          return {
+            id: event.id,
+            icon: cue?.icon ?? "•",
+            cue: cue?.cue ?? "default",
+            text: formatEvent(event, nextState)
+          } satisfies AdventureFeedItem;
+        });
+        setFeedItems((current) => [...current, ...items].slice(-6));
+        window.setTimeout(() => {
+          const expired = new Set(items.map((item) => item.id));
+          setFeedItems((current) => current.filter((item) => !expired.has(item.id)));
+        }, 8000);
+      }
+
       const seen = seenRollIdsRef.current;
       const fresh = rolls.filter((event) => !seen.has(event.id));
       for (const event of fresh) {
@@ -314,6 +344,7 @@ export default function Home() {
       setHandDiscards([]);
       setCombatTab("battle");
       setDice({ current: null, queue: [] });
+      setFeedItems([]);
       setSyncStatus(`synced v${snapshot.version}`);
     } catch {
       setErrors(["Could not reset the room."]);
@@ -331,6 +362,7 @@ export default function Home() {
     // Fresh room: drop the old snapshot so lower version numbers apply.
     setRoomVersion(0);
     setState(null);
+    setFeedItems([]);
     setRoomId(nextRoomId);
   };
 
@@ -570,9 +602,12 @@ export default function Home() {
                 {!forcedDiscard && handMode === null ? (
                   <div className="handButtons">
                     {canMulligan ? (
-                      <button className="commandButton" onClick={() => setHandMode("mulligan")} type="button">
-                        Mulligan (discard &amp; draw)
-                      </button>
+                      <span className="handHint">
+                        Start of turn: click cards to pick discards (once per turn), or
+                        <button className="commandButton" onClick={() => setHandMode("mulligan")} type="button">
+                          Mulligan (discard &amp; draw)
+                        </button>
+                      </span>
                     ) : null}
                     {hasMorale ? (
                       <>
@@ -634,16 +669,31 @@ export default function Home() {
                   <div className="adventureHandSlot" key={`${cardId}-${index}`}>
                     <button
                       className={`adventureHandCard ${handDiscards.includes(index) ? "discarding" : ""}`}
-                      onClick={() =>
+                      onClick={() => {
+                        // While the once-per-turn mulligan window is open,
+                        // clicking a card marks it for the discard pile —
+                        // the confirm button then discards them all and
+                        // draws that many in one go.
+                        if (!selecting && canMulligan) {
+                          setHandMode("mulligan");
+                          setHandDiscards([index]);
+                          return;
+                        }
+                        if (selecting) {
+                          setHandDiscards((current) =>
+                            current.includes(index)
+                              ? current.filter((value) => value !== index)
+                              : [...current, index]
+                          );
+                        }
+                      }}
+                      title={
                         selecting
-                          ? setHandDiscards((current) =>
-                              current.includes(index)
-                                ? current.filter((value) => value !== index)
-                                : [...current, index]
-                            )
-                          : undefined
+                          ? `Toggle discard ${cardName(cardId)}`
+                          : canMulligan
+                            ? `Click to mark ${cardName(cardId)} for the mulligan discard`
+                            : cardName(cardId)
                       }
-                      title={selecting ? `Toggle discard ${cardName(cardId)}` : cardName(cardId)}
                       type="button"
                     >
                       <CardFrame cardId={cardId} className="handCardImage" />
@@ -655,6 +705,10 @@ export default function Home() {
             </div>
           ) : null}
 
+          <AdventureEventFeed
+            items={feedItems}
+            onDismiss={(id) => setFeedItems((current) => current.filter((item) => item.id !== id))}
+          />
           <PromptTray legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
           <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
           <LogDrawer state={state} />
@@ -766,6 +820,10 @@ export default function Home() {
 
       <LogDrawer state={state} />
 
+      <AdventureEventFeed
+        items={feedItems}
+        onDismiss={(id) => setFeedItems((current) => current.filter((item) => item.id !== id))}
+      />
       <PromptTray legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
       <ReactionTray
         key={`${state.reactionWindow?.id ?? "none"}:${state.reactionWindow?.priorityPlayerId ?? ""}`}

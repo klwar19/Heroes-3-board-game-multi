@@ -119,7 +119,7 @@ export const sampleCombatUnits: Record<string, CombatUnitState> = {
     movedThisActivation: false,
     retaliatedThisRound: false,
     defenseToken: false,
-    abilities: ["splash-damage"],
+    abilities: ["magog-fireball-splash"],
     assets: {
       cardImage: "https://en.homm3bg.wiki/assets/units-inferno-bronze-magogs-pack.webp",
       imageAlt: "Pack of Magogs unit card",

@@ -213,7 +213,13 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "MORALE_CHANGED":
       return `${playerName(state, event.playerId)} morale ${event.amount > 0 ? "+" : ""}${event.amount} (now ${event.total}).`;
     case "NEUTRAL_COMBAT_STARTED":
-      return `${playerName(state, event.playerId)} fights level ${event.difficulty} guards (${event.unitDefIds.length} units).`;
+      return `${playerName(state, event.playerId)} engages the level ${event.difficulty} guards — deploy your units first.`;
+    case "NEUTRAL_ARMY_REVEALED":
+      return `The level ${event.difficulty} guards are revealed: ${event.unitDefIds
+        .map((unitDefId) => unitDefId.split(".")[1] ?? unitDefId)
+        .join(", ")}.`;
+    case "GAME_OPTIONS_CHANGED":
+      return event.message;
     case "PLAYER_COMBAT_STARTED":
       return `${playerName(state, event.attackerPlayerId)} attacks ${playerName(state, event.defenderPlayerId)}!`;
     case "QUICK_COMBAT_WON":

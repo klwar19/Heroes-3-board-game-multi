@@ -23,8 +23,20 @@ export type TileDefinition = {
   /**
    * Ring directions (NE, E, SE, SW, W, NW before rotation) whose outer tile
    * edge cannot be crossed: solid yellow border lines or blocked fields.
+   * Scan-verified against every core/Rampart/Inferno tile: each marked
+   * direction carries the printed yellow line on all three of its outer hex
+   * edges (full arcs), so direction granularity is exact for these tiles.
    */
   outerImpassable: boolean[];
+  /**
+   * Printed yellow border lines between two fields of this tile, as
+   * unrotated slot pairs (0 = center, 1-6 = ring). Movement may not cross
+   * them without Fly/Pathfinding-style effects. Scan verification found no
+   * internal passable-passable border on any core-box tile — blocked fields
+   * are ringed, which the blocked location already enforces — but expansion
+   * tiles can declare them here and the engine enforces them.
+   */
+  internalBorders?: [number, number][];
   source: {
     product: string;
     credit: string;

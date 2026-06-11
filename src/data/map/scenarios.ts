@@ -78,7 +78,10 @@ export const scenarioDefinitions: Record<string, ScenarioDefinition> = {
     },
     // Development values until the printed Mission Book sheets are imported.
     startingResources: { gold: 10, buildingMaterials: 5, valuables: 2 },
-    startingProduction: { gold: 0, buildingMaterials: 0, valuables: 0 },
+    // Base resource gain each Resource Round: 10 gold, no materials, no
+    // valuables. Mines, settlements and buildings add on top; the map-setup
+    // lobby can change the base.
+    startingProduction: { gold: 10, buildingMaterials: 0, valuables: 0 },
     startingUnits: { tiers: ["bronze"] },
     startingBuildings: [],
     farTiles: { perPlayer: 2, guaranteeSettlement: true },

@@ -38,8 +38,16 @@ export {
 export { getPlayerView } from "./player-view";
 export { createSeededRandom } from "./random";
 export { createInitialGameState } from "./setup";
-export { createAdventureGameState, createAdventureLobbyState, draftFarTiles, getScenario } from "./adventure-setup";
+export {
+  createAdventureGameState,
+  createAdventureLobbyState,
+  defaultGameSetupOptions,
+  draftFarTiles,
+  getScenario
+} from "./adventure-setup";
 export type { AdventurePlayerConfig, AdventureSetupOptions } from "./adventure-setup";
+export { getTileBorderSegments, hasInternalBorder } from "@/data/map/borders";
+export type { TileBorderSegment } from "@/data/map/borders";
 export { astrologersCardDefinitions, astrologersDeckCardIds } from "@/data/cards/astrologers";
 export type { AstrologersCardDefinition, AstrologersEffect } from "@/data/cards/astrologers";
 export { DEFAULT_SCENARIO_ID, scenarioDefinitions } from "@/data/map/scenarios";
@@ -169,7 +177,7 @@ export type {
   MapSpaceId,
   MapState,
   MapTileState,
-  PendingNeutralEncounter,
+  GameSetupOptions,
   PendingTileChoice,
   PendingVisit,
   PlayerId,

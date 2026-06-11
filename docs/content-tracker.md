@@ -16,7 +16,7 @@ Legend: ✅ playable · 🟡 data present, rules effect not implemented · 🔴 
 | Near | N1–N12 | ✅ | Face-down setup pool. |
 | Center | C1–C4 | ✅ | Face-down setup pool. |
 | Center | C5 | 🟡 | Inferno tile with Random Town — excluded from pools until Random Town rules exist. |
-| All tiles | — | needs editing | Outer yellow borders were taken from the editor's per-tile `blocked` arrays; verify each tile against its physical scan (the editor images are linked in each definition). Internal field-to-field borders are not modeled yet. |
+| All tiles | — | ✅ verified | Yellow borders verified against all 41 tile scans (color analysis + visual check): every border is either a full three-edge outer arc on the `outerImpassable` directions or a complete ring around a blocked field; **no internal border between two passable fields exists in the core box**. The engine renders every scanned segment, blocks movement across them, and supports `internalBorders` for future expansion tiles (engine-enforced + tested). |
 
 ## Map locations (`src/data/map/locations.ts`)
 
@@ -78,7 +78,12 @@ Hero board level track (verified against the wiki board scan): 2 XP per level; h
 - ✅ Rampart expansion roster: Centaurs, Dwarves, Elves, Pegasi, Dendroids, Unicorns, Gold Dragons (stats, costs, images).
 - ✅ Inferno expansion roster: Familiars, Magogs, Cerberi, Demons, Pit Lords, Efreet, Arch Devils (stats, costs, images).
 - ✅ 42 neutral units in four tier decks (core + Inferno/Rampart expansion neutrals incl. Faerie Dragons azure).
-- Implemented unit abilities: unlimited retaliation (Griffins), attack reroll (pack Crusaders), **double attack** (pack Marksmen — second shot at non-adjacent targets, stops at 2), **double attack on −1/0** (pack Elves), **no retaliation** (Vampires, pack Harpies, Cerberi, Arch Devils), **no adjacent-shot penalty** (pack Zealots/Evil Eyes/Medusas, Sharpshooters, Halflings), **splash damage** (pack Magogs, approximation: hits all adjacent enemies instead of one chosen), **teleport move** (pack Arch Devils). Remaining printed abilities are display-only (`abilityText`) — e.g. Halberdier discard-to-ignore-die, vampire drain heal, dragon breath line attack, Dendroid root.
+- Implemented unit abilities: unlimited retaliation (Griffins), attack reroll (pack Crusaders), **double attack** (pack Marksmen — second shot at non-adjacent targets, stops at 2), **double attack on −1/0** (pack Elves), **no retaliation** (Vampires, pack Harpies, Cerberi, Arch Devils), **no adjacent-shot penalty** (pack Zealots/Evil Eyes/Medusas, Sharpshooters, Halflings), **teleport move** (pack Arch Devils), and the printed multi-target attacks:
+  - **Liches' Death Cloud** (pack + neutral): a full separate second attack against a chosen unit adjacent to the original target — friend, foe, or the Liches themselves (wiki FAQ), mandatory when a candidate exists, instants playable on it, die rolled at base attack 2, resolved **before** the original target's retaliation, never chains a third attack.
+  - **Magog fireball splash** (pack + neutral): 1 flat damage to **one chosen** unit adjacent to the target, only when the target is not adjacent to the Magogs; a lone friendly candidate takes the hit (mandatory per FAQ).
+  - **Cerberi second head** (pack + neutral): 1 flat damage to another **enemy** unit adjacent to the Cerberi, chosen by the attacker.
+  - Neutral-controlled Liches/Magogs/Cerberi auto-resolve these choices by the AI target priority (enemy units first; forced friendly hits spare the strongest).
+  Remaining printed abilities are display-only (`abilityText`) — e.g. Halberdier discard-to-ignore-die, vampire drain heal, dragon breath line attack, Dendroid root.
 - Pack→Few flip with excess damage works in combat; defeated Few units leave the unit deck; empty deck restores the scenario's starting units.
 - Unit card images hot-link the wiki asset pattern `units-{faction}-{tier}-{slug}-{side}.webp`; neutral image URLs need spot-checking.
 
@@ -103,6 +108,7 @@ Hero board level track (verified against the wiki board scan): 2 XP per level; h
 | Remaining official spell/ability/artifact decks | 🔴 | Dozens of cards still to import (see wiki indexes). |
 | Astrologers Proclaim deck (19 core cards) | ✅ | Drawn and resolved every even round; "until the next Astrologers round" effects (movement, hand limit, spell hooks, die rerolls, neutral-draw swaps) enforced by the engine; income modifiers apply at the next Resource round. Texts from the wiki (`src/data/cards/astrologers.ts`). |
 | Card backs | 🟡 | Placeholder "H3" back; owner will supply final back-side images. |
+| Building tiles art | 🟡 | `assets.image`/`assets.icon` slots wired through data and town panel; awaiting scans. |
 
 ## Adventure rules engine (`src/engine/adventure*.ts`, `neutral-ai.ts`)
 
@@ -111,17 +117,22 @@ Hero board level track (verified against the wiki board scan): 2 XP per level; h
 | Hex map, 7-field tiles, rotation, edge sealing | ✅ | Printed border lines render on the map; reveals and placements ask the player for the rotation ("you may always rotate when placing or revealing"), rejecting rotations whose border lines seal the tile off. Starting tiles are fixed by faction + seat and never rotate. |
 | Movement actions (move/revisit/discover/place tile/continue combat) | ✅ | Click-to-move walks multi-field paths (1 MP per field) with arrow preview/confirm; intermediate fields must be "open" (used cubes, own flags, empties); guards/locations stop the walk. Tile placement enforces touch-2-tiles + next-to-hero. |
 | Allied heroes passing through each other | ✅ | Pass-through allowed mid-path, never as the final field; the crossed field is not visited. |
-| Hand flow (auto-draw, mulligan, hand limit by level) | ✅ | Starting hands dealt at setup; every turn auto-draws to the (effective) limit; discard-N-draw-N mulligan until the first real action; forced discard-down when over the limit. |
+| Hand flow (auto-draw, mulligan, hand limit by level) | ✅ | Starting hands dealt at setup; every turn auto-draws to the (effective) limit; one mulligan per turn — click cards to pick any number of discards, confirm once, draw that many (window closes after use or the first real action); forced discard-down when over the limit. |
 | Round structure (token refresh, resource income, astrologers) | ✅/🟡 | Income + City Hall choices + Astrologers rounds work; scenario round-tracker timed events 🔴. |
-| Neutral combat: difficulty table, tier decks, AI placement, AI targeting, 1-round time limit (continue for 1 MP / retreat), quick combat, XP awards, neutral discards | ✅ | Targeting ties are broken deterministically (lowest board position) instead of "player chooses". Clash rule "player to your right controls neutrals" 🔴 (AI controls them). |
-| Player-vs-player combat on the map | ✅ | Attacker then defender placement, full card combat, loser pays 5 gold + negative morale, winner XP, defeated hero returns home. Surrender, town-action window before combat, siege 🔴. |
+| Neutral combat: difficulty table, tier decks, placement-first reveal, AI placement, AI targeting, 1-round time limit (continue for 1 MP / retreat), quick combat, XP awards, neutral discards | ✅ | Rulebook Combat Setup order: the player deploys up to 5 units first (drag & drop or click), only then is the guard army drawn from the Field Difficulty Level Table and revealed, sorted ranged→backline / ground+flying→frontline, left to right in descending initiative with higher tiers first. Targeting ties between equally valid targets now pause for the player to choose, as printed. The Groovy Satyr swap happens after the draw, before the reveal. Clash rule "player to your right controls neutrals" 🔴 (the AI controls them; the attacker breaks ties). |
+| Player-vs-player combat on the map | ✅ | Attacker then defender placement (drag & drop), full card combat, loser pays 5 gold + negative morale, winner XP, defeated hero returns home. Per-combat-round spell/crown limits reset when a combat starts (a spell cast in an earlier fight no longer blocks round 1 of the next). Surrender, town-action window before combat, siege 🔴. |
 | Morale | ✅ | All three printed spends: draw 1, discard-any-draw-that-many, reroll any die (attack die via the reroll window, Treasure/Resource dice via the roll prompt). Max one positive/negative token; a second negative discards the hand at turn end; Necropolis immune. |
 | Experience/level ups | ✅ | Searches queue one at a time; azure kill jumps to level VII. |
-| Scenario sheets (`src/data/map/scenarios.ts`) | 🟡 | Map-setup phase: pick faction + hero in the lobby, then the scenario builds the layout, starting resources/income/units/buildings and the far-tile draft. Built-in "Border Skirmish" uses development numbers (10g/5bm/2v, bronze "few" units) until the printed Mission Book sheets are transcribed. |
+| Scenario sheets (`src/data/map/scenarios.ts`) | 🟡 | Map-setup phase: pick faction + hero in the lobby **and set the game options** — scenario, neutral difficulty (Easy/Normal/Hard/Impossible, **Impossible default**, table verified against rulebook p. 91 and the wiki), starting resources, base resource gain (default **10 gold / 0 materials / 0 valuables**), starting unit tiers, pre-built buildings (validated per faction). Any seated player adjusts them until the start; everything syncs over the action stream. Built-in "Border Skirmish" still uses development numbers for the rest until the printed Mission Book sheets are transcribed. |
 
 ## Multiplayer / app
 
 - ✅ Server-authoritative rooms, SSE live stream + polling fallback, seat switching, observer seat (hands hidden, all combats watchable).
+- ✅ Combat deployment by drag & drop: drag units from the panel onto your two rows, drag placed units to new spaces, click flow still works; the board orients by side (your rows nearest your hand) in adventure combats.
+- ✅ Ability-target choices (Death Cloud, splash, Cerberi bite, neutral target ties) highlight the candidate units on the board (click to choose) with a prompt-tray fallback.
+- ✅ Adventure event feed: visits, gains, dice, experience, morale, flags, fight starts/reveals/outcomes pop as toasts; each carries a named sound cue (`ADVENTURE_FEED_CUES`) as the future audio hook.
+- ✅ Tile art hides the built-in location icons (live state stays); the printed yellow borders render per scanned hex edge.
+- ✅ Building art slots (`assets.image`/`assets.icon` on every town building) render in the town panel as soon as URLs land.
 - ✅ Map ↔ battle switching during combats; hero-walk arrow animations on every seat; pan/zoom map with a tile-art layer (scenario-editor scans now, drop-in slot for real art).
 - ✅ PartyKit scaffold (`party/index.ts` + `src/lib/realtime.ts`): one Cloudflare Durable Object per room, WebSockets at the edge, Durable Object storage persistence; enabled via `NEXT_PUBLIC_PARTYKIT_HOST`.
 - ✅ Discard-pile viewers (own pile, shared decks, the Astrologers deck, neutral tier discards) and face-down deck visuals with counts.

@@ -1021,6 +1021,33 @@ export function getLegalActions(
       return actions;
     }
 
+    if (state.pendingChoice.type === "ABILITY_TARGET_CHOICE") {
+      const choice = state.pendingChoice;
+      const verb =
+        choice.kind === "second-attack"
+          ? `${choice.abilityName}: attack`
+          : choice.kind === "flat-damage"
+            ? `${choice.abilityName}: hit`
+            : "Neutrals attack";
+      return choice.candidateUnitIds.flatMap((unitId) => {
+        const unit = state.combat?.units[unitId];
+        if (!unit || !isUnitAlive(unit)) {
+          return [];
+        }
+        return [
+          {
+            label: `${verb} ${unit.cardName}`,
+            action: {
+              type: "CHOOSE_ABILITY_TARGET",
+              playerId,
+              choiceId: choice.id,
+              targetUnitId: unitId
+            }
+          } satisfies LegalAction
+        ];
+      });
+    }
+
     const actions: LegalAction[] = state.pendingChoice.candidates.map((candidate, candidateIndex) => ({
       label: `Choose attack roll ${candidate.roll >= 0 ? "+" : ""}${candidate.roll}`,
       action: {

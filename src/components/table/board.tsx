@@ -5,7 +5,11 @@
 import { ChevronDown, ChevronUp, Crown, Mountain, ScrollText, Shield, Sparkles, Swords } from "lucide-react";
 import { useState } from "react";
 import {
+  ATTACKER_BACKLINE,
+  ATTACKER_FRONTLINE,
   BATTLEFIELD_CELL_COUNT,
+  DEFENDER_BACKLINE,
+  DEFENDER_FRONTLINE,
   getBattlefieldLabel,
   getBattlefieldTerrain,
   getUnitAbilityDefinitions,
@@ -17,8 +21,27 @@ import {
   type LegalAction,
   type PlayerId
 } from "@/engine";
+import { ARMY_UNIT_DRAG_TYPE } from "@/components/adventure/screen";
 import { actionKey, formatEvent, isBoardTargetCardAction, sameCardSelection, unitName, type CardBoardAction } from "./utils";
 import { useCardZoom } from "./zoom";
+
+/**
+ * Seat-relative orientation: your rows should sit nearest your hand. The
+ * sandbox seats p1 in the top rows (flip for p1); adventure combats seat the
+ * attacker in the bottom rows, so only the defender's view flips.
+ */
+function isBoardFlipped(state: GameState, viewerPlayerId: PlayerId): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return viewerPlayerId === "p1";
+  }
+
+  if (combat.context.kind === "sandbox") {
+    return viewerPlayerId === "p1";
+  }
+
+  return viewerPlayerId === combat.defenderPlayerId;
+}
 
 export function BattlefieldBoard({
   state,
@@ -39,12 +62,13 @@ export function BattlefieldBoard({
   onInspect: (unitId: string) => void;
 }) {
   const combat = state.combat;
-  const flipped = viewerPlayerId === "p1";
+  const flipped = isBoardFlipped(state, viewerPlayerId);
   const unitsByPosition = new Map<number, CombatUnitState>();
   const obstacles = new Set(combat?.obstacles ?? []);
   const moveActionsByDestination = new Map<number, GameAction>();
   const attackActionsByDefender = new Map<string, GameAction>();
   const cardActionsByTarget = new Map<string, GameAction>();
+  const abilityTargetActions = new Map<string, GameAction>();
 
   if (combat) {
     for (const unit of Object.values(combat.units)) {
@@ -61,10 +85,23 @@ export function BattlefieldBoard({
     if (legal.action.type === "ATTACK_UNIT") {
       attackActionsByDefender.set(legal.action.defenderId, legal.action);
     }
+    if (legal.action.type === "CHOOSE_ABILITY_TARGET") {
+      abilityTargetActions.set(legal.action.targetUnitId, legal.action);
+    }
     if (selectedCardAction && isBoardTargetCardAction(legal.action) && sameCardSelection(selectedCardAction, legal.action)) {
       cardActionsByTarget.set(legal.action.target.unitId, legal.action);
     }
   }
+
+  // Drag-and-drop deployment: while it is the viewer's turn to place, the
+  // two own rows accept army-unit drops (fresh placements and repositions).
+  const setup = combat?.setup;
+  const placing = Boolean(setup && setup.pendingPlayerIds[0] === viewerPlayerId);
+  const ownRows = placing
+    ? combat!.attackerPlayerId === viewerPlayerId
+      ? new Set([...ATTACKER_FRONTLINE, ...ATTACKER_BACKLINE])
+      : new Set([...DEFENDER_FRONTLINE, ...DEFENDER_BACKLINE])
+    : new Set<number>();
 
   return (
     <div className={`boardFelt ${flipped ? "flipped" : ""}`} aria-label="Combat board">
@@ -76,14 +113,34 @@ export function BattlefieldBoard({
           const moveAction = moveActionsByDestination.get(index);
           const attackAction = unit ? attackActionsByDefender.get(unit.id) : undefined;
           const cardAction = unit ? cardActionsByTarget.get(unit.id) : undefined;
+          const abilityAction = unit ? abilityTargetActions.get(unit.id) : undefined;
           const isActive = Boolean(unit && combat?.activeUnitId === unit.id);
           const isFlipping = Boolean(unit && flippedUnitIds?.has(unit.id));
+          const dropTarget = placing && ownRows.has(index) && !unit && !isObstacle;
           const className = `battleCell ${terrain} ${unit?.controllerId ?? ""} ${isActive ? "active" : ""} ${
             isObstacle ? "obstacle" : ""
           } ${moveAction && !selectedCardAction ? "moveTarget" : ""} ${
             attackAction && !selectedCardAction ? "attackTarget" : ""
-          } ${cardAction ? "cardTarget" : ""}`;
+          } ${cardAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${dropTarget ? "dropTarget" : ""}`;
           const health = unit ? Math.max(0, unit.maxHealth - unit.damage) : 0;
+
+          const dropProps = dropTarget
+            ? {
+                onDragOver: (event: React.DragEvent) => {
+                  if (event.dataTransfer.types.includes(ARMY_UNIT_DRAG_TYPE)) {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                  }
+                },
+                onDrop: (event: React.DragEvent) => {
+                  const armyUnitId = event.dataTransfer.getData(ARMY_UNIT_DRAG_TYPE);
+                  if (armyUnitId) {
+                    event.preventDefault();
+                    onAction({ type: "PLACE_COMBAT_UNIT", playerId: viewerPlayerId, armyUnitId, position: index });
+                  }
+                }
+              }
+            : {};
 
           if (isObstacle) {
             return (
@@ -127,14 +184,28 @@ export function BattlefieldBoard({
             <span className="emptyBoardMark" aria-hidden="true" />
           );
 
-          const interactiveAction = cardAction ?? (unit ? attackAction : moveAction);
+          // During deployment your placed units stay draggable to new spaces.
+          const dragProps =
+            placing && unit && unit.controllerId === viewerPlayerId && unit.armyUnitId
+              ? {
+                  draggable: true,
+                  onDragStart: (event: React.DragEvent) => {
+                    event.dataTransfer.setData(ARMY_UNIT_DRAG_TYPE, unit.armyUnitId as string);
+                    event.dataTransfer.effectAllowed = "move";
+                  }
+                }
+              : {};
+
+          const interactiveAction = abilityAction ?? cardAction ?? (unit ? attackAction : moveAction);
 
           if (interactiveAction && (!selectedCardAction || cardAction)) {
-            const label = cardAction
-              ? `Target ${unit?.name}`
-              : unit
-                ? `Attack ${unit?.name}`
-                : `Move to ${getBattlefieldLabel(index)}`;
+            const label = abilityAction
+              ? `Ability target: ${unit?.name}`
+              : cardAction
+                ? `Target ${unit?.name}`
+                : unit
+                  ? `Attack ${unit?.name}`
+                  : `Move to ${getBattlefieldLabel(index)}`;
             return (
               <button
                 aria-label={label}
@@ -160,6 +231,7 @@ export function BattlefieldBoard({
                 onMouseEnter={() => onInspect(unit.id)}
                 title={`Inspect ${unit.name}`}
                 type="button"
+                {...dragProps}
               >
                 {content}
               </button>
@@ -167,7 +239,12 @@ export function BattlefieldBoard({
           }
 
           return (
-            <div aria-label={`${terrain} field ${getBattlefieldLabel(index)}`} className={className} key={index}>
+            <div
+              aria-label={`${terrain} field ${getBattlefieldLabel(index)}${dropTarget ? " — drop a unit here" : ""}`}
+              className={className}
+              key={index}
+              {...dropProps}
+            >
               {content}
             </div>
           );

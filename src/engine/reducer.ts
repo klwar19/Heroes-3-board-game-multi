@@ -22,14 +22,13 @@ import {
   setTileRotation,
   spellBookAction,
   spendMorale,
-  startPendingEncounter,
   tradeResources,
   unplaceCombatUnit,
   endTurnAdventure
 } from "./adventure-reducer";
-import { chooseFaction, startAdventureFromLobby } from "./adventure-setup";
+import { chooseFaction, setGameOptions, startAdventureFromLobby } from "./adventure-setup";
 import { ATTACK_DIE_FACES } from "./battlefield";
-import { isNeutralUnit, planNeutralActivation } from "./neutral-ai";
+import { isNeutralUnit, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
 import { createSeededRandom } from "./random";
 import {
   expireEffectsForCombatEnd,
@@ -59,7 +58,10 @@ import {
 } from "./legal-actions";
 import {
   getDoubleAttackAbility,
+  getFlatDamageFollowUps,
   getPostAttackAbilityDamageEffects,
+  getSecondAttackAbility,
+  getSecondAttackCandidates,
   getUnitAbilityDefinitions,
   getUnitAttackRerollSources,
   hasUnitAbilityEffect
@@ -88,6 +90,7 @@ import type {
   RulesError,
   UnitId
 } from "./state";
+import { NEUTRAL_PLAYER_ID } from "./state";
 
 type ReducerOptions = {
   cards?: CardLibrary;
@@ -712,9 +715,11 @@ function getAttackDamagePreview(
   roll: number,
   attackBonus: number,
   defenseBonus: number,
-  dieMultiplier = 1
+  dieMultiplier = 1,
+  baseAttackOverride?: number
 ): { attackValue: number; defenseValue: number; damage: number } {
-  const attackValue = Math.max(0, attacker.attack + attackBonus + roll * dieMultiplier);
+  const baseAttack = baseAttackOverride ?? attacker.attack;
+  const attackValue = Math.max(0, baseAttack + attackBonus + roll * dieMultiplier);
   const defenseValue = defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonus;
   const damage = Math.max(0, attackValue - defenseValue);
 
@@ -734,7 +739,8 @@ function applyAttackDamageFromCandidate(
   attackBonus: number,
   defenseBonus: number,
   candidate: AttackRollCandidate,
-  dieMultiplier = 1
+  dieMultiplier = 1,
+  baseAttackOverride?: number
 ): { damage: number; roll: number } {
   if (!state.combat) {
     return { damage: 0, roll: 0 };
@@ -746,7 +752,8 @@ function applyAttackDamageFromCandidate(
     candidate.roll,
     attackBonus,
     defenseBonus,
-    dieMultiplier
+    dieMultiplier,
+    baseAttackOverride
   );
 
   // Damage is not capped at the pack's health: the rulebook carries any
@@ -856,6 +863,8 @@ function getAttackStackDetails(
       attackBonus: number;
       defenseBonus: number;
       dieMultiplier: number;
+      /** Printed-ability follow-up (Death Cloud): replacement base attack. */
+      abilityAttack?: { abilityId: string; baseAttack: number };
     }
   | null {
   const combat = state.combat;
@@ -890,7 +899,8 @@ function getAttackStackDetails(
     rollMode,
     attackBonus: stackItem.modifiers.attackBonus + activeAttackBonus,
     defenseBonus: stackItem.modifiers.defenseBonus + activeDefenseBonus,
-    dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1
+    dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
+    abilityAttack: stackItem.action.type === "ATTACK_UNIT" ? stackItem.action.abilityAttack : undefined
   };
 }
 
@@ -1126,7 +1136,8 @@ function finishResolvedAttack(
     details.attackBonus,
     details.defenseBonus,
     candidate,
-    details.dieMultiplier
+    details.dieMultiplier,
+    details.abilityAttack?.baseAttack
   );
   applyPostAttackAbilityDamage(
     state,
@@ -1159,16 +1170,266 @@ function finishResolvedAttack(
     return;
   }
 
+  if (details.abilityAttack) {
+    // A Death Cloud follow-up never chains further follow-ups or its own
+    // retaliation (wiki FAQ): pick the parked sequence back up — the
+    // original target's retaliation fires only now.
+    resumeAttackSequence(state, cards);
+    return;
+  }
+
+  const combat = state.combat;
+  if (combat) {
+    combat.attackSequence = {
+      attackerId: details.attacker.id,
+      defenderId: details.defender.id,
+      attackKind: details.attackKind,
+      retaliationPending: shouldRetaliate(details.attacker, details.defender, details.attackKind)
+    };
+  }
+
+  // Printed flat-damage follow-ups (Magog splash, Cerberi second head)
+  // resolve before retaliation; a target choice pauses the sequence here.
+  if (openFlatDamageFollowUps(state, details.attacker, details.defender, details.attackKind)) {
+    return;
+  }
+
   if (maybeDeclareDoubleAttack(state, details.attacker, details.defender, details.attackKind, attackResult.roll, cards)) {
     return;
   }
 
-  if (shouldRetaliate(details.attacker, details.defender, details.attackKind)) {
-    openRetaliationWindow(state, details.attacker, details.defender, cards);
+  // Liches' Death Cloud: a full second attack against a unit adjacent to the
+  // original target, resolved before the original target's retaliation.
+  if (openSecondAttackFollowUp(state, details.attacker, details.defender, cards)) {
     return;
   }
 
-  concludeAttackerActivation(state, details.attacker);
+  resumeAttackSequence(state, cards);
+}
+
+/**
+ * Continues an attack after its printed follow-ups finished: fires the parked
+ * retaliation when it is still legal, otherwise concludes the activation.
+ */
+function resumeAttackSequence(state: GameState, cards: CardLibrary): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  const sequence = combat.attackSequence;
+  combat.attackSequence = null;
+  if (!sequence) {
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    return;
+  }
+
+  const attacker = combat.units[sequence.attackerId];
+  const defender = combat.units[sequence.defenderId];
+
+  if (
+    sequence.retaliationPending &&
+    attacker &&
+    defender &&
+    shouldRetaliate(attacker, defender, sequence.attackKind)
+  ) {
+    openRetaliationWindow(state, attacker, defender, cards);
+    return;
+  }
+
+  if (attacker) {
+    concludeAttackerActivation(state, attacker);
+  } else {
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+  }
+}
+
+/**
+ * Applies the mandatory flat-damage follow-ups of an attack (Magog splash,
+ * Cerberi second head). A single candidate is hit immediately; several open
+ * an ABILITY_TARGET_CHOICE for the attacker. Returns true when the attack
+ * sequence is paused on a choice.
+ */
+function openFlatDamageFollowUps(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  attackKind: "melee" | "ranged"
+): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+
+  const followUps = getFlatDamageFollowUps(combat, { attacker, defender, attackKind });
+  for (const followUp of followUps) {
+    const living = followUp.candidateUnitIds.filter((unitId) => {
+      const unit = combat.units[unitId];
+      return unit && isUnitAlive(unit);
+    });
+    if (living.length === 0) {
+      continue;
+    }
+
+    if (living.length === 1) {
+      applyFlatAbilityDamage(state, attacker, living[0], followUp.abilityId, followUp.abilityName, followUp.amount);
+      if (finishCombatIfNeeded(state)) {
+        return true;
+      }
+      continue;
+    }
+
+    const choiceId = `choice_${state.eventLog.length + 1}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "ABILITY_TARGET_CHOICE",
+      playerId: attacker.controllerId,
+      kind: "flat-damage",
+      abilityId: followUp.abilityId,
+      abilityName: followUp.abilityName,
+      prompt: `${attacker.name}: ${followUp.abilityName} deals ${followUp.amount} damage — choose the unit it hits.`,
+      sourceUnitId: attacker.id,
+      anchorUnitId: defender.id,
+      candidateUnitIds: living,
+      amount: followUp.amount
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = attacker.controllerId;
+
+    appendEvent(state, {
+      type: "PENDING_CHOICE_CREATED",
+      choiceId,
+      choiceType: "ABILITY_TARGET_CHOICE",
+      playerId: attacker.controllerId,
+      sourceEffectIds: [],
+      message: `${attacker.name} chooses the target of ${followUp.abilityName}.`
+    });
+    return true;
+  }
+
+  return false;
+}
+
+function applyFlatAbilityDamage(
+  state: GameState,
+  source: CombatUnitState,
+  targetUnitId: UnitId,
+  abilityId: string,
+  abilityName: string,
+  amount: number
+): void {
+  const combat = state.combat;
+  const target = combat?.units[targetUnitId];
+  if (!combat || !target || !isUnitAlive(target)) {
+    return;
+  }
+
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: source.id,
+    abilityId,
+    targetUnitId,
+    message: `${source.name} hits ${target.cardName} with ${abilityName} for ${amount} damage.`
+  });
+
+  target.damage += amount;
+  appendEvent(state, {
+    type: "DAMAGE_ASSIGNED",
+    source: { type: "unit", unitId: source.id, controllerId: source.controllerId },
+    target: { type: "unit", unitId: target.id },
+    amount,
+    damageKind: "effect"
+  });
+  markUnitRemovedIfNeeded(state, target);
+}
+
+/**
+ * Liches' Death Cloud: opens the second-attack target choice (or declares
+ * the attack straight away when only one unit qualifies). Returns true when
+ * the attack sequence is paused on the choice or the follow-up attack.
+ */
+function openSecondAttackFollowUp(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  cards: CardLibrary
+): boolean {
+  const combat = state.combat;
+  if (!combat || !isUnitAlive(attacker)) {
+    return false;
+  }
+
+  const ability = getSecondAttackAbility(attacker);
+  if (!ability || (attacker.attacksThisActivation ?? 0) !== 1) {
+    return false;
+  }
+
+  const candidates = getSecondAttackCandidates(combat, attacker, defender);
+  if (candidates.length === 0) {
+    return false;
+  }
+
+  if (candidates.length === 1) {
+    declareAbilityAttack(state, attacker, candidates[0], ability, cards);
+    return true;
+  }
+
+  const choiceId = `choice_${state.eventLog.length + 1}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "ABILITY_TARGET_CHOICE",
+    playerId: attacker.controllerId,
+    kind: "second-attack",
+    abilityId: ability.abilityId,
+    abilityName: ability.abilityName,
+    prompt: `${attacker.name}: ${ability.abilityName} — choose a unit adjacent to the target for the second attack (attack ${ability.baseAttack}).`,
+    sourceUnitId: attacker.id,
+    anchorUnitId: defender.id,
+    candidateUnitIds: candidates,
+    baseAttack: ability.baseAttack
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = attacker.controllerId;
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId: attacker.controllerId,
+    sourceEffectIds: [],
+    message: `${attacker.name} chooses the target of ${ability.abilityName}.`
+  });
+  return true;
+}
+
+function declareAbilityAttack(
+  state: GameState,
+  attacker: CombatUnitState,
+  targetUnitId: UnitId,
+  ability: { abilityId: string; abilityName: string; baseAttack: number },
+  cards: CardLibrary
+): void {
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: ability.abilityId,
+    targetUnitId,
+    message: `${attacker.name} unleashes ${ability.abilityName} on ${state.combat?.units[targetUnitId]?.cardName ?? targetUnitId}.`
+  });
+
+  declareAttack(
+    state,
+    {
+      type: "ATTACK_UNIT",
+      playerId: attacker.controllerId,
+      attackerId: attacker.id,
+      defenderId: targetUnitId,
+      abilityAttack: { abilityId: ability.abilityId, baseAttack: ability.baseAttack }
+    },
+    cards
+  );
 }
 
 function setActiveUnit(state: GameState, unitId: UnitId | null): void {
@@ -2232,6 +2493,134 @@ function choosePendingRoll(
   finishResolvedAttack(state, stackItem, details, candidate, cards);
 }
 
+/**
+ * Resolves an ABILITY_TARGET_CHOICE: Magog splash / Cerberi second head
+ * (flat damage), the Liches' Death Cloud second attack, or a neutral-AI
+ * target tie the player breaks.
+ */
+function chooseAbilityTarget(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_ABILITY_TARGET" }>,
+  cards: CardLibrary
+): void {
+  const choice = state.pendingChoice;
+  const combat = state.combat;
+  if (!choice || choice.type !== "ABILITY_TARGET_CHOICE" || choice.id !== action.choiceId) {
+    throw new Error("That ability target choice is not available.");
+  }
+
+  if (choice.playerId !== action.playerId) {
+    throw new Error("Another player resolves this ability target.");
+  }
+
+  if (!combat) {
+    throw new Error("Combat is not active.");
+  }
+
+  const selectedIndex = choice.candidateUnitIds.indexOf(action.targetUnitId);
+  if (selectedIndex === -1) {
+    throw new Error("That unit is not a legal target for the ability.");
+  }
+
+  const source = combat.units[choice.sourceUnitId];
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex
+  });
+
+  if (!source) {
+    return;
+  }
+
+  if (choice.kind === "flat-damage") {
+    applyFlatAbilityDamage(
+      state,
+      source,
+      action.targetUnitId,
+      choice.abilityId ?? "",
+      choice.abilityName,
+      choice.amount ?? 1
+    );
+    if (finishCombatIfNeeded(state)) {
+      return;
+    }
+    // Core units carry at most one flat-damage follow-up, so the sequence
+    // continues straight to the parked retaliation.
+    resumeAttackSequence(state, cards);
+    return;
+  }
+
+  if (choice.kind === "second-attack") {
+    declareAbilityAttack(
+      state,
+      source,
+      action.targetUnitId,
+      {
+        abilityId: choice.abilityId ?? "",
+        abilityName: choice.abilityName,
+        baseAttack: choice.baseAttack ?? 2
+      },
+      cards
+    );
+    return;
+  }
+
+  // Neutral target tie: the chosen unit becomes the neutral's target.
+  executeNeutralActivation(state, source, cards, action.targetUnitId);
+}
+
+/**
+ * Auto-resolves ability target choices owned by the neutral seat (neutral
+ * Liches, Magogs, Cerberi): player units are preferred by the AI target
+ * priority; only when none qualifies does the mandatory hit fall on a
+ * friendly neutral (or the Liches themselves).
+ */
+function autoResolveNeutralAbilityChoice(state: GameState, cards: CardLibrary): boolean {
+  const choice = state.pendingChoice;
+  const combat = state.combat;
+  if (!choice || choice.type !== "ABILITY_TARGET_CHOICE" || choice.playerId !== NEUTRAL_PLAYER_ID || !combat) {
+    return false;
+  }
+
+  const source = combat.units[choice.sourceUnitId];
+  const candidates = choice.candidateUnitIds
+    .map((unitId) => combat.units[unitId])
+    .filter((unit): unit is CombatUnitState => Boolean(unit) && isUnitAlive(unit));
+  if (!source || candidates.length === 0) {
+    state.pendingChoice = null;
+    state.phase = "combat";
+    return true;
+  }
+
+  const enemies = candidates.filter((unit) => unit.controllerId !== source.controllerId);
+  const pool = enemies.length > 0 ? enemies : candidates;
+  const sorted = sortNeutralTargetCandidates(source, pool);
+  const target =
+    enemies.length > 0
+      ? sorted[0]
+      : // Forced friendly hit: spare the strongest — hit the lowest tier,
+        // farthest, lowest position.
+        [...sorted].reverse()[0];
+
+  chooseAbilityTarget(
+    state,
+    {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: NEUTRAL_PLAYER_ID,
+      choiceId: choice.id,
+      targetUnitId: target.id
+    },
+    cards
+  );
+  return true;
+}
+
 function declareAttack(
   state: GameState,
   action: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>,
@@ -2243,9 +2632,21 @@ function declareAttack(
     throw new Error("Combat is not active.");
   }
 
+  const abilityAttack = action.type === "ATTACK_UNIT" ? action.abilityAttack : undefined;
   const attacker = combat.units[action.attackerId];
   const defender = combat.units[action.defenderId];
-  if (!attacker || !defender || !canUnitAttack(combat, attacker, defender)) {
+  if (!attacker || !defender) {
+    throw new Error("That unit cannot attack the selected target.");
+  }
+
+  // Printed-ability follow-ups (Death Cloud) may — and sometimes must — hit
+  // friendly units or the attacker itself, so the regular target rules do
+  // not apply to them.
+  if (abilityAttack) {
+    if (!isUnitAlive(attacker) || !isUnitAlive(defender)) {
+      throw new Error("That unit cannot attack the selected target.");
+    }
+  } else if (!canUnitAttack(combat, attacker, defender)) {
     throw new Error("That unit cannot attack the selected target.");
   }
 
@@ -2261,7 +2662,8 @@ function declareAttack(
     defenderId: defender.id,
     isRetaliation,
     attackKind,
-    rollMode
+    rollMode,
+    ...(abilityAttack ? { abilityAttack } : {})
   });
   stackItem.triggerEventIds.push(attackDeclared.id);
 
@@ -2676,14 +3078,46 @@ function endTurn(state: GameState, action: Extract<GameAction, { type: "END_TURN
 function executeNeutralActivation(
   state: GameState,
   unit: CombatUnitState,
-  cards: CardLibrary
+  cards: CardLibrary,
+  forcedTargetId?: UnitId
 ): void {
   const combat = state.combat;
   if (!combat) {
     return;
   }
 
-  const intent = planNeutralActivation(state, combat, unit);
+  const intent = planNeutralActivation(state, combat, unit, forcedTargetId);
+
+  if (intent.kind === "choose-target") {
+    // Rulebook AI: "If there is ever a tie between equally valid targets,
+    // the player chooses which unit is attacked."
+    const chooser = combat.attackerPlayerId;
+    const choiceId = `choice_${state.eventLog.length + 1}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "ABILITY_TARGET_CHOICE",
+      playerId: chooser,
+      kind: "neutral-target",
+      abilityId: null,
+      abilityName: "Neutral target tie",
+      prompt: `${unit.name} has equally valid targets — you choose which unit it attacks.`,
+      sourceUnitId: unit.id,
+      anchorUnitId: null,
+      candidateUnitIds: intent.candidateIds
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = chooser;
+
+    appendEvent(state, {
+      type: "PENDING_CHOICE_CREATED",
+      choiceId,
+      choiceType: "ABILITY_TARGET_CHOICE",
+      playerId: chooser,
+      sourceEffectIds: [],
+      message: `${unit.name} has tied targets: the player chooses which unit is attacked.`
+    });
+    return;
+  }
 
   if (intent.kind === "pass") {
     unit.activatedThisRound = true;
@@ -2756,6 +3190,16 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
     safety -= 1;
     const combat = state.combat;
 
+    // Neutral Liches/Magogs/Cerberi resolve their own ability targets.
+    if (
+      state.pendingChoice?.type === "ABILITY_TARGET_CHOICE" &&
+      state.pendingChoice.playerId === NEUTRAL_PLAYER_ID
+    ) {
+      if (autoResolveNeutralAbilityChoice(state, cards)) {
+        continue;
+      }
+    }
+
     if (
       combat &&
       !combat.outcome &&
@@ -2797,18 +3241,6 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       continue;
     }
 
-    // The Groovy Satyr swap choice resolved: open the paused neutral combat.
-    if (
-      !state.combat &&
-      !state.pendingChoice &&
-      !state.reactionWindow &&
-      !state.adventure.pendingVisit &&
-      state.adventure.pendingEncounter
-    ) {
-      startPendingEncounter(state);
-      continue;
-    }
-
     if (!state.combat && !state.pendingChoice && !state.reactionWindow) {
       const queueLength = state.adventure.rewardQueue.length;
       const hadVisit = Boolean(state.adventure.pendingVisit);
@@ -2841,7 +3273,9 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "SPELL_BOOK_ACTION",
   "SPEND_MORALE",
   "CHOOSE_OPTION",
+  "CHOOSE_ABILITY_TARGET",
   "CHOOSE_FACTION",
+  "SET_GAME_OPTIONS",
   "START_ADVENTURE"
 ]);
 
@@ -2994,6 +3428,12 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "CHOOSE_OPTION":
         chooseOption(nextState, action);
+        break;
+      case "CHOOSE_ABILITY_TARGET":
+        chooseAbilityTarget(nextState, action, cards);
+        break;
+      case "SET_GAME_OPTIONS":
+        setGameOptions(nextState, action);
         break;
       case "END_TURN":
         if (nextState.mode === "adventure") {
