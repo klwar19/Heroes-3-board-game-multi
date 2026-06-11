@@ -1,6 +1,7 @@
 import {
   applyAction,
   createAdventureGameState,
+  createAdventureLobbyState,
   createInitialGameState,
   type AdventurePlayerConfig,
   type EngineResult,
@@ -20,6 +21,7 @@ export type GameRoomSnapshot = {
 export type RoomResetOptions = {
   mode?: GameMode;
   difficulty?: GameDifficulty;
+  scenarioId?: string;
   players?: AdventurePlayerConfig[];
 };
 
@@ -82,11 +84,16 @@ function makeRoom(roomId: string, options: RoomResetOptions = {}): GameRoomRecor
     state:
       mode === "combat-sandbox"
         ? createInitialGameState(seed)
-        : createAdventureGameState({
-            seed,
-            difficulty: options.difficulty,
-            players: options.players
-          })
+        : options.players?.length
+          ? createAdventureGameState({
+              seed,
+              difficulty: options.difficulty,
+              scenarioId: options.scenarioId,
+              players: options.players
+            })
+          : // New adventure rooms open in the map-setup lobby: players pick
+            // factions and heroes, then the scenario map builds itself.
+            createAdventureLobbyState({ seed, scenarioId: options.scenarioId })
   };
 }
 

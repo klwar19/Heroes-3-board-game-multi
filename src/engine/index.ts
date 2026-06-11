@@ -38,28 +38,40 @@ export {
 export { getPlayerView } from "./player-view";
 export { createSeededRandom } from "./random";
 export { createInitialGameState } from "./setup";
-export { createAdventureGameState } from "./adventure-setup";
+export { createAdventureGameState, createAdventureLobbyState, draftFarTiles, getScenario } from "./adventure-setup";
 export type { AdventurePlayerConfig, AdventureSetupOptions } from "./adventure-setup";
+export { astrologersCardDefinitions, astrologersDeckCardIds } from "@/data/cards/astrologers";
+export type { AstrologersCardDefinition, AstrologersEffect } from "@/data/cards/astrologers";
+export { DEFAULT_SCENARIO_ID, scenarioDefinitions } from "@/data/map/scenarios";
+export type { ScenarioDefinition } from "@/data/map/scenarios";
 export {
   ABILITY_SEARCH_LEVELS,
+  ASTROLOGERS_DECK_ID,
   EXPERT_USES_BY_LEVEL,
   HAND_LIMIT_BY_LEVEL,
   NEUTRAL_ARMY_TABLE,
   NEUTRAL_DECK_IDS,
   RESOURCE_DIE_FACES,
   SPECIALTY_LEVELS,
+  TILE_BACK_LABELS,
   TRADE_RATES,
   TREASURE_DIE_FACES,
   canCrossEdge,
+  classifyHeroStep,
+  effectiveHandLimit,
   gainExperience,
+  getActiveAstrologersCard,
   getAdjacentSpaceIds,
   getMainHero,
+  getReachableHeroPaths,
   getTileFootprintSpaceIds,
   getUnitDefinition,
   getUnitSide,
+  heroMovementMax,
   isFieldGuarded,
   levelOfExperience
 } from "./adventure";
+export type { HeroPathTarget, HeroStepKind } from "./adventure";
 export {
   ATTACKER_BACKLINE,
   ATTACKER_FRONTLINE,
@@ -67,7 +79,8 @@ export {
   DEFENDER_BACKLINE,
   DEFENDER_FRONTLINE,
   getHeroMoveDestinations,
-  isTileAdjacentToSpace
+  isTileAdjacentToSpace,
+  isTileRotationConnected
 } from "./adventure-reducer";
 export {
   HEX_DIRECTIONS,
@@ -116,6 +129,7 @@ export type {
   AbilityClass,
   AdventureReward,
   AdventureState,
+  AstrologersState,
   ArmyUnitState,
   ArtifactTier,
   AttackRollMode,
@@ -146,6 +160,7 @@ export type {
   GameEvent,
   GameMode,
   GamePhase,
+  GameSetupState,
   GameState,
   HeroId,
   HeroState,
@@ -154,6 +169,8 @@ export type {
   MapSpaceId,
   MapState,
   MapTileState,
+  PendingNeutralEncounter,
+  PendingTileChoice,
   PendingVisit,
   PlayerId,
   PlayerState,

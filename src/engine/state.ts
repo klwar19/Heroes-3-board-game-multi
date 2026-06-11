@@ -320,7 +320,21 @@ export type GameAction =
   | { type: "RESOLVE_DECK_SEARCH"; playerId: PlayerId; choiceId: string; pick: DeckSearchPick }
   | { type: "MOVE_HERO"; playerId: PlayerId; heroId: HeroId; to: MapSpaceId }
   | {
-      /** Start-of-turn hand refresh: discard any cards, then draw to hand limit. */
+      /**
+       * Click-to-move: walk the hero along consecutive adjacent fields, one MP
+       * per step. Walking stops early when something needs input (a guard
+       * fight, a visit choice) or movement points run out.
+       */
+      type: "MOVE_HERO_PATH";
+      playerId: PlayerId;
+      heroId: HeroId;
+      path: MapSpaceId[];
+    }
+  | {
+      /**
+       * Start-of-turn mulligan (and forced discard when over the hand limit):
+       * discard the listed cards, then draw that many back up to the limit.
+       */
       type: "REFRESH_HAND";
       playerId: PlayerId;
       discardCardIds: CardId[];
@@ -328,12 +342,22 @@ export type GameAction =
   | { type: "REVISIT_FIELD"; playerId: PlayerId; heroId: HeroId }
   | { type: "DISCOVER_TILE"; playerId: PlayerId; heroId: HeroId; tileInstanceId: string }
   | {
+      /** Place one of the player's face-down Far (II–III) tiles from supply. */
       type: "PLACE_TILE";
       playerId: PlayerId;
       heroId: HeroId;
-      tileDefId: string;
+      supplyIndex: number;
       centerRow: number;
       centerCol: number;
+    }
+  | {
+      /**
+       * Chooses the final rotation of a just-revealed or just-placed tile
+       * ("You may always rotate Map Tiles when placing or revealing them").
+       */
+      type: "SET_TILE_ROTATION";
+      playerId: PlayerId;
+      tileInstanceId: string;
       rotation: number;
     }
   | {
@@ -361,8 +385,30 @@ export type GameAction =
       purchases: { kind: "recruit" | "reinforce"; unitDefId: string; armyUnitId?: string }[];
     }
   | { type: "SPELL_BOOK_ACTION"; playerId: PlayerId }
-  | { type: "SPEND_MORALE"; playerId: PlayerId; benefit: "draw" }
+  | {
+      /**
+       * Spend the positive morale token: draw 1 card, or discard any number
+       * of cards and draw that many ("redraw"). The third printed option —
+       * reroll any die — is offered inside the dice flows themselves.
+       */
+      type: "SPEND_MORALE";
+      playerId: PlayerId;
+      benefit: "draw" | "redraw";
+      discardCardIds?: CardId[];
+    }
   | { type: "CHOOSE_OPTION"; playerId: PlayerId; choiceId: string; optionIndex: number }
+  | {
+      /** Map-setup lobby: claim a faction and main hero for a seat. */
+      type: "CHOOSE_FACTION";
+      playerId: PlayerId;
+      factionId: FactionId;
+      heroDefId: string;
+    }
+  | {
+      /** Map-setup lobby: build the scenario map once every seat has a faction. */
+      type: "START_ADVENTURE";
+      playerId: PlayerId;
+    }
   | { type: "END_TURN"; playerId: PlayerId };
 
 export type LegalAction = {
@@ -726,6 +772,62 @@ export type GameEvent =
     }
   | {
       id: string;
+      type: "TILE_ROTATION_SET";
+      playerId: PlayerId;
+      tileInstanceId: string;
+      tileDefId: string;
+      rotation: number;
+    }
+  | {
+      id: string;
+      type: "ASTROLOGERS_DRAWN";
+      cardId: string;
+      name: string;
+      text: string;
+      round: number;
+    }
+  | {
+      id: string;
+      type: "ARMY_UNIT_FLIPPED";
+      playerId: PlayerId;
+      unitDefId: string;
+      reason: string;
+    }
+  | {
+      id: string;
+      type: "SPELL_RETURNED_TO_HAND";
+      playerId: PlayerId;
+      cardId: CardId;
+      reason: string;
+    }
+  | {
+      id: string;
+      type: "NEUTRAL_DRAW_SWAPPED";
+      playerId: PlayerId;
+      fromUnitDefId: string;
+      toUnitDefId: string;
+    }
+  | {
+      id: string;
+      type: "MORALE_SPENT";
+      playerId: PlayerId;
+      benefit: "draw" | "redraw" | "reroll";
+    }
+  | {
+      id: string;
+      type: "FACTION_CHOSEN";
+      playerId: PlayerId;
+      factionId: FactionId;
+      heroDefId: string;
+    }
+  | {
+      id: string;
+      type: "ADVENTURE_STARTED";
+      scenarioId: string;
+      playerIds: PlayerId[];
+    }
+  | {
+      id: string;
       type: "FIELD_VISITED";
       playerId: PlayerId;
       heroId: HeroId;
@@ -958,10 +1060,20 @@ export type PlayerState = {
   townTokens: TownTokenState;
   /** Round number the Mage Guild was built (token unusable that round). */
   mageGuildBuiltRound?: number;
-  /** +1 positive morale token (max 1) or any number of negative tokens. */
+  /** +1 positive morale token (max 1) or a single negative token (-1). */
   morale: number;
-  /** Whether the start-of-turn discard/draw refresh is still owed this turn. */
+  /**
+   * Over the hand limit at the start of the turn: the player must discard
+   * down (REFRESH_HAND) before doing anything else.
+   */
   needsHandRefresh?: boolean;
+  /**
+   * Start-of-turn mulligan still available: discard any number of cards and
+   * draw that many. Cleared by the first movement/town action of the turn.
+   */
+  canMulligan?: boolean;
+  /** Second negative morale token: the hand is discarded when the turn ends. */
+  discardHandAtTurnEnd?: boolean;
   limits: {
     hand: number;
     expertUses: number;
@@ -970,6 +1082,8 @@ export type PlayerState = {
     spellsCastThisRound: number;
     spellLimitBonusThisRound: number;
     expertUsesSpentThisRound: number;
+    /** Spells cast since the current adventure turn started (Astrologers hooks). */
+    spellsCastThisTurn?: number;
   };
 };
 
@@ -1093,6 +1207,13 @@ export type MapTileState = {
   centerCol: number;
   rotation: number;
   faceDown: boolean;
+  /** Roman numerals printed on the tile back (public info), e.g. "Ⅳ–Ⅴ". */
+  backLabel?: string;
+  /**
+   * Tile revealed/placed but its rotation not confirmed yet: fields are not
+   * materialized until the owner locks the rotation in.
+   */
+  awaitingRotation?: boolean;
 };
 
 export type MapFieldState = {
@@ -1124,7 +1245,13 @@ export type PendingVisit = {
 
 export type AdventureReward =
   | { playerId: PlayerId; kind: "shared-deck-search"; deckId: DeckId; count: number }
-  | { playerId: PlayerId; kind: "city-hall-choice"; buildingId: BuildingId };
+  | { playerId: PlayerId; kind: "city-hall-choice"; buildingId: BuildingId }
+  | {
+      /** Generic queued interaction resolved through the visit-step machinery. */
+      playerId: PlayerId;
+      kind: "visit-steps";
+      steps: VisitStep[];
+    };
 
 export type VisitStep =
   | { type: "CHOOSE_ONE"; prompt: string; options: { label: string; steps: VisitStep[] }[] }
@@ -1141,6 +1268,30 @@ export type VisitStep =
       effectId: string;
       dice: "treasure" | "resource";
     }
+  | {
+      /** Spends the positive morale token (reroll-any-die morale action). */
+      type: "CONSUME_MORALE";
+    }
+  | {
+      /** Marks the Swift Weasel once-per-turn adventure-die reroll as used. */
+      type: "CONSUME_WEASEL";
+    }
+  | {
+      /** Terrible Plague: flip one army card from Pack back to Few. */
+      type: "FLIP_PACK_TO_FEW";
+      armyUnitId: string;
+    }
+  | {
+      /** Isra's Friends / settlements: reinforce a Few unit, possibly at half cost. */
+      type: "REINFORCE_ARMY_UNIT";
+      armyUnitId: string;
+      halfCost: boolean;
+    }
+  | {
+      /** Groovy Satyr: swap one drawn neutral for a fresh card of the same tier. */
+      type: "SATYR_SWAP";
+      drawIndex: number;
+    }
   | { type: "SEARCH_SHARED_DECK"; deckId: DeckId; count: number }
   | { type: "SETTLEMENT_CHOICE" }
   | { type: "MAGIC_SPRING" }
@@ -1149,8 +1300,35 @@ export type VisitStep =
   | { type: "TRADING_POST" }
   | { type: "DISCOVER_ADJACENT_TILE" };
 
+export type AstrologersState = {
+  /** Face-up Astrologers Proclaim card in effect until the next even round. */
+  activeCardId: string | null;
+  /** One-shot "next Resource Round" income adjustments (Gold Dragon & co). */
+  nextResourceModifiers: { gold: number; valuables: number };
+  /** Players whose first spell already returned to hand (Crazy Wizard). */
+  crazyWizardUsedBy: PlayerId[];
+  /** Players who already used this turn's free die reroll (Swift Weasel). */
+  swiftWeaselUsedBy: PlayerId[];
+};
+
+export type PendingTileChoice = {
+  /** Tile just revealed/placed: this player must choose its rotation. */
+  tileInstanceId: string;
+  playerId: PlayerId;
+  kind: "reveal" | "place";
+};
+
+export type PendingNeutralEncounter = {
+  heroId: HeroId;
+  fieldId: MapSpaceId;
+  difficulty: number;
+  draws: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
+};
+
 export type AdventureState = {
   difficulty: GameDifficulty;
+  /** Scenario this map was built from (data/map/scenarios). */
+  scenarioId?: string;
   tiles: Record<string, MapTileState>;
   fields: Record<MapSpaceId, MapFieldState>;
   /** Face-down Far tiles each player may place for 1 MP. */
@@ -1163,6 +1341,23 @@ export type AdventureState = {
   lastVisitedField: Record<HeroId, MapSpaceId>;
   /** Victory: flagging an enemy town wins the scenario (default skirmish). */
   winnerPlayerId: PlayerId | null;
+  /** Tile awaiting its rotation choice after a reveal or placement. */
+  pendingTileChoice?: PendingTileChoice | null;
+  /** Astrologers Proclaim deck state (even rounds). */
+  astrologers?: AstrologersState;
+  /** Neutral encounter paused on a pre-combat choice (Groovy Satyr). */
+  pendingEncounter?: PendingNeutralEncounter | null;
+};
+
+/** Pre-game lobby: players pick factions and heroes before the map builds. */
+export type GameSetupState = {
+  scenarioId: string;
+  seats: {
+    playerId: PlayerId;
+    name: string;
+    factionId: FactionId | null;
+    heroDefId: string | null;
+  }[];
 };
 
 export type TownState = {
@@ -1197,6 +1392,8 @@ export type AttackRerollSource = {
   name: string;
   /** Backing active effect; unit-ability rerolls have none. */
   effectId?: string;
+  /** Positive morale token: spending the reroll discards the token. */
+  morale?: boolean;
   remaining: number;
   used: number;
 };
@@ -1253,6 +1450,8 @@ export type GameState = {
   players: Record<PlayerId, PlayerState>;
   map: MapState;
   adventure: AdventureState | null;
+  /** Pre-game lobby choices; null once the adventure map is built. */
+  setupLobby?: GameSetupState | null;
   towns: Record<TownId, TownState>;
   heroes: Record<HeroId, HeroState>;
   combat: CombatState | null;

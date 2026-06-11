@@ -16,7 +16,8 @@ import {
   DEFENDER_BACKLINE,
   DEFENDER_FRONTLINE,
   getHeroMoveDestinations,
-  isTileAdjacentToSpace
+  isTileAdjacentToSpace,
+  isTileRotationConnected
 } from "./adventure-reducer";
 import {
   BATTLEFIELD_CELL_COUNT,
@@ -1062,6 +1063,10 @@ export function getLegalActions(
     ];
   }
 
+  if (state.setupLobby && state.phase === "setup") {
+    return getSetupLobbyLegalActions(state, playerId);
+  }
+
   if (state.mode === "adventure") {
     return getAdventureLegalActions(state, playerId, cards);
   }
@@ -1631,7 +1636,55 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       label: "Spend morale: draw a card",
       action: { type: "SPEND_MORALE", playerId, benefit: "draw" }
     });
+    if (player.hand.length > 0) {
+      actions.push({
+        label: "Spend morale: discard any cards, draw that many",
+        action: { type: "SPEND_MORALE", playerId, benefit: "redraw", discardCardIds: [] }
+      });
+    }
   }
+}
+
+function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalAction[] {
+  const lobby = state.setupLobby;
+  const actions: LegalAction[] = [];
+  if (!lobby) {
+    return actions;
+  }
+
+  const seat = lobby.seats.find((candidate) => candidate.playerId === playerId);
+  if (!seat) {
+    return actions;
+  }
+
+  const takenFactions = new Set(
+    lobby.seats.filter((candidate) => candidate.playerId !== playerId).map((candidate) => candidate.factionId)
+  );
+
+  for (const faction of Object.values(coreFactionDefinitions)) {
+    if (takenFactions.has(faction.id)) {
+      continue;
+    }
+
+    for (const heroDefId of faction.heroes) {
+      if (seat.factionId === faction.id && seat.heroDefId === heroDefId) {
+        continue;
+      }
+      actions.push({
+        label: `Play ${faction.name} — ${heroDefId}`,
+        action: { type: "CHOOSE_FACTION", playerId, factionId: faction.id, heroDefId }
+      });
+    }
+  }
+
+  if (lobby.seats.every((candidate) => candidate.factionId && candidate.heroDefId)) {
+    actions.push({
+      label: "Start the adventure",
+      action: { type: "START_ADVENTURE", playerId }
+    });
+  }
+
+  return actions;
 }
 
 function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: CardLibrary): LegalAction[] {
@@ -1679,6 +1732,25 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
+  // A freshly revealed or placed tile waits for its rotation choice.
+  const tileChoice = adventure.pendingTileChoice;
+  if (tileChoice) {
+    const tile = adventure.tiles[tileChoice.tileInstanceId];
+    if (tileChoice.playerId === playerId && tile) {
+      const anyConnected = [0, 1, 2, 3, 4, 5].some((rotation) => isTileRotationConnected(state, tile, rotation));
+      for (let rotation = 0; rotation < 6; rotation += 1) {
+        if (anyConnected && !isTileRotationConnected(state, tile, rotation)) {
+          continue;
+        }
+        actions.push({
+          label: `Confirm tile rotation ${rotation * 60}°`,
+          action: { type: "SET_TILE_ROTATION", playerId, tileInstanceId: tile.id, rotation }
+        });
+      }
+    }
+    return actions;
+  }
+
   // Pending field visit choices.
   if (adventure.pendingVisit) {
     addVisitStepActions(actions, state, playerId, cards);
@@ -1695,11 +1767,19 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   if (player.needsHandRefresh) {
     return [
       {
-        label: "Draw up to your hand limit",
+        label: "Discard down to your hand limit",
         action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
       },
       ...actions
     ];
+  }
+
+  // Start-of-turn mulligan: discard any number of cards, draw that many.
+  if (player.canMulligan && player.hand.length > 0) {
+    actions.push({
+      label: "Discard any cards and draw that many (start of turn)",
+      action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
+    });
   }
 
   // Instant, Ongoing and Map cards may be played during your own map turn.
