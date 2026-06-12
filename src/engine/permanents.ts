@@ -3,6 +3,7 @@ import { makeActiveEffect } from "./active-effects";
 import { hasResources, processPendingVisit, spendResources } from "./adventure";
 import { isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
+import { noteUnitDamagedForTokens } from "./tokens";
 import { appendEvent, nextEventNumber } from "./events";
 import type {
   CardDefinition,
@@ -406,6 +407,7 @@ export function applyWarMachineDamage(
   });
 
   target.damage += amount;
+  noteUnitDamagedForTokens(state, target, amount);
   appendEvent(state, {
     type: "DAMAGE_ASSIGNED",
     source: { type: "card", cardId, controllerId: playerId },

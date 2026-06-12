@@ -1449,26 +1449,30 @@ describe("rules engine prototype", () => {
       target: { type: "unit", unitId: "unit_p1_griffins" }
     });
 
+    // The token action replaces the attack and ends the activation.
     expect(used.combat?.units.unit_p1_ogres.activatedThisRound).toBe(true);
-    expect(used.activeEffects).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "Ogre Attack Token",
-          target: { type: "unit", unitId: "unit_p1_griffins" },
-          modifiers: [{ type: "ATTACK_BONUS", amount: 2 }]
-        }),
-        expect.objectContaining({
-          target: { type: "unit", unitId: "unit_p1_ogres" },
-          modifiers: [{ type: "UNIT_CANNOT_MOVE" }]
-        })
-      ])
-    );
 
-    used.combat!.activeUnitId = "unit_p1_ogres";
+    // The Attack token sits on the buffed unit: +2 attack for 2 combat rounds.
+    const tokens = used.combat?.units.unit_p1_griffins.tokens ?? [];
+    expect(tokens).toEqual([
+      expect.objectContaining({ kind: "attack", amount: 2, expiresAtCombatRoundEnd: 2 })
+    ]);
+
+    // A second, weaker Attack token never replaces the better one.
+    const fewOgres = { ...used.combat!.units.unit_p1_ogres, id: "unit_p1_ogres_few", abilities: ["ogres-attack-token-few"], activatedThisRound: false };
+    used.combat!.units.unit_p1_ogres_few = fewOgres;
+    used.combat!.activeUnitId = "unit_p1_ogres_few";
     used.activePlayerId = "p1";
-    used.combat!.units.unit_p1_ogres.activatedThisRound = false;
-
-    expect(getLegalActions(used, "p1").some((legal) => legal.action.type === "MOVE_UNIT")).toBe(false);
+    const restacked = applyOk(used, {
+      type: "USE_UNIT_ABILITY",
+      playerId: "p1",
+      unitId: "unit_p1_ogres_few",
+      abilityId: "ogres-attack-token-few",
+      target: { type: "unit", unitId: "unit_p1_griffins" }
+    });
+    const tokensAfter = restacked.combat?.units.unit_p1_griffins.tokens ?? [];
+    expect(tokensAfter).toHaveLength(1);
+    expect(tokensAfter[0]).toMatchObject({ kind: "attack", amount: 2 });
   });
 
   it("applies Behemoths' defense reduction to their attack damage", () => {

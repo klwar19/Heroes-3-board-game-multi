@@ -601,13 +601,22 @@ export const adventureCards: CardLibrary = {
   "specialty.crag_hack.1": offenseSpecialtyOne("crag_hack"),
   "specialty.crag_hack.4": offenseSpecialtyFour("crag_hack"),
   "specialty.crag_hack.6": offenseSpecialtySix("crag_hack"),
-  "specialty.dessa.1": notImplementedSpecialty(
-    "dessa",
-    "Logistics",
-    1,
-    "Instant: extend Combat against a Neutral Army for another Combat round without spending movement.",
-    specialtyCardImage("dessa", 1)
-  ),
+  "specialty.dessa.1": {
+    id: "specialty.dessa.1",
+    name: "Logistics I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: ["hero-specialty", "instant", "dessa", "logistics"],
+    // Played during the continue-or-retreat decision against neutral units:
+    // the combat extends one round without spending a movement point.
+    effect: { type: "CONTINUE_NEUTRAL_FREE" },
+    assets: {
+      cardImage: specialtyCardImage("dessa", 1),
+      imageAlt: "Logistics level I specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("dessa")
+  },
   "specialty.dessa.4": dessaSpecialtyFour(),
   "specialty.dessa.6": dessaSpecialtySix(),
   "specialty.gundula.1": slowSpecialty("gundula", 1, 1),

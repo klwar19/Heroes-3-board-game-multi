@@ -268,6 +268,23 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} picks ${titleCase(event.factionId)} with ${titleCase(event.heroDefId)}.`;
     case "ADVENTURE_STARTED":
       return `The adventure begins (${event.scenarioId}).`;
+    case "FIRST_PLAYER_ROLLED": {
+      const last = event.attempts.at(-1);
+      const rolls = (last?.rolls ?? [])
+        .map((roll) => `${roll.name} ${roll.value >= 0 ? "+" : ""}${roll.value}`)
+        .join(", ");
+      return `First-player roll: ${rolls} — ${playerName(state, event.winnerPlayerId)} starts.`;
+    }
+    case "COMBAT_TOKEN_PLACED":
+      return `${unitName(state, event.unitId)} gains a ${event.kind} token (${event.amount >= 0 ? "+" : ""}${event.amount}) from ${event.sourceName}.`;
+    case "COMBAT_TOKEN_REMOVED":
+      return `${unitName(state, event.unitId)} loses its ${event.kind} token (${event.reason}).`;
+    case "SIEGE_FORTIFICATIONS_PLACED":
+      return `${playerName(state, event.playerId)} mans the walls: 3 Walls, the Gate and the Arrow Tower defend the town.`;
+    case "FORTIFICATION_DESTROYED":
+      return event.message;
+    case "TOWN_BUILDING_USED":
+      return event.message;
   }
 }
 

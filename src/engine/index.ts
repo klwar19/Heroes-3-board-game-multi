@@ -241,5 +241,19 @@ export type {
   UnitLevel,
   UnitType,
   UnitId,
-  VisitStep
+  VisitStep,
+  CombatTokenKind,
+  CombatTokenState,
+  FirstPlayerRollState,
+  SiegeState
 } from "./state";
+
+export { getUnitTokens, tokenAttackBonus, tokenDefenseDelta } from "./tokens";
+export {
+  ARROW_TOWER_POSITION,
+  ARROW_TOWER_STATS,
+  getDemolishAbility,
+  intactFortificationPositions,
+  isArrowTowerUnit,
+  SIEGE_ROW_POSITIONS
+} from "./siege";

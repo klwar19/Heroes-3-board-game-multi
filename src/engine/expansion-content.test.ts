@@ -120,10 +120,19 @@ describe("Stronghold content", () => {
       type: "RESOURCE_ROUND_CHOICE",
       options: [{ drawCards: 2 }, { buildingMaterials: 2 }]
     });
+    // Wiki-verified cost: 2 gold / 2 building materials / 1 valuables.
     expect(coreBuildingDefinitions["stronghold.freelancers_guild"].cost).toEqual({
-      gold: 4,
+      gold: 2,
       buildingMaterials: 2,
       valuables: 1
+    });
+    expect(coreBuildingDefinitions["stronghold.freelancers_guild"].effect).toMatchObject({
+      type: "FREELANCERS_GUILD",
+      winGold: 1
+    });
+    expect(coreBuildingDefinitions["stronghold.hall_of_valhalla"].effect).toMatchObject({
+      type: "HALL_OF_VALHALLA",
+      amount: 1
     });
     expect(faction.heroes).toEqual(["crag_hack", "dessa", "gundula", "shiva", "tarnum_stronghold", "yog"]);
 

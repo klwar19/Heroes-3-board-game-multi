@@ -6,6 +6,7 @@ import { sampleBuildings } from "@/data/towns/buildings";
 import {
   getTownOfPlayer,
   getUnitSide,
+  hasRecruitResources,
   hasResources as playerHasResources,
   townHasBuildingEffect,
   unlockedRecruitTiers
@@ -33,6 +34,7 @@ import {
   isBattlefieldPosition
 } from "./battlefield";
 import { getPermanentCardIds, getPermanentSchoolBonus, warMachinesForSale } from "./permanents";
+import { getDemolishAbility, isArrowTowerUnit, siegeBlockedPositions } from "./siege";
 import { SHARED_DECK_IDS } from "./decks";
 import { expertUsesAvailable, getRuleset, spellLimitFor, wisdomGoldDiscount, wisdomSearchCount } from "./ruleset";
 import type {
@@ -178,6 +180,14 @@ function getBlockedSpaces(combat: CombatState, movingUnit?: CombatUnitState): Se
   for (const unit of Object.values(combat.units)) {
     if (isUnitAlive(unit) && unit.id !== movingUnit?.id) {
       blocked.add(unit.position);
+    }
+  }
+
+  // Siege fortifications are Combat Obstacles; the Gate is open to the
+  // defender ("Defending units may move through the Gate and may stop on it").
+  if (combat.siege && movingUnit) {
+    for (const position of siegeBlockedPositions(combat.siege, movingUnit)) {
+      blocked.add(position);
     }
   }
 
@@ -577,6 +587,20 @@ function isCombatParticipant(state: GameState, playerId: PlayerId): boolean {
 }
 
 /**
+ * Garrison defense lock: the town owner defending without their hero "cannot
+ * use your Deck during this Combat" — every card play is off for them.
+ */
+export function isHandLockedInCombat(state: GameState, playerId: PlayerId): boolean {
+  const combat = state.combat;
+  return Boolean(
+    combat &&
+      combat.context.kind === "player" &&
+      combat.context.defenderHeroId === null &&
+      combat.defenderPlayerId === playerId
+  );
+}
+
+/**
  * Spell casting by the printed timing symbols — limited to one Spell card per
  * player per combat round (Knowledge/Necklace raise it):
  *  - Activation spells (Magic Arrow, Fireball, Haste…) are cast while one of
@@ -592,7 +616,7 @@ function addSpellActions(
   playerId: PlayerId,
   cards: CardLibrary
 ): void {
-  if (!isCombatCardWindowOpen(state) || !isCombatParticipant(state, playerId)) {
+  if (!isCombatCardWindowOpen(state) || !isCombatParticipant(state, playerId) || isHandLockedInCombat(state, playerId)) {
     return;
   }
 
@@ -681,6 +705,11 @@ function addPlayableCardActions(
   const player = state.players[playerId];
   const combat = state.combat;
   if (!player || !combat || !isCombatCardWindowOpen(state) || !isCombatParticipant(state, playerId)) {
+    return;
+  }
+
+  // Garrison defense: the heroless defender cannot use their deck.
+  if (isHandLockedInCombat(state, playerId)) {
     return;
   }
 
@@ -1101,30 +1130,99 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
   }
 
   for (const ability of getUnitAbilityDefinitions(activeUnit)) {
-    if (ability.implementationStatus !== "implemented" || ability.effect?.type !== "ACTIVATION_ATTACK_BUFF") {
+    if (ability.implementationStatus !== "implemented") {
       continue;
     }
 
-    for (const target of Object.values(combat.units)) {
-      if (
-        target.controllerId !== playerId ||
-        !isUnitAlive(target) ||
-        !ability.effect.targetTypes.includes(target.type)
-      ) {
-        continue;
-      }
-
-      actions.push({
-        label: `${activeUnit.name} use ${ability.name} on ${target.name}`,
-        action: {
-          type: "USE_UNIT_ABILITY",
-          playerId,
-          unitId: activeUnit.id,
-          abilityId: ability.id,
-          target: { type: "unit", unitId: target.id }
+    if (ability.effect?.type === "ACTIVATION_ATTACK_BUFF") {
+      for (const target of Object.values(combat.units)) {
+        if (
+          target.controllerId !== playerId ||
+          !isUnitAlive(target) ||
+          !ability.effect.targetTypes.includes(target.type)
+        ) {
+          continue;
         }
-      });
+
+        actions.push({
+          label: `${activeUnit.name} use ${ability.name} on ${target.name}`,
+          action: {
+            type: "USE_UNIT_ABILITY",
+            playerId,
+            unitId: activeUnit.id,
+            abilityId: ability.id,
+            target: { type: "unit", unitId: target.id }
+          }
+        });
+      }
     }
+
+    // Token "other actions": Ogres' Attack token, Few Sorceresses' Weakness.
+    if (ability.effect?.type === "PLACE_TOKEN_ACTION") {
+      const effect = ability.effect;
+      for (const target of Object.values(combat.units)) {
+        const sideOk =
+          effect.targets === "any" ||
+          (effect.targets === "friendly" && target.controllerId === activeUnit.controllerId) ||
+          (effect.targets === "enemy" && target.controllerId !== activeUnit.controllerId);
+        if (!sideOk || !isUnitAlive(target) || isArrowTowerUnit(target)) {
+          continue;
+        }
+        if (effect.targetTypes && !effect.targetTypes.includes(target.type)) {
+          continue;
+        }
+
+        actions.push({
+          label: `${activeUnit.name}: ${ability.name} (${effect.amount >= 0 ? "+" : ""}${effect.amount}) on ${target.cardName}`,
+          action: {
+            type: "USE_UNIT_ABILITY",
+            playerId,
+            unitId: activeUnit.id,
+            abilityId: ability.id,
+            target: { type: "unit", unitId: target.id }
+          }
+        });
+      }
+    }
+  }
+}
+
+/**
+ * Siege demolition: the active unit may bring down a Wall or the Gate as its
+ * attack — adjacent ground/flying units always, Cyclops-style units at any
+ * range (their pack version also levels the Arrow Tower).
+ */
+function addFortificationActions(actions: LegalAction[], state: GameState, playerId: PlayerId, activeUnit: CombatUnitState): void {
+  const combat = state.combat;
+  const siege = combat?.siege;
+  if (!combat || !siege || activeUnit.attackedThisActivation) {
+    return;
+  }
+
+  const demolish = getDemolishAbility(activeUnit);
+  const targets: { kind: "wall" | "gate"; position: number }[] = [
+    ...siege.walls.map((position) => ({ kind: "wall" as const, position })),
+    ...(siege.gatePosition !== null ? [{ kind: "gate" as const, position: siege.gatePosition }] : [])
+  ];
+
+  for (const target of targets) {
+    const adjacentDemolisher =
+      activeUnit.type !== "ranged" && isAdjacent(activeUnit.position, target.position);
+    if (!adjacentDemolisher && !demolish) {
+      continue;
+    }
+
+    actions.push({
+      label: `${activeUnit.cardName} destroy the ${target.kind === "wall" ? "Wall" : "Gate"} at ${getBattlefieldLabel(target.position)}`,
+      action: { type: "ATTACK_FORTIFICATION", playerId, attackerId: activeUnit.id, target }
+    });
+  }
+
+  if (demolish?.canTargetArrowTower && siege.arrowTowerUnitId) {
+    actions.push({
+      label: `${activeUnit.cardName} destroy the Arrow Tower`,
+      action: { type: "ATTACK_FORTIFICATION", playerId, attackerId: activeUnit.id, target: { kind: "arrow-tower" } }
+    });
   }
 }
 
@@ -1153,6 +1251,7 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
 
   if (!alreadyAttacked) {
     addUnitAbilityActions(actions, state, playerId, activeUnit);
+    addFortificationActions(actions, state, playerId, activeUnit);
   }
 
   for (const destination of getLegalMoveDestinations(combat, activeUnit, state)) {
@@ -1188,8 +1287,9 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
     }
   }
 
-  if (!alreadyAttacked) {
-    // Defend replaces the attack, so a unit that already moved may still defend.
+  if (!alreadyAttacked && !isArrowTowerUnit(activeUnit)) {
+    // Defend replaces the attack, so a unit that already moved may still
+    // defend. The Arrow Tower never defends — it only shoots or holds.
     actions.push({
       label: `${activeUnit.name} defend`,
       action: {
@@ -1201,8 +1301,9 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
   }
 
   // Once a unit has begun acting (moved or fired), it may finish its activation
-  // without forcing an attack or defend — e.g. a ranged unit holding after a shot.
-  if (alreadyAttacked || activeUnit.movedThisActivation) {
+  // without forcing an attack or defend — e.g. a ranged unit holding after a
+  // shot. The Arrow Tower may always hold instead of shooting.
+  if (alreadyAttacked || activeUnit.movedThisActivation || isArrowTowerUnit(activeUnit)) {
     actions.push({
       label: `${activeUnit.name} hold position`,
       action: {
@@ -1580,6 +1681,11 @@ export function getLegalReactionsForTrigger(
   const isAttackWindow = triggerEvent.type === "UNIT_ATTACK_DECLARED";
 
   for (const player of Object.values(state.players)) {
+    // Garrison defense: "You cannot use your Deck during this Combat, as
+    // your Main Hero is not present" — no card plays for that defender.
+    if (isHandLockedInCombat(state, player.id)) {
+      continue;
+    }
     const expertUsesLeft =
       player.limits.expertUses +
       (player.combatStats.expertUseBonusThisRound ?? 0) -
@@ -1669,6 +1775,43 @@ export function getLegalReactionsForTrigger(
     const fieldExpert = getPermanentFieldExpertAction(state, player.id, triggerEvent, cards);
     if (fieldExpert) {
       reactions.push(fieldExpert);
+    }
+
+    // Brimstone Stormclouds: a stored faction cube powers the owner's cast.
+    if (triggerEvent.type === "SPELL_CAST_STARTED" && triggerEvent.playerId === player.id) {
+      const town = Object.values(state.towns).find((candidate) => candidate.controllerId === player.id);
+      for (const buildingId of town?.buildings ?? []) {
+        const building = coreBuildingDefinitions[buildingId];
+        const cubes = town?.factionCubes?.[buildingId] ?? 0;
+        const stackItem = state.stack.at(-1);
+        const alreadySpent = (stackItem?.modifiers.townCubePowerBonus ?? 0) >= 1;
+        if (building?.effect?.type === "COMBAT_CUBES" && building.effect.spend === "spell-power" && cubes > 0 && !alreadySpent) {
+          reactions.push({
+            label: `${building.name}: remove 1 cube for +1 Power (${cubes} stored)`,
+            action: { type: "SPEND_TOWN_CUBE", playerId: player.id, buildingId }
+          });
+        }
+      }
+    }
+
+    // Hall of Valhalla: once per round, +1 attack on one of your attacks.
+    if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
+      const attacker = state.combat?.units[triggerEvent.attackerId];
+      if (attacker && attacker.controllerId === player.id) {
+        const town = Object.values(state.towns).find((candidate) => candidate.controllerId === player.id);
+        for (const buildingId of town?.buildings ?? []) {
+          const building = coreBuildingDefinitions[buildingId];
+          if (
+            building?.effect?.type === "HALL_OF_VALHALLA" &&
+            (player.buildingUsedRound?.[buildingId] ?? 0) !== state.round
+          ) {
+            reactions.push({
+              label: `${building.name}: +${building.effect.amount} attack on this attack (once per round)`,
+              action: { type: "HALL_OF_VALHALLA_BOOST", playerId: player.id, buildingId }
+            });
+          }
+        }
+      }
     }
 
     // The printed alternative bottom effect: discard any Spell card for
@@ -2280,7 +2423,10 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
         continue;
       }
 
-      if (playerHasResources(player, fewSide.cost)) {
+      // Each unit card exists once: a type already in the army cannot be
+      // recruited again — only its Few card may be reinforced to the Pack.
+      const owned = player.army.some((armyUnit) => armyUnit.unitDefId === unitDefId);
+      if (!owned && hasRecruitResources(state, playerId, fewSide.cost)) {
         actions.push({
           label: `Recruit few ${unit.name}`,
           action: {
@@ -2294,7 +2440,7 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       if (canReinforce) {
         const target = player.army.find((armyUnit) => armyUnit.unitDefId === unitDefId && armyUnit.side === "few");
         const packSide = unit.pack;
-        if (target && packSide && playerHasResources(player, packSide.cost)) {
+        if (target && packSide && hasRecruitResources(state, playerId, packSide.cost)) {
           actions.push({
             label: `Reinforce ${unit.name} to a pack`,
             action: {
@@ -2361,6 +2507,59 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
           label: `Blacksmith: sell ${cardLibrary[cardId]?.name} for ${smith.effect.sellGold} gold`,
           action: { type: "BLACKSMITH_ACTION", playerId, option: "sell", artifactCardId: cardId }
         });
+      }
+    }
+  }
+
+  // "During your turn" buildings, each once per round.
+  if (state.activePlayerId === playerId) {
+    for (const buildingId of town.buildings) {
+      const building = coreBuildingDefinitions[buildingId];
+      if (!building || (player.buildingUsedRound?.[buildingId] ?? 0) === state.round) {
+        continue;
+      }
+
+      if (building.effect?.type === "COVER_OF_DARKNESS" && player.hand.length > 0) {
+        actions.push({
+          label: `${building.name}: discard up to 2 cards, draw that many`,
+          action: { type: "USE_TOWN_BUILDING", playerId, buildingId, optionIndex: 0, cardIds: [] }
+        });
+      }
+
+      if (building.effect?.type === "CASTLE_GATE") {
+        if (player.resources.gold >= building.effect.discardCost) {
+          for (const opponentId of state.turnOrder) {
+            const opponent = state.players[opponentId];
+            if (opponentId === playerId || opponentId === "neutrals" || !opponent || opponent.hand.length === 0) {
+              continue;
+            }
+            actions.push({
+              label: `${building.name}: pay ${building.effect.discardCost} gold — random discard from ${opponent.name}`,
+              action: { type: "USE_TOWN_BUILDING", playerId, buildingId, optionIndex: 0, targetPlayerId: opponentId }
+            });
+          }
+        }
+
+        const hero = Object.values(state.heroes).find(
+          (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
+        );
+        if (hero?.spaceId && state.adventure) {
+          const here = hero.spaceId;
+          const isOwnHolding = (spaceId: string) =>
+            Object.values(state.towns).some((candidate) => candidate.fieldId === spaceId && candidate.controllerId === playerId) ||
+            (state.adventure?.fields[spaceId]?.location === "settlement" &&
+              state.adventure?.fields[spaceId]?.flagOwnerId === playerId);
+          if (isOwnHolding(here)) {
+            for (const field of Object.values(state.adventure.fields)) {
+              if (field.spaceId !== here && isOwnHolding(field.spaceId)) {
+                actions.push({
+                  label: `${building.name}: move the hero to ${field.location === "settlement" ? "the settlement" : "the town"} at ${field.spaceId}`,
+                  action: { type: "USE_TOWN_BUILDING", playerId, buildingId, optionIndex: 1, spaceId: field.spaceId }
+                });
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -2458,6 +2657,16 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
             label: "Spend 1 movement point: fight another combat round",
             action: { type: "CONTINUE_NEUTRAL_COMBAT", playerId }
           });
+        }
+        // Dessa's Logistics specialty: continue the combat for free.
+        const player = state.players[playerId];
+        for (const cardId of new Set(player?.hand ?? [])) {
+          if (cards[cardId]?.effect.type === "CONTINUE_NEUTRAL_FREE") {
+            actions.push({
+              label: `Play ${cards[cardId]?.name}: fight another combat round for free`,
+              action: { type: "PLAY_CARD", playerId, cardId, target: { type: "none" } }
+            });
+          }
         }
         actions.push({
           label: "Retreat to the last visited field",

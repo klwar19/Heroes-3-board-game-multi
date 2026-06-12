@@ -1157,8 +1157,7 @@ export function processPendingVisit(state: GameState): void {
             .filter(([, amount]) => amount)
             .map(([resource, amount]) => `${amount} ${resource}`)
             .join(" + ") || "free";
-        const player = state.players[visit.playerId];
-        const affordable = Boolean(player && hasResources(player, cost));
+        const affordable = hasRecruitResources(state, visit.playerId, cost);
         visit.steps.unshift({
           type: "CHOOSE_ONE",
           prompt: `Portal of Summoning: drew ${def?.name ?? drawn} (${costLabel})`,
@@ -1175,14 +1174,14 @@ export function processPendingVisit(state: GameState): void {
         const player = state.players[visit.playerId];
         const def = coreUnitDefinitions[step.unitDefId];
         const cost = def?.neutral?.cost ?? {};
-        if (!player || !def?.neutral || !hasResources(player, cost)) {
+        if (!player || !def?.neutral || !hasRecruitResources(state, visit.playerId, cost)) {
           // Cannot pay after all: the card goes to its tier discard pile.
           state.decks[NEUTRAL_DECK_IDS[(def?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure"]]?.discardPile.push(
             step.unitDefId
           );
           break;
         }
-        spendResources(state, visit.playerId, cost, `recruited ${def.name} at the Portal of Summoning`);
+        spendRecruitResources(state, visit.playerId, cost, `recruited ${def.name} at the Portal of Summoning`);
         addArmyUnit(player, step.unitDefId, "neutral");
         appendEvent(state, {
           type: "UNIT_RECRUITED",
@@ -1735,7 +1734,7 @@ export function unlockedRecruitTiers(state: GameState, playerId: PlayerId): Set<
 
 let armyCounter = 0;
 
-export function addArmyUnit(player: PlayerState, unitDefId: string, side: "few" | "pack"): void {
+export function addArmyUnit(player: PlayerState, unitDefId: string, side: "few" | "pack" | "neutral"): void {
   armyCounter += 1;
   player.army.push({
     id: `army_${player.id}_${armyCounter}_${player.army.length + 1}`,
@@ -2323,6 +2322,78 @@ function queueHalfCostReinforce(state: GameState, playerId: PlayerId): void {
   });
 }
 
+/**
+ * Freelancer's Guild: "When Reinforcing or Recruiting you can use building
+ * materials and valuables like gold." Returns how much of a gold shortfall
+ * the player may cover with spare materials/valuables (0 without the guild).
+ */
+function freelancerGoldSubstitution(state: GameState, playerId: PlayerId, cost: ResourceCost): {
+  fromMaterials: number;
+  fromValuables: number;
+} {
+  const player = state.players[playerId];
+  const town = getTownOfPlayer(state, playerId);
+  const hasGuild = Boolean(
+    town?.buildings.some((buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "FREELANCERS_GUILD")
+  );
+  if (!player || !hasGuild) {
+    return { fromMaterials: 0, fromValuables: 0 };
+  }
+
+  const shortfall = Math.max(0, (cost.gold ?? 0) - player.resources.gold);
+  if (shortfall === 0) {
+    return { fromMaterials: 0, fromValuables: 0 };
+  }
+
+  const spareMaterials = Math.max(0, player.resources.buildingMaterials - (cost.buildingMaterials ?? 0));
+  const fromMaterials = Math.min(shortfall, spareMaterials);
+  const spareValuables = Math.max(0, player.resources.valuables - (cost.valuables ?? 0));
+  const fromValuables = Math.min(shortfall - fromMaterials, spareValuables);
+  return { fromMaterials, fromValuables };
+}
+
+/** A recruit/reinforce cost with the guild's gold substitution folded in. */
+function recruitCostWithSubstitution(state: GameState, playerId: PlayerId, cost: ResourceCost): ResourceCost {
+  const substitution = freelancerGoldSubstitution(state, playerId, cost);
+  if (substitution.fromMaterials === 0 && substitution.fromValuables === 0) {
+    return cost;
+  }
+  return {
+    gold: Math.max(0, (cost.gold ?? 0) - substitution.fromMaterials - substitution.fromValuables),
+    buildingMaterials: (cost.buildingMaterials ?? 0) + substitution.fromMaterials,
+    valuables: (cost.valuables ?? 0) + substitution.fromValuables
+  };
+}
+
+/** Whether a recruit/reinforce cost is payable, counting the guild substitution. */
+export function hasRecruitResources(state: GameState, playerId: PlayerId, cost: ResourceCost): boolean {
+  const player = state.players[playerId];
+  if (!player) {
+    return false;
+  }
+  return hasResources(player, cost) || hasResources(player, recruitCostWithSubstitution(state, playerId, cost));
+}
+
+/** Pays a recruit/reinforce cost, letting the guild substitute gold 1:1. */
+export function spendRecruitResources(state: GameState, playerId: PlayerId, cost: ResourceCost, reason: string): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+
+  if (hasResources(player, cost)) {
+    spendResources(state, playerId, cost, reason);
+    return;
+  }
+
+  spendResources(
+    state,
+    playerId,
+    recruitCostWithSubstitution(state, playerId, cost),
+    `${reason} (Freelancer's Guild pays resources as gold)`
+  );
+}
+
 /** Flips a Few army card to its Pack side, paying its (half) cost. */
 export function reinforceArmyUnit(
   state: GameState,
@@ -2347,11 +2418,11 @@ export function reinforceArmyUnit(
     const halved = halfCost || (halfGoldOnly && resource === "gold");
     cost[resource] = halved ? Math.ceil(amount / 2) : amount;
   }
-  if (!hasResources(player, cost)) {
+  if (!hasRecruitResources(state, playerId, cost)) {
     return;
   }
 
-  spendResources(state, playerId, cost, halfCost || halfGoldOnly ? "half-cost reinforcement" : "reinforcement");
+  spendRecruitResources(state, playerId, cost, halfCost || halfGoldOnly ? "half-cost reinforcement" : "reinforcement");
   armyUnit.side = "pack";
   appendEvent(state, {
     type: "UNIT_RECRUITED",

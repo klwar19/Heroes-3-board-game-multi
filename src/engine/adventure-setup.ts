@@ -30,6 +30,7 @@ import {
   startPlayerTurn
 } from "./adventure";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
+import { createSeededRandom } from "./random";
 import { appendEvent } from "./events";
 import { hexEquals, tileCentersOverlap, tileFootprintsTouch, type HexCoord } from "./hex";
 import type {
@@ -72,6 +73,11 @@ export type AdventureSetupOptions = {
   customMap?: CustomMapTilePlan[] | null;
   /** Content sets whose tiles fill the supply pools (default: the four boxed sets). */
   tileContent?: TileContent[];
+  /**
+   * Roll the Attack die for the starting player (official setup step 22).
+   * Defaults to true; deterministic tests opt out to keep seat order.
+   */
+  rollFirstPlayer?: boolean;
 };
 
 /** Unit levels covered by each tier: bronze 1-3, silver 4-5, gold 6-7. */
@@ -639,10 +645,67 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     drawCardsForPlayer(state, config.id, state.players[config.id].limits.hand);
   }
 
+  // Official setup step 22: every player rolls the Attack die, the highest
+  // result starts (ties reroll among the tied players). The full roll history
+  // is kept on the adventure so every seat can read it.
+  if (options.rollFirstPlayer !== false) {
+    rollFirstPlayer(state, seed);
+  }
+
   startAdventureRound(state);
   startPlayerTurn(state, state.activePlayerId);
 
   return state;
+}
+
+/**
+ * Rolls the Attack die for every seated player to pick the starting player.
+ * Tied leaders reroll among themselves; turn order then rotates so the winner
+ * goes first while the table's seating order stays intact.
+ */
+function rollFirstPlayer(state: GameState, seed: string): void {
+  const playerIds = state.turnOrder.filter((playerId) => playerId !== NEUTRAL_PLAYER_ID);
+  if (playerIds.length < 2 || !state.adventure) {
+    return;
+  }
+
+  const random = createSeededRandom(`${seed}#first-player`);
+  const faces = [-1, -1, 0, 0, 1, 1];
+  const attempts: { rolls: { playerId: string; name: string; value: number }[] }[] = [];
+
+  let contenders = [...playerIds];
+  let winner = contenders[0];
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const rolls = contenders.map((playerId) => ({
+      playerId,
+      name: state.players[playerId]?.name ?? playerId,
+      value: faces[random.nextInt(0, faces.length - 1)]
+    }));
+    attempts.push({ rolls });
+
+    const best = Math.max(...rolls.map((roll) => roll.value));
+    const leaders = rolls.filter((roll) => roll.value === best).map((roll) => roll.playerId);
+    if (leaders.length === 1) {
+      winner = leaders[0];
+      break;
+    }
+    contenders = leaders;
+    winner = leaders[0];
+  }
+
+  state.adventure.firstPlayerRoll = { attempts, winnerPlayerId: winner };
+
+  // Rotate the seating order so the winner starts; everyone else follows in
+  // the original clockwise order.
+  const winnerIndex = playerIds.indexOf(winner);
+  state.turnOrder = [...playerIds.slice(winnerIndex), ...playerIds.slice(0, winnerIndex)];
+  state.activePlayerId = winner;
+
+  appendEvent(state, {
+    type: "FIRST_PLAYER_ROLLED",
+    attempts,
+    winnerPlayerId: winner
+  });
 }
 
 // ---------------------------------------------------------------------------

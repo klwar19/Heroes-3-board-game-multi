@@ -454,23 +454,20 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     name: "Hall of Valhalla",
     faction: "stronghold",
     cost: { gold: 8, buildingMaterials: 3 },
-    effect: {
-      type: "NOT_IMPLEMENTED",
-      note: "Once per round, one of your units gains +1 Attack to a single attack."
-    },
-    implementationStatus: "not-implemented",
+    // "Once per round, one of your units gains +1 attack to a single attack."
+    effect: { type: "HALL_OF_VALHALLA", amount: 1 },
+    implementationStatus: "implemented",
     source: townSource("stronghold")
   },
   "stronghold.freelancers_guild": {
     id: "stronghold.freelancers_guild",
     name: "Freelancer's Guild",
     faction: "stronghold",
-    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
-    effect: {
-      type: "NOT_IMPLEMENTED",
-      note: "Each time you win against Neutral Units, gain 2 gold. When Reinforcing or Recruiting, you can use building materials and valuables like gold."
-    },
-    implementationStatus: "not-implemented",
+    cost: { gold: 2, buildingMaterials: 2, valuables: 1 },
+    // "Each time you win against Neutral Units, gain 1 gold. When Reinforcing
+    // or Recruiting you can use building materials and valuables like gold."
+    effect: { type: "FREELANCERS_GUILD", winGold: 1 },
+    implementationStatus: "implemented",
     source: townSource("stronghold")
   },
 

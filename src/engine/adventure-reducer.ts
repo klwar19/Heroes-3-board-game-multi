@@ -14,12 +14,14 @@ import {
   effectiveHandLimit,
   gainExperience,
   gainResources,
+  gainTownCube,
   getActiveAstrologersCard,
   getAdjacentSpaceIds,
   getMainHero,
   getTileFootprintSpaceIds,
   getTownOfPlayer,
   getUnitSide,
+  hasRecruitResources,
   hasResources,
   heroAtSpace,
   instantiateTile,
@@ -32,6 +34,7 @@ import {
   processPendingVisit,
   restoreStartingArmyIfEmpty,
   SCHOLAR_STAT_CARDS,
+  spendRecruitResources,
   spendResources,
   startAdventureRound,
   startPlayerTurn,
@@ -41,6 +44,8 @@ import {
   type NeutralDraw
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
+import { createSeededRandom } from "./random";
+import { makeArrowTowerUnit, SIEGE_ROW_POSITIONS } from "./siege";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { applyPermanentCombatEffects, resolveWarMachineOption, startWarMachineRound } from "./permanents";
@@ -71,6 +76,48 @@ import type {
   VisitStep
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
+
+
+/** First built town building of this player carrying the given effect type. */
+function findTownBuildingWithEffect(
+  state: GameState,
+  playerId: PlayerId,
+  effectType: string
+): string | null {
+  const town = getTownOfPlayer(state, playerId);
+  for (const buildingId of town?.buildings ?? []) {
+    if (coreBuildingDefinitions[buildingId]?.effect?.type === effectType) {
+      return buildingId;
+    }
+  }
+  return null;
+}
+
+/** Discards one random card from the target player's hand (seeded). */
+function discardRandomCard(
+  state: GameState,
+  byPlayerId: PlayerId,
+  buildingId: string,
+  targetPlayerId: PlayerId,
+  buildingName: string
+): void {
+  const target = state.players[targetPlayerId];
+  if (!target || target.hand.length === 0) {
+    return;
+  }
+
+  const random = createSeededRandom(`${state.seed}#random-discard#${eventSeedNumber(state)}`);
+  const index = random.nextInt(0, target.hand.length - 1);
+  const [stolen] = target.hand.splice(index, 1);
+  target.discard.push(stolen);
+
+  appendEvent(state, {
+    type: "TOWN_BUILDING_USED",
+    playerId: byPlayerId,
+    buildingId,
+    message: `${buildingName} discards a random card from ${target.name}'s hand.`
+  });
+}
 
 /** Attacker rows on the 4x5 board (bottom from the attacker's seat). */
 export const ATTACKER_FRONTLINE = [12, 13, 14, 15];
@@ -1686,6 +1733,23 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
     return;
   }
 
+  // Siege: "the defender adds the Wall, Gate and Arrow Tower cards after
+  // placing their units" — the defender first chooses the Gate's column.
+  if (combat.context.kind === "player" && combat.context.siege) {
+    openSiegeGateChoice(state, combat.defenderPlayerId);
+    return;
+  }
+
+  beginPlayerCombatRounds(state);
+}
+
+/** Common tail of player-combat setup: round 1 begins, war machines fire. */
+function beginPlayerCombatRounds(state: GameState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
   combat.setup = null;
   state.phase = "combat";
   state.priorityPlayerId = null;
@@ -1699,6 +1763,56 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
   // In-play permanents join the fight and round-start war machines fire.
   applyPermanentCombatEffects(state);
   startWarMachineRound(state);
+}
+
+/** Siege setup: the defender chooses which middle-row column holds the Gate. */
+function openSiegeGateChoice(state: GameState, defenderPlayerId: PlayerId): void {
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: defenderPlayerId,
+    prompt: "Siege: place the Gate — the other three middle-row spaces get the Walls.",
+    options: SIEGE_ROW_POSITIONS.map((position) => ({
+      label: `Gate at column ${String.fromCharCode(65 + (position % 4))}`
+    })),
+    context: "siege-gate",
+    returnPhase: "combat"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = defenderPlayerId;
+}
+
+/** Places the Walls, Gate and Arrow Tower, then starts the combat rounds. */
+export function resolveSiegeGateChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const combat = state.combat;
+  if (!combat || combat.defenderPlayerId !== playerId || combat.context.kind !== "player" || !combat.context.siege) {
+    throw new Error("There is no siege gate to place.");
+  }
+
+  const gatePosition = SIEGE_ROW_POSITIONS[optionIndex];
+  if (gatePosition === undefined) {
+    throw new Error("Pick one of the middle-row columns for the Gate.");
+  }
+
+  state.pendingChoice = null;
+
+  const towerUnit = makeArrowTowerUnit(`siege_tower_${nextEventNumber(state)}`, playerId);
+  combat.units[towerUnit.id] = towerUnit;
+  combat.siege = {
+    townPlayerId: playerId,
+    walls: SIEGE_ROW_POSITIONS.filter((position) => position !== gatePosition),
+    gatePosition,
+    arrowTowerUnitId: towerUnit.id
+  };
+
+  appendEvent(state, {
+    type: "SIEGE_FORTIFICATIONS_PLACED",
+    playerId,
+    wallPositions: combat.siege.walls,
+    gatePosition
+  });
+
+  beginPlayerCombatRounds(state);
 }
 
 export function continueNeutralCombat(
@@ -1792,9 +1906,15 @@ export function finalizeAdventureCombat(state: GameState): void {
     }
 
     if (unit.damage >= unit.maxHealth) {
-      // Few side defeated: the unit card leaves the unit deck.
+      // Few side defeated: the unit card leaves the unit deck. A recruited
+      // Neutral card returns to its tier's discard pile.
       player.army = player.army.filter((candidate) => candidate.id !== armyUnit.id);
-    } else {
+      if (armyUnit.side === "neutral") {
+        const def = coreUnitDefinitions[armyUnit.unitDefId];
+        const tier = (def?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure";
+        state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(armyUnit.unitDefId);
+      }
+    } else if (armyUnit.side !== "neutral") {
       armyUnit.side = unit.variant === "pack" ? "pack" : "few";
     }
   }
@@ -1813,6 +1933,14 @@ export function finalizeAdventureCombat(state: GameState): void {
           gainExperience(state, playerId, 2);
         } else if (context.difficulty === level) {
           gainExperience(state, playerId, 1);
+        }
+
+        // Freelancer's Guild: "Each time you win against Neutral Units,
+        // gain 1 gold."
+        const guildId = findTownBuildingWithEffect(state, playerId, "FREELANCERS_GUILD");
+        const guild = guildId ? coreBuildingDefinitions[guildId] : null;
+        if (guild?.effect?.type === "FREELANCERS_GUILD") {
+          gainResources(state, playerId, { gold: guild.effect.winGold }, "Freelancer's Guild bounty");
         }
       } else if (outcome.reason === "retreat") {
         const returnTo = adventure.lastVisitedField[hero.id];
@@ -1852,9 +1980,10 @@ export function finalizeAdventureCombat(state: GameState): void {
   const loserHero = attackerHero?.controllerId === loserId ? attackerHero : defenderHero;
   const winnerHero = attackerHero?.controllerId === winnerId ? attackerHero : defenderHero;
 
-  if (winnerHero && loserHero) {
-    // Winner gains experience by the defeated main hero's level.
-    if (loserHero.kind === "main") {
+  if (loserHero) {
+    // Winner gains experience by the defeated main hero's level (no hero,
+    // no experience — a garrison defense win pays nothing).
+    if (winnerHero && loserHero.kind === "main") {
       if (loserHero.level > winnerHero.level) {
         gainExperience(state, winnerId, 2);
       } else if (loserHero.level === winnerHero.level) {
@@ -2058,11 +2187,11 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
     }
   }
 
-  if (!hasResources(player, totalCost)) {
+  if (!hasRecruitResources(state, action.playerId, totalCost)) {
     throw new Error("Not enough resources for those units.");
   }
 
-  spendResources(state, action.playerId, totalCost, "population action");
+  spendRecruitResources(state, action.playerId, totalCost, "population action");
   closeMulliganWindow(state, action.playerId);
   player.townTokens.population = false;
 
@@ -2246,6 +2375,221 @@ export function blacksmithAction(state: GameState, action: Extract<GameAction, {
 }
 
 /**
+ * "During your turn" town buildings (once per round each): Cover of Darkness
+ * option 1 (discard up to 2 cards, draw that many) and the Castle Gate
+ * (pay gold for a random enemy discard, or teleport between owned
+ * towns/settlements).
+ */
+export function useTownBuilding(state: GameState, action: Extract<GameAction, { type: "USE_TOWN_BUILDING" }>): void {
+  const player = state.players[action.playerId];
+  const building = coreBuildingDefinitions[action.buildingId];
+  const town = getTownOfPlayer(state, action.playerId);
+  if (!player || !building || !town?.buildings.includes(action.buildingId)) {
+    throw new Error("That building is not available.");
+  }
+
+  if (state.combat) {
+    throw new Error("Town actions cannot interrupt a combat.");
+  }
+
+  if (state.activePlayerId !== action.playerId) {
+    throw new Error("Use this building during your own turn.");
+  }
+
+  if ((player.buildingUsedRound?.[action.buildingId] ?? 0) === state.round) {
+    throw new Error(`${building.name} was already used this round.`);
+  }
+
+  const markUsed = () => {
+    player.buildingUsedRound = { ...player.buildingUsedRound, [action.buildingId]: state.round };
+    closeMulliganWindow(state, action.playerId);
+  };
+
+  if (building.effect?.type === "COVER_OF_DARKNESS") {
+    if (action.optionIndex !== 0) {
+      throw new Error("The combat option of Cover of Darkness opens at the start of a combat.");
+    }
+    const cardIds = action.cardIds ?? [];
+    if (cardIds.length === 0 || cardIds.length > 2) {
+      throw new Error("Discard 1 or 2 cards to draw that many.");
+    }
+    const handCounts = new Map<string, number>();
+    for (const cardId of player.hand) {
+      handCounts.set(cardId, (handCounts.get(cardId) ?? 0) + 1);
+    }
+    for (const cardId of cardIds) {
+      const left = handCounts.get(cardId) ?? 0;
+      if (left <= 0) {
+        throw new Error("Cannot discard a card that is not in hand.");
+      }
+      handCounts.set(cardId, left - 1);
+    }
+
+    markUsed();
+    for (const cardId of cardIds) {
+      const index = player.hand.indexOf(cardId);
+      player.hand.splice(index, 1);
+      player.discard.push(cardId);
+    }
+    appendEvent(state, {
+      type: "TOWN_BUILDING_USED",
+      playerId: action.playerId,
+      buildingId: action.buildingId,
+      message: `${building.name}: ${player.name} trades ${cardIds.length} card${cardIds.length === 1 ? "" : "s"} for fresh ones.`
+    });
+    drawCardsForPlayer(state, action.playerId, cardIds.length);
+    return;
+  }
+
+  if (building.effect?.type === "CASTLE_GATE") {
+    if (action.optionIndex === 0) {
+      const target = action.targetPlayerId ? state.players[action.targetPlayerId] : undefined;
+      if (!target || action.targetPlayerId === action.playerId || target.id === NEUTRAL_PLAYER_ID) {
+        throw new Error("Choose an opponent for the random discard.");
+      }
+      const cost: ResourceCost = { gold: building.effect.discardCost };
+      if (!hasResources(player, cost)) {
+        throw new Error("Not enough gold for the Castle Gate.");
+      }
+      if (target.hand.length === 0) {
+        throw new Error("That opponent has no cards in hand.");
+      }
+
+      markUsed();
+      spendResources(state, action.playerId, cost, building.name);
+      discardRandomCard(state, action.playerId, action.buildingId, target.id, building.name);
+      return;
+    }
+
+    // Option 2: teleport between owned towns/settlements.
+    const hero = getMainHero(state, action.playerId);
+    const adventure = requireAdventure(state);
+    if (!hero?.spaceId || !action.spaceId) {
+      throw new Error("Choose the destination town or settlement.");
+    }
+    const hereOk = isOwnTownOrSettlementField(state, action.playerId, hero.spaceId);
+    const thereOk = isOwnTownOrSettlementField(state, action.playerId, action.spaceId) && action.spaceId !== hero.spaceId;
+    if (!hereOk || !thereOk) {
+      throw new Error("The Castle Gate moves your hero between towns/settlements you control.");
+    }
+
+    markUsed();
+    const from = hero.spaceId;
+    hero.spaceId = action.spaceId;
+    adventure.lastVisitedField[hero.id] = action.spaceId;
+    appendEvent(state, {
+      type: "HERO_MOVED",
+      playerId: action.playerId,
+      heroId: hero.id,
+      from,
+      to: action.spaceId,
+      movementLeft: hero.movementPoints
+    });
+    appendEvent(state, {
+      type: "TOWN_BUILDING_USED",
+      playerId: action.playerId,
+      buildingId: action.buildingId,
+      message: `${building.name} carries the hero to another holding.`
+    });
+    return;
+  }
+
+  throw new Error("That building has no activated use.");
+}
+
+/** Whether the field is a town or settlement this player controls. */
+function isOwnTownOrSettlementField(state: GameState, playerId: PlayerId, spaceId: MapSpaceId): boolean {
+  const field = state.adventure?.fields[spaceId];
+  if (!field) {
+    return false;
+  }
+  if (Object.values(state.towns).some((town) => town.fieldId === spaceId && town.controllerId === playerId)) {
+    return true;
+  }
+  return field.location === "settlement" && field.flagOwnerId === playerId;
+}
+
+/**
+ * Brimstone Stormclouds: while one of your spells is on the stack, remove a
+ * faction cube from the building for +1 Power (max 1 cube per spell).
+ */
+export function spendTownCube(state: GameState, action: Extract<GameAction, { type: "SPEND_TOWN_CUBE" }>): void {
+  const town = getTownOfPlayer(state, action.playerId);
+  const building = coreBuildingDefinitions[action.buildingId];
+  if (!town || !town.buildings.includes(action.buildingId) || building?.effect?.type !== "COMBAT_CUBES") {
+    throw new Error("That cube building is not available.");
+  }
+
+  if (building.effect.spend !== "spell-power") {
+    throw new Error("Those cubes do not power spells.");
+  }
+
+  const cubes = town.factionCubes?.[action.buildingId] ?? 0;
+  if (cubes <= 0) {
+    throw new Error("No faction cubes are stored on the building.");
+  }
+
+  const stackItem = state.stack.at(-1);
+  if (!stackItem || stackItem.action.type !== "CAST_SPELL" || stackItem.action.playerId !== action.playerId) {
+    throw new Error("Spend the cube while one of your spells is being cast.");
+  }
+
+  if ((stackItem.modifiers.townCubePowerBonus ?? 0) >= 1) {
+    throw new Error("Only one cube may power each spell.");
+  }
+
+  town.factionCubes = { ...town.factionCubes, [action.buildingId]: cubes - 1 };
+  stackItem.modifiers.townCubePowerBonus = (stackItem.modifiers.townCubePowerBonus ?? 0) + 1;
+
+  appendEvent(state, {
+    type: "TOWN_BUILDING_USED",
+    playerId: action.playerId,
+    buildingId: action.buildingId,
+    message: `${building.name}: a faction cube burns for +1 Power (${cubes - 1} left).`
+  });
+}
+
+/**
+ * Hall of Valhalla: once per round, while one of your units' attacks is
+ * waiting to resolve, that attack gains +1 attack.
+ */
+export function hallOfValhallaBoost(
+  state: GameState,
+  action: Extract<GameAction, { type: "HALL_OF_VALHALLA_BOOST" }>
+): void {
+  const player = state.players[action.playerId];
+  const town = getTownOfPlayer(state, action.playerId);
+  const building = coreBuildingDefinitions[action.buildingId];
+  if (!player || !town?.buildings.includes(action.buildingId) || building?.effect?.type !== "HALL_OF_VALHALLA") {
+    throw new Error("The Hall of Valhalla is not available.");
+  }
+
+  if ((player.buildingUsedRound?.[action.buildingId] ?? 0) === state.round) {
+    throw new Error(`${building.name} was already used this round.`);
+  }
+
+  const stackItem = state.stack.at(-1);
+  const attackerId =
+    stackItem && (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT")
+      ? stackItem.action.attackerId
+      : null;
+  const attacker = attackerId ? state.combat?.units[attackerId] : undefined;
+  if (!stackItem || !attacker || attacker.controllerId !== action.playerId) {
+    throw new Error("Boost while one of your units' attacks waits to resolve.");
+  }
+
+  player.buildingUsedRound = { ...player.buildingUsedRound, [action.buildingId]: state.round };
+  stackItem.modifiers.attackBonus += building.effect.amount;
+
+  appendEvent(state, {
+    type: "TOWN_BUILDING_USED",
+    playerId: action.playerId,
+    buildingId: action.buildingId,
+    message: `${building.name}: ${attacker.cardName} fights with +${building.effect.amount} attack.`
+  });
+}
+
+/**
  * Positive morale token, by the book: "Draw a card from your Deck" or
  * "Discard any number of cards, then draw that many cards" — at any time.
  * (The third option, rerolling a die, is offered inside the dice flows.)
@@ -2381,6 +2725,38 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
+    return;
+  }
+
+  if (choice.context === "own-deck-pick") {
+    const pick = choice.ownDeckPick;
+    const player = state.players[action.playerId];
+    const cardId = pick?.cardIds[action.optionIndex];
+    if (!pick || !player || !cardId) {
+      throw new Error("Pick one of the revealed cards.");
+    }
+
+    player.hand.push(cardId);
+    player.discard.push(...pick.cardIds.filter((_, index) => index !== action.optionIndex));
+
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    return;
+  }
+
+  if (choice.context === "garrison") {
+    resolveGarrisonChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "siege-gate") {
+    resolveSiegeGateChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "cover-of-darkness") {
+    resolveCoverOfDarknessChoice(state, action.playerId, action.optionIndex);
     return;
   }
 
@@ -2761,6 +3137,9 @@ export function pumpAdventureQueues(state: GameState): void {
         }
         if (reward.filter === "non-artifact") {
           return kind !== "artifact";
+        }
+        if (reward.filter === "specialty") {
+          return kind === "hero-specialty";
         }
         return true;
       });

@@ -420,6 +420,14 @@ export type EffectDefinition =
        * (war machines): playing the card only puts it into play.
        */
       type: "ENTER_PLAY";
+    }
+  | {
+      /**
+       * Dessa's Logistics specialty: during the continue-or-retreat decision
+       * against neutral units, extend the combat by one round without
+       * spending a movement point.
+       */
+      type: "CONTINUE_NEUTRAL_FREE";
     };
 
 /**
@@ -802,6 +810,15 @@ export type GameAction =
        * for +1 Power on that spell (max 1 cube per spell).
        */
       type: "SPEND_TOWN_CUBE";
+      playerId: PlayerId;
+      buildingId: BuildingId;
+    }
+  | {
+      /**
+       * Hall of Valhalla: once per round, while one of your units' attacks is
+       * waiting to resolve, that attack gains +1 attack.
+       */
+      type: "HALL_OF_VALHALLA_BOOST";
       playerId: PlayerId;
       buildingId: BuildingId;
     }
@@ -2400,7 +2417,7 @@ export type PendingChoice =
       discardPick?: {
         cardIds: CardId[];
         remaining: number;
-        filter?: "spell" | "non-artifact";
+        filter?: "spell" | "non-artifact" | "specialty";
         fromTop?: number;
         shuffleRestIntoDeck?: boolean;
       };
