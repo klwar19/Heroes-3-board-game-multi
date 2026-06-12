@@ -1703,7 +1703,7 @@
   },
   "units/faerie-dragon-special": {
     "src": "/sounds/units/faerie-dragon-special.mp3",
-    "note": "Faerie Dragon spell-cast (FAERIE)"
+    "note": "Faerie Dragon spell-cast (FAERIE) — play when its turn-start magic damage triggers"
   },
   "units/familiar-attack": {
     "src": "/sounds/units/familiar-attack.mp3"
@@ -1798,7 +1798,7 @@
   },
   "units/genie-special": {
     "src": "/sounds/units/genie-special.mp3",
-    "note": "Genie/Master Genie spell-cast (GENIE)"
+    "note": "Genie/Master Genie spell-cast (GENIE) — play when it casts its ability"
   },
   "units/ghost-dragon-attack": {
     "src": "/sounds/units/ghost-dragon-attack.mp3"
@@ -2268,7 +2268,8 @@
     "repeat": 2
   },
   "units/lich-attack": {
-    "src": "/sounds/units/lich-attack.mp3"
+    "src": "/sounds/units/lich-attack.mp3",
+    "then": "spells/death-cloud"
   },
   "units/lich-death": {
     "src": "/sounds/units/lich-death.mp3"
@@ -2284,7 +2285,8 @@
     "repeat": 2
   },
   "units/lich-shoot": {
-    "src": "/sounds/units/lich-shoot.mp3"
+    "src": "/sounds/units/lich-shoot.mp3",
+    "then": "spells/death-cloud"
   },
   "units/lich-special": {
     "src": "/sounds/units/lich-special.mp3",
@@ -2380,7 +2382,8 @@
     "repeat": 2
   },
   "units/magog-attack": {
-    "src": "/sounds/units/magog-attack.mp3"
+    "src": "/sounds/units/magog-attack.mp3",
+    "then": "spells/fireball-hit"
   },
   "units/magog-death": {
     "src": "/sounds/units/magog-death.mp3"
@@ -2396,7 +2399,8 @@
     "repeat": 2
   },
   "units/magog-shoot": {
-    "src": "/sounds/units/magog-shoot.mp3"
+    "src": "/sounds/units/magog-shoot.mp3",
+    "then": "spells/fireball-hit"
   },
   "units/manticore-attack": {
     "src": "/sounds/units/manticore-attack.mp3"
@@ -2829,7 +2833,8 @@
     "repeat": 2
   },
   "units/power-lich-attack": {
-    "src": "/sounds/units/power-lich-attack.mp3"
+    "src": "/sounds/units/power-lich-attack.mp3",
+    "then": "spells/death-cloud"
   },
   "units/power-lich-death": {
     "src": "/sounds/units/power-lich-death.mp3"
@@ -2845,7 +2850,8 @@
     "repeat": 2
   },
   "units/power-lich-shoot": {
-    "src": "/sounds/units/power-lich-shoot.mp3"
+    "src": "/sounds/units/power-lich-shoot.mp3",
+    "then": "spells/death-cloud"
   },
   "units/psychic-elemental-attack": {
     "src": "/sounds/units/psychic-elemental-attack.mp3"
@@ -3426,5 +3432,30 @@
   "units/zombie-lord-move": {
     "src": "/sounds/units/zombie-lord-move.mp3",
     "repeat": 2
+  },
+  "music/battle": {
+    "random": [
+      "music/battle-00",
+      "music/battle-01",
+      "music/battle-02",
+      "music/battle-03",
+      "music/battle-04",
+      "music/battle-05",
+      "music/battle-06",
+      "music/battle-07"
+    ],
+    "note": "play one member at random"
+  },
+  "adventure/pickup": {
+    "random": [
+      "adventure/pickup-01",
+      "adventure/pickup-02",
+      "adventure/pickup-03",
+      "adventure/pickup-04",
+      "adventure/pickup-05",
+      "adventure/pickup-06",
+      "adventure/pickup-07"
+    ],
+    "note": "play one member at random"
   }
 }
