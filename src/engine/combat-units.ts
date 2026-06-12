@@ -1,6 +1,7 @@
 import { expireEffectsForCombatEnd } from "./active-effects";
 import { getUnitSide } from "./adventure";
 import { appendEvent } from "./events";
+import { isArrowTowerUnit } from "./siege";
 import type { ActiveEffectState, CombatState, CombatUnitState, GameState, PlayerId } from "./state";
 
 /**
@@ -49,12 +50,19 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     unitId: unit.id,
     playerId: unit.controllerId
   });
+
+  // A shot-down Arrow Tower also leaves the siege bookkeeping.
+  if (state.combat?.siege?.arrowTowerUnitId === unit.id) {
+    state.combat.siege.arrowTowerUnitId = null;
+  }
 }
 
 export function livingControllerIds(combat: CombatState): Set<PlayerId> {
   return new Set(
     Object.values(combat.units)
-      .filter((unit) => unit.damage < unit.maxHealth)
+      // "The attacker doesn't need to destroy it to win the Combat" — the
+      // Arrow Tower alone never keeps the defender in the fight.
+      .filter((unit) => unit.damage < unit.maxHealth && !isArrowTowerUnit(unit))
       .map((unit) => unit.controllerId)
   );
 }

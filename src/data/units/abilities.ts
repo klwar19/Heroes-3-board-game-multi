@@ -1,4 +1,4 @@
-import type { EffectDurationDefinition, UnitType } from "@/engine/state";
+import type { CombatTokenKind, EffectDurationDefinition, UnitType } from "@/engine/state";
 
 export type UnitAbilityEffectDefinition =
   | { type: "ALLOW_UNLIMITED_RETALIATION" }
@@ -6,6 +6,49 @@ export type UnitAbilityEffectDefinition =
   | { type: "IGNORE_RANGED_BACK_ROW_PENALTY" }
   | { type: "MOVE_ANYWHERE" }
   | { type: "EXTRA_RANGED_DAMAGE_ON_LOW_ROLL"; maxRoll: number; amount: number }
+  | {
+      /**
+       * Token "other action" (Ogres' Attack token, Few Sorceresses' Weakness
+       * token): used instead of attacking, places a combat token on a unit.
+       */
+      type: "PLACE_TOKEN_ACTION";
+      token: CombatTokenKind;
+      /** Signed delta carried by the token (+2 attack, −2 weakness, …). */
+      amount: number;
+      /** Which side may receive the token. */
+      targets: "any" | "friendly" | "enemy";
+      /** Allowed unit types of the target (omit for all). */
+      targetTypes?: UnitType[];
+      /** Combat rounds the token lasts (omit = until end of combat). */
+      rounds?: number;
+    }
+  | {
+      /**
+       * Token on attack (Pack Sorceresses' −1 Weakness, Pack Behemoths'
+       * Corrosion): after this unit's attack, the target gains the token.
+       */
+      type: "ON_ATTACK_TOKEN";
+      token: CombatTokenKind;
+      amount: number;
+      rounds?: number;
+    }
+  | {
+      /**
+       * Behemoths: the attack itself treats the target's defense as `amount`
+       * lower (to a minimum of 0).
+       */
+      type: "ATTACK_DEFENSE_PIERCE";
+      amount: number;
+    }
+  | {
+      /**
+       * Cyclops siege ability ("other action"): destroy the Gate or a Wall —
+       * the pack/neutral versions may also destroy the Arrow Tower. Works at
+       * any range; automatically successful.
+       */
+      type: "DEMOLISH_FORTIFICATION";
+      canTargetArrowTower: boolean;
+    }
   | {
       /**
        * Magogs (pack/neutral): "When Magogs attack a target that is not
@@ -171,30 +214,91 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   },
   "ogres-attack-token-pack": {
     id: "ogres-attack-token-pack",
-    name: "Ogre Attack Token",
-    text: "Place a +2 attack token on a chosen ground or flying unit for 2 combat rounds.",
+    name: "Bloodlust Token",
+    text: "Other action: place a '+2' Attack token on a chosen friendly ground or flying unit for 2 combat rounds. (A unit holds at most one Attack token — the better one is kept.)",
     effect: {
-      type: "ACTIVATION_ATTACK_BUFF",
+      type: "PLACE_TOKEN_ACTION",
+      token: "attack",
       amount: 2,
+      targets: "friendly",
       targetTypes: ["ground", "flying"],
-      duration: { type: "combat-rounds", rounds: 2 },
-      endsActivation: true,
-      preventsMovement: true
+      rounds: 2
     },
     implementationStatus: "implemented"
   },
   "ogres-attack-token-few": {
     id: "ogres-attack-token-few",
-    name: "Ogre Attack Token",
-    text: "Place a +1 attack token on a chosen ground or flying unit for 2 combat rounds.",
+    name: "Bloodlust Token",
+    text: "Other action: place a '+1' Attack token on a chosen friendly ground or flying unit for 2 combat rounds. (A unit holds at most one Attack token — the better one is kept.)",
     effect: {
-      type: "ACTIVATION_ATTACK_BUFF",
+      type: "PLACE_TOKEN_ACTION",
+      token: "attack",
       amount: 1,
+      targets: "friendly",
       targetTypes: ["ground", "flying"],
-      duration: { type: "combat-rounds", rounds: 2 },
-      endsActivation: true,
-      preventsMovement: true
+      rounds: 2
     },
+    implementationStatus: "implemented"
+  },
+  "sorceress-weakness-few": {
+    id: "sorceress-weakness-few",
+    name: "Weakness Token",
+    text: "Other action: place a '−2' Weakness token on any one unit for 2 combat rounds. (A unit holds at most one Weakness token.)",
+    effect: {
+      type: "PLACE_TOKEN_ACTION",
+      token: "weakness",
+      amount: -2,
+      targets: "any",
+      rounds: 2
+    },
+    implementationStatus: "implemented"
+  },
+  "sorceress-weakness-on-attack": {
+    id: "sorceress-weakness-on-attack",
+    name: "Weakness Token",
+    text: "After the attack, place a '−1' Weakness token on the target for 2 combat rounds.",
+    effect: { type: "ON_ATTACK_TOKEN", token: "weakness", amount: -1, rounds: 2 },
+    implementationStatus: "implemented"
+  },
+  "behemoth-pierce-1": {
+    id: "behemoth-pierce-1",
+    name: "Rending Claws",
+    text: "When attacking, decrease the target's defense by 1 (to a minimum of 0).",
+    effect: { type: "ATTACK_DEFENSE_PIERCE", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "behemoth-pierce-2": {
+    id: "behemoth-pierce-2",
+    name: "Rending Claws",
+    text: "When attacking, decrease the target's defense by 2 (to a minimum of 0).",
+    effect: { type: "ATTACK_DEFENSE_PIERCE", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "behemoth-corrosion": {
+    id: "behemoth-corrosion",
+    name: "Corrosion Token",
+    text: "After the attack, place 1 Corrosion token on the target (−1 defense, minimum 0, until the end of combat; one Corrosion token per unit).",
+    effect: { type: "ON_ATTACK_TOKEN", token: "corrosion", amount: -1 },
+    implementationStatus: "implemented"
+  },
+  "cyclops-demolish": {
+    id: "cyclops-demolish",
+    name: "Siege Breaker",
+    text: "Other action: this unit can destroy the Gate or a Wall (at any range, automatically successful).",
+    effect: { type: "DEMOLISH_FORTIFICATION", canTargetArrowTower: false },
+    implementationStatus: "implemented"
+  },
+  "cyclops-demolish-full": {
+    id: "cyclops-demolish-full",
+    name: "Siege Breaker",
+    text: "Other action: this unit can destroy the Gate, a Wall, or the Arrow Tower (at any range, automatically successful).",
+    effect: { type: "DEMOLISH_FORTIFICATION", canTargetArrowTower: true },
+    implementationStatus: "implemented"
+  },
+  "siege-arrow-tower": {
+    id: "siege-arrow-tower",
+    name: "Arrow Tower",
+    text: "Fights from beside the board: shoots like a ranged unit with no positioning penalties, can only be hit by ranged attacks and card effects, and collapses instantly when all Walls and the Gate are destroyed.",
     implementationStatus: "implemented"
   },
   "attack-die-reroll": {

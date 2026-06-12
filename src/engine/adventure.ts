@@ -9,7 +9,7 @@ import { allTileDefinitions } from "@/data/map/tiles";
 import type { LocationInteraction } from "@/data/map/types";
 import { expireEffectsForTurnEnd, releaseEndedOngoingCards } from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
-import { appendEvent, eventSeedNumber } from "./events";
+import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { applyUnitSideRules } from "./ruleset";
 import {
   hexDistance,
@@ -41,6 +41,7 @@ import type {
   PlayerState,
   ResourceCost,
   ResourceKind,
+  TownState,
   UnitId,
   VisitStep
 } from "./state";
@@ -1130,6 +1131,78 @@ export function processPendingVisit(state: GameState): void {
         }
         break;
       }
+      case "NECROMANCY_FETCH":
+        resolveNecromancyFetch(state, visit.playerId);
+        break;
+      case "DISCARD_PICK":
+        adventure.rewardQueue.push({
+          playerId: visit.playerId,
+          kind: "discard-pick",
+          count: step.count,
+          filter: step.filter
+        });
+        break;
+      case "MANA_VORTEX_RESOLVE":
+        resolveManaVortex(state, visit.playerId, step.discardCardId);
+        break;
+      case "PORTAL_SUMMON": {
+        const drawn = drawFromNeutralDeck(state, step.tier);
+        if (!drawn) {
+          break;
+        }
+        const def = coreUnitDefinitions[drawn];
+        const cost = def?.neutral?.cost ?? {};
+        const costLabel =
+          Object.entries(cost)
+            .filter(([, amount]) => amount)
+            .map(([resource, amount]) => `${amount} ${resource}`)
+            .join(" + ") || "free";
+        const player = state.players[visit.playerId];
+        const affordable = Boolean(player && hasResources(player, cost));
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `Portal of Summoning: drew ${def?.name ?? drawn} (${costLabel})`,
+          options: [
+            ...(affordable
+              ? [{ label: `Recruit for ${costLabel}`, steps: [{ type: "PORTAL_RECRUIT", unitDefId: drawn } as VisitStep] }]
+              : []),
+            { label: "Decline (discard the card)", steps: [{ type: "PORTAL_DECLINE", unitDefId: drawn } as VisitStep] }
+          ]
+        });
+        break;
+      }
+      case "PORTAL_RECRUIT": {
+        const player = state.players[visit.playerId];
+        const def = coreUnitDefinitions[step.unitDefId];
+        const cost = def?.neutral?.cost ?? {};
+        if (!player || !def?.neutral || !hasResources(player, cost)) {
+          // Cannot pay after all: the card goes to its tier discard pile.
+          state.decks[NEUTRAL_DECK_IDS[(def?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure"]]?.discardPile.push(
+            step.unitDefId
+          );
+          break;
+        }
+        spendResources(state, visit.playerId, cost, `recruited ${def.name} at the Portal of Summoning`);
+        addArmyUnit(player, step.unitDefId, "neutral");
+        appendEvent(state, {
+          type: "UNIT_RECRUITED",
+          playerId: visit.playerId,
+          unitDefId: step.unitDefId,
+          kind: "recruit",
+          cost
+        });
+        break;
+      }
+      case "PORTAL_DECLINE": {
+        const def = coreUnitDefinitions[step.unitDefId];
+        state.decks[NEUTRAL_DECK_IDS[(def?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure"]]?.discardPile.push(
+          step.unitDefId
+        );
+        break;
+      }
+      case "REINFORCE_HALF_GOLD":
+        reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, true);
+        break;
       default:
         break;
     }
@@ -1542,14 +1615,14 @@ export function makeCombatUnitFromNeutral(
 }
 
 export function makeCombatUnitFromArmy(
-  armyUnit: { id: string; unitDefId: string; side: "few" | "pack" },
+  armyUnit: { id: string; unitDefId: string; side: "few" | "pack" | "neutral" },
   controllerId: PlayerId,
   unitId: UnitId,
   position: number,
   ruleset: GameRuleset = "legacy"
 ): CombatUnitState | null {
   const def = coreUnitDefinitions[armyUnit.unitDefId];
-  const printed = armyUnit.side === "few" ? def?.few : def?.pack;
+  const printed = armyUnit.side === "few" ? def?.few : armyUnit.side === "pack" ? def?.pack : def?.neutral;
   if (!def || !printed) {
     return null;
   }
@@ -1560,7 +1633,7 @@ export function makeCombatUnitFromArmy(
     id: unitId,
     controllerId,
     name: def.name,
-    cardName: `${armyUnit.side === "few" ? "Few" : "Pack of"} ${def.name}`,
+    cardName: `${armyUnit.side === "few" ? "Few" : armyUnit.side === "pack" ? "Pack of" : "Neutral"} ${def.name}`,
     variant: armyUnit.side,
     grade: def.tier,
     type: def.type,
@@ -1721,6 +1794,25 @@ export function startAdventureRound(state: GameState): void {
 
   if (kind === "astrologers") {
     drawAstrologersCard(state);
+
+    // "At the beginning of each Astrologers' round" building triggers.
+    for (const playerId of state.turnOrder) {
+      const player = state.players[playerId];
+      if (!player || playerId === NEUTRAL_PLAYER_ID) {
+        continue;
+      }
+
+      const town = getTownOfPlayer(state, playerId);
+      for (const buildingId of town?.buildings ?? []) {
+        const effect = coreBuildingDefinitions[buildingId]?.effect;
+        if (effect?.type === "ASTROLOGERS_HALF_GOLD_REINFORCE") {
+          queueHalfGoldReinforce(state, playerId, buildingId, effect.tiers);
+        }
+        if (effect?.type === "COMBAT_CUBES" && effect.gainOn === "astrologers" && town) {
+          gainTownCube(state, town, buildingId, effect.max);
+        }
+      }
+    }
     return;
   }
 
@@ -1755,12 +1847,93 @@ export function startAdventureRound(state: GameState): void {
       if (effect?.type === "RESOURCE_ROUND_MORALE") {
         changeMorale(state, playerId, 1);
       }
+      if (effect?.type === "RESOURCE_ROUND_RESOURCE_DIE") {
+        // Mystic Pond: roll a Resource die through the shared dice pipeline.
+        state.adventure?.rewardQueue.push({
+          playerId,
+          kind: "visit-steps",
+          steps: [{ type: "ROLL_RESOURCE_DICE", count: 1 }]
+        });
+      }
+      if (effect?.type === "COMBAT_CUBES" && effect.gainOn === "resource" && town) {
+        gainTownCube(state, town, buildingId, effect.max);
+      }
     }
   }
 
   if (astrologers) {
     astrologers.nextResourceModifiers = { gold: 0, valuables: 0 };
   }
+}
+
+/** Adds one faction cube to a cube building, up to its printed maximum. */
+export function gainTownCube(state: GameState, town: TownState, buildingId: string, max: number): void {
+  const cubes = town.factionCubes ?? {};
+  const current = cubes[buildingId] ?? 0;
+  if (current >= max) {
+    return;
+  }
+
+  town.factionCubes = { ...cubes, [buildingId]: current + 1 };
+  appendEvent(state, {
+    type: "TOWN_BUILDING_USED",
+    playerId: town.controllerId,
+    buildingId,
+    message: `${coreBuildingDefinitions[buildingId]?.name ?? buildingId} stores a faction cube (${current + 1}/${max}).`
+  });
+}
+
+/** Saplings: reinforce one unit of the listed tiers for half the gold cost. */
+function queueHalfGoldReinforce(state: GameState, playerId: PlayerId, buildingId: string, tiers: string[]): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+
+  const options: { label: string; steps: VisitStep[] }[] = [];
+  for (const unit of player.army) {
+    if (unit.side !== "few") {
+      continue;
+    }
+
+    const def = coreUnitDefinitions[unit.unitDefId];
+    const packSide = getUnitSide(unit.unitDefId, "pack");
+    if (!def || !packSide || !tiers.includes(def.tier)) {
+      continue;
+    }
+
+    const cost: ResourceCost = { ...packSide.cost };
+    cost.gold = Math.ceil((cost.gold ?? 0) / 2);
+    if (!hasResources(player, cost)) {
+      continue;
+    }
+
+    const costLabel = Object.entries(cost)
+      .filter(([, amount]) => amount)
+      .map(([resource, amount]) => `${amount} ${resource}`)
+      .join(" + ");
+    options.push({
+      label: `Reinforce ${def.name} (${costLabel || "free"})`,
+      steps: [{ type: "REINFORCE_HALF_GOLD", armyUnitId: unit.id }]
+    });
+  }
+
+  if (options.length === 0) {
+    return;
+  }
+
+  options.push({ label: "Skip", steps: [] });
+  state.adventure?.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt: `${coreBuildingDefinitions[buildingId]?.name ?? "Saplings"}: reinforce one unit for half the gold cost`,
+        options
+      }
+    ]
+  });
 }
 
 /**
@@ -1805,6 +1978,106 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
     }
   }
   player.canMulligan = true;
+
+  // "Resolve any 'at the beginning of your turn' abilities after drawing":
+  // Necromancy Amplifier, Portal of Summoning, Mana Vortex.
+  queueTurnStartBuildingChoices(state, playerId);
+}
+
+/**
+ * Queues the optional "at the beginning of your turn" town-building choices
+ * for the player whose turn just started. Each opens as a prompt with a Skip
+ * option once the queue pumps.
+ */
+function queueTurnStartBuildingChoices(state: GameState, playerId: PlayerId): void {
+  const adventure = state.adventure;
+  const player = state.players[playerId];
+  const town = getTownOfPlayer(state, playerId);
+  if (!adventure || !player || !town) {
+    return;
+  }
+
+  for (const buildingId of town.buildings) {
+    const building = coreBuildingDefinitions[buildingId];
+    switch (building?.effect?.type) {
+      case "TURN_START_NECROMANCY": {
+        const hasSpecialtyInDiscard = player.discard.some(
+          (cardId) => cardLibrary[cardId]?.kind === "hero-specialty"
+        );
+        const options: { label: string; steps: VisitStep[] }[] = [
+          { label: "Search the Ability deck for a Necromancy card", steps: [{ type: "NECROMANCY_FETCH" }] }
+        ];
+        if (hasSpecialtyInDiscard) {
+          options.push({
+            label: "Take 1 Specialty card from your discard pile",
+            steps: [{ type: "DISCARD_PICK", count: 1, filter: "specialty" }]
+          });
+        }
+        options.push({ label: "Skip", steps: [] });
+        adventure.rewardQueue.push({
+          playerId,
+          kind: "visit-steps",
+          steps: [{ type: "CHOOSE_ONE", prompt: `${building.name}: choose one`, options }]
+        });
+        break;
+      }
+      case "TURN_START_PORTAL_SUMMON": {
+        const tiers = new Set<string>();
+        for (const built of town.buildings) {
+          const builtEffect = coreBuildingDefinitions[built]?.effect;
+          if (builtEffect?.type === "UNLOCK_RECRUIT_TIER" && builtEffect.tier !== "azure") {
+            tiers.add(builtEffect.tier);
+          }
+        }
+        if (tiers.size === 0) {
+          break;
+        }
+        const options: { label: string; steps: VisitStep[] }[] = [...tiers].map((tier) => ({
+          label: `Draw a ${tier} Neutral Unit card`,
+          steps: [{ type: "PORTAL_SUMMON", tier: tier as "bronze" | "silver" | "gold" }]
+        }));
+        options.push({ label: "Skip", steps: [] });
+        adventure.rewardQueue.push({
+          playerId,
+          kind: "visit-steps",
+          steps: [{ type: "CHOOSE_ONE", prompt: `${building.name}: draw a Neutral Unit card to recruit?`, options }]
+        });
+        break;
+      }
+      case "TURN_START_MANA_VORTEX": {
+        if (player.hand.length === 0 || player.discard.length === 0) {
+          break;
+        }
+        const seen = new Set<string>();
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        for (const cardId of player.hand) {
+          if (seen.has(cardId)) {
+            continue;
+          }
+          seen.add(cardId);
+          options.push({
+            label: `Discard ${cardLibrary[cardId]?.name ?? cardId}`,
+            steps: [{ type: "MANA_VORTEX_RESOLVE", discardCardId: cardId }]
+          });
+        }
+        options.push({ label: "Skip", steps: [] });
+        adventure.rewardQueue.push({
+          playerId,
+          kind: "visit-steps",
+          steps: [
+            {
+              type: "CHOOSE_ONE",
+              prompt: `${building.name}: discard 1 card to shuffle your discard pile into your deck, then Search (3)?`,
+              options
+            }
+          ]
+        });
+        break;
+      }
+      default:
+        break;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2051,7 +2324,13 @@ function queueHalfCostReinforce(state: GameState, playerId: PlayerId): void {
 }
 
 /** Flips a Few army card to its Pack side, paying its (half) cost. */
-export function reinforceArmyUnit(state: GameState, playerId: PlayerId, armyUnitId: string, halfCost: boolean): void {
+export function reinforceArmyUnit(
+  state: GameState,
+  playerId: PlayerId,
+  armyUnitId: string,
+  halfCost: boolean,
+  halfGoldOnly = false
+): void {
   const player = state.players[playerId];
   const armyUnit = player?.army.find((candidate) => candidate.id === armyUnitId);
   if (!player || !armyUnit || armyUnit.side !== "few") {
@@ -2065,13 +2344,14 @@ export function reinforceArmyUnit(state: GameState, playerId: PlayerId, armyUnit
 
   const cost: ResourceCost = {};
   for (const [resource, amount] of Object.entries(packSide.cost) as [ResourceKind, number][]) {
-    cost[resource] = halfCost ? Math.ceil(amount / 2) : amount;
+    const halved = halfCost || (halfGoldOnly && resource === "gold");
+    cost[resource] = halved ? Math.ceil(amount / 2) : amount;
   }
   if (!hasResources(player, cost)) {
     return;
   }
 
-  spendResources(state, playerId, cost, halfCost ? "half-cost reinforcement" : "reinforcement");
+  spendResources(state, playerId, cost, halfCost || halfGoldOnly ? "half-cost reinforcement" : "reinforcement");
   armyUnit.side = "pack";
   appendEvent(state, {
     type: "UNIT_RECRUITED",
@@ -2080,6 +2360,109 @@ export function reinforceArmyUnit(state: GameState, playerId: PlayerId, armyUnit
     kind: "reinforce",
     cost
   });
+}
+
+/**
+ * Necromancy Amplifier: dig the Ability deck for its first Necromancy card,
+ * take it to hand, and reshuffle the searched cards back in.
+ */
+function resolveNecromancyFetch(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  const deck = state.decks.abilities;
+  if (!player || !deck) {
+    return;
+  }
+
+  const dug: string[] = [];
+  let found: string | null = null;
+  while (deck.drawPile.length > 0) {
+    const cardId = deck.drawPile.pop() as string;
+    if (cardLibrary[cardId]?.name === "Necromancy") {
+      found = cardId;
+      break;
+    }
+    dug.push(cardId);
+  }
+
+  deck.drawPile = shuffleCards(
+    [...deck.drawPile, ...dug],
+    `${state.seed}#necromancy-fetch#${eventSeedNumber(state)}`
+  );
+
+  if (found) {
+    player.hand.push(found);
+    appendEvent(state, {
+      type: "TOWN_BUILDING_USED",
+      playerId,
+      buildingId: "necropolis.necromancy_amplifier",
+      message: "Necromancy Amplifier fetches a Necromancy card from the Ability deck."
+    });
+  } else {
+    appendEvent(state, {
+      type: "TOWN_BUILDING_USED",
+      playerId,
+      buildingId: "necropolis.necromancy_amplifier",
+      message: "The Ability deck holds no Necromancy card — the search comes up empty."
+    });
+  }
+}
+
+/**
+ * Mana Vortex: discard the chosen card, shuffle the discard pile back into
+ * the deck, then Search (3) from the own deck (pick 1, discard the rest).
+ */
+function resolveManaVortex(state: GameState, playerId: PlayerId, discardCardId: string): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+
+  const handIndex = player.hand.indexOf(discardCardId);
+  if (handIndex === -1) {
+    return;
+  }
+
+  player.hand.splice(handIndex, 1);
+  player.discard.push(discardCardId);
+
+  player.deck = shuffleCards(
+    [...player.deck, ...player.discard],
+    `${state.seed}#mana-vortex#${playerId}#${eventSeedNumber(state)}`
+  );
+  player.discard = [];
+
+  const revealed: string[] = [];
+  for (let index = 0; index < 3; index += 1) {
+    const cardId = player.deck.pop();
+    if (!cardId) {
+      break;
+    }
+    revealed.push(cardId);
+  }
+
+  appendEvent(state, {
+    type: "TOWN_BUILDING_USED",
+    playerId,
+    buildingId: "dungeon.mana_vortex",
+    message: "Mana Vortex shuffles the discard pile into the deck and searches it."
+  });
+
+  if (revealed.length === 0) {
+    return;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: "Mana Vortex: take one card into your hand (the rest go to your discard pile)",
+    options: revealed.map((cardId) => ({ label: `Take ${cardLibrary[cardId]?.name ?? cardId}` })),
+    context: "own-deck-pick",
+    ownDeckPick: { cardIds: revealed },
+    returnPhase: "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
 }
 
 /** Groovy Satyr: swap one drawn neutral card for a fresh one of the same tier. */

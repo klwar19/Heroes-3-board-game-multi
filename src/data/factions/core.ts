@@ -183,11 +183,11 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     name: "Necromancy Amplifier",
     faction: "necropolis",
     cost: { gold: 7, buildingMaterials: 3, valuables: 1 },
-    effect: {
-      type: "NOT_IMPLEMENTED",
-      note: "At the beginning of your turn: search the Ability deck for a Necromancy card, OR take 1 Specialty card from your discard pile to your hand."
-    },
-    implementationStatus: "not-implemented",
+    // "At the beginning of your turn, choose one: 1. Search the Ability card
+    // deck for a Necromancy card and put it in your hand. 2. Take 1 Specialty
+    // card from your discard pile to your hand."
+    effect: { type: "TURN_START_NECROMANCY" },
+    implementationStatus: "implemented",
     source: townSource("necropolis")
   },
   "necropolis.cover_of_darkness": {
@@ -195,11 +195,11 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     name: "Cover of Darkness",
     faction: "necropolis",
     cost: { gold: 6, buildingMaterials: 4, valuables: 1 },
-    effect: {
-      type: "NOT_IMPLEMENTED",
-      note: "During your turn: discard up to 2 cards to draw that many, OR at the beginning of Combat with an enemy Hero, discard 1 random card from the enemy's hand."
-    },
-    implementationStatus: "not-implemented",
+    // "During your turn, choose one: 1. Discard up to 2 Might and Magic cards
+    // to draw that many cards. 2. At the beginning of Combat with an Enemy
+    // Hero, discard 1 random card from the enemy's hand."
+    effect: { type: "COVER_OF_DARKNESS" },
+    implementationStatus: "implemented",
     source: townSource("necropolis")
   },
 
@@ -269,11 +269,10 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     name: "Mystic Pond",
     faction: "rampart",
     cost: { gold: 7, buildingMaterials: 4 },
-    effect: {
-      type: "NOT_IMPLEMENTED",
-      note: "At the beginning of each Resource round, roll a Resource die and gain its reward."
-    },
-    implementationStatus: "not-implemented",
+    // "At the beginning of each Resource round, roll 1 Resource die and gain
+    // the rolled resources."
+    effect: { type: "RESOURCE_ROUND_RESOURCE_DIE" },
+    implementationStatus: "implemented",
     source: townSource("rampart")
   },
   "rampart.saplings": {
@@ -281,11 +280,10 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     name: "Saplings",
     faction: "rampart",
     cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
-    effect: {
-      type: "NOT_IMPLEMENTED",
-      note: "During Astrologers' rounds, Reinforce bronze and silver units at half cost."
-    },
-    implementationStatus: "not-implemented",
+    // "At the beginning of each Astrologers' round, instantly Reinforce 1 of
+    // your bronze or silver units for half of the gold cost."
+    effect: { type: "ASTROLOGERS_HALF_GOLD_REINFORCE", tiers: ["bronze", "silver"] },
+    implementationStatus: "implemented",
     source: townSource("rampart")
   },
 
@@ -358,11 +356,11 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     name: "Castle Gate",
     faction: "inferno",
     cost: { gold: 7, buildingMaterials: 5 },
-    effect: {
-      type: "NOT_IMPLEMENTED",
-      note: "During your turn: pay 3 gold to discard a random card from an opponent's hand, OR move your Hero between Towns you control."
-    },
-    implementationStatus: "not-implemented",
+    // "During your turn, choose one: 1. Pay 3 gold to discard 1 random card
+    // from your opponent's hand. 2. If your Hero is in a Town or Settlement,
+    // move them to another Town or Settlement under your control."
+    effect: { type: "CASTLE_GATE", discardCost: 3 },
+    implementationStatus: "implemented",
     source: townSource("inferno")
   },
   "inferno.brimstone_stormclouds": {
@@ -370,11 +368,11 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     name: "Brimstone Stormclouds",
     faction: "inferno",
     cost: { gold: 6, buildingMaterials: 3, valuables: 2 },
-    effect: {
-      type: "NOT_IMPLEMENTED",
-      note: "Place Faction Cubes here (max 3) to gain +1 Power per cube during Combat."
-    },
-    implementationStatus: "not-implemented",
+    // "When built and at the beginning of each Astrologers' round, place your
+    // faction cube here (to a maximum of 3). During any Combat, you can
+    // remove them to gain +1 Power per cube. Only one cube per spell."
+    effect: { type: "COMBAT_CUBES", max: 3, gainOn: "astrologers", spend: "spell-power" },
+    implementationStatus: "implemented",
     source: townSource("inferno")
   },
 
@@ -447,11 +445,11 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     name: "Portal of Summoning",
     faction: "dungeon",
     cost: { gold: 7, buildingMaterials: 3, valuables: 1 },
-    effect: {
-      type: "NOT_IMPLEMENTED",
-      note: "At the beginning of your turn, draw 1 Neutral Unit card from decks matching your Dwellings and pay its cost to recruit it."
-    },
-    implementationStatus: "not-implemented",
+    // "At the beginning of your turn, you can draw 1 Neutral Unit card from
+    // decks corresponding to the Dwellings in your Town and pay the
+    // Recruitment cost to Recruit this unit."
+    effect: { type: "TURN_START_PORTAL_SUMMON" },
+    implementationStatus: "implemented",
     source: townSource("dungeon")
   },
   "dungeon.mana_vortex": {
@@ -459,11 +457,11 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     name: "Mana Vortex",
     faction: "dungeon",
     cost: { gold: 6, buildingMaterials: 4, valuables: 1 },
-    effect: {
-      type: "NOT_IMPLEMENTED",
-      note: "At the beginning of your turn, discard 1 card to shuffle your discard pile into your deck, then Search(3) from it."
-    },
-    implementationStatus: "not-implemented",
+    // "At the beginning of your turn, discard 1 card from your hand to
+    // shuffle your discard pile back into your deck of Might and Magic.
+    // Then Search(3) from it."
+    effect: { type: "TURN_START_MANA_VORTEX" },
+    implementationStatus: "implemented",
     source: townSource("dungeon")
   }
 };
