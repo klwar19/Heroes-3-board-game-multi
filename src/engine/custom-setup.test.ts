@@ -5,6 +5,35 @@ import { getScenario } from "./adventure-setup";
 import { getPlayerView } from "./player-view";
 
 describe("custom starting army", () => {
+  it("gives each player their own faction's unit of every picked level", () => {
+    const state = createAdventureGameState({
+      seed: "level-army",
+      startingUnits: [
+        { level: 2, side: "pack" },
+        { level: 5, side: "few" },
+        { level: 7, side: "few" }
+      ]
+    });
+
+    // Default seats: p1 Castle, p2 Necropolis — same levels, own units.
+    expect(state.players.p1.army.map((unit) => `${unit.unitDefId}:${unit.side}`)).toEqual([
+      "castle.marksmen:pack",
+      "castle.zealots:few",
+      "castle.archangels:few"
+    ]);
+    expect(state.players.p2.army.map((unit) => `${unit.unitDefId}:${unit.side}`)).toEqual([
+      "necropolis.zombies:pack",
+      "necropolis.liches:few",
+      "necropolis.ghost_dragons:few"
+    ]);
+  });
+
+  it("treats an empty starting-units list as an empty army", () => {
+    const state = createAdventureGameState({ seed: "empty-army", startingUnits: [] });
+    expect(state.players.p1.army).toHaveLength(0);
+    expect(state.players.p2.army).toHaveLength(0);
+  });
+
   it("expands tier slots into each player's own faction units, cycling repeated tiers", () => {
     const state = createAdventureGameState({
       seed: "custom-army",

@@ -24,6 +24,16 @@ export default function CreditsPage() {
           Tabletop Simulator community). Tile contents, guard difficulties and field effects were
           cross-checked against the fan wiki tile pages and the community rulebook before integration.
         </p>
+        <p>
+          The face-down tile backs under <code>/assets/board/backs</code> (Ⅰ, Ⅱ–Ⅲ, Ⅳ–Ⅴ, Ⅵ–Ⅶ) are
+          extracted from the official rulebook PDF&apos;s &quot;Types of Map Tiles&quot; figure; the sea
+          and underworld backs are drawn onto the same starfield after photos of the expansion tiles.
+          The printed card backs under <code>/assets/card_back-*</code> (Might &amp; Magic, Astrologers,
+          neutral units) come from the community rulebook rewrite&apos;s scanned assets
+          (github.com/Heegu-sama/Homm3BG). The morale state icons under{" "}
+          <code>/assets/icons/morale-*</code> are cropped from the classic Luck / Morale sprite sheet on
+          The Spriters Resource (Heroes of Might and Magic 3, ripped by Cyrus Annihilator).
+        </p>
       </section>
 
       <section className="panel creditsPanel">
@@ -85,6 +95,16 @@ export default function CreditsPage() {
           </li>
           <li>
             <a href="https://en.homm3bg.wiki/heroes/">Wiki heroes reference (boards and specialties)</a>
+          </li>
+          <li>
+            <a href="https://www.spriters-resource.com/pc_computer/heroes3/sheet/41284/">
+              Luck / Morale sprite sheet (The Spriters Resource, ripped by Cyrus Annihilator)
+            </a>
+          </li>
+          <li>
+            <a href="https://github.com/Heegu-sama/Homm3BG">
+              Community rulebook rewrite assets (printed card backs)
+            </a>
           </li>
         </ul>
       </section>

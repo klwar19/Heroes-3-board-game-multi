@@ -1,7 +1,10 @@
 /**
- * Card-back art per deck. CSS renders the styled fallback until real back
- * images land in /public/assets - then setting `image` here switches every
- * pile, fan and flight animation at once.
+ * Card-back art per deck. The images are the printed backs scanned by the
+ * community rulebook project (github.com/Heegu-sama/Homm3BG, assets/cards),
+ * hosted locally: every Might & Magic card (player decks, Spells, Abilities,
+ * Artifacts) shares the red M&M back; Astrologers Proclaim and the neutral
+ * unit decks have their own. The CSS classes stay as a fallback for decks
+ * without an image.
  */
 export type DeckBackStyle = {
   label: string;
@@ -10,11 +13,22 @@ export type DeckBackStyle = {
   image?: string;
 };
 
+export const CARD_BACK_IMAGES = {
+  mm: "/assets/card_back-mm.webp",
+  astrologers: "/assets/card_back-astrologers.webp",
+  neutral: "/assets/card_back-neutral.webp"
+} as const;
+
 export const deckBacks: Record<string, DeckBackStyle> = {
-  player: { label: "Player deck", styleKey: "player" },
-  spells: { label: "Spells", styleKey: "spells" },
-  abilities: { label: "Abilities", styleKey: "abilities" },
-  artifacts: { label: "Artifacts", styleKey: "artifacts" }
+  player: { label: "Player deck", styleKey: "player", image: CARD_BACK_IMAGES.mm },
+  spells: { label: "Spells", styleKey: "spells", image: CARD_BACK_IMAGES.mm },
+  "spells-expert": { label: "Expert Spells", styleKey: "spells", image: CARD_BACK_IMAGES.mm },
+  abilities: { label: "Abilities", styleKey: "abilities", image: CARD_BACK_IMAGES.mm },
+  artifacts: { label: "Artifacts", styleKey: "artifacts", image: CARD_BACK_IMAGES.mm },
+  "artifacts-minor": { label: "Minor Artifacts", styleKey: "artifacts", image: CARD_BACK_IMAGES.mm },
+  "artifacts-major": { label: "Major Artifacts", styleKey: "artifacts", image: CARD_BACK_IMAGES.mm },
+  "artifacts-relic": { label: "Relic Artifacts", styleKey: "artifacts", image: CARD_BACK_IMAGES.mm },
+  astrologers: { label: "Astrologers Proclaim", styleKey: "player", image: CARD_BACK_IMAGES.astrologers }
 };
 
 export function getDeckBack(deckId?: string): DeckBackStyle {

@@ -1015,6 +1015,13 @@ export default function Home() {
         <button onClick={() => resetRoom("combat-sandbox")} title="Open the combat sandbox" type="button">
           <Swords aria-hidden="true" size={12} />
         </button>
+        <button
+          onClick={() => window.open("/designer", "_blank")}
+          title="Open the map designer: create and save maps to play on"
+          type="button"
+        >
+          <MapIcon aria-hidden="true" size={12} /> Designer
+        </button>
       </div>
     </div>
   );

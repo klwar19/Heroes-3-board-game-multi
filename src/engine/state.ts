@@ -1769,6 +1769,8 @@ export type MapTileState = {
   faceDown: boolean;
   /** Roman numerals printed on the tile back (public info), e.g. "Ⅳ–Ⅴ". */
   backLabel?: string;
+  /** Tile group (public info — the printed back gives it away). */
+  group?: "starting" | "far" | "near" | "center" | "sea" | "subterranean";
   /**
    * Tile revealed/placed but its rotation not confirmed yet: fields are not
    * materialized until the owner locks the rotation in.
@@ -1999,26 +2001,36 @@ export type GameSetupOptions = {
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };
   startingUnitTiers: ("bronze" | "silver" | "gold")[];
   /**
-   * Custom starting army: exact units (few or pack of ANY unit) every player
-   * starts with. When set (non-null), it replaces the tier-based default.
+   * Starting army by unit level: one optional few/pack entry per level 1-7.
+   * Every player receives their own faction's unit of that level. When set
+   * (non-null — may be empty for "no units"), it replaces the tier default.
    */
   startingUnits?: CustomStartingUnit[] | null;
   /** Building ids without the faction prefix (e.g. "city_hall"). */
   startingBuildings: string[];
   /**
-   * Map designer: replaces the scenario's face-down Near/Center layout with
-   * hand-placed tiles. Starting tiles stay fixed by faction and seat.
+   * Designed map (made in the map designer and saved): replaces the
+   * scenario's face-down Near/Center layout with the saved tiles. Starting
+   * tiles stay fixed by faction and seat.
    */
   customMap?: CustomMapTilePlan[] | null;
+  /** Display name of the saved map design the lobby picked. */
+  customMapName?: string | null;
 };
 
+/** PC unit level (1-7): levels 1-3 are bronze, 4-5 silver, 6-7 gold. */
+export type UnitLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
 /**
- * One designed starting-army entry: a unit tier (bronze = PC levels 1–3,
- * silver = levels 4–5, gold = levels 6–7) and the few or pack side. Each
- * player receives matching units of their own faction. Old lobbies stored an
- * exact `unitDefId`; the setup still honors those snapshots.
+ * One starting-army entry: a unit level (1-7) and the few or pack side.
+ * Each player receives their own faction's unit of that level. Older saved
+ * lobbies stored a unit tier or an exact `unitDefId`; the setup still
+ * honors those snapshots.
  */
 export type CustomStartingUnit = {
+  /** Unit level 1-7 (the merged starting-units mode). */
+  level?: UnitLevel;
+  /** Legacy tier entry from older saved lobbies. */
   tier?: "bronze" | "silver" | "gold";
   side: "few" | "pack";
   /** Legacy exact-unit entry from older saved lobbies. */

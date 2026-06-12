@@ -133,7 +133,8 @@ export const TILE_BACK_LABELS: Record<string, string> = {
   far: "Ⅱ–Ⅲ",
   near: "Ⅳ–Ⅴ",
   center: "Ⅵ–Ⅶ",
-  sea: "Ⅴ–Ⅵ",
+  // Expansion backs, numbered as printed (sea waves IV–V, underworld V–VI).
+  sea: "Ⅳ–Ⅴ",
   subterranean: "Ⅴ–Ⅵ"
 };
 
@@ -228,7 +229,8 @@ export function instantiateTile(
     centerCol: center.col,
     rotation,
     faceDown,
-    backLabel: group ? TILE_BACK_LABELS[group] : undefined
+    backLabel: group ? TILE_BACK_LABELS[group] : undefined,
+    group
   };
   adventure.tiles[id] = tile;
 

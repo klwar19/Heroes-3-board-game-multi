@@ -43,7 +43,8 @@ import type {
   GameRuleset,
   GameSetupOptions,
   GameState,
-  PlayerState
+  PlayerState,
+  UnitLevel
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 
@@ -73,6 +74,27 @@ export type AdventureSetupOptions = {
   tileContent?: TileContent[];
 };
 
+/** Unit levels covered by each tier: bronze 1-3, silver 4-5, gold 6-7. */
+export const TIER_LEVELS: Record<"bronze" | "silver" | "gold", UnitLevel[]> = {
+  bronze: [1, 2, 3],
+  silver: [4, 5],
+  gold: [6, 7]
+};
+
+export const UNIT_LEVELS: UnitLevel[] = [1, 2, 3, 4, 5, 6, 7];
+
+/** Tier of a unit level (1-3 bronze, 4-5 silver, 6-7 gold). */
+export function tierOfLevel(level: UnitLevel): "bronze" | "silver" | "gold" {
+  return level <= 3 ? "bronze" : level <= 5 ? "silver" : "gold";
+}
+
+/** The scenario's tier-based starting units expressed per level (all few). */
+export function scenarioStartingUnitLevels(scenario: ScenarioDefinition): CustomStartingUnit[] {
+  return scenario.startingUnits.tiers.flatMap((tier) =>
+    TIER_LEVELS[tier].map((level) => ({ level, side: "few" as const }))
+  );
+}
+
 /**
  * Default game options of a fresh lobby: the scenario sheet's numbers with
  * the Field Difficulty Level Table on its Impossible column. The BINH house
@@ -86,9 +108,11 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     startingResources: { ...scenario.startingResources },
     startingProduction: { ...scenario.startingProduction },
     startingUnitTiers: [...scenario.startingUnits.tiers],
-    startingUnits: null,
+    // One few/pack pick per unit level 1-7; the scenario default as levels.
+    startingUnits: scenarioStartingUnitLevels(scenario),
     startingBuildings: [...scenario.startingBuildings],
-    customMap: null
+    customMap: null,
+    customMapName: null
   };
 }
 
@@ -226,16 +250,19 @@ function makePlayer(config: AdventurePlayerConfig, seed: string, options: GameSe
     }
   };
 
-  if (options.startingUnits?.length) {
-    // Custom starting army by tier: every player receives the chosen tier
-    // slots (bronze lv 1–3 / silver lv 4–5 / gold lv 6–7) and sides from
-    // their own faction. Tiers with several units (the two silvers) cycle so
-    // repeated slots cover them all. Legacy exact-unit entries still apply.
+  if (options.startingUnits) {
+    // Starting army by unit level: every player receives their own faction's
+    // unit of each picked level (faction unit lists are in level order
+    // 1-7), with the chosen few or pack side. An empty list means an empty
+    // army. Legacy tier entries cycle through the tier's units; legacy
+    // exact-unit entries still apply.
     const faction = coreFactionDefinitions[config.factionId];
     const tierCursors: Record<string, number> = {};
     for (const choice of options.startingUnits) {
       let unitDefId = choice.unitDefId;
-      if (choice.tier) {
+      if (choice.level) {
+        unitDefId = faction.units[choice.level - 1];
+      } else if (choice.tier) {
         const pool = faction.units.filter((candidate) => coreUnitDefinitions[candidate]?.tier === choice.tier);
         if (pool.length === 0) {
           continue;
@@ -788,29 +815,41 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       changes.push("starting army back to unit tiers");
     } else {
       if (next.startingUnits.length > MAX_CUSTOM_STARTING_UNITS) {
-        throw new Error(`A custom starting army holds at most ${MAX_CUSTOM_STARTING_UNITS} unit cards.`);
+        throw new Error(`A starting army holds at most ${MAX_CUSTOM_STARTING_UNITS} unit cards.`);
       }
+      // One few/pack pick per unit level 1-7; each player receives their own
+      // faction's unit of that level. Legacy tier entries from old lobbies
+      // fold into the first level of their tier.
       const cleaned: CustomStartingUnit[] = [];
+      const seenLevels = new Set<number>();
       for (const choice of next.startingUnits) {
         if (!choice || (choice.side !== "few" && choice.side !== "pack")) {
-          throw new Error("Custom starting units must be a few or pack side.");
+          throw new Error("Starting units must be a few or pack side.");
         }
-        // Tier entries (bronze = levels 1–3, silver = 4–5, gold = 6–7): each
-        // player receives their own faction's units of that tier. Legacy
-        // exact-unit entries from old lobbies fold into their unit's tier.
-        const tier =
-          choice.tier ??
-          (choice.unitDefId ? (coreUnitDefinitions[choice.unitDefId]?.tier as CustomStartingUnit["tier"]) : undefined);
-        if (tier !== "bronze" && tier !== "silver" && tier !== "gold") {
-          throw new Error("Custom starting units pick a tier: bronze (lv 1–3), silver (lv 4–5) or gold (lv 6–7).");
+        let level = choice.level;
+        if (level === undefined) {
+          const tier =
+            choice.tier ??
+            (choice.unitDefId
+              ? (coreUnitDefinitions[choice.unitDefId]?.tier as "bronze" | "silver" | "gold" | undefined)
+              : undefined);
+          level = tier ? TIER_LEVELS[tier]?.[0] : undefined;
         }
-        cleaned.push({ tier, side: choice.side });
+        if (!Number.isInteger(level) || (level as number) < 1 || (level as number) > 7) {
+          throw new Error("Starting units pick a unit level from 1 to 7.");
+        }
+        if (seenLevels.has(level as number)) {
+          throw new Error(`Level ${level} is picked twice — one few or pack card per level.`);
+        }
+        seenLevels.add(level as number);
+        cleaned.push({ level: level as UnitLevel, side: choice.side });
       }
+      cleaned.sort((left, right) => (left.level ?? 0) - (right.level ?? 0));
       lobby.options.startingUnits = cleaned;
       changes.push(
-        `custom starting army (${cleaned
-          .map((choice) => `${choice.tier} ${choice.side}`)
-          .join(", ")})`
+        cleaned.length === 0
+          ? "starting army: no units"
+          : `starting army (${cleaned.map((choice) => `lv ${choice.level} ${choice.side}`).join(", ")})`
       );
     }
   }
@@ -823,8 +862,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   }
 
   if (next.customMap !== undefined) {
+    const mapName =
+      typeof next.customMapName === "string" ? next.customMapName.trim().slice(0, 48) : null;
     if (next.customMap === null) {
       lobby.options.customMap = null;
+      lobby.options.customMapName = null;
       changes.push("map back to the scenario layout");
     } else {
       if (next.customMap.length > MAX_CUSTOM_MAP_TILES) {
@@ -836,7 +878,10 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
         throw new Error(problems[0]);
       }
       lobby.options.customMap = accepted;
-      changes.push(`designed map (${accepted.length} tile${accepted.length === 1 ? "" : "s"})`);
+      lobby.options.customMapName = mapName;
+      changes.push(
+        `designed map ${mapName ? `"${mapName}" ` : ""}(${accepted.length} tile${accepted.length === 1 ? "" : "s"})`
+      );
     }
   }
 

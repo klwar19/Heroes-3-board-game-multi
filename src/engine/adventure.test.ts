@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { coreUnitDefinitions } from "@/data/factions/units";
 import { coreTileDefinitions } from "@/data/map/tile-defs";
 import {
   applyAction,
@@ -493,7 +492,11 @@ describe("map setup lobby", () => {
         difficulty: "hard",
         startingResources: { gold: 20, buildingMaterials: 6, valuables: 3 },
         startingProduction: { gold: 12, buildingMaterials: 1, valuables: 0 },
-        startingUnitTiers: ["bronze", "silver"],
+        // Merged starting-units mode: one few/pack pick per unit level 1-7.
+        startingUnits: [
+          { level: 1, side: "few" },
+          { level: 4, side: "few" }
+        ],
         startingBuildings: ["city_hall"]
       }
     });
@@ -513,11 +516,11 @@ describe("map setup lobby", () => {
     expect(state.adventure?.difficulty).toBe("hard");
     expect(state.players.p1.resources).toEqual({ gold: 20, buildingMaterials: 6, valuables: 3 });
     expect(state.players.p1.production).toEqual({ gold: 12, buildingMaterials: 1, valuables: 0 });
-    // Bronze + silver "few" units from the faction roster.
-    const tiers = new Set(
-      state.players.p1.army.map((unit) => coreUnitDefinitions[unit.unitDefId]?.tier).filter(Boolean)
-    );
-    expect(tiers).toEqual(new Set(["bronze", "silver"]));
+    // Level 1 (bronze) + level 4 (silver) "few" units from the faction roster.
+    expect(state.players.p1.army.map((unit) => `${unit.unitDefId}:${unit.side}`)).toEqual([
+      "castle.halberdiers:few",
+      "castle.crusaders:few"
+    ]);
     // The chosen starting building stands pre-built, faction-prefixed.
     expect(state.towns.town_p1.buildings).toContain("castle.city_hall");
 

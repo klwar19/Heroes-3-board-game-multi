@@ -87,12 +87,56 @@ export const RESOURCE_ICONS = {
   sulfur: "/assets/icons/sulfur_leather.gif"
 } as const;
 
-/** Morale birds (good +1 / poor −1), as in the uploaded sprite reference. */
-export const MORALE_ICONS = {
-  positive: "/assets/icons/morale.gif",
-  negative: "/assets/icons/morale-1.gif",
-  neutral: "/assets/icons/moralen.gif"
-} as const;
+/**
+ * Morale birds per track state (-2 … +1), cropped from the classic Luck /
+ * Morale sprite sheet (spriters-resource.com, Heroes of Might and Magic 3,
+ * ripped by Cyrus Annihilator): bright gold bird = +1, stone bird = 0, one
+ * tarnished bird = −1, two tarnished birds = −2.
+ */
+export const MORALE_STATE_ICONS: Record<"1" | "0" | "-1" | "-2", string> = {
+  "1": "/assets/icons/morale-plus1.webp",
+  "0": "/assets/icons/morale-neutral.webp",
+  "-1": "/assets/icons/morale-minus1.webp",
+  "-2": "/assets/icons/morale-minus2.webp"
+};
+
+/** Icon for a morale value, clamped to the printed track (-2 … +1). */
+export function moraleIcon(morale: number): string {
+  const clamped = Math.max(-2, Math.min(1, Math.round(morale)));
+  return MORALE_STATE_ICONS[String(clamped) as "1" | "0" | "-1" | "-2"];
+}
+
+/**
+ * Face-down map tile backs by tile group: the four rulebook backs (starry
+ * night with the printed roman numerals) extracted from the official
+ * rulebook PDF, plus sea (golden waves, Ⅳ–Ⅴ) and subterranean (cavern
+ * teeth, Ⅴ–Ⅵ) backs drawn in the same style after the expansion photos.
+ */
+export const TILE_BACK_IMAGES: Record<string, string> = {
+  starting: "/assets/board/backs/back-starting.webp",
+  far: "/assets/board/backs/back-far.webp",
+  near: "/assets/board/backs/back-near.webp",
+  center: "/assets/board/backs/back-center.webp",
+  sea: "/assets/board/backs/back-sea.webp",
+  subterranean: "/assets/board/backs/back-subterranean.webp"
+};
+
+/** Back image for a tile, from its group or its printed back label. */
+export function tileBackImage(group: string | undefined, backLabel: string | undefined): string {
+  if (group && TILE_BACK_IMAGES[group]) {
+    return TILE_BACK_IMAGES[group];
+  }
+  switch (backLabel) {
+    case "Ⅰ":
+      return TILE_BACK_IMAGES.starting;
+    case "Ⅱ–Ⅲ":
+      return TILE_BACK_IMAGES.far;
+    case "Ⅵ–Ⅶ":
+      return TILE_BACK_IMAGES.center;
+    default:
+      return TILE_BACK_IMAGES.near;
+  }
+}
 
 /**
  * The four hero statistics, cropped straight from the printed hero board
