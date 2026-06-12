@@ -34,6 +34,10 @@ const OVERRIDES = {
   KILLFADE: "adventure/hero-defeated",
   CLIMAX: "effects/climax", // unused leftover in the original archive
   COLDRAY: "spells/cold-ray", COLDRING: "spells/cold-ring", // unused alternates of ice-bolt / frost-ring
+  DIGSOUND: "adventure/dig", DISGUISE: "spells/disguise", EXPERNCE: "adventure/experience",
+  FAERIE: "units/faerie-dragon-special",
+  DRAINLIF: "effects/drain-life", DRAWBRG: "effects/drawbridge", DRGNSLAY: "effects/dragon-slayer",
+  EVLIDETH: "units/evil-eye-death-alt", // EVLI prefix + DETH, not in VCMI's per-creature config
   // war machines (not in the creature reference)
   BALLKILL: "units/ballista-death", BALLSHOT: "units/ballista-shoot", BALLWNCE: "units/ballista-hurt",
   CARTKILL: "units/ammo-cart-death", CARTWNCE: "units/ammo-cart-hurt",
@@ -41,7 +45,10 @@ const OVERRIDES = {
 };
 
 // VCMI entity ids that should not be kebab-cased mechanically.
-const ENTITY_FIXES = { archAngel: "archangel", cyclop: "cyclops" };
+const ENTITY_FIXES = {
+  archAngel: "archangel", cyclop: "cyclops", cyclopKing: "cyclopsKing",
+  fairieDragon: "faerieDragon", // VCMI typo
+};
 
 // Manifest annotations. "repeat: 2" on every -move sound implements the rule
 // that the movement sound is looped once for a full movement.
@@ -53,6 +60,19 @@ const NOTES = {
   "spells/cold-ring": "unused alternate; the game uses FROSTING for frost-ring",
   "effects/climax": "unused leftover in the original archive, purpose unknown",
   "music/battle-00": "battle tracks 00-07: pick one at random per combat",
+  "adventure/dig": "digging for the Grail",
+  "adventure/experience": "experience gained",
+  "effects/death-blow": "Death Blow battle effect (Dread Knight ability)",
+  "effects/drawbridge": "siege drawbridge raising/lowering",
+  "effects/drain-life": "likely Vampire Lord life drain; unreferenced in the engine",
+  "effects/dragon-slayer": "unused; the Slayer spell uses SLAYER",
+  "effects/dragon-hall": "dragon dwelling ambience; unreferenced in the engine",
+  "effects/dipmagk": "unknown purpose, unreferenced in the engine",
+  "units/evil-eye-death-alt": "second death sound (EVLIDETH); EVLIKILL is the standard one",
+  "effects/danger": "unknown/unused",
+  "effects/default": "generic fallback beep",
+  "units/faerie-dragon-special": "Faerie Dragon spell-cast (FAERIE)",
+  "spells/implosion": "original file is DECAY.wav",
 };
 
 const kebab = (s) =>
