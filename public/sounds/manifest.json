@@ -171,6 +171,18 @@
   "adventure/obelisk": {
     "src": "/sounds/adventure/obelisk.mp3"
   },
+  "adventure/pickup": {
+    "random": [
+      "adventure/pickup-01",
+      "adventure/pickup-02",
+      "adventure/pickup-03",
+      "adventure/pickup-04",
+      "adventure/pickup-05",
+      "adventure/pickup-06",
+      "adventure/pickup-07"
+    ],
+    "note": "play one member at random"
+  },
   "adventure/pickup-01": {
     "src": "/sounds/adventure/pickup-01.mp3",
     "note": "pickups 01-07: resource/artifact pickup, pick one at random"
@@ -308,15 +320,15 @@
     "loop": true,
     "note": "Faerie Ring (LOOPFAER)"
   },
-  "ambient/fire-vents": {
-    "src": "/sounds/ambient/fire-vents.mp3",
-    "loop": true,
-    "note": "Fire Lake / Hall of Sins (LOOPVENT)"
-  },
   "ambient/fire": {
     "src": "/sounds/ambient/fire.mp3",
     "loop": true,
     "note": "Hell Hole, Imp Crucible, Altar of Fire (LOOPFIRE)"
+  },
+  "ambient/fire-vents": {
+    "src": "/sounds/ambient/fire-vents.mp3",
+    "loop": true,
+    "note": "Fire Lake / Hall of Sins (LOOPVENT)"
   },
   "ambient/flag": {
     "src": "/sounds/ambient/flag.mp3",
@@ -578,6 +590,18 @@
     "loop": true,
     "note": "Wolf Pen (LOOPWOLF)"
   },
+  "cards/card-deal-1": {
+    "src": "/sounds/cards/card-deal-1.mp3",
+    "note": "card drawn / dealt (user-provided foley)"
+  },
+  "cards/card-deal-2": {
+    "src": "/sounds/cards/card-deal-2.mp3",
+    "note": "card drawn / dealt, longer (user-provided foley)"
+  },
+  "cards/card-play": {
+    "src": "/sounds/cards/card-play.mp3",
+    "note": "card played onto the table (user-provided foley)"
+  },
   "effects/acid-breath": {
     "src": "/sounds/effects/acid-breath.mp3"
   },
@@ -699,6 +723,19 @@
     "src": "/sounds/effects/spell-fizzle.mp3",
     "note": "spell fails / fizzles (RSBRYFZL)"
   },
+  "music/battle": {
+    "random": [
+      "music/battle-00",
+      "music/battle-01",
+      "music/battle-02",
+      "music/battle-03",
+      "music/battle-04",
+      "music/battle-05",
+      "music/battle-06",
+      "music/battle-07"
+    ],
+    "note": "play one member at random"
+  },
   "music/battle-00": {
     "src": "/sounds/music/battle-00.mp3",
     "loop": true,
@@ -815,13 +852,13 @@
   "spells/fire-wall": {
     "src": "/sounds/spells/fire-wall.mp3"
   },
-  "spells/fireball-hit": {
-    "src": "/sounds/spells/fireball-hit.mp3",
-    "note": "explosion/impact (FIREBALL)"
-  },
   "spells/fireball": {
     "src": "/sounds/spells/fireball.mp3",
     "note": "cast sound (SPONTCOMB); also the Magog's fireball ability"
+  },
+  "spells/fireball-hit": {
+    "src": "/sounds/spells/fireball-hit.mp3",
+    "note": "explosion/impact (FIREBALL)"
   },
   "spells/fly": {
     "src": "/sounds/spells/fly.mp3"
@@ -841,22 +878,22 @@
   "spells/frost-ring": {
     "src": "/sounds/spells/frost-ring.mp3"
   },
+  "spells/haste": {
+    "src": "/sounds/spells/haste.mp3"
+  },
   "spells/haste-alt": {
     "src": "/sounds/spells/haste-alt.mp3",
     "note": "unused alternate (HASTE); the game casts with TAILWIND"
   },
-  "spells/haste": {
-    "src": "/sounds/spells/haste.mp3"
-  },
   "spells/hypnotize": {
     "src": "/sounds/spells/hypnotize.mp3"
+  },
+  "spells/ice-bolt": {
+    "src": "/sounds/spells/ice-bolt.mp3"
   },
   "spells/ice-bolt-hit": {
     "src": "/sounds/spells/ice-bolt-hit.mp3",
     "note": "impact (ICERAYEX); cast is spells/ice-bolt"
-  },
-  "spells/ice-bolt": {
-    "src": "/sounds/spells/ice-bolt.mp3"
   },
   "spells/implosion": {
     "src": "/sounds/spells/implosion.mp3",
@@ -865,11 +902,11 @@
   "spells/inferno": {
     "src": "/sounds/spells/inferno.mp3"
   },
-  "spells/land-mine-trigger": {
-    "src": "/sounds/spells/land-mine-trigger.mp3"
-  },
   "spells/land-mine": {
     "src": "/sounds/spells/land-mine.mp3"
+  },
+  "spells/land-mine-trigger": {
+    "src": "/sounds/spells/land-mine-trigger.mp3"
   },
   "spells/lightning-bolt": {
     "src": "/sounds/spells/lightning-bolt.mp3"
@@ -923,12 +960,12 @@
   "spells/resurrection": {
     "src": "/sounds/spells/resurrection.mp3"
   },
+  "spells/sacrifice": {
+    "src": "/sounds/spells/sacrifice.mp3"
+  },
   "spells/sacrifice-2": {
     "src": "/sounds/spells/sacrifice-2.mp3",
     "note": "second Sacrifice sound (SACRIF2)"
-  },
-  "spells/sacrifice": {
-    "src": "/sounds/spells/sacrifice.mp3"
   },
   "spells/scuttle-boat": {
     "src": "/sounds/spells/scuttle-boat.mp3"
@@ -951,12 +988,12 @@
   "spells/summon-boat": {
     "src": "/sounds/spells/summon-boat.mp3"
   },
+  "spells/teleport": {
+    "src": "/sounds/spells/teleport.mp3"
+  },
   "spells/teleport-in": {
     "src": "/sounds/spells/teleport-in.mp3",
     "note": "battle teleport arrival (TELPTIN); spells/teleport is the cast"
-  },
-  "spells/teleport": {
-    "src": "/sounds/spells/teleport.mp3"
   },
   "spells/view": {
     "src": "/sounds/spells/view.mp3",
@@ -1195,12 +1232,12 @@
   "units/beholder-attack": {
     "src": "/sounds/units/beholder-attack.mp3"
   },
+  "units/beholder-death": {
+    "src": "/sounds/units/beholder-death.mp3"
+  },
   "units/beholder-death-alt": {
     "src": "/sounds/units/beholder-death-alt.mp3",
     "note": "second death sound (BHDRDETH); BHDRKILL is the standard one"
-  },
-  "units/beholder-death": {
-    "src": "/sounds/units/beholder-death.mp3"
   },
   "units/beholder-defend": {
     "src": "/sounds/units/beholder-defend.mp3"
@@ -1662,12 +1699,12 @@
   "units/evil-eye-attack": {
     "src": "/sounds/units/evil-eye-attack.mp3"
   },
+  "units/evil-eye-death": {
+    "src": "/sounds/units/evil-eye-death.mp3"
+  },
   "units/evil-eye-death-alt": {
     "src": "/sounds/units/evil-eye-death-alt.mp3",
     "note": "second death sound (EVLIDETH); EVLIKILL is the standard one"
-  },
-  "units/evil-eye-death": {
-    "src": "/sounds/units/evil-eye-death.mp3"
   },
   "units/evil-eye-defend": {
     "src": "/sounds/units/evil-eye-defend.mp3"
@@ -1703,7 +1740,7 @@
   },
   "units/faerie-dragon-special": {
     "src": "/sounds/units/faerie-dragon-special.mp3",
-    "note": "Faerie Dragon spell-cast (FAERIE) — play when its turn-start magic damage triggers"
+    "note": "Faerie Dragon spell-cast (FAERIE) \u2014 play when its turn-start magic damage triggers"
   },
   "units/familiar-attack": {
     "src": "/sounds/units/familiar-attack.mp3"
@@ -1798,7 +1835,7 @@
   },
   "units/genie-special": {
     "src": "/sounds/units/genie-special.mp3",
-    "note": "Genie/Master Genie spell-cast (GENIE) — play when it casts its ability"
+    "note": "Genie/Master Genie spell-cast (GENIE) \u2014 play when it casts its ability"
   },
   "units/ghost-dragon-attack": {
     "src": "/sounds/units/ghost-dragon-attack.mp3"
@@ -3248,21 +3285,21 @@
   "units/vampire-lord-shoot": {
     "src": "/sounds/units/vampire-lord-shoot.mp3"
   },
-  "units/vampire-lord-special-2": {
-    "src": "/sounds/units/vampire-lord-special-2.mp3"
-  },
   "units/vampire-lord-special": {
     "src": "/sounds/units/vampire-lord-special.mp3"
+  },
+  "units/vampire-lord-special-2": {
+    "src": "/sounds/units/vampire-lord-special-2.mp3"
   },
   "units/vampire-move": {
     "src": "/sounds/units/vampire-move.mp3",
     "repeat": 2
   },
-  "units/vampire-special-2": {
-    "src": "/sounds/units/vampire-special-2.mp3"
-  },
   "units/vampire-special": {
     "src": "/sounds/units/vampire-special.mp3"
+  },
+  "units/vampire-special-2": {
+    "src": "/sounds/units/vampire-special-2.mp3"
   },
   "units/walking-dead-attack": {
     "src": "/sounds/units/walking-dead-attack.mp3"
@@ -3432,30 +3469,5 @@
   "units/zombie-lord-move": {
     "src": "/sounds/units/zombie-lord-move.mp3",
     "repeat": 2
-  },
-  "music/battle": {
-    "random": [
-      "music/battle-00",
-      "music/battle-01",
-      "music/battle-02",
-      "music/battle-03",
-      "music/battle-04",
-      "music/battle-05",
-      "music/battle-06",
-      "music/battle-07"
-    ],
-    "note": "play one member at random"
-  },
-  "adventure/pickup": {
-    "random": [
-      "adventure/pickup-01",
-      "adventure/pickup-02",
-      "adventure/pickup-03",
-      "adventure/pickup-04",
-      "adventure/pickup-05",
-      "adventure/pickup-06",
-      "adventure/pickup-07"
-    ],
-    "note": "play one member at random"
   }
 }

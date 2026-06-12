@@ -49,6 +49,7 @@ export function BattlefieldBoard({
   legalActions,
   selectedCardAction,
   flippedUnitIds,
+  tintedUnits,
   onAction,
   onInspect
 }: {
@@ -58,6 +59,8 @@ export function BattlefieldBoard({
   selectedCardAction: CardBoardAction | null;
   /** Units that just turned to their Few side; plays a flip animation. */
   flippedUnitIds?: ReadonlySet<string>;
+  /** unitId -> tint key ("bloodlust") while a palette-style effect plays. */
+  tintedUnits?: ReadonlyMap<string, string>;
   onAction: (action: GameAction) => void;
   onInspect: (unitId: string) => void;
 }) {
@@ -147,6 +150,7 @@ export function BattlefieldBoard({
               <div
                 aria-label={`Obstacle at ${getBattlefieldLabel(index)}: blocks ground and ranged movement`}
                 className={className}
+                data-fx-cell={index}
                 key={index}
                 title="Combat Obstacle — ground and ranged units must go around; flying units pass over"
               >
@@ -157,8 +161,9 @@ export function BattlefieldBoard({
             );
           }
 
+          const tint = unit ? tintedUnits?.get(unit.id) : undefined;
           const content = unit ? (
-            <article className={`boardCard ${unit.controllerId} ${isFlipping ? "flipping" : ""}`}>
+            <article className={`boardCard ${unit.controllerId} ${isFlipping ? "flipping" : ""} ${tint ? `fxTint-${tint}` : ""}`}>
               {unit.assets?.cardImage ? (
                 <img
                   alt={unit.assets?.imageAlt ?? unit.cardName}
@@ -210,6 +215,8 @@ export function BattlefieldBoard({
               <button
                 aria-label={label}
                 className={className}
+                data-fx-cell={index}
+                data-fx-unit={unit?.id}
                 key={index}
                 onClick={() => onAction(interactiveAction)}
                 onMouseEnter={unit ? () => onInspect(unit.id) : undefined}
@@ -226,6 +233,8 @@ export function BattlefieldBoard({
               <button
                 aria-label={`Inspect ${unit.name}`}
                 className={className}
+                data-fx-cell={index}
+                data-fx-unit={unit.id}
                 key={index}
                 onClick={() => onInspect(unit.id)}
                 onMouseEnter={() => onInspect(unit.id)}
@@ -242,6 +251,7 @@ export function BattlefieldBoard({
             <div
               aria-label={`${terrain} field ${getBattlefieldLabel(index)}${dropTarget ? " — drop a unit here" : ""}`}
               className={className}
+              data-fx-cell={index}
               key={index}
               {...dropProps}
             >

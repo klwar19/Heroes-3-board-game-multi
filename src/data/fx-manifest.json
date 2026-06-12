@@ -1,0 +1,2301 @@
+{
+  "acid-breath": {
+    "src": "/assets/fx/acid-breath.webp",
+    "label": "Acid Breath splash",
+    "group": "ability",
+    "role": "hit",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 93,
+    "frameHeight": 109,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C0ACID",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 97,
+      "canvasHeight": 114
+    }
+  },
+  "age": {
+    "src": "/assets/fx/age.webp",
+    "label": "Age (Ghost Dragon)",
+    "group": "ability",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 92,
+    "frameHeight": 90,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "SP01_",
+    "trim": {
+      "x": 1,
+      "y": 2,
+      "canvasWidth": 96,
+      "canvasHeight": 94
+    }
+  },
+  "air-shield": {
+    "src": "/assets/fx/air-shield.webp",
+    "label": "Air Shield",
+    "group": "spell",
+    "role": "affect",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 84,
+    "frameHeight": 76,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C01SPA0",
+    "trim": {
+      "x": 2,
+      "y": 3,
+      "canvasWidth": 88,
+      "canvasHeight": 81
+    }
+  },
+  "anti-magic": {
+    "src": "/assets/fx/anti-magic.webp",
+    "label": "Anti-Magic",
+    "group": "spell",
+    "role": "affect",
+    "frames": 16,
+    "cols": 16,
+    "rows": 1,
+    "frameWidth": 89,
+    "frameHeight": 120,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C02SPE0",
+    "trim": {
+      "x": 2,
+      "y": 3,
+      "canvasWidth": 94,
+      "canvasHeight": 126
+    }
+  },
+  "armageddon": {
+    "src": "/assets/fx/armageddon.webp",
+    "label": "Armageddon",
+    "group": "spell",
+    "role": "hit",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 200,
+    "frameHeight": 200,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C06SPF0",
+    "coverage": 2.2,
+    "trim": {
+      "x": 0,
+      "y": 0,
+      "canvasWidth": 200,
+      "canvasHeight": 200
+    }
+  },
+  "berserk": {
+    "src": "/assets/fx/berserk.webp",
+    "label": "Berserk",
+    "group": "spell",
+    "role": "affect",
+    "frames": 12,
+    "cols": 12,
+    "rows": 1,
+    "frameWidth": 56,
+    "frameHeight": 95,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C01SPF",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 61,
+      "canvasHeight": 99
+    },
+    "aliasDefs": [
+      "C01SPF0"
+    ]
+  },
+  "bind": {
+    "src": "/assets/fx/bind.webp",
+    "label": "Bind (Dendroid)",
+    "group": "ability",
+    "role": "affect",
+    "frames": 27,
+    "cols": 27,
+    "rows": 1,
+    "frameWidth": 70,
+    "frameHeight": 45,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "SP02_",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 74,
+      "canvasHeight": 49
+    }
+  },
+  "bless": {
+    "src": "/assets/fx/bless.webp",
+    "label": "Bless",
+    "group": "spell",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 39,
+    "frameHeight": 119,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C01SPW",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 43,
+      "canvasHeight": 123
+    },
+    "aliasDefs": [
+      "C01SPW0"
+    ]
+  },
+  "blind": {
+    "src": "/assets/fx/blind.webp",
+    "label": "Blind",
+    "group": "spell",
+    "role": "affect",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 120,
+    "frameHeight": 119,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C02SPF0",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 125,
+      "canvasHeight": 123
+    }
+  },
+  "c07spf10": {
+    "src": "/assets/fx/c07spf10.webp",
+    "label": "C07SPF10",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 10,
+    "cols": 10,
+    "rows": 1,
+    "frameWidth": 63,
+    "frameHeight": 159,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C07SPF10",
+    "trim": {
+      "x": 5,
+      "y": 1,
+      "canvasWidth": 70,
+      "canvasHeight": 178
+    }
+  },
+  "c07spf11": {
+    "src": "/assets/fx/c07spf11.webp",
+    "label": "C07SPF11",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 62,
+    "frameHeight": 159,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C07SPF11",
+    "trim": {
+      "x": 6,
+      "y": 1,
+      "canvasWidth": 70,
+      "canvasHeight": 178
+    }
+  },
+  "c12spe0": {
+    "src": "/assets/fx/c12spe0.webp",
+    "label": "C12SPE0",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 90,
+    "frameHeight": 90,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C12SPE0",
+    "looksLike": "white glowing orb",
+    "trim": {
+      "x": 4,
+      "y": 2,
+      "canvasWidth": 98,
+      "canvasHeight": 95
+    }
+  },
+  "c12spf0": {
+    "src": "/assets/fx/c12spf0.webp",
+    "label": "C12SPF0",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 13,
+    "cols": 13,
+    "rows": 1,
+    "frameWidth": 110,
+    "frameHeight": 104,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C12SPF0",
+    "looksLike": "orange star burst",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 114,
+      "canvasHeight": 108
+    }
+  },
+  "c12spf1": {
+    "src": "/assets/fx/c12spf1.webp",
+    "label": "C12SPF1",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 90,
+    "frameHeight": 90,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C12SPF1",
+    "looksLike": "white orb flash",
+    "trim": {
+      "x": 4,
+      "y": 2,
+      "canvasWidth": 98,
+      "canvasHeight": 95
+    }
+  },
+  "c15spe0": {
+    "src": "/assets/fx/c15spe0.webp",
+    "label": "C15SPE0",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 48,
+    "frameHeight": 107,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C15SPE0",
+    "looksLike": "blue spectral flame column",
+    "trim": {
+      "x": 10,
+      "y": 25,
+      "canvasWidth": 61,
+      "canvasHeight": 136
+    }
+  },
+  "c15spe1": {
+    "src": "/assets/fx/c15spe1.webp",
+    "label": "C15SPE1",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 9,
+    "cols": 9,
+    "rows": 1,
+    "frameWidth": 51,
+    "frameHeight": 111,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C15SPE1",
+    "looksLike": "blue spectral flame column",
+    "trim": {
+      "x": 8,
+      "y": 23,
+      "canvasWidth": 61,
+      "canvasHeight": 136
+    }
+  },
+  "c15spe10": {
+    "src": "/assets/fx/c15spe10.webp",
+    "label": "C15SPE10",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 9,
+    "cols": 9,
+    "rows": 1,
+    "frameWidth": 43,
+    "frameHeight": 138,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C15SPE10",
+    "looksLike": "blue spectral flame column",
+    "trim": {
+      "x": 15,
+      "y": 38,
+      "canvasWidth": 60,
+      "canvasHeight": 178
+    }
+  },
+  "c15spe11": {
+    "src": "/assets/fx/c15spe11.webp",
+    "label": "C15SPE11",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 41,
+    "frameHeight": 135,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C15SPE11",
+    "looksLike": "blue spectral flame column",
+    "trim": {
+      "x": 16,
+      "y": 41,
+      "canvasWidth": 60,
+      "canvasHeight": 178
+    }
+  },
+  "c15spe2": {
+    "src": "/assets/fx/c15spe2.webp",
+    "label": "C15SPE2",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 50,
+    "frameHeight": 111,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C15SPE2",
+    "looksLike": "blue spectral flame column",
+    "trim": {
+      "x": 9,
+      "y": 23,
+      "canvasWidth": 61,
+      "canvasHeight": 136
+    }
+  },
+  "c15spe3": {
+    "src": "/assets/fx/c15spe3.webp",
+    "label": "C15SPE3",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 43,
+    "frameHeight": 138,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C15SPE3",
+    "looksLike": "blue spectral flame column",
+    "trim": {
+      "x": 15,
+      "y": 38,
+      "canvasWidth": 60,
+      "canvasHeight": 178
+    }
+  },
+  "c15spe4": {
+    "src": "/assets/fx/c15spe4.webp",
+    "label": "C15SPE4",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 9,
+    "cols": 9,
+    "rows": 1,
+    "frameWidth": 51,
+    "frameHeight": 111,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C15SPE4",
+    "looksLike": "blue spectral flame column",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 55,
+      "canvasHeight": 115
+    }
+  },
+  "c15spe5": {
+    "src": "/assets/fx/c15spe5.webp",
+    "label": "C15SPE5",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 50,
+    "frameHeight": 111,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C15SPE5",
+    "looksLike": "blue spectral flame column",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 55,
+      "canvasHeight": 115
+    }
+  },
+  "c15spe6": {
+    "src": "/assets/fx/c15spe6.webp",
+    "label": "C15SPE6",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 38,
+    "frameHeight": 132,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C15SPE6",
+    "looksLike": "blue spectral flame column",
+    "trim": {
+      "x": 4,
+      "y": 5,
+      "canvasWidth": 48,
+      "canvasHeight": 143
+    }
+  },
+  "c15spe7": {
+    "src": "/assets/fx/c15spe7.webp",
+    "label": "C15SPE7",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 9,
+    "cols": 9,
+    "rows": 1,
+    "frameWidth": 43,
+    "frameHeight": 138,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C15SPE7",
+    "looksLike": "blue spectral flame column",
+    "trim": {
+      "x": 2,
+      "y": 3,
+      "canvasWidth": 48,
+      "canvasHeight": 143
+    }
+  },
+  "c15spe8": {
+    "src": "/assets/fx/c15spe8.webp",
+    "label": "C15SPE8",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 41,
+    "frameHeight": 135,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C15SPE8",
+    "looksLike": "blue spectral flame column",
+    "trim": {
+      "x": 3,
+      "y": 6,
+      "canvasWidth": 48,
+      "canvasHeight": 143
+    }
+  },
+  "c15spe9": {
+    "src": "/assets/fx/c15spe9.webp",
+    "label": "C15SPE9",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 38,
+    "frameHeight": 132,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C15SPE9",
+    "looksLike": "blue spectral flame column",
+    "trim": {
+      "x": 18,
+      "y": 40,
+      "canvasWidth": 60,
+      "canvasHeight": 178
+    }
+  },
+  "c18spw0": {
+    "src": "/assets/fx/c18spw0.webp",
+    "label": "C18SPW0",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 118,
+    "frameHeight": 86,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C18SPW0",
+    "looksLike": "blue-teal swirl",
+    "trim": {
+      "x": 3,
+      "y": 3,
+      "canvasWidth": 127,
+      "canvasHeight": 93
+    }
+  },
+  "counterstrike": {
+    "src": "/assets/fx/counterstrike.webp",
+    "label": "Counterstrike",
+    "group": "spell",
+    "role": "affect",
+    "frames": 16,
+    "cols": 16,
+    "rows": 1,
+    "frameWidth": 79,
+    "frameHeight": 97,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C04SPA0",
+    "trim": {
+      "x": 3,
+      "y": 1,
+      "canvasWidth": 84,
+      "canvasHeight": 100
+    }
+  },
+  "cure": {
+    "src": "/assets/fx/cure.webp",
+    "label": "Cure",
+    "group": "spell",
+    "role": "affect",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 90,
+    "frameHeight": 115,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C03SPW",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 94,
+      "canvasHeight": 119
+    },
+    "aliasDefs": [
+      "C03SPW0"
+    ]
+  },
+  "curse": {
+    "src": "/assets/fx/curse.webp",
+    "label": "Curse",
+    "group": "spell",
+    "role": "affect",
+    "frames": 21,
+    "cols": 21,
+    "rows": 1,
+    "frameWidth": 79,
+    "frameHeight": 105,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C04SPW",
+    "trim": {
+      "x": 4,
+      "y": 4,
+      "canvasWidth": 85,
+      "canvasHeight": 111
+    },
+    "aliasDefs": [
+      "C04SPW0"
+    ]
+  },
+  "death-cloud": {
+    "src": "/assets/fx/death-cloud.webp",
+    "label": "Death Cloud (Lich)",
+    "group": "ability",
+    "role": "hit",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 139,
+    "frameHeight": 139,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "SP04_",
+    "coverage": 1.6,
+    "trim": {
+      "x": 3,
+      "y": 0,
+      "canvasWidth": 142,
+      "canvasHeight": 139
+    }
+  },
+  "death-ripple": {
+    "src": "/assets/fx/death-ripple.webp",
+    "label": "Death Ripple",
+    "group": "spell",
+    "role": "affect",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 128,
+    "frameHeight": 128,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C04SPE0",
+    "coverage": 1.5,
+    "trim": {
+      "x": 3,
+      "y": 3,
+      "canvasWidth": 134,
+      "canvasHeight": 134
+    }
+  },
+  "death-stare": {
+    "src": "/assets/fx/death-stare.webp",
+    "label": "Death Stare",
+    "group": "ability",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 54,
+    "frameHeight": 95,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C07SPE0",
+    "trim": {
+      "x": 3,
+      "y": 1,
+      "canvasWidth": 58,
+      "canvasHeight": 98
+    }
+  },
+  "destroy-undead": {
+    "src": "/assets/fx/destroy-undead.webp",
+    "label": "Destroy Undead",
+    "group": "spell",
+    "role": "affect",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 80,
+    "frameHeight": 85,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C14SPA0",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 84,
+      "canvasHeight": 89
+    }
+  },
+  "disease": {
+    "src": "/assets/fx/disease.webp",
+    "label": "Disease (Zombie)",
+    "group": "ability",
+    "role": "affect",
+    "frames": 19,
+    "cols": 19,
+    "rows": 1,
+    "frameWidth": 70,
+    "frameHeight": 93,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "SP05_",
+    "trim": {
+      "x": 1,
+      "y": 2,
+      "canvasWidth": 72,
+      "canvasHeight": 97
+    }
+  },
+  "dispel": {
+    "src": "/assets/fx/dispel.webp",
+    "label": "Dispel",
+    "group": "spell",
+    "role": "affect",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 187,
+    "frameHeight": 192,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C05SPW",
+    "trim": {
+      "x": 6,
+      "y": 6,
+      "canvasWidth": 199,
+      "canvasHeight": 201
+    },
+    "aliasDefs": [
+      "C05SPW0"
+    ]
+  },
+  "disrupting-ray": {
+    "src": "/assets/fx/disrupting-ray.webp",
+    "label": "Disrupting Ray",
+    "group": "spell",
+    "role": "affect",
+    "frames": 16,
+    "cols": 16,
+    "rows": 1,
+    "frameWidth": 175,
+    "frameHeight": 146,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C07SPA1",
+    "trim": {
+      "x": 1,
+      "y": 0,
+      "canvasWidth": 176,
+      "canvasHeight": 148
+    }
+  },
+  "disrupting-ray-projectile": {
+    "src": "/assets/fx/disrupting-ray-projectile.webp",
+    "label": "Disrupting Ray projectile",
+    "group": "spell",
+    "role": "projectile",
+    "frames": 8,
+    "cols": 8,
+    "rows": 1,
+    "frameWidth": 73,
+    "frameHeight": 37,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C07SPA0",
+    "trim": {
+      "x": 3,
+      "y": 3,
+      "canvasWidth": 79,
+      "canvasHeight": 43
+    }
+  },
+  "fear": {
+    "src": "/assets/fx/fear.webp",
+    "label": "Fear (Azure Dragon)",
+    "group": "ability",
+    "role": "affect",
+    "frames": 31,
+    "cols": 31,
+    "rows": 1,
+    "frameWidth": 49,
+    "frameHeight": 87,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C0FEAR",
+    "trim": {
+      "x": 5,
+      "y": 5,
+      "canvasWidth": 58,
+      "canvasHeight": 98
+    }
+  },
+  "fire-shield": {
+    "src": "/assets/fx/fire-shield.webp",
+    "label": "Fire Shield",
+    "group": "spell",
+    "role": "affect",
+    "frames": 10,
+    "cols": 10,
+    "rows": 1,
+    "frameWidth": 67,
+    "frameHeight": 58,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C05SPF0",
+    "trim": {
+      "x": 4,
+      "y": 2,
+      "canvasWidth": 75,
+      "canvasHeight": 62
+    }
+  },
+  "fire-wall-a": {
+    "src": "/assets/fx/fire-wall-a.webp",
+    "label": "Fire Wall flame (variant 0)",
+    "group": "obstacle",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 57,
+    "frameHeight": 118,
+    "fps": 15,
+    "anchor": "bottom",
+    "sourceDef": "C07SPF0",
+    "trim": {
+      "x": 8,
+      "y": 0,
+      "canvasWidth": 70,
+      "canvasHeight": 138
+    }
+  },
+  "fire-wall-b": {
+    "src": "/assets/fx/fire-wall-b.webp",
+    "label": "Fire Wall flame (variant 1)",
+    "group": "obstacle",
+    "role": "affect",
+    "frames": 10,
+    "cols": 10,
+    "rows": 1,
+    "frameWidth": 59,
+    "frameHeight": 119,
+    "fps": 15,
+    "anchor": "bottom",
+    "sourceDef": "C07SPF1",
+    "trim": {
+      "x": 8,
+      "y": 0,
+      "canvasWidth": 70,
+      "canvasHeight": 138
+    }
+  },
+  "fire-wall-c": {
+    "src": "/assets/fx/fire-wall-c.webp",
+    "label": "Fire Wall flame (variant 2)",
+    "group": "obstacle",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 57,
+    "frameHeight": 118,
+    "fps": 15,
+    "anchor": "bottom",
+    "sourceDef": "C07SPF2",
+    "trim": {
+      "x": 9,
+      "y": 0,
+      "canvasWidth": 70,
+      "canvasHeight": 138
+    }
+  },
+  "fire-wall-d": {
+    "src": "/assets/fx/fire-wall-d.webp",
+    "label": "Fire Wall flame (variant 3)",
+    "group": "obstacle",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 61,
+    "frameHeight": 170,
+    "fps": 15,
+    "anchor": "bottom",
+    "sourceDef": "C07SPF3",
+    "trim": {
+      "x": 2,
+      "y": 0,
+      "canvasWidth": 67,
+      "canvasHeight": 173
+    }
+  },
+  "fire-wall-e": {
+    "src": "/assets/fx/fire-wall-e.webp",
+    "label": "Fire Wall flame (variant 4)",
+    "group": "obstacle",
+    "role": "affect",
+    "frames": 10,
+    "cols": 10,
+    "rows": 1,
+    "frameWidth": 63,
+    "frameHeight": 171,
+    "fps": 15,
+    "anchor": "bottom",
+    "sourceDef": "C07SPF4",
+    "trim": {
+      "x": 2,
+      "y": 0,
+      "canvasWidth": 67,
+      "canvasHeight": 173
+    }
+  },
+  "fire-wall-f": {
+    "src": "/assets/fx/fire-wall-f.webp",
+    "label": "Fire Wall flame (variant 5)",
+    "group": "obstacle",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 61,
+    "frameHeight": 159,
+    "fps": 15,
+    "anchor": "bottom",
+    "sourceDef": "C07SPF5",
+    "trim": {
+      "x": 2,
+      "y": 12,
+      "canvasWidth": 67,
+      "canvasHeight": 173
+    }
+  },
+  "fire-wall-g": {
+    "src": "/assets/fx/fire-wall-g.webp",
+    "label": "Fire Wall flame (variant 6)",
+    "group": "obstacle",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 57,
+    "frameHeight": 130,
+    "fps": 15,
+    "anchor": "bottom",
+    "sourceDef": "C07SPF6",
+    "trim": {
+      "x": 5,
+      "y": 0,
+      "canvasWidth": 65,
+      "canvasHeight": 132
+    }
+  },
+  "fire-wall-h": {
+    "src": "/assets/fx/fire-wall-h.webp",
+    "label": "Fire Wall flame (variant 60)",
+    "group": "obstacle",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 39,
+    "frameHeight": 98,
+    "fps": 15,
+    "anchor": "bottom",
+    "sourceDef": "C07SPF60",
+    "trim": {
+      "x": 3,
+      "y": 23,
+      "canvasWidth": 44,
+      "canvasHeight": 132
+    }
+  },
+  "fire-wall-i": {
+    "src": "/assets/fx/fire-wall-i.webp",
+    "label": "Fire Wall flame (variant 61)",
+    "group": "obstacle",
+    "role": "affect",
+    "frames": 10,
+    "cols": 10,
+    "rows": 1,
+    "frameWidth": 43,
+    "frameHeight": 101,
+    "fps": 15,
+    "anchor": "bottom",
+    "sourceDef": "C07SPF61",
+    "trim": {
+      "x": 1,
+      "y": 21,
+      "canvasWidth": 44,
+      "canvasHeight": 132
+    }
+  },
+  "fire-wall-j": {
+    "src": "/assets/fx/fire-wall-j.webp",
+    "label": "Fire Wall flame (variant 62)",
+    "group": "obstacle",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 41,
+    "frameHeight": 101,
+    "fps": 15,
+    "anchor": "bottom",
+    "sourceDef": "C07SPF62",
+    "trim": {
+      "x": 2,
+      "y": 21,
+      "canvasWidth": 44,
+      "canvasHeight": 132
+    }
+  },
+  "fire-wall-k": {
+    "src": "/assets/fx/fire-wall-k.webp",
+    "label": "Fire Wall flame (variant 7)",
+    "group": "obstacle",
+    "role": "affect",
+    "frames": 10,
+    "cols": 10,
+    "rows": 1,
+    "frameWidth": 59,
+    "frameHeight": 131,
+    "fps": 15,
+    "anchor": "bottom",
+    "sourceDef": "C07SPF7",
+    "trim": {
+      "x": 3,
+      "y": 0,
+      "canvasWidth": 65,
+      "canvasHeight": 132
+    }
+  },
+  "fire-wall-l": {
+    "src": "/assets/fx/fire-wall-l.webp",
+    "label": "Fire Wall flame (variant 8)",
+    "group": "obstacle",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 57,
+    "frameHeight": 118,
+    "fps": 15,
+    "anchor": "bottom",
+    "sourceDef": "C07SPF8",
+    "trim": {
+      "x": 4,
+      "y": 12,
+      "canvasWidth": 65,
+      "canvasHeight": 132
+    }
+  },
+  "fire-wall-m": {
+    "src": "/assets/fx/fire-wall-m.webp",
+    "label": "Fire Wall flame (variant 9)",
+    "group": "obstacle",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 61,
+    "frameHeight": 158,
+    "fps": 15,
+    "anchor": "bottom",
+    "sourceDef": "C07SPF9",
+    "trim": {
+      "x": 7,
+      "y": 1,
+      "canvasWidth": 70,
+      "canvasHeight": 178
+    }
+  },
+  "fireball": {
+    "src": "/assets/fx/fireball.webp",
+    "label": "Fireball explosion",
+    "group": "spell",
+    "role": "hit",
+    "frames": 13,
+    "cols": 13,
+    "rows": 1,
+    "frameWidth": 140,
+    "frameHeight": 152,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C13SPF",
+    "coverage": 1.6,
+    "trim": {
+      "x": 0,
+      "y": 1,
+      "canvasWidth": 142,
+      "canvasHeight": 155
+    },
+    "aliasDefs": [
+      "C13SPF0"
+    ]
+  },
+  "force-field-a": {
+    "src": "/assets/fx/force-field-a.webp",
+    "label": "Force Field (piece)",
+    "group": "obstacle",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 43,
+    "frameHeight": 37,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C17SPE0",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 47,
+      "canvasHeight": 41
+    }
+  },
+  "force-field-b": {
+    "src": "/assets/fx/force-field-b.webp",
+    "label": "Force Field (piece)",
+    "group": "obstacle",
+    "role": "affect",
+    "frames": 8,
+    "cols": 8,
+    "rows": 1,
+    "frameWidth": 43,
+    "frameHeight": 37,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C17SPE1",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 47,
+      "canvasHeight": 41
+    }
+  },
+  "force-field-c": {
+    "src": "/assets/fx/force-field-c.webp",
+    "label": "Force Field (piece)",
+    "group": "obstacle",
+    "role": "affect",
+    "frames": 3,
+    "cols": 3,
+    "rows": 1,
+    "frameWidth": 43,
+    "frameHeight": 37,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C17SPE2",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 47,
+      "canvasHeight": 41
+    }
+  },
+  "forgetfulness": {
+    "src": "/assets/fx/forgetfulness.webp",
+    "label": "Forgetfulness",
+    "group": "spell",
+    "role": "affect",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 114,
+    "frameHeight": 71,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C06SPW",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 119,
+      "canvasHeight": 75
+    },
+    "aliasDefs": [
+      "C06SPW0"
+    ]
+  },
+  "fortune": {
+    "src": "/assets/fx/fortune.webp",
+    "label": "Fortune",
+    "group": "spell",
+    "role": "affect",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 44,
+    "frameHeight": 93,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C09SPA0",
+    "trim": {
+      "x": 3,
+      "y": 2,
+      "canvasWidth": 50,
+      "canvasHeight": 97
+    }
+  },
+  "frenzy": {
+    "src": "/assets/fx/frenzy.webp",
+    "label": "Frenzy",
+    "group": "spell",
+    "role": "affect",
+    "frames": 18,
+    "cols": 18,
+    "rows": 1,
+    "frameWidth": 81,
+    "frameHeight": 93,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C08SPF0",
+    "trim": {
+      "x": 2,
+      "y": 3,
+      "canvasWidth": 86,
+      "canvasHeight": 97
+    }
+  },
+  "frost-ring": {
+    "src": "/assets/fx/frost-ring.webp",
+    "label": "Frost Ring",
+    "group": "spell",
+    "role": "hit",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 128,
+    "frameHeight": 125,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C07SPW",
+    "coverage": 1.7,
+    "trim": {
+      "x": 4,
+      "y": 2,
+      "canvasWidth": 135,
+      "canvasHeight": 130
+    },
+    "aliasDefs": [
+      "C07SPW0"
+    ]
+  },
+  "haste": {
+    "src": "/assets/fx/haste.webp",
+    "label": "Haste",
+    "group": "spell",
+    "role": "affect",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 107,
+    "frameHeight": 100,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C15SPA0",
+    "trim": {
+      "x": 3,
+      "y": 3,
+      "canvasWidth": 113,
+      "canvasHeight": 106
+    }
+  },
+  "hypnotize": {
+    "src": "/assets/fx/hypnotize.webp",
+    "label": "Hypnotize",
+    "group": "spell",
+    "role": "affect",
+    "frames": 19,
+    "cols": 19,
+    "rows": 1,
+    "frameWidth": 94,
+    "frameHeight": 88,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C10SPA0",
+    "trim": {
+      "x": 3,
+      "y": 0,
+      "canvasWidth": 99,
+      "canvasHeight": 90
+    }
+  },
+  "ice-bolt-hit": {
+    "src": "/assets/fx/ice-bolt-hit.webp",
+    "label": "Ice Bolt impact",
+    "group": "spell",
+    "role": "hit",
+    "frames": 16,
+    "cols": 16,
+    "rows": 1,
+    "frameWidth": 143,
+    "frameHeight": 151,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C08SPW5",
+    "trim": {
+      "x": 1,
+      "y": 0,
+      "canvasWidth": 146,
+      "canvasHeight": 154
+    }
+  },
+  "ice-bolt-projectile-0": {
+    "src": "/assets/fx/ice-bolt-projectile-0.webp",
+    "label": "Ice Bolt projectile (flattest)",
+    "group": "spell",
+    "role": "projectile",
+    "frames": 9,
+    "cols": 9,
+    "rows": 1,
+    "frameWidth": 123,
+    "frameHeight": 31,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C08SPW0",
+    "trim": {
+      "x": 2,
+      "y": 0,
+      "canvasWidth": 128,
+      "canvasHeight": 33
+    }
+  },
+  "ice-bolt-projectile-1": {
+    "src": "/assets/fx/ice-bolt-projectile-1.webp",
+    "label": "Ice Bolt projectile",
+    "group": "spell",
+    "role": "projectile",
+    "frames": 10,
+    "cols": 10,
+    "rows": 1,
+    "frameWidth": 116,
+    "frameHeight": 54,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C08SPW1",
+    "trim": {
+      "x": 3,
+      "y": 1,
+      "canvasWidth": 122,
+      "canvasHeight": 57
+    }
+  },
+  "ice-bolt-projectile-2": {
+    "src": "/assets/fx/ice-bolt-projectile-2.webp",
+    "label": "Ice Bolt projectile",
+    "group": "spell",
+    "role": "projectile",
+    "frames": 10,
+    "cols": 10,
+    "rows": 1,
+    "frameWidth": 109,
+    "frameHeight": 78,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C08SPW2",
+    "trim": {
+      "x": 1,
+      "y": 3,
+      "canvasWidth": 112,
+      "canvasHeight": 83
+    }
+  },
+  "ice-bolt-projectile-3": {
+    "src": "/assets/fx/ice-bolt-projectile-3.webp",
+    "label": "Ice Bolt projectile",
+    "group": "spell",
+    "role": "projectile",
+    "frames": 10,
+    "cols": 10,
+    "rows": 1,
+    "frameWidth": 81,
+    "frameHeight": 103,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C08SPW3",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 85,
+      "canvasHeight": 107
+    }
+  },
+  "ice-bolt-projectile-4": {
+    "src": "/assets/fx/ice-bolt-projectile-4.webp",
+    "label": "Ice Bolt projectile (steepest)",
+    "group": "spell",
+    "role": "projectile",
+    "frames": 10,
+    "cols": 10,
+    "rows": 1,
+    "frameWidth": 39,
+    "frameHeight": 121,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C08SPW4",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 44,
+      "canvasHeight": 125
+    }
+  },
+  "implosion": {
+    "src": "/assets/fx/implosion.webp",
+    "label": "Implosion",
+    "group": "spell",
+    "role": "affect",
+    "frames": 19,
+    "cols": 19,
+    "rows": 1,
+    "frameWidth": 84,
+    "frameHeight": 137,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C05SPE0",
+    "trim": {
+      "x": 3,
+      "y": 3,
+      "canvasWidth": 90,
+      "canvasHeight": 147
+    }
+  },
+  "inferno": {
+    "src": "/assets/fx/inferno.webp",
+    "label": "Inferno",
+    "group": "spell",
+    "role": "hit",
+    "frames": 16,
+    "cols": 16,
+    "rows": 1,
+    "frameWidth": 201,
+    "frameHeight": 213,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C04SPF0",
+    "coverage": 1.7,
+    "trim": {
+      "x": 3,
+      "y": 2,
+      "canvasWidth": 207,
+      "canvasHeight": 217
+    }
+  },
+  "land-mine-a": {
+    "src": "/assets/fx/land-mine-a.webp",
+    "label": "Land Mine (variant)",
+    "group": "obstacle",
+    "role": "hit",
+    "frames": 14,
+    "cols": 14,
+    "rows": 1,
+    "frameWidth": 42,
+    "frameHeight": 32,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C09SPF0",
+    "trim": {
+      "x": 1,
+      "y": 13,
+      "canvasWidth": 44,
+      "canvasHeight": 52
+    }
+  },
+  "land-mine-b": {
+    "src": "/assets/fx/land-mine-b.webp",
+    "label": "Land Mine (variant)",
+    "group": "obstacle",
+    "role": "hit",
+    "frames": 1,
+    "cols": 1,
+    "rows": 1,
+    "frameWidth": 42,
+    "frameHeight": 19,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C09SPF1",
+    "trim": {
+      "x": 1,
+      "y": 24,
+      "canvasWidth": 44,
+      "canvasHeight": 52
+    }
+  },
+  "land-mine-c": {
+    "src": "/assets/fx/land-mine-c.webp",
+    "label": "Land Mine (variant)",
+    "group": "obstacle",
+    "role": "hit",
+    "frames": 13,
+    "cols": 13,
+    "rows": 1,
+    "frameWidth": 42,
+    "frameHeight": 32,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C09SPF2",
+    "trim": {
+      "x": 1,
+      "y": 13,
+      "canvasWidth": 44,
+      "canvasHeight": 52
+    }
+  },
+  "land-mine-hit": {
+    "src": "/assets/fx/land-mine-hit.webp",
+    "label": "Land Mine trigger",
+    "group": "obstacle",
+    "role": "hit",
+    "frames": 17,
+    "cols": 17,
+    "rows": 1,
+    "frameWidth": 135,
+    "frameHeight": 149,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C09SPF3",
+    "trim": {
+      "x": 3,
+      "y": 2,
+      "canvasWidth": 140,
+      "canvasHeight": 153
+    }
+  },
+  "lightning-bolt": {
+    "src": "/assets/fx/lightning-bolt.webp",
+    "label": "Lightning Bolt strike",
+    "group": "spell",
+    "role": "affect",
+    "frames": 1,
+    "cols": 1,
+    "rows": 1,
+    "frameWidth": 97,
+    "frameHeight": 491,
+    "fps": 15,
+    "anchor": "bottom",
+    "sourceDef": "C03SPA0",
+    "trim": {
+      "x": 6,
+      "y": 0,
+      "canvasWidth": 106,
+      "canvasHeight": 494
+    }
+  },
+  "lightning-crackle": {
+    "src": "/assets/fx/lightning-crackle.webp",
+    "label": "Lightning ground crackle",
+    "group": "spell",
+    "role": "affect",
+    "frames": 12,
+    "cols": 12,
+    "rows": 1,
+    "frameWidth": 110,
+    "frameHeight": 108,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C11SPA1",
+    "trim": {
+      "x": 4,
+      "y": 0,
+      "canvasWidth": 114,
+      "canvasHeight": 110
+    }
+  },
+  "lightning-crackle-alt": {
+    "src": "/assets/fx/lightning-crackle-alt.webp",
+    "label": "Lightning ground crackle (variant)",
+    "group": "spell-extra",
+    "role": "affect",
+    "frames": 1,
+    "cols": 1,
+    "rows": 1,
+    "frameWidth": 97,
+    "frameHeight": 491,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C11SPA0",
+    "trim": {
+      "x": 6,
+      "y": 0,
+      "canvasWidth": 106,
+      "canvasHeight": 494
+    }
+  },
+  "lightning-sparks": {
+    "src": "/assets/fx/lightning-sparks.webp",
+    "label": "Lightning sparks (bolt variant)",
+    "group": "spell-extra",
+    "role": "affect",
+    "frames": 12,
+    "cols": 12,
+    "rows": 1,
+    "frameWidth": 114,
+    "frameHeight": 108,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C03SPA1",
+    "trim": {
+      "x": 0,
+      "y": 0,
+      "canvasWidth": 114,
+      "canvasHeight": 110
+    }
+  },
+  "magic-arrow-hit": {
+    "src": "/assets/fx/magic-arrow-hit.webp",
+    "label": "Magic Arrow impact",
+    "group": "spell",
+    "role": "hit",
+    "frames": 14,
+    "cols": 14,
+    "rows": 1,
+    "frameWidth": 129,
+    "frameHeight": 113,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C20SPX",
+    "trim": {
+      "x": 2,
+      "y": 1,
+      "canvasWidth": 133,
+      "canvasHeight": 116
+    }
+  },
+  "magic-arrow-projectile-0": {
+    "src": "/assets/fx/magic-arrow-projectile-0.webp",
+    "label": "Magic Arrow projectile (flattest)",
+    "group": "spell",
+    "role": "projectile",
+    "frames": 14,
+    "cols": 14,
+    "rows": 1,
+    "frameWidth": 120,
+    "frameHeight": 43,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C20SPX0",
+    "trim": {
+      "x": 1,
+      "y": 2,
+      "canvasWidth": 123,
+      "canvasHeight": 47
+    }
+  },
+  "magic-arrow-projectile-1": {
+    "src": "/assets/fx/magic-arrow-projectile-1.webp",
+    "label": "Magic Arrow projectile",
+    "group": "spell",
+    "role": "projectile",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 119,
+    "frameHeight": 55,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C20SPX1",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 123,
+      "canvasHeight": 59
+    }
+  },
+  "magic-arrow-projectile-2": {
+    "src": "/assets/fx/magic-arrow-projectile-2.webp",
+    "label": "Magic Arrow projectile",
+    "group": "spell",
+    "role": "projectile",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 107,
+    "frameHeight": 82,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C20SPX2",
+    "trim": {
+      "x": 2,
+      "y": 3,
+      "canvasWidth": 112,
+      "canvasHeight": 87
+    }
+  },
+  "magic-arrow-projectile-3": {
+    "src": "/assets/fx/magic-arrow-projectile-3.webp",
+    "label": "Magic Arrow projectile",
+    "group": "spell",
+    "role": "projectile",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 78,
+    "frameHeight": 105,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C20SPX3",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 82,
+      "canvasHeight": 109
+    }
+  },
+  "magic-arrow-projectile-4": {
+    "src": "/assets/fx/magic-arrow-projectile-4.webp",
+    "label": "Magic Arrow projectile (steepest)",
+    "group": "spell",
+    "role": "projectile",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 46,
+    "frameHeight": 117,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C20SPX4",
+    "trim": {
+      "x": 2,
+      "y": 0,
+      "canvasWidth": 50,
+      "canvasHeight": 119
+    }
+  },
+  "magic-mirror": {
+    "src": "/assets/fx/magic-mirror.webp",
+    "label": "Magic Mirror",
+    "group": "spell",
+    "role": "affect",
+    "frames": 10,
+    "cols": 10,
+    "rows": 1,
+    "frameWidth": 88,
+    "frameHeight": 83,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C02SPA0",
+    "trim": {
+      "x": 5,
+      "y": 4,
+      "canvasWidth": 93,
+      "canvasHeight": 88
+    }
+  },
+  "meteor-shower": {
+    "src": "/assets/fx/meteor-shower.webp",
+    "label": "Meteor Shower",
+    "group": "spell",
+    "role": "hit",
+    "frames": 18,
+    "cols": 18,
+    "rows": 1,
+    "frameWidth": 139,
+    "frameHeight": 139,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C08SPE0",
+    "coverage": 1.7,
+    "trim": {
+      "x": 3,
+      "y": 3,
+      "canvasWidth": 144,
+      "canvasHeight": 144
+    }
+  },
+  "mirth": {
+    "src": "/assets/fx/mirth.webp",
+    "label": "Mirth",
+    "group": "spell",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 89,
+    "frameHeight": 123,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C09SPW0",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 94,
+      "canvasHeight": 127
+    }
+  },
+  "misfortune": {
+    "src": "/assets/fx/misfortune.webp",
+    "label": "Misfortune",
+    "group": "spell",
+    "role": "affect",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 46,
+    "frameHeight": 92,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C10SPF0",
+    "trim": {
+      "x": 3,
+      "y": 2,
+      "canvasWidth": 51,
+      "canvasHeight": 96
+    }
+  },
+  "paralyze": {
+    "src": "/assets/fx/paralyze.webp",
+    "label": "Paralyze (Scorpicore)",
+    "group": "ability",
+    "role": "affect",
+    "frames": 27,
+    "cols": 27,
+    "rows": 1,
+    "frameWidth": 84,
+    "frameHeight": 116,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "SP10_",
+    "trim": {
+      "x": 1,
+      "y": 2,
+      "canvasWidth": 86,
+      "canvasHeight": 120
+    }
+  },
+  "poison": {
+    "src": "/assets/fx/poison.webp",
+    "label": "Poison (Wyvern Monarch)",
+    "group": "ability",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 120,
+    "frameHeight": 145,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "SP11_",
+    "trim": {
+      "x": 3,
+      "y": 1,
+      "canvasWidth": 124,
+      "canvasHeight": 148
+    }
+  },
+  "prayer": {
+    "src": "/assets/fx/prayer.webp",
+    "label": "Prayer",
+    "group": "spell",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 52,
+    "frameHeight": 554,
+    "fps": 15,
+    "anchor": "bottom",
+    "sourceDef": "C10SPW",
+    "opacity": 0.5,
+    "trim": {
+      "x": 1,
+      "y": 0,
+      "canvasWidth": 54,
+      "canvasHeight": 556
+    }
+  },
+  "precision": {
+    "src": "/assets/fx/precision.webp",
+    "label": "Precision",
+    "group": "spell",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 70,
+    "frameHeight": 70,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C12SPA0",
+    "trim": {
+      "x": 3,
+      "y": 3,
+      "canvasWidth": 76,
+      "canvasHeight": 75
+    }
+  },
+  "protect-air": {
+    "src": "/assets/fx/protect-air.webp",
+    "label": "Protection from Air",
+    "group": "spell",
+    "role": "affect",
+    "frames": 16,
+    "cols": 16,
+    "rows": 1,
+    "frameWidth": 75,
+    "frameHeight": 98,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C11SPE0",
+    "trim": {
+      "x": 3,
+      "y": 1,
+      "canvasWidth": 82,
+      "canvasHeight": 100
+    }
+  },
+  "protect-earth": {
+    "src": "/assets/fx/protect-earth.webp",
+    "label": "Protection from Earth",
+    "group": "spell",
+    "role": "affect",
+    "frames": 16,
+    "cols": 16,
+    "rows": 1,
+    "frameWidth": 74,
+    "frameHeight": 99,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C13SPA0",
+    "trim": {
+      "x": 3,
+      "y": 1,
+      "canvasWidth": 80,
+      "canvasHeight": 100
+    }
+  },
+  "protect-fire": {
+    "src": "/assets/fx/protect-fire.webp",
+    "label": "Protection from Fire",
+    "group": "spell",
+    "role": "affect",
+    "frames": 16,
+    "cols": 16,
+    "rows": 1,
+    "frameWidth": 70,
+    "frameHeight": 94,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C11SPW0",
+    "trim": {
+      "x": 3,
+      "y": 2,
+      "canvasWidth": 76,
+      "canvasHeight": 99
+    }
+  },
+  "protect-water": {
+    "src": "/assets/fx/protect-water.webp",
+    "label": "Protection from Water",
+    "group": "spell",
+    "role": "affect",
+    "frames": 15,
+    "cols": 15,
+    "rows": 1,
+    "frameWidth": 95,
+    "frameHeight": 99,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C11SPF0",
+    "trim": {
+      "x": 4,
+      "y": 1,
+      "canvasWidth": 100,
+      "canvasHeight": 100
+    }
+  },
+  "resurrection": {
+    "src": "/assets/fx/resurrection.webp",
+    "label": "Resurrection / Animate Dead / Sacrifice",
+    "group": "spell",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 90,
+    "frameHeight": 90,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C01SPE0",
+    "trim": {
+      "x": 4,
+      "y": 2,
+      "canvasWidth": 98,
+      "canvasHeight": 95
+    }
+  },
+  "shield": {
+    "src": "/assets/fx/shield.webp",
+    "label": "Shield",
+    "group": "spell",
+    "role": "affect",
+    "frames": 16,
+    "cols": 16,
+    "rows": 1,
+    "frameWidth": 49,
+    "frameHeight": 66,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C13SPE0",
+    "trim": {
+      "x": 4,
+      "y": 5,
+      "canvasWidth": 56,
+      "canvasHeight": 73
+    }
+  },
+  "slayer": {
+    "src": "/assets/fx/slayer.webp",
+    "label": "Slayer",
+    "group": "spell",
+    "role": "affect",
+    "frames": 18,
+    "cols": 18,
+    "rows": 1,
+    "frameWidth": 74,
+    "frameHeight": 98,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C13SPW0",
+    "trim": {
+      "x": 3,
+      "y": 2,
+      "canvasWidth": 80,
+      "canvasHeight": 100
+    }
+  },
+  "slow": {
+    "src": "/assets/fx/slow.webp",
+    "label": "Slow",
+    "group": "spell",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 69,
+    "frameHeight": 49,
+    "fps": 15,
+    "anchor": "bottom",
+    "sourceDef": "C09SPE0",
+    "trim": {
+      "x": 2,
+      "y": 3,
+      "canvasWidth": 74,
+      "canvasHeight": 54
+    }
+  },
+  "sorrow": {
+    "src": "/assets/fx/sorrow.webp",
+    "label": "Sorrow",
+    "group": "spell",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 85,
+    "frameHeight": 121,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C14SPE0",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 90,
+      "canvasHeight": 125
+    }
+  },
+  "sp03_": {
+    "src": "/assets/fx/sp03_.webp",
+    "label": "SP03_",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 94,
+    "frameHeight": 114,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "SP03_",
+    "looksLike": "green sparkle burst",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 101,
+      "canvasHeight": 118
+    }
+  },
+  "sp06_": {
+    "src": "/assets/fx/sp06_.webp",
+    "label": "SP06_",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 90,
+    "frameHeight": 91,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "SP06_",
+    "looksLike": "white wisp",
+    "trim": {
+      "x": 2,
+      "y": 1,
+      "canvasWidth": 95,
+      "canvasHeight": 93
+    }
+  },
+  "sp07_a": {
+    "src": "/assets/fx/sp07_a.webp",
+    "label": "SP07_A",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 12,
+    "cols": 12,
+    "rows": 1,
+    "frameWidth": 101,
+    "frameHeight": 126,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "SP07_A",
+    "looksLike": "blue-green spiral (A)",
+    "trim": {
+      "x": 4,
+      "y": 3,
+      "canvasWidth": 108,
+      "canvasHeight": 131
+    }
+  },
+  "sp07_b": {
+    "src": "/assets/fx/sp07_b.webp",
+    "label": "SP07_B",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 12,
+    "cols": 12,
+    "rows": 1,
+    "frameWidth": 106,
+    "frameHeight": 128,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "SP07_B",
+    "looksLike": "blue-green spiral (B)",
+    "trim": {
+      "x": 5,
+      "y": 2,
+      "canvasWidth": 113,
+      "canvasHeight": 132
+    }
+  },
+  "sp08_": {
+    "src": "/assets/fx/sp08_.webp",
+    "label": "SP08_",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 86,
+    "frameHeight": 91,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "SP08_",
+    "looksLike": "small dark burst",
+    "trim": {
+      "x": 2,
+      "y": 1,
+      "canvasWidth": 90,
+      "canvasHeight": 94
+    }
+  },
+  "sp09_": {
+    "src": "/assets/fx/sp09_.webp",
+    "label": "SP09_",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 90,
+    "frameHeight": 81,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "SP09_",
+    "looksLike": "purple burst",
+    "trim": {
+      "x": 1,
+      "y": 2,
+      "canvasWidth": 91,
+      "canvasHeight": 86
+    }
+  },
+  "sp12_": {
+    "src": "/assets/fx/sp12_.webp",
+    "label": "SP12_",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 90,
+    "frameHeight": 91,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "SP12_",
+    "looksLike": "blue orb burst",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 95,
+      "canvasHeight": 94
+    }
+  },
+  "sp13_": {
+    "src": "/assets/fx/sp13_.webp",
+    "label": "SP13_",
+    "group": "unidentified",
+    "role": "affect",
+    "frames": 19,
+    "cols": 19,
+    "rows": 1,
+    "frameWidth": 115,
+    "frameHeight": 90,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "SP13_",
+    "looksLike": "dark cloud",
+    "trim": {
+      "x": 2,
+      "y": 0,
+      "canvasWidth": 117,
+      "canvasHeight": 91
+    }
+  },
+  "stone-skin": {
+    "src": "/assets/fx/stone-skin.webp",
+    "label": "Stone Skin",
+    "group": "spell",
+    "role": "affect",
+    "frames": 22,
+    "cols": 22,
+    "rows": 1,
+    "frameWidth": 84,
+    "frameHeight": 78,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C16SPE",
+    "trim": {
+      "x": 3,
+      "y": 1,
+      "canvasWidth": 89,
+      "canvasHeight": 83
+    },
+    "aliasDefs": [
+      "C16SPE0"
+    ]
+  },
+  "weakness": {
+    "src": "/assets/fx/weakness.webp",
+    "label": "Weakness / Acid Breath debuff",
+    "group": "spell",
+    "role": "affect",
+    "frames": 20,
+    "cols": 20,
+    "rows": 1,
+    "frameWidth": 93,
+    "frameHeight": 109,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C17SPW0",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 97,
+      "canvasHeight": 114
+    }
+  }
+}

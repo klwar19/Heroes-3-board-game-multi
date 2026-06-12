@@ -5,6 +5,7 @@
 import { Crown, Layers, Search, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
+import { getDeckBack } from "@/data/decks";
 import { coreHeroDefinitions } from "@/data/factions/core";
 import {
   describeCardEffect,
@@ -51,9 +52,13 @@ export function CardFrame({
   return <img alt={alt} className={className} loading="eager" referrerPolicy="no-referrer" src={src} title={title ?? alt} />;
 }
 
-export function CardBack({ className }: { className?: string }) {
+export function CardBack({ className, deckId }: { className?: string; deckId?: string }) {
+  const back = getDeckBack(deckId);
+  if (back.image) {
+    return <img alt={back.label} aria-hidden="true" className={`cardBack ${className ?? ""}`} src={back.image} />;
+  }
   return (
-    <div className={`cardBack ${className ?? ""}`} aria-hidden="true">
+    <div className={`cardBack back-${back.styleKey} ${className ?? ""}`} aria-hidden="true" title={back.label}>
       <span>H3</span>
     </div>
   );
@@ -73,6 +78,7 @@ export function HandFan({
   legalActions,
   selectedCardAction,
   trayActive,
+  hiddenTailCount = 0,
   onSelectCardAction,
   onAction
 }: {
@@ -82,6 +88,8 @@ export function HandFan({
   legalActions: LegalAction[];
   selectedCardAction: CardBoardAction | null;
   trayActive: boolean;
+  /** Freshly drawn cards stay hidden while their draw flight is in the air. */
+  hiddenTailCount?: number;
   onSelectCardAction: (action: CardBoardAction | null) => void;
   onAction: (action: GameAction) => void;
 }) {
@@ -151,17 +159,20 @@ export function HandFan({
     return { handIndex, cardId, boardSelections, immediateActions };
   });
 
+  const hiddenFromIndex = entries.length - Math.max(0, hiddenTailCount);
+
   return (
-    <div className={`handFan ${trayActive ? "muted" : ""}`} aria-label="Your hand">
+    <div className={`handFan ${trayActive ? "muted" : ""}`} aria-label="Your hand" data-fx-anchor={`hand:${viewerPlayerId}`}>
       {entries.length === 0 ? <div className="handEmpty">Empty hand</div> : null}
-      {entries.map((entry) => {
+      {entries.map((entry, entryIndex) => {
         const card = cardLibrary[entry.cardId];
         const playable = !trayActive && (entry.boardSelections.length > 0 || entry.immediateActions.length > 0);
         const selected = entry.boardSelections.some((action) => sameCardSelection(selectedCardAction, action));
         const open = openIndex === entry.handIndex;
+        const incoming = entryIndex >= hiddenFromIndex;
 
         return (
-          <div className={`fanSlot ${open ? "open" : ""}`} key={`${entry.cardId}-${entry.handIndex}`}>
+          <div className={`fanSlot ${open ? "open" : ""} ${incoming ? "incoming" : ""}`} key={`${entry.cardId}-${entry.handIndex}`}>
             {open ? (
               <div className="cardPopover" role="menu" aria-label={`${cardName(entry.cardId)} actions`}>
                 <strong>{cardName(entry.cardId)}</strong>
@@ -277,18 +288,22 @@ export function OpponentBar({
                 </span>
               </span>
             </div>
-            <div className="opponentHand" aria-label={`${player.name} hand: ${player.handCount} hidden cards`}>
+            <div
+              className="opponentHand"
+              aria-label={`${player.name} hand: ${player.handCount} hidden cards`}
+              data-fx-anchor={`hand:${playerId}`}
+            >
               {Array.from({ length: Math.min(player.handCount, 12) }, (_, index) => (
                 <CardBack className="opponentCardBack" key={index} />
               ))}
               <span className="handCount">{player.handCount}</span>
             </div>
             <div className="seatPiles">
-              <div className="pileSpot" title={`${player.name} draw deck`}>
+              <div className="pileSpot" title={`${player.name} draw deck`} data-fx-anchor={`deck:${playerId}`}>
                 <CardBack className="pileCard" />
                 <span>{player.deckCount}</span>
               </div>
-              <div className="pileSpot" title={`${player.name} discard pile`}>
+              <div className="pileSpot" title={`${player.name} discard pile`} data-fx-anchor={`discard:${playerId}`}>
                 {player.discard.length > 0 ? (
                   <CardFrame cardId={player.discard.at(-1)} className="pileCard faceUp" />
                 ) : (
@@ -321,12 +336,16 @@ export function PlayerDock({
 
   return (
     <div className="playerDock" aria-label="Your decks and resources">
-      <div className="pileSpot tall" title="Your draw deck (order hidden, reshuffles from discard)">
+      <div
+        className="pileSpot tall"
+        title="Your draw deck (order hidden, reshuffles from discard)"
+        data-fx-anchor={`deck:${viewerPlayerId}`}
+      >
         <CardBack className="pileCard" />
         <span>{player.deckCount}</span>
         <small>deck</small>
       </div>
-      <div className="pileSpot tall" title="Your discard pile">
+      <div className="pileSpot tall" title="Your discard pile" data-fx-anchor={`discard:${viewerPlayerId}`}>
         {player.discard.length > 0 ? (
           <CardFrame cardId={player.discard.at(-1)} className="pileCard faceUp" />
         ) : (
@@ -454,11 +473,19 @@ export function DeckWells({
               <span>{SHARED_DECK_LABELS[deckId]}</span>
             </header>
             <div className="wellPiles">
-              <div className="pileSpot" title={`${SHARED_DECK_LABELS[deckId]} draw pile`}>
-                <CardBack className="pileCard" />
+              <div
+                className="pileSpot"
+                title={`${SHARED_DECK_LABELS[deckId]} draw pile`}
+                data-fx-anchor={`deck:shared-${deckId}`}
+              >
+                <CardBack className="pileCard" deckId={deckId} />
                 <span>{deck.drawCount}</span>
               </div>
-              <div className="pileSpot" title={`${SHARED_DECK_LABELS[deckId]} discard (top shown)`}>
+              <div
+                className="pileSpot"
+                title={`${SHARED_DECK_LABELS[deckId]} discard (top shown)`}
+                data-fx-anchor={`discard:shared-${deckId}`}
+              >
                 {deck.discardPile.length > 0 ? (
                   <CardFrame cardId={deck.discardPile.at(-1)} className="pileCard faceUp" />
                 ) : (
