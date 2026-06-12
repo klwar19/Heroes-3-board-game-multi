@@ -53,7 +53,10 @@ export type HeroDefinition = {
   startingAbilityCardId: string;
   /** Specialty card ids gained at levels I, IV and VI. */
   specialtyCardIds: { 1: string; 4: string; 6: string };
+  /** Classic PC portrait (heroes.thelazy.net), hosted locally. */
   portrait?: string;
+  /** Scan of the printed hero board (fan wiki), hosted locally. */
+  boardScan?: string;
   source: {
     product: string;
     credit: string;
