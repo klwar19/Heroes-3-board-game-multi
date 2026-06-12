@@ -216,9 +216,9 @@ const NOTES = {
   "units/evil-eye-death-alt": "second death sound (EVLIDETH); EVLIKILL is the standard one",
   "effects/danger": "unknown/unused",
   "effects/default": "generic fallback beep",
-  "units/faerie-dragon-special": "Faerie Dragon spell-cast (FAERIE)",
+  "units/faerie-dragon-special": "Faerie Dragon spell-cast (FAERIE) — play when its turn-start magic damage triggers",
+  "units/genie-special": "Genie/Master Genie spell-cast (GENIE) — play when it casts its ability",
   "spells/implosion": "original file is DECAY.wav",
-  "units/genie-special": "Genie/Master Genie spell-cast (GENIE)",
   "units/lich-special": "Lich area-attack variant (LICHATK); regular shot is lich-shoot",
   "units/first-aid-tent-death": "war machine destroyed",
   "units/first-aid-tent-hurt": "war machine hit",
@@ -264,6 +264,23 @@ const NOTES = {
 };
 for (const [name, [slug, desc]] of Object.entries(AMBIENT))
   NOTES[`ambient/${slug}`] = `${desc} (${name})`;
+
+// Sounds that trigger a follow-up: the AoE explosion lands right after the
+// attack sound (lich death cloud, magog fireball).
+const CHAIN = {
+  "units/lich-attack": "spells/death-cloud",
+  "units/lich-shoot": "spells/death-cloud",
+  "units/power-lich-attack": "spells/death-cloud",
+  "units/power-lich-shoot": "spells/death-cloud",
+  "units/magog-attack": "spells/fireball-hit",
+  "units/magog-shoot": "spells/fireball-hit",
+};
+
+// Virtual ids for sounds with several versions: play one member at random.
+const RANDOM_GROUPS = {
+  "music/battle": /^music\/battle-\d+$/,
+  "adventure/pickup": /^adventure\/pickup-\d+$/,
+};
 
 const kebab = (s) =>
   (ENTITY_FIXES[s] ?? s).replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
@@ -315,9 +332,14 @@ function buildManifest() {
         entry.loop = true;
       if (id.startsWith("adventure/horse-"))
         entry.note = "hero riding on this terrain; penalty variant = slowed movement";
+      if (CHAIN[id]) entry.then = CHAIN[id]; // play this id right after, e.g. AoE impact
       if (NOTES[id]) entry.note = NOTES[id];
       entries[id] = entry;
     }
+  }
+  for (const [id, pattern] of Object.entries(RANDOM_GROUPS)) {
+    const members = Object.keys(entries).filter((k) => pattern.test(k)).sort();
+    entries[id] = { random: members, note: "play one member at random" };
   }
   fs.writeFileSync(path.join(OUT, "manifest.json"), JSON.stringify(entries, null, 2) + "\n");
   return Object.keys(entries).length;

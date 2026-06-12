@@ -43,12 +43,44 @@ VCMI engine's data files** (the open-source H3 engine) — see
 - Load the manifest, play by id; never hardcode paths.
 - `"repeat": 2` → play the clip twice back-to-back (movement sounds).
 - `"loop": true` → loop until stopped (ambience, battle music, horse riding).
-- Random pools: `music/battle-00`–`07` per combat; `adventure/pickup-01`–`07`
-  per pickup.
+- `"then": <id>` → chain the second sound right after the first finishes
+  (lich attack/shoot → death-cloud impact, magog attack/shoot →
+  fireball explosion).
+- `"random": [<ids>]` → virtual entry, pick one member at random:
+  `music/battle` (8 tracks, per combat) and `adventure/pickup` (7 versions).
 - Entries with `"note"` carry identification caveats or "unused — free to
   repurpose" flags.
 - The toast system in `src/components/adventure/screen.tsx` already names
   sound cues per event; map those cue names to manifest ids when wiring.
+
+## Creature ability cues
+
+When a creature ability triggers in the board game (casts, procs, auras),
+play the matching sound:
+
+| Ability | Sound id |
+|---|---|
+| Faerie Dragon turn-start magic damage | `units/faerie-dragon-special` |
+| Genie / Master Genie casting | `units/genie-special` |
+| Lich / Power Lich death-cloud attack | automatic via `then` on attack/shoot |
+| Magog fireball attack | automatic via `then` on attack/shoot |
+| Devil / Arch Devil special | `units/devil-special`, `units/arch-devil-special` |
+| Mighty Gorgon death stare | `spells/death-stare` |
+| Ghost Dragon aging | `effects/age` |
+| Rust Dragon acid breath | `effects/acid-breath` |
+| Azure Dragon fear | `effects/fear` |
+| Dendroid bind | `effects/bind` |
+| Vampire Lord life drain | `effects/drain-life` |
+| Troll / Wight regeneration | `effects/regeneration` |
+| Unicorn blinding strike | `spells/blind` |
+| Basilisk / Medusa petrify | `spells/paralyze` (doubles as stone gaze) |
+| Wyvern Monarch poison | `spells/poison` |
+| Zombie disease | `spells/disease` |
+| Mummy / Black Knight curse | `spells/curse` |
+| Serpent Fly dispel | `spells/dispel` |
+| Dragon Fly weakness | `spells/weakness` |
+| Thunderbird lightning strike | `spells/lightning-bolt` |
+| Magic resistance proc | `effects/magic-resist` |
 
 ## App roster coverage
 
