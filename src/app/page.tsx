@@ -62,7 +62,7 @@ import { abilityFxPlans, cancelFx, spellFxPlans, type SpellFxPlan } from "@/data
 import { playLibrarySound } from "@/lib/sound";
 import { connectRoom, type GameRoomSnapshot, type RoomConnection } from "@/lib/realtime";
 
-/** Events that move cards or play battle effects on the combat table. */
+/** Events that move cards or play battle effects on the table. */
 const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   "CARDS_DRAWN",
   "CARD_PLAYED",
@@ -71,7 +71,8 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   "SPELL_CAST_CANCELLED",
   "DAMAGE_ASSIGNED",
   "DAMAGE_HEALED",
-  "UNIT_ABILITY_TRIGGERED"
+  "UNIT_ABILITY_TRIGGERED",
+  "HAND_REFRESHED"
 ]);
 
 const OBSERVER_SEAT = "observer";
@@ -221,14 +222,15 @@ export default function Home() {
         });
       }
 
-      // Draw effect: show the cards leaving the deck for the hand. On the
-      // combat table the FX stage flies cards deck->hand instead, so the
-      // center-screen cinematic only plays on the adventure layout.
+      // Draw announcement: the FX stage flies cards deck->hand wherever the
+      // seat is on screen (combat table, or your own seat on the adventure
+      // map). The center-screen cinematic stays only for opponents drawing
+      // on the map, where their deck and hand have no on-screen home.
       const freshDraw = draws.filter((event) => !seenDrawIdsRef.current.has(event.id)).at(-1);
       for (const event of draws) {
         seenDrawIdsRef.current.add(event.id);
       }
-      if (freshDraw && freshDraw.count > 0 && !nextState.combat) {
+      if (freshDraw && freshDraw.count > 0 && !nextState.combat && freshDraw.playerId !== viewerRef.current) {
         const isViewer = freshDraw.playerId === viewerRef.current;
         setDrawCue({
           id: freshDraw.id,
@@ -297,13 +299,42 @@ export default function Home() {
       for (const event of fxEvents) {
         seenFxIdsRef.current.add(event.id);
       }
-      if (freshFx.length > 0 && nextState.combat) {
+      if (freshFx.length > 0) {
         const cues: FxCue[] = [];
         const viewerId = viewerRef.current;
         // When an attack roll cues in the same batch, let the dice settle
         // before its damage number pops.
         let timeline = fresh.length > 0 ? 1200 : 0;
         let viewerDraws = 0;
+
+        // A seat's deck/hand/discard anchors are on screen during combat
+        // (every seat) and on the adventure map (the viewer's own seat).
+        // Cues for unmounted anchors would self-heal anyway; skipping them
+        // up front keeps the timeline tight.
+        const seatVisible = (playerId: PlayerId) => Boolean(nextState.combat) || playerId === viewerId;
+
+        // Mulligans / forced discards: the discarded cards fly out to the
+        // discard pile before the replacement draws fly in. The reducer
+        // logs CARDS_DRAWN before HAND_REFRESHED, so queue these first to
+        // restore the physical order.
+        for (const event of freshFx) {
+          if (event.type !== "HAND_REFRESHED" || event.discarded <= 0 || !seatVisible(event.playerId)) {
+            continue;
+          }
+          const discardedIds = nextState.players[event.playerId]?.discard.slice(-event.discarded) ?? [];
+          const flightCount = Math.min(event.discarded, 6);
+          for (let i = 0; i < flightCount; i += 1) {
+            cues.push({
+              kind: "flight",
+              id: `${event.id}-discard-${i}`,
+              from: `hand:${event.playerId}`,
+              to: `discard:${event.playerId}`,
+              cardId: discardedIds[i],
+              delayMs: timeline + i * 90
+            });
+          }
+          timeline += FLIGHT_MS + (flightCount - 1) * 90;
+        }
 
         const queueBoardFx = (
           plan: SpellFxPlan,
@@ -372,7 +403,7 @@ export default function Home() {
         for (const event of freshFx) {
           switch (event.type) {
             case "CARDS_DRAWN": {
-              if (event.count <= 0) {
+              if (event.count <= 0 || !seatVisible(event.playerId)) {
                 break;
               }
               const isViewer = event.playerId === viewerId;
@@ -407,6 +438,9 @@ export default function Home() {
               break;
             }
             case "CARD_PLAYED": {
+              if (!seatVisible(event.playerId)) {
+                break;
+              }
               cues.push({
                 kind: "flight",
                 id: `${event.id}-play`,
@@ -420,6 +454,9 @@ export default function Home() {
               break;
             }
             case "SPELL_CAST_STARTED": {
+              if (!seatVisible(event.playerId)) {
+                break;
+              }
               cues.push({
                 kind: "flight",
                 id: `${event.id}-cast`,
@@ -947,10 +984,13 @@ export default function Home() {
                   </div>
                 ) : null}
               </div>
-              <div className="adventureHandCards">
+              <div className="adventureHandCards" data-fx-anchor={`hand:${viewerPlayerId}`}>
                 {handCards.length === 0 ? <small className="emptyHand">No cards in hand.</small> : null}
                 {handCards.map((cardId, index) => (
-                  <div className="adventureHandSlot" key={`${cardId}-${index}`}>
+                  <div
+                    className={`adventureHandSlot ${index >= handCards.length - hiddenHandTail ? "incoming" : ""}`}
+                    key={`${cardId}-${index}`}
+                  >
                     <button
                       className={`adventureHandCard ${handDiscards.includes(index) ? "discarding" : ""}`}
                       onClick={() => {
@@ -998,6 +1038,7 @@ export default function Home() {
           <LogDrawer state={state} />
           {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
           {drawCue ? <DrawOverlay cue={drawCue} key={drawCue.id} onDone={() => setDrawCue(null)} /> : null}
+          <FxStage cues={fxCues} onDone={handleFxDone} />
         </main>
       </CardZoomProvider>
     );

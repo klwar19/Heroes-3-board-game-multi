@@ -29,6 +29,11 @@ dice / draw cues) and queues `FxCue`s:
 
 - `CARDS_DRAWN` — card flights deck → hand, face-up for the drawing seat,
   card backs for everyone else; discard reshuffle pulses the deck first.
+  Plays on the combat table and on the adventure map (your own seat; an
+  opponent drawing on the map keeps the announcement overlay since their
+  deck has no on-screen home there).
+- `HAND_REFRESHED` — mulligans and forced discards fly the discarded cards
+  hand → discard pile before the replacement draws fly in.
 - `CARD_PLAYED` / `SPELL_CAST_STARTED` — flight hand → center stage (held
   large so everyone can read it) → discard pile.
 - `SPELL_CAST_RESOLVED` — looks up `spellFxPlans[cardId]`: projectile flies
