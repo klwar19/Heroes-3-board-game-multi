@@ -270,11 +270,35 @@ export const extraAbilityCards: CardLibrary = {
     "Artillery",
     "Basic: Deal 1 damage to an enemy unit with the lowest initiative. Expert: when using the Ballista card, resolve its effect against the same target 3 times."
   ),
-  "ability.ballistics": notImplementedAbility(
-    "ballistics",
-    "Ballistics",
-    "Basic: During a siege, destroy 1 Wall or Gate. Expert: destroy the Arrow Tower."
-  )
+  "ability.ballistics": {
+    id: "ability.ballistics",
+    name: "Ballistics",
+    kind: "ability",
+    timing: "instant",
+    phaseLimit: ["combat"],
+    abilityClass: "might",
+    tags: ["ability", "instant", "siege", "wiki-reference"],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Destroy 1 Wall or the Gate",
+          effect: { type: "SIEGE_DEMOLISH", target: "wall-or-gate" }
+        },
+        {
+          label: "Destroy the Arrow Tower (expert)",
+          expertOnly: true,
+          effect: { type: "SIEGE_DEMOLISH", target: "arrow-tower" }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "/assets/abilities-ballistics.webp",
+      imageAlt: "Ballistics ability card"
+    },
+    implementationStatus: "implemented",
+    source: abilitySource("ballistics")
+  }
 };
 
 /**
@@ -305,7 +329,8 @@ export const abilityDeckLegacy: string[] = [
   "ability.logistics",
   "ability.logistics",
   "ability.scholar",
-  "ability.first_aid"
+  "ability.first_aid",
+  "ability.ballistics"
 ];
 
 /** BINH Ability deck: the legacy set plus the spell-deck key cards. */

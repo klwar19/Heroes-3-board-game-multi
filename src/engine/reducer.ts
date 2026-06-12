@@ -10,6 +10,7 @@ import {
   finalizeAdventureCombat,
   finishCombatPlacement,
   hallOfValhallaBoost,
+  openSiegeDemolishChoice,
   moveHeroAdventure,
   moveHeroPathAdventure,
   openSharedDeckSearch,
@@ -50,6 +51,7 @@ import { estatesGold, getRuleset, spellLimitFor } from "./ruleset";
 import {
   destroyFortification,
   getDemolishAbility,
+  intactFortificationPositions,
   removeArrowTower,
   siegeRangedDamageReduction
 } from "./siege";
@@ -2120,6 +2122,10 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     // Snapshot for the ongoing rule: effects created below mark this card as
     // staying in play until they end.
     const effectCountBeforeCast = state.activeEffects.length;
+    if (card?.effect.type === "EARTHQUAKE" && state.combat?.siege) {
+      resolveEarthquakeSpell(state, stackItem.action.playerId, getCurrentSpellPower(stackItem, cards));
+    }
+
     if (card?.effect.type === "DEAL_DAMAGE" && state.combat && stackItem.action.target.type === "unit") {
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target) {
@@ -3235,6 +3241,21 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     createAttackRerollEffectFromCard(state, card, action.playerId, mode);
   }
 
+  if (effect.type === "SIEGE_DEMOLISH") {
+    const siege = state.combat?.siege;
+    if (!siege) {
+      throw new Error("Ballistics works only during a siege.");
+    }
+    if (effect.target === "arrow-tower") {
+      if (!siege.arrowTowerUnitId) {
+        throw new Error("The Arrow Tower is already gone.");
+      }
+      removeArrowTower(state, null, "Ballistics levels it");
+    } else {
+      openSiegeDemolishChoice(state, action.playerId, 1);
+    }
+  }
+
   if (effect.type === "DRAW_CARDS") {
     drawCardsForPlayer(state, action.playerId, getEffectAmount(effect, mode));
   }
@@ -3715,6 +3736,49 @@ function applyUnitAbilityAction(
 
   state.phase = "combat";
   state.priorityPlayerId = null;
+}
+
+/**
+ * Earthquake (siege only): Power 0 removes 1 Wall/Gate of the caster's
+ * choice, Power 1 removes 2, Power 2 deals 1 damage to every unit adjacent
+ * to a fortification and brings them all down at once.
+ */
+function resolveEarthquakeSpell(state: GameState, playerId: PlayerId, power: number): void {
+  const combat = state.combat;
+  const siege = combat?.siege;
+  if (!combat || !siege) {
+    return;
+  }
+
+  if (power >= 2) {
+    const positions = intactFortificationPositions(siege);
+    for (const unit of Object.values(combat.units)) {
+      if (!isUnitAlive(unit) || unit.position < 0) {
+        continue;
+      }
+      if (!positions.some((position) => isAdjacent(unit.position, position))) {
+        continue;
+      }
+      unit.damage += 1;
+      noteUnitDamagedForTokens(state, unit, 1);
+      appendEvent(state, {
+        type: "DAMAGE_ASSIGNED",
+        source: { type: "system" },
+        target: { type: "unit", unitId: unit.id },
+        amount: 1,
+        damageKind: "spell"
+      });
+      markUnitRemovedIfNeeded(state, unit);
+    }
+
+    for (const position of positions) {
+      destroyFortification(state, null, siege.gatePosition === position ? "gate" : "wall", position);
+    }
+    finishCombatIfNeeded(state);
+    return;
+  }
+
+  openSiegeDemolishChoice(state, playerId, power <= 0 ? 1 : 2);
 }
 
 /**

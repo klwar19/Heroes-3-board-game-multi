@@ -655,6 +655,14 @@ function addSpellActions(
       continue;
     }
 
+    // Earthquake works only against standing siege fortifications.
+    if (card.effect.type === "EARTHQUAKE") {
+      const siege = combat?.siege;
+      if (!siege || (siege.walls.length === 0 && siege.gatePosition === null)) {
+        continue;
+      }
+    }
+
     for (const target of getTargetsForCard(state, playerId, cardId, cards)) {
       actions.push({
         label: `Cast ${card.name}`,
@@ -833,6 +841,15 @@ function isOptionEffectPlayable(
     case "ADD_UNIT_MAX_HEALTH":
     case "HEAL_DAMAGE":
       return context === "combat" && Boolean(state.combat);
+    case "SIEGE_DEMOLISH": {
+      const siege = state.combat?.siege;
+      if (context !== "combat" || !siege) {
+        return false;
+      }
+      return effect.target === "arrow-tower"
+        ? Boolean(siege.arrowTowerUnitId)
+        : siege.walls.length > 0 || siege.gatePosition !== null;
+    }
     default:
       return false;
   }
