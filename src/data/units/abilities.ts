@@ -40,6 +40,16 @@ export type UnitAbilityEffectDefinition =
       type: "SECOND_ATTACK_ADJACENT_TO_TARGET";
       baseAttack: number;
     }
+  | {
+      /**
+       * BINH Cerberi: after the original attack, every other enemy unit
+       * adjacent to this unit is attacked with a full separate attack at the
+       * printed base attack. Each follow-up opens instant windows and rolls
+       * the die; none of them retaliates or chains further follow-ups.
+       */
+      type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF";
+      baseAttack: number;
+    }
   | { type: "ATTACK_DIE_REROLL"; rerollsPerAttack: number }
   | {
       /**
@@ -130,6 +140,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Multi-Headed Bite",
     text: "Additionally deals 1 damage to another enemy unit adjacent to this unit (the attacker chooses).",
     effect: { type: "FLAT_DAMAGE_ADJACENT_TO_SELF", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "cerberi-attack-all": {
+    id: "cerberi-attack-all",
+    name: "Three-Headed Assault",
+    text: "BINH: after its attack, this unit performs a full separate attack (attack 3) against every other enemy unit adjacent to it. Each follow-up can be answered with instants and defense; none retaliates.",
+    effect: { type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF", baseAttack: 3 },
     implementationStatus: "implemented"
   },
   "lich-death-cloud": {

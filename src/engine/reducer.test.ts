@@ -89,7 +89,7 @@ describe("rules engine prototype", () => {
       kind: "spell",
       spellLevel: "expert",
       spellSchools: ["fire"],
-      implementationStatus: "not-implemented"
+      implementationStatus: "implemented"
     });
     expect(spellSchools).toEqual(new Set(["air", "earth", "fire", "water"]));
     expect(artifactTiers).toEqual(new Set(["minor", "major", "relic"]));
@@ -135,18 +135,36 @@ describe("rules engine prototype", () => {
     expect(actionTypes).not.toContain("END_TURN");
   });
 
-  it("lets the non-active player cast their one spell per combat round at any time", () => {
-    const state = createInitialGameState();
+  it("casts activation spells only during your own unit's activation, once per combat round", () => {
+    let state = createInitialGameState();
     expect(state.combat?.activeUnitId).toBe("unit_p1_griffins");
     expect(state.activePlayerId).toBe("p1");
 
-    // It's p1's activation, yet p2 may cast a spell right now.
-    const p2Actions = getLegalActions(state, "p2");
-    const p2Cast = p2Actions.find(
-      (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"
-    );
-    expect(p2Cast).toBeDefined();
+    // Magic Arrow carries the activation symbol: p2 cannot cast it while
+    // p1's unit is active.
+    expect(
+      getLegalActions(state, "p2").some(
+        (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"
+      )
+    ).toBe(false);
 
+    // Walk activations forward (defending ends them) until p2's unit is up.
+    for (let guard = 0; guard < 6; guard += 1) {
+      const activeUnit = state.combat?.activeUnitId ? state.combat.units[state.combat.activeUnitId] : null;
+      if (!activeUnit || activeUnit.controllerId === "p2") {
+        break;
+      }
+      state = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: activeUnit.id });
+    }
+    const activeUnit = state.combat?.activeUnitId ? state.combat.units[state.combat.activeUnitId] : null;
+    expect(activeUnit?.controllerId).toBe("p2");
+
+    // Now the cast is offered and resolves.
+    expect(
+      getLegalActions(state, "p2").some(
+        (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"
+      )
+    ).toBe(true);
     const casted = applyOk(state, {
       type: "CAST_SPELL",
       playerId: "p2",
@@ -162,7 +180,8 @@ describe("rules engine prototype", () => {
       getLegalActions(resolved, "p2").some((legal) => legal.action.type === "CAST_SPELL")
     ).toBe(false);
 
-    // A new combat round resets the limit.
+    // A new combat round resets the limit (the cast comes back as soon as a
+    // p2 unit is active again).
     if (!resolved.combat) {
       throw new Error("Expected combat setup.");
     }
@@ -170,9 +189,10 @@ describe("rules engine prototype", () => {
     resolved.activePlayerId = "p1";
     const nextRound = applyOk(resolved, { type: "END_COMBAT_ROUND", playerId: "p1" });
     expect(nextRound.players.p2.combatStats.spellsCastThisRound).toBe(0);
+    const nextActive = nextRound.combat?.activeUnitId ? nextRound.combat.units[nextRound.combat.activeUnitId] : null;
     expect(
       getLegalActions(nextRound, "p2").some((legal) => legal.action.type === "CAST_SPELL")
-    ).toBe(true);
+    ).toBe(nextActive?.controllerId === "p2");
   });
 
   it("opens a reaction window after a spell is cast, starting with the caster's Power timing", () => {
@@ -194,13 +214,14 @@ describe("rules engine prototype", () => {
     expect(result.phase).toBe("combat");
     expect(result.reactionWindow).toBeNull();
     expect(result.stack).toEqual([]);
-    expect(result.combat?.units.unit_p2_vampires.damage).toBe(2);
+    expect(result.combat?.units.unit_p2_vampires.damage).toBe(1);
     expect(findEvent(result, "DAMAGE_ASSIGNED")).toMatchObject({
-      amount: 2,
+      amount: 1,
       damageKind: "spell"
     });
+    // Printed card: Magic Arrow starts at power 0 (1 damage).
     expect(findEvent(result, "SPELL_CAST_RESOLVED")).toMatchObject({
-      power: 1
+      power: 0
     });
   });
 
@@ -326,7 +347,7 @@ describe("rules engine prototype", () => {
       effectAmount: 2
     });
     expect(findEvent(result, "SPELL_CAST_RESOLVED")).toMatchObject({
-      power: 3
+      power: 2
     });
   });
 
@@ -336,12 +357,15 @@ describe("rules engine prototype", () => {
     state.players.p2.hand = [];
 
     const casted = applyOk(state, castMagicArrow);
-    const resolved = applyOk(casted, {
+    const recalled = applyOk(casted, {
       type: "PLAY_REACTION",
       playerId: "p1",
       cardId: "stat.knowledge",
       mode: "expert"
     });
+    // The recalled spell could still be discarded for +1 Power, so the
+    // window stays open until the caster passes.
+    const resolved = passAllReactions(recalled);
 
     expect(resolved.phase).toBe("combat");
     expect(resolved.reactionWindow).toBeNull();
@@ -349,7 +373,7 @@ describe("rules engine prototype", () => {
     expect(resolved.players.p1.discard).toEqual(["stat.knowledge"]);
     expect(resolved.players.p1.combatStats.spellLimitBonusThisRound).toBe(1);
     expect(resolved.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
-    expect(resolved.combat?.units.unit_p2_vampires.damage).toBe(2);
+    expect(resolved.combat?.units.unit_p2_vampires.damage).toBe(1);
   });
 
   it("lets a unit move, then attack after Attack and Defense cards modify the roll", () => {
@@ -1679,8 +1703,8 @@ describe("rules engine prototype", () => {
     });
     expect(overspent.errors[0]?.message).toContain("crowns");
 
-    // Spell power may only be buffed one time per cast, so a second copy in
-    // the same declaration is rejected.
+    // Empower stacks: the rulebook pays thresholds with several plays
+    // ("You may pay this cost by playing other cards").
     const doublePower = applyAction(casted, {
       type: "PLAY_REACTIONS",
       playerId: "p1",
@@ -1689,7 +1713,8 @@ describe("rules engine prototype", () => {
         { cardId: "stat.power", mode: "basic" }
       ]
     });
-    expect(doublePower.errors[0]?.message).toContain("once per spell");
+    expect(doublePower.errors).toEqual([]);
+    expect(doublePower.state.stack.at(-1)?.modifiers.spellPowerBonus).toBe(2);
 
     // A single copy still applies.
     const singlePower = applyOk(casted, {
@@ -1765,7 +1790,7 @@ describe("rules engine prototype", () => {
       cardId: "artifact.breastplate_of_petrified_wood",
       optionLabel: "+1 Power"
     });
-    expect(findEvent(boosted, "SPELL_CAST_RESOLVED")).toMatchObject({ power: 2 });
+    expect(findEvent(boosted, "SPELL_CAST_RESOLVED")).toMatchObject({ power: 1 });
 
     // Fresh state: option 1 (Draw 1 card) plays as a direct instant.
     const drawState = createInitialGameState();

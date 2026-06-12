@@ -37,6 +37,23 @@ export {
 } from "./effects";
 export { getPlayerView } from "./player-view";
 export { createSeededRandom } from "./random";
+export {
+  RULESET_DESCRIPTIONS,
+  RULESET_LABELS,
+  applyUnitSideRules,
+  artifactDeckAccess,
+  canDrawExpertSpells,
+  deckDisplayName,
+  eligibleArtifactDecks,
+  eligibleSpellDecks,
+  estatesGold,
+  expertUsesAvailable,
+  getRuleset,
+  rulesetCardNote,
+  spellLimitFor,
+  wisdomGoldDiscount,
+  wisdomSearchCount
+} from "./ruleset";
 export { createInitialGameState } from "./setup";
 export {
   createAdventureGameState,

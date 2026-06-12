@@ -131,7 +131,7 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
         hand: [
           "specialty.catherine.1",
           "stat.attack",
-          "stat.defense",
+          "spell.magic_arrow",
           "spell.bloodlust",
           "artifact.centaurs_axe",
           "ability.offense"
@@ -142,7 +142,7 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
           "ability.archery",
           "ability.luck",
           "spell.fortune",
-          "spell.magic_arrow",
+          "stat.defense",
           "stat.power",
           "stat.attack"
         ]

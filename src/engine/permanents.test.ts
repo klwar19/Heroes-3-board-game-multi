@@ -72,8 +72,9 @@ describe("permanent cards", () => {
     });
     const resolved = passAllReactions(cast);
 
-    // Magic Arrow at power 1 deals 2; the school bonus lifts it to power 2 -> 3.
-    expect(resolved.combat?.units.unit_p2_vampires.damage).toBe(3);
+    // Magic Arrow at printed power 0 deals 1; the school bonus lifts it to
+    // power 1 -> 2 damage.
+    expect(resolved.combat?.units.unit_p2_vampires.damage).toBe(2);
     // The permanent stays in play after using its basic effect.
     expect(resolved.players.p1.permanent).toBe("ability.fire_magic");
   });

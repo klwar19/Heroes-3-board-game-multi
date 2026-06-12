@@ -126,7 +126,8 @@ export const sampleCards: CardLibrary = {
     spellLevel: "basic",
     spellSchools: ["any"],
     tags: ["spell", "damage", "basic", "wiki-reference"],
-    power: 1,
+    power: 0,
+    target: { type: "enemy-unit" },
     effect: {
       type: "DEAL_DAMAGE",
       amountByPower: {
@@ -182,24 +183,27 @@ export const sampleCards: CardLibrary = {
     id: "spell.stone_skin",
     name: "Stone Skin",
     kind: "spell",
-    timing: "combat",
-    phaseLimit: ["combat"],
+    // Printed card is an Instant: it boosts the defender of the current
+    // attack ("The selected unit gains +1/+2/+3 defense").
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
     spellLevel: "basic",
     spellSchools: ["earth"],
-    tags: ["spell", "buff", "defense", "basic", "earth", "wiki-reference"],
+    tags: ["spell", "instant", "defense", "basic", "earth", "wiki-reference"],
     power: 0,
-    target: { type: "friendly-unit" },
+    trigger: {
+      event: "UNIT_ATTACK_DECLARED",
+      controller: "opponent"
+    },
     effect: {
-      type: "CREATE_DEFENSE_BUFF",
-      name: "Stone Skin",
+      type: "ADD_COMBAT_STAT",
+      stat: "defense",
+      amount: 1,
       amountByPower: {
         0: 1,
         1: 2,
         2: 3
-      },
-      duration: { type: "combat" },
-      polarity: "positive",
-      removable: true
+      }
     },
     assets: {
       cardImage: "/assets/spells-stone_skin.webp",
@@ -216,24 +220,27 @@ export const sampleCards: CardLibrary = {
     id: "spell.bloodlust",
     name: "Bloodlust",
     kind: "spell",
-    timing: "combat",
-    phaseLimit: ["combat"],
+    // Printed card is an Instant on your ground/flying unit's attack.
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
     spellLevel: "basic",
     spellSchools: ["fire"],
-    tags: ["spell", "buff", "attack", "wiki-reference"],
-    power: 1,
-    target: { type: "friendly-unit", unitTypes: ["ground", "flying"] },
+    tags: ["spell", "instant", "attack", "wiki-reference"],
+    power: 0,
+    trigger: {
+      event: "UNIT_ATTACK_DECLARED",
+      controller: "self"
+    },
     effect: {
-      type: "CREATE_ATTACK_BUFF",
-      name: "Bloodlust",
+      type: "ADD_COMBAT_STAT",
+      stat: "attack",
+      amount: 1,
       amountByPower: {
         0: 1,
         1: 2,
         2: 3
       },
-      duration: { type: "combat" },
-      polarity: "positive",
-      removable: true
+      unitTypes: ["ground", "flying"]
     },
     assets: {
       cardImage: "/assets/spells-bloodlust.webp",
@@ -321,21 +328,22 @@ export const sampleCards: CardLibrary = {
     spellSchools: ["fire"],
     tags: ["spell", "damage", "area", "expert", "fire", "wiki-reference"],
     power: 0,
+    // "Select 2 adjacent places": the chosen target plus one unit adjacent
+    // to it (friend or foe; the second space may be empty).
     target: { type: "any-unit" },
     effect: {
-      type: "DEAL_DAMAGE",
+      type: "AREA_DAMAGE_ADJACENT",
       amountByPower: {
         0: 1,
         2: 2,
         4: 3
-      },
-      damageKind: "spell"
+      }
     },
     assets: {
       cardImage: "/assets/spells-fireball.webp",
       imageAlt: "Fireball card"
     },
-    implementationStatus: "not-implemented",
+    implementationStatus: "implemented",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
       credit: wikiCredit,
@@ -435,11 +443,13 @@ export const sampleCards: CardLibrary = {
       event: "UNIT_ATTACK_DECLARED",
       controller: "self"
     },
+    // Printed card: "+1 attack / Then draw 1 card" (expert +2).
     effect: {
       type: "ADD_COMBAT_STAT",
       stat: "attack",
       amount: 1,
-      expertAmount: 2
+      expertAmount: 2,
+      drawCards: 1
     },
     assets: {
       cardImage: "/assets/abilities-offense.webp",
@@ -547,15 +557,23 @@ export const sampleCards: CardLibrary = {
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
     artifactTier: "major",
-    tags: ["artifact", "major", "instant", "attack", "wiki-reference"],
-    trigger: {
-      event: "UNIT_ATTACK_DECLARED",
-      controller: "self"
-    },
+    // Printed card: "Discard 1 card to gain +2 attack. — OR — +1 attack".
+    tags: ["artifact", "major", "instant", "attack", "or-choice", "wiki-reference"],
     effect: {
-      type: "ADD_COMBAT_STAT",
-      stat: "attack",
-      amount: 1
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Discard 1 card: +2 attack",
+          cost: { discardCards: 1 },
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+        },
+        {
+          label: "+1 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
+        }
+      ]
     },
     assets: {
       cardImage: "/assets/artifacts_major-ogres_club_of_havoc.webp",
@@ -575,15 +593,23 @@ export const sampleCards: CardLibrary = {
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
     artifactTier: "relic",
-    tags: ["artifact", "relic", "instant", "attack", "wiki-reference"],
-    trigger: {
-      event: "UNIT_ATTACK_DECLARED",
-      controller: "self"
-    },
+    // Printed card: "Discard 1 card to gain +3 attack. — OR — +2 attack".
+    tags: ["artifact", "relic", "instant", "attack", "or-choice", "wiki-reference"],
     effect: {
-      type: "ADD_COMBAT_STAT",
-      stat: "attack",
-      amount: 2
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Discard 1 card: +3 attack",
+          cost: { discardCards: 1 },
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 3 }
+        },
+        {
+          label: "+2 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+        }
+      ]
     },
     assets: {
       cardImage: "/assets/artifacts_relic-titans_gladius.webp",

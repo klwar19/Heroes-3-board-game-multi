@@ -33,12 +33,14 @@ import {
 } from "./battlefield";
 import { getPermanentDefinition, getPermanentSchoolBonus, warMachinesForSale } from "./permanents";
 import { SHARED_DECK_IDS } from "./decks";
+import { expertUsesAvailable, getRuleset, spellLimitFor, wisdomGoldDiscount, wisdomSearchCount } from "./ruleset";
 import type {
   AttackRollMode,
   ActiveEffectState,
   BuildingId,
   BuildingLibrary,
   CardDefinition,
+  CardPlayCost,
   CardPlayMode,
   CardLibrary,
   CombatState,
@@ -70,6 +72,12 @@ type CardPlayVariant = {
   effect: ConcreteEffect;
   optionIndex?: number;
   optionLabel?: string;
+  /** Printed extra price (discard/remove cards) of this option. */
+  cost?: CardPlayCost;
+  /** Option only playable outside combat. */
+  mapOnly?: boolean;
+  /** Option is the card's expert side (costs a crown). */
+  expertOnly?: boolean;
 };
 
 export function getCardPlayVariants(card: CardDefinition): CardPlayVariant[] {
@@ -78,7 +86,10 @@ export function getCardPlayVariants(card: CardDefinition): CardPlayVariant[] {
       trigger: option.trigger,
       effect: option.effect,
       optionIndex,
-      optionLabel: option.label
+      optionLabel: option.label,
+      cost: option.cost,
+      mapOnly: option.mapOnly,
+      expertOnly: option.expertOnly
     }));
   }
 
@@ -88,6 +99,44 @@ export function getCardPlayVariants(card: CardDefinition): CardPlayVariant[] {
       effect: card.effect
     }
   ];
+}
+
+/** Whether the player can pay an option's card cost from hand right now. */
+function canAffordCardCost(state: GameState, playerId: PlayerId, cardId: string, cost?: CardPlayCost): boolean {
+  if (!cost || (cost.discardCards === undefined && cost.discardCardsUpTo === undefined)) {
+    return true;
+  }
+
+  const player = state.players[playerId];
+  if (!player) {
+    return false;
+  }
+
+  // The played card itself cannot pay its own cost.
+  const rest = [...player.hand];
+  const selfIndex = rest.indexOf(cardId);
+  if (selfIndex !== -1) {
+    rest.splice(selfIndex, 1);
+  }
+
+  const eligible = cost.costCardFilter === "spell" ? rest.filter((id) => cardLibrary[id]?.kind === "spell") : rest;
+  const needed = cost.discardCards ?? 0;
+  return eligible.length >= needed;
+}
+
+/** Whether a unit currently has spell immunity covering its grade. */
+export function isUnitSpellImmune(state: GameState, unit: CombatUnitState): boolean {
+  const rank = (grade: CombatUnitState["grade"]) =>
+    grade === "bronze" ? 0 : grade === "silver" ? 1 : grade === "gold" ? 2 : 3;
+
+  return state.activeEffects.some(
+    (effect) =>
+      effect.target?.type === "unit" &&
+      effect.target.unitId === unit.id &&
+      effect.modifiers.some(
+        (modifier) => modifier.type === "UNIT_SPELL_IMMUNE" && rank(unit.grade) <= rank(modifier.maxGrade)
+      )
+  );
 }
 
 export function isUnitAlive(unit: CombatUnitState): boolean {
@@ -187,12 +236,32 @@ export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitSt
   ).filter(isBattlefieldPosition);
 }
 
-export function sortUnitsForActivation(combat: CombatState): CombatUnitState[] {
+/** Initiative including Haste/Slow and other lasting bonuses on the unit. */
+export function effectiveInitiative(unit: CombatUnitState, activeEffects: ActiveEffectState[] = []): number {
+  const bonus = activeEffects.reduce((total, effect) => {
+    if (effect.target?.type !== "unit" || effect.target.unitId !== unit.id) {
+      return total;
+    }
+    return (
+      total +
+      effect.modifiers.reduce(
+        (sum, modifier) => (modifier.type === "INITIATIVE_BONUS" ? sum + modifier.amount : sum),
+        0
+      )
+    );
+  }, 0);
+
+  return unit.initiative + bonus;
+}
+
+export function sortUnitsForActivation(combat: CombatState, activeEffects: ActiveEffectState[] = []): CombatUnitState[] {
   return Object.values(combat.units)
     .filter(isUnitAlive)
     .sort((left, right) => {
-      if (right.initiative !== left.initiative) {
-        return right.initiative - left.initiative;
+      const leftInitiative = effectiveInitiative(left, activeEffects);
+      const rightInitiative = effectiveInitiative(right, activeEffects);
+      if (rightInitiative !== leftInitiative) {
+        return rightInitiative - leftInitiative;
       }
 
       if (left.controllerId === combat.attackerPlayerId && right.controllerId !== combat.attackerPlayerId) {
@@ -207,8 +276,8 @@ export function sortUnitsForActivation(combat: CombatState): CombatUnitState[] {
     });
 }
 
-export function getNextUnitToActivate(combat: CombatState): CombatUnitState | null {
-  return sortUnitsForActivation(combat).find((unit) => !unit.activatedThisRound) ?? null;
+export function getNextUnitToActivate(combat: CombatState, activeEffects: ActiveEffectState[] = []): CombatUnitState | null {
+  return sortUnitsForActivation(combat, activeEffects).find((unit) => !unit.activatedThisRound) ?? null;
 }
 
 function hasAdjacentEnemy(combat: CombatState, unit: CombatUnitState): boolean {
@@ -245,7 +314,7 @@ function hasRangedPenaltyWaiver(state: GameState | undefined, unit: CombatUnitSt
     state?.activeEffects.some(
       (effect) =>
         activeEffectAppliesToUnit(effect, unit) &&
-        effect.modifiers.some((modifier) => modifier.type === "RANGED_IGNORE_PENALTIES")
+        effect.modifiers.some((modifier) => modifier.type === "RANGED_IGNORE_ALL_PENALTIES")
     )
   );
 }
@@ -390,15 +459,25 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
       ? card.target
       : ({ type: targetType } as Exclude<TargetDefinition, { type: "none" }>);
 
-  if (target.type === "friendly-unit") {
-    return getFriendlyTargets(state, playerId, target);
+  const targets =
+    target.type === "friendly-unit"
+      ? getFriendlyTargets(state, playerId, target)
+      : target.type === "any-unit"
+        ? [...getFriendlyTargets(state, playerId, target), ...getEnemyTargets(state, playerId, target)]
+        : getEnemyTargets(state, playerId, target);
+
+  // Anti-Magic: spell-immune units cannot be targeted by Spell cards.
+  if (card?.kind === "spell") {
+    return targets.filter((candidate) => {
+      if (candidate.type !== "unit") {
+        return true;
+      }
+      const unit = state.combat?.units[candidate.unitId];
+      return !unit || !isUnitSpellImmune(state, unit);
+    });
   }
 
-  if (target.type === "any-unit") {
-    return [...getFriendlyTargets(state, playerId, target), ...getEnemyTargets(state, playerId, target)];
-  }
-
-  return getEnemyTargets(state, playerId, target);
+  return targets;
 }
 
 function isPhaseAllowedForCard(state: GameState, card: CardDefinition): boolean {
@@ -469,9 +548,14 @@ function isCombatParticipant(state: GameState, playerId: PlayerId): boolean {
 }
 
 /**
- * Spells may be cast at any moment of the combat (your own or the enemy's
- * activation) as long as no attack is being resolved — limited to one Spell
- * card per player per combat round. Knowledge raises that limit.
+ * Spell casting by the printed timing symbols — limited to one Spell card per
+ * player per combat round (Knowledge/Necklace raise it):
+ *  - Activation spells (Magic Arrow, Fireball, Haste…) are cast while one of
+ *    YOUR units is active, before it attacks.
+ *  - Trigger-free instant spells (Cure, Counterstrike) may be cast at any
+ *    open moment of the combat by either fighter.
+ *  - Instant spells with an attack trigger (Bloodlust, Stone Skin, Curse…)
+ *    are played inside the attack windows instead, never cast directly.
  */
 function addSpellActions(
   actions: LegalAction[],
@@ -484,10 +568,18 @@ function addSpellActions(
   }
 
   const player = state.players[playerId];
-  const spellLimit = 1 + (player?.combatStats.spellLimitBonusThisRound ?? 0);
-  if (!player || player.combatStats.spellsCastThisRound >= spellLimit) {
+  if (!player || player.combatStats.spellsCastThisRound >= spellLimitFor(state, player)) {
     return;
   }
+
+  const combat = state.combat;
+  const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+  const ownActivationOpen = Boolean(
+    activeUnit &&
+      activeUnit.controllerId === playerId &&
+      !activeUnit.activatedThisRound &&
+      !activeUnit.attackedThisActivation
+  );
 
   for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
@@ -495,7 +587,18 @@ function addSpellActions(
       continue;
     }
 
+    // Attack-window instants and "OR" spells route through the card plays.
+    if (card.trigger || card.effect.type === "CHOOSE_ONE" || card.timing === "map") {
+      continue;
+    }
+
     if (!isPhaseAllowedForCard(state, card)) {
+      continue;
+    }
+
+    // Activation spells need one of your own units active, pre-attack.
+    const needsOwnActivation = card.timing === "combat" || card.timing === "action";
+    if (needsOwnActivation && !ownActivationOpen) {
       continue;
     }
 
@@ -593,25 +696,9 @@ function addPlayableCardActions(
     }
 
     if (card.effect.type === "CHOOSE_ONE") {
-      // Options that carry a trigger wait for their reaction window; the
-      // remaining options (currently card draws) play as direct instants.
-      for (const [optionIndex, option] of card.effect.options.entries()) {
-        if (option.trigger || option.effect.type !== "DRAW_CARDS") {
-          continue;
-        }
-
-        actions.push({
-          label: `${card.name}: ${option.label}`,
-          action: {
-            type: "PLAY_CARD",
-            playerId,
-            cardId,
-            mode: "basic",
-            optionIndex,
-            target: { type: "none" }
-          }
-        });
-      }
+      // Options with a trigger wait for their reaction window; the rest play
+      // directly when their effect makes sense in combat.
+      addOptionPlays(actions, state, playerId, card, cardId, "combat", cards);
       continue;
     }
 
@@ -642,8 +729,166 @@ function addPlayableCardActions(
   }
 }
 
+/** Effects an "OR" option may resolve directly in the given context. */
+function isOptionEffectPlayable(
+  state: GameState,
+  playerId: PlayerId,
+  effect: ConcreteEffect,
+  context: "combat" | "map"
+): boolean {
+  switch (effect.type) {
+    case "DRAW_CARDS":
+    case "GAIN_RESOURCES":
+    case "GAIN_MORALE":
+    case "ENEMY_MORALE_STRIP":
+    case "ROLL_FOR_MORALE":
+    case "RANDOM_ENEMY_DISCARD":
+    case "GAIN_EXPERT_USE":
+    case "CREATE_ACTIVE_EFFECT":
+      return true;
+    case "TAKE_FROM_DISCARD": {
+      if (context !== "map" || !state.adventure) {
+        return false;
+      }
+      const player = state.players[playerId];
+      const pool = effect.fromTop ? (player?.discard.slice(-effect.fromTop) ?? []) : (player?.discard ?? []);
+      return pool.some((cardId) => {
+        const kind = cardLibrary[cardId]?.kind;
+        if (effect.filter === "spell") {
+          return kind === "spell";
+        }
+        if (effect.filter === "non-artifact") {
+          return kind !== "artifact";
+        }
+        return true;
+      });
+    }
+    case "CARD_DECK_SEARCH":
+    case "EAGLE_EYE_DIG":
+    case "TELEPORT_HERO_TO_TOWN":
+    case "DISCOVER_TILE_CARD":
+    case "GAIN_HERO_MOVEMENT":
+      return context === "map" && Boolean(state.adventure);
+    case "CREATE_INITIATIVE_BUFF":
+    case "CREATE_ATTACK_BUFF":
+    case "CREATE_DEFENSE_BUFF":
+    case "ADD_UNIT_MAX_HEALTH":
+    case "HEAL_DAMAGE":
+      return context === "combat" && Boolean(state.combat);
+    default:
+      return false;
+  }
+}
+
+/** Whether the option's effect needs a unit on the battlefield as target. */
+function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
+  return (
+    effect.type === "CREATE_INITIATIVE_BUFF" ||
+    effect.type === "CREATE_ATTACK_BUFF" ||
+    effect.type === "CREATE_DEFENSE_BUFF" ||
+    effect.type === "ADD_UNIT_MAX_HEALTH" ||
+    effect.type === "HEAL_DAMAGE"
+  );
+}
+
+/**
+ * Direct plays of "OR" card options outside reaction windows — Estates'
+ * gold, Logistics' ongoing step, an artifact's "Remove this card: gain 6
+ * gold", Boots of Speed's initiative side, and so on.
+ */
+function addOptionPlays(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition,
+  cardId: string,
+  context: "combat" | "map",
+  cards: CardLibrary
+): void {
+  if (card.effect.type !== "CHOOSE_ONE") {
+    return;
+  }
+
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+
+  // Spell "OR" cards (Prayer) still respect the combat spell limit.
+  if (card.kind === "spell" && state.combat && player.combatStats.spellsCastThisRound >= spellLimitFor(state, player)) {
+    return;
+  }
+
+  for (const [optionIndex, option] of card.effect.options.entries()) {
+    if (option.trigger) {
+      continue;
+    }
+    if (option.mapOnly && context !== "map") {
+      continue;
+    }
+    if (!isOptionEffectPlayable(state, playerId, option.effect, context)) {
+      continue;
+    }
+    if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
+      continue;
+    }
+
+    const modes: CardPlayMode[] = option.expertOnly
+      ? expertUsesAvailable(player) > 0
+        ? ["expert"]
+        : []
+      : effectSupportsExpertOption(option.effect) && expertUsesAvailable(player) > 0
+        ? ["basic", "expert"]
+        : ["basic"];
+
+    const targets = optionNeedsUnitTarget(option.effect)
+      ? getTargetsForCard(state, playerId, cardId, cards)
+      : [{ type: "none" } as TargetRef];
+
+    for (const mode of modes) {
+      for (const target of targets) {
+        actions.push({
+          label: `${card.name}: ${option.label}${mode === "expert" && !option.expertOnly ? " (expert)" : ""}`,
+          action: {
+            type: "PLAY_CARD",
+            playerId,
+            cardId,
+            mode,
+            optionIndex,
+            target
+          }
+        });
+      }
+    }
+  }
+}
+
+/** Expert sides of option effects playable outside reaction windows. */
+function effectSupportsExpertOption(effect: ConcreteEffect): boolean {
+  if (effect.type === "DRAW_CARDS") {
+    return effect.expertAmount !== undefined;
+  }
+  if (effect.type === "GAIN_RESOURCES") {
+    return effect.expertGain !== undefined;
+  }
+  if (effect.type === "GAIN_HERO_MOVEMENT") {
+    return effect.expertAmount !== undefined;
+  }
+  if (effect.type === "GAIN_MORALE") {
+    return effect.expertDrawCards !== undefined;
+  }
+  if (effect.type === "CREATE_ACTIVE_EFFECT") {
+    return Boolean(effect.expertEffect);
+  }
+  // Eagle Eye: the expert play digs for an Expert spell instead.
+  if (effect.type === "EAGLE_EYE_DIG") {
+    return true;
+  }
+  return false;
+}
+
 /** Effects that do something useful when played on the adventure map. */
-function isMapPlayableEffect(card: CardDefinition, effect: ConcreteEffect): boolean {
+function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDefinition, effect: ConcreteEffect): boolean {
   if (card.timing === "map") {
     return true;
   }
@@ -652,16 +897,45 @@ function isMapPlayableEffect(card: CardDefinition, effect: ConcreteEffect): bool
     return true;
   }
 
+  // Offense/Armorer: "may be played outside Combat just for the draw."
+  if (effect.type === "ADD_COMBAT_STAT" && effect.drawCards) {
+    return true;
+  }
+
+  if (
+    effect.type === "GAIN_RESOURCES" ||
+    effect.type === "ENEMY_MORALE_STRIP" ||
+    effect.type === "ROLL_FOR_MORALE" ||
+    effect.type === "RANDOM_ENEMY_DISCARD" ||
+    effect.type === "GAIN_EXPERT_USE"
+  ) {
+    return true;
+  }
+
+  if (isOptionEffectPlayable(state, playerId, effect, "map") && effect.type !== "CREATE_ACTIVE_EFFECT") {
+    return true;
+  }
+
   return (
     effect.type === "CREATE_ACTIVE_EFFECT" &&
-    effect.effect.modifiers.some((modifier) => modifier.type === "ADVENTURE_DIE_REROLL")
+    effect.effect.modifiers.some(
+      (modifier) =>
+        modifier.type === "ADVENTURE_DIE_REROLL" ||
+        modifier.type === "SEARCH_COUNT_OVERRIDE" ||
+        modifier.type === "SEARCH_REPEAT_ONCE" ||
+        modifier.type === "SPELL_SCHOOL_FETCH" ||
+        modifier.type === "RECRUIT_DISCOUNT" ||
+        modifier.type === "END_TURN_ADJACENT_MOVE" ||
+        modifier.type === "HERO_MOVE_THROUGH"
+    )
   );
 }
 
 /**
  * Cards playable during your own map turn, outside combat: Instant and
- * Ongoing cards (e.g. Luck before rolling treasure dice) plus Map effects.
- * Map-timed cards can never be used during combat.
+ * Ongoing cards (Luck before dice, Estates' gold, Scouting before a search,
+ * Eagle Eye, map spells like Town Portal…). Map-timed cards can never be
+ * used during combat.
  */
 function addTurnCardActions(
   actions: LegalAction[],
@@ -676,7 +950,7 @@ function addTurnCardActions(
 
   for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
-    if (!card || card.kind === "spell" || card.implementationStatus !== "implemented") {
+    if (!card || card.implementationStatus !== "implemented") {
       continue;
     }
 
@@ -690,7 +964,15 @@ function addTurnCardActions(
       continue;
     }
 
-    if (card.trigger) {
+    // Trigger cards wait for their windows — except Offense/Armorer, which
+    // the wiki allows playing outside Combat just for the card draw.
+    const drawOnly = card.effect.type === "ADD_COMBAT_STAT" && Boolean(card.effect.drawCards);
+    if (card.trigger && !drawOnly) {
+      continue;
+    }
+
+    // Spells only reach the map when printed as Map effects (Town Portal).
+    if (card.kind === "spell" && card.timing !== "map") {
       continue;
     }
 
@@ -699,28 +981,23 @@ function addTurnCardActions(
     }
 
     if (card.effect.type === "CHOOSE_ONE") {
-      for (const [optionIndex, option] of card.effect.options.entries()) {
-        if (option.trigger || option.effect.type !== "DRAW_CARDS") {
-          continue;
-        }
-
-        actions.push({
-          label: `${card.name}: ${option.label}`,
-          action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", optionIndex, target: { type: "none" } }
-        });
-      }
+      addOptionPlays(actions, state, playerId, card, cardId, "map", cards);
       continue;
     }
 
     const effect = card.effect;
-    if (!isMapPlayableEffect(card, effect)) {
+    if (!isMapPlayableEffect(state, playerId, card, effect)) {
       continue;
     }
 
-    actions.push({
-      label: `Play ${card.name}`,
-      action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
-    });
+    const modes: CardPlayMode[] =
+      effectSupportsExpertOption(effect) && expertUsesAvailable(player) > 0 ? ["basic", "expert"] : ["basic"];
+    for (const mode of modes) {
+      actions.push({
+        label: `Play ${card.name}${mode === "expert" ? " (expert)" : ""}`,
+        action: { type: "PLAY_CARD", playerId, cardId, mode, target: { type: "none" } }
+      });
+    }
   }
 }
 
@@ -1067,10 +1344,10 @@ export function getLegalActions(
       const verb =
         choice.kind === "second-attack"
           ? `${choice.abilityName}: attack`
-          : choice.kind === "flat-damage"
+          : choice.kind === "flat-damage" || choice.kind === "spell-splash"
             ? `${choice.abilityName}: hit`
             : "Neutrals attack";
-      return choice.candidateUnitIds.flatMap((unitId) => {
+      const targetActions = choice.candidateUnitIds.flatMap((unitId) => {
         const unit = state.combat?.units[unitId];
         if (!unit || !isUnitAlive(unit)) {
           return [];
@@ -1087,6 +1364,21 @@ export function getLegalActions(
           } satisfies LegalAction
         ];
       });
+
+      // Fireball's second space may be left empty.
+      if (choice.optional) {
+        targetActions.push({
+          label: "Skip (no second target)",
+          action: {
+            type: "CHOOSE_ABILITY_TARGET",
+            playerId,
+            choiceId: choice.id,
+            targetUnitId: "skip"
+          }
+        });
+      }
+
+      return targetActions;
     }
 
     const actions: LegalAction[] = state.pendingChoice.candidates.map((candidate, candidateIndex) => ({
@@ -1210,6 +1502,12 @@ export function getLegalReactionsForTrigger(
   const result: Record<PlayerId, LegalAction[]> = {};
 
   for (const player of Object.values(state.players)) {
+    const expertUsesLeft =
+      player.limits.expertUses +
+      (player.combatStats.expertUseBonusThisRound ?? 0) -
+      player.combatStats.expertUsesSpentThisRound;
+    const spellLimitLeft = spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
+
     const reactions = [...new Set(player.hand)].flatMap((cardId) => {
       const card = cards[cardId];
       // Permanents join reaction windows only through their printed expert
@@ -1221,16 +1519,32 @@ export function getLegalReactionsForTrigger(
         return [];
       }
 
+      // Spell instants respect the one-Spell-per-combat-round limit.
+      if (card.kind === "spell" && spellLimitLeft <= 0) {
+        return [];
+      }
+
       const actions: LegalAction[] = [];
 
       for (const variant of getCardPlayVariants(card)) {
-        if (!variantMatchesTrigger(variant, triggerEvent, player.id)) {
+        if (variant.mapOnly || !variantMatchesTrigger(variant, triggerEvent, player.id)) {
+          continue;
+        }
+
+        if (!canAffordCardCost(state, player.id, cardId, variant.cost)) {
           continue;
         }
 
         const variantName = variant.optionLabel ? `${card.name}: ${variant.optionLabel}` : card.name;
 
-        if (!card.permanent && isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic")) {
+        // Permanents only join reaction windows through their expert side
+        // (School of Magic from hand); their basic side is the enter-play
+        // action outside reaction windows.
+        if (
+          !variant.expertOnly &&
+          !card.permanent &&
+          isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic")
+        ) {
           actions.push(
             makeReactionAction(variantName, {
               type: "PLAY_REACTION",
@@ -1243,8 +1557,8 @@ export function getLegalReactionsForTrigger(
         }
 
         if (
-          effectHasExpertMode(variant.effect) &&
-          player.combatStats.expertUsesSpentThisRound < player.limits.expertUses &&
+          (effectHasExpertMode(variant.effect) || variant.expertOnly) &&
+          expertUsesLeft > 0 &&
           isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "expert")
         ) {
           actions.push(
@@ -1267,6 +1581,30 @@ export function getLegalReactionsForTrigger(
     const fieldExpert = getPermanentFieldExpertAction(state, player.id, triggerEvent, cards);
     if (fieldExpert) {
       reactions.push(fieldExpert);
+    }
+
+    // The printed alternative bottom effect: discard any Spell card for
+    // +1 Power — toward your own cast, or paired with a spell instant in an
+    // attack window (the batch validator enforces the pairing).
+    const boostLegal =
+      triggerEvent.type === "SPELL_CAST_STARTED"
+        ? triggerEvent.playerId === player.id
+        : isCombatParticipant(state, player.id);
+    if (boostLegal) {
+      for (const cardId of new Set(player.hand)) {
+        const card = cards[cardId];
+        if (card?.kind === "spell") {
+          reactions.push(
+            makeReactionAction(`Discard ${card.name}: +1 Power`, {
+              type: "PLAY_REACTION",
+              playerId: player.id,
+              cardId,
+              mode: "basic",
+              asPowerBoost: true
+            })
+          );
+        }
+      }
     }
 
     if (reactions.length > 0) {
@@ -1324,13 +1662,19 @@ function variantMatchesTrigger(
   playerId: PlayerId
 ): boolean {
   if (!variant.trigger) {
-    // Trigger-free instants (currently card draws) may be slotted into any
-    // open timing window, mirroring how instants work at the table.
+    // Trigger-free instants (card draws) may be slotted into any open timing
+    // window, mirroring how instants work at the table.
     return variant.effect.type === "DRAW_CARDS";
   }
 
   if (variant.trigger.event !== triggerEvent.type) {
-    return false;
+    // Power plays declared on a SPELL_CAST trigger may also be paid into an
+    // attack window, fueling a spell instant in the same declaration.
+    return (
+      triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
+      variant.trigger.event === "SPELL_CAST_STARTED" &&
+      variant.effect.type === "ADD_SPELL_POWER"
+    );
   }
 
   const isSelf = triggerEvent.playerId === playerId;
@@ -1402,10 +1746,20 @@ export function isEffectLegalForTrigger(
 
   if (triggerEvent.type === "SPELL_CAST_STARTED") {
     if (effect.type === "ADD_SPELL_POWER") {
-      // Spell power may only be buffed one time per cast, unlike attack and
-      // defense buffs that can keep going back and forth between players.
-      const stackItem = getPendingStackItem(state, triggerEvent);
-      return triggerEvent.playerId === playerId && (stackItem?.modifiers.spellPowerBonus ?? 0) === 0;
+      if (triggerEvent.playerId !== playerId) {
+        return false;
+      }
+
+      // Elemental Magic boosts only empower their own school.
+      if (effect.schoolOnly) {
+        const stackItem = getPendingStackItem(state, triggerEvent);
+        const pendingSpell =
+          stackItem?.action.type === "CAST_SPELL" ? cardLibrary[stackItem.action.cardId] : undefined;
+        const schools = pendingSpell?.spellSchools ?? [];
+        return schools.includes(effect.schoolOnly) || schools.includes("any");
+      }
+
+      return true;
     }
 
     if (effect.type === "CANCEL_SPELL") {
@@ -1462,15 +1816,43 @@ export function isEffectLegalForTrigger(
       });
     }
 
+    // Bless: "the selected ground or flying unit" ignores the die — only the
+    // attacker's controller plays it, and never on a ranged shot.
+    if (effect.type === "IGNORE_ATTACK_DIE") {
+      return attacker.controllerId === playerId && attacker.type !== "ranged";
+    }
+
+    // Power may be paid into an attack window so a spell instant in the same
+    // declaration can consume it (the batch validator enforces the pairing).
+    if (effect.type === "ADD_SPELL_POWER") {
+      return !effect.schoolOnly && (attacker.controllerId === playerId || defender.controllerId === playerId);
+    }
+
     if (effect.type !== "ADD_COMBAT_STAT") {
       return false;
     }
 
-    if (effect.stat === "attack") {
-      return attacker.controllerId === playerId;
+    // Curse (−defense) is played by the attacker against the defender;
+    // Weakness (−attack) by the defender against the attacker. Positive
+    // bonuses belong to the unit's own side as before.
+    const benefitsAttacker = effect.stat === "attack" ? effect.amount >= 0 : effect.amount < 0;
+    const owner = benefitsAttacker ? attacker : defender;
+    if (owner.controllerId !== playerId) {
+      return false;
     }
 
-    return defender.controllerId === playerId;
+    // Bloodlust/Precision/Golden Bow restrict the unit types they boost.
+    const affected = effect.stat === "attack" ? attacker : defender;
+    if (effect.unitTypes && !effect.unitTypes.includes(affected.type)) {
+      return false;
+    }
+
+    // Precision: only on a ranged (non-adjacent) shot.
+    if (effect.ignoreRangedPenalty && triggerEvent.attackKind !== "ranged") {
+      return false;
+    }
+
+    return true;
   }
 
   return false;
@@ -1821,11 +2203,55 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       .map((buildingId) => coreBuildingDefinitions[buildingId])
       .find((building) => building?.effect?.type === "MAGE_GUILD");
     const cost = mageGuild?.spellBookCost ?? 5;
-    if (player.mageGuildBuiltRound !== state.round && player.resources.gold >= cost) {
+    if (player.mageGuildBuiltRound !== state.round) {
+      if (player.resources.gold >= cost) {
+        actions.push({
+          label: `Buy spells (${cost} gold, Search 2)`,
+          action: { type: "SPELL_BOOK_ACTION", playerId }
+        });
+      }
+
+      // Wisdom rides on the purchase: cheaper spells and a bigger search.
+      const ruleset = getRuleset(state);
+      const wisdomCardId = player.hand.find((cardId) => cardLibrary[cardId]?.name === "Wisdom");
+      if (wisdomCardId) {
+        const basicCost = Math.max(0, cost - wisdomGoldDiscount(ruleset, "basic"));
+        if (player.resources.gold >= basicCost) {
+          actions.push({
+            label: `Buy spells with Wisdom (${basicCost} gold, Search ${wisdomSearchCount("basic")})`,
+            action: { type: "SPELL_BOOK_ACTION", playerId, wisdom: { cardId: wisdomCardId, mode: "basic" } }
+          });
+        }
+
+        const expertCost = Math.max(0, cost - wisdomGoldDiscount(ruleset, "expert"));
+        if (expertUsesAvailable(player) > 0 && player.resources.gold >= expertCost) {
+          actions.push({
+            label: `Buy spells with expert Wisdom (${expertCost} gold, Search ${wisdomSearchCount("expert")})`,
+            action: { type: "SPELL_BOOK_ACTION", playerId, wisdom: { cardId: wisdomCardId, mode: "expert" } }
+          });
+        }
+      }
+    }
+  }
+
+  // Blacksmith: once per turn, search Artifacts for gold or sell one.
+  const smith = town.buildings
+    .map((buildingId) => coreBuildingDefinitions[buildingId])
+    .find((building) => building?.effect?.type === "ARTIFACT_SMITH");
+  if (smith?.effect?.type === "ARTIFACT_SMITH" && player.blacksmithUsedRound !== state.round) {
+    if (player.resources.gold >= smith.effect.searchCost) {
       actions.push({
-        label: `Buy spells (${cost} gold, Search 2)`,
-        action: { type: "SPELL_BOOK_ACTION", playerId }
+        label: `Blacksmith: pay ${smith.effect.searchCost} gold, Search (2) Artifacts`,
+        action: { type: "BLACKSMITH_ACTION", playerId, option: "search" }
       });
+    }
+    for (const cardId of new Set(player.hand)) {
+      if (cardLibrary[cardId]?.kind === "artifact") {
+        actions.push({
+          label: `Blacksmith: sell ${cardLibrary[cardId]?.name} for ${smith.effect.sellGold} gold`,
+          action: { type: "BLACKSMITH_ACTION", playerId, option: "sell", artifactCardId: cardId }
+        });
+      }
     }
   }
 

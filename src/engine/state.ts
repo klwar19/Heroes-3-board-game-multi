@@ -24,6 +24,16 @@ export type GamePhase =
 
 export type GameMode = "combat-sandbox" | "adventure";
 export type GameDifficulty = "easy" | "normal" | "hard" | "impossible";
+/**
+ * Rules variant chosen in the lobby:
+ *  - "legacy": the community rulebook as printed (single Spell/Artifact decks,
+ *    printed card values).
+ *  - "binh": the BINH house-rule mode — split Basic/Expert Spell decks and
+ *    Minor/Major/Relic Artifact decks with level/map gating, Wisdom expert
+ *    discount 3, Estates 2/4 gold, Griffin and Marksmen stat tweaks, and the
+ *    Pack of Cerberi attacking every adjacent enemy with full attacks.
+ */
+export type GameRuleset = "legacy" | "binh";
 export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon";
 
 export type TargetRef = { type: "unit"; unitId: UnitId } | { type: "none" };
@@ -102,10 +112,64 @@ export type ActiveEffectModifier =
     }
   | {
       /**
-       * Ammo Cart: the affected ranged units ignore the ranged-attack
-       * penalties (adjacent shots and opposite-back-row shots roll normally).
+       * Ammo Cart: the affected ranged units ignore every ranged-attack
+       * penalty (adjacent shots and opposite-back-row shots roll normally).
        */
-      type: "RANGED_IGNORE_PENALTIES";
+      type: "RANGED_IGNORE_ALL_PENALTIES";
+    }
+  | {
+      /** Haste / Slow / Cape of Velocity: shifts a unit's activation order. */
+      type: "INITIATIVE_BONUS";
+      amount: number;
+    }
+  | {
+      /** Anti-Magic: the unit cannot be targeted by spells (up to a tier). */
+      type: "UNIT_SPELL_IMMUNE";
+      maxGrade: UnitGrade;
+    }
+  | {
+      /** Fire Shield: adjacent attackers take damage after their attack. */
+      type: "FIRE_SHIELD";
+      amount: number;
+    }
+  | {
+      /** Legion artifacts: the next recruit/reinforce costs less gold. */
+      type: "RECRUIT_DISCOUNT";
+      amount: number;
+    }
+  | {
+      /** Scouting: the next Search(X) becomes Search(count). Consumed on use. */
+      type: "SEARCH_COUNT_OVERRIDE";
+      count: number;
+    }
+  | {
+      /** Pendant of Courage: repeat the next Search action once. */
+      type: "SEARCH_REPEAT_ONCE";
+    }
+  | {
+      /**
+       * Basic Air/Earth/Fire/Water Magic (permanent): instead of searching a
+       * Spell deck, fetch its first spell of this school.
+       */
+      type: "SPELL_SCHOOL_FETCH";
+      school: SpellSchool;
+    }
+  | {
+      /** Necklace of Dragonteeth: extra Spell cards per combat round. */
+      type: "SPELL_LIMIT_BONUS";
+      amount: number;
+    }
+  | {
+      /** Angel Wings: walk through fields without resolving them this turn. */
+      type: "HERO_MOVE_THROUGH";
+    }
+  | {
+      /** Logistics (basic): step to an adjacent empty field at end of turn. */
+      type: "END_TURN_ADJACENT_MOVE";
+    }
+  | {
+      /** Golden Bow: your ranged units ignore the long-range penalty. */
+      type: "RANGED_IGNORE_PENALTY";
     };
 
 export type ActiveEffectDefinition = {
@@ -152,6 +216,18 @@ export type EffectDefinition =
       stat: "attack" | "defense";
       amount: number;
       expertAmount?: number;
+      /** Spell instants (Bloodlust, Stone Skin…): amount scales with Power. */
+      amountByPower?: Record<number, number>;
+      /** Sword of Judgement style: +1 per card paid via the option's cost. */
+      perCostCard?: number;
+      /** Offense/Armorer: "Then draw 1 card." */
+      drawCards?: number;
+      /** Sword of Hellfire / Shield of the Damned: the unit also takes damage. */
+      selfDamage?: number;
+      /** Bloodlust/Golden Bow: only these unit types may receive the bonus. */
+      unitTypes?: UnitType[];
+      /** Precision: the shot also ignores the ranged combat penalty. */
+      ignoreRangedPenalty?: boolean;
       /** Hero specialties: the bonus doubles when the named unit is involved. */
       doubleForUnitName?: string;
     }
@@ -174,8 +250,126 @@ export type EffectDefinition =
       initiative: number;
       cardImage?: string;
     }
-  | { type: "ADD_SPELL_POWER"; amount: number; expertAmount?: number; drawCards?: number }
+  | {
+      type: "ADD_SPELL_POWER";
+      amount: number;
+      expertAmount?: number;
+      drawCards?: number;
+      /** Breastplate of Brimstone: +1 more per card paid via the cost. */
+      perCostCard?: number;
+      /** Elemental Magic abilities: only spells of this school qualify. */
+      schoolOnly?: SpellSchool;
+    }
   | { type: "GAIN_MORALE"; amount: number; expertDrawCards?: number }
+  | {
+      /** Estates, gold/resource artifacts: gain resources immediately. */
+      type: "GAIN_RESOURCES";
+      gain: ResourceCost;
+      expertGain?: ResourceCost;
+    }
+  | {
+      /** Logistics expert, Boots of Speed: the main hero gains movement. */
+      type: "GAIN_HERO_MOVEMENT";
+      amount: number;
+      expertAmount?: number;
+      /** Angel Wings: also walk through fields without resolving this turn. */
+      moveThroughThisTurn?: boolean;
+    }
+  | {
+      /** Helm of Heavenly Enlightenment: an extra expert use this round. */
+      type: "GAIN_EXPERT_USE";
+      amount: number;
+    }
+  | {
+      /**
+       * Scholar (basic), Rib Cage, Crown of Dragontooth, Skull Helmet,
+       * Mystic Orb: pick card(s) from your discard pile into hand.
+       */
+      type: "TAKE_FROM_DISCARD";
+      count: number;
+      filter?: "spell" | "non-artifact";
+      /** Only the top N discard cards qualify (Mystic Orb of Mana). */
+      fromTop?: number;
+      /** Rib Cage: shuffle the rest of the discard pile into the deck. */
+      shuffleRestIntoDeck?: boolean;
+    }
+  | {
+      /** Card-driven Search (Breastplate of Brimstone, Crown of Dragontooth). */
+      type: "CARD_DECK_SEARCH";
+      deck: "spells" | "artifacts" | "abilities";
+      count: number;
+    }
+  | {
+      /** Dragon Wing Tabard: discard random card(s) from the enemy hand. */
+      type: "RANDOM_ENEMY_DISCARD";
+      count: number;
+    }
+  | {
+      /** Hourglass of the Evil Hour: a positive enemy loses morale. */
+      type: "ENEMY_MORALE_STRIP";
+    }
+  | {
+      /** Hourglass option 2: roll the Attack die; gain morale on the result. */
+      type: "ROLL_FOR_MORALE";
+      onRoll: number;
+    }
+  | {
+      /**
+       * Eagle Eye: dig the Spell deck for the first Basic (basic play) or
+       * Expert (expert play) spell; take it or discard it; reshuffle.
+       */
+      type: "EAGLE_EYE_DIG";
+    }
+  | {
+      /** Town Portal: move the hero to a controlled town or settlement. */
+      type: "TELEPORT_HERO_TO_TOWN";
+    }
+  | {
+      /** Speculum: discover a face-down tile adjacent to the hero's tile. */
+      type: "DISCOVER_TILE_CARD";
+    }
+  | {
+      /** Counterstrike: clear the retaliation marker of one of your units. */
+      type: "CLEAR_RETALIATION";
+      gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /** Bless: ignore the Attack die; higher Power adds attack on top. */
+      type: "IGNORE_ATTACK_DIE";
+      attackBonusByPower?: Record<number, number>;
+    }
+  | {
+      /** Anti-Magic: spell immunity for a unit (tier rises with Power). */
+      type: "CREATE_SPELL_IMMUNITY";
+      gradeByPower: Record<number, UnitGrade>;
+      duration: EffectDurationDefinition;
+    }
+  | {
+      /** Fire Shield: adjacent attackers take damage this combat round. */
+      type: "CREATE_FIRE_SHIELD";
+      amountByPower: Record<number, number>;
+      duration: EffectDurationDefinition;
+    }
+  | {
+      /** Haste / Slow / initiative artifacts: a lasting initiative shift. */
+      type: "CREATE_INITIATIVE_BUFF";
+      name: string;
+      amount?: number;
+      amountByPower?: Record<number, number>;
+      duration: EffectDurationDefinition;
+      polarity?: "positive" | "negative" | "neutral";
+      removable?: boolean;
+    }
+  | {
+      /** Vial of Lifeblood: +1 printed HP for this combat. */
+      type: "ADD_UNIT_MAX_HEALTH";
+      amount: number;
+    }
+  | {
+      /** Fireball: spell damage to the target and one unit adjacent to it. */
+      type: "AREA_DAMAGE_ADJACENT";
+      amountByPower: Record<number, number>;
+    }
   | {
       type: "CREATE_ACTIVE_EFFECT";
       effect: ActiveEffectDefinition;
@@ -211,6 +405,8 @@ export type EffectDefinition =
   | {
       type: "RECALL_SPELL";
       expertSpellLimitBonus?: number;
+      /** Mysticism expert: also recall every card played with the spell. */
+      expertRecallPlayedCards?: boolean;
     }
   | {
       /**
@@ -219,6 +415,24 @@ export type EffectDefinition =
        */
       type: "ENTER_PLAY";
     };
+
+/**
+ * Extra price printed on a card option: "Discard N cards to…", "Remove this
+ * card, then…", "Remove 1 Spell from hand, then…". Paid via the action's
+ * `costCardIds` (the chosen cards from hand).
+ */
+export type CardPlayCost = {
+  /** The played card is removed from the game instead of discarded. */
+  removeSelf?: boolean;
+  /** Discard exactly this many other cards from hand. */
+  discardCards?: number;
+  /** Discard any number up to this many (effects may scale per card). */
+  discardCardsUpTo?: number;
+  /** The discarded/removed cards must match this filter. */
+  costCardFilter?: "spell";
+  /** Cost cards are removed from the game rather than discarded. */
+  removeCostCards?: boolean;
+};
 
 export type TriggerDefinition = {
   event: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED";
@@ -268,6 +482,12 @@ export type PermanentEffectDefinition = {
 export type CardOptionDefinition = {
   label: string;
   trigger?: TriggerDefinition;
+  /** Printed extra price of this option (discard/remove cards). */
+  cost?: CardPlayCost;
+  /** This option may only be played outside combat (map effects). */
+  mapOnly?: boolean;
+  /** This option is the card's expert side: playing it spends a crown. */
+  expertOnly?: boolean;
   effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
 };
 
@@ -335,9 +555,23 @@ export type ReactionPlay = {
   cardId: CardId;
   mode?: CardPlayMode;
   optionIndex?: number;
+  /** Cards from hand paying the option's printed discard/remove cost. */
+  costCardIds?: CardId[];
+  /** Play this Spell card for its alternative "+1 Power" bottom effect. */
+  asPowerBoost?: boolean;
 };
 
-export type DeckSearchPick = { kind: "revealed"; index: number } | { kind: "discard-top" };
+export type DeckSearchPick =
+  | { kind: "revealed"; index: number }
+  | { kind: "discard-top" }
+  | {
+      /**
+       * Basic X Magic: instead of the search, return the revealed cards and
+       * fetch the deck's first spell of this school, then reshuffle.
+       */
+      kind: "school-fetch";
+      school: SpellSchool;
+    };
 
 export type GameAction =
   | { type: "CAST_SPELL"; playerId: PlayerId; cardId: CardId; target: TargetRef }
@@ -348,6 +582,8 @@ export type GameAction =
       target?: TargetRef;
       mode?: CardPlayMode;
       optionIndex?: number;
+      /** Cards from hand paying the option's printed discard/remove cost. */
+      costCardIds?: CardId[];
     }
   | {
       type: "ATTACK_UNIT";
@@ -379,7 +615,16 @@ export type GameAction =
   | { type: "COMPLETE_SIMULTANEOUS_TURN"; playerId: PlayerId }
   | { type: "REROLL_PENDING_CHOICE"; playerId: PlayerId; choiceId: string }
   | { type: "CHOOSE_PENDING_ROLL"; playerId: PlayerId; choiceId: string; candidateIndex: number }
-  | { type: "PLAY_REACTION"; playerId: PlayerId; cardId: CardId; mode?: CardPlayMode; optionIndex?: number }
+  | {
+      type: "PLAY_REACTION";
+      playerId: PlayerId;
+      cardId: CardId;
+      mode?: CardPlayMode;
+      optionIndex?: number;
+      costCardIds?: CardId[];
+      /** Discard this Spell card for its alternative "+1 Power" effect. */
+      asPowerBoost?: boolean;
+    }
   | {
       /**
        * Plays several instant cards in one declaration (e.g. two Attack cards
@@ -479,7 +724,26 @@ export type GameAction =
       playerId: PlayerId;
       purchases: { kind: "recruit" | "reinforce"; unitDefId: string; armyUnitId?: string }[];
     }
-  | { type: "SPELL_BOOK_ACTION"; playerId: PlayerId }
+  | {
+      /**
+       * Spell Book token: pay the Mage Guild price to search the Spell deck.
+       * Playing a Wisdom card with it reduces the price (2 gold basic,
+       * 3 gold expert in BINH mode) and upgrades the search to 3/4 cards.
+       */
+      type: "SPELL_BOOK_ACTION";
+      playerId: PlayerId;
+      wisdom?: { cardId: CardId; mode: CardPlayMode };
+    }
+  | {
+      /**
+       * Blacksmith (Castle): once per turn — pay 6 gold to Search (2) the
+       * Artifact deck, or remove an Artifact card from hand for 4 gold.
+       */
+      type: "BLACKSMITH_ACTION";
+      playerId: PlayerId;
+      option: "search" | "sell";
+      artifactCardId?: CardId;
+    }
   | {
       /**
        * Spend the positive morale token: draw 1 card, or discard any number
@@ -1152,6 +1416,10 @@ export type ResolutionStackItem = {
     defenseBonus: number;
     /** Centaur's Axe: multiplies the rolled attack-die outcome (default 1). */
     attackDieMultiplier?: number;
+    /** Bless: the Attack die is not rolled (counts as 0). */
+    ignoreAttackDie?: boolean;
+    /** Precision: this shot ignores the ranged back-row penalty. */
+    ignoreRangedPenalty?: boolean;
     playedCardIds: CardId[];
   };
 };
@@ -1254,9 +1522,13 @@ export type PlayerState = {
     spellsCastThisRound: number;
     spellLimitBonusThisRound: number;
     expertUsesSpentThisRound: number;
+    /** Helm of Heavenly Enlightenment: extra expert uses this round. */
+    expertUseBonusThisRound?: number;
     /** Spells cast since the current adventure turn started (Astrologers hooks). */
     spellsCastThisTurn?: number;
   };
+  /** Round the Blacksmith action was last used ("once per your turn"). */
+  blacksmithUsedRound?: number;
 };
 
 export type CombatUnitState = {
@@ -1346,6 +1618,16 @@ export type AttackSequenceState = {
   attackKind: "melee" | "ranged";
   /** Whether the original target still owes its retaliation attack. */
   retaliationPending: boolean;
+  /**
+   * BINH Cerberi: remaining printed follow-up attacks (one full attack per
+   * adjacent enemy), resolved one at a time before the retaliation.
+   */
+  queuedAbilityAttacks?: {
+    abilityId: string;
+    abilityName: string;
+    baseAttack: number;
+    targetUnitId: UnitId;
+  }[];
 };
 
 export type CombatState = {
@@ -1455,6 +1737,15 @@ export type AdventureReward =
   | { playerId: PlayerId; kind: "shared-deck-search"; deckId: DeckId; count: number }
   | { playerId: PlayerId; kind: "city-hall-choice"; buildingId: BuildingId }
   | {
+      /** Scholar / Rib Cage / Crown of Dragontooth: pick from the discard pile. */
+      playerId: PlayerId;
+      kind: "discard-pick";
+      count: number;
+      filter?: "spell" | "non-artifact";
+      fromTop?: number;
+      shuffleRestIntoDeck?: boolean;
+    }
+  | {
       /** Generic queued interaction resolved through the visit-step machinery. */
       playerId: PlayerId;
       kind: "visit-steps";
@@ -1544,6 +1835,25 @@ export type VisitStep =
   | {
       /** Subterranean Gate: move the hero to the linked gate on an adjacent tile. */
       type: "SUBTERRANEAN_GATE";
+    }
+  | {
+      /** Logistics / Town Portal: place the hero on the field directly. */
+      type: "TELEPORT_HERO";
+      heroId: HeroId;
+      spaceId: MapSpaceId;
+      /** Whether arriving resolves the field like a normal visit. */
+      visit?: boolean;
+    }
+  | {
+      /** Scholar basic / Rib Cage / Crown of Dragontooth: discard-pile pick. */
+      type: "TAKE_DISCARD_CARD";
+      cardId: CardId;
+      shuffleRestIntoDeck?: boolean;
+    }
+  | {
+      /** Consumes a one-shot active effect once its benefit was taken. */
+      type: "CONSUME_EFFECT";
+      effectId: string;
     };
 
 export type AstrologersState = {
@@ -1600,6 +1910,8 @@ export type AdventureState = {
  */
 export type GameSetupOptions = {
   scenarioId: string;
+  /** Rules variant: "legacy" (rulebook) or "binh" (house rules). */
+  ruleset: GameRuleset;
   difficulty: GameDifficulty;
   startingResources: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };
@@ -1685,6 +1997,13 @@ export type PendingChoice =
       /** Cards lifted off the top of the deck; only the searcher may see them. */
       revealedCardIds: CardId[];
       canTakeDiscardTop: boolean;
+      /**
+       * Basic X Magic in play: the search may instead fetch the deck's first
+       * spell of one of these schools (cards are put back and reshuffled).
+       */
+      schoolFetch?: SpellSchool[];
+      /** Pendant of Courage: this search repeats once after it resolves. */
+      repeatSearch?: { deckId: DeckId; count: number };
       returnPhase: GamePhase;
     }
   | {
@@ -1693,7 +2012,19 @@ export type PendingChoice =
       playerId: PlayerId;
       prompt: string;
       options: { label: string }[];
-      context: "city-hall" | "satyr-swap" | "war-machine";
+      context: "city-hall" | "satyr-swap" | "war-machine" | "deck-pick" | "discard-pick" | "eagle-eye";
+      /** deck-pick: the shared-deck search waiting on the deck choice. */
+      deckPick?: { deckIds: DeckId[]; count: number };
+      /** discard-pick: the candidate cards (index-aligned with options). */
+      discardPick?: {
+        cardIds: CardId[];
+        remaining: number;
+        filter?: "spell" | "non-artifact";
+        fromTop?: number;
+        shuffleRestIntoDeck?: boolean;
+      };
+      /** eagle-eye: the dug spell waiting on take/discard. */
+      eagleEye?: { deckId: DeckId; cardId: CardId };
       returnPhase: GamePhase;
     }
   | {
@@ -1708,7 +2039,7 @@ export type PendingChoice =
       id: string;
       type: "ABILITY_TARGET_CHOICE";
       playerId: PlayerId;
-      kind: "flat-damage" | "second-attack" | "neutral-target" | "war-machine";
+      kind: "flat-damage" | "second-attack" | "neutral-target" | "war-machine" | "spell-splash";
       abilityId: string | null;
       abilityName: string;
       prompt: string;
@@ -1721,6 +2052,8 @@ export type PendingChoice =
       amount?: number;
       /** Replacement base attack of the follow-up attack (second-attack kind). */
       baseAttack?: number;
+      /** Fireball's second space may be empty: the choice can be skipped. */
+      optional?: boolean;
     }
   | null;
 
@@ -1728,6 +2061,8 @@ export type GameState = {
   id: string;
   seed: string;
   mode: GameMode;
+  /** Rules variant; absent on snapshots saved before modes existed (= legacy). */
+  ruleset?: GameRuleset;
   round: number;
   phase: GamePhase;
   activePlayerId: PlayerId;
