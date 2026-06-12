@@ -1,24 +1,13 @@
 /**
  * Hot-linked classic HoMM3 imagery for a non-profit fan project.
- * Sources: heroes.thelazy.net (hero portraits, town buildings, resource and
- * morale icons — all URLs verified) and heroes3wog.net (army-management
- * screen used as the statistics art reference). Replace with owned scans
- * before any wider release.
+ * Source: heroes.thelazy.net (town buildings, resource and morale icons —
+ * all URLs verified). Replace with owned scans before any wider release.
+ *
+ * Hero portraits are no longer hot-linked: the classic PC portraits
+ * (heroes.thelazy.net/index.php/Hero_portraits, `Hero_<Name>.png`) are
+ * upscaled and hosted locally as /assets/hero_portraits-<id>.webp, wired
+ * through `HeroDefinition.portrait` in src/data/factions/core.ts.
  */
-
-/** Full-size hero portraits (heroes.thelazy.net/index.php/Hero_portraits). */
-export const HERO_PORTRAITS: Record<string, string> = {
-  catherine: "https://heroes.thelazy.net/images/5/53/Hero_Catherine.png",
-  rion: "https://heroes.thelazy.net/images/d/d4/Hero_Rion.png",
-  sandro: "https://heroes.thelazy.net/images/1/1a/Hero_Sandro.png",
-  tamika: "https://heroes.thelazy.net/images/0/05/Hero_Tamika.png",
-  gelu: "https://heroes.thelazy.net/images/e/e2/Hero_Gelu.png",
-  gem: "https://heroes.thelazy.net/images/c/c8/Hero_Gem.png",
-  xyron: "https://heroes.thelazy.net/images/3/3b/Hero_Xyron.png",
-  rashka: "https://heroes.thelazy.net/images/9/93/Hero_Rashka.png",
-  alamar: "https://heroes.thelazy.net/images/8/85/Hero_Alamar.png",
-  mutare: "https://heroes.thelazy.net/images/6/68/Hero_Mutare.png"
-};
 
 /**
  * Town-screen building renders per faction (heroes.thelazy.net town pages).
@@ -102,7 +91,3 @@ export const MORALE_ICONS = {
   negative: "https://heroes.thelazy.net/images/8/87/Morale-1.gif",
   neutral: "https://heroes.thelazy.net/images/a/a7/MoraleN.gif"
 } as const;
-
-/** HD-mod army management screen (statistics/XP art reference). */
-export const WOG_ARMY_MANAGEMENT_IMAGE =
-  "https://heroes3wog.net/wp-content/uploads/2020/04/hd_mod_army_management.png";

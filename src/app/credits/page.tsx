@@ -10,8 +10,10 @@ export default function CreditsPage() {
           World Computing, or Archon Studio unless separately stated.
         </p>
         <p>
-          Card and unit images are loaded from the community wiki/database by remote URL for development
-          reference. They are not copied into this repository.
+          Card scans and hero board scans come from the community wiki/database; the classic hero
+          portraits come from the Heroes 3 wiki at heroes.thelazy.net (Hero portraits page). Both are
+          hosted locally for development reference in this non-profit fan prototype. Some town-building
+          and icon imagery is still loaded by remote URL.
         </p>
         <p>
           The combat board terrain texture is original generated project art created for this prototype.
@@ -75,6 +77,14 @@ export default function CreditsPage() {
             <a href="https://mightandmagic.fandom.com/wiki/Heroes_of_Might_and_Magic_III%3A_The_Board_Game">
               Might and Magic Fandom overview
             </a>
+          </li>
+          <li>
+            <a href="https://heroes.thelazy.net/index.php/Hero_portraits">
+              Classic hero portraits (heroes.thelazy.net)
+            </a>
+          </li>
+          <li>
+            <a href="https://en.homm3bg.wiki/heroes/">Wiki heroes reference (boards and specialties)</a>
           </li>
         </ul>
       </section>

@@ -6,7 +6,6 @@ import { Anchor, Crown, Layers, Search, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
 import { getDeckBack } from "@/data/decks";
-import { coreHeroDefinitions } from "@/data/factions/core";
 import {
   describeCardEffect,
   describePermanentEffect,
@@ -430,71 +429,6 @@ export function PlayerDock({
         </span>
       </div>
     </div>
-  );
-}
-
-/**
- * Hero card for the battle simulator: portrait, class, level, the four
- * statistics and the hero's specialty cards (click a specialty to read it).
- */
-export function HeroPanel({ state, playerId }: { state: GameState; playerId: PlayerId }) {
-  const { zoomCard } = useCardZoom();
-  const player = state.players[playerId];
-  const hero = Object.values(state.heroes).find(
-    (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
-  );
-  const heroDef = player?.heroDefId ? coreHeroDefinitions[player.heroDefId] : undefined;
-
-  if (!player || !hero || !heroDef) {
-    return null;
-  }
-
-  const specialtyIds = Object.entries(heroDef.specialtyCardIds)
-    .filter(([level]) => Number(level) <= hero.level)
-    .map(([, cardId]) => cardId);
-
-  return (
-    <section className="heroPanel" aria-label={`${heroDef.name} hero board`}>
-      {heroDef.portrait ? (
-        <img
-          alt={`${heroDef.name} portrait`}
-          className="heroPortrait"
-          loading="eager"
-          referrerPolicy="no-referrer"
-          src={heroDef.portrait}
-        />
-      ) : null}
-      <div className="heroPanelBody">
-        <strong>{heroDef.name}</strong>
-        <span className="heroClass">
-          {heroDef.class} · Level {hero.level}
-        </span>
-        <div className="heroStats" title="Starting statistic cards: Attack / Defense / Power / Knowledge">
-          <span title="Attack statistics">⚔ {heroDef.startingStats.attack}</span>
-          <span title="Defense statistics">🛡 {heroDef.startingStats.defense}</span>
-          <span title="Power statistics">✦ {heroDef.startingStats.power}</span>
-          <span title="Knowledge statistics">📖 {heroDef.startingStats.knowledge}</span>
-        </div>
-        <div className="heroMeta">
-          <span title="Hand limit at this level">
-            <Layers aria-hidden="true" size={12} /> {player.limits.hand} hand
-          </span>
-          <span title="Expert-effect crowns per combat round">
-            <Crown aria-hidden="true" size={12} /> {player.limits.expertUses} crowns
-          </span>
-        </div>
-        {specialtyIds.length > 0 ? (
-          <div className="heroSpecialties" aria-label="Specialty cards">
-            {specialtyIds.map((cardId) => (
-              <button key={cardId} onClick={() => zoomCard(cardId)} title="Read specialty card" type="button">
-                <Sparkles aria-hidden="true" size={11} />
-                <span>{cardName(cardId)}</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </div>
-    </section>
   );
 }
 
