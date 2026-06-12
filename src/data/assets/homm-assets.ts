@@ -39,15 +39,14 @@ export const TOWN_BUILDING_IMAGES: Record<string, Record<string, string>> = {
     saplings: "/assets/town/rampart_homestead.gif"
   },
   inferno: {
-    city_hall: "/assets/town/inferno_city_hall_large.gif",
-    citadel: "/assets/town/inferno_citadel_large.gif",
-    mage_guild: "/assets/town/inferno_mage_guild_level_1_large.gif",
-    blacksmith: "/assets/town/inferno_blacksmith_large.gif",
-    dwelling_bronze: "/assets/town/inferno_imp_crucible.gif",
-    dwelling_silver: "/assets/town/inferno_demon_gate.gif",
-    dwelling_gold: "/assets/town/inferno_forsaken_palace.gif",
-    castle_gate: "/assets/town/inferno_castle_gate.gif",
-    brimstone_stormclouds: "/assets/town/inferno_kennels.gif"
+    city_hall: "/assets/town/inferno_city_hall_hd.webp",
+    citadel: "/assets/town/inferno_citadel_hd.webp",
+    mage_guild: "/assets/town/inferno_mage_guild_hd.webp",
+    dwelling_bronze: "/assets/town/inferno_crucible_of_sins_hd.webp",
+    dwelling_silver: "/assets/town/inferno_gates_of_abyss_hd.webp",
+    dwelling_gold: "/assets/town/inferno_hellfire_palace_hd.webp",
+    castle_gate: "/assets/town/inferno_castle_gate_hd.webp",
+    brimstone_stormclouds: "/assets/town/inferno_brimstone_stormclouds_hd.webp"
   },
   necropolis: {
     city_hall: "/assets/town/necropolis_city_hall_large.gif",
