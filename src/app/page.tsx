@@ -59,6 +59,15 @@ import {
   type FxCue
 } from "@/components/table/fx";
 import { abilityFxPlans, cancelFx, spellFxPlans, type SpellFxPlan } from "@/data/fx";
+import {
+  LOCATION_VISIT_SOUNDS,
+  MAP_CUE_SOUNDS,
+  MAP_CUE_VOLUME,
+  MAP_MOVE_VOLUME,
+  TERRAIN_MOVE_SOUNDS,
+  TILE_SOUNDS
+} from "@/data/map-sounds";
+import { allTileDefinitions } from "@/data/map/tiles";
 import { playLibrarySound } from "@/lib/sound";
 import { connectRoom, type GameRoomSnapshot, type RoomConnection } from "@/lib/realtime";
 
@@ -142,6 +151,7 @@ export default function Home() {
   const seenDrawIdsRef = useRef<Set<string>>(new Set());
   const seenFlipIdsRef = useRef<Set<string>>(new Set());
   const seenMoveIdsRef = useRef<Set<string>>(new Set());
+  const seenTileIdsRef = useRef<Set<string>>(new Set());
   const seenFeedIdsRef = useRef<Set<string>>(new Set());
   const seenFxIdsRef = useRef<Set<string>>(new Set());
   const hiddenHandTimerRef = useRef<number | null>(null);
@@ -168,6 +178,10 @@ export default function Home() {
     const moves = nextState.eventLog.filter(
       (event): event is Extract<GameEvent, { type: "HERO_MOVED" }> => event.type === "HERO_MOVED"
     );
+    const tileEvents = nextState.eventLog.filter(
+      (event): event is Extract<GameEvent, { type: "TILE_REVEALED" } | { type: "TILE_PLACED" }> =>
+        event.type === "TILE_REVEALED" || event.type === "TILE_PLACED"
+    );
     const feedEvents = nextState.eventLog.filter((event) => ADVENTURE_FEED_CUES[event.type]);
     const fxEvents = nextState.eventLog.filter((event) => FX_EVENT_TYPES.has(event.type));
 
@@ -176,6 +190,7 @@ export default function Home() {
       seenDrawIdsRef.current = new Set(draws.map((event) => event.id));
       seenFlipIdsRef.current = new Set(flips.map((event) => event.id));
       seenMoveIdsRef.current = new Set(moves.map((event) => event.id));
+      seenTileIdsRef.current = new Set(tileEvents.map((event) => event.id));
       seenFeedIdsRef.current = new Set(feedEvents.map((event) => event.id));
       seenFxIdsRef.current = new Set(fxEvents.map((event) => event.id));
       // Fresh room connection: drop any presentation state from the last room.
@@ -190,6 +205,24 @@ export default function Home() {
         seenFeedIdsRef.current.add(event.id);
       }
       if (freshFeed.length > 0) {
+        // The promised audio hook: each cue name maps to a sound, visits
+        // upgrade to their location's own recording. Deduped and staggered
+        // so one snapshot never piles identical sounds.
+        const cueSounds: string[] = [];
+        for (const event of freshFeed) {
+          const cue = ADVENTURE_FEED_CUES[event.type]?.cue;
+          let key = cue ? MAP_CUE_SOUNDS[cue] : null;
+          if (event.type === "FIELD_VISITED") {
+            key = LOCATION_VISIT_SOUNDS[event.location] ?? key;
+          }
+          if (key && !cueSounds.includes(key)) {
+            cueSounds.push(key);
+          }
+        }
+        cueSounds.slice(0, 3).forEach((key, index) => {
+          window.setTimeout(() => playLibrarySound(key, MAP_CUE_VOLUME), index * 220);
+        });
+
         const items = freshFeed.map((event) => {
           const cue = ADVENTURE_FEED_CUES[event.type];
           return {
@@ -258,6 +291,13 @@ export default function Home() {
           }
         }
         const [heroId, walk] = [...byHero.entries()][0];
+        const destination = walk.steps.at(-1);
+        const destinationField = destination ? nextState.adventure?.fields[destination] : undefined;
+        const destinationTile = destinationField
+          ? nextState.adventure?.tiles[destinationField.tileInstanceId]
+          : undefined;
+        const terrain = destinationTile ? allTileDefinitions[destinationTile.tileDefId]?.terrain : undefined;
+        playLibrarySound(TERRAIN_MOVE_SOUNDS[terrain ?? "grass"] ?? TERRAIN_MOVE_SOUNDS.grass, MAP_MOVE_VOLUME);
         setMoveCue({
           id: freshMoves[0].id,
           heroId,
@@ -290,6 +330,19 @@ export default function Home() {
             return next;
           });
         }, 2400);
+      }
+
+      // Tiles announce themselves: discovery sting on reveal, earthy thud
+      // on placement.
+      const freshTiles = tileEvents.filter((event) => !seenTileIdsRef.current.has(event.id));
+      for (const event of tileEvents) {
+        seenTileIdsRef.current.add(event.id);
+      }
+      if (freshTiles.length > 0) {
+        const key = freshTiles.some((event) => event.type === "TILE_REVEALED")
+          ? TILE_SOUNDS.revealed
+          : TILE_SOUNDS.placed;
+        playLibrarySound(key, MAP_CUE_VOLUME);
       }
 
       // Combat table presentation: card flights, spell sprites, projectiles

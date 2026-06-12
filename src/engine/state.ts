@@ -1303,6 +1303,12 @@ export type MapFieldState = {
   /** Visitable fields get a black cube after the visit and then count as empty. */
   blackCube: boolean;
   flagOwnerId: PlayerId | null;
+  /**
+   * Obelisks and Star Axes keep every visitor's cube: players beyond the
+   * first flagger land here ("do not remove any enemy Faction Cubes;
+   * multiple players may have a Faction Cube on this Field").
+   */
+  extraFlagOwnerIds?: PlayerId[];
   /** Whether the first-flag immediate income was already claimed. */
   everFlagged: boolean;
   /** Resource chosen for a flagged settlement. */
@@ -1367,7 +1373,38 @@ export type VisitStep =
   | { type: "WITCH_HUT" }
   | { type: "SCHOLAR" }
   | { type: "TRADING_POST" }
-  | { type: "DISCOVER_ADJACENT_TILE" };
+  | { type: "DISCOVER_ADJACENT_TILE" }
+  | {
+      /** Sea Chest / Jetsam: roll one Attack die, resolve the matching branch. */
+      type: "ATTACK_DIE_TABLE";
+      plus: VisitStep[];
+      zero: VisitStep[];
+      minus: VisitStep[];
+    }
+  | {
+      /**
+       * Remove one hand card from the game, then resolve the follow-up
+       * (Witch Hut / Trading Post / Faerie Ring / Market of Time).
+       */
+      type: "REMOVE_HAND_CARD";
+      prompt: string;
+      filter: "any" | "ability" | "statistic" | "removable";
+      then: "none" | "gain-valuables" | "search-same-deck" | "choose-deck-search";
+    }
+  | {
+      /** University: pick one of the top cards of a shared discard pile. */
+      type: "SEARCH_DISCARD";
+      deckId: DeckId;
+      count: number;
+    }
+  | {
+      /** Hill Fort: reinforce one Few unit, its cost reduced by 3 gold (min 0). */
+      type: "HILL_FORT";
+    }
+  | {
+      /** Subterranean Gate: move the hero to the linked gate on an adjacent tile. */
+      type: "SUBTERRANEAN_GATE";
+    };
 
 export type AstrologersState = {
   /** Face-up Astrologers Proclaim card in effect until the next even round. */

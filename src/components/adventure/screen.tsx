@@ -8,7 +8,7 @@ import { cardLibrary } from "@/data/cards/library";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { locationDefinitions } from "@/data/map/locations";
-import { coreTileDefinitions } from "@/data/map/tile-defs";
+import { allTileDefinitions } from "@/data/map/tiles";
 import {
   ABILITY_SEARCH_LEVELS,
   EXPERT_USES_BY_LEVEL,
@@ -295,7 +295,7 @@ export function HexMapBoard({
   );
 
   const renderTileArt = (tile: MapTileState, rotation: number) => {
-    const def = coreTileDefinitions[tile.tileDefId];
+    const def = allTileDefinitions[tile.tileDefId];
     const image = def?.assets?.tileImage;
     if (!image || !showArt) {
       return;
@@ -310,7 +310,10 @@ export function HexMapBoard({
         height={height}
         href={image}
         key={`art-${tile.id}`}
-        preserveAspectRatio="xMidYMid meet"
+        // The shipped tile art is cropped to the exact 3:5*sqrt(3) flower
+        // bounding box, so stretching it over the box keeps every hex edge
+        // of the art on the logical grid.
+        preserveAspectRatio="none"
         transform={`rotate(${rotation * 60} ${center.x} ${center.y})`}
         width={width}
         x={center.x - width / 2}
@@ -368,7 +371,7 @@ export function HexMapBoard({
       continue;
     }
 
-    const tileDef = coreTileDefinitions[tile.tileDefId];
+    const tileDef = allTileDefinitions[tile.tileDefId];
     const terrain = TERRAIN_COLORS[tileDef?.terrain ?? "dirt"] ?? TERRAIN_COLORS.dirt;
 
     // --- Tiles waiting for their rotation: preview from the definition ----
@@ -514,6 +517,19 @@ export function HexMapBoard({
           <g key={`${spaceId}-flag`} transform={`translate(${x - HEX_SIZE * 0.62}, ${y - HEX_SIZE * 0.72})`}>
             <line className="flagPole" x1={0} x2={0} y1={0} y2={16} />
             <path d="M0 1 L11 4.5 L0 8 Z" fill={playerColor(state, field.flagOwnerId)} stroke="#1d1206" strokeWidth={0.7} />
+          </g>
+        );
+      }
+      // Obelisks and Star Axes hold one cube per visitor: smaller flags for
+      // every player beyond the first.
+      for (const [extraIndex, extraOwnerId] of (field.extraFlagOwnerIds ?? []).entries()) {
+        overlays.push(
+          <g
+            key={`${spaceId}-extra-flag-${extraOwnerId}`}
+            transform={`translate(${x - HEX_SIZE * 0.62 + (extraIndex + 1) * 9}, ${y - HEX_SIZE * 0.6})`}
+          >
+            <line className="flagPole" x1={0} x2={0} y1={0} y2={12} />
+            <path d="M0 1 L8 3.5 L0 6 Z" fill={playerColor(state, extraOwnerId)} stroke="#1d1206" strokeWidth={0.6} />
           </g>
         );
       }

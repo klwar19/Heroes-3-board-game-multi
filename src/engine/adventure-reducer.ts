@@ -1,7 +1,8 @@
-import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
+import { cardLibrary } from "@/data/cards/library";
+import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
-import { coreTileDefinitions } from "@/data/map/tile-defs";
+import { allTileDefinitions } from "@/data/map/tiles";
 import {
   addArmyUnit,
   beginFieldVisit,
@@ -43,7 +44,7 @@ import { ATTACK_DIE_FACES } from "./battlefield";
 import { drawCardsForPlayer } from "./decks";
 import { appendEvent } from "./events";
 import { expireEffectsForTurnEnd } from "./active-effects";
-import { hexNeighbor, hexSpaceId, slotDirection, tileFootprint } from "./hex";
+import { hexDistance, hexNeighbor, hexSpaceId, slotDirection, tileFootprint } from "./hex";
 import type {
   CombatState,
   GameAction,
@@ -53,7 +54,8 @@ import type {
   MapSpaceId,
   MapTileState,
   PlayerId,
-  ResourceCost
+  ResourceCost,
+  VisitStep
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 
@@ -453,7 +455,7 @@ function beginTileRotation(state: GameState, playerId: PlayerId, tile: MapTileSt
  */
 export function isTileRotationConnected(state: GameState, tile: MapTileState, rotation: number): boolean {
   const adventure = state.adventure;
-  const def = coreTileDefinitions[tile.tileDefId];
+  const def = allTileDefinitions[tile.tileDefId];
   if (!adventure || !def) {
     return true;
   }
@@ -506,7 +508,7 @@ function isNeighborOuterEdgeSealed(state: NonNullable<GameState["adventure"]>, f
   }
 
   const tile = state.tiles[field.tileInstanceId];
-  const def = tile ? coreTileDefinitions[tile.tileDefId] : undefined;
+  const def = tile ? allTileDefinitions[tile.tileDefId] : undefined;
   if (!tile || !def) {
     return false;
   }
@@ -661,7 +663,50 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
       break;
     }
     case "TRADING_POST": {
-      // Trades happen through TRADE_RESOURCES; this step closes the window.
+      // Trades happen through TRADE_RESOURCES. Picking a hand card here
+      // resolves the rulebook's second option - "remove one card and gain
+      // 1 valuables" - and ends the visit either way.
+      if (!action.decline && action.optionIndex !== undefined) {
+        const player = state.players[action.playerId];
+        const cardId = player?.hand[action.optionIndex];
+        if (!player || !cardId) {
+          throw new Error("Choose a hand card to remove.");
+        }
+        player.hand.splice(action.optionIndex, 1);
+        player.removed.push(cardId);
+        gainResources(state, action.playerId, { valuables: 1 }, "removed a card at the Trading Post");
+      }
+      visit.steps.shift();
+      break;
+    }
+    case "REMOVE_HAND_CARD": {
+      const followUp = resolveRemoveHandCard(state, action, step);
+      visit.steps.shift();
+      if (followUp) {
+        visit.steps.unshift(followUp);
+      }
+      break;
+    }
+    case "SEARCH_DISCARD": {
+      if (!action.decline) {
+        const deck = state.decks[step.deckId];
+        const player = state.players[action.playerId];
+        const topCards = deck ? deck.discardPile.slice(-step.count) : [];
+        // optionIndex counts from the top of the pile (0 = newest discard).
+        const picked = topCards[topCards.length - 1 - (action.optionIndex ?? 0)];
+        if (!deck || !player || !picked) {
+          throw new Error("Choose one of the revealed discard cards.");
+        }
+        deck.discardPile.splice(deck.discardPile.lastIndexOf(picked), 1);
+        player.hand.push(picked);
+      }
+      visit.steps.shift();
+      break;
+    }
+    case "HILL_FORT": {
+      if (!action.decline) {
+        resolveHillFort(state, action);
+      }
       visit.steps.shift();
       break;
     }
@@ -817,6 +862,149 @@ function resolveWitchHut(state: GameState, action: Extract<GameAction, { type: "
   }
 }
 
+/**
+ * Hand cards a REMOVE_HAND_CARD step may remove. "removable" follows the
+ * Faerie Ring / Market of Time exclusions: no Statistic, Starting Ability or
+ * Specialty cards (and only cards that belong to a shared deck).
+ */
+export function removableHandCards(
+  state: GameState,
+  playerId: PlayerId,
+  filter: "any" | "ability" | "statistic" | "removable"
+): { index: number; cardId: string }[] {
+  const player = state.players[playerId];
+  if (!player) {
+    return [];
+  }
+  const startingAbility = player.heroDefId
+    ? coreHeroDefinitions[player.heroDefId]?.startingAbilityCardId
+    : undefined;
+
+  return player.hand
+    .map((cardId, index) => ({ index, cardId }))
+    .filter(({ cardId }) => {
+      const kind = cardLibrary[cardId]?.kind;
+      switch (filter) {
+        case "any":
+          return true;
+        case "ability":
+          return kind === "ability";
+        case "statistic":
+          return kind === "statistic";
+        case "removable":
+          return (
+            (kind === "spell" || kind === "ability" || kind === "artifact") && cardId !== startingAbility
+          );
+      }
+    });
+}
+
+/**
+ * Removes the chosen hand card from the game and returns the follow-up step
+ * the location promises (Trading Post valuables are handled inline; Faerie
+ * Ring searches the removed card's deck; Market of Time lets the player pick
+ * any shared deck).
+ */
+function resolveRemoveHandCard(
+  state: GameState,
+  action: Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>,
+  step: Extract<VisitStep, { type: "REMOVE_HAND_CARD" }>
+): VisitStep | null {
+  if (action.decline) {
+    return null;
+  }
+
+  const player = state.players[action.playerId];
+  const eligible = removableHandCards(state, action.playerId, step.filter);
+  const chosen = eligible.find(({ index }) => index === action.optionIndex);
+  if (!player || !chosen) {
+    throw new Error("Choose one of the removable cards.");
+  }
+
+  player.hand.splice(chosen.index, 1);
+  player.removed.push(chosen.cardId);
+
+  switch (step.then) {
+    case "none":
+      return null;
+    case "gain-valuables":
+      gainResources(state, action.playerId, { valuables: 1 }, "removed a card");
+      return null;
+    case "search-same-deck": {
+      const kind = cardLibrary[chosen.cardId]?.kind;
+      const deckId = kind === "spell" ? "spells" : kind === "artifact" ? "artifacts" : "abilities";
+      return { type: "SEARCH_SHARED_DECK", deckId, count: 2 };
+    }
+    case "choose-deck-search":
+      return {
+        type: "CHOOSE_ONE",
+        prompt: "Market of Time: search which deck?",
+        options: [
+          { label: "Search (2) the Ability deck", steps: [{ type: "SEARCH_SHARED_DECK", deckId: "abilities", count: 2 }] },
+          { label: "Search (2) the Spell deck", steps: [{ type: "SEARCH_SHARED_DECK", deckId: "spells", count: 2 }] },
+          { label: "Search (2) the Artifact deck", steps: [{ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 2 }] }
+        ]
+      };
+  }
+}
+
+/**
+ * Hill Fort: reinforce one bronze/silver Few unit; the pack cost drops by
+ * 3 gold in total, never below zero (gold absorbs the discount first).
+ */
+export function hillFortCost(packCost: Record<string, number | undefined>): ResourceCost {
+  const cost: ResourceCost = {};
+  for (const [resource, amount] of Object.entries(packCost) as ["gold" | "buildingMaterials" | "valuables", number][]) {
+    if (amount) {
+      cost[resource] = amount;
+    }
+  }
+  let discount = 3;
+  if (cost.gold) {
+    const used = Math.min(cost.gold, discount);
+    cost.gold -= used;
+    discount -= used;
+    if (cost.gold === 0) {
+      delete cost.gold;
+    }
+  }
+  return cost;
+}
+
+function resolveHillFort(state: GameState, action: Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    return;
+  }
+
+  const fewUnits = player.army.filter((unit) => {
+    if (unit.side !== "few" || !getUnitSide(unit.unitDefId, "pack")) {
+      return false;
+    }
+    const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
+    return tier === "bronze" || tier === "silver";
+  });
+  const target = fewUnits[action.optionIndex ?? 0];
+  const packSide = target ? getUnitSide(target.unitDefId, "pack") : undefined;
+  if (!target || !packSide) {
+    throw new Error("Choose a Few unit to reinforce.");
+  }
+
+  const cost = hillFortCost(packSide.cost);
+  if (!hasResources(player, cost)) {
+    throw new Error("Not enough resources to reinforce here.");
+  }
+  spendResources(state, action.playerId, cost, "Hill Fort reinforcement");
+  target.side = "pack";
+  appendEvent(state, {
+    type: "UNIT_RECRUITED",
+    playerId: action.playerId,
+    unitDefId: target.unitDefId,
+    kind: "reinforce",
+    cost
+  });
+}
+
 function resolveMagicSpring(state: GameState, action: Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>): void {
   const player = state.players[action.playerId];
   if (!player) {
@@ -856,17 +1044,32 @@ function resolveObservatoryDiscover(
     return;
   }
 
-  const faceDownNeighbors = Object.values(adventure.tiles).filter(
-    (candidate) =>
-      candidate.faceDown &&
-      Math.abs(candidate.centerRow - tile.centerRow) + Math.abs(candidate.centerCol - tile.centerCol) <= 6
-  );
+  const faceDownNeighbors = observatoryDiscoverTargets(adventure, tile);
   const target = faceDownNeighbors[action.optionIndex ?? 0];
   if (!target) {
     return;
   }
 
   beginTileRotation(state, action.playerId, target, "reveal");
+}
+
+/**
+ * Face-down tiles the Redwood Observatory may flip: tiles whose flower
+ * touches the observatory's tile (centers at hex distance 3 - the previous
+ * row/column heuristic also matched tiles up to six hexes away).
+ */
+export function observatoryDiscoverTargets(
+  adventure: NonNullable<GameState["adventure"]>,
+  tile: MapTileState
+): MapTileState[] {
+  return Object.values(adventure.tiles).filter(
+    (candidate) =>
+      candidate.faceDown &&
+      hexDistance(
+        { row: candidate.centerRow, col: candidate.centerCol },
+        { row: tile.centerRow, col: tile.centerCol }
+      ) === 3
+  );
 }
 
 export function tradeResources(state: GameState, action: Extract<GameAction, { type: "TRADE_RESOURCES" }>): void {
