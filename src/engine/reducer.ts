@@ -26,7 +26,7 @@ import {
   spellBookAction,
   spendMorale,
   spendTownCube,
-  useTownBuilding,
+  activateTownBuilding,
   tradeResources,
   unplaceCombatUnit,
   endTurnAdventure
@@ -50,7 +50,6 @@ import { estatesGold, getRuleset, spellLimitFor } from "./ruleset";
 import {
   destroyFortification,
   getDemolishAbility,
-  isArrowTowerUnit,
   removeArrowTower,
   siegeRangedDamageReduction
 } from "./siege";
@@ -4923,7 +4922,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         blacksmithAction(nextState, action);
         break;
       case "USE_TOWN_BUILDING":
-        useTownBuilding(nextState, action);
+        activateTownBuilding(nextState, action);
         break;
       case "SPEND_TOWN_CUBE":
         spendTownCube(nextState, action);

@@ -30,13 +30,16 @@ export async function GET(request: Request, context: RoomContext) {
       send(getRoomSnapshot(decodedRoomId));
       unsubscribe = subscribeToRoom(decodedRoomId, send);
 
+      // A real data event (not an SSE comment) so clients can tell a live
+      // stream from a half-dead connection: no ping for a while means the
+      // socket silently died and the client falls back to polling.
       keepAlive = setInterval(() => {
         try {
-          controller.enqueue(encoder.encode(": keep-alive\n\n"));
+          send({ ping: true, at: Date.now() });
         } catch {
           // Stream already closed; cancel() handles cleanup.
         }
-      }, 25000);
+      }, 20000);
 
       request.signal.addEventListener("abort", () => {
         unsubscribe();

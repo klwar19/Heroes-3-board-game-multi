@@ -5325,3 +5325,283 @@ img.cardBack {
   border-radius: 10px;
   background: rgba(20, 16, 10, 0.6);
 }
+
+/* ---------------------------------------------------------------------------
+ * Building rules tooltip (hover/focus a town building)
+ * ------------------------------------------------------------------------- */
+
+.townBuilding {
+  position: relative;
+}
+
+.townBuilding .buildingTip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%) translateY(4px);
+  width: 240px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(214, 178, 94, 0.55);
+  background: linear-gradient(165deg, rgba(34, 28, 18, 0.97), rgba(24, 19, 12, 0.97));
+  color: #f3e7c8;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+  z-index: 60;
+  text-align: left;
+}
+
+.townBuilding:hover .buildingTip,
+.townBuilding:focus-within .buildingTip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.buildingTip strong {
+  display: block;
+  font-size: 0.8rem;
+  margin-bottom: 2px;
+}
+
+.buildingTip .buildingTipCost {
+  display: block;
+  font-size: 0.66rem;
+  opacity: 0.8;
+  margin-bottom: 6px;
+}
+
+.buildingTip p {
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+/* Recruit basket states: one card per unit type */
+
+.recruitRow.done .recruitName {
+  opacity: 0.75;
+}
+
+.recruitRow .recruitState {
+  margin-left: auto;
+  opacity: 0.75;
+  font-style: italic;
+}
+
+.recruitRow.locked {
+  opacity: 0.8;
+}
+
+.recruitRow input[type="checkbox"] {
+  margin-left: auto;
+  accent-color: #d6b25e;
+}
+
+.recruitRow input[type="checkbox"] + small,
+.recruitRow small + input[type="checkbox"] {
+  margin-left: 8px;
+}
+
+.townActions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(214, 178, 94, 0.25);
+}
+
+.townActions .commandButton {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.coverPicker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.coverPickerCards {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  border: 1px dashed rgba(214, 178, 94, 0.4);
+  border-radius: 8px;
+  font-size: 0.7rem;
+}
+
+.coverPickerCards label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* First-player roll HUD chip */
+
+.advHudCell.firstRoll {
+  cursor: pointer;
+  border-color: rgba(214, 178, 94, 0.5);
+}
+
+.advHudCell.firstRoll:hover {
+  background: rgba(214, 178, 94, 0.12);
+}
+
+/* ---------------------------------------------------------------------------
+ * Combat tokens on unit cards
+ * ------------------------------------------------------------------------- */
+
+.tokenChips {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  display: flex;
+  gap: 3px;
+  z-index: 4;
+}
+
+.tokenChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  color: #1d1505;
+}
+
+.tokenChip.attack {
+  background: linear-gradient(180deg, #ffd766, #d99a26);
+}
+
+.tokenChip.weakness {
+  background: linear-gradient(180deg, #b9c7e8, #7d8fc0);
+}
+
+.tokenChip.corrosion {
+  background: linear-gradient(180deg, #b7e09a, #6d9b46);
+}
+
+.tokenChip.paralysis {
+  background: linear-gradient(180deg, #e8c7f0, #ad7cc2);
+}
+
+.inspectTokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.inspectTokens .tokenChip {
+  position: static;
+  font-size: 0.64rem;
+}
+
+/* ---------------------------------------------------------------------------
+ * Siege: walls, gate and the arrow tower
+ * ------------------------------------------------------------------------- */
+
+.battleCell.fortification {
+  background:
+    repeating-linear-gradient(45deg, rgba(126, 104, 70, 0.55) 0 10px, rgba(96, 78, 50, 0.55) 10px 20px),
+    linear-gradient(180deg, #6c5a3c, #4e3f29);
+  border-color: rgba(228, 197, 130, 0.5);
+}
+
+.battleCell.fortification.attackTarget {
+  cursor: pointer;
+  outline: 2px solid rgba(255, 105, 80, 0.8);
+  outline-offset: -2px;
+}
+
+.fortMark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  height: 100%;
+  font-size: 1.5rem;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+}
+
+.fortMark small {
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #f3e7c8;
+  opacity: 0.85;
+}
+
+.fortMark.gate {
+  filter: drop-shadow(0 0 6px rgba(255, 214, 102, 0.35));
+}
+
+.boardFelt {
+  position: relative;
+}
+
+.arrowTower {
+  position: absolute;
+  top: 50%;
+  right: -8px;
+  transform: translate(100%, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 132px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(214, 178, 94, 0.55);
+  background: linear-gradient(170deg, rgba(40, 32, 20, 0.96), rgba(26, 21, 13, 0.96));
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5);
+  z-index: 8;
+}
+
+.arrowTower.active {
+  outline: 2px solid #ffd766;
+}
+
+.arrowTowerBody {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  color: #f3e7c8;
+  cursor: pointer;
+  font: inherit;
+}
+
+.arrowTowerIcon {
+  font-size: 1.4rem;
+}
+
+.arrowTowerBody small {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.62rem;
+  opacity: 0.85;
+}
+
+@media (max-width: 1100px) {
+  .arrowTower {
+    position: static;
+    transform: none;
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+    margin-top: 6px;
+  }
+}

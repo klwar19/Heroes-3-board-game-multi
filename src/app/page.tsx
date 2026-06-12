@@ -183,8 +183,11 @@ export default function Home() {
   const [hiddenHandTail, setHiddenHandTail] = useState(0);
   const [tintedUnits, setTintedUnits] = useState<Map<string, string>>(new Map());
   const seenRollIdsRef = useRef<Set<string> | null>(null);
+  /** Server store generation last seen; a change means the host restarted. */
+  const seenBootIdRef = useRef<string | null>(null);
   const seenMapDiceIdsRef = useRef<Set<string>>(new Set());
   const seenVisitIdsRef = useRef<Set<string>>(new Set());
+  const seenFirstRollIdsRef = useRef<Set<string>>(new Set());
   const seenDrawIdsRef = useRef<Set<string>>(new Set());
   const seenFlipIdsRef = useRef<Set<string>>(new Set());
   const seenMoveIdsRef = useRef<Set<string>>(new Set());
@@ -253,6 +256,9 @@ export default function Home() {
       seenVisitIdsRef.current = new Set(visitEvents.map((event) => event.id));
       seenFeedIdsRef.current = new Set(feedEvents.map((event) => event.id));
       seenFxIdsRef.current = new Set(fxEvents.map((event) => event.id));
+      seenFirstRollIdsRef.current = new Set(
+        nextState.eventLog.filter((event) => event.type === "FIRST_PLAYER_ROLLED").map((event) => event.id)
+      );
       // Fresh room connection: drop any presentation state from the last room.
       setFxCues([]);
       setHiddenHandTail(0);
@@ -369,6 +375,38 @@ export default function Home() {
             subtitle: `${nextState.players[visit.playerId]?.name ?? visit.playerId} ${
               visit.revisit ? "revisits" : "visits"
             }`,
+            lines
+          } satisfies MapNoticeCue;
+        });
+        setMapNotice((current) => {
+          const queue = [...current.queue, ...cues];
+          return current.current ? { ...current, queue } : { current: queue[0], queue: queue.slice(1) };
+        });
+      }
+
+      // First-player roll: a center-screen notice listing everyone's die,
+      // attempt by attempt, and who plays first.
+      const firstRolls = nextState.eventLog.filter(
+        (event): event is Extract<GameEvent, { type: "FIRST_PLAYER_ROLLED" }> => event.type === "FIRST_PLAYER_ROLLED"
+      );
+      const freshFirstRolls = firstRolls.filter((event) => !seenFirstRollIdsRef.current.has(event.id));
+      for (const event of firstRolls) {
+        seenFirstRollIdsRef.current.add(event.id);
+      }
+      if (freshFirstRolls.length > 0) {
+        const cues = freshFirstRolls.map((event) => {
+          const lines = event.attempts.map((attempt, index) => {
+            const rolls = attempt.rolls
+              .map((roll) => `${roll.name}: ${roll.value > 0 ? "+" : ""}${roll.value}`)
+              .join("  ·  ");
+            return event.attempts.length > 1 ? `Roll ${index + 1} — ${rolls}` : rolls;
+          });
+          lines.push(`${nextState.players[event.winnerPlayerId]?.name ?? event.winnerPlayerId} plays first!`);
+          return {
+            id: event.id,
+            icon: "🎲",
+            title: "Who goes first?",
+            subtitle: "Everyone rolls the Attack die — highest starts",
             lines
           } satisfies MapNoticeCue;
         });
@@ -806,8 +844,16 @@ export default function Home() {
 
   const ingestSnapshot = useCallback(
     (snapshot: GameRoomSnapshot) => {
+      // The version gate keeps out-of-order frames from rolling the table
+      // back — but when the server process restarted (new bootId) its version
+      // counter starts over, and refusing those snapshots froze the table
+      // ("nothing moves anymore"). A boot change always wins.
+      const bootChanged = Boolean(snapshot.bootId) && snapshot.bootId !== seenBootIdRef.current;
+      if (snapshot.bootId) {
+        seenBootIdRef.current = snapshot.bootId;
+      }
       setRoomVersion((currentVersion) => {
-        if (snapshot.version > currentVersion) {
+        if (bootChanged || snapshot.version > currentVersion) {
           ingestServerState(snapshot.state);
           return snapshot.version;
         }
@@ -885,10 +931,28 @@ export default function Home() {
         setHandMode(null);
         setHandDiscards([]);
         setTilePlacement(null);
+      } else {
+        // The server refused an action the local table thought was legal: the
+        // local snapshot is stale (missed frames, server restart). Resync so
+        // the next click works instead of staying frozen on old state.
+        connection
+          .fetchSnapshot()
+          .then(ingestSnapshot)
+          .catch(() => {
+            /* the live stream keeps trying */
+          });
       }
     } catch (error) {
       setErrors([error instanceof Error ? error.message : "The action could not be submitted."]);
       setSyncStatus("submit failed");
+      // Network hiccup mid-submit: the action may or may not have landed.
+      // Refetch the authoritative state either way.
+      connection
+        .fetchSnapshot()
+        .then(ingestSnapshot)
+        .catch(() => {
+          /* the live stream keeps trying */
+        });
     }
   };
 

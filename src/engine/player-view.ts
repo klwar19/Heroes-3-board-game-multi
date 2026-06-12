@@ -43,6 +43,16 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
     };
   }
 
+  // Own-deck searches (Mana Vortex): the revealed cards and their labels stay
+  // private to the searching player.
+  if (choice.type === "OPTION_CHOICE" && choice.context === "own-deck-pick" && choice.playerId !== viewerPlayerId) {
+    return {
+      ...cloneSerializable(choice),
+      options: choice.options.map(() => ({ label: "Hidden card" })),
+      ownDeckPick: choice.ownDeckPick ? { cardIds: choice.ownDeckPick.cardIds.map(() => "hidden") } : undefined
+    };
+  }
+
   return cloneSerializable(choice);
 }
 

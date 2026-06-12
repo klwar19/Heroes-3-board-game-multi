@@ -2380,7 +2380,7 @@ export function blacksmithAction(state: GameState, action: Extract<GameAction, {
  * (pay gold for a random enemy discard, or teleport between owned
  * towns/settlements).
  */
-export function useTownBuilding(state: GameState, action: Extract<GameAction, { type: "USE_TOWN_BUILDING" }>): void {
+export function activateTownBuilding(state: GameState, action: Extract<GameAction, { type: "USE_TOWN_BUILDING" }>): void {
   const player = state.players[action.playerId];
   const building = coreBuildingDefinitions[action.buildingId];
   const town = getTownOfPlayer(state, action.playerId);
