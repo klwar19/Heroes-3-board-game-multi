@@ -9,6 +9,7 @@ import {
   discoverTile,
   finalizeAdventureCombat,
   finishCombatPlacement,
+  hallOfValhallaBoost,
   moveHeroAdventure,
   moveHeroPathAdventure,
   openSharedDeckSearch,
@@ -24,6 +25,8 @@ import {
   setTileRotation,
   spellBookAction,
   spendMorale,
+  spendTownCube,
+  useTownBuilding,
   tradeResources,
   unplaceCombatUnit,
   endTurnAdventure
@@ -44,6 +47,22 @@ import {
 } from "./permanents";
 import { createSeededRandom } from "./random";
 import { estatesGold, getRuleset, spellLimitFor } from "./ruleset";
+import {
+  destroyFortification,
+  getDemolishAbility,
+  isArrowTowerUnit,
+  removeArrowTower,
+  siegeRangedDamageReduction
+} from "./siege";
+import {
+  expireTokensAtRoundEnd,
+  hasToken,
+  noteUnitDamagedForTokens,
+  placeCombatToken,
+  removeToken,
+  tokenAttackBonus,
+  tokenDefenseDelta
+} from "./tokens";
 import {
   expireEffectsForCombatRoundEnd,
   expireEffectsForTurnEnd,
@@ -851,6 +870,7 @@ function applyPostAttackAbilityDamage(
 
     const assignedDamage = Math.min(effect.amount, Math.max(0, target.maxHealth - target.damage));
     target.damage += effect.amount;
+    noteUnitDamagedForTokens(state, target, effect.amount);
 
     if (assignedDamage > 0) {
       appendEvent(state, {
@@ -1406,6 +1426,7 @@ function applyFireShieldDamage(
   }
 
   attacker.damage += total;
+  noteUnitDamagedForTokens(state, attacker, total);
   appendEvent(state, {
     type: "DAMAGE_ASSIGNED",
     source: { type: "unit", unitId: defender.id, controllerId: defender.controllerId },
@@ -1452,6 +1473,7 @@ function applyAttackDieDamageFollowUps(
 
     const assignedDamage = Math.min(followUp.amount, Math.max(0, defender.maxHealth - defender.damage));
     defender.damage += followUp.amount;
+    noteUnitDamagedForTokens(state, defender, followUp.amount);
     if (assignedDamage > 0) {
       appendEvent(state, {
         type: "DAMAGE_ASSIGNED",
@@ -1708,6 +1730,7 @@ function applyFlatAbilityDamage(
   });
 
   target.damage += amount;
+  noteUnitDamagedForTokens(state, target, amount);
   appendEvent(state, {
     type: "DAMAGE_ASSIGNED",
     source: { type: "unit", unitId: source.id, controllerId: source.controllerId },
@@ -1818,6 +1841,21 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   }
 
   const activeUnit = state.combat.units[unitId];
+
+  // Paralysis: "If a unit would activate with a Paralysis Token on it, skip
+  // its activation and remove the Token instead."
+  if (hasToken(activeUnit, "paralysis")) {
+    removeToken(state, activeUnit, "paralysis", "activation-skipped");
+    activeUnit.activatedThisRound = true;
+    appendEvent(state, {
+      type: "UNIT_ACTIVATION_ENDED",
+      playerId: activeUnit.controllerId,
+      unitId: activeUnit.id
+    });
+    setActiveUnit(state, getNextUnitToActivate(state.combat, state.activeEffects)?.id ?? null);
+    return;
+  }
+
   state.activePlayerId = activeUnit.controllerId;
   activeUnit.movedThisActivation = false;
   activeUnit.attackedThisActivation = false;
@@ -2089,6 +2127,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         const power = getCurrentSpellPower(stackItem, cards);
         const amount = getSpellDamageAmount(card, power);
         target.damage += amount;
+        noteUnitDamagedForTokens(state, target, amount);
         appendEvent(state, {
           type: "DAMAGE_ASSIGNED",
           source: {
@@ -2272,6 +2311,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const amount = getAmountByPower(card.effect.amountByPower, 1, power);
       if (target) {
         target.damage += amount;
+        noteUnitDamagedForTokens(state, target, amount);
         appendEvent(state, {
           type: "DAMAGE_ASSIGNED",
           source: { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
@@ -3037,6 +3077,41 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   const card = cards[action.cardId];
   if (!card) {
     throw new Error(`Unknown card ${action.cardId}.`);
+  }
+
+  // Dessa's Logistics: playable only during the continue-or-retreat decision
+  // against neutral units — the combat extends one round for free.
+  if (card.effect.type === "CONTINUE_NEUTRAL_FREE") {
+    const combat = state.combat;
+    if (
+      !combat ||
+      !combat.awaitingContinue ||
+      combat.context.kind !== "neutral" ||
+      combat.attackerPlayerId !== action.playerId
+    ) {
+      throw new Error(`${card.name} is played when deciding to continue a neutral combat.`);
+    }
+
+    const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId, "discard");
+    if (moveError) {
+      throw new Error(moveError.message);
+    }
+
+    combat.awaitingContinue = false;
+    appendEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: action.playerId,
+      cardId: action.cardId,
+      timing: card.timing,
+      mode: "basic"
+    });
+    appendEvent(state, {
+      type: "COMBAT_CONTINUED",
+      playerId: action.playerId,
+      movementLeft: state.heroes[combat.context.heroId]?.movementPoints ?? 0
+    });
+    advanceCombatRound(state, action.playerId);
+    return;
   }
 
   // Permanents enter play instead of resolving an effect; any permanent
@@ -3860,6 +3935,7 @@ function chooseAbilityTarget(
       const target = combat.units[action.targetUnitId];
       if (target && isUnitAlive(target)) {
         target.damage += choice.amount ?? 1;
+        noteUnitDamagedForTokens(state, target, choice.amount ?? 1);
         appendEvent(state, {
           type: "DAMAGE_ASSIGNED",
           source: { type: "system" },
@@ -4139,6 +4215,7 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   state.combat.round += 1;
   resetCombatRound(state.combat);
   appendExpiredEffectEvents(state, expireEffectsForCombatRoundEnd(state, finishedRound), "combat-round-ended");
+  expireTokensAtRoundEnd(state, state.combat, finishedRound);
   for (const player of Object.values(state.players)) {
     player.combatStats.spellsCastThisRound = 0;
     player.combatStats.spellLimitBonusThisRound = 0;
@@ -4677,7 +4754,11 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "SET_GAME_OPTIONS",
   "START_ADVENTURE",
   "BUY_WAR_MACHINE",
-  "USE_PERMANENT_EXPERT"
+  "USE_PERMANENT_EXPERT",
+  "USE_TOWN_BUILDING",
+  "SPEND_TOWN_CUBE",
+  "HALL_OF_VALHALLA_BOOST",
+  "ATTACK_FORTIFICATION"
 ]);
 
 function isHandlerValidated(state: GameState, action: GameAction): boolean {
@@ -4840,6 +4921,20 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "BLACKSMITH_ACTION":
         blacksmithAction(nextState, action);
+        break;
+      case "USE_TOWN_BUILDING":
+        useTownBuilding(nextState, action);
+        break;
+      case "SPEND_TOWN_CUBE":
+        spendTownCube(nextState, action);
+        refreshReactionWindowLegalReactions(nextState, cards);
+        break;
+      case "HALL_OF_VALHALLA_BOOST":
+        hallOfValhallaBoost(nextState, action);
+        refreshReactionWindowLegalReactions(nextState, cards);
+        break;
+      case "ATTACK_FORTIFICATION":
+        attackFortification(nextState, action);
         break;
       case "SPEND_MORALE":
         spendMorale(nextState, action);

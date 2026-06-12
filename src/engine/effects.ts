@@ -35,7 +35,8 @@ export const implementedCardEffectTypes = [
   "CREATE_FIRE_SHIELD",
   "CREATE_INITIATIVE_BUFF",
   "ADD_UNIT_MAX_HEALTH",
-  "AREA_DAMAGE_ADJACENT"
+  "AREA_DAMAGE_ADJACENT",
+  "CONTINUE_NEUTRAL_FREE"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {

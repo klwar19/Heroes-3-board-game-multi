@@ -21,7 +21,7 @@ import {
 function makeGame(): GameState {
   // The lobby defaults to "impossible"; these fixtures pin "normal" so the
   // guard armies stay small and deterministic.
-  return createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+  return createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false });
 }
 
 function apply(state: GameState, action: GameAction): GameState {
@@ -617,7 +617,7 @@ describe("neutral combat", () => {
 
   it("draws the impossible-difficulty column by default and sorts the guards by the rulebook", () => {
     // Default lobby difficulty: Impossible (3 bronze guards on a level I field).
-    let state = createAdventureGameState({ seed: "test-seed" });
+    let state = createAdventureGameState({ seed: "test-seed", rollFirstPlayer: false });
     expect(state.adventure?.difficulty).toBe("impossible");
     state = refreshP1(state);
     state = moveOntoGuardedMine(state);
@@ -974,6 +974,17 @@ describe("town economy", () => {
       buildingId: "castle.dwelling_bronze"
     });
 
+    // Each unit card exists once: the starting army already holds the
+    // halberdiers, so recruiting them again is rejected.
+    const duplicate = applyAction(state, {
+      type: "POPULATION_ACTION",
+      playerId: "p1",
+      purchases: [{ kind: "recruit", unitDefId: "castle.halberdiers" }]
+    });
+    expect(duplicate.errors).toHaveLength(1);
+
+    // After the card left the army (lost in combat), it can be bought anew.
+    state.players.p1.army = state.players.p1.army.filter((unit) => unit.unitDefId !== "castle.halberdiers");
     const armyBefore = state.players.p1.army.length;
     state = apply(state, {
       type: "POPULATION_ACTION",
@@ -1068,6 +1079,20 @@ describe("experience and victory", () => {
     state.adventure!.lastVisitedField.hero_p1 = "h:8:7";
 
     state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: enemyTownField });
+
+    // The town owner is asked to garrison (8 gold, units only) and declines.
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    if (state.pendingChoice?.type === "OPTION_CHOICE") {
+      expect(state.pendingChoice.context).toBe("garrison");
+      expect(state.pendingChoice.playerId).toBe("p2");
+      state = apply(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p2",
+        choiceId: state.pendingChoice.id,
+        optionIndex: 1
+      });
+    }
+
     expect(state.adventure?.winnerPlayerId).toBe("p1");
     expect(state.phase).toBe("game-over");
   });

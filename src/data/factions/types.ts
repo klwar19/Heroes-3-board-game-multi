@@ -148,6 +148,23 @@ export type TownBuildingEffect =
     }
   | {
       /**
+       * Hall of Valhalla: once per round, one of your units gains +1 attack
+       * to a single attack (spent while the attack is waiting to resolve).
+       */
+      type: "HALL_OF_VALHALLA";
+      amount: number;
+    }
+  | {
+      /**
+       * Freelancer's Guild: winning against Neutral Units pays `winGold`
+       * gold, and Recruiting/Reinforcing may pay gold with building
+       * materials and valuables at 1:1.
+       */
+      type: "FREELANCERS_GUILD";
+      winGold: number;
+    }
+  | {
+      /**
        * Blacksmith: once per turn, pay `searchCost` gold to Search (2) the
        * Artifact deck, or remove an Artifact card from hand for `sellGold`.
        * Owning it also counts as an "artifact source" for BINH deck gating.
