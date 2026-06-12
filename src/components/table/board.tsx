@@ -398,6 +398,7 @@ const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "COMPLETE_SIMULTANEOUS_TURN",
   "CONTINUE_NEUTRAL_COMBAT",
   "RETREAT_FROM_COMBAT",
+  "ACKNOWLEDGE_COMBAT_END",
   "BUILD_STRUCTURE",
   "MOVE_HERO",
   "END_TURN"
@@ -414,6 +415,8 @@ function commandLabel(legal: LegalAction): string {
       return "Next combat round";
     case "COMPLETE_SIMULTANEOUS_TURN":
       return "Ready";
+    case "ACKNOWLEDGE_COMBAT_END":
+      return "Return to the adventure map";
     case "END_TURN":
       return "End turn";
     case "USE_UNIT_ABILITY":

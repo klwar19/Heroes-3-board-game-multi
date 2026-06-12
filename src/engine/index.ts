@@ -60,7 +60,8 @@ export {
   createAdventureLobbyState,
   defaultGameSetupOptions,
   draftFarTiles,
-  getScenario
+  getScenario,
+  validateCustomMapPlan
 } from "./adventure-setup";
 export type { AdventurePlayerConfig, AdventureSetupOptions } from "./adventure-setup";
 export { getTileBorderSegments, hasInternalBorder } from "@/data/map/borders";
@@ -146,9 +147,11 @@ export {
   hasUnitAbilityEffect
 } from "./unit-abilities";
 export {
-  getPermanentCardId,
-  getPermanentDefinition,
+  getPermanentCardIds,
+  getPermanentDefinitions,
   getPermanentSchoolBonus,
+  permanentHandLimitBonus,
+  permanentLimitFor,
   warMachinesForSale
 } from "./permanents";
 export { describePermanentEffect } from "./effects";
@@ -182,6 +185,8 @@ export type {
   CombatStat,
   CombatState,
   CombatUnitState,
+  CustomMapTilePlan,
+  CustomStartingUnit,
   DamageKind,
   DeckState,
   EffectDefinition,

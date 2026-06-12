@@ -261,7 +261,10 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
       type: "CHOOSE_ONE",
       options: [
         { label: "Roll 2 Treasure dice, resolve one", interaction: { type: "ROLL_TREASURE_DICE", count: 2 } },
-        { label: "Roll 2 Resource dice, resolve one", interaction: { type: "ROLL_RESOURCE_DICE", count: 2 } }
+        { label: "Roll 2 Resource dice, resolve one", interaction: { type: "ROLL_RESOURCE_DICE", count: 2 } },
+        // Stretch-goal rule: "you may draw a card from the Pandora's Box
+        // deck instead". The option only appears while the deck has cards.
+        { label: "Draw a Pandora's Box card", interaction: { type: "DRAW_PANDORA_CARD" } }
       ]
     },
     implementationStatus: "implemented",

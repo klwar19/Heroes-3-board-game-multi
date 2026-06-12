@@ -43,7 +43,7 @@ describe("permanent cards", () => {
       cardId: "war_machine.first_aid_tent",
       target: { type: "none" }
     });
-    expect(first.players.p1.permanent).toBe("war_machine.first_aid_tent");
+    expect(first.players.p1.permanents).toEqual(["war_machine.first_aid_tent"]);
 
     const second = applyOk(first, {
       type: "PLAY_CARD",
@@ -51,7 +51,7 @@ describe("permanent cards", () => {
       cardId: "ability.fire_magic",
       target: { type: "none" }
     });
-    expect(second.players.p1.permanent).toBe("ability.fire_magic");
+    expect(second.players.p1.permanents).toEqual(["ability.fire_magic"]);
     expect(second.players.p1.discard).toContain("war_machine.first_aid_tent");
     expect(second.players.p1.hand).toHaveLength(0);
     // The replaced tent's combat effect leaves with it.
@@ -61,7 +61,7 @@ describe("permanent cards", () => {
   it("gives matching spells +1 power while a School of Magic is in play", () => {
     const state = createInitialGameState();
     state.players.p1.hand = ["spell.magic_arrow"];
-    state.players.p1.permanent = "ability.fire_magic";
+    state.players.p1.permanents = ["ability.fire_magic"];
     state.players.p2.hand = [];
 
     const cast = applyOk(state, {
@@ -76,13 +76,13 @@ describe("permanent cards", () => {
     // power 1 -> 2 damage.
     expect(resolved.combat?.units.unit_p2_vampires.damage).toBe(2);
     // The permanent stays in play after using its basic effect.
-    expect(resolved.players.p1.permanent).toBe("ability.fire_magic");
+    expect(resolved.players.p1.permanents).toEqual(["ability.fire_magic"]);
   });
 
   it("discards the school permanent for +3 power with the field expert effect", () => {
     const state = createInitialGameState();
     state.players.p1.hand = ["spell.magic_arrow"];
-    state.players.p1.permanent = "ability.earth_magic";
+    state.players.p1.permanents = ["ability.earth_magic"];
     state.players.p2.hand = ["stat.defense"];
 
     const cast = applyOk(state, {
@@ -96,7 +96,7 @@ describe("permanent cards", () => {
     expect(expert).toBeDefined();
 
     const boosted = applyOk(cast, expert!.action);
-    expect(boosted.players.p1.permanent).toBeNull();
+    expect(boosted.players.p1.permanents).toEqual([]);
     expect(boosted.players.p1.discard).toContain("ability.earth_magic");
     expect(boosted.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
 
@@ -109,7 +109,7 @@ describe("permanent cards", () => {
     const state = createInitialGameState();
     state.players.p1.hand = [];
     state.players.p2.hand = [];
-    state.players.p1.permanent = "war_machine.ballista";
+    state.players.p1.permanents = ["war_machine.ballista"];
 
     const units = state.combat!.units;
     const enemies = Object.values(units).filter((unit) => unit.controllerId === "p2");
@@ -129,7 +129,7 @@ describe("permanent cards", () => {
     const state = createInitialGameState();
     state.players.p1.hand = [];
     state.players.p2.hand = [];
-    state.players.p1.permanent = "war_machine.cannon";
+    state.players.p1.permanents = ["war_machine.cannon"];
 
     const offered = endRound(state, "p1");
     expect(offered.pendingChoice?.type).toBe("OPTION_CHOICE");
@@ -154,7 +154,7 @@ describe("permanent cards", () => {
     const state = createInitialGameState();
     state.players.p1.hand = [];
     state.players.p2.hand = [];
-    state.players.p1.permanent = "war_machine.cannon";
+    state.players.p1.permanents = ["war_machine.cannon"];
 
     const offered = endRound(state, "p1");
     const skip = getLegalActions(offered, "p1").find((legal) => legal.label === "Skip");
@@ -169,7 +169,7 @@ describe("permanent cards", () => {
     const state = createInitialGameState();
     state.players.p1.hand = [];
     state.players.p2.hand = [];
-    state.players.p1.permanent = "war_machine.catapult";
+    state.players.p1.permanents = ["war_machine.catapult"];
     state.players.p1.resources.buildingMaterials = 2;
 
     // Positions 13 (vampires) and 14 (skeletons)... place two enemies side by side.
@@ -212,11 +212,87 @@ describe("permanent cards", () => {
     }
   });
 
+  it("keeps the printed one-permanent limit unless Pandora's Box raises it to 3", () => {
+    const state = createInitialGameState();
+    state.players.p1.hand = [
+      "pandora.permanent_slots",
+      "war_machine.first_aid_tent",
+      "ability.fire_magic",
+      "war_machine.ballista"
+    ];
+
+    // Pandora's "up to 3 permanents, including this one" enters play first.
+    let current = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "pandora.permanent_slots",
+      target: { type: "none" }
+    });
+    current = applyOk(current, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "war_machine.first_aid_tent",
+      target: { type: "none" }
+    });
+    current = applyOk(current, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "ability.fire_magic",
+      target: { type: "none" }
+    });
+    expect(current.players.p1.permanents).toEqual([
+      "pandora.permanent_slots",
+      "war_machine.first_aid_tent",
+      "ability.fire_magic"
+    ]);
+
+    // A fourth permanent is over the raised limit: the oldest one leaves.
+    current = applyOk(current, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "war_machine.ballista",
+      target: { type: "none" }
+    });
+    expect(current.players.p1.permanents).toEqual([
+      "war_machine.first_aid_tent",
+      "ability.fire_magic",
+      "war_machine.ballista"
+    ]);
+    expect(current.players.p1.discard).toContain("pandora.permanent_slots");
+  });
+
+  it("voluntarily discards a permanent and re-enforces the limit when Pandora leaves", () => {
+    const state = createInitialGameState();
+    state.players.p1.permanents = ["pandora.permanent_slots", "war_machine.first_aid_tent", "ability.fire_magic"];
+    state.players.p1.hand = [];
+
+    const discard = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "DISCARD_PERMANENT" && legal.action.cardId === "pandora.permanent_slots"
+    );
+    expect(discard).toBeDefined();
+
+    const next = applyOk(state, discard!.action);
+    // Pandora's limit card left play, so the limit is 1 again: the oldest
+    // extra permanent goes to the discard pile too.
+    expect(next.players.p1.permanents).toEqual(["ability.fire_magic"]);
+    expect(next.players.p1.discard).toEqual(
+      expect.arrayContaining(["pandora.permanent_slots", "war_machine.first_aid_tent"])
+    );
+  });
+
+  it("raises the hand limit while Pandora's hand-size permanent is in play", async () => {
+    const { effectiveHandLimit } = await import("./adventure");
+    const state = createInitialGameState();
+    expect(effectiveHandLimit(state, "p1")).toBe(state.players.p1.limits.hand);
+    state.players.p1.permanents = ["pandora.hand_size"];
+    expect(effectiveHandLimit(state, "p1")).toBe(state.players.p1.limits.hand + 1);
+  });
+
   it("lets Ammo Cart ranged units shoot adjacent targets without disadvantage and adds initiative", () => {
     const state = createInitialGameState();
     state.players.p1.hand = [];
     state.players.p2.hand = [];
-    state.players.p1.permanent = "war_machine.ammo_cart";
+    state.players.p1.permanents = ["war_machine.ammo_cart"];
 
     const combat = state.combat!;
     const marksmen = combat.units.unit_p1_marksmen;

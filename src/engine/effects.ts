@@ -149,6 +149,12 @@ export function describePermanentEffect(card: CardDefinition): string {
   if (permanent.roundStart?.kind === "expert-shot") {
     parts.push(`each combat round: may spend 1 expert use for ${permanent.roundStart.amount} damage to an enemy unit`);
   }
+  if (permanent.permanentLimitOverride) {
+    parts.push(`you may keep up to ${permanent.permanentLimitOverride} permanent cards in play, including this one`);
+  }
+  if (permanent.handLimitBonus) {
+    parts.push(`your hand limit is increased by ${permanent.handLimitBonus}`);
+  }
 
   return parts.join("; ") || "permanent";
 }

@@ -48,7 +48,7 @@ Rules-correctness fixes applied to **both** modes (rulebook/wiki): second negati
 | Witch Hut | 🟡 | Take/discard the top Ability card works; "remove an Ability card from hand" option missing. |
 | Scholar | ✅ | Attack-die roll: statistic card / ability search / spell search ("remove a statistic" option missing). |
 | Redwood Observatory | 🟡 | Reveals an adjacent face-down tile; revealing a *new* tile from supply not offered. |
-| Pandora's Box | 🟡 | Dice options work. Pandora's Box card deck (Stretch Goals) 🔴. |
+| Pandora's Box | 🟡 | Dice options work. Pandora deck draw implemented with 2 of the 20 Stretch Goals cards: “up to 3 permanent cards” (the permanent-limit exception) and “your hand is increased by 1” — both playable permanents. 3 more cards exist as not-implemented library entries; the remaining 15 🔴. |
 | Stables / Sanctuary / Trading Post | ✅ | Full choose-one menu with a market panel UI (trade table image from the rulebook back cover): repeatable resource trades, sell one card for 1 gold (Specialty/Statistic/starting Ability/Magic Arrow excluded, card removed from the game), or buy a war machine at the higher price. Trading locks out the other two options within a visit, as printed. |
 | War Machine Factory | ✅ | Sells the five war machines at their lower price (shared one-copy supply; bought cards go to the buyer's hand and then live in their deck). |
 | Obelisk / Dragon Utopia / Grail / Star Axis | 🟡 | Flaggable/visitable shells; scenario-specific effects pending. |

@@ -911,6 +911,11 @@ describe("neutral combat", () => {
     expect(state.combat?.awaitingContinue).toBe(true);
     state = apply(state, { type: "RETREAT_FROM_COMBAT", playerId: "p1" });
 
+    // The battlefield stays up with the end-of-combat notice until the
+    // participant returns to the map.
+    expect(state.combat?.outcome?.reason).toBe("retreat");
+    state = apply(state, { type: "ACKNOWLEDGE_COMBAT_END", playerId: "p1" });
+
     expect(state.combat).toBeNull();
     expect(state.heroes.hero_p1.spaceId).toBe(townSpace);
     expect(state.adventure?.fields["h:9:1"].flagOwnerId).toBeNull();

@@ -92,7 +92,9 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
             playerId,
             tiles.map(() => "hidden")
           ])
-        )
+        ),
+        // The Pandora's Box draw pile stays face down; only its size shows.
+        pandoraDeck: base.adventure.pandoraDeck?.map(() => "hidden")
       }
     : null;
 

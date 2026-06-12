@@ -225,7 +225,7 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "QUICK_COMBAT_WON":
       return `${playerName(state, event.playerId)} sweeps aside the level ${event.difficulty} guards (quick combat).`;
     case "COMBAT_CONTINUED":
-      return `${playerName(state, event.playerId)} spends 1 MP to fight on (${event.movementLeft} left).`;
+      return `${playerName(state, event.playerId)} spends 1 movement point to fight on (${event.movementLeft} left).`;
     case "COMBAT_RETREATED":
       return `${playerName(state, event.playerId)} retreats from the combat.`;
     case "COMBAT_UNIT_PLACED":
@@ -242,6 +242,12 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} buys the ${cardName(event.cardId)} for ${formatCost(event.cost)} (${event.at === "factory" ? "War Machine Factory" : "Trading Post"}).`;
     case "PERMANENT_PLAYED":
       return `${playerName(state, event.playerId)} puts ${cardName(event.cardId)} into play${event.replacedCardId ? `, discarding ${cardName(event.replacedCardId)}` : ""}.`;
+    case "PERMANENT_DISCARDED":
+      return `${playerName(state, event.playerId)} discards ${cardName(event.cardId)} from play${
+        event.reason === "limit" ? " (over the permanent limit)" : ""
+      }.`;
+    case "PANDORA_CARD_DRAWN":
+      return `${playerName(state, event.playerId)} opens Pandora's Box and draws ${cardName(event.cardId)}.`;
     case "WAR_MACHINE_TRIGGERED":
       return event.message;
     case "GAME_WON":
