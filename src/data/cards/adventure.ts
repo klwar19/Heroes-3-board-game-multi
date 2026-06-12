@@ -48,7 +48,7 @@ function mightSpecialtyOne(heroSlug: string, heroName: string, doubledUnit: stri
       ]
     },
     assets: {
-      cardImage: `https://en.homm3bg.wiki/assets/hero_specialties-${heroSlug}-1.webp`,
+      cardImage: `/assets/hero_specialties-${heroSlug}-1.webp`,
       imageAlt: `${heroName} level I specialty card`
     },
     implementationStatus: "implemented",
@@ -88,7 +88,7 @@ export const adventureCards: CardLibrary = {
       expertDrawCards: 2
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/abilities-leadership.webp",
+      cardImage: "/assets/abilities-leadership.webp",
       imageAlt: "Leadership ability card"
     },
     implementationStatus: "implemented",
@@ -113,7 +113,7 @@ export const adventureCards: CardLibrary = {
       drawCards: 1
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/abilities-sorcery.webp",
+      cardImage: "/assets/abilities-sorcery.webp",
       imageAlt: "Sorcery ability card"
     },
     implementationStatus: "implemented",
@@ -133,7 +133,7 @@ export const adventureCards: CardLibrary = {
     ],
     effect: { type: "DRAW_CARDS", amount: 0 },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/abilities-wisdom.webp",
+      cardImage: "/assets/abilities-wisdom.webp",
       imageAlt: "Wisdom ability card"
     },
     implementationStatus: "not-implemented",
@@ -153,7 +153,7 @@ export const adventureCards: CardLibrary = {
       amount: 1
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/abilities-first_aid.webp",
+      cardImage: "/assets/abilities-first_aid.webp",
       imageAlt: "First Aid ability card"
     },
     implementationStatus: "implemented",
@@ -173,7 +173,7 @@ export const adventureCards: CardLibrary = {
     ],
     effect: { type: "DRAW_CARDS", amount: 0 },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/abilities-scholar.webp",
+      cardImage: "/assets/abilities-scholar.webp",
       imageAlt: "Scholar ability card"
     },
     implementationStatus: "not-implemented",
@@ -193,7 +193,7 @@ export const adventureCards: CardLibrary = {
     ],
     effect: { type: "DRAW_CARDS", amount: 0 },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/abilities-tactics.webp",
+      cardImage: "/assets/abilities-tactics.webp",
       imageAlt: "Tactics ability card"
     },
     implementationStatus: "not-implemented",
@@ -253,7 +253,7 @@ export const adventureCards: CardLibrary = {
       amount: 1
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/hero_specialties-rion-1.webp",
+      cardImage: "/assets/hero_specialties-rion-1.webp",
       imageAlt: "Battlefield Medic level I specialty card"
     },
     implementationStatus: "implemented",
@@ -291,7 +291,7 @@ export const adventureCards: CardLibrary = {
       initiative: 6
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/hero_specialties-sandro-1.webp",
+      cardImage: "/assets/hero_specialties-sandro-1.webp",
       imageAlt: "Cloak of the Undead King level I specialty card"
     },
     implementationStatus: "implemented",

@@ -480,7 +480,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.catherine.4",
       6: "specialty.catherine.6"
     },
-    portrait: "https://en.homm3bg.wiki/assets/heroes-castle-might-catherine.webp",
+    portrait: "/assets/heroes-castle-might-catherine.webp",
     source: heroSource("catherine")
   },
   rion: {
@@ -496,7 +496,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.rion.4",
       6: "specialty.rion.6"
     },
-    portrait: "https://en.homm3bg.wiki/assets/heroes-castle-magic-rion.webp",
+    portrait: "/assets/heroes-castle-magic-rion.webp",
     source: heroSource("rion")
   },
   sandro: {
@@ -512,7 +512,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.sandro.4",
       6: "specialty.sandro.6"
     },
-    portrait: "https://en.homm3bg.wiki/assets/heroes-necropolis-magic-sandro.webp",
+    portrait: "/assets/heroes-necropolis-magic-sandro.webp",
     source: heroSource("sandro")
   },
   tamika: {
@@ -528,7 +528,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.tamika.4",
       6: "specialty.tamika.6"
     },
-    portrait: "https://en.homm3bg.wiki/assets/heroes-necropolis-might-tamika.webp",
+    portrait: "/assets/heroes-necropolis-might-tamika.webp",
     source: heroSource("tamika")
   },
   gelu: {
@@ -544,7 +544,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.gelu.4",
       6: "specialty.gelu.6"
     },
-    portrait: "https://en.homm3bg.wiki/assets/heroes-rampart-might-gelu.webp",
+    portrait: "/assets/heroes-rampart-might-gelu.webp",
     source: heroSource("gelu")
   },
   gem: {
@@ -560,7 +560,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.gem.4",
       6: "specialty.gem.6"
     },
-    portrait: "https://en.homm3bg.wiki/assets/heroes-rampart-magic-gem.webp",
+    portrait: "/assets/heroes-rampart-magic-gem.webp",
     source: heroSource("gem")
   },
   xyron: {
@@ -576,7 +576,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.xyron.4",
       6: "specialty.xyron.6"
     },
-    portrait: "https://en.homm3bg.wiki/assets/heroes-inferno-magic-xyron.webp",
+    portrait: "/assets/heroes-inferno-magic-xyron.webp",
     source: heroSource("xyron")
   },
   rashka: {
@@ -592,7 +592,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.rashka.4",
       6: "specialty.rashka.6"
     },
-    portrait: "https://en.homm3bg.wiki/assets/heroes-inferno-might-rashka.webp",
+    portrait: "/assets/heroes-inferno-might-rashka.webp",
     source: heroSource("rashka")
   },
   alamar: {
@@ -608,7 +608,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.alamar.4",
       6: "specialty.alamar.6"
     },
-    portrait: "https://en.homm3bg.wiki/assets/heroes-dungeon-magic-alamar.webp",
+    portrait: "/assets/heroes-dungeon-magic-alamar.webp",
     source: heroSource("alamar")
   },
   mutare: {
@@ -624,7 +624,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.mutare.4",
       6: "specialty.mutare.6"
     },
-    portrait: "https://en.homm3bg.wiki/assets/heroes-dungeon-might-mutare.webp",
+    portrait: "/assets/heroes-dungeon-might-mutare.webp",
     source: heroSource("mutare")
   }
 };
@@ -650,7 +650,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     heroes: ["catherine", "rion"],
     buildings: buildingsOfFaction("castle"),
     units: unitsOfFaction("castle"),
-    townImage: "https://en.homm3bg.wiki/assets/towns-castle-empty.webp",
+    townImage: "/assets/towns-castle-empty.webp",
     source: townSource("castle")
   },
   rampart: {
@@ -661,7 +661,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     heroes: ["gelu", "gem"],
     buildings: buildingsOfFaction("rampart"),
     units: unitsOfFaction("rampart"),
-    townImage: "https://en.homm3bg.wiki/assets/towns-rampart-empty.webp",
+    townImage: "/assets/towns-rampart-empty.webp",
     source: townSource("rampart")
   },
   inferno: {
@@ -672,7 +672,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     heroes: ["xyron", "rashka"],
     buildings: buildingsOfFaction("inferno"),
     units: unitsOfFaction("inferno"),
-    townImage: "https://en.homm3bg.wiki/assets/towns-inferno-empty.webp",
+    townImage: "/assets/towns-inferno-empty.webp",
     source: townSource("inferno")
   },
   necropolis: {
@@ -684,7 +684,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     buildings: buildingsOfFaction("necropolis"),
     units: unitsOfFaction("necropolis"),
     ignoresMorale: true,
-    townImage: "https://en.homm3bg.wiki/assets/towns-necropolis-empty.webp",
+    townImage: "/assets/towns-necropolis-empty.webp",
     source: townSource("necropolis")
   },
   dungeon: {
@@ -695,7 +695,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     heroes: ["alamar", "mutare"],
     buildings: buildingsOfFaction("dungeon"),
     units: unitsOfFaction("dungeon"),
-    townImage: "https://en.homm3bg.wiki/assets/towns-dungeon-empty.webp",
+    townImage: "/assets/towns-dungeon-empty.webp",
     source: townSource("dungeon")
   }
 };

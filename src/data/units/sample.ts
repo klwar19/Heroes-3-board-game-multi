@@ -21,7 +21,7 @@ export const sampleCombatUnits: Record<string, CombatUnitState> = {
     defenseToken: false,
     abilities: ["unlimited-retaliation"],
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/units-castle-bronze-griffins-pack.webp",
+      cardImage: "/assets/units-castle-bronze-griffins-pack.webp",
       imageAlt: "Pack of Griffins unit card",
       wikiUrl: "https://en.homm3bg.wiki/units/griffins/"
     }
@@ -46,7 +46,7 @@ export const sampleCombatUnits: Record<string, CombatUnitState> = {
     defenseToken: false,
     abilities: ["ranged-extra-shot-on-low-roll"],
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/units-rampart-bronze-elves-pack.webp",
+      cardImage: "/assets/units-rampart-bronze-elves-pack.webp",
       imageAlt: "Pack of Elves unit card",
       wikiUrl: "https://en.homm3bg.wiki/units/elves/"
     }
@@ -71,7 +71,7 @@ export const sampleCombatUnits: Record<string, CombatUnitState> = {
     defenseToken: false,
     abilities: ["attack-die-reroll"],
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/units-castle-silver-crusaders-pack.webp",
+      cardImage: "/assets/units-castle-silver-crusaders-pack.webp",
       imageAlt: "Pack of Crusaders unit card",
       wikiUrl: "https://en.homm3bg.wiki/units/crusaders/"
     }
@@ -96,7 +96,7 @@ export const sampleCombatUnits: Record<string, CombatUnitState> = {
     defenseToken: false,
     abilities: ["summon-demons"],
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/units-inferno-silver-pit_lords-pack.webp",
+      cardImage: "/assets/units-inferno-silver-pit_lords-pack.webp",
       imageAlt: "Pack of Pit Lords unit card",
       wikiUrl: "https://en.homm3bg.wiki/units/pit_lords/"
     }
@@ -121,7 +121,7 @@ export const sampleCombatUnits: Record<string, CombatUnitState> = {
     defenseToken: false,
     abilities: ["magog-fireball-splash"],
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/units-inferno-bronze-magogs-pack.webp",
+      cardImage: "/assets/units-inferno-bronze-magogs-pack.webp",
       imageAlt: "Pack of Magogs unit card",
       wikiUrl: "https://en.homm3bg.wiki/units/magogs/"
     }
@@ -146,7 +146,7 @@ export const sampleCombatUnits: Record<string, CombatUnitState> = {
     defenseToken: false,
     abilities: [],
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/units-necropolis-golden-dread_knights-few.webp",
+      cardImage: "/assets/units-necropolis-golden-dread_knights-few.webp",
       imageAlt: "Few Dread Knights unit card",
       wikiUrl: "https://en.homm3bg.wiki/units/dread_knights/"
     }
