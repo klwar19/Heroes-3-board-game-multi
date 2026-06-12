@@ -738,6 +738,8 @@ function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
       return [{ type: "SCHOLAR" }];
     case "TRADING_POST":
       return [{ type: "TRADING_POST" }];
+    case "WAR_MACHINE_SHOP":
+      return [{ type: "WAR_MACHINE_SHOP" }];
     case "ATTACK_DIE_TABLE":
       return [
         {
@@ -934,6 +936,7 @@ function stepNeedsInput(step: VisitStep): boolean {
     step.type === "SETTLEMENT_CHOICE" ||
     step.type === "WITCH_HUT" ||
     step.type === "TRADING_POST" ||
+    step.type === "WAR_MACHINE_SHOP" ||
     step.type === "DISCOVER_ADJACENT_TILE" ||
     step.type === "MAGIC_SPRING" ||
     step.type === "REMOVE_HAND_CARD" ||

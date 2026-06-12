@@ -662,39 +662,6 @@ export const sampleCards: CardLibrary = {
       url: "https://en.homm3bg.wiki/artifacts/buckler_of_the_gnoll_king/"
     }
   },
-  "war_machine.first_aid_tent": {
-    id: "war_machine.first_aid_tent",
-    name: "First Aid Tent",
-    kind: "war-machine",
-    timing: "combat",
-    phaseLimit: ["combat"],
-    tags: ["war-machine", "permanent", "heal", "wiki-reference"],
-    target: { type: "none" },
-    effect: {
-      type: "CREATE_ACTIVE_EFFECT",
-      effect: {
-        name: "First Aid Tent",
-        scope: "player",
-        duration: { type: "permanent" },
-        polarity: "positive",
-        removable: false,
-        modifiers: [
-          {
-            type: "HEAL_ONCE_PER_COMBAT_ROUND",
-            amount: 1
-          }
-        ]
-      }
-    },
-    assets: {
-      cardImage: "/assets/war_machines-first_aid_tent.webp",
-      imageAlt: "First Aid Tent war machine card"
-    },
-    implementationStatus: "implemented",
-    source: {
-      product: "Heroes of Might and Magic III: The Board Game",
-      credit: wikiCredit,
-      url: "https://homm3bg.wiki/war_machines/first_aid_tent/"
-    }
-  }
+  // First Aid Tent moved to permanents.ts with the rest of the war machines
+  // (same card id, now using the permanent-card model).
 };

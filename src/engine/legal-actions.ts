@@ -28,8 +28,10 @@ import {
   BATTLEFIELD_ROWS,
   getBattlefieldLabel,
   getReachableDestinations,
+  isAdjacent,
   isBattlefieldPosition
 } from "./battlefield";
+import { getPermanentDefinition, getPermanentSchoolBonus, warMachinesForSale } from "./permanents";
 import { SHARED_DECK_IDS } from "./decks";
 import type {
   AttackRollMode,
@@ -92,14 +94,9 @@ export function isUnitAlive(unit: CombatUnitState): boolean {
   return unit.damage < unit.maxHealth;
 }
 
-export function isAdjacent(leftPosition: number, rightPosition: number, columns = BATTLEFIELD_COLUMNS): boolean {
-  const leftRow = Math.floor(leftPosition / columns);
-  const leftColumn = leftPosition % columns;
-  const rightRow = Math.floor(rightPosition / columns);
-  const rightColumn = rightPosition % columns;
-
-  return Math.abs(leftRow - rightRow) + Math.abs(leftColumn - rightColumn) === 1;
-}
+// isAdjacent moved to battlefield.ts (dependency-free) so active-effects and
+// the permanents module can share it without import cycles.
+export { isAdjacent } from "./battlefield";
 
 /**
  * Printed movement values: ground and flying units move up to 3 spaces,
@@ -242,8 +239,24 @@ function isOppositeBackRow(leftPosition: number, rightPosition: number): boolean
   );
 }
 
-export function getAttackRollMode(attacker: CombatUnitState, defender: CombatUnitState): AttackRollMode {
-  const ignoresPenalty = hasUnitAbilityEffect(attacker, "IGNORE_RANGED_BACK_ROW_PENALTY");
+/** Ammo Cart and friends: a player-scoped waiver of the ranged penalties. */
+function hasRangedPenaltyWaiver(state: GameState | undefined, unit: CombatUnitState): boolean {
+  return Boolean(
+    state?.activeEffects.some(
+      (effect) =>
+        activeEffectAppliesToUnit(effect, unit) &&
+        effect.modifiers.some((modifier) => modifier.type === "RANGED_IGNORE_PENALTIES")
+    )
+  );
+}
+
+export function getAttackRollMode(
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  state?: GameState
+): AttackRollMode {
+  const ignoresPenalty =
+    hasUnitAbilityEffect(attacker, "IGNORE_RANGED_BACK_ROW_PENALTY") || hasRangedPenaltyWaiver(state, attacker);
 
   if (attacker.type === "ranged" && getAttackKind(attacker, defender) === "melee" && !ignoresPenalty) {
     return "disadvantage";
@@ -549,13 +562,24 @@ function addPlayableCardActions(
 
   for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
-    if (
-      !card ||
-      card.kind === "spell" ||
-      card.trigger ||
-      card.implementationStatus !== "implemented" ||
-      !isPhaseAllowedForCard(state, card)
-    ) {
+    if (!card || card.kind === "spell" || card.implementationStatus !== "implemented") {
+      continue;
+    }
+
+    // Permanents are played like activation cards: during one of your own
+    // unit's activations, before it attacks. They enter play instead of
+    // resolving (replacing the previous permanent).
+    if (card.permanent) {
+      if (ownActivationOpen) {
+        actions.push({
+          label: `Put ${card.name} into play`,
+          action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
+        });
+      }
+      continue;
+    }
+
+    if (card.trigger || !isPhaseAllowedForCard(state, card)) {
       continue;
     }
 
@@ -652,7 +676,21 @@ function addTurnCardActions(
 
   for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
-    if (!card || card.kind === "spell" || card.trigger || card.implementationStatus !== "implemented") {
+    if (!card || card.kind === "spell" || card.implementationStatus !== "implemented") {
+      continue;
+    }
+
+    // Permanents may also enter play on the owner's map turn (they are
+    // played the same way as map cards).
+    if (card.permanent) {
+      actions.push({
+        label: `Put ${card.name} into play`,
+        action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
+      });
+      continue;
+    }
+
+    if (card.trigger) {
       continue;
     }
 
@@ -1174,11 +1212,12 @@ export function getLegalReactionsForTrigger(
   for (const player of Object.values(state.players)) {
     const reactions = [...new Set(player.hand)].flatMap((cardId) => {
       const card = cards[cardId];
-      if (
-        !card ||
-        (card.timing !== "reaction" && card.timing !== "instant") ||
-        card.implementationStatus !== "implemented"
-      ) {
+      // Permanents join reaction windows only through their printed expert
+      // side (School of Magic +3 power from hand); their basic side is the
+      // enter-play action outside reaction windows.
+      const allowedTiming =
+        card && (card.timing === "reaction" || card.timing === "instant" || Boolean(card.permanent));
+      if (!card || !allowedTiming || card.implementationStatus !== "implemented") {
         return [];
       }
 
@@ -1191,7 +1230,7 @@ export function getLegalReactionsForTrigger(
 
         const variantName = variant.optionLabel ? `${card.name}: ${variant.optionLabel}` : card.name;
 
-        if (isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic")) {
+        if (!card.permanent && isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic")) {
           actions.push(
             makeReactionAction(variantName, {
               type: "PLAY_REACTION",
@@ -1223,12 +1262,60 @@ export function getLegalReactionsForTrigger(
       return actions;
     });
 
+    // School of Magic in play: the caster may discard it for the expert
+    // power bonus while their matching spell is being cast.
+    const fieldExpert = getPermanentFieldExpertAction(state, player.id, triggerEvent, cards);
+    if (fieldExpert) {
+      reactions.push(fieldExpert);
+    }
+
     if (reactions.length > 0) {
       result[player.id] = reactions;
     }
   }
 
   return result;
+}
+
+/**
+ * The in-play School of Magic expert as a reaction: available to the spell's
+ * caster while the matching cast is on the stack and an expert use is left.
+ */
+function getPermanentFieldExpertAction(
+  state: GameState,
+  playerId: PlayerId,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" }>,
+  cards: CardLibrary
+): LegalAction | null {
+  if (triggerEvent.type !== "SPELL_CAST_STARTED" || triggerEvent.playerId !== playerId) {
+    return null;
+  }
+
+  const player = state.players[playerId];
+  const permanent = getPermanentDefinition(state, playerId);
+  const bonus = permanent?.permanentEffect?.schoolBonus;
+  const spellCard = cards[triggerEvent.spellCardId];
+  if (!player || !permanent || !bonus || !spellCard) {
+    return null;
+  }
+
+  if (!getPermanentSchoolBonus(state, playerId, spellCard)) {
+    return null;
+  }
+
+  if (player.combatStats.expertUsesSpentThisRound >= player.limits.expertUses) {
+    return null;
+  }
+
+  const stackItem = getPendingStackItem(state, triggerEvent);
+  if ((stackItem?.modifiers.schoolPowerBonus ?? 0) >= bonus.expertPower) {
+    return null;
+  }
+
+  return {
+    label: `Discard ${permanent.name} from play: +${bonus.expertPower} power (expert)`,
+    action: { type: "USE_PERMANENT_EXPERT", playerId }
+  };
 }
 
 function variantMatchesTrigger(
@@ -1264,7 +1351,9 @@ function getPendingStackItem(state: GameState, triggerEvent: GameEvent) {
 
 function getPendingSpellPower(state: GameState, triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" }>): number {
   const stackItem = getPendingStackItem(state, triggerEvent);
-  return triggerEvent.power + (stackItem?.modifiers.spellPowerBonus ?? 0);
+  return (
+    triggerEvent.power + (stackItem?.modifiers.spellPowerBonus ?? 0) + (stackItem?.modifiers.schoolPowerBonus ?? 0)
+  );
 }
 
 export function effectHasExpertMode(effect: ConcreteEffect): boolean {
@@ -1509,15 +1598,40 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
         });
       }
     }
-    // Rulebook alternative: remove one card from hand to gain 1 valuables
-    // (instead of trading).
-    for (const { index, cardId } of removableHandCards(state, playerId, "any")) {
-      actions.push({
-        label: `Remove ${cards[cardId]?.name ?? cardId} → gain 1 valuables`,
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
-      });
+    // The other two printed options ("choose one") stay open only until the
+    // first resource trade: sell one card from hand for 1 gold (Specialty,
+    // Statistic, starting Ability and Magic Arrow excluded), or buy a war
+    // machine at the higher price.
+    if (!step.traded) {
+      for (const { index, cardId } of removableHandCards(state, playerId, "sellable")) {
+        actions.push({
+          label: `Sell ${cards[cardId]?.name ?? cardId} → gain 1 gold`,
+          action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
+        });
+      }
+      for (const offer of warMachinesForSale(state, "trading-post")) {
+        if (playerHasResources(player, offer.cost)) {
+          actions.push({
+            label: `Buy ${offer.card.name} (${offer.cost.gold ?? 0} gold)`,
+            action: { type: "BUY_WAR_MACHINE", playerId, cardId: offer.cardId }
+          });
+        }
+      }
     }
     actions.push({ label: "Done trading", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
+    return;
+  }
+
+  if (step.type === "WAR_MACHINE_SHOP") {
+    for (const offer of warMachinesForSale(state, "factory")) {
+      if (playerHasResources(player, offer.cost)) {
+        actions.push({
+          label: `Buy ${offer.card.name} (${offer.cost.gold ?? 0} gold)`,
+          action: { type: "BUY_WAR_MACHINE", playerId, cardId: offer.cardId }
+        });
+      }
+    }
+    actions.push({ label: "Leave the factory", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
     return;
   }
 

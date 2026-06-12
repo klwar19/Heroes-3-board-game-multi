@@ -38,8 +38,8 @@ Legend: ✅ playable · 🟡 data present, rules effect not implemented · 🔴 
 | Scholar | ✅ | Attack-die roll: statistic card / ability search / spell search ("remove a statistic" option missing). |
 | Redwood Observatory | 🟡 | Reveals an adjacent face-down tile; revealing a *new* tile from supply not offered. |
 | Pandora's Box | 🟡 | Dice options work. Pandora's Box card deck (Stretch Goals) 🔴. |
-| Stables / Sanctuary / Trading Post | ✅ | Trade table from the rulebook back cover. Trading Post's "remove a card" and war-machine purchase 🔴. |
-| War Machine Factory | 🔴 | Needs war machine price list. |
+| Stables / Sanctuary / Trading Post | ✅ | Full choose-one menu with a market panel UI (trade table image from the rulebook back cover): repeatable resource trades, sell one card for 1 gold (Specialty/Statistic/starting Ability/Magic Arrow excluded, card removed from the game), or buy a war machine at the higher price. Trading locks out the other two options within a visit, as printed. |
+| War Machine Factory | ✅ | Sells the five war machines at their lower price (shared one-copy supply; bought cards go to the buyer's hand and then live in their deck). |
 | Obelisk / Dragon Utopia / Grail / Star Axis | 🟡 | Flaggable/visitable shells; scenario-specific effects pending. |
 
 ## Factions and towns (`src/data/factions/core.ts`)
@@ -103,7 +103,8 @@ Hero board level track (verified against the wiki board scan): 2 XP per level; h
 | Tactics | 🟡 | Unit-swap timing not modeled. |
 | Artifacts: Ogre's Club, Titan's Gladius, Buckler, Breastplate | ✅ | |
 | Centaur's Axe | ✅ | Corrected to the printed card: "Triple the Attack die's outcome" OR "+1 attack" (either fighter may triple). |
-| War machines: First Aid Tent | ✅ | |
+| War machines: First Aid Tent, Ammo Cart, Ballista, Catapult, Cannon | ✅ | Permanent cards (one in play per player; playing another discards the first). FAT heals 1 once per combat round; Ammo Cart waives the ranged penalties and gives ranged units +2 initiative; Ballista auto-hits the slowest enemy at every round start (ties pause for the owner); Catapult may pay 1 material for 1 damage to two adjacent targets (walls/gate pending sieges); Cannon may spend 1 expert use for 2 damage. Bought at the Factory (3/5/7/8/10 gold) or Trading Post (6/8/10/12/14). Catapult/Cannon card scans missing on the wiki — text fallback renders. |
+| Schools of Magic: Fire/Water/Air/Earth Magic | ✅ | Permanents: +1 power for the school's spells while in play (Magic Arrow counts for every school); expert discards the card — from hand or from play — for +3 power on one matching cast (replaces the +1, costs an expert use). |
 | Hero specialties (18) | see Heroes | I-level for might heroes + Rion implemented. |
 | Remaining official spell/ability/artifact decks | 🔴 | Dozens of cards still to import (see wiki indexes). |
 | Astrologers Proclaim deck (19 core cards) | ✅ | Drawn and resolved every even round; "until the next Astrologers round" effects (movement, hand limit, spell hooks, die rerolls, neutral-draw swaps) enforced by the engine; income modifiers apply at the next Resource round. Texts from the wiki (`src/data/cards/astrologers.ts`). |

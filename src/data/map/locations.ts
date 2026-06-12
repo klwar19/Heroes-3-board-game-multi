@@ -296,11 +296,8 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "war_machine_factory",
     name: "War Machine Factory",
     category: "revisitable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "War Machine purchases need the war machine price list (Rampart expansion)."
-    },
-    implementationStatus: "not-implemented",
+    interaction: { type: "WAR_MACHINE_SHOP" },
+    implementationStatus: "implemented",
     source: source("war_machine_factory")
   },
   obelisk: {

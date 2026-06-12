@@ -2,13 +2,14 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Crown, Layers, Search, Sparkles } from "lucide-react";
+import { Anchor, Crown, Layers, Search, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
 import { getDeckBack } from "@/data/decks";
 import { coreHeroDefinitions } from "@/data/factions/core";
 import {
   describeCardEffect,
+  describePermanentEffect,
   type GameAction,
   type GameState,
   type LegalAction,
@@ -50,6 +51,64 @@ export function CardFrame({
   }
 
   return <img alt={alt} className={className} loading="eager" referrerPolicy="no-referrer" src={src} title={title ?? alt} />;
+}
+
+/**
+ * The one permanent card in play next to a player's hero board. Shows the
+ * card face with a "permanent" badge; the expert discard appears as a button
+ * whenever the engine offers USE_PERMANENT_EXPERT for the owner.
+ */
+export function PermanentSlot({
+  state,
+  playerId,
+  viewerPlayerId,
+  legalActions,
+  onAction,
+  compact = false
+}: {
+  state: GameState;
+  playerId: PlayerId;
+  viewerPlayerId?: PlayerId;
+  legalActions?: LegalAction[];
+  onAction?: (action: GameAction) => void;
+  compact?: boolean;
+}) {
+  const { zoomCard } = useCardZoom();
+  const cardId = state.players[playerId]?.permanent ?? null;
+  if (!cardId) {
+    return null;
+  }
+
+  const card = cardLibrary[cardId];
+  const expert =
+    onAction && viewerPlayerId === playerId
+      ? legalActions?.find((legal) => legal.action.type === "USE_PERMANENT_EXPERT")
+      : undefined;
+
+  return (
+    <div className={`permanentSlot ${compact ? "compact" : ""}`} aria-label={`${state.players[playerId]?.name} permanent in play`}>
+      <button
+        className="permanentCardButton"
+        onClick={() => zoomCard(cardId)}
+        title={card ? `${card.name} — ${describePermanentEffect(card)}` : cardId}
+        type="button"
+      >
+        <CardFrame cardId={cardId} className="permanentCardImage" />
+      </button>
+      <div className="permanentMeta">
+        <span className="permanentBadge">
+          <Anchor aria-hidden="true" size={11} /> permanent
+        </span>
+        {!compact ? <strong>{card?.name ?? cardId}</strong> : null}
+        {!compact && card ? <small>{describePermanentEffect(card)}</small> : null}
+        {expert ? (
+          <button className="commandButton" onClick={() => onAction?.(expert.action)} type="button">
+            <Crown aria-hidden="true" size={12} /> {expert.label}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 export function CardBack({ className, deckId }: { className?: string; deckId?: string }) {
@@ -312,6 +371,7 @@ export function OpponentBar({
                 <span>{player.discard.length}</span>
               </div>
             </div>
+            <PermanentSlot compact playerId={playerId} state={state} />
           </section>
         );
       })}

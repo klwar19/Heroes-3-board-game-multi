@@ -238,6 +238,12 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} buys spells for ${formatCost(event.cost)}.`;
     case "TRADE_EXECUTED":
       return `${playerName(state, event.playerId)} trades ${event.rateLabel}.`;
+    case "WAR_MACHINE_BOUGHT":
+      return `${playerName(state, event.playerId)} buys the ${cardName(event.cardId)} for ${formatCost(event.cost)} (${event.at === "factory" ? "War Machine Factory" : "Trading Post"}).`;
+    case "PERMANENT_PLAYED":
+      return `${playerName(state, event.playerId)} puts ${cardName(event.cardId)} into play${event.replacedCardId ? `, discarding ${cardName(event.replacedCardId)}` : ""}.`;
+    case "WAR_MACHINE_TRIGGERED":
+      return event.message;
     case "GAME_WON":
       return `${playerName(state, event.playerId)} wins the game: ${event.reason}!`;
     case "TILE_ROTATION_SET":

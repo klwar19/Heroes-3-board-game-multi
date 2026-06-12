@@ -15,6 +15,7 @@ import {
   HAND_LIMIT_BY_LEVEL,
   NEUTRAL_DECK_IDS,
   SPECIALTY_LEVELS,
+  describeCardEffect,
   effectiveHandLimit,
   getActiveAstrologersCard,
   getMainHero,
@@ -1341,6 +1342,10 @@ export function PromptTray({
     body = abilityTargetActions;
   } else if (visit && visit.playerId === viewerPlayerId && visitActions.length > 0) {
     const step = visit.steps[0];
+    // The market panel owns the Trading Post / War Machine Factory visits.
+    if (step?.type === "TRADING_POST" || step?.type === "WAR_MACHINE_SHOP") {
+      return null;
+    }
     const field = state.adventure?.fields[visit.fieldId];
     title =
       step?.type === "CHOOSE_ONE"
@@ -1368,6 +1373,206 @@ export function PromptTray({
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Market panel: Trading Post / War Machine Factory visits
+// ---------------------------------------------------------------------------
+
+/**
+ * The market tab that opens whenever one of the viewer's heroes resolves a
+ * Trading Post or War Machine Factory visit. It can be minimized to a corner
+ * chip and pops back open on the next visit. The Trading Post offers the
+ * printed choose-one menu: resource trades (repeatable, shown with the
+ * rulebook's trade table), selling one card for 1 gold, or buying a war
+ * machine at its higher price; the Factory only sells machines, cheaper.
+ */
+export function MarketPanel({
+  state,
+  viewerPlayerId,
+  legalActions,
+  onAction
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  legalActions: LegalAction[];
+  onAction: (action: GameAction) => void;
+}) {
+  const visit = state.adventure?.pendingVisit;
+  const step = visit?.steps[0];
+  const isMarket =
+    Boolean(visit && step && visit.playerId === viewerPlayerId) &&
+    (step?.type === "TRADING_POST" || step?.type === "WAR_MACHINE_SHOP");
+
+  // Pops open in the player's face on every new market visit; the user may
+  // minimize it to a corner chip while they look at the map.
+  const visitKey = isMarket && visit ? `${visit.fieldId}:${step?.type}:${visit.heroId}` : "";
+  const [openState, setOpenState] = useState({ key: "", minimized: false });
+  if (openState.key !== visitKey) {
+    setOpenState({ key: visitKey, minimized: false });
+  }
+
+  if (!isMarket || !visit || !step) {
+    return null;
+  }
+
+  const isTradingPost = step.type === "TRADING_POST";
+  const traded = isTradingPost && Boolean(step.traded);
+  const title = isTradingPost ? "Trading Post" : "War Machine Factory";
+
+  const tradeActions = legalActions.filter((legal) => legal.action.type === "TRADE_RESOURCES");
+  const sellActions = legalActions.filter(
+    (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.label.startsWith("Sell ")
+  );
+  const buyActions = legalActions.filter(
+    (legal): legal is LegalAction & { action: Extract<GameAction, { type: "BUY_WAR_MACHINE" }> } =>
+      legal.action.type === "BUY_WAR_MACHINE"
+  );
+  const done = legalActions.find(
+    (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.decline === true
+  );
+
+  if (openState.minimized) {
+    return (
+      <button
+        className="marketChip"
+        onClick={() => setOpenState({ key: visitKey, minimized: false })}
+        title={`Reopen the ${title}`}
+        type="button"
+      >
+        ⚖ {title}
+      </button>
+    );
+  }
+
+  const player = state.players[viewerPlayerId];
+  const supply = state.adventure?.warMachineSupply ?? [];
+  const pricing = isTradingPost ? "tradingPost" : "factory";
+
+  return (
+    <div className="marketPanel" role="dialog" aria-label={title}>
+      <header>
+        <strong>⚖ {title}</strong>
+        <small>
+          🪙 {player?.resources.gold ?? 0} · ⚒ {player?.resources.buildingMaterials ?? 0} · ♦{" "}
+          {player?.resources.valuables ?? 0}
+        </small>
+        <div className="marketHeaderButtons">
+          <button
+            onClick={() => setOpenState({ key: visitKey, minimized: true })}
+            title="Minimize — the visit stays open"
+            type="button"
+          >
+            <Minus size={13} />
+          </button>
+          {done ? (
+            <button onClick={() => onAction(done.action)} title="End the visit" type="button">
+              <X size={13} />
+            </button>
+          ) : null}
+        </div>
+      </header>
+
+      {isTradingPost ? (
+        <section className="marketTrades" aria-label="Resource trades">
+          <img
+            alt="Trade table: 6 gold or 3 building materials buy 1 valuables; 2 gold buys 1 building materials; 1 valuables sells for 3 gold or 2 building materials; 1 building materials sells for 1 gold"
+            className="marketTradeTable"
+            src="/assets/rulebook-trade_table.webp"
+          />
+          <small className="marketCredit">Trade table from the community rulebook rewrite (back cover).</small>
+          <div className="marketTradeButtons">
+            {tradeActions.length === 0 ? <small>No affordable trades right now.</small> : null}
+            {tradeActions.map((legal) => (
+              <button className="commandButton" key={actionKey(legal.action)} onClick={() => onAction(legal.action)} type="button">
+                {legal.label.replace(/^Trade /, "")}
+              </button>
+            ))}
+          </div>
+          {traded ? (
+            <small className="marketLock">
+              Resource trading chosen for this visit — keep trading or close the market. Selling cards and buying war
+              machines wait for another visit.
+            </small>
+          ) : null}
+        </section>
+      ) : null}
+
+      {isTradingPost && !traded ? (
+        <section className="marketSell" aria-label="Sell a card">
+          <h4>Sell one card from hand → 1 gold</h4>
+          <small>
+            The card is removed from the game. Specialty, Statistic, your starting Ability and Magic Arrow cannot be
+            sold. Selling (or buying a war machine) is this visit&apos;s one action.
+          </small>
+          <div className="marketSellCards">
+            {sellActions.length === 0 ? <small>No sellable cards in hand.</small> : null}
+            {sellActions.map((legal) => {
+              const cardId =
+                legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined
+                  ? state.players[viewerPlayerId]?.hand[legal.action.optionIndex]
+                  : undefined;
+              const card = cardId ? cardLibrary[cardId] : undefined;
+              return (
+                <button
+                  className="marketSellCard"
+                  key={actionKey(legal.action)}
+                  onClick={() => onAction(legal.action)}
+                  title={legal.label}
+                  type="button"
+                >
+                  {card?.assets?.cardImage ? (
+                    <img alt={card.name} loading="lazy" referrerPolicy="no-referrer" src={card.assets.cardImage} />
+                  ) : (
+                    <span className="marketCardFallback">{card?.name ?? cardId}</span>
+                  )}
+                  <small>Sell → 1 🪙</small>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      <section className="marketMachines" aria-label="War machines">
+        <h4>
+          War machines {isTradingPost ? "(Trading Post price)" : "(factory price)"}
+        </h4>
+        {supply.length === 0 ? <small>The war machine supply is empty.</small> : null}
+        <div className="marketMachineRow">
+          {supply.map((cardId) => {
+            const card = cardLibrary[cardId];
+            const cost = card?.warMachineCosts?.[pricing];
+            const buy = buyActions.find((legal) => legal.action.cardId === cardId);
+            const blocked = traded;
+            return (
+              <div className={`marketMachine ${buy && !blocked ? "" : "unavailable"}`} key={cardId}>
+                {card?.assets?.cardImage ? (
+                  <img alt={card.name} loading="lazy" referrerPolicy="no-referrer" src={card.assets.cardImage} />
+                ) : (
+                  <span className="marketCardFallback">{card?.name ?? cardId}</span>
+                )}
+                <strong>{card?.name ?? cardId}</strong>
+                <small>{card ? describeCardEffect(card).replace(/^Permanent — /, "") : ""}</small>
+                <button
+                  className="commandButton"
+                  disabled={!buy || blocked}
+                  onClick={() => buy && onAction(buy.action)}
+                  type="button"
+                >
+                  Buy for {cost?.gold ?? 0} 🪙
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <small className="marketNote">
+          War machines are permanent cards: the bought card goes to your hand; play it to put it next to your hero
+          board. Only one permanent may be in play — playing another discards the first.
+        </small>
+      </section>
     </div>
   );
 }
@@ -2074,6 +2279,9 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   COMBAT_ENDED: { icon: "🏆", cue: "combat-end" },
   COMBAT_RETREATED: { icon: "🏳", cue: "retreat" },
   TRADE_EXECUTED: { icon: "⚖", cue: "trade" },
+  WAR_MACHINE_BOUGHT: { icon: "⚙", cue: "trade" },
+  PERMANENT_PLAYED: { icon: "⚙", cue: "build" },
+  WAR_MACHINE_TRIGGERED: { icon: "💥", cue: "combat-start" },
   UNIT_RECRUITED: { icon: "🛡", cue: "recruit" },
   PRODUCTION_CHANGED: { icon: "🏭", cue: "income" },
   STRUCTURE_BUILT: { icon: "🔨", cue: "build" },

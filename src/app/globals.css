@@ -3760,3 +3760,270 @@ button.battleCell {
     radial-gradient(circle at 50% 42%, rgb(196 132 220 / 26%), transparent 62%),
     repeating-linear-gradient(45deg, #2e2236 0 6px, #221a2a 6px 12px);
 }
+
+/* Market panel (Trading Post / War Machine Factory visits) */
+.marketPanel {
+  position: fixed;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  z-index: 62;
+  width: min(720px, 94vw);
+  max-height: min(72vh, 640px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, rgba(48, 36, 21, 0.98), rgba(32, 23, 13, 0.98));
+  border: 1px solid rgba(220, 175, 95, 0.55);
+  border-radius: 12px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.6);
+  color: #f0dcb8;
+}
+
+.marketPanel header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.marketPanel header strong {
+  font-size: 1.02rem;
+}
+
+.marketPanel header small {
+  opacity: 0.85;
+}
+
+.marketHeaderButtons {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.marketHeaderButtons button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid rgba(220, 175, 95, 0.45);
+  background: rgba(20, 14, 8, 0.6);
+  color: #f0dcb8;
+  cursor: pointer;
+}
+
+.marketHeaderButtons button:hover {
+  background: rgba(220, 175, 95, 0.2);
+}
+
+.marketChip {
+  position: fixed;
+  right: 18px;
+  bottom: 112px;
+  z-index: 62;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(220, 175, 95, 0.6);
+  background: linear-gradient(180deg, rgba(48, 36, 21, 0.98), rgba(32, 23, 13, 0.98));
+  color: #f0dcb8;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5);
+}
+
+.marketChip:hover {
+  background: rgba(220, 175, 95, 0.25);
+}
+
+.marketTrades,
+.marketSell,
+.marketMachines {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.marketSell h4,
+.marketMachines h4 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #ffd766;
+}
+
+.marketTradeTable {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid rgba(220, 175, 95, 0.35);
+  display: block;
+}
+
+.marketCredit {
+  opacity: 0.6;
+  font-size: 0.68rem;
+}
+
+.marketTradeButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.marketLock {
+  color: #ffd766;
+}
+
+.marketSellCards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.marketSellCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 86px;
+  padding: 5px;
+  border-radius: 8px;
+  border: 1px solid rgba(220, 175, 95, 0.35);
+  background: rgba(20, 14, 8, 0.55);
+  color: #f0dcb8;
+  cursor: pointer;
+}
+
+.marketSellCard:hover {
+  border-color: #ffd766;
+  background: rgba(220, 175, 95, 0.16);
+}
+
+.marketSellCard img {
+  width: 100%;
+  border-radius: 6px;
+  display: block;
+}
+
+.marketCardFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  width: 100%;
+  min-height: 96px;
+  border-radius: 6px;
+  border: 1px dashed rgba(220, 175, 95, 0.4);
+  font-size: 0.72rem;
+  padding: 4px;
+}
+
+.marketMachineRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 10px;
+}
+
+.marketMachine {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px;
+  border-radius: 9px;
+  border: 1px solid rgba(220, 175, 95, 0.35);
+  background: rgba(20, 14, 8, 0.55);
+}
+
+.marketMachine.unavailable {
+  opacity: 0.6;
+}
+
+.marketMachine img {
+  width: 100%;
+  border-radius: 6px;
+  display: block;
+}
+
+.marketMachine strong {
+  font-size: 0.82rem;
+}
+
+.marketMachine small {
+  font-size: 0.66rem;
+  opacity: 0.8;
+  min-height: 2.2em;
+}
+
+.marketNote {
+  opacity: 0.7;
+  font-size: 0.7rem;
+}
+
+/* Permanent card slot (war machines / Schools of Magic in play) */
+.permanentSlot {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(220, 175, 95, 0.4);
+  background: linear-gradient(180deg, rgba(44, 33, 20, 0.92), rgba(29, 22, 13, 0.92));
+  color: #f0dcb8;
+}
+
+.permanentSlot.compact {
+  padding: 4px 6px;
+  gap: 6px;
+}
+
+.permanentCardButton {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: zoom-in;
+}
+
+.permanentCardImage {
+  width: 74px;
+  border-radius: 6px;
+  display: block;
+}
+
+.permanentSlot.compact .permanentCardImage {
+  width: 44px;
+}
+
+.permanentMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.74rem;
+}
+
+.permanentMeta strong {
+  font-size: 0.82rem;
+}
+
+.permanentMeta small {
+  opacity: 0.8;
+}
+
+.permanentBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(220, 175, 95, 0.5);
+  background: rgba(220, 175, 95, 0.14);
+  color: #ffd766;
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.trayTile.permanentTile {
+  border-color: #ffd766;
+}

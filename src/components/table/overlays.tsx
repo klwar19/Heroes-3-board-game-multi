@@ -93,6 +93,9 @@ export function ReactionTray({
     [legalActions]
   );
 
+  // School of Magic in play: discard it from the field for the expert bonus.
+  const fieldExpert = legalActions.find((legal) => legal.action.type === "USE_PERMANENT_EXPERT");
+
   if (!window) {
     return null;
   }
@@ -206,7 +209,23 @@ export function ReactionTray({
         <span>{triggerText}</span>
       </header>
       <div className="trayTiles">
-        {tiles.length === 0 ? <div className="trayEmpty">No playable instants — pass to continue.</div> : null}
+        {tiles.length === 0 && !fieldExpert ? (
+          <div className="trayEmpty">No playable instants — pass to continue.</div>
+        ) : null}
+        {fieldExpert && fieldExpert.action.type === "USE_PERMANENT_EXPERT" ? (
+          <div className="trayTile permanentTile" key="field-expert">
+            <CardFrame
+              cardId={state.players[viewerPlayerId]?.permanent ?? undefined}
+              className="trayCardImage"
+            />
+            <div className="trayTileBody">
+              <strong>{cardName(state.players[viewerPlayerId]?.permanent ?? "")} (in play)</strong>
+              <button className="trayInstant" onClick={() => onAction(fieldExpert.action)} type="button">
+                <Crown aria-hidden="true" size={13} /> {fieldExpert.label}
+              </button>
+            </div>
+          </div>
+        ) : null}
         {tiles.map((tile) => {
           const selection = selections.find((candidate) => candidate.handIndex === tile.handIndex);
           return (

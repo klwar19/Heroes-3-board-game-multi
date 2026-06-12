@@ -95,6 +95,10 @@ export type LocationInteraction =
   | { type: "SCHOLAR" }
   | { type: "TRADING_POST" }
   | {
+      /** War Machine Factory: buy a war machine at its lower price. */
+      type: "WAR_MACHINE_SHOP";
+    }
+  | {
       /**
        * Roll one Attack die and resolve the matching branch (Sea Chest,
        * Jetsam and friends from the Cove expansion).

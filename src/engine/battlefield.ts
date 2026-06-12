@@ -57,6 +57,16 @@ export function getBattlefieldLabel(position: number): string {
   return `${String.fromCharCode(65 + column)}${row + 1}`;
 }
 
+/** Orthogonal adjacency on a `columns`-wide grid (the combat board default). */
+export function isAdjacent(leftPosition: number, rightPosition: number, columns = BATTLEFIELD_COLUMNS): boolean {
+  const leftRow = Math.floor(leftPosition / columns);
+  const leftColumn = leftPosition % columns;
+  const rightRow = Math.floor(rightPosition / columns);
+  const rightColumn = rightPosition % columns;
+
+  return Math.abs(leftRow - rightRow) + Math.abs(leftColumn - rightColumn) === 1;
+}
+
 export function getOrthogonalNeighbors(position: number): number[] {
   const { row, column } = getBattlefieldCoordinates(position);
   const neighbors: number[] = [];

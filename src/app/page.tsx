@@ -20,7 +20,7 @@ import {
   InspectPanel,
   LogDrawer
 } from "@/components/table/board";
-import { CardFrame, DeckWells, HandFan, HeroPanel, OpponentBar, PlayerDock } from "@/components/table/seats";
+import { CardFrame, DeckWells, HandFan, HeroPanel, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
 import {
   DiceOverlay,
   DrawOverlay,
@@ -40,6 +40,7 @@ import {
   FarTileTray,
   HeroBoardPanel,
   HexMapBoard,
+  MarketPanel,
   PileModal,
   PlacementPanel,
   PromptTray,
@@ -1000,6 +1001,13 @@ export default function Home() {
               {isSeated ? (
                 <>
                   <HeroBoardPanel playerId={viewerPlayerId} state={state} />
+                  <PermanentSlot
+                    legalActions={legalActions}
+                    onAction={submitAction}
+                    playerId={viewerPlayerId}
+                    state={state}
+                    viewerPlayerId={viewerPlayerId}
+                  />
                   <TownPanel
                     legalActions={legalActions}
                     onAction={submitAction}
@@ -1012,6 +1020,7 @@ export default function Home() {
                 seatIds.map((playerId) => (
                   <div key={playerId}>
                     <HeroBoardPanel playerId={playerId} state={state} />
+                    <PermanentSlot playerId={playerId} state={state} />
                     <ArmyPanel playerId={playerId} state={state} />
                   </div>
                 ))
@@ -1143,6 +1152,14 @@ export default function Home() {
             items={feedItems}
             onDismiss={(id) => setFeedItems((current) => current.filter((item) => item.id !== id))}
           />
+          {isSeated ? (
+            <MarketPanel
+              legalActions={legalActions}
+              onAction={submitAction}
+              state={state}
+              viewerPlayerId={viewerPlayerId}
+            />
+          ) : null}
           <PromptTray legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
           <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
           <LogDrawer state={state} />
@@ -1238,6 +1255,15 @@ export default function Home() {
 
       <div className="tableSeatRow">
         {isSeated ? <PlayerDock view={playerView} viewerPlayerId={viewerPlayerId} /> : <div />}
+        {isSeated ? (
+          <PermanentSlot
+            legalActions={legalActions}
+            onAction={submitAction}
+            playerId={viewerPlayerId}
+            state={state}
+            viewerPlayerId={viewerPlayerId}
+          />
+        ) : null}
         {isSeated ? (
           <HandFan
             hiddenTailCount={hiddenHandTail}

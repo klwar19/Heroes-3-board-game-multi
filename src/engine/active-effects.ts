@@ -1,4 +1,4 @@
-import { isAdjacent } from "./legal-actions";
+import { isAdjacent } from "./battlefield";
 import type {
   ActiveEffectDefinition,
   ActiveEffectState,

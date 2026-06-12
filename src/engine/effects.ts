@@ -16,7 +16,8 @@ export const implementedCardEffectTypes = [
   "CREATE_ATTACK_BUFF",
   "CREATE_DEFENSE_BUFF",
   "CREATE_ATTACK_DIE_REROLL",
-  "RECALL_SPELL"
+  "RECALL_SPELL",
+  "ENTER_PLAY"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {
@@ -93,7 +94,52 @@ export function getCardEffectAmount(card: CardDefinition, mode: CardPlayMode, op
   return effect ? getEffectAmount(effect, mode) : 0;
 }
 
+/** Functional one-liner for what a permanent does while it is in play. */
+export function describePermanentEffect(card: CardDefinition): string {
+  const permanent = card.permanentEffect;
+  if (!permanent) {
+    return "permanent";
+  }
+
+  const parts: string[] = [];
+  if (permanent.schoolBonus) {
+    parts.push(
+      `+${permanent.schoolBonus.basicPower} power for ${permanent.schoolBonus.school} spells; expert: discard for +${permanent.schoolBonus.expertPower} power on one cast`
+    );
+  }
+  if (permanent.combatEffect) {
+    for (const modifier of permanent.combatEffect.modifiers) {
+      if (modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND") {
+        parts.push(`heal ${modifier.amount} from one of your units once per combat round`);
+      }
+      if (modifier.type === "RANGED_IGNORE_PENALTIES") {
+        parts.push("your ranged units ignore the ranged-attack penalties");
+      }
+    }
+  }
+  if (permanent.rangedInitiativeBonus) {
+    parts.push(`your ranged units get +${permanent.rangedInitiativeBonus} initiative`);
+  }
+  if (permanent.roundStart?.kind === "damage-lowest-initiative") {
+    parts.push(`each combat round: ${permanent.roundStart.amount} damage to the slowest enemy unit`);
+  }
+  if (permanent.roundStart?.kind === "pay-to-splash") {
+    parts.push(
+      `each combat round: may pay 1 building material to hit 2 adjacent targets for ${permanent.roundStart.amount} each`
+    );
+  }
+  if (permanent.roundStart?.kind === "expert-shot") {
+    parts.push(`each combat round: may spend 1 expert use for ${permanent.roundStart.amount} damage to an enemy unit`);
+  }
+
+  return parts.join("; ") || "permanent";
+}
+
 export function describeCardEffect(card: CardDefinition): string {
+  if (card.permanent) {
+    return `Permanent — ${describePermanentEffect(card)}`;
+  }
+
   if (card.effect.type === "CHOOSE_ONE") {
     return card.effect.options.map((option) => option.label).join(" OR ");
   }
