@@ -26,6 +26,7 @@ import {
 } from "@/components/table/board";
 import { CardFrame, DeckWells, HandFan, HeroPanel, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
 import {
+  CombatResultModal,
   DiceOverlay,
   DrawOverlay,
   ReactionTray,
@@ -1423,17 +1424,34 @@ export default function Home() {
           />
         ) : null}
         {isSeated ? (
-          <HandFan
-            hiddenTailCount={hiddenHandTail}
-            legalActions={legalActions}
-            onAction={submitAction}
-            onSelectCardAction={setSelectedCardAction}
-            selectedCardAction={selectedCardAction}
-            state={state}
-            trayActive={trayActive}
-            view={playerView}
-            viewerPlayerId={viewerPlayerId}
-          />
+          <div className="handColumn">
+            <button
+              className="commandButton ghost handBrowse"
+              onClick={() =>
+                setPile({
+                  title: "Your hand",
+                  cardIds: playerView.players[viewerPlayerId]?.hand ?? [],
+                  kind: "cards"
+                })
+              }
+              title="Read every card in your hand at full size"
+              type="button"
+            >
+              <Eye aria-hidden="true" size={13} /> View hand (
+              {playerView.players[viewerPlayerId]?.hand.length ?? 0})
+            </button>
+            <HandFan
+              hiddenTailCount={hiddenHandTail}
+              legalActions={legalActions}
+              onAction={submitAction}
+              onSelectCardAction={setSelectedCardAction}
+              selectedCardAction={selectedCardAction}
+              state={state}
+              trayActive={trayActive}
+              view={playerView}
+              viewerPlayerId={viewerPlayerId}
+            />
+          </div>
         ) : (
           <div className="observerNote">Observer mode: hands stay hidden, the fight is live.</div>
         )}
@@ -1450,8 +1468,26 @@ export default function Home() {
         key={`${state.reactionWindow?.id ?? "none"}:${state.reactionWindow?.priorityPlayerId ?? ""}`}
         legalActions={legalActions}
         onAction={submitAction}
+        onViewHand={
+          isSeated
+            ? () =>
+                setPile({
+                  title: "Your hand",
+                  cardIds: playerView.players[viewerPlayerId]?.hand ?? [],
+                  kind: "cards"
+                })
+            : undefined
+        }
         state={state}
         view={playerView}
+        viewerPlayerId={viewerPlayerId}
+      />
+      <CombatResultModal
+        key={`result-${state.combat?.id ?? "none"}`}
+        legalActions={legalActions}
+        onAction={submitAction}
+        onReset={() => resetRoom(adventureMode ? "adventure" : "combat-sandbox")}
+        state={state}
         viewerPlayerId={viewerPlayerId}
       />
       <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />

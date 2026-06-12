@@ -10,6 +10,7 @@ import { coreHeroDefinitions } from "@/data/factions/core";
 import {
   describeCardEffect,
   describePermanentEffect,
+  getPermanentCardIds,
   type GameAction,
   type GameState,
   type LegalAction,
@@ -54,9 +55,11 @@ export function CardFrame({
 }
 
 /**
- * The one permanent card in play next to a player's hero board. Shows the
- * card face with a "permanent" badge; the expert discard appears as a button
- * whenever the engine offers USE_PERMANENT_EXPERT for the owner.
+ * The permanent cards in play next to a player's hero board — one as
+ * printed, up to three with the Pandora's Box exception. Their effects are
+ * always on. Each card shows a "permanent" badge, a voluntary "discard from
+ * play" button when the engine offers it, and the School of Magic expert
+ * discard whenever USE_PERMANENT_EXPERT is legal for the owner.
  */
 export function PermanentSlot({
   state,
@@ -74,39 +77,66 @@ export function PermanentSlot({
   compact?: boolean;
 }) {
   const { zoomCard } = useCardZoom();
-  const cardId = state.players[playerId]?.permanent ?? null;
-  if (!cardId) {
+  const cardIds = getPermanentCardIds(state, playerId);
+  if (cardIds.length === 0) {
     return null;
   }
 
-  const card = cardLibrary[cardId];
-  const expert =
-    onAction && viewerPlayerId === playerId
-      ? legalActions?.find((legal) => legal.action.type === "USE_PERMANENT_EXPERT")
+  const ownView = Boolean(onAction && viewerPlayerId === playerId);
+  const expert = ownView
+    ? legalActions?.find((legal) => legal.action.type === "USE_PERMANENT_EXPERT")
+    : undefined;
+  const discardActionFor = (cardId: string) =>
+    ownView
+      ? legalActions?.find(
+          (legal) => legal.action.type === "DISCARD_PERMANENT" && legal.action.cardId === cardId
+        )
       : undefined;
 
   return (
-    <div className={`permanentSlot ${compact ? "compact" : ""}`} aria-label={`${state.players[playerId]?.name} permanent in play`}>
-      <button
-        className="permanentCardButton"
-        onClick={() => zoomCard(cardId)}
-        title={card ? `${card.name} — ${describePermanentEffect(card)}` : cardId}
-        type="button"
-      >
-        <CardFrame cardId={cardId} className="permanentCardImage" />
-      </button>
-      <div className="permanentMeta">
-        <span className="permanentBadge">
-          <Anchor aria-hidden="true" size={11} /> permanent
-        </span>
-        {!compact ? <strong>{card?.name ?? cardId}</strong> : null}
-        {!compact && card ? <small>{describePermanentEffect(card)}</small> : null}
-        {expert ? (
-          <button className="commandButton" onClick={() => onAction?.(expert.action)} type="button">
-            <Crown aria-hidden="true" size={12} /> {expert.label}
-          </button>
-        ) : null}
-      </div>
+    <div
+      className={`permanentRow ${compact ? "compact" : ""}`}
+      aria-label={`${state.players[playerId]?.name} permanents in play`}
+    >
+      {cardIds.map((cardId, index) => {
+        const card = cardLibrary[cardId];
+        const discard = discardActionFor(cardId);
+
+        return (
+          <div className={`permanentSlot ${compact ? "compact" : ""}`} key={`${cardId}-${index}`}>
+            <button
+              className="permanentCardButton"
+              onClick={() => zoomCard(cardId)}
+              title={card ? `${card.name} — ${describePermanentEffect(card)}` : cardId}
+              type="button"
+            >
+              <CardFrame cardId={cardId} className="permanentCardImage" />
+            </button>
+            <div className="permanentMeta">
+              <span className="permanentBadge">
+                <Anchor aria-hidden="true" size={11} /> permanent
+              </span>
+              {!compact ? <strong>{card?.name ?? cardId}</strong> : null}
+              {!compact && card ? <small>{describePermanentEffect(card)}</small> : null}
+              {expert && index === 0 ? (
+                <button className="commandButton" onClick={() => onAction?.(expert.action)} type="button">
+                  <Crown aria-hidden="true" size={12} /> {expert.label}
+                </button>
+              ) : null}
+              {discard ? (
+                <button
+                  className="commandButton ghost"
+                  onClick={() => onAction?.(discard.action)}
+                  title="Voluntarily put this permanent into your discard pile (its effect stops immediately)"
+                  type="button"
+                >
+                  Discard from play
+                </button>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

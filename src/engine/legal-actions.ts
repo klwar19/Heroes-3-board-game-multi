@@ -31,7 +31,7 @@ import {
   isAdjacent,
   isBattlefieldPosition
 } from "./battlefield";
-import { getPermanentDefinition, getPermanentSchoolBonus, warMachinesForSale } from "./permanents";
+import { getPermanentCardIds, getPermanentSchoolBonus, warMachinesForSale } from "./permanents";
 import { SHARED_DECK_IDS } from "./decks";
 import { expertUsesAvailable, getRuleset, spellLimitFor, wisdomGoldDiscount, wisdomSearchCount } from "./ruleset";
 import type {
@@ -1011,6 +1011,23 @@ function isSimultaneousTurnAvailable(state: GameState, playerId: PlayerId): bool
   );
 }
 
+/**
+ * Rulebook voluntary removal: the owner may put an in-play permanent into
+ * the discard pile at any open moment (no reaction window or choice pending).
+ */
+function addPermanentDiscardActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  if (state.reactionWindow || state.pendingChoice || state.stack.length > 0) {
+    return;
+  }
+
+  for (const cardId of getPermanentCardIds(state, playerId)) {
+    actions.push({
+      label: `Discard ${cardLibrary[cardId]?.name ?? cardId} from play`,
+      action: { type: "DISCARD_PERMANENT", playerId, cardId }
+    });
+  }
+}
+
 function addActiveEffectActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const combat = state.combat;
   if (!combat || state.phase !== "combat" || state.stack.length > 0 || state.reactionWindow || state.pendingChoice) {
@@ -1291,6 +1308,23 @@ export function getLegalActions(
   buildings: BuildingLibrary = sampleBuildings
 ): LegalAction[] {
   if (state.phase === "game-over") {
+    // An adventure combat that just ended waits on the battlefield until a
+    // participant closes the end-of-combat notice; only that acknowledgment
+    // is legal here (sandbox results stay on the table until a reset).
+    if (
+      state.mode === "adventure" &&
+      state.combat?.outcome &&
+      !state.combat.endAcknowledged &&
+      state.combat.context.kind !== "sandbox" &&
+      isCombatParticipant(state, playerId)
+    ) {
+      return [
+        {
+          label: "Return to the adventure map",
+          action: { type: "ACKNOWLEDGE_COMBAT_END", playerId }
+        }
+      ];
+    }
     return [];
   }
 
@@ -1486,6 +1520,9 @@ export function getLegalActions(
   addSpellActions(actions, state, playerId, cards);
   addPlayableCardActions(actions, state, playerId, cards);
   addDeckSearchActions(actions, state, playerId);
+  if (isCombatParticipant(state, playerId)) {
+    addPermanentDiscardActions(actions, state, playerId);
+  }
 
   return actions;
 }
@@ -1500,6 +1537,7 @@ export function getLegalReactionsForTrigger(
   }
 
   const result: Record<PlayerId, LegalAction[]> = {};
+  const isAttackWindow = triggerEvent.type === "UNIT_ATTACK_DECLARED";
 
   for (const player of Object.values(state.players)) {
     const expertUsesLeft =
@@ -1508,7 +1546,13 @@ export function getLegalReactionsForTrigger(
       player.combatStats.expertUsesSpentThisRound;
     const spellLimitLeft = spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
 
-    const reactions = [...new Set(player.hand)].flatMap((cardId) => {
+    const reactions: LegalAction[] = [];
+    // Power has no effect of its own during an attack: it may only be paid
+    // alongside an instant spell in the same declaration. Power offers are
+    // collected apart and only added when such a spell is available.
+    const powerReactions: LegalAction[] = [];
+
+    for (const cardId of new Set(player.hand)) {
       const card = cards[cardId];
       // Permanents join reaction windows only through their printed expert
       // side (School of Magic +3 power from hand); their basic side is the
@@ -1516,15 +1560,13 @@ export function getLegalReactionsForTrigger(
       const allowedTiming =
         card && (card.timing === "reaction" || card.timing === "instant" || Boolean(card.permanent));
       if (!card || !allowedTiming || card.implementationStatus !== "implemented") {
-        return [];
+        continue;
       }
 
       // Spell instants respect the one-Spell-per-combat-round limit.
       if (card.kind === "spell" && spellLimitLeft <= 0) {
-        return [];
+        continue;
       }
-
-      const actions: LegalAction[] = [];
 
       for (const variant of getCardPlayVariants(card)) {
         if (variant.mapOnly || !variantMatchesTrigger(variant, triggerEvent, player.id)) {
@@ -1536,6 +1578,14 @@ export function getLegalReactionsForTrigger(
         }
 
         const variantName = variant.optionLabel ? `${card.name}: ${variant.optionLabel}` : card.name;
+        const isPowerPlay = variant.effect.type === "ADD_SPELL_POWER";
+        const push = (action: LegalAction) => {
+          if (isAttackWindow && isPowerPlay) {
+            powerReactions.push(action);
+          } else {
+            reactions.push(action);
+          }
+        };
 
         // Permanents only join reaction windows through their expert side
         // (School of Magic from hand); their basic side is the enter-play
@@ -1545,7 +1595,7 @@ export function getLegalReactionsForTrigger(
           !card.permanent &&
           isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic")
         ) {
-          actions.push(
+          push(
             makeReactionAction(variantName, {
               type: "PLAY_REACTION",
               playerId: player.id,
@@ -1561,7 +1611,7 @@ export function getLegalReactionsForTrigger(
           expertUsesLeft > 0 &&
           isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "expert")
         ) {
-          actions.push(
+          push(
             makeReactionAction(`${variantName} expert`, {
               type: "PLAY_REACTION",
               playerId: player.id,
@@ -1572,9 +1622,7 @@ export function getLegalReactionsForTrigger(
           );
         }
       }
-
-      return actions;
-    });
+    }
 
     // School of Magic in play: the caster may discard it for the expert
     // power bonus while their matching spell is being cast.
@@ -1584,7 +1632,7 @@ export function getLegalReactionsForTrigger(
     }
 
     // The printed alternative bottom effect: discard any Spell card for
-    // +1 Power — toward your own cast, or paired with a spell instant in an
+    // +1 Power — toward your own cast, or paired with an instant spell in an
     // attack window (the batch validator enforces the pairing).
     const boostLegal =
       triggerEvent.type === "SPELL_CAST_STARTED"
@@ -1594,17 +1642,33 @@ export function getLegalReactionsForTrigger(
       for (const cardId of new Set(player.hand)) {
         const card = cards[cardId];
         if (card?.kind === "spell") {
-          reactions.push(
-            makeReactionAction(`Discard ${card.name}: +1 Power`, {
-              type: "PLAY_REACTION",
-              playerId: player.id,
-              cardId,
-              mode: "basic",
-              asPowerBoost: true
-            })
-          );
+          const boost = makeReactionAction(`Discard ${card.name}: +1 Power`, {
+            type: "PLAY_REACTION",
+            playerId: player.id,
+            cardId,
+            mode: "basic",
+            asPowerBoost: true
+          });
+          if (isAttackWindow) {
+            powerReactions.push(boost);
+          } else {
+            reactions.push(boost);
+          }
         }
       }
+    }
+
+    // Attack windows: only spells that modify the attack (buffs/nerfs of
+    // attack or defense) may consume Power, so Power plays are offered only
+    // while the player still holds such an instant spell to pair them with.
+    const hasPairableSpell = reactions.some(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        !legal.action.asPowerBoost &&
+        cards[legal.action.cardId]?.kind === "spell"
+    );
+    if (!isAttackWindow || hasPairableSpell) {
+      reactions.push(...powerReactions);
     }
 
     if (reactions.length > 0) {
@@ -1630,14 +1694,13 @@ function getPermanentFieldExpertAction(
   }
 
   const player = state.players[playerId];
-  const permanent = getPermanentDefinition(state, playerId);
-  const bonus = permanent?.permanentEffect?.schoolBonus;
   const spellCard = cards[triggerEvent.spellCardId];
-  if (!player || !permanent || !bonus || !spellCard) {
+  if (!player || !spellCard) {
     return null;
   }
 
-  if (!getPermanentSchoolBonus(state, playerId, spellCard)) {
+  const match = getPermanentSchoolBonus(state, playerId, spellCard);
+  if (!match) {
     return null;
   }
 
@@ -1646,12 +1709,12 @@ function getPermanentFieldExpertAction(
   }
 
   const stackItem = getPendingStackItem(state, triggerEvent);
-  if ((stackItem?.modifiers.schoolPowerBonus ?? 0) >= bonus.expertPower) {
+  if ((stackItem?.modifiers.schoolPowerBonus ?? 0) >= match.expertPower) {
     return null;
   }
 
   return {
-    label: `Discard ${permanent.name} from play: +${bonus.expertPower} power (expert)`,
+    label: `Discard ${match.card.name} from play: +${match.expertPower} power (expert)`,
     action: { type: "USE_PERMANENT_EXPERT", playerId }
   };
 }
@@ -1881,6 +1944,13 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
 
   if (step.type === "CHOOSE_ONE") {
     for (const [optionIndex, option] of step.options.entries()) {
+      // Pandora's Box: the deck-draw option needs cards left in the deck.
+      if (
+        option.steps.some((inner) => inner.type === "DRAW_PANDORA_CARD") &&
+        !state.adventure?.pandoraDeck?.length
+      ) {
+        continue;
+      }
       actions.push({
         label: option.label,
         action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex }
@@ -2319,6 +2389,18 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
+  // A finished combat waits on the battlefield until a participant closes
+  // the end-of-combat notice; only then does finalization run.
+  if (state.combat?.outcome && !state.combat.endAcknowledged && !state.pendingChoice) {
+    if (isCombatParticipant(state, playerId)) {
+      actions.push({
+        label: "Return to the adventure map",
+        action: { type: "ACKNOWLEDGE_COMBAT_END", playerId }
+      });
+    }
+    return actions;
+  }
+
   // Combat setup placement.
   if (state.combat?.setup) {
     addCombatSetupActions(actions, state, playerId);
@@ -2333,7 +2415,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       if (hero?.controllerId === playerId) {
         if (hero.movementPoints > 0) {
           actions.push({
-            label: "Spend 1 MP: fight another combat round",
+            label: "Spend 1 movement point: fight another combat round",
             action: { type: "CONTINUE_NEUTRAL_COMBAT", playerId }
           });
         }
@@ -2353,6 +2435,9 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     addUnitActions(actions, state, playerId);
     addSpellActions(actions, state, playerId, cards);
     addPlayableCardActions(actions, state, playerId, cards);
+    if (isCombatParticipant(state, playerId)) {
+      addPermanentDiscardActions(actions, state, playerId);
+    }
     return actions;
   }
 
@@ -2408,6 +2493,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
 
   // Instant, Ongoing and Map cards may be played during your own map turn.
   addTurnCardActions(actions, state, playerId, cards);
+  addPermanentDiscardActions(actions, state, playerId);
 
   for (const hero of Object.values(state.heroes)) {
     if (hero.controllerId !== playerId || !hero.spaceId) {

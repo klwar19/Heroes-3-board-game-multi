@@ -6,6 +6,7 @@ import {
   artifactDeckBinhRelic,
   artifactDeckLegacy
 } from "@/data/cards/artifacts";
+import { pandoraDeckCardIds } from "@/data/cards/pandora";
 import { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 import { spellDeckBinhBasic, spellDeckBinhExpert, spellDeckLegacy } from "@/data/cards/spells";
 import {
@@ -22,6 +23,7 @@ import { DEFAULT_SCENARIO_ID, scenarioDefinitions, type ScenarioDefinition } fro
 import {
   addArmyUnit,
   ASTROLOGERS_DECK_ID,
+  getUnitSide,
   instantiateTile,
   NEUTRAL_DECK_IDS,
   startAdventureRound,
@@ -29,8 +31,11 @@ import {
 } from "./adventure";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent } from "./events";
+import { hexEquals, tileCentersOverlap, tileFootprintsTouch, type HexCoord } from "./hex";
 import type {
   AdventureState,
+  CustomMapTilePlan,
+  CustomStartingUnit,
   DeckState,
   FactionId,
   GameAction,
@@ -59,7 +64,11 @@ export type AdventureSetupOptions = {
   startingResources?: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction?: { gold: number; buildingMaterials: number; valuables: number };
   startingUnitTiers?: ("bronze" | "silver" | "gold")[];
+  /** Custom starting army (few/pack of any unit); replaces the tier default. */
+  startingUnits?: CustomStartingUnit[] | null;
   startingBuildings?: string[];
+  /** Map designer: replaces the scenario's face-down Near/Center layout. */
+  customMap?: CustomMapTilePlan[] | null;
   /** Content sets whose tiles fill the supply pools (default: the four boxed sets). */
   tileContent?: TileContent[];
 };
@@ -77,7 +86,9 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     startingResources: { ...scenario.startingResources },
     startingProduction: { ...scenario.startingProduction },
     startingUnitTiers: [...scenario.startingUnits.tiers],
-    startingBuildings: [...scenario.startingBuildings]
+    startingUnits: null,
+    startingBuildings: [...scenario.startingBuildings],
+    customMap: null
   };
 }
 
@@ -215,13 +226,24 @@ function makePlayer(config: AdventurePlayerConfig, seed: string, options: GameSe
     }
   };
 
-  // Starting units: one "few" card of each faction unit of the chosen tiers.
-  const faction = coreFactionDefinitions[config.factionId];
-  for (const unitDefId of faction.units) {
-    const unit = coreUnitDefinitions[unitDefId];
-    if (unit && options.startingUnitTiers.includes(unit.tier as "bronze" | "silver" | "gold") && unit.few) {
-      addArmyUnit(player, unitDefId, "few");
-      player.startingArmy.push({ unitDefId, side: "few" });
+  if (options.startingUnits?.length) {
+    // Custom starting army: the chosen few/pack cards of any units, the same
+    // set for every player.
+    for (const choice of options.startingUnits) {
+      if (getUnitSide(choice.unitDefId, choice.side)) {
+        addArmyUnit(player, choice.unitDefId, choice.side);
+        player.startingArmy.push({ unitDefId: choice.unitDefId, side: choice.side });
+      }
+    }
+  } else {
+    // Default: one "few" card of each faction unit of the chosen tiers.
+    const faction = coreFactionDefinitions[config.factionId];
+    for (const unitDefId of faction.units) {
+      const unit = coreUnitDefinitions[unitDefId];
+      if (unit && options.startingUnitTiers.includes(unit.tier as "bronze" | "silver" | "gold") && unit.few) {
+        addArmyUnit(player, unitDefId, "few");
+        player.startingArmy.push({ unitDefId, side: "few" });
+      }
     }
   }
 
@@ -291,6 +313,84 @@ export function draftFarTiles(pool: string[], scenario: ScenarioDefinition): str
   return drawn;
 }
 
+/**
+ * Validates a designed map against a scenario: every tile must sit on the
+ * tile lattice without overlapping the starting tiles or each other, and the
+ * whole design must connect (transitively touch) the starting tiles. Returns
+ * the accepted plans in placeable order plus human-readable problems.
+ */
+export function validateCustomMapPlan(
+  plans: CustomMapTilePlan[],
+  scenario: ScenarioDefinition
+): { accepted: CustomMapTilePlan[]; problems: string[] } {
+  const problems: string[] = [];
+  const accepted: CustomMapTilePlan[] = [];
+  const placedCenters: HexCoord[] = scenario.layout.starts.map((start) => ({ ...start }));
+
+  const wellFormed = plans.filter((plan, index) => {
+    if (!Number.isInteger(plan.row) || !Number.isInteger(plan.col)) {
+      problems.push(`Tile ${index + 1}: position must be whole grid coordinates.`);
+      return false;
+    }
+    if (plan.group !== "far" && plan.group !== "near" && plan.group !== "center") {
+      problems.push(`Tile ${index + 1}: unknown tile group.`);
+      return false;
+    }
+    if (plan.rotation !== undefined && (!Number.isInteger(plan.rotation) || plan.rotation < 0 || plan.rotation > 5)) {
+      problems.push(`Tile ${index + 1}: rotation must be 0-5.`);
+      return false;
+    }
+    if (!plan.faceDown) {
+      const def = plan.tileDefId ? allTileDefinitions[plan.tileDefId] : undefined;
+      if (!def) {
+        problems.push(`Tile ${index + 1}: pick a tile for the face-up slot.`);
+        return false;
+      }
+      if (def.group === "starting") {
+        problems.push(`Tile ${index + 1}: starting tiles are placed by faction, not by the designer.`);
+        return false;
+      }
+    }
+    return true;
+  });
+
+  // Tiles must connect to the board: accept plans whose footprint touches an
+  // already-placed tile until nothing more fits (order-independent).
+  const remaining = [...wellFormed];
+  let progressed = true;
+  while (progressed) {
+    progressed = false;
+    for (let index = 0; index < remaining.length; index += 1) {
+      const plan = remaining[index];
+      const center = { row: plan.row, col: plan.col };
+      if (placedCenters.some((existing) => tileCentersOverlap(existing, center))) {
+        continue;
+      }
+      if (!placedCenters.some((existing) => tileFootprintsTouch(existing, center))) {
+        continue;
+      }
+      accepted.push(plan);
+      placedCenters.push(center);
+      remaining.splice(index, 1);
+      index -= 1;
+      progressed = true;
+    }
+  }
+
+  for (const plan of remaining) {
+    const center = { row: plan.row, col: plan.col };
+    if (placedCenters.some((existing) => hexEquals(existing, center))) {
+      problems.push(`Tile at ${plan.row},${plan.col}: duplicate position.`);
+    } else if (scenario.layout.starts.some((start) => tileCentersOverlap(start, center))) {
+      problems.push(`Tile at ${plan.row},${plan.col}: overlaps a starting tile.`);
+    } else {
+      problems.push(`Tile at ${plan.row},${plan.col}: must touch the starting tiles or another designed tile.`);
+    }
+  }
+
+  return { accepted, problems };
+}
+
 export function createAdventureGameState(options: AdventureSetupOptions = {}): GameState {
   const seed = options.seed ?? "homm3bg-adventure-seed";
   const scenario = getScenario(options.scenarioId);
@@ -301,7 +401,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.startingResources ? { startingResources: options.startingResources } : {}),
     ...(options.startingProduction ? { startingProduction: options.startingProduction } : {}),
     ...(options.startingUnitTiers ? { startingUnitTiers: options.startingUnitTiers } : {}),
-    ...(options.startingBuildings ? { startingBuildings: options.startingBuildings } : {})
+    ...(options.startingUnits !== undefined ? { startingUnits: options.startingUnits } : {}),
+    ...(options.startingBuildings ? { startingBuildings: options.startingBuildings } : {}),
+    ...(options.customMap !== undefined ? { customMap: options.customMap } : {})
   };
   const difficulty = setupOptions.difficulty;
   const ruleset: GameRuleset = setupOptions.ruleset;
@@ -318,6 +420,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     playerFarTiles: {},
     // Setup: the war machine cards sit face up in a shared supply pile.
     warMachineSupply: [...WAR_MACHINE_CARD_IDS],
+    // Pandora's Box fields may draw from this deck instead of rolling dice.
+    pandoraDeck: shuffleCards(pandoraDeckCardIds, `${seed}#pandora`),
     pendingVisit: null,
     rewardQueue: [],
     lastVisitedField: {},
@@ -429,17 +533,52 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     }
   });
 
-  // Face-down Near (IV–V) and Center (VI–VII) tiles per the scenario layout.
-  for (const center of scenario.layout.near) {
-    const tileDefId = nearPool.pop();
-    if (tileDefId) {
-      instantiateTile(adventure, tileDefId, center, 0, true);
+  const customMap = setupOptions.customMap?.length
+    ? validateCustomMapPlan(setupOptions.customMap, scenario).accepted
+    : null;
+
+  if (customMap) {
+    // Map designer: hand-placed tiles instead of the scenario layout.
+    // Face-up plans place their chosen tile revealed; face-down plans draw a
+    // random tile from their group's pool ("down means random").
+    const pools = { far: farPool, near: nearPool, center: centerPool };
+
+    // Designed face-up tiles never also hide in a face-down pool draw.
+    for (const plan of customMap) {
+      if (!plan.faceDown && plan.tileDefId) {
+        for (const pool of Object.values(pools)) {
+          const index = pool.indexOf(plan.tileDefId);
+          if (index !== -1) {
+            pool.splice(index, 1);
+          }
+        }
+      }
     }
-  }
-  for (const center of scenario.layout.center) {
-    const tileDefId = centerPool.pop();
-    if (tileDefId) {
-      instantiateTile(adventure, tileDefId, center, 0, true);
+
+    for (const plan of customMap) {
+      const center = { row: plan.row, col: plan.col };
+      if (plan.faceDown) {
+        const tileDefId = pools[plan.group].pop();
+        if (tileDefId) {
+          instantiateTile(adventure, tileDefId, center, 0, true);
+        }
+      } else if (plan.tileDefId) {
+        instantiateTile(adventure, plan.tileDefId, center, plan.rotation ?? 0, false);
+      }
+    }
+  } else {
+    // Face-down Near (IV–V) and Center (VI–VII) tiles per the scenario layout.
+    for (const center of scenario.layout.near) {
+      const tileDefId = nearPool.pop();
+      if (tileDefId) {
+        instantiateTile(adventure, tileDefId, center, 0, true);
+      }
+    }
+    for (const center of scenario.layout.center) {
+      const tileDefId = centerPool.pop();
+      if (tileDefId) {
+        instantiateTile(adventure, tileDefId, center, 0, true);
+      }
     }
   }
 
@@ -546,6 +685,8 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
 
 const VALID_DIFFICULTIES: GameDifficulty[] = ["easy", "normal", "hard", "impossible"];
 const VALID_UNIT_TIERS = ["bronze", "silver", "gold"] as const;
+const MAX_CUSTOM_STARTING_UNITS = 12;
+const MAX_CUSTOM_MAP_TILES = 40;
 
 function sanitizeResources(value: {
   gold: number;
@@ -622,11 +763,55 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     changes.push(`starting units ${lobby.options.startingUnitTiers.join("+") || "none"}`);
   }
 
+  if (next.startingUnits !== undefined) {
+    if (next.startingUnits === null) {
+      lobby.options.startingUnits = null;
+      changes.push("starting army back to unit tiers");
+    } else {
+      if (next.startingUnits.length > MAX_CUSTOM_STARTING_UNITS) {
+        throw new Error(`A custom starting army holds at most ${MAX_CUSTOM_STARTING_UNITS} unit cards.`);
+      }
+      const cleaned: CustomStartingUnit[] = [];
+      for (const choice of next.startingUnits) {
+        if (
+          !choice ||
+          (choice.side !== "few" && choice.side !== "pack") ||
+          !getUnitSide(choice.unitDefId, choice.side)
+        ) {
+          throw new Error("Custom starting units must be the few or pack side of a known unit.");
+        }
+        cleaned.push({ unitDefId: choice.unitDefId, side: choice.side });
+      }
+      lobby.options.startingUnits = cleaned;
+      changes.push(
+        `custom starting army (${cleaned.length} unit card${cleaned.length === 1 ? "" : "s"})`
+      );
+    }
+  }
+
   if (next.startingBuildings !== undefined) {
     lobby.options.startingBuildings = next.startingBuildings.filter(
       (buildingId): buildingId is string => typeof buildingId === "string" && buildingId.length > 0
     );
     changes.push(`starting buildings ${lobby.options.startingBuildings.join(", ") || "none"}`);
+  }
+
+  if (next.customMap !== undefined) {
+    if (next.customMap === null) {
+      lobby.options.customMap = null;
+      changes.push("map back to the scenario layout");
+    } else {
+      if (next.customMap.length > MAX_CUSTOM_MAP_TILES) {
+        throw new Error(`A designed map holds at most ${MAX_CUSTOM_MAP_TILES} tiles.`);
+      }
+      const scenario = getScenario(lobby.options.scenarioId);
+      const { accepted, problems } = validateCustomMapPlan(next.customMap, scenario);
+      if (problems.length > 0) {
+        throw new Error(problems[0]);
+      }
+      lobby.options.customMap = accepted;
+      changes.push(`designed map (${accepted.length} tile${accepted.length === 1 ? "" : "s"})`);
+    }
   }
 
   if (changes.length === 0) {
@@ -715,7 +900,9 @@ export function startAdventureFromLobby(state: GameState, action: Extract<GameAc
     startingResources: lobby.options.startingResources,
     startingProduction: lobby.options.startingProduction,
     startingUnitTiers: lobby.options.startingUnitTiers,
+    startingUnits: lobby.options.startingUnits ?? null,
     startingBuildings: lobby.options.startingBuildings,
+    customMap: lobby.options.customMap ?? null,
     players: lobby.seats.map((seat) => ({
       id: seat.playerId,
       name: state.players[seat.playerId]?.name ?? seat.name,

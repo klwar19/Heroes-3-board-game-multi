@@ -477,6 +477,14 @@ export type PermanentEffectDefinition = {
   rangedInitiativeBonus?: number;
   /** Trigger resolved at the start of every combat round. */
   roundStart?: WarMachineRoundStartDefinition;
+  /**
+   * Pandora's Box "You can have up to 3 permanent cards played at a time,
+   * including this one": while in play, the owner's permanent limit becomes
+   * this number instead of the printed one.
+   */
+  permanentLimitOverride?: number;
+  /** Pandora's Box "Your hand is increased by 1" while the card is in play. */
+  handLimitBonus?: number;
 };
 
 export type CardOptionDefinition = {
@@ -494,7 +502,7 @@ export type CardOptionDefinition = {
 export type CardDefinition = {
   id: CardId;
   name: string;
-  kind: "spell" | "ability" | "artifact" | "hero-specialty" | "ai" | "unit" | "statistic" | "war-machine";
+  kind: "spell" | "ability" | "artifact" | "hero-specialty" | "ai" | "unit" | "statistic" | "war-machine" | "pandora";
   timing: "action" | "instant" | "reaction" | "ongoing" | "passive" | "map" | "combat" | "town";
   phaseLimit?: GamePhase[];
   spellLevel?: SpellLevel;
@@ -507,9 +515,11 @@ export type CardDefinition = {
   trigger?: TriggerDefinition;
   target?: TargetDefinition;
   /**
-   * Permanent cards stay in play until replaced by another permanent or
-   * until their expert effect is used (then they go to the discard pile).
-   * Each player may have only one permanent in play at a time.
+   * Permanent cards stay in play until discarded or replaced (their effect is
+   * always on while in play). Each player may have only one permanent in play
+   * at a time — the printed rule — unless a Pandora's Box permanent raises
+   * the limit (permanentLimitOverride). Playing one above the limit discards
+   * the oldest, and the owner may also discard one voluntarily at any time.
    */
   permanent?: boolean;
   /** Continuous behavior while a permanent card is in play. */
@@ -713,11 +723,29 @@ export type GameAction =
       type: "USE_PERMANENT_EXPERT";
       playerId: PlayerId;
     }
+  | {
+      /**
+       * Voluntarily put one of your in-play permanents into the discard pile
+       * ("The player may decide to put an active permanent card into their
+       * discard pile. This stops the card effect immediately.").
+       */
+      type: "DISCARD_PERMANENT";
+      playerId: PlayerId;
+      cardId: CardId;
+    }
   | { type: "PLACE_COMBAT_UNIT"; playerId: PlayerId; armyUnitId: string; position: number }
   | { type: "UNPLACE_COMBAT_UNIT"; playerId: PlayerId; armyUnitId: string }
   | { type: "FINISH_COMBAT_PLACEMENT"; playerId: PlayerId }
   | { type: "CONTINUE_NEUTRAL_COMBAT"; playerId: PlayerId }
   | { type: "RETREAT_FROM_COMBAT"; playerId: PlayerId }
+  | {
+      /**
+       * Close the end-of-combat notice: finalizes an adventure combat
+       * (experience, unit flips, the field visit) and returns to the map.
+       */
+      type: "ACKNOWLEDGE_COMBAT_END";
+      playerId: PlayerId;
+    }
   | {
       /** Population token: recruit and/or reinforce any number of units at once. */
       type: "POPULATION_ACTION";
@@ -1383,6 +1411,21 @@ export type GameEvent =
       replacedCardId: CardId | null;
     }
   | {
+      /** An in-play permanent left play for the discard pile. */
+      id: string;
+      type: "PERMANENT_DISCARDED";
+      playerId: PlayerId;
+      cardId: CardId;
+      reason: "voluntary" | "limit" | "expert" | "replaced";
+    }
+  | {
+      /** Pandora's Box: the visiting hero drew a Pandora deck card. */
+      id: string;
+      type: "PANDORA_CARD_DRAWN";
+      playerId: PlayerId;
+      cardId: CardId;
+    }
+  | {
       /** A war machine fired (round-start trigger or its expert discard). */
       id: string;
       type: "WAR_MACHINE_TRIGGERED";
@@ -1481,10 +1524,18 @@ export type PlayerState = {
   /** Cards removed from the game entirely (the "remove" keyword). */
   removed: CardId[];
   /**
-   * The one permanent card in play next to the hero board (war machine or
-   * School of Magic). Playing another permanent discards this one.
+   * Deprecated single-permanent slot from older snapshots; live states use
+   * `permanents`. Read through getPermanentCardIds, never directly.
    */
   permanent?: CardId | null;
+  /**
+   * The permanent cards in play next to the hero board (war machines,
+   * Schools of Magic, Pandora's Box permanents), oldest first. Their effects
+   * are always on. The limit is 1 unless an in-play Pandora's Box permanent
+   * raises it (permanentLimitOverride); playing above the limit discards the
+   * oldest and the owner may discard one voluntarily at any time.
+   */
+  permanents?: CardId[];
   /** Unit deck: the army that fights the player's combats. */
   army: ArmyUnitState[];
   /** Scenario starting units, restored when the unit deck empties. */
@@ -1656,7 +1707,8 @@ export type CombatState = {
    * while the second target choice is open.
    */
   warMachineRound?: {
-    pending: PlayerId[];
+    /** One entry per round-start war machine: its owner and the machine card. */
+    pending: { playerId: PlayerId; cardId: CardId }[];
     firstTargetUnitId?: UnitId | null;
   } | null;
   outcome: {
@@ -1664,6 +1716,12 @@ export type CombatState = {
     defeatedPlayerId: PlayerId;
     reason: "all-enemy-units-defeated" | "retreat" | "surrender";
   } | null;
+  /**
+   * Adventure combats stay on the battlefield after the outcome until a
+   * participant acknowledges the end-of-combat notice; finalization (XP,
+   * unit flips, the field visit) runs when this flips true.
+   */
+  endAcknowledged?: boolean;
   dice: CombatDice;
   units: Record<UnitId, CombatUnitState>;
   /**
@@ -1854,6 +1912,10 @@ export type VisitStep =
       /** Consumes a one-shot active effect once its benefit was taken. */
       type: "CONSUME_EFFECT";
       effectId: string;
+    }
+  | {
+      /** Pandora's Box: draw the top card of the Pandora deck into hand. */
+      type: "DRAW_PANDORA_CARD";
     };
 
 export type AstrologersState = {
@@ -1887,6 +1949,8 @@ export type AdventureState = {
    * leave the supply for good — they live in the buyer's deck from then on.
    */
   warMachineSupply?: CardId[];
+  /** Pandora's Box deck: shuffled draw pile (top = last element). */
+  pandoraDeck?: CardId[];
   /** Field visit currently being resolved (choices pending). */
   pendingVisit: PendingVisit | null;
   /** Rewards waiting to resolve one at a time (level-up searches, City Halls). */
@@ -1916,8 +1980,41 @@ export type GameSetupOptions = {
   startingResources: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };
   startingUnitTiers: ("bronze" | "silver" | "gold")[];
+  /**
+   * Custom starting army: exact units (few or pack of ANY unit) every player
+   * starts with. When set (non-null), it replaces the tier-based default.
+   */
+  startingUnits?: CustomStartingUnit[] | null;
   /** Building ids without the faction prefix (e.g. "city_hall"). */
   startingBuildings: string[];
+  /**
+   * Map designer: replaces the scenario's face-down Near/Center layout with
+   * hand-placed tiles. Starting tiles stay fixed by faction and seat.
+   */
+  customMap?: CustomMapTilePlan[] | null;
+};
+
+/** One designed starting-army entry: any unit's few or pack side. */
+export type CustomStartingUnit = {
+  unitDefId: string;
+  side: "few" | "pack";
+};
+
+/**
+ * One designed map tile. Face-down tiles draw randomly from their group's
+ * pool when the adventure starts ("down means random"); face-up tiles place
+ * the chosen tile, already revealed, at the chosen rotation.
+ */
+export type CustomMapTilePlan = {
+  row: number;
+  col: number;
+  /** Which supply the tile belongs to (Far II–III, Near IV–V, Center VI–VII). */
+  group: "far" | "near" | "center";
+  faceDown: boolean;
+  /** Face-up tiles: the exact tile to place. Ignored while face-down. */
+  tileDefId?: string;
+  /** Face-up tiles: clockwise 60° steps (0-5, default 0). */
+  rotation?: number;
 };
 
 /** Pre-game lobby: players pick factions and heroes before the map builds. */

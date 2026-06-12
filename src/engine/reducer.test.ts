@@ -1240,7 +1240,7 @@ describe("rules engine prototype", () => {
       target: { type: "none" }
     });
     // The war machine is a permanent: it stays in play instead of discarding.
-    expect(played.players.p1.permanent).toBe("war_machine.first_aid_tent");
+    expect(played.players.p1.permanents).toEqual(["war_machine.first_aid_tent"]);
     expect(played.players.p1.discard).toHaveLength(0);
     const tent = played.activeEffects.find((effect) => effect.name === "First Aid Tent");
     expect(tent).toBeDefined();

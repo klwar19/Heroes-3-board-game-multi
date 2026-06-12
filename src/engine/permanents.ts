@@ -21,36 +21,86 @@ function isAlive(unit: CombatUnitState): boolean {
   return unit.damage < unit.maxHealth;
 }
 
-export function getPermanentCardId(state: GameState, playerId: PlayerId): CardId | null {
-  return state.players[playerId]?.permanent ?? null;
+/**
+ * Every permanent the player has in play, oldest first. Reads the modern
+ * `permanents` array and falls back to the deprecated single `permanent`
+ * slot so snapshots from before the multi-slot rule keep working.
+ */
+export function getPermanentCardIds(state: GameState, playerId: PlayerId): CardId[] {
+  const player = state.players[playerId];
+  if (!player) {
+    return [];
+  }
+
+  if (player.permanents) {
+    return player.permanents;
+  }
+
+  return player.permanent ? [player.permanent] : [];
 }
 
-export function getPermanentDefinition(state: GameState, playerId: PlayerId): CardDefinition | null {
-  const cardId = getPermanentCardId(state, playerId);
-  return cardId ? (cardLibrary[cardId] ?? null) : null;
+export function getPermanentDefinitions(state: GameState, playerId: PlayerId): CardDefinition[] {
+  return getPermanentCardIds(state, playerId).flatMap((cardId) => {
+    const card = cardLibrary[cardId];
+    return card ? [card] : [];
+  });
 }
 
 /**
- * The School of Magic bonus the player's in-play permanent grants a spell, or
- * null when the permanent (if any) does not match the spell's school. Spells
- * of the "any" school (Magic Arrow) belong to every school.
+ * How many permanents the player may keep in play: 1 as printed ("You may
+ * only have one permanent card at a time"), unless an in-play Pandora's Box
+ * permanent raises it ("You can have up to 3 permanent cards played at a
+ * time, including this one").
+ */
+export function permanentLimitFor(state: GameState, playerId: PlayerId): number {
+  return getPermanentDefinitions(state, playerId).reduce(
+    (limit, card) => Math.max(limit, card.permanentEffect?.permanentLimitOverride ?? 1),
+    1
+  );
+}
+
+/** Hand-limit bonus granted by in-play permanents (Pandora "hand +1"). */
+export function permanentHandLimitBonus(state: GameState, playerId: PlayerId): number {
+  return getPermanentDefinitions(state, playerId).reduce(
+    (total, card) => total + (card.permanentEffect?.handLimitBonus ?? 0),
+    0
+  );
+}
+
+function setPermanentCardIds(state: GameState, playerId: PlayerId, cardIds: CardId[]): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+
+  player.permanents = cardIds;
+  // Clear the deprecated single slot so legacy reads cannot disagree.
+  player.permanent = null;
+}
+
+/**
+ * The School of Magic bonus an in-play permanent grants a spell, with the
+ * granting card — or null when no in-play permanent matches the spell's
+ * school. Spells of the "any" school (Magic Arrow) belong to every school.
  */
 export function getPermanentSchoolBonus(
   state: GameState,
   playerId: PlayerId,
   spellCard: CardDefinition
-): { basicPower: number; expertPower: number } | null {
-  const bonus = getPermanentDefinition(state, playerId)?.permanentEffect?.schoolBonus;
-  if (!bonus || spellCard.kind !== "spell") {
+): { card: CardDefinition; basicPower: number; expertPower: number } | null {
+  if (spellCard.kind !== "spell") {
     return null;
   }
 
   const schools = spellCard.spellSchools ?? [];
-  if (!schools.includes(bonus.school) && !schools.includes("any")) {
-    return null;
+  for (const card of getPermanentDefinitions(state, playerId)) {
+    const bonus = card.permanentEffect?.schoolBonus;
+    if (bonus && (schools.includes(bonus.school) || schools.includes("any"))) {
+      return { card, basicPower: bonus.basicPower, expertPower: bonus.expertPower };
+    }
   }
 
-  return { basicPower: bonus.basicPower, expertPower: bonus.expertPower };
+  return null;
 }
 
 function playerIsInCombat(state: GameState, playerId: PlayerId): boolean {
@@ -74,48 +124,49 @@ function adjustRangedInitiative(state: GameState, playerId: PlayerId, delta: num
 }
 
 /**
- * Instantiates the in-play permanent's combat presence for its owner: the
- * card-scoped active effect (First Aid Tent heal, Ammo Cart penalty waiver)
- * and the ranged initiative bonus. Idempotent — the active effect doubles as
- * the "already applied" marker, so this may run at combat start, on every
- * round start and when a permanent enters play mid-combat. (A
+ * Instantiates the in-play permanents' combat presence for their owner: the
+ * card-scoped active effects (First Aid Tent heal, Ammo Cart penalty waiver)
+ * and the ranged initiative bonuses. Idempotent — each active effect doubles
+ * as its card's "already applied" marker, so this may run at combat start, on
+ * every round start and when a permanent enters play mid-combat. (A
  * rangedInitiativeBonus therefore needs a combatEffect on the same card.)
  */
 export function applyPermanentCombatEffectsForPlayer(state: GameState, playerId: PlayerId): void {
-  const card = getPermanentDefinition(state, playerId);
-  if (!card?.permanentEffect || !playerIsInCombat(state, playerId)) {
+  if (!playerIsInCombat(state, playerId)) {
     return;
   }
 
-  const { combatEffect, rangedInitiativeBonus } = card.permanentEffect;
-  if (!combatEffect) {
-    return;
-  }
+  for (const card of getPermanentDefinitions(state, playerId)) {
+    const { combatEffect, rangedInitiativeBonus } = card.permanentEffect ?? {};
+    if (!combatEffect) {
+      continue;
+    }
 
-  const alreadyActive = state.activeEffects.some(
-    (effect) => effect.source.type === "card" && effect.source.cardId === card.id && effect.controllerId === playerId
-  );
-  if (alreadyActive) {
-    return;
-  }
+    const alreadyActive = state.activeEffects.some(
+      (effect) => effect.source.type === "card" && effect.source.cardId === card.id && effect.controllerId === playerId
+    );
+    if (alreadyActive) {
+      continue;
+    }
 
-  const activeEffect = makeActiveEffect(
-    state,
-    combatEffect,
-    { type: "card", cardId: card.id, controllerId: playerId },
-    playerId
-  );
-  state.activeEffects.push(activeEffect);
-  appendEvent(state, {
-    type: "ACTIVE_EFFECT_CREATED",
-    effectId: activeEffect.id,
-    controllerId: playerId,
-    name: activeEffect.name,
-    duration: activeEffect.duration
-  });
+    const activeEffect = makeActiveEffect(
+      state,
+      combatEffect,
+      { type: "card", cardId: card.id, controllerId: playerId },
+      playerId
+    );
+    state.activeEffects.push(activeEffect);
+    appendEvent(state, {
+      type: "ACTIVE_EFFECT_CREATED",
+      effectId: activeEffect.id,
+      controllerId: playerId,
+      name: activeEffect.name,
+      duration: activeEffect.duration
+    });
 
-  if (rangedInitiativeBonus) {
-    adjustRangedInitiative(state, playerId, rangedInitiativeBonus);
+    if (rangedInitiativeBonus) {
+      adjustRangedInitiative(state, playerId, rangedInitiativeBonus);
+    }
   }
 }
 
@@ -146,29 +197,62 @@ function removePermanentCombatEffects(state: GameState, playerId: PlayerId, card
 }
 
 /**
- * Sends the in-play permanent to its owner's discard pile (expert effect used
- * or another permanent played) and cleans its combat presence up.
+ * Sends one in-play permanent to its owner's discard pile (expert effect
+ * used, replaced over the limit, or discarded voluntarily) and cleans its
+ * combat presence up. Without an explicit card id the oldest one leaves.
  */
-export function discardPermanentFromPlay(state: GameState, playerId: PlayerId): CardId | null {
+export function discardPermanentFromPlay(
+  state: GameState,
+  playerId: PlayerId,
+  cardId?: CardId
+): CardId | null {
   const player = state.players[playerId];
-  const cardId = player?.permanent ?? null;
-  if (!player || !cardId) {
+  const inPlay = getPermanentCardIds(state, playerId);
+  const discardId = cardId ?? inPlay[0] ?? null;
+  if (!player || !discardId || !inPlay.includes(discardId)) {
     return null;
   }
 
-  const card = cardLibrary[cardId];
+  const card = cardLibrary[discardId];
   if (card) {
     removePermanentCombatEffects(state, playerId, card);
   }
-  player.permanent = null;
-  player.discard.push(cardId);
-  return cardId;
+  setPermanentCardIds(
+    state,
+    playerId,
+    inPlay.filter((candidate) => candidate !== discardId)
+  );
+  player.discard.push(discardId);
+  return discardId;
 }
 
 /**
- * Puts a hand card into play as the player's permanent. The previous
- * permanent (if any) goes to the discard pile, as printed: "You may only
- * have one permanent card at a time; playing another discards the first."
+ * Discards extra permanents (oldest first) whenever the limit shrinks below
+ * what is in play — e.g. when the Pandora's Box "up to 3 permanents" card
+ * itself leaves play while it was holding the door open.
+ */
+export function enforcePermanentLimit(state: GameState, playerId: PlayerId): void {
+  let safety = 8;
+  while (safety > 0 && getPermanentCardIds(state, playerId).length > permanentLimitFor(state, playerId)) {
+    safety -= 1;
+    const discarded = discardPermanentFromPlay(state, playerId);
+    if (!discarded) {
+      return;
+    }
+    appendEvent(state, {
+      type: "PERMANENT_DISCARDED",
+      playerId,
+      cardId: discarded,
+      reason: "limit"
+    });
+  }
+}
+
+/**
+ * Puts a hand card into play as one of the player's permanents. At the
+ * limit — 1 as printed, up to 3 with the Pandora's Box exception — the
+ * oldest permanent goes to the discard pile first ("playing another
+ * discards the first").
  */
 export function putPermanentIntoPlay(state: GameState, playerId: PlayerId, cardId: CardId): void {
   const player = state.players[playerId];
@@ -182,9 +266,11 @@ export function putPermanentIntoPlay(state: GameState, playerId: PlayerId, cardI
     throw new Error("That card is not in hand.");
   }
 
-  const replacedCardId = discardPermanentFromPlay(state, playerId);
+  const limit = permanentLimitFor(state, playerId);
+  const replacedCardId =
+    getPermanentCardIds(state, playerId).length >= limit ? discardPermanentFromPlay(state, playerId) : null;
   player.hand.splice(handIndex, 1);
-  player.permanent = cardId;
+  setPermanentCardIds(state, playerId, [...getPermanentCardIds(state, playerId), cardId]);
 
   appendEvent(state, {
     type: "PERMANENT_PLAYED",
@@ -196,12 +282,60 @@ export function putPermanentIntoPlay(state: GameState, playerId: PlayerId, cardI
   applyPermanentCombatEffectsForPlayer(state, playerId);
 }
 
+/**
+ * Rulebook voluntary removal: "The player may decide to put an active
+ * permanent card into their discard pile. This stops the card effect
+ * immediately." Dropping the Pandora limit card may discard extras too.
+ */
+export function discardPermanentVoluntarily(
+  state: GameState,
+  action: Extract<GameAction, { type: "DISCARD_PERMANENT" }>
+): void {
+  const inPlay = getPermanentCardIds(state, action.playerId);
+  if (!inPlay.includes(action.cardId)) {
+    throw new Error("That permanent is not in play.");
+  }
+
+  const discarded = discardPermanentFromPlay(state, action.playerId, action.cardId);
+  if (!discarded) {
+    throw new Error("That permanent could not be discarded.");
+  }
+
+  appendEvent(state, {
+    type: "PERMANENT_DISCARDED",
+    playerId: action.playerId,
+    cardId: discarded,
+    reason: "voluntary"
+  });
+
+  enforcePermanentLimit(state, action.playerId);
+}
+
 // ---------------------------------------------------------------------------
 // War machine round-start triggers
 // ---------------------------------------------------------------------------
 
-function getRoundStartDefinition(state: GameState, playerId: PlayerId): WarMachineRoundStartDefinition | null {
-  return getPermanentDefinition(state, playerId)?.permanentEffect?.roundStart ?? null;
+function getRoundStartDefinitionForCard(cardId: CardId): WarMachineRoundStartDefinition | null {
+  return cardLibrary[cardId]?.permanentEffect?.roundStart ?? null;
+}
+
+/** The war machine entry currently at the head of the round-start queue. */
+function activeWarMachineEntry(
+  state: GameState,
+  playerId: PlayerId
+): { cardId: CardId; roundStart: WarMachineRoundStartDefinition } | null {
+  const head = state.combat?.warMachineRound?.pending[0];
+  if (!head || head.playerId !== playerId) {
+    return null;
+  }
+
+  // The machine must still be in play (its expert/discard may have removed it).
+  if (!getPermanentCardIds(state, playerId).includes(head.cardId)) {
+    return null;
+  }
+
+  const roundStart = getRoundStartDefinitionForCard(head.cardId);
+  return roundStart ? { cardId: head.cardId, roundStart } : null;
 }
 
 function livingUnits(state: GameState): CombatUnitState[] {
@@ -228,15 +362,21 @@ export function startWarMachineRound(state: GameState): void {
     return;
   }
 
-  const pending = [combat.attackerPlayerId, combat.defenderPlayerId].filter((playerId) =>
-    getRoundStartDefinition(state, playerId)
+  const pending = [combat.attackerPlayerId, combat.defenderPlayerId].flatMap((playerId) =>
+    getPermanentCardIds(state, playerId)
+      .filter((cardId) => getRoundStartDefinitionForCard(cardId))
+      .map((cardId) => ({ playerId, cardId }))
   );
   combat.warMachineRound = pending.length > 0 ? { pending, firstTargetUnitId: null } : null;
   processWarMachineRound(state);
 }
 
 function warMachineName(state: GameState, playerId: PlayerId): string {
-  return getPermanentDefinition(state, playerId)?.name ?? "War machine";
+  const head = state.combat?.warMachineRound?.pending[0];
+  if (head && head.playerId === playerId) {
+    return cardLibrary[head.cardId]?.name ?? "War machine";
+  }
+  return "War machine";
 }
 
 /** Applies war machine damage with the card as the damage source. */
@@ -249,7 +389,10 @@ export function applyWarMachineDamage(
 ): void {
   const combat = state.combat;
   const target = combat?.units[targetUnitId];
-  const cardId = getPermanentCardId(state, playerId);
+  const cardId =
+    combat?.warMachineRound?.pending[0]?.playerId === playerId
+      ? combat.warMachineRound.pending[0].cardId
+      : (getPermanentCardIds(state, playerId)[0] ?? null);
   if (!combat || !target || !isAlive(target) || !cardId) {
     return;
   }
@@ -289,7 +432,7 @@ function openWarMachineTargetChoice(
     type: "ABILITY_TARGET_CHOICE",
     playerId,
     kind: "war-machine",
-    abilityId: getPermanentCardId(state, playerId),
+    abilityId: state.combat?.warMachineRound?.pending[0]?.cardId ?? null,
     abilityName: warMachineName(state, playerId),
     prompt,
     sourceUnitId: null,
@@ -352,17 +495,19 @@ export function processWarMachineRound(state: GameState): void {
 
   while (!state.pendingChoice && !combat.outcome && state.combat === combat) {
     const queue = combat.warMachineRound;
-    const playerId = queue?.pending[0];
-    if (!queue || !playerId) {
+    const head = queue?.pending[0];
+    if (!queue || !head) {
       combat.warMachineRound = null;
       return;
     }
 
-    const roundStart = getRoundStartDefinition(state, playerId);
-    if (!roundStart) {
+    const playerId = head.playerId;
+    const entry = activeWarMachineEntry(state, playerId);
+    if (!entry) {
       queue.pending.shift();
       continue;
     }
+    const roundStart = entry.roundStart;
 
     const name = warMachineName(state, playerId);
 
@@ -430,11 +575,11 @@ export function processWarMachineRound(state: GameState): void {
 export function resolveWarMachineOption(state: GameState, playerId: PlayerId, optionIndex: number): void {
   const combat = state.combat;
   const queue = combat?.warMachineRound;
-  if (!combat || !queue || queue.pending[0] !== playerId) {
+  if (!combat || !queue || queue.pending[0]?.playerId !== playerId) {
     throw new Error("No war machine is waiting for that player.");
   }
 
-  const roundStart = getRoundStartDefinition(state, playerId);
+  const roundStart = activeWarMachineEntry(state, playerId)?.roundStart ?? null;
   if (!roundStart || roundStart.kind === "damage-lowest-initiative") {
     throw new Error("That war machine has no offer to resolve.");
   }
@@ -487,11 +632,11 @@ export function resolveWarMachineOption(state: GameState, playerId: PlayerId, op
 export function resolveWarMachineTarget(state: GameState, playerId: PlayerId, targetUnitId: UnitId, amount: number): void {
   const combat = state.combat;
   const queue = combat?.warMachineRound;
-  if (!combat || !queue || queue.pending[0] !== playerId) {
+  if (!combat || !queue || queue.pending[0]?.playerId !== playerId) {
     throw new Error("No war machine is waiting for that player.");
   }
 
-  const roundStart = getRoundStartDefinition(state, playerId);
+  const roundStart = activeWarMachineEntry(state, playerId)?.roundStart ?? null;
   const isSplash = roundStart?.kind === "pay-to-splash";
 
   if (isSplash && !queue.firstTargetUnitId) {
@@ -612,9 +757,7 @@ export function buyWarMachine(state: GameState, action: Extract<GameAction, { ty
  */
 export function applyPermanentExpert(state: GameState, action: Extract<GameAction, { type: "USE_PERMANENT_EXPERT" }>): void {
   const player = state.players[action.playerId];
-  const card = getPermanentDefinition(state, action.playerId);
-  const bonus = card?.permanentEffect?.schoolBonus;
-  if (!player || !card || !bonus) {
+  if (!player) {
     throw new Error("No School of Magic permanent is in play.");
   }
 
@@ -624,11 +767,12 @@ export function applyPermanentExpert(state: GameState, action: Extract<GameActio
   }
 
   const spellCard = cardLibrary[stackItem.action.cardId];
-  if (!spellCard || !getPermanentSchoolBonus(state, action.playerId, spellCard)) {
-    throw new Error(`${card.name} does not match that spell's school.`);
+  const match = spellCard ? getPermanentSchoolBonus(state, action.playerId, spellCard) : null;
+  if (!match) {
+    throw new Error("No in-play School of Magic matches that spell's school.");
   }
 
-  if ((stackItem.modifiers.schoolPowerBonus ?? 0) >= bonus.expertPower) {
+  if ((stackItem.modifiers.schoolPowerBonus ?? 0) >= match.expertPower) {
     throw new Error("The expert school bonus is already applied.");
   }
 
@@ -637,16 +781,17 @@ export function applyPermanentExpert(state: GameState, action: Extract<GameActio
   }
 
   player.combatStats.expertUsesSpentThisRound += 1;
-  stackItem.modifiers.schoolPowerBonus = bonus.expertPower;
-  stackItem.modifiers.playedCardIds.push(card.id);
-  discardPermanentFromPlay(state, action.playerId);
+  stackItem.modifiers.schoolPowerBonus = match.expertPower;
+  stackItem.modifiers.playedCardIds.push(match.card.id);
+  discardPermanentFromPlay(state, action.playerId, match.card.id);
+  enforcePermanentLimit(state, action.playerId);
 
   appendEvent(state, {
     type: "CARD_PLAYED",
     playerId: action.playerId,
-    cardId: card.id,
-    timing: card.timing,
+    cardId: match.card.id,
+    timing: match.card.timing,
     mode: "expert",
-    effectAmount: bonus.expertPower
+    effectAmount: match.expertPower
   });
 }

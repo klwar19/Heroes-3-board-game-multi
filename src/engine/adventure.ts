@@ -169,7 +169,15 @@ export function effectiveHandLimit(state: GameState, playerId: PlayerId): number
 
   const active = getActiveAstrologersCard(state);
   const bonus = active?.effect.type === "HAND_LIMIT_MODIFIER" ? active.effect.amount : 0;
-  return Math.max(1, player.limits.hand + bonus);
+  // In-play permanents may raise the hand limit (Pandora's "hand +1").
+  // Computed inline: permanents.ts imports this module, so it cannot be
+  // imported back from here.
+  const permanentIds = player.permanents ?? (player.permanent ? [player.permanent] : []);
+  const permanentBonus = permanentIds.reduce(
+    (total, cardId) => total + (cardLibrary[cardId]?.permanentEffect?.handLimitBonus ?? 0),
+    0
+  );
+  return Math.max(1, player.limits.hand + bonus + permanentBonus);
 }
 
 /** Movement points a hero refreshes to, including Astrologers modifiers. */
@@ -770,6 +778,8 @@ function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
       return [{ type: "HILL_FORT" }];
     case "SUBTERRANEAN_GATE":
       return [{ type: "SUBTERRANEAN_GATE" }];
+    case "DRAW_PANDORA_CARD":
+      return [{ type: "DRAW_PANDORA_CARD" }];
   }
 }
 
@@ -1104,6 +1114,19 @@ export function processPendingVisit(state: GameState): void {
       case "CONSUME_EFFECT":
         state.activeEffects = state.activeEffects.filter((candidate) => candidate.id !== step.effectId);
         break;
+      case "DRAW_PANDORA_CARD": {
+        const player = state.players[visit.playerId];
+        const drawn = adventure.pandoraDeck?.pop();
+        if (player && drawn) {
+          player.hand.push(drawn);
+          appendEvent(state, {
+            type: "PANDORA_CARD_DRAWN",
+            playerId: visit.playerId,
+            cardId: drawn
+          });
+        }
+        break;
+      }
       default:
         break;
     }

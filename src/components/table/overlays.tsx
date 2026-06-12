@@ -1,11 +1,12 @@
 "use client";
 
-import { Check, CircleOff, Crown, Dices, Hourglass, Layers, Undo2 } from "lucide-react";
+import { Check, CircleOff, Crown, Dices, Hourglass, Layers, Swords, Undo2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
 import {
   getEffectAmount,
   getEffectiveCardEffect,
+  getPermanentCardIds,
   type CardPlayMode,
   type GameAction,
   type GameState,
@@ -86,13 +87,16 @@ export function ReactionTray({
   view,
   viewerPlayerId,
   legalActions,
-  onAction
+  onAction,
+  onViewHand
 }: {
   state: GameState;
   view: PlayerVisibleState;
   viewerPlayerId: PlayerId;
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
+  /** Opens the full-size hand browser so cards stay readable mid-window. */
+  onViewHand?: () => void;
 }) {
   // The parent keys this component by window id + priority player, so the
   // selection naturally resets whenever the timing window changes hands.
@@ -110,6 +114,10 @@ export function ReactionTray({
 
   // School of Magic in play: discard it from the field for the expert bonus.
   const fieldExpert = legalActions.find((legal) => legal.action.type === "USE_PERMANENT_EXPERT");
+  const schoolPermanentId =
+    getPermanentCardIds(state, viewerPlayerId).find((cardId) =>
+      Boolean(cardLibrary[cardId]?.permanentEffect?.schoolBonus)
+    ) ?? null;
 
   if (!window) {
     return null;
@@ -251,8 +259,25 @@ export function ReactionTray({
       selection.costCards?.exact !== undefined && selection.costHandIndexes.length !== selection.costCards.exact
   );
 
+  const isAttackWindow = window.triggerEvent.type === "UNIT_ATTACK_DECLARED";
+  // Attack-window pairing rule: Power (the statistic card or a "+1 Power"
+  // discard) only flows into an instant spell played in the same
+  // declaration — it cannot be declared on its own during an attack.
+  const isPowerSelection = (selection: TraySelection) => {
+    if (selection.asPowerBoost) {
+      return true;
+    }
+    const card = cardLibrary[selection.cardId];
+    const effect = card ? getEffectiveCardEffect(card, selection.optionIndex) : null;
+    return effect?.type === "ADD_SPELL_POWER";
+  };
+  const hasSpellPlay = selections.some(
+    (selection) => !selection.asPowerBoost && cardLibrary[selection.cardId]?.kind === "spell" && !isPowerSelection(selection)
+  );
+  const powerNeedsSpell = isAttackWindow && selections.some(isPowerSelection) && !hasSpellPlay;
+
   const confirmSelection = () => {
-    if (selections.length === 0 || paymentInvalid) {
+    if (selections.length === 0 || paymentInvalid || powerNeedsSpell) {
       return;
     }
 
@@ -280,7 +305,6 @@ export function ReactionTray({
   };
 
   const preview = selectionPreview(selections);
-  const isAttackWindow = window.triggerEvent.type === "UNIT_ATTACK_DECLARED";
   const passLabel = isAttackWindow ? "Done — roll the die!" : "Pass";
   const crownsOver = crownsSelected > crownsAvailable;
 
@@ -297,12 +321,9 @@ export function ReactionTray({
         ) : null}
         {fieldExpert && fieldExpert.action.type === "USE_PERMANENT_EXPERT" ? (
           <div className="trayTile permanentTile" key="field-expert">
-            <CardFrame
-              cardId={state.players[viewerPlayerId]?.permanent ?? undefined}
-              className="trayCardImage"
-            />
+            <CardFrame cardId={schoolPermanentId ?? undefined} className="trayCardImage" />
             <div className="trayTileBody">
-              <strong>{cardName(state.players[viewerPlayerId]?.permanent ?? "")} (in play)</strong>
+              <strong>{cardName(schoolPermanentId ?? "")} (in play)</strong>
               <button className="trayInstant" onClick={() => onAction(fieldExpert.action)} type="button">
                 <Crown aria-hidden="true" size={13} /> {fieldExpert.label}
               </button>
@@ -425,13 +446,22 @@ export function ReactionTray({
       <footer>
         <div className="trayPreview">
           {preview.length > 0 ? preview.map((line) => <span key={line}>{line}</span>) : <span>Nothing selected</span>}
+          {powerNeedsSpell ? (
+            <span className="trayWarning">Power only counts with a Spell played into this attack — add the spell.</span>
+          ) : null}
           <span className={`crownMeter ${crownsOver ? "over" : ""}`} title="Crowns selected / available">
             <Crown aria-hidden="true" size={13} /> {crownsSelected}/{crownsAvailable}
           </span>
         </div>
+        {onViewHand ? (
+          <button className="trayPass" onClick={onViewHand} title="Read every card in your hand" type="button">
+            <Layers aria-hidden="true" size={15} />
+            <span>View hand</span>
+          </button>
+        ) : null}
         <button
           className="trayConfirm"
-          disabled={selections.length === 0 || crownsOver || paymentInvalid}
+          disabled={selections.length === 0 || crownsOver || paymentInvalid || powerNeedsSpell}
           onClick={confirmSelection}
           type="button"
         >
@@ -759,6 +789,91 @@ export function RerollModal({
               </span>
             </button>
           ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * End-of-combat notice: combat no longer drops back to the map by itself.
+ * The battlefield stays up behind this popup until a participant clicks
+ * "Return to the adventure map" (ACKNOWLEDGE_COMBAT_END); the battle
+ * simulator offers a table reset instead. "Keep looking" hides the popup so
+ * the final board can be inspected — the dock keeps the return button.
+ */
+export function CombatResultModal({
+  state,
+  viewerPlayerId,
+  legalActions,
+  onAction,
+  onReset
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  legalActions: LegalAction[];
+  onAction: (action: GameAction) => void;
+  onReset?: () => void;
+}) {
+  const [dismissed, setDismissed] = useState(false);
+  const combat = state.combat;
+  const outcome = combat?.outcome;
+
+  if (!combat || !outcome || dismissed) {
+    return null;
+  }
+
+  const isSandbox = combat.context.kind === "sandbox";
+  const winnerName = state.players[outcome.winnerPlayerId]?.name ?? outcome.winnerPlayerId;
+  const defeatedName = state.players[outcome.defeatedPlayerId]?.name ?? outcome.defeatedPlayerId;
+  const viewerWon = outcome.winnerPlayerId === viewerPlayerId;
+  const viewerLost = outcome.defeatedPlayerId === viewerPlayerId;
+  const acknowledge = legalActions.find((legal) => legal.action.type === "ACKNOWLEDGE_COMBAT_END");
+
+  const title =
+    outcome.reason === "retreat"
+      ? viewerLost
+        ? "You retreat"
+        : `${defeatedName} retreats`
+      : viewerWon
+        ? "Victory!"
+        : viewerLost
+          ? "Defeat"
+          : `${winnerName} wins`;
+  const detail =
+    outcome.reason === "retreat"
+      ? `${defeatedName} falls back to the last visited field. The combat is over.`
+      : `${winnerName} defeats ${defeatedName}${
+          outcome.reason === "all-enemy-units-defeated" ? " — every opposing unit is gone" : ""
+        }.`;
+
+  return (
+    <div className="combatResultBackdrop" role="dialog" aria-label="Combat result">
+      <div className={`combatResultModal ${viewerWon ? "won" : viewerLost ? "lost" : ""}`}>
+        <header>
+          <Swords aria-hidden="true" size={18} />
+          <strong>{title}</strong>
+        </header>
+        <p>{detail}</p>
+        {!isSandbox ? (
+          <small>
+            Experience, unit cards and the contested field resolve when the battlefield closes.
+          </small>
+        ) : null}
+        <div className="combatResultButtons">
+          {acknowledge ? (
+            <button className="commandButton primary" onClick={() => onAction(acknowledge.action)} type="button">
+              {acknowledge.label}
+            </button>
+          ) : null}
+          {isSandbox && onReset ? (
+            <button className="commandButton primary" onClick={onReset} type="button">
+              Reset the table
+            </button>
+          ) : null}
+          <button className="commandButton ghost" onClick={() => setDismissed(true)} type="button">
+            Keep looking at the battlefield
+          </button>
         </div>
       </div>
     </div>

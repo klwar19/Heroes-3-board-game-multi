@@ -31,11 +31,15 @@ import {
   parseHexSpaceId,
   scenarioDefinitions,
   tileFootprint,
+  tileFootprintsTouch,
   astrologersCardDefinitions,
+  type CustomMapTilePlan,
+  type CustomStartingUnit,
   type GameAction,
   type GameSetupOptions,
   type GameState,
   type HeroPathTarget,
+  type HexCoord,
   type LegalAction,
   type MapSpaceId,
   type MapTileState,
@@ -355,7 +359,9 @@ export function HexMapBoard({
               points={hexCorners(x, y, HEX_SIZE - 1.2)}
             >
               <title>
-                {discover ? `Spend 1 MP to discover this ${tile.backLabel ?? ""} tile` : `Face-down tile ${tile.backLabel ?? ""}`}
+                {discover
+                  ? `Spend 1 movement point to discover this ${tile.backLabel ?? ""} tile`
+                  : `Face-down tile ${tile.backLabel ?? ""}`}
               </title>
             </polygon>
           </g>
@@ -368,7 +374,7 @@ export function HexMapBoard({
               </text>
               {discover && !readOnly ? (
                 <text className="hexFaceDownLabel" textAnchor="middle" x={x} y={y + HEX_SIZE * 0.78}>
-                  1 MP: discover
+                  🐎 1 movement point: discover
                 </text>
               ) : null}
             </g>
@@ -495,7 +501,7 @@ export function HexMapBoard({
           <title>
             {`${location?.name ?? field.location}${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${
               field.flagOwnerId ? ` — flagged by ${state.players[field.flagOwnerId]?.name}` : ""
-            }${target ? ` — ${target.cost} MP` : ""}`}
+            }${target ? ` — ${target.cost} movement point${target.cost === 1 ? "" : "s"}` : ""}`}
           </title>
         </polygon>
       );
@@ -644,7 +650,7 @@ export function HexMapBoard({
           <text className="hexBackNumeral ghostNumeral" textAnchor="middle" x={x} y={y + 8}>
             Ⅱ–Ⅲ
           </text>
-          <title>Place the Far tile here (1 MP)</title>
+          <title>Place the Far tile here (1 movement point)</title>
         </g>
       );
     }
@@ -790,7 +796,8 @@ export function HexMapBoard({
       {selectedTarget && myHero && !readOnly ? (
         <div className="moveConfirmBar" role="dialog" aria-label="Confirm movement">
           <span>
-            Move {selectedTarget.cost} field{selectedTarget.cost === 1 ? "" : "s"} ({selectedTarget.cost} MP)
+            <span aria-hidden="true">🐎</span> Move {selectedTarget.cost} field{selectedTarget.cost === 1 ? "" : "s"} (
+            {selectedTarget.cost} movement point{selectedTarget.cost === 1 ? "" : "s"})
           </span>
           <button
             className="commandButton primary"
@@ -944,8 +951,8 @@ export function AdventureHud({
       ) : null}
       {hero ? (
         <div className="advHudCell">
-          <strong>
-            MP {hero.movementPoints}
+          <strong title={`${hero.movementPoints} movement point${hero.movementPoints === 1 ? "" : "s"} left this turn`}>
+            <span aria-hidden="true">🐎</span> {hero.movementPoints} movement point{hero.movementPoints === 1 ? "" : "s"}
           </strong>
           <small>
             level {hero.level} ·{" "}
@@ -1657,7 +1664,7 @@ export function FarTileTray({
 
   return (
     <div className="farTileTray" aria-label="Your far tiles">
-      <small>Far (Ⅱ–Ⅲ) tiles — 1 MP to place at the border, touching two tiles:</small>
+      <small>Far (Ⅱ–Ⅲ) tiles — 1 movement point 🐎 to place at the border, touching two tiles:</small>
       {tiles.map((_, index) => (
         <button
           className={`farTileBack ${placement?.supplyIndex === index ? "selected" : ""}`}
@@ -2010,6 +2017,316 @@ const STARTING_BUILDING_CHOICES: { id: string; label: string }[] = [
   { id: "dwelling_gold", label: "Gold Dwelling" }
 ];
 
+/**
+ * Custom starting army: pick the few or pack side of ANY unit (all factions
+ * and neutrals), repeated as often as wanted. The chosen set replaces the
+ * tier-based default and every player starts with the same cards.
+ */
+function CustomArmyPicker({
+  startingUnits,
+  onChange
+}: {
+  startingUnits: CustomStartingUnit[];
+  onChange: (next: CustomStartingUnit[]) => void;
+}) {
+  const allUnits = useMemo(
+    () =>
+      Object.values(coreUnitDefinitions)
+        .filter((unit) => unit.few || unit.pack)
+        .sort((left, right) =>
+          left.faction === right.faction
+            ? left.name.localeCompare(right.name)
+            : left.faction.localeCompare(right.faction)
+        ),
+    []
+  );
+  const [pickedUnitId, setPickedUnitId] = useState(allUnits[0]?.id ?? "");
+  const picked = coreUnitDefinitions[pickedUnitId];
+
+  const add = (side: "few" | "pack") => {
+    if (pickedUnitId && coreUnitDefinitions[pickedUnitId]?.[side]) {
+      onChange([...startingUnits, { unitDefId: pickedUnitId, side }]);
+    }
+  };
+
+  return (
+    <div className="customArmy" aria-label="Custom starting army">
+      <div className="customArmyAdd">
+        <select aria-label="Unit to add" onChange={(event) => setPickedUnitId(event.target.value)} value={pickedUnitId}>
+          {allUnits.map((unit) => (
+            <option key={unit.id} value={unit.id}>
+              {titleCase(unit.faction)} — {unit.name} ({unit.tier})
+            </option>
+          ))}
+        </select>
+        <button disabled={!picked?.few} onClick={() => add("few")} type="button">
+          <Plus size={11} /> Few
+        </button>
+        <button disabled={!picked?.pack} onClick={() => add("pack")} type="button">
+          <Plus size={11} /> Pack
+        </button>
+      </div>
+      <div className="customArmyChips">
+        {startingUnits.length === 0 ? <small>No units yet — every hero starts with an empty army.</small> : null}
+        {startingUnits.map((choice, index) => {
+          const unit = coreUnitDefinitions[choice.unitDefId];
+          return (
+            <button
+              className="customArmyChip"
+              key={`${choice.unitDefId}-${choice.side}-${index}`}
+              onClick={() => onChange(startingUnits.filter((_, candidate) => candidate !== index))}
+              title="Remove from the starting army"
+              type="button"
+            >
+              {choice.side === "pack" ? "Pack" : "Few"} {unit?.name ?? choice.unitDefId}
+              <X aria-hidden="true" size={10} />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Designer slot spacing: tile centers sit 3 hexes apart on the lattice. */
+const DESIGNER_HEX_SIZE = 9;
+
+const TILE_GROUP_LABELS: Record<"far" | "near" | "center", string> = {
+  far: "Far Ⅱ–Ⅲ",
+  near: "Near Ⅳ–Ⅴ",
+  center: "Center Ⅵ–Ⅶ"
+};
+
+/**
+ * Centers whose 7-field flower would touch the flower at `center`: every
+ * position at hex distance 3 with adjacent footprints (the same contact rule
+ * the engine uses for Far-tile placement).
+ */
+function neighborTileCenters(center: HexCoord): HexCoord[] {
+  const result: HexCoord[] = [];
+  for (let dRow = -3; dRow <= 3; dRow += 1) {
+    for (let dCol = -5; dCol <= 5; dCol += 1) {
+      const candidate = { row: center.row + dRow, col: center.col + dCol };
+      if (hexDistance(center, candidate) === 3 && tileFootprintsTouch(center, candidate)) {
+        result.push(candidate);
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Map designer: build the map tile by tile around the fixed starting tiles.
+ * Each added tile is face-down random from its group's pool ("down means
+ * random") or a hand-picked face-up tile at a chosen rotation.
+ */
+function MapDesigner({
+  scenarioId,
+  customMap,
+  onChange
+}: {
+  scenarioId: string;
+  customMap: CustomMapTilePlan[];
+  onChange: (next: CustomMapTilePlan[]) => void;
+}) {
+  const scenario = scenarioDefinitions[scenarioId];
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+
+  const starts = useMemo<HexCoord[]>(
+    () => (scenario ? scenario.layout.starts.map((start) => ({ ...start })) : []),
+    [scenario]
+  );
+
+  const placed = useMemo<HexCoord[]>(
+    () => [...starts, ...customMap.map((plan) => ({ row: plan.row, col: plan.col }))],
+    [starts, customMap]
+  );
+
+  // Empty lattice slots touching the current board.
+  const candidates = useMemo<HexCoord[]>(() => {
+    const seen = new Map<string, HexCoord>();
+    for (const center of placed) {
+      for (const neighbor of neighborTileCenters(center)) {
+        const key = `${neighbor.row}:${neighbor.col}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        if (placed.some((existing) => hexDistance(existing, neighbor) < 3)) {
+          continue;
+        }
+        if (placed.some((existing) => tileFootprintsTouch(existing, neighbor))) {
+          seen.set(key, neighbor);
+        }
+      }
+    }
+    return [...seen.values()];
+  }, [placed]);
+
+  if (!scenario) {
+    return null;
+  }
+
+  // Pixel layout: project every visible center, then normalize into the box.
+  const everything = [...placed, ...candidates];
+  const pixels = everything.map((coord) => hexToPixel(coord, DESIGNER_HEX_SIZE));
+  const minX = Math.min(...pixels.map((pixel) => pixel.x)) - DESIGNER_HEX_SIZE * 2.4;
+  const minY = Math.min(...pixels.map((pixel) => pixel.y)) - DESIGNER_HEX_SIZE * 2.4;
+  const width = Math.max(...pixels.map((pixel) => pixel.x)) - minX + DESIGNER_HEX_SIZE * 4.8;
+  const height = Math.max(...pixels.map((pixel) => pixel.y)) - minY + DESIGNER_HEX_SIZE * 4.8;
+  const place = (coord: HexCoord) => {
+    const pixel = hexToPixel(coord, DESIGNER_HEX_SIZE);
+    return { left: pixel.x - minX, top: pixel.y - minY };
+  };
+
+  const selected = selectedIndex !== null ? customMap[selectedIndex] : null;
+  const usedFaceUpIds = new Set(
+    customMap.filter((plan) => !plan.faceDown && plan.tileDefId).map((plan) => plan.tileDefId as string)
+  );
+  const pickableTiles = Object.values(allTileDefinitions)
+    .filter((tile) => tile.group === (selected?.group ?? "near"))
+    .sort((left, right) => left.id.localeCompare(right.id));
+
+  const updateSelected = (changes: Partial<CustomMapTilePlan>) => {
+    if (selectedIndex === null) {
+      return;
+    }
+    onChange(customMap.map((plan, index) => (index === selectedIndex ? { ...plan, ...changes } : plan)));
+  };
+
+  return (
+    <div className="mapDesigner" aria-label="Map designer">
+      <div className="designerBoard" style={{ width, height }}>
+        {starts.map((start, index) => (
+          <span
+            className="designerTile start"
+            key={`start-${index}`}
+            style={place(start)}
+            title={`Starting tile of seat ${index + 1} (fixed by faction)`}
+          >
+            S{index + 1}
+          </span>
+        ))}
+        {customMap.map((plan, index) => (
+          <button
+            className={`designerTile plan ${plan.group} ${selectedIndex === index ? "selected" : ""}`}
+            key={`plan-${index}`}
+            onClick={() => setSelectedIndex(selectedIndex === index ? null : index)}
+            style={place({ row: plan.row, col: plan.col })}
+            title={
+              plan.faceDown
+                ? `Face-down ${TILE_GROUP_LABELS[plan.group]} tile (random from the pool)`
+                : `Face-up ${plan.tileDefId ?? "?"} (rotation ${(plan.rotation ?? 0) * 60}°)`
+            }
+            type="button"
+          >
+            {plan.faceDown ? (plan.group === "far" ? "Ⅱ–Ⅲ" : plan.group === "near" ? "Ⅳ–Ⅴ" : "Ⅵ–Ⅶ") : (plan.tileDefId ?? "?")}
+          </button>
+        ))}
+        {candidates.map((candidate) => (
+          <button
+            className="designerTile add"
+            key={`add-${candidate.row}:${candidate.col}`}
+            onClick={() => {
+              onChange([...customMap, { row: candidate.row, col: candidate.col, group: "near", faceDown: true }]);
+              setSelectedIndex(customMap.length);
+            }}
+            style={place(candidate)}
+            title="Add a tile here (face-down Near by default — click it after to change)"
+            type="button"
+          >
+            <Plus aria-hidden="true" size={12} />
+          </button>
+        ))}
+      </div>
+
+      {selected ? (
+        <div className="designerEditor" aria-label="Selected tile settings">
+          <div className="optionButtons">
+            {(["far", "near", "center"] as const).map((group) => (
+              <button
+                aria-pressed={selected.group === group}
+                className={selected.group === group ? "selected" : ""}
+                key={group}
+                onClick={() => updateSelected({ group, tileDefId: undefined })}
+                type="button"
+              >
+                {TILE_GROUP_LABELS[group]}
+              </button>
+            ))}
+          </div>
+          <div className="optionButtons">
+            <button
+              aria-pressed={selected.faceDown}
+              className={selected.faceDown ? "selected" : ""}
+              onClick={() => updateSelected({ faceDown: true, tileDefId: undefined })}
+              title="Face-down: a random tile of the group is drawn when the adventure starts"
+              type="button"
+            >
+              Face down (random)
+            </button>
+            <button
+              aria-pressed={!selected.faceDown}
+              className={!selected.faceDown ? "selected" : ""}
+              onClick={() =>
+                updateSelected({
+                  faceDown: false,
+                  tileDefId:
+                    selected.tileDefId ?? pickableTiles.find((tile) => !usedFaceUpIds.has(tile.id))?.id
+                })
+              }
+              title="Face-up: choose the exact tile, visible from the start"
+              type="button"
+            >
+              Face up (choose tile)
+            </button>
+          </div>
+          {!selected.faceDown ? (
+            <div className="designerTilePick">
+              <select
+                aria-label="Tile"
+                onChange={(event) => updateSelected({ tileDefId: event.target.value })}
+                value={selected.tileDefId ?? ""}
+              >
+                {pickableTiles.map((tile) => (
+                  <option
+                    disabled={usedFaceUpIds.has(tile.id) && tile.id !== selected.tileDefId}
+                    key={tile.id}
+                    value={tile.id}
+                  >
+                    {tile.id} — {titleCase(tile.terrain)}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => updateSelected({ rotation: ((selected.rotation ?? 0) + 1) % 6 })}
+                title="Rotate the tile by 60°"
+                type="button"
+              >
+                <RotateCw size={12} /> {(selected.rotation ?? 0) * 60}°
+              </button>
+            </div>
+          ) : null}
+          <button
+            className="designerRemove"
+            onClick={() => {
+              onChange(customMap.filter((_, index) => index !== selectedIndex));
+              setSelectedIndex(null);
+            }}
+            type="button"
+          >
+            <X size={12} /> Remove this tile
+          </button>
+        </div>
+      ) : (
+        <small className="optionHint">
+          Click a ＋ slot to add a tile next to the board; click a placed tile to flip it up or down, pick the exact
+          tile, rotate it or remove it. Face-down tiles draw randomly from their pool when the adventure starts.
+        </small>
+      )}
+    </div>
+  );
+}
+
 function ResourceStepper({
   label,
   value,
@@ -2101,6 +2418,39 @@ function GameOptionsPanel({
       </div>
 
       <div className="optionRow">
+        <small title="Build the map by hand: choose every tile and whether it lies face up (chosen tile) or face down (random)">
+          Map design
+        </small>
+        <div className="optionButtons">
+          <button
+            aria-pressed={!options.customMap}
+            className={!options.customMap ? "selected" : ""}
+            onClick={() => send({ customMap: null })}
+            title="Use the scenario sheet's face-down Near and Center layout"
+            type="button"
+          >
+            Scenario layout
+          </button>
+          <button
+            aria-pressed={Boolean(options.customMap)}
+            className={options.customMap ? "selected" : ""}
+            onClick={() => send({ customMap: options.customMap ?? [] })}
+            title="Design the map yourself around the fixed starting tiles"
+            type="button"
+          >
+            Design the map
+          </button>
+        </div>
+        {options.customMap ? (
+          <MapDesigner
+            customMap={options.customMap}
+            onChange={(customMap) => send({ customMap })}
+            scenarioId={options.scenarioId}
+          />
+        ) : null}
+      </div>
+
+      <div className="optionRow">
         <small title="Field Difficulty Level Table column used when guards are drawn">Neutral difficulty</small>
         <div className="optionButtons">
           {DIFFICULTY_CHOICES.map((choice) => (
@@ -2167,29 +2517,56 @@ function GameOptionsPanel({
       </div>
 
       <div className="optionRow">
-        <small>Starting units (one Few card of every faction unit of each tier)</small>
+        <small>Starting units</small>
         <div className="optionButtons">
-          {(["bronze", "silver", "gold"] as const).map((tier) => {
-            const checked = options.startingUnitTiers.includes(tier);
-            return (
-              <button
-                aria-pressed={checked}
-                className={checked ? "selected" : ""}
-                key={tier}
-                onClick={() =>
-                  send({
-                    startingUnitTiers: checked
-                      ? options.startingUnitTiers.filter((candidate) => candidate !== tier)
-                      : [...options.startingUnitTiers, tier]
-                  })
-                }
-                type="button"
-              >
-                <span className={`tierDot ${tier}`} /> {tier}
-              </button>
-            );
-          })}
+          <button
+            aria-pressed={!options.startingUnits}
+            className={!options.startingUnits ? "selected" : ""}
+            onClick={() => send({ startingUnits: null })}
+            title="One Few card of every faction unit of each selected tier"
+            type="button"
+          >
+            By unit tiers
+          </button>
+          <button
+            aria-pressed={Boolean(options.startingUnits)}
+            className={options.startingUnits ? "selected" : ""}
+            onClick={() => send({ startingUnits: options.startingUnits ?? [] })}
+            title="Pick the exact starting army: few or pack of any unit"
+            type="button"
+          >
+            Custom army
+          </button>
         </div>
+        {!options.startingUnits ? (
+          <div className="optionButtons">
+            {(["bronze", "silver", "gold"] as const).map((tier) => {
+              const checked = options.startingUnitTiers.includes(tier);
+              return (
+                <button
+                  aria-pressed={checked}
+                  className={checked ? "selected" : ""}
+                  key={tier}
+                  onClick={() =>
+                    send({
+                      startingUnitTiers: checked
+                        ? options.startingUnitTiers.filter((candidate) => candidate !== tier)
+                        : [...options.startingUnitTiers, tier]
+                    })
+                  }
+                  type="button"
+                >
+                  <span className={`tierDot ${tier}`} /> {tier}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <CustomArmyPicker
+            onChange={(startingUnits) => send({ startingUnits })}
+            startingUnits={options.startingUnits}
+          />
+        )}
       </div>
 
       <div className="optionRow">

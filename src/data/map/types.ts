@@ -133,6 +133,10 @@ export type LocationInteraction =
       /** Subterranean Gate: move to the linked gate on an adjacent tile. */
       type: "SUBTERRANEAN_GATE";
     }
+  | {
+      /** Pandora's Box: draw the top card of the Pandora deck into hand. */
+      type: "DRAW_PANDORA_CARD";
+    }
   | { type: "NOT_IMPLEMENTED"; note: string };
 
 export type LocationDefinition = {

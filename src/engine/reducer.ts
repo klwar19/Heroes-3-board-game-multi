@@ -36,6 +36,7 @@ import {
   applyPermanentCombatEffectsForPlayer,
   applyPermanentExpert,
   buyWarMachine,
+  discardPermanentVoluntarily,
   getPermanentSchoolBonus,
   putPermanentIntoPlay,
   resolveWarMachineTarget,
@@ -2620,11 +2621,46 @@ function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, ca
   state.priorityPlayerId = allowedPlayerIds[nextIndex];
 }
 
+/**
+ * Closes the end-of-combat notice for an adventure combat: the next
+ * automation pass runs finalizeAdventureCombat (XP, unit flips, the visit).
+ */
+function acknowledgeCombatEnd(
+  state: GameState,
+  action: Extract<GameAction, { type: "ACKNOWLEDGE_COMBAT_END" }>
+): void {
+  const combat = state.combat;
+  if (!combat || !combat.outcome) {
+    throw new Error("No finished combat to acknowledge.");
+  }
+
+  if (combat.context.kind === "sandbox") {
+    throw new Error("The battle simulator stays on the table — reset it instead.");
+  }
+
+  if (combat.attackerPlayerId !== action.playerId && combat.defenderPlayerId !== action.playerId) {
+    throw new Error("Only a combat participant may close the combat.");
+  }
+
+  combat.endAcknowledged = true;
+}
+
 function playReaction(
   state: GameState,
   action: Extract<GameAction, { type: "PLAY_REACTION" }>,
   cards: CardLibrary
 ): void {
+  // Power has no standalone effect during an attack — it may only be paid
+  // together with an instant spell in one declaration (PLAY_REACTIONS), the
+  // same rule the batch validator enforces.
+  if (state.reactionWindow?.triggerEvent.type === "UNIT_ATTACK_DECLARED") {
+    const card = cards[action.cardId];
+    const effect = card && !action.asPowerBoost ? getEffectiveCardEffect(card, action.optionIndex) : null;
+    if (action.asPowerBoost || effect?.type === "ADD_SPELL_POWER") {
+      throw new Error("Power can only be played into an attack together with a Spell card.");
+    }
+  }
+
   const { windowEnded } = applyReactionPlayCore(state, action.playerId, action, cards);
   if (windowEnded) {
     return;
@@ -4134,7 +4170,10 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       }
     }
 
-    if (combat?.outcome && combat.context.kind !== "sandbox") {
+    // Adventure combats wait on the battlefield with the end-of-combat
+    // notice up; a participant's ACKNOWLEDGE_COMBAT_END flips the flag and
+    // only then do XP, unit flips and the field visit resolve.
+    if (combat?.outcome && combat.context.kind !== "sandbox" && combat.endAcknowledged) {
       finalizeAdventureCombat(state);
       continue;
     }
@@ -4309,6 +4348,12 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         applyPermanentExpert(nextState, action);
         // The discarded permanent disappears from the open window's options.
         refreshReactionWindowLegalReactions(nextState, cards);
+        break;
+      case "DISCARD_PERMANENT":
+        discardPermanentVoluntarily(nextState, action);
+        break;
+      case "ACKNOWLEDGE_COMBAT_END":
+        acknowledgeCombatEnd(nextState, action);
         break;
       case "PLACE_COMBAT_UNIT":
         placeCombatUnit(nextState, action);

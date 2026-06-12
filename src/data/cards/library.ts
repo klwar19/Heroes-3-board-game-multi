@@ -2,6 +2,7 @@ import type { CardLibrary } from "@/engine/state";
 import { extraAbilityCards } from "./abilities-extra";
 import { adventureCards } from "./adventure";
 import { artifactCards } from "./artifacts";
+import { pandoraCards } from "./pandora";
 import { permanentCards } from "./permanents";
 import { sampleCards } from "./sample";
 import { spellCards } from "./spells";
@@ -13,7 +14,9 @@ export const cardLibrary: CardLibrary = {
   ...spellCards,
   ...artifactCards,
   ...extraAbilityCards,
-  ...permanentCards
+  ...permanentCards,
+  ...pandoraCards
 };
 
 export { WAR_MACHINE_CARD_IDS } from "./permanents";
+export { pandoraDeckCardIds } from "./pandora";
