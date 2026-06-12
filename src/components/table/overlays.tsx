@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { Check, CircleOff, Crown, Dices, Hourglass, Layers, Swords, Undo2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
@@ -748,9 +750,11 @@ export function RerollModal({
     );
   }
 
-  const chooseActions = legalActions.filter((legal) => legal.action.type === "CHOOSE_PENDING_ROLL");
+  const latestIndex = choice.candidates.length - 1;
+  const keepAction = legalActions.find(
+    (legal) => legal.action.type === "CHOOSE_PENDING_ROLL" && legal.action.candidateIndex === latestIndex
+  );
   const rerollAction = legalActions.find((legal) => legal.action.type === "REROLL_PENDING_CHOICE");
-  const nextRerollSource = choice.rerollSources.find((source) => source.remaining > 0);
 
   return (
     <div className="modalBackdrop" role="dialog" aria-label="Reroll choice">
@@ -758,38 +762,268 @@ export function RerollModal({
         <header>
           <strong>Fate is in your hands</strong>
           <span>
-            {unitName(state, choice.attackerId)} attacks {unitName(state, choice.defenderId)} — keep a roll or spend a
-            reroll.
+            {unitName(state, choice.attackerId)} attacks {unitName(state, choice.defenderId)} — a reroll replaces the
+            result, the latest roll counts.
           </span>
         </header>
         <div className="rerollRow">
           {choice.candidates.map((candidate, index) => {
-            const action = chooseActions.find(
-              (legal) => legal.action.type === "CHOOSE_PENDING_ROLL" && legal.action.candidateIndex === index
-            );
+            const isLatest = index === latestIndex;
             return (
-              <button
-                className="rerollDie"
-                disabled={!action}
-                key={index}
-                onClick={() => action && onAction(action.action)}
-                type="button"
-              >
+              <div className={`rerollDie ${isLatest ? "current" : "rerolledAway"}`} key={index}>
                 <span className="dieFaceBig">{formatDieFace(candidate.roll)}</span>
                 <small>{candidate.rolls.map(formatDieFace).join(" / ")}</small>
-                <span>Keep</span>
-              </button>
+                {isLatest ? (
+                  keepAction ? (
+                    <button className="commandButton primary" onClick={() => onAction(keepAction.action)} type="button">
+                      Keep {formatDieFace(candidate.roll)}
+                    </button>
+                  ) : null
+                ) : (
+                  <small className="rerolledNote">rerolled away</small>
+                )}
+              </div>
             );
           })}
           {rerollAction ? (
             <button className="rerollDie again" onClick={() => onAction(rerollAction.action)} type="button">
               <Dices aria-hidden="true" size={22} />
-              <span>
-                Reroll{nextRerollSource ? ` with ${nextRerollSource.name}` : ""} ({choice.remainingRerolls} left)
-              </span>
+              <span>{rerollAction.label.replace(/^Reroll attack die /, "Reroll ")}</span>
             </button>
           ) : null}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Adventure-map dice and visit notices
+// ---------------------------------------------------------------------------
+
+export type MapDiceCue = {
+  id: string;
+  playerName: string;
+  dice: "resource" | "treasure" | "attack";
+  results: string[];
+  resourceRolls?: { resource: "gold" | "buildingMaterials" | "valuables"; amount: number }[];
+  treasureRolls?: ("experience" | "artifact-search" | "resource-die" | "double-resource-die")[];
+  attackRolls?: number[];
+};
+
+/** Cube-face transforms shared by every die; index-aligned with face lists. */
+const MAP_CUBE_TRANSFORMS = [
+  "rotateY(0deg) translateZ(34px)",
+  "rotateY(180deg) translateZ(34px)",
+  "rotateY(90deg) translateZ(34px)",
+  "rotateY(-90deg) translateZ(34px)",
+  "rotateX(90deg) translateZ(34px)",
+  "rotateX(-90deg) translateZ(34px)"
+];
+
+/** Cube rotation that brings face <index> to the front, with a slight tilt. */
+const MAP_CUBE_FINAL = [
+  "rotateX(-8deg) rotateY(-6deg)",
+  "rotateX(-8deg) rotateY(174deg)",
+  "rotateX(-8deg) rotateY(-96deg)",
+  "rotateX(-8deg) rotateY(84deg)",
+  "rotateX(-98deg) rotateY(0deg)",
+  "rotateX(82deg) rotateY(0deg)"
+];
+
+/** The printed Resource die: 2/4 materials, 1/2 valuables, 3/6 gold. */
+const RESOURCE_DIE_LAYOUT: { resource: "buildingMaterials" | "valuables" | "gold"; amount: number }[] = [
+  { resource: "buildingMaterials", amount: 2 },
+  { resource: "buildingMaterials", amount: 4 },
+  { resource: "valuables", amount: 1 },
+  { resource: "valuables", amount: 2 },
+  { resource: "gold", amount: 3 },
+  { resource: "gold", amount: 6 }
+];
+
+const RESOURCE_FACE_ICONS: Record<string, string> = {
+  gold: "/assets/icons/gold_leather.gif",
+  buildingMaterials: "/assets/icons/ore_leather.gif",
+  valuables: "/assets/icons/crystal_leather.gif"
+};
+
+/** The printed Treasure die: 2× experience, 2× artifact, 1× die, 1× 2 dice. */
+const TREASURE_DIE_LAYOUT: ("experience" | "artifact-search" | "resource-die" | "double-resource-die")[] = [
+  "experience",
+  "experience",
+  "artifact-search",
+  "artifact-search",
+  "resource-die",
+  "double-resource-die"
+];
+
+const TREASURE_FACE_GLYPHS: Record<string, { glyph: string; label: string }> = {
+  experience: { glyph: "⭐", label: "XP" },
+  "artifact-search": { glyph: "🗝", label: "artifact" },
+  "resource-die": { glyph: "🎲", label: "die" },
+  "double-resource-die": { glyph: "🎲🎲", label: "2 dice" }
+};
+
+const ATTACK_DIE_LAYOUT = [1, -1, 0, 0, -1, 1];
+
+function MapDieCube({
+  kind,
+  faceIndex,
+  rolling,
+  dimmed
+}: {
+  kind: MapDiceCue["dice"];
+  faceIndex: number;
+  rolling: boolean;
+  dimmed: boolean;
+}) {
+  const faceContent = (index: number) => {
+    if (kind === "resource") {
+      const face = RESOURCE_DIE_LAYOUT[index];
+      return (
+        <>
+          <img alt="" src={RESOURCE_FACE_ICONS[face.resource]} />
+          <b>{face.amount}</b>
+        </>
+      );
+    }
+    if (kind === "treasure") {
+      const face = TREASURE_FACE_GLYPHS[TREASURE_DIE_LAYOUT[index]];
+      return (
+        <>
+          <span className="mapFaceGlyph">{face.glyph}</span>
+          <small>{face.label}</small>
+        </>
+      );
+    }
+    return <>{formatDieFace(ATTACK_DIE_LAYOUT[index])}</>;
+  };
+
+  return (
+    <div className={`dieScene ${dimmed ? "dimmed" : ""}`}>
+      <div
+        className={`dieCube mapDie-${kind} ${rolling ? "tumbling" : "settled"}`}
+        style={rolling ? undefined : { transform: MAP_CUBE_FINAL[faceIndex] ?? MAP_CUBE_FINAL[0] }}
+      >
+        {MAP_CUBE_TRANSFORMS.map((transform, index) => (
+          <span className={`dieFace mapDieFace mapDieFace-${kind}`} key={index} style={{ transform }}>
+            {faceContent(index)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Face index a structured roll lands on, for the settle rotation. */
+function mapDiceFaceIndexes(cue: MapDiceCue): number[] {
+  if (cue.dice === "resource" && cue.resourceRolls?.length) {
+    return cue.resourceRolls.map((roll) =>
+      Math.max(
+        0,
+        RESOURCE_DIE_LAYOUT.findIndex((face) => face.resource === roll.resource && face.amount === roll.amount)
+      )
+    );
+  }
+  if (cue.dice === "treasure" && cue.treasureRolls?.length) {
+    return cue.treasureRolls.map((roll) => Math.max(0, TREASURE_DIE_LAYOUT.indexOf(roll)));
+  }
+  if (cue.dice === "attack" && cue.attackRolls?.length) {
+    return cue.attackRolls.map((roll) => Math.max(0, ATTACK_DIE_LAYOUT.indexOf(roll)));
+  }
+  return [0];
+}
+
+const MAP_DICE_TITLES: Record<MapDiceCue["dice"], string> = {
+  resource: "Resource die",
+  treasure: "Treasure die",
+  attack: "Attack die"
+};
+
+/**
+ * Adventure-map die roll, staged exactly like the combat attack roll: the
+ * physical cube tumbles, settles on the rolled face, and the outcome reads
+ * out underneath. Rendered with key={cue.id} so each roll mounts fresh.
+ */
+export function MapDiceOverlay({ cue, onDone }: { cue: MapDiceCue; onDone: () => void }) {
+  const [phase, setPhase] = useState<"rolling" | "settled">("rolling");
+
+  useEffect(() => {
+    const settleId = setTimeout(() => setPhase("settled"), 950);
+    const doneId = setTimeout(onDone, 2900);
+
+    return () => {
+      clearTimeout(settleId);
+      clearTimeout(doneId);
+    };
+  }, [onDone]);
+
+  const rolling = phase === "rolling";
+  const faceIndexes = mapDiceFaceIndexes(cue);
+
+  return (
+    <div className="diceOverlay mapDiceOverlay" role="status" aria-label={`${MAP_DICE_TITLES[cue.dice]} roll`} onClick={onDone}>
+      <div className="diceStage">
+        <header>
+          <Dices aria-hidden="true" size={16} />
+          <strong>
+            {cue.playerName} rolls the {MAP_DICE_TITLES[cue.dice]}
+            {faceIndexes.length > 1 ? ` ×${faceIndexes.length}` : ""}
+          </strong>
+        </header>
+        <div className="diceRow">
+          {faceIndexes.map((faceIndex, index) => (
+            <MapDieCube dimmed={false} faceIndex={faceIndex} key={index} kind={cue.dice} rolling={rolling} />
+          ))}
+        </div>
+        <div className={`diceBreakdown ${rolling ? "hidden" : ""}`}>
+          {cue.results.map((result, index) => (
+            <strong className="damageResult hit" key={index}>
+              {result}
+            </strong>
+          ))}
+          {faceIndexes.length > 1 ? <span className="versus">choose one</span> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export type MapNoticeCue = {
+  id: string;
+  icon: string;
+  title: string;
+  subtitle: string;
+  lines: string[];
+};
+
+/**
+ * Location-visit notice, popped into the player's face instead of a corner
+ * toast: who stepped where, and what the visit did. Click (or wait) to
+ * dismiss; dice rolls layer on top with their own overlay.
+ */
+export function MapNoticeOverlay({ cue, onDone }: { cue: MapNoticeCue; onDone: () => void }) {
+  useEffect(() => {
+    const doneId = setTimeout(onDone, cue.lines.length > 0 ? 5200 : 3400);
+    return () => clearTimeout(doneId);
+  }, [cue, onDone]);
+
+  return (
+    <div className="mapNoticeBackdrop" onClick={onDone} role="status" aria-label={cue.title}>
+      <div className="mapNotice">
+        <span aria-hidden="true" className="mapNoticeIcon">
+          {cue.icon}
+        </span>
+        <strong>{cue.title}</strong>
+        <small>{cue.subtitle}</small>
+        {cue.lines.length > 0 ? (
+          <ul>
+            {cue.lines.map((line, index) => (
+              <li key={index}>{line}</li>
+            ))}
+          </ul>
+        ) : null}
+        <small className="mapNoticeHint">click to continue</small>
       </div>
     </div>
   );

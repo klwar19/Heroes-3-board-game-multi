@@ -16,6 +16,10 @@ Mirror of the build request. ✅ = implemented **and wired** (engine + UI + test
 - [x] BINH deck extras: Fortune, Eagle Eye, Scouting, Basic Air/Earth/Fire/Water Magic, extra artifacts
 
 ## Rules-correctness fixes (both modes)
+- [x] Rerolls take the latter result: earlier rolls can no longer be kept once rerolled (rulebook); the reroll modal shows the history crossed out
+- [x] Castle Crusaders pack: reroll offered only while the Attack die shows "0", and every new 0 may be rerolled again (printed card)
+- [x] Neutral Crusaders: "roll 2 Attack dice and resolve the higher outcome" implemented as an automatic advantage roll
+- [x] Ongoing cards stay physically in play (next to the permanents) until every effect they created ends; only then they reach the discard pile — or the hand when Knowledge/Mysticism recalled them, so recalled Summon/Clone-style spells cannot be recast while active (tested)
 - [x] Second negative morale token → neutral + hand discard at turn end (tested)
 - [x] Mage Guild verified: build → Search (2) twice; token locked the build round; 6g Castle / 5g others per purchase
 - [x] Activation spells cast during your own unit's activation (the "Magic Arrow can't be cast" report)
@@ -34,12 +38,22 @@ Mirror of the build request. ✅ = implemented **and wired** (engine + UI + test
 - [x] Blacksmith building implemented (artifact source)
 - [x] Dice rewards verified vs wiki (resource 2/4 BM · 1/2 V · 3/6 G; treasure 2×XP · 2×artifact search · 1/2 resource dice)
 
-## Images (all URLs verified)
-- [x] Hero portraits → heroes.thelazy.net full-size classics
-- [x] Town buildings (all 5 factions incl. bronze/silver/gold dwelling mapping) → heroes.thelazy.net town renders
-- [x] Resource icons: gold pile / ore = building materials / crystal = valuables (HUD)
-- [x] Morale birds (positive/negative) in the HUD
+## Images (all hosted locally now)
+- [x] Hero portraits → the board-game art itself, cropped from the printed hero-board scans (/assets/hero_boardart-*.webp)
+- [x] Hero board statistics use the printed icons (crossed swords / shield / spell book / tomes) cropped from the board scans
+- [x] Town buildings (all 5 factions incl. bronze/silver/gold dwelling mapping) → heroes.thelazy.net town renders, downloaded to /assets/town (no more hot-linking)
+- [x] Resource icons: gold pile / ore = building materials / crystal = valuables (HUD), downloaded to /assets/icons
+- [x] Morale birds (positive/negative) in the HUD, downloaded to /assets/icons
 - [x] WoG army-management stats art, zoomable from the hero board
+
+## Table presentation (this round)
+- [x] Top-panel resources: smaller icons in chips, the per-resource income spelled out (+N each resource round)
+- [x] Unit deck panel shows a small icon of every unit card
+- [x] Initiative rail shows the actual unit cards sorted by activation order, already during deployment
+- [x] Location visits pop a center-screen notice (location, who, outcomes); Resource/Treasure/Attack dice rolled on the map tumble like the combat attack die (ivory / yellow / red cubes, printed faces)
+- [x] Custom starting army picks tier slots (bronze lv 1–3 / silver lv 4–5 / gold lv 6–7, few or pack) instead of exact units; every player gets their own faction's units
+- [x] Map clicks can no longer get stuck after a cancelled drag (pointercancel handling) and the map says why movement is locked
+- [x] Event log capped at 500 entries with monotonic ids — long games no longer grow snapshots until clicks crawl
 
 ## Infra
 - [x] PartyKit/Durable Objects unchanged-compatible (mode flows through the lobby actions; legacy fallback for old snapshots)

@@ -1,9 +1,12 @@
 /**
- * Hot-linked classic HoMM3 imagery for a non-profit fan project.
- * Source: heroes.thelazy.net (town buildings, resource and morale icons —
- * all URLs verified). Replace with owned scans before any wider release.
+ * Classic HoMM3 imagery for a non-profit fan project, downloaded from
+ * heroes.thelazy.net (town pages like /index.php/Castle, resource and morale
+ * icons) and hosted locally under /assets/town and /assets/icons — the wiki
+ * blocks hot-linking in some browsers, so nothing is loaded remotely anymore.
+ * Re-download with the filenames below if the art needs a refresh. Replace
+ * with owned scans before any wider release.
  *
- * Hero portraits are no longer hot-linked: the classic PC portraits
+ * Hero portraits are handled the same way: the classic PC portraits
  * (heroes.thelazy.net/index.php/Hero_portraits, `Hero_<Name>.png`) are
  * upscaled and hosted locally as /assets/hero_portraits-<id>.webp, wired
  * through `HeroDefinition.portrait` in src/data/factions/core.ts.
@@ -15,58 +18,58 @@
  */
 export const TOWN_BUILDING_IMAGES: Record<string, Record<string, string>> = {
   castle: {
-    city_hall: "https://heroes.thelazy.net/images/a/ad/Castle_City_Hall_large.gif",
-    citadel: "https://heroes.thelazy.net/images/1/1c/Castle_Citadel_large.gif",
-    mage_guild: "https://heroes.thelazy.net/images/5/5a/Castle_Mage_Guild_level_1_large.gif",
-    blacksmith: "https://heroes.thelazy.net/images/c/cd/Castle_Blacksmith_large.gif",
-    dwelling_bronze: "https://heroes.thelazy.net/images/f/f5/Castle_Archers%27_Tower.gif",
-    dwelling_silver: "https://heroes.thelazy.net/images/9/95/Castle_Monastery.gif",
-    dwelling_gold: "https://heroes.thelazy.net/images/4/43/Castle_Portal_of_Glory.gif",
-    brotherhood_of_the_sword: "https://heroes.thelazy.net/images/e/e5/Castle_Brotherhood_of_the_Sword.gif"
+    city_hall: "/assets/town/castle_city_hall_large.gif",
+    citadel: "/assets/town/castle_citadel_large.gif",
+    mage_guild: "/assets/town/castle_mage_guild_level_1_large.gif",
+    blacksmith: "/assets/town/castle_blacksmith_large.gif",
+    dwelling_bronze: "/assets/town/castle_archers__tower.gif",
+    dwelling_silver: "/assets/town/castle_monastery.gif",
+    dwelling_gold: "/assets/town/castle_portal_of_glory.gif",
+    brotherhood_of_the_sword: "/assets/town/castle_brotherhood_of_the_sword.gif"
   },
   rampart: {
-    city_hall: "https://heroes.thelazy.net/images/e/ee/Rampart_City_Hall_large.gif",
-    citadel: "https://heroes.thelazy.net/images/b/b8/Rampart_Citadel_large.gif",
-    mage_guild: "https://heroes.thelazy.net/images/9/99/Rampart_Mage_Guild_level_1_large.gif",
-    blacksmith: "https://heroes.thelazy.net/images/c/c9/Rampart_Blacksmith_large.gif",
-    dwelling_bronze: "https://heroes.thelazy.net/images/2/26/Rampart_Centaur_Stables.gif",
-    dwelling_silver: "https://heroes.thelazy.net/images/f/fc/Rampart_Dendroid_Arches.gif",
-    dwelling_gold: "https://heroes.thelazy.net/images/1/19/Rampart_Dragon_Cliffs.gif",
-    mystic_pond: "https://heroes.thelazy.net/images/4/40/Rampart_Mystic_Pond.gif",
-    saplings: "https://heroes.thelazy.net/images/2/2f/Rampart_Homestead.gif"
+    city_hall: "/assets/town/rampart_city_hall_large.gif",
+    citadel: "/assets/town/rampart_citadel_large.gif",
+    mage_guild: "/assets/town/rampart_mage_guild_level_1_large.gif",
+    blacksmith: "/assets/town/rampart_blacksmith_large.gif",
+    dwelling_bronze: "/assets/town/rampart_centaur_stables.gif",
+    dwelling_silver: "/assets/town/rampart_dendroid_arches.gif",
+    dwelling_gold: "/assets/town/rampart_dragon_cliffs.gif",
+    mystic_pond: "/assets/town/rampart_mystic_pond.gif",
+    saplings: "/assets/town/rampart_homestead.gif"
   },
   inferno: {
-    city_hall: "https://heroes.thelazy.net/images/9/95/Inferno_City_Hall_large.gif",
-    citadel: "https://heroes.thelazy.net/images/d/db/Inferno_Citadel_large.gif",
-    mage_guild: "https://heroes.thelazy.net/images/5/5b/Inferno_Mage_Guild_level_1_large.gif",
-    blacksmith: "https://heroes.thelazy.net/images/7/7a/Inferno_Blacksmith_large.gif",
-    dwelling_bronze: "https://heroes.thelazy.net/images/9/93/Inferno_Imp_Crucible.gif",
-    dwelling_silver: "https://heroes.thelazy.net/images/d/d1/Inferno_Demon_Gate.gif",
-    dwelling_gold: "https://heroes.thelazy.net/images/4/41/Inferno_Forsaken_Palace.gif",
-    castle_gate: "https://heroes.thelazy.net/images/8/8e/Inferno_Castle_Gate.gif",
-    brimstone_stormclouds: "https://heroes.thelazy.net/images/7/71/Inferno_Kennels.gif"
+    city_hall: "/assets/town/inferno_city_hall_large.gif",
+    citadel: "/assets/town/inferno_citadel_large.gif",
+    mage_guild: "/assets/town/inferno_mage_guild_level_1_large.gif",
+    blacksmith: "/assets/town/inferno_blacksmith_large.gif",
+    dwelling_bronze: "/assets/town/inferno_imp_crucible.gif",
+    dwelling_silver: "/assets/town/inferno_demon_gate.gif",
+    dwelling_gold: "/assets/town/inferno_forsaken_palace.gif",
+    castle_gate: "/assets/town/inferno_castle_gate.gif",
+    brimstone_stormclouds: "/assets/town/inferno_kennels.gif"
   },
   necropolis: {
-    city_hall: "https://heroes.thelazy.net/images/7/72/Necropolis_City_Hall_large.gif",
-    citadel: "https://heroes.thelazy.net/images/a/a0/Necropolis_Citadel_large.gif",
-    mage_guild: "https://heroes.thelazy.net/images/1/11/Necropolis_Mage_Guild_level_1_large.gif",
-    blacksmith: "https://heroes.thelazy.net/images/c/ce/Necropolis_Blacksmith_large.gif",
-    dwelling_bronze: "https://heroes.thelazy.net/images/e/e8/Necropolis_Cursed_Temple.gif",
-    dwelling_silver: "https://heroes.thelazy.net/images/9/91/Necropolis_Tomb_of_Souls.gif",
-    dwelling_gold: "https://heroes.thelazy.net/images/5/5d/Necropolis_Dragon_Vault.gif",
-    necromancy_amplifier: "https://heroes.thelazy.net/images/d/d4/Necropolis_Necromancy_Amplifier.gif",
-    cover_of_darkness: "https://heroes.thelazy.net/images/d/d8/Necropolis_Cover_of_Darkness.gif"
+    city_hall: "/assets/town/necropolis_city_hall_large.gif",
+    citadel: "/assets/town/necropolis_citadel_large.gif",
+    mage_guild: "/assets/town/necropolis_mage_guild_level_1_large.gif",
+    blacksmith: "/assets/town/necropolis_blacksmith_large.gif",
+    dwelling_bronze: "/assets/town/necropolis_cursed_temple.gif",
+    dwelling_silver: "/assets/town/necropolis_tomb_of_souls.gif",
+    dwelling_gold: "/assets/town/necropolis_dragon_vault.gif",
+    necromancy_amplifier: "/assets/town/necropolis_necromancy_amplifier.gif",
+    cover_of_darkness: "/assets/town/necropolis_cover_of_darkness.gif"
   },
   dungeon: {
-    city_hall: "https://heroes.thelazy.net/images/c/c1/Dungeon_City_Hall_large.gif",
-    citadel: "https://heroes.thelazy.net/images/4/48/Dungeon_Citadel_large.gif",
-    mage_guild: "https://heroes.thelazy.net/images/2/26/Dungeon_Mage_Guild_level_1_large.gif",
-    blacksmith: "https://heroes.thelazy.net/images/2/2c/Dungeon_Blacksmith_large.gif",
-    dwelling_bronze: "https://heroes.thelazy.net/images/a/a1/Dungeon_Warren.gif",
-    dwelling_silver: "https://heroes.thelazy.net/images/e/e0/Dungeon_Labyrinth.gif",
-    dwelling_gold: "https://heroes.thelazy.net/images/a/af/Dungeon_Dragon_Cave.gif",
-    portal_of_summoning: "https://heroes.thelazy.net/images/1/1e/Dungeon_Portal_of_Summoning.gif",
-    mana_vortex: "https://heroes.thelazy.net/images/f/f4/Dungeon_Mana_Vortex.gif"
+    city_hall: "/assets/town/dungeon_city_hall_large.gif",
+    citadel: "/assets/town/dungeon_citadel_large.gif",
+    mage_guild: "/assets/town/dungeon_mage_guild_level_1_large.gif",
+    blacksmith: "/assets/town/dungeon_blacksmith_large.gif",
+    dwelling_bronze: "/assets/town/dungeon_warren.gif",
+    dwelling_silver: "/assets/town/dungeon_labyrinth.gif",
+    dwelling_gold: "/assets/town/dungeon_dragon_cave.gif",
+    portal_of_summoning: "/assets/town/dungeon_portal_of_summoning.gif",
+    mana_vortex: "/assets/town/dungeon_mana_vortex.gif"
   }
 };
 
@@ -76,18 +79,30 @@ export const TOWN_BUILDING_IMAGES: Record<string, Record<string, string>> = {
  * table owner's mapping of the uploaded reference image).
  */
 export const RESOURCE_ICONS = {
-  gold: "https://heroes.thelazy.net/images/9/9f/Gold_%28leather%29.gif",
-  buildingMaterials: "https://heroes.thelazy.net/images/6/6f/Ore_%28leather%29.gif",
-  valuables: "https://heroes.thelazy.net/images/1/14/Crystal_%28leather%29.gif",
-  wood: "https://heroes.thelazy.net/images/a/a5/Wood_%28leather%29.gif",
-  gems: "https://heroes.thelazy.net/images/c/cb/Gem_%28leather%29.gif",
-  mercury: "https://heroes.thelazy.net/images/5/56/Mercury_%28leather%29.gif",
-  sulfur: "https://heroes.thelazy.net/images/6/67/Sulfur_%28leather%29.gif"
+  gold: "/assets/icons/gold_leather.gif",
+  buildingMaterials: "/assets/icons/ore_leather.gif",
+  valuables: "/assets/icons/crystal_leather.gif",
+  wood: "/assets/icons/wood_leather.gif",
+  gems: "/assets/icons/gem_leather.gif",
+  mercury: "/assets/icons/mercury_leather.gif",
+  sulfur: "/assets/icons/sulfur_leather.gif"
 } as const;
 
 /** Morale birds (good +1 / poor −1), as in the uploaded sprite reference. */
 export const MORALE_ICONS = {
-  positive: "https://heroes.thelazy.net/images/3/36/Morale.gif",
-  negative: "https://heroes.thelazy.net/images/8/87/Morale-1.gif",
-  neutral: "https://heroes.thelazy.net/images/a/a7/MoraleN.gif"
+  positive: "/assets/icons/morale.gif",
+  negative: "/assets/icons/morale-1.gif",
+  neutral: "/assets/icons/moralen.gif"
+} as const;
+
+/**
+ * The four hero statistics, cropped straight from the printed hero board
+ * scans (crossed swords / shield / spell book / tomes) so the digital board
+ * shows the exact same iconography.
+ */
+export const HERO_STAT_ICONS = {
+  attack: "/assets/hero_board-stat-attack.webp",
+  defense: "/assets/hero_board-stat-defense.webp",
+  power: "/assets/hero_board-stat-power.webp",
+  knowledge: "/assets/hero_board-stat-knowledge.webp"
 } as const;

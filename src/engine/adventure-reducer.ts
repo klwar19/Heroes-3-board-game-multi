@@ -42,7 +42,7 @@ import {
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
-import { appendEvent } from "./events";
+import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { applyPermanentCombatEffects, resolveWarMachineOption, startWarMachineRound } from "./permanents";
 import {
   activeSchoolFetches,
@@ -1152,7 +1152,7 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
   }
 
   return {
-    id: `combat_${state.eventLog.length + 1}`,
+    id: `combat_${nextEventNumber(state)}`,
     round: 1,
     attackerPlayerId,
     defenderPlayerId,
@@ -1163,7 +1163,7 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
     outcome: null,
     dice: {
       faces: [...ATTACK_DIE_FACES],
-      seed: `${state.seed}-combat-${state.eventLog.length + 1}`,
+      seed: `${state.seed}-combat-${eventSeedNumber(state)}`,
       rollCount: 0
     },
     units: {}
@@ -1299,7 +1299,7 @@ function openSatyrSwapChoice(state: GameState, draws: NeutralDraw[]): void {
   }
 
   combat.pendingNeutralDraws = draws;
-  const choiceId = `choice_${state.eventLog.length + 1}`;
+  const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
     id: choiceId,
     type: "OPTION_CHOICE",
@@ -2139,7 +2139,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     if (pick.shuffleRestIntoDeck && player.discard.length > 0) {
       player.deck = shuffleCards(
         [...player.deck, ...player.discard],
-        `${state.seed}#discard-into-deck#${action.playerId}#${state.eventLog.length}`
+        `${state.seed}#discard-into-deck#${action.playerId}#${eventSeedNumber(state)}`
       );
       player.discard = [];
     }
@@ -2431,7 +2431,7 @@ export function openSharedDeckSearch(state: GameState, playerId: PlayerId, deckI
   const schoolFetch = isSpellDeck(deckId) ? activeSchoolFetches(state, playerId) : [];
   const repeats = takeSearchRepeatEffect(state, playerId);
 
-  const choiceId = `choice_${state.eventLog.length + 1}`;
+  const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
     id: choiceId,
     type: "DECK_SEARCH",
@@ -2518,7 +2518,7 @@ export function pumpAdventureQueues(state: GameState): void {
       }
 
       if (candidates.length > 1) {
-        const choiceId = `choice_${state.eventLog.length + 1}`;
+        const choiceId = `choice_${nextEventNumber(state)}`;
         state.pendingChoice = {
           id: choiceId,
           type: "OPTION_CHOICE",
@@ -2563,7 +2563,7 @@ export function pumpAdventureQueues(state: GameState): void {
         continue;
       }
 
-      const choiceId = `choice_${state.eventLog.length + 1}`;
+      const choiceId = `choice_${nextEventNumber(state)}`;
       state.pendingChoice = {
         id: choiceId,
         type: "OPTION_CHOICE",
@@ -2595,7 +2595,7 @@ export function pumpAdventureQueues(state: GameState): void {
       adventure.rewardQueue.shift();
       cityHallChoiceBeingResolved = { options: building.effect.options };
       state.pendingChoice = {
-        id: `choice_${state.eventLog.length + 1}`,
+        id: `choice_${nextEventNumber(state)}`,
         type: "OPTION_CHOICE",
         playerId: reward.playerId,
         prompt: `${building.name}: choose this round's bonus`,

@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Anchor, Crown, Layers, Search, Sparkles } from "lucide-react";
+import { Anchor, Crown, Hourglass, Layers, Search, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
 import { getDeckBack } from "@/data/decks";
@@ -77,7 +77,10 @@ export function PermanentSlot({
 }) {
   const { zoomCard } = useCardZoom();
   const cardIds = getPermanentCardIds(state, playerId);
-  if (cardIds.length === 0) {
+  // Ongoing cards held in play: they reach the discard pile (or a recalled
+  // spell the hand) only after their effect ends.
+  const ongoingCards = state.players[playerId]?.ongoingCards ?? [];
+  if (cardIds.length === 0 && ongoingCards.length === 0) {
     return null;
   }
 
@@ -131,6 +134,34 @@ export function PermanentSlot({
                 >
                   Discard from play
                 </button>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
+      {ongoingCards.map((held, index) => {
+        const card = cardLibrary[held.cardId];
+        return (
+          <div className={`permanentSlot ongoing ${compact ? "compact" : ""}`} key={`ongoing-${held.cardId}-${index}`}>
+            <button
+              className="permanentCardButton"
+              onClick={() => zoomCard(held.cardId)}
+              title={`${card?.name ?? held.cardId} stays in play until its effect ends, then goes to the ${
+                held.returnTo === "hand" ? "hand (recalled)" : "discard pile"
+              }.`}
+              type="button"
+            >
+              <CardFrame cardId={held.cardId} className="permanentCardImage" />
+            </button>
+            <div className="permanentMeta">
+              <span className="permanentBadge ongoingBadge">
+                <Hourglass aria-hidden="true" size={11} /> ongoing
+              </span>
+              {!compact ? <strong>{card?.name ?? held.cardId}</strong> : null}
+              {!compact ? (
+                <small>
+                  Until the effect ends, then → {held.returnTo === "hand" ? "hand (recalled)" : "discard"}
+                </small>
               ) : null}
             </div>
           </div>

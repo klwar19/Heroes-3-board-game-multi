@@ -264,25 +264,45 @@ export function BattlefieldBoard({
   );
 }
 
+/**
+ * The activation order as a row of the actual unit cards, sorted the way the
+ * round will play out (initiative, attacker first on ties). Visible already
+ * during deployment, so both sides see how the placed armies will be sorted
+ * before the combat starts.
+ */
 export function InitiativeRail({ state }: { state: GameState }) {
+  const { zoomUnit } = useCardZoom();
   const units = state.combat ? sortUnitsForActivation(state.combat, state.activeEffects) : [];
+  const inSetup = Boolean(state.combat?.setup);
 
   return (
     <div className="initiativeRail" aria-label="Initiative order">
-      <Swords aria-hidden="true" size={14} />
-      {units.map((unit) => (
-        <span
-          className={`initChip ${unit.controllerId} ${state.combat?.activeUnitId === unit.id ? "active" : ""} ${
+      <span className="initLabel" title="Units activate in this order (highest initiative first)">
+        <Swords aria-hidden="true" size={14} />
+        {inSetup ? "Order" : "Order"}
+      </span>
+      {units.length === 0 && inSetup ? <small className="initHint">Deploy units — they sort by initiative here.</small> : null}
+      {units.map((unit, index) => (
+        <button
+          className={`initCard ${unit.controllerId} ${state.combat?.activeUnitId === unit.id ? "active" : ""} ${
             unit.activatedThisRound ? "done" : ""
           }`}
           key={unit.id}
-          title={`${unit.name} — initiative ${unit.initiative}${unit.activatedThisRound ? " (done)" : ""}`}
+          onClick={() => zoomUnit(unit)}
+          title={`${index + 1}. ${unit.cardName} — initiative ${unit.initiative}${
+            unit.activatedThisRound ? " (already activated)" : ""
+          }. Click to read the card.`}
+          type="button"
         >
-          <strong>{unit.initiative}</strong>
-          {unit.name}
-        </span>
+          {unit.assets?.cardImage ? (
+            <img alt={unit.cardName} loading="lazy" src={unit.assets.cardImage} />
+          ) : (
+            <span className="initCardFallback">{unit.name}</span>
+          )}
+          <b className="initBadge">{unit.initiative}</b>
+        </button>
       ))}
-      <span className="roundChip">Round {state.combat?.round ?? 0}</span>
+      <span className="roundChip">{inSetup ? "Setup" : `Round ${state.combat?.round ?? 0}`}</span>
     </div>
   );
 }

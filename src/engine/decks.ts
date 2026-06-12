@@ -1,4 +1,4 @@
-import { appendEvent } from "./events";
+import { appendEvent, eventSeedNumber } from "./events";
 import { createSeededRandom } from "./random";
 import type { CardId, GameState, PlayerId } from "./state";
 
@@ -52,7 +52,7 @@ export function drawCardsForPlayer(state: GameState, playerId: PlayerId, amount:
 
   for (let count = 0; count < amount; count += 1) {
     if (player.deck.length === 0 && player.discard.length > 0) {
-      player.deck = shuffleCards(player.discard, `${state.seed}#reshuffle#${playerId}#${state.eventLog.length}`);
+      player.deck = shuffleCards(player.discard, `${state.seed}#reshuffle#${playerId}#${eventSeedNumber(state)}`);
       player.discard = [];
       reshuffledDiscard = true;
     }

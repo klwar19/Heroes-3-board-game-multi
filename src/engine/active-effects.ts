@@ -1,4 +1,5 @@
 import { isAdjacent } from "./battlefield";
+import { appendEvent, nextEventNumber } from "./events";
 import type {
   ActiveEffectDefinition,
   ActiveEffectState,
@@ -48,7 +49,7 @@ export function makeActiveEffect(
 ): ActiveEffectState {
   return {
     ...effect,
-    id: `effect_${state.activeEffects.length + 1}_${state.eventLog.length + 1}`,
+    id: `effect_${state.activeEffects.length + 1}_${nextEventNumber(state)}`,
     source,
     controllerId,
     target,
@@ -163,4 +164,44 @@ export function expireEffectsForCombatEnd(state: GameState): ActiveEffectState[]
   }
 
   return expired;
+}
+
+/**
+ * Ongoing cards stay physically in play while their effect lasts. Whenever
+ * every effect a held card created is gone — expired at the owner's next
+ * turn, ended with the combat, consumed by a reroll, dispelled — the card
+ * finally moves on: to the discard pile, or back to the hand when Knowledge
+ * or Mysticism recalled it. Runs after every action, so any removal path is
+ * covered without each of them knowing about held cards.
+ */
+export function releaseEndedOngoingCards(state: GameState): void {
+  const liveEffectIds = new Set(state.activeEffects.map((effect) => effect.id));
+
+  for (const player of Object.values(state.players)) {
+    if (!player.ongoingCards?.length) {
+      continue;
+    }
+
+    const stillHeld: NonNullable<typeof player.ongoingCards> = [];
+    for (const held of player.ongoingCards) {
+      if (held.effectIds.some((effectId) => liveEffectIds.has(effectId))) {
+        stillHeld.push(held);
+        continue;
+      }
+
+      if (held.returnTo === "hand") {
+        player.hand.push(held.cardId);
+        appendEvent(state, {
+          type: "SPELL_RETURNED_TO_HAND",
+          playerId: player.id,
+          cardId: held.cardId,
+          reason: "recalled after the ongoing effect ended"
+        });
+      } else {
+        player.discard.push(held.cardId);
+      }
+    }
+
+    player.ongoingCards = stillHeld;
+  }
 }

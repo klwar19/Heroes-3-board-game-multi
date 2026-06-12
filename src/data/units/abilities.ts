@@ -50,7 +50,20 @@ export type UnitAbilityEffectDefinition =
       type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF";
       baseAttack: number;
     }
-  | { type: "ATTACK_DIE_REROLL"; rerollsPerAttack: number }
+  | {
+      type: "ATTACK_DIE_REROLL";
+      rerollsPerAttack: number;
+      /**
+       * Crusaders: 'You can reroll every "0"' — the reroll is only offered
+       * while the die shows this face, and every new matching face may be
+       * rerolled again (the source never depletes).
+       */
+      onlyOnRoll?: number;
+    }
+  | {
+      /** Neutral Crusaders: roll 2 Attack dice, resolve the higher outcome. */
+      type: "ATTACK_ROLL_ADVANTAGE";
+    }
   | {
       /**
        * Marksmen/Elves: after attacking a non-adjacent target, attack it
@@ -187,8 +200,15 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "attack-die-reroll": {
     id: "attack-die-reroll",
     name: "Attack Reroll",
-    text: "May reroll its attack die once per attack. Stacks with Luck and other rerolls; Luck is always spent last.",
-    effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1 },
+    text: 'May reroll every "0" on its Attack die — the new result replaces the old one. Stacks with Luck and other rerolls; Luck is always spent last.',
+    effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, onlyOnRoll: 0 },
+    implementationStatus: "implemented"
+  },
+  "attack-roll-advantage": {
+    id: "attack-roll-advantage",
+    name: "Twin Attack Dice",
+    text: "During any attack, roll 2 Attack dice and resolve the higher outcome.",
+    effect: { type: "ATTACK_ROLL_ADVANTAGE" },
     implementationStatus: "implemented"
   },
   "summon-demons": {

@@ -30,11 +30,15 @@ import {
   CombatResultModal,
   DiceOverlay,
   DrawOverlay,
+  MapDiceOverlay,
+  MapNoticeOverlay,
   ReactionTray,
   RerollModal,
   SearchModal,
   type DiceCue,
-  type DrawCue
+  type DrawCue,
+  type MapDiceCue,
+  type MapNoticeCue
 } from "@/components/table/overlays";
 import { CardZoomProvider, useCardZoom, ZoomButton } from "@/components/table/zoom";
 import {
@@ -45,6 +49,7 @@ import {
   ArmyPanel,
   FarTileTray,
   HexMapBoard,
+  LOCATION_GLYPHS,
   MarketPanel,
   PileModal,
   PlacementPanel,
@@ -55,7 +60,7 @@ import {
   type HeroMoveCue,
   type TilePlacementSelection
 } from "@/components/adventure/screen";
-import { actionKey, cardName, formatEvent, unitName, type CardBoardAction } from "@/components/table/utils";
+import { actionKey, cardName, formatEvent, titleCase, unitName, type CardBoardAction } from "@/components/table/utils";
 import {
   DRAW_STAGGER_MS,
   FLIGHT_MS,
@@ -162,6 +167,14 @@ export default function Home() {
     current: null,
     queue: []
   });
+  const [mapDice, setMapDice] = useState<{ current: MapDiceCue | null; queue: MapDiceCue[] }>({
+    current: null,
+    queue: []
+  });
+  const [mapNotice, setMapNotice] = useState<{ current: MapNoticeCue | null; queue: MapNoticeCue[] }>({
+    current: null,
+    queue: []
+  });
   const [drawCue, setDrawCue] = useState<DrawCue | null>(null);
   const [moveCue, setMoveCue] = useState<HeroMoveCue | null>(null);
   const [flippedUnitIds, setFlippedUnitIds] = useState<Set<string>>(new Set());
@@ -170,6 +183,8 @@ export default function Home() {
   const [hiddenHandTail, setHiddenHandTail] = useState(0);
   const [tintedUnits, setTintedUnits] = useState<Map<string, string>>(new Map());
   const seenRollIdsRef = useRef<Set<string> | null>(null);
+  const seenMapDiceIdsRef = useRef<Set<string>>(new Set());
+  const seenVisitIdsRef = useRef<Set<string>>(new Set());
   const seenDrawIdsRef = useRef<Set<string>>(new Set());
   const seenFlipIdsRef = useRef<Set<string>>(new Set());
   const seenMoveIdsRef = useRef<Set<string>>(new Set());
@@ -207,6 +222,12 @@ export default function Home() {
       (event): event is Extract<GameEvent, { type: "TILE_REVEALED" } | { type: "TILE_PLACED" }> =>
         event.type === "TILE_REVEALED" || event.type === "TILE_PLACED"
     );
+    const mapDiceEvents = nextState.eventLog.filter(
+      (event): event is Extract<GameEvent, { type: "ADVENTURE_DICE_ROLLED" }> => event.type === "ADVENTURE_DICE_ROLLED"
+    );
+    const visitEvents = nextState.eventLog.filter(
+      (event): event is Extract<GameEvent, { type: "FIELD_VISITED" }> => event.type === "FIELD_VISITED"
+    );
     const feedEvents = nextState.eventLog.filter((event) => ADVENTURE_FEED_CUES[event.type]);
     const fxEvents = nextState.eventLog.filter((event) => FX_EVENT_TYPES.has(event.type));
 
@@ -228,12 +249,16 @@ export default function Home() {
       seenFlipIdsRef.current = new Set(flips.map((event) => event.id));
       seenMoveIdsRef.current = new Set(moves.map((event) => event.id));
       seenTileIdsRef.current = new Set(tileEvents.map((event) => event.id));
+      seenMapDiceIdsRef.current = new Set(mapDiceEvents.map((event) => event.id));
+      seenVisitIdsRef.current = new Set(visitEvents.map((event) => event.id));
       seenFeedIdsRef.current = new Set(feedEvents.map((event) => event.id));
       seenFxIdsRef.current = new Set(fxEvents.map((event) => event.id));
       // Fresh room connection: drop any presentation state from the last room.
       setFxCues([]);
       setHiddenHandTail(0);
       setTintedUnits(new Map());
+      setMapDice({ current: null, queue: [] });
+      setMapNotice({ current: null, queue: [] });
     } else {
       // Adventure feed: spell out every visit effect, fight, gain and reveal
       // as a toast. The cue name is the future audio hook.
@@ -274,6 +299,83 @@ export default function Home() {
           const expired = new Set(items.map((item) => item.id));
           setFeedItems((current) => current.filter((item) => !expired.has(item.id)));
         }, 8000);
+      }
+
+      // Map dice: every Resource / Treasure / Attack die rolled on the map
+      // tumbles center screen, exactly like the combat attack die.
+      const freshMapDice = mapDiceEvents.filter((event) => !seenMapDiceIdsRef.current.has(event.id));
+      for (const event of mapDiceEvents) {
+        seenMapDiceIdsRef.current.add(event.id);
+      }
+      if (freshMapDice.length > 0) {
+        const cues = freshMapDice.map(
+          (event) =>
+            ({
+              id: event.id,
+              playerName: nextState.players[event.playerId]?.name ?? event.playerId,
+              dice: event.dice,
+              results: event.results,
+              resourceRolls: event.resourceRolls,
+              treasureRolls: event.treasureRolls,
+              attackRolls: event.attackRolls
+            }) satisfies MapDiceCue
+        );
+        setMapDice((current) => {
+          const queue = [...current.queue, ...cues];
+          return current.current ? { ...current, queue } : { current: queue[0], queue: queue.slice(1) };
+        });
+      }
+
+      // Visit notice: the visited location pops into the player's face with
+      // everything the visit did (gains, XP, flags…) spelled out.
+      const freshVisits = visitEvents.filter((event) => !seenVisitIdsRef.current.has(event.id));
+      for (const event of visitEvents) {
+        seenVisitIdsRef.current.add(event.id);
+      }
+      if (freshVisits.length > 0) {
+        const eventNumber = (id: string) => Number(id.slice(4));
+        const outcomeTypes = new Set<GameEvent["type"]>([
+          "RESOURCES_GAINED",
+          "RESOURCES_SPENT",
+          "ADVENTURE_DICE_ROLLED",
+          "EXPERIENCE_GAINED",
+          "HERO_LEVEL_UP",
+          "MORALE_CHANGED",
+          "FIELD_FLAGGED",
+          "QUICK_COMBAT_WON",
+          "NEUTRAL_COMBAT_STARTED",
+          "PRODUCTION_CHANGED"
+        ]);
+        const cues = freshVisits.map((visit) => {
+          const from = eventNumber(visit.id);
+          const nextVisit = freshVisits.find((candidate) => eventNumber(candidate.id) > from);
+          const to = nextVisit ? eventNumber(nextVisit.id) : Number.POSITIVE_INFINITY;
+          const lines = nextState.eventLog
+            .filter((event) => {
+              const number = eventNumber(event.id);
+              return (
+                number > from &&
+                number < to &&
+                outcomeTypes.has(event.type) &&
+                ("playerId" in event ? event.playerId === visit.playerId : true)
+              );
+            })
+            .slice(0, 5)
+            .map((event) => formatEvent(event, nextState));
+          return {
+            id: visit.id,
+            icon: LOCATION_GLYPHS[visit.location] ?? "📍",
+            title: titleCase(visit.location),
+            subtitle: `${nextState.players[visit.playerId]?.name ?? visit.playerId} ${
+              visit.revisit ? "revisits" : "visits"
+            }`,
+            lines
+          } satisfies MapNoticeCue;
+        });
+        setMapNotice((current) => {
+          const queue = [...current.queue, ...cues];
+          return current.current ? { ...current, queue } : { current: queue[0], queue: queue.slice(1) };
+        });
       }
 
       const seen = seenRollIdsRef.current;
@@ -723,6 +825,22 @@ export default function Home() {
     );
   }, []);
 
+  const dismissMapDice = useCallback(() => {
+    setMapDice((current) =>
+      current.queue.length > 0
+        ? { current: current.queue[0], queue: current.queue.slice(1) }
+        : { current: null, queue: [] }
+    );
+  }, []);
+
+  const dismissMapNotice = useCallback(() => {
+    setMapNotice((current) =>
+      current.queue.length > 0
+        ? { current: current.queue[0], queue: current.queue.slice(1) }
+        : { current: null, queue: [] }
+    );
+  }, []);
+
   const handleFxDone = useCallback((id: string) => {
     setFxCues((current) => current.filter((cue) => cue.id !== id));
   }, []);
@@ -791,6 +909,8 @@ export default function Home() {
       setHandDiscards([]);
       setCombatTab("battle");
       setDice({ current: null, queue: [] });
+      setMapDice({ current: null, queue: [] });
+      setMapNotice({ current: null, queue: [] });
       setFeedItems([]);
       setSyncStatus(`synced v${snapshot.version}`);
     } catch {
@@ -1324,6 +1444,12 @@ export default function Home() {
           <LogDrawer state={state} />
           {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
           {drawCue ? <DrawOverlay cue={drawCue} key={drawCue.id} onDone={() => setDrawCue(null)} /> : null}
+          {mapNotice.current && !mapDice.current ? (
+            <MapNoticeOverlay cue={mapNotice.current} key={mapNotice.current.id} onDone={dismissMapNotice} />
+          ) : null}
+          {mapDice.current ? (
+            <MapDiceOverlay cue={mapDice.current} key={mapDice.current.id} onDone={dismissMapDice} />
+          ) : null}
           <FxStage cues={fxCues} onDone={handleFxDone} />
         </main>
       </CardZoomProvider>
@@ -1495,6 +1621,12 @@ export default function Home() {
       {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
       {drawCue && !dice.current ? <DrawOverlay cue={drawCue} key={drawCue.id} onDone={() => setDrawCue(null)} /> : null}
       {dice.current ? <DiceOverlay cue={dice.current} key={dice.current.id} onDone={dismissDice} /> : null}
+      {!dice.current && mapNotice.current && !mapDice.current ? (
+        <MapNoticeOverlay cue={mapNotice.current} key={mapNotice.current.id} onDone={dismissMapNotice} />
+      ) : null}
+      {!dice.current && mapDice.current ? (
+        <MapDiceOverlay cue={mapDice.current} key={mapDice.current.id} onDone={dismissMapDice} />
+      ) : null}
       <FxStage cues={fxCues} onDone={handleFxDone} />
     </main>
     </CardZoomProvider>

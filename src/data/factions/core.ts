@@ -17,7 +17,7 @@ function heroSource(slug: string) {
   return {
     product: "Heroes of Might and Magic III: The Board Game (Core Game)",
     credit:
-      "Hero board data and board scan from the fan wiki; classic PC portrait from heroes.thelazy.net (hosted locally). Verify against official components before final release.",
+      "Hero board data and board scan from the fan wiki; the portrait is the board-game art cropped from that scan (hosted locally). Verify against official components before final release.",
     url: `https://en.homm3bg.wiki/heroes/${slug}/`
   };
 }
@@ -492,7 +492,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.catherine.4",
       6: "specialty.catherine.6"
     },
-    portrait: "/assets/hero_portraits-catherine.webp",
+    portrait: "/assets/hero_boardart-catherine.webp",
     boardScan: "/assets/heroes-castle-might-catherine.webp",
     source: heroSource("catherine")
   },
@@ -509,7 +509,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.rion.4",
       6: "specialty.rion.6"
     },
-    portrait: "/assets/hero_portraits-rion.webp",
+    portrait: "/assets/hero_boardart-rion.webp",
     boardScan: "/assets/heroes-castle-magic-rion.webp",
     source: heroSource("rion")
   },
@@ -526,7 +526,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.sandro.4",
       6: "specialty.sandro.6"
     },
-    portrait: "/assets/hero_portraits-sandro.webp",
+    portrait: "/assets/hero_boardart-sandro.webp",
     boardScan: "/assets/heroes-necropolis-magic-sandro.webp",
     source: heroSource("sandro")
   },
@@ -543,7 +543,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.tamika.4",
       6: "specialty.tamika.6"
     },
-    portrait: "/assets/hero_portraits-tamika.webp",
+    portrait: "/assets/hero_boardart-tamika.webp",
     boardScan: "/assets/heroes-necropolis-might-tamika.webp",
     source: heroSource("tamika")
   },
@@ -560,7 +560,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.gelu.4",
       6: "specialty.gelu.6"
     },
-    portrait: "/assets/hero_portraits-gelu.webp",
+    portrait: "/assets/hero_boardart-gelu.webp",
     boardScan: "/assets/heroes-rampart-might-gelu.webp",
     source: heroSource("gelu")
   },
@@ -577,7 +577,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.gem.4",
       6: "specialty.gem.6"
     },
-    portrait: "/assets/hero_portraits-gem.webp",
+    portrait: "/assets/hero_boardart-gem.webp",
     boardScan: "/assets/heroes-rampart-magic-gem.webp",
     source: heroSource("gem")
   },
@@ -594,7 +594,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.xyron.4",
       6: "specialty.xyron.6"
     },
-    portrait: "/assets/hero_portraits-xyron.webp",
+    portrait: "/assets/hero_boardart-xyron.webp",
     boardScan: "/assets/heroes-inferno-magic-xyron.webp",
     source: heroSource("xyron")
   },
@@ -611,7 +611,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.rashka.4",
       6: "specialty.rashka.6"
     },
-    portrait: "/assets/hero_portraits-rashka.webp",
+    portrait: "/assets/hero_boardart-rashka.webp",
     boardScan: "/assets/heroes-inferno-might-rashka.webp",
     source: heroSource("rashka")
   },
@@ -628,7 +628,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.alamar.4",
       6: "specialty.alamar.6"
     },
-    portrait: "/assets/hero_portraits-alamar.webp",
+    portrait: "/assets/hero_boardart-alamar.webp",
     boardScan: "/assets/heroes-dungeon-magic-alamar.webp",
     source: heroSource("alamar")
   },
@@ -645,7 +645,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.mutare.4",
       6: "specialty.mutare.6"
     },
-    portrait: "/assets/hero_portraits-mutare.webp",
+    portrait: "/assets/hero_boardart-mutare.webp",
     boardScan: "/assets/heroes-dungeon-might-mutare.webp",
     source: heroSource("mutare")
   }
