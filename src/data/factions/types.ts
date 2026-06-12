@@ -67,6 +67,16 @@ export type TownBuildingEffect =
   | { type: "MAGE_GUILD" }
   | { type: "RESOURCE_ROUND_CHOICE"; options: { label: string; gold?: number; buildingMaterials?: number; valuables?: number; movement?: number; reinforceBronzeFree?: boolean }[] }
   | { type: "RESOURCE_ROUND_MORALE" }
+  | {
+      /**
+       * Blacksmith: once per turn, pay `searchCost` gold to Search (2) the
+       * Artifact deck, or remove an Artifact card from hand for `sellGold`.
+       * Owning it also counts as an "artifact source" for BINH deck gating.
+       */
+      type: "ARTIFACT_SMITH";
+      searchCost: number;
+      sellGold: number;
+    }
   | { type: "NOT_IMPLEMENTED"; note: string };
 
 export type TownBuildingDefinition = {

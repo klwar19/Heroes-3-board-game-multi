@@ -6,12 +6,16 @@ import {
   effectiveHandLimit,
   getLegalActions,
   getPlayerView,
+  getRuleset,
+  rulesetCardNote,
   NEUTRAL_PLAYER_ID,
   type GameAction,
   type GameEvent,
   type GameState,
+  type LegalAction,
   type PlayerId
 } from "@/engine";
+import { cardLibrary } from "@/data/cards/library";
 import {
   BattlefieldBoard,
   CommandDock,
@@ -50,7 +54,7 @@ import {
   type HeroMoveCue,
   type TilePlacementSelection
 } from "@/components/adventure/screen";
-import { cardName, formatEvent, unitName, type CardBoardAction } from "@/components/table/utils";
+import { actionKey, cardName, formatEvent, unitName, type CardBoardAction } from "@/components/table/utils";
 import {
   DRAW_STAGGER_MS,
   FLIGHT_MS,
@@ -140,6 +144,16 @@ export default function Home() {
   const [inspectedUnitId, setInspectedUnitId] = useState<string | null>(null);
   const [handMode, setHandMode] = useState<HandMode>(null);
   const [handDiscards, setHandDiscards] = useState<number[]>([]);
+  /** Adventure hand: which card slot has its play menu open. */
+  const [openHandIndex, setOpenHandIndex] = useState<number | null>(null);
+  /** A chosen play waiting for its discard-cost payment (cost card picks). */
+  const [pendingCostPlay, setPendingCostPlay] = useState<{
+    action: Extract<GameAction, { type: "PLAY_CARD" }>;
+    exact?: number;
+    upTo?: number;
+    filter?: "spell";
+    picks: number[];
+  } | null>(null);
   const [tilePlacement, setTilePlacement] = useState<TilePlacementSelection>(null);
   const [combatTab, setCombatTab] = useState<"battle" | "map">("battle");
   const [pile, setPile] = useState<{ title: string; cardIds: string[]; kind: "cards" | "units" | "astrologers" } | null>(null);
@@ -943,6 +957,54 @@ export default function Home() {
       void submitAction({ type: "REFRESH_HAND", playerId: viewerPlayerId, discardCardIds });
     };
 
+    // Card plays available from the hand right now (Estates, Luck, Scouting,
+    // Eagle Eye, Town Portal, artifact map sides…), grouped per hand card.
+    const playActionsByCard = new Map<string, (LegalAction & { action: Extract<GameAction, { type: "PLAY_CARD" }> })[]>();
+    for (const legal of legalActions) {
+      if (legal.action.type !== "PLAY_CARD") {
+        continue;
+      }
+      const list = playActionsByCard.get(legal.action.cardId) ?? [];
+      list.push(legal as LegalAction & { action: Extract<GameAction, { type: "PLAY_CARD" }> });
+      playActionsByCard.set(legal.action.cardId, list);
+    }
+
+    const optionCostOf = (action: Extract<GameAction, { type: "PLAY_CARD" }>) => {
+      const card = cardLibrary[action.cardId];
+      if (card?.effect.type !== "CHOOSE_ONE" || action.optionIndex === undefined) {
+        return undefined;
+      }
+      return card.effect.options[action.optionIndex]?.cost;
+    };
+
+    const startPlay = (legal: LegalAction & { action: Extract<GameAction, { type: "PLAY_CARD" }> }) => {
+      const cost = optionCostOf(legal.action);
+      if (cost && (cost.discardCards !== undefined || cost.discardCardsUpTo !== undefined)) {
+        setPendingCostPlay({
+          action: legal.action,
+          exact: cost.discardCards,
+          upTo: cost.discardCardsUpTo,
+          filter: cost.costCardFilter,
+          picks: []
+        });
+        setOpenHandIndex(null);
+        return;
+      }
+      setOpenHandIndex(null);
+      void submitAction(legal.action);
+    };
+
+    const confirmCostPlay = () => {
+      if (!pendingCostPlay) {
+        return;
+      }
+      void submitAction({
+        ...pendingCostPlay.action,
+        costCardIds: pendingCostPlay.picks.map((index) => handCards[index])
+      });
+      setPendingCostPlay(null);
+    };
+
     return (
       <CardZoomProvider>
         <main className="tableRoot adventureRoot">
@@ -1103,47 +1165,143 @@ export default function Home() {
                   </div>
                 ) : null}
               </div>
+              {pendingCostPlay ? (
+                <div className="handButtons costPicker" aria-label="Pay the card cost">
+                  <span>
+                    {cardName(pendingCostPlay.action.cardId)}:{" "}
+                    {pendingCostPlay.exact !== undefined
+                      ? `pick exactly ${pendingCostPlay.exact} card${pendingCostPlay.exact === 1 ? "" : "s"} to discard`
+                      : `pick up to ${pendingCostPlay.upTo} card${(pendingCostPlay.upTo ?? 0) === 1 ? "" : "s"} to discard`}
+                    {pendingCostPlay.filter === "spell" ? " (Spell cards only)" : ""} — {pendingCostPlay.picks.length} picked
+                  </span>
+                  <button
+                    className="commandButton primary"
+                    disabled={pendingCostPlay.exact !== undefined && pendingCostPlay.picks.length !== pendingCostPlay.exact}
+                    onClick={confirmCostPlay}
+                    type="button"
+                  >
+                    Pay &amp; play
+                  </button>
+                  <button className="commandButton ghost" onClick={() => setPendingCostPlay(null)} type="button">
+                    Cancel
+                  </button>
+                </div>
+              ) : null}
               <div className="adventureHandCards" data-fx-anchor={`hand:${viewerPlayerId}`}>
                 {handCards.length === 0 ? <small className="emptyHand">No cards in hand.</small> : null}
-                {handCards.map((cardId, index) => (
-                  <div
-                    className={`adventureHandSlot ${index >= handCards.length - hiddenHandTail ? "incoming" : ""}`}
-                    key={`${cardId}-${index}`}
-                  >
-                    <button
-                      className={`adventureHandCard ${handDiscards.includes(index) ? "discarding" : ""}`}
-                      onClick={() => {
-                        // While the once-per-turn mulligan window is open,
-                        // clicking a card marks it for the discard pile —
-                        // the confirm button then discards them all and
-                        // draws that many in one go.
-                        if (!selecting && canMulligan) {
-                          setHandMode("mulligan");
-                          setHandDiscards([index]);
-                          return;
-                        }
-                        if (selecting) {
-                          setHandDiscards((current) =>
-                            current.includes(index)
-                              ? current.filter((value) => value !== index)
-                              : [...current, index]
-                          );
-                        }
-                      }}
-                      title={
-                        selecting
-                          ? `Toggle discard ${cardName(cardId)}`
-                          : canMulligan
-                            ? `Click to mark ${cardName(cardId)} for the mulligan discard`
-                            : cardName(cardId)
-                      }
-                      type="button"
+                {handCards.map((cardId, index) => {
+                  const plays = playActionsByCard.get(cardId) ?? [];
+                  const isPayingSource = pendingCostPlay !== null;
+                  const pickedForCost = Boolean(pendingCostPlay?.picks.includes(index));
+                  const eligibleForCost =
+                    isPayingSource &&
+                    handCards[index] !== undefined &&
+                    index !== handCards.indexOf(pendingCostPlay!.action.cardId) &&
+                    (pendingCostPlay!.filter !== "spell" || cardLibrary[cardId]?.kind === "spell");
+
+                  return (
+                    <div
+                      className={`adventureHandSlot ${index >= handCards.length - hiddenHandTail ? "incoming" : ""}`}
+                      key={`${cardId}-${index}`}
                     >
-                      <CardFrame cardId={cardId} className="handCardImage" />
-                    </button>
-                    <AdventureHandZoom cardId={cardId} />
-                  </div>
-                ))}
+                      <button
+                        className={`adventureHandCard ${handDiscards.includes(index) ? "discarding" : ""} ${
+                          pickedForCost ? "discarding" : ""
+                        } ${!selecting && !isPayingSource && plays.length > 0 ? "playable" : ""}`}
+                        onClick={() => {
+                          // Paying a card cost: clicks toggle the payment.
+                          if (isPayingSource) {
+                            if (!eligibleForCost) {
+                              return;
+                            }
+                            setPendingCostPlay((current) => {
+                              if (!current) {
+                                return current;
+                              }
+                              const has = current.picks.includes(index);
+                              const max = current.exact ?? current.upTo ?? 0;
+                              if (!has && current.picks.length >= max) {
+                                return current;
+                              }
+                              return {
+                                ...current,
+                                picks: has ? current.picks.filter((value) => value !== index) : [...current.picks, index]
+                              };
+                            });
+                            return;
+                          }
+                          // While the once-per-turn mulligan window is open,
+                          // clicking a card marks it for the discard pile —
+                          // the confirm button then discards them all and
+                          // draws that many in one go.
+                          if (!selecting && canMulligan && plays.length === 0) {
+                            setHandMode("mulligan");
+                            setHandDiscards([index]);
+                            return;
+                          }
+                          if (selecting) {
+                            setHandDiscards((current) =>
+                              current.includes(index)
+                                ? current.filter((value) => value !== index)
+                                : [...current, index]
+                            );
+                            return;
+                          }
+                          // Otherwise: open the play menu for this card.
+                          if (plays.length > 0) {
+                            setOpenHandIndex((current) => (current === index ? null : index));
+                          }
+                        }}
+                        title={
+                          selecting
+                            ? `Toggle discard ${cardName(cardId)}`
+                            : isPayingSource
+                              ? eligibleForCost
+                                ? `Toggle ${cardName(cardId)} as payment`
+                                : cardName(cardId)
+                              : plays.length > 0
+                                ? `Play ${cardName(cardId)}`
+                                : canMulligan
+                                  ? `Click to mark ${cardName(cardId)} for the mulligan discard`
+                                  : cardName(cardId)
+                        }
+                        type="button"
+                      >
+                        <CardFrame cardId={cardId} className="handCardImage" />
+                      </button>
+                      {openHandIndex === index && !selecting && !isPayingSource && plays.length > 0 ? (
+                        <div className="handPlayMenu" role="menu" aria-label={`${cardName(cardId)} plays`}>
+                          <strong>{cardName(cardId)}</strong>
+                          {rulesetCardNote(getRuleset(state), cardId) ? (
+                            <small className="rulesetNote">{rulesetCardNote(getRuleset(state), cardId)}</small>
+                          ) : null}
+                          {plays.map((legal) => (
+                            <button key={actionKey(legal.action)} onClick={() => startPlay(legal)} type="button">
+                              {legal.label}
+                            </button>
+                          ))}
+                          <button className="ghost" onClick={() => setOpenHandIndex(null)} type="button">
+                            Close
+                          </button>
+                          {canMulligan ? (
+                            <button
+                              className="ghost"
+                              onClick={() => {
+                                setOpenHandIndex(null);
+                                setHandMode("mulligan");
+                                setHandDiscards([index]);
+                              }}
+                              type="button"
+                            >
+                              Mark for mulligan instead
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      <AdventureHandZoom cardId={cardId} />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : null}

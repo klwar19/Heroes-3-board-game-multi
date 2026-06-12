@@ -123,20 +123,22 @@ export const adventureCards: CardLibrary = {
     id: "ability.wisdom",
     name: "Wisdom",
     kind: "ability",
-    timing: "instant",
+    // Played together with the Spell Book token (SPELL_BOOK_ACTION wisdom
+    // option): basic reduces the purchase by 2 gold and upgrades to
+    // Search (3); expert upgrades to Search (4) (BINH: also −3 gold).
+    timing: "town",
     abilityClass: "magic",
     tags: [
       "ability",
       "town",
-      "needs-implementation",
-      "Reduces the Mage Guild spell price by 2 gold and upgrades its Search (2) to Search (3)."
+      "Basic: The cost of buying spells in this Town is reduced by 2 gold; Search (3) instead of Search (2). Expert: Search (4) instead. (BINH expert: −3 gold.)"
     ],
     effect: { type: "DRAW_CARDS", amount: 0 },
     assets: {
       cardImage: "/assets/abilities-wisdom.webp",
       imageAlt: "Wisdom ability card"
     },
-    implementationStatus: "not-implemented",
+    implementationStatus: "implemented",
     source: abilitySource("wisdom")
   },
   "ability.first_aid": {
@@ -165,18 +167,20 @@ export const adventureCards: CardLibrary = {
     kind: "ability",
     timing: "instant",
     abilityClass: "adventure",
+    // Printed basic: "Choose 1 card from your discard pile and add it to your
+    // hand." The expert Empowered-Statistic swap needs the Empowered cards
+    // (Inferno expansion) and stays unimplemented.
     tags: [
       "ability",
       "map",
-      "needs-implementation",
-      "Exchange Statistic cards between your discard pile and hand when meeting an allied Hero."
+      "Basic: Choose 1 card from your discard pile and add it to your hand. (Expert Empowered-Statistic swap not implemented.)"
     ],
-    effect: { type: "DRAW_CARDS", amount: 0 },
+    effect: { type: "TAKE_FROM_DISCARD", count: 1 },
     assets: {
       cardImage: "/assets/abilities-scholar.webp",
       imageAlt: "Scholar ability card"
     },
-    implementationStatus: "not-implemented",
+    implementationStatus: "implemented",
     source: abilitySource("scholar")
   },
   "ability.tactics": {

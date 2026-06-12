@@ -265,7 +265,7 @@ export function BattlefieldBoard({
 }
 
 export function InitiativeRail({ state }: { state: GameState }) {
-  const units = state.combat ? sortUnitsForActivation(state.combat) : [];
+  const units = state.combat ? sortUnitsForActivation(state.combat, state.activeEffects) : [];
 
   return (
     <div className="initiativeRail" aria-label="Initiative order">

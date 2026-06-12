@@ -115,7 +115,7 @@ export const permanentCards: CardLibrary = {
         duration: { type: "combat" },
         polarity: "positive",
         removable: false,
-        modifiers: [{ type: "RANGED_IGNORE_PENALTIES" }]
+        modifiers: [{ type: "RANGED_IGNORE_ALL_PENALTIES" }]
       },
       rangedInitiativeBonus: 2
     },

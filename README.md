@@ -3,6 +3,18 @@ multiplayer
 
 A non-profit fan multiplayer tabletop app for Heroes of Might and Magic III: The Board Game. New rooms now open a full **adventure game**: a hex map built from the real 7-field tiles, heroes with faction-colored flags moving field by field, location visits straight out of the rulebook (mines, settlements, treasure and resource dice, shrines, witch huts…), town boards with building costs and unit recruiting, neutral guard fights that follow the rulebook's AI and time-limit rules, hero experience with the printed level track, and player-vs-player combat — all synced live to every seat plus an observer. Combat still plays at the virtual table: instant windows for attack/defense/power cards, the attack die rolling last with a 3D cinematic.
 
+## Game modes
+
+Every lobby picks one of two rule sets (the toggle sits at the top of the game options; **House rules BINH** is the default):
+
+- **Legacy (rulebook)** — the community rulebook as printed: one shared Spell deck, one Artifact deck, printed card values and unit stats.
+- **House rules BINH** — the split-deck optional rule plus the BINH house rules:
+  - **Basic + Expert Spell decks.** Drawing from the Expert deck needs hero level ≥ 4 **and** an open Ⅳ–Ⅴ/Ⅵ–Ⅶ tile — or owning a key card (Eagle Eye, Wisdom, or a Basic elemental Magic).
+  - **Minor / Major / Relic Artifact decks.** Minor anywhere; Major on a Ⅳ–Ⅴ+ tile or at level 4 with an artifact building (Castle Blacksmith); Relic on a Ⅵ–Ⅶ tile or at level 6 with one. Whenever you'd gain an artifact or spell you pick among the decks you've unlocked.
+  - **Wisdom** expert reduces the Mage Guild purchase by 3 gold (basic −2; Search 3/4 as printed). **Estates** pays 2/4 gold instead of 3/6. **Few Griffins 3 attack, Pack Griffins 1 defense, Pack Marksmen 3 HP.** **Pack Cerberi attack every adjacent enemy** — each a full separate attack at attack 3 that can be answered with instants and defense.
+
+Both modes share the rulebook fixes: the second negative morale token resets you to neutral and discards your hand at turn end; activation spells (Magic Arrow, Fireball…) cast during your own unit's activation; instant spells (Bloodlust, Stone Skin, Curse, Weakness, Bless…) are played **into attacks**, scale with Power played alongside them and count toward the one-spell-per-round limit; any Spell card can instead be discarded for its printed "+1 Power".
+
 ## Adventure mode
 
 - **Map setup phase**: new rooms open in a lobby — every seat picks a faction and main hero, and the table sets the **game options**: starting map, neutral difficulty (the Field Difficulty Level Table column — **Impossible by default**), starting resources, the base resource gain (10 gold / 0 materials / 0 valuables by default), starting unit tiers and pre-built buildings. Then the scenario sheet builds the map (starting tiles fixed by faction and seat, never rotated) and drafts two Far (Ⅱ–Ⅲ) tiles per player (redrawing until one carries a Settlement, per the Mission Book).

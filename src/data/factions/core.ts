@@ -1,3 +1,4 @@
+import { HERO_PORTRAITS, TOWN_BUILDING_IMAGES } from "@/data/assets/homm-assets";
 import type { FactionDefinition, HeroDefinition, TownBuildingDefinition } from "./types";
 import { coreUnitDefinitions } from "./units";
 
@@ -104,11 +105,11 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     name: "Blacksmith",
     faction: "castle",
     cost: { gold: 4, buildingMaterials: 3 },
-    effect: {
-      type: "NOT_IMPLEMENTED",
-      note: "During your turn: remove an Artifact card from hand for 4 gold, OR pay 6 gold to Search(2) Artifacts."
-    },
-    implementationStatus: "not-implemented",
+    // "During your turn: remove an Artifact card from hand for 4 gold, OR
+    // pay 6 gold to Search(2) Artifacts." Also the artifact source that
+    // unlocks the BINH Major/Relic decks at hero level 4/6.
+    effect: { type: "ARTIFACT_SMITH", searchCost: 6, sellGold: 4 },
+    implementationStatus: "implemented",
     source: townSource("castle")
   },
 
@@ -466,6 +467,16 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
   }
 };
 
+// Classic town-screen renders for every building (heroes.thelazy.net);
+// bronze/silver/gold dwellings use a fitting low/mid/high PC dwelling.
+for (const building of Object.values(coreBuildingDefinitions)) {
+  const [faction, key] = building.id.split(".");
+  const image = TOWN_BUILDING_IMAGES[faction]?.[key];
+  if (image) {
+    building.assets = { ...building.assets, image };
+  }
+}
+
 export const coreHeroDefinitions: Record<string, HeroDefinition> = {
   catherine: {
     id: "catherine",
@@ -628,6 +639,15 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     source: heroSource("mutare")
   }
 };
+
+// Classic full-size PC portraits (heroes.thelazy.net/Hero_portraits), as
+// requested for the table; the wiki board scans stay as the fallback.
+for (const hero of Object.values(coreHeroDefinitions)) {
+  const portrait = HERO_PORTRAITS[hero.id];
+  if (portrait) {
+    hero.portrait = portrait;
+  }
+}
 
 function unitsOfFaction(faction: string): string[] {
   return Object.values(coreUnitDefinitions)

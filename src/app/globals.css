@@ -4026,4 +4026,155 @@ button.battleCell {
 
 .trayTile.permanentTile {
   border-color: #ffd766;
+/* ---- Game mode toggle + ruleset notes (Legacy / BINH) ------------------- */
+.optionHint {
+  display: block;
+  margin-top: 4px;
+  color: #b9a37c;
+  font-size: 11px;
+  line-height: 1.45;
+  max-width: 560px;
+}
+
+.rulesetNote {
+  display: block;
+  color: #e7c878;
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+/* ---- Adventure hand: play menu and cost payment -------------------------- */
+.adventureHandCard.playable {
+  outline: 2px solid rgba(126, 211, 132, 0.65);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
+.adventureHandSlot {
+  position: relative;
+}
+
+.handPlayMenu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 215px;
+  max-width: 300px;
+  padding: 9px;
+  background: #221a10;
+  border: 1px solid #6d5832;
+  border-radius: 9px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+}
+
+.handPlayMenu strong {
+  color: #e8d9b8;
+  font-size: 12px;
+}
+
+.handPlayMenu button {
+  appearance: none;
+  border: 1px solid #5d4c2c;
+  background: #2e2415;
+  color: #e7d9ba;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.handPlayMenu button:hover {
+  background: #3a2d1a;
+}
+
+.handPlayMenu button.ghost {
+  background: transparent;
+  color: #b9a37c;
+}
+
+.costPicker {
+  background: rgba(53, 38, 16, 0.85);
+  border: 1px solid #7c6432;
+  border-radius: 8px;
+  padding: 6px 9px;
+}
+
+/* ---- Reaction tray: cost payment chips ----------------------------------- */
+.trayPayment {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.trayPayment small {
+  color: #cdb88e;
+  font-size: 10.5px;
+}
+
+.trayPaymentChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.trayChip {
+  appearance: none;
+  border: 1px solid #5d4c2c;
+  background: #2e2415;
+  color: #d9c8a4;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.trayChip.picked {
+  background: #6d5215;
+  border-color: #caa64a;
+  color: #ffe9b0;
+}
+
+.trayChip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ---- Resource and morale icons (heroes.thelazy.net) ---------------------- */
+.resourceIcon {
+  width: 22px;
+  height: 18px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  vertical-align: -3px;
+}
+
+.resourceIcon.small {
+  width: 17px;
+  height: 14px;
+}
+
+.moraleIcon {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  vertical-align: -4px;
+}
+
+.statsReference {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #caa64a;
+  text-decoration: underline dotted;
+  font-size: inherit;
+  cursor: pointer;
+  padding: 0;
 }

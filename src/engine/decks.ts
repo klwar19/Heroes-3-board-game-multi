@@ -2,7 +2,15 @@ import { appendEvent } from "./events";
 import { createSeededRandom } from "./random";
 import type { CardId, GameState, PlayerId } from "./state";
 
-export const SHARED_DECK_IDS = ["spells", "abilities", "artifacts"] as const;
+export const SHARED_DECK_IDS = [
+  "spells",
+  "spells-expert",
+  "abilities",
+  "artifacts",
+  "artifacts-minor",
+  "artifacts-major",
+  "artifacts-relic"
+] as const;
 export type SharedDeckId = (typeof SHARED_DECK_IDS)[number];
 
 export function isSharedDeckId(deckId: string): deckId is SharedDeckId {

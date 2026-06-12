@@ -7,8 +7,10 @@ import { hasInternalBorder } from "@/data/map/borders";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import type { LocationInteraction } from "@/data/map/types";
+import { expireEffectsForTurnEnd } from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent } from "./events";
+import { applyUnitSideRules } from "./ruleset";
 import {
   hexDistance,
   hexNeighbors,
@@ -27,6 +29,7 @@ import type {
   AstrologersState,
   CombatUnitState,
   GameDifficulty,
+  GameRuleset,
   GameState,
   HeroId,
   HeroState,
@@ -553,9 +556,11 @@ export function spendResources(state: GameState, playerId: PlayerId, cost: Resou
 }
 
 /**
- * Morale tokens by the book: at most one positive token (+1) and one negative
- * token (-1). Losing morale at -1 instead forces the hand to be discarded the
- * next time the player ends their turn. Necropolis ignores morale entirely.
+ * Morale tokens by the book (rulebook Morale Actions + wiki morale table):
+ * at most one positive token (+1) and one negative token (-1); gaining the
+ * opposite token cancels back to neutral. Gaining a second negative token
+ * resets morale to neutral AND discards the hand the next time the player
+ * ends their turn. Necropolis ignores morale entirely.
  */
 export function changeMorale(state: GameState, playerId: PlayerId, amount: number): void {
   const player = state.players[playerId];
@@ -573,7 +578,8 @@ export function changeMorale(state: GameState, playerId: PlayerId, amount: numbe
     if (amount > 0) {
       next = Math.min(1, next + 1);
     } else if (next <= -1) {
-      // A second negative token: discard the hand when the turn ends instead.
+      // Negative + negative → neutral, and the hand is discarded at turn end.
+      next = 0;
       player.discardHandAtTurnEnd = true;
     } else {
       next -= 1;
@@ -1057,6 +1063,47 @@ export function processPendingVisit(state: GameState): void {
       case "SUBTERRANEAN_GATE":
         resolveSubterraneanGate(state, visit);
         break;
+      case "TELEPORT_HERO": {
+        const movedHero = state.heroes[step.heroId];
+        if (movedHero && adventure.fields[step.spaceId]) {
+          const from = movedHero.spaceId ?? step.spaceId;
+          movedHero.spaceId = step.spaceId;
+          appendEvent(state, {
+            type: "HERO_MOVED",
+            playerId: movedHero.controllerId,
+            heroId: movedHero.id,
+            from,
+            to: step.spaceId,
+            movementLeft: movedHero.movementPoints
+          });
+          if (step.visit) {
+            adventure.lastVisitedField[movedHero.id] = step.spaceId;
+            beginFieldVisit(state, movedHero.id, step.spaceId, false);
+          }
+        }
+        break;
+      }
+      case "TAKE_DISCARD_CARD": {
+        const player = state.players[visit.playerId];
+        if (player) {
+          const index = player.discard.lastIndexOf(step.cardId);
+          if (index !== -1) {
+            player.discard.splice(index, 1);
+            player.hand.push(step.cardId);
+          }
+          if (step.shuffleRestIntoDeck && player.discard.length > 0) {
+            player.deck = shuffleCards(
+              [...player.deck, ...player.discard],
+              `${state.seed}#discard-into-deck#${visit.playerId}#${state.eventLog.length}`
+            );
+            player.discard = [];
+          }
+        }
+        break;
+      }
+      case "CONSUME_EFFECT":
+        state.activeEffects = state.activeEffects.filter((candidate) => candidate.id !== step.effectId);
+        break;
       default:
         break;
     }
@@ -1420,13 +1467,16 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
 export function makeCombatUnitFromNeutral(
   draw: NeutralDraw,
   unitId: UnitId,
-  position: number
+  position: number,
+  ruleset: GameRuleset = "legacy"
 ): CombatUnitState | null {
   const def = coreUnitDefinitions[draw.unitDefId];
-  const side = def?.neutral;
-  if (!def || !side) {
+  const printed = def?.neutral;
+  if (!def || !printed) {
     return null;
   }
+
+  const side = applyUnitSideRules(ruleset, draw.unitDefId, "neutral", printed);
 
   return {
     id: unitId,
@@ -1460,13 +1510,16 @@ export function makeCombatUnitFromArmy(
   armyUnit: { id: string; unitDefId: string; side: "few" | "pack" },
   controllerId: PlayerId,
   unitId: UnitId,
-  position: number
+  position: number,
+  ruleset: GameRuleset = "legacy"
 ): CombatUnitState | null {
   const def = coreUnitDefinitions[armyUnit.unitDefId];
-  const side = armyUnit.side === "few" ? def?.few : def?.pack;
-  if (!def || !side) {
+  const printed = armyUnit.side === "few" ? def?.few : def?.pack;
+  if (!def || !printed) {
     return null;
   }
+
+  const side = applyUnitSideRules(ruleset, armyUnit.unitDefId, armyUnit.side, printed);
 
   return {
     id: unitId,
@@ -1685,6 +1738,13 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   if (!player) {
     return;
+  }
+
+  // Ongoing cards (Luck, Logistics, Scouting…) last until their owner's next
+  // turn starts: expire them now, not when the playing turn ended.
+  const expired = expireEffectsForTurnEnd(state, playerId);
+  for (const effect of expired) {
+    appendEvent(state, { type: "ACTIVE_EFFECT_EXPIRED", effectId: effect.id, reason: "turn-ended" });
   }
 
   const astrologers = state.adventure?.astrologers;
