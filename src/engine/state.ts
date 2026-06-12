@@ -774,6 +774,43 @@ export type GameAction =
     }
   | {
       /**
+       * "During your turn" town-building uses (Cover of Darkness, Castle
+       * Gate): once per round per building. `optionIndex` picks the printed
+       * option; `cardIds` pays discard costs; `targetPlayerId` aims a random
+       * discard; `spaceId` is the Castle Gate teleport destination.
+       */
+      type: "USE_TOWN_BUILDING";
+      playerId: PlayerId;
+      buildingId: BuildingId;
+      optionIndex: number;
+      cardIds?: CardId[];
+      targetPlayerId?: PlayerId;
+      spaceId?: MapSpaceId;
+    }
+  | {
+      /**
+       * Brimstone Stormclouds (and cube buildings like it): while one of your
+       * spells is waiting to resolve, remove 1 faction cube from the building
+       * for +1 Power on that spell (max 1 cube per spell).
+       */
+      type: "SPEND_TOWN_CUBE";
+      playerId: PlayerId;
+      buildingId: BuildingId;
+    }
+  | {
+      /**
+       * Siege: destroy a fortification. Adjacent ground/flying units demolish
+       * a Wall or the Gate as their attack — automatically successful, no die,
+       * no cards. Cyclops' printed ability does the same at any range, the
+       * pack/neutral versions may also bring down the Arrow Tower.
+       */
+      type: "ATTACK_FORTIFICATION";
+      playerId: PlayerId;
+      attackerId: UnitId;
+      target: { kind: "wall" | "gate"; position: number } | { kind: "arrow-tower" };
+    }
+  | {
+      /**
        * Spend the positive morale token: draw 1 card, or discard any number
        * of cards and draw that many ("redraw"). The third printed option —
        * reroll any die — is offered inside the dice flows themselves.
@@ -1443,6 +1480,57 @@ export type GameEvent =
       type: "GAME_WON";
       playerId: PlayerId;
       reason: string;
+    }
+  | {
+      /**
+       * Setup roll for the starting player (official rulebook step 22): every
+       * player rolls the Attack die, highest result starts; ties reroll among
+       * the tied players. Every attempt's rolls are kept for display.
+       */
+      id: string;
+      type: "FIRST_PLAYER_ROLLED";
+      attempts: { rolls: { playerId: PlayerId; name: string; value: number }[] }[];
+      winnerPlayerId: PlayerId;
+    }
+  | {
+      id: string;
+      type: "COMBAT_TOKEN_PLACED";
+      unitId: UnitId;
+      playerId: PlayerId;
+      kind: CombatTokenKind;
+      amount: number;
+      sourceName: string;
+    }
+  | {
+      id: string;
+      type: "COMBAT_TOKEN_REMOVED";
+      unitId: UnitId;
+      kind: CombatTokenKind;
+      reason: "expired" | "replaced" | "damage" | "activation-skipped" | "dispelled";
+    }
+  | {
+      /** Siege: the defender's Walls, Gate and Arrow Tower hit the board. */
+      id: string;
+      type: "SIEGE_FORTIFICATIONS_PLACED";
+      playerId: PlayerId;
+      wallPositions: number[];
+      gatePosition: number;
+    }
+  | {
+      id: string;
+      type: "FORTIFICATION_DESTROYED";
+      playerId: PlayerId;
+      byUnitId: UnitId | null;
+      kind: "wall" | "gate" | "arrow-tower";
+      position?: number;
+      message: string;
+    }
+  | {
+      id: string;
+      type: "TOWN_BUILDING_USED";
+      playerId: PlayerId;
+      buildingId: BuildingId;
+      message: string;
     };
 
 export type ResolutionStackItem = {
@@ -1463,6 +1551,8 @@ export type ResolutionStackItem = {
     defenseBonus: number;
     /** Centaur's Axe: multiplies the rolled attack-die outcome (default 1). */
     attackDieMultiplier?: number;
+    /** Brimstone Stormclouds: faction cubes spent on this cast (max 1). */
+    townCubePowerBonus?: number;
     /** Bless: the Attack die is not rolled (counts as 0). */
     ignoreAttackDie?: boolean;
     /** Precision: this shot ignores the ranged back-row penalty. */
@@ -1512,7 +1602,8 @@ export type ArmyUnitState = {
   /** Stable instance id of this unit card in the player's unit deck. */
   id: string;
   unitDefId: string;
-  side: "few" | "pack";
+  /** "neutral": a single-sided Neutral card recruited via Portal of Summoning. */
+  side: "few" | "pack" | "neutral";
 };
 
 export type TownTokenState = {
@@ -1591,6 +1682,11 @@ export type PlayerState = {
   /** Round the Blacksmith action was last used ("once per your turn"). */
   blacksmithUsedRound?: number;
   /**
+   * Round each "once per round/turn" town building was last used (Cover of
+   * Darkness, Castle Gate, …), keyed by building id.
+   */
+  buildingUsedRound?: Record<string, number>;
+  /**
    * Ongoing cards held in play while their effect lasts. The card leaves the
    * hand when played but only reaches the discard pile (or, when Knowledge /
    * Mysticism recalled it, the hand) after every effect it created ends —
@@ -1598,6 +1694,30 @@ export type PlayerState = {
    * casting is still on the table.
    */
   ongoingCards?: { cardId: CardId; effectIds: string[]; returnTo: "discard" | "hand" }[];
+};
+
+/**
+ * Combat tokens placed on unit cards ("Tokens on Units", rulebook p.89):
+ *  - "attack": +1/+2 attack while held (Ogres). One per unit; on a second
+ *    token the better one is kept.
+ *  - "weakness": −1/−2 attack while held (Sorceresses, Weakness spell). One
+ *    per unit; the better (least bad) one is kept.
+ *  - "corrosion": −1 defense to a minimum of 0 (Behemoths). One per unit;
+ *    stays until the end of combat.
+ *  - "paralysis": the unit skips its next activation (token removed instead);
+ *    removed when the unit takes damage. Retaliations still happen.
+ */
+export type CombatTokenKind = "attack" | "weakness" | "corrosion" | "paralysis";
+
+export type CombatTokenState = {
+  id: string;
+  kind: CombatTokenKind;
+  /** Signed stat delta (attack +1/+2, weakness −1/−2, corrosion −1). */
+  amount: number;
+  /** Combat round at whose end the token expires; absent = end of combat. */
+  expiresAtCombatRoundEnd?: number;
+  /** Display name of whatever placed the token. */
+  sourceName: string;
 };
 
 export type CombatUnitState = {
@@ -1621,6 +1741,8 @@ export type CombatUnitState = {
   attacksThisActivation?: number;
   retaliatedThisRound: boolean;
   defenseToken: boolean;
+  /** Combat tokens currently on the card (attack/weakness/corrosion/paralysis). */
+  tokens?: CombatTokenState[];
   abilities: string[];
   /** Adventure mode: unit definition this combat card represents. */
   unitDefId?: string;
@@ -1662,9 +1784,27 @@ export type CombatContext =
   | {
       kind: "player";
       attackerHeroId: HeroId;
+      /** Null when the town owner garrisons without their hero (8 gold defense). */
       defenderHeroId: HeroId | null;
       fieldId: MapSpaceId;
+      /** Defending a faction town with a Citadel: walls, gate and arrow tower. */
+      siege?: boolean;
     };
+
+/**
+ * Siege fortifications on the combat board (town with a Citadel): 3 Walls and
+ * 1 Gate fill the middle row, the Arrow Tower fights from beside the board.
+ */
+export type SiegeState = {
+  /** Town owner the fortifications belong to (the combat's defender). */
+  townPlayerId: PlayerId;
+  /** Middle-row positions still holding a Wall card. */
+  walls: number[];
+  /** Middle-row position of the Gate while it stands. */
+  gatePosition: number | null;
+  /** Arrow Tower combat unit id while it stands. */
+  arrowTowerUnitId: UnitId | null;
+};
 
 export type CombatSetupState = {
   /** Player ids still to place units, in placement order. */
@@ -1740,6 +1880,13 @@ export type CombatState = {
    * unit flips, the field visit) runs when this flips true.
    */
   endAcknowledged?: boolean;
+  /** Siege fortifications while defending a Citadel town (PvP only). */
+  siege?: SiegeState | null;
+  /**
+   * Cover of Darkness owners still to decide their start-of-combat option
+   * (discard 1 random card from the enemy hand), resolved before placement.
+   */
+  pendingCoverOfDarkness?: PlayerId[];
   dice: CombatDice;
   units: Record<UnitId, CombatUnitState>;
   /**
@@ -1819,7 +1966,7 @@ export type AdventureReward =
       playerId: PlayerId;
       kind: "discard-pick";
       count: number;
-      filter?: "spell" | "non-artifact";
+      filter?: "spell" | "non-artifact" | "specialty";
       fromTop?: number;
       shuffleRestIntoDeck?: boolean;
     }
@@ -1936,6 +2083,44 @@ export type VisitStep =
   | {
       /** Pandora's Box: draw the top card of the Pandora deck into hand. */
       type: "DRAW_PANDORA_CARD";
+    }
+  | {
+      /** Necromancy Amplifier: fetch the Ability deck's first Necromancy card. */
+      type: "NECROMANCY_FETCH";
+    }
+  | {
+      /** Queue a discard-pile pick through the shared reward pipeline. */
+      type: "DISCARD_PICK";
+      count: number;
+      filter?: "spell" | "non-artifact" | "specialty";
+    }
+  | {
+      /**
+       * Mana Vortex: the chosen card is discarded, the discard pile shuffles
+       * back into the deck, then Search(3) from the own deck.
+       */
+      type: "MANA_VORTEX_RESOLVE";
+      discardCardId: CardId;
+    }
+  | {
+      /** Portal of Summoning: draw the top Neutral card of the chosen tier. */
+      type: "PORTAL_SUMMON";
+      tier: "bronze" | "silver" | "gold";
+    }
+  | {
+      /** Portal of Summoning: pay the printed cost to recruit the drawn card. */
+      type: "PORTAL_RECRUIT";
+      unitDefId: string;
+    }
+  | {
+      /** Portal of Summoning: the drawn card goes to its tier discard pile. */
+      type: "PORTAL_DECLINE";
+      unitDefId: string;
+    }
+  | {
+      /** Saplings / settlement perks: reinforce with only the gold halved. */
+      type: "REINFORCE_HALF_GOLD";
+      armyUnitId: string;
     };
 
 export type AstrologersState = {
@@ -1956,6 +2141,23 @@ export type PendingTileChoice = {
   kind: "reveal" | "place";
 };
 
+/** Result of the start-of-game Attack-die roll for the first player. */
+export type FirstPlayerRollState = {
+  attempts: { rolls: { playerId: PlayerId; name: string; value: number }[] }[];
+  winnerPlayerId: PlayerId;
+};
+
+/**
+ * An attacker stepped onto an enemy Town/Settlement whose owner has no hero
+ * there: the owner decides whether to pay 8 gold and defend with units only.
+ */
+export type PendingGarrisonState = {
+  attackerPlayerId: PlayerId;
+  attackerHeroId: HeroId;
+  defenderPlayerId: PlayerId;
+  fieldId: MapSpaceId;
+};
+
 export type AdventureState = {
   difficulty: GameDifficulty;
   /** Scenario this map was built from (data/map/scenarios). */
@@ -1964,6 +2166,10 @@ export type AdventureState = {
   fields: Record<MapSpaceId, MapFieldState>;
   /** Face-down Far tiles each player may place for 1 MP. */
   playerFarTiles: Record<PlayerId, string[]>;
+  /** Start-of-game first-player roll, shown to every seat. */
+  firstPlayerRoll?: FirstPlayerRollState | null;
+  /** Garrison decision pending while an undefended town is attacked. */
+  pendingGarrison?: PendingGarrisonState | null;
   /**
    * Shared face-up war machine pile (one copy of each card). Bought machines
    * leave the supply for good — they live in the buyer's deck from then on.
@@ -2073,6 +2279,12 @@ export type TownState = {
   factionId?: FactionId;
   /** Map field the town occupies in adventure mode. */
   fieldId?: MapSpaceId;
+  /**
+   * Faction cubes stored on cube buildings (Brimstone Stormclouds, Cage of
+   * Warlords), keyed by building id. Gained on build and on the building's
+   * round trigger, spent during combat.
+   */
+  factionCubes?: Record<string, number>;
 };
 
 export type HeroState = {
@@ -2152,9 +2364,21 @@ export type PendingChoice =
       playerId: PlayerId;
       prompt: string;
       options: { label: string }[];
-      context: "city-hall" | "satyr-swap" | "war-machine" | "deck-pick" | "discard-pick" | "eagle-eye";
+      context:
+        | "city-hall"
+        | "satyr-swap"
+        | "war-machine"
+        | "deck-pick"
+        | "discard-pick"
+        | "eagle-eye"
+        | "own-deck-pick"
+        | "garrison"
+        | "siege-gate"
+        | "cover-of-darkness";
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number };
+      /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */
+      ownDeckPick?: { cardIds: CardId[] };
       /** discard-pick: the candidate cards (index-aligned with options). */
       discardPick?: {
         cardIds: CardId[];

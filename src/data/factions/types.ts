@@ -64,12 +64,88 @@ export type HeroDefinition = {
   };
 };
 
+/** One pickable City Hall (resource/astrologers round) income option. */
+export type CityHallOption = {
+  label: string;
+  gold?: number;
+  buildingMaterials?: number;
+  valuables?: number;
+  movement?: number;
+  reinforceBronzeFree?: boolean;
+  /** Stronghold City Hall / Tower City Hall: draw cards from the M&M deck. */
+  drawCards?: number;
+};
+
 export type TownBuildingEffect =
   | { type: "UNLOCK_RECRUIT_TIER"; tier: UnitTier }
   | { type: "UNLOCK_REINFORCE" }
   | { type: "MAGE_GUILD" }
-  | { type: "RESOURCE_ROUND_CHOICE"; options: { label: string; gold?: number; buildingMaterials?: number; valuables?: number; movement?: number; reinforceBronzeFree?: boolean }[] }
+  | { type: "RESOURCE_ROUND_CHOICE"; options: CityHallOption[] }
   | { type: "RESOURCE_ROUND_MORALE" }
+  | {
+      /** Mystic Pond: each Resource round, roll a Resource die and gain it. */
+      type: "RESOURCE_ROUND_RESOURCE_DIE";
+    }
+  | {
+      /**
+       * Saplings: at the beginning of each Astrologers' round, reinforce one
+       * unit of the listed tiers for half of the gold cost (other resources
+       * unchanged).
+       */
+      type: "ASTROLOGERS_HALF_GOLD_REINFORCE";
+      tiers: UnitTier[];
+    }
+  | {
+      /**
+       * Necromancy Amplifier: at the beginning of your turn, search the
+       * Ability deck for a Necromancy card OR take a Specialty card from
+       * your discard pile.
+       */
+      type: "TURN_START_NECROMANCY";
+    }
+  | {
+      /**
+       * Portal of Summoning: at the beginning of your turn, draw 1 Neutral
+       * Unit card from a deck matching one of your built Dwellings and pay
+       * its printed cost to recruit it.
+       */
+      type: "TURN_START_PORTAL_SUMMON";
+    }
+  | {
+      /**
+       * Mana Vortex: at the beginning of your turn, discard 1 card to shuffle
+       * your discard pile into your deck, then Search(3) from it.
+       */
+      type: "TURN_START_MANA_VORTEX";
+    }
+  | {
+      /**
+       * Cover of Darkness: once per round — during your turn discard up to 2
+       * cards to draw that many, OR at the beginning of a combat with an
+       * enemy hero discard 1 random card from the enemy's hand.
+       */
+      type: "COVER_OF_DARKNESS";
+    }
+  | {
+      /**
+       * Castle Gate: during your turn — pay `discardCost` gold to discard 1
+       * random card from an opponent's hand, OR move your hero from a town or
+       * settlement you control to another one you control.
+       */
+      type: "CASTLE_GATE";
+      discardCost: number;
+    }
+  | {
+      /**
+       * Cube buildings (Brimstone Stormclouds, Cage of Warlords): gain a
+       * faction cube when built and at each `gainOn` round start (up to
+       * `max`); spend cubes during combat for the printed bonus.
+       */
+      type: "COMBAT_CUBES";
+      max: number;
+      gainOn: "astrologers" | "resource";
+      spend: "spell-power" | "attack-or-defense";
+    }
   | {
       /**
        * Blacksmith: once per turn, pay `searchCost` gold to Search (2) the

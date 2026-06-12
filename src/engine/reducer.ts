@@ -717,12 +717,15 @@ function getAttackDamagePreview(
   attackBonus: number,
   defenseBonus: number,
   dieMultiplier = 1,
-  baseAttackOverride?: number
+  baseAttackOverride?: number,
+  damageReduction = 0
 ): { attackValue: number; defenseValue: number; damage: number } {
   const baseAttack = baseAttackOverride ?? attacker.attack;
   const attackValue = Math.max(0, baseAttack + attackBonus + roll * dieMultiplier);
   const defenseValue = defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonus;
-  const damage = Math.max(0, attackValue - defenseValue);
+  // Siege wall cover: "reduce the attack's damage by 1" comes off the damage,
+  // not the defense.
+  const damage = Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
 
   return {
     attackValue,
@@ -741,7 +744,8 @@ function applyAttackDamageFromCandidate(
   defenseBonus: number,
   candidate: AttackRollCandidate,
   dieMultiplier = 1,
-  baseAttackOverride?: number
+  baseAttackOverride?: number,
+  damageReduction = 0
 ): { damage: number; roll: number } {
   if (!state.combat) {
     return { damage: 0, roll: 0 };
@@ -754,7 +758,8 @@ function applyAttackDamageFromCandidate(
     attackBonus,
     defenseBonus,
     dieMultiplier,
-    baseAttackOverride
+    baseAttackOverride,
+    damageReduction
   );
 
   // Damage is not capped at the pack's health: the rulebook carries any
@@ -791,6 +796,7 @@ function applyAttackDamageFromCandidate(
     });
   }
 
+  noteUnitDamagedForTokens(state, defender, damage);
   markUnitRemovedIfNeeded(state, defender);
   return { damage, roll: candidate.roll };
 }
@@ -866,6 +872,8 @@ function getAttackStackDetails(
       dieMultiplier: number;
       /** Bless: the Attack die is skipped and counts as 0. */
       ignoreAttackDie: boolean;
+      /** Siege wall cover: damage knocked off a ranged hit (0 or 1). */
+      damageReduction: number;
       /** Printed-ability follow-up (Death Cloud): replacement base attack. */
       abilityAttack?: { abilityId: string; baseAttack: number };
     }
@@ -912,16 +920,34 @@ function getAttackStackDetails(
   });
   const activeDefenseBonus = getActiveDefenseBonus(state, defender);
 
+  // Combat tokens: Attack/Weakness tokens shift the attacker, Corrosion the
+  // defender (floored so printed defense never drops below 0).
+  const tokenAttack = tokenAttackBonus(attacker);
+  let tokenDefense = tokenDefenseDelta(defender);
+
+  // Behemoths: "Decrease the target's defense by N (to a minimum of 0)" for
+  // this attack — applied after corrosion so the floor holds across both.
+  // An on-attack ability: it does not fire on retaliations.
+  if (!isRetaliation) {
+    for (const ability of getUnitAbilityDefinitions(attacker)) {
+      if (ability.implementationStatus === "implemented" && ability.effect?.type === "ATTACK_DEFENSE_PIERCE") {
+        const remaining = Math.max(0, defender.defense + tokenDefense);
+        tokenDefense -= Math.min(remaining, ability.effect.amount);
+      }
+    }
+  }
+
   return {
     attacker,
     defender,
     isRetaliation,
     attackKind,
     rollMode,
-    attackBonus: stackItem.modifiers.attackBonus + activeAttackBonus,
-    defenseBonus: stackItem.modifiers.defenseBonus + activeDefenseBonus,
+    attackBonus: stackItem.modifiers.attackBonus + activeAttackBonus + tokenAttack,
+    defenseBonus: stackItem.modifiers.defenseBonus + activeDefenseBonus + tokenDefense,
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
     ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie),
+    damageReduction: combat ? siegeRangedDamageReduction(combat, attacker, defender, attackKind) : 0,
     abilityAttack: stackItem.action.type === "ATTACK_UNIT" ? stackItem.action.abilityAttack : undefined
   };
 }
@@ -1171,8 +1197,10 @@ function finishResolvedAttack(
     details.defenseBonus,
     candidate,
     details.dieMultiplier,
-    details.abilityAttack?.baseAttack
+    details.abilityAttack?.baseAttack,
+    details.damageReduction
   );
+  applyOnAttackTokens(state, details.attacker, details.defender, details.isRetaliation);
   applyPostAttackAbilityDamage(
     state,
     details.attacker,
@@ -1250,6 +1278,37 @@ function finishResolvedAttack(
   }
 
   resumeAttackSequence(state, cards);
+}
+
+/**
+ * Token-on-attack abilities (Pack Sorceresses' Weakness, Pack Behemoths'
+ * Corrosion): after this unit's own attack — never a retaliation — the
+ * original target gains the printed token, even if the attack dealt 0 damage.
+ */
+function applyOnAttackTokens(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  isRetaliation: boolean
+): void {
+  if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
+    return;
+  }
+
+  for (const ability of getUnitAbilityDefinitions(attacker)) {
+    if (ability.implementationStatus !== "implemented" || ability.effect?.type !== "ON_ATTACK_TOKEN") {
+      continue;
+    }
+
+    placeCombatToken(state, defender, ability.effect.token, ability.effect.amount, ability.name, ability.effect.rounds);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: attacker.id,
+      abilityId: ability.id,
+      targetUnitId: defender.id,
+      message: `${attacker.cardName} marks ${defender.cardName} with a ${ability.name}.`
+    });
+  }
 }
 
 /**
@@ -1717,7 +1776,12 @@ function getCurrentSpellPower(stackItem: ResolutionStackItem, cards: CardLibrary
   }
 
   const card = cards[stackItem.action.cardId];
-  return (card?.power ?? 0) + stackItem.modifiers.spellPowerBonus + (stackItem.modifiers.schoolPowerBonus ?? 0);
+  return (
+    (card?.power ?? 0) +
+    stackItem.modifiers.spellPowerBonus +
+    (stackItem.modifiers.schoolPowerBonus ?? 0) +
+    (stackItem.modifiers.townCubePowerBonus ?? 0)
+  );
 }
 
 function shouldRetaliate(
@@ -3316,13 +3380,48 @@ function applyUnitAbilityAction(
     !unit ||
     !target ||
     unit.controllerId !== action.playerId ||
-    target.controllerId !== action.playerId ||
     unit.activatedThisRound ||
     unit.movedThisActivation ||
+    combat.activeUnitId !== unit.id ||
     ability?.implementationStatus !== "implemented" ||
-    ability.effect?.type !== "ACTIVATION_ATTACK_BUFF" ||
-    !ability.effect.targetTypes.includes(target.type)
+    !isUnitAlive(target)
   ) {
+    throw new Error("That unit ability cannot be used now.");
+  }
+
+  // Token "other action" (Ogres' Attack token, Few Sorceresses' Weakness):
+  // used instead of attacking, places the token and ends the activation.
+  if (ability.effect?.type === "PLACE_TOKEN_ACTION") {
+    const effect = ability.effect;
+    const sideOk =
+      effect.targets === "any" ||
+      (effect.targets === "friendly" && target.controllerId === unit.controllerId) ||
+      (effect.targets === "enemy" && target.controllerId !== unit.controllerId);
+    if (!sideOk || (effect.targetTypes && !effect.targetTypes.includes(target.type))) {
+      throw new Error("That unit cannot receive this token.");
+    }
+
+    placeCombatToken(state, target, effect.token, effect.amount, ability.name, effect.rounds);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: ability.id,
+      targetUnitId: target.id,
+      message: `${unit.cardName} places a ${ability.name} on ${target.cardName}.`
+    });
+
+    unit.activatedThisRound = true;
+    advanceActiveUnit(state);
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    return;
+  }
+
+  if (ability.effect?.type !== "ACTIVATION_ATTACK_BUFF") {
+    throw new Error("That unit ability cannot be used now.");
+  }
+
+  if (target.controllerId !== action.playerId || !ability.effect.targetTypes.includes(target.type)) {
     throw new Error("That unit ability cannot be used now.");
   }
 
@@ -3386,6 +3485,69 @@ function applyUnitAbilityAction(
 
   state.phase = "combat";
   state.priorityPlayerId = null;
+}
+
+/**
+ * Siege fortification attacks: an adjacent ground/flying unit demolishes a
+ * Wall or the Gate as its attack — automatically successful, no die, no
+ * cards, no attack abilities. Cyclops' printed ability does the same at any
+ * range; its pack/neutral versions may also bring down the Arrow Tower.
+ */
+function attackFortification(
+  state: GameState,
+  action: Extract<GameAction, { type: "ATTACK_FORTIFICATION" }>
+): void {
+  const combat = state.combat;
+  const siege = combat?.siege;
+  const unit = combat?.units[action.attackerId];
+  if (!combat || !siege || !unit || unit.controllerId !== action.playerId) {
+    throw new Error("There is no siege fortification to attack.");
+  }
+
+  if (combat.activeUnitId !== unit.id || unit.activatedThisRound || unit.attackedThisActivation) {
+    throw new Error("Only the active unit may attack fortifications, before its attack.");
+  }
+
+  const demolish = getDemolishAbility(unit);
+
+  if (action.target.kind === "arrow-tower") {
+    if (!demolish?.canTargetArrowTower) {
+      throw new Error("Only a unit with the demolish ability can level the Arrow Tower this way.");
+    }
+    if (!siege.arrowTowerUnitId) {
+      throw new Error("The Arrow Tower is already gone.");
+    }
+    removeArrowTower(state, unit, `${unit.cardName} levels it`);
+  } else {
+    const intact =
+      action.target.kind === "wall"
+        ? siege.walls.includes(action.target.position)
+        : siege.gatePosition === action.target.position;
+    if (!intact) {
+      throw new Error("That fortification is already destroyed.");
+    }
+
+    if (!demolish) {
+      // "…destroyed by any adjacent ground or flying unit's attack, even by
+      // your own defending units."
+      if (unit.type === "ranged") {
+        throw new Error("Ranged units cannot tear down walls (the Cyclops' ability is the exception).");
+      }
+      if (!isAdjacent(unit.position, action.target.position)) {
+        throw new Error("The unit must be adjacent to the Wall or Gate.");
+      }
+    }
+
+    destroyFortification(state, unit, action.target.kind, action.target.position);
+  }
+
+  // The demolition replaces the unit's attack for this activation.
+  unit.attackedThisActivation = true;
+  unit.attacksThisActivation = (unit.attacksThisActivation ?? 0) + 1;
+  finishCombatIfNeeded(state);
+  if (!state.combat?.outcome) {
+    concludeAttackerActivation(state, unit);
+  }
 }
 
 function rerollPendingChoice(

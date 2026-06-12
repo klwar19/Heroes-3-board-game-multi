@@ -263,7 +263,102 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
     return;
   }
 
+  // Attacking an enemy Town/Settlement whose hero is elsewhere: the owner may
+  // pay 8 gold to defend with units only ("you cannot use your Deck during
+  // this Combat, as your Main Hero is not present").
+  if (openGarrisonPromptIfNeeded(state, hero, field)) {
+    return;
+  }
+
   beginFieldVisit(state, hero.id, to, false);
+}
+
+/** Whether this field is an enemy town or settlement the owner may garrison. */
+function garrisonDefenderFor(state: GameState, attacker: HeroState, field: MapFieldState): PlayerId | null {
+  const location = locationDefinitions[field.location];
+  const isTown = location?.category === "town";
+  const isSettlement = field.location === "settlement";
+  if (!isTown && !isSettlement) {
+    return null;
+  }
+
+  const ownerId = isTown
+    ? Object.values(state.towns).find((town) => town.fieldId === field.spaceId)?.controllerId ?? field.flagOwnerId
+    : field.flagOwnerId;
+  if (!ownerId || ownerId === attacker.controllerId || ownerId === NEUTRAL_PLAYER_ID) {
+    return null;
+  }
+
+  const owner = state.players[ownerId];
+  if (!owner || owner.army.length === 0) {
+    return null;
+  }
+
+  return ownerId;
+}
+
+/** Opens the 8-gold garrison decision for the town owner; true when waiting. */
+function openGarrisonPromptIfNeeded(state: GameState, attacker: HeroState, field: MapFieldState): boolean {
+  const adventure = requireAdventure(state);
+  const defenderId = garrisonDefenderFor(state, attacker, field);
+  if (!defenderId) {
+    return false;
+  }
+
+  const defender = state.players[defenderId];
+  if (!defender || defender.resources.gold < 8) {
+    // The owner cannot pay the defense fee — the field falls undefended.
+    return false;
+  }
+
+  adventure.pendingGarrison = {
+    attackerPlayerId: attacker.controllerId,
+    attackerHeroId: attacker.id,
+    defenderPlayerId: defenderId,
+    fieldId: field.spaceId
+  };
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: defenderId,
+    prompt: `${state.players[attacker.controllerId]?.name ?? "An enemy"} attacks your ${
+      locationDefinitions[field.location]?.category === "town" ? "town" : "settlement"
+    } — pay 8 gold to defend with your units (no cards, your hero is away)?`,
+    options: [{ label: "Pay 8 gold and defend" }, { label: "Let it fall" }],
+    context: "garrison",
+    returnPhase: "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = defenderId;
+  return true;
+}
+
+/** Resolves the garrison decision (CHOOSE_OPTION context "garrison"). */
+export function resolveGarrisonChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const adventure = requireAdventure(state);
+  const pending = adventure.pendingGarrison;
+  if (!pending || pending.defenderPlayerId !== playerId) {
+    throw new Error("There is no garrison decision to make.");
+  }
+
+  adventure.pendingGarrison = null;
+  state.pendingChoice = null;
+  const attackerHero = state.heroes[pending.attackerHeroId];
+
+  if (optionIndex !== 0 || !attackerHero) {
+    // Undefended: the visit resolves as if nobody had garrisoned.
+    state.phase = "player-turn";
+    state.priorityPlayerId = null;
+    state.activePlayerId = pending.attackerPlayerId;
+    if (attackerHero) {
+      beginFieldVisit(state, attackerHero.id, pending.fieldId, false);
+    }
+    return;
+  }
+
+  spendResources(state, playerId, { gold: 8 }, "garrison defense");
+  startPlayerCombat(state, attackerHero, null, pending.fieldId, playerId);
 }
 
 /** Whether the walk must pause for player input after a step resolved. */
@@ -1333,20 +1428,43 @@ export function resolveSatyrSwap(state: GameState, playerId: PlayerId, optionInd
   revealNeutralArmy(state, draws);
 }
 
-export function startPlayerCombat(state: GameState, attacker: HeroState, defender: HeroState, fieldId: MapSpaceId): void {
-  restoreStartingArmyIfEmpty(state, attacker.controllerId);
-  restoreStartingArmyIfEmpty(state, defender.controllerId);
+export function startPlayerCombat(
+  state: GameState,
+  attacker: HeroState,
+  defender: HeroState | null,
+  fieldId: MapSpaceId,
+  garrisonDefenderId?: PlayerId
+): void {
+  const defenderPlayerId = defender?.controllerId ?? garrisonDefenderId;
+  if (!defenderPlayerId) {
+    throw new Error("A player combat needs a defending player.");
+  }
 
-  const combat = makeCombatShell(state, attacker.controllerId, defender.controllerId);
+  restoreStartingArmyIfEmpty(state, attacker.controllerId);
+  restoreStartingArmyIfEmpty(state, defenderPlayerId);
+
+  // Siege: the combat happens on the defender's own faction town field and
+  // the town has a Citadel — walls, gate and the arrow tower join the board.
+  const town = Object.values(state.towns).find(
+    (candidate) => candidate.fieldId === fieldId && candidate.controllerId === defenderPlayerId
+  );
+  const siege = Boolean(
+    town &&
+      town.factionId &&
+      town.buildings.some((buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "UNLOCK_REINFORCE")
+  );
+
+  const combat = makeCombatShell(state, attacker.controllerId, defenderPlayerId);
   combat.context = {
     kind: "player",
     attackerHeroId: attacker.id,
-    defenderHeroId: defender.id,
-    fieldId
+    defenderHeroId: defender?.id ?? null,
+    fieldId,
+    ...(siege ? { siege: true } : {})
   };
   combat.setup = {
-    pendingPlayerIds: [attacker.controllerId, defender.controllerId],
-    placedUnitIds: { [attacker.controllerId]: [], [defender.controllerId]: [] },
+    pendingPlayerIds: [attacker.controllerId, defenderPlayerId],
+    placedUnitIds: { [attacker.controllerId]: [], [defenderPlayerId]: [] },
     unitLimit: COMBAT_UNIT_LIMIT
   };
 
@@ -1357,9 +1475,80 @@ export function startPlayerCombat(state: GameState, attacker: HeroState, defende
   appendEvent(state, {
     type: "PLAYER_COMBAT_STARTED",
     attackerPlayerId: attacker.controllerId,
-    defenderPlayerId: defender.controllerId,
+    defenderPlayerId,
     fieldId
   });
+
+  // Cover of Darkness: "At the beginning of Combat with an Enemy Hero,
+  // discard 1 random card from the enemy's hand" — offered to each owner
+  // whose building is still unused this round, before placement begins.
+  const covers: PlayerId[] = [];
+  for (const playerId of [attacker.controllerId, defenderPlayerId]) {
+    const enemyId = playerId === attacker.controllerId ? defenderPlayerId : attacker.controllerId;
+    const enemyHasHero = playerId === attacker.controllerId ? Boolean(defender) : true;
+    const buildingId = findTownBuildingWithEffect(state, playerId, "COVER_OF_DARKNESS");
+    const player = state.players[playerId];
+    const unused = player && buildingId && (player.buildingUsedRound?.[buildingId] ?? 0) !== state.round;
+    if (buildingId && unused && enemyHasHero && (state.players[enemyId]?.hand.length ?? 0) > 0) {
+      covers.push(playerId);
+    }
+  }
+
+  if (covers.length > 0) {
+    combat.pendingCoverOfDarkness = covers;
+    openNextCoverOfDarknessChoice(state);
+  }
+}
+
+/** Opens the next queued Cover of Darkness start-of-combat decision. */
+function openNextCoverOfDarknessChoice(state: GameState): void {
+  const combat = state.combat;
+  const nextPlayerId = combat?.pendingCoverOfDarkness?.[0];
+  if (!combat || !nextPlayerId) {
+    return;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: nextPlayerId,
+    prompt: "Cover of Darkness: discard 1 random card from the enemy's hand? (uses this round's building action)",
+    options: [{ label: "Use Cover of Darkness" }, { label: "Keep it for later" }],
+    context: "cover-of-darkness",
+    returnPhase: "combat-setup"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = nextPlayerId;
+}
+
+/** Resolves one Cover of Darkness decision and reopens setup when done. */
+export function resolveCoverOfDarknessChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const combat = state.combat;
+  if (!combat || combat.pendingCoverOfDarkness?.[0] !== playerId) {
+    throw new Error("There is no Cover of Darkness decision to make.");
+  }
+
+  combat.pendingCoverOfDarkness = combat.pendingCoverOfDarkness.slice(1);
+  state.pendingChoice = null;
+
+  if (optionIndex === 0) {
+    const player = state.players[playerId];
+    const buildingId = findTownBuildingWithEffect(state, playerId, "COVER_OF_DARKNESS");
+    const enemyId = playerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
+    const enemy = state.players[enemyId];
+    if (player && buildingId && enemy && enemy.hand.length > 0) {
+      player.buildingUsedRound = { ...player.buildingUsedRound, [buildingId]: state.round };
+      discardRandomCard(state, playerId, buildingId, enemyId, "Cover of Darkness");
+    }
+  }
+
+  if (combat.pendingCoverOfDarkness.length > 0) {
+    openNextCoverOfDarknessChoice(state);
+    return;
+  }
+
+  state.phase = "combat-setup";
+  state.priorityPlayerId = combat.setup?.pendingPlayerIds[0] ?? null;
 }
 
 function placementCellsFor(state: GameState, playerId: PlayerId): number[] {
@@ -1786,6 +1975,12 @@ export function buildStructureAdventure(
       { playerId: action.playerId, kind: "shared-deck-search", deckId: "spells", count: 2 }
     );
   }
+
+  // Cube buildings (Brimstone Stormclouds): "When built …, place your
+  // faction cube here."
+  if (building.effect?.type === "COMBAT_CUBES") {
+    gainTownCube(state, town, action.buildingId, building.effect.max);
+  }
 }
 
 export function populationAction(state: GameState, action: Extract<GameAction, { type: "POPULATION_ACTION" }>): void {
@@ -1832,6 +2027,13 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       }
       if (!tiers.has(def)) {
         throw new Error("Build the dwelling of that unit's level first.");
+      }
+      // Each unit card exists once: a type already in the army (Few or Pack)
+      // cannot be recruited again — reinforce the Few card instead.
+      if (armyCopy.some((unit) => unit.unitDefId === purchase.unitDefId)) {
+        throw new Error(
+          `${coreUnitDefinitions[purchase.unitDefId]?.name ?? "That unit"} is already in your army — each unit card exists once. Reinforce it to a pack instead.`
+        );
       }
       addCost(side.cost);
       armyCopy.push({ id: `pending_${armyCopy.length}`, unitDefId: purchase.unitDefId, side: "few" });
