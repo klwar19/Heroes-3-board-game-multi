@@ -23,7 +23,7 @@ export const sampleCards: CardLibrary = {
       expertAmount: 2
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/statistics-attack.webp",
+      cardImage: "/assets/statistics-attack.webp",
       imageAlt: "Attack statistic card"
     },
     implementationStatus: "implemented",
@@ -52,7 +52,7 @@ export const sampleCards: CardLibrary = {
       expertAmount: 2
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/statistics-defense.webp",
+      cardImage: "/assets/statistics-defense.webp",
       imageAlt: "Defense statistic card"
     },
     implementationStatus: "implemented",
@@ -80,7 +80,7 @@ export const sampleCards: CardLibrary = {
       expertAmount: 2
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/statistics-power.webp",
+      cardImage: "/assets/statistics-power.webp",
       imageAlt: "Power statistic card"
     },
     implementationStatus: "implemented",
@@ -107,7 +107,7 @@ export const sampleCards: CardLibrary = {
       expertSpellLimitBonus: 1
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/statistics-knowledge.webp",
+      cardImage: "/assets/statistics-knowledge.webp",
       imageAlt: "Knowledge statistic card"
     },
     implementationStatus: "implemented",
@@ -137,7 +137,7 @@ export const sampleCards: CardLibrary = {
       damageKind: "spell"
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-magic_arrow.webp",
+      cardImage: "/assets/spells-magic_arrow.webp",
       imageAlt: "Magic Arrow card"
     },
     implementationStatus: "implemented",
@@ -168,7 +168,7 @@ export const sampleCards: CardLibrary = {
       damageKind: "spell"
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-lightning_bolt.webp",
+      cardImage: "/assets/spells-lightning_bolt.webp",
       imageAlt: "Lightning Bolt card"
     },
     implementationStatus: "implemented",
@@ -202,7 +202,7 @@ export const sampleCards: CardLibrary = {
       removable: true
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-stone_skin.webp",
+      cardImage: "/assets/spells-stone_skin.webp",
       imageAlt: "Stone Skin card"
     },
     implementationStatus: "implemented",
@@ -236,7 +236,7 @@ export const sampleCards: CardLibrary = {
       removable: true
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-bloodlust.webp",
+      cardImage: "/assets/spells-bloodlust.webp",
       imageAlt: "Bloodlust card"
     },
     implementationStatus: "implemented",
@@ -267,7 +267,7 @@ export const sampleCards: CardLibrary = {
       removePolarity: "negative"
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-cure.webp",
+      cardImage: "/assets/spells-cure.webp",
       imageAlt: "Cure card"
     },
     implementationStatus: "implemented",
@@ -301,7 +301,7 @@ export const sampleCards: CardLibrary = {
       consumeEffectOnUse: true
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-fortune.webp",
+      cardImage: "/assets/spells-fortune.webp",
       imageAlt: "Fortune card"
     },
     implementationStatus: "implemented",
@@ -332,7 +332,7 @@ export const sampleCards: CardLibrary = {
       damageKind: "spell"
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-fireball.webp",
+      cardImage: "/assets/spells-fireball.webp",
       imageAlt: "Fireball card"
     },
     implementationStatus: "not-implemented",
@@ -363,7 +363,7 @@ export const sampleCards: CardLibrary = {
       expertIgnoresMaxPower: true
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/abilities-resistance.webp",
+      cardImage: "/assets/abilities-resistance.webp",
       imageAlt: "Resistance card"
     },
     implementationStatus: "implemented",
@@ -413,7 +413,7 @@ export const sampleCards: CardLibrary = {
       }
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/abilities-archery.webp",
+      cardImage: "/assets/abilities-archery.webp",
       imageAlt: "Archery card"
     },
     implementationStatus: "implemented",
@@ -442,7 +442,7 @@ export const sampleCards: CardLibrary = {
       expertAmount: 2
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/abilities-offense.webp",
+      cardImage: "/assets/abilities-offense.webp",
       imageAlt: "Offense ability card"
     },
     implementationStatus: "implemented",
@@ -487,7 +487,7 @@ export const sampleCards: CardLibrary = {
       }
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/abilities-luck.webp",
+      cardImage: "/assets/abilities-luck.webp",
       imageAlt: "Luck card"
     },
     implementationStatus: "implemented",
@@ -530,7 +530,7 @@ export const sampleCards: CardLibrary = {
       ]
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/artifacts_minor-centaurs_axe.webp",
+      cardImage: "/assets/artifacts_minor-centaurs_axe.webp",
       imageAlt: "Centaur's Axe artifact card"
     },
     implementationStatus: "implemented",
@@ -558,7 +558,7 @@ export const sampleCards: CardLibrary = {
       amount: 1
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/artifacts_major-ogres_club_of_havoc.webp",
+      cardImage: "/assets/artifacts_major-ogres_club_of_havoc.webp",
       imageAlt: "Ogre's Club of Havoc artifact card"
     },
     implementationStatus: "implemented",
@@ -586,7 +586,7 @@ export const sampleCards: CardLibrary = {
       amount: 2
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/artifacts_relic-titans_gladius.webp",
+      cardImage: "/assets/artifacts_relic-titans_gladius.webp",
       imageAlt: "Titan's Gladius artifact card"
     },
     implementationStatus: "implemented",
@@ -624,7 +624,7 @@ export const sampleCards: CardLibrary = {
       ]
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/artifacts_minor-breastplate_of_petrified_wood.webp",
+      cardImage: "/assets/artifacts_minor-breastplate_of_petrified_wood.webp",
       imageAlt: "Breastplate of Petrified Wood artifact card"
     },
     implementationStatus: "implemented",
@@ -652,7 +652,7 @@ export const sampleCards: CardLibrary = {
       amount: 1
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/artifacts_minor-buckler_of_the_gnoll_king.webp",
+      cardImage: "/assets/artifacts_minor-buckler_of_the_gnoll_king.webp",
       imageAlt: "Buckler of the Gnoll King artifact card"
     },
     implementationStatus: "implemented",
@@ -687,7 +687,7 @@ export const sampleCards: CardLibrary = {
       }
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/war_machines-first_aid_tent.webp",
+      cardImage: "/assets/war_machines-first_aid_tent.webp",
       imageAlt: "First Aid Tent war machine card"
     },
     implementationStatus: "implemented",
