@@ -5,11 +5,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import type { UnitDefinition, UnitSideDefinition } from "@/data/factions/types";
 import { hasInternalBorder } from "@/data/map/borders";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
-import { coreTileDefinitions } from "@/data/map/tile-defs";
+import { allTileDefinitions } from "@/data/map/tiles";
 import type { LocationInteraction } from "@/data/map/types";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent } from "./events";
 import {
+  hexDistance,
   hexNeighbors,
   hexSpaceId,
   parseHexSpaceId,
@@ -128,7 +129,9 @@ export const TILE_BACK_LABELS: Record<string, string> = {
   starting: "Ⅰ",
   far: "Ⅱ–Ⅲ",
   near: "Ⅳ–Ⅴ",
-  center: "Ⅵ–Ⅶ"
+  center: "Ⅵ–Ⅶ",
+  sea: "Ⅴ–Ⅵ",
+  subterranean: "Ⅴ–Ⅵ"
 };
 
 export function getAstrologersState(state: GameState): AstrologersState | null {
@@ -206,7 +209,7 @@ export function instantiateTile(
 ): MapTileState {
   tileCounter = Object.keys(adventure.tiles).length + 1;
   const id = `tile_${tileCounter}_${tileDefId}`;
-  const group = coreTileDefinitions[tileDefId]?.group;
+  const group = allTileDefinitions[tileDefId]?.group;
   const tile: MapTileState = {
     id,
     tileDefId,
@@ -227,7 +230,7 @@ export function instantiateTile(
 
 /** Creates the 7 field states for a revealed tile. */
 export function materializeTileFields(adventure: AdventureState, tile: MapTileState): void {
-  const def = coreTileDefinitions[tile.tileDefId];
+  const def = allTileDefinitions[tile.tileDefId];
   if (!def) {
     return;
   }
@@ -307,7 +310,7 @@ export function canCrossEdge(state: GameState, from: MapSpaceId, to: MapSpaceId)
     // Printed yellow lines inside a tile block ground movement between the
     // two fields (none on core tiles; expansion tiles may declare them).
     const tile = adventure.tiles[fromField.tileInstanceId];
-    const def = tile ? coreTileDefinitions[tile.tileDefId] : undefined;
+    const def = tile ? allTileDefinitions[tile.tileDefId] : undefined;
     if (def && hasInternalBorder(def, fromField.slot, toField.slot)) {
       return false;
     }
@@ -323,7 +326,7 @@ function isOuterEdgeSealed(adventure: AdventureState, field: MapFieldState): boo
   }
 
   const tile = adventure.tiles[field.tileInstanceId];
-  const def = tile ? coreTileDefinitions[tile.tileDefId] : undefined;
+  const def = tile ? allTileDefinitions[tile.tileDefId] : undefined;
   if (!tile || !def) {
     return false;
   }
@@ -385,8 +388,9 @@ export function classifyHeroStep(state: GameState, hero: HeroState, spaceId: Map
     if (occupant.controllerId === playerId) {
       return "pass-only";
     }
-    // Heroes inside a Sanctuary cannot be attacked.
-    return location?.passive?.protectsFromAttack ? "block" : "stop";
+    // Heroes inside a Sanctuary cannot be attacked; the rulebook lets
+    // friendly heroes move through them but never stop there.
+    return location?.passive?.protectsFromAttack ? "pass-only" : "stop";
   }
 
   if (isFieldGuarded(field) && field.flagOwnerId !== playerId) {
@@ -403,7 +407,8 @@ export function classifyHeroStep(state: GameState, hero: HeroState, spaceId: Map
     return "stop";
   }
   if (location.category === "flaggable") {
-    return field.flagOwnerId === playerId ? "open" : "stop";
+    const mine = field.flagOwnerId === playerId || Boolean(field.extraFlagOwnerIds?.includes(playerId));
+    return mine ? "open" : "stop";
   }
 
   return "stop";
@@ -733,6 +738,30 @@ function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
       return [{ type: "SCHOLAR" }];
     case "TRADING_POST":
       return [{ type: "TRADING_POST" }];
+    case "ATTACK_DIE_TABLE":
+      return [
+        {
+          type: "ATTACK_DIE_TABLE",
+          plus: interactionToSteps(interaction.plus),
+          zero: interactionToSteps(interaction.zero),
+          minus: interactionToSteps(interaction.minus)
+        }
+      ];
+    case "REMOVE_HAND_CARD":
+      return [
+        {
+          type: "REMOVE_HAND_CARD",
+          prompt: interaction.prompt,
+          filter: interaction.filter,
+          then: interaction.then
+        }
+      ];
+    case "SEARCH_DISCARD":
+      return [{ type: "SEARCH_DISCARD", deckId: interaction.deckId, count: interaction.count }];
+    case "HILL_FORT":
+      return [{ type: "HILL_FORT" }];
+    case "SUBTERRANEAN_GATE":
+      return [{ type: "SUBTERRANEAN_GATE" }];
   }
 }
 
@@ -853,11 +882,18 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
 
   if (location.category === "flaggable" && location.id !== "settlement") {
     // Obelisks and similar: multiple players may flag; keep enemy cubes.
-    if (!field.everFlagged || field.flagOwnerId !== playerId) {
-      field.everFlagged = true;
-      if (!field.flagOwnerId) {
-        flagField(state, playerId, field);
-      }
+    field.everFlagged = true;
+    if (!field.flagOwnerId) {
+      flagField(state, playerId, field);
+    } else if (field.flagOwnerId !== playerId && !field.extraFlagOwnerIds?.includes(playerId)) {
+      field.extraFlagOwnerIds = [...(field.extraFlagOwnerIds ?? []), playerId];
+      appendEvent(state, {
+        type: "FIELD_FLAGGED",
+        playerId,
+        fieldId: field.spaceId,
+        location: field.location,
+        previousOwnerId: null
+      });
     }
     return;
   }
@@ -899,7 +935,10 @@ function stepNeedsInput(step: VisitStep): boolean {
     step.type === "WITCH_HUT" ||
     step.type === "TRADING_POST" ||
     step.type === "DISCOVER_ADJACENT_TILE" ||
-    step.type === "MAGIC_SPRING"
+    step.type === "MAGIC_SPRING" ||
+    step.type === "REMOVE_HAND_CARD" ||
+    step.type === "SEARCH_DISCARD" ||
+    step.type === "HILL_FORT"
   );
 }
 
@@ -998,6 +1037,23 @@ export function processPendingVisit(state: GameState): void {
       case "SCHOLAR":
         rollScholar(state, visit);
         break;
+      case "ATTACK_DIE_TABLE": {
+        // Sea Chest / Jetsam: one Attack die decides which branch resolves.
+        const random = adventureRandom(state, "attack-die-field");
+        const faces = [-1, -1, 0, 0, 1, 1];
+        const roll = faces[random.nextInt(0, faces.length - 1)];
+        appendEvent(state, {
+          type: "ADVENTURE_DICE_ROLLED",
+          playerId: visit.playerId,
+          dice: "treasure",
+          results: [`Attack die: ${roll >= 0 ? "+" : ""}${roll}`]
+        });
+        visit.steps.unshift(...(roll > 0 ? step.plus : roll === 0 ? step.zero : step.minus));
+        break;
+      }
+      case "SUBTERRANEAN_GATE":
+        resolveSubterraneanGate(state, visit);
+        break;
       default:
         break;
     }
@@ -1015,6 +1071,55 @@ export function processPendingVisit(state: GameState): void {
 function fieldName(state: GameState, fieldId: MapSpaceId): string {
   const field = state.adventure?.fields[fieldId];
   return field ? (locationDefinitions[field.location]?.name ?? field.location) : fieldId;
+}
+
+/**
+ * Subterranean Gate: the hero moves to the gate on the adjacent tile (tile
+ * centers at hex distance 3 - the two flowers touch). No gate there means
+ * nothing happens.
+ */
+function resolveSubterraneanGate(state: GameState, visit: PendingVisit): void {
+  const adventure = state.adventure;
+  const hero = state.heroes[visit.heroId];
+  const field = adventure?.fields[visit.fieldId];
+  if (!adventure || !hero || !field) {
+    return;
+  }
+
+  const homeTile = adventure.tiles[field.tileInstanceId];
+  if (!homeTile) {
+    return;
+  }
+
+  const target = Object.values(adventure.fields).find((candidate) => {
+    if (candidate.location !== "subterranean_gate" || candidate.spaceId === field.spaceId) {
+      return false;
+    }
+    const tile = adventure.tiles[candidate.tileInstanceId];
+    return (
+      Boolean(tile) &&
+      !tile!.faceDown &&
+      hexDistance(
+        { row: homeTile.centerRow, col: homeTile.centerCol },
+        { row: tile!.centerRow, col: tile!.centerCol }
+      ) === 3
+    );
+  });
+
+  if (!target || heroAtSpace(state, target.spaceId, hero.id)) {
+    return;
+  }
+
+  const from = hero.spaceId ?? visit.fieldId;
+  hero.spaceId = target.spaceId;
+  appendEvent(state, {
+    type: "HERO_MOVED",
+    playerId: visit.playerId,
+    heroId: hero.id,
+    from,
+    to: target.spaceId,
+    movementLeft: hero.movementPoints
+  });
 }
 
 /**
@@ -1231,7 +1336,18 @@ function rollScholar(state: GameState, visit: PendingVisit): void {
         { label: "Gain an Attack card", steps: [] },
         { label: "Gain a Defense card", steps: [] },
         { label: "Gain a Power card", steps: [] },
-        { label: "Gain a Knowledge card", steps: [] }
+        { label: "Gain a Knowledge card", steps: [] },
+        {
+          label: "Remove a Statistic card from your hand",
+          steps: [
+            {
+              type: "REMOVE_HAND_CARD",
+              prompt: "Scholar: remove a Statistic card",
+              filter: "statistic",
+              then: "none"
+            }
+          ]
+        }
       ]
     });
     return;

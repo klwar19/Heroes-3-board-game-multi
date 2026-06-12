@@ -16,6 +16,12 @@ export default function CreditsPage() {
         <p>
           The combat board terrain texture is original generated project art created for this prototype.
         </p>
+        <p>
+          The adventure-map tile images under <code>/assets/board/tiles</code> are rescaled from a
+          community-made high-resolution remake of the printed map tiles (shared via the game&apos;s
+          Tabletop Simulator community). Tile contents, guard difficulties and field effects were
+          cross-checked against the fan wiki tile pages and the community rulebook before integration.
+        </p>
       </section>
 
       <section className="panel creditsPanel">
@@ -26,6 +32,12 @@ export default function CreditsPage() {
           </li>
           <li>
             <a href="https://en.homm3bg.wiki/">Heroes 3 Board Game fan wiki/database</a>
+          </li>
+          <li>
+            <a href="https://en.homm3bg.wiki/tiles/">Wiki tiles reference (all map tiles and fields)</a>
+          </li>
+          <li>
+            <a href="https://github.com/qwrtln/Homm3BG-build-artifacts">Community rulebook rewrite (map locations appendix)</a>
           </li>
           <li>
             <a href="https://en.homm3bg.wiki/units/">Wiki units reference</a>

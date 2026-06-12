@@ -216,7 +216,24 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "witch_hut",
     name: "Witch Hut",
     category: "visitable",
-    interaction: { type: "WITCH_HUT" },
+    // Rulebook: "Choose one: Remove an Ability card from your hand OR look
+    // at the top card of the Ability Deck and put that card into your hand
+    // or into the Ability Deck Discard Pile."
+    interaction: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Remove an Ability card from your hand",
+          interaction: {
+            type: "REMOVE_HAND_CARD",
+            prompt: "Witch Hut: remove an Ability card",
+            filter: "ability",
+            then: "none"
+          }
+        },
+        { label: "Look at the top Ability card", interaction: { type: "WITCH_HUT" } }
+      ]
+    },
     implementationStatus: "implemented",
     source: source("witch_hut")
   },
@@ -329,6 +346,308 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     },
     implementationStatus: "not-implemented",
     source: source("star_axis")
+  },
+
+  // --- Cove expansion: sea fields -----------------------------------------
+  // Effects from the community rulebook's Map Locations appendix and the fan
+  // wiki field pages. Sea tiles only enter play through scenarios that
+  // enable the Cove / stretch-goal content sets.
+  flotsam: {
+    id: "flotsam",
+    name: "Flotsam",
+    category: "visitable",
+    interaction: { type: "GAIN_RESOURCES", buildingMaterials: 2 },
+    implementationStatus: "implemented",
+    source: source("flotsam")
+  },
+  jetsam: {
+    id: "jetsam",
+    name: "Jetsam",
+    category: "visitable",
+    // +1: roll and resolve 2 Resource dice; 0: one die; -1: nothing.
+    interaction: {
+      type: "ATTACK_DIE_TABLE",
+      plus: {
+        type: "SEQUENCE",
+        interactions: [
+          { type: "ROLL_RESOURCE_DICE", count: 1 },
+          { type: "ROLL_RESOURCE_DICE", count: 1 }
+        ]
+      },
+      zero: { type: "ROLL_RESOURCE_DICE", count: 1 },
+      minus: { type: "NONE" }
+    },
+    implementationStatus: "implemented",
+    source: source("jetsam")
+  },
+  sea_barrel: {
+    id: "sea_barrel",
+    name: "Sea Barrel",
+    category: "visitable",
+    interaction: { type: "ROLL_RESOURCE_DICE", count: 1 },
+    implementationStatus: "implemented",
+    source: source("sea_barrel")
+  },
+  sea_chest: {
+    id: "sea_chest",
+    name: "Sea Chest",
+    category: "visitable",
+    // +1: Search (1) the Artifact deck; 0: gain 5 gold; -1: nothing.
+    interaction: {
+      type: "ATTACK_DIE_TABLE",
+      plus: { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 },
+      zero: { type: "GAIN_RESOURCES", gold: 5 },
+      minus: { type: "NONE" }
+    },
+    implementationStatus: "implemented",
+    source: source("sea_chest")
+  },
+  buoy: {
+    id: "buoy",
+    name: "Buoy",
+    category: "visitable",
+    interaction: { type: "GAIN_MORALE", amount: 1 },
+    implementationStatus: "implemented",
+    source: source("buoy")
+  },
+  mermaid: {
+    id: "mermaid",
+    name: "Mermaid",
+    category: "visitable",
+    interaction: {
+      type: "SEQUENCE",
+      interactions: [
+        { type: "GAIN_MORALE", amount: 1 },
+        { type: "GAIN_MOVEMENT", amount: 1 }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: source("mermaid")
+  },
+  shipwreck: {
+    id: "shipwreck",
+    name: "Shipwreck",
+    category: "visitable",
+    interaction: {
+      type: "SEQUENCE",
+      interactions: [
+        { type: "ROLL_RESOURCE_DICE", count: 1 },
+        { type: "ROLL_RESOURCE_DICE", count: 1 }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: source("shipwreck")
+  },
+  shipwreck_survivor: {
+    id: "shipwreck_survivor",
+    name: "Shipwreck Survivor",
+    category: "visitable",
+    interaction: { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 2 },
+    implementationStatus: "implemented",
+    source: source("shipwreck_survivor")
+  },
+  derelict_ship: {
+    id: "derelict_ship",
+    name: "Derelict Ship",
+    category: "visitable",
+    // "You may Search (2) the Artifact deck. If you do so, you also gain 2 gold."
+    interaction: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Search (2) the Artifact deck and gain 2 gold",
+          interaction: {
+            type: "SEQUENCE",
+            interactions: [
+              { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 2 },
+              { type: "GAIN_RESOURCES", gold: 2 }
+            ]
+          }
+        },
+        { label: "Decline", interaction: { type: "NONE" } }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: source("derelict_ship")
+  },
+  temple_of_the_sea: {
+    id: "temple_of_the_sea",
+    name: "Temple of the Sea",
+    category: "visitable",
+    interaction: {
+      type: "SEQUENCE",
+      interactions: [
+        { type: "GAIN_RESOURCES", gold: 10 },
+        { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 2, times: 2 }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: source("temple_of_the_sea")
+  },
+  grave: {
+    id: "grave",
+    name: "Grave",
+    category: "visitable",
+    // Rulebook: negative morale, 3 gold and Search (1) Artifacts (the wiki
+    // page says Search (2); the rulebook appendix wins).
+    interaction: {
+      type: "SEQUENCE",
+      interactions: [
+        { type: "GAIN_MORALE", amount: -1 },
+        { type: "GAIN_RESOURCES", gold: 3 },
+        { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: source("grave")
+  },
+
+  // --- Tower expansion ------------------------------------------------------
+  university: {
+    id: "university",
+    name: "University",
+    category: "visitable",
+    interaction: {
+      type: "PAY_TO",
+      costOptions: [{ gold: 6 }],
+      interaction: { type: "SEARCH_DISCARD", deckId: "abilities", count: 4 }
+    },
+    implementationStatus: "implemented",
+    source: source("university")
+  },
+  market_of_time: {
+    id: "market_of_time",
+    name: "Market of Time",
+    category: "visitable",
+    interaction: {
+      type: "REMOVE_HAND_CARD",
+      prompt: "Market of Time: remove a card, then search a deck",
+      filter: "removable",
+      then: "choose-deck-search"
+    },
+    implementationStatus: "implemented",
+    source: source("market_of_time")
+  },
+  hill_fort: {
+    id: "hill_fort",
+    name: "Hill Fort",
+    category: "visitable",
+    interaction: { type: "HILL_FORT" },
+    implementationStatus: "implemented",
+    source: source("hill_fort")
+  },
+  library_of_enlightenment: {
+    id: "library_of_enlightenment",
+    name: "Library of Enlightenment",
+    category: "revisitable",
+    interaction: {
+      type: "NOT_IMPLEMENTED",
+      note: "Pay 3 valuables to swap a Statistic card from hand or discard for any other, up to twice per visit (needs the stat-swap flow)."
+    },
+    implementationStatus: "not-implemented",
+    source: source("library_of_enlightenment")
+  },
+  black_market: {
+    id: "black_market",
+    name: "Black Market",
+    category: "revisitable",
+    interaction: {
+      type: "NOT_IMPLEMENTED",
+      note: "Browse the top 4 Artifact discards and buy one for 5/7/10 gold by rarity (needs artifact rarity data)."
+    },
+    implementationStatus: "not-implemented",
+    source: source("black_market")
+  },
+  tavern: {
+    id: "tavern",
+    name: "Tavern",
+    category: "revisitable",
+    interaction: {
+      type: "NOT_IMPLEMENTED",
+      note: "Pay 7 gold for a Secondary Hero (Secondary Heroes are not in the engine yet)."
+    },
+    implementationStatus: "not-implemented",
+    source: source("tavern")
+  },
+  prison: {
+    id: "prison",
+    name: "Prison",
+    category: "visitable",
+    interaction: {
+      type: "NOT_IMPLEMENTED",
+      note: "Gain a Secondary Hero, or 3 experience if you already have one (Secondary Heroes are not in the engine yet)."
+    },
+    implementationStatus: "not-implemented",
+    source: source("prison")
+  },
+
+  // --- Conflux expansion ----------------------------------------------------
+  faerie_ring: {
+    id: "faerie_ring",
+    name: "Faerie Ring",
+    category: "visitable",
+    interaction: {
+      type: "REMOVE_HAND_CARD",
+      prompt: "Faerie Ring: remove a card, then search its deck",
+      filter: "removable",
+      then: "search-same-deck"
+    },
+    implementationStatus: "implemented",
+    source: source("faerie_ring")
+  },
+  elemental_conflux: {
+    id: "elemental_conflux",
+    name: "Elemental Conflux",
+    category: "visitable",
+    interaction: {
+      type: "NOT_IMPLEMENTED",
+      note: "Recruit one Elemental per Dwelling from the Neutral decks (needs Dwelling tracking)."
+    },
+    implementationStatus: "not-implemented",
+    source: source("elemental_conflux")
+  },
+
+  // --- Stronghold expansion ---------------------------------------------------
+  spell_scroll: {
+    id: "spell_scroll",
+    name: "Spell Scroll",
+    category: "visitable",
+    interaction: {
+      type: "NOT_IMPLEMENTED",
+      note: "Take a Spell Scroll card and two face-down Spells (Spell Scroll cards are not in the library yet)."
+    },
+    implementationStatus: "not-implemented",
+    source: source("spell_scroll")
+  },
+  cyclops_stockpile: {
+    id: "cyclops_stockpile",
+    name: "Cyclops Stockpile",
+    category: "visitable",
+    // Reward per the rulebook: roll and resolve 4 Treasure dice. The guard
+    // override (two golden Cyclopes join the defenders) still needs a
+    // neutral-army hook; the credit notes it.
+    interaction: {
+      type: "SEQUENCE",
+      interactions: [
+        { type: "ROLL_TREASURE_DICE", count: 1 },
+        { type: "ROLL_TREASURE_DICE", count: 1 },
+        { type: "ROLL_TREASURE_DICE", count: 1 },
+        { type: "ROLL_TREASURE_DICE", count: 1 }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: {
+      ...source("cyclops_stockpile"),
+      credit: `${wikiCredit} Guard composition override (2 golden Cyclopes) not implemented yet - the guards draw normally.`
+    }
+  },
+  subterranean_gate: {
+    id: "subterranean_gate",
+    name: "Subterranean Gate",
+    category: "revisitable",
+    interaction: { type: "SUBTERRANEAN_GATE" },
+    implementationStatus: "implemented",
+    source: source("subterranean_gate")
   }
 };
 

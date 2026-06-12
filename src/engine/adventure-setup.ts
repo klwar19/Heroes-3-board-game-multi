@@ -7,7 +7,8 @@ import {
   startingTileByFaction
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { coreTileDefinitions } from "@/data/map/tile-defs";
+import { allTileDefinitions, DEFAULT_TILE_CONTENT, tilePoolIds } from "@/data/map/tiles";
+import type { TileContent } from "@/data/map/types";
 import { DEFAULT_SCENARIO_ID, scenarioDefinitions, type ScenarioDefinition } from "@/data/map/scenarios";
 import {
   addArmyUnit,
@@ -48,6 +49,8 @@ export type AdventureSetupOptions = {
   startingProduction?: { gold: number; buildingMaterials: number; valuables: number };
   startingUnitTiers?: ("bronze" | "silver" | "gold")[];
   startingBuildings?: string[];
+  /** Content sets whose tiles fill the supply pools (default: the four boxed sets). */
+  tileContent?: TileContent[];
 };
 
 /**
@@ -254,7 +257,7 @@ function makeNeutralSeatPlayer(): PlayerState {
 }
 
 function tileHasSettlement(tileDefId: string): boolean {
-  return Boolean(coreTileDefinitions[tileDefId]?.fields.some((field) => field.location === "settlement"));
+  return Boolean(allTileDefinitions[tileDefId]?.fields.some((field) => field.location === "settlement"));
 }
 
 /**
@@ -329,25 +332,14 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     }
   };
 
-  // Tile pools (face-down draws are secret until revealed).
-  const nearPool = shuffleCards(
-    Object.values(coreTileDefinitions)
-      .filter((tile) => tile.group === "near")
-      .map((tile) => tile.id),
-    `${seed}#pool#near`
-  );
-  const centerPool = shuffleCards(
-    Object.values(coreTileDefinitions)
-      .filter((tile) => tile.group === "center" && tile.id !== "C5")
-      .map((tile) => tile.id),
-    `${seed}#pool#center`
-  );
-  const farPool = shuffleCards(
-    Object.values(coreTileDefinitions)
-      .filter((tile) => tile.group === "far")
-      .map((tile) => tile.id),
-    `${seed}#pool#far`
-  );
+  // Tile pools (face-down draws are secret until revealed). Pools only mix
+  // the enabled content sets; the default keeps the original four boxed
+  // sets, so existing games are unchanged. Random Town tiles (C5 and the
+  // expansion ones) never enter pools - tilePoolIds filters them out.
+  const tileContent = options.tileContent ?? DEFAULT_TILE_CONTENT;
+  const nearPool = shuffleCards(tilePoolIds("near", tileContent), `${seed}#pool#near`);
+  const centerPool = shuffleCards(tilePoolIds("center", tileContent), `${seed}#pool#center`);
+  const farPool = shuffleCards(tilePoolIds("far", tileContent), `${seed}#pool#far`);
 
   const state: GameState = {
     id: "adventure-game",

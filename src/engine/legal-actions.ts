@@ -16,8 +16,11 @@ import {
   DEFENDER_BACKLINE,
   DEFENDER_FRONTLINE,
   getHeroMoveDestinations,
+  hillFortCost,
   isTileAdjacentToSpace,
-  isTileRotationConnected
+  isTileRotationConnected,
+  observatoryDiscoverTargets,
+  removableHandCards
 } from "./adventure-reducer";
 import {
   BATTLEFIELD_CELL_COUNT,
@@ -1471,10 +1474,13 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
   }
 
   if (step.type === "WITCH_HUT") {
+    // The rulebook reveals the top Ability card before the player decides.
+    const top = state.decks.abilities?.drawPile.at(-1);
+    const topName = top ? (cards[top]?.name ?? top) : "the top Ability card";
     actions.push(
-      { label: "Take the top Ability card", action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 } },
+      { label: `Take ${topName} into hand`, action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 } },
       {
-        label: "Discard the top Ability card",
+        label: `Put ${topName} into the discard pile`,
         action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 1 }
       },
       { label: "Skip", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } }
@@ -1503,25 +1509,76 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
         });
       }
     }
-    actions.push({ label: "Done trading", action: { type: "RESOLVE_VISIT_STEP", playerId } });
+    // Rulebook alternative: remove one card from hand to gain 1 valuables
+    // (instead of trading).
+    for (const { index, cardId } of removableHandCards(state, playerId, "any")) {
+      actions.push({
+        label: `Remove ${cards[cardId]?.name ?? cardId} → gain 1 valuables`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
+      });
+    }
+    actions.push({ label: "Done trading", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
     return;
   }
 
   if (step.type === "DISCOVER_ADJACENT_TILE") {
     const field = adventure.fields[visit.fieldId];
     const tile = field ? adventure.tiles[field.tileInstanceId] : undefined;
-    const candidates = tile
-      ? Object.values(adventure.tiles).filter(
-          (candidate) =>
-            candidate.faceDown &&
-            Math.abs(candidate.centerRow - tile.centerRow) + Math.abs(candidate.centerCol - tile.centerCol) <= 6
-        )
-      : [];
+    const candidates = tile ? observatoryDiscoverTargets(adventure, tile) : [];
     candidates.forEach((candidate, index) => {
       actions.push({
         label: `Discover the face-down tile at (${candidate.centerRow}, ${candidate.centerCol})`,
         action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
       });
+    });
+    actions.push({ label: "Skip", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
+    return;
+  }
+
+  if (step.type === "REMOVE_HAND_CARD") {
+    for (const { index, cardId } of removableHandCards(state, playerId, step.filter)) {
+      actions.push({
+        label: `Remove ${cards[cardId]?.name ?? cardId}`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
+      });
+    }
+    actions.push({ label: "Skip", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
+    return;
+  }
+
+  if (step.type === "SEARCH_DISCARD") {
+    const deck = state.decks[step.deckId];
+    const topCards = deck ? deck.discardPile.slice(-step.count).reverse() : [];
+    topCards.forEach((cardId, index) => {
+      actions.push({
+        label: `Take ${cards[cardId]?.name ?? cardId}`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
+      });
+    });
+    actions.push({ label: "Take nothing", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
+    return;
+  }
+
+  if (step.type === "HILL_FORT") {
+    const fewUnits = player.army.filter((unit) => {
+      if (unit.side !== "few" || !getUnitSide(unit.unitDefId, "pack")) {
+        return false;
+      }
+      const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
+      return tier === "bronze" || tier === "silver";
+    });
+    fewUnits.forEach((unit, index) => {
+      const packSide = getUnitSide(unit.unitDefId, "pack");
+      const cost = hillFortCost(packSide?.cost ?? {});
+      const costLabel = Object.entries(cost)
+        .map(([resource, amount]) => `${amount} ${resource}`)
+        .join(" + ") || "free";
+      if (playerHasResources(player, cost)) {
+        actions.push({
+          label: `Reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${costLabel})`,
+          action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
+        });
+      }
     });
     actions.push({ label: "Skip", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
   }

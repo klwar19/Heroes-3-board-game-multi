@@ -1,6 +1,18 @@
 import type { ResourceKind } from "@/engine/state";
 
-export type TileGroup = "starting" | "far" | "near" | "center";
+export type TileGroup = "starting" | "far" | "near" | "center" | "sea" | "subterranean";
+
+/** Which boxed product a tile ships in. Setup pools are gated by these. */
+export type TileContent =
+  | "core_game"
+  | "rampart_expansion"
+  | "fortress_expansion"
+  | "inferno_expansion"
+  | "tower_expansion"
+  | "stronghold_expansion"
+  | "conflux_expansion"
+  | "cove_expansion"
+  | "regular_stretch_goals";
 
 export type TileFieldDefinition = {
   location: string;
@@ -17,6 +29,8 @@ export type TileFieldDefinition = {
 export type TileDefinition = {
   id: string;
   group: TileGroup;
+  /** Product the tile ships in; setup pools only draw enabled content. */
+  content: TileContent;
   terrain: string;
   /** Slot order: 0 = center, 1-6 = ring NE, E, SE, SW, W, NW (unrotated). */
   fields: TileFieldDefinition[];
@@ -80,6 +94,41 @@ export type LocationInteraction =
   | { type: "WITCH_HUT" }
   | { type: "SCHOLAR" }
   | { type: "TRADING_POST" }
+  | {
+      /**
+       * Roll one Attack die and resolve the matching branch (Sea Chest,
+       * Jetsam and friends from the Cove expansion).
+       */
+      type: "ATTACK_DIE_TABLE";
+      plus: LocationInteraction;
+      zero: LocationInteraction;
+      minus: LocationInteraction;
+    }
+  | {
+      /**
+       * Remove one card from hand (out of the game), then resolve `then`.
+       * Trading Post / Witch Hut / Faerie Ring / Market of Time removals.
+       */
+      type: "REMOVE_HAND_CARD";
+      prompt: string;
+      /** Restrict which cards may be removed. */
+      filter: "any" | "ability" | "statistic" | "removable";
+      then: "none" | "gain-valuables" | "search-same-deck" | "choose-deck-search";
+    }
+  | {
+      /** University: pick one of the top cards of a shared discard pile. */
+      type: "SEARCH_DISCARD";
+      deckId: "spells" | "abilities" | "artifacts";
+      count: number;
+    }
+  | {
+      /** Hill Fort: reinforce one Few unit, cost reduced by 3 gold (min 0). */
+      type: "HILL_FORT";
+    }
+  | {
+      /** Subterranean Gate: move to the linked gate on an adjacent tile. */
+      type: "SUBTERRANEAN_GATE";
+    }
   | { type: "NOT_IMPLEMENTED"; note: string };
 
 export type LocationDefinition = {

@@ -22,6 +22,7 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
   S1: {
     id: "S1",
     group: "starting",
+    content: "core_game",
     terrain: "dirt",
     fields: [
       { location: "town", faction: "necropolis" },
@@ -35,16 +36,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, true, true, true, false, true],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/s1/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/S1.png"
+      tileImage: "/assets/board/tiles/s1.webp"
     }
   },
   S2: {
     id: "S2",
     group: "starting",
+    content: "core_game",
     terrain: "subterranean",
     fields: [
       { location: "town", faction: "dungeon" },
@@ -58,16 +60,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [true, false, true, true, true, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/s2/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/S2.png"
+      tileImage: "/assets/board/tiles/s2.webp"
     }
   },
   S3: {
     id: "S3",
     group: "starting",
+    content: "core_game",
     terrain: "grass",
     fields: [
       { location: "town", faction: "castle" },
@@ -81,16 +84,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, true, true, true, false, true],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/s3/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/S3.png"
+      tileImage: "/assets/board/tiles/s3.webp"
     }
   },
   S4: {
     id: "S4",
     group: "starting",
+    content: "rampart_expansion",
     terrain: "grass",
     fields: [
       { location: "town", faction: "rampart" },
@@ -104,16 +108,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, true, false, true, true, true],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/s4/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/S4.png"
+      tileImage: "/assets/board/tiles/s4.webp"
     }
   },
   S5: {
     id: "S5",
     group: "starting",
+    content: "fortress_expansion",
     terrain: "swamp",
     fields: [
       { location: "town", faction: "fortress" },
@@ -127,16 +132,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [true, true, true, false, true, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/s5/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/S5.png"
+      tileImage: "/assets/board/tiles/s5.webp"
     }
   },
   S6: {
     id: "S6",
     group: "starting",
+    content: "inferno_expansion",
     terrain: "dirt",
     fields: [
       { location: "town", faction: "inferno" },
@@ -150,16 +156,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, true, false, true, true, true],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/s6/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/S6.png"
+      tileImage: "/assets/board/tiles/s6.webp"
     }
   },
   F1: {
     id: "F1",
     group: "far",
+    content: "core_game",
     terrain: "dirt",
     fields: [
       { location: "empty_field" },
@@ -173,16 +180,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, true, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f1/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F1.png"
+      tileImage: "/assets/board/tiles/f1.webp"
     }
   },
   F2: {
     id: "F2",
     group: "far",
+    content: "core_game",
     terrain: "subterranean",
     fields: [
       { location: "empty_field" },
@@ -196,16 +204,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, true, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f2/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F2.png"
+      tileImage: "/assets/board/tiles/f2.webp"
     }
   },
   F3: {
     id: "F3",
     group: "far",
+    content: "core_game",
     terrain: "grass",
     fields: [
       { location: "artifact_symbol", difficulty: 2 },
@@ -219,16 +228,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, true, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f3/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F3.png"
+      tileImage: "/assets/board/tiles/f3.webp"
     }
   },
   F4: {
     id: "F4",
     group: "far",
+    content: "core_game",
     terrain: "dirt",
     fields: [
       { location: "blocked_field" },
@@ -242,16 +252,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f4/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F4.png"
+      tileImage: "/assets/board/tiles/f4.webp"
     }
   },
   F5: {
     id: "F5",
     group: "far",
+    content: "core_game",
     terrain: "subterranean",
     fields: [
       { location: "redwood_observatory" },
@@ -265,16 +276,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, true, false, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f5/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F5.png"
+      tileImage: "/assets/board/tiles/f5.webp"
     }
   },
   F6: {
     id: "F6",
     group: "far",
+    content: "core_game",
     terrain: "grass",
     fields: [
       { location: "blocked_field" },
@@ -288,16 +300,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f6/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F6.png"
+      tileImage: "/assets/board/tiles/f6.webp"
     }
   },
   F7: {
     id: "F7",
     group: "far",
+    content: "core_game",
     terrain: "dirt",
     fields: [
       { location: "shrine_of_magic_gesture" },
@@ -311,16 +324,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [true, false, false, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f7/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F7.png"
+      tileImage: "/assets/board/tiles/f7.webp"
     }
   },
   F8: {
     id: "F8",
     group: "far",
+    content: "core_game",
     terrain: "subterranean",
     fields: [
       { location: "mine", difficulty: 3, resource: "valuables", amount: 1 },
@@ -334,16 +348,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, true, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f8/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F8.png"
+      tileImage: "/assets/board/tiles/f8.webp"
     }
   },
   F9: {
     id: "F9",
     group: "far",
+    content: "core_game",
     terrain: "grass",
     fields: [
       { location: "redwood_observatory" },
@@ -357,16 +372,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, true, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f9/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F9.png"
+      tileImage: "/assets/board/tiles/f9.webp"
     }
   },
   F10: {
     id: "F10",
     group: "far",
+    content: "rampart_expansion",
     terrain: "grass",
     fields: [
       { location: "windmill", resource: "valuables", amount: 1 },
@@ -380,16 +396,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, true, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f10/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F10.png"
+      tileImage: "/assets/board/tiles/f10.webp"
     }
   },
   F11: {
     id: "F11",
     group: "far",
+    content: "rampart_expansion",
     terrain: "grass",
     fields: [
       { location: "mystical_garden", difficulty: 2 },
@@ -403,16 +420,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, true, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f11/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F11.png"
+      tileImage: "/assets/board/tiles/f11.webp"
     }
   },
   F12: {
     id: "F12",
     group: "far",
+    content: "rampart_expansion",
     terrain: "grass",
     fields: [
       { location: "war_machine_factory" },
@@ -426,16 +444,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [true, false, false, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f12/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F12.png"
+      tileImage: "/assets/board/tiles/f12.webp"
     }
   },
   F13: {
     id: "F13",
     group: "far",
+    content: "fortress_expansion",
     terrain: "swamp",
     fields: [
       { location: "scholar" },
@@ -449,16 +468,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [true, false, false, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f13/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F13.png"
+      tileImage: "/assets/board/tiles/f13.webp"
     }
   },
   F14: {
     id: "F14",
     group: "far",
+    content: "fortress_expansion",
     terrain: "swamp",
     fields: [
       { location: "blocked_field" },
@@ -472,16 +492,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f14/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F14.png"
+      tileImage: "/assets/board/tiles/f14.webp"
     }
   },
   F15: {
     id: "F15",
     group: "far",
+    content: "fortress_expansion",
     terrain: "swamp",
     fields: [
       { location: "mine", difficulty: 3, resource: "valuables", amount: 1 },
@@ -495,16 +516,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, true, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f15/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F15.png"
+      tileImage: "/assets/board/tiles/f15.webp"
     }
   },
   F16: {
     id: "F16",
     group: "far",
+    content: "inferno_expansion",
     terrain: "dirt",
     fields: [
       { location: "empty_field" },
@@ -518,16 +540,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, true, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f16/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F16.png"
+      tileImage: "/assets/board/tiles/f16.webp"
     }
   },
   F17: {
     id: "F17",
     group: "far",
+    content: "inferno_expansion",
     terrain: "dirt",
     fields: [
       { location: "star_axis" },
@@ -541,16 +564,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, true, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f17/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F17.png"
+      tileImage: "/assets/board/tiles/f17.webp"
     }
   },
   F18: {
     id: "F18",
     group: "far",
+    content: "inferno_expansion",
     terrain: "dirt",
     fields: [
       { location: "mine", difficulty: 3, resource: "valuables", amount: 1 },
@@ -564,16 +588,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [true, false, false, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f18/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/F18.png"
+      tileImage: "/assets/board/tiles/f18.webp"
     }
   },
   N1: {
     id: "N1",
     group: "near",
+    content: "core_game",
     terrain: "dirt",
     fields: [
       { location: "witch_hut", difficulty: 4 },
@@ -587,16 +612,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, false, true],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/n1/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/N1.png"
+      tileImage: "/assets/board/tiles/n1.webp"
     }
   },
   N2: {
     id: "N2",
     group: "near",
+    content: "core_game",
     terrain: "subterranean",
     fields: [
       { location: "witch_hut" },
@@ -610,16 +636,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [true, false, false, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/n2/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/N2.png"
+      tileImage: "/assets/board/tiles/n2.webp"
     }
   },
   N3: {
     id: "N3",
     group: "near",
+    content: "core_game",
     terrain: "grass",
     fields: [
       { location: "obelisk" },
@@ -633,16 +660,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [true, false, false, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/n3/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/N3.png"
+      tileImage: "/assets/board/tiles/n3.webp"
     }
   },
   N4: {
     id: "N4",
     group: "near",
+    content: "core_game",
     terrain: "dirt",
     fields: [
       { location: "obelisk" },
@@ -656,16 +684,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, true, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/n4/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/N4.png"
+      tileImage: "/assets/board/tiles/n4.webp"
     }
   },
   N5: {
     id: "N5",
     group: "near",
+    content: "core_game",
     terrain: "subterranean",
     fields: [
       { location: "obelisk" },
@@ -679,16 +708,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, true, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/n5/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/N5.png"
+      tileImage: "/assets/board/tiles/n5.webp"
     }
   },
   N6: {
     id: "N6",
     group: "near",
+    content: "core_game",
     terrain: "grass",
     fields: [
       { location: "pandoras_box", difficulty: 4 },
@@ -702,16 +732,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, true, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/n6/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/N6.png"
+      tileImage: "/assets/board/tiles/n6.webp"
     }
   },
   N7: {
     id: "N7",
     group: "near",
+    content: "rampart_expansion",
     terrain: "grass",
     fields: [
       { location: "obelisk" },
@@ -725,16 +756,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, true, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/n7/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/N7.png"
+      tileImage: "/assets/board/tiles/n7.webp"
     }
   },
   N8: {
     id: "N8",
     group: "near",
+    content: "rampart_expansion",
     terrain: "grass",
     fields: [
       { location: "treasure_symbol", difficulty: 4 },
@@ -748,16 +780,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, true, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/n8/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/N8.png"
+      tileImage: "/assets/board/tiles/n8.webp"
     }
   },
   N9: {
     id: "N9",
     group: "near",
+    content: "fortress_expansion",
     terrain: "swamp",
     fields: [
       { location: "obelisk" },
@@ -771,16 +804,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, false, true],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/n9/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/N9.png"
+      tileImage: "/assets/board/tiles/n9.webp"
     }
   },
   N10: {
     id: "N10",
     group: "near",
+    content: "fortress_expansion",
     terrain: "swamp",
     fields: [
       { location: "shrine_of_magic_gesture" },
@@ -794,16 +828,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, true, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/n10/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/N10.png"
+      tileImage: "/assets/board/tiles/n10.webp"
     }
   },
   N11: {
     id: "N11",
     group: "near",
+    content: "inferno_expansion",
     terrain: "dirt",
     fields: [
       { location: "obelisk" },
@@ -817,16 +852,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, false, true],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/n11/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/N11.png"
+      tileImage: "/assets/board/tiles/n11.webp"
     }
   },
   N12: {
     id: "N12",
     group: "near",
+    content: "inferno_expansion",
     terrain: "dirt",
     fields: [
       { location: "blocked_field" },
@@ -840,16 +876,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/n12/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/N12.png"
+      tileImage: "/assets/board/tiles/n12.webp"
     }
   },
   C1: {
     id: "C1",
     group: "center",
+    content: "core_game",
     terrain: "subterranean",
     fields: [
       { location: "dragon_utopia", difficulty: 7 },
@@ -863,16 +900,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, true, false, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/c1/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/C1.png"
+      tileImage: "/assets/board/tiles/c1.webp"
     }
   },
   C2: {
     id: "C2",
     group: "center",
+    content: "core_game",
     terrain: "subterranean",
     fields: [
       { location: "grail", difficulty: 7 },
@@ -886,16 +924,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, true, false, false, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/c2/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/C2.png"
+      tileImage: "/assets/board/tiles/c2.webp"
     }
   },
   C3: {
     id: "C3",
     group: "center",
+    content: "rampart_expansion",
     terrain: "grass",
     fields: [
       { location: "dragon_utopia", difficulty: 7 },
@@ -909,16 +948,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, true, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/c3/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/C3.png"
+      tileImage: "/assets/board/tiles/c3.webp"
     }
   },
   C4: {
     id: "C4",
     group: "center",
+    content: "fortress_expansion",
     terrain: "swamp",
     fields: [
       { location: "grail", difficulty: 7 },
@@ -932,16 +972,17 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, true, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/c4/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/C4.png"
+      tileImage: "/assets/board/tiles/c4.webp"
     }
   },
   C5: {
     id: "C5",
     group: "center",
+    content: "inferno_expansion",
     terrain: "dirt",
     fields: [
       { location: "random_town", difficulty: 7 },
@@ -955,11 +996,11 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, true, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor. Verify against physical tiles before final release.",
+      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/c5/"
     },
     assets: {
-      tileImage: "https://raw.githubusercontent.com/Zedero/HoMM3BoardgameScenarioEditor/master/map%20editor/src/assets/tiles/C5.png"
+      tileImage: "/assets/board/tiles/c5.webp"
     }
   },
 };
