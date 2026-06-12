@@ -2,6 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
+import { HERO_STAT_ICONS } from "@/data/assets/homm-assets";
 import { cardLibrary } from "@/data/cards/library";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import {
@@ -33,58 +34,9 @@ const BOARD_THEMES: Record<string, { banner: string; edge: string }> = {
 // Printed-board iconography (statistics, crowns, hand-limit cards, laurels…)
 // ---------------------------------------------------------------------------
 
-function AttackIcon() {
-  return (
-    <svg aria-hidden="true" className="hbIcon" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" strokeLinecap="round">
-        <path d="M5 3.4 L17.4 15.8" strokeWidth="2.6" />
-        <path d="M19 3.4 L6.6 15.8" strokeWidth="2.6" />
-        <path d="M14.9 18.1 L19.7 13.3 M17.4 15.8 L19.6 19.6" strokeWidth="1.7" />
-        <path d="M9.1 18.1 L4.3 13.3 M6.6 15.8 L4.4 19.6" strokeWidth="1.7" />
-      </g>
-      <circle cx="20.3" cy="20.5" fill="currentColor" r="1.4" />
-      <circle cx="3.7" cy="20.5" fill="currentColor" r="1.4" />
-    </svg>
-  );
-}
-
-function DefenseIcon() {
-  return (
-    <svg aria-hidden="true" className="hbIcon" viewBox="0 0 24 24">
-      <path
-        d="M12 2.2 C14.4 4.1 17.3 5 20.2 5.2 C20.2 11.2 17.6 17.4 12 21.8 C6.4 17.4 3.8 11.2 3.8 5.2 C6.7 5 9.6 4.1 12 2.2 Z"
-        fill="currentColor"
-      />
-      <path d="M12 3.6 V20.4 M4.6 9.4 H19.4" fill="none" stroke="var(--hb-slate)" strokeWidth="1.4" />
-    </svg>
-  );
-}
-
-function PowerIcon() {
-  return (
-    <svg aria-hidden="true" className="hbIcon" viewBox="0 0 24 24">
-      <path d="M12 7.4 l.8 1.8 1.8.8 -1.8.8 -.8 1.8 -.8-1.8 -1.8-.8 1.8-.8 Z" fill="currentColor" />
-      <path d="M5.6 2.6 l.6 1.4 1.4.6 -1.4.6 -.6 1.4 -.6-1.4 -1.4-.6 1.4-.6 Z" fill="currentColor" />
-      <path d="M18.4 2.6 l.6 1.4 1.4.6 -1.4.6 -.6 1.4 -.6-1.4 -1.4-.6 1.4-.6 Z" fill="currentColor" />
-      <path d="M11.4 1 l.6 1.3 1.3.6 -1.3.6 -.6 1.3 -.6-1.3 -1.3-.6 1.3-.6 Z" fill="currentColor" />
-      <path
-        d="M2.6 10.4 C5.6 9 8.9 9.1 12 11 C15.1 9.1 18.4 9 21.4 10.4 V20.4 C18.4 19.1 15.2 19.2 12 21 C8.8 19.2 5.6 19.1 2.6 20.4 Z"
-        fill="currentColor"
-      />
-      <path d="M12 11.4 V20.4" fill="none" stroke="var(--hb-slate)" strokeWidth="1.2" />
-    </svg>
-  );
-}
-
-function KnowledgeIcon() {
-  return (
-    <svg aria-hidden="true" className="hbIcon" viewBox="0 0 24 24">
-      <rect fill="currentColor" height="15" rx="0.8" width="4.6" x="3.4" y="6" />
-      <rect fill="currentColor" height="17" rx="0.8" width="4.6" x="9.7" y="4" />
-      <rect fill="currentColor" height="14" rx="0.8" transform="rotate(8 18.3 14)" width="4.6" x="16" y="7" />
-      <path d="M4.2 9 h3 M10.5 7 h3 M17.4 10.4 l2.9.4" fill="none" stroke="var(--hb-slate)" strokeWidth="1.1" />
-    </svg>
-  );
+/** The statistic icons are cropped from the printed board scans themselves. */
+function StatIcon({ stat }: { stat: keyof typeof HERO_STAT_ICONS }) {
+  return <img alt="" aria-hidden="true" className="hbStatIcon" src={HERO_STAT_ICONS[stat]} />;
 }
 
 function CrownIcon() {
@@ -221,10 +173,10 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
   const handLimit = effectiveHandLimit(state, playerId);
 
   const stats = [
-    { label: "Attack", value: heroDef.startingStats.attack, icon: <AttackIcon /> },
-    { label: "Defense", value: heroDef.startingStats.defense, icon: <DefenseIcon /> },
-    { label: "Power", value: heroDef.startingStats.power, icon: <PowerIcon /> },
-    { label: "Knowledge", value: heroDef.startingStats.knowledge, icon: <KnowledgeIcon /> }
+    { label: "Attack", value: heroDef.startingStats.attack, icon: <StatIcon stat="attack" /> },
+    { label: "Defense", value: heroDef.startingStats.defense, icon: <StatIcon stat="defense" /> },
+    { label: "Power", value: heroDef.startingStats.power, icon: <StatIcon stat="power" /> },
+    { label: "Knowledge", value: heroDef.startingStats.knowledge, icon: <StatIcon stat="knowledge" /> }
   ];
 
   return (

@@ -5,13 +5,36 @@ import { getScenario } from "./adventure-setup";
 import { getPlayerView } from "./player-view";
 
 describe("custom starting army", () => {
-  it("gives every player exactly the chosen few/pack cards instead of the tier default", () => {
+  it("expands tier slots into each player's own faction units, cycling repeated tiers", () => {
     const state = createAdventureGameState({
       seed: "custom-army",
       startingUnits: [
+        { tier: "bronze", side: "pack" },
+        { tier: "silver", side: "few" },
+        { tier: "silver", side: "few" },
+        { tier: "gold", side: "few" }
+      ]
+    });
+
+    // Default seats: p1 Castle, p2 Necropolis — same tier slots, own units.
+    expect(state.players.p1.army.map((unit) => `${unit.unitDefId}:${unit.side}`)).toEqual([
+      "castle.halberdiers:pack",
+      "castle.crusaders:few",
+      "castle.zealots:few",
+      "castle.champions:few"
+    ]);
+    const p2Army = state.players.p2.army;
+    expect(p2Army).toHaveLength(4);
+    expect(p2Army.every((unit) => unit.unitDefId.startsWith("necropolis."))).toBe(true);
+    expect(p2Army[0].side).toBe("pack");
+  });
+
+  it("still honors legacy exact-unit entries from old lobbies", () => {
+    const state = createAdventureGameState({
+      seed: "legacy-army",
+      startingUnits: [
         { unitDefId: "castle.griffins", side: "pack" },
-        { unitDefId: "necropolis.skeletons", side: "few" },
-        { unitDefId: "castle.griffins", side: "few" }
+        { unitDefId: "necropolis.skeletons", side: "few" }
       ]
     });
 
@@ -19,8 +42,7 @@ describe("custom starting army", () => {
       const army = state.players[playerId].army;
       expect(army.map((unit) => `${unit.unitDefId}:${unit.side}`)).toEqual([
         "castle.griffins:pack",
-        "necropolis.skeletons:few",
-        "castle.griffins:few"
+        "necropolis.skeletons:few"
       ]);
     }
   });

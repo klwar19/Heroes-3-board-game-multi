@@ -227,12 +227,31 @@ function makePlayer(config: AdventurePlayerConfig, seed: string, options: GameSe
   };
 
   if (options.startingUnits?.length) {
-    // Custom starting army: the chosen few/pack cards of any units, the same
-    // set for every player.
+    // Custom starting army by tier: every player receives the chosen tier
+    // slots (bronze lv 1–3 / silver lv 4–5 / gold lv 6–7) and sides from
+    // their own faction. Tiers with several units (the two silvers) cycle so
+    // repeated slots cover them all. Legacy exact-unit entries still apply.
+    const faction = coreFactionDefinitions[config.factionId];
+    const tierCursors: Record<string, number> = {};
     for (const choice of options.startingUnits) {
-      if (getUnitSide(choice.unitDefId, choice.side)) {
-        addArmyUnit(player, choice.unitDefId, choice.side);
-        player.startingArmy.push({ unitDefId: choice.unitDefId, side: choice.side });
+      let unitDefId = choice.unitDefId;
+      if (choice.tier) {
+        const pool = faction.units.filter((candidate) => coreUnitDefinitions[candidate]?.tier === choice.tier);
+        if (pool.length === 0) {
+          continue;
+        }
+        const cursor = tierCursors[choice.tier] ?? 0;
+        tierCursors[choice.tier] = cursor + 1;
+        unitDefId = pool[cursor % pool.length];
+      }
+      if (!unitDefId) {
+        continue;
+      }
+      // A missing printed side (no pack of that unit) falls back to the few.
+      const side = getUnitSide(unitDefId, choice.side) ? choice.side : "few";
+      if (getUnitSide(unitDefId, side)) {
+        addArmyUnit(player, unitDefId, side);
+        player.startingArmy.push({ unitDefId, side });
       }
     }
   } else {
@@ -773,18 +792,25 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       }
       const cleaned: CustomStartingUnit[] = [];
       for (const choice of next.startingUnits) {
-        if (
-          !choice ||
-          (choice.side !== "few" && choice.side !== "pack") ||
-          !getUnitSide(choice.unitDefId, choice.side)
-        ) {
-          throw new Error("Custom starting units must be the few or pack side of a known unit.");
+        if (!choice || (choice.side !== "few" && choice.side !== "pack")) {
+          throw new Error("Custom starting units must be a few or pack side.");
         }
-        cleaned.push({ unitDefId: choice.unitDefId, side: choice.side });
+        // Tier entries (bronze = levels 1–3, silver = 4–5, gold = 6–7): each
+        // player receives their own faction's units of that tier. Legacy
+        // exact-unit entries from old lobbies fold into their unit's tier.
+        const tier =
+          choice.tier ??
+          (choice.unitDefId ? (coreUnitDefinitions[choice.unitDefId]?.tier as CustomStartingUnit["tier"]) : undefined);
+        if (tier !== "bronze" && tier !== "silver" && tier !== "gold") {
+          throw new Error("Custom starting units pick a tier: bronze (lv 1–3), silver (lv 4–5) or gold (lv 6–7).");
+        }
+        cleaned.push({ tier, side: choice.side });
       }
       lobby.options.startingUnits = cleaned;
       changes.push(
-        `custom starting army (${cleaned.length} unit card${cleaned.length === 1 ? "" : "s"})`
+        `custom starting army (${cleaned
+          .map((choice) => `${choice.tier} ${choice.side}`)
+          .join(", ")})`
       );
     }
   }

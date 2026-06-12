@@ -50,9 +50,10 @@ import {
   getActiveAttackBonus,
   getActiveDefenseBonus,
   getAttackRerollEffects,
-  makeActiveEffect
+  makeActiveEffect,
+  releaseEndedOngoingCards
 } from "./active-effects";
-import { appendEvent } from "./events";
+import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
 import { getEffectAmount, getEffectiveCardEffect, getSpellDamageAmount } from "./effects";
 import {
@@ -67,7 +68,8 @@ import {
   getLegalReactionsForTrigger,
   getNextUnitToActivate,
   isAdjacent,
-  isUnitAlive
+  isUnitAlive,
+  rerollSourceAvailableFor
 } from "./legal-actions";
 import {
   getDoubleAttackAbility,
@@ -118,10 +120,12 @@ function cloneState(state: GameState): GameState {
   return JSON.parse(JSON.stringify(state)) as GameState;
 }
 
-function ok(state: GameState, startEventCount: number): EngineResult {
+function ok(state: GameState, startEventNumber: number): EngineResult {
+  // The log is a capped rolling window, so "new since the action started" is
+  // decided by the monotonic event number, not by array position.
   return {
     state,
-    events: state.eventLog.slice(startEventCount),
+    events: state.eventLog.filter((event) => Number(event.id.slice(4)) > startEventNumber),
     errors: []
   };
 }
@@ -942,7 +946,8 @@ function buildRerollSources(
   const abilitySources: AttackRerollSource[] = getUnitAttackRerollSources(attacker).map((source) => ({
     name: source.name,
     remaining: source.rerolls,
-    used: 0
+    used: 0,
+    ...(source.onlyOnRoll !== undefined ? { onlyOnRoll: source.onlyOnRoll } : {})
   }));
 
   const orderedEffects = [...rerollEffects].sort(
@@ -967,6 +972,17 @@ function buildRerollSources(
   ].filter((source) => source.remaining > 0);
 }
 
+/** Rerolls left to offer, given the roll currently showing. */
+function countAvailableRerolls(sources: AttackRerollSource[], currentRoll: number): number {
+  return sources.reduce((total, source) => {
+    if (!rerollSourceAvailableFor(source, currentRoll)) {
+      return total;
+    }
+    // Face-gated sources never deplete — count them as one offer each.
+    return total + (source.onlyOnRoll !== undefined ? 1 : source.remaining);
+  }, 0);
+}
+
 function openAttackRerollChoice(
   state: GameState,
   stackItem: ResolutionStackItem,
@@ -974,8 +990,8 @@ function openAttackRerollChoice(
   candidate: AttackRollCandidate,
   rerollSources: AttackRerollSource[]
 ): void {
-  const choiceId = `choice_${state.eventLog.length + 1}`;
-  const remainingRerolls = rerollSources.reduce((total, source) => total + source.remaining, 0);
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  const remainingRerolls = countAvailableRerolls(rerollSources, candidate.roll);
   const sourceEffectIds = rerollSources.flatMap((source) => (source.effectId ? [source.effectId] : []));
 
   state.pendingChoice = {
@@ -1434,7 +1450,7 @@ function openFlatDamageFollowUps(
       continue;
     }
 
-    const choiceId = `choice_${state.eventLog.length + 1}`;
+    const choiceId = `choice_${nextEventNumber(state)}`;
     state.pendingChoice = {
       id: choiceId,
       type: "ABILITY_TARGET_CHOICE",
@@ -1529,7 +1545,7 @@ function openSecondAttackFollowUp(
     return true;
   }
 
-  const choiceId = `choice_${state.eventLog.length + 1}`;
+  const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
     id: choiceId,
     type: "ABILITY_TARGET_CHOICE",
@@ -1784,12 +1800,63 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   }).filter((effect) => !effect.usedChoiceIds.includes(stackItem.id));
   const rerollSources = buildRerollSources(state, details.attacker, rerollEffects);
 
-  if (rerollSources.length > 0) {
+  // Only pause when a source can actually fire on this roll — the Crusaders'
+  // 'every "0"' reroll never interrupts a +1.
+  if (rerollSources.some((source) => rerollSourceAvailableFor(source, candidate.roll))) {
     openAttackRerollChoice(state, stackItem, details, candidate, rerollSources);
     return;
   }
 
   finishResolvedAttack(state, stackItem, details, candidate, cards);
+}
+
+/**
+ * Where the resolved spell card physically ends up. Ongoing spells (anything
+ * that left lasting effects on the table) are held in play until those
+ * effects end; instants follow the deferred Knowledge/Mysticism recall or the
+ * Crazy Wizard astrologers card, and otherwise simply stay in the discard.
+ */
+function finalizeSpellCardDestination(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  effectCountBeforeCast: number
+): void {
+  if (stackItem.action.type !== "CAST_SPELL") {
+    return;
+  }
+
+  const playerId = stackItem.action.playerId;
+  const cardId = stackItem.action.cardId;
+  const recall = stackItem.modifiers.recallSpell;
+
+  const held = holdOngoingCardIfEffectCreated(
+    state,
+    playerId,
+    cardId,
+    effectCountBeforeCast,
+    recall?.toHand ? "hand" : "discard"
+  );
+
+  if (!held) {
+    if (recall?.toHand) {
+      returnSpellFromDiscardToHand(state, playerId, cardId);
+    } else {
+      maybeReturnFirstSpellToHand(state, playerId, cardId);
+    }
+  }
+
+  // Mysticism expert: the support cards played with the spell come back at
+  // once (they resolved on the spot — only the spell itself can be ongoing).
+  if (recall?.recallPlayedCards) {
+    const caster = state.players[playerId];
+    for (const playedCardId of stackItem.modifiers.playedCardIds) {
+      const playedIndex = caster.discard.lastIndexOf(playedCardId);
+      if (playedIndex !== -1) {
+        caster.discard.splice(playedIndex, 1);
+        caster.hand.push(playedCardId);
+      }
+    }
+  }
 }
 
 function resolveTopStack(state: GameState, cards: CardLibrary): void {
@@ -1804,6 +1871,9 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
 
   if (stackItem.action.type === "CAST_SPELL") {
     const card = cards[stackItem.action.cardId];
+    // Snapshot for the ongoing rule: effects created below mark this card as
+    // staying in play until they end.
+    const effectCountBeforeCast = state.activeEffects.length;
     if (card?.effect.type === "DEAL_DAMAGE" && state.combat && stackItem.action.target.type === "unit") {
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target) {
@@ -2002,7 +2072,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
           (unit) => unit.id !== target.id && isUnitAlive(unit) && isAdjacent(unit.position, target.position)
         );
         if (splashCandidates.length > 0) {
-          const choiceId = `choice_${state.eventLog.length + 1}`;
+          const choiceId = `choice_${nextEventNumber(state)}`;
           state.pendingChoice = {
             id: choiceId,
             type: "ABILITY_TARGET_CHOICE",
@@ -2037,7 +2107,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       power: getCurrentSpellPower(stackItem, cards)
     });
 
-    maybeReturnFirstSpellToHand(state, stackItem.action.playerId, stackItem.action.cardId);
+    finalizeSpellCardDestination(state, stackItem, effectCountBeforeCast);
 
     stackItem.status = "resolved";
     state.stack.pop();
@@ -2070,6 +2140,64 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
   }
   state.phase = "combat";
   state.priorityPlayerId = null;
+}
+
+/**
+ * Ongoing rule: a card whose play created lasting effects stays physically in
+ * play — it is pulled out of the discard pile into the player's held zone and
+ * only released (to the discard, or the hand when recalled) once every effect
+ * it created has ended. Returns true when the card was held.
+ */
+function holdOngoingCardIfEffectCreated(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardId,
+  effectCountBefore: number,
+  returnTo: "discard" | "hand"
+): boolean {
+  const player = state.players[playerId];
+  if (!player) {
+    return false;
+  }
+
+  const createdEffects = state.activeEffects
+    .slice(effectCountBefore)
+    .filter((effect) => effect.source.type === "card" && effect.source.cardId === cardId);
+  if (createdEffects.length === 0) {
+    return false;
+  }
+
+  const discardIndex = player.discard.lastIndexOf(cardId);
+  if (discardIndex === -1) {
+    return false;
+  }
+
+  player.discard.splice(discardIndex, 1);
+  player.ongoingCards = player.ongoingCards ?? [];
+  player.ongoingCards.push({
+    cardId,
+    effectIds: createdEffects.map((effect) => effect.id),
+    returnTo
+  });
+  return true;
+}
+
+/** Knowledge/Mysticism on an instant spell: the card comes back right away. */
+function returnSpellFromDiscardToHand(state: GameState, playerId: PlayerId, cardId: CardId): void {
+  const player = state.players[playerId];
+  const discardIndex = player?.discard.lastIndexOf(cardId) ?? -1;
+  if (!player || discardIndex === -1) {
+    return;
+  }
+
+  player.discard.splice(discardIndex, 1);
+  player.hand.push(cardId);
+  appendEvent(state, {
+    type: "SPELL_RETURNED_TO_HAND",
+    playerId,
+    cardId,
+    reason: "Knowledge/Mysticism"
+  });
 }
 
 /**
@@ -2443,7 +2571,13 @@ function applyReactionPlayCore(
       cancelledByPlayerId: playerId,
       cancelledByCardId: play.cardId
     });
-    maybeReturnFirstSpellToHand(state, stackItem.action.playerId, stackItem.action.cardId);
+    // A Knowledge/Mysticism recall declared before the cancel still takes the
+    // card back ("instead of discarding it" — no effect ever hit the table).
+    if (stackItem.modifiers.recallSpell?.toHand) {
+      returnSpellFromDiscardToHand(state, stackItem.action.playerId, stackItem.action.cardId);
+    } else {
+      maybeReturnFirstSpellToHand(state, stackItem.action.playerId, stackItem.action.cardId);
+    }
     state.stack.pop();
 
     closeReactionWindow(state, "reaction-played");
@@ -2556,7 +2690,9 @@ function applyReactionPlayCore(
   }
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
+    const effectCountBefore = state.activeEffects.length;
     createActiveEffectFromCard(state, card, playerId, mode);
+    holdOngoingCardIfEffectCreated(state, playerId, play.cardId, effectCountBefore, "discard");
     stackItem?.modifiers.playedCardIds.push(play.cardId);
   }
 
@@ -2567,31 +2703,17 @@ function applyReactionPlayCore(
 
   if (effect.type === "RECALL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
     const caster = state.players[playerId];
-    const spellCardId = stackItem.action.cardId;
-    const discardIndex = caster.discard.lastIndexOf(spellCardId);
 
-    if (discardIndex !== -1) {
-      caster.discard.splice(discardIndex, 1);
-    }
-
-    if (!caster.hand.includes(spellCardId)) {
-      caster.hand.push(spellCardId);
-    }
+    // The recall is deferred to the spell's resolution: an instant spell
+    // comes straight back, an ongoing spell (Summon/Clone-style) only after
+    // its effect ends — Knowledge cannot loop it onto the table twice.
+    stackItem.modifiers.recallSpell = {
+      toHand: true,
+      recallPlayedCards: mode === "expert" && Boolean(effect.expertRecallPlayedCards)
+    };
 
     if (mode === "expert") {
       caster.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
-
-      // Mysticism expert: every card played together with the spell comes
-      // back too (your own plays — found in your discard pile).
-      if (effect.expertRecallPlayedCards) {
-        for (const playedCardId of stackItem.modifiers.playedCardIds) {
-          const playedIndex = caster.discard.lastIndexOf(playedCardId);
-          if (playedIndex !== -1) {
-            caster.discard.splice(playedIndex, 1);
-            caster.hand.push(playedCardId);
-          }
-        }
-      }
     }
 
     stackItem.modifiers.playedCardIds.push(play.cardId);
@@ -2778,6 +2900,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     optionLabel
   });
 
+  // Ongoing rule snapshot: lasting effects created below keep the card in
+  // play until they end ("remove" plays went to `removed` and stay there).
+  const effectCountBeforePlay = state.activeEffects.length;
+  const playedToDiscard = !option?.cost?.removeSelf;
+
   const target = action.target?.type === "unit" ? action.target : undefined;
 
   if (effect.type === "HEAL_DAMAGE" && target) {
@@ -2938,14 +3065,15 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "ROLL_FOR_MORALE") {
-    const random = createSeededRandom(`${state.seed}#roll-for-morale#${state.eventLog.length}`);
+    const random = createSeededRandom(`${state.seed}#roll-for-morale#${eventSeedNumber(state)}`);
     const faces = [-1, -1, 0, 0, 1, 1];
     const roll = faces[random.nextInt(0, faces.length - 1)];
     appendEvent(state, {
       type: "ADVENTURE_DICE_ROLLED",
       playerId: action.playerId,
-      dice: "treasure",
-      results: [`${card.name} attack die: ${roll >= 0 ? "+" : ""}${roll}`]
+      dice: "attack",
+      results: [`${card.name} attack die: ${roll >= 0 ? "+" : ""}${roll}`],
+      attackRolls: [roll]
     });
     if (roll === effect.onRoll) {
       changeMorale(state, action.playerId, 1);
@@ -2996,6 +3124,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
+  if (playedToDiscard) {
+    holdOngoingCardIfEffectCreated(state, action.playerId, action.cardId, effectCountBeforePlay, "discard");
+  }
+
   if (state.phase === "combat" || state.combat) {
     state.phase = "combat";
   }
@@ -3023,7 +3155,7 @@ function discardRandomEnemyCards(state: GameState, playerId: PlayerId, count: nu
     return;
   }
 
-  const random = createSeededRandom(`${state.seed}#enemy-discard#${state.eventLog.length}`);
+  const random = createSeededRandom(`${state.seed}#enemy-discard#${eventSeedNumber(state)}`);
   for (let index = 0; index < count && enemy.hand.length > 0; index += 1) {
     const pick = random.nextInt(0, enemy.hand.length - 1);
     const [cardId] = enemy.hand.splice(pick, 1);
@@ -3071,9 +3203,9 @@ function resolveEagleEyeDig(state: GameState, playerId: PlayerId, mode: CardPlay
     return;
   }
 
-  deck.drawPile = shuffleCards(remaining, `${state.seed}#eagle-eye#${state.eventLog.length}`);
+  deck.drawPile = shuffleCards(remaining, `${state.seed}#eagle-eye#${eventSeedNumber(state)}`);
 
-  const choiceId = `choice_${state.eventLog.length + 1}`;
+  const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
     id: choiceId,
     type: "OPTION_CHOICE",
@@ -3272,16 +3404,21 @@ function rerollPendingChoice(
     throw new Error("That pending choice cannot be rerolled.");
   }
 
-  const source = choice.rerollSources.find((candidate) => candidate.remaining > 0);
-  if (choice.remainingRerolls <= 0 || !source) {
+  const currentRoll = choice.candidates.at(-1)?.roll ?? 0;
+  const source = choice.rerollSources.find((candidate) => rerollSourceAvailableFor(candidate, currentRoll));
+  if (!source) {
     throw new Error("No rerolls remain for that choice.");
   }
 
   const candidate = rollAttackCandidate(combat, choice.rollMode);
   choice.candidates.push(candidate);
-  choice.remainingRerolls -= 1;
-  source.remaining -= 1;
+  // Face-gated sources (Crusaders' 'every "0"') never deplete; everything
+  // else spends one use.
+  if (source.onlyOnRoll === undefined) {
+    source.remaining -= 1;
+  }
   source.used += 1;
+  choice.remainingRerolls = countAvailableRerolls(choice.rerollSources, candidate.roll);
 
   // The morale token is discarded the moment its reroll is taken.
   if (source.morale && source.used === 1) {
@@ -3330,6 +3467,12 @@ function choosePendingRoll(
   const candidate = choice.candidates[action.candidateIndex];
   if (!candidate) {
     throw new Error("That roll choice is not available.");
+  }
+
+  // Rulebook rerolls: "the new result replaces the old one" — once rerolled,
+  // earlier rolls are gone for good.
+  if (action.candidateIndex !== choice.candidates.length - 1) {
+    throw new Error("A reroll replaces the previous result — only the latest roll counts.");
   }
 
   const stackItem = state.stack.find((item) => item.id === choice.stackItemId);
@@ -3843,7 +3986,7 @@ function searchDeck(state: GameState, action: Extract<GameAction, { type: "SEARC
     throw new Error("That deck has no cards left to search.");
   }
 
-  const choiceId = `choice_${state.eventLog.length + 1}`;
+  const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
     id: choiceId,
     type: "DECK_SEARCH",
@@ -3904,7 +4047,7 @@ function resolveDeckSearch(
     if (fetchedCardId) {
       player.hand.push(fetchedCardId);
     }
-    deck.drawPile = shuffleCards(deck.drawPile, `${state.seed}#school-fetch#${state.eventLog.length}`);
+    deck.drawPile = shuffleCards(deck.drawPile, `${state.seed}#school-fetch#${eventSeedNumber(state)}`);
     discardedCardIds = [];
   } else if (action.pick.kind === "discard-top") {
     if (!choice.canTakeDiscardTop) {
@@ -4026,7 +4169,7 @@ function executeNeutralActivation(
     // Rulebook AI: "If there is ever a tie between equally valid targets,
     // the player chooses which unit is attacked."
     const chooser = combat.attackerPlayerId;
-    const choiceId = `choice_${state.eventLog.length + 1}`;
+    const choiceId = `choice_${nextEventNumber(state)}`;
     state.pendingChoice = {
       id: choiceId,
       type: "ABILITY_TARGET_CHOICE",
@@ -4239,7 +4382,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   }
 
   const nextState = cloneState(state);
-  const startEventCount = nextState.eventLog.length;
+  const startEventNumber = eventSeedNumber(nextState);
 
   try {
     switch (action.type) {
@@ -4419,7 +4562,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
     });
   }
 
-  return ok(nextState, startEventCount);
+  // Ongoing cards whose every effect has ended (expired, consumed, dispelled
+  // — whatever this action did) finally reach their discard pile or hand.
+  releaseEndedOngoingCards(nextState);
+
+  return ok(nextState, startEventNumber);
 }
 
 export function findEvent<T extends GameEvent["type"]>(

@@ -4330,6 +4330,8 @@ button.hbSlot:disabled { cursor: default; }
 
 .trayTile.permanentTile {
   border-color: #ffd766;
+}
+
 /* ---- Game mode toggle + ruleset notes (Legacy / BINH) ------------------- */
 .optionHint {
   display: block;
@@ -4748,4 +4750,400 @@ button.hbSlot:disabled { cursor: default; }
 .designerRemove:hover {
   border-color: #d05050;
   color: #e08585;
+}
+
+/* ---------------------------------------------------------------------------
+   HUD resource chips: smaller icons, the income spelled out per resource
+--------------------------------------------------------------------------- */
+
+.resourceChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px 2px 5px;
+  border: 1px solid rgba(170, 130, 70, 0.35);
+  border-radius: 999px;
+  background: rgba(20, 16, 10, 0.75);
+}
+
+.resourceChip .resourceIcon {
+  width: 15px;
+  height: 12px;
+}
+
+.resourceChip b {
+  font-size: 13px;
+  color: #f4e3bd;
+}
+
+.resourceChip .incomeTag {
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(78, 119, 60, 0.45);
+  border: 1px solid rgba(132, 188, 105, 0.45);
+  color: #bfe3a6;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.advHudCell.resources .incomeNote {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #8f7c5d;
+}
+
+/* ---------------------------------------------------------------------------
+   Hero board: statistic icons cropped from the printed board scans
+--------------------------------------------------------------------------- */
+
+.hbStatIcon {
+  width: 5.4cqw;
+  height: 4.4cqw;
+  flex: none;
+  object-fit: contain;
+  border-radius: 0.6cqw;
+  filter: drop-shadow(0 0.2cqw 0.4cqw rgba(0, 0, 0, 0.6));
+}
+
+/* ---------------------------------------------------------------------------
+   Unit deck rows: small icons of the units
+--------------------------------------------------------------------------- */
+
+.armyUnitThumb {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 6px;
+  border: 1px solid rgba(170, 130, 70, 0.45);
+  object-fit: cover;
+  /* Unit cards print the creature art center-right; aim the crop there. */
+  object-position: 62% 30%;
+  background: #1a140c;
+}
+
+.armyUnitThumb.fallback {
+  display: inline-block;
+  background: linear-gradient(145deg, #3a2c18, #20160b);
+}
+
+/* ---------------------------------------------------------------------------
+   Lobby: custom starting army by tier
+--------------------------------------------------------------------------- */
+
+.customArmyAdd.tiers {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.customArmyTier {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 6px;
+  border: 1px solid rgba(170, 130, 70, 0.25);
+  border-radius: 7px;
+  background: rgba(24, 19, 12, 0.7);
+}
+
+.customArmyTierName {
+  min-width: 150px;
+  font-size: 12px;
+  color: #f0dcb8;
+}
+
+.customArmyTierName small {
+  color: #b89f78;
+}
+
+/* ---------------------------------------------------------------------------
+   Map lock hint: why click-to-move is off right now
+--------------------------------------------------------------------------- */
+
+.mapLockHint {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 80%;
+  padding: 4px 12px;
+  border: 1px solid rgba(170, 130, 70, 0.5);
+  border-radius: 999px;
+  background: rgba(20, 16, 10, 0.92);
+  color: #e7cf9f;
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* ---------------------------------------------------------------------------
+   Initiative rail: the sorted unit cards themselves
+--------------------------------------------------------------------------- */
+
+.initLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.initHint {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.initCard {
+  position: relative;
+  width: 38px;
+  height: 53px;
+  padding: 0;
+  border: 1px solid rgb(243 239 228 / 22%);
+  border-radius: 6px;
+  background: rgb(13 15 16 / 60%);
+  overflow: hidden;
+  cursor: zoom-in;
+  flex: none;
+}
+
+.initCard img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 18%;
+  display: block;
+}
+
+.initCardFallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-size: 8px;
+  color: var(--text);
+  text-align: center;
+}
+
+.initCard .initBadge {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: var(--ink);
+  font-size: 9px;
+  font-weight: 800;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 60%);
+}
+
+.initCard.p1 {
+  box-shadow: inset 0 0 0 2px rgb(85 127 153 / 80%);
+}
+
+.initCard.p2 {
+  box-shadow: inset 0 0 0 2px rgb(166 83 72 / 80%);
+}
+
+.initCard.neutrals {
+  box-shadow: inset 0 0 0 2px rgb(140 140 140 / 60%);
+}
+
+.initCard.active {
+  border-color: var(--gold);
+  box-shadow:
+    0 0 0 2px var(--gold),
+    0 0 12px rgb(240 197 92 / 50%);
+}
+
+.initCard.done {
+  opacity: 0.4;
+  filter: grayscale(0.6);
+}
+
+/* ---------------------------------------------------------------------------
+   Reroll modal: a reroll replaces the result — history stays visible
+--------------------------------------------------------------------------- */
+
+.rerollDie.rerolledAway {
+  opacity: 0.45;
+  border-style: dashed;
+}
+
+.rerollDie.rerolledAway .dieFaceBig {
+  filter: grayscale(0.7);
+}
+
+.rerolledNote {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.rerollDie.current {
+  border-color: var(--gold);
+  box-shadow: 0 0 14px rgb(240 197 92 / 25%);
+}
+
+/* ---------------------------------------------------------------------------
+   Map dice overlays: resource (parchment), treasure (yellow), attack (red)
+--------------------------------------------------------------------------- */
+
+.mapDieFace {
+  display: grid;
+  place-items: center;
+  gap: 1px;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.mapDieFace img {
+  width: 26px;
+  height: 22px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.mapDieFace b {
+  font-size: 15px;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 70%);
+}
+
+.mapDieFace small {
+  font-size: 8px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.mapFaceGlyph {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.mapDieFace.mapDieFace-resource {
+  color: #2c2014;
+  background:
+    radial-gradient(circle at 30% 25%, rgb(255 255 255 / 55%), transparent 50%),
+    linear-gradient(145deg, #efe3c4, #b9a478);
+  border-color: rgb(255 248 226 / 90%);
+  text-shadow: none;
+}
+
+.mapDieFace.mapDieFace-treasure {
+  color: #3a2a06;
+  background:
+    radial-gradient(circle at 30% 25%, rgb(255 255 255 / 50%), transparent 50%),
+    linear-gradient(145deg, #f5c93b, #b88a12);
+  border-color: rgb(255 240 190 / 95%);
+  text-shadow: none;
+}
+
+.mapDieFace.mapDieFace-attack {
+  font-size: 24px;
+}
+
+/* ---------------------------------------------------------------------------
+   Visit notice: the location pops into the player's face
+--------------------------------------------------------------------------- */
+
+.mapNoticeBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: grid;
+  place-items: center;
+  background: rgb(8 8 7 / 45%);
+  backdrop-filter: blur(1.5px);
+  cursor: pointer;
+  animation: overlayIn 160ms ease;
+}
+
+.mapNotice {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-width: 280px;
+  max-width: min(440px, 86vw);
+  padding: 18px 26px 14px;
+  border: 1px solid rgba(214, 168, 96, 0.65);
+  border-radius: 14px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(255, 222, 150, 0.16), transparent 60%),
+    linear-gradient(165deg, #2b2114, #17110a);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 60%);
+  color: #f0dcb8;
+  animation: noticePop 240ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+@keyframes noticePop {
+  from {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.mapNoticeIcon {
+  font-size: 38px;
+  line-height: 1;
+  filter: drop-shadow(0 3px 6px rgb(0 0 0 / 55%));
+}
+
+.mapNotice strong {
+  font-family: Georgia, serif;
+  font-size: 20px;
+  color: #ffe9b3;
+}
+
+.mapNotice > small {
+  color: #c5ab80;
+  font-size: 12px;
+}
+
+.mapNotice ul {
+  margin: 4px 0 0;
+  padding: 8px 12px;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  border-top: 1px solid rgba(214, 168, 96, 0.25);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+.mapNotice .mapNoticeHint {
+  margin-top: 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8f7c5d;
+}
+
+/* ---------------------------------------------------------------------------
+   Ongoing cards held in play next to the permanents
+--------------------------------------------------------------------------- */
+
+.permanentSlot.ongoing .permanentCardImage {
+  outline: 2px solid rgba(126, 178, 221, 0.55);
+  outline-offset: -2px;
+}
+
+.permanentBadge.ongoingBadge {
+  background: rgba(43, 76, 105, 0.6);
+  border-color: rgba(126, 178, 221, 0.6);
+  color: #bcdaf0;
 }

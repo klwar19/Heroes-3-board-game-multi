@@ -1031,7 +1031,7 @@ describe("rules engine prototype", () => {
     });
   });
 
-  it("stacks Crusader-style ability rerolls with Luck and always spends Luck last", () => {
+  it("stacks the Crusader 0-reroll with Luck and always spends Luck last", () => {
     const state = createInitialGameState();
     if (!state.combat) {
       throw new Error("Expected combat setup.");
@@ -1055,7 +1055,7 @@ describe("rules engine prototype", () => {
       usedCombatRoundNumbers: []
     });
     setActiveUnit(state, "p1", "unit_p1_crusaders");
-    scriptDice(state, [-1, 0, 1]);
+    scriptDice(state, [0, 1, -1]);
 
     const moved = applyOk(state, {
       type: "MOVE_UNIT",
@@ -1070,12 +1070,13 @@ describe("rules engine prototype", () => {
       defenderId: "unit_p2_vampires"
     });
 
-    // Ability + Luck stack to two optional rerolls; Luck is queued last.
+    // The die shows 0: the printed Crusader reroll and Luck both apply, the
+    // ability is queued first and Luck last.
     expect(pending.pendingChoice).toMatchObject({
       type: "ATTACK_DIE_REROLL",
       remainingRerolls: 2,
       rerollSources: [
-        { name: "Attack Reroll", remaining: 1 },
+        { name: "Attack Reroll", remaining: 1, onlyOnRoll: 0 },
         { name: "Luck", effectId: "effect_luck", remaining: 1 }
       ]
     });
@@ -1085,6 +1086,7 @@ describe("rules engine prototype", () => {
       playerId: "p1",
       choiceId: pending.pendingChoice?.id ?? ""
     });
+    // The 0 was rerolled into a +1 — the Crusader gate closes, Luck remains.
     expect(findEvent(firstReroll, "ATTACK_REROLLED")).toMatchObject({
       sourceName: "Attack Reroll",
       remainingRerolls: 1
@@ -1110,7 +1112,127 @@ describe("rules engine prototype", () => {
     expect(resolved.pendingChoice).toBeNull();
     // Luck is not consumed on use; it stays active for later attacks this turn.
     expect(resolved.activeEffects.map((effect) => effect.name)).toContain("Luck");
-    expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({ roll: 1 });
+    // The reroll replaced the result: the final -1 stands, the earlier +1 is gone.
+    expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({ roll: -1 });
+  });
+
+  it("never opens the Crusader reroll when the die shows anything but 0", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    setActiveUnit(state, "p1", "unit_p1_crusaders");
+    scriptDice(state, [1]);
+
+    const moved = applyOk(state, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_crusaders",
+      destination: 10
+    });
+    // The attack rolls +1: 'reroll every "0"' has nothing to reroll, the
+    // attack resolves straight through.
+    const first = applyOk(moved, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_crusaders",
+      defenderId: "unit_p2_vampires"
+    });
+    expect(first.pendingChoice).toBeNull();
+    expect(findEvent(first, "ATTACK_ROLLED")).toMatchObject({ roll: 1 });
+  });
+
+  it("keeps offering the Crusader reroll on new 0s and only lets the latest roll be kept", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    setActiveUnit(state, "p1", "unit_p1_crusaders");
+    scriptDice(state, [0, 0, -1]);
+
+    const moved = applyOk(state, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_crusaders",
+      destination: 10
+    });
+    const pending = applyOk(moved, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_crusaders",
+      defenderId: "unit_p2_vampires"
+    });
+    expect(pending.pendingChoice).toMatchObject({ type: "ATTACK_DIE_REROLL", remainingRerolls: 1 });
+
+    const rerolledToZero = applyOk(pending, {
+      type: "REROLL_PENDING_CHOICE",
+      playerId: "p1",
+      choiceId: pending.pendingChoice?.id ?? ""
+    });
+    // 0 again — the gate stays open for another go.
+    expect(rerolledToZero.pendingChoice).toMatchObject({ remainingRerolls: 1 });
+
+    const rerolledAgain = applyOk(rerolledToZero, {
+      type: "REROLL_PENDING_CHOICE",
+      playerId: "p1",
+      choiceId: rerolledToZero.pendingChoice?.id ?? ""
+    });
+    // -1 now shows: no more Crusader rerolls, only the latest roll may be kept.
+    expect(rerolledAgain.pendingChoice).toMatchObject({ remainingRerolls: 0 });
+    const refused = applyAction(rerolledAgain, {
+      type: "CHOOSE_PENDING_ROLL",
+      playerId: "p1",
+      choiceId: rerolledAgain.pendingChoice?.id ?? "",
+      candidateIndex: 0
+    });
+    // Rejected at the legality gate: earlier candidates are no longer offered.
+    expect(refused.errors).not.toEqual([]);
+
+    const resolved = applyOk(rerolledAgain, {
+      type: "CHOOSE_PENDING_ROLL",
+      playerId: "p1",
+      choiceId: rerolledAgain.pendingChoice?.id ?? "",
+      candidateIndex: 2
+    });
+    expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({ roll: -1 });
+  });
+
+  it("rolls two dice and resolves the higher for advantage units (neutral Crusaders)", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    // Stand in for the neutral Crusaders' printed "roll 2 Attack dice and
+    // resolve the higher outcome".
+    state.combat.units.unit_p1_griffins.abilities = ["attack-roll-advantage"];
+    setActiveUnit(state, "p1", "unit_p1_griffins");
+    scriptDice(state, [-1, 1]);
+
+    const moved = applyOk(state, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+      destination: 10
+    });
+    const resolved = applyOk(moved, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_vampires"
+    });
+
+    expect(findEvent(resolved, "UNIT_ATTACK_DECLARED")).toMatchObject({ rollMode: "advantage" });
+    expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({
+      rollMode: "advantage",
+      rolls: [-1, 1],
+      roll: 1
+    });
   });
 
   it("keeps one-shot reroll effects like Fortune when the player declines to reroll", () => {
@@ -1936,5 +2058,149 @@ describe("rules engine prototype", () => {
       to: "town_p2"
     });
     expect(jump.errors).not.toEqual([]);
+  });
+});
+
+describe("ongoing cards stay in play until their effect ends", () => {
+  it("holds an ongoing spell out of the discard pile and discards it once the effect is consumed", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = ["spell.fortune"];
+    state.players.p2.hand = [];
+    scriptDice(state, [0, 1]);
+
+    const casted = applyOk(state, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.fortune",
+      target: { type: "none" }
+    });
+
+    // Ongoing: the card sits next to the board, not in the discard pile.
+    expect(casted.activeEffects.map((effect) => effect.name)).toContain("Fortune");
+    expect(casted.players.p1.discard).toEqual([]);
+    expect(casted.players.p1.hand).toEqual([]);
+    expect(casted.players.p1.ongoingCards).toMatchObject([{ cardId: "spell.fortune", returnTo: "discard" }]);
+
+    const moved = applyOk(casted, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+      destination: 10
+    });
+    const pending = applyOk(moved, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_vampires"
+    });
+    const rerolled = applyOk(pending, {
+      type: "REROLL_PENDING_CHOICE",
+      playerId: "p1",
+      choiceId: pending.pendingChoice?.id ?? ""
+    });
+    const resolved = applyOk(rerolled, {
+      type: "CHOOSE_PENDING_ROLL",
+      playerId: "p1",
+      choiceId: rerolled.pendingChoice?.id ?? "",
+      candidateIndex: 1
+    });
+
+    // Fortune was consumed by the reroll: only now the card reaches the
+    // discard pile.
+    expect(resolved.activeEffects).toEqual([]);
+    expect(resolved.players.p1.ongoingCards).toEqual([]);
+    expect(resolved.players.p1.discard).toContain("spell.fortune");
+  });
+
+  it("returns a Knowledge-recalled ongoing spell to hand only after its effect ends", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = ["spell.fortune", "stat.knowledge"];
+    state.players.p2.hand = [];
+    scriptDice(state, [0, 1]);
+
+    const casted = applyOk(state, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.fortune",
+      target: { type: "none" }
+    });
+    const recalled = applyOk(casted, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "stat.knowledge",
+      mode: "basic"
+    });
+    const settled = passAllReactions(recalled);
+
+    // Knowledge cannot loop the ongoing spell: the card stays in play while
+    // its effect lasts, flagged to come back to the hand afterwards.
+    expect(settled.players.p1.hand).toEqual([]);
+    expect(settled.players.p1.discard).toEqual(["stat.knowledge"]);
+    expect(settled.players.p1.ongoingCards).toMatchObject([{ cardId: "spell.fortune", returnTo: "hand" }]);
+
+    const moved = applyOk(settled, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+      destination: 10
+    });
+    const pending = applyOk(moved, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_vampires"
+    });
+    const rerolled = applyOk(pending, {
+      type: "REROLL_PENDING_CHOICE",
+      playerId: "p1",
+      choiceId: pending.pendingChoice?.id ?? ""
+    });
+    const resolved = applyOk(rerolled, {
+      type: "CHOOSE_PENDING_ROLL",
+      playerId: "p1",
+      choiceId: rerolled.pendingChoice?.id ?? "",
+      candidateIndex: 1
+    });
+
+    // Effect consumed -> the recalled card finally returns to the hand.
+    expect(resolved.players.p1.ongoingCards).toEqual([]);
+    expect(resolved.players.p1.hand).toContain("spell.fortune");
+    expect(resolved.players.p1.discard).not.toContain("spell.fortune");
+    expect(
+      resolved.eventLog.some(
+        (event) => event.type === "SPELL_RETURNED_TO_HAND" && event.cardId === "spell.fortune"
+      )
+    ).toBe(true);
+  });
+
+  it("keeps the event log bounded while event ids stay unique", () => {
+    const state = createInitialGameState();
+    state.eventCounter = 1200;
+    state.eventLog = Array.from({ length: 500 }, (_, index) => ({
+      id: `evt_${700 + index}`,
+      type: "REACTION_PASSED",
+      playerId: "p1",
+      windowId: "w"
+    })) as GameState["eventLog"];
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+
+    const moved = applyOk(state, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+      destination: 10
+    });
+
+    expect(moved.eventLog.length).toBeLessThanOrEqual(500);
+    const lastEvent = moved.eventLog.at(-1);
+    expect(lastEvent?.type).toBe("UNIT_MOVED");
+    expect(Number(lastEvent?.id.slice(4))).toBeGreaterThan(1200);
   });
 });

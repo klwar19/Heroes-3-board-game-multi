@@ -61,7 +61,7 @@ const TERRAIN_COLORS: Record<string, string> = {
   water: "#2e5d8a"
 };
 
-const LOCATION_GLYPHS: Record<string, string> = {
+export const LOCATION_GLYPHS: Record<string, string> = {
   town: "🏰",
   random_town: "🏰",
   settlement: "🏠",
@@ -700,6 +700,32 @@ export function HexMapBoard({
   const rotationConnected =
     rotatingTile && iAmRotating ? legalRotations.size === 0 || legalRotations.has(previewRotation) : true;
 
+  // Spell out why click-to-move is locked right now, instead of a map that
+  // silently ignores clicks.
+  const moveLockReason = (() => {
+    if (!isSeated || readOnly || !myHero) {
+      return null;
+    }
+    if (!myTurn) {
+      return `${state.players[state.activePlayerId]?.name ?? "Another player"}'s turn — movement unlocks on yours`;
+    }
+    if (state.combat) {
+      return "A combat is open — the map unlocks when it closes";
+    }
+    if (rawAdventure?.pendingVisit) {
+      return rawAdventure.pendingVisit.playerId === viewerPlayerId
+        ? "Finish the location visit first (see its prompt)"
+        : `${state.players[rawAdventure.pendingVisit.playerId]?.name ?? "A player"} is resolving a visit`;
+    }
+    if (pendingTileChoice && pendingTileChoice.playerId !== viewerPlayerId) {
+      return `${state.players[pendingTileChoice.playerId]?.name ?? "A player"} is rotating the new tile`;
+    }
+    if (state.players[viewerPlayerId]?.needsHandRefresh) {
+      return "Over the hand limit — discard down first (bottom of the screen)";
+    }
+    return null;
+  })();
+
   return (
     <div className="hexMapWrap" aria-label="Adventure map">
       <svg
@@ -708,6 +734,10 @@ export function HexMapBoard({
           if (event.button !== 0) {
             return;
           }
+          // A fresh press always re-arms clicking: if a previous gesture was
+          // cancelled mid-drag (tab switch, touch scroll), the suppress flag
+          // must not keep eating every later click on the map.
+          suppressClickRef.current = false;
           dragRef.current = {
             pointerId: event.pointerId,
             startX: event.clientX,
@@ -747,6 +777,24 @@ export function HexMapBoard({
             }, 0);
           }
         }}
+        onPointerCancel={(event) => {
+          // Browsers cancel pointers on touch-scroll or focus loss; without
+          // this the drag state lingered and the map stopped taking clicks.
+          if (dragRef.current?.pointerId === event.pointerId) {
+            dragRef.current = null;
+            setIsDragging(false);
+            window.setTimeout(() => {
+              suppressClickRef.current = false;
+            }, 0);
+          }
+        }}
+        onLostPointerCapture={() => {
+          dragRef.current = null;
+          setIsDragging(false);
+          window.setTimeout(() => {
+            suppressClickRef.current = false;
+          }, 0);
+        }}
         onWheel={(event) => {
           const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
           setCamera((current) => ({ ...current, scale: Math.min(2.6, Math.max(0.45, current.scale * factor)) }));
@@ -758,7 +806,7 @@ export function HexMapBoard({
             <path d="M0,0 L7,3 L0,6 Z" fill="#ffd766" />
           </marker>
         </defs>
-        <g transform={`translate(${camera.x} ${camera.y}) scale(${camera.scale})`} transform-origin="center">
+        <g style={{ transformOrigin: "center" }} transform={`translate(${camera.x} ${camera.y}) scale(${camera.scale})`}>
           {artLayer}
           {cells}
           {overlays}
@@ -787,6 +835,12 @@ export function HexMapBoard({
           <ImageIcon size={13} />
         </button>
       </div>
+
+      {moveLockReason ? (
+        <div className="mapLockHint" role="status">
+          <span aria-hidden="true">🔒</span> {moveLockReason}
+        </div>
+      ) : null}
 
       {selectedTarget && myHero && !readOnly ? (
         <div className="moveConfirmBar" role="dialog" aria-label="Confirm movement">
@@ -921,27 +975,25 @@ export function AdventureHud({
         </button>
       ) : null}
       {player && player.id !== "neutrals" ? (
-        <div className="advHudCell resources">
-          <span title="Gold">
-            <img alt="Gold" className="resourceIcon" referrerPolicy="no-referrer" src={RESOURCE_ICONS.gold} />{" "}
-            {player.resources.gold}
-          </span>
-          <span title="Building materials (ore)">
-            <img
-              alt="Building materials"
-              className="resourceIcon"
-              referrerPolicy="no-referrer"
-              src={RESOURCE_ICONS.buildingMaterials}
-            />{" "}
-            {player.resources.buildingMaterials}
-          </span>
-          <span title="Valuables (crystal)">
-            <img alt="Valuables" className="resourceIcon" referrerPolicy="no-referrer" src={RESOURCE_ICONS.valuables} />{" "}
-            {player.resources.valuables}
-          </span>
-          <small title="Production each resource round">
-            +{player.production.gold}/+{player.production.buildingMaterials}/+{player.production.valuables} income
-          </small>
+        <div className="advHudCell resources" aria-label="Resources and income">
+          {(
+            [
+              { key: "gold" as const, label: "Gold" },
+              { key: "buildingMaterials" as const, label: "Building materials (ore)" },
+              { key: "valuables" as const, label: "Valuables (crystal)" }
+            ]
+          ).map((resource) => (
+            <span
+              className="resourceChip"
+              key={resource.key}
+              title={`${resource.label}: ${player.resources[resource.key]} — gain +${player.production[resource.key]} every resource round`}
+            >
+              <img alt={resource.label} className="resourceIcon" src={RESOURCE_ICONS[resource.key]} />
+              <b>{player.resources[resource.key]}</b>
+              <small className="incomeTag">+{player.production[resource.key]}</small>
+            </span>
+          ))}
+          <small className="incomeNote">income / resource round</small>
         </div>
       ) : null}
       {hero ? (
@@ -1034,6 +1086,11 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                 title={side?.abilityText ?? `Read ${def?.name ?? unit.unitDefId}`}
                 type="button"
               >
+                {side?.cardImage ? (
+                  <img alt="" aria-hidden="true" className="armyUnitThumb" loading="lazy" src={side.cardImage} />
+                ) : (
+                  <span className={`armyUnitThumb fallback tier-${def?.tier ?? "bronze"}`} />
+                )}
                 <span className={`tierDot ${def?.tier}`} />
                 <strong>
                   {unit.side === "few" ? "Few" : "Pack"} {def?.name ?? unit.unitDefId}
@@ -1939,10 +1996,17 @@ const STARTING_BUILDING_CHOICES: { id: string; label: string }[] = [
   { id: "dwelling_gold", label: "Gold Dwelling" }
 ];
 
+const CUSTOM_ARMY_TIERS: { tier: "bronze" | "silver" | "gold"; label: string; hint: string }[] = [
+  { tier: "bronze", label: "Bronze", hint: "PC unit levels 1–3" },
+  { tier: "silver", label: "Silver", hint: "PC unit levels 4–5" },
+  { tier: "gold", label: "Gold", hint: "PC unit levels 6–7" }
+];
+
 /**
- * Custom starting army: pick the few or pack side of ANY unit (all factions
- * and neutrals), repeated as often as wanted. The chosen set replaces the
- * tier-based default and every player starts with the same cards.
+ * Custom starting army by tier: each slot is a bronze (levels 1–3), silver
+ * (levels 4–5) or gold (levels 6–7) few/pack card. Every player receives
+ * units of their own faction for the chosen slots — repeated silver slots
+ * cycle through the faction's two silver units.
  */
 function CustomArmyPicker({
   startingUnits,
@@ -1951,61 +2015,44 @@ function CustomArmyPicker({
   startingUnits: CustomStartingUnit[];
   onChange: (next: CustomStartingUnit[]) => void;
 }) {
-  const allUnits = useMemo(
-    () =>
-      Object.values(coreUnitDefinitions)
-        .filter((unit) => unit.few || unit.pack)
-        .sort((left, right) =>
-          left.faction === right.faction
-            ? left.name.localeCompare(right.name)
-            : left.faction.localeCompare(right.faction)
-        ),
-    []
-  );
-  const [pickedUnitId, setPickedUnitId] = useState(allUnits[0]?.id ?? "");
-  const picked = coreUnitDefinitions[pickedUnitId];
-
-  const add = (side: "few" | "pack") => {
-    if (pickedUnitId && coreUnitDefinitions[pickedUnitId]?.[side]) {
-      onChange([...startingUnits, { unitDefId: pickedUnitId, side }]);
-    }
-  };
-
   return (
     <div className="customArmy" aria-label="Custom starting army">
-      <div className="customArmyAdd">
-        <select aria-label="Unit to add" onChange={(event) => setPickedUnitId(event.target.value)} value={pickedUnitId}>
-          {allUnits.map((unit) => (
-            <option key={unit.id} value={unit.id}>
-              {titleCase(unit.faction)} — {unit.name} ({unit.tier})
-            </option>
-          ))}
-        </select>
-        <button disabled={!picked?.few} onClick={() => add("few")} type="button">
-          <Plus size={11} /> Few
-        </button>
-        <button disabled={!picked?.pack} onClick={() => add("pack")} type="button">
-          <Plus size={11} /> Pack
-        </button>
+      <div className="customArmyAdd tiers">
+        {CUSTOM_ARMY_TIERS.map(({ tier, label, hint }) => (
+          <div className="customArmyTier" key={tier} title={`${label} units cover ${hint}`}>
+            <span className={`tierDot ${tier}`} />
+            <span className="customArmyTierName">
+              {label} <small>({hint})</small>
+            </span>
+            <button onClick={() => onChange([...startingUnits, { tier, side: "few" }])} type="button">
+              <Plus size={11} /> Few
+            </button>
+            <button onClick={() => onChange([...startingUnits, { tier, side: "pack" }])} type="button">
+              <Plus size={11} /> Pack
+            </button>
+          </div>
+        ))}
       </div>
       <div className="customArmyChips">
         {startingUnits.length === 0 ? <small>No units yet — every hero starts with an empty army.</small> : null}
-        {startingUnits.map((choice, index) => {
-          const unit = coreUnitDefinitions[choice.unitDefId];
-          return (
-            <button
-              className="customArmyChip"
-              key={`${choice.unitDefId}-${choice.side}-${index}`}
-              onClick={() => onChange(startingUnits.filter((_, candidate) => candidate !== index))}
-              title="Remove from the starting army"
-              type="button"
-            >
-              {choice.side === "pack" ? "Pack" : "Few"} {unit?.name ?? choice.unitDefId}
-              <X aria-hidden="true" size={10} />
-            </button>
-          );
-        })}
+        {startingUnits.map((choice, index) => (
+          <button
+            className="customArmyChip"
+            key={`${choice.tier ?? choice.unitDefId}-${choice.side}-${index}`}
+            onClick={() => onChange(startingUnits.filter((_, candidate) => candidate !== index))}
+            title="Remove from the starting army"
+            type="button"
+          >
+            <span className={`tierDot ${choice.tier ?? "bronze"}`} />
+            {choice.side === "pack" ? "Pack" : "Few"} {titleCase(choice.tier ?? choice.unitDefId ?? "")}
+            <X aria-hidden="true" size={10} />
+          </button>
+        ))}
       </div>
+      <small className="optionHint">
+        Each player gets their own faction&apos;s unit of the picked tier — add a tier twice to cover both of its
+        units.
+      </small>
     </div>
   );
 }
@@ -2454,7 +2501,7 @@ function GameOptionsPanel({
             aria-pressed={Boolean(options.startingUnits)}
             className={options.startingUnits ? "selected" : ""}
             onClick={() => send({ startingUnits: options.startingUnits ?? [] })}
-            title="Pick the exact starting army: few or pack of any unit"
+            title="Build the starting army from tier slots: bronze (lv 1–3), silver (lv 4–5) or gold (lv 6–7), few or pack"
             type="button"
           >
             Custom army

@@ -1280,8 +1280,12 @@ export type GameEvent =
       id: string;
       type: "ADVENTURE_DICE_ROLLED";
       playerId: PlayerId;
-      dice: "treasure" | "resource";
+      dice: "treasure" | "resource" | "attack";
       results: string[];
+      /** Structured faces so the table can animate the physical dice. */
+      resourceRolls?: { resource: ResourceKind; amount: number }[];
+      treasureRolls?: ("experience" | "artifact-search" | "resource-die" | "double-resource-die")[];
+      attackRolls?: number[];
     }
   | {
       id: string;
@@ -1463,6 +1467,12 @@ export type ResolutionStackItem = {
     ignoreAttackDie?: boolean;
     /** Precision: this shot ignores the ranged back-row penalty. */
     ignoreRangedPenalty?: boolean;
+    /**
+     * Knowledge / Mysticism was played on this cast. The recall resolves
+     * after the spell does: instants come back at once, ongoing spells only
+     * when the effect they created ends.
+     */
+    recallSpell?: { toHand: boolean; recallPlayedCards: boolean };
     playedCardIds: CardId[];
   };
 };
@@ -1580,6 +1590,14 @@ export type PlayerState = {
   };
   /** Round the Blacksmith action was last used ("once per your turn"). */
   blacksmithUsedRound?: number;
+  /**
+   * Ongoing cards held in play while their effect lasts. The card leaves the
+   * hand when played but only reaches the discard pile (or, when Knowledge /
+   * Mysticism recalled it, the hand) after every effect it created ends —
+   * so a recalled Summon/Clone-style spell cannot be recast while its first
+   * casting is still on the table.
+   */
+  ongoingCards?: { cardId: CardId; effectIds: string[]; returnTo: "discard" | "hand" }[];
 };
 
 export type CombatUnitState = {
@@ -1994,10 +2012,17 @@ export type GameSetupOptions = {
   customMap?: CustomMapTilePlan[] | null;
 };
 
-/** One designed starting-army entry: any unit's few or pack side. */
+/**
+ * One designed starting-army entry: a unit tier (bronze = PC levels 1–3,
+ * silver = levels 4–5, gold = levels 6–7) and the few or pack side. Each
+ * player receives matching units of their own faction. Old lobbies stored an
+ * exact `unitDefId`; the setup still honors those snapshots.
+ */
 export type CustomStartingUnit = {
-  unitDefId: string;
+  tier?: "bronze" | "silver" | "gold";
   side: "few" | "pack";
+  /** Legacy exact-unit entry from older saved lobbies. */
+  unitDefId?: string;
 };
 
 /**
@@ -2063,6 +2088,12 @@ export type AttackRerollSource = {
   effectId?: string;
   /** Positive morale token: spending the reroll discards the token. */
   morale?: boolean;
+  /**
+   * Printed face gate (Crusaders: 'reroll every "0"'): the source is only
+   * usable while the current roll shows this face, and using it never
+   * depletes `remaining` — every new matching face may be rerolled again.
+   */
+  onlyOnRoll?: number;
   remaining: number;
   used: number;
 };
@@ -2177,7 +2208,13 @@ export type GameState = {
   stack: ResolutionStackItem[];
   reactionWindow: ReactionWindow | null;
   activeEffects: ActiveEffectState[];
+  /**
+   * Rolling window of the most recent events (capped — see appendEvent).
+   * Ids stay unique across the whole game through `eventCounter`.
+   */
   eventLog: GameEvent[];
+  /** Monotonic event id counter; absent on snapshots from before the cap. */
+  eventCounter?: number;
   pendingChoice: PendingChoice;
   turn: TurnState;
 };

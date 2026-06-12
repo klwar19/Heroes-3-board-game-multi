@@ -7,9 +7,9 @@ import { hasInternalBorder } from "@/data/map/borders";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import type { LocationInteraction } from "@/data/map/types";
-import { expireEffectsForTurnEnd } from "./active-effects";
+import { expireEffectsForTurnEnd, releaseEndedOngoingCards } from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
-import { appendEvent } from "./events";
+import { appendEvent, eventSeedNumber } from "./events";
 import { applyUnitSideRules } from "./ruleset";
 import {
   hexDistance,
@@ -201,7 +201,7 @@ export function getUnitSide(unitDefId: string, side: "few" | "pack" | "neutral")
 }
 
 function adventureRandom(state: GameState, label: string) {
-  return createSeededRandom(`${state.seed}#adventure#${label}#${state.eventLog.length}`);
+  return createSeededRandom(`${state.seed}#adventure#${label}#${eventSeedNumber(state)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1064,8 +1064,9 @@ export function processPendingVisit(state: GameState): void {
         appendEvent(state, {
           type: "ADVENTURE_DICE_ROLLED",
           playerId: visit.playerId,
-          dice: "treasure",
-          results: [`Attack die: ${roll >= 0 ? "+" : ""}${roll}`]
+          dice: "attack",
+          results: [`Attack die: ${roll >= 0 ? "+" : ""}${roll}`],
+          attackRolls: [roll]
         });
         visit.steps.unshift(...(roll > 0 ? step.plus : roll === 0 ? step.zero : step.minus));
         break;
@@ -1104,7 +1105,7 @@ export function processPendingVisit(state: GameState): void {
           if (step.shuffleRestIntoDeck && player.discard.length > 0) {
             player.deck = shuffleCards(
               [...player.deck, ...player.discard],
-              `${state.seed}#discard-into-deck#${visit.playerId}#${state.eventLog.length}`
+              `${state.seed}#discard-into-deck#${visit.playerId}#${eventSeedNumber(state)}`
             );
             player.discard = [];
           }
@@ -1279,6 +1280,12 @@ function extraDieRerollOptions(
   return options;
 }
 
+function resourceDieLabel(roll: { resource: ResourceKind; amount: number }): string {
+  const name =
+    roll.resource === "buildingMaterials" ? "materials" : roll.resource === "valuables" ? "valuables" : "gold";
+  return `${roll.amount} ${name}`;
+}
+
 function rollResourceDice(state: GameState, visit: PendingVisit, count: number): void {
   const random = adventureRandom(state, "resource-die");
   const rolls = Array.from({ length: count }, () => RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)]);
@@ -1287,7 +1294,8 @@ function rollResourceDice(state: GameState, visit: PendingVisit, count: number):
     type: "ADVENTURE_DICE_ROLLED",
     playerId: visit.playerId,
     dice: "resource",
-    results: rolls.map((roll) => `${roll.amount} ${roll.resource}`)
+    results: rolls.map(resourceDieLabel),
+    resourceRolls: rolls.map((roll) => ({ resource: roll.resource, amount: roll.amount }))
   });
 
   const luck = getLuckRerollEffect(state, visit.playerId, "resource");
@@ -1299,7 +1307,7 @@ function rollResourceDice(state: GameState, visit: PendingVisit, count: number):
   }
 
   const options = rolls.map((roll) => ({
-    label: `${roll.amount} ${roll.resource}`,
+    label: resourceDieLabel(roll),
     steps: [{ type: "GAIN_RESOURCES", [roll.resource]: roll.amount } as VisitStep]
   }));
 
@@ -1355,7 +1363,8 @@ function rollTreasureDice(state: GameState, visit: PendingVisit, count: number):
     type: "ADVENTURE_DICE_ROLLED",
     playerId: visit.playerId,
     dice: "treasure",
-    results: rolls.map(treasureFaceLabel)
+    results: rolls.map(treasureFaceLabel),
+    treasureRolls: [...rolls]
   });
 
   const luck = getLuckRerollEffect(state, visit.playerId, "treasure");
@@ -1397,8 +1406,9 @@ function rollScholar(state: GameState, visit: PendingVisit): void {
   appendEvent(state, {
     type: "ADVENTURE_DICE_ROLLED",
     playerId: visit.playerId,
-    dice: "treasure",
-    results: [`Scholar attack die: ${roll >= 0 ? "+" : ""}${roll}`]
+    dice: "attack",
+    results: [`Scholar attack die: ${roll >= 0 ? "+" : ""}${roll}`],
+    attackRolls: [roll]
   });
 
   if (roll > 0) {
@@ -1769,6 +1779,9 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   for (const effect of expired) {
     appendEvent(state, { type: "ACTIVE_EFFECT_EXPIRED", effectId: effect.id, reason: "turn-ended" });
   }
+  // Held ongoing cards reach the discard pile (or a recalled spell the hand)
+  // before the hand refills, so the hand-limit check sees the final hand.
+  releaseEndedOngoingCards(state);
 
   const astrologers = state.adventure?.astrologers;
   if (astrologers) {
@@ -1816,7 +1829,7 @@ function popAstrologersCard(state: GameState): string | undefined {
   }
 
   if (deck.drawPile.length === 0 && deck.discardPile.length > 0) {
-    deck.drawPile = shuffleCards(deck.discardPile, `${state.seed}#astrologers-reshuffle#${state.eventLog.length}`);
+    deck.drawPile = shuffleCards(deck.discardPile, `${state.seed}#astrologers-reshuffle#${eventSeedNumber(state)}`);
     deck.discardPile = [];
   }
 
@@ -1946,7 +1959,7 @@ function reshuffleArtifactsAndSpells(state: GameState, playerId: PlayerId): void
 
   player.deck = shuffleCards(
     [...player.deck, ...moved],
-    `${state.seed}#annoying-lizard#${playerId}#${state.eventLog.length}`
+    `${state.seed}#annoying-lizard#${playerId}#${eventSeedNumber(state)}`
   );
   drawCardsForPlayer(state, playerId, moved.length);
 }

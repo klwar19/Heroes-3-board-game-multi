@@ -3,7 +3,7 @@ import { makeActiveEffect } from "./active-effects";
 import { hasResources, processPendingVisit, spendResources } from "./adventure";
 import { isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
-import { appendEvent } from "./events";
+import { appendEvent, nextEventNumber } from "./events";
 import type {
   CardDefinition,
   CardId,
@@ -426,7 +426,7 @@ function openWarMachineTargetChoice(
   candidateUnitIds: UnitId[],
   amount: number
 ): void {
-  const choiceId = `choice_${state.eventLog.length + 1}`;
+  const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
     id: choiceId,
     type: "ABILITY_TARGET_CHOICE",
@@ -454,7 +454,7 @@ function openWarMachineTargetChoice(
 }
 
 function openWarMachineOffer(state: GameState, playerId: PlayerId, prompt: string, fireLabel: string): void {
-  const choiceId = `choice_${state.eventLog.length + 1}`;
+  const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
     id: choiceId,
     type: "OPTION_CHOICE",

@@ -35,6 +35,7 @@ import { getPermanentCardIds, getPermanentSchoolBonus, warMachinesForSale } from
 import { SHARED_DECK_IDS } from "./decks";
 import { expertUsesAvailable, getRuleset, spellLimitFor, wisdomGoldDiscount, wisdomSearchCount } from "./ruleset";
 import type {
+  AttackRerollSource,
   AttackRollMode,
   ActiveEffectState,
   BuildingId,
@@ -341,7 +342,31 @@ export function getAttackRollMode(
     return "disadvantage";
   }
 
+  // Neutral Crusaders: "roll 2 Attack dice and resolve the higher outcome".
+  // Unlike a reroll this is automatic — both dice roll at once and the better
+  // one counts, no player decision involved.
+  if (hasUnitAbilityEffect(attacker, "ATTACK_ROLL_ADVANTAGE")) {
+    return "advantage";
+  }
+
   return "normal";
+}
+
+/**
+ * Whether a reroll source can fire against the current (latest) roll: it
+ * needs uses left, and face-gated sources like the Crusaders' 'every "0"'
+ * only while the die actually shows that face.
+ */
+export function rerollSourceAvailableFor(source: AttackRerollSource, currentRoll: number): boolean {
+  if (source.remaining <= 0) {
+    return false;
+  }
+
+  if (source.onlyOnRoll !== undefined && currentRoll !== source.onlyOnRoll) {
+    return false;
+  }
+
+  return true;
 }
 
 export function canUnitAttack(combat: CombatState, attacker: CombatUnitState, defender: CombatUnitState): boolean {
@@ -1415,20 +1440,28 @@ export function getLegalActions(
       return targetActions;
     }
 
-    const actions: LegalAction[] = state.pendingChoice.candidates.map((candidate, candidateIndex) => ({
-      label: `Choose attack roll ${candidate.roll >= 0 ? "+" : ""}${candidate.roll}`,
-      action: {
-        type: "CHOOSE_PENDING_ROLL",
-        playerId,
-        choiceId: state.pendingChoice?.id ?? "",
-        candidateIndex
+    // A reroll replaces the previous result (rulebook): only the latest roll
+    // can be kept, earlier candidates are history.
+    const latestIndex = state.pendingChoice.candidates.length - 1;
+    const latest = state.pendingChoice.candidates[latestIndex];
+    const actions: LegalAction[] = [
+      {
+        label: `Keep the attack roll ${latest.roll >= 0 ? "+" : ""}${latest.roll}`,
+        action: {
+          type: "CHOOSE_PENDING_ROLL",
+          playerId,
+          choiceId: state.pendingChoice?.id ?? "",
+          candidateIndex: latestIndex
+        }
       }
-    }));
+    ];
 
-    if (state.pendingChoice.remainingRerolls > 0) {
-      const nextSource = state.pendingChoice.rerollSources.find((source) => source.remaining > 0);
+    const nextSource = state.pendingChoice.rerollSources.find((source) =>
+      rerollSourceAvailableFor(source, latest.roll)
+    );
+    if (nextSource) {
       actions.push({
-        label: nextSource ? `Reroll attack die (${nextSource.name})` : "Reroll attack die",
+        label: `Reroll attack die (${nextSource.name})`,
         action: {
           type: "REROLL_PENDING_CHOICE",
           playerId,
