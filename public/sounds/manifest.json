@@ -8,6 +8,14 @@
   "adventure/chest": {
     "src": "/sounds/adventure/chest.mp3"
   },
+  "adventure/dig": {
+    "src": "/sounds/adventure/dig.mp3",
+    "note": "digging for the Grail"
+  },
+  "adventure/experience": {
+    "src": "/sounds/adventure/experience.mp3",
+    "note": "experience gained"
+  },
   "effects/acid-breath": {
     "src": "/sounds/effects/acid-breath.mp3"
   },
@@ -26,6 +34,38 @@
   "effects/climax": {
     "src": "/sounds/effects/climax.mp3",
     "note": "unused leftover in the original archive, purpose unknown"
+  },
+  "effects/danger": {
+    "src": "/sounds/effects/danger.mp3",
+    "note": "unknown/unused"
+  },
+  "effects/death-blow": {
+    "src": "/sounds/effects/death-blow.mp3",
+    "note": "Death Blow battle effect (Dread Knight ability)"
+  },
+  "effects/default": {
+    "src": "/sounds/effects/default.mp3",
+    "note": "generic fallback beep"
+  },
+  "effects/dipmagk": {
+    "src": "/sounds/effects/dipmagk.mp3",
+    "note": "unknown purpose, unreferenced in the engine"
+  },
+  "effects/dragon-hall": {
+    "src": "/sounds/effects/dragon-hall.mp3",
+    "note": "dragon dwelling ambience; unreferenced in the engine"
+  },
+  "effects/dragon-slayer": {
+    "src": "/sounds/effects/dragon-slayer.mp3",
+    "note": "unused; the Slayer spell uses SLAYER"
+  },
+  "effects/drain-life": {
+    "src": "/sounds/effects/drain-life.mp3",
+    "note": "likely Vampire Lord life drain; unreferenced in the engine"
+  },
+  "effects/drawbridge": {
+    "src": "/sounds/effects/drawbridge.mp3",
+    "note": "siege drawbridge raising/lowering"
   },
   "music/battle-00": {
     "src": "/sounds/music/battle-00.mp3",
@@ -92,6 +132,40 @@
   },
   "spells/counterstrike": {
     "src": "/sounds/spells/counterstrike.mp3"
+  },
+  "spells/cure": {
+    "src": "/sounds/spells/cure.mp3"
+  },
+  "spells/curse": {
+    "src": "/sounds/spells/curse.mp3"
+  },
+  "spells/death-cloud": {
+    "src": "/sounds/spells/death-cloud.mp3"
+  },
+  "spells/death-ripple": {
+    "src": "/sounds/spells/death-ripple.mp3"
+  },
+  "spells/death-stare": {
+    "src": "/sounds/spells/death-stare.mp3"
+  },
+  "spells/disease": {
+    "src": "/sounds/spells/disease.mp3"
+  },
+  "spells/disguise": {
+    "src": "/sounds/spells/disguise.mp3"
+  },
+  "spells/dispel": {
+    "src": "/sounds/spells/dispel.mp3"
+  },
+  "spells/disrupting-ray": {
+    "src": "/sounds/spells/disrupting-ray.mp3"
+  },
+  "spells/earthquake": {
+    "src": "/sounds/spells/earthquake.mp3"
+  },
+  "spells/implosion": {
+    "src": "/sounds/spells/implosion.mp3",
+    "note": "original file is DECAY.wav"
   },
   "spells/magic-mirror": {
     "src": "/sounds/spells/magic-mirror.mp3"
@@ -382,6 +456,22 @@
   "units/centaur-attack": {
     "src": "/sounds/units/centaur-attack.mp3"
   },
+  "units/centaur-captain-attack": {
+    "src": "/sounds/units/centaur-captain-attack.mp3"
+  },
+  "units/centaur-captain-death": {
+    "src": "/sounds/units/centaur-captain-death.mp3"
+  },
+  "units/centaur-captain-defend": {
+    "src": "/sounds/units/centaur-captain-defend.mp3"
+  },
+  "units/centaur-captain-hurt": {
+    "src": "/sounds/units/centaur-captain-hurt.mp3"
+  },
+  "units/centaur-captain-move": {
+    "src": "/sounds/units/centaur-captain-move.mp3",
+    "repeat": 2
+  },
   "units/centaur-death": {
     "src": "/sounds/units/centaur-death.mp3"
   },
@@ -472,6 +562,9 @@
   "units/crystal-dragon-defend": {
     "src": "/sounds/units/crystal-dragon-defend.mp3"
   },
+  "units/crystal-dragon-hurt": {
+    "src": "/sounds/units/crystal-dragon-hurt.mp3"
+  },
   "units/crystal-dragon-move": {
     "src": "/sounds/units/crystal-dragon-move.mp3",
     "repeat": 2
@@ -487,6 +580,25 @@
   },
   "units/cyclops-hurt": {
     "src": "/sounds/units/cyclops-hurt.mp3"
+  },
+  "units/cyclops-king-attack": {
+    "src": "/sounds/units/cyclops-king-attack.mp3"
+  },
+  "units/cyclops-king-death": {
+    "src": "/sounds/units/cyclops-king-death.mp3"
+  },
+  "units/cyclops-king-defend": {
+    "src": "/sounds/units/cyclops-king-defend.mp3"
+  },
+  "units/cyclops-king-hurt": {
+    "src": "/sounds/units/cyclops-king-hurt.mp3"
+  },
+  "units/cyclops-king-move": {
+    "src": "/sounds/units/cyclops-king-move.mp3",
+    "repeat": 2
+  },
+  "units/cyclops-king-shoot": {
+    "src": "/sounds/units/cyclops-king-shoot.mp3"
   },
   "units/cyclops-move": {
     "src": "/sounds/units/cyclops-move.mp3",
@@ -511,6 +623,41 @@
     "src": "/sounds/units/dendroid-soldier-move.mp3",
     "repeat": 2
   },
+  "units/devil-attack": {
+    "src": "/sounds/units/devil-attack.mp3"
+  },
+  "units/devil-death": {
+    "src": "/sounds/units/devil-death.mp3"
+  },
+  "units/devil-defend": {
+    "src": "/sounds/units/devil-defend.mp3"
+  },
+  "units/devil-hurt": {
+    "src": "/sounds/units/devil-hurt.mp3"
+  },
+  "units/devil-move": {
+    "src": "/sounds/units/devil-move.mp3",
+    "repeat": 2
+  },
+  "units/devil-special": {
+    "src": "/sounds/units/devil-special.mp3"
+  },
+  "units/diamond-golem-attack": {
+    "src": "/sounds/units/diamond-golem-attack.mp3"
+  },
+  "units/diamond-golem-death": {
+    "src": "/sounds/units/diamond-golem-death.mp3"
+  },
+  "units/diamond-golem-defend": {
+    "src": "/sounds/units/diamond-golem-defend.mp3"
+  },
+  "units/diamond-golem-hurt": {
+    "src": "/sounds/units/diamond-golem-hurt.mp3"
+  },
+  "units/diamond-golem-move": {
+    "src": "/sounds/units/diamond-golem-move.mp3",
+    "repeat": 2
+  },
   "units/dread-knight-attack": {
     "src": "/sounds/units/dread-knight-attack.mp3"
   },
@@ -526,6 +673,151 @@
   "units/dread-knight-move": {
     "src": "/sounds/units/dread-knight-move.mp3",
     "repeat": 2
+  },
+  "units/dwarf-attack": {
+    "src": "/sounds/units/dwarf-attack.mp3"
+  },
+  "units/dwarf-death": {
+    "src": "/sounds/units/dwarf-death.mp3"
+  },
+  "units/dwarf-defend": {
+    "src": "/sounds/units/dwarf-defend.mp3"
+  },
+  "units/dwarf-hurt": {
+    "src": "/sounds/units/dwarf-hurt.mp3"
+  },
+  "units/dwarf-move": {
+    "src": "/sounds/units/dwarf-move.mp3",
+    "repeat": 2
+  },
+  "units/earth-elemental-attack": {
+    "src": "/sounds/units/earth-elemental-attack.mp3"
+  },
+  "units/earth-elemental-death": {
+    "src": "/sounds/units/earth-elemental-death.mp3"
+  },
+  "units/earth-elemental-defend": {
+    "src": "/sounds/units/earth-elemental-defend.mp3"
+  },
+  "units/earth-elemental-hurt": {
+    "src": "/sounds/units/earth-elemental-hurt.mp3"
+  },
+  "units/earth-elemental-move": {
+    "src": "/sounds/units/earth-elemental-move.mp3",
+    "repeat": 2
+  },
+  "units/efreet-attack": {
+    "src": "/sounds/units/efreet-attack.mp3"
+  },
+  "units/efreet-death": {
+    "src": "/sounds/units/efreet-death.mp3"
+  },
+  "units/efreet-defend": {
+    "src": "/sounds/units/efreet-defend.mp3"
+  },
+  "units/efreet-hurt": {
+    "src": "/sounds/units/efreet-hurt.mp3"
+  },
+  "units/efreet-move": {
+    "src": "/sounds/units/efreet-move.mp3",
+    "repeat": 2
+  },
+  "units/efreet-sultan-attack": {
+    "src": "/sounds/units/efreet-sultan-attack.mp3"
+  },
+  "units/efreet-sultan-death": {
+    "src": "/sounds/units/efreet-sultan-death.mp3"
+  },
+  "units/efreet-sultan-defend": {
+    "src": "/sounds/units/efreet-sultan-defend.mp3"
+  },
+  "units/efreet-sultan-hurt": {
+    "src": "/sounds/units/efreet-sultan-hurt.mp3"
+  },
+  "units/efreet-sultan-move": {
+    "src": "/sounds/units/efreet-sultan-move.mp3",
+    "repeat": 2
+  },
+  "units/efreet-sultan-shoot": {
+    "src": "/sounds/units/efreet-sultan-shoot.mp3"
+  },
+  "units/enchanter-attack": {
+    "src": "/sounds/units/enchanter-attack.mp3"
+  },
+  "units/enchanter-death": {
+    "src": "/sounds/units/enchanter-death.mp3"
+  },
+  "units/enchanter-defend": {
+    "src": "/sounds/units/enchanter-defend.mp3"
+  },
+  "units/enchanter-hurt": {
+    "src": "/sounds/units/enchanter-hurt.mp3"
+  },
+  "units/enchanter-move": {
+    "src": "/sounds/units/enchanter-move.mp3",
+    "repeat": 2
+  },
+  "units/enchanter-shoot": {
+    "src": "/sounds/units/enchanter-shoot.mp3"
+  },
+  "units/energy-elemental-attack": {
+    "src": "/sounds/units/energy-elemental-attack.mp3"
+  },
+  "units/energy-elemental-death": {
+    "src": "/sounds/units/energy-elemental-death.mp3"
+  },
+  "units/energy-elemental-defend": {
+    "src": "/sounds/units/energy-elemental-defend.mp3"
+  },
+  "units/energy-elemental-hurt": {
+    "src": "/sounds/units/energy-elemental-hurt.mp3"
+  },
+  "units/energy-elemental-move": {
+    "src": "/sounds/units/energy-elemental-move.mp3",
+    "repeat": 2
+  },
+  "units/evil-eye-attack": {
+    "src": "/sounds/units/evil-eye-attack.mp3"
+  },
+  "units/evil-eye-death-alt": {
+    "src": "/sounds/units/evil-eye-death-alt.mp3",
+    "note": "second death sound (EVLIDETH); EVLIKILL is the standard one"
+  },
+  "units/evil-eye-death": {
+    "src": "/sounds/units/evil-eye-death.mp3"
+  },
+  "units/evil-eye-defend": {
+    "src": "/sounds/units/evil-eye-defend.mp3"
+  },
+  "units/evil-eye-hurt": {
+    "src": "/sounds/units/evil-eye-hurt.mp3"
+  },
+  "units/evil-eye-move": {
+    "src": "/sounds/units/evil-eye-move.mp3",
+    "repeat": 2
+  },
+  "units/evil-eye-shoot": {
+    "src": "/sounds/units/evil-eye-shoot.mp3"
+  },
+  "units/faerie-dragon-attack": {
+    "src": "/sounds/units/faerie-dragon-attack.mp3"
+  },
+  "units/faerie-dragon-death": {
+    "src": "/sounds/units/faerie-dragon-death.mp3"
+  },
+  "units/faerie-dragon-defend": {
+    "src": "/sounds/units/faerie-dragon-defend.mp3"
+  },
+  "units/faerie-dragon-move": {
+    "src": "/sounds/units/faerie-dragon-move.mp3",
+    "repeat": 2
+  },
+  "units/faerie-dragon-shoot": {
+    "src": "/sounds/units/faerie-dragon-shoot.mp3"
+  },
+  "units/faerie-dragon-special": {
+    "src": "/sounds/units/faerie-dragon-special.mp3",
+    "note": "Faerie Dragon spell-cast (FAERIE)"
   },
   "units/gorgon-attack": {
     "src": "/sounds/units/gorgon-attack.mp3"
@@ -562,6 +854,22 @@
   "units/gremlin-shoot": {
     "src": "/sounds/units/gremlin-shoot.mp3",
     "note": "used by the Master Gremlin upgrade (base gremlin is melee)"
+  },
+  "units/horned-demon-attack": {
+    "src": "/sounds/units/horned-demon-attack.mp3"
+  },
+  "units/horned-demon-death": {
+    "src": "/sounds/units/horned-demon-death.mp3"
+  },
+  "units/horned-demon-defend": {
+    "src": "/sounds/units/horned-demon-defend.mp3"
+  },
+  "units/horned-demon-hurt": {
+    "src": "/sounds/units/horned-demon-hurt.mp3"
+  },
+  "units/horned-demon-move": {
+    "src": "/sounds/units/horned-demon-move.mp3",
+    "repeat": 2
   },
   "units/lizard-warrior-attack": {
     "src": "/sounds/units/lizard-warrior-attack.mp3"
@@ -615,6 +923,22 @@
   },
   "units/mighty-gorgon-move": {
     "src": "/sounds/units/mighty-gorgon-move.mp3",
+    "repeat": 2
+  },
+  "units/serpent-fly-attack": {
+    "src": "/sounds/units/serpent-fly-attack.mp3"
+  },
+  "units/serpent-fly-death": {
+    "src": "/sounds/units/serpent-fly-death.mp3"
+  },
+  "units/serpent-fly-defend": {
+    "src": "/sounds/units/serpent-fly-defend.mp3"
+  },
+  "units/serpent-fly-hurt": {
+    "src": "/sounds/units/serpent-fly-hurt.mp3"
+  },
+  "units/serpent-fly-move": {
+    "src": "/sounds/units/serpent-fly-move.mp3",
     "repeat": 2
   },
   "units/silver-pegasus-attack": {

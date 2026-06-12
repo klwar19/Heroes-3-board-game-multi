@@ -116,6 +116,76 @@ Quest Guard / Border Guard visit sound).
 Unknown purpose: `CLIMAX` → `effects/climax` — present in the archive but
 referenced nowhere in the engine; free to repurpose.
 
+## Batch 3 (CRYS–FAER, 100 files) — converted
+
+Creatures:
+
+| Prefix | Creature | Faction | Notes |
+|---|---|---|---|
+| `CRYS` | Crystal Dragon (rest) | Neutral | the missing `WNCE` |
+| `CYCL` | Cyclops King | Stronghold | +shoot |
+| `DEVL` | Devil | Inferno | +special (`EXT2` duplicate dropped) |
+| `DFLY` | Serpent Fly | Fortress | |
+| `DGLM` | Diamond Golem | Neutral | |
+| `DHDM` | Horned Demon | Inferno | base Demon is `SHDM`, comes later |
+| `DWRF` | Dwarf | Rampart | |
+| `ECNT` | Centaur Captain | Rampart | |
+| `EELM` | Earth Elemental | Conflux | |
+| `EFRT` | Efreet | Inferno | |
+| `ENCH` | Enchanter | Neutral | +shoot |
+| `ENER` | Energy Elemental | Conflux | |
+| `ESUL` | Efreet Sultan | Inferno | +shoot |
+| `EVLI` | Evil Eye | Dungeon | +shoot, +death-alt (`EVLIDETH`) |
+| `FAER` | Faerie Dragon | Neutral | +shoot, +special (`FAERIE` = its spell-cast) |
+
+Spells: cure, curse, death-cloud, death-ripple, death-stare, disease, dispel,
+disrupting-ray, earthquake, implosion (original file `DECAY.wav`), disguise.
+
+Adventure/UI: `DIGSOUND` adventure/dig (Grail digging), `EXPERNCE`
+adventure/experience.
+
+Effects: `DEATHBLO` death-blow (Dread Knight ability), `DRAWBRG` drawbridge
+(siege), `DRAINLIF` drain-life (likely Vampire Lord; unreferenced in engine).
+
+Unknown/unused (converted, free to repurpose — see manifest notes):
+`DANGER`, `DEFAULT` (generic fallback beep), `DIPMAGK`, `DRAGON`
+(dragon-hall, dwelling ambience), `DRGNSLAY` (dragon-slayer; the Slayer spell
+uses `SLAYER`).
+
+## App unit coverage (for wiring sounds later)
+
+Sound id pattern: `units/<creature>-<action>`. App units whose sounds are
+**already converted** (18): arch_devils, archangels, azure_dragons,
+black_dragons, boars, centaurs, cerberi, champions, crusaders,
+crystal_dragons, dendroids (→ `dendroid-soldier-*`), diamond_golems,
+dread_knights, dwarves, efreet, enchanters, evil_eyes, faerie_dragons.
+
+Still pending — original archive prefix to expect in later batches:
+
+| App unit | Prefix | App unit | Prefix |
+|---|---|---|---|
+| demons | `SHDM` | mummies | `MUMY` |
+| elves / grand | `WELF` / `GELF` | nomads | `NMAD` |
+| familiars | `FMLR` | peasants | `PSNT` |
+| ghost_dragons | `GHDR` | pegasi | `PEGA` |
+| gold_dragons | `GODR` | pit_lords | `PFOE` |
+| gold_golems | `GGLM` | rogues | `ROGU` |
+| griffins | `GRIF` | sharpshooters | `HCRS` |
+| halberdiers | `HALB` | skeletons | `SKEL` |
+| halflings | `HALF` | troglodytes | `TROG` |
+| harpies | `HARP` | trolls | `TRLL` |
+| liches | `LICH` | unicorns | `UNIC` |
+| magogs | `MGOG` | vampires | `VAMP` |
+| manticores | `MANT` | wraiths | `WRTH` |
+| marksmen | `LCRS` (shared with Archer) | zealots | `ZELT` |
+| medusas | `MEDU` | zombies | `ZMBI`* |
+| minotaurs | `MINO` | | |
+
+(*) zombie prefix to be confirmed when the Z files arrive; everything else is
+taken from the verified reference CSV. Creatures whose sounds arrive before
+the unit exists in the app are converted and kept ready regardless — the
+manifest is the inventory.
+
 ## Corrections vs the first pass
 
 - `AGRM` is the base **Gremlin**, not Master Gremlin (files renamed).
