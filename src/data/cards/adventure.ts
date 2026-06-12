@@ -60,7 +60,8 @@ function notImplementedSpecialty(
   heroSlug: string,
   heroName: string,
   level: 1 | 4 | 6,
-  text: string
+  text: string,
+  cardImage?: string
 ): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
@@ -69,6 +70,7 @@ function notImplementedSpecialty(
     timing: "ongoing",
     tags: ["hero-specialty", heroSlug, "needs-implementation", text],
     effect: { type: "DRAW_CARDS", amount: 0 },
+    assets: cardImage ? { cardImage, imageAlt: `${heroName} level ${level} specialty card` } : undefined,
     implementationStatus: "not-implemented",
     source: heroSource(heroSlug)
   };
@@ -330,7 +332,8 @@ export const adventureCards: CardLibrary = {
     "gem",
     "First Aid",
     1,
-    "Gain a First Aid Tent card for free, or draw 1 card if you already have one."
+    "Gain a First Aid Tent card for free, or draw 1 card if you already have one.",
+    "/assets/hero_specialties-gem-1.webp"
   ),
   "specialty.gem.4": notImplementedSpecialty("gem", "First Aid", 4, "Remove 2 damage from one of your units."),
   "specialty.gem.6": notImplementedSpecialty("gem", "First Aid", 6, "Your First Aid Tent's effect doubles during Combat."),
@@ -338,7 +341,8 @@ export const adventureCards: CardLibrary = {
     "xyron",
     "Inferno",
     1,
-    "Activation: deal damage to units on a selected space and adjacent spaces."
+    "Activation: deal damage to units on a selected space and adjacent spaces.",
+    "/assets/hero_specialties-xyron-1.webp"
   ),
   "specialty.xyron.4": notImplementedSpecialty("xyron", "Inferno", 4, "Stronger area damage at reduced cost."),
   "specialty.xyron.6": notImplementedSpecialty("xyron", "Inferno", 6, "Area damage at no cost."),
@@ -359,7 +363,8 @@ export const adventureCards: CardLibrary = {
     "alamar",
     "Resurrection",
     1,
-    "Cancel an attack that would reduce your bronze (power 1) / silver (2) / gold (4) unit's HP to 0."
+    "Cancel an attack that would reduce your bronze (power 1) / silver (2) / gold (4) unit's HP to 0.",
+    "/assets/hero_specialties-alamar-1.webp"
   ),
   "specialty.alamar.4": notImplementedSpecialty(
     "alamar",

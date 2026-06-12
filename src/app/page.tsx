@@ -24,7 +24,8 @@ import {
   InspectPanel,
   LogDrawer
 } from "@/components/table/board";
-import { CardFrame, DeckWells, HandFan, HeroPanel, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
+import { CardFrame, DeckWells, HandFan, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
+import { HeroBoard } from "@/components/hero-board";
 import {
   DiceOverlay,
   DrawOverlay,
@@ -42,7 +43,6 @@ import {
   AdventureHud,
   ArmyPanel,
   FarTileTray,
-  HeroBoardPanel,
   HexMapBoard,
   MarketPanel,
   PileModal,
@@ -1062,7 +1062,7 @@ export default function Home() {
             <div className="rightRail adventureRail">
               {isSeated ? (
                 <>
-                  <HeroBoardPanel playerId={viewerPlayerId} state={state} />
+                  <HeroBoard playerId={viewerPlayerId} state={state} />
                   <PermanentSlot
                     legalActions={legalActions}
                     onAction={submitAction}
@@ -1081,7 +1081,7 @@ export default function Home() {
               ) : (
                 seatIds.map((playerId) => (
                   <div key={playerId}>
-                    <HeroBoardPanel playerId={playerId} state={state} />
+                    <HeroBoard playerId={playerId} state={state} />
                     <PermanentSlot playerId={playerId} state={state} />
                     <ArmyPanel playerId={playerId} state={state} />
                   </div>
@@ -1396,7 +1396,7 @@ export default function Home() {
         <div className="rightRail">
           {!adventureMode
             ? // Battle simulator: both level 5 hero boards stay on the table.
-              seatIds.map((playerId) => <HeroPanel key={playerId} playerId={playerId} state={state} />)
+              seatIds.map((playerId) => <HeroBoard key={playerId} playerId={playerId} state={state} />)
             : null}
           <InspectPanel state={state} unitId={inspectedUnitId} />
           {isSeated ? (

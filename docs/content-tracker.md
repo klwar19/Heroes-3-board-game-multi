@@ -66,7 +66,7 @@ Rules-correctness fixes applied to **both** modes (rulebook/wiki): second negati
 
 Citadel siege bonuses (3 Walls, 1 Gate, Arrow Tower) 🔴 — siege combat not implemented.
 
-## Heroes (`src/data/factions/core.ts`, portraits hot-linked from the wiki)
+## Heroes (`src/data/factions/core.ts`, portraits and board scans hosted locally)
 
 | Hero | Faction | Status | Notes |
 | --- | --- | --- | --- |
@@ -135,11 +135,11 @@ Hero board level track (verified against the wiki board scan): 2 XP per level; h
 
 ## Imagery (`src/data/assets/homm-assets.ts`, all URLs verified)
 
-- ✅ Hero portraits: full-size classic portraits from heroes.thelazy.net (`Hero_<name>.png`) for all 10 heroes; wiki board scans remain on the cards.
+- ✅ Hero portraits: classic PC portraits from heroes.thelazy.net (`Hero_<name>.png`), downloaded, upscaled and hosted locally (`/assets/hero_portraits-<id>.webp`) for all 10 heroes — used on the hero board, the lobby picker and the map pawns.
+- ✅ Hero board: in-app recreation of the printed board (`src/components/hero-board.tsx`) — faction-colored name banner, the four statistic tiles, starting ability + specialty art (cropped live from the local card scans), and the Ⅰ–Ⅶ level track with laurels, slots, hand-limit cards, expert crowns and the XP cube. The wiki board scan stays one click away on the name banner.
 - ✅ Town buildings: town-screen renders from heroes.thelazy.net for all five factions (City Hall, Citadel, Mage Guild, Blacksmith, three dwellings mapped bronze→low / silver→mid / gold→high, faction buildings) rendered in the town panel.
 - ✅ Resource icons: classic resource-bar icons — gold pile, **ore = building materials**, **crystal = valuables** (per the table owner's reference image) — in the adventure HUD.
 - ✅ Morale: classic good/poor morale birds in the HUD (matching the uploaded sprite reference).
-- ✅ Statistics art reference: heroes3wog.net HD-mod army-management screen, zoomable from the hero board ("stats art").
 
 ## Multiplayer / app
 
