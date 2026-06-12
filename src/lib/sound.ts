@@ -1,5 +1,8 @@
 "use client";
 
+import soundManifest from "../../public/sounds/manifest.json";
+import { unitSoundKey, type UnitSoundAction } from "@/data/unit-sounds";
+
 /**
  * Table audio. Two sources:
  *  - the converted Heroes III library under /public/sounds (manifest keys
@@ -11,6 +14,25 @@
  * silence until then, and a one-time pointerdown listener unlocks the
  * context for remote players who receive events before interacting.
  */
+
+type SoundManifestEntry = {
+  src?: string;
+  /** Play the clip this many times back-to-back (creature movement loops). */
+  repeat?: number;
+  /** Ambience/music; nothing battle-side loops, so playback ignores it. */
+  loop?: boolean;
+  /**
+   * Follow-up impact (lich/magog attacks chain their explosion). Playback
+   * ignores it on purpose: the board game triggers those impacts through
+   * abilityFxPlans only when the splash ability actually fires.
+   */
+  then?: string;
+  /** Virtual entry: play one member at random. */
+  random?: string[];
+  note?: string;
+};
+
+const soundLibrary = soundManifest as Record<string, SoundManifestEntry>;
 
 let audioContext: AudioContext | null = null;
 let unlockHooked = false;
@@ -64,9 +86,48 @@ export function playLibrarySound(key: string, volume = 0.55): void {
   if (muted || typeof window === "undefined") {
     return;
   }
-  const audio = new Audio(`/sounds/${key}.mp3`);
+  const entry = soundLibrary[key];
+  if (entry?.random?.length) {
+    playLibrarySound(entry.random[Math.floor(Math.random() * entry.random.length)], volume);
+    return;
+  }
+  const audio = new Audio(entry?.src ?? `/sounds/${key}.mp3`);
   audio.volume = volume;
+  let extraPlays = Math.max(0, (entry?.repeat ?? 1) - 1);
+  if (extraPlays > 0) {
+    audio.addEventListener("ended", () => {
+      if (extraPlays > 0) {
+        extraPlays -= 1;
+        audio.currentTime = 0;
+        audio.play().catch(() => undefined);
+      }
+    });
+  }
   audio.play().catch(() => undefined);
+}
+
+/**
+ * Creature voice for a combat moment: the unit's own H3 clip for placing
+ * its card, striking, blocking, wincing, moving or dying. Unknown units and
+ * missing clips stay silent.
+ */
+export function playUnitSound(
+  unitDefId: string | undefined,
+  action: UnitSoundAction,
+  delayMs = 0
+): void {
+  if (!unitDefId || typeof window === "undefined") {
+    return;
+  }
+  const key = unitSoundKey(unitDefId, action);
+  if (!key) {
+    return;
+  }
+  if (delayMs > 0) {
+    window.setTimeout(() => playLibrarySound(key), delayMs);
+  } else {
+    playLibrarySound(key);
+  }
 }
 
 type NoiseShape = {

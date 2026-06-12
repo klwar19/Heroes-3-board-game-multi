@@ -38,20 +38,34 @@ VCMI engine's data files** (the open-source H3 engine) — see
 | `EXT1`/`EXT2` | `-special` | abilities (e.g. devil teleport, genie/faerie-dragon spell-cast) |
 | `DETH` | `-death-alt` | alternate death (Beholder, Evil Eye) |
 
-## Playback rules (for wiring audio later)
+## Playback rules
 
-- Load the manifest, play by id; never hardcode paths.
-- `"repeat": 2` → play the clip twice back-to-back (movement sounds).
-- `"loop": true` → loop until stopped (ambience, battle music, horse riding).
-- `"then": <id>` → chain the second sound right after the first finishes
-  (lich attack/shoot → death-cloud impact, magog attack/shoot →
-  fireball explosion).
-- `"random": [<ids>]` → virtual entry, pick one member at random:
+`playLibrarySound` in `src/lib/sound.ts` loads the manifest and plays by id:
+
+- `"repeat": 2` → plays the clip twice back-to-back (movement sounds). Wired.
+- `"random": [<ids>]` → virtual entry, picks one member at random:
   `music/battle` (8 tracks, per combat) and `adventure/pickup` (7 versions).
+  Wired.
+- `"loop": true` → loop until stopped (ambience, battle music, horse
+  riding). Not wired yet.
+- `"then": <id>` → chain the second sound right after the first finishes
+  (lich attack/shoot → death-cloud impact, magog attack/shoot → fireball
+  explosion). Deliberately **not** auto-chained: those impacts play through
+  `abilityFxPlans` only when the splash ability actually triggers, so
+  chaining them onto every strike would double the explosion.
 - Entries with `"note"` carry identification caveats or "unused — free to
   repurpose" flags.
 - The toast system in `src/components/adventure/screen.tsx` already names
   sound cues per event; map those cue names to manifest ids when wiring.
+
+## Creature combat voices (wired)
+
+`src/data/unit-sounds.ts` maps every unit definition id onto its creature
+voice; `src/app/page.tsx` plays the clips off combat events: card placement
+and movement (`-move`), melee strike (`-attack`), ranged strike (`-shoot`),
+taking damage (`-hurt`), taking the defense action (`-defend`) and dying
+(`-death`). `src/data/unit-sounds.test.ts` proves the whole roster resolves
+to clips that exist on disk.
 
 ## Creature ability cues
 
@@ -84,7 +98,8 @@ play the matching sound:
 
 ## App roster coverage
 
-Every unit currently in the app has a full sound set. Non-obvious id
+Every unit currently in the app has a full sound set, and the mapping lives
+in code at `src/data/unit-sounds.ts`. Non-obvious id
 mappings: dendroids → `dendroid-soldier`, marksmen → `archer` (the original
 game shares Archer files with Marksman), elves → `wood-elf`, zombies →
 `zombie-lord` (same files serve the base Walking Dead), efreet →

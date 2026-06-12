@@ -68,7 +68,7 @@ import {
   TILE_SOUNDS
 } from "@/data/map-sounds";
 import { allTileDefinitions } from "@/data/map/tiles";
-import { playLibrarySound } from "@/lib/sound";
+import { playLibrarySound, playUnitSound } from "@/lib/sound";
 import { connectRoom, type GameRoomSnapshot, type RoomConnection } from "@/lib/realtime";
 
 /** Events that move cards or play battle effects on the table. */
@@ -81,7 +81,13 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   "DAMAGE_ASSIGNED",
   "DAMAGE_HEALED",
   "UNIT_ABILITY_TRIGGERED",
-  "HAND_REFRESHED"
+  "HAND_REFRESHED",
+  // Creature voices: each unit speaks with its own H3 clips in combat.
+  "COMBAT_UNIT_PLACED",
+  "UNIT_ATTACK_DECLARED",
+  "UNIT_MOVED",
+  "UNIT_DEFENDED",
+  "UNIT_REMOVED"
 ]);
 
 const OBSERVER_SEAT = "observer";
@@ -154,6 +160,9 @@ export default function Home() {
   const seenTileIdsRef = useRef<Set<string>>(new Set());
   const seenFeedIdsRef = useRef<Set<string>>(new Set());
   const seenFxIdsRef = useRef<Set<string>>(new Set());
+  // Unit id -> definition id, kept across snapshots: the death that ends a
+  // combat arrives in the snapshot where the combat is already gone.
+  const unitDefIdsRef = useRef<Map<string, string>>(new Map());
   const hiddenHandTimerRef = useRef<number | null>(null);
   const connectionRef = useRef<RoomConnection | null>(null);
   // The draw cue needs the live seat without resubscribing the stream.
@@ -184,6 +193,18 @@ export default function Home() {
     );
     const feedEvents = nextState.eventLog.filter((event) => ADVENTURE_FEED_CUES[event.type]);
     const fxEvents = nextState.eventLog.filter((event) => FX_EVENT_TYPES.has(event.type));
+
+    if (!seenRollIdsRef.current) {
+      // Fresh room connection: forget the previous room's units.
+      unitDefIdsRef.current = new Map();
+    }
+    if (nextState.combat) {
+      for (const unit of Object.values(nextState.combat.units)) {
+        if (unit.unitDefId) {
+          unitDefIdsRef.current.set(unit.id, unit.unitDefId);
+        }
+      }
+    }
 
     if (!seenRollIdsRef.current) {
       seenRollIdsRef.current = new Set(rolls.map((event) => event.id));
@@ -365,6 +386,11 @@ export default function Home() {
         // Cues for unmounted anchors would self-heal anyway; skipping them
         // up front keeps the timeline tight.
         const seatVisible = (playerId: PlayerId) => Boolean(nextState.combat) || playerId === viewerId;
+
+        // Definition behind a combat unit, surviving the unit's removal so
+        // the killing blow still gets its death cry.
+        const unitVoice = (unitId: string) =>
+          nextState.combat?.units[unitId]?.unitDefId ?? unitDefIdsRef.current.get(unitId);
 
         // Mulligans / forced discards: the discarded cards fly out to the
         // discard pile before the replacement draws fly in. The reducer
@@ -552,6 +578,7 @@ export default function Home() {
             }
             case "DAMAGE_ASSIGNED": {
               if (event.target.type === "unit" && event.amount > 0) {
+                playUnitSound(unitVoice(event.target.unitId), "hurt", timeline);
                 cues.push({
                   kind: "floater",
                   id: `${event.id}-floater`,
@@ -606,6 +633,36 @@ export default function Home() {
               if (plan.affect && plan.affect.length > 0) {
                 timeline += 800;
               }
+              break;
+            }
+            // Creature voices: the unit's own H3 clips, sequenced on the
+            // same timeline so an exchange reads "strike -> wince -> death
+            // cry -> retaliation".
+            case "COMBAT_UNIT_PLACED": {
+              playUnitSound(unitVoice(event.unitId), "move", timeline);
+              break;
+            }
+            case "UNIT_ATTACK_DECLARED": {
+              playUnitSound(
+                unitVoice(event.attackerId),
+                event.attackKind === "ranged" ? "shoot" : "attack",
+                timeline
+              );
+              timeline += 500;
+              break;
+            }
+            case "UNIT_MOVED": {
+              playUnitSound(unitVoice(event.unitId), "move", timeline);
+              timeline += 350;
+              break;
+            }
+            case "UNIT_DEFENDED": {
+              playUnitSound(unitVoice(event.unitId), "defend", timeline);
+              break;
+            }
+            case "UNIT_REMOVED": {
+              playUnitSound(unitVoice(event.unitId), "death", timeline);
+              timeline += 650;
               break;
             }
             default:
