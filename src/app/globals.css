@@ -1894,19 +1894,24 @@ button.battleCell {
 }
 
 .hexFaceDown {
-  fill: #2c2316;
-  stroke: rgba(120, 95, 55, 0.8);
+  /* The printed starry back renders beneath; hexes stay as click targets. */
+  fill: transparent;
+  stroke: transparent;
   stroke-width: 1.6;
 }
 
 .hexFaceDown.discoverable {
   cursor: pointer;
-  stroke: #ffd76a;
-  fill: #3a2d1a;
+  stroke: rgba(255, 215, 106, 0.65);
 }
 
 .hexFaceDown.discoverable:hover {
-  fill: #4b3a21;
+  fill: rgba(255, 215, 106, 0.16);
+  stroke: #ffd76a;
+}
+
+.tileBackArt {
+  pointer-events: none;
 }
 
 .hexFaceDownLabel {
@@ -3292,19 +3297,9 @@ button.hbSlot:disabled { cursor: default; }
   animation: rotatingPulse 1.4s ease-in-out infinite;
 }
 
-.hexBackNumeral {
-  fill: #d8b97e;
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: 1px;
+.ghostTileBack {
+  opacity: 0.55;
   pointer-events: none;
-  paint-order: stroke;
-  stroke: rgba(15, 10, 4, 0.9);
-  stroke-width: 3px;
-}
-
-.ghostNumeral {
-  opacity: 0.75;
 }
 
 .tileBorderLine {
@@ -3320,7 +3315,7 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 .placementGhostFlower .ghostHex {
-  fill: rgba(255, 215, 106, 0.12);
+  fill: rgba(255, 215, 106, 0.05);
   stroke: #ffd76a;
   stroke-dasharray: 5 4;
   stroke-width: 1.4;
@@ -4454,24 +4449,29 @@ button.hbSlot:disabled { cursor: default; }
 
 /* ---- Resource and morale icons (heroes.thelazy.net) ---------------------- */
 .resourceIcon {
-  width: 22px;
-  height: 18px;
+  width: 30px;
+  height: 24px;
   object-fit: contain;
   image-rendering: pixelated;
-  vertical-align: -3px;
+  vertical-align: -5px;
 }
 
 .resourceIcon.small {
-  width: 17px;
-  height: 14px;
+  width: 22px;
+  height: 18px;
 }
 
 .moraleIcon {
-  width: 22px;
-  height: 22px;
+  width: 30px;
+  height: 30px;
   object-fit: contain;
-  image-rendering: pixelated;
-  vertical-align: -4px;
+  vertical-align: -9px;
+}
+
+.movePointIcon {
+  font-size: 20px;
+  line-height: 1;
+  vertical-align: -2px;
 }
 
 /* ------------------------------------------------------------------ */
@@ -4577,76 +4577,36 @@ button.hbSlot:disabled { cursor: default; }
 /* Lobby: custom starting army picker                                  */
 /* ------------------------------------------------------------------ */
 
-.customArmy {
+.startingUnits {
   display: grid;
-  gap: 6px;
-}
-
-.customArmyAdd {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.customArmyAdd select {
-  min-width: 220px;
-  padding: 4px 6px;
-  border: 1px solid rgba(170, 130, 70, 0.4);
-  border-radius: 6px;
-  background: #14110c;
-  color: #f0dcb8;
-  font-size: 12px;
-}
-
-.customArmyAdd button {
-  display: inline-flex;
-  align-items: center;
   gap: 4px;
-  padding: 4px 9px;
-  border: 1px solid rgba(170, 130, 70, 0.4);
-  border-radius: 6px;
-  background: rgba(33, 25, 15, 0.92);
-  color: #f0dcb8;
-  cursor: pointer;
-  font-size: 12px;
+  justify-items: start;
 }
 
-.customArmyAdd button:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.customArmyChips {
+.startingUnitRow {
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+  align-items: center;
+  gap: 10px;
 }
 
-.customArmyChips small {
-  color: var(--muted);
+.startingUnitRow .optionButtons {
+  display: inline-flex;
 }
 
-.customArmyChip {
+.startingUnitLevel {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  border: 1px solid rgba(220, 175, 95, 0.45);
-  border-radius: 999px;
-  background: rgba(43, 31, 18, 0.92);
-  color: #f0dcb8;
-  cursor: pointer;
-  font-size: 11px;
+  gap: 6px;
+  min-width: 150px;
+  color: #e8d3a8;
+  font-size: 12px;
+  font-weight: 600;
 }
 
-.customArmyChip:hover {
-  border-color: #d05050;
-  color: #e08585;
+.startingUnitLevel small {
+  color: var(--muted);
+  font-weight: 400;
 }
-
-/* ------------------------------------------------------------------ */
-/* Lobby: map designer                                                 */
-/* ------------------------------------------------------------------ */
 
 .mapDesigner {
   display: grid;
@@ -4767,8 +4727,8 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 .resourceChip .resourceIcon {
-  width: 15px;
-  height: 12px;
+  width: 21px;
+  height: 17px;
 }
 
 .resourceChip b {
@@ -4830,32 +4790,6 @@ button.hbSlot:disabled { cursor: default; }
 /* ---------------------------------------------------------------------------
    Lobby: custom starting army by tier
 --------------------------------------------------------------------------- */
-
-.customArmyAdd.tiers {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
-}
-
-.customArmyTier {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 3px 6px;
-  border: 1px solid rgba(170, 130, 70, 0.25);
-  border-radius: 7px;
-  background: rgba(24, 19, 12, 0.7);
-}
-
-.customArmyTierName {
-  min-width: 150px;
-  font-size: 12px;
-  color: #f0dcb8;
-}
-
-.customArmyTierName small {
-  color: #b89f78;
-}
 
 /* ---------------------------------------------------------------------------
    Map lock hint: why click-to-move is off right now
@@ -5146,4 +5080,248 @@ button.hbSlot:disabled { cursor: default; }
   background: rgba(43, 76, 105, 0.6);
   border-color: rgba(126, 178, 221, 0.6);
   color: #bcdaf0;
+}
+
+/* ---------------------------------------------------------------------------
+   Printed card backs (community rulebook scans) on every pile
+--------------------------------------------------------------------------- */
+
+img.cardBack {
+  object-fit: cover;
+  display: block;
+}
+
+.neutralDeck {
+  background-size: cover;
+  background-position: center 20%;
+  background-blend-mode: multiply;
+  background-color: rgba(46, 36, 22, 0.88);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+}
+
+.neutralDeck span,
+.neutralDeck small {
+  background: rgba(12, 9, 5, 0.55);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.farTileBack img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Map designer: printed backs / tile scans on the slots, standalone page
+--------------------------------------------------------------------------- */
+
+.designerTile {
+  overflow: hidden;
+  padding: 0;
+}
+
+.designerTile .designerTileBack {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.designerTile b {
+  position: relative;
+  z-index: 1;
+  font-size: 9px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.designerTilePreview {
+  width: 150px;
+  transition: transform 0.25s ease;
+}
+
+.designerLink a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--gold);
+  text-decoration: underline;
+}
+
+.designerRoot {
+  display: block;
+  padding: 18px 22px 40px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.designerHeader {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  margin-bottom: 14px;
+}
+
+.designerHeader h1 {
+  margin: 0;
+  font-size: 24px;
+  color: var(--gold);
+}
+
+.designerHeader p {
+  margin: 0;
+  max-width: 760px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.designerLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .designerLayout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.designerMain {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.designerToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+}
+
+.designerToolbar label {
+  display: grid;
+  gap: 3px;
+}
+
+.designerToolbar small {
+  color: var(--muted);
+}
+
+.designerToolbar input,
+.designerToolbar select {
+  padding: 6px 8px;
+  border: 1px solid rgba(170, 130, 70, 0.4);
+  border-radius: 6px;
+  background: #14110c;
+  color: #f0dcb8;
+  font-size: 13px;
+  min-width: 170px;
+}
+
+.designerProblems {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid rgba(208, 80, 80, 0.5);
+  border-radius: 8px;
+  background: rgba(60, 18, 14, 0.55);
+  color: #e8a8a0;
+  font-size: 12px;
+}
+
+.designerSaved {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(170, 130, 70, 0.35);
+  border-radius: 10px;
+  background: rgba(20, 16, 10, 0.6);
+}
+
+.designerSaved h2 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--gold);
+}
+
+.designerSaved ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.designerSaved li {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.designerSaved li.current .savedMapLoad {
+  outline: 2px solid var(--gold);
+}
+
+.savedMapLoad {
+  flex: 1;
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: 7px 9px;
+  border: 1px solid rgba(170, 130, 70, 0.4);
+  border-radius: 8px;
+  background: rgba(33, 25, 15, 0.92);
+  color: #f0dcb8;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+}
+
+.savedMapLoad small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.savedMapDelete {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  border: 1px solid rgba(170, 130, 70, 0.3);
+  border-radius: 8px;
+  background: rgba(26, 18, 12, 0.8);
+  color: #b89f78;
+  cursor: pointer;
+}
+
+.savedMapDelete:hover {
+  border-color: #d05050;
+  color: #e08585;
+}
+
+/* The standalone designer page works at a larger tile scale. */
+.designerRoot .designerTile {
+  width: 58px;
+  height: 58px;
+  margin: -29px 0 0 -29px;
+  border-radius: 12px;
+  font-size: 11px;
+}
+
+.designerRoot .designerTile.add {
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+}
+
+.designerRoot .designerEditor {
+  padding: 10px;
+  border: 1px solid rgba(170, 130, 70, 0.35);
+  border-radius: 10px;
+  background: rgba(20, 16, 10, 0.6);
 }

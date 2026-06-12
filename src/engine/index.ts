@@ -61,6 +61,10 @@ export {
   defaultGameSetupOptions,
   draftFarTiles,
   getScenario,
+  scenarioStartingUnitLevels,
+  TIER_LEVELS,
+  tierOfLevel,
+  UNIT_LEVELS,
   validateCustomMapPlan
 } from "./adventure-setup";
 export type { AdventurePlayerConfig, AdventureSetupOptions } from "./adventure-setup";
@@ -234,6 +238,7 @@ export type {
   TriggerDefinition,
   TurnState,
   UnitGrade,
+  UnitLevel,
   UnitType,
   UnitId,
   VisitStep
