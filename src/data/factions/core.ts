@@ -1,4 +1,4 @@
-import { HERO_PORTRAITS, TOWN_BUILDING_IMAGES } from "@/data/assets/homm-assets";
+import { TOWN_BUILDING_IMAGES } from "@/data/assets/homm-assets";
 import type { FactionDefinition, HeroDefinition, TownBuildingDefinition } from "./types";
 import { coreUnitDefinitions } from "./units";
 
@@ -16,7 +16,8 @@ function townSource(faction: string) {
 function heroSource(slug: string) {
   return {
     product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-    credit: "Hero board data and portrait from the fan wiki. Verify against official components before final release.",
+    credit:
+      "Hero board data and board scan from the fan wiki; classic PC portrait from heroes.thelazy.net (hosted locally). Verify against official components before final release.",
     url: `https://en.homm3bg.wiki/heroes/${slug}/`
   };
 }
@@ -491,7 +492,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.catherine.4",
       6: "specialty.catherine.6"
     },
-    portrait: "/assets/heroes-castle-might-catherine.webp",
+    portrait: "/assets/hero_portraits-catherine.webp",
+    boardScan: "/assets/heroes-castle-might-catherine.webp",
     source: heroSource("catherine")
   },
   rion: {
@@ -507,7 +509,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.rion.4",
       6: "specialty.rion.6"
     },
-    portrait: "/assets/heroes-castle-magic-rion.webp",
+    portrait: "/assets/hero_portraits-rion.webp",
+    boardScan: "/assets/heroes-castle-magic-rion.webp",
     source: heroSource("rion")
   },
   sandro: {
@@ -523,7 +526,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.sandro.4",
       6: "specialty.sandro.6"
     },
-    portrait: "/assets/heroes-necropolis-magic-sandro.webp",
+    portrait: "/assets/hero_portraits-sandro.webp",
+    boardScan: "/assets/heroes-necropolis-magic-sandro.webp",
     source: heroSource("sandro")
   },
   tamika: {
@@ -539,7 +543,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.tamika.4",
       6: "specialty.tamika.6"
     },
-    portrait: "/assets/heroes-necropolis-might-tamika.webp",
+    portrait: "/assets/hero_portraits-tamika.webp",
+    boardScan: "/assets/heroes-necropolis-might-tamika.webp",
     source: heroSource("tamika")
   },
   gelu: {
@@ -555,7 +560,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.gelu.4",
       6: "specialty.gelu.6"
     },
-    portrait: "/assets/heroes-rampart-might-gelu.webp",
+    portrait: "/assets/hero_portraits-gelu.webp",
+    boardScan: "/assets/heroes-rampart-might-gelu.webp",
     source: heroSource("gelu")
   },
   gem: {
@@ -571,7 +577,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.gem.4",
       6: "specialty.gem.6"
     },
-    portrait: "/assets/heroes-rampart-magic-gem.webp",
+    portrait: "/assets/hero_portraits-gem.webp",
+    boardScan: "/assets/heroes-rampart-magic-gem.webp",
     source: heroSource("gem")
   },
   xyron: {
@@ -587,7 +594,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.xyron.4",
       6: "specialty.xyron.6"
     },
-    portrait: "/assets/heroes-inferno-magic-xyron.webp",
+    portrait: "/assets/hero_portraits-xyron.webp",
+    boardScan: "/assets/heroes-inferno-magic-xyron.webp",
     source: heroSource("xyron")
   },
   rashka: {
@@ -603,7 +611,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.rashka.4",
       6: "specialty.rashka.6"
     },
-    portrait: "/assets/heroes-inferno-might-rashka.webp",
+    portrait: "/assets/hero_portraits-rashka.webp",
+    boardScan: "/assets/heroes-inferno-might-rashka.webp",
     source: heroSource("rashka")
   },
   alamar: {
@@ -619,7 +628,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.alamar.4",
       6: "specialty.alamar.6"
     },
-    portrait: "/assets/heroes-dungeon-magic-alamar.webp",
+    portrait: "/assets/hero_portraits-alamar.webp",
+    boardScan: "/assets/heroes-dungeon-magic-alamar.webp",
     source: heroSource("alamar")
   },
   mutare: {
@@ -635,19 +645,11 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.mutare.4",
       6: "specialty.mutare.6"
     },
-    portrait: "/assets/heroes-dungeon-might-mutare.webp",
+    portrait: "/assets/hero_portraits-mutare.webp",
+    boardScan: "/assets/heroes-dungeon-might-mutare.webp",
     source: heroSource("mutare")
   }
 };
-
-// Classic full-size PC portraits (heroes.thelazy.net/Hero_portraits), as
-// requested for the table; the wiki board scans stay as the fallback.
-for (const hero of Object.values(coreHeroDefinitions)) {
-  const portrait = HERO_PORTRAITS[hero.id];
-  if (portrait) {
-    hero.portrait = portrait;
-  }
-}
 
 function unitsOfFaction(faction: string): string[] {
   return Object.values(coreUnitDefinitions)

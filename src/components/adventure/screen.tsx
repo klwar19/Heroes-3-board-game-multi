@@ -10,17 +10,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { locationDefinitions } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
-  ABILITY_SEARCH_LEVELS,
-  EXPERT_USES_BY_LEVEL,
-  HAND_LIMIT_BY_LEVEL,
   NEUTRAL_DECK_IDS,
   RULESET_DESCRIPTIONS,
   RULESET_LABELS,
-  SPECIALTY_LEVELS,
   applyUnitSideRules,
   deckDisplayName,
   describeCardEffect,
-  effectiveHandLimit,
   getActiveAstrologersCard,
   getMainHero,
   getReachableHeroPaths,
@@ -46,7 +41,7 @@ import {
   type PlayerId,
   type PlayerVisibleState
 } from "@/engine";
-import { MORALE_ICONS, RESOURCE_ICONS, WOG_ARMY_MANAGEMENT_IMAGE } from "@/data/assets/homm-assets";
+import { MORALE_ICONS, RESOURCE_ICONS } from "@/data/assets/homm-assets";
 import { actionKey, cardName, formatCost, titleCase } from "@/components/table/utils";
 import { useCardZoom } from "@/components/table/zoom";
 
@@ -995,81 +990,8 @@ export function AdventureHud({
 }
 
 // ---------------------------------------------------------------------------
-// Hero board, army list (unchanged behaviors, kept compact)
+// Army list (the hero board itself lives in src/components/hero-board.tsx)
 // ---------------------------------------------------------------------------
-
-export function HeroBoardPanel({ state, playerId }: { state: GameState; playerId: PlayerId }) {
-  const { zoomContent } = useCardZoom();
-  const player = state.players[playerId];
-  const hero = Object.values(state.heroes).find(
-    (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
-  );
-  const heroDef = player?.heroDefId ? coreHeroDefinitions[player.heroDefId] : undefined;
-  if (!player || !hero || !heroDef) {
-    return null;
-  }
-
-  const faction = coreFactionDefinitions[heroDef.faction];
-
-  return (
-    <section className="heroBoard" aria-label={`${heroDef.name} hero board`}>
-      <header>
-        {heroDef.portrait ? (
-          <img alt={`${heroDef.name} portrait`} className="heroPortrait" referrerPolicy="no-referrer" src={heroDef.portrait} />
-        ) : null}
-        <div>
-          <strong>{heroDef.name}</strong>
-          <small>
-            {heroDef.class} · {heroDef.type === "might" ? "Might" : "Magic"} · {faction?.name}
-          </small>
-          <small>
-            A{heroDef.startingStats.attack} D{heroDef.startingStats.defense} P{heroDef.startingStats.power} K
-            {heroDef.startingStats.knowledge}
-          </small>
-        </div>
-      </header>
-      <div className="levelTrack" aria-label="Level tracker">
-        {[1, 2, 3, 4, 5, 6, 7].map((level) => {
-          const reached = hero.level >= level;
-          const isSpecialty = level === 1 || SPECIALTY_LEVELS.includes(level as 4 | 6);
-          return (
-            <div className={`levelSlot ${reached ? "reached" : ""} ${isSpecialty ? "gold" : "silver"}`} key={level}>
-              <span>{ROMAN[level]}</span>
-              <small>
-                {HAND_LIMIT_BY_LEVEL[level] !== HAND_LIMIT_BY_LEVEL[level - 1] ? `🂠${HAND_LIMIT_BY_LEVEL[level]}` : ""}
-                {EXPERT_USES_BY_LEVEL[level] !== EXPERT_USES_BY_LEVEL[level - 1] ? "👑" : ""}
-                {ABILITY_SEARCH_LEVELS.includes(level) ? "🔍" : ""}
-                {isSpecialty && level > 1 ? "★" : ""}
-              </small>
-              {hero.level === level ? (
-                <span className="levelCube" style={{ background: faction?.color }} title={`Experience ${hero.experience}/12`} />
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-      <small className="heroXp">
-        Experience {hero.experience}/12 · hand limit {effectiveHandLimit(state, playerId)} · expert effects{" "}
-        {player.limits.expertUses}
-        {" · "}
-        <button
-          className="statsReference"
-          onClick={() =>
-            zoomContent({
-              title: "Statistics reference (classic army management screen)",
-              image: WOG_ARMY_MANAGEMENT_IMAGE,
-              subtitle: "Art reference from heroes3wog.net",
-              lines: ["Attack · Defense · Power · Knowledge · Morale · Luck — the classic icons behind the statistic cards."]
-            })
-          }
-          type="button"
-        >
-          stats art
-        </button>
-      </small>
-    </section>
-  );
-}
 
 export function ArmyPanel({ state, playerId }: { state: GameState; playerId: PlayerId }) {
   const { zoomContent } = useCardZoom();
