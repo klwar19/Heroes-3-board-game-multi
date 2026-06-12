@@ -382,6 +382,52 @@ describe("siege combat", () => {
     expect(rolled && rolled.type === "ATTACK_ROLLED" ? rolled.damage : null).toBe(4);
   });
 
+  it("levels fortifications with Ballistics through the demolish choice", () => {
+    let state = makeSiegeReady();
+    state = applyOk(state, {
+      type: "MOVE_HERO",
+      playerId: "p1",
+      heroId: "hero_p1",
+      to: state.towns.town_p2.fieldId ?? ""
+    });
+    state = placeArmies(state);
+    if (state.pendingChoice?.type === "OPTION_CHOICE") {
+      state = applyOk(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p2",
+        choiceId: state.pendingChoice.id,
+        optionIndex: 0
+      });
+    }
+
+    state.players.p1.hand = ["ability.ballistics"];
+    const wallsBefore = state.combat!.siege!.walls.length;
+
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "ability.ballistics",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "none" }
+    });
+
+    // The fortification pick opens for the player.
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    if (state.pendingChoice?.type === "OPTION_CHOICE") {
+      expect(state.pendingChoice.context).toBe("siege-demolish");
+      state = applyOk(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: state.pendingChoice.id,
+        optionIndex: 0
+      });
+    }
+
+    const siege = state.combat!.siege!;
+    expect(siege.walls.length + (siege.gatePosition !== null ? 1 : 0)).toBe(wallsBefore);
+  });
+
   it("locks the garrison defender out of card plays and pays the 8 gold fee", () => {
     let state = makeSiegeReady();
     // The defending hero is away; the owner can pay 8 gold to garrison.
