@@ -121,6 +121,12 @@ export function ReactionTray({
       Boolean(cardLibrary[cardId]?.permanentEffect?.schoolBonus)
     ) ?? null;
 
+  // Town-building boosts usable inside this window (Brimstone cube on your
+  // own cast, Hall of Valhalla on your unit's attack).
+  const buildingBoosts = legalActions.filter(
+    (legal) => legal.action.type === "SPEND_TOWN_CUBE" || legal.action.type === "HALL_OF_VALHALLA_BOOST"
+  );
+
   if (!window) {
     return null;
   }
@@ -318,9 +324,19 @@ export function ReactionTray({
         <span>{triggerText}</span>
       </header>
       <div className="trayTiles">
-        {tiles.length === 0 && !fieldExpert ? (
+        {tiles.length === 0 && !fieldExpert && buildingBoosts.length === 0 ? (
           <div className="trayEmpty">No playable instants — pass to continue.</div>
         ) : null}
+        {buildingBoosts.map((legal) => (
+          <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
+            <div className="trayTileBody">
+              <strong>🏛 Town building</strong>
+              <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                {legal.label}
+              </button>
+            </div>
+          </div>
+        ))}
         {fieldExpert && fieldExpert.action.type === "USE_PERMANENT_EXPERT" ? (
           <div className="trayTile permanentTile" key="field-expert">
             <CardFrame cardId={schoolPermanentId ?? undefined} className="trayCardImage" />

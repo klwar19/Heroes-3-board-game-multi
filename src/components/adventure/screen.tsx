@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Check, Hammer, Image as ImageIcon, Minus, Plus, RotateCcw, RotateCw, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
+import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { locationDefinitions } from "@/data/map/locations";
@@ -973,6 +974,8 @@ export function AdventureHud({
   const endTurn = legalActions.find((legal) => legal.action.type === "END_TURN");
   const winner = state.adventure?.winnerPlayerId;
 
+  const firstRoll = state.adventure?.firstPlayerRoll;
+
   return (
     <div className="advHud" aria-label="Adventure status">
       <div className="advHudCell">
@@ -983,6 +986,31 @@ export function AdventureHud({
         <strong>{activeName}&apos;s turn</strong>
         <small>{state.phase}</small>
       </div>
+      {firstRoll ? (
+        <button
+          className="advHudCell firstRoll"
+          onClick={() =>
+            zoomContent({
+              title: "First-player roll",
+              subtitle: "Everyone rolled the Attack die — highest starts",
+              lines: [
+                ...firstRoll.attempts.map((attempt, index) => {
+                  const rolls = attempt.rolls
+                    .map((roll) => `${roll.name}: ${roll.value > 0 ? "+" : ""}${roll.value}`)
+                    .join("  ·  ");
+                  return firstRoll.attempts.length > 1 ? `Roll ${index + 1} — ${rolls}` : rolls;
+                }),
+                `${state.players[firstRoll.winnerPlayerId]?.name ?? firstRoll.winnerPlayerId} won the roll and plays first.`
+              ]
+            })
+          }
+          title="Show the start-of-game first-player roll"
+          type="button"
+        >
+          <strong>🎲 {state.players[firstRoll.winnerPlayerId]?.name ?? firstRoll.winnerPlayerId}</strong>
+          <small>won the first-player roll</small>
+        </button>
+      ) : null}
       {astrologersCard ? (
         <button
           className="advHudCell astrologers"
@@ -1133,10 +1161,10 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
 }
 
 // ---------------------------------------------------------------------------
-// Town panel with a population basket: one token, any number of purchases
+// Town panel: buildings with proper rules tooltips, the one-card-per-type
+// recruit basket (recruit Few once → reinforce to Pack → done), and the
+// activated building actions (Blacksmith, Cover of Darkness, Castle Gate…).
 // ---------------------------------------------------------------------------
-
-type BasketRecruit = { unitDefId: string; count: number };
 
 export function TownPanel({
   state,
@@ -1149,16 +1177,21 @@ export function TownPanel({
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
 }) {
-  const [recruits, setRecruits] = useState<BasketRecruit[]>([]);
+  const [recruitIds, setRecruitIds] = useState<string[]>([]);
   const [reinforceIds, setReinforceIds] = useState<string[]>([]);
+  /** Cover of Darkness: hand-card indices picked for the discard. */
+  const [coverPicks, setCoverPicks] = useState<number[]>([]);
+  const [coverOpenFor, setCoverOpenFor] = useState<string | null>(null);
   // The basket empties when the round advances or the seat changes
   // (state-adjustment-during-render pattern).
   const [basketKey, setBasketKey] = useState("");
   const nextBasketKey = `${state.round}|${viewerPlayerId}`;
   if (basketKey !== nextBasketKey) {
     setBasketKey(nextBasketKey);
-    setRecruits([]);
+    setRecruitIds([]);
     setReinforceIds([]);
+    setCoverPicks([]);
+    setCoverOpenFor(null);
   }
 
   const player = state.players[viewerPlayerId];
@@ -1170,7 +1203,6 @@ export function TownPanel({
   }
 
   const buildActions = legalActions.filter((legal) => legal.action.type === "BUILD_STRUCTURE");
-  const spellBook = legalActions.find((legal) => legal.action.type === "SPELL_BOOK_ACTION");
   const canPopulate =
     player.townTokens.population && !state.combat && legalActions.some((legal) => legal.action.type === "POPULATION_ACTION");
 
@@ -1183,31 +1215,18 @@ export function TownPanel({
     (buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "UNLOCK_REINFORCE"
   );
 
-  const addRecruit = (unitDefId: string, delta: number) => {
-    setRecruits((current) => {
-      const next = current.map((entry) => ({ ...entry }));
-      const entry = next.find((candidate) => candidate.unitDefId === unitDefId);
-      if (entry) {
-        entry.count = Math.max(0, entry.count + delta);
-      } else if (delta > 0) {
-        next.push({ unitDefId, count: 1 });
-      }
-      return next.filter((candidate) => candidate.count > 0);
-    });
-  };
-
   const basketCost: Record<string, number> = {};
-  const addCost = (cost: Record<string, number | undefined>, times = 1) => {
+  const addCost = (cost: Record<string, number | undefined>) => {
     for (const [resource, amount] of Object.entries(cost)) {
       if (amount) {
-        basketCost[resource] = (basketCost[resource] ?? 0) + amount * times;
+        basketCost[resource] = (basketCost[resource] ?? 0) + amount;
       }
     }
   };
-  for (const entry of recruits) {
-    const few = coreUnitDefinitions[entry.unitDefId]?.few;
+  for (const unitDefId of recruitIds) {
+    const few = coreUnitDefinitions[unitDefId]?.few;
     if (few) {
-      addCost(few.cost, entry.count);
+      addCost(few.cost);
     }
   }
   for (const armyUnitId of reinforceIds) {
@@ -1221,14 +1240,12 @@ export function TownPanel({
     (basketCost.gold ?? 0) <= player.resources.gold &&
     (basketCost.buildingMaterials ?? 0) <= player.resources.buildingMaterials &&
     (basketCost.valuables ?? 0) <= player.resources.valuables;
-  const basketSize = recruits.reduce((total, entry) => total + entry.count, 0) + reinforceIds.length;
+  const basketSize = recruitIds.length + reinforceIds.length;
 
   const submitBasket = () => {
     const purchases: { kind: "recruit" | "reinforce"; unitDefId: string; armyUnitId?: string }[] = [];
-    for (const entry of recruits) {
-      for (let index = 0; index < entry.count; index += 1) {
-        purchases.push({ kind: "recruit", unitDefId: entry.unitDefId });
-      }
+    for (const unitDefId of recruitIds) {
+      purchases.push({ kind: "recruit", unitDefId });
     }
     for (const armyUnitId of reinforceIds) {
       const armyUnit = player.army.find((candidate) => candidate.id === armyUnitId);
@@ -1237,8 +1254,30 @@ export function TownPanel({
       }
     }
     onAction({ type: "POPULATION_ACTION", playerId: viewerPlayerId, purchases });
-    setRecruits([]);
+    setRecruitIds([]);
     setReinforceIds([]);
+  };
+
+  // Activated building actions (Blacksmith, Spell Book, Castle Gate, Cover of
+  // Darkness…) — everything the rules currently allow, as buttons.
+  const buildingUseActions = legalActions.filter(
+    (legal) =>
+      legal.action.type === "SPELL_BOOK_ACTION" ||
+      legal.action.type === "BLACKSMITH_ACTION" ||
+      legal.action.type === "USE_TOWN_BUILDING"
+  );
+
+  const submitCoverOfDarkness = (buildingId: string) => {
+    const cardIds = coverPicks.map((index) => player.hand[index]).filter(Boolean);
+    onAction({
+      type: "USE_TOWN_BUILDING",
+      playerId: viewerPlayerId,
+      buildingId,
+      optionIndex: 0,
+      cardIds
+    });
+    setCoverPicks([]);
+    setCoverOpenFor(null);
   };
 
   return (
@@ -1253,14 +1292,22 @@ export function TownPanel({
       <div className="townBuildings">
         {faction.buildings.map((buildingId) => {
           const building = coreBuildingDefinitions[buildingId];
+          if (!building) {
+            return null;
+          }
           const built = town.buildings.includes(buildingId);
           const action = buildActions.find(
             (legal) => legal.action.type === "BUILD_STRUCTURE" && legal.action.buildingId === buildingId
           );
+          const cubes = town.factionCubes?.[buildingId] ?? 0;
+          const timing = buildingTimingLabel(building);
+          const prerequisites = (building.prerequisites ?? [])
+            .map((prerequisite) => coreBuildingDefinitions[prerequisite]?.name ?? prerequisite)
+            .join(", ");
           return (
-            <div className={`townBuilding ${built ? "built" : ""}`} key={buildingId} title={building?.source.credit}>
+            <div className={`townBuilding ${built ? "built" : ""}`} key={buildingId}>
               {/* Building art slot: fills in as soon as assets.image lands. */}
-              {building?.assets?.image ? (
+              {building.assets?.image ? (
                 <img
                   alt={`${building.name} building tile`}
                   className="townBuildingArt"
@@ -1269,14 +1316,24 @@ export function TownPanel({
                   src={building.assets.image}
                 />
               ) : null}
-              <strong>{building?.name}</strong>
-              <small>{built ? "built" : formatCost(building?.cost ?? {})}</small>
-              {building?.implementationStatus === "not-implemented" ? <small className="todoTag">data only</small> : null}
+              <strong>{building.name}</strong>
+              <small>{built ? (cubes > 0 ? `built · ${cubes} cube${cubes === 1 ? "" : "s"}` : "built") : formatCost(building.cost)}</small>
+              {building.implementationStatus === "not-implemented" ? <small className="todoTag">data only</small> : null}
               {action ? (
                 <button className="commandButton" onClick={() => onAction(action.action)} type="button">
                   Build
                 </button>
               ) : null}
+              {/* Rules tooltip: name, cost, timing and the exact effect. */}
+              <div className="buildingTip" role="tooltip">
+                <strong>{building.name}</strong>
+                <small className="buildingTipCost">
+                  {formatCost(building.cost)}
+                  {prerequisites ? ` · needs ${prerequisites}` : ""}
+                  {timing ? ` · ${timing}` : ""}
+                </small>
+                <p>{describeBuildingEffect(building)}</p>
+              </div>
             </div>
           );
         })}
@@ -1284,57 +1341,71 @@ export function TownPanel({
 
       {player.townTokens.population && !state.combat ? (
         <div className="townRecruits" aria-label="Population token basket">
-          <h4>Population token — buy any number at once</h4>
+          <h4 title="Each unit card exists once: recruit the Few side, later reinforce it to the Pack side — then it is complete.">
+            Population token — one card per unit type
+          </h4>
           {faction.units.map((unitDefId) => {
             const unit = coreUnitDefinitions[unitDefId];
             if (!unit?.few || !unlockedTiers.has(unit.tier)) {
               return null;
             }
-            const inBasket = recruits.find((entry) => entry.unitDefId === unitDefId)?.count ?? 0;
-            return (
-              <div className="recruitRow" key={unitDefId}>
-                <span className={`tierDot ${unit.tier}`} />
-                <span className="recruitName">{unit.name}</span>
-                <small>{formatCost(unit.few.cost)}</small>
-                <div className="recruitCounter">
-                  <button disabled={inBasket === 0} onClick={() => addRecruit(unitDefId, -1)} type="button">
-                    <Minus size={11} />
-                  </button>
-                  <span>{inBasket}</span>
-                  <button onClick={() => addRecruit(unitDefId, 1)} type="button">
-                    <Plus size={11} />
-                  </button>
+            const owned = player.army.find((candidate) => candidate.unitDefId === unitDefId);
+            // Pack (or recruited neutral): the card is complete, nothing to buy.
+            if (owned && owned.side !== "few") {
+              return (
+                <div className="recruitRow done" key={unitDefId}>
+                  <span className={`tierDot ${unit.tier}`} />
+                  <span className="recruitName">{unit.name}</span>
+                  <small className="recruitState">pack — fully mustered</small>
                 </div>
-              </div>
-            );
-          })}
-          {canReinforce
-            ? player.army
-                .filter((unit) => {
-                  const def = coreUnitDefinitions[unit.unitDefId];
-                  return unit.side === "few" && def?.pack && unlockedTiers.has(def.tier);
-                })
-                .map((unit) => {
-                  const def = coreUnitDefinitions[unit.unitDefId];
-                  const checked = reinforceIds.includes(unit.id);
-                  return (
-                    <label className="reinforceRow" key={unit.id}>
+              );
+            }
+            // Few in the army: only the pack upgrade is on offer.
+            if (owned) {
+              const def = coreUnitDefinitions[owned.unitDefId];
+              const checked = reinforceIds.includes(owned.id);
+              const upgradable = canReinforce && Boolean(def?.pack);
+              return (
+                <label className={`recruitRow ${upgradable ? "" : "locked"}`} key={unitDefId}>
+                  <span className={`tierDot ${unit.tier}`} />
+                  <span className="recruitName">{unit.name}</span>
+                  {upgradable ? (
+                    <>
+                      <small>upgrade {formatCost(def?.pack?.cost ?? {})}</small>
                       <input
                         checked={checked}
                         onChange={() =>
                           setReinforceIds((current) =>
-                            checked ? current.filter((id) => id !== unit.id) : [...current, unit.id]
+                            checked ? current.filter((id) => id !== owned.id) : [...current, owned.id]
                           )
                         }
                         type="checkbox"
                       />
-                      <span>
-                        Reinforce {def?.name ?? unit.unitDefId} <small>({formatCost(def?.pack?.cost ?? {})})</small>
-                      </span>
-                    </label>
-                  );
-                })
-            : null}
+                    </>
+                  ) : (
+                    <small className="recruitState">few in army{canReinforce ? "" : " — build the Citadel to reinforce"}</small>
+                  )}
+                </label>
+              );
+            }
+            const checked = recruitIds.includes(unitDefId);
+            return (
+              <label className="recruitRow" key={unitDefId}>
+                <span className={`tierDot ${unit.tier}`} />
+                <span className="recruitName">{unit.name}</span>
+                <small>{formatCost(unit.few.cost)}</small>
+                <input
+                  checked={checked}
+                  onChange={() =>
+                    setRecruitIds((current) =>
+                      checked ? current.filter((id) => id !== unitDefId) : [...current, unitDefId]
+                    )
+                  }
+                  type="checkbox"
+                />
+              </label>
+            );
+          })}
           {basketSize > 0 ? (
             <div className="basketFooter">
               <small>
@@ -1356,13 +1427,67 @@ export function TownPanel({
         </div>
       ) : null}
 
-      <div className="townFooter">
-        {spellBook ? (
-          <button className="commandButton" onClick={() => onAction(spellBook.action)} type="button">
-            {spellBook.label}
-          </button>
-        ) : null}
-      </div>
+      {buildingUseActions.length > 0 ? (
+        <div className="townActions" aria-label="Town building actions">
+          {buildingUseActions.map((legal) => {
+            const action = legal.action;
+            // Cover of Darkness needs its discard picks chosen first.
+            if (action.type === "USE_TOWN_BUILDING" && action.optionIndex === 0 && action.cardIds) {
+              const buildingId = action.buildingId;
+              const open = coverOpenFor === buildingId;
+              return (
+                <div className="coverPicker" key={actionKey(action)}>
+                  <button
+                    className="commandButton"
+                    onClick={() => {
+                      setCoverOpenFor(open ? null : buildingId);
+                      setCoverPicks([]);
+                    }}
+                    type="button"
+                  >
+                    {legal.label}
+                  </button>
+                  {open ? (
+                    <div className="coverPickerCards">
+                      {player.hand.map((cardId, index) => {
+                        const picked = coverPicks.includes(index);
+                        return (
+                          <label key={`${cardId}-${index}`}>
+                            <input
+                              checked={picked}
+                              disabled={!picked && coverPicks.length >= 2}
+                              onChange={() =>
+                                setCoverPicks((current) =>
+                                  picked ? current.filter((value) => value !== index) : [...current, index]
+                                )
+                              }
+                              type="checkbox"
+                            />
+                            {cardLibrary[cardId]?.name ?? cardId}
+                          </label>
+                        );
+                      })}
+                      <button
+                        className="commandButton primary"
+                        disabled={coverPicks.length === 0}
+                        onClick={() => submitCoverOfDarkness(buildingId)}
+                        type="button"
+                      >
+                        Discard {coverPicks.length || ""} and draw
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
+            return (
+              <button className="commandButton" key={actionKey(action)} onClick={() => onAction(action)} type="button">
+                {legal.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -2548,7 +2673,12 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   ASTROLOGERS_DRAWN: { icon: "🔭", cue: "astrologers" },
   NEUTRAL_DRAW_SWAPPED: { icon: "🔄", cue: "swap" },
   GAME_OPTIONS_CHANGED: { icon: "⚙️", cue: "options" },
-  GAME_WON: { icon: "👑", cue: "victory" }
+  GAME_WON: { icon: "👑", cue: "victory" },
+  FIRST_PLAYER_ROLLED: { icon: "🎲", cue: "dice" },
+  TOWN_BUILDING_USED: { icon: "🏛", cue: "build" },
+  SIEGE_FORTIFICATIONS_PLACED: { icon: "🏰", cue: "build" },
+  FORTIFICATION_DESTROYED: { icon: "💥", cue: "combat-start" },
+  COMBAT_TOKEN_PLACED: { icon: "🔘", cue: "swap" }
 };
 
 type GameEventType = GameState["eventLog"][number]["type"];

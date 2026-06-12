@@ -18,6 +18,8 @@ export type GameRoomSnapshot = {
   version: number;
   updatedAt: string;
   state: GameState;
+  /** Server store generation — changes when the host process restarted. */
+  bootId?: string;
 };
 
 export type RoomResetOptions = {
@@ -170,7 +172,12 @@ function connectPartyRoom(host: string, roomId: string, handlers: RoomConnection
 
 function connectApiRoom(roomId: string, handlers: RoomConnectionHandlers): RoomConnection {
   const source = new EventSource(`/api/rooms/${encodeURIComponent(roomId)}/stream`);
-  let streamHealthy = true;
+  // The server pings every 20s with a real data event. A stream that stayed
+  // silent for much longer is half-dead (idle proxies, sleeping laptops) even
+  // when the browser never fired onerror — fall back to polling until the
+  // EventSource reconnects.
+  let lastMessageAt = Date.now();
+  let streamErrored = false;
 
   const fetchSnapshot = async (): Promise<GameRoomSnapshot> => {
     const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, { cache: "no-store" });
@@ -181,33 +188,60 @@ function connectApiRoom(roomId: string, handlers: RoomConnectionHandlers): RoomC
   };
 
   source.onmessage = (message) => {
-    streamHealthy = true;
+    lastMessageAt = Date.now();
+    streamErrored = false;
     try {
-      const snapshot = JSON.parse(message.data) as GameRoomSnapshot;
-      handlers.onSnapshot(snapshot);
-      handlers.onStatus(`live v${snapshot.version}`);
+      const payload = JSON.parse(message.data) as GameRoomSnapshot | { ping: true };
+      if ("ping" in payload) {
+        return;
+      }
+      if (payload && payload.state) {
+        handlers.onSnapshot(payload);
+        handlers.onStatus(`live v${payload.version}`);
+      }
     } catch {
-      // Ignore malformed keep-alives.
+      // Ignore malformed frames.
     }
   };
   source.onerror = () => {
-    streamHealthy = false;
+    streamErrored = true;
     handlers.onStatus("stream reconnecting");
   };
 
   const pollId = window.setInterval(() => {
-    if (streamHealthy) {
+    const stale = Date.now() - lastMessageAt > 45000;
+    if (!streamErrored && !stale) {
+      return;
+    }
+    fetchSnapshot()
+      .then((snapshot) => {
+        handlers.onSnapshot(snapshot);
+        handlers.onStatus(`live (poll) v${snapshot.version}`);
+      })
+      .catch(() => handlers.onStatus("room sync failed"));
+  }, 4000);
+
+  // Waking up from a background tab or laptop sleep: resync immediately
+  // instead of waiting for the next poll window.
+  const onWake = () => {
+    if (document.visibilityState === "hidden") {
       return;
     }
     fetchSnapshot()
       .then((snapshot) => handlers.onSnapshot(snapshot))
-      .catch(() => handlers.onStatus("room sync failed"));
-  }, 4000);
+      .catch(() => {
+        /* The regular poll keeps retrying. */
+      });
+  };
+  window.addEventListener("focus", onWake);
+  document.addEventListener("visibilitychange", onWake);
 
   return {
     close: () => {
       source.close();
       window.clearInterval(pollId);
+      window.removeEventListener("focus", onWake);
+      document.removeEventListener("visibilitychange", onWake);
     },
     submitAction: async (action) => {
       const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/actions`, {

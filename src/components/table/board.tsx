@@ -13,8 +13,11 @@ import {
   getBattlefieldLabel,
   getBattlefieldTerrain,
   getUnitAbilityDefinitions,
+  getUnitTokens,
+  isArrowTowerUnit,
   isUnitAlive,
   sortUnitsForActivation,
+  type CombatTokenState,
   type CombatUnitState,
   type GameAction,
   type GameState,
@@ -41,6 +44,93 @@ function isBoardFlipped(state: GameState, viewerPlayerId: PlayerId): boolean {
   }
 
   return viewerPlayerId === combat.defenderPlayerId;
+}
+
+const TOKEN_GLYPHS: Record<CombatTokenState["kind"], { symbol: string; describe: (token: CombatTokenState) => string }> = {
+  attack: {
+    symbol: "⚔",
+    describe: (token) =>
+      `Attack token: ${token.amount >= 0 ? "+" : ""}${token.amount} attack (${token.sourceName})`
+  },
+  weakness: {
+    symbol: "⚔",
+    describe: (token) => `Weakness token: ${token.amount} attack (${token.sourceName})`
+  },
+  corrosion: {
+    symbol: "🛡",
+    describe: (token) => `Corrosion token: ${token.amount} defense, minimum 0, until the end of combat (${token.sourceName})`
+  },
+  paralysis: {
+    symbol: "💫",
+    describe: (token) => `Paralysis: skips its next activation; removed when it takes damage (${token.sourceName})`
+  }
+};
+
+/** Token chips drawn on a unit card (attack/weakness/corrosion/paralysis). */
+function TokenChips({ unit }: { unit: CombatUnitState }) {
+  const tokens = getUnitTokens(unit);
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  return (
+    <span className="tokenChips" aria-label="Combat tokens">
+      {tokens.map((token) => {
+        const glyph = TOKEN_GLYPHS[token.kind];
+        return (
+          <b className={`tokenChip ${token.kind}`} key={token.id} title={glyph.describe(token)}>
+            {token.kind === "paralysis" ? glyph.symbol : `${token.amount > 0 ? "+" : ""}${token.amount}${glyph.symbol}`}
+          </b>
+        );
+      })}
+    </span>
+  );
+}
+
+/** The Arrow Tower card beside the board during sieges. */
+function ArrowTowerCard({
+  state,
+  tower,
+  legalActions,
+  onAction,
+  onInspect
+}: {
+  state: GameState;
+  tower: CombatUnitState;
+  legalActions: LegalAction[];
+  onAction: (action: GameAction) => void;
+  onInspect: (unitId: string) => void;
+}) {
+  const health = Math.max(0, tower.maxHealth - tower.damage);
+  const attackAction = legalActions.find(
+    (legal) => legal.action.type === "ATTACK_UNIT" && legal.action.defenderId === tower.id
+  );
+  const demolishAction = legalActions.find(
+    (legal) => legal.action.type === "ATTACK_FORTIFICATION" && legal.action.target.kind === "arrow-tower"
+  );
+  const isActive = state.combat?.activeUnitId === tower.id;
+
+  return (
+    <div className={`arrowTower ${isActive ? "active" : ""}`} aria-label="Arrow Tower">
+      <button className="arrowTowerBody" onClick={() => onInspect(tower.id)} title="Arrow Tower — shoots without positioning penalties; only ranged attacks and card effects can hit it; collapses when all Walls and the Gate fall." type="button">
+        <span aria-hidden="true" className="arrowTowerIcon">🏹🗼</span>
+        <strong>Arrow Tower</strong>
+        <small>
+          ⚔ {tower.attack} · <Shield aria-hidden="true" size={10} /> {tower.defense} · ♥ {health}/{tower.maxHealth} · init {tower.initiative}
+        </small>
+      </button>
+      {attackAction ? (
+        <button className="commandButton" onClick={() => onAction(attackAction.action)} type="button">
+          Shoot the tower
+        </button>
+      ) : null}
+      {demolishAction ? (
+        <button className="commandButton" onClick={() => onAction(demolishAction.action)} type="button">
+          {demolishAction.label}
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 export function BattlefieldBoard({
@@ -72,10 +162,16 @@ export function BattlefieldBoard({
   const attackActionsByDefender = new Map<string, GameAction>();
   const cardActionsByTarget = new Map<string, GameAction>();
   const abilityTargetActions = new Map<string, GameAction>();
+  const fortificationActionsByPosition = new Map<number, LegalAction>();
+
+  const siege = combat?.siege ?? null;
+  const wallPositions = new Set(siege?.walls ?? []);
+  const gatePosition = siege?.gatePosition ?? null;
+  const arrowTower = siege?.arrowTowerUnitId ? combat?.units[siege.arrowTowerUnitId] : null;
 
   if (combat) {
     for (const unit of Object.values(combat.units)) {
-      if (isUnitAlive(unit)) {
+      if (isUnitAlive(unit) && unit.position >= 0) {
         unitsByPosition.set(unit.position, unit);
       }
     }
@@ -90,6 +186,9 @@ export function BattlefieldBoard({
     }
     if (legal.action.type === "CHOOSE_ABILITY_TARGET") {
       abilityTargetActions.set(legal.action.targetUnitId, legal.action);
+    }
+    if (legal.action.type === "ATTACK_FORTIFICATION" && legal.action.target.kind !== "arrow-tower") {
+      fortificationActionsByPosition.set(legal.action.target.position, legal);
     }
     if (selectedCardAction && isBoardTargetCardAction(legal.action) && sameCardSelection(selectedCardAction, legal.action)) {
       cardActionsByTarget.set(legal.action.target.unitId, legal.action);
@@ -145,6 +244,42 @@ export function BattlefieldBoard({
               }
             : {};
 
+          // Siege fortifications: walls and the gate live in the middle row.
+          const isWall = wallPositions.has(index);
+          const isGate = gatePosition === index;
+          if (isWall || isGate) {
+            const fortAction = fortificationActionsByPosition.get(index);
+            const label = isGate
+              ? "Gate — open to the defender, an obstacle to the attacker. Adjacent ground/flying units may tear it down as their attack."
+              : "Wall — a combat obstacle. Adjacent ground/flying units may tear it down as their attack; defenders in its column take 1 less ranged damage.";
+            const content = (
+              <span className={`fortMark ${isGate ? "gate" : "wall"}`}>
+                <span aria-hidden="true">{isGate ? "🚪" : "🧱"}</span>
+                <small>{isGate ? "Gate" : "Wall"}</small>
+              </span>
+            );
+            if (fortAction) {
+              return (
+                <button
+                  aria-label={fortAction.label}
+                  className={`${className} fortification attackTarget`}
+                  data-fx-cell={index}
+                  key={index}
+                  onClick={() => onAction(fortAction.action)}
+                  title={`${fortAction.label} — automatically successful, no die, no cards`}
+                  type="button"
+                >
+                  {content}
+                </button>
+              );
+            }
+            return (
+              <div aria-label={label} className={`${className} fortification`} data-fx-cell={index} key={index} title={label}>
+                {content}
+              </div>
+            );
+          }
+
           if (isObstacle) {
             return (
               <div
@@ -182,6 +317,7 @@ export function BattlefieldBoard({
                   {unit.defenseToken ? " +DEF" : ""}
                 </span>
               </div>
+              <TokenChips unit={unit} />
               {isActive ? <span className="activeRing" aria-hidden="true" /> : null}
               {isFlipping ? <span className="flipBadge">Flipped to Few</span> : null}
             </article>
@@ -260,6 +396,15 @@ export function BattlefieldBoard({
           );
         })}
       </div>
+      {arrowTower && isUnitAlive(arrowTower) ? (
+        <ArrowTowerCard
+          legalActions={legalActions}
+          onAction={onAction}
+          onInspect={onInspect}
+          state={state}
+          tower={arrowTower}
+        />
+      ) : null}
     </div>
   );
 }
@@ -346,6 +491,7 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
       <div className="inspectBody">
         <strong>{unit.cardName}</strong>
         <span className="inspectKind">
+          {isArrowTowerUnit(unit) ? "siege " : ""}
           {unit.grade} {unit.type} · initiative {unit.initiative}
         </span>
         <div className="inspectStats">
@@ -357,6 +503,18 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
             ♥ {health}/{unit.maxHealth}
           </span>
         </div>
+        {getUnitTokens(unit).length > 0 ? (
+          <div className="inspectTokens">
+            {getUnitTokens(unit).map((token) => (
+              <span className={`tokenChip ${token.kind}`} key={token.id} title={TOKEN_GLYPHS[token.kind].describe(token)}>
+                {token.kind === "paralysis"
+                  ? `${TOKEN_GLYPHS[token.kind].symbol} paralysis`
+                  : `${token.amount > 0 ? "+" : ""}${token.amount}${TOKEN_GLYPHS[token.kind].symbol} ${token.kind}`}
+                {token.expiresAtCombatRoundEnd !== undefined ? ` (until round ${token.expiresAtCombatRoundEnd} ends)` : ""}
+              </span>
+            ))}
+          </div>
+        ) : null}
         {abilities.length > 0 ? (
           <div className="inspectAbilities">
             {abilities.map((ability) => (
