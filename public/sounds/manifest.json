@@ -16,6 +16,568 @@
     "src": "/sounds/adventure/experience.mp3",
     "note": "experience gained"
   },
+  "adventure/flag-mine": {
+    "src": "/sounds/adventure/flag-mine.mp3"
+  },
+  "adventure/gazebo": {
+    "src": "/sounds/adventure/gazebo.mp3",
+    "note": "Learning Stone (gazebo) visit"
+  },
+  "adventure/get-protection": {
+    "src": "/sounds/adventure/get-protection.mp3",
+    "note": "protective buff at a map object (uncertain)"
+  },
+  "adventure/graveyard": {
+    "src": "/sounds/adventure/graveyard.mp3"
+  },
+  "adventure/hero-defeated": {
+    "src": "/sounds/adventure/hero-defeated.mp3"
+  },
+  "adventure/hero-new-level": {
+    "src": "/sounds/adventure/hero-new-level.mp3"
+  },
+  "adventure/horse-dirt": {
+    "src": "/sounds/adventure/horse-dirt.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-fly": {
+    "src": "/sounds/adventure/horse-fly.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-grass": {
+    "src": "/sounds/adventure/horse-grass.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-lava": {
+    "src": "/sounds/adventure/horse-lava.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-penalty-dirt": {
+    "src": "/sounds/adventure/horse-penalty-dirt.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-penalty-grass": {
+    "src": "/sounds/adventure/horse-penalty-grass.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-penalty-lava": {
+    "src": "/sounds/adventure/horse-penalty-lava.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-penalty-rock": {
+    "src": "/sounds/adventure/horse-penalty-rock.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-penalty-rough": {
+    "src": "/sounds/adventure/horse-penalty-rough.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-penalty-sand": {
+    "src": "/sounds/adventure/horse-penalty-sand.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-penalty-snow": {
+    "src": "/sounds/adventure/horse-penalty-snow.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-penalty-subterranean": {
+    "src": "/sounds/adventure/horse-penalty-subterranean.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-penalty-swamp": {
+    "src": "/sounds/adventure/horse-penalty-swamp.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-rock": {
+    "src": "/sounds/adventure/horse-rock.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-rough": {
+    "src": "/sounds/adventure/horse-rough.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-sand": {
+    "src": "/sounds/adventure/horse-sand.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-snow": {
+    "src": "/sounds/adventure/horse-snow.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-subterranean": {
+    "src": "/sounds/adventure/horse-subterranean.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-swamp": {
+    "src": "/sounds/adventure/horse-swamp.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-water": {
+    "src": "/sounds/adventure/horse-water.mp3",
+    "loop": true,
+    "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/lighthouse": {
+    "src": "/sounds/adventure/lighthouse.mp3"
+  },
+  "adventure/luck": {
+    "src": "/sounds/adventure/luck.mp3",
+    "note": "luck bonus gained at a map object"
+  },
+  "adventure/military": {
+    "src": "/sounds/adventure/military.mp3",
+    "note": "military object visit (uncertain)"
+  },
+  "adventure/morale": {
+    "src": "/sounds/adventure/morale.mp3",
+    "note": "morale bonus gained at a map object"
+  },
+  "adventure/mystery": {
+    "src": "/sounds/adventure/mystery.mp3",
+    "note": "mysterious object visit (uncertain)"
+  },
+  "adventure/new-day": {
+    "src": "/sounds/adventure/new-day.mp3"
+  },
+  "adventure/new-month": {
+    "src": "/sounds/adventure/new-month.mp3"
+  },
+  "adventure/new-week": {
+    "src": "/sounds/adventure/new-week.mp3"
+  },
+  "adventure/nomad": {
+    "src": "/sounds/adventure/nomad.mp3",
+    "note": "nomad tent / desert object visit (uncertain)"
+  },
+  "adventure/obelisk": {
+    "src": "/sounds/adventure/obelisk.mp3"
+  },
+  "adventure/pickup-01": {
+    "src": "/sounds/adventure/pickup-01.mp3",
+    "note": "pickups 01-07: resource/artifact pickup, pick one at random"
+  },
+  "adventure/pickup-02": {
+    "src": "/sounds/adventure/pickup-02.mp3"
+  },
+  "adventure/pickup-03": {
+    "src": "/sounds/adventure/pickup-03.mp3"
+  },
+  "adventure/pickup-04": {
+    "src": "/sounds/adventure/pickup-04.mp3"
+  },
+  "adventure/pickup-05": {
+    "src": "/sounds/adventure/pickup-05.mp3"
+  },
+  "adventure/pickup-06": {
+    "src": "/sounds/adventure/pickup-06.mp3"
+  },
+  "adventure/pickup-07": {
+    "src": "/sounds/adventure/pickup-07.mp3"
+  },
+  "adventure/protect": {
+    "src": "/sounds/adventure/protect.mp3",
+    "note": "protective buff at a map object (uncertain)"
+  },
+  "adventure/quest": {
+    "src": "/sounds/adventure/quest.mp3"
+  },
+  "adventure/rogue": {
+    "src": "/sounds/adventure/rogue.mp3",
+    "note": "Den of Thieves / rogue encounter (uncertain)"
+  },
+  "adventure/store": {
+    "src": "/sounds/adventure/store.mp3",
+    "note": "marketplace / storage visit (uncertain)"
+  },
+  "adventure/teleport": {
+    "src": "/sounds/adventure/teleport.mp3",
+    "note": "map teleporter / monolith travel (TELEIN)"
+  },
+  "adventure/temple": {
+    "src": "/sounds/adventure/temple.mp3"
+  },
+  "adventure/treasure": {
+    "src": "/sounds/adventure/treasure.mp3",
+    "note": "gold / treasure pickup"
+  },
+  "adventure/ultimate-artifact": {
+    "src": "/sounds/adventure/ultimate-artifact.mp3",
+    "note": "Grail / ultimate artifact found"
+  },
+  "ambient/air": {
+    "src": "/sounds/ambient/air.mp3",
+    "loop": true,
+    "note": "Air Elemental dwellings / Altar of Air (LOOPAIR)"
+  },
+  "ambient/archers-tower": {
+    "src": "/sounds/ambient/archers-tower.mp3",
+    "loop": true,
+    "note": "Archers' Tower / Lizard Den (LOOPARCH)"
+  },
+  "ambient/arena": {
+    "src": "/sounds/ambient/arena.mp3",
+    "loop": true,
+    "note": "Arena (LOOPAREN)"
+  },
+  "ambient/behemoth-lair": {
+    "src": "/sounds/ambient/behemoth-lair.mp3",
+    "loop": true,
+    "note": "Behemoth Crag / Gorgon Lair (LOOPBEHE)"
+  },
+  "ambient/birds": {
+    "src": "/sounds/ambient/birds.mp3",
+    "loop": true,
+    "note": "Cliff Nest (roc dwelling) (LOOPBIRD)"
+  },
+  "ambient/buoy": {
+    "src": "/sounds/ambient/buoy.mp3",
+    "loop": true,
+    "note": "Buoy (LOOPBUOY)"
+  },
+  "ambient/cave": {
+    "src": "/sounds/ambient/cave.mp3",
+    "loop": true,
+    "note": "Cyclops Cave, Demon Gate, Pillar of Eyes, Warren (LOOPCAVE)"
+  },
+  "ambient/crystals": {
+    "src": "/sounds/ambient/crystals.mp3",
+    "loop": true,
+    "note": "Crystal Cavern (LOOPCRYS)"
+  },
+  "ambient/cursed-ground": {
+    "src": "/sounds/ambient/cursed-ground.mp3",
+    "loop": true,
+    "note": "Cursed Ground (LOOPCURS)"
+  },
+  "ambient/den-of-thieves": {
+    "src": "/sounds/ambient/den-of-thieves.mp3",
+    "loop": true,
+    "note": "Den of Thieves (LOOPDEN)"
+  },
+  "ambient/devils": {
+    "src": "/sounds/ambient/devils.mp3",
+    "loop": true,
+    "note": "Forsaken Palace (devil dwelling) (LOOPDEVL)"
+  },
+  "ambient/dragons": {
+    "src": "/sounds/ambient/dragons.mp3",
+    "loop": true,
+    "note": "dragon dwellings and caves (LOOPDRAG)"
+  },
+  "ambient/dwarves": {
+    "src": "/sounds/ambient/dwarves.mp3",
+    "loop": true,
+    "note": "Dwarf Cottage / Dwarven Treasury (LOOPDWAR)"
+  },
+  "ambient/earth": {
+    "src": "/sounds/ambient/earth.mp3",
+    "loop": true,
+    "note": "Earth Elemental dwellings / Altar of Earth (LOOPEART)"
+  },
+  "ambient/elves": {
+    "src": "/sounds/ambient/elves.mp3",
+    "loop": true,
+    "note": "Homestead (elf dwelling) (LOOPELF)"
+  },
+  "ambient/factory": {
+    "src": "/sounds/ambient/factory.mp3",
+    "loop": true,
+    "note": "War Machine Factory (LOOPFACT)"
+  },
+  "ambient/faerie-ring": {
+    "src": "/sounds/ambient/faerie-ring.mp3",
+    "loop": true,
+    "note": "Faerie Ring (LOOPFAER)"
+  },
+  "ambient/fire-vents": {
+    "src": "/sounds/ambient/fire-vents.mp3",
+    "loop": true,
+    "note": "Fire Lake / Hall of Sins (LOOPVENT)"
+  },
+  "ambient/fire": {
+    "src": "/sounds/ambient/fire.mp3",
+    "loop": true,
+    "note": "Hell Hole, Imp Crucible, Altar of Fire (LOOPFIRE)"
+  },
+  "ambient/flag": {
+    "src": "/sounds/ambient/flag.mp3",
+    "loop": true,
+    "note": "flagged object / garrison (uncertain) (LOOPFLAG)"
+  },
+  "ambient/fountain": {
+    "src": "/sounds/ambient/fountain.mp3",
+    "loop": true,
+    "note": "fountains / Altar of Water (LOOPFOUN)"
+  },
+  "ambient/garden": {
+    "src": "/sounds/ambient/garden.mp3",
+    "loop": true,
+    "note": "Garden of Revelation / Dendroid Arches (LOOPGARD)"
+  },
+  "ambient/gem-pond": {
+    "src": "/sounds/ambient/gem-pond.mp3",
+    "loop": true,
+    "note": "Gem Pond (LOOPGEMP)"
+  },
+  "ambient/goblins": {
+    "src": "/sounds/ambient/goblins.mp3",
+    "loop": true,
+    "note": "Goblin Barracks (LOOPGOBL)"
+  },
+  "ambient/gremlins": {
+    "src": "/sounds/ambient/gremlins.mp3",
+    "loop": true,
+    "note": "Workshop (gremlin dwelling) (LOOPGREM)"
+  },
+  "ambient/griffins": {
+    "src": "/sounds/ambient/griffins.mp3",
+    "loop": true,
+    "note": "Griffin Tower / Conservatory (LOOPGRIF)"
+  },
+  "ambient/guardhouse": {
+    "src": "/sounds/ambient/guardhouse.mp3",
+    "loop": true,
+    "note": "Guardhouse (pikeman dwelling) (LOOPPIKE)"
+  },
+  "ambient/harpies": {
+    "src": "/sounds/ambient/harpies.mp3",
+    "loop": true,
+    "note": "Harpy Loft (LOOPHARP)"
+  },
+  "ambient/hydras": {
+    "src": "/sounds/ambient/hydras.mp3",
+    "loop": true,
+    "note": "Hydra Pond (LOOPHYDR)"
+  },
+  "ambient/insects": {
+    "src": "/sounds/ambient/insects.mp3",
+    "loop": true,
+    "note": "Dragon Fly / Serpent Fly Hive (LOOPLEAR)"
+  },
+  "ambient/kennels": {
+    "src": "/sounds/ambient/kennels.mp3",
+    "loop": true,
+    "note": "Kennels (hell hound dwelling) (LOOPDOG)"
+  },
+  "ambient/labyrinth": {
+    "src": "/sounds/ambient/labyrinth.mp3",
+    "loop": true,
+    "note": "Labyrinth (minotaur dwelling) (LOOPANIM)"
+  },
+  "ambient/leprechaun": {
+    "src": "/sounds/ambient/leprechaun.mp3",
+    "loop": true,
+    "note": "leprechaun-themed object (uncertain) (LOOPLEPR)"
+  },
+  "ambient/lumber-mill": {
+    "src": "/sounds/ambient/lumber-mill.mp3",
+    "loop": true,
+    "note": "Sawmill (LOOPLUMB)"
+  },
+  "ambient/magic": {
+    "src": "/sounds/ambient/magic.mp3",
+    "loop": true,
+    "note": "Mage Tower, Altar of Wishes, anti-magic garrison (LOOPMAGI)"
+  },
+  "ambient/manticores": {
+    "src": "/sounds/ambient/manticores.mp3",
+    "loop": true,
+    "note": "Manticore Lair (LOOPMANT)"
+  },
+  "ambient/market": {
+    "src": "/sounds/ambient/market.mp3",
+    "loop": true,
+    "note": "marketplace (uncertain) (LOOPMARK)"
+  },
+  "ambient/medusas": {
+    "src": "/sounds/ambient/medusas.mp3",
+    "loop": true,
+    "note": "Medusa Chapel / Store (LOOPMEDU)"
+  },
+  "ambient/mercenary-camp": {
+    "src": "/sounds/ambient/mercenary-camp.mp3",
+    "loop": true,
+    "note": "Mercenary Camp (LOOPMERC)"
+  },
+  "ambient/mill": {
+    "src": "/sounds/ambient/mill.mp3",
+    "loop": true,
+    "note": "Water Mill (LOOPMILL)"
+  },
+  "ambient/mine": {
+    "src": "/sounds/ambient/mine.mp3",
+    "loop": true,
+    "note": "mines (LOOPMINE)"
+  },
+  "ambient/monastery": {
+    "src": "/sounds/ambient/monastery.mp3",
+    "loop": true,
+    "note": "Monastery (monk dwelling) (LOOPMONK)"
+  },
+  "ambient/monolith-1": {
+    "src": "/sounds/ambient/monolith-1.mp3",
+    "loop": true,
+    "note": "one-way Monolith (LOOPMON1)"
+  },
+  "ambient/monolith-2": {
+    "src": "/sounds/ambient/monolith-2.mp3",
+    "loop": true,
+    "note": "two-way Monolith (LOOPMON2)"
+  },
+  "ambient/monsters": {
+    "src": "/sounds/ambient/monsters.mp3",
+    "loop": true,
+    "note": "Basilisk Pit / Wyvern Nest (LOOPMONS)"
+  },
+  "ambient/nagas": {
+    "src": "/sounds/ambient/nagas.mp3",
+    "loop": true,
+    "note": "Golden Pavilion / Naga Bank (LOOPNAGA)"
+  },
+  "ambient/ocean": {
+    "src": "/sounds/ambient/ocean.mp3",
+    "loop": true,
+    "note": "ocean / coast (LOOPOCEA)"
+  },
+  "ambient/ogres": {
+    "src": "/sounds/ambient/ogres.mp3",
+    "loop": true,
+    "note": "Ogre Fort (LOOPOGRE)"
+  },
+  "ambient/orcs": {
+    "src": "/sounds/ambient/orcs.mp3",
+    "loop": true,
+    "note": "Orc Tower / Gnoll Hut (LOOPORC)"
+  },
+  "ambient/pegasi": {
+    "src": "/sounds/ambient/pegasi.mp3",
+    "loop": true,
+    "note": "Enchanted Spring (pegasus dwelling) (LOOPPEGA)"
+  },
+  "ambient/refugee-camp": {
+    "src": "/sounds/ambient/refugee-camp.mp3",
+    "loop": true,
+    "note": "Refugee Camp (LOOPCAMP)"
+  },
+  "ambient/sanctuary": {
+    "src": "/sounds/ambient/sanctuary.mp3",
+    "loop": true,
+    "note": "Sanctuary / Portal of Glory (LOOPSANC)"
+  },
+  "ambient/shrine": {
+    "src": "/sounds/ambient/shrine.mp3",
+    "loop": true,
+    "note": "Shrines of Magic (LOOPSHRIN)"
+  },
+  "ambient/sirens": {
+    "src": "/sounds/ambient/sirens.mp3",
+    "loop": true,
+    "note": "Sirens (LOOPSIRE)"
+  },
+  "ambient/skeletons": {
+    "src": "/sounds/ambient/skeletons.mp3",
+    "loop": true,
+    "note": "Cursed Temple (skeleton dwelling) (LOOPSKEL)"
+  },
+  "ambient/stables": {
+    "src": "/sounds/ambient/stables.mp3",
+    "loop": true,
+    "note": "Centaur Stables / Training Grounds (LOOPHORS)"
+  },
+  "ambient/star-axis": {
+    "src": "/sounds/ambient/star-axis.mp3",
+    "loop": true,
+    "note": "Star Axis (LOOPSTAR)"
+  },
+  "ambient/storm": {
+    "src": "/sounds/ambient/storm.mp3",
+    "loop": true,
+    "note": "storm weather (uncertain)"
+  },
+  "ambient/subterranean-gate": {
+    "src": "/sounds/ambient/subterranean-gate.mp3",
+    "loop": true,
+    "note": "Subterranean Gate (LOOPGATE)"
+  },
+  "ambient/sulfur-mine": {
+    "src": "/sounds/ambient/sulfur-mine.mp3",
+    "loop": true,
+    "note": "Sulfur Dune (LOOPSULF)"
+  },
+  "ambient/swamp": {
+    "src": "/sounds/ambient/swamp.mp3",
+    "loop": true,
+    "note": "swamp ambience (uncertain) (LOOPSWAR)"
+  },
+  "ambient/swords": {
+    "src": "/sounds/ambient/swords.mp3",
+    "loop": true,
+    "note": "military dwellings (uncertain) (LOOPSWOR)"
+  },
+  "ambient/tavern": {
+    "src": "/sounds/ambient/tavern.mp3",
+    "loop": true,
+    "note": "Tavern (LOOPTAV)"
+  },
+  "ambient/titans": {
+    "src": "/sounds/ambient/titans.mp3",
+    "loop": true,
+    "note": "Cloud Temple (titan dwelling) (LOOPTITA)"
+  },
+  "ambient/undead": {
+    "src": "/sounds/ambient/undead.mp3",
+    "loop": true,
+    "note": "Graveyard, Mausoleum, Tomb of Souls, Hall of Darkness (LOOPDEAD)"
+  },
+  "ambient/unicorns": {
+    "src": "/sounds/ambient/unicorns.mp3",
+    "loop": true,
+    "note": "Unicorn Glade (LOOPUNIC)"
+  },
+  "ambient/volcano": {
+    "src": "/sounds/ambient/volcano.mp3",
+    "loop": true,
+    "note": "Volcano (LOOPVOLC)"
+  },
+  "ambient/waterfall": {
+    "src": "/sounds/ambient/waterfall.mp3",
+    "loop": true,
+    "note": "waterfalls (LOOPFALL)"
+  },
+  "ambient/whirlpool": {
+    "src": "/sounds/ambient/whirlpool.mp3",
+    "loop": true,
+    "note": "Whirlpool (LOOPWHIR)"
+  },
+  "ambient/windmill": {
+    "src": "/sounds/ambient/windmill.mp3",
+    "loop": true,
+    "note": "Windmill (LOOPWIND)"
+  },
+  "ambient/wolves": {
+    "src": "/sounds/ambient/wolves.mp3",
+    "loop": true,
+    "note": "Wolf Pen (LOOPWOLF)"
+  },
   "effects/acid-breath": {
     "src": "/sounds/effects/acid-breath.mp3"
   },
@@ -67,30 +629,111 @@
     "src": "/sounds/effects/drawbridge.mp3",
     "note": "siege drawbridge raising/lowering"
   },
+  "effects/fear": {
+    "src": "/sounds/effects/fear.mp3",
+    "note": "Fear ability (Azure Dragon)"
+  },
+  "effects/fire-shield-hit": {
+    "src": "/sounds/effects/fire-shield-hit.mp3",
+    "note": "Fire Shield retaliation damage (FIRESHIE)"
+  },
+  "effects/fire-storm": {
+    "src": "/sounds/effects/fire-storm.mp3",
+    "note": "unknown/unused (FIRESTRM)"
+  },
+  "effects/gog-flame": {
+    "src": "/sounds/effects/gog-flame.mp3",
+    "note": "Gog/Magog fireball attack effect (GOGFLAME)"
+  },
+  "effects/good-luck": {
+    "src": "/sounds/effects/good-luck.mp3"
+  },
+  "effects/good-morale": {
+    "src": "/sounds/effects/good-morale.mp3"
+  },
+  "effects/magcarow": {
+    "src": "/sounds/effects/magcarow.mp3",
+    "note": "unknown (MAGCAROW); possibly magic-arrow impact"
+  },
+  "effects/magchdrn": {
+    "src": "/sounds/effects/magchdrn.mp3",
+    "note": "unknown (MAGCHDRN); possibly mana drained at a magic well"
+  },
+  "effects/magchfil": {
+    "src": "/sounds/effects/magchfil.mp3",
+    "note": "unknown (MAGCHFIL); possibly mana refilled at a magic well"
+  },
+  "effects/magic-resist": {
+    "src": "/sounds/effects/magic-resist.mp3",
+    "note": "spell resisted (MAGICRES)"
+  },
+  "effects/mana-drain": {
+    "src": "/sounds/effects/mana-drain.mp3",
+    "note": "mana drained (MANADRAI)"
+  },
+  "effects/mirror-image": {
+    "src": "/sounds/effects/mirror-image.mp3",
+    "note": "possibly Magic Mirror reflection (MIRRORIM); uncertain"
+  },
+  "effects/mnrdeath": {
+    "src": "/sounds/effects/mnrdeath.mp3",
+    "note": "unknown (MNRDEATH)"
+  },
+  "effects/regeneration": {
+    "src": "/sounds/effects/regeneration.mp3",
+    "note": "Regeneration ability (troll, wight)"
+  },
+  "effects/siege-keep-shot": {
+    "src": "/sounds/effects/siege-keep-shot.mp3",
+    "note": "arrow tower firing during siege"
+  },
+  "effects/siege-wall-hit": {
+    "src": "/sounds/effects/siege-wall-hit.mp3",
+    "note": "catapult hits the wall"
+  },
+  "effects/siege-wall-miss": {
+    "src": "/sounds/effects/siege-wall-miss.mp3",
+    "note": "catapult misses"
+  },
+  "effects/spell-fizzle": {
+    "src": "/sounds/effects/spell-fizzle.mp3",
+    "note": "spell fails / fizzles (RSBRYFZL)"
+  },
   "music/battle-00": {
     "src": "/sounds/music/battle-00.mp3",
+    "loop": true,
     "note": "battle tracks 00-07: pick one at random per combat"
   },
   "music/battle-01": {
-    "src": "/sounds/music/battle-01.mp3"
+    "src": "/sounds/music/battle-01.mp3",
+    "loop": true
   },
   "music/battle-02": {
-    "src": "/sounds/music/battle-02.mp3"
+    "src": "/sounds/music/battle-02.mp3",
+    "loop": true
   },
   "music/battle-03": {
-    "src": "/sounds/music/battle-03.mp3"
+    "src": "/sounds/music/battle-03.mp3",
+    "loop": true
   },
   "music/battle-04": {
-    "src": "/sounds/music/battle-04.mp3"
+    "src": "/sounds/music/battle-04.mp3",
+    "loop": true
   },
   "music/battle-05": {
-    "src": "/sounds/music/battle-05.mp3"
+    "src": "/sounds/music/battle-05.mp3",
+    "loop": true
   },
   "music/battle-06": {
-    "src": "/sounds/music/battle-06.mp3"
+    "src": "/sounds/music/battle-06.mp3",
+    "loop": true
   },
   "music/battle-07": {
-    "src": "/sounds/music/battle-07.mp3"
+    "src": "/sounds/music/battle-07.mp3",
+    "loop": true
+  },
+  "spells/air-elemental": {
+    "src": "/sounds/spells/air-elemental.mp3"
   },
   "spells/air-shield": {
     "src": "/sounds/spells/air-shield.mp3"
@@ -148,6 +791,9 @@
   "spells/death-stare": {
     "src": "/sounds/spells/death-stare.mp3"
   },
+  "spells/destroy-undead": {
+    "src": "/sounds/spells/destroy-undead.mp3"
+  },
   "spells/disease": {
     "src": "/sounds/spells/disease.mp3"
   },
@@ -163,18 +809,188 @@
   "spells/earthquake": {
     "src": "/sounds/spells/earthquake.mp3"
   },
+  "spells/fire-shield": {
+    "src": "/sounds/spells/fire-shield.mp3"
+  },
+  "spells/fire-wall": {
+    "src": "/sounds/spells/fire-wall.mp3"
+  },
+  "spells/fireball-hit": {
+    "src": "/sounds/spells/fireball-hit.mp3",
+    "note": "explosion/impact (FIREBALL)"
+  },
+  "spells/fireball": {
+    "src": "/sounds/spells/fireball.mp3",
+    "note": "cast sound (SPONTCOMB); also the Magog's fireball ability"
+  },
+  "spells/fly": {
+    "src": "/sounds/spells/fly.mp3"
+  },
+  "spells/force-field": {
+    "src": "/sounds/spells/force-field.mp3"
+  },
+  "spells/forgetfulness": {
+    "src": "/sounds/spells/forgetfulness.mp3"
+  },
+  "spells/fortune": {
+    "src": "/sounds/spells/fortune.mp3"
+  },
+  "spells/frenzy": {
+    "src": "/sounds/spells/frenzy.mp3"
+  },
+  "spells/frost-ring": {
+    "src": "/sounds/spells/frost-ring.mp3"
+  },
+  "spells/haste-alt": {
+    "src": "/sounds/spells/haste-alt.mp3",
+    "note": "unused alternate (HASTE); the game casts with TAILWIND"
+  },
+  "spells/haste": {
+    "src": "/sounds/spells/haste.mp3"
+  },
+  "spells/hypnotize": {
+    "src": "/sounds/spells/hypnotize.mp3"
+  },
+  "spells/ice-bolt-hit": {
+    "src": "/sounds/spells/ice-bolt-hit.mp3",
+    "note": "impact (ICERAYEX); cast is spells/ice-bolt"
+  },
+  "spells/ice-bolt": {
+    "src": "/sounds/spells/ice-bolt.mp3"
+  },
   "spells/implosion": {
     "src": "/sounds/spells/implosion.mp3",
     "note": "original file is DECAY.wav"
   },
+  "spells/inferno": {
+    "src": "/sounds/spells/inferno.mp3"
+  },
+  "spells/land-mine-trigger": {
+    "src": "/sounds/spells/land-mine-trigger.mp3"
+  },
+  "spells/land-mine": {
+    "src": "/sounds/spells/land-mine.mp3"
+  },
+  "spells/lightning-bolt": {
+    "src": "/sounds/spells/lightning-bolt.mp3"
+  },
+  "spells/magic-arrow": {
+    "src": "/sounds/spells/magic-arrow.mp3"
+  },
   "spells/magic-mirror": {
     "src": "/sounds/spells/magic-mirror.mp3"
+  },
+  "spells/meteor-shower": {
+    "src": "/sounds/spells/meteor-shower.mp3"
+  },
+  "spells/mirth": {
+    "src": "/sounds/spells/mirth.mp3"
+  },
+  "spells/misfortune": {
+    "src": "/sounds/spells/misfortune.mp3"
+  },
+  "spells/paralyze": {
+    "src": "/sounds/spells/paralyze.mp3"
+  },
+  "spells/poison": {
+    "src": "/sounds/spells/poison.mp3"
+  },
+  "spells/prayer": {
+    "src": "/sounds/spells/prayer.mp3"
+  },
+  "spells/precision": {
+    "src": "/sounds/spells/precision.mp3"
+  },
+  "spells/protect-air": {
+    "src": "/sounds/spells/protect-air.mp3"
+  },
+  "spells/protect-earth": {
+    "src": "/sounds/spells/protect-earth.mp3"
+  },
+  "spells/protect-fire": {
+    "src": "/sounds/spells/protect-fire.mp3"
+  },
+  "spells/protect-water": {
+    "src": "/sounds/spells/protect-water.mp3"
+  },
+  "spells/quicksand": {
+    "src": "/sounds/spells/quicksand.mp3",
+    "note": "original file QUIKSAND"
+  },
+  "spells/remove-obstacle": {
+    "src": "/sounds/spells/remove-obstacle.mp3"
+  },
+  "spells/resurrection": {
+    "src": "/sounds/spells/resurrection.mp3"
+  },
+  "spells/sacrifice-2": {
+    "src": "/sounds/spells/sacrifice-2.mp3",
+    "note": "second Sacrifice sound (SACRIF2)"
+  },
+  "spells/sacrifice": {
+    "src": "/sounds/spells/sacrifice.mp3"
+  },
+  "spells/scuttle-boat": {
+    "src": "/sounds/spells/scuttle-boat.mp3"
+  },
+  "spells/shield": {
+    "src": "/sounds/spells/shield.mp3"
+  },
+  "spells/slayer": {
+    "src": "/sounds/spells/slayer.mp3"
+  },
+  "spells/slow": {
+    "src": "/sounds/spells/slow.mp3"
+  },
+  "spells/sorrow": {
+    "src": "/sounds/spells/sorrow.mp3"
+  },
+  "spells/stone-skin": {
+    "src": "/sounds/spells/stone-skin.mp3"
+  },
+  "spells/summon-boat": {
+    "src": "/sounds/spells/summon-boat.mp3"
+  },
+  "spells/teleport-in": {
+    "src": "/sounds/spells/teleport-in.mp3",
+    "note": "battle teleport arrival (TELPTIN); spells/teleport is the cast"
+  },
+  "spells/teleport": {
+    "src": "/sounds/spells/teleport.mp3"
+  },
+  "spells/view": {
+    "src": "/sounds/spells/view.mp3",
+    "note": "View Air / View Earth"
+  },
+  "spells/visions": {
+    "src": "/sounds/spells/visions.mp3"
+  },
+  "spells/water-walk": {
+    "src": "/sounds/spells/water-walk.mp3"
+  },
+  "spells/weakness": {
+    "src": "/sounds/spells/weakness.mp3"
   },
   "ui/button": {
     "src": "/sounds/ui/button.mp3"
   },
   "ui/chat": {
     "src": "/sounds/ui/chat.mp3"
+  },
+  "ui/player-joined": {
+    "src": "/sounds/ui/player-joined.mp3"
+  },
+  "ui/player-left": {
+    "src": "/sounds/ui/player-left.mp3"
+  },
+  "ui/system-message": {
+    "src": "/sounds/ui/system-message.mp3"
+  },
+  "ui/time-over": {
+    "src": "/sounds/ui/time-over.mp3"
+  },
+  "ui/your-turn": {
+    "src": "/sounds/ui/your-turn.mp3"
   },
   "units/air-elemental-attack": {
     "src": "/sounds/units/air-elemental-attack.mp3"
@@ -284,6 +1100,25 @@
     "src": "/sounds/units/archangel-move.mp3",
     "repeat": 2
   },
+  "units/archer-attack": {
+    "src": "/sounds/units/archer-attack.mp3"
+  },
+  "units/archer-death": {
+    "src": "/sounds/units/archer-death.mp3"
+  },
+  "units/archer-defend": {
+    "src": "/sounds/units/archer-defend.mp3"
+  },
+  "units/archer-hurt": {
+    "src": "/sounds/units/archer-hurt.mp3"
+  },
+  "units/archer-move": {
+    "src": "/sounds/units/archer-move.mp3",
+    "repeat": 2
+  },
+  "units/archer-shoot": {
+    "src": "/sounds/units/archer-shoot.mp3"
+  },
   "units/azure-dragon-attack": {
     "src": "/sounds/units/azure-dragon-attack.mp3"
   },
@@ -339,6 +1174,22 @@
   },
   "units/battle-dwarf-move": {
     "src": "/sounds/units/battle-dwarf-move.mp3",
+    "repeat": 2
+  },
+  "units/behemoth-attack": {
+    "src": "/sounds/units/behemoth-attack.mp3"
+  },
+  "units/behemoth-death": {
+    "src": "/sounds/units/behemoth-death.mp3"
+  },
+  "units/behemoth-defend": {
+    "src": "/sounds/units/behemoth-defend.mp3"
+  },
+  "units/behemoth-hurt": {
+    "src": "/sounds/units/behemoth-hurt.mp3"
+  },
+  "units/behemoth-move": {
+    "src": "/sounds/units/behemoth-move.mp3",
     "repeat": 2
   },
   "units/beholder-attack": {
@@ -607,6 +1458,38 @@
   "units/cyclops-shoot": {
     "src": "/sounds/units/cyclops-shoot.mp3"
   },
+  "units/demon-attack": {
+    "src": "/sounds/units/demon-attack.mp3"
+  },
+  "units/demon-death": {
+    "src": "/sounds/units/demon-death.mp3"
+  },
+  "units/demon-defend": {
+    "src": "/sounds/units/demon-defend.mp3"
+  },
+  "units/demon-hurt": {
+    "src": "/sounds/units/demon-hurt.mp3"
+  },
+  "units/demon-move": {
+    "src": "/sounds/units/demon-move.mp3",
+    "repeat": 2
+  },
+  "units/dendroid-guard-attack": {
+    "src": "/sounds/units/dendroid-guard-attack.mp3"
+  },
+  "units/dendroid-guard-death": {
+    "src": "/sounds/units/dendroid-guard-death.mp3"
+  },
+  "units/dendroid-guard-defend": {
+    "src": "/sounds/units/dendroid-guard-defend.mp3"
+  },
+  "units/dendroid-guard-hurt": {
+    "src": "/sounds/units/dendroid-guard-hurt.mp3"
+  },
+  "units/dendroid-guard-move": {
+    "src": "/sounds/units/dendroid-guard-move.mp3",
+    "repeat": 2
+  },
   "units/dendroid-soldier-attack": {
     "src": "/sounds/units/dendroid-soldier-attack.mp3"
   },
@@ -808,6 +1691,9 @@
   "units/faerie-dragon-defend": {
     "src": "/sounds/units/faerie-dragon-defend.mp3"
   },
+  "units/faerie-dragon-hurt": {
+    "src": "/sounds/units/faerie-dragon-hurt.mp3"
+  },
   "units/faerie-dragon-move": {
     "src": "/sounds/units/faerie-dragon-move.mp3",
     "repeat": 2
@@ -818,6 +1704,248 @@
   "units/faerie-dragon-special": {
     "src": "/sounds/units/faerie-dragon-special.mp3",
     "note": "Faerie Dragon spell-cast (FAERIE)"
+  },
+  "units/familiar-attack": {
+    "src": "/sounds/units/familiar-attack.mp3"
+  },
+  "units/familiar-death": {
+    "src": "/sounds/units/familiar-death.mp3"
+  },
+  "units/familiar-defend": {
+    "src": "/sounds/units/familiar-defend.mp3"
+  },
+  "units/familiar-hurt": {
+    "src": "/sounds/units/familiar-hurt.mp3"
+  },
+  "units/familiar-move": {
+    "src": "/sounds/units/familiar-move.mp3",
+    "repeat": 2
+  },
+  "units/fire-dragon-fly-attack": {
+    "src": "/sounds/units/fire-dragon-fly-attack.mp3"
+  },
+  "units/fire-dragon-fly-death": {
+    "src": "/sounds/units/fire-dragon-fly-death.mp3"
+  },
+  "units/fire-dragon-fly-defend": {
+    "src": "/sounds/units/fire-dragon-fly-defend.mp3"
+  },
+  "units/fire-dragon-fly-hurt": {
+    "src": "/sounds/units/fire-dragon-fly-hurt.mp3"
+  },
+  "units/fire-dragon-fly-move": {
+    "src": "/sounds/units/fire-dragon-fly-move.mp3",
+    "repeat": 2
+  },
+  "units/fire-dragon-fly-shoot": {
+    "src": "/sounds/units/fire-dragon-fly-shoot.mp3"
+  },
+  "units/fire-elemental-attack": {
+    "src": "/sounds/units/fire-elemental-attack.mp3"
+  },
+  "units/fire-elemental-death": {
+    "src": "/sounds/units/fire-elemental-death.mp3"
+  },
+  "units/fire-elemental-defend": {
+    "src": "/sounds/units/fire-elemental-defend.mp3"
+  },
+  "units/fire-elemental-hurt": {
+    "src": "/sounds/units/fire-elemental-hurt.mp3"
+  },
+  "units/fire-elemental-move": {
+    "src": "/sounds/units/fire-elemental-move.mp3",
+    "repeat": 2
+  },
+  "units/firebird-attack": {
+    "src": "/sounds/units/firebird-attack.mp3"
+  },
+  "units/firebird-death": {
+    "src": "/sounds/units/firebird-death.mp3"
+  },
+  "units/firebird-defend": {
+    "src": "/sounds/units/firebird-defend.mp3"
+  },
+  "units/firebird-hurt": {
+    "src": "/sounds/units/firebird-hurt.mp3"
+  },
+  "units/firebird-move": {
+    "src": "/sounds/units/firebird-move.mp3",
+    "repeat": 2
+  },
+  "units/first-aid-tent-death": {
+    "src": "/sounds/units/first-aid-tent-death.mp3",
+    "note": "war machine destroyed"
+  },
+  "units/first-aid-tent-hurt": {
+    "src": "/sounds/units/first-aid-tent-hurt.mp3",
+    "note": "war machine hit"
+  },
+  "units/genie-attack": {
+    "src": "/sounds/units/genie-attack.mp3"
+  },
+  "units/genie-death": {
+    "src": "/sounds/units/genie-death.mp3"
+  },
+  "units/genie-defend": {
+    "src": "/sounds/units/genie-defend.mp3"
+  },
+  "units/genie-hurt": {
+    "src": "/sounds/units/genie-hurt.mp3"
+  },
+  "units/genie-move": {
+    "src": "/sounds/units/genie-move.mp3",
+    "repeat": 2
+  },
+  "units/genie-special": {
+    "src": "/sounds/units/genie-special.mp3",
+    "note": "Genie/Master Genie spell-cast (GENIE)"
+  },
+  "units/ghost-dragon-attack": {
+    "src": "/sounds/units/ghost-dragon-attack.mp3"
+  },
+  "units/ghost-dragon-death": {
+    "src": "/sounds/units/ghost-dragon-death.mp3"
+  },
+  "units/ghost-dragon-defend": {
+    "src": "/sounds/units/ghost-dragon-defend.mp3"
+  },
+  "units/ghost-dragon-hurt": {
+    "src": "/sounds/units/ghost-dragon-hurt.mp3"
+  },
+  "units/ghost-dragon-move": {
+    "src": "/sounds/units/ghost-dragon-move.mp3",
+    "repeat": 2
+  },
+  "units/giant-attack": {
+    "src": "/sounds/units/giant-attack.mp3"
+  },
+  "units/giant-death": {
+    "src": "/sounds/units/giant-death.mp3"
+  },
+  "units/giant-defend": {
+    "src": "/sounds/units/giant-defend.mp3"
+  },
+  "units/giant-hurt": {
+    "src": "/sounds/units/giant-hurt.mp3"
+  },
+  "units/giant-move": {
+    "src": "/sounds/units/giant-move.mp3",
+    "repeat": 2
+  },
+  "units/gnoll-attack": {
+    "src": "/sounds/units/gnoll-attack.mp3"
+  },
+  "units/gnoll-death": {
+    "src": "/sounds/units/gnoll-death.mp3"
+  },
+  "units/gnoll-defend": {
+    "src": "/sounds/units/gnoll-defend.mp3"
+  },
+  "units/gnoll-hurt": {
+    "src": "/sounds/units/gnoll-hurt.mp3"
+  },
+  "units/gnoll-marauder-attack": {
+    "src": "/sounds/units/gnoll-marauder-attack.mp3"
+  },
+  "units/gnoll-marauder-death": {
+    "src": "/sounds/units/gnoll-marauder-death.mp3"
+  },
+  "units/gnoll-marauder-defend": {
+    "src": "/sounds/units/gnoll-marauder-defend.mp3"
+  },
+  "units/gnoll-marauder-hurt": {
+    "src": "/sounds/units/gnoll-marauder-hurt.mp3"
+  },
+  "units/gnoll-marauder-move": {
+    "src": "/sounds/units/gnoll-marauder-move.mp3",
+    "repeat": 2
+  },
+  "units/gnoll-move": {
+    "src": "/sounds/units/gnoll-move.mp3",
+    "repeat": 2
+  },
+  "units/goblin-attack": {
+    "src": "/sounds/units/goblin-attack.mp3"
+  },
+  "units/goblin-death": {
+    "src": "/sounds/units/goblin-death.mp3"
+  },
+  "units/goblin-defend": {
+    "src": "/sounds/units/goblin-defend.mp3"
+  },
+  "units/goblin-hurt": {
+    "src": "/sounds/units/goblin-hurt.mp3"
+  },
+  "units/goblin-move": {
+    "src": "/sounds/units/goblin-move.mp3",
+    "repeat": 2
+  },
+  "units/goblin-wolf-rider-attack": {
+    "src": "/sounds/units/goblin-wolf-rider-attack.mp3"
+  },
+  "units/goblin-wolf-rider-death": {
+    "src": "/sounds/units/goblin-wolf-rider-death.mp3"
+  },
+  "units/goblin-wolf-rider-defend": {
+    "src": "/sounds/units/goblin-wolf-rider-defend.mp3"
+  },
+  "units/goblin-wolf-rider-hurt": {
+    "src": "/sounds/units/goblin-wolf-rider-hurt.mp3"
+  },
+  "units/goblin-wolf-rider-move": {
+    "src": "/sounds/units/goblin-wolf-rider-move.mp3",
+    "repeat": 2
+  },
+  "units/gog-attack": {
+    "src": "/sounds/units/gog-attack.mp3"
+  },
+  "units/gog-death": {
+    "src": "/sounds/units/gog-death.mp3"
+  },
+  "units/gog-defend": {
+    "src": "/sounds/units/gog-defend.mp3"
+  },
+  "units/gog-hurt": {
+    "src": "/sounds/units/gog-hurt.mp3"
+  },
+  "units/gog-move": {
+    "src": "/sounds/units/gog-move.mp3",
+    "repeat": 2
+  },
+  "units/gog-shoot": {
+    "src": "/sounds/units/gog-shoot.mp3"
+  },
+  "units/gold-dragon-attack": {
+    "src": "/sounds/units/gold-dragon-attack.mp3"
+  },
+  "units/gold-dragon-death": {
+    "src": "/sounds/units/gold-dragon-death.mp3"
+  },
+  "units/gold-dragon-defend": {
+    "src": "/sounds/units/gold-dragon-defend.mp3"
+  },
+  "units/gold-dragon-hurt": {
+    "src": "/sounds/units/gold-dragon-hurt.mp3"
+  },
+  "units/gold-dragon-move": {
+    "src": "/sounds/units/gold-dragon-move.mp3",
+    "repeat": 2
+  },
+  "units/gold-golem-attack": {
+    "src": "/sounds/units/gold-golem-attack.mp3"
+  },
+  "units/gold-golem-death": {
+    "src": "/sounds/units/gold-golem-death.mp3"
+  },
+  "units/gold-golem-defend": {
+    "src": "/sounds/units/gold-golem-defend.mp3"
+  },
+  "units/gold-golem-hurt": {
+    "src": "/sounds/units/gold-golem-hurt.mp3"
+  },
+  "units/gold-golem-move": {
+    "src": "/sounds/units/gold-golem-move.mp3",
+    "repeat": 2
   },
   "units/gorgon-attack": {
     "src": "/sounds/units/gorgon-attack.mp3"
@@ -833,6 +1961,57 @@
   },
   "units/gorgon-move": {
     "src": "/sounds/units/gorgon-move.mp3",
+    "repeat": 2
+  },
+  "units/grand-elf-attack": {
+    "src": "/sounds/units/grand-elf-attack.mp3"
+  },
+  "units/grand-elf-death": {
+    "src": "/sounds/units/grand-elf-death.mp3"
+  },
+  "units/grand-elf-defend": {
+    "src": "/sounds/units/grand-elf-defend.mp3"
+  },
+  "units/grand-elf-hurt": {
+    "src": "/sounds/units/grand-elf-hurt.mp3"
+  },
+  "units/grand-elf-move": {
+    "src": "/sounds/units/grand-elf-move.mp3",
+    "repeat": 2
+  },
+  "units/grand-elf-shoot": {
+    "src": "/sounds/units/grand-elf-shoot.mp3"
+  },
+  "units/greater-basilisk-attack": {
+    "src": "/sounds/units/greater-basilisk-attack.mp3"
+  },
+  "units/greater-basilisk-death": {
+    "src": "/sounds/units/greater-basilisk-death.mp3"
+  },
+  "units/greater-basilisk-defend": {
+    "src": "/sounds/units/greater-basilisk-defend.mp3"
+  },
+  "units/greater-basilisk-hurt": {
+    "src": "/sounds/units/greater-basilisk-hurt.mp3"
+  },
+  "units/greater-basilisk-move": {
+    "src": "/sounds/units/greater-basilisk-move.mp3",
+    "repeat": 2
+  },
+  "units/green-dragon-attack": {
+    "src": "/sounds/units/green-dragon-attack.mp3"
+  },
+  "units/green-dragon-death": {
+    "src": "/sounds/units/green-dragon-death.mp3"
+  },
+  "units/green-dragon-defend": {
+    "src": "/sounds/units/green-dragon-defend.mp3"
+  },
+  "units/green-dragon-hurt": {
+    "src": "/sounds/units/green-dragon-hurt.mp3"
+  },
+  "units/green-dragon-move": {
+    "src": "/sounds/units/green-dragon-move.mp3",
     "repeat": 2
   },
   "units/gremlin-attack": {
@@ -855,6 +2034,140 @@
     "src": "/sounds/units/gremlin-shoot.mp3",
     "note": "used by the Master Gremlin upgrade (base gremlin is melee)"
   },
+  "units/griffin-attack": {
+    "src": "/sounds/units/griffin-attack.mp3"
+  },
+  "units/griffin-death": {
+    "src": "/sounds/units/griffin-death.mp3"
+  },
+  "units/griffin-defend": {
+    "src": "/sounds/units/griffin-defend.mp3"
+  },
+  "units/griffin-hurt": {
+    "src": "/sounds/units/griffin-hurt.mp3"
+  },
+  "units/griffin-move": {
+    "src": "/sounds/units/griffin-move.mp3",
+    "repeat": 2
+  },
+  "units/halberdier-attack": {
+    "src": "/sounds/units/halberdier-attack.mp3"
+  },
+  "units/halberdier-death": {
+    "src": "/sounds/units/halberdier-death.mp3"
+  },
+  "units/halberdier-defend": {
+    "src": "/sounds/units/halberdier-defend.mp3"
+  },
+  "units/halberdier-hurt": {
+    "src": "/sounds/units/halberdier-hurt.mp3"
+  },
+  "units/halberdier-move": {
+    "src": "/sounds/units/halberdier-move.mp3",
+    "repeat": 2
+  },
+  "units/halfling-attack": {
+    "src": "/sounds/units/halfling-attack.mp3"
+  },
+  "units/halfling-death": {
+    "src": "/sounds/units/halfling-death.mp3"
+  },
+  "units/halfling-defend": {
+    "src": "/sounds/units/halfling-defend.mp3"
+  },
+  "units/halfling-hurt": {
+    "src": "/sounds/units/halfling-hurt.mp3"
+  },
+  "units/halfling-move": {
+    "src": "/sounds/units/halfling-move.mp3",
+    "repeat": 2
+  },
+  "units/halfling-shoot": {
+    "src": "/sounds/units/halfling-shoot.mp3"
+  },
+  "units/harpy-attack": {
+    "src": "/sounds/units/harpy-attack.mp3"
+  },
+  "units/harpy-death": {
+    "src": "/sounds/units/harpy-death.mp3"
+  },
+  "units/harpy-defend": {
+    "src": "/sounds/units/harpy-defend.mp3"
+  },
+  "units/harpy-hag-attack": {
+    "src": "/sounds/units/harpy-hag-attack.mp3"
+  },
+  "units/harpy-hag-death": {
+    "src": "/sounds/units/harpy-hag-death.mp3"
+  },
+  "units/harpy-hag-defend": {
+    "src": "/sounds/units/harpy-hag-defend.mp3"
+  },
+  "units/harpy-hag-hurt": {
+    "src": "/sounds/units/harpy-hag-hurt.mp3"
+  },
+  "units/harpy-hag-move": {
+    "src": "/sounds/units/harpy-hag-move.mp3",
+    "repeat": 2
+  },
+  "units/harpy-hag-shoot": {
+    "src": "/sounds/units/harpy-hag-shoot.mp3"
+  },
+  "units/harpy-hurt": {
+    "src": "/sounds/units/harpy-hurt.mp3"
+  },
+  "units/harpy-move": {
+    "src": "/sounds/units/harpy-move.mp3",
+    "repeat": 2
+  },
+  "units/hell-hound-attack": {
+    "src": "/sounds/units/hell-hound-attack.mp3"
+  },
+  "units/hell-hound-death": {
+    "src": "/sounds/units/hell-hound-death.mp3"
+  },
+  "units/hell-hound-defend": {
+    "src": "/sounds/units/hell-hound-defend.mp3"
+  },
+  "units/hell-hound-hurt": {
+    "src": "/sounds/units/hell-hound-hurt.mp3"
+  },
+  "units/hell-hound-move": {
+    "src": "/sounds/units/hell-hound-move.mp3",
+    "repeat": 2
+  },
+  "units/hobgoblin-attack": {
+    "src": "/sounds/units/hobgoblin-attack.mp3"
+  },
+  "units/hobgoblin-death": {
+    "src": "/sounds/units/hobgoblin-death.mp3"
+  },
+  "units/hobgoblin-defend": {
+    "src": "/sounds/units/hobgoblin-defend.mp3"
+  },
+  "units/hobgoblin-hurt": {
+    "src": "/sounds/units/hobgoblin-hurt.mp3"
+  },
+  "units/hobgoblin-move": {
+    "src": "/sounds/units/hobgoblin-move.mp3",
+    "repeat": 2
+  },
+  "units/hobgoblin-wolf-rider-attack": {
+    "src": "/sounds/units/hobgoblin-wolf-rider-attack.mp3"
+  },
+  "units/hobgoblin-wolf-rider-death": {
+    "src": "/sounds/units/hobgoblin-wolf-rider-death.mp3"
+  },
+  "units/hobgoblin-wolf-rider-defend": {
+    "src": "/sounds/units/hobgoblin-wolf-rider-defend.mp3"
+  },
+  "units/hobgoblin-wolf-rider-hurt": {
+    "src": "/sounds/units/hobgoblin-wolf-rider-hurt.mp3"
+  },
+  "units/hobgoblin-wolf-rider-move": {
+    "src": "/sounds/units/hobgoblin-wolf-rider-move.mp3",
+    "repeat": 2
+  },
   "units/horned-demon-attack": {
     "src": "/sounds/units/horned-demon-attack.mp3"
   },
@@ -870,6 +2183,112 @@
   "units/horned-demon-move": {
     "src": "/sounds/units/horned-demon-move.mp3",
     "repeat": 2
+  },
+  "units/hydra-attack": {
+    "src": "/sounds/units/hydra-attack.mp3"
+  },
+  "units/hydra-death": {
+    "src": "/sounds/units/hydra-death.mp3"
+  },
+  "units/hydra-defend": {
+    "src": "/sounds/units/hydra-defend.mp3"
+  },
+  "units/hydra-hurt": {
+    "src": "/sounds/units/hydra-hurt.mp3"
+  },
+  "units/hydra-move": {
+    "src": "/sounds/units/hydra-move.mp3",
+    "repeat": 2
+  },
+  "units/ice-elemental-attack": {
+    "src": "/sounds/units/ice-elemental-attack.mp3"
+  },
+  "units/ice-elemental-death": {
+    "src": "/sounds/units/ice-elemental-death.mp3"
+  },
+  "units/ice-elemental-defend": {
+    "src": "/sounds/units/ice-elemental-defend.mp3"
+  },
+  "units/ice-elemental-hurt": {
+    "src": "/sounds/units/ice-elemental-hurt.mp3"
+  },
+  "units/ice-elemental-move": {
+    "src": "/sounds/units/ice-elemental-move.mp3",
+    "repeat": 2
+  },
+  "units/ice-elemental-shoot": {
+    "src": "/sounds/units/ice-elemental-shoot.mp3"
+  },
+  "units/imp-attack": {
+    "src": "/sounds/units/imp-attack.mp3"
+  },
+  "units/imp-death": {
+    "src": "/sounds/units/imp-death.mp3"
+  },
+  "units/imp-defend": {
+    "src": "/sounds/units/imp-defend.mp3"
+  },
+  "units/imp-hurt": {
+    "src": "/sounds/units/imp-hurt.mp3"
+  },
+  "units/imp-move": {
+    "src": "/sounds/units/imp-move.mp3",
+    "repeat": 2
+  },
+  "units/infernal-troglodyte-attack": {
+    "src": "/sounds/units/infernal-troglodyte-attack.mp3"
+  },
+  "units/infernal-troglodyte-death": {
+    "src": "/sounds/units/infernal-troglodyte-death.mp3"
+  },
+  "units/infernal-troglodyte-defend": {
+    "src": "/sounds/units/infernal-troglodyte-defend.mp3"
+  },
+  "units/infernal-troglodyte-hurt": {
+    "src": "/sounds/units/infernal-troglodyte-hurt.mp3"
+  },
+  "units/infernal-troglodyte-move": {
+    "src": "/sounds/units/infernal-troglodyte-move.mp3",
+    "repeat": 2
+  },
+  "units/iron-golem-attack": {
+    "src": "/sounds/units/iron-golem-attack.mp3"
+  },
+  "units/iron-golem-death": {
+    "src": "/sounds/units/iron-golem-death.mp3"
+  },
+  "units/iron-golem-defend": {
+    "src": "/sounds/units/iron-golem-defend.mp3"
+  },
+  "units/iron-golem-hurt": {
+    "src": "/sounds/units/iron-golem-hurt.mp3"
+  },
+  "units/iron-golem-move": {
+    "src": "/sounds/units/iron-golem-move.mp3",
+    "repeat": 2
+  },
+  "units/lich-attack": {
+    "src": "/sounds/units/lich-attack.mp3"
+  },
+  "units/lich-death": {
+    "src": "/sounds/units/lich-death.mp3"
+  },
+  "units/lich-defend": {
+    "src": "/sounds/units/lich-defend.mp3"
+  },
+  "units/lich-hurt": {
+    "src": "/sounds/units/lich-hurt.mp3"
+  },
+  "units/lich-move": {
+    "src": "/sounds/units/lich-move.mp3",
+    "repeat": 2
+  },
+  "units/lich-shoot": {
+    "src": "/sounds/units/lich-shoot.mp3"
+  },
+  "units/lich-special": {
+    "src": "/sounds/units/lich-special.mp3",
+    "note": "Lich area-attack variant (LICHATK); regular shot is lich-shoot"
   },
   "units/lizard-warrior-attack": {
     "src": "/sounds/units/lizard-warrior-attack.mp3"
@@ -890,6 +2309,114 @@
   "units/lizard-warrior-shoot": {
     "src": "/sounds/units/lizard-warrior-shoot.mp3"
   },
+  "units/lizardman-attack": {
+    "src": "/sounds/units/lizardman-attack.mp3"
+  },
+  "units/lizardman-death": {
+    "src": "/sounds/units/lizardman-death.mp3"
+  },
+  "units/lizardman-defend": {
+    "src": "/sounds/units/lizardman-defend.mp3"
+  },
+  "units/lizardman-hurt": {
+    "src": "/sounds/units/lizardman-hurt.mp3"
+  },
+  "units/lizardman-move": {
+    "src": "/sounds/units/lizardman-move.mp3",
+    "repeat": 2
+  },
+  "units/lizardman-shoot": {
+    "src": "/sounds/units/lizardman-shoot.mp3"
+  },
+  "units/mage-attack": {
+    "src": "/sounds/units/mage-attack.mp3"
+  },
+  "units/mage-death": {
+    "src": "/sounds/units/mage-death.mp3"
+  },
+  "units/mage-defend": {
+    "src": "/sounds/units/mage-defend.mp3"
+  },
+  "units/mage-hurt": {
+    "src": "/sounds/units/mage-hurt.mp3"
+  },
+  "units/mage-move": {
+    "src": "/sounds/units/mage-move.mp3",
+    "repeat": 2
+  },
+  "units/mage-shoot": {
+    "src": "/sounds/units/mage-shoot.mp3"
+  },
+  "units/magic-elemental-attack": {
+    "src": "/sounds/units/magic-elemental-attack.mp3"
+  },
+  "units/magic-elemental-death": {
+    "src": "/sounds/units/magic-elemental-death.mp3"
+  },
+  "units/magic-elemental-defend": {
+    "src": "/sounds/units/magic-elemental-defend.mp3"
+  },
+  "units/magic-elemental-hurt": {
+    "src": "/sounds/units/magic-elemental-hurt.mp3"
+  },
+  "units/magic-elemental-move": {
+    "src": "/sounds/units/magic-elemental-move.mp3",
+    "repeat": 2
+  },
+  "units/magma-elemental-attack": {
+    "src": "/sounds/units/magma-elemental-attack.mp3"
+  },
+  "units/magma-elemental-death": {
+    "src": "/sounds/units/magma-elemental-death.mp3"
+  },
+  "units/magma-elemental-defend": {
+    "src": "/sounds/units/magma-elemental-defend.mp3"
+  },
+  "units/magma-elemental-hurt": {
+    "src": "/sounds/units/magma-elemental-hurt.mp3"
+  },
+  "units/magma-elemental-move": {
+    "src": "/sounds/units/magma-elemental-move.mp3",
+    "repeat": 2
+  },
+  "units/magog-attack": {
+    "src": "/sounds/units/magog-attack.mp3"
+  },
+  "units/magog-death": {
+    "src": "/sounds/units/magog-death.mp3"
+  },
+  "units/magog-defend": {
+    "src": "/sounds/units/magog-defend.mp3"
+  },
+  "units/magog-hurt": {
+    "src": "/sounds/units/magog-hurt.mp3"
+  },
+  "units/magog-move": {
+    "src": "/sounds/units/magog-move.mp3",
+    "repeat": 2
+  },
+  "units/magog-shoot": {
+    "src": "/sounds/units/magog-shoot.mp3"
+  },
+  "units/manticore-attack": {
+    "src": "/sounds/units/manticore-attack.mp3"
+  },
+  "units/manticore-death": {
+    "src": "/sounds/units/manticore-death.mp3"
+  },
+  "units/manticore-defend": {
+    "src": "/sounds/units/manticore-defend.mp3"
+  },
+  "units/manticore-hurt": {
+    "src": "/sounds/units/manticore-hurt.mp3"
+  },
+  "units/manticore-move": {
+    "src": "/sounds/units/manticore-move.mp3",
+    "repeat": 2
+  },
+  "units/manticore-shoot": {
+    "src": "/sounds/units/manticore-shoot.mp3"
+  },
   "units/master-genie-attack": {
     "src": "/sounds/units/master-genie-attack.mp3"
   },
@@ -909,6 +2436,63 @@
   "units/master-genie-shoot": {
     "src": "/sounds/units/master-genie-shoot.mp3"
   },
+  "units/master-gremlin-attack": {
+    "src": "/sounds/units/master-gremlin-attack.mp3"
+  },
+  "units/master-gremlin-death": {
+    "src": "/sounds/units/master-gremlin-death.mp3"
+  },
+  "units/master-gremlin-defend": {
+    "src": "/sounds/units/master-gremlin-defend.mp3"
+  },
+  "units/master-gremlin-hurt": {
+    "src": "/sounds/units/master-gremlin-hurt.mp3"
+  },
+  "units/master-gremlin-move": {
+    "src": "/sounds/units/master-gremlin-move.mp3",
+    "repeat": 2
+  },
+  "units/master-gremlin-shoot": {
+    "src": "/sounds/units/master-gremlin-shoot.mp3"
+  },
+  "units/medusa-attack": {
+    "src": "/sounds/units/medusa-attack.mp3"
+  },
+  "units/medusa-death": {
+    "src": "/sounds/units/medusa-death.mp3"
+  },
+  "units/medusa-defend": {
+    "src": "/sounds/units/medusa-defend.mp3"
+  },
+  "units/medusa-hurt": {
+    "src": "/sounds/units/medusa-hurt.mp3"
+  },
+  "units/medusa-move": {
+    "src": "/sounds/units/medusa-move.mp3",
+    "repeat": 2
+  },
+  "units/medusa-queen-attack": {
+    "src": "/sounds/units/medusa-queen-attack.mp3"
+  },
+  "units/medusa-queen-death": {
+    "src": "/sounds/units/medusa-queen-death.mp3"
+  },
+  "units/medusa-queen-defend": {
+    "src": "/sounds/units/medusa-queen-defend.mp3"
+  },
+  "units/medusa-queen-hurt": {
+    "src": "/sounds/units/medusa-queen-hurt.mp3"
+  },
+  "units/medusa-queen-move": {
+    "src": "/sounds/units/medusa-queen-move.mp3",
+    "repeat": 2
+  },
+  "units/medusa-queen-shoot": {
+    "src": "/sounds/units/medusa-queen-shoot.mp3"
+  },
+  "units/medusa-shoot": {
+    "src": "/sounds/units/medusa-shoot.mp3"
+  },
   "units/mighty-gorgon-attack": {
     "src": "/sounds/units/mighty-gorgon-attack.mp3"
   },
@@ -924,6 +2508,459 @@
   "units/mighty-gorgon-move": {
     "src": "/sounds/units/mighty-gorgon-move.mp3",
     "repeat": 2
+  },
+  "units/minotaur-attack": {
+    "src": "/sounds/units/minotaur-attack.mp3"
+  },
+  "units/minotaur-death": {
+    "src": "/sounds/units/minotaur-death.mp3"
+  },
+  "units/minotaur-defend": {
+    "src": "/sounds/units/minotaur-defend.mp3"
+  },
+  "units/minotaur-hurt": {
+    "src": "/sounds/units/minotaur-hurt.mp3"
+  },
+  "units/minotaur-king-attack": {
+    "src": "/sounds/units/minotaur-king-attack.mp3"
+  },
+  "units/minotaur-king-death": {
+    "src": "/sounds/units/minotaur-king-death.mp3"
+  },
+  "units/minotaur-king-defend": {
+    "src": "/sounds/units/minotaur-king-defend.mp3"
+  },
+  "units/minotaur-king-hurt": {
+    "src": "/sounds/units/minotaur-king-hurt.mp3"
+  },
+  "units/minotaur-king-move": {
+    "src": "/sounds/units/minotaur-king-move.mp3",
+    "repeat": 2
+  },
+  "units/minotaur-king-shoot": {
+    "src": "/sounds/units/minotaur-king-shoot.mp3"
+  },
+  "units/minotaur-move": {
+    "src": "/sounds/units/minotaur-move.mp3",
+    "repeat": 2
+  },
+  "units/monk-attack": {
+    "src": "/sounds/units/monk-attack.mp3"
+  },
+  "units/monk-death": {
+    "src": "/sounds/units/monk-death.mp3"
+  },
+  "units/monk-defend": {
+    "src": "/sounds/units/monk-defend.mp3"
+  },
+  "units/monk-hurt": {
+    "src": "/sounds/units/monk-hurt.mp3"
+  },
+  "units/monk-move": {
+    "src": "/sounds/units/monk-move.mp3",
+    "repeat": 2
+  },
+  "units/monk-shoot": {
+    "src": "/sounds/units/monk-shoot.mp3"
+  },
+  "units/mummy-attack": {
+    "src": "/sounds/units/mummy-attack.mp3"
+  },
+  "units/mummy-death": {
+    "src": "/sounds/units/mummy-death.mp3"
+  },
+  "units/mummy-defend": {
+    "src": "/sounds/units/mummy-defend.mp3"
+  },
+  "units/mummy-hurt": {
+    "src": "/sounds/units/mummy-hurt.mp3"
+  },
+  "units/mummy-move": {
+    "src": "/sounds/units/mummy-move.mp3",
+    "repeat": 2
+  },
+  "units/naga-attack": {
+    "src": "/sounds/units/naga-attack.mp3"
+  },
+  "units/naga-death": {
+    "src": "/sounds/units/naga-death.mp3"
+  },
+  "units/naga-defend": {
+    "src": "/sounds/units/naga-defend.mp3"
+  },
+  "units/naga-hurt": {
+    "src": "/sounds/units/naga-hurt.mp3"
+  },
+  "units/naga-move": {
+    "src": "/sounds/units/naga-move.mp3",
+    "repeat": 2
+  },
+  "units/naga-queen-attack": {
+    "src": "/sounds/units/naga-queen-attack.mp3"
+  },
+  "units/naga-queen-death": {
+    "src": "/sounds/units/naga-queen-death.mp3"
+  },
+  "units/naga-queen-defend": {
+    "src": "/sounds/units/naga-queen-defend.mp3"
+  },
+  "units/naga-queen-hurt": {
+    "src": "/sounds/units/naga-queen-hurt.mp3"
+  },
+  "units/naga-queen-move": {
+    "src": "/sounds/units/naga-queen-move.mp3",
+    "repeat": 2
+  },
+  "units/nomad-attack": {
+    "src": "/sounds/units/nomad-attack.mp3"
+  },
+  "units/nomad-death": {
+    "src": "/sounds/units/nomad-death.mp3"
+  },
+  "units/nomad-defend": {
+    "src": "/sounds/units/nomad-defend.mp3"
+  },
+  "units/nomad-hurt": {
+    "src": "/sounds/units/nomad-hurt.mp3"
+  },
+  "units/nomad-move": {
+    "src": "/sounds/units/nomad-move.mp3",
+    "repeat": 2
+  },
+  "units/obsidian-gargoyle-attack": {
+    "src": "/sounds/units/obsidian-gargoyle-attack.mp3"
+  },
+  "units/obsidian-gargoyle-death": {
+    "src": "/sounds/units/obsidian-gargoyle-death.mp3"
+  },
+  "units/obsidian-gargoyle-defend": {
+    "src": "/sounds/units/obsidian-gargoyle-defend.mp3"
+  },
+  "units/obsidian-gargoyle-hurt": {
+    "src": "/sounds/units/obsidian-gargoyle-hurt.mp3"
+  },
+  "units/obsidian-gargoyle-move": {
+    "src": "/sounds/units/obsidian-gargoyle-move.mp3",
+    "repeat": 2
+  },
+  "units/ogre-attack": {
+    "src": "/sounds/units/ogre-attack.mp3"
+  },
+  "units/ogre-death": {
+    "src": "/sounds/units/ogre-death.mp3"
+  },
+  "units/ogre-defend": {
+    "src": "/sounds/units/ogre-defend.mp3"
+  },
+  "units/ogre-hurt": {
+    "src": "/sounds/units/ogre-hurt.mp3"
+  },
+  "units/ogre-mage-attack": {
+    "src": "/sounds/units/ogre-mage-attack.mp3"
+  },
+  "units/ogre-mage-death": {
+    "src": "/sounds/units/ogre-mage-death.mp3"
+  },
+  "units/ogre-mage-defend": {
+    "src": "/sounds/units/ogre-mage-defend.mp3"
+  },
+  "units/ogre-mage-hurt": {
+    "src": "/sounds/units/ogre-mage-hurt.mp3"
+  },
+  "units/ogre-mage-move": {
+    "src": "/sounds/units/ogre-mage-move.mp3",
+    "repeat": 2
+  },
+  "units/ogre-mage-shoot": {
+    "src": "/sounds/units/ogre-mage-shoot.mp3"
+  },
+  "units/ogre-move": {
+    "src": "/sounds/units/ogre-move.mp3",
+    "repeat": 2
+  },
+  "units/orc-attack": {
+    "src": "/sounds/units/orc-attack.mp3"
+  },
+  "units/orc-chieftain-attack": {
+    "src": "/sounds/units/orc-chieftain-attack.mp3"
+  },
+  "units/orc-chieftain-death": {
+    "src": "/sounds/units/orc-chieftain-death.mp3"
+  },
+  "units/orc-chieftain-defend": {
+    "src": "/sounds/units/orc-chieftain-defend.mp3"
+  },
+  "units/orc-chieftain-hurt": {
+    "src": "/sounds/units/orc-chieftain-hurt.mp3"
+  },
+  "units/orc-chieftain-move": {
+    "src": "/sounds/units/orc-chieftain-move.mp3",
+    "repeat": 2
+  },
+  "units/orc-chieftain-shoot": {
+    "src": "/sounds/units/orc-chieftain-shoot.mp3"
+  },
+  "units/orc-death": {
+    "src": "/sounds/units/orc-death.mp3"
+  },
+  "units/orc-defend": {
+    "src": "/sounds/units/orc-defend.mp3"
+  },
+  "units/orc-hurt": {
+    "src": "/sounds/units/orc-hurt.mp3"
+  },
+  "units/orc-move": {
+    "src": "/sounds/units/orc-move.mp3",
+    "repeat": 2
+  },
+  "units/orc-shoot": {
+    "src": "/sounds/units/orc-shoot.mp3"
+  },
+  "units/peasant-attack": {
+    "src": "/sounds/units/peasant-attack.mp3"
+  },
+  "units/peasant-death": {
+    "src": "/sounds/units/peasant-death.mp3"
+  },
+  "units/peasant-defend": {
+    "src": "/sounds/units/peasant-defend.mp3"
+  },
+  "units/peasant-hurt": {
+    "src": "/sounds/units/peasant-hurt.mp3"
+  },
+  "units/peasant-move": {
+    "src": "/sounds/units/peasant-move.mp3",
+    "repeat": 2
+  },
+  "units/pegasus-attack": {
+    "src": "/sounds/units/pegasus-attack.mp3"
+  },
+  "units/pegasus-death": {
+    "src": "/sounds/units/pegasus-death.mp3"
+  },
+  "units/pegasus-defend": {
+    "src": "/sounds/units/pegasus-defend.mp3"
+  },
+  "units/pegasus-hurt": {
+    "src": "/sounds/units/pegasus-hurt.mp3"
+  },
+  "units/pegasus-move": {
+    "src": "/sounds/units/pegasus-move.mp3",
+    "repeat": 2
+  },
+  "units/phoenix-attack": {
+    "src": "/sounds/units/phoenix-attack.mp3"
+  },
+  "units/phoenix-death": {
+    "src": "/sounds/units/phoenix-death.mp3"
+  },
+  "units/phoenix-defend": {
+    "src": "/sounds/units/phoenix-defend.mp3"
+  },
+  "units/phoenix-hurt": {
+    "src": "/sounds/units/phoenix-hurt.mp3"
+  },
+  "units/phoenix-move": {
+    "src": "/sounds/units/phoenix-move.mp3",
+    "repeat": 2
+  },
+  "units/pikeman-attack": {
+    "src": "/sounds/units/pikeman-attack.mp3"
+  },
+  "units/pikeman-death": {
+    "src": "/sounds/units/pikeman-death.mp3"
+  },
+  "units/pikeman-defend": {
+    "src": "/sounds/units/pikeman-defend.mp3"
+  },
+  "units/pikeman-hurt": {
+    "src": "/sounds/units/pikeman-hurt.mp3"
+  },
+  "units/pikeman-move": {
+    "src": "/sounds/units/pikeman-move.mp3",
+    "repeat": 2
+  },
+  "units/pit-fiend-attack": {
+    "src": "/sounds/units/pit-fiend-attack.mp3"
+  },
+  "units/pit-fiend-death": {
+    "src": "/sounds/units/pit-fiend-death.mp3"
+  },
+  "units/pit-fiend-defend": {
+    "src": "/sounds/units/pit-fiend-defend.mp3"
+  },
+  "units/pit-fiend-hurt": {
+    "src": "/sounds/units/pit-fiend-hurt.mp3"
+  },
+  "units/pit-fiend-move": {
+    "src": "/sounds/units/pit-fiend-move.mp3",
+    "repeat": 2
+  },
+  "units/pit-lord-attack": {
+    "src": "/sounds/units/pit-lord-attack.mp3"
+  },
+  "units/pit-lord-death": {
+    "src": "/sounds/units/pit-lord-death.mp3"
+  },
+  "units/pit-lord-defend": {
+    "src": "/sounds/units/pit-lord-defend.mp3"
+  },
+  "units/pit-lord-hurt": {
+    "src": "/sounds/units/pit-lord-hurt.mp3"
+  },
+  "units/pit-lord-move": {
+    "src": "/sounds/units/pit-lord-move.mp3",
+    "repeat": 2
+  },
+  "units/pixie-attack": {
+    "src": "/sounds/units/pixie-attack.mp3"
+  },
+  "units/pixie-death": {
+    "src": "/sounds/units/pixie-death.mp3"
+  },
+  "units/pixie-defend": {
+    "src": "/sounds/units/pixie-defend.mp3"
+  },
+  "units/pixie-hurt": {
+    "src": "/sounds/units/pixie-hurt.mp3"
+  },
+  "units/pixie-move": {
+    "src": "/sounds/units/pixie-move.mp3",
+    "repeat": 2
+  },
+  "units/power-lich-attack": {
+    "src": "/sounds/units/power-lich-attack.mp3"
+  },
+  "units/power-lich-death": {
+    "src": "/sounds/units/power-lich-death.mp3"
+  },
+  "units/power-lich-defend": {
+    "src": "/sounds/units/power-lich-defend.mp3"
+  },
+  "units/power-lich-hurt": {
+    "src": "/sounds/units/power-lich-hurt.mp3"
+  },
+  "units/power-lich-move": {
+    "src": "/sounds/units/power-lich-move.mp3",
+    "repeat": 2
+  },
+  "units/power-lich-shoot": {
+    "src": "/sounds/units/power-lich-shoot.mp3"
+  },
+  "units/psychic-elemental-attack": {
+    "src": "/sounds/units/psychic-elemental-attack.mp3"
+  },
+  "units/psychic-elemental-death": {
+    "src": "/sounds/units/psychic-elemental-death.mp3"
+  },
+  "units/psychic-elemental-defend": {
+    "src": "/sounds/units/psychic-elemental-defend.mp3"
+  },
+  "units/psychic-elemental-hurt": {
+    "src": "/sounds/units/psychic-elemental-hurt.mp3"
+  },
+  "units/psychic-elemental-move": {
+    "src": "/sounds/units/psychic-elemental-move.mp3",
+    "repeat": 2
+  },
+  "units/red-dragon-attack": {
+    "src": "/sounds/units/red-dragon-attack.mp3"
+  },
+  "units/red-dragon-death": {
+    "src": "/sounds/units/red-dragon-death.mp3"
+  },
+  "units/red-dragon-defend": {
+    "src": "/sounds/units/red-dragon-defend.mp3"
+  },
+  "units/red-dragon-hurt": {
+    "src": "/sounds/units/red-dragon-hurt.mp3"
+  },
+  "units/red-dragon-move": {
+    "src": "/sounds/units/red-dragon-move.mp3",
+    "repeat": 2
+  },
+  "units/roc-attack": {
+    "src": "/sounds/units/roc-attack.mp3"
+  },
+  "units/roc-death": {
+    "src": "/sounds/units/roc-death.mp3"
+  },
+  "units/roc-defend": {
+    "src": "/sounds/units/roc-defend.mp3"
+  },
+  "units/roc-hurt": {
+    "src": "/sounds/units/roc-hurt.mp3"
+  },
+  "units/roc-move": {
+    "src": "/sounds/units/roc-move.mp3",
+    "repeat": 2
+  },
+  "units/rogue-attack": {
+    "src": "/sounds/units/rogue-attack.mp3"
+  },
+  "units/rogue-death": {
+    "src": "/sounds/units/rogue-death.mp3"
+  },
+  "units/rogue-defend": {
+    "src": "/sounds/units/rogue-defend.mp3"
+  },
+  "units/rogue-hurt": {
+    "src": "/sounds/units/rogue-hurt.mp3"
+  },
+  "units/rogue-move": {
+    "src": "/sounds/units/rogue-move.mp3",
+    "repeat": 2
+  },
+  "units/royal-griffin-attack": {
+    "src": "/sounds/units/royal-griffin-attack.mp3"
+  },
+  "units/royal-griffin-death": {
+    "src": "/sounds/units/royal-griffin-death.mp3"
+  },
+  "units/royal-griffin-defend": {
+    "src": "/sounds/units/royal-griffin-defend.mp3"
+  },
+  "units/royal-griffin-hurt": {
+    "src": "/sounds/units/royal-griffin-hurt.mp3"
+  },
+  "units/royal-griffin-move": {
+    "src": "/sounds/units/royal-griffin-move.mp3",
+    "repeat": 2
+  },
+  "units/rust-dragon-attack": {
+    "src": "/sounds/units/rust-dragon-attack.mp3"
+  },
+  "units/rust-dragon-death": {
+    "src": "/sounds/units/rust-dragon-death.mp3"
+  },
+  "units/rust-dragon-defend": {
+    "src": "/sounds/units/rust-dragon-defend.mp3"
+  },
+  "units/rust-dragon-hurt": {
+    "src": "/sounds/units/rust-dragon-hurt.mp3"
+  },
+  "units/rust-dragon-move": {
+    "src": "/sounds/units/rust-dragon-move.mp3",
+    "repeat": 2
+  },
+  "units/scorpicore-attack": {
+    "src": "/sounds/units/scorpicore-attack.mp3"
+  },
+  "units/scorpicore-death": {
+    "src": "/sounds/units/scorpicore-death.mp3"
+  },
+  "units/scorpicore-defend": {
+    "src": "/sounds/units/scorpicore-defend.mp3"
+  },
+  "units/scorpicore-hurt": {
+    "src": "/sounds/units/scorpicore-hurt.mp3"
+  },
+  "units/scorpicore-move": {
+    "src": "/sounds/units/scorpicore-move.mp3",
+    "repeat": 2
+  },
+  "units/scorpicore-shoot": {
+    "src": "/sounds/units/scorpicore-shoot.mp3"
   },
   "units/serpent-fly-attack": {
     "src": "/sounds/units/serpent-fly-attack.mp3"
@@ -941,6 +2978,25 @@
     "src": "/sounds/units/serpent-fly-move.mp3",
     "repeat": 2
   },
+  "units/sharpshooter-attack": {
+    "src": "/sounds/units/sharpshooter-attack.mp3"
+  },
+  "units/sharpshooter-death": {
+    "src": "/sounds/units/sharpshooter-death.mp3"
+  },
+  "units/sharpshooter-defend": {
+    "src": "/sounds/units/sharpshooter-defend.mp3"
+  },
+  "units/sharpshooter-hurt": {
+    "src": "/sounds/units/sharpshooter-hurt.mp3"
+  },
+  "units/sharpshooter-move": {
+    "src": "/sounds/units/sharpshooter-move.mp3",
+    "repeat": 2
+  },
+  "units/sharpshooter-shoot": {
+    "src": "/sounds/units/sharpshooter-shoot.mp3"
+  },
   "units/silver-pegasus-attack": {
     "src": "/sounds/units/silver-pegasus-attack.mp3"
   },
@@ -955,6 +3011,420 @@
   },
   "units/silver-pegasus-move": {
     "src": "/sounds/units/silver-pegasus-move.mp3",
+    "repeat": 2
+  },
+  "units/skeleton-attack": {
+    "src": "/sounds/units/skeleton-attack.mp3"
+  },
+  "units/skeleton-death": {
+    "src": "/sounds/units/skeleton-death.mp3"
+  },
+  "units/skeleton-defend": {
+    "src": "/sounds/units/skeleton-defend.mp3"
+  },
+  "units/skeleton-hurt": {
+    "src": "/sounds/units/skeleton-hurt.mp3"
+  },
+  "units/skeleton-move": {
+    "src": "/sounds/units/skeleton-move.mp3",
+    "repeat": 2
+  },
+  "units/skeleton-warrior-attack": {
+    "src": "/sounds/units/skeleton-warrior-attack.mp3"
+  },
+  "units/skeleton-warrior-death": {
+    "src": "/sounds/units/skeleton-warrior-death.mp3"
+  },
+  "units/skeleton-warrior-defend": {
+    "src": "/sounds/units/skeleton-warrior-defend.mp3"
+  },
+  "units/skeleton-warrior-hurt": {
+    "src": "/sounds/units/skeleton-warrior-hurt.mp3"
+  },
+  "units/skeleton-warrior-move": {
+    "src": "/sounds/units/skeleton-warrior-move.mp3",
+    "repeat": 2
+  },
+  "units/sprite-attack": {
+    "src": "/sounds/units/sprite-attack.mp3"
+  },
+  "units/sprite-death": {
+    "src": "/sounds/units/sprite-death.mp3"
+  },
+  "units/sprite-defend": {
+    "src": "/sounds/units/sprite-defend.mp3"
+  },
+  "units/sprite-hurt": {
+    "src": "/sounds/units/sprite-hurt.mp3"
+  },
+  "units/sprite-move": {
+    "src": "/sounds/units/sprite-move.mp3",
+    "repeat": 2
+  },
+  "units/stone-gargoyle-attack": {
+    "src": "/sounds/units/stone-gargoyle-attack.mp3"
+  },
+  "units/stone-gargoyle-death": {
+    "src": "/sounds/units/stone-gargoyle-death.mp3"
+  },
+  "units/stone-gargoyle-defend": {
+    "src": "/sounds/units/stone-gargoyle-defend.mp3"
+  },
+  "units/stone-gargoyle-hurt": {
+    "src": "/sounds/units/stone-gargoyle-hurt.mp3"
+  },
+  "units/stone-gargoyle-move": {
+    "src": "/sounds/units/stone-gargoyle-move.mp3",
+    "repeat": 2
+  },
+  "units/stone-golem-attack": {
+    "src": "/sounds/units/stone-golem-attack.mp3"
+  },
+  "units/stone-golem-death": {
+    "src": "/sounds/units/stone-golem-death.mp3"
+  },
+  "units/stone-golem-defend": {
+    "src": "/sounds/units/stone-golem-defend.mp3"
+  },
+  "units/stone-golem-hurt": {
+    "src": "/sounds/units/stone-golem-hurt.mp3"
+  },
+  "units/stone-golem-move": {
+    "src": "/sounds/units/stone-golem-move.mp3",
+    "repeat": 2
+  },
+  "units/storm-elemental-attack": {
+    "src": "/sounds/units/storm-elemental-attack.mp3"
+  },
+  "units/storm-elemental-death": {
+    "src": "/sounds/units/storm-elemental-death.mp3"
+  },
+  "units/storm-elemental-defend": {
+    "src": "/sounds/units/storm-elemental-defend.mp3"
+  },
+  "units/storm-elemental-hurt": {
+    "src": "/sounds/units/storm-elemental-hurt.mp3"
+  },
+  "units/storm-elemental-move": {
+    "src": "/sounds/units/storm-elemental-move.mp3",
+    "repeat": 2
+  },
+  "units/storm-elemental-shoot": {
+    "src": "/sounds/units/storm-elemental-shoot.mp3"
+  },
+  "units/swordsman-attack": {
+    "src": "/sounds/units/swordsman-attack.mp3"
+  },
+  "units/swordsman-death": {
+    "src": "/sounds/units/swordsman-death.mp3"
+  },
+  "units/swordsman-defend": {
+    "src": "/sounds/units/swordsman-defend.mp3"
+  },
+  "units/swordsman-hurt": {
+    "src": "/sounds/units/swordsman-hurt.mp3"
+  },
+  "units/swordsman-move": {
+    "src": "/sounds/units/swordsman-move.mp3",
+    "repeat": 2
+  },
+  "units/thunderbird-attack": {
+    "src": "/sounds/units/thunderbird-attack.mp3"
+  },
+  "units/thunderbird-death": {
+    "src": "/sounds/units/thunderbird-death.mp3"
+  },
+  "units/thunderbird-defend": {
+    "src": "/sounds/units/thunderbird-defend.mp3"
+  },
+  "units/thunderbird-hurt": {
+    "src": "/sounds/units/thunderbird-hurt.mp3"
+  },
+  "units/thunderbird-move": {
+    "src": "/sounds/units/thunderbird-move.mp3",
+    "repeat": 2
+  },
+  "units/titan-attack": {
+    "src": "/sounds/units/titan-attack.mp3"
+  },
+  "units/titan-death": {
+    "src": "/sounds/units/titan-death.mp3"
+  },
+  "units/titan-defend": {
+    "src": "/sounds/units/titan-defend.mp3"
+  },
+  "units/titan-hurt": {
+    "src": "/sounds/units/titan-hurt.mp3"
+  },
+  "units/titan-move": {
+    "src": "/sounds/units/titan-move.mp3",
+    "repeat": 2
+  },
+  "units/titan-shoot": {
+    "src": "/sounds/units/titan-shoot.mp3"
+  },
+  "units/troglodyte-attack": {
+    "src": "/sounds/units/troglodyte-attack.mp3"
+  },
+  "units/troglodyte-death": {
+    "src": "/sounds/units/troglodyte-death.mp3"
+  },
+  "units/troglodyte-defend": {
+    "src": "/sounds/units/troglodyte-defend.mp3"
+  },
+  "units/troglodyte-hurt": {
+    "src": "/sounds/units/troglodyte-hurt.mp3"
+  },
+  "units/troglodyte-move": {
+    "src": "/sounds/units/troglodyte-move.mp3",
+    "repeat": 2
+  },
+  "units/troll-attack": {
+    "src": "/sounds/units/troll-attack.mp3"
+  },
+  "units/troll-death": {
+    "src": "/sounds/units/troll-death.mp3"
+  },
+  "units/troll-defend": {
+    "src": "/sounds/units/troll-defend.mp3"
+  },
+  "units/troll-hurt": {
+    "src": "/sounds/units/troll-hurt.mp3"
+  },
+  "units/troll-move": {
+    "src": "/sounds/units/troll-move.mp3",
+    "repeat": 2
+  },
+  "units/unicorn-attack": {
+    "src": "/sounds/units/unicorn-attack.mp3"
+  },
+  "units/unicorn-death": {
+    "src": "/sounds/units/unicorn-death.mp3"
+  },
+  "units/unicorn-defend": {
+    "src": "/sounds/units/unicorn-defend.mp3"
+  },
+  "units/unicorn-hurt": {
+    "src": "/sounds/units/unicorn-hurt.mp3"
+  },
+  "units/unicorn-move": {
+    "src": "/sounds/units/unicorn-move.mp3",
+    "repeat": 2
+  },
+  "units/vampire-attack": {
+    "src": "/sounds/units/vampire-attack.mp3"
+  },
+  "units/vampire-death": {
+    "src": "/sounds/units/vampire-death.mp3"
+  },
+  "units/vampire-defend": {
+    "src": "/sounds/units/vampire-defend.mp3"
+  },
+  "units/vampire-hurt": {
+    "src": "/sounds/units/vampire-hurt.mp3"
+  },
+  "units/vampire-lord-attack": {
+    "src": "/sounds/units/vampire-lord-attack.mp3"
+  },
+  "units/vampire-lord-death": {
+    "src": "/sounds/units/vampire-lord-death.mp3"
+  },
+  "units/vampire-lord-defend": {
+    "src": "/sounds/units/vampire-lord-defend.mp3"
+  },
+  "units/vampire-lord-hurt": {
+    "src": "/sounds/units/vampire-lord-hurt.mp3"
+  },
+  "units/vampire-lord-move": {
+    "src": "/sounds/units/vampire-lord-move.mp3",
+    "repeat": 2
+  },
+  "units/vampire-lord-shoot": {
+    "src": "/sounds/units/vampire-lord-shoot.mp3"
+  },
+  "units/vampire-lord-special-2": {
+    "src": "/sounds/units/vampire-lord-special-2.mp3"
+  },
+  "units/vampire-lord-special": {
+    "src": "/sounds/units/vampire-lord-special.mp3"
+  },
+  "units/vampire-move": {
+    "src": "/sounds/units/vampire-move.mp3",
+    "repeat": 2
+  },
+  "units/vampire-special-2": {
+    "src": "/sounds/units/vampire-special-2.mp3"
+  },
+  "units/vampire-special": {
+    "src": "/sounds/units/vampire-special.mp3"
+  },
+  "units/walking-dead-attack": {
+    "src": "/sounds/units/walking-dead-attack.mp3"
+  },
+  "units/walking-dead-death": {
+    "src": "/sounds/units/walking-dead-death.mp3"
+  },
+  "units/walking-dead-defend": {
+    "src": "/sounds/units/walking-dead-defend.mp3"
+  },
+  "units/walking-dead-hurt": {
+    "src": "/sounds/units/walking-dead-hurt.mp3"
+  },
+  "units/walking-dead-move": {
+    "src": "/sounds/units/walking-dead-move.mp3",
+    "repeat": 2
+  },
+  "units/war-unicorn-attack": {
+    "src": "/sounds/units/war-unicorn-attack.mp3"
+  },
+  "units/war-unicorn-death": {
+    "src": "/sounds/units/war-unicorn-death.mp3"
+  },
+  "units/war-unicorn-defend": {
+    "src": "/sounds/units/war-unicorn-defend.mp3"
+  },
+  "units/war-unicorn-hurt": {
+    "src": "/sounds/units/war-unicorn-hurt.mp3"
+  },
+  "units/war-unicorn-move": {
+    "src": "/sounds/units/war-unicorn-move.mp3",
+    "repeat": 2
+  },
+  "units/war-unicorn-shoot": {
+    "src": "/sounds/units/war-unicorn-shoot.mp3"
+  },
+  "units/water-elemental-attack": {
+    "src": "/sounds/units/water-elemental-attack.mp3"
+  },
+  "units/water-elemental-death": {
+    "src": "/sounds/units/water-elemental-death.mp3"
+  },
+  "units/water-elemental-defend": {
+    "src": "/sounds/units/water-elemental-defend.mp3"
+  },
+  "units/water-elemental-hurt": {
+    "src": "/sounds/units/water-elemental-hurt.mp3"
+  },
+  "units/water-elemental-move": {
+    "src": "/sounds/units/water-elemental-move.mp3",
+    "repeat": 2
+  },
+  "units/wight-attack": {
+    "src": "/sounds/units/wight-attack.mp3"
+  },
+  "units/wight-death": {
+    "src": "/sounds/units/wight-death.mp3"
+  },
+  "units/wight-defend": {
+    "src": "/sounds/units/wight-defend.mp3"
+  },
+  "units/wight-hurt": {
+    "src": "/sounds/units/wight-hurt.mp3"
+  },
+  "units/wight-move": {
+    "src": "/sounds/units/wight-move.mp3",
+    "repeat": 2
+  },
+  "units/wood-elf-attack": {
+    "src": "/sounds/units/wood-elf-attack.mp3"
+  },
+  "units/wood-elf-death": {
+    "src": "/sounds/units/wood-elf-death.mp3"
+  },
+  "units/wood-elf-defend": {
+    "src": "/sounds/units/wood-elf-defend.mp3"
+  },
+  "units/wood-elf-hurt": {
+    "src": "/sounds/units/wood-elf-hurt.mp3"
+  },
+  "units/wood-elf-move": {
+    "src": "/sounds/units/wood-elf-move.mp3",
+    "repeat": 2
+  },
+  "units/wood-elf-shoot": {
+    "src": "/sounds/units/wood-elf-shoot.mp3"
+  },
+  "units/wraith-attack": {
+    "src": "/sounds/units/wraith-attack.mp3"
+  },
+  "units/wraith-death": {
+    "src": "/sounds/units/wraith-death.mp3"
+  },
+  "units/wraith-defend": {
+    "src": "/sounds/units/wraith-defend.mp3"
+  },
+  "units/wraith-hurt": {
+    "src": "/sounds/units/wraith-hurt.mp3"
+  },
+  "units/wraith-move": {
+    "src": "/sounds/units/wraith-move.mp3",
+    "repeat": 2
+  },
+  "units/wyvern-attack": {
+    "src": "/sounds/units/wyvern-attack.mp3"
+  },
+  "units/wyvern-death": {
+    "src": "/sounds/units/wyvern-death.mp3"
+  },
+  "units/wyvern-defend": {
+    "src": "/sounds/units/wyvern-defend.mp3"
+  },
+  "units/wyvern-hurt": {
+    "src": "/sounds/units/wyvern-hurt.mp3"
+  },
+  "units/wyvern-monarch-attack": {
+    "src": "/sounds/units/wyvern-monarch-attack.mp3"
+  },
+  "units/wyvern-monarch-death": {
+    "src": "/sounds/units/wyvern-monarch-death.mp3"
+  },
+  "units/wyvern-monarch-defend": {
+    "src": "/sounds/units/wyvern-monarch-defend.mp3"
+  },
+  "units/wyvern-monarch-hurt": {
+    "src": "/sounds/units/wyvern-monarch-hurt.mp3"
+  },
+  "units/wyvern-monarch-move": {
+    "src": "/sounds/units/wyvern-monarch-move.mp3",
+    "repeat": 2
+  },
+  "units/wyvern-move": {
+    "src": "/sounds/units/wyvern-move.mp3",
+    "repeat": 2
+  },
+  "units/zealot-attack": {
+    "src": "/sounds/units/zealot-attack.mp3"
+  },
+  "units/zealot-death": {
+    "src": "/sounds/units/zealot-death.mp3"
+  },
+  "units/zealot-defend": {
+    "src": "/sounds/units/zealot-defend.mp3"
+  },
+  "units/zealot-hurt": {
+    "src": "/sounds/units/zealot-hurt.mp3"
+  },
+  "units/zealot-move": {
+    "src": "/sounds/units/zealot-move.mp3",
+    "repeat": 2
+  },
+  "units/zealot-shoot": {
+    "src": "/sounds/units/zealot-shoot.mp3"
+  },
+  "units/zombie-lord-attack": {
+    "src": "/sounds/units/zombie-lord-attack.mp3"
+  },
+  "units/zombie-lord-death": {
+    "src": "/sounds/units/zombie-lord-death.mp3"
+  },
+  "units/zombie-lord-defend": {
+    "src": "/sounds/units/zombie-lord-defend.mp3"
+  },
+  "units/zombie-lord-hurt": {
+    "src": "/sounds/units/zombie-lord-hurt.mp3"
+  },
+  "units/zombie-lord-move": {
+    "src": "/sounds/units/zombie-lord-move.mp3",
     "repeat": 2
   }
 }
