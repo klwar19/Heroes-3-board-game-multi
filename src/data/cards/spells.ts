@@ -472,14 +472,29 @@ export const spellCards: CardLibrary = {
     "map",
     "Map effect: Move a Hero up to X fields. Ignore any obstacles and fields in-between and resolve the last one normally: Power 0: 1; Power 2: 2; Power 4: 3."
   ),
-  "spell.earthquake": notImplementedSpell(
-    "earthquake",
-    "Earthquake",
-    "basic",
-    "earth",
-    "instant",
-    "Instant: During a Town siege: Power 0: remove 1 Gate or Wall obstacle of your choice; Power 1: remove 2 Gate or Wall obstacles of your choice; Power 2: every unit adjacent to a Wall or Gate obstacle suffers 1 damage, remove all Gate or Wall obstacles."
-  ),
+  "spell.earthquake": {
+    id: "spell.earthquake",
+    name: "Earthquake",
+    kind: "spell",
+    timing: "instant",
+    phaseLimit: ["combat"],
+    spellLevel: "basic",
+    spellSchools: ["earth"],
+    tags: [
+      "spell",
+      "basic",
+      "earth",
+      "Instant: During a Town siege: Power 0: remove 1 Gate or Wall obstacle of your choice; Power 1: remove 2 Gate or Wall obstacles of your choice; Power 2: every unit adjacent to a Wall or Gate obstacle suffers 1 damage, remove all Gate or Wall obstacles."
+    ],
+    power: 0,
+    effect: { type: "EARTHQUAKE" },
+    assets: {
+      cardImage: "/assets/spells-earthquake.webp",
+      imageAlt: "Earthquake card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("earthquake")
+  },
   "spell.forgetfulness": notImplementedSpell(
     "forgetfulness",
     "Forgetfulness",
@@ -541,7 +556,8 @@ export const spellDeckLegacy: string[] = [
   "spell.prayer",
   "spell.prayer",
   "spell.town_portal",
-  "spell.town_portal"
+  "spell.town_portal",
+  "spell.earthquake"
 ];
 
 /** BINH split decks. */
@@ -571,7 +587,8 @@ export const spellDeckBinhBasic: string[] = [
   "spell.anti_magic",
   "spell.precision",
   "spell.fortune",
-  "spell.fortune"
+  "spell.fortune",
+  "spell.earthquake"
 ];
 
 export const spellDeckBinhExpert: string[] = [

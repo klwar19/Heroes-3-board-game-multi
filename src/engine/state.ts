@@ -428,6 +428,22 @@ export type EffectDefinition =
        * spending a movement point.
        */
       type: "CONTINUE_NEUTRAL_FREE";
+    }
+  | {
+      /**
+       * Earthquake: siege only. Power 0 removes 1 Wall/Gate of the caster's
+       * choice, Power 1 removes 2, Power 2 deals 1 damage to every unit
+       * adjacent to a fortification and removes them all.
+       */
+      type: "EARTHQUAKE";
+    }
+  | {
+      /**
+       * Ballistics: siege only — destroy 1 Wall or the Gate (basic), or the
+       * Arrow Tower (expert side).
+       */
+      type: "SIEGE_DEMOLISH";
+      target: "wall-or-gate" | "arrow-tower";
     };
 
 /**
@@ -2408,11 +2424,14 @@ export type PendingChoice =
         | "own-deck-pick"
         | "garrison"
         | "siege-gate"
+        | "siege-demolish"
         | "cover-of-darkness";
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */
       ownDeckPick?: { cardIds: CardId[] };
+      /** siege-demolish: intact fortification positions and removals left. */
+      siegeDemolish?: { positions: number[]; remaining: number };
       /** discard-pick: the candidate cards (index-aligned with options). */
       discardPick?: {
         cardIds: CardId[];

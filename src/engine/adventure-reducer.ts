@@ -45,7 +45,7 @@ import {
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { createSeededRandom } from "./random";
-import { makeArrowTowerUnit, SIEGE_ROW_POSITIONS } from "./siege";
+import { destroyFortification, intactFortificationPositions, makeArrowTowerUnit, SIEGE_ROW_POSITIONS } from "./siege";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { applyPermanentCombatEffects, resolveWarMachineOption, startWarMachineRound } from "./permanents";
@@ -117,6 +117,65 @@ function discardRandomCard(
     buildingId,
     message: `${buildingName} discards a random card from ${target.name}'s hand.`
   });
+}
+
+
+/**
+ * Earthquake / Ballistics: the player picks which Wall (or the Gate) falls.
+ * Re-opens itself while removals remain and fortifications still stand.
+ */
+export function openSiegeDemolishChoice(state: GameState, playerId: PlayerId, remaining: number): void {
+  const siege = state.combat?.siege;
+  if (!siege || remaining <= 0) {
+    return;
+  }
+
+  const positions = intactFortificationPositions(siege);
+  if (positions.length === 0) {
+    return;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Choose a fortification to destroy${remaining > 1 ? ` (${remaining} left)` : ""}`,
+    options: positions.map((position) => ({
+      label: siege.gatePosition === position
+        ? `Destroy the Gate (column ${String.fromCharCode(65 + (position % 4))})`
+        : `Destroy the Wall at column ${String.fromCharCode(65 + (position % 4))}`
+    })),
+    context: "siege-demolish",
+    siegeDemolish: { positions, remaining },
+    returnPhase: "combat"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Resolves one siege-demolish pick, chaining while removals remain. */
+export function resolveSiegeDemolishChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (choice?.type !== "OPTION_CHOICE" || choice.context !== "siege-demolish" || !choice.siegeDemolish) {
+    throw new Error("There is no fortification choice to resolve.");
+  }
+
+  const siege = state.combat?.siege;
+  const position = choice.siegeDemolish.positions[optionIndex];
+  if (!siege || position === undefined) {
+    throw new Error("Pick one of the standing fortifications.");
+  }
+
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+
+  destroyFortification(state, null, siege.gatePosition === position ? "gate" : "wall", position);
+
+  const remaining = choice.siegeDemolish.remaining - 1;
+  if (remaining > 0 && intactFortificationPositions(siege).length > 0) {
+    openSiegeDemolishChoice(state, playerId, remaining);
+  }
 }
 
 /** Attacker rows on the 4x5 board (bottom from the attacker's seat). */
@@ -2757,6 +2816,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "cover-of-darkness") {
     resolveCoverOfDarknessChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "siege-demolish") {
+    resolveSiegeDemolishChoice(state, action.playerId, action.optionIndex);
     return;
   }
 
