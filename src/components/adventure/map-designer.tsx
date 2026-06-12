@@ -1,15 +1,15 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element */
-
-import { useMemo, useState } from "react";
-import { Plus, RotateCcw, RotateCw, X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Minus, Plus, RotateCcw, RotateCw, X } from "lucide-react";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { TILE_BACK_IMAGES } from "@/data/assets/homm-assets";
 import {
   hexDistance,
+  hexNeighbors,
   hexToPixel,
   scenarioDefinitions,
+  tileFootprint,
   tileFootprintsTouch,
   type CustomMapTilePlan,
   type HexCoord
@@ -21,6 +21,25 @@ export const TILE_GROUP_LABELS: Record<"far" | "near" | "center", string> = {
   near: "Near Ⅳ–Ⅴ",
   center: "Center Ⅵ–Ⅶ"
 };
+
+const GROUP_COLORS: Record<"far" | "near" | "center", string> = {
+  far: "#4f8a4f",
+  near: "#b08d2f",
+  center: "#a14d4d"
+};
+
+/** Designer hex circumradius — the same pointy-top geometry the map uses. */
+const DESIGN_HEX = 24;
+
+/** Pointy-top hexagon corner points around a center. */
+function hexCorners(cx: number, cy: number, size: number): string {
+  const points: string[] = [];
+  for (let index = 0; index < 6; index += 1) {
+    const angle = (Math.PI / 180) * (60 * index - 30);
+    points.push(`${cx + size * Math.cos(angle)},${cy + size * Math.sin(angle)}`);
+  }
+  return points.join(" ");
+}
 
 /**
  * Centers whose 7-field flower would touch the flower at `center`: every
@@ -40,26 +59,56 @@ function neighborTileCenters(center: HexCoord): HexCoord[] {
   return result;
 }
 
+/** The outline of a 7-hex flower as one SVG path (outer edges only). */
+function flowerOutline(center: HexCoord, size: number): string {
+  const cells = tileFootprint(center, 0);
+  const cellKeys = new Set(cells.map((cell) => `${cell.row}:${cell.col}`));
+  const segments: string[] = [];
+  for (const cell of cells) {
+    const { x, y } = hexToPixel(cell, size);
+    const corners: { x: number; y: number }[] = [];
+    for (let index = 0; index < 6; index += 1) {
+      const angle = (Math.PI / 180) * (60 * index - 30);
+      corners.push({ x: x + size * Math.cos(angle), y: y + size * Math.sin(angle) });
+    }
+    const neighbors = hexNeighbors(cell);
+    for (let direction = 0; direction < 6; direction += 1) {
+      const neighbor = neighbors[direction];
+      if (cellKeys.has(`${neighbor.row}:${neighbor.col}`)) {
+        continue;
+      }
+      // Edge between corner (direction+5)%6 and (direction)%6 faces `direction`.
+      const a = corners[(direction + 5) % 6];
+      const b = corners[direction % 6];
+      segments.push(`M ${a.x} ${a.y} L ${b.x} ${b.y}`);
+    }
+  }
+  return segments.join(" ");
+}
+
 /**
- * Map designer board: build the map tile by tile around the fixed starting
- * tiles. Each added tile is face-down random from its group's pool ("down
- * means random") or a hand-picked face-up tile at a chosen rotation.
- * Face-down slots show the printed tile back, face-up slots the tile scan.
+ * Map designer board: a real hex-grid view of the scenario. Pan by dragging,
+ * zoom with the wheel or buttons; click a ＋ flower to add a tile, click a
+ * tile to select it, then flip it face up/down, choose the exact tile,
+ * rotate it in 60° steps or remove it.
  */
 export function MapDesigner({
   scenarioId,
   customMap,
   onChange,
-  hexSize = 9
+  hexSize = DESIGN_HEX
 }: {
   scenarioId: string;
   customMap: CustomMapTilePlan[];
   onChange: (next: CustomMapTilePlan[]) => void;
-  /** Designer slot spacing — the setup lobby uses 9, the designer page more. */
+  /** Hex circumradius of the design board (the lobby embeds it smaller). */
   hexSize?: number;
 }) {
   const scenario = scenarioDefinitions[scenarioId];
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
+  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null);
+  const suppressClickRef = useRef(false);
 
   const starts = useMemo<HexCoord[]>(
     () => (scenario ? scenario.layout.starts.map((start) => ({ ...start })) : []),
@@ -95,17 +144,29 @@ export function MapDesigner({
     return null;
   }
 
-  // Pixel layout: project every visible center, then normalize into the box.
-  const everything = [...placed, ...candidates];
-  const pixels = everything.map((coord) => hexToPixel(coord, hexSize));
-  const minX = Math.min(...pixels.map((pixel) => pixel.x)) - hexSize * 2.4;
-  const minY = Math.min(...pixels.map((pixel) => pixel.y)) - hexSize * 2.4;
-  const width = Math.max(...pixels.map((pixel) => pixel.x)) - minX + hexSize * 4.8;
-  const height = Math.max(...pixels.map((pixel) => pixel.y)) - minY + hexSize * 4.8;
-  const place = (coord: HexCoord) => {
-    const pixel = hexToPixel(coord, hexSize);
-    return { left: pixel.x - minX, top: pixel.y - minY };
-  };
+  const size = hexSize;
+  const hexWidth = Math.sqrt(3) * size;
+
+  // Project every visible flower cell to find the viewBox.
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const center of [...placed, ...candidates]) {
+    for (const cell of tileFootprint(center, 0)) {
+      const { x, y } = hexToPixel(cell, size);
+      minX = Math.min(minX, x - hexWidth);
+      minY = Math.min(minY, y - size * 1.8);
+      maxX = Math.max(maxX, x + hexWidth);
+      maxY = Math.max(maxY, y + size * 1.8);
+    }
+  }
+  if (!Number.isFinite(minX)) {
+    minX = 0;
+    minY = 0;
+    maxX = 100;
+    maxY = 100;
+  }
 
   const selected = selectedIndex !== null ? customMap[selectedIndex] : null;
   const usedFaceUpIds = new Set(
@@ -123,65 +184,234 @@ export function MapDesigner({
     onChange(customMap.map((plan, index) => (index === selectedIndex ? { ...plan, ...changes } : plan)));
   };
 
+  const rotateSelected = (steps: number) => {
+    if (!selected || selected.faceDown) {
+      return;
+    }
+    updateSelected({ rotation: (((selected.rotation ?? 0) + steps) % 6 + 6) % 6 });
+  };
+
+  const clickGuard = () => suppressClickRef.current;
+
+  // --- SVG layers ----------------------------------------------------------
+  const artLayer: React.ReactNode[] = [];
+  const cellLayer: React.ReactNode[] = [];
+  const outlineLayer: React.ReactNode[] = [];
+  const labelLayer: React.ReactNode[] = [];
+
+  const renderFlowerCells = (center: HexCoord, className: string, key: string, onClick?: () => void, title?: string) => {
+    for (const [slot, cell] of tileFootprint(center, 0).entries()) {
+      const { x, y } = hexToPixel(cell, size);
+      cellLayer.push(
+        <polygon
+          className={className}
+          key={`${key}-${slot}`}
+          onClick={
+            onClick
+              ? () => {
+                  if (!clickGuard()) {
+                    onClick();
+                  }
+                }
+              : undefined
+          }
+          points={hexCorners(x, y, size - 0.8)}
+        >
+          {title ? <title>{title}</title> : null}
+        </polygon>
+      );
+    }
+  };
+
+  // Fixed starting tiles.
+  for (const [index, start] of starts.entries()) {
+    const centerPixel = hexToPixel(start, size);
+    const width = 3 * hexWidth;
+    const height = 5 * size;
+    artLayer.push(
+      <image
+        height={height}
+        href={TILE_BACK_IMAGES.starting}
+        key={`start-art-${index}`}
+        preserveAspectRatio="none"
+        width={width}
+        x={centerPixel.x - width / 2}
+        y={centerPixel.y - height / 2}
+      />
+    );
+    renderFlowerCells(start, "designerHexFixed", `start-${index}`, undefined, `Starting tile of seat ${index + 1} (fixed by faction)`);
+    labelLayer.push(
+      <text className="designerStartLabel" key={`start-label-${index}`} textAnchor="middle" x={centerPixel.x} y={centerPixel.y + 5}>
+        S{index + 1}
+      </text>
+    );
+    outlineLayer.push(
+      <path className="designerFlowerOutline fixed" d={flowerOutline(start, size)} key={`start-outline-${index}`} />
+    );
+  }
+
+  // Designed tiles.
+  for (const [index, plan] of customMap.entries()) {
+    const center = { row: plan.row, col: plan.col };
+    const centerPixel = hexToPixel(center, size);
+    const isSelected = selectedIndex === index;
+    const art = !plan.faceDown && plan.tileDefId ? allTileDefinitions[plan.tileDefId]?.assets?.tileImage : undefined;
+    const width = 3 * hexWidth;
+    const height = 5 * size;
+
+    if (plan.faceDown) {
+      artLayer.push(
+        <image
+          height={height}
+          href={TILE_BACK_IMAGES[plan.group]}
+          key={`plan-back-${index}`}
+          preserveAspectRatio="none"
+          width={width}
+          x={centerPixel.x - width / 2}
+          y={centerPixel.y - height / 2}
+        />
+      );
+    } else if (art) {
+      artLayer.push(
+        <image
+          height={height}
+          href={art}
+          key={`plan-art-${index}`}
+          preserveAspectRatio="none"
+          transform={`rotate(${(plan.rotation ?? 0) * 60} ${centerPixel.x} ${centerPixel.y})`}
+          width={width}
+          x={centerPixel.x - width / 2}
+          y={centerPixel.y - height / 2}
+        />
+      );
+    }
+
+    renderFlowerCells(
+      center,
+      `designerHexPlan ${plan.faceDown ? "down" : "up"}`,
+      `plan-${index}`,
+      () => setSelectedIndex(isSelected ? null : index),
+      plan.faceDown
+        ? `Face-down ${TILE_GROUP_LABELS[plan.group]} tile — drawn randomly from its pool when the adventure starts. Click to edit.`
+        : `${plan.tileDefId ?? "?"} rotated ${(plan.rotation ?? 0) * 60}°. Click to edit.`
+    );
+
+    outlineLayer.push(
+      <path
+        className={`designerFlowerOutline ${isSelected ? "selected" : ""}`}
+        d={flowerOutline(center, size)}
+        key={`plan-outline-${index}`}
+        style={{ stroke: isSelected ? "#ffd766" : GROUP_COLORS[plan.group] }}
+      />
+    );
+
+    if (plan.faceDown || !art) {
+      labelLayer.push(
+        <text className="designerTileLabel" key={`plan-label-${index}`} textAnchor="middle" x={centerPixel.x} y={centerPixel.y + 4}>
+          {plan.faceDown ? TILE_GROUP_LABELS[plan.group] : (plan.tileDefId ?? "?")}
+        </text>
+      );
+    }
+  }
+
+  // Add-slots.
+  for (const candidate of candidates) {
+    const centerPixel = hexToPixel(candidate, size);
+    renderFlowerCells(
+      candidate,
+      "designerHexAdd",
+      `add-${candidate.row}:${candidate.col}`,
+      () => {
+        onChange([...customMap, { row: candidate.row, col: candidate.col, group: "near", faceDown: true }]);
+        setSelectedIndex(customMap.length);
+      },
+      "Add a tile here (face-down Near by default — click it afterwards to change group, flip it face up, pick the exact tile or rotate it)"
+    );
+    outlineLayer.push(
+      <path className="designerFlowerOutline add" d={flowerOutline(candidate, size)} key={`add-outline-${candidate.row}:${candidate.col}`} />
+    );
+    labelLayer.push(
+      <text className="designerAddPlus" key={`add-plus-${candidate.row}:${candidate.col}`} textAnchor="middle" x={centerPixel.x} y={centerPixel.y + 7}>
+        ＋
+      </text>
+    );
+  }
+
   return (
     <div className="mapDesigner" aria-label="Map designer">
-      <div className="designerBoard" style={{ width, height }}>
-        {starts.map((start, index) => (
-          <span
-            className="designerTile start"
-            key={`start-${index}`}
-            style={place(start)}
-            title={`Starting tile of seat ${index + 1} (fixed by faction)`}
-          >
-            <img alt="" aria-hidden="true" className="designerTileBack" src={TILE_BACK_IMAGES.starting} />
-            <b>S{index + 1}</b>
-          </span>
-        ))}
-        {customMap.map((plan, index) => {
-          const art = !plan.faceDown && plan.tileDefId ? allTileDefinitions[plan.tileDefId]?.assets?.tileImage : undefined;
-          return (
-            <button
-              className={`designerTile plan ${plan.group} ${selectedIndex === index ? "selected" : ""}`}
-              key={`plan-${index}`}
-              onClick={() => setSelectedIndex(selectedIndex === index ? null : index)}
-              style={place({ row: plan.row, col: plan.col })}
-              title={
-                plan.faceDown
-                  ? `Face-down ${TILE_GROUP_LABELS[plan.group]} tile (random from the pool)`
-                  : `Face-up ${plan.tileDefId ?? "?"} (rotation ${(plan.rotation ?? 0) * 60}°)`
-              }
-              type="button"
-            >
-              {plan.faceDown ? (
-                <img alt="" aria-hidden="true" className="designerTileBack" src={TILE_BACK_IMAGES[plan.group]} />
-              ) : art ? (
-                <img
-                  alt=""
-                  aria-hidden="true"
-                  className="designerTileBack"
-                  src={art}
-                  style={{ transform: `rotate(${(plan.rotation ?? 0) * 60}deg)` }}
-                />
-              ) : null}
-              <b>{plan.faceDown ? "" : (plan.tileDefId ?? "?")}</b>
-            </button>
-          );
-        })}
-        {candidates.map((candidate) => (
-          <button
-            className="designerTile add"
-            key={`add-${candidate.row}:${candidate.col}`}
-            onClick={() => {
-              onChange([...customMap, { row: candidate.row, col: candidate.col, group: "near", faceDown: true }]);
-              setSelectedIndex(customMap.length);
-            }}
-            style={place(candidate)}
-            title="Add a tile here (face-down Near by default — click it after to change)"
-            type="button"
-          >
-            <Plus aria-hidden="true" size={12} />
+      <div className="designerBoardWrap">
+        <svg
+          className="designerSvg"
+          onPointerCancel={(event) => {
+            if (dragRef.current?.pointerId === event.pointerId) {
+              dragRef.current = null;
+              window.setTimeout(() => {
+                suppressClickRef.current = false;
+              }, 0);
+            }
+          }}
+          onPointerDown={(event) => {
+            if (event.button !== 0) {
+              return;
+            }
+            suppressClickRef.current = false;
+            dragRef.current = {
+              pointerId: event.pointerId,
+              startX: event.clientX,
+              startY: event.clientY,
+              originX: camera.x,
+              originY: camera.y,
+              moved: false
+            };
+          }}
+          onPointerMove={(event) => {
+            const drag = dragRef.current;
+            if (!drag || drag.pointerId !== event.pointerId) {
+              return;
+            }
+            const dx = event.clientX - drag.startX;
+            const dy = event.clientY - drag.startY;
+            if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 6) {
+              drag.moved = true;
+              suppressClickRef.current = true;
+              (event.currentTarget as Element).setPointerCapture(event.pointerId);
+            }
+            if (drag.moved) {
+              setCamera((current) => ({ ...current, x: drag.originX + dx, y: drag.originY + dy }));
+            }
+          }}
+          onPointerUp={(event) => {
+            if (dragRef.current?.pointerId === event.pointerId) {
+              dragRef.current = null;
+              window.setTimeout(() => {
+                suppressClickRef.current = false;
+              }, 0);
+            }
+          }}
+          onWheel={(event) => {
+            const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
+            setCamera((current) => ({ ...current, scale: Math.min(3, Math.max(0.4, current.scale * factor)) }));
+          }}
+          viewBox={`${minX} ${minY} ${maxX - minX} ${maxY - minY}`}
+        >
+          <g transform={`translate(${camera.x} ${camera.y}) scale(${camera.scale})`} style={{ transformOrigin: "center" }}>
+            {artLayer}
+            {cellLayer}
+            {outlineLayer}
+            {labelLayer}
+          </g>
+        </svg>
+        <div className="mapToolbar designerToolbarFloat" aria-label="Designer view controls">
+          <button onClick={() => setCamera((c) => ({ ...c, scale: Math.min(3, c.scale * 1.2) }))} title="Zoom in" type="button">
+            <Plus size={13} />
           </button>
-        ))}
+          <button onClick={() => setCamera((c) => ({ ...c, scale: Math.max(0.4, c.scale / 1.2) }))} title="Zoom out" type="button">
+            <Minus size={13} />
+          </button>
+          <button onClick={() => setCamera({ x: 0, y: 0, scale: 1 })} title="Reset the view" type="button">
+            ⤾
+          </button>
+        </div>
       </div>
 
       {selected ? (
@@ -243,22 +473,15 @@ export function MapDesigner({
                     </option>
                   ))}
                 </select>
-                <button
-                  onClick={() => updateSelected({ rotation: ((selected.rotation ?? 0) + 5) % 6 })}
-                  title="Rotate the tile 60° counterclockwise"
-                  type="button"
-                >
+                <button onClick={() => rotateSelected(-1)} title="Rotate the tile 60° counterclockwise" type="button">
                   <RotateCcw size={12} />
                 </button>
-                <button
-                  onClick={() => updateSelected({ rotation: ((selected.rotation ?? 0) + 1) % 6 })}
-                  title="Rotate the tile 60° clockwise"
-                  type="button"
-                >
+                <button onClick={() => rotateSelected(1)} title="Rotate the tile 60° clockwise" type="button">
                   <RotateCw size={12} /> {(selected.rotation ?? 0) * 60}°
                 </button>
               </div>
               {selectedTileDef?.assets?.tileImage ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   alt={`Tile ${selectedTileDef.id}`}
                   className="designerTilePreview"
@@ -281,8 +504,9 @@ export function MapDesigner({
         </div>
       ) : (
         <small className="optionHint">
-          Click a ＋ slot to add a tile next to the board; click a placed tile to flip it up or down, pick the exact
-          tile, rotate it or remove it. Face-down tiles draw randomly from their pool when the adventure starts.
+          Drag to pan, scroll to zoom. Click a ＋ flower to add a tile next to the board; click a placed tile to flip
+          it face up or down, pick the exact tile, rotate it in 60° steps or remove it. Face-down tiles draw randomly
+          from their pool when the adventure starts.
         </small>
       )}
     </div>

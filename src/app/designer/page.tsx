@@ -140,7 +140,7 @@ export default function MapDesignerPage() {
             </div>
           ) : null}
 
-          <MapDesigner customMap={tiles} hexSize={14} onChange={setTiles} scenarioId={scenarioId} />
+          <MapDesigner customMap={tiles} onChange={setTiles} scenarioId={scenarioId} />
           <small className="optionHint">
             {tiles.length} tile{tiles.length === 1 ? "" : "s"} placed · face-down tiles draw randomly from their
             Far/Near/Center pool when the adventure starts.
