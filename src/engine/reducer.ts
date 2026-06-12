@@ -1704,7 +1704,7 @@ function advanceActiveUnit(state: GameState): void {
     return;
   }
 
-  setActiveUnit(state, getNextUnitToActivate(state.combat)?.id ?? null);
+  setActiveUnit(state, getNextUnitToActivate(state.combat, state.activeEffects)?.id ?? null);
 }
 
 function resetCombatRound(combat: CombatState): void {
@@ -3701,7 +3701,7 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     nextRound: state.combat.round
   });
 
-  const nextUnit = getNextUnitToActivate(state.combat);
+  const nextUnit = getNextUnitToActivate(state.combat, state.activeEffects);
   appendEvent(state, {
     type: "COMBAT_ROUND_STARTED",
     round: state.combat.round,
@@ -4148,7 +4148,7 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       state.stack.length === 0
     ) {
       if (!combat.activeUnitId) {
-        const nextUnit = getNextUnitToActivate(combat);
+        const nextUnit = getNextUnitToActivate(combat, state.activeEffects);
         if (nextUnit) {
           setActiveUnit(state, nextUnit.id);
           continue;

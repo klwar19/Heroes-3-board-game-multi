@@ -239,12 +239,32 @@ export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitSt
   ).filter(isBattlefieldPosition);
 }
 
-export function sortUnitsForActivation(combat: CombatState): CombatUnitState[] {
+/** Initiative including Haste/Slow and other lasting bonuses on the unit. */
+export function effectiveInitiative(unit: CombatUnitState, activeEffects: ActiveEffectState[] = []): number {
+  const bonus = activeEffects.reduce((total, effect) => {
+    if (effect.target?.type !== "unit" || effect.target.unitId !== unit.id) {
+      return total;
+    }
+    return (
+      total +
+      effect.modifiers.reduce(
+        (sum, modifier) => (modifier.type === "INITIATIVE_BONUS" ? sum + modifier.amount : sum),
+        0
+      )
+    );
+  }, 0);
+
+  return unit.initiative + bonus;
+}
+
+export function sortUnitsForActivation(combat: CombatState, activeEffects: ActiveEffectState[] = []): CombatUnitState[] {
   return Object.values(combat.units)
     .filter(isUnitAlive)
     .sort((left, right) => {
-      if (right.initiative !== left.initiative) {
-        return right.initiative - left.initiative;
+      const leftInitiative = effectiveInitiative(left, activeEffects);
+      const rightInitiative = effectiveInitiative(right, activeEffects);
+      if (rightInitiative !== leftInitiative) {
+        return rightInitiative - leftInitiative;
       }
 
       if (left.controllerId === combat.attackerPlayerId && right.controllerId !== combat.attackerPlayerId) {
@@ -259,8 +279,8 @@ export function sortUnitsForActivation(combat: CombatState): CombatUnitState[] {
     });
 }
 
-export function getNextUnitToActivate(combat: CombatState): CombatUnitState | null {
-  return sortUnitsForActivation(combat).find((unit) => !unit.activatedThisRound) ?? null;
+export function getNextUnitToActivate(combat: CombatState, activeEffects: ActiveEffectState[] = []): CombatUnitState | null {
+  return sortUnitsForActivation(combat, activeEffects).find((unit) => !unit.activatedThisRound) ?? null;
 }
 
 function hasAdjacentEnemy(combat: CombatState, unit: CombatUnitState): boolean {

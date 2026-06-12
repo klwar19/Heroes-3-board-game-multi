@@ -14,11 +14,16 @@ import {
   EXPERT_USES_BY_LEVEL,
   HAND_LIMIT_BY_LEVEL,
   NEUTRAL_DECK_IDS,
+  RULESET_DESCRIPTIONS,
+  RULESET_LABELS,
   SPECIALTY_LEVELS,
+  applyUnitSideRules,
+  deckDisplayName,
   effectiveHandLimit,
   getActiveAstrologersCard,
   getMainHero,
   getReachableHeroPaths,
+  getRuleset,
   getTileBorderSegments,
   hexDistance,
   hexToPixel,
@@ -36,6 +41,7 @@ import {
   type PlayerId,
   type PlayerVisibleState
 } from "@/engine";
+import { MORALE_ICONS, RESOURCE_ICONS, WOG_ARMY_MANAGEMENT_IMAGE } from "@/data/assets/homm-assets";
 import { actionKey, cardName, formatCost, titleCase } from "@/components/table/utils";
 import { useCardZoom } from "@/components/table/zoom";
 
@@ -913,9 +919,23 @@ export function AdventureHud({
       ) : null}
       {player && player.id !== "neutrals" ? (
         <div className="advHudCell resources">
-          <span title="Gold">🪙 {player.resources.gold}</span>
-          <span title="Building materials">⚒ {player.resources.buildingMaterials}</span>
-          <span title="Valuables">♦ {player.resources.valuables}</span>
+          <span title="Gold">
+            <img alt="Gold" className="resourceIcon" referrerPolicy="no-referrer" src={RESOURCE_ICONS.gold} />{" "}
+            {player.resources.gold}
+          </span>
+          <span title="Building materials (ore)">
+            <img
+              alt="Building materials"
+              className="resourceIcon"
+              referrerPolicy="no-referrer"
+              src={RESOURCE_ICONS.buildingMaterials}
+            />{" "}
+            {player.resources.buildingMaterials}
+          </span>
+          <span title="Valuables (crystal)">
+            <img alt="Valuables" className="resourceIcon" referrerPolicy="no-referrer" src={RESOURCE_ICONS.valuables} />{" "}
+            {player.resources.valuables}
+          </span>
           <small title="Production each resource round">
             +{player.production.gold}/+{player.production.buildingMaterials}/+{player.production.valuables} income
           </small>
@@ -928,12 +948,28 @@ export function AdventureHud({
           </strong>
           <small>
             level {hero.level} ·{" "}
-            {player?.morale
-              ? `morale ${player.morale > 0 ? "+" : ""}${player.morale}`
-              : "no morale"}
+            {player?.morale ? (
+              <>
+                <img
+                  alt={player.morale > 0 ? "Positive morale" : "Negative morale"}
+                  className="moraleIcon"
+                  referrerPolicy="no-referrer"
+                  src={player.morale > 0 ? MORALE_ICONS.positive : MORALE_ICONS.negative}
+                  title={`Morale ${player.morale > 0 ? "+" : ""}${player.morale}`}
+                />{" "}
+                morale {player.morale > 0 ? "+" : ""}
+                {player.morale}
+              </>
+            ) : (
+              "no morale"
+            )}
           </small>
         </div>
       ) : null}
+      <div className="advHudCell">
+        <strong>{RULESET_LABELS[getRuleset(state)]}</strong>
+        <small>game mode</small>
+      </div>
       {winner ? (
         <div className="advHudCell winner">
           <strong>{state.players[winner]?.name} wins!</strong>
@@ -955,6 +991,7 @@ export function AdventureHud({
 // ---------------------------------------------------------------------------
 
 export function HeroBoardPanel({ state, playerId }: { state: GameState; playerId: PlayerId }) {
+  const { zoomContent } = useCardZoom();
   const player = state.players[playerId];
   const hero = Object.values(state.heroes).find(
     (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
@@ -1006,6 +1043,21 @@ export function HeroBoardPanel({ state, playerId }: { state: GameState; playerId
       <small className="heroXp">
         Experience {hero.experience}/12 · hand limit {effectiveHandLimit(state, playerId)} · expert effects{" "}
         {player.limits.expertUses}
+        {" · "}
+        <button
+          className="statsReference"
+          onClick={() =>
+            zoomContent({
+              title: "Statistics reference (classic army management screen)",
+              image: WOG_ARMY_MANAGEMENT_IMAGE,
+              subtitle: "Art reference from heroes3wog.net",
+              lines: ["Attack · Defense · Power · Knowledge · Morale · Luck — the classic icons behind the statistic cards."]
+            })
+          }
+          type="button"
+        >
+          stats art
+        </button>
       </small>
     </section>
   );
@@ -1023,13 +1075,17 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
     );
   }
 
+  const ruleset = getRuleset(state);
+
   return (
     <section className="armyPanel" aria-label="Unit deck">
       <h3>Unit deck ({player.army.length})</h3>
       <ul>
         {player.army.map((unit) => {
           const def = coreUnitDefinitions[unit.unitDefId];
-          const side = unit.side === "few" ? def?.few : def?.pack;
+          const printed = unit.side === "few" ? def?.few : def?.pack;
+          // BINH stat tweaks (Griffins, Marksmen, Cerberi) show live values.
+          const side = printed ? applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed) : printed;
           return (
             <li key={unit.id}>
               <button
@@ -1428,11 +1484,20 @@ export function AdventureDecksPanel({
 }) {
   const player = view.players[viewerPlayerId];
 
-  const sharedDecks: { id: string; name: string }[] = [
-    { id: "spells", name: "Spells" },
-    { id: "abilities", name: "Abilities" },
-    { id: "artifacts", name: "Artifacts" }
+  // Legacy: Spells / Abilities / Artifacts. BINH: Basic + Expert Spells and
+  // the Minor/Major/Relic artifact decks — whatever this game actually has.
+  const sharedDeckIds = [
+    "spells",
+    "spells-expert",
+    "abilities",
+    "artifacts",
+    "artifacts-minor",
+    "artifacts-major",
+    "artifacts-relic"
   ];
+  const sharedDecks = sharedDeckIds
+    .filter((deckId) => Boolean(view.decks[deckId]))
+    .map((deckId) => ({ id: deckId, name: deckDisplayName(view, deckId) }));
 
   const astrologers = view.decks.astrologers;
 
@@ -1792,6 +1857,25 @@ function GameOptionsPanel({
   return (
     <div className="gameOptions" aria-label="Game options">
       <h3>Game options</h3>
+
+      <div className="optionRow">
+        <small title="Pick the rules variant for this game">Game mode</small>
+        <div className="optionButtons">
+          {(["binh", "legacy"] as const).map((ruleset) => (
+            <button
+              aria-pressed={options.ruleset === ruleset}
+              className={options.ruleset === ruleset ? "selected" : ""}
+              key={ruleset}
+              onClick={() => send({ ruleset })}
+              title={RULESET_DESCRIPTIONS[ruleset]}
+              type="button"
+            >
+              {RULESET_LABELS[ruleset]}
+            </button>
+          ))}
+        </div>
+        <small className="optionHint">{RULESET_DESCRIPTIONS[options.ruleset]}</small>
+      </div>
 
       <div className="optionRow">
         <small>Starting map</small>

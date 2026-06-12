@@ -126,9 +126,12 @@ export function HandFan({
       return "Resolve this card manually — automation coming soon";
     }
     if (card.kind === "spell") {
-      return spellLimitReached
-        ? `Spell limit reached (${spellLimit} per combat round)`
-        : "Castable during combat, any activation";
+      if (spellLimitReached) {
+        return `Spell limit reached (${spellLimit} per combat round)`;
+      }
+      return card.trigger || card.timing === "instant"
+        ? "Instant spell: play it into an attack or spell window (Power cards empower it)"
+        : "Activation spell: cast while one of your units is active, before it attacks";
     }
     if (card.trigger || card.timing === "instant") {
       return "Instant: waits for its timing window (attack or spell)";
