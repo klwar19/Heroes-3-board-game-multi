@@ -1,6 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
 import { sampleBuildings } from "@/data/towns/buildings";
-import { changeMorale, getActiveAstrologersCard, getUnitSide } from "./adventure";
+import { changeMorale, getActiveAstrologersCard } from "./adventure";
 import {
   buildStructureAdventure,
   chooseOption,
@@ -28,10 +28,19 @@ import {
 } from "./adventure-reducer";
 import { chooseFaction, setGameOptions, startAdventureFromLobby } from "./adventure-setup";
 import { ATTACK_DIE_FACES } from "./battlefield";
+import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { isNeutralUnit, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
+import {
+  applyPermanentCombatEffectsForPlayer,
+  applyPermanentExpert,
+  buyWarMachine,
+  getPermanentSchoolBonus,
+  putPermanentIntoPlay,
+  resolveWarMachineTarget,
+  startWarMachineRound
+} from "./permanents";
 import { createSeededRandom } from "./random";
 import {
-  expireEffectsForCombatEnd,
   expireEffectsForCombatRoundEnd,
   expireEffectsForTurnEnd,
   getActiveAttackBonus,
@@ -358,63 +367,11 @@ function hasExpertUseAvailable(state: GameState, playerId: PlayerId): boolean {
   return Boolean(player && player.combatStats.expertUsesSpentThisRound < player.limits.expertUses);
 }
 
-function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState): void {
-  if (unit.damage < unit.maxHealth) {
-    return;
-  }
+// markUnitRemovedIfNeeded (pack flip + removal) lives in combat-units.ts so
+// the war machine module can finalize its damage the same way.
 
-  // Defeated "Pack" units flip to their "Few" side, carrying over any damage
-  // dealt beyond the pack's health.
-  if (unit.variant === "pack" && unit.unitDefId) {
-    const fewSide = getUnitSide(unit.unitDefId, "few");
-    if (fewSide) {
-      const excess = unit.damage - unit.maxHealth;
-      unit.variant = "few";
-      unit.cardName = `Few ${unit.name}`;
-      unit.attack = fewSide.attack;
-      unit.defense = fewSide.defense;
-      unit.maxHealth = fewSide.health;
-      unit.initiative = fewSide.initiative;
-      unit.abilities = fewSide.abilities;
-      unit.damage = Math.min(fewSide.health, Math.max(0, excess));
-      if (unit.assets && fewSide.cardImage) {
-        unit.assets.cardImage = fewSide.cardImage;
-      }
-
-      appendEvent(state, {
-        type: "UNIT_FLIPPED",
-        unitId: unit.id,
-        playerId: unit.controllerId,
-        unitName: unit.name,
-        excessDamage: Math.max(0, excess)
-      });
-
-      if (unit.damage < unit.maxHealth) {
-        return;
-      }
-    }
-  }
-
-  appendEvent(state, {
-    type: "UNIT_REMOVED",
-    unitId: unit.id,
-    playerId: unit.controllerId
-  });
-}
-
-function appendExpiredEffectEvents(
-  state: GameState,
-  effects: ActiveEffectState[],
-  reason: "combat-round-ended" | "turn-ended" | "combat-ended"
-): void {
-  for (const effect of effects) {
-    appendEvent(state, {
-      type: "ACTIVE_EFFECT_EXPIRED",
-      effectId: effect.id,
-      reason
-    });
-  }
-}
+// appendExpiredEffectEvents / finishCombatIfNeeded / livingControllerIds
+// moved to combat-units.ts so the war machine module can finish combats.
 
 function appendActiveEffectCreatedEvent(state: GameState, activeEffect: ActiveEffectState): void {
   appendEvent(state, {
@@ -654,52 +611,7 @@ function healUnitDamage(
   });
 }
 
-function livingControllerIds(combat: CombatState): Set<PlayerId> {
-  return new Set(
-    Object.values(combat.units)
-      .filter(isUnitAlive)
-      .map((unit) => unit.controllerId)
-  );
-}
-
-function finishCombatIfNeeded(state: GameState): boolean {
-  const combat = state.combat;
-  if (!combat || combat.outcome) {
-    return Boolean(combat?.outcome);
-  }
-
-  const livingControllers = livingControllerIds(combat);
-  const attackerAlive = livingControllers.has(combat.attackerPlayerId);
-  const defenderAlive = livingControllers.has(combat.defenderPlayerId);
-
-  if (attackerAlive === defenderAlive) {
-    return false;
-  }
-
-  const winnerPlayerId = attackerAlive ? combat.attackerPlayerId : combat.defenderPlayerId;
-  const defeatedPlayerId = attackerAlive ? combat.defenderPlayerId : combat.attackerPlayerId;
-  const reason = "all-enemy-units-defeated";
-
-  combat.outcome = {
-    winnerPlayerId,
-    defeatedPlayerId,
-    reason
-  };
-  appendExpiredEffectEvents(state, expireEffectsForCombatEnd(state), "combat-ended");
-  combat.activeUnitId = null;
-  state.phase = "game-over";
-  state.activePlayerId = winnerPlayerId;
-  state.priorityPlayerId = null;
-
-  appendEvent(state, {
-    type: "COMBAT_ENDED",
-    winnerPlayerId,
-    defeatedPlayerId,
-    reason
-  });
-
-  return true;
-}
+// (finishCombatIfNeeded lives in combat-units.ts.)
 
 function rollAttackCandidate(combat: CombatState, rollMode: AttackRollMode): AttackRollCandidate {
   const { rolls, selectedRoll } = rollAttackDice(combat, rollMode);
@@ -883,7 +795,7 @@ function getAttackStackDetails(
     .find((event): event is Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }> => event?.type === "UNIT_ATTACK_DECLARED");
   const isRetaliation = triggerEvent?.isRetaliation ?? false;
   const attackKind = triggerEvent?.attackKind ?? getAttackKind(attacker, defender);
-  const rollMode = triggerEvent?.rollMode ?? getAttackRollMode(attacker, defender);
+  const rollMode = triggerEvent?.rollMode ?? getAttackRollMode(attacker, defender, state);
   const activeAttackBonus = getActiveAttackBonus(state, {
     attacker,
     defender,
@@ -1541,12 +1453,14 @@ function openReactionWindowForTrigger(
 }
 
 function getCurrentSpellPower(stackItem: ResolutionStackItem, cards: CardLibrary): number {
+  // (School of Magic permanents add schoolPowerBonus below, beside the
+  // once-per-cast Power-card bonus.)
   if (stackItem.action.type !== "CAST_SPELL") {
     return 0;
   }
 
   const card = cards[stackItem.action.cardId];
-  return (card?.power ?? 0) + stackItem.modifiers.spellPowerBonus;
+  return (card?.power ?? 0) + stackItem.modifiers.spellPowerBonus + (stackItem.modifiers.schoolPowerBonus ?? 0);
 }
 
 function shouldRetaliate(
@@ -1590,7 +1504,7 @@ function openRetaliationWindow(
   state.stack.push(stackItem);
 
   const attackKind = getAttackKind(defender, attacker);
-  const rollMode = getAttackRollMode(defender, attacker);
+  const rollMode = getAttackRollMode(defender, attacker, state);
   const attackDeclared = appendEvent(state, {
     type: "UNIT_ATTACK_DECLARED",
     playerId: defender.controllerId,
@@ -1842,6 +1756,13 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
   const astrologersCard = getActiveAstrologersCard(state);
   if (isFirstSpellThisTurn && astrologersCard?.effect.type === "FIRST_SPELL_POWER_BONUS") {
     stackItem.modifiers.spellPowerBonus += astrologersCard.effect.amount;
+  }
+
+  // School of Magic permanent in play: matching spells get its basic bonus
+  // for free (the expert discard may replace it during the cast).
+  const schoolBonus = getPermanentSchoolBonus(state, action.playerId, card);
+  if (schoolBonus) {
+    stackItem.modifiers.schoolPowerBonus = schoolBonus.basicPower;
   }
 
   state.stack.push(stackItem);
@@ -2152,6 +2073,24 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   const card = cards[action.cardId];
   if (!card) {
     throw new Error(`Unknown card ${action.cardId}.`);
+  }
+
+  // Permanents enter play instead of resolving an effect; any permanent
+  // already in play goes to the discard pile.
+  if (card.permanent) {
+    putPermanentIntoPlay(state, action.playerId, action.cardId);
+    appendEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: action.playerId,
+      cardId: action.cardId,
+      timing: card.timing,
+      mode: "basic"
+    });
+    if (state.phase === "combat" || state.combat) {
+      state.phase = "combat";
+    }
+    state.priorityPlayerId = null;
+    return;
   }
 
   const effect = getEffectiveCardEffect(card, action.optionIndex);
@@ -2522,7 +2461,6 @@ function chooseAbilityTarget(
     throw new Error("That unit is not a legal target for the ability.");
   }
 
-  const source = combat.units[choice.sourceUnitId];
   state.pendingChoice = null;
   state.phase = "combat";
   state.priorityPlayerId = null;
@@ -2534,6 +2472,13 @@ function chooseAbilityTarget(
     selectedIndex
   });
 
+  if (choice.kind === "war-machine") {
+    resolveWarMachineTarget(state, action.playerId, action.targetUnitId, choice.amount ?? 1);
+    finishCombatIfNeeded(state);
+    return;
+  }
+
+  const source = choice.sourceUnitId ? combat.units[choice.sourceUnitId] : undefined;
   if (!source) {
     return;
   }
@@ -2584,7 +2529,13 @@ function chooseAbilityTarget(
 function autoResolveNeutralAbilityChoice(state: GameState, cards: CardLibrary): boolean {
   const choice = state.pendingChoice;
   const combat = state.combat;
-  if (!choice || choice.type !== "ABILITY_TARGET_CHOICE" || choice.playerId !== NEUTRAL_PLAYER_ID || !combat) {
+  if (
+    !choice ||
+    choice.type !== "ABILITY_TARGET_CHOICE" ||
+    choice.playerId !== NEUTRAL_PLAYER_ID ||
+    !combat ||
+    !choice.sourceUnitId
+  ) {
     return false;
   }
 
@@ -2654,7 +2605,7 @@ function declareAttack(
   state.stack.push(stackItem);
 
   const attackKind = getAttackKind(attacker, defender);
-  const rollMode = getAttackRollMode(attacker, defender);
+  const rollMode = getAttackRollMode(attacker, defender, state);
   const attackDeclared = appendEvent(state, {
     type: "UNIT_ATTACK_DECLARED",
     playerId: action.playerId,
@@ -2816,6 +2767,13 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   if (nextUnit) {
     state.activePlayerId = nextUnit.controllerId;
   }
+
+  // Permanents played before this combat (or while it ran) keep their
+  // presence up, then war machines fire before activations.
+  applyPermanentCombatEffectsForPlayer(state, state.combat.attackerPlayerId);
+  applyPermanentCombatEffectsForPlayer(state, state.combat.defenderPlayerId);
+  startWarMachineRound(state);
+  finishCombatIfNeeded(state);
 }
 
 function endCombatRound(state: GameState, action: Extract<GameAction, { type: "END_COMBAT_ROUND" }>): void {
@@ -3276,7 +3234,9 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "CHOOSE_ABILITY_TARGET",
   "CHOOSE_FACTION",
   "SET_GAME_OPTIONS",
-  "START_ADVENTURE"
+  "START_ADVENTURE",
+  "BUY_WAR_MACHINE",
+  "USE_PERMANENT_EXPERT"
 ]);
 
 function isHandlerValidated(state: GameState, action: GameAction): boolean {
@@ -3400,6 +3360,14 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "TRADE_RESOURCES":
         tradeResources(nextState, action);
+        break;
+      case "BUY_WAR_MACHINE":
+        buyWarMachine(nextState, action);
+        break;
+      case "USE_PERMANENT_EXPERT":
+        applyPermanentExpert(nextState, action);
+        // The discarded permanent disappears from the open window's options.
+        refreshReactionWindowLegalReactions(nextState, cards);
         break;
       case "PLACE_COMBAT_UNIT":
         placeCombatUnit(nextState, action);

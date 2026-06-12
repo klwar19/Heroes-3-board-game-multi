@@ -128,6 +128,14 @@ export {
   getUnitAbilityDefinitions,
   hasUnitAbilityEffect
 } from "./unit-abilities";
+export {
+  getPermanentCardId,
+  getPermanentDefinition,
+  getPermanentSchoolBonus,
+  warMachinesForSale
+} from "./permanents";
+export { describePermanentEffect } from "./effects";
+export { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 export type { BattlefieldCoordinates, BattlefieldTerrain } from "./battlefield";
 export { NEUTRAL_PLAYER_ID } from "./state";
 export type {
@@ -186,6 +194,7 @@ export type {
   PlayerVisiblePlayerState,
   PlayerVisibleState,
   PendingChoice,
+  PermanentEffectDefinition,
   ReactionPlay,
   ReactionWindow,
   ResolutionStackItem,

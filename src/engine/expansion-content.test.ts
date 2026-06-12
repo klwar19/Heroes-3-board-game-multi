@@ -140,7 +140,7 @@ describe("rulebook conformance fixes", () => {
     expect(targets.map((tile) => tile.id)).not.toContain("test-far-away");
   });
 
-  it("offers the Trading Post remove-a-card option and pays 1 valuables", () => {
+  it("sells one Trading Post card for 1 gold, excluding statistics and Magic Arrow", () => {
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
     const adventure = state.adventure;
     const player = state.players.p1;
@@ -149,7 +149,7 @@ describe("rulebook conformance fixes", () => {
       throw new Error("setup failed");
     }
 
-    player.hand = ["spell.magic_arrow", "stat.attack"];
+    player.hand = ["spell.magic_arrow", "stat.attack", "spell.lightning_bolt"];
     const field = Object.values(adventure.fields)[0];
     adventure.pendingVisit = {
       heroId: hero.id,
@@ -158,15 +158,112 @@ describe("rulebook conformance fixes", () => {
       steps: [{ type: "TRADING_POST" }]
     };
 
-    const removeAction = getLegalActions(state, "p1").find((legal) => legal.label.startsWith("Remove "));
-    expect(removeAction).toBeDefined();
+    // Magic Arrow and Statistic cards stay out of the sell list.
+    const sellActions = getLegalActions(state, "p1").filter((legal) => legal.label.startsWith("Sell "));
+    expect(sellActions).toHaveLength(1);
+    expect(sellActions[0].label).toContain("Lightning Bolt");
 
-    const before = player.resources.valuables;
-    const next = apply(state, removeAction!.action);
-    expect(next.players.p1.resources.valuables).toBe(before + 1);
-    expect(next.players.p1.hand).toHaveLength(1);
-    expect(next.players.p1.removed).toHaveLength(1);
+    const before = player.resources.gold;
+    const next = apply(state, sellActions[0].action);
+    expect(next.players.p1.resources.gold).toBe(before + 1);
+    expect(next.players.p1.hand).toHaveLength(2);
+    expect(next.players.p1.removed).toEqual(["spell.lightning_bolt"]);
+    // Selling is the visit's one action: the visit ends with it.
     expect(next.adventure?.pendingVisit).toBeNull();
+  });
+
+  it("locks Trading Post selling and buying once resources were traded", () => {
+    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+    const adventure = state.adventure;
+    const player = state.players.p1;
+    const hero = Object.values(state.heroes).find((candidate) => candidate.controllerId === "p1");
+    if (!adventure || !player || !hero) {
+      throw new Error("setup failed");
+    }
+
+    player.hand = ["spell.lightning_bolt"];
+    player.resources.gold = 20;
+    const field = Object.values(adventure.fields)[0];
+    adventure.pendingVisit = {
+      heroId: hero.id,
+      playerId: "p1",
+      fieldId: field.spaceId,
+      steps: [{ type: "TRADING_POST" }]
+    };
+
+    const beforeActions = getLegalActions(state, "p1");
+    expect(beforeActions.some((legal) => legal.label.startsWith("Sell "))).toBe(true);
+    expect(beforeActions.some((legal) => legal.action.type === "BUY_WAR_MACHINE")).toBe(true);
+
+    const trade = beforeActions.find((legal) => legal.action.type === "TRADE_RESOURCES");
+    expect(trade).toBeDefined();
+    const next = apply(state, trade!.action);
+
+    // More trades stay open; selling cards and buying machines do not.
+    const afterActions = getLegalActions(next, "p1");
+    expect(afterActions.some((legal) => legal.action.type === "TRADE_RESOURCES")).toBe(true);
+    expect(afterActions.some((legal) => legal.label.startsWith("Sell "))).toBe(false);
+    expect(afterActions.some((legal) => legal.action.type === "BUY_WAR_MACHINE")).toBe(false);
+  });
+
+  it("buys a war machine at the Trading Post price and ends the visit", () => {
+    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+    const adventure = state.adventure;
+    const player = state.players.p1;
+    const hero = Object.values(state.heroes).find((candidate) => candidate.controllerId === "p1");
+    if (!adventure || !player || !hero) {
+      throw new Error("setup failed");
+    }
+
+    player.resources.gold = 10;
+    const field = Object.values(adventure.fields)[0];
+    adventure.pendingVisit = {
+      heroId: hero.id,
+      playerId: "p1",
+      fieldId: field.spaceId,
+      steps: [{ type: "TRADING_POST" }]
+    };
+
+    const buy = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "BUY_WAR_MACHINE" && legal.action.cardId === "war_machine.first_aid_tent"
+    );
+    expect(buy).toBeDefined();
+    expect(buy?.label).toContain("6 gold");
+
+    const next = apply(state, buy!.action);
+    expect(next.players.p1.resources.gold).toBe(4);
+    expect(next.players.p1.hand).toContain("war_machine.first_aid_tent");
+    expect(next.adventure?.warMachineSupply).not.toContain("war_machine.first_aid_tent");
+    expect(next.adventure?.pendingVisit).toBeNull();
+  });
+
+  it("sells war machines cheaper at the War Machine Factory", () => {
+    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+    const adventure = state.adventure;
+    const player = state.players.p1;
+    const hero = Object.values(state.heroes).find((candidate) => candidate.controllerId === "p1");
+    if (!adventure || !player || !hero) {
+      throw new Error("setup failed");
+    }
+
+    player.resources.gold = 7;
+    const field = Object.values(adventure.fields)[0];
+    adventure.pendingVisit = {
+      heroId: hero.id,
+      playerId: "p1",
+      fieldId: field.spaceId,
+      steps: [{ type: "WAR_MACHINE_SHOP" }]
+    };
+
+    const buy = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "BUY_WAR_MACHINE" && legal.action.cardId === "war_machine.ballista"
+    );
+    expect(buy).toBeDefined();
+    expect(buy?.label).toContain("7 gold");
+
+    const next = apply(state, buy!.action);
+    expect(next.players.p1.resources.gold).toBe(0);
+    expect(next.players.p1.hand).toContain("war_machine.ballista");
   });
 
   it("resolves the Faerie Ring by searching the removed card's own deck", () => {

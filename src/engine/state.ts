@@ -99,6 +99,13 @@ export type ActiveEffectModifier =
        */
       type: "ADVENTURE_DIE_REROLL";
       dice: "treasure" | "resource" | "any";
+    }
+  | {
+      /**
+       * Ammo Cart: the affected ranged units ignore the ranged-attack
+       * penalties (adjacent shots and opposite-back-row shots roll normally).
+       */
+      type: "RANGED_IGNORE_PENALTIES";
     };
 
 export type ActiveEffectDefinition = {
@@ -204,11 +211,58 @@ export type EffectDefinition =
   | {
       type: "RECALL_SPELL";
       expertSpellLimitBonus?: number;
+    }
+  | {
+      /**
+       * Permanent cards whose whole behavior lives in `permanentEffect`
+       * (war machines): playing the card only puts it into play.
+       */
+      type: "ENTER_PLAY";
     };
 
 export type TriggerDefinition = {
   event: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED";
   controller: "self" | "opponent" | "any";
+};
+
+/** War machine triggers offered/resolved at the start of every combat round. */
+export type WarMachineRoundStartDefinition =
+  | {
+      /** Ballista: automatic damage to the enemy unit with the lowest initiative. */
+      kind: "damage-lowest-initiative";
+      amount: number;
+    }
+  | {
+      /** Catapult: optionally pay the cost to damage two adjacent targets. */
+      kind: "pay-to-splash";
+      cost: ResourceCost;
+      amount: number;
+    }
+  | {
+      /** Cannon: optionally spend 1 expert use to damage one enemy unit. */
+      kind: "expert-shot";
+      amount: number;
+    };
+
+/**
+ * What a Permanent card does while it stays in play next to the hero board.
+ * Permanents enter play when played, survive between combats, and leave for
+ * the discard pile when replaced by another permanent (or when their expert
+ * effect is used).
+ */
+export type PermanentEffectDefinition = {
+  /**
+   * Schools of Magic: spells of the school gain +basicPower while the card is
+   * in play; the expert effect discards the card during one of the owner's
+   * casts for +expertPower instead (never both on the same spell).
+   */
+  schoolBonus?: { school: SpellSchool; basicPower: number; expertPower: number };
+  /** Active effect applied for the owner's combats while the card is in play. */
+  combatEffect?: ActiveEffectDefinition;
+  /** Initiative added to the owner's ranged units while in combat. */
+  rangedInitiativeBonus?: number;
+  /** Trigger resolved at the start of every combat round. */
+  roundStart?: WarMachineRoundStartDefinition;
 };
 
 export type CardOptionDefinition = {
@@ -232,6 +286,16 @@ export type CardDefinition = {
   power?: number;
   trigger?: TriggerDefinition;
   target?: TargetDefinition;
+  /**
+   * Permanent cards stay in play until replaced by another permanent or
+   * until their expert effect is used (then they go to the discard pile).
+   * Each player may have only one permanent in play at a time.
+   */
+  permanent?: boolean;
+  /** Continuous behavior while a permanent card is in play. */
+  permanentEffect?: PermanentEffectDefinition;
+  /** War machines: purchase prices at the factory and the Trading Post. */
+  warMachineCosts?: { factory: ResourceCost; tradingPost: ResourceCost };
   effect: EffectDefinition;
   assets?: {
     cardImage?: string;
@@ -384,6 +448,25 @@ export type GameAction =
       type: "TRADE_RESOURCES";
       playerId: PlayerId;
       rateIndex: number;
+    }
+  | {
+      /**
+       * Buy a war machine from the shared supply during an open Trading Post
+       * (higher price) or War Machine Factory (lower price) visit. The card
+       * goes to the buyer's hand and the purchase ends the visit.
+       */
+      type: "BUY_WAR_MACHINE";
+      playerId: PlayerId;
+      cardId: CardId;
+    }
+  | {
+      /**
+       * Schools of Magic: while casting a matching spell, discard the in-play
+       * permanent for its expert power bonus (replaces the basic +1; costs
+       * one expert use).
+       */
+      type: "USE_PERMANENT_EXPERT";
+      playerId: PlayerId;
     }
   | { type: "PLACE_COMBAT_UNIT"; playerId: PlayerId; armyUnitId: string; position: number }
   | { type: "UNPLACE_COMBAT_UNIT"; playerId: PlayerId; armyUnitId: string }
@@ -1021,6 +1104,31 @@ export type GameEvent =
     }
   | {
       id: string;
+      type: "WAR_MACHINE_BOUGHT";
+      playerId: PlayerId;
+      cardId: CardId;
+      cost: ResourceCost;
+      at: "factory" | "trading-post";
+    }
+  | {
+      /** A permanent card entered play (the previous one went to discard). */
+      id: string;
+      type: "PERMANENT_PLAYED";
+      playerId: PlayerId;
+      cardId: CardId;
+      replacedCardId: CardId | null;
+    }
+  | {
+      /** A war machine fired (round-start trigger or its expert discard). */
+      id: string;
+      type: "WAR_MACHINE_TRIGGERED";
+      playerId: PlayerId;
+      cardId: CardId;
+      targetUnitId?: UnitId;
+      message: string;
+    }
+  | {
+      id: string;
       type: "GAME_WON";
       playerId: PlayerId;
       reason: string;
@@ -1034,6 +1142,12 @@ export type ResolutionStackItem = {
   triggerEventIds: string[];
   modifiers: {
     spellPowerBonus: number;
+    /**
+     * School of Magic permanent bonus on this cast, tracked apart from
+     * spellPowerBonus so it neither blocks nor is blocked by Power cards.
+     * Basic (+1) applies automatically; the expert discard replaces it.
+     */
+    schoolPowerBonus?: number;
     attackBonus: number;
     defenseBonus: number;
     /** Centaur's Axe: multiplies the rolled attack-die outcome (default 1). */
@@ -1098,6 +1212,11 @@ export type PlayerState = {
   discard: CardId[];
   /** Cards removed from the game entirely (the "remove" keyword). */
   removed: CardId[];
+  /**
+   * The one permanent card in play next to the hero board (war machine or
+   * School of Magic). Playing another permanent discards this one.
+   */
+  permanent?: CardId | null;
   /** Unit deck: the army that fights the player's combats. */
   army: ArmyUnitState[];
   /** Scenario starting units, restored when the unit deck empties. */
@@ -1249,6 +1368,15 @@ export type CombatState = {
    * 1 MP to continue for another round or retreat.
    */
   awaitingContinue: boolean;
+  /**
+   * Round-start war machine triggers still waiting to resolve, in owner
+   * order (attacker first). The Catapult parks its first chosen target here
+   * while the second target choice is open.
+   */
+  warMachineRound?: {
+    pending: PlayerId[];
+    firstTargetUnitId?: UnitId | null;
+  } | null;
   outcome: {
     winnerPlayerId: PlayerId;
     defeatedPlayerId: PlayerId;
@@ -1372,7 +1500,19 @@ export type VisitStep =
   | { type: "MAGIC_SPRING" }
   | { type: "WITCH_HUT" }
   | { type: "SCHOLAR" }
-  | { type: "TRADING_POST" }
+  | {
+      /**
+       * Choose one: trade resources (repeatable within the visit), sell one
+       * hand card for 1 gold, or buy a war machine at the higher price.
+       * `traded` locks the visit to resource trading once a trade happened.
+       */
+      type: "TRADING_POST";
+      traded?: boolean;
+    }
+  | {
+      /** War Machine Factory: buy one war machine at the lower price. */
+      type: "WAR_MACHINE_SHOP";
+    }
   | { type: "DISCOVER_ADJACENT_TILE" }
   | {
       /** Sea Chest / Jetsam: roll one Attack die, resolve the matching branch. */
@@ -1432,6 +1572,11 @@ export type AdventureState = {
   fields: Record<MapSpaceId, MapFieldState>;
   /** Face-down Far tiles each player may place for 1 MP. */
   playerFarTiles: Record<PlayerId, string[]>;
+  /**
+   * Shared face-up war machine pile (one copy of each card). Bought machines
+   * leave the supply for good — they live in the buyer's deck from then on.
+   */
+  warMachineSupply?: CardId[];
   /** Field visit currently being resolved (choices pending). */
   pendingVisit: PendingVisit | null;
   /** Rewards waiting to resolve one at a time (level-up searches, City Halls). */
@@ -1548,7 +1693,7 @@ export type PendingChoice =
       playerId: PlayerId;
       prompt: string;
       options: { label: string }[];
-      context: "city-hall" | "satyr-swap";
+      context: "city-hall" | "satyr-swap" | "war-machine";
       returnPhase: GamePhase;
     }
   | {
@@ -1557,17 +1702,18 @@ export type PendingChoice =
        * to a unit adjacent to the target), Cerberi second head (1 flat damage
        * to another enemy adjacent to Cerberi), Liches' Death Cloud (a full
        * second attack at base attack 2 against a unit adjacent to the
-       * original target), or a rulebook AI tie ("the player chooses which
-       * unit is attacked").
+       * original target), a rulebook AI tie ("the player chooses which
+       * unit is attacked"), or a war machine round-start shot.
        */
       id: string;
       type: "ABILITY_TARGET_CHOICE";
       playerId: PlayerId;
-      kind: "flat-damage" | "second-attack" | "neutral-target";
+      kind: "flat-damage" | "second-attack" | "neutral-target" | "war-machine";
       abilityId: string | null;
       abilityName: string;
       prompt: string;
-      sourceUnitId: UnitId;
+      /** Unit the ability comes from; null for war machines (cards, not units). */
+      sourceUnitId: UnitId | null;
       /** Original attack target the follow-up is anchored to (if any). */
       anchorUnitId: UnitId | null;
       candidateUnitIds: UnitId[];

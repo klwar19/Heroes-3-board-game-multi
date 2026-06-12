@@ -1,4 +1,5 @@
 import { astrologersDeckCardIds } from "@/data/cards/astrologers";
+import { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
@@ -319,6 +320,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     tiles: {},
     fields: {},
     playerFarTiles: {},
+    // Setup: the war machine cards sit face up in a shared supply pile.
+    warMachineSupply: [...WAR_MACHINE_CARD_IDS],
     pendingVisit: null,
     rewardQueue: [],
     lastVisitedField: {},

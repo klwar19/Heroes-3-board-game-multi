@@ -44,6 +44,7 @@ import { ATTACK_DIE_FACES } from "./battlefield";
 import { drawCardsForPlayer } from "./decks";
 import { appendEvent } from "./events";
 import { expireEffectsForTurnEnd } from "./active-effects";
+import { applyPermanentCombatEffects, resolveWarMachineOption, startWarMachineRound } from "./permanents";
 import { hexDistance, hexNeighbor, hexSpaceId, slotDirection, tileFootprint } from "./hex";
 import type {
   CombatState,
@@ -663,18 +664,32 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
       break;
     }
     case "TRADING_POST": {
-      // Trades happen through TRADE_RESOURCES. Picking a hand card here
-      // resolves the rulebook's second option - "remove one card and gain
-      // 1 valuables" - and ends the visit either way.
+      // Trades happen through TRADE_RESOURCES, war machines through
+      // BUY_WAR_MACHINE. Picking a hand card here resolves the third printed
+      // option — remove one card from the game to gain 1 gold — and ends the
+      // visit. The three options exclude each other within one visit.
       if (!action.decline && action.optionIndex !== undefined) {
-        const player = state.players[action.playerId];
-        const cardId = player?.hand[action.optionIndex];
-        if (!player || !cardId) {
-          throw new Error("Choose a hand card to remove.");
+        if (step.traded) {
+          throw new Error("This visit already traded resources — cards cannot be sold too.");
         }
-        player.hand.splice(action.optionIndex, 1);
-        player.removed.push(cardId);
-        gainResources(state, action.playerId, { valuables: 1 }, "removed a card at the Trading Post");
+        const player = state.players[action.playerId];
+        const sellable = removableHandCards(state, action.playerId, "sellable");
+        const chosen = sellable.find(({ index }) => index === action.optionIndex);
+        if (!player || !chosen) {
+          throw new Error("Specialty, Statistic, starting Ability and Magic Arrow cards cannot be sold.");
+        }
+        player.hand.splice(chosen.index, 1);
+        player.removed.push(chosen.cardId);
+        gainResources(state, action.playerId, { gold: 1 }, "sold a card at the Trading Post");
+      }
+      visit.steps.shift();
+      break;
+    }
+    case "WAR_MACHINE_SHOP": {
+      // Purchases go through BUY_WAR_MACHINE; resolving the step here means
+      // the player walked out without buying.
+      if (!action.decline) {
+        throw new Error("Buy a war machine with its own action, or decline.");
       }
       visit.steps.shift();
       break;
@@ -865,12 +880,14 @@ function resolveWitchHut(state: GameState, action: Extract<GameAction, { type: "
 /**
  * Hand cards a REMOVE_HAND_CARD step may remove. "removable" follows the
  * Faerie Ring / Market of Time exclusions: no Statistic, Starting Ability or
- * Specialty cards (and only cards that belong to a shared deck).
+ * Specialty cards (and only cards that belong to a shared deck). "sellable"
+ * is the Trading Post rule: any card except Specialty, Statistic, the
+ * Starting Ability and Magic Arrows.
  */
 export function removableHandCards(
   state: GameState,
   playerId: PlayerId,
-  filter: "any" | "ability" | "statistic" | "removable"
+  filter: "any" | "ability" | "statistic" | "removable" | "sellable"
 ): { index: number; cardId: string }[] {
   const player = state.players[playerId];
   if (!player) {
@@ -894,6 +911,13 @@ export function removableHandCards(
         case "removable":
           return (
             (kind === "spell" || kind === "ability" || kind === "artifact") && cardId !== startingAbility
+          );
+        case "sellable":
+          return (
+            kind !== "statistic" &&
+            kind !== "hero-specialty" &&
+            cardId !== startingAbility &&
+            cardId !== "spell.magic_arrow"
           );
       }
     });
@@ -1075,7 +1099,8 @@ export function observatoryDiscoverTargets(
 export function tradeResources(state: GameState, action: Extract<GameAction, { type: "TRADE_RESOURCES" }>): void {
   const adventure = requireAdventure(state);
   const visit = adventure.pendingVisit;
-  if (!visit || visit.playerId !== action.playerId || visit.steps[0]?.type !== "TRADING_POST") {
+  const step = visit?.steps[0];
+  if (!visit || visit.playerId !== action.playerId || step?.type !== "TRADING_POST") {
     throw new Error("Trading needs an open Trading Post visit.");
   }
 
@@ -1089,6 +1114,9 @@ export function tradeResources(state: GameState, action: Extract<GameAction, { t
     throw new Error("Not enough resources for that trade.");
   }
 
+  // "Choose one": trading any resources locks this visit to the (repeatable)
+  // resource-trade option — no card selling or war machine buying after it.
+  step.traded = true;
   spendResources(state, action.playerId, rate.sell, "trading post");
   gainResources(state, action.playerId, rate.buy, "trading post");
   appendEvent(state, { type: "TRADE_EXECUTED", playerId: action.playerId, rateLabel: rate.label });
@@ -1237,6 +1265,10 @@ function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void {
     round: combat.round,
     activeUnitId: null
   });
+
+  // In-play permanents join the fight and round-start war machines fire.
+  applyPermanentCombatEffects(state);
+  startWarMachineRound(state);
 }
 
 /**
@@ -1456,6 +1488,10 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
     round: combat.round,
     activeUnitId: null
   });
+
+  // In-play permanents join the fight and round-start war machines fire.
+  applyPermanentCombatEffects(state);
+  startWarMachineRound(state);
 }
 
 export function continueNeutralCombat(
@@ -1945,6 +1981,14 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
   if (choice.context === "satyr-swap") {
     state.pendingChoice = null;
     resolveSatyrSwap(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "war-machine") {
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    resolveWarMachineOption(state, action.playerId, action.optionIndex);
     return;
   }
 
