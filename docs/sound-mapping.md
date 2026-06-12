@@ -1,88 +1,124 @@
 # Sound asset mapping
 
 Source: Heroes III sound archive WAVs (IMA ADPCM, 22 kHz), converted to MP3
-(`ffmpeg -q:a 5`, ~45% smaller and browser-playable everywhere) and renamed.
-Converted files live in `public/sounds/{units,spells,effects,music}/`.
+and renamed. Converted files live in
+`public/sounds/{units,spells,effects,ui,adventure,music}/`, indexed by
+`public/sounds/manifest.json`.
+
+Identifications are **verified against the VCMI engine's data files** (the
+open-source H3 engine), not guessed: `docs/h3-sound-reference.csv` maps all
+~1000 original sound names to the creature/spell/event that uses them.
+
+## Adding the next batch (instructions)
+
+1. Upload the raw `*.wav` files to the repo root (any amount).
+2. Run `node scripts/convert-h3-sounds.mjs` (needs `ffmpeg`:
+   `sudo apt-get install ffmpeg`). It decodes each name via the reference CSV,
+   converts to MP3, drops byte-identical duplicates within a creature, and
+   rebuilds `manifest.json`. Unrecognized files are listed at the end and left
+   in place for manual triage.
+3. Delete the root WAVs (`git rm *.wav`) and commit `public/sounds` + docs.
 
 ## Naming convention of the originals
 
-Creature sounds are `PREFIX` (4-letter creature code) + `SUFFIX` (4-letter action):
+Creature sounds are a creature code + 4-letter action suffix:
 
-| Suffix | Meaning | Our name |
-|---|---|---|
-| `ATTK` | melee attack | `-attack` |
-| `DFND` | defending / blocking | `-defend` |
-| `KILL` | dying | `-death` |
-| `MOVE` | moving | `-move` |
-| `WNCE` | wince — taking damage | `-hurt` |
-| `SHOT` | ranged attack | `-shoot` |
-| `EXT1`/`EXT2` | special ability | `-special` |
-| `DETH` | alternate death (only seen on BHDR) | `-death-alt` |
-
-An upgrade is often the base creature's code with an `A` in front
-(`ANGL` → angel, `AAGL` → archangel; `MAG` → `AMAG` arch mage).
-
-## Creature prefixes in this batch (batch 1: A–BKNT)
-
-| Prefix | Creature | Faction | Files |
+| Suffix | Meaning | Our name | Notes |
 |---|---|---|---|
-| `AAGL` | Archangel | Castle | attack, defend, death, move, hurt |
-| `ADVL` | Arch Devil | Inferno | attack, defend, death, move, hurt, special (EXT2 was a byte-identical duplicate of EXT1 — dropped) |
-| `AELM` | Air Elemental | Conflux/neutral | attack, defend, death, move, hurt |
-| `AGRM` | Master Gremlin | Tower | attack, defend, death, move, hurt, shoot |
-| `ALIZ` | Lizard Warrior | Fortress | attack, defend, death, move, hurt, shoot |
-| `AMAG` | Arch Mage | Tower | attack, defend, death, move, hurt, shoot |
-| `ANGL` | Angel | Castle | attack, defend, death, move, hurt |
-| `APEG` | Silver Pegasus | Rampart | attack, defend, death, move, hurt |
-| `AZUR` | Azure Dragon | Neutral | attack, defend, death, move, hurt |
-| `BALL` | Ballista (war machine) | — | shoot, hurt, death (destroyed) |
-| `BASL` | Basilisk | Fortress | attack, defend, death, move, hurt |
-| `BDRF` | Battle Dwarf | Rampart | attack, defend, death, move, hurt |
-| `BGOR` | Mighty Gorgon (see ⚠ below) | Fortress | attack, defend, death, move, hurt |
-| `BHDR` | Beholder | Dungeon | attack, defend, death, death-alt, move, hurt, shoot |
-| `BKDR` | Black Dragon | Dungeon | attack, defend, death, move, hurt |
-| `BKNT` | Black Knight | Necropolis | attack (only file in this batch) |
+| `ATTK` | melee attack | `-attack` | |
+| `DFND` | defending / blocking | `-defend` | |
+| `KILL` | dying | `-death` | |
+| `MOVE` | moving | `-move` | **loop once (play twice) for a full movement** — encoded as `"repeat": 2` in the manifest |
+| `WNCE` | wince — taking damage | `-hurt` | |
+| `SHOT` | ranged attack | `-shoot` | |
+| `EXT1`/`EXT2` | special ability | `-special` | |
+| `DETH` | alternate death | `-death-alt` | only seen on Beholder so far |
 
-## Spells
+## Playback rules (for when audio gets wired in)
 
-| Original | New file | Spell |
-|---|---|---|
-| `AIRSHELD` | `spells/air-shield.mp3` | Air Shield |
-| `ANIMDEAD` | `spells/animate-dead.mp3` | Animate Dead |
-| `ANTIMAGK` | `spells/anti-magic.mp3` | Anti-Magic |
-| `ARMGEDN` | `spells/armageddon.mp3` | Armageddon |
-| `BERSERK` | `spells/berserk.mp3` | Berserk |
+- The manifest is the single source of truth: load it, play by id
+  (`new Audio(manifest[id].src)`).
+- Honor `"repeat"`: movement sounds play twice back-to-back per move.
+- Battle music: pick one of `music/battle-00`…`07` at random per combat.
+- Entries with a `"note"` are either unused in the original game (free for
+  custom use: `effects/climax`, `spells/cold-ray`, `spells/cold-ring`,
+  `units/centaur-shoot`) or carry usage caveats — read the note.
+- The toast system in `src/components/adventure/screen.tsx` already names
+  sound cues per event type; map those cue names to manifest ids when wiring.
 
-## Combat effects / events
+## Batch 1 (A–BKNT, 100 files) — converted
 
-| Original | New file | What it is |
-|---|---|---|
-| `ACID` | `effects/acid.mp3` | Acid effect (Rust Dragon acid breath — see ⚠) |
-| `AGE` | `effects/age.mp3` | Aging effect (Ghost Dragon ability) |
-| `BACKLASH` | `effects/backlash.mp3` | Magic backlash (see ⚠) |
-| `BADLUCK` | `effects/bad-luck.mp3` | Bad luck triggers in combat |
-| `BADMRLE` | `effects/bad-morale.mp3` | Bad morale — stack freezes |
-| `BIND` | `effects/bind.mp3` | Bind (Dendroid root ability) |
+Creatures (suffix set is attack/defend/death/move/hurt unless noted):
 
-## Music / ambience
+| Prefix | Creature | Faction | Notes |
+|---|---|---|---|
+| `AAGL` | Archangel | Castle | |
+| `ADVL` | Arch Devil | Inferno | +special (`EXT2` was byte-identical to `EXT1`, dropped) |
+| `AELM` | Air Elemental | Conflux | |
+| `AGRM` | **Gremlin** (base, not Master) | Tower | +shoot — the shoot file is used by the Master Gremlin upgrade |
+| `ALIZ` | Lizard Warrior | Fortress | +shoot |
+| `AMAG` | Arch Mage | Tower | +shoot |
+| `ANGL` | Angel | Castle | |
+| `APEG` | Silver Pegasus | Rampart | |
+| `AZUR` | Azure Dragon | Neutral | |
+| `BALL` | Ballista (war machine) | — | shoot/hurt/death only |
+| `BASL` | Basilisk | Fortress | |
+| `BDRF` | Battle Dwarf | Rampart | |
+| `BGOR` | Mighty Gorgon | Fortress | base Gorgon is `CGOR` (batch 2) |
+| `BHDR` | Beholder | Dungeon | +shoot, +death-alt (`DETH`) |
+| `BKDR` | Black Dragon | Dungeon | |
+| `BKNT` | Black Knight | Necropolis | attack here; rest in batch 2 |
 
-`BATTLE00`–`BATTLE07` → `music/battle-00.mp3` … `battle-07.mp3` — eight short
-(~7 s) stereo combat tracks; the game picks one at random per battle.
+Spells: `AIRSHELD` air-shield, `ANIMDEAD` animate-dead, `ANTIMAGK` anti-magic,
+`ARMGEDN` armageddon, `BERSERK` berserk, `BACKLASH` **magic-mirror**.
 
-## ⚠ Uncertain identifications
+Effects: `ACID` acid-breath (Rust Dragon), `AGE` age (Ghost Dragon),
+`BADLUCK` bad-luck, `BADMRLE` bad-morale, `BIND` bind (Dendroid).
 
-These are best guesses — verify by listening:
+Music: `BATTLE00`–`07` → `music/battle-00`…`07` (~7 s combat tracks, pick at
+random).
 
-- **`BGOR`** — definitely a Gorgon, but unclear whether the base Gorgon or the
-  Mighty Gorgon upgrade. Named `mighty-gorgon` for now; rename if the base
-  Gorgon's files (`CGOR`? `GGOR`?) turn up in a later batch.
-- **`BHDRDETH` vs `BHDRKILL`** — Beholder has two distinct death sounds.
-  `KILL` is the standard slot, so it got `-death` and `DETH` got `-death-alt`.
-  Listen to both to decide which the game should use.
-- **`ACID`** — acid splash; most likely the Rust Dragon's acid breath, but
-  could be a generic acid/poison effect.
-- **`BACKLASH`** — guessing this is a spell-backfire / magic-mirror style
-  effect; not certain what triggers it in the original game.
-- **`AGRM` = Master Gremlin, `ALIZ` = Lizard Warrior, `APEG` = Silver
-  Pegasus** — inferred from the "`A` + base code = upgrade" pattern plus the
-  presence/absence of `SHOT` files. High confidence but worth a listen.
+## Batch 2 (BKNT–CRYS, 100 files) — converted
+
+Creatures:
+
+| Prefix | Creature | Faction | Notes |
+|---|---|---|---|
+| `BKNT` | Black Knight (rest) | Necropolis | |
+| `BLRD` | Dread Knight | Necropolis | shares defend/death audio with Black Knight |
+| `BMTH` | **Ancient** Behemoth | Stronghold | base Behemoth comes later |
+| `BOAR` | Boar | Neutral | |
+| `BODR` | Bone Dragon | Necropolis | |
+| `BTRE` | Dendroid Soldier | Rampart | base Dendroid Guard is `TREE` |
+| `CALF` | Master Genie | Tower | +shoot (its spell-cast) |
+| `CART` | Ammo Cart (war machine) | — | hurt/death only |
+| `CATA` | Catapult (war machine) | — | shoot/hurt/death only |
+| `CAVA` | Cavalier | Castle | |
+| `CCYC` | Cyclops | Stronghold | +shoot |
+| `CERB` | Cerberus | Inferno | |
+| `CGOR` | Gorgon (base) | Fortress | |
+| `CHMP` | Champion | Castle | shares defend audio with Cavalier |
+| `CHYD` | Chaos Hydra | Fortress | |
+| `CNTR` | Centaur | Rampart | +shoot — **unused**, centaurs are melee |
+| `CRUS` | Crusader | Castle | |
+| `CRYS` | Crystal Dragon | Neutral | no `WNCE` yet — expect it in batch 3 |
+
+Spells: `BLESS` bless, `BLIND` blind, `BLOODLUS` bloodlust, `CHAINLTE`
+chain-lightning, `CLONE` clone, `CNTRSTRK` counterstrike, plus the unused
+alternates `COLDRAY` cold-ray and `COLDRING` cold-ring (the game actually uses
+`ICERAY`/`FROSTING` for Ice Bolt / Frost Ring).
+
+UI / adventure: `BUTTON` ui/button (click), `CHAT` ui/chat (chat message),
+`BUILDTWN` adventure/build-town (structure completed), `CHEST` adventure/chest
+(treasure pickup), `CAVEHEAD` adventure/cave-visit (Subterranean Gate /
+Quest Guard / Border Guard visit sound).
+
+Unknown purpose: `CLIMAX` → `effects/climax` — present in the archive but
+referenced nowhere in the engine; free to repurpose.
+
+## Corrections vs the first pass
+
+- `AGRM` is the base **Gremlin**, not Master Gremlin (files renamed).
+- `BACKLASH` is the **Magic Mirror** spell (moved to `spells/magic-mirror`).
+- `ACID` confirmed as Rust Dragon's **Acid Breath** (renamed `acid-breath`).
+- `BGOR` = Mighty Gorgon confirmed (`CGOR` is the base Gorgon).
