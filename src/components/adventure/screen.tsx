@@ -1424,7 +1424,7 @@ export function AdventureDecksPanel({
     <section className="advDecks" aria-label="Decks and discard piles">
       {player ? (
         <div className="advDeckRow own">
-          <div className="advDeck" title="Your draw deck (face down)">
+          <div className="advDeck" title="Your draw deck (face down)" data-fx-anchor={`deck:${viewerPlayerId}`}>
             <div className="cardBack small">
               <span>H3</span>
             </div>
@@ -1432,6 +1432,7 @@ export function AdventureDecksPanel({
           </div>
           <button
             className="advDiscard"
+            data-fx-anchor={`discard:${viewerPlayerId}`}
             onClick={() => onShowPile(`${player.name} — discard pile`, player.discard, "cards")}
             type="button"
           >
@@ -1447,8 +1448,8 @@ export function AdventureDecksPanel({
         }
         return (
           <div className="advDeckRow" key={deck.id}>
-            <div className="advDeck" title={`${deck.name} deck (face down)`}>
-              <div className="cardBack small shared">
+            <div className="advDeck" title={`${deck.name} deck (face down)`} data-fx-anchor={`deck:shared-${deck.id}`}>
+              <div className={`cardBack small shared back-${deck.id}`}>
                 <span>{deck.name[0]}</span>
               </div>
               <small>
@@ -1457,6 +1458,7 @@ export function AdventureDecksPanel({
             </div>
             <button
               className="advDiscard"
+              data-fx-anchor={`discard:shared-${deck.id}`}
               onClick={() => onShowPile(`${deck.name} — discard pile`, deckState.discardPile, "cards")}
               type="button"
             >

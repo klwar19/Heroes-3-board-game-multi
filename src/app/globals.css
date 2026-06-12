@@ -3715,8 +3715,9 @@ button.battleCell {
   white-space: nowrap;
 }
 
-/* Freshly drawn cards stay invisible until their flight lands in the fan. */
-.fanSlot.incoming {
+/* Freshly drawn cards stay invisible until their flight lands in the hand. */
+.fanSlot.incoming,
+.adventureHandSlot.incoming {
   visibility: hidden;
 }
 
