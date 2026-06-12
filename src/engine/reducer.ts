@@ -1,7 +1,8 @@
 import { cardLibrary } from "@/data/cards/library";
 import { sampleBuildings } from "@/data/towns/buildings";
-import { changeMorale, getActiveAstrologersCard, getUnitSide } from "./adventure";
+import { changeMorale, gainResources, getActiveAstrologersCard, getMainHero, getUnitSide } from "./adventure";
 import {
+  blacksmithAction,
   buildStructureAdventure,
   chooseOption,
   continueNeutralCombat,
@@ -10,6 +11,7 @@ import {
   finishCombatPlacement,
   moveHeroAdventure,
   moveHeroPathAdventure,
+  openSharedDeckSearch,
   placeCombatUnit,
   placeTile,
   populationAction,
@@ -30,6 +32,7 @@ import { chooseFaction, setGameOptions, startAdventureFromLobby } from "./advent
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { isNeutralUnit, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
 import { createSeededRandom } from "./random";
+import { estatesGold, getRuleset, spellLimitFor } from "./ruleset";
 import {
   expireEffectsForCombatEnd,
   expireEffectsForCombatRoundEnd,
@@ -40,7 +43,7 @@ import {
   makeActiveEffect
 } from "./active-effects";
 import { appendEvent } from "./events";
-import { drawCardsForPlayer, isSharedDeckId } from "./decks";
+import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
 import { getEffectAmount, getEffectiveCardEffect, getSpellDamageAmount } from "./effects";
 import {
   canUnitAttack,
@@ -74,7 +77,11 @@ import type {
   AttackRollMode,
   BuildingLibrary,
   CardDefinition,
+  CardId,
   CardLibrary,
+  CardOptionDefinition,
+  CardPlayCost,
+  CardPlayMode,
   CombatState,
   CombatUnitState,
   EngineResult,
@@ -119,12 +126,15 @@ function fail(state: GameState, error: RulesError): EngineResult {
 
 function normalizeActionForMatch(action: GameAction): GameAction {
   if (action.type === "PLAY_REACTION") {
+    // costCardIds are the player's chosen payment — validated by the play
+    // handler, not by the legality match.
     return {
       type: "PLAY_REACTION",
       playerId: action.playerId,
       cardId: action.cardId,
       mode: action.mode ?? "basic",
-      ...(action.optionIndex !== undefined ? { optionIndex: action.optionIndex } : {})
+      ...(action.optionIndex !== undefined ? { optionIndex: action.optionIndex } : {}),
+      ...(action.asPowerBoost ? { asPowerBoost: true } : {})
     };
   }
 
@@ -211,6 +221,8 @@ function assertBatchReactionLegal(
   }
 
   let expertUsesNeeded = 0;
+  let spellPlays = 0;
+  let powerOnlyPlays = 0;
 
   for (const play of action.plays) {
     const singleAction: GameAction = {
@@ -218,7 +230,8 @@ function assertBatchReactionLegal(
       playerId: action.playerId,
       cardId: play.cardId,
       mode: play.mode ?? "basic",
-      ...(play.optionIndex !== undefined ? { optionIndex: play.optionIndex } : {})
+      ...(play.optionIndex !== undefined ? { optionIndex: play.optionIndex } : {}),
+      ...(play.asPowerBoost ? { asPowerBoost: true } : {})
     };
 
     if (!legalActions.some((legal) => actionsMatch(legal.action, singleAction))) {
@@ -229,13 +242,6 @@ function assertBatchReactionLegal(
     }
 
     const card = cards[play.cardId];
-    const effect = card ? getEffectiveCardEffect(card, play.optionIndex) : null;
-    if (!effect || effect.type === "CANCEL_SPELL" || effect.type === "RECALL_SPELL") {
-      return {
-        code: "ACTION_NOT_LEGAL",
-        message: "Spell-ending and recall cards must be played on their own."
-      };
-    }
 
     const copiesLeft = handCounts.get(play.cardId) ?? 0;
     if (copiesLeft <= 0) {
@@ -246,15 +252,61 @@ function assertBatchReactionLegal(
     }
     handCounts.set(play.cardId, copiesLeft - 1);
 
+    if (play.asPowerBoost) {
+      powerOnlyPlays += 1;
+      continue;
+    }
+
+    const effect = card ? getEffectiveCardEffect(card, play.optionIndex) : null;
+    if (!effect || effect.type === "CANCEL_SPELL" || effect.type === "RECALL_SPELL") {
+      return {
+        code: "ACTION_NOT_LEGAL",
+        message: "Spell-ending and recall cards must be played on their own."
+      };
+    }
+
+    if (card?.kind === "spell") {
+      spellPlays += 1;
+    }
+    if (effect.type === "ADD_SPELL_POWER") {
+      powerOnlyPlays += 1;
+    }
+
     if ((play.mode ?? "basic") === "expert") {
       expertUsesNeeded += 1;
     }
   }
 
-  const expertUsesAvailable = player
-    ? player.limits.expertUses - player.combatStats.expertUsesSpentThisRound
+  // Power "dissipates" when no spell consumes it: inside an attack window,
+  // Power plays must accompany a spell instant in the same declaration.
+  if (
+    state.reactionWindow.triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
+    powerOnlyPlays > 0 &&
+    spellPlays === 0
+  ) {
+    return {
+      code: "ACTION_NOT_LEGAL",
+      message: "Power can only be played into an attack together with a Spell card."
+    };
+  }
+
+  // One Spell card per combat round (Knowledge/Necklace raise the limit).
+  if (player && spellPlays > 0) {
+    const remaining = spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
+    if (spellPlays > remaining) {
+      return {
+        code: "ACTION_NOT_LEGAL",
+        message: "Spell limit reached for this combat round."
+      };
+    }
+  }
+
+  const expertUsesLeft = player
+    ? player.limits.expertUses +
+      (player.combatStats.expertUseBonusThisRound ?? 0) -
+      player.combatStats.expertUsesSpentThisRound
     : 0;
-  if (expertUsesNeeded > expertUsesAvailable) {
+  if (expertUsesNeeded > expertUsesLeft) {
     return {
       code: "ACTION_NOT_LEGAL",
       message: "Not enough crowns for that many expert plays this combat round."
@@ -264,7 +316,12 @@ function assertBatchReactionLegal(
   return null;
 }
 
-function moveCardFromHandToDiscard(state: GameState, playerId: PlayerId, cardId: string): RulesError | null {
+function moveCardFromHandToDiscard(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: string,
+  destination: "discard" | "removed" = "discard"
+): RulesError | null {
   const player = state.players[playerId];
   const cardIndex = player?.hand.indexOf(cardId) ?? -1;
 
@@ -277,7 +334,12 @@ function moveCardFromHandToDiscard(state: GameState, playerId: PlayerId, cardId:
   }
 
   player.hand.splice(cardIndex, 1);
-  player.discard.push(cardId);
+  if (destination === "removed") {
+    // "Remove this card": it leaves the game instead of cycling back.
+    player.removed.push(cardId);
+  } else {
+    player.discard.push(cardId);
+  }
   return null;
 }
 
@@ -355,7 +417,11 @@ function rollAttackDice(combat: CombatState, rollMode: AttackRollMode): { rolls:
 
 function hasExpertUseAvailable(state: GameState, playerId: PlayerId): boolean {
   const player = state.players[playerId];
-  return Boolean(player && player.combatStats.expertUsesSpentThisRound < player.limits.expertUses);
+  return Boolean(
+    player &&
+      player.combatStats.expertUsesSpentThisRound <
+        player.limits.expertUses + (player.combatStats.expertUseBonusThisRound ?? 0)
+  );
 }
 
 function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState): void {
@@ -462,6 +528,24 @@ function createActiveEffectFromCard(
     playerId,
     target
   );
+}
+
+/** Ranks unit grades for tier-gated effects (Anti-Magic, Counterstrike…). */
+function gradeRank(grade: CombatUnitState["grade"]): number {
+  return grade === "bronze" ? 0 : grade === "silver" ? 1 : grade === "gold" ? 2 : 3;
+}
+
+/** Highest grade unlocked by the paid power (e.g. {0:bronze,2:silver,4:gold}). */
+function gradeAtPower(
+  gradeByPower: Record<number, CombatUnitState["grade"]>,
+  power: number
+): CombatUnitState["grade"] | null {
+  const thresholds = Object.keys(gradeByPower)
+    .map(Number)
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right);
+  const matched = thresholds.filter((value) => value <= power).at(-1);
+  return matched === undefined ? null : (gradeByPower[matched] ?? null);
 }
 
 function getAmountByPower(amountByPower: Record<number, number> | undefined, fallback: number, power: number): number {
@@ -863,6 +947,8 @@ function getAttackStackDetails(
       attackBonus: number;
       defenseBonus: number;
       dieMultiplier: number;
+      /** Bless: the Attack die is skipped and counts as 0. */
+      ignoreAttackDie: boolean;
       /** Printed-ability follow-up (Death Cloud): replacement base attack. */
       abilityAttack?: { abilityId: string; baseAttack: number };
     }
@@ -883,7 +969,23 @@ function getAttackStackDetails(
     .find((event): event is Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }> => event?.type === "UNIT_ATTACK_DECLARED");
   const isRetaliation = triggerEvent?.isRetaliation ?? false;
   const attackKind = triggerEvent?.attackKind ?? getAttackKind(attacker, defender);
-  const rollMode = triggerEvent?.rollMode ?? getAttackRollMode(attacker, defender);
+  let rollMode = triggerEvent?.rollMode ?? getAttackRollMode(attacker, defender);
+
+  // Precision (this attack) and Golden Bow (whole combat) lift the ranged
+  // back-row penalty after the attack was declared.
+  if (
+    rollMode === "disadvantage" &&
+    attacker.type === "ranged" &&
+    (stackItem.modifiers.ignoreRangedPenalty ||
+      state.activeEffects.some(
+        (effect) =>
+          effect.controllerId === attacker.controllerId &&
+          effect.modifiers.some((modifier) => modifier.type === "RANGED_IGNORE_PENALTY")
+      ))
+  ) {
+    rollMode = "normal";
+  }
+
   const activeAttackBonus = getActiveAttackBonus(state, {
     attacker,
     defender,
@@ -900,6 +1002,7 @@ function getAttackStackDetails(
     attackBonus: stackItem.modifiers.attackBonus + activeAttackBonus,
     defenseBonus: stackItem.modifiers.defenseBonus + activeDefenseBonus,
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
+    ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie),
     abilityAttack: stackItem.action.type === "ATTACK_UNIT" ? stackItem.action.abilityAttack : undefined
   };
 }
@@ -1147,6 +1250,7 @@ function finishResolvedAttack(
     attackResult.roll,
     attackResult.damage
   );
+  applyFireShieldDamage(state, details.attacker, details.defender, details.attackKind);
 
   if (details.isRetaliation) {
     details.attacker.retaliatedThisRound = true;
@@ -1171,9 +1275,13 @@ function finishResolvedAttack(
   }
 
   if (details.abilityAttack) {
-    // A Death Cloud follow-up never chains further follow-ups or its own
-    // retaliation (wiki FAQ): pick the parked sequence back up — the
+    // Printed follow-up attacks never chain further follow-ups or their own
+    // retaliations (wiki FAQ). BINH Cerberi may still owe more queued
+    // follow-up attacks; otherwise pick the parked sequence back up — the
     // original target's retaliation fires only now.
+    if (declareNextQueuedAbilityAttack(state, cards)) {
+      return;
+    }
     resumeAttackSequence(state, cards);
     return;
   }
@@ -1204,7 +1312,137 @@ function finishResolvedAttack(
     return;
   }
 
+  // BINH Cerberi: queue a full separate attack against every other enemy
+  // adjacent to the attacker, then fire them one at a time.
+  if (queueAttackAllFollowUps(state, details.attacker, details.defender, cards)) {
+    return;
+  }
+
   resumeAttackSequence(state, cards);
+}
+
+/**
+ * Fire Shield: when an adjacent (melee) attack resolves against a shielded
+ * unit, the attacker takes the shield's damage before anything else follows.
+ */
+function applyFireShieldDamage(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  attackKind: "melee" | "ranged"
+): void {
+  if (attackKind !== "melee" || !state.combat || !isUnitAlive(attacker)) {
+    return;
+  }
+
+  let total = 0;
+  for (const effect of state.activeEffects) {
+    if (effect.target?.type !== "unit" || effect.target.unitId !== defender.id) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "FIRE_SHIELD") {
+        total += modifier.amount;
+      }
+    }
+  }
+
+  if (total <= 0) {
+    return;
+  }
+
+  attacker.damage += total;
+  appendEvent(state, {
+    type: "DAMAGE_ASSIGNED",
+    source: { type: "unit", unitId: defender.id, controllerId: defender.controllerId },
+    target: { type: "unit", unitId: attacker.id },
+    amount: total,
+    damageKind: "effect"
+  });
+  markUnitRemovedIfNeeded(state, attacker);
+}
+
+/**
+ * BINH Cerberi "Three-Headed Assault": collect every other living enemy unit
+ * adjacent to the attacker and queue one full follow-up attack per target.
+ * Returns true when a follow-up attack was declared.
+ */
+function queueAttackAllFollowUps(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  cards: CardLibrary
+): boolean {
+  const combat = state.combat;
+  if (!combat || !isUnitAlive(attacker) || (attacker.attacksThisActivation ?? 0) !== 1) {
+    return false;
+  }
+
+  const ability = getUnitAbilityDefinitions(attacker).find(
+    (candidate) =>
+      candidate.implementationStatus === "implemented" &&
+      candidate.effect?.type === "SECOND_ATTACK_ALL_ADJACENT_TO_SELF"
+  );
+  if (!ability || ability.effect?.type !== "SECOND_ATTACK_ALL_ADJACENT_TO_SELF") {
+    return false;
+  }
+
+  const targets = Object.values(combat.units).filter(
+    (unit) =>
+      unit.id !== defender.id &&
+      unit.id !== attacker.id &&
+      unit.controllerId !== attacker.controllerId &&
+      isUnitAlive(unit) &&
+      isAdjacent(unit.position, attacker.position)
+  );
+  if (targets.length === 0) {
+    return false;
+  }
+
+  if (combat.attackSequence) {
+    combat.attackSequence.queuedAbilityAttacks = targets.map((unit) => ({
+      abilityId: ability.id,
+      abilityName: ability.name,
+      baseAttack: ability.effect?.type === "SECOND_ATTACK_ALL_ADJACENT_TO_SELF" ? ability.effect.baseAttack : attacker.attack,
+      targetUnitId: unit.id
+    }));
+  }
+
+  return declareNextQueuedAbilityAttack(state, cards);
+}
+
+/** Pops and declares the next queued BINH Cerberi follow-up attack. */
+function declareNextQueuedAbilityAttack(state: GameState, cards: CardLibrary): boolean {
+  const combat = state.combat;
+  const sequence = combat?.attackSequence;
+  if (!combat || !sequence?.queuedAbilityAttacks?.length) {
+    return false;
+  }
+
+  const attacker = combat.units[sequence.attackerId];
+  if (!attacker || !isUnitAlive(attacker)) {
+    sequence.queuedAbilityAttacks = [];
+    return false;
+  }
+
+  while (sequence.queuedAbilityAttacks.length > 0) {
+    const next = sequence.queuedAbilityAttacks.shift();
+    const target = next ? combat.units[next.targetUnitId] : undefined;
+    if (!next || !target || !isUnitAlive(target)) {
+      continue;
+    }
+
+    declareAbilityAttack(
+      state,
+      attacker,
+      next.targetUnitId,
+      { abilityId: next.abilityId, abilityName: next.abilityName, baseAttack: next.baseAttack },
+      cards
+    );
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -1614,6 +1852,13 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     return;
   }
 
+  // Bless: "Ignores the Attack die roll" — the die never rolls (outcome 0),
+  // so reroll effects have nothing to reroll either.
+  if (details.ignoreAttackDie) {
+    finishResolvedAttack(state, stackItem, details, { rolls: [0], roll: 0 }, cards);
+    return;
+  }
+
   const candidate = rollAttackCandidate(combat, details.rollMode);
   const rerollEffects = getAttackRerollEffects(state, {
     attacker: details.attacker,
@@ -1737,6 +1982,136 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       drawCardsForPlayer(state, stackItem.action.playerId, getEffectAmount(card.effect, "basic"));
     }
 
+    if (card?.effect.type === "CREATE_INITIATIVE_BUFF" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(stackItem, cards);
+      const amount = getAmountByPower(card.effect.amountByPower, card.effect.amount ?? 0, power);
+      createActiveEffect(
+        state,
+        {
+          name: card.effect.name,
+          scope: "unit",
+          duration: card.effect.duration,
+          polarity: card.effect.polarity ?? (amount >= 0 ? "positive" : "negative"),
+          removable: card.effect.removable ?? true,
+          modifiers: [{ type: "INITIATIVE_BONUS", amount }]
+        },
+        { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+        stackItem.action.playerId,
+        stackItem.action.target
+      );
+    }
+
+    if (card?.effect.type === "CREATE_SPELL_IMMUNITY" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        createActiveEffect(
+          state,
+          {
+            name: card.name,
+            scope: "unit",
+            duration: card.effect.duration,
+            polarity: "positive",
+            removable: true,
+            modifiers: [{ type: "UNIT_SPELL_IMMUNE", maxGrade }]
+          },
+          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          stackItem.action.playerId,
+          stackItem.action.target
+        );
+      }
+    }
+
+    if (card?.effect.type === "CREATE_FIRE_SHIELD" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(stackItem, cards);
+      const amount = getAmountByPower(card.effect.amountByPower, 1, power);
+      createActiveEffect(
+        state,
+        {
+          name: card.name,
+          scope: "unit",
+          duration: card.effect.duration,
+          polarity: "positive",
+          removable: true,
+          modifiers: [{ type: "FIRE_SHIELD", amount }]
+        },
+        { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+        stackItem.action.playerId,
+        stackItem.action.target
+      );
+    }
+
+    if (card?.effect.type === "CLEAR_RETALIATION" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade) && target.retaliatedThisRound) {
+        target.retaliatedThisRound = false;
+        appendEvent(state, {
+          type: "UNIT_ABILITY_TRIGGERED",
+          unitId: target.id,
+          abilityId: "counterstrike",
+          message: `${card.name} readies ${target.cardName} to retaliate again.`
+        });
+      }
+    }
+
+    if (card?.effect.type === "ADD_UNIT_MAX_HEALTH" && state.combat && stackItem.action.target.type === "unit") {
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && target.controllerId === stackItem.action.playerId) {
+        target.maxHealth += card.effect.amount;
+      }
+    }
+
+    if (card?.effect.type === "AREA_DAMAGE_ADJACENT" && state.combat && stackItem.action.target.type === "unit") {
+      const target = state.combat.units[stackItem.action.target.unitId];
+      const power = getCurrentSpellPower(stackItem, cards);
+      const amount = getAmountByPower(card.effect.amountByPower, 1, power);
+      if (target) {
+        target.damage += amount;
+        appendEvent(state, {
+          type: "DAMAGE_ASSIGNED",
+          source: { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          target: stackItem.action.target,
+          amount,
+          damageKind: "spell"
+        });
+        markUnitRemovedIfNeeded(state, target);
+
+        // "Select 2 adjacent places": the caster picks one unit adjacent to
+        // the target for the same damage (the second space may be empty).
+        const splashCandidates = Object.values(state.combat.units).filter(
+          (unit) => unit.id !== target.id && isUnitAlive(unit) && isAdjacent(unit.position, target.position)
+        );
+        if (splashCandidates.length > 0) {
+          const choiceId = `choice_${state.eventLog.length + 1}`;
+          state.pendingChoice = {
+            id: choiceId,
+            type: "ABILITY_TARGET_CHOICE",
+            playerId: stackItem.action.playerId,
+            kind: "spell-splash",
+            abilityId: null,
+            abilityName: card.name,
+            prompt: `${card.name}: choose a second unit adjacent to the target (${amount} damage), or skip.`,
+            sourceUnitId: target.id,
+            anchorUnitId: target.id,
+            candidateUnitIds: splashCandidates.map((unit) => unit.id),
+            amount,
+            optional: true
+          };
+          appendEvent(state, {
+            type: "PENDING_CHOICE_CREATED",
+            choiceId,
+            choiceType: "ABILITY_TARGET_CHOICE",
+            playerId: stackItem.action.playerId,
+            sourceEffectIds: [],
+            message: `${card.name} may scorch a second unit.`
+          });
+        }
+      }
+    }
+
     appendEvent(state, {
       type: "SPELL_CAST_RESOLVED",
       playerId: stackItem.action.playerId,
@@ -1751,6 +2126,13 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     state.stack.pop();
 
     if (finishCombatIfNeeded(state)) {
+      return;
+    }
+
+    // Fireball's second-target choice stays open after the cast resolves.
+    if (state.pendingChoice) {
+      state.phase = "choice";
+      state.priorityPlayerId = state.pendingChoice.playerId;
       return;
     }
 
@@ -1919,6 +2301,73 @@ function effectSupportsExpertPlay(effect: NonNullable<ReturnType<typeof getEffec
 }
 
 /**
+ * Pays a card option's printed extra price (discard/remove other cards) and
+ * returns how many cost cards were paid. Throws when the payment is illegal.
+ */
+function payOptionCardCost(
+  state: GameState,
+  playerId: PlayerId,
+  cardName: string,
+  cost: CardPlayCost | undefined,
+  costCardIds: CardId[] | undefined,
+  cards: CardLibrary
+): number {
+  const paying = costCardIds ?? [];
+  if (!cost || (cost.discardCards === undefined && cost.discardCardsUpTo === undefined)) {
+    if (paying.length > 0) {
+      throw new Error(`${cardName} has no card cost to pay.`);
+    }
+    return 0;
+  }
+
+  if (cost.discardCards !== undefined && paying.length !== cost.discardCards) {
+    throw new Error(`${cardName} needs exactly ${cost.discardCards} card${cost.discardCards === 1 ? "" : "s"} as payment.`);
+  }
+  if (cost.discardCardsUpTo !== undefined && paying.length > cost.discardCardsUpTo) {
+    throw new Error(`${cardName} accepts at most ${cost.discardCardsUpTo} cards as payment.`);
+  }
+
+  const player = state.players[playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+
+  const handCounts = new Map<string, number>();
+  for (const cardId of player.hand) {
+    handCounts.set(cardId, (handCounts.get(cardId) ?? 0) + 1);
+  }
+  for (const cardId of paying) {
+    if (cost.costCardFilter === "spell" && cards[cardId]?.kind !== "spell") {
+      throw new Error(`${cardName} can only be paid with Spell cards.`);
+    }
+    const left = handCounts.get(cardId) ?? 0;
+    if (left <= 0) {
+      throw new Error("Cost cards must come from your hand.");
+    }
+    handCounts.set(cardId, left - 1);
+  }
+
+  for (const cardId of paying) {
+    const index = player.hand.indexOf(cardId);
+    player.hand.splice(index, 1);
+    if (cost.removeCostCards) {
+      player.removed.push(cardId);
+    } else {
+      player.discard.push(cardId);
+    }
+  }
+
+  return paying.length;
+}
+
+/** The option chosen by a play, when the card is an "OR" card. */
+function getChosenOption(card: CardDefinition, optionIndex?: number): CardOptionDefinition | undefined {
+  return card.effect.type === "CHOOSE_ONE" && optionIndex !== undefined
+    ? card.effect.options[optionIndex]
+    : undefined;
+}
+
+/**
  * Applies one instant card inside the open reaction window: pays costs,
  * discards the card, and applies the effect to the pending stack item.
  * Returns whether the play ended the window (spell-cancel).
@@ -1926,7 +2375,7 @@ function effectSupportsExpertPlay(effect: NonNullable<ReturnType<typeof getEffec
 function applyReactionPlayCore(
   state: GameState,
   playerId: PlayerId,
-  play: { cardId: string; mode?: "basic" | "expert"; optionIndex?: number },
+  play: { cardId: string; mode?: "basic" | "expert"; optionIndex?: number; costCardIds?: CardId[]; asPowerBoost?: boolean },
   cards: CardLibrary
 ): { windowEnded: boolean } {
   if (!state.reactionWindow) {
@@ -1938,14 +2387,50 @@ function applyReactionPlayCore(
     throw new Error(`Unknown reaction card ${play.cardId}.`);
   }
 
+  const stackItemForBoost = state.stack.at(-1);
+
+  // The printed alternative bottom effect of every Spell card: discard it
+  // for +1 Power toward the pending cast (or the spell instant in this
+  // attack window).
+  if (play.asPowerBoost) {
+    if (card.kind !== "spell") {
+      throw new Error("Only Spell cards can be discarded for +1 Power.");
+    }
+    if (!stackItemForBoost) {
+      throw new Error("There is nothing to empower.");
+    }
+    const moveError = moveCardFromHandToDiscard(state, playerId, play.cardId);
+    if (moveError) {
+      throw new Error(moveError.message);
+    }
+    stackItemForBoost.modifiers.spellPowerBonus += 1;
+    stackItemForBoost.modifiers.playedCardIds.push(play.cardId);
+    appendEvent(state, {
+      type: "CARD_PLAYED",
+      playerId,
+      cardId: play.cardId,
+      timing: card.timing,
+      mode: "basic",
+      effectAmount: 1,
+      optionLabel: "+1 Power"
+    });
+    return { windowEnded: false };
+  }
+
   const effect = getEffectiveCardEffect(card, play.optionIndex);
   if (!effect) {
     throw new Error(`${card.name} needs a chosen option.`);
   }
 
+  const option = getChosenOption(card, play.optionIndex);
   const mode = play.mode ?? "basic";
+
+  if (option?.expertOnly && mode !== "expert") {
+    throw new Error(`${option.label} is the card's expert side.`);
+  }
+
   if (mode === "expert") {
-    if (!effectSupportsExpertPlay(effect)) {
+    if (!effectSupportsExpertPlay(effect) && !option?.expertOnly) {
       throw new Error(`${card.name} does not have an expert effect.`);
     }
 
@@ -1955,6 +2440,24 @@ function applyReactionPlayCore(
   }
 
   const stackItem = state.stack.at(-1);
+  const player = state.players[playerId];
+
+  // Spell cards played as instants count toward the printed limit of one
+  // Spell card per combat round (Knowledge/Necklace raise it).
+  if (card.kind === "spell" && state.combat && player) {
+    if (player.combatStats.spellsCastThisRound >= spellLimitFor(state, player)) {
+      throw new Error("Spell limit reached for this combat round.");
+    }
+  }
+
+  // Elemental Magic power boosts only empower spells of their school.
+  if (effect.type === "ADD_SPELL_POWER" && effect.schoolOnly && stackItem?.action.type === "CAST_SPELL") {
+    const pendingSpell = cards[stackItem.action.cardId];
+    const schools = pendingSpell?.spellSchools ?? [];
+    if (!schools.includes(effect.schoolOnly) && !schools.includes("any")) {
+      throw new Error(`${card.name} only empowers ${effect.schoolOnly} spells.`);
+    }
+  }
 
   // Re-check the printed power limit at resolution time: Power cards played
   // earlier in this window may have pushed the spell above a basic cancel.
@@ -1968,24 +2471,26 @@ function applyReactionPlayCore(
     throw new Error(`${card.name} cannot end a spell above power ${effect.maxPower}.`);
   }
 
-  // Spell power can only be buffed once per cast; attack/defense buffs may
-  // keep ping-ponging between players instead.
-  if (
-    effect.type === "ADD_SPELL_POWER" &&
-    stackItem?.action.type === "CAST_SPELL" &&
-    stackItem.modifiers.spellPowerBonus > 0
-  ) {
-    throw new Error("Spell power may only be increased once per spell.");
-  }
-
-  const moveError = moveCardFromHandToDiscard(state, playerId, play.cardId);
+  const moveError = moveCardFromHandToDiscard(
+    state,
+    playerId,
+    play.cardId,
+    option?.cost?.removeSelf ? "removed" : "discard"
+  );
   if (moveError) {
     throw new Error(moveError.message);
   }
 
-  const effectAmount = getEffectAmount(effect, mode);
+  const costCardsPaid = payOptionCardCost(state, playerId, card.name, option?.cost, play.costCardIds, cards);
+
+  let effectAmount = getEffectAmount(effect, mode);
   if (mode === "expert") {
     state.players[playerId].combatStats.expertUsesSpentThisRound += 1;
+  }
+
+  if (card.kind === "spell" && state.combat && player) {
+    player.combatStats.spellsCastThisRound += 1;
+    player.combatStats.spellsCastThisTurn = (player.combatStats.spellsCastThisTurn ?? 0) + 1;
   }
 
   const optionLabel =
@@ -2024,7 +2529,13 @@ function applyReactionPlayCore(
     return { windowEnded: true };
   }
 
-  if (effect.type === "ADD_SPELL_POWER" && stackItem?.action.type === "CAST_SPELL") {
+  // Empower: cast windows feed the pending spell; attack windows build the
+  // Power pool a spell instant in the same declaration consumes. The
+  // rulebook allows stacking several Empower plays to reach a threshold.
+  if (effect.type === "ADD_SPELL_POWER" && stackItem) {
+    if (effect.perCostCard) {
+      effectAmount += effect.perCostCard * costCardsPaid;
+    }
     stackItem.modifiers.spellPowerBonus += effectAmount;
     stackItem.modifiers.playedCardIds.push(play.cardId);
     if (effect.drawCards) {
@@ -2043,11 +2554,26 @@ function applyReactionPlayCore(
     effect.type === "ADD_COMBAT_STAT" &&
     (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
-    // Hero specialties double their bonus when the signature unit is the one
-    // attacking (attack bonus) or being attacked (defense bonus).
     const attacker = state.combat?.units[stackItem.action.attackerId];
     const defender = state.combat?.units[stackItem.action.defenderId];
     const affectedUnit = effect.stat === "attack" ? attacker : defender;
+
+    // Bloodlust/Precision/Golden Bow restrict which unit types benefit.
+    if (effect.unitTypes && affectedUnit && !effect.unitTypes.includes(affectedUnit.type)) {
+      throw new Error(`${card.name} only affects ${effect.unitTypes.join("/")} units.`);
+    }
+
+    // Spell instants scale with the Power played alongside them in this
+    // window; cost-paid plays (Sword of Judgement) scale per discarded card.
+    if (effect.amountByPower && card.kind === "spell") {
+      effectAmount = getAmountByPower(effect.amountByPower, effect.amount, stackItem.modifiers.spellPowerBonus);
+    }
+    if (effect.perCostCard) {
+      effectAmount += effect.perCostCard * costCardsPaid;
+    }
+
+    // Hero specialties double their bonus when the signature unit is the one
+    // attacking (attack bonus) or being attacked (defense bonus).
     const appliedAmount =
       effect.doubleForUnitName && affectedUnit?.name === effect.doubleForUnitName ? effectAmount * 2 : effectAmount;
 
@@ -2055,6 +2581,44 @@ function applyReactionPlayCore(
       stackItem.modifiers.attackBonus += appliedAmount;
     } else {
       stackItem.modifiers.defenseBonus += appliedAmount;
+    }
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+
+    // Precision lifts the ranged penalty for this shot.
+    if (effect.ignoreRangedPenalty) {
+      stackItem.modifiers.ignoreRangedPenalty = true;
+    }
+
+    // Sword of Hellfire / Shield of the Damned: the boosted unit pays in blood.
+    if (effect.selfDamage && affectedUnit && state.combat) {
+      affectedUnit.damage += effect.selfDamage;
+      appendEvent(state, {
+        type: "DAMAGE_ASSIGNED",
+        source: { type: "card", cardId: card.id, controllerId: playerId },
+        target: { type: "unit", unitId: affectedUnit.id },
+        amount: effect.selfDamage,
+        damageKind: "effect"
+      });
+      markUnitRemovedIfNeeded(state, affectedUnit);
+    }
+
+    if (effect.drawCards) {
+      drawCardsForPlayer(state, playerId, effect.drawCards);
+    }
+  }
+
+  // Bless: the pending attack skips its Attack die (and may gain attack).
+  if (
+    effect.type === "IGNORE_ATTACK_DIE" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    stackItem.modifiers.ignoreAttackDie = true;
+    if (effect.attackBonusByPower) {
+      stackItem.modifiers.attackBonus += getAmountByPower(
+        effect.attackBonusByPower,
+        0,
+        stackItem.modifiers.spellPowerBonus
+      );
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
@@ -2078,20 +2642,32 @@ function applyReactionPlayCore(
   }
 
   if (effect.type === "RECALL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
-    const player = state.players[playerId];
+    const caster = state.players[playerId];
     const spellCardId = stackItem.action.cardId;
-    const discardIndex = player.discard.lastIndexOf(spellCardId);
+    const discardIndex = caster.discard.lastIndexOf(spellCardId);
 
     if (discardIndex !== -1) {
-      player.discard.splice(discardIndex, 1);
+      caster.discard.splice(discardIndex, 1);
     }
 
-    if (!player.hand.includes(spellCardId)) {
-      player.hand.push(spellCardId);
+    if (!caster.hand.includes(spellCardId)) {
+      caster.hand.push(spellCardId);
     }
 
     if (mode === "expert") {
-      player.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
+      caster.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
+
+      // Mysticism expert: every card played together with the spell comes
+      // back too (your own plays — found in your discard pile).
+      if (effect.expertRecallPlayedCards) {
+        for (const playedCardId of stackItem.modifiers.playedCardIds) {
+          const playedIndex = caster.discard.lastIndexOf(playedCardId);
+          if (playedIndex !== -1) {
+            caster.discard.splice(playedIndex, 1);
+            caster.hand.push(playedCardId);
+          }
+        }
+      }
     }
 
     stackItem.modifiers.playedCardIds.push(play.cardId);
@@ -2141,7 +2717,20 @@ function playReactions(
 ): void {
   // Batch legality (validated up front) excludes window-ending effects, so
   // every play lands in the same window before priority moves on once.
-  for (const play of action.plays) {
+  // Power is paid before the spell consumes it (rulebook Empower order):
+  // process power-granting plays first so spell instants in the same batch
+  // see the full Power pool.
+  const isPowerPlay = (play: (typeof action.plays)[number]) => {
+    if (play.asPowerBoost) {
+      return true;
+    }
+    const card = cards[play.cardId];
+    const effect = card ? getEffectiveCardEffect(card, play.optionIndex) : null;
+    return effect?.type === "ADD_SPELL_POWER";
+  };
+  const ordered = [...action.plays.filter(isPowerPlay), ...action.plays.filter((play) => !isPowerPlay(play))];
+
+  for (const play of ordered) {
     applyReactionPlayCore(state, action.playerId, play, cards);
   }
 
@@ -2159,15 +2748,39 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     throw new Error(`${card.name} needs a chosen option.`);
   }
 
+  const option = getChosenOption(card, action.optionIndex);
   const mode = action.mode ?? "basic";
+  if (option?.expertOnly && mode !== "expert") {
+    throw new Error(`${option.label} is the card's expert side.`);
+  }
+  if (option?.mapOnly && state.combat) {
+    throw new Error(`${option.label} cannot be used during combat.`);
+  }
   if (mode === "expert" && !hasExpertUseAvailable(state, action.playerId)) {
     throw new Error("No expert uses are available this combat round.");
   }
 
-  const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
+  // Spell cards played during combat respect the one-Spell-per-round limit.
+  const playerForLimit = state.players[action.playerId];
+  if (card.kind === "spell" && state.combat && playerForLimit) {
+    if (playerForLimit.combatStats.spellsCastThisRound >= spellLimitFor(state, playerForLimit)) {
+      throw new Error("Spell limit reached for this combat round.");
+    }
+    playerForLimit.combatStats.spellsCastThisRound += 1;
+    playerForLimit.combatStats.spellsCastThisTurn = (playerForLimit.combatStats.spellsCastThisTurn ?? 0) + 1;
+  }
+
+  const moveError = moveCardFromHandToDiscard(
+    state,
+    action.playerId,
+    action.cardId,
+    option?.cost?.removeSelf ? "removed" : "discard"
+  );
   if (moveError) {
     throw new Error(moveError.message);
   }
+
+  payOptionCardCost(state, action.playerId, card.name, option?.cost, action.costCardIds, cards);
 
   if (mode === "expert") {
     state.players[action.playerId].combatStats.expertUsesSpentThisRound += 1;
@@ -2233,6 +2846,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     drawCardsForPlayer(state, action.playerId, getEffectAmount(effect, mode));
   }
 
+  // Offense/Armorer outside combat: the stat fizzles, the draw still happens.
+  if (effect.type === "ADD_COMBAT_STAT" && effect.drawCards && !state.combat) {
+    drawCardsForPlayer(state, action.playerId, effect.drawCards);
+  }
+
   if (effect.type === "GAIN_MORALE") {
     if (mode === "expert" && effect.expertDrawCards) {
       drawCardsForPlayer(state, action.playerId, effect.expertDrawCards);
@@ -2272,10 +2890,268 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     });
   }
 
+  if (effect.type === "GAIN_RESOURCES") {
+    // BINH house rule: Estates is nerfed to 2 / 4 gold.
+    const gain =
+      card.id === "ability.estates"
+        ? { gold: estatesGold(getRuleset(state), mode) }
+        : mode === "expert" && effect.expertGain
+          ? effect.expertGain
+          : effect.gain;
+    gainResources(state, action.playerId, gain, `played ${card.name}`);
+  }
+
+  if (effect.type === "GAIN_HERO_MOVEMENT") {
+    const hero = getMainHero(state, action.playerId);
+    if (hero) {
+      hero.movementPoints += mode === "expert" ? (effect.expertAmount ?? effect.amount) : effect.amount;
+    }
+    if (effect.moveThroughThisTurn) {
+      createActiveEffect(
+        state,
+        {
+          name: card.name,
+          scope: "player",
+          duration: { type: "current-turn" },
+          polarity: "positive",
+          removable: false,
+          modifiers: [{ type: "HERO_MOVE_THROUGH" }]
+        },
+        { type: "card", cardId: card.id, controllerId: action.playerId },
+        action.playerId
+      );
+    }
+  }
+
+  if (effect.type === "GAIN_EXPERT_USE") {
+    const player = state.players[action.playerId];
+    player.combatStats.expertUseBonusThisRound = (player.combatStats.expertUseBonusThisRound ?? 0) + effect.amount;
+  }
+
+  if (effect.type === "TAKE_FROM_DISCARD") {
+    state.adventure?.rewardQueue.unshift({
+      playerId: action.playerId,
+      kind: "discard-pick",
+      count: effect.count,
+      filter: effect.filter,
+      fromTop: effect.fromTop,
+      shuffleRestIntoDeck: effect.shuffleRestIntoDeck
+    });
+  }
+
+  if (effect.type === "CARD_DECK_SEARCH") {
+    state.adventure?.rewardQueue.unshift({
+      playerId: action.playerId,
+      kind: "shared-deck-search",
+      deckId: effect.deck,
+      count: effect.count
+    });
+  }
+
+  if (effect.type === "RANDOM_ENEMY_DISCARD") {
+    discardRandomEnemyCards(state, action.playerId, effect.count);
+  }
+
+  if (effect.type === "ENEMY_MORALE_STRIP") {
+    const enemyId = pickEnemyPlayerId(state, action.playerId);
+    const enemy = enemyId ? state.players[enemyId] : undefined;
+    if (enemyId && enemy && enemy.morale > 0) {
+      changeMorale(state, enemyId, -1);
+    }
+  }
+
+  if (effect.type === "ROLL_FOR_MORALE") {
+    const random = createSeededRandom(`${state.seed}#roll-for-morale#${state.eventLog.length}`);
+    const faces = [-1, -1, 0, 0, 1, 1];
+    const roll = faces[random.nextInt(0, faces.length - 1)];
+    appendEvent(state, {
+      type: "ADVENTURE_DICE_ROLLED",
+      playerId: action.playerId,
+      dice: "treasure",
+      results: [`${card.name} attack die: ${roll >= 0 ? "+" : ""}${roll}`]
+    });
+    if (roll === effect.onRoll) {
+      changeMorale(state, action.playerId, 1);
+    }
+  }
+
+  if (effect.type === "EAGLE_EYE_DIG") {
+    resolveEagleEyeDig(state, action.playerId, mode, cards);
+  }
+
+  if (effect.type === "TELEPORT_HERO_TO_TOWN") {
+    queueTownPortalChoice(state, action.playerId);
+  }
+
+  if (effect.type === "DISCOVER_TILE_CARD") {
+    const hero = getMainHero(state, action.playerId);
+    if (state.adventure && hero?.spaceId) {
+      state.adventure.rewardQueue.unshift({
+        playerId: action.playerId,
+        kind: "visit-steps",
+        steps: [{ type: "DISCOVER_ADJACENT_TILE" }]
+      });
+    }
+  }
+
+  if (effect.type === "CREATE_INITIATIVE_BUFF" && target && state.combat) {
+    const amount = getAmountByPower(effect.amountByPower, effect.amount ?? 0, 0);
+    createActiveEffect(
+      state,
+      {
+        name: effect.name,
+        scope: "unit",
+        duration: effect.duration,
+        polarity: effect.polarity ?? (amount >= 0 ? "positive" : "negative"),
+        removable: effect.removable ?? true,
+        modifiers: [{ type: "INITIATIVE_BONUS", amount }]
+      },
+      { type: "card", cardId: card.id, controllerId: action.playerId },
+      action.playerId,
+      target
+    );
+  }
+
+  if (effect.type === "ADD_UNIT_MAX_HEALTH" && target && state.combat) {
+    const unit = state.combat.units[target.unitId];
+    if (unit && unit.controllerId === action.playerId) {
+      unit.maxHealth += effect.amount;
+    }
+  }
+
   if (state.phase === "combat" || state.combat) {
     state.phase = "combat";
   }
   state.priorityPlayerId = null;
+  pumpAdventureQueues(state);
+}
+
+/** Picks the opposing player: the combat opponent, or the only other seat. */
+function pickEnemyPlayerId(state: GameState, playerId: PlayerId): PlayerId | null {
+  if (state.combat) {
+    const enemyId =
+      state.combat.attackerPlayerId === playerId ? state.combat.defenderPlayerId : state.combat.attackerPlayerId;
+    return enemyId !== NEUTRAL_PLAYER_ID ? enemyId : null;
+  }
+
+  const others = state.turnOrder.filter((candidate) => candidate !== playerId && candidate !== NEUTRAL_PLAYER_ID);
+  return others[0] ?? null;
+}
+
+/** Dragon Wing Tabard: random discard(s) from the enemy hand. */
+function discardRandomEnemyCards(state: GameState, playerId: PlayerId, count: number): void {
+  const enemyId = pickEnemyPlayerId(state, playerId);
+  const enemy = enemyId ? state.players[enemyId] : undefined;
+  if (!enemyId || !enemy) {
+    return;
+  }
+
+  const random = createSeededRandom(`${state.seed}#enemy-discard#${state.eventLog.length}`);
+  for (let index = 0; index < count && enemy.hand.length > 0; index += 1) {
+    const pick = random.nextInt(0, enemy.hand.length - 1);
+    const [cardId] = enemy.hand.splice(pick, 1);
+    enemy.discard.push(cardId);
+    appendEvent(state, {
+      type: "HAND_REFRESHED",
+      playerId: enemyId,
+      discarded: 1,
+      drawn: 0
+    });
+    void cardId;
+  }
+}
+
+/**
+ * Eagle Eye: dig the Spell deck from the top for the first Basic (basic play)
+ * or Expert (expert play) spell, reshuffle the rest, then take or discard
+ * the find. In BINH mode the split decks make the dig a plain top-card draw
+ * of the matching deck.
+ */
+function resolveEagleEyeDig(state: GameState, playerId: PlayerId, mode: CardPlayMode, cards: CardLibrary): void {
+  const wantedLevel = mode === "expert" ? "expert" : "basic";
+  const deckId =
+    getRuleset(state) === "binh" && wantedLevel === "expert" && state.decks["spells-expert"]
+      ? "spells-expert"
+      : "spells";
+  const deck = state.decks[deckId];
+  if (!deck) {
+    return;
+  }
+
+  // Dig from the top of the draw pile for the first matching spell.
+  const remaining = [...deck.drawPile];
+  let foundCardId: string | null = null;
+  for (let index = remaining.length - 1; index >= 0; index -= 1) {
+    const candidate = cards[remaining[index]];
+    if (candidate?.kind === "spell" && (candidate.spellLevel ?? "basic") === wantedLevel) {
+      foundCardId = remaining[index];
+      remaining.splice(index, 1);
+      break;
+    }
+  }
+
+  if (!foundCardId) {
+    return;
+  }
+
+  deck.drawPile = shuffleCards(remaining, `${state.seed}#eagle-eye#${state.eventLog.length}`);
+
+  const choiceId = `choice_${state.eventLog.length + 1}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Eagle Eye found ${cards[foundCardId]?.name ?? foundCardId}`,
+    options: [{ label: `Take ${cards[foundCardId]?.name ?? foundCardId} into hand` }, { label: "Discard it" }],
+    context: "eagle-eye",
+    eagleEye: { deckId, cardId: foundCardId },
+    returnPhase: state.combat ? "combat" : "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Town Portal: choose a controlled town or flagged settlement to move to. */
+function queueTownPortalChoice(state: GameState, playerId: PlayerId): void {
+  const adventure = state.adventure;
+  const hero = getMainHero(state, playerId);
+  if (!adventure || !hero) {
+    return;
+  }
+
+  const destinations: { label: string; spaceId: string }[] = [];
+  for (const town of Object.values(state.towns)) {
+    if (town.controllerId === playerId && town.fieldId && town.fieldId !== hero.spaceId) {
+      destinations.push({ label: `Town (${town.factionId ?? town.id})`, spaceId: town.fieldId });
+    }
+  }
+  for (const field of Object.values(adventure.fields)) {
+    if (field.location === "settlement" && field.flagOwnerId === playerId && field.spaceId !== hero.spaceId) {
+      destinations.push({ label: `Settlement at ${field.spaceId}`, spaceId: field.spaceId });
+    }
+  }
+
+  if (destinations.length === 0) {
+    return;
+  }
+
+  adventure.rewardQueue.unshift({
+    playerId,
+    kind: "visit-steps",
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt: "Town Portal: move your hero to…",
+        options: [
+          ...destinations.map((destination) => ({
+            label: destination.label,
+            steps: [{ type: "TELEPORT_HERO" as const, heroId: hero.id, spaceId: destination.spaceId }]
+          })),
+          { label: "Cancel (stay)", steps: [] }
+        ]
+      }
+    ]
+  });
 }
 
 function applyActiveEffectAction(
@@ -2517,8 +3393,9 @@ function chooseAbilityTarget(
     throw new Error("Combat is not active.");
   }
 
-  const selectedIndex = choice.candidateUnitIds.indexOf(action.targetUnitId);
-  if (selectedIndex === -1) {
+  const isSkip = choice.optional && action.targetUnitId === "skip";
+  const selectedIndex = isSkip ? -1 : choice.candidateUnitIds.indexOf(action.targetUnitId);
+  if (selectedIndex === -1 && !isSkip) {
     throw new Error("That unit is not a legal target for the ability.");
   }
 
@@ -2533,6 +3410,26 @@ function chooseAbilityTarget(
     playerId: action.playerId,
     selectedIndex
   });
+
+  // Fireball's second space: deal the spell damage, or skip (empty space).
+  if (choice.kind === "spell-splash") {
+    if (!isSkip) {
+      const target = combat.units[action.targetUnitId];
+      if (target && isUnitAlive(target)) {
+        target.damage += choice.amount ?? 1;
+        appendEvent(state, {
+          type: "DAMAGE_ASSIGNED",
+          source: { type: "system" },
+          target: { type: "unit", unitId: target.id },
+          amount: choice.amount ?? 1,
+          damageKind: "spell"
+        });
+        markUnitRemovedIfNeeded(state, target);
+      }
+    }
+    finishCombatIfNeeded(state);
+    return;
+  }
 
   if (!source) {
     return;
@@ -2974,7 +3871,8 @@ function searchDeck(state: GameState, action: Extract<GameAction, { type: "SEARC
 
 function resolveDeckSearch(
   state: GameState,
-  action: Extract<GameAction, { type: "RESOLVE_DECK_SEARCH" }>
+  action: Extract<GameAction, { type: "RESOLVE_DECK_SEARCH" }>,
+  cards: CardLibrary = cardLibrary
 ): void {
   const choice = state.pendingChoice;
   if (!choice || choice.type !== "DECK_SEARCH" || choice.id !== action.choiceId || choice.playerId !== action.playerId) {
@@ -2989,7 +3887,30 @@ function resolveDeckSearch(
 
   let discardedCardIds: string[];
 
-  if (action.pick.kind === "discard-top") {
+  if (action.pick.kind === "school-fetch") {
+    // Basic X Magic: put the revealed cards back, fetch the deck's first
+    // spell of the school (Magic Arrow's "any" counts), then reshuffle.
+    if (!choice.schoolFetch?.includes(action.pick.school)) {
+      throw new Error("No Basic Magic of that school is in play.");
+    }
+
+    deck.drawPile.push(...choice.revealedCardIds.reverse());
+    let fetchedCardId: string | null = null;
+    for (let index = deck.drawPile.length - 1; index >= 0; index -= 1) {
+      const schools = cards[deck.drawPile[index]]?.spellSchools ?? [];
+      if (schools.includes(action.pick.school) || schools.includes("any")) {
+        fetchedCardId = deck.drawPile[index];
+        deck.drawPile.splice(index, 1);
+        break;
+      }
+    }
+
+    if (fetchedCardId) {
+      player.hand.push(fetchedCardId);
+    }
+    deck.drawPile = shuffleCards(deck.drawPile, `${state.seed}#school-fetch#${state.eventLog.length}`);
+    discardedCardIds = [];
+  } else if (action.pick.kind === "discard-top") {
     if (!choice.canTakeDiscardTop) {
       throw new Error("The discard pile is empty.");
     }
@@ -3001,6 +3922,7 @@ function resolveDeckSearch(
 
     player.hand.push(takenCardId);
     discardedCardIds = [...choice.revealedCardIds];
+    deck.discardPile.push(...discardedCardIds);
   } else {
     const keptCardId = choice.revealedCardIds[action.pick.index];
     if (!keptCardId) {
@@ -3010,22 +3932,37 @@ function resolveDeckSearch(
     player.hand.push(keptCardId);
     const keptIndex = action.pick.index;
     discardedCardIds = choice.revealedCardIds.filter((_, index) => index !== keptIndex);
+    deck.discardPile.push(...discardedCardIds);
   }
-
-  deck.discardPile.push(...discardedCardIds);
 
   appendEvent(state, {
     type: "DECK_SEARCH_RESOLVED",
     playerId: action.playerId,
     deckId: choice.deckId,
     choiceId: choice.id,
-    pick: action.pick.kind,
+    pick: action.pick.kind === "school-fetch" ? "revealed" : action.pick.kind,
     discardedCardIds
   });
 
+  const repeat = choice.repeatSearch;
   state.pendingChoice = null;
   state.phase = choice.returnPhase;
   state.priorityPlayerId = null;
+
+  // Pendant of Courage: the whole Search action happens once more.
+  if (repeat) {
+    if (state.adventure) {
+      state.adventure.rewardQueue.unshift({
+        playerId: action.playerId,
+        kind: "shared-deck-search",
+        deckId: repeat.deckId,
+        count: repeat.count
+      });
+      pumpAdventureQueues(state);
+    } else {
+      openSharedDeckSearch(state, action.playerId, repeat.deckId, repeat.count);
+    }
+  }
 }
 
 function moveHero(state: GameState, action: Extract<GameAction, { type: "MOVE_HERO" }>): void {
@@ -3058,8 +3995,9 @@ function moveHero(state: GameState, action: Extract<GameAction, { type: "MOVE_HE
 }
 
 function endTurn(state: GameState, action: Extract<GameAction, { type: "END_TURN" }>): void {
-  appendExpiredEffectEvents(state, expireEffectsForTurnEnd(state, action.playerId), "turn-ended");
   const nextPlayer = nextPlayerId(state, action.playerId);
+  // Ongoing cards expire when their owner's next turn begins.
+  appendExpiredEffectEvents(state, expireEffectsForTurnEnd(state, nextPlayer), "turn-ended");
   state.activePlayerId = nextPlayer;
   if (state.turn.mode === "ordered") {
     state.turn.observingPlayerId = nextPlayer;
@@ -3271,6 +4209,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "RETREAT_FROM_COMBAT",
   "POPULATION_ACTION",
   "SPELL_BOOK_ACTION",
+  "BLACKSMITH_ACTION",
   "SPEND_MORALE",
   "CHOOSE_OPTION",
   "CHOOSE_ABILITY_TARGET",
@@ -3362,7 +4301,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         searchDeck(nextState, action);
         break;
       case "RESOLVE_DECK_SEARCH":
-        resolveDeckSearch(nextState, action);
+        resolveDeckSearch(nextState, action, cards);
         break;
       case "MOVE_HERO":
         if (nextState.mode === "adventure") {
@@ -3422,6 +4361,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "SPELL_BOOK_ACTION":
         spellBookAction(nextState, action);
+        break;
+      case "BLACKSMITH_ACTION":
+        blacksmithAction(nextState, action);
         break;
       case "SPEND_MORALE":
         spendMorale(nextState, action);

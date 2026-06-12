@@ -1,4 +1,12 @@
 import { astrologersDeckCardIds } from "@/data/cards/astrologers";
+import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra";
+import {
+  artifactDeckBinhMajor,
+  artifactDeckBinhMinor,
+  artifactDeckBinhRelic,
+  artifactDeckLegacy
+} from "@/data/cards/artifacts";
+import { spellDeckBinhBasic, spellDeckBinhExpert, spellDeckLegacy } from "@/data/cards/spells";
 import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
@@ -26,6 +34,7 @@ import type {
   FactionId,
   GameAction,
   GameDifficulty,
+  GameRuleset,
   GameSetupOptions,
   GameState,
   PlayerState
@@ -41,6 +50,7 @@ export type AdventurePlayerConfig = {
 
 export type AdventureSetupOptions = {
   seed?: string;
+  ruleset?: GameRuleset;
   difficulty?: GameDifficulty;
   scenarioId?: string;
   players?: AdventurePlayerConfig[];
@@ -55,11 +65,13 @@ export type AdventureSetupOptions = {
 
 /**
  * Default game options of a fresh lobby: the scenario sheet's numbers with
- * the Field Difficulty Level Table on its Impossible column.
+ * the Field Difficulty Level Table on its Impossible column. The BINH house
+ * rules are the table's default mode; Legacy is one click away.
  */
 export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetupOptions {
   return {
     scenarioId: scenario.id,
+    ruleset: "binh",
     difficulty: "impossible",
     startingResources: { ...scenario.startingResources },
     startingProduction: { ...scenario.startingProduction },
@@ -90,42 +102,13 @@ function makeNeutralDecks(seed: string): Record<string, DeckState> {
   return decks;
 }
 
-function makeSharedDecks(seed: string): Record<string, DeckState> {
-  const spells = [
-    "spell.magic_arrow",
-    "spell.magic_arrow",
-    "spell.lightning_bolt",
-    "spell.lightning_bolt",
-    "spell.stone_skin",
-    "spell.stone_skin",
-    "spell.bloodlust",
-    "spell.bloodlust",
-    "spell.cure",
-    "spell.cure",
-    "spell.fortune",
-    "spell.fortune",
-    "spell.fireball"
-  ];
-  const abilities = [
-    "ability.resistance",
-    "ability.resistance",
-    "ability.archery",
-    "ability.archery",
-    "ability.offense",
-    "ability.offense",
-    "ability.luck",
-    "ability.luck",
-    "ability.leadership",
-    "ability.sorcery"
-  ];
-  const artifacts = [
-    "artifact.centaurs_axe",
-    "artifact.ogres_club_of_havoc",
-    "artifact.titans_gladius",
-    "artifact.buckler_of_the_gnoll_king",
-    "artifact.breastplate_of_petrified_wood"
-  ];
-
+/**
+ * Shared deck construction. Legacy: one mixed Spell deck, one Artifact deck.
+ * BINH: the rulebook's optional "Split Artifact and Spell Decks" — Basic and
+ * Expert Spell decks plus Minor/Major/Relic Artifact decks. Each deck flips
+ * its top card to start the discard pile, as printed.
+ */
+function makeSharedDecks(seed: string, ruleset: GameRuleset): Record<string, DeckState> {
   const make = (id: string, cardIds: string[]): DeckState => {
     const drawPile = shuffleCards(cardIds, `${seed}#deck#${id}`);
     // Setup rule: flip the top card of each shared deck to start its discard.
@@ -137,10 +120,21 @@ function makeSharedDecks(seed: string): Record<string, DeckState> {
     };
   };
 
+  if (ruleset === "binh") {
+    return {
+      spells: make("spells", spellDeckBinhBasic),
+      "spells-expert": make("spells-expert", spellDeckBinhExpert),
+      abilities: make("abilities", abilityDeckBinh),
+      "artifacts-minor": make("artifacts-minor", artifactDeckBinhMinor),
+      "artifacts-major": make("artifacts-major", artifactDeckBinhMajor),
+      "artifacts-relic": make("artifacts-relic", artifactDeckBinhRelic)
+    };
+  }
+
   return {
-    spells: make("spells", spells),
-    abilities: make("abilities", abilities),
-    artifacts: make("artifacts", artifacts)
+    spells: make("spells", spellDeckLegacy),
+    abilities: make("abilities", abilityDeckLegacy),
+    artifacts: make("artifacts", artifactDeckLegacy)
   };
 }
 
@@ -301,6 +295,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const scenario = getScenario(options.scenarioId);
   const setupOptions: GameSetupOptions = {
     ...defaultGameSetupOptions(scenario),
+    ...(options.ruleset ? { ruleset: options.ruleset } : {}),
     ...(options.difficulty ? { difficulty: options.difficulty } : {}),
     ...(options.startingResources ? { startingResources: options.startingResources } : {}),
     ...(options.startingProduction ? { startingProduction: options.startingProduction } : {}),
@@ -308,6 +303,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.startingBuildings ? { startingBuildings: options.startingBuildings } : {})
   };
   const difficulty = setupOptions.difficulty;
+  const ruleset: GameRuleset = setupOptions.ruleset;
   const playerConfigs = (options.players?.length ? options.players : DEFAULT_PLAYERS).slice(
     0,
     Math.min(scenario.maxPlayers, scenario.layout.starts.length)
@@ -345,6 +341,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     id: "adventure-game",
     seed,
     mode: "adventure",
+    ruleset,
     round: 1,
     phase: "player-turn",
     activePlayerId: playerConfigs[0].id,
@@ -361,7 +358,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     heroes: {},
     combat: null,
     decks: {
-      ...makeSharedDecks(seed),
+      ...makeSharedDecks(seed, ruleset),
       ...makeNeutralDecks(seed),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed)
     },
@@ -510,6 +507,7 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
     id: "adventure-lobby",
     seed,
     mode: "adventure",
+    ruleset: setupOptions.ruleset,
     round: 0,
     phase: "setup",
     activePlayerId: seats[0].playerId,
@@ -577,6 +575,15 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
 
   const next = action.options;
   const changes: string[] = [];
+
+  if (next.ruleset !== undefined) {
+    if (next.ruleset !== "legacy" && next.ruleset !== "binh") {
+      throw new Error("Unknown game mode.");
+    }
+    lobby.options.ruleset = next.ruleset;
+    state.ruleset = next.ruleset;
+    changes.push(`game mode ${next.ruleset === "binh" ? "House rules BINH" : "Legacy (rulebook)"}`);
+  }
 
   if (next.scenarioId !== undefined) {
     if (!scenarioDefinitions[next.scenarioId]) {
@@ -700,6 +707,7 @@ export function startAdventureFromLobby(state: GameState, action: Extract<GameAc
   const built = createAdventureGameState({
     seed: state.seed,
     scenarioId: lobby.options.scenarioId,
+    ruleset: lobby.options.ruleset,
     difficulty: lobby.options.difficulty,
     startingResources: lobby.options.startingResources,
     startingProduction: lobby.options.startingProduction,

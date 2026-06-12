@@ -16,7 +16,25 @@ export const implementedCardEffectTypes = [
   "CREATE_ATTACK_BUFF",
   "CREATE_DEFENSE_BUFF",
   "CREATE_ATTACK_DIE_REROLL",
-  "RECALL_SPELL"
+  "RECALL_SPELL",
+  "GAIN_RESOURCES",
+  "GAIN_HERO_MOVEMENT",
+  "GAIN_EXPERT_USE",
+  "TAKE_FROM_DISCARD",
+  "CARD_DECK_SEARCH",
+  "RANDOM_ENEMY_DISCARD",
+  "ENEMY_MORALE_STRIP",
+  "ROLL_FOR_MORALE",
+  "EAGLE_EYE_DIG",
+  "TELEPORT_HERO_TO_TOWN",
+  "DISCOVER_TILE_CARD",
+  "CLEAR_RETALIATION",
+  "IGNORE_ATTACK_DIE",
+  "CREATE_SPELL_IMMUNITY",
+  "CREATE_FIRE_SHIELD",
+  "CREATE_INITIATIVE_BUFF",
+  "ADD_UNIT_MAX_HEALTH",
+  "AREA_DAMAGE_ADJACENT"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {
@@ -207,6 +225,96 @@ export function describeCardEffect(card: CardDefinition): string {
   if (card.effect.type === "GAIN_MORALE") {
     const expert = card.effect.expertDrawCards ? `, expert also draws ${card.effect.expertDrawCards}` : "";
     return `gain ${card.effect.amount} morale${expert}`;
+  }
+
+  if (card.effect.type === "GAIN_RESOURCES") {
+    const list = (gain: Record<string, number | undefined>) =>
+      Object.entries(gain)
+        .filter(([, amount]) => amount)
+        .map(([resource, amount]) => `${amount} ${resource}`)
+        .join(" + ");
+    const expert = card.effect.expertGain ? `, expert ${list(card.effect.expertGain)}` : "";
+    return `gain ${list(card.effect.gain)}${expert}`;
+  }
+
+  if (card.effect.type === "GAIN_HERO_MOVEMENT") {
+    const through = card.effect.moveThroughThisTurn ? " and walk through fields this turn" : "";
+    return `hero +${card.effect.amount} movement${through}`;
+  }
+
+  if (card.effect.type === "GAIN_EXPERT_USE") {
+    return `gain ${card.effect.amount} expert use this round`;
+  }
+
+  if (card.effect.type === "TAKE_FROM_DISCARD") {
+    const filter = card.effect.filter === "spell" ? " Spell" : card.effect.filter === "non-artifact" ? " non-Artifact" : "";
+    const top = card.effect.fromTop ? ` (top ${card.effect.fromTop})` : "";
+    return `take ${card.effect.count}${filter} card${card.effect.count === 1 ? "" : "s"} from your discard pile${top}`;
+  }
+
+  if (card.effect.type === "CARD_DECK_SEARCH") {
+    return `Search (${card.effect.count}) the ${card.effect.deck} deck`;
+  }
+
+  if (card.effect.type === "RANDOM_ENEMY_DISCARD") {
+    return `discard ${card.effect.count} random card${card.effect.count === 1 ? "" : "s"} from the enemy hand`;
+  }
+
+  if (card.effect.type === "ENEMY_MORALE_STRIP") {
+    return "an enemy with positive morale loses it";
+  }
+
+  if (card.effect.type === "ROLL_FOR_MORALE") {
+    return `roll the Attack die: gain morale on ${card.effect.onRoll >= 0 ? "+" : ""}${card.effect.onRoll}`;
+  }
+
+  if (card.effect.type === "EAGLE_EYE_DIG") {
+    return "dig the Spell deck for the first Basic (expert: Expert) spell";
+  }
+
+  if (card.effect.type === "TELEPORT_HERO_TO_TOWN") {
+    return "move your hero to a town or settlement you control";
+  }
+
+  if (card.effect.type === "DISCOVER_TILE_CARD") {
+    return "discover a face-down tile adjacent to your hero's tile";
+  }
+
+  if (card.effect.type === "CLEAR_RETALIATION") {
+    return "clear a unit's used retaliation (higher tiers with power)";
+  }
+
+  if (card.effect.type === "IGNORE_ATTACK_DIE") {
+    return "ignore the Attack die roll (power adds attack)";
+  }
+
+  if (card.effect.type === "CREATE_SPELL_IMMUNITY") {
+    return "the unit cannot be targeted by spells (tier rises with power)";
+  }
+
+  if (card.effect.type === "CREATE_FIRE_SHIELD") {
+    return "adjacent attackers take damage this combat round (scales with power)";
+  }
+
+  if (card.effect.type === "CREATE_INITIATIVE_BUFF") {
+    if (card.effect.amountByPower) {
+      const breakpoints = Object.entries(card.effect.amountByPower)
+        .map(([power, amount]) => `${power}:${Number(amount) >= 0 ? "+" : ""}${amount}`)
+        .join(", ");
+      return `${card.effect.name} initiative by power (${breakpoints})`;
+    }
+    return `${card.effect.name} ${Number(card.effect.amount ?? 0) >= 0 ? "+" : ""}${card.effect.amount ?? 0} initiative`;
+  }
+
+  if (card.effect.type === "ADD_UNIT_MAX_HEALTH") {
+    return `+${card.effect.amount} HP for this combat`;
+  }
+
+  if (card.effect.type === "AREA_DAMAGE_ADJACENT") {
+    const breakpoints = Object.entries(card.effect.amountByPower)
+      .map(([power, amount]) => `${power}:${amount}`)
+      .join(", ");
+    return `spell damage to the target and an adjacent unit (by power ${breakpoints})`;
   }
 
   return card.kind;

@@ -26,6 +26,10 @@ type TrayGroup = {
   optionLabel?: string;
   modes: CardPlayMode[];
   batchable: boolean;
+  /** "Discard {card}: +1 Power" alternative play of a Spell card. */
+  asPowerBoost?: boolean;
+  /** Cards from hand this option demands as payment. */
+  costCards?: { exact?: number; upTo?: number; filter?: "spell" };
 };
 
 type TraySelection = {
@@ -33,6 +37,10 @@ type TraySelection = {
   cardId: string;
   optionIndex?: number;
   mode: CardPlayMode;
+  asPowerBoost?: boolean;
+  costCards?: { exact?: number; upTo?: number; filter?: "spell" };
+  /** Hand indexes chosen to pay the option's discard cost. */
+  costHandIndexes: number[];
 };
 
 function selectionPreview(selections: TraySelection[]): string[] {
@@ -43,11 +51,18 @@ function selectionPreview(selections: TraySelection[]): string[] {
     if (!card) {
       continue;
     }
+    if (selection.asPowerBoost) {
+      totals.set("Power", (totals.get("Power") ?? 0) + 1);
+      continue;
+    }
     const effect = getEffectiveCardEffect(card, selection.optionIndex);
     if (!effect) {
       continue;
     }
-    const amount = getEffectAmount(effect, selection.mode);
+    let amount = getEffectAmount(effect, selection.mode);
+    if ((effect.type === "ADD_COMBAT_STAT" || effect.type === "ADD_SPELL_POWER") && effect.perCostCard) {
+      amount += effect.perCostCard * selection.costHandIndexes.length;
+    }
 
     if (effect.type === "ADD_COMBAT_STAT") {
       const key = effect.stat === "attack" ? "Attack" : "Defense";
@@ -110,16 +125,29 @@ export function ReactionTray({
     );
   }
 
-  // Group the viewer's legal reactions by card + option, then expose one
-  // selectable tile per physical copy in hand.
+  // Group the viewer's legal reactions by card + option (+1-Power discards
+  // are their own group), then expose one selectable tile per copy in hand.
   const groupsByCard = new Map<string, TrayGroup[]>();
   for (const action of reactionActions) {
-    const key = `${action.cardId}#${action.optionIndex ?? -1}`;
+    const key = `${action.cardId}#${action.optionIndex ?? -1}#${action.asPowerBoost ? "boost" : "play"}`;
     const card = cardLibrary[action.cardId];
-    const effect = card ? getEffectiveCardEffect(card, action.optionIndex) : null;
-    const batchable = Boolean(effect && effect.type !== "CANCEL_SPELL" && effect.type !== "RECALL_SPELL");
+    const effect = card && !action.asPowerBoost ? getEffectiveCardEffect(card, action.optionIndex) : null;
+    const batchable = action.asPowerBoost
+      ? true
+      : Boolean(effect && effect.type !== "CANCEL_SPELL" && effect.type !== "RECALL_SPELL");
+    const option =
+      card?.effect.type === "CHOOSE_ONE" && action.optionIndex !== undefined
+        ? card.effect.options[action.optionIndex]
+        : undefined;
+    const cost = option?.cost;
+    const costCards =
+      cost && (cost.discardCards !== undefined || cost.discardCardsUpTo !== undefined)
+        ? { exact: cost.discardCards, upTo: cost.discardCardsUpTo, filter: cost.costCardFilter }
+        : undefined;
     const cardGroups = groupsByCard.get(action.cardId) ?? [];
-    const existing = cardGroups.find((group) => `${group.cardId}#${group.optionIndex ?? -1}` === key);
+    const existing = cardGroups.find(
+      (group) => `${group.cardId}#${group.optionIndex ?? -1}#${group.asPowerBoost ? "boost" : "play"}` === key
+    );
 
     if (existing) {
       if (!existing.modes.includes(action.mode ?? "basic")) {
@@ -129,12 +157,11 @@ export function ReactionTray({
       cardGroups.push({
         cardId: action.cardId,
         optionIndex: action.optionIndex,
-        optionLabel:
-          card?.effect.type === "CHOOSE_ONE" && action.optionIndex !== undefined
-            ? card.effect.options[action.optionIndex]?.label
-            : undefined,
+        optionLabel: action.asPowerBoost ? "Discard for +1 Power" : option?.label,
         modes: [action.mode ?? "basic"],
-        batchable
+        batchable,
+        asPowerBoost: action.asPowerBoost,
+        costCards
       });
     }
     groupsByCard.set(action.cardId, cardGroups);
@@ -146,18 +173,40 @@ export function ReactionTray({
     .filter((tile) => tile.groups.length > 0);
 
   const player = state.players[viewerPlayerId];
-  const crownsAvailable = player ? player.limits.expertUses - player.combatStats.expertUsesSpentThisRound : 0;
+  const crownsAvailable = player
+    ? player.limits.expertUses +
+      (player.combatStats.expertUseBonusThisRound ?? 0) -
+      player.combatStats.expertUsesSpentThisRound
+    : 0;
   const crownsSelected = selections.filter((selection) => selection.mode === "expert").length;
 
   const toggleSelection = (handIndex: number, cardId: string, group: TrayGroup) => {
     setSelections((current) => {
       const existing = current.find((selection) => selection.handIndex === handIndex);
-      if (existing && existing.optionIndex === group.optionIndex) {
+      if (
+        existing &&
+        existing.optionIndex === group.optionIndex &&
+        Boolean(existing.asPowerBoost) === Boolean(group.asPowerBoost)
+      ) {
         return current.filter((selection) => selection.handIndex !== handIndex);
       }
 
-      const next = current.filter((selection) => selection.handIndex !== handIndex);
-      next.push({ handIndex, cardId, optionIndex: group.optionIndex, mode: "basic" });
+      const next = current
+        .filter((selection) => selection.handIndex !== handIndex)
+        // A card leaving/entering play also leaves any payment role.
+        .map((selection) => ({
+          ...selection,
+          costHandIndexes: selection.costHandIndexes.filter((index) => index !== handIndex)
+        }));
+      next.push({
+        handIndex,
+        cardId,
+        optionIndex: group.optionIndex,
+        mode: "basic",
+        asPowerBoost: group.asPowerBoost,
+        costCards: group.costCards,
+        costHandIndexes: []
+      });
       return next.sort((left, right) => left.handIndex - right.handIndex);
     });
   };
@@ -168,29 +217,63 @@ export function ReactionTray({
     );
   };
 
+  const togglePayment = (selectionHandIndex: number, payHandIndex: number) => {
+    setSelections((current) =>
+      current.map((selection) => {
+        if (selection.handIndex !== selectionHandIndex) {
+          return selection;
+        }
+        const has = selection.costHandIndexes.includes(payHandIndex);
+        return {
+          ...selection,
+          costHandIndexes: has
+            ? selection.costHandIndexes.filter((index) => index !== payHandIndex)
+            : [...selection.costHandIndexes, payHandIndex]
+        };
+      })
+    );
+  };
+
+  // Hand indexes already committed (played or paying) cannot pay twice.
+  const committedIndexes = new Set<number>();
+  for (const selection of selections) {
+    committedIndexes.add(selection.handIndex);
+    for (const index of selection.costHandIndexes) {
+      committedIndexes.add(index);
+    }
+  }
+
+  const paymentInvalid = selections.some(
+    (selection) =>
+      selection.costCards?.exact !== undefined && selection.costHandIndexes.length !== selection.costCards.exact
+  );
+
   const confirmSelection = () => {
-    if (selections.length === 0) {
+    if (selections.length === 0 || paymentInvalid) {
       return;
     }
+
+    const toPlay = (selection: TraySelection): ReactionPlay => ({
+      cardId: selection.cardId,
+      mode: selection.mode,
+      ...(selection.optionIndex !== undefined ? { optionIndex: selection.optionIndex } : {}),
+      ...(selection.asPowerBoost ? { asPowerBoost: true } : {}),
+      ...(selection.costHandIndexes.length > 0
+        ? { costCardIds: selection.costHandIndexes.map((index) => hand[index]) }
+        : {})
+    });
 
     if (selections.length === 1) {
       const [only] = selections;
       onAction({
         type: "PLAY_REACTION",
         playerId: viewerPlayerId,
-        cardId: only.cardId,
-        mode: only.mode,
-        ...(only.optionIndex !== undefined ? { optionIndex: only.optionIndex } : {})
+        ...toPlay(only)
       });
       return;
     }
 
-    const plays: ReactionPlay[] = selections.map((selection) => ({
-      cardId: selection.cardId,
-      mode: selection.mode,
-      ...(selection.optionIndex !== undefined ? { optionIndex: selection.optionIndex } : {})
-    }));
-    onAction({ type: "PLAY_REACTIONS", playerId: viewerPlayerId, plays });
+    onAction({ type: "PLAY_REACTIONS", playerId: viewerPlayerId, plays: selections.map(toPlay) });
   };
 
   const preview = selectionPreview(selections);
@@ -216,7 +299,11 @@ export function ReactionTray({
               <div className="trayTileBody">
                 <strong>{cardName(tile.cardId)}</strong>
                 {tile.groups.map((group) => {
-                  const groupSelected = Boolean(selection && selection.optionIndex === group.optionIndex);
+                  const groupSelected = Boolean(
+                    selection &&
+                      selection.optionIndex === group.optionIndex &&
+                      Boolean(selection.asPowerBoost) === Boolean(group.asPowerBoost)
+                  );
                   if (!group.batchable) {
                     // Window-ending plays (Resistance, spell recall) resolve
                     // immediately and on their own.
@@ -241,8 +328,11 @@ export function ReactionTray({
                     ));
                   }
 
+                  const needsPayment = groupSelected && selection?.costCards;
+                  const paymentTarget = selection?.costCards?.exact ?? selection?.costCards?.upTo ?? 0;
+
                   return (
-                    <div className="trayGroup" key={`${group.cardId}-${group.optionIndex ?? "x"}`}>
+                    <div className="trayGroup" key={`${group.cardId}-${group.optionIndex ?? "x"}-${group.asPowerBoost ? "boost" : "play"}`}>
                       <button
                         aria-pressed={groupSelected}
                         className={`trayPick ${groupSelected ? "picked" : ""}`}
@@ -252,7 +342,7 @@ export function ReactionTray({
                         <Check aria-hidden="true" size={13} />
                         <span>{group.optionLabel ?? "Add to play"}</span>
                       </button>
-                      {groupSelected && group.modes.includes("expert") ? (
+                      {groupSelected && group.modes.includes("expert") && !group.asPowerBoost ? (
                         <button
                           aria-pressed={selection?.mode === "expert"}
                           className={`trayExpert ${selection?.mode === "expert" ? "picked" : ""}`}
@@ -265,6 +355,45 @@ export function ReactionTray({
                           <Crown aria-hidden="true" size={13} />
                           <span>Expert</span>
                         </button>
+                      ) : null}
+                      {needsPayment ? (
+                        <div className="trayPayment" aria-label="Choose cards to pay the cost">
+                          <small>
+                            {selection?.costCards?.exact !== undefined
+                              ? `Discard exactly ${selection.costCards.exact}:`
+                              : `Discard up to ${paymentTarget}:`}
+                          </small>
+                          <div className="trayPaymentChips">
+                            {hand.map((payCardId, payIndex) => {
+                              if (payIndex === tile.handIndex) {
+                                return null;
+                              }
+                              const inThisPayment = Boolean(selection?.costHandIndexes.includes(payIndex));
+                              const takenElsewhere = !inThisPayment && committedIndexes.has(payIndex);
+                              const wrongKind =
+                                selection?.costCards?.filter === "spell" &&
+                                cardLibrary[payCardId]?.kind !== "spell";
+                              if (takenElsewhere || wrongKind) {
+                                return null;
+                              }
+                              const full =
+                                !inThisPayment &&
+                                (selection?.costHandIndexes.length ?? 0) >= paymentTarget;
+                              return (
+                                <button
+                                  aria-pressed={inThisPayment}
+                                  className={`trayChip ${inThisPayment ? "picked" : ""}`}
+                                  disabled={full}
+                                  key={`${payCardId}-${payIndex}`}
+                                  onClick={() => togglePayment(tile.handIndex, payIndex)}
+                                  type="button"
+                                >
+                                  {cardName(payCardId)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       ) : null}
                     </div>
                   );
@@ -283,7 +412,7 @@ export function ReactionTray({
         </div>
         <button
           className="trayConfirm"
-          disabled={selections.length === 0 || crownsOver}
+          disabled={selections.length === 0 || crownsOver || paymentInvalid}
           onClick={confirmSelection}
           type="button"
         >

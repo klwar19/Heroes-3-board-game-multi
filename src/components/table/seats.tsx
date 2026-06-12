@@ -437,8 +437,12 @@ export function HeroPanel({ state, playerId }: { state: GameState; playerId: Pla
 
 const SHARED_DECK_LABELS: Record<SharedDeckId, string> = {
   spells: "Spells",
+  "spells-expert": "Expert Spells",
   abilities: "Abilities",
-  artifacts: "Artifacts"
+  artifacts: "Artifacts",
+  "artifacts-minor": "Minor Artifacts",
+  "artifacts-major": "Major Artifacts",
+  "artifacts-relic": "Relic Artifacts"
 };
 
 export function DeckWells({

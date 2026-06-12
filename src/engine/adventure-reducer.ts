@@ -41,9 +41,22 @@ import {
   type NeutralDraw
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
-import { drawCardsForPlayer } from "./decks";
+import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent } from "./events";
 import { expireEffectsForTurnEnd } from "./active-effects";
+import {
+  activeSchoolFetches,
+  applySearchCountEffects,
+  deckDisplayName,
+  eligibleArtifactDecks,
+  eligibleSpellDecks,
+  expertUsesAvailable,
+  getRuleset,
+  isSpellDeck,
+  takeSearchRepeatEffect,
+  wisdomGoldDiscount,
+  wisdomSearchCount
+} from "./ruleset";
 import { hexDistance, hexNeighbor, hexSpaceId, slotDirection, tileFootprint } from "./hex";
 import type {
   CombatState,
@@ -1198,7 +1211,12 @@ function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void {
   combat.context.hasAzure = draws.some((draw) => draw.tier === "azure");
 
   const neutralUnits = draws.flatMap((draw, index) => {
-    const unit = makeCombatUnitFromNeutral(draw, `neutral_${index + 1}_${draw.unitDefId.split(".")[1]}`, 0);
+    const unit = makeCombatUnitFromNeutral(
+      draw,
+      `neutral_${index + 1}_${draw.unitDefId.split(".")[1]}`,
+      0,
+      getRuleset(state)
+    );
     return unit ? [unit] : [];
   });
 
@@ -1375,7 +1393,8 @@ export function placeCombatUnit(state: GameState, action: Extract<GameAction, { 
     armyUnit,
     action.playerId,
     `unit_${action.playerId}_${armyUnit.id}`,
-    action.position
+    action.position,
+    getRuleset(state)
   );
   if (!combatUnit) {
     throw new Error("That unit has no printed side to fight with.");
@@ -1844,6 +1863,12 @@ function coreUnitTier(unitDefId: string): string | null {
   return coreUnitTierLookup[unitDefId] ?? null;
 }
 
+/**
+ * Spell Book token: pay the faction's Mage Guild price (6 gold Castle,
+ * 5 gold otherwise) to Search (2) the Spell deck. Playing a Wisdom card with
+ * the purchase reduces the price by 2 gold (3 gold expert in BINH mode) and
+ * upgrades the search to Search (3) / Search (4), as printed on Wisdom.
+ */
 export function spellBookAction(state: GameState, action: Extract<GameAction, { type: "SPELL_BOOK_ACTION" }>): void {
   const player = state.players[action.playerId];
   if (!player) {
@@ -1870,12 +1895,48 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
     throw new Error("The Spell Book token cannot be used the round the Mage Guild was built.");
   }
 
-  const cost: ResourceCost = { gold: mageGuild.spellBookCost ?? 5 };
+  let goldCost = mageGuild.spellBookCost ?? 5;
+  let searchCount = 2;
+  const wisdom = action.wisdom;
+
+  if (wisdom) {
+    const card = cardLibrary[wisdom.cardId];
+    if (card?.name !== "Wisdom" || !player.hand.includes(wisdom.cardId)) {
+      throw new Error("Playing Wisdom here needs a Wisdom card in hand.");
+    }
+    if (wisdom.mode === "expert" && expertUsesAvailable(player) <= 0) {
+      throw new Error("No expert uses are available for expert Wisdom.");
+    }
+
+    goldCost = Math.max(0, goldCost - wisdomGoldDiscount(getRuleset(state), wisdom.mode));
+    searchCount = wisdomSearchCount(wisdom.mode);
+  }
+
+  const cost: ResourceCost = { gold: goldCost };
   if (!hasResources(player, cost)) {
     throw new Error("Not enough gold to buy spells.");
   }
 
-  spendResources(state, action.playerId, cost, "spell book");
+  if (wisdom) {
+    const index = player.hand.indexOf(wisdom.cardId);
+    player.hand.splice(index, 1);
+    player.discard.push(wisdom.cardId);
+    if (wisdom.mode === "expert") {
+      player.combatStats.expertUsesSpentThisRound += 1;
+    }
+    appendEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: action.playerId,
+      cardId: wisdom.cardId,
+      timing: "town",
+      mode: wisdom.mode,
+      optionLabel: `Wisdom: −${wisdomGoldDiscount(getRuleset(state), wisdom.mode)} gold, Search (${searchCount})`
+    });
+  }
+
+  if (goldCost > 0) {
+    spendResources(state, action.playerId, cost, "spell book");
+  }
   closeMulliganWindow(state, action.playerId);
   player.townTokens.spellBook = false;
   appendEvent(state, { type: "SPELLS_PURCHASED", playerId: action.playerId, cost });
@@ -1884,8 +1945,67 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
     playerId: action.playerId,
     kind: "shared-deck-search",
     deckId: "spells",
-    count: 2
+    count: searchCount
   });
+}
+
+/**
+ * Blacksmith (rulebook town board): once during your turn, pay 6 gold to
+ * Search (2) the Artifact deck, or remove an Artifact card from your hand to
+ * gain 4 gold. Owning the Blacksmith also unlocks the BINH Major/Relic
+ * artifact decks at hero level 4/6.
+ */
+export function blacksmithAction(state: GameState, action: Extract<GameAction, { type: "BLACKSMITH_ACTION" }>): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+
+  if (state.combat) {
+    throw new Error("Town actions cannot interrupt a combat.");
+  }
+
+  const town = getTownOfPlayer(state, action.playerId);
+  const smith = town?.buildings
+    .map((buildingId) => coreBuildingDefinitions[buildingId])
+    .find((building) => building?.effect?.type === "ARTIFACT_SMITH");
+  if (!smith || smith.effect?.type !== "ARTIFACT_SMITH") {
+    throw new Error("This action needs a Blacksmith.");
+  }
+
+  if (player.blacksmithUsedRound === state.round) {
+    throw new Error("The Blacksmith was already used this turn.");
+  }
+
+  if (action.option === "search") {
+    const cost: ResourceCost = { gold: smith.effect.searchCost };
+    if (!hasResources(player, cost)) {
+      throw new Error("Not enough gold for the Blacksmith search.");
+    }
+
+    spendResources(state, action.playerId, cost, "Blacksmith");
+    player.blacksmithUsedRound = state.round;
+    closeMulliganWindow(state, action.playerId);
+    state.adventure?.rewardQueue.push({
+      playerId: action.playerId,
+      kind: "shared-deck-search",
+      deckId: "artifacts",
+      count: 2
+    });
+    return;
+  }
+
+  const cardId = action.artifactCardId;
+  if (!cardId || !player.hand.includes(cardId) || cardLibrary[cardId]?.kind !== "artifact") {
+    throw new Error("Choose an Artifact card from your hand to sell.");
+  }
+
+  const index = player.hand.indexOf(cardId);
+  player.hand.splice(index, 1);
+  player.removed.push(cardId);
+  player.blacksmithUsedRound = state.round;
+  closeMulliganWindow(state, action.playerId);
+  gainResources(state, action.playerId, { gold: smith.effect.sellGold }, `sold ${cardLibrary[cardId]?.name ?? cardId} at the Blacksmith`);
 }
 
 /**
@@ -1945,6 +2065,77 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
   if (choice.context === "satyr-swap") {
     state.pendingChoice = null;
     resolveSatyrSwap(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "deck-pick") {
+    const deckId = choice.deckPick?.deckIds[action.optionIndex];
+    if (!deckId) {
+      throw new Error("Pick one of the offered decks.");
+    }
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    openSharedDeckSearch(state, action.playerId, deckId, choice.deckPick?.count ?? 2);
+    return;
+  }
+
+  if (choice.context === "discard-pick") {
+    const pick = choice.discardPick;
+    const cardId = pick?.cardIds[action.optionIndex];
+    const player = state.players[action.playerId];
+    if (!pick || !cardId || !player) {
+      throw new Error("Pick one of the offered discard cards.");
+    }
+
+    const index = player.discard.lastIndexOf(cardId);
+    if (index !== -1) {
+      player.discard.splice(index, 1);
+      player.hand.push(cardId);
+    }
+
+    if (pick.shuffleRestIntoDeck && player.discard.length > 0) {
+      player.deck = shuffleCards(
+        [...player.deck, ...player.discard],
+        `${state.seed}#discard-into-deck#${action.playerId}#${state.eventLog.length}`
+      );
+      player.discard = [];
+    }
+
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+
+    if (pick.remaining > 1) {
+      state.adventure?.rewardQueue.unshift({
+        playerId: action.playerId,
+        kind: "discard-pick",
+        count: pick.remaining - 1,
+        filter: pick.filter,
+        fromTop: pick.fromTop,
+        shuffleRestIntoDeck: pick.shuffleRestIntoDeck
+      });
+      pumpAdventureQueues(state);
+    }
+    return;
+  }
+
+  if (choice.context === "eagle-eye") {
+    const dig = choice.eagleEye;
+    const player = state.players[action.playerId];
+    const deck = dig ? state.decks[dig.deckId] : undefined;
+    if (!dig || !player || !deck) {
+      throw new Error("There is no dug spell to resolve.");
+    }
+
+    if (action.optionIndex === 0) {
+      player.hand.push(dig.cardId);
+    } else {
+      deck.discardPile.push(dig.cardId);
+    }
+
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
     return;
   }
 
@@ -2017,9 +2208,93 @@ let cityHallChoiceBeingResolved: {
 // Turn and round flow
 // ---------------------------------------------------------------------------
 
+/**
+ * Logistics (basic) trigger: when the turn is about to end and the played
+ * Logistics effect is active, offer the free step onto an adjacent empty
+ * field (fields with black cubes or your own flags count as empty; guarded,
+ * occupied and blocked fields do not). Consumes the effect either way.
+ */
+function queueLogisticsEndTurnMove(state: GameState, playerId: PlayerId): boolean {
+  const adventure = state.adventure;
+  const effect = state.activeEffects.find(
+    (candidate) =>
+      candidate.controllerId === playerId &&
+      candidate.modifiers.some((modifier) => modifier.type === "END_TURN_ADJACENT_MOVE")
+  );
+  if (!adventure || !effect) {
+    return false;
+  }
+
+  state.activeEffects = state.activeEffects.filter((candidate) => candidate.id !== effect.id);
+
+  const hero = getMainHero(state, playerId);
+  if (!hero?.spaceId) {
+    return false;
+  }
+
+  const destinations = getAdjacentSpaceIds(hero.spaceId).filter((spaceId) => {
+    if (!canCrossEdge(state, hero.spaceId as MapSpaceId, spaceId)) {
+      return false;
+    }
+    if (heroAtSpace(state, spaceId, hero.id)) {
+      return false;
+    }
+    const field = adventure.fields[spaceId];
+    if (!field || isFieldGuarded(field)) {
+      return false;
+    }
+    const location = locationDefinitions[field.location];
+    if (!location || location.category === "blocked") {
+      return false;
+    }
+    // "Empty": nothing would trigger on entering — truly empty fields, used
+    // (black-cubed) visitables, and fields flagged by this player.
+    if (location.category === "empty") {
+      return true;
+    }
+    if (location.category === "visitable") {
+      return field.blackCube;
+    }
+    if (location.category === "flaggable" || location.category === "town") {
+      return field.flagOwnerId === playerId;
+    }
+    return false;
+  });
+
+  if (destinations.length === 0) {
+    return false;
+  }
+
+  adventure.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt: "Logistics: move your hero to an adjacent empty field?",
+        options: [
+          ...destinations.map((spaceId) => ({
+            label: `Move to ${spaceId}`,
+            steps: [{ type: "TELEPORT_HERO" as const, heroId: hero.id, spaceId }]
+          })),
+          { label: "Stay", steps: [] }
+        ]
+      }
+    ]
+  });
+  pumpAdventureQueues(state);
+  return true;
+}
+
 export function endTurnAdventure(state: GameState, action: Extract<GameAction, { type: "END_TURN" }>): void {
   assertActiveTurn(state, action.playerId);
   assertNoPendingInput(state);
+
+  // Logistics (basic): "At the end of your turn, move your Hero's model to an
+  // adjacent empty field." The choice opens once, then the turn really ends.
+  if (queueLogisticsEndTurnMove(state, action.playerId)) {
+    return;
+  }
 
   const player = state.players[action.playerId];
   if (player) {
@@ -2039,11 +2314,8 @@ export function endTurnAdventure(state: GameState, action: Extract<GameAction, {
     }
   }
 
-  const expired = expireEffectsForTurnEnd(state, action.playerId);
-  for (const effect of expired) {
-    appendEvent(state, { type: "ACTIVE_EFFECT_EXPIRED", effectId: effect.id, reason: "turn-ended" });
-  }
-
+  // Ongoing cards last "until the player who played them starts their next
+  // Turn" — they survive the opponents' turns and expire in startPlayerTurn.
   const order = state.turnOrder;
   const currentIndex = order.indexOf(action.playerId);
   const nextIndex = (currentIndex + 1) % order.length;
@@ -2063,6 +2335,81 @@ export function endTurnAdventure(state: GameState, action: Extract<GameAction, {
   state.activePlayerId = nextPlayerId;
   state.turn.observingPlayerId = nextPlayerId;
   startPlayerTurn(state, nextPlayerId);
+}
+
+// ---------------------------------------------------------------------------
+// Shared-deck searches (split decks, Scouting, school fetches, repeats)
+// ---------------------------------------------------------------------------
+
+/**
+ * Expands a deck-family id ("spells", "artifacts") into the decks this player
+ * may search right now. Explicit split-deck ids pass through unchanged.
+ */
+export function resolveSearchDeckCandidates(state: GameState, playerId: PlayerId, deckId: string): string[] {
+  const hero = getMainHero(state, playerId);
+
+  if (deckId === "spells") {
+    return eligibleSpellDecks(state, playerId, hero);
+  }
+
+  if (deckId === "artifacts") {
+    const artifactSource = Boolean(
+      getTownOfPlayer(state, playerId)?.buildings.some(
+        (buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "ARTIFACT_SMITH"
+      )
+    );
+    return eligibleArtifactDecks(state, playerId, hero, artifactSource);
+  }
+
+  return [deckId];
+}
+
+/**
+ * Opens the DECK_SEARCH pending choice on a concrete deck, applying Scouting
+ * search-size overrides, Basic X Magic school fetches and the Pendant of
+ * Courage repeat.
+ */
+export function openSharedDeckSearch(state: GameState, playerId: PlayerId, deckId: string, baseCount: number): void {
+  const deck = state.decks[deckId];
+  if (!deck) {
+    return;
+  }
+
+  const count = applySearchCountEffects(state, playerId, baseCount);
+  const revealedCardIds: string[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const cardId = deck.drawPile.pop();
+    if (!cardId) {
+      break;
+    }
+    revealedCardIds.push(cardId);
+  }
+
+  const schoolFetch = isSpellDeck(deckId) ? activeSchoolFetches(state, playerId) : [];
+  const repeats = takeSearchRepeatEffect(state, playerId);
+
+  const choiceId = `choice_${state.eventLog.length + 1}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "DECK_SEARCH",
+    playerId,
+    deckId,
+    revealedCardIds,
+    canTakeDiscardTop: deck.discardPile.length > 0,
+    ...(schoolFetch.length > 0 ? { schoolFetch } : {}),
+    ...(repeats ? { repeatSearch: { deckId, count: baseCount } } : {}),
+    returnPhase: "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+
+  appendEvent(state, {
+    type: "DECK_SEARCH_STARTED",
+    playerId,
+    deckId,
+    choiceId,
+    revealedCount: revealedCardIds.length
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2113,42 +2460,85 @@ export function pumpAdventureQueues(state: GameState): void {
     }
 
     if (reward.kind === "shared-deck-search") {
-      const deck = state.decks[reward.deckId];
-      if (!deck || deck.drawPile.length + deck.discardPile.length === 0) {
-        adventure.rewardQueue.shift();
+      adventure.rewardQueue.shift();
+
+      // "Spells"/"artifacts" are deck families: in BINH mode the player may
+      // pick among the unlocked split decks (rulebook optional rule + the
+      // BINH level/map gates); decks that ran out of cards drop out.
+      const candidates = resolveSearchDeckCandidates(state, reward.playerId, reward.deckId).filter((deckId) => {
+        const deck = state.decks[deckId];
+        return deck && deck.drawPile.length + deck.discardPile.length > 0;
+      });
+
+      if (candidates.length === 0) {
         continue;
       }
 
+      if (candidates.length > 1) {
+        const choiceId = `choice_${state.eventLog.length + 1}`;
+        state.pendingChoice = {
+          id: choiceId,
+          type: "OPTION_CHOICE",
+          playerId: reward.playerId,
+          prompt: `Search which deck? (Search ${reward.count})`,
+          options: candidates.map((deckId) => ({
+            label: `${deckDisplayName(state, deckId)} (${(state.decks[deckId]?.drawPile.length ?? 0) + (state.decks[deckId]?.discardPile.length ?? 0)} cards)`
+          })),
+          context: "deck-pick",
+          deckPick: { deckIds: candidates, count: reward.count },
+          returnPhase: "player-turn"
+        };
+        state.phase = "choice";
+        state.priorityPlayerId = reward.playerId;
+        return;
+      }
+
+      openSharedDeckSearch(state, reward.playerId, candidates[0], reward.count);
+      return;
+    }
+
+    if (reward.kind === "discard-pick") {
       adventure.rewardQueue.shift();
-      const revealedCardIds: string[] = [];
-      for (let count = 0; count < reward.count; count += 1) {
-        const cardId = deck.drawPile.pop();
-        if (!cardId) {
-          break;
+      const player = state.players[reward.playerId];
+      if (!player) {
+        continue;
+      }
+
+      const pool = reward.fromTop ? player.discard.slice(-reward.fromTop) : [...player.discard];
+      const candidates = pool.filter((cardId) => {
+        const kind = cardLibrary[cardId]?.kind;
+        if (reward.filter === "spell") {
+          return kind === "spell";
         }
-        revealedCardIds.push(cardId);
+        if (reward.filter === "non-artifact") {
+          return kind !== "artifact";
+        }
+        return true;
+      });
+
+      if (candidates.length === 0) {
+        continue;
       }
 
       const choiceId = `choice_${state.eventLog.length + 1}`;
       state.pendingChoice = {
         id: choiceId,
-        type: "DECK_SEARCH",
+        type: "OPTION_CHOICE",
         playerId: reward.playerId,
-        deckId: reward.deckId,
-        revealedCardIds,
-        canTakeDiscardTop: deck.discardPile.length > 0,
-        returnPhase: "player-turn"
+        prompt: `Take a card from your discard pile${reward.count > 1 ? ` (${reward.count} left)` : ""}`,
+        options: candidates.map((cardId) => ({ label: `Take ${cardLibrary[cardId]?.name ?? cardId}` })),
+        context: "discard-pick",
+        discardPick: {
+          cardIds: candidates,
+          remaining: reward.count,
+          filter: reward.filter,
+          fromTop: reward.fromTop,
+          shuffleRestIntoDeck: reward.shuffleRestIntoDeck
+        },
+        returnPhase: state.combat ? "combat" : "player-turn"
       };
       state.phase = "choice";
       state.priorityPlayerId = reward.playerId;
-
-      appendEvent(state, {
-        type: "DECK_SEARCH_STARTED",
-        playerId: reward.playerId,
-        deckId: reward.deckId,
-        choiceId,
-        revealedCount: revealedCardIds.length
-      });
       return;
     }
 
