@@ -50,7 +50,29 @@ import {
   type TilePlacementSelection
 } from "@/components/adventure/screen";
 import { cardName, formatEvent, unitName, type CardBoardAction } from "@/components/table/utils";
+import {
+  DRAW_STAGGER_MS,
+  FLIGHT_MS,
+  FLIGHT_OUT_MS,
+  FxStage,
+  HOLD_CENTER_MS,
+  type FxCue
+} from "@/components/table/fx";
+import { abilityFxPlans, cancelFx, spellFxPlans, type SpellFxPlan } from "@/data/fx";
+import { playLibrarySound } from "@/lib/sound";
 import { connectRoom, type GameRoomSnapshot, type RoomConnection } from "@/lib/realtime";
+
+/** Events that move cards or play battle effects on the combat table. */
+const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
+  "CARDS_DRAWN",
+  "CARD_PLAYED",
+  "SPELL_CAST_STARTED",
+  "SPELL_CAST_RESOLVED",
+  "SPELL_CAST_CANCELLED",
+  "DAMAGE_ASSIGNED",
+  "DAMAGE_HEALED",
+  "UNIT_ABILITY_TRIGGERED"
+]);
 
 const OBSERVER_SEAT = "observer";
 
@@ -112,11 +134,16 @@ export default function Home() {
   const [moveCue, setMoveCue] = useState<HeroMoveCue | null>(null);
   const [flippedUnitIds, setFlippedUnitIds] = useState<Set<string>>(new Set());
   const [feedItems, setFeedItems] = useState<AdventureFeedItem[]>([]);
+  const [fxCues, setFxCues] = useState<FxCue[]>([]);
+  const [hiddenHandTail, setHiddenHandTail] = useState(0);
+  const [tintedUnits, setTintedUnits] = useState<Map<string, string>>(new Map());
   const seenRollIdsRef = useRef<Set<string> | null>(null);
   const seenDrawIdsRef = useRef<Set<string>>(new Set());
   const seenFlipIdsRef = useRef<Set<string>>(new Set());
   const seenMoveIdsRef = useRef<Set<string>>(new Set());
   const seenFeedIdsRef = useRef<Set<string>>(new Set());
+  const seenFxIdsRef = useRef<Set<string>>(new Set());
+  const hiddenHandTimerRef = useRef<number | null>(null);
   const connectionRef = useRef<RoomConnection | null>(null);
   // The draw cue needs the live seat without resubscribing the stream.
   const viewerRef = useRef<PlayerId>("p1");
@@ -141,6 +168,7 @@ export default function Home() {
       (event): event is Extract<GameEvent, { type: "HERO_MOVED" }> => event.type === "HERO_MOVED"
     );
     const feedEvents = nextState.eventLog.filter((event) => ADVENTURE_FEED_CUES[event.type]);
+    const fxEvents = nextState.eventLog.filter((event) => FX_EVENT_TYPES.has(event.type));
 
     if (!seenRollIdsRef.current) {
       seenRollIdsRef.current = new Set(rolls.map((event) => event.id));
@@ -148,6 +176,11 @@ export default function Home() {
       seenFlipIdsRef.current = new Set(flips.map((event) => event.id));
       seenMoveIdsRef.current = new Set(moves.map((event) => event.id));
       seenFeedIdsRef.current = new Set(feedEvents.map((event) => event.id));
+      seenFxIdsRef.current = new Set(fxEvents.map((event) => event.id));
+      // Fresh room connection: drop any presentation state from the last room.
+      setFxCues([]);
+      setHiddenHandTail(0);
+      setTintedUnits(new Map());
     } else {
       // Adventure feed: spell out every visit effect, fight, gain and reveal
       // as a toast. The cue name is the future audio hook.
@@ -188,12 +221,14 @@ export default function Home() {
         });
       }
 
-      // Draw effect: show the cards leaving the deck for the hand.
+      // Draw effect: show the cards leaving the deck for the hand. On the
+      // combat table the FX stage flies cards deck->hand instead, so the
+      // center-screen cinematic only plays on the adventure layout.
       const freshDraw = draws.filter((event) => !seenDrawIdsRef.current.has(event.id)).at(-1);
       for (const event of draws) {
         seenDrawIdsRef.current.add(event.id);
       }
-      if (freshDraw && freshDraw.count > 0) {
+      if (freshDraw && freshDraw.count > 0 && !nextState.combat) {
         const isViewer = freshDraw.playerId === viewerRef.current;
         setDrawCue({
           id: freshDraw.id,
@@ -254,6 +289,251 @@ export default function Home() {
           });
         }, 2400);
       }
+
+      // Combat table presentation: card flights, spell sprites, projectiles
+      // and damage floaters, chained on one timeline per snapshot so a cast
+      // reads as "card to center -> effect on target -> damage number".
+      const freshFx = fxEvents.filter((event) => !seenFxIdsRef.current.has(event.id));
+      for (const event of fxEvents) {
+        seenFxIdsRef.current.add(event.id);
+      }
+      if (freshFx.length > 0 && nextState.combat) {
+        const cues: FxCue[] = [];
+        const viewerId = viewerRef.current;
+        // When an attack roll cues in the same batch, let the dice settle
+        // before its damage number pops.
+        let timeline = fresh.length > 0 ? 1200 : 0;
+        let viewerDraws = 0;
+
+        const queueBoardFx = (
+          plan: SpellFxPlan,
+          eventId: string,
+          casterId: PlayerId,
+          targetUnitId: string
+        ) => {
+          const at = `unit:${targetUnitId}`;
+          if (plan.projectile) {
+            cues.push({
+              kind: "projectile",
+              id: `${eventId}-projectile`,
+              fxKey: plan.projectile,
+              from: `hand:${casterId}`,
+              to: at,
+              hitFxKey: plan.hit,
+              sound: plan.sound,
+              hitSound: plan.hitSound,
+              delayMs: timeline
+            });
+            timeline += 1100;
+          } else if (plan.hit) {
+            cues.push({
+              kind: "sprite",
+              id: `${eventId}-hit`,
+              fxKey: plan.hit,
+              at,
+              sound: plan.hitSound ?? plan.sound,
+              delayMs: timeline
+            });
+            timeline += 850;
+          }
+          plan.affect?.forEach((entry, index) => {
+            cues.push({
+              kind: "sprite",
+              id: `${eventId}-affect-${index}`,
+              fxKey: entry.key,
+              at,
+              sound: index === 0 ? plan.sound : undefined,
+              delayMs: timeline + (entry.delayMs ?? 0)
+            });
+          });
+          if (plan.affect && plan.affect.length > 0) {
+            timeline += 950;
+          }
+          if (plan.tint) {
+            const tint = plan.tint;
+            const soundKey = plan.sound;
+            window.setTimeout(() => {
+              if (soundKey) {
+                playLibrarySound(soundKey);
+              }
+              setTintedUnits((current) => new Map(current).set(targetUnitId, tint));
+              window.setTimeout(() => {
+                setTintedUnits((current) => {
+                  const next = new Map(current);
+                  next.delete(targetUnitId);
+                  return next;
+                });
+              }, 1600);
+            }, timeline);
+            timeline += 900;
+          }
+        };
+
+        for (const event of freshFx) {
+          switch (event.type) {
+            case "CARDS_DRAWN": {
+              if (event.count <= 0) {
+                break;
+              }
+              const isViewer = event.playerId === viewerId;
+              const drawnIds = isViewer
+                ? (nextState.players[event.playerId]?.hand.slice(-event.count) ?? [])
+                : [];
+              const flightCount = Math.min(event.count, 6);
+              if (event.reshuffledDiscard) {
+                cues.push({
+                  kind: "pulse",
+                  id: `${event.id}-shuffle`,
+                  at: `deck:${event.playerId}`,
+                  text: "Reshuffled",
+                  delayMs: timeline
+                });
+                timeline += 750;
+              }
+              for (let i = 0; i < flightCount; i += 1) {
+                cues.push({
+                  kind: "flight",
+                  id: `${event.id}-card-${i}`,
+                  from: `deck:${event.playerId}`,
+                  to: `hand:${event.playerId}`,
+                  cardId: isViewer ? drawnIds[i] : undefined,
+                  delayMs: timeline + i * DRAW_STAGGER_MS
+                });
+              }
+              timeline += FLIGHT_MS + (flightCount - 1) * DRAW_STAGGER_MS;
+              if (isViewer) {
+                viewerDraws += event.count;
+              }
+              break;
+            }
+            case "CARD_PLAYED": {
+              cues.push({
+                kind: "flight",
+                id: `${event.id}-play`,
+                from: `hand:${event.playerId}`,
+                to: `discard:${event.playerId}`,
+                cardId: event.cardId,
+                holdMs: HOLD_CENTER_MS,
+                delayMs: timeline
+              });
+              timeline += FLIGHT_MS + HOLD_CENTER_MS + FLIGHT_OUT_MS;
+              break;
+            }
+            case "SPELL_CAST_STARTED": {
+              cues.push({
+                kind: "flight",
+                id: `${event.id}-cast`,
+                from: `hand:${event.playerId}`,
+                to: `discard:${event.playerId}`,
+                cardId: event.spellCardId,
+                holdMs: HOLD_CENTER_MS,
+                delayMs: timeline
+              });
+              // Board effects may begin while the card exits to the discard.
+              timeline += FLIGHT_MS + HOLD_CENTER_MS;
+              break;
+            }
+            case "SPELL_CAST_RESOLVED": {
+              const plan = spellFxPlans[event.spellCardId];
+              if (plan && event.target.type === "unit") {
+                queueBoardFx(plan, event.id, event.playerId, event.target.unitId);
+              }
+              break;
+            }
+            case "SPELL_CAST_CANCELLED": {
+              cues.push({
+                kind: "sprite",
+                id: `${event.id}-fizzle`,
+                fxKey: cancelFx.key,
+                at: "center",
+                sound: cancelFx.sound,
+                delayMs: timeline
+              });
+              cues.push({
+                kind: "floater",
+                id: `${event.id}-note`,
+                at: "center",
+                text: "Cancelled!",
+                tone: "info",
+                delayMs: timeline + 150
+              });
+              timeline += 800;
+              break;
+            }
+            case "DAMAGE_ASSIGNED": {
+              if (event.target.type === "unit" && event.amount > 0) {
+                cues.push({
+                  kind: "floater",
+                  id: `${event.id}-floater`,
+                  at: `unit:${event.target.unitId}`,
+                  text: `−${event.amount}`,
+                  tone: "damage",
+                  delayMs: timeline
+                });
+              }
+              break;
+            }
+            case "DAMAGE_HEALED": {
+              if (event.target.type === "unit" && event.amount > 0) {
+                cues.push({
+                  kind: "floater",
+                  id: `${event.id}-floater`,
+                  at: `unit:${event.target.unitId}`,
+                  text: `+${event.amount}`,
+                  tone: "heal",
+                  delayMs: timeline
+                });
+              }
+              break;
+            }
+            case "UNIT_ABILITY_TRIGGERED": {
+              const plan = abilityFxPlans[event.abilityId];
+              if (!plan) {
+                break;
+              }
+              const at = `unit:${event.targetUnitId ?? event.unitId}`;
+              if (plan.hit) {
+                cues.push({
+                  kind: "sprite",
+                  id: `${event.id}-ability`,
+                  fxKey: plan.hit,
+                  at,
+                  sound: plan.hitSound ?? plan.sound,
+                  delayMs: timeline
+                });
+                timeline += 700;
+              }
+              plan.affect?.forEach((entry, index) => {
+                cues.push({
+                  kind: "sprite",
+                  id: `${event.id}-ability-${index}`,
+                  fxKey: entry.key,
+                  at,
+                  sound: index === 0 ? plan.sound : undefined,
+                  delayMs: timeline + (entry.delayMs ?? 0)
+                });
+              });
+              if (plan.affect && plan.affect.length > 0) {
+                timeline += 800;
+              }
+              break;
+            }
+            default:
+              break;
+          }
+        }
+
+        if (viewerDraws > 0) {
+          setHiddenHandTail(viewerDraws);
+          if (hiddenHandTimerRef.current) {
+            window.clearTimeout(hiddenHandTimerRef.current);
+          }
+          hiddenHandTimerRef.current = window.setTimeout(() => setHiddenHandTail(0), timeline + 80);
+        }
+        if (cues.length > 0) {
+          setFxCues((current) => [...current, ...cues]);
+        }
+      }
     }
 
     setState(nextState);
@@ -278,6 +558,10 @@ export default function Home() {
         ? { current: current.queue[0], queue: current.queue.slice(1) }
         : { current: null, queue: [] }
     );
+  }, []);
+
+  const handleFxDone = useCallback((id: string) => {
+    setFxCues((current) => current.filter((cue) => cue.id !== id));
   }, []);
 
   // One live connection per room: PartyKit edge socket when configured,
@@ -771,6 +1055,7 @@ export default function Home() {
             onInspect={setInspectedUnitId}
             selectedCardAction={selectedCardAction}
             state={state}
+            tintedUnits={tintedUnits}
             viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
           />
           {state.combat?.setup && isSeated ? (
@@ -804,6 +1089,7 @@ export default function Home() {
         {isSeated ? <PlayerDock view={playerView} viewerPlayerId={viewerPlayerId} /> : <div />}
         {isSeated ? (
           <HandFan
+            hiddenTailCount={hiddenHandTail}
             legalActions={legalActions}
             onAction={submitAction}
             onSelectCardAction={setSelectedCardAction}
@@ -838,6 +1124,7 @@ export default function Home() {
       {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
       {drawCue && !dice.current ? <DrawOverlay cue={drawCue} key={drawCue.id} onDone={() => setDrawCue(null)} /> : null}
       {dice.current ? <DiceOverlay cue={dice.current} key={dice.current.id} onDone={dismissDice} /> : null}
+      <FxStage cues={fxCues} onDone={handleFxDone} />
     </main>
     </CardZoomProvider>
   );
