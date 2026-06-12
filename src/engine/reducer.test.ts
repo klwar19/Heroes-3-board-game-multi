@@ -1471,6 +1471,58 @@ describe("rules engine prototype", () => {
     expect(getLegalActions(used, "p1").some((legal) => legal.action.type === "MOVE_UNIT")).toBe(false);
   });
 
+  it("applies Behemoths' defense reduction to their attack damage", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    Object.assign(state.combat.units.unit_p1_griffins, {
+      name: "Behemoths",
+      cardName: "Pack of Behemoths",
+      variant: "pack",
+      grade: "gold",
+      type: "ground",
+      attack: 7,
+      defense: 2,
+      maxHealth: 10,
+      damage: 0,
+      initiative: 9,
+      position: 8,
+      abilities: ["behemoth-defense-crush-pack"]
+    });
+    Object.assign(state.combat.units.unit_p2_dread_knights, {
+      defense: 2,
+      maxHealth: 7,
+      damage: 0,
+      position: 9
+    });
+    setActiveUnit(state, "p1", "unit_p1_griffins");
+    scriptDice(state, [0]);
+
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_dread_knights"
+    });
+    const result = passAllReactions(declared);
+
+    expect(findEvent(result, "UNIT_ABILITY_TRIGGERED")).toMatchObject({
+      abilityId: "behemoth-defense-crush-pack",
+      targetUnitId: "unit_p2_dread_knights"
+    });
+    expect(findEvent(result, "ATTACK_ROLLED")).toMatchObject({
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_dread_knights",
+      attackValue: 7,
+      defenseValue: 0,
+      damage: 7
+    });
+    expect(result.combat?.units.unit_p2_dread_knights.damage).toBe(7);
+  });
+
   it("allows opening simultaneous town actions before ordered turns begin", () => {
     const state = createInitialGameState();
     state.phase = "simultaneous-turns";

@@ -51,6 +51,32 @@ export type UnitAbilityEffectDefinition =
       baseAttack: number;
     }
   | {
+      /**
+       * Wolf Raiders: after their target retaliates if possible, attack the
+       * same target a second time. The follow-up does not provoke a second
+       * retaliation.
+       */
+      type: "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION";
+    }
+  | {
+      /**
+       * Thunderbirds: immediately after their attack, before retaliation,
+       * roll one Attack die and deal flat damage to the target on matching
+       * faces. The printed Stronghold card triggers on 0 or +1.
+       */
+      type: "ATTACK_DIE_FLAT_DAMAGE_TO_TARGET";
+      minRoll: number;
+      amount: number;
+    }
+  | {
+      /**
+       * Behemoths: the target's defense is lowered for this attack, never
+       * below zero after all attack-window modifiers are counted.
+       */
+      type: "DEFENSE_REDUCTION_ON_ATTACK";
+      amount: number;
+    }
+  | {
       type: "ATTACK_DIE_REROLL";
       rerollsPerAttack: number;
       /**
@@ -167,6 +193,34 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Death Cloud",
     text: "Choose a unit adjacent to the target and attack it. For the purpose of this attack, your attack is 2. (A full separate attack: instants may be played and the attack die rolls. It can — and with no other choice must — hit friendly units or the Liches themselves.)",
     effect: { type: "SECOND_ATTACK_ADJACENT_TO_TARGET", baseAttack: 2 },
+    implementationStatus: "implemented"
+  },
+  "wolf-raiders-strike-twice": {
+    id: "wolf-raiders-strike-twice",
+    name: "Strike Twice",
+    text: "After the target retaliates, if possible, attack that target again. The second attack does not provoke another retaliation.",
+    effect: { type: "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION" },
+    implementationStatus: "implemented"
+  },
+  "thunderbirds-lightning": {
+    id: "thunderbirds-lightning",
+    name: "Lightning Strike",
+    text: 'Right after this unit attacks and before retaliation, roll 1 Attack die. On "0" or "+1", deal 1 damage to the target.',
+    effect: { type: "ATTACK_DIE_FLAT_DAMAGE_TO_TARGET", minRoll: 0, amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "behemoth-defense-crush-few": {
+    id: "behemoth-defense-crush-few",
+    name: "Crushing Blow",
+    text: "Decrease the target's defense by 1, to a minimum of 0, for this attack.",
+    effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "behemoth-defense-crush-pack": {
+    id: "behemoth-defense-crush-pack",
+    name: "Corrosive Crush",
+    text: "Decrease the target's defense by 2, to a minimum of 0, for this attack. The printed Corrosion token is tracked manually.",
+    effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 2 },
     implementationStatus: "implemented"
   },
   "ogres-attack-token-pack": {

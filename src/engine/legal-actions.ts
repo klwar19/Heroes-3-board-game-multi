@@ -22,6 +22,7 @@ import {
   observatoryDiscoverTargets,
   removableHandCards
 } from "./adventure-reducer";
+import { effectAppliesToUnit } from "./active-effects";
 import {
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
@@ -77,6 +78,8 @@ type CardPlayVariant = {
   cost?: CardPlayCost;
   /** Option only playable outside combat. */
   mapOnly?: boolean;
+  /** Option only playable during combat. */
+  combatOnly?: boolean;
   /** Option is the card's expert side (costs a crown). */
   expertOnly?: boolean;
 };
@@ -90,6 +93,7 @@ export function getCardPlayVariants(card: CardDefinition): CardPlayVariant[] {
       optionLabel: option.label,
       cost: option.cost,
       mapOnly: option.mapOnly,
+      combatOnly: option.combatOnly,
       expertOnly: option.expertOnly
     }));
   }
@@ -240,7 +244,7 @@ export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitSt
 /** Initiative including Haste/Slow and other lasting bonuses on the unit. */
 export function effectiveInitiative(unit: CombatUnitState, activeEffects: ActiveEffectState[] = []): number {
   const bonus = activeEffects.reduce((total, effect) => {
-    if (effect.target?.type !== "unit" || effect.target.unitId !== unit.id) {
+    if (!effectAppliesToUnit(effect, unit)) {
       return total;
     }
     return (
@@ -849,6 +853,9 @@ function addOptionPlays(
       continue;
     }
     if (option.mapOnly && context !== "map") {
+      continue;
+    }
+    if (option.combatOnly && context !== "combat") {
       continue;
     }
     if (!isOptionEffectPlayable(state, playerId, option.effect, context)) {

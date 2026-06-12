@@ -1,6 +1,6 @@
 import type { ResourceCost, UnitType } from "@/engine/state";
 
-export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon";
+export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon" | "stronghold";
 export type UnitTier = "bronze" | "silver" | "gold" | "azure";
 
 export type UnitSideDefinition = {
@@ -68,7 +68,7 @@ export type TownBuildingEffect =
   | { type: "UNLOCK_RECRUIT_TIER"; tier: UnitTier }
   | { type: "UNLOCK_REINFORCE" }
   | { type: "MAGE_GUILD" }
-  | { type: "RESOURCE_ROUND_CHOICE"; options: { label: string; gold?: number; buildingMaterials?: number; valuables?: number; movement?: number; reinforceBronzeFree?: boolean }[] }
+  | { type: "RESOURCE_ROUND_CHOICE"; options: { label: string; gold?: number; buildingMaterials?: number; valuables?: number; movement?: number; drawCards?: number; reinforceBronzeFree?: boolean }[] }
   | { type: "RESOURCE_ROUND_MORALE" }
   | {
       /**
