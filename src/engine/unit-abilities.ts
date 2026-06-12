@@ -91,6 +91,54 @@ export function getSecondAttackAbility(
   return null;
 }
 
+/** Wolf Raiders: a same-target second attack after retaliation has resolved. */
+export function getAfterRetaliationAttackAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION")) {
+    if (ability.effect?.type === "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION") {
+      return { abilityId: ability.id, abilityName: ability.name };
+    }
+  }
+
+  return null;
+}
+
+export type AttackDieDamageFollowUp = {
+  abilityId: string;
+  abilityName: string;
+  minRoll: number;
+  amount: number;
+};
+
+/** Thunderbirds: roll one extra Attack die and damage the original target on 0/+1. */
+export function getAttackDieDamageFollowUps(unit: CombatUnitState): AttackDieDamageFollowUp[] {
+  return getAbilitiesWithEffect(unit, "ATTACK_DIE_FLAT_DAMAGE_TO_TARGET").flatMap((ability) =>
+    ability.effect?.type === "ATTACK_DIE_FLAT_DAMAGE_TO_TARGET"
+      ? [
+          {
+            abilityId: ability.id,
+            abilityName: ability.name,
+            minRoll: ability.effect.minRoll,
+            amount: ability.effect.amount
+          }
+        ]
+      : []
+  );
+}
+
+export function getAttackDefenseReductionAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; amount: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "DEFENSE_REDUCTION_ON_ATTACK")) {
+    if (ability.effect?.type === "DEFENSE_REDUCTION_ON_ATTACK") {
+      return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
+    }
+  }
+
+  return null;
+}
+
 export type FlatDamageFollowUp = {
   abilityId: string;
   abilityName: string;

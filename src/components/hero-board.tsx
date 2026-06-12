@@ -27,7 +27,8 @@ const BOARD_THEMES: Record<string, { banner: string; edge: string }> = {
   rampart: { banner: "linear-gradient(180deg, #379a46 0%, #1c6228 100%)", edge: "#3f9e4d" },
   inferno: { banner: "linear-gradient(180deg, #ab2a1c 0%, #6e150b 100%)", edge: "#b03a26" },
   necropolis: { banner: "linear-gradient(180deg, #27796b 0%, #154c44 100%)", edge: "#2e7a6e" },
-  dungeon: { banner: "linear-gradient(180deg, #6b48b8 0%, #3d2769 100%)", edge: "#7a55c0" }
+  dungeon: { banner: "linear-gradient(180deg, #6b48b8 0%, #3d2769 100%)", edge: "#7a55c0" },
+  stronghold: { banner: "linear-gradient(180deg, #a9642a 0%, #5e3219 100%)", edge: "#b97835" }
 };
 
 // ---------------------------------------------------------------------------

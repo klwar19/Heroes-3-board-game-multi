@@ -1,6 +1,6 @@
 import type { ResourceCost, UnitType } from "@/engine/state";
 
-export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon";
+export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon" | "stronghold";
 export type UnitTier = "bronze" | "silver" | "gold" | "azure";
 
 export type UnitSideDefinition = {
