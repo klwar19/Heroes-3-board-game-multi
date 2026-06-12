@@ -72,6 +72,9 @@ import {
   rerollSourceAvailableFor
 } from "./legal-actions";
 import {
+  getAfterRetaliationAttackAbility,
+  getAttackDefenseReductionAbility,
+  getAttackDieDamageFollowUps,
   getDoubleAttackAbility,
   getFlatDamageFollowUps,
   getPostAttackAbilityDamageEffects,
@@ -96,6 +99,7 @@ import type {
   CardPlayMode,
   CombatState,
   CombatUnitState,
+  EffectDefinition,
   EngineResult,
   GameAction,
   GameEvent,
@@ -115,6 +119,9 @@ type ReducerOptions = {
   cards?: CardLibrary;
   buildings?: BuildingLibrary;
 };
+
+type ConcreteEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
+type CreateActiveEffectCardEffect = Extract<ConcreteEffect, { type: "CREATE_ACTIVE_EFFECT" }>;
 
 function cloneState(state: GameState): GameState {
   return JSON.parse(JSON.stringify(state)) as GameState;
@@ -470,15 +477,12 @@ function createActiveEffect(
 function createActiveEffectFromCard(
   state: GameState,
   card: CardDefinition,
+  effect: CreateActiveEffectCardEffect,
   playerId: PlayerId,
   mode: "basic" | "expert",
   target?: { type: "unit"; unitId: UnitId }
 ): void {
-  if (card.effect.type !== "CREATE_ACTIVE_EFFECT") {
-    return;
-  }
-
-  const effectDefinition = mode === "expert" ? (card.effect.expertEffect ?? card.effect.effect) : card.effect.effect;
+  const effectDefinition = mode === "expert" ? (effect.expertEffect ?? effect.effect) : effect.effect;
   createActiveEffect(
     state,
     effectDefinition,
@@ -524,6 +528,10 @@ function getAmountByPower(amountByPower: Record<number, number> | undefined, fal
   return matchingPower === undefined ? fallback : (amountByPower[matchingPower] ?? fallback);
 }
 
+function doubleAmountForUnitName(amount: number, unit: CombatUnitState | undefined, unitName: string | undefined): number {
+  return unitName && unit?.name === unitName ? amount * 2 : amount;
+}
+
 function createAttackBuffFromCard(
   state: GameState,
   card: CardDefinition,
@@ -535,7 +543,12 @@ function createAttackBuffFromCard(
     return;
   }
 
-  const amount = getAmountByPower(card.effect.amountByPower, card.effect.amount ?? 0, power);
+  const targetUnit = state.combat?.units[target.unitId];
+  const amount = doubleAmountForUnitName(
+    getAmountByPower(card.effect.amountByPower, card.effect.amount ?? 0, power),
+    targetUnit,
+    card.effect.doubleForUnitName
+  );
   createActiveEffect(
     state,
     {
@@ -866,6 +879,7 @@ function getAttackStackDetails(
       dieMultiplier: number;
       /** Bless: the Attack die is skipped and counts as 0. */
       ignoreAttackDie: boolean;
+      defenseReductionAbility?: { abilityId: string; abilityName: string; amount: number };
       /** Printed-ability follow-up (Death Cloud): replacement base attack. */
       abilityAttack?: { abilityId: string; baseAttack: number };
     }
@@ -911,6 +925,25 @@ function getAttackStackDetails(
     attackKind
   });
   const activeDefenseBonus = getActiveDefenseBonus(state, defender);
+  const abilityAttack = stackItem.action.type === "ATTACK_UNIT" ? stackItem.action.abilityAttack : undefined;
+  const defenseBonusBeforeAbility = stackItem.modifiers.defenseBonus + activeDefenseBonus;
+  const defenseReductionSource =
+    !isRetaliation && !abilityAttack ? getAttackDefenseReductionAbility(attacker) : null;
+  const currentDefenseValue = Math.max(
+    0,
+    defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonusBeforeAbility
+  );
+  const defenseReductionAmount = defenseReductionSource
+    ? Math.min(defenseReductionSource.amount, currentDefenseValue)
+    : 0;
+  const defenseReductionAbility =
+    defenseReductionSource && defenseReductionAmount > 0
+      ? {
+          abilityId: defenseReductionSource.abilityId,
+          abilityName: defenseReductionSource.abilityName,
+          amount: defenseReductionAmount
+        }
+      : undefined;
 
   return {
     attacker,
@@ -919,10 +952,11 @@ function getAttackStackDetails(
     attackKind,
     rollMode,
     attackBonus: stackItem.modifiers.attackBonus + activeAttackBonus,
-    defenseBonus: stackItem.modifiers.defenseBonus + activeDefenseBonus,
+    defenseBonus: defenseBonusBeforeAbility - defenseReductionAmount,
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
     ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie),
-    abilityAttack: stackItem.action.type === "ATTACK_UNIT" ? stackItem.action.abilityAttack : undefined
+    defenseReductionAbility,
+    abilityAttack
   };
 }
 
@@ -1154,6 +1188,18 @@ function maybeDeclareDoubleAttack(
   return true;
 }
 
+function getAfterRetaliationAttack(
+  attacker: CombatUnitState,
+  defender: CombatUnitState
+): { abilityId: string; abilityName: string; targetUnitId: UnitId } | undefined {
+  if ((attacker.attacksThisActivation ?? 0) !== 1 || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
+    return undefined;
+  }
+
+  const ability = getAfterRetaliationAttackAbility(attacker);
+  return ability ? { ...ability, targetUnitId: defender.id } : undefined;
+}
+
 function finishResolvedAttack(
   state: GameState,
   stackItem: ResolutionStackItem,
@@ -1161,6 +1207,16 @@ function finishResolvedAttack(
   candidate: AttackRollCandidate,
   cards: CardLibrary
 ): void {
+  if (details.defenseReductionAbility) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: details.attacker.id,
+      abilityId: details.defenseReductionAbility.abilityId,
+      targetUnitId: details.defender.id,
+      message: `${details.attacker.name} lowers ${details.defender.name}'s defense by ${details.defenseReductionAbility.amount}.`
+    });
+  }
+
   const attackResult = applyAttackDamageFromCandidate(
     state,
     details.attacker,
@@ -1200,6 +1256,12 @@ function finishResolvedAttack(
   if (details.isRetaliation) {
     // The retaliation has resolved; hand the activation back to the original
     // attacker, who may still owe a post-attack step (ranged units).
+    if (declareAfterRetaliationAbilityAttack(state, cards)) {
+      return;
+    }
+    if (state.combat?.attackSequence?.attackerId === details.defender.id) {
+      state.combat.attackSequence = null;
+    }
     const originalAttacker = details.defender;
     concludeAttackerActivation(state, originalAttacker);
     return;
@@ -1213,6 +1275,10 @@ function finishResolvedAttack(
     if (declareNextQueuedAbilityAttack(state, cards)) {
       return;
     }
+    if (!state.combat?.attackSequence) {
+      concludeAttackerActivation(state, details.attacker);
+      return;
+    }
     resumeAttackSequence(state, cards);
     return;
   }
@@ -1223,13 +1289,18 @@ function finishResolvedAttack(
       attackerId: details.attacker.id,
       defenderId: details.defender.id,
       attackKind: details.attackKind,
-      retaliationPending: shouldRetaliate(details.attacker, details.defender, details.attackKind)
+      retaliationPending: shouldRetaliate(details.attacker, details.defender, details.attackKind),
+      afterRetaliationAbilityAttack: getAfterRetaliationAttack(details.attacker, details.defender)
     };
   }
 
   // Printed flat-damage follow-ups (Magog splash, Cerberi second head)
   // resolve before retaliation; a target choice pauses the sequence here.
   if (openFlatDamageFollowUps(state, details.attacker, details.defender, details.attackKind)) {
+    return;
+  }
+
+  if (applyAttackDieDamageFollowUps(state, details.attacker, details.defender)) {
     return;
   }
 
@@ -1291,6 +1362,82 @@ function applyFireShieldDamage(
     damageKind: "effect"
   });
   markUnitRemovedIfNeeded(state, attacker);
+}
+
+/**
+ * Thunderbirds' lightning: roll one extra Attack die after the attack and
+ * before the parked retaliation. The roll is deterministic through the same
+ * combat dice stream as normal attacks.
+ */
+function applyAttackDieDamageFollowUps(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState
+): boolean {
+  const combat = state.combat;
+  if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
+    return false;
+  }
+
+  const followUps = getAttackDieDamageFollowUps(attacker);
+  for (const followUp of followUps) {
+    if (!isUnitAlive(defender)) {
+      break;
+    }
+
+    const candidate = rollAttackCandidate(combat, "normal");
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: attacker.id,
+      abilityId: followUp.abilityId,
+      targetUnitId: defender.id,
+      message: `${attacker.name} rolls ${candidate.roll} for ${followUp.abilityName}.`
+    });
+
+    if (candidate.roll < followUp.minRoll) {
+      continue;
+    }
+
+    const assignedDamage = Math.min(followUp.amount, Math.max(0, defender.maxHealth - defender.damage));
+    defender.damage += followUp.amount;
+    if (assignedDamage > 0) {
+      appendEvent(state, {
+        type: "DAMAGE_ASSIGNED",
+        source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+        target: { type: "unit", unitId: defender.id },
+        amount: assignedDamage,
+        damageKind: "effect"
+      });
+    }
+    markUnitRemovedIfNeeded(state, defender);
+  }
+
+  return finishCombatIfNeeded(state);
+}
+
+function declareAfterRetaliationAbilityAttack(state: GameState, cards: CardLibrary): boolean {
+  const combat = state.combat;
+  const sequence = combat?.attackSequence;
+  const followUp = sequence?.afterRetaliationAbilityAttack;
+  if (!combat || !sequence || !followUp) {
+    return false;
+  }
+
+  const attacker = combat.units[sequence.attackerId];
+  const target = combat.units[followUp.targetUnitId];
+  combat.attackSequence = null;
+  if (!attacker || !target || !isUnitAlive(attacker) || !isUnitAlive(target)) {
+    return false;
+  }
+
+  declareAbilityAttack(
+    state,
+    attacker,
+    target.id,
+    { abilityId: followUp.abilityId, abilityName: followUp.abilityName, baseAttack: attacker.attack },
+    cards
+  );
+  return true;
 }
 
 /**
@@ -1387,7 +1534,6 @@ function resumeAttackSequence(state: GameState, cards: CardLibrary): void {
   }
 
   const sequence = combat.attackSequence;
-  combat.attackSequence = null;
   if (!sequence) {
     state.phase = "combat";
     state.priorityPlayerId = null;
@@ -1403,10 +1549,16 @@ function resumeAttackSequence(state: GameState, cards: CardLibrary): void {
     defender &&
     shouldRetaliate(attacker, defender, sequence.attackKind)
   ) {
+    sequence.retaliationPending = false;
     openRetaliationWindow(state, attacker, defender, cards);
     return;
   }
 
+  if (sequence.afterRetaliationAbilityAttack && declareAfterRetaliationAbilityAttack(state, cards)) {
+    return;
+  }
+
+  combat.attackSequence = null;
   if (attacker) {
     concludeAttackerActivation(state, attacker);
   } else {
@@ -1929,6 +2081,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       createActiveEffectFromCard(
         state,
         card,
+        card.effect,
         stackItem.action.playerId,
         "basic",
         stackItem.action.target.type === "unit" ? stackItem.action.target : undefined
@@ -1971,7 +2124,12 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
 
     if (card?.effect.type === "CREATE_INITIATIVE_BUFF" && state.combat && stackItem.action.target.type === "unit") {
       const power = getCurrentSpellPower(stackItem, cards);
-      const amount = getAmountByPower(card.effect.amountByPower, card.effect.amount ?? 0, power);
+      const targetUnit = state.combat.units[stackItem.action.target.unitId];
+      const amount = doubleAmountForUnitName(
+        getAmountByPower(card.effect.amountByPower, card.effect.amount ?? 0, power),
+        targetUnit,
+        card.effect.doubleForUnitName
+      );
       createActiveEffect(
         state,
         {
@@ -2047,7 +2205,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     if (card?.effect.type === "ADD_UNIT_MAX_HEALTH" && state.combat && stackItem.action.target.type === "unit") {
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target && target.controllerId === stackItem.action.playerId) {
-        target.maxHealth += card.effect.amount;
+        target.maxHealth += doubleAmountForUnitName(card.effect.amount, target, card.effect.doubleForUnitName);
       }
     }
 
@@ -2691,7 +2849,7 @@ function applyReactionPlayCore(
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
     const effectCountBefore = state.activeEffects.length;
-    createActiveEffectFromCard(state, card, playerId, mode);
+    createActiveEffectFromCard(state, card, effect, playerId, mode);
     holdOngoingCardIfEffectCreated(state, playerId, play.cardId, effectCountBefore, "discard");
     stackItem?.modifiers.playedCardIds.push(play.cardId);
   }
@@ -2931,7 +3089,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
-    createActiveEffectFromCard(state, card, action.playerId, mode, target);
+    createActiveEffectFromCard(state, card, effect, action.playerId, mode, target);
   }
 
   if (effect.type === "CREATE_ATTACK_BUFF" && target) {
@@ -3100,7 +3258,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "CREATE_INITIATIVE_BUFF" && target && state.combat) {
-    const amount = getAmountByPower(effect.amountByPower, effect.amount ?? 0, 0);
+    const targetUnit = state.combat.units[target.unitId];
+    const amount = doubleAmountForUnitName(
+      getAmountByPower(effect.amountByPower, effect.amount ?? 0, 0),
+      targetUnit,
+      effect.doubleForUnitName
+    );
     createActiveEffect(
       state,
       {
@@ -3120,7 +3283,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "ADD_UNIT_MAX_HEALTH" && target && state.combat) {
     const unit = state.combat.units[target.unitId];
     if (unit && unit.controllerId === action.playerId) {
-      unit.maxHealth += effect.amount;
+      unit.maxHealth += doubleAmountForUnitName(effect.amount, unit, effect.doubleForUnitName);
     }
   }
 

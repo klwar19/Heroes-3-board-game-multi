@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { TOWN_BUILDING_IMAGES } from "@/data/assets/homm-assets";
+import { cardLibrary } from "@/data/cards/library";
+import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
+import { coreUnitDefinitions } from "@/data/factions/units";
+import { unitAbilities } from "@/data/units/abilities";
 import { coreTileDefinitions } from "@/data/map/tile-defs";
 import { expansionTileDefinitions } from "@/data/map/expansion-tiles";
 import { allTileDefinitions, ALL_TILE_CONTENT, DEFAULT_TILE_CONTENT, tilePoolIds } from "@/data/map/tiles";
@@ -87,6 +92,73 @@ describe("expansion tile data", () => {
     }
     const withArt = Object.values(allTileDefinitions).filter((tile) => tile.assets?.tileImage);
     expect(withArt).toHaveLength(98);
+  });
+});
+
+describe("Stronghold content", () => {
+  it("wires the faction to its eight town buildings, heroes, units, cards, and art slots", () => {
+    const faction = coreFactionDefinitions.stronghold;
+    expect(faction).toBeDefined();
+    expect(faction.startingTileId).toBe("S7");
+    expect(faction.buildings).toEqual([
+      "stronghold.city_hall",
+      "stronghold.citadel",
+      "stronghold.mage_guild",
+      "stronghold.dwelling_bronze",
+      "stronghold.dwelling_silver",
+      "stronghold.dwelling_gold",
+      "stronghold.hall_of_valhalla",
+      "stronghold.freelancers_guild"
+    ]);
+    expect(Object.keys(TOWN_BUILDING_IMAGES.stronghold ?? {})).toHaveLength(8);
+    for (const building of faction.buildings) {
+      expect(coreBuildingDefinitions[building].assets?.image, `${building} art`).toContain("/assets/town/stronghold_");
+    }
+
+    const cityHall = coreBuildingDefinitions["stronghold.city_hall"];
+    expect(cityHall.effect).toMatchObject({
+      type: "RESOURCE_ROUND_CHOICE",
+      options: [{ drawCards: 2 }, { buildingMaterials: 2 }]
+    });
+    expect(coreBuildingDefinitions["stronghold.freelancers_guild"].cost).toEqual({
+      gold: 4,
+      buildingMaterials: 2,
+      valuables: 1
+    });
+    expect(faction.heroes).toEqual(["crag_hack", "dessa", "gundula", "shiva", "tarnum_stronghold", "yog"]);
+
+    for (const heroId of faction.heroes) {
+      const hero = coreHeroDefinitions[heroId];
+      expect(hero, heroId).toBeDefined();
+      expect(hero.portrait, `${heroId} portrait`).toBe(`/assets/hero_boardart-${heroId}.webp`);
+      expect(hero.boardScan, `${heroId} board`).toContain("/assets/heroes-stronghold-");
+      expect(cardLibrary[hero.startingAbilityCardId], `${heroId} ability`).toBeDefined();
+      for (const specialtyId of Object.values(hero.specialtyCardIds)) {
+        expect(cardLibrary[specialtyId], `${heroId} specialty ${specialtyId}`).toBeDefined();
+        expect(cardLibrary[specialtyId].assets?.cardImage, `${specialtyId} art`).toContain("/assets/hero_specialties-");
+      }
+    }
+
+    expect(faction.units).toEqual([
+      "stronghold.goblins",
+      "stronghold.wolf_raiders",
+      "stronghold.orcs",
+      "stronghold.ogres",
+      "stronghold.thunderbirds",
+      "stronghold.cyclopes",
+      "stronghold.behemoths"
+    ]);
+    for (const unitId of faction.units) {
+      const unit = coreUnitDefinitions[unitId];
+      expect(unit.few?.cardImage, `${unit.id} few art`).toContain("/assets/units-stronghold-");
+      expect(unit.pack?.cardImage, `${unit.id} pack art`).toContain("/assets/units-stronghold-");
+    }
+    expect(coreUnitDefinitions["stronghold.wolf_raiders"].pack?.abilities).toContain("wolf-raiders-strike-twice");
+    expect(coreUnitDefinitions["stronghold.thunderbirds"].pack?.abilities).toContain("thunderbirds-lightning");
+    expect(coreUnitDefinitions["stronghold.behemoths"].pack?.abilities).toContain("behemoth-defense-crush-pack");
+    expect(unitAbilities["wolf-raiders-strike-twice"].implementationStatus).toBe("implemented");
+    expect(unitAbilities["thunderbirds-lightning"].implementationStatus).toBe("implemented");
+    expect(unitAbilities["behemoth-defense-crush-pack"].implementationStatus).toBe("implemented");
   });
 });
 

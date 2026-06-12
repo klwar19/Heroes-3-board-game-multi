@@ -537,6 +537,113 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     }
   },
 
+  // ---- Stronghold expansion ----------------------------------------------
+  "stronghold.goblins": {
+    id: "stronghold.goblins",
+    name: "Goblins",
+    faction: "stronghold",
+    tier: "bronze",
+    type: "ground",
+    few: { attack: 1, defense: 0, health: 4, initiative: 6, cost: { gold: 1 }, abilities: [], cardImage: "/assets/units-stronghold-bronze-goblins-few.webp" },
+    pack: { attack: 2, defense: 0, health: 4, initiative: 7, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-stronghold-bronze-goblins-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/goblins/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/goblins/"
+    }
+  },
+  "stronghold.wolf_raiders": {
+    id: "stronghold.wolf_raiders",
+    name: "Wolf Raiders",
+    faction: "stronghold",
+    tier: "bronze",
+    type: "ground",
+    few: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 3 }, abilities: [], cardImage: "/assets/units-stronghold-bronze-wolf_raiders-few.webp" },
+    pack: { attack: 2, defense: 0, health: 4, initiative: 8, cost: { gold: 5 }, abilities: ["wolf-raiders-strike-twice"], abilityText: "[unit_attack] Attack this target again. The second attack happens after the target retaliates (if possible).", cardImage: "/assets/units-stronghold-bronze-wolf_raiders-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/wolf_raiders/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/wolf_raiders/"
+    }
+  },
+  "stronghold.orcs": {
+    id: "stronghold.orcs",
+    name: "Orcs",
+    faction: "stronghold",
+    tier: "bronze",
+    type: "ranged",
+    few: { attack: 2, defense: 1, health: 4, initiative: 4, cost: { gold: 4 }, abilities: [], cardImage: "/assets/units-stronghold-bronze-orcs-few.webp" },
+    pack: { attack: 3, defense: 1, health: 5, initiative: 5, cost: { gold: 7 }, abilities: [], cardImage: "/assets/units-stronghold-bronze-orcs-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/orcs/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/orcs/"
+    }
+  },
+  "stronghold.ogres": {
+    id: "stronghold.ogres",
+    name: "Ogres",
+    faction: "stronghold",
+    tier: "silver",
+    type: "ground",
+    few: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 6 }, abilities: ["ogres-attack-token-few"], abilityText: "[unit_other] Place a +1 [attack] token on a chosen [unit_ground] or [unit_flying] unit for 2 Combat rounds.", cardImage: "/assets/units-stronghold-silver-ogres-few.webp" },
+    pack: { attack: 3, defense: 2, health: 6, initiative: 5, cost: { gold: 8 }, abilities: ["ogres-attack-token-pack"], abilityText: "[unit_other] Place a +2 [attack] token on a chosen [unit_ground] or [unit_flying] unit for 2 Combat rounds.", cardImage: "/assets/units-stronghold-silver-ogres-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/ogres/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/ogres/"
+    }
+  },
+  "stronghold.thunderbirds": {
+    id: "stronghold.thunderbirds",
+    name: "Thunderbirds",
+    faction: "stronghold",
+    tier: "silver",
+    type: "flying",
+    few: { attack: 4, defense: 1, health: 5, initiative: 9, cost: { gold: 8 }, abilities: [], cardImage: "/assets/units-stronghold-silver-thunderbirds-few.webp" },
+    pack: { attack: 4, defense: 1, health: 6, initiative: 11, cost: { gold: 14 }, abilities: ["thunderbirds-lightning"], abilityText: "[unit_passive] Right after this unit's attack and before any Retaliation, roll 1 Attack die, on a \"0\" or \"+1\", deal 1 [damage] to the target.", cardImage: "/assets/units-stronghold-silver-thunderbirds-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/thunderbirds/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/thunderbirds/"
+    }
+  },
+  "stronghold.cyclopes": {
+    id: "stronghold.cyclopes",
+    name: "Cyclopes",
+    faction: "stronghold",
+    tier: "gold",
+    type: "ranged",
+    few: { attack: 5, defense: 0, health: 6, initiative: 6, cost: { gold: 13 }, abilities: [], abilityText: "[unit_other] This unit can destroy the Gate or a Wall.", cardImage: "/assets/units-stronghold-golden-cyclopes-few.webp" },
+    pack: { attack: 5, defense: 1, health: 7, initiative: 8, cost: { gold: 17, valuables: 1 }, abilities: [], abilityText: "[unit_other] This unit can destroy the Gate, a Wall, or the Arrow Tower.", cardImage: "/assets/units-stronghold-golden-cyclopes-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/cyclopes/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/cyclopes/"
+    }
+  },
+  "stronghold.behemoths": {
+    id: "stronghold.behemoths",
+    name: "Behemoths",
+    faction: "stronghold",
+    tier: "gold",
+    type: "ground",
+    few: { attack: 6, defense: 2, health: 9, initiative: 6, cost: { gold: 19, valuables: 1 }, abilities: ["behemoth-defense-crush-few"], abilityText: "[unit_attack] Decrease the target's [defense] by 1 (to a minimum of 0).", cardImage: "/assets/units-stronghold-golden-behemoths-few.webp" },
+    pack: { attack: 7, defense: 2, health: 10, initiative: 9, cost: { gold: 29, valuables: 2 }, abilities: ["behemoth-defense-crush-pack"], abilityText: "[unit_attack] Decrease the target's [defense] by 2 (to a minimum of 0). After the attack, place 1 Corrosion token on the target.", cardImage: "/assets/units-stronghold-golden-behemoths-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/behemoths/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/behemoths/"
+    }
+  },
+
   "neutral.boars": {
     id: "neutral.boars",
     name: "Boars",
@@ -1109,6 +1216,104 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
       product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
       credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
       url: "https://en.homm3bg.wiki/units/efreet/"
+    }
+  },
+  "neutral.goblins": {
+    id: "neutral.goblins",
+    name: "Goblins",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ground",
+    neutral: { attack: 1, defense: 0, health: 4, initiative: 6, cost: { gold: 4 }, abilities: [] },
+    wikiUrl: "https://en.homm3bg.wiki/units/goblins/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/goblins/"
+    }
+  },
+  "neutral.wolf_raiders": {
+    id: "neutral.wolf_raiders",
+    name: "Wolf Raiders",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ground",
+    neutral: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 6 }, abilities: ["wolf-raiders-strike-twice"], abilityText: "[unit_attack] Attack this target again. The second attack happens after the target retaliates (if possible)." },
+    wikiUrl: "https://en.homm3bg.wiki/units/wolf_raiders/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/wolf_raiders/"
+    }
+  },
+  "neutral.orcs": {
+    id: "neutral.orcs",
+    name: "Orcs",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ranged",
+    neutral: { attack: 2, defense: 1, health: 4, initiative: 4, cost: { gold: 7 }, abilities: [] },
+    wikiUrl: "https://en.homm3bg.wiki/units/orcs/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/orcs/"
+    }
+  },
+  "neutral.ogres": {
+    id: "neutral.ogres",
+    name: "Ogres",
+    faction: "neutral",
+    tier: "silver",
+    type: "ground",
+    neutral: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 10 }, abilities: ["ogres-attack-token-pack"], abilityText: "[unit_other] Place a +2 [attack] token on a chosen [unit_ground] or [unit_flying] unit for 2 Combat rounds." },
+    wikiUrl: "https://en.homm3bg.wiki/units/ogres/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/ogres/"
+    }
+  },
+  "neutral.thunderbirds": {
+    id: "neutral.thunderbirds",
+    name: "Thunderbirds",
+    faction: "neutral",
+    tier: "silver",
+    type: "flying",
+    neutral: { attack: 3, defense: 0, health: 6, initiative: 9, cost: { gold: 13 }, abilities: ["thunderbirds-lightning"], abilityText: "[unit_passive] Right after this unit's attack and before any Retaliation, roll 1 Attack die, on a \"0\" or \"+1\", deal 1 [damage] to the target." },
+    wikiUrl: "https://en.homm3bg.wiki/units/thunderbirds/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/thunderbirds/"
+    }
+  },
+  "neutral.cyclopes": {
+    id: "neutral.cyclopes",
+    name: "Cyclopes",
+    faction: "neutral",
+    tier: "gold",
+    type: "ranged",
+    neutral: { attack: 5, defense: 1, health: 6, initiative: 8, cost: { gold: 19 }, abilities: [], abilityText: "[unit_other] This unit can destroy a Wall, the Gate, or the Arrow Tower." },
+    wikiUrl: "https://en.homm3bg.wiki/units/cyclopes/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/cyclopes/"
+    }
+  },
+  "neutral.behemoths": {
+    id: "neutral.behemoths",
+    name: "Behemoths",
+    faction: "neutral",
+    tier: "gold",
+    type: "ground",
+    neutral: { attack: 5, defense: 1, health: 8, initiative: 9, cost: { gold: 26 }, abilities: ["behemoth-defense-crush-pack"], abilityText: "[unit_attack] Decrease the target's [defense] by 2 (to a minimum of 0). After the attack, place 1 Corrosion token on the target." },
+    wikiUrl: "https://en.homm3bg.wiki/units/behemoths/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/behemoths/"
     }
   },
   "neutral.faerie_dragons": {

@@ -2204,6 +2204,9 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
         hero.movementPoints += option.movement;
       }
     }
+    if (option.drawCards) {
+      drawCardsForPlayer(state, action.playerId, option.drawCards);
+    }
     if (option.reinforceBronzeFree) {
       const player = state.players[action.playerId];
       const target = player?.army.find((unit) => {
@@ -2243,6 +2246,7 @@ let cityHallChoiceBeingResolved: {
     buildingMaterials?: number;
     valuables?: number;
     movement?: number;
+    drawCards?: number;
     reinforceBronzeFree?: boolean;
   }[];
 } | null = null;
