@@ -11,9 +11,22 @@ function artifactSource(slug: string) {
   };
 }
 
+const SCANLESS_ARTIFACTS = new Set([
+  "necklace_of_dragonteeth",
+  "pendant_of_courage",
+  "quiet_eye_of_the_dragon",
+  "skull_helmet",
+  "celestial_necklace_of_bliss",
+  "lions_shield_of_courage",
+  "sandals_of_the_saint"
+]);
+
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
   return {
-    cardImage: `https://en.homm3bg.wiki/assets/artifacts_${tier}-${slug}.webp`,
+    // Newer print runs without wiki scans show the deck back instead.
+    cardImage: SCANLESS_ARTIFACTS.has(slug)
+      ? "/assets/player-deck-back.webp"
+      : `/assets/artifacts_${tier}-${slug}.webp`,
     imageAlt: `${name} artifact card`
   };
 }

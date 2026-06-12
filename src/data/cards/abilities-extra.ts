@@ -14,8 +14,8 @@ function abilitySource(slug: string) {
 function abilityAssets(slug: string, name: string, noScan = false) {
   return {
     cardImage: noScan
-      ? "https://en.homm3bg.wiki/assets/player-deck-back.webp"
-      : `https://en.homm3bg.wiki/assets/abilities-${slug}.webp`,
+      ? "/assets/player-deck-back.webp"
+      : `/assets/abilities-${slug}.webp`,
     imageAlt: `${name} ability card`
   };
 }

@@ -30,7 +30,7 @@ function notImplementedSpell(
     power: 0,
     effect: { type: "DRAW_CARDS", amount: 0 },
     assets: {
-      cardImage: `https://en.homm3bg.wiki/assets/spells-${slug}.webp`,
+      cardImage: `/assets/spells-${slug}.webp`,
       imageAlt: `${name} card`
     },
     implementationStatus: "not-implemented",
@@ -68,7 +68,7 @@ export const spellCards: CardLibrary = {
       removable: true
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-haste.webp",
+      cardImage: "/assets/spells-haste.webp",
       imageAlt: "Haste card"
     },
     implementationStatus: "implemented",
@@ -99,7 +99,7 @@ export const spellCards: CardLibrary = {
       removable: true
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-slow.webp",
+      cardImage: "/assets/spells-slow.webp",
       imageAlt: "Slow card"
     },
     implementationStatus: "implemented",
@@ -132,7 +132,7 @@ export const spellCards: CardLibrary = {
       amountByPower: { 0: -1, 1: -2, 2: -3 }
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-curse.webp",
+      cardImage: "/assets/spells-curse.webp",
       imageAlt: "Curse card"
     },
     implementationStatus: "implemented",
@@ -165,7 +165,7 @@ export const spellCards: CardLibrary = {
       amountByPower: { 0: -1, 1: -2, 2: -3 }
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-weakness.webp",
+      cardImage: "/assets/spells-weakness.webp",
       imageAlt: "Weakness card"
     },
     implementationStatus: "implemented",
@@ -195,7 +195,7 @@ export const spellCards: CardLibrary = {
       attackBonusByPower: { 0: 0, 1: 1, 2: 2 }
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-bless.webp",
+      cardImage: "/assets/spells-bless.webp",
       imageAlt: "Bless card"
     },
     implementationStatus: "implemented",
@@ -223,7 +223,7 @@ export const spellCards: CardLibrary = {
       duration: { type: "combat" }
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-anti-magic.webp",
+      cardImage: "/assets/spells-anti_magic.webp",
       imageAlt: "Anti-Magic card"
     },
     implementationStatus: "implemented",
@@ -257,7 +257,7 @@ export const spellCards: CardLibrary = {
       ignoreRangedPenalty: true
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-precision.webp",
+      cardImage: "/assets/spells-precision.webp",
       imageAlt: "Precision card"
     },
     implementationStatus: "implemented",
@@ -285,7 +285,7 @@ export const spellCards: CardLibrary = {
       duration: { type: "current-combat-round" }
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-fire_shield.webp",
+      cardImage: "/assets/spells-fire_shield.webp",
       imageAlt: "Fire Shield card"
     },
     implementationStatus: "implemented",
@@ -312,7 +312,7 @@ export const spellCards: CardLibrary = {
       gradeByPower: { 0: "bronze", 2: "silver", 4: "gold" }
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-counterstrike.webp",
+      cardImage: "/assets/spells-counterstrike.webp",
       imageAlt: "Counterstrike card"
     },
     implementationStatus: "implemented",
@@ -376,7 +376,7 @@ export const spellCards: CardLibrary = {
       ]
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-prayer.webp",
+      cardImage: "/assets/spells-prayer.webp",
       imageAlt: "Prayer card"
     },
     implementationStatus: "implemented",
@@ -400,7 +400,7 @@ export const spellCards: CardLibrary = {
       type: "TELEPORT_HERO_TO_TOWN"
     },
     assets: {
-      cardImage: "https://en.homm3bg.wiki/assets/spells-town_portal.webp",
+      cardImage: "/assets/spells-town_portal.webp",
       imageAlt: "Town Portal card"
     },
     implementationStatus: "implemented",
