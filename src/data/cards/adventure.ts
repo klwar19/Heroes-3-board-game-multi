@@ -56,6 +56,245 @@ function mightSpecialtyOne(heroSlug: string, heroName: string, doubledUnit: stri
   };
 }
 
+function specialtyCardImage(heroSlug: string, level: 1 | 4 | 6): string {
+  return `/assets/hero_specialties-${heroSlug}-${level}.webp`;
+}
+
+function offenseSpecialtyOne(heroSlug: string): CardLibrary[string] {
+  return {
+    id: `specialty.${heroSlug}.1`,
+    name: "Offense I",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: ["hero-specialty", "instant", heroSlug, "offense"],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+1 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
+        },
+        {
+          label: "Draw 1 card",
+          effect: { type: "DRAW_CARDS", amount: 1 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage(heroSlug, 1),
+      imageAlt: "Offense level I specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource(heroSlug)
+  };
+}
+
+function offenseSpecialtyFour(heroSlug: string): CardLibrary[string] {
+  return {
+    id: `specialty.${heroSlug}.4`,
+    name: "Offense IV",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: ["hero-specialty", "combat", heroSlug, "offense"],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_ATTACK_BUFF",
+      name: "Offense IV",
+      amount: 1,
+      duration: { type: "combat" },
+      polarity: "positive",
+      removable: false
+    },
+    assets: {
+      cardImage: specialtyCardImage(heroSlug, 4),
+      imageAlt: "Offense level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource(heroSlug)
+  };
+}
+
+function offenseSpecialtySix(heroSlug: string): CardLibrary[string] {
+  return {
+    id: `specialty.${heroSlug}.6`,
+    name: "Offense VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: ["hero-specialty", "instant", heroSlug, "offense"],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 3 },
+    assets: {
+      cardImage: specialtyCardImage(heroSlug, 6),
+      imageAlt: "Offense level VI specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource(heroSlug)
+  };
+}
+
+function slowSpecialty(heroSlug: string, level: 1 | 4 | 6, amount: number): CardLibrary[string] {
+  return {
+    id: `specialty.${heroSlug}.${level}`,
+    name: `Slow ${level === 1 ? "I" : level === 4 ? "IV" : "VI"}`,
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: ["hero-specialty", "combat", heroSlug, "slow"],
+    target: { type: "enemy-unit" },
+    effect: {
+      type: "CREATE_INITIATIVE_BUFF",
+      name: "Slow",
+      amount: -amount,
+      duration: { type: "combat" },
+      polarity: "negative",
+      removable: true
+    },
+    assets: {
+      cardImage: specialtyCardImage(heroSlug, level),
+      imageAlt: `Slow level ${level} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource(heroSlug)
+  };
+}
+
+function unitHealthSpecialty(
+  heroSlug: string,
+  specialtyName: string,
+  level: 4 | 6,
+  amount: number,
+  doubledUnit: string
+): CardLibrary[string] {
+  return {
+    id: `specialty.${heroSlug}.${level}`,
+    name: `${specialtyName} ${level === 4 ? "IV" : "VI"}`,
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: ["hero-specialty", "combat", heroSlug, "health"],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "ADD_UNIT_MAX_HEALTH",
+      amount,
+      doubleForUnitName: doubledUnit
+    },
+    assets: {
+      cardImage: specialtyCardImage(heroSlug, level),
+      imageAlt: `${specialtyName} level ${level} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource(heroSlug)
+  };
+}
+
+function unitInitiativeSpecialty(
+  heroSlug: string,
+  specialtyName: string,
+  level: 4 | 6,
+  amount: number,
+  doubledUnit: string
+): CardLibrary[string] {
+  return {
+    id: `specialty.${heroSlug}.${level}`,
+    name: `${specialtyName} ${level === 4 ? "IV" : "VI"}`,
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: ["hero-specialty", "combat", heroSlug, "initiative"],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_INITIATIVE_BUFF",
+      name: `${specialtyName} Specialty`,
+      amount,
+      duration: { type: "combat" },
+      polarity: "positive",
+      removable: false,
+      doubleForUnitName: doubledUnit
+    },
+    assets: {
+      cardImage: specialtyCardImage(heroSlug, level),
+      imageAlt: `${specialtyName} level ${level} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource(heroSlug)
+  };
+}
+
+function dessaSpecialtyFour(): CardLibrary[string] {
+  return {
+    id: "specialty.dessa.4",
+    name: "Logistics IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: ["hero-specialty", "instant", "dessa", "logistics"],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+1 movement",
+          mapOnly: true,
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1 }
+        },
+        {
+          label: "+1 initiative to all your units this combat",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Logistics IV",
+              scope: "player",
+              duration: { type: "combat" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [{ type: "INITIATIVE_BONUS", amount: 1 }]
+            }
+          }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("dessa", 4),
+      imageAlt: "Logistics level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("dessa")
+  };
+}
+
+function dessaSpecialtySix(): CardLibrary[string] {
+  return {
+    id: "specialty.dessa.6",
+    name: "Logistics VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: ["hero-specialty", "instant", "dessa", "logistics"],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+1 movement and move through blocked fields this turn",
+          mapOnly: true,
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1, moveThroughThisTurn: true }
+        },
+        {
+          label: "Draw 2 cards",
+          effect: { type: "DRAW_CARDS", amount: 2 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("dessa", 6),
+      imageAlt: "Logistics level VI specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("dessa")
+  };
+}
+
 function notImplementedSpecialty(
   heroSlug: string,
   heroName: string,
@@ -359,6 +598,30 @@ export const adventureCards: CardLibrary = {
     6,
     "For this Combat, your selected unit's initiative is increased by 1 (doubled for Efreet)."
   ),
+  "specialty.crag_hack.1": offenseSpecialtyOne("crag_hack"),
+  "specialty.crag_hack.4": offenseSpecialtyFour("crag_hack"),
+  "specialty.crag_hack.6": offenseSpecialtySix("crag_hack"),
+  "specialty.dessa.1": notImplementedSpecialty(
+    "dessa",
+    "Logistics",
+    1,
+    "Instant: extend Combat against a Neutral Army for another Combat round without spending movement.",
+    specialtyCardImage("dessa", 1)
+  ),
+  "specialty.dessa.4": dessaSpecialtyFour(),
+  "specialty.dessa.6": dessaSpecialtySix(),
+  "specialty.gundula.1": slowSpecialty("gundula", 1, 1),
+  "specialty.gundula.4": slowSpecialty("gundula", 4, 2),
+  "specialty.gundula.6": slowSpecialty("gundula", 6, 3),
+  "specialty.shiva.1": mightSpecialtyOne("shiva", "Thunderbirds", "Thunderbirds"),
+  "specialty.shiva.4": unitHealthSpecialty("shiva", "Thunderbirds", 4, 1, "Thunderbirds"),
+  "specialty.shiva.6": unitInitiativeSpecialty("shiva", "Thunderbirds", 6, 2, "Thunderbirds"),
+  "specialty.tarnum_stronghold.1": offenseSpecialtyOne("tarnum_stronghold"),
+  "specialty.tarnum_stronghold.4": offenseSpecialtyFour("tarnum_stronghold"),
+  "specialty.tarnum_stronghold.6": offenseSpecialtySix("tarnum_stronghold"),
+  "specialty.yog.1": mightSpecialtyOne("yog", "Cyclopes", "Cyclopes"),
+  "specialty.yog.4": unitInitiativeSpecialty("yog", "Cyclopes", 4, 1, "Cyclopes"),
+  "specialty.yog.6": unitHealthSpecialty("yog", "Cyclopes", 6, 1, "Cyclopes"),
   "specialty.alamar.1": notImplementedSpecialty(
     "alamar",
     "Resurrection",

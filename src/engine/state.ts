@@ -34,7 +34,7 @@ export type GameDifficulty = "easy" | "normal" | "hard" | "impossible";
  *    Pack of Cerberi attacking every adjacent enemy with full attacks.
  */
 export type GameRuleset = "legacy" | "binh";
-export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon";
+export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon" | "stronghold";
 
 export type TargetRef = { type: "unit"; unitId: UnitId } | { type: "none" };
 
@@ -359,11 +359,15 @@ export type EffectDefinition =
       duration: EffectDurationDefinition;
       polarity?: "positive" | "negative" | "neutral";
       removable?: boolean;
+      /** Hero specialties: the bonus doubles when placed on the named unit. */
+      doubleForUnitName?: string;
     }
   | {
       /** Vial of Lifeblood: +1 printed HP for this combat. */
       type: "ADD_UNIT_MAX_HEALTH";
       amount: number;
+      /** Hero specialties: the bonus doubles when placed on the named unit. */
+      doubleForUnitName?: string;
     }
   | {
       /** Fireball: spell damage to the target and one unit adjacent to it. */
@@ -383,6 +387,8 @@ export type EffectDefinition =
       duration: EffectDurationDefinition;
       polarity?: "positive" | "negative" | "neutral";
       removable?: boolean;
+      /** Hero specialties: the bonus doubles when placed on the named unit. */
+      doubleForUnitName?: string;
     }
   | {
       type: "CREATE_DEFENSE_BUFF";
@@ -494,6 +500,8 @@ export type CardOptionDefinition = {
   cost?: CardPlayCost;
   /** This option may only be played outside combat (map effects). */
   mapOnly?: boolean;
+  /** This option may only be played during combat. */
+  combatOnly?: boolean;
   /** This option is the card's expert side: playing it spends a crown. */
   expertOnly?: boolean;
   effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
@@ -1837,6 +1845,15 @@ export type AttackSequenceState = {
     baseAttack: number;
     targetUnitId: UnitId;
   }[];
+  /**
+   * Wolf Raiders: same target follow-up after the original target's
+   * retaliation has either resolved or been skipped.
+   */
+  afterRetaliationAbilityAttack?: {
+    abilityId: string;
+    abilityName: string;
+    targetUnitId: UnitId;
+  };
 };
 
 export type CombatState = {

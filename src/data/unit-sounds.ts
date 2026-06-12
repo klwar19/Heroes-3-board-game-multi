@@ -42,6 +42,14 @@ const creatureVoices: Record<string, string> = {
   pit_lords: "pit-lord",
   efreet: "efreet",
   arch_devils: "arch-devil",
+  // Stronghold
+  goblins: "goblin",
+  wolf_raiders: "goblin-wolf-rider",
+  orcs: "orc",
+  ogres: "ogre",
+  thunderbirds: "thunderbird",
+  cyclopes: "cyclops",
+  behemoths: "behemoth",
   // Necropolis
   skeletons: "skeleton",
   zombies: "zombie-lord", // same files serve the base Walking Dead

@@ -5,9 +5,18 @@ import { coreUnitDefinitions } from "./units";
 const wikiCredit =
   "Costs and effects from the fan wiki town pages and the community rulebook rewrite. Verify against official components before final release.";
 
+const townProducts: Record<string, string> = {
+  castle: "Heroes of Might and Magic III: The Board Game (Core Game)",
+  necropolis: "Heroes of Might and Magic III: The Board Game (Core Game)",
+  dungeon: "Heroes of Might and Magic III: The Board Game (Core Game)",
+  rampart: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
+  inferno: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+  stronghold: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)"
+};
+
 function townSource(faction: string) {
   return {
-    product: "Heroes of Might and Magic III: The Board Game (Core Game)",
+    product: townProducts[faction] ?? "Heroes of Might and Magic III: The Board Game",
     credit: wikiCredit,
     url: `https://en.homm3bg.wiki/towns/${faction}/`
   };
@@ -376,6 +385,95 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     source: townSource("inferno")
   },
 
+  // ---- Stronghold (expansion) --------------------------------------------
+  "stronghold.city_hall": {
+    id: "stronghold.city_hall",
+    name: "City Hall",
+    faction: "stronghold",
+    cost: { gold: 10, buildingMaterials: 4 },
+    effect: {
+      type: "RESOURCE_ROUND_CHOICE",
+      options: [
+        { label: "Draw 2 cards from the Might & Magic deck", drawCards: 2 },
+        { label: "Gain 2 building materials", buildingMaterials: 2 }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: townSource("stronghold")
+  },
+  "stronghold.citadel": {
+    id: "stronghold.citadel",
+    name: "Citadel",
+    faction: "stronghold",
+    cost: { gold: 8, buildingMaterials: 4, valuables: 1 },
+    effect: { type: "UNLOCK_REINFORCE" },
+    implementationStatus: "implemented",
+    source: townSource("stronghold")
+  },
+  "stronghold.mage_guild": {
+    id: "stronghold.mage_guild",
+    name: "Mage Guild",
+    faction: "stronghold",
+    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
+    effect: { type: "MAGE_GUILD" },
+    spellBookCost: 6,
+    implementationStatus: "implemented",
+    source: townSource("stronghold")
+  },
+  "stronghold.dwelling_bronze": {
+    id: "stronghold.dwelling_bronze",
+    name: "Barracks Tower",
+    faction: "stronghold",
+    cost: { gold: 4, buildingMaterials: 3, valuables: 1 },
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" },
+    implementationStatus: "implemented",
+    source: townSource("stronghold")
+  },
+  "stronghold.dwelling_silver": {
+    id: "stronghold.dwelling_silver",
+    name: "Fort under the Nest",
+    faction: "stronghold",
+    cost: { gold: 8, buildingMaterials: 6, valuables: 3 },
+    prerequisites: ["stronghold.dwelling_bronze"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "silver" },
+    implementationStatus: "implemented",
+    source: townSource("stronghold")
+  },
+  "stronghold.dwelling_gold": {
+    id: "stronghold.dwelling_gold",
+    name: "Mountain Caves",
+    faction: "stronghold",
+    cost: { gold: 10, buildingMaterials: 8, valuables: 4 },
+    prerequisites: ["stronghold.dwelling_silver"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "gold" },
+    implementationStatus: "implemented",
+    source: townSource("stronghold")
+  },
+  "stronghold.hall_of_valhalla": {
+    id: "stronghold.hall_of_valhalla",
+    name: "Hall of Valhalla",
+    faction: "stronghold",
+    cost: { gold: 8, buildingMaterials: 3 },
+    effect: {
+      type: "NOT_IMPLEMENTED",
+      note: "Once per round, one of your units gains +1 Attack to a single attack."
+    },
+    implementationStatus: "not-implemented",
+    source: townSource("stronghold")
+  },
+  "stronghold.freelancers_guild": {
+    id: "stronghold.freelancers_guild",
+    name: "Freelancer's Guild",
+    faction: "stronghold",
+    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
+    effect: {
+      type: "NOT_IMPLEMENTED",
+      note: "Each time you win against Neutral Units, gain 2 gold. When Reinforcing or Recruiting, you can use building materials and valuables like gold."
+    },
+    implementationStatus: "not-implemented",
+    source: townSource("stronghold")
+  },
+
   // ---- Dungeon ---------------------------------------------------------
   "dungeon.city_hall": {
     id: "dungeon.city_hall",
@@ -613,6 +711,108 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     boardScan: "/assets/heroes-inferno-might-rashka.webp",
     source: heroSource("rashka")
   },
+  crag_hack: {
+    id: "crag_hack",
+    name: "Crag Hack",
+    faction: "stronghold",
+    class: "Barbarian",
+    type: "might",
+    startingStats: { attack: 4, defense: 0, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.offense",
+    specialtyCardIds: {
+      1: "specialty.crag_hack.1",
+      4: "specialty.crag_hack.4",
+      6: "specialty.crag_hack.6"
+    },
+    portrait: "/assets/hero_boardart-crag_hack.webp",
+    boardScan: "/assets/heroes-stronghold-might-crag_hack.webp",
+    source: heroSource("crag_hack")
+  },
+  dessa: {
+    id: "dessa",
+    name: "Dessa",
+    faction: "stronghold",
+    class: "Battle Mage",
+    type: "magic",
+    startingStats: { attack: 2, defense: 1, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.logistics",
+    specialtyCardIds: {
+      1: "specialty.dessa.1",
+      4: "specialty.dessa.4",
+      6: "specialty.dessa.6"
+    },
+    portrait: "/assets/hero_boardart-dessa.webp",
+    boardScan: "/assets/heroes-stronghold-magic-dessa.webp",
+    source: heroSource("dessa")
+  },
+  gundula: {
+    id: "gundula",
+    name: "Gundula",
+    faction: "stronghold",
+    class: "Battle Mage",
+    type: "magic",
+    startingStats: { attack: 2, defense: 1, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: {
+      1: "specialty.gundula.1",
+      4: "specialty.gundula.4",
+      6: "specialty.gundula.6"
+    },
+    portrait: "/assets/hero_boardart-gundula.webp",
+    boardScan: "/assets/heroes-stronghold-magic-gundula.webp",
+    source: heroSource("gundula")
+  },
+  shiva: {
+    id: "shiva",
+    name: "Shiva",
+    faction: "stronghold",
+    class: "Barbarian",
+    type: "might",
+    startingStats: { attack: 4, defense: 0, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.scouting",
+    specialtyCardIds: {
+      1: "specialty.shiva.1",
+      4: "specialty.shiva.4",
+      6: "specialty.shiva.6"
+    },
+    portrait: "/assets/hero_boardart-shiva.webp",
+    boardScan: "/assets/heroes-stronghold-might-shiva.webp",
+    source: heroSource("shiva")
+  },
+  tarnum_stronghold: {
+    id: "tarnum_stronghold",
+    name: "Tarnum",
+    faction: "stronghold",
+    class: "Barbarian",
+    type: "might",
+    startingStats: { attack: 4, defense: 0, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.offense",
+    specialtyCardIds: {
+      1: "specialty.tarnum_stronghold.1",
+      4: "specialty.tarnum_stronghold.4",
+      6: "specialty.tarnum_stronghold.6"
+    },
+    portrait: "/assets/hero_boardart-tarnum_stronghold.webp",
+    boardScan: "/assets/heroes-stronghold-might-tarnum_stronghold.webp",
+    source: heroSource("tarnum_stronghold")
+  },
+  yog: {
+    id: "yog",
+    name: "Yog",
+    faction: "stronghold",
+    class: "Barbarian",
+    type: "might",
+    startingStats: { attack: 4, defense: 0, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.offense",
+    specialtyCardIds: {
+      1: "specialty.yog.1",
+      4: "specialty.yog.4",
+      6: "specialty.yog.6"
+    },
+    portrait: "/assets/hero_boardart-yog.webp",
+    boardScan: "/assets/heroes-stronghold-might-yog.webp",
+    source: heroSource("yog")
+  },
   alamar: {
     id: "alamar",
     name: "Alamar",
@@ -695,6 +895,17 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     townImage: "/assets/towns-inferno-empty.webp",
     source: townSource("inferno")
   },
+  stronghold: {
+    id: "stronghold",
+    name: "Stronghold",
+    color: "#b06a2d",
+    startingTileId: "S7",
+    heroes: ["crag_hack", "dessa", "gundula", "shiva", "tarnum_stronghold", "yog"],
+    buildings: buildingsOfFaction("stronghold"),
+    units: unitsOfFaction("stronghold"),
+    townImage: "/assets/towns-stronghold-empty.webp",
+    source: townSource("stronghold")
+  },
   necropolis: {
     id: "necropolis",
     name: "Necropolis",
@@ -746,5 +957,6 @@ export const startingTileByFaction: Record<string, string> = {
   necropolis: "S1",
   dungeon: "S2",
   rampart: "S4",
-  inferno: "S6"
+  inferno: "S6",
+  stronghold: "S7"
 };

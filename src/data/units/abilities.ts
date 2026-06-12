@@ -34,14 +34,6 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
-       * Behemoths: the attack itself treats the target's defense as `amount`
-       * lower (to a minimum of 0).
-       */
-      type: "ATTACK_DEFENSE_PIERCE";
-      amount: number;
-    }
-  | {
-      /**
        * Cyclops siege ability ("other action"): destroy the Gate or a Wall —
        * the pack/neutral versions may also destroy the Arrow Tower. Works at
        * any range; automatically successful.
@@ -92,6 +84,32 @@ export type UnitAbilityEffectDefinition =
        */
       type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF";
       baseAttack: number;
+    }
+  | {
+      /**
+       * Wolf Raiders: after their target retaliates if possible, attack the
+       * same target a second time. The follow-up does not provoke a second
+       * retaliation.
+       */
+      type: "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION";
+    }
+  | {
+      /**
+       * Thunderbirds: immediately after their attack, before retaliation,
+       * roll one Attack die and deal flat damage to the target on matching
+       * faces. The printed Stronghold card triggers on 0 or +1.
+       */
+      type: "ATTACK_DIE_FLAT_DAMAGE_TO_TARGET";
+      minRoll: number;
+      amount: number;
+    }
+  | {
+      /**
+       * Behemoths: the target's defense is lowered for this attack, never
+       * below zero after all attack-window modifiers are counted.
+       */
+      type: "DEFENSE_REDUCTION_ON_ATTACK";
+      amount: number;
     }
   | {
       type: "ATTACK_DIE_REROLL";
@@ -212,6 +230,34 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "SECOND_ATTACK_ADJACENT_TO_TARGET", baseAttack: 2 },
     implementationStatus: "implemented"
   },
+  "wolf-raiders-strike-twice": {
+    id: "wolf-raiders-strike-twice",
+    name: "Strike Twice",
+    text: "After the target retaliates, if possible, attack that target again. The second attack does not provoke another retaliation.",
+    effect: { type: "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION" },
+    implementationStatus: "implemented"
+  },
+  "thunderbirds-lightning": {
+    id: "thunderbirds-lightning",
+    name: "Lightning Strike",
+    text: 'Right after this unit attacks and before retaliation, roll 1 Attack die. On "0" or "+1", deal 1 damage to the target.',
+    effect: { type: "ATTACK_DIE_FLAT_DAMAGE_TO_TARGET", minRoll: 0, amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "behemoth-defense-crush-few": {
+    id: "behemoth-defense-crush-few",
+    name: "Crushing Blow",
+    text: "Decrease the target's defense by 1, to a minimum of 0, for this attack.",
+    effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "behemoth-defense-crush-pack": {
+    id: "behemoth-defense-crush-pack",
+    name: "Corrosive Crush",
+    text: "Decrease the target's defense by 2, to a minimum of 0, for this attack. (The Corrosion token is placed by the companion ability.)",
+    effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 2 },
+    implementationStatus: "implemented"
+  },
   "ogres-attack-token-pack": {
     id: "ogres-attack-token-pack",
     name: "Bloodlust Token",
@@ -258,20 +304,6 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Weakness Token",
     text: "After the attack, place a '−1' Weakness token on the target for 2 combat rounds.",
     effect: { type: "ON_ATTACK_TOKEN", token: "weakness", amount: -1, rounds: 2 },
-    implementationStatus: "implemented"
-  },
-  "behemoth-pierce-1": {
-    id: "behemoth-pierce-1",
-    name: "Rending Claws",
-    text: "When attacking, decrease the target's defense by 1 (to a minimum of 0).",
-    effect: { type: "ATTACK_DEFENSE_PIERCE", amount: 1 },
-    implementationStatus: "implemented"
-  },
-  "behemoth-pierce-2": {
-    id: "behemoth-pierce-2",
-    name: "Rending Claws",
-    text: "When attacking, decrease the target's defense by 2 (to a minimum of 0).",
-    effect: { type: "ATTACK_DEFENSE_PIERCE", amount: 2 },
     implementationStatus: "implemented"
   },
   "behemoth-corrosion": {
