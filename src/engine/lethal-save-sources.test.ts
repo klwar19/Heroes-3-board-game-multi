@@ -1,0 +1,210 @@
+import { describe, expect, it } from "vitest";
+import { abilityFxPlans } from "@/data/fx";
+import { applyAction, createInitialGameState } from "./index";
+import type { GameAction, GameState, LegalAction } from "./state";
+
+/**
+ * The lethal-save window now has three interchangeable sources — Alamar's
+ * Resurrection specialty, the Resurrection spell and the Archangels' once-per-
+ * combat ability — and a cancelled (saved) attack must apply none of its
+ * after-attack effects. These tests drive a guaranteed-lethal attack on a p1
+ * unit and exercise each source.
+ */
+
+function applyOk(state: GameState, action: GameAction): GameState {
+  const result = applyAction(state, action);
+  expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+  return result.state;
+}
+
+function hasAbilityEvent(state: GameState, abilityId: string): boolean {
+  return state.eventLog.some((event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === abilityId);
+}
+
+function p1SaveActions(state: GameState): LegalAction[] {
+  return state.reactionWindow?.legalReactions.p1 ?? [];
+}
+
+/**
+ * Sets up a lethal melee attack on p1's Griffins and resolves it; the engine
+ * pauses in the lethal-save window whenever p1 has a usable save. Options let
+ * the attacker carry an after-attack ability, the defender take a grade, p1
+ * hold save cards, and the Crusaders act as an Archangel (lethal-save unit).
+ */
+function lethalSetup(opts: {
+  attackerAbilities?: string[];
+  defenderGrade?: "bronze" | "silver" | "gold" | "azure";
+  p1Hand?: string[];
+  archangelSaver?: boolean;
+  archangelAlreadyUsed?: boolean;
+  spellsAlreadyCast?: number;
+  rolls?: number[];
+}): GameState {
+  const state = createInitialGameState("lethal-save-seed");
+  state.players.p1.hand = opts.p1Hand ?? [];
+  state.players.p2.hand = [];
+  if (opts.spellsAlreadyCast !== undefined) {
+    state.players.p1.combatStats.spellsCastThisRound = opts.spellsAlreadyCast;
+  }
+
+  const defender = state.combat!.units.unit_p1_griffins;
+  defender.grade = opts.defenderGrade ?? "bronze";
+  defender.position = 9;
+  defender.defense = 0;
+  defender.damage = defender.maxHealth - 1; // one hit from death
+
+  if (opts.archangelSaver) {
+    const archangel = state.combat!.units.unit_p1_crusaders;
+    archangel.abilities = ["archangel-lethal-save"];
+    archangel.position = 6;
+    if (opts.archangelAlreadyUsed) {
+      archangel.usedLethalSaveThisCombat = true;
+    }
+  }
+
+  const attacker = state.combat!.units.unit_p2_skeletons;
+  attacker.abilities = opts.attackerAbilities ?? [];
+  attacker.attack = 5; // clearly lethal
+  attacker.position = 13; // adjacent below the defender
+  state.combat!.dice.scriptedRolls = opts.rolls ?? [0];
+  state.combat!.dice.rollCount = 0;
+  state.activePlayerId = "p2";
+  state.combat!.activeUnitId = "unit_p2_skeletons";
+
+  return applyOk(state, {
+    type: "ATTACK_UNIT",
+    playerId: "p2",
+    attackerId: "unit_p2_skeletons",
+    defenderId: "unit_p1_griffins"
+  });
+}
+
+function griffins(state: GameState) {
+  return state.combat!.units.unit_p1_griffins;
+}
+
+describe("A resurrected (cancelled) attack applies no after-attack effects", () => {
+  it("skips the attacker's Wyvern Poison Sting", () => {
+    const declared = lethalSetup({ attackerAbilities: ["wyvern-sting"], p1Hand: ["specialty.alamar.6"] });
+    expect(declared.reactionWindow?.triggerEvent.type).toBe("UNIT_LETHAL_HIT");
+    const save = p1SaveActions(declared).find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.alamar.6"
+    );
+    const saved = applyOk(declared, save!.action);
+    expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
+    expect(hasAbilityEvent(saved, "wyvern-sting")).toBe(false); // the sting never rolled
+    expect(griffins(saved).damage).toBe(griffins(saved).maxHealth - 1); // unscathed
+  });
+
+  it("skips the attacker's Gorgon Death Stare", () => {
+    const declared = lethalSetup({ attackerAbilities: ["gorgon-death-stare"], p1Hand: ["specialty.alamar.6"] });
+    const save = p1SaveActions(declared).find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.alamar.6"
+    );
+    const saved = applyOk(declared, save!.action);
+    expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
+    expect(hasAbilityEvent(saved, "gorgon-death-stare")).toBe(false);
+    expect(griffins(saved).variant).toBe("pack"); // not flipped — fully saved
+  });
+});
+
+describe("Resurrection spell", () => {
+  it("is offered in the save window and cancels the killing blow", () => {
+    const declared = lethalSetup({ defenderGrade: "bronze", p1Hand: ["spell.resurrection"] });
+    expect(declared.reactionWindow?.triggerEvent.type).toBe("UNIT_LETHAL_HIT");
+    const save = p1SaveActions(declared).find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.resurrection"
+    );
+    expect(save, "the bronze Resurrection option should be offered").toBeTruthy();
+    const saved = applyOk(declared, save!.action);
+    expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
+    expect(griffins(saved).damage).toBe(griffins(saved).maxHealth - 1);
+    expect(saved.players.p1.discard).toContain("spell.resurrection");
+    expect(saved.players.p1.combatStats.spellsCastThisRound).toBe(1); // counts as a spell
+  });
+
+  it("is blocked once the spell limit is reached (the specialty still works)", () => {
+    const declared = lethalSetup({
+      defenderGrade: "bronze",
+      p1Hand: ["spell.resurrection", "specialty.alamar.6"],
+      spellsAlreadyCast: 9
+    });
+    const offeredCardIds = p1SaveActions(declared)
+      .map((legal) => (legal.action.type === "PLAY_REACTION" ? legal.action.cardId : null))
+      .filter(Boolean);
+    expect(offeredCardIds).not.toContain("spell.resurrection"); // spell limit reached
+    expect(offeredCardIds).toContain("specialty.alamar.6"); // specialty is unaffected
+  });
+});
+
+describe("Archangels' once-per-combat lethal save", () => {
+  it("cancels a killing blow on another friendly unit for free, regardless of grade", () => {
+    const declared = lethalSetup({ defenderGrade: "gold", archangelSaver: true });
+    expect(declared.reactionWindow?.triggerEvent.type).toBe("UNIT_LETHAL_HIT");
+    const save = p1SaveActions(declared).find(
+      (legal) => legal.action.type === "USE_UNIT_RESURRECTION" && legal.action.savingUnitId === "unit_p1_crusaders"
+    );
+    expect(save, "the Archangel save should be offered for a gold unit too").toBeTruthy();
+    const saved = applyOk(declared, save!.action);
+    expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
+    expect(griffins(saved).damage).toBe(griffins(saved).maxHealth - 1);
+    expect(saved.combat!.units.unit_p1_crusaders.usedLethalSaveThisCombat).toBe(true);
+  });
+
+  it("is not offered once already spent this combat (the specialty still is)", () => {
+    const declared = lethalSetup({
+      defenderGrade: "bronze",
+      p1Hand: ["specialty.alamar.6"],
+      archangelSaver: true,
+      archangelAlreadyUsed: true
+    });
+    const actions = p1SaveActions(declared);
+    expect(actions.some((legal) => legal.action.type === "USE_UNIT_RESURRECTION")).toBe(false);
+    expect(
+      actions.some((legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.alamar.6")
+    ).toBe(true);
+  });
+});
+
+describe("Multiple save sources are all offered (the player chooses)", () => {
+  it("lists the specialty, the spell and the Archangel for a bronze unit", () => {
+    const declared = lethalSetup({
+      defenderGrade: "bronze",
+      p1Hand: ["specialty.alamar.6", "spell.resurrection"],
+      archangelSaver: true
+    });
+    const actions = p1SaveActions(declared);
+    const hasSpecialty = actions.some(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.alamar.6"
+    );
+    const hasSpell = actions.some(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.resurrection"
+    );
+    const hasArchangel = actions.some((legal) => legal.action.type === "USE_UNIT_RESURRECTION");
+    expect(hasSpecialty).toBe(true);
+    expect(hasSpell).toBe(true);
+    expect(hasArchangel).toBe(true);
+  });
+});
+
+describe("New abilities have a resurrection/effect sound wired", () => {
+  it("maps each new ability id to an FX plan with a sound", () => {
+    for (const abilityId of [
+      "resurrection",
+      "wyvern-sting",
+      "rust-dragon-acid",
+      "gorgon-death-stare",
+      "dread-knight-death-blow"
+    ]) {
+      const plan = abilityFxPlans[abilityId];
+      expect(plan, `${abilityId} FX plan`).toBeTruthy();
+      // Every plan resolves to an audible cue (a direct sound or a hit sound).
+      expect(Boolean(plan?.sound || plan?.hitSound), `${abilityId} sound`).toBe(true);
+      // The renderer only emits a cue (and its sound) when there is a sprite.
+      expect(
+        Boolean(plan?.projectile || plan?.hit || (plan?.affect && plan.affect.length > 0)),
+        `${abilityId} sprite`
+      ).toBe(true);
+    }
+  });
+});

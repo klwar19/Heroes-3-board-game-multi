@@ -140,6 +140,7 @@ import {
   getEnemyDiscardAbility,
   getFlatDamageFollowUps,
   getIgnoreTargetCardDefenseAbility,
+  getLethalSaveUnitAbility,
   getLineAttackAbility,
   getOnAttackDieTokens,
   getParalysisFollowUps,
@@ -150,6 +151,7 @@ import {
   getSecondAttackAbility,
   getSecondAttackCandidates,
   getSelfAdjacentSecondAttackAbility,
+  getTriggeredAttackDieBonusAbilities,
   getUnitAbilityDefinitions,
   getUnitAttackRerollSources,
   hasIgnoreParalysis,
@@ -974,6 +976,20 @@ function applyAttackDamageFromCandidate(
     damage,
     isRetaliation
   });
+
+  // Dread Knights' "Death Blow": announce the die-triggered Attack bonus so the
+  // log and the FX/sound fire (the bonus itself is already folded into damage).
+  if (dieAttackBonus > 0) {
+    for (const ability of getTriggeredAttackDieBonusAbilities(attacker, candidate.roll)) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: attacker.id,
+        abilityId: ability.abilityId,
+        targetUnitId: defender.id,
+        message: `${attacker.cardName} lands a ${ability.abilityName} (+${ability.amount} Attack).`
+      });
+    }
+  }
 
   if (damage > 0) {
     appendEvent(state, {
@@ -1942,14 +1958,19 @@ function applyDeathStareFollowUps(
       break;
     }
     const rolls = Array.from({ length: Math.max(1, followUp.diceCount) }, () => rollAttackDie(combat));
+    const petrifies = rolls.every((roll) => roll === followUp.onRoll);
+    // One ability event per stare (drives the FX/sound once): its message
+    // carries the outcome so the log reads correctly and tests can assert it.
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: attacker.id,
       abilityId: followUp.abilityId,
       targetUnitId: defender.id,
-      message: `${attacker.name} rolls ${rolls.join(", ")} for ${followUp.abilityName}.`
+      message: petrifies
+        ? `${attacker.name}'s ${followUp.abilityName} (rolled ${rolls.join(", ")}) reduces ${defender.cardName} to 0 Health.`
+        : `${attacker.name} rolls ${rolls.join(", ")} for ${followUp.abilityName}.`
     });
-    if (!rolls.every((roll) => roll === followUp.onRoll)) {
+    if (!petrifies) {
       continue;
     }
     const lethal = Math.max(0, defender.maxHealth - defender.damage);
@@ -1964,13 +1985,6 @@ function applyDeathStareFollowUps(
         damageKind: "effect"
       });
     }
-    appendEvent(state, {
-      type: "UNIT_ABILITY_TRIGGERED",
-      unitId: attacker.id,
-      abilityId: followUp.abilityId,
-      targetUnitId: defender.id,
-      message: `${followUp.abilityName} reduces ${defender.cardName} to 0 Health.`
-    });
     markUnitRemovedIfNeeded(state, defender);
   }
 
@@ -4345,6 +4359,55 @@ function playReaction(
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
 }
 
+/**
+ * Archangels' lethal save: cancel the killing blow with the unit's once-per-
+ * combat ability instead of a card. Arms the pending attack's cancel (so it is
+ * voided at resolution exactly like the Resurrection card/specialty) and shuts
+ * the save window. The "resurrection" FX/sound fires when the attack resolves.
+ */
+function applyUnitResurrection(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_UNIT_RESURRECTION" }>,
+  cards: CardLibrary
+): void {
+  const window = state.reactionWindow;
+  if (!window || window.triggerEvent.type !== "UNIT_LETHAL_HIT" || window.priorityPlayerId !== action.playerId) {
+    throw new Error("No lethal-save window is open for you.");
+  }
+  const combat = state.combat;
+  const defender = combat?.units[window.triggerEvent.defenderId];
+  const saver = combat?.units[action.savingUnitId];
+  const pendingAttack = state.stack.find(
+    (item) => item.action.type === "ATTACK_UNIT" || item.action.type === "MOVE_AND_ATTACK_UNIT"
+  );
+  if (!combat || !defender || !saver || !pendingAttack) {
+    throw new Error("That resurrection cannot be used now.");
+  }
+  if (
+    saver.controllerId !== action.playerId ||
+    saver.id === defender.id ||
+    saver.damage >= saver.maxHealth ||
+    saver.usedLethalSaveThisCombat ||
+    !getLethalSaveUnitAbility(saver)
+  ) {
+    throw new Error("That unit cannot cancel the killing blow.");
+  }
+
+  saver.usedLethalSaveThisCombat = true;
+  // Grade-agnostic: matching the defender's own grade guarantees the cancel
+  // passes the grade check at resolution.
+  pendingAttack.modifiers.cancelLethal = { unitId: defender.id, grade: defender.grade };
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: saver.id,
+    abilityId: "archangel-lethal-save",
+    targetUnitId: defender.id,
+    message: `${saver.cardName} readies to cancel the killing blow on ${defender.cardName}.`
+  });
+
+  advanceReactionWindowAfterPlay(state, action.playerId, cards);
+}
+
 function playReactions(
   state: GameState,
   action: Extract<GameAction, { type: "PLAY_REACTIONS" }>,
@@ -6508,6 +6571,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "PLAY_REACTIONS":
         playReactions(nextState, action, cards);
+        break;
+      case "USE_UNIT_RESURRECTION":
+        applyUnitResurrection(nextState, action, cards);
         break;
       case "SEARCH_DECK":
         searchDeck(nextState, action);

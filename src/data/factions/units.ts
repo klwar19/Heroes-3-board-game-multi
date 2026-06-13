@@ -105,7 +105,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "gold",
     type: "flying",
     few: { attack: 6, defense: 3, health: 8, initiative: 12, cost: { gold: 20, valuables: 1 }, abilities: ["archangel-combat-start-draw"], abilityText: "1 [valuables] [unit_passive] When combat begins, draw 1 card.", cardImage: "/assets/units-castle-golden-archangels-few.webp" },
-    pack: { attack: 7, defense: 3, health: 10, initiative: 18, cost: { gold: 30, valuables: 2 }, abilities: [], abilityText: "2 [valuables] [unit_passive] Once per Combat. Cancel an attack that would reduce another unit's [health_points] to 0.", cardImage: "/assets/units-castle-golden-archangels-pack.webp" },
+    pack: { attack: 7, defense: 3, health: 10, initiative: 18, cost: { gold: 30, valuables: 2 }, abilities: ["archangel-lethal-save"], abilityText: "2 [valuables] [unit_passive] Once per Combat. Cancel an attack that would reduce another unit's [health_points] to 0.", cardImage: "/assets/units-castle-golden-archangels-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/archangels/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
