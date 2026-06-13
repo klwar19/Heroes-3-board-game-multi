@@ -80,6 +80,15 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     playerId: unit.controllerId
   });
 
+  // Pit Lords' "Summon Demons" triggers off any of your units leaving the
+  // board: remember which controllers have lost a unit this combat.
+  if (state.combat) {
+    const removed = state.combat.unitRemovedControllerIds ?? [];
+    if (!removed.includes(unit.controllerId)) {
+      state.combat.unitRemovedControllerIds = [...removed, unit.controllerId];
+    }
+  }
+
   // A shot-down Arrow Tower also leaves the siege bookkeeping.
   if (state.combat?.siege?.arrowTowerUnitId === unit.id) {
     state.combat.siege.arrowTowerUnitId = null;

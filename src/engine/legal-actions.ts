@@ -25,11 +25,13 @@ import {
   removableHandCards
 } from "./adventure-reducer";
 import { effectAppliesToUnit } from "./active-effects";
+import { getEffectiveCardEffect } from "./effects";
 import {
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
   BATTLEFIELD_ROWS,
   getBattlefieldLabel,
+  getOrthogonalNeighbors,
   getReachableDestinations,
   isAdjacent,
   isBattlefieldPosition
@@ -846,6 +848,7 @@ function isOptionEffectPlayable(
     case "CREATE_DEFENSE_BUFF":
     case "ADD_UNIT_MAX_HEALTH":
     case "HEAL_DAMAGE":
+    case "AREA_DAMAGE_ALL_ADJACENT":
       return context === "combat" && Boolean(state.combat);
     case "SIEGE_DEMOLISH": {
       const siege = state.combat?.siege;
@@ -868,7 +871,8 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "CREATE_ATTACK_BUFF" ||
     effect.type === "CREATE_DEFENSE_BUFF" ||
     effect.type === "ADD_UNIT_MAX_HEALTH" ||
-    effect.type === "HEAL_DAMAGE"
+    effect.type === "HEAL_DAMAGE" ||
+    effect.type === "AREA_DAMAGE_ALL_ADJACENT"
   );
 }
 
@@ -991,7 +995,9 @@ function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDef
     effect.type === "ENEMY_MORALE_STRIP" ||
     effect.type === "ROLL_FOR_MORALE" ||
     effect.type === "RANDOM_ENEMY_DISCARD" ||
-    effect.type === "GAIN_EXPERT_USE"
+    effect.type === "GAIN_EXPERT_USE" ||
+    // Gem's First Aid: grab the Tent from the supply (or draw) on the map.
+    effect.type === "GAIN_WAR_MACHINE"
   ) {
     return true;
   }
@@ -1215,6 +1221,62 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
             target: { type: "unit", unitId: target.id }
           }
         });
+      }
+    }
+
+    // Pit Lords' "Summon Demons" other action: only after a friendly unit has
+    // been removed this combat, and once per combat per Pit Lords unit. Used
+    // instead of moving or attacking (the caller already gated on those).
+    if (
+      ability.effect?.type === "SUMMON_OR_REINFORCE_DEMONS" &&
+      combat.unitRemovedControllerIds?.includes(playerId) &&
+      !activeUnit.summonedThisCombat
+    ) {
+      const demonDefId = ability.effect.demonUnitDefId;
+      const demonName = coreUnitDefinitions[demonDefId]?.name ?? "Demons";
+
+      // Summon: place a Few of Demons on an empty adjacent space.
+      if (getUnitSide(demonDefId, "few")) {
+        const occupied = new Set<number>(
+          Object.values(combat.units)
+            .filter(isUnitAlive)
+            .map((candidate) => candidate.position)
+        );
+        for (const position of combat.obstacles ?? []) {
+          occupied.add(position);
+        }
+        for (const position of getOrthogonalNeighbors(activeUnit.position)) {
+          if (!isBattlefieldPosition(position) || occupied.has(position)) {
+            continue;
+          }
+          actions.push({
+            label: `${activeUnit.name}: Summon a Few of ${demonName} at ${getBattlefieldLabel(position)}`,
+            action: { type: "SUMMON_DEMONS", playerId, unitId: activeUnit.id, mode: "summon", position }
+          });
+        }
+      }
+
+      // Reinforce: flip a friendly Few of Demons up to a Pack at no cost.
+      if (getUnitSide(demonDefId, "pack")) {
+        for (const candidate of Object.values(combat.units)) {
+          if (
+            candidate.controllerId === playerId &&
+            isUnitAlive(candidate) &&
+            candidate.unitDefId === demonDefId &&
+            candidate.variant === "few"
+          ) {
+            actions.push({
+              label: `${activeUnit.name}: Reinforce ${candidate.cardName} to a Pack`,
+              action: {
+                type: "SUMMON_DEMONS",
+                playerId,
+                unitId: activeUnit.id,
+                mode: "reinforce",
+                targetUnitId: candidate.id
+              }
+            });
+          }
+        }
       }
     }
 
@@ -1957,16 +2019,22 @@ export function getLegalReactionsForTrigger(
       }
     }
 
-    // Attack windows: only spells that modify the attack (buffs/nerfs of
-    // attack or defense) may consume Power, so Power plays are offered only
-    // while the player still holds such an instant spell to pair them with.
-    const hasPairableSpell = reactions.some(
-      (legal) =>
-        legal.action.type === "PLAY_REACTION" &&
-        !legal.action.asPowerBoost &&
-        cards[legal.action.cardId]?.kind === "spell"
-    );
-    if (!isAttackWindow || hasPairableSpell) {
+    // Attack windows: only plays that consume Power — attack/defense spell
+    // instants, or Alamar's Resurrection (improved by spell power) — may be
+    // paired with Power, so Power plays are offered only while the player
+    // still holds such a play to pair them with.
+    const hasPairablePowerSink = reactions.some((legal) => {
+      if (legal.action.type !== "PLAY_REACTION" || legal.action.asPowerBoost) {
+        return false;
+      }
+      const reactionCard = cards[legal.action.cardId];
+      if (reactionCard?.kind === "spell") {
+        return true;
+      }
+      const variantEffect = getEffectiveCardEffect(reactionCard, legal.action.optionIndex);
+      return variantEffect?.type === "CANCEL_LETHAL_ATTACK";
+    });
+    if (!isAttackWindow || hasPairablePowerSink) {
       reactions.push(...powerReactions);
     }
 
@@ -2182,6 +2250,12 @@ export function isEffectLegalForTrigger(
     // attacker's controller plays it, and never on a ranged shot.
     if (effect.type === "IGNORE_ATTACK_DIE") {
       return attacker.controllerId === playerId && attacker.type !== "ranged";
+    }
+
+    // Alamar's Resurrection: the defender's controller may arm it to cancel a
+    // killing blow on their own unit (the Power gate is checked at resolution).
+    if (effect.type === "CANCEL_LETHAL_ATTACK") {
+      return defender.controllerId === playerId;
     }
 
     // Power may be paid into an attack window so a spell instant in the same

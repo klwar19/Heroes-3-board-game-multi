@@ -112,6 +112,59 @@ function AdventureHandZoom({ cardId }: { cardId: string }) {
   return <ZoomButton label={`Read ${cardName(cardId)}`} onZoom={() => zoomCard(cardId)} />;
 }
 
+/** Pay a play's printed discard cost by toggling hand cards (combat plays). */
+function CostPlayBar({
+  pending,
+  hand,
+  onPick,
+  onConfirm,
+  onCancel
+}: {
+  pending: { action: { cardId: string }; exact?: number; upTo?: number; filter?: "spell"; picks: number[] };
+  hand: string[];
+  onPick: (index: number) => void;
+  onConfirm: (hand: string[]) => void;
+  onCancel: () => void;
+}) {
+  const playedIndex = hand.indexOf(pending.action.cardId);
+  const ready =
+    pending.exact !== undefined ? pending.picks.length === pending.exact : pending.picks.length <= (pending.upTo ?? 0);
+  return (
+    <div className="targetBanner costPicker" aria-label="Pay the card cost">
+      <Crosshair aria-hidden="true" size={15} />
+      <strong>{cardName(pending.action.cardId)}</strong>
+      <span>
+        {pending.exact !== undefined ? `Discard exactly ${pending.exact}` : `Discard up to ${pending.upTo ?? 0}`}
+        {pending.filter === "spell" ? " (Spell cards only)" : ""} — {pending.picks.length} picked
+      </span>
+      {hand.map((cardId, index) => {
+        if (index === playedIndex) {
+          return null;
+        }
+        const eligible = pending.filter !== "spell" || cardLibrary[cardId]?.kind === "spell";
+        const picked = pending.picks.includes(index);
+        return (
+          <button
+            className={picked ? "selected" : ""}
+            disabled={!eligible && !picked}
+            key={`${cardId}-${index}`}
+            onClick={() => onPick(index)}
+            type="button"
+          >
+            {cardName(cardId)}
+          </button>
+        );
+      })}
+      <button disabled={!ready} onClick={() => onConfirm(hand)} type="button">
+        Pay &amp; play
+      </button>
+      <button onClick={onCancel} type="button">
+        Cancel
+      </button>
+    </div>
+  );
+}
+
 function getInitialRoomId(): string {
   if (typeof window === "undefined") {
     return "dev-room";
@@ -1044,6 +1097,28 @@ export default function Home() {
   }, [roomId, ingestSnapshot]);
 
   const submitAction = async (action: GameAction) => {
+    // A play with a printed discard cost (Xyron's Inferno, "discard N: …"
+    // options) opens the cost picker first when the cost has not been paid yet.
+    // The reaction tray pays its own costs, so it always passes costCardIds.
+    if (action.type === "PLAY_CARD" && !action.costCardIds) {
+      const card = cardLibrary[action.cardId];
+      const option =
+        card?.effect.type === "CHOOSE_ONE" && action.optionIndex !== undefined
+          ? card.effect.options[action.optionIndex]
+          : undefined;
+      const cost = option?.cost;
+      if (cost && (cost.discardCards !== undefined || cost.discardCardsUpTo !== undefined)) {
+        setPendingCostPlay({
+          action,
+          exact: cost.discardCards,
+          upTo: cost.discardCardsUpTo,
+          filter: cost.costCardFilter,
+          picks: []
+        });
+        return;
+      }
+    }
+
     const connection = connectionRef.current;
     if (!connection) {
       return;
@@ -1084,6 +1159,34 @@ export default function Home() {
           /* the live stream keeps trying */
         });
     }
+  };
+
+  /** Toggle a hand card as payment for the pending discard-cost play. */
+  const toggleCostPick = (index: number) => {
+    setPendingCostPlay((current) => {
+      if (!current) {
+        return current;
+      }
+      const has = current.picks.includes(index);
+      const max = current.exact ?? current.upTo ?? 0;
+      if (!has && current.picks.length >= max) {
+        return current;
+      }
+      return {
+        ...current,
+        picks: has ? current.picks.filter((value) => value !== index) : [...current.picks, index]
+      };
+    });
+  };
+
+  /** Pay the picked cards and submit the play that was waiting on its cost. */
+  const confirmPendingCostPlay = (hand: string[]) => {
+    setPendingCostPlay((current) => {
+      if (current) {
+        void submitAction({ ...current.action, costCardIds: current.picks.map((index) => hand[index]) });
+      }
+      return null;
+    });
   };
 
   const resetRoom = async (mode: "adventure" | "combat-sandbox") => {
@@ -1722,6 +1825,16 @@ export default function Home() {
             Cancel
           </button>
         </div>
+      ) : null}
+
+      {pendingCostPlay ? (
+        <CostPlayBar
+          hand={state.players[isSeated ? viewerPlayerId : seatIds[0]]?.hand ?? []}
+          onCancel={() => setPendingCostPlay(null)}
+          onConfirm={confirmPendingCostPlay}
+          onPick={toggleCostPick}
+          pending={pendingCostPlay}
+        />
       ) : null}
 
       <div className="tableMidRow">

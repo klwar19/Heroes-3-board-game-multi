@@ -301,6 +301,18 @@ export type UnitAbilityEffectDefinition =
        * chooses. Optional repositioning — never an extra attack.
        */
       type: "RETURN_TO_ORIGIN_AFTER_ATTACK";
+    }
+  | {
+      /**
+       * Pit Lords (Pack): "[unit_other] If one of your units has been removed
+       * from the board during this Combat, Summon or Reinforce Demons." As an
+       * other action (instead of moving/attacking, once per combat) the
+       * controller either summons a Few of `demonUnitDefId` onto an empty
+       * adjacent space or reinforces a friendly Few of them up to a Pack at no
+       * cost. The summoned/reinforced unit joins the army after the combat.
+       */
+      type: "SUMMON_OR_REINFORCE_DEMONS";
+      demonUnitDefId: string;
     };
 
 /**
@@ -703,7 +715,8 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "summon-demons": {
     id: "summon-demons",
     name: "Summon Demons",
-    text: "Known unit ability. Summon placement and source rules are still pending.",
-    implementationStatus: "not-implemented"
+    text: "[unit_other] If one of your units has been removed from the board during this Combat, Summon a Few of Demons on an adjacent space or Reinforce a Few of Demons up to a Pack (once per Combat, instead of moving or attacking).",
+    effect: { type: "SUMMON_OR_REINFORCE_DEMONS", demonUnitDefId: "inferno.demons" },
+    implementationStatus: "implemented"
   }
 };
