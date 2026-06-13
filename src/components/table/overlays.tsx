@@ -1013,7 +1013,33 @@ export type MapNoticeCue = {
   title: string;
   subtitle: string;
   lines: string[];
+  /** Visited location id, so the notice can swap in dedicated art. */
+  location?: string;
 };
+
+/** Locations drawn with the treasure-chest art instead of the money-bag glyph. */
+const TREASURE_CHEST_LOCATIONS = new Set(["treasure_symbol", "sea_chest"]);
+
+/** A small wooden treasure chest with gold bands and a lock — drawn as art. */
+function TreasureChestIcon() {
+  return (
+    <svg className="treasureChestArt" viewBox="0 0 48 40" width="46" height="38" role="img" aria-label="Treasure chest">
+      {/* lid */}
+      <path d="M5 19 Q24 1 43 19 L43 21 L5 21 Z" fill="#8a5524" stroke="#3a2410" strokeWidth="1.6" />
+      <path d="M5 19 Q24 6 43 19" fill="none" stroke="#a9712f" strokeWidth="1.4" />
+      {/* body */}
+      <rect x="5" y="20" width="38" height="17" rx="2.5" fill="#9c6529" stroke="#3a2410" strokeWidth="1.6" />
+      {/* gold bands */}
+      <rect x="5" y="23" width="38" height="3.6" fill="#f4c64e" stroke="#9c7a1e" strokeWidth="0.7" />
+      <rect x="9" y="20" width="3.2" height="17" fill="#f4c64e" stroke="#9c7a1e" strokeWidth="0.6" />
+      <rect x="35.8" y="20" width="3.2" height="17" fill="#f4c64e" stroke="#9c7a1e" strokeWidth="0.6" />
+      {/* lock */}
+      <rect x="20.5" y="24" width="7" height="8" rx="1.4" fill="#f8d469" stroke="#8a6713" strokeWidth="1" />
+      <circle cx="24" cy="27.4" r="1.3" fill="#5b3a12" />
+      <rect x="23.3" y="27.4" width="1.4" height="3" fill="#5b3a12" />
+    </svg>
+  );
+}
 
 /**
  * Location-visit notice, popped into the player's face instead of a corner
@@ -1026,11 +1052,13 @@ export function MapNoticeOverlay({ cue, onDone }: { cue: MapNoticeCue; onDone: (
     return () => clearTimeout(doneId);
   }, [cue, onDone]);
 
+  const showChest = cue.location ? TREASURE_CHEST_LOCATIONS.has(cue.location) : false;
+
   return (
     <div className="mapNoticeBackdrop" onClick={onDone} role="status" aria-label={cue.title}>
       <div className="mapNotice">
         <span aria-hidden="true" className="mapNoticeIcon">
-          {cue.icon}
+          {showChest ? <TreasureChestIcon /> : cue.icon}
         </span>
         <strong>{cue.title}</strong>
         <small>{cue.subtitle}</small>

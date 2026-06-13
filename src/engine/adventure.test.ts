@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { coreTileDefinitions } from "@/data/map/tile-defs";
+import { instantiateTile } from "./adventure";
 import {
   applyAction,
   createAdventureGameState,
@@ -115,6 +116,19 @@ describe("adventure setup", () => {
     // Far tiles are face down even for their owner: only the Ⅱ–Ⅲ back shows.
     expect(view.adventure?.playerFarTiles.p2.every((tileId) => tileId === "hidden")).toBe(true);
     expect(view.adventure?.playerFarTiles.p1.every((tileId) => tileId === "hidden")).toBe(true);
+  });
+
+  it("labels sea tiles by their real Ⅳ–Ⅴ / Ⅵ–Ⅶ guard band", () => {
+    // The Cove sea pool ships both bands behind one wave back, so the label
+    // must follow the tile's strongest guarded field — otherwise a Ⅵ–Ⅶ sea
+    // tile masquerades as Near and never unlocks the BINH Relic/Center rules.
+    const adventure = makeGame().adventure!;
+    const nearSea = instantiateTile(adventure, "W1", { row: -6, col: -6 }, 0, true);
+    const centerSeaW = instantiateTile(adventure, "W7", { row: -6, col: -7 }, 0, true);
+    const centerSeaC = instantiateTile(adventure, "#C4", { row: -6, col: -8 }, 0, true);
+    expect(nearSea.backLabel).toBe("Ⅳ–Ⅴ");
+    expect(centerSeaW.backLabel).toBe("Ⅵ–Ⅶ");
+    expect(centerSeaC.backLabel).toBe("Ⅵ–Ⅶ");
   });
 
   it("drafts two far tiles per player, redrawing until one has a settlement", () => {

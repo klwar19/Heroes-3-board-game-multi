@@ -5192,6 +5192,10 @@ button.hbSlot:disabled { cursor: default; }
   filter: drop-shadow(0 3px 6px rgb(0 0 0 / 55%));
 }
 
+.treasureChestArt {
+  display: block;
+}
+
 .mapNotice strong {
   font-family: Georgia, serif;
   font-size: 20px;

@@ -320,3 +320,33 @@ export function cardSelectionKey(action: CardBoardAction): string {
 export function sameCardSelection(selected: CardBoardAction | null, action: CardBoardAction): boolean {
   return Boolean(selected && cardSelectionKey(selected) === cardSelectionKey(action));
 }
+
+/**
+ * Use a small square portrait as the drag ghost when deploying or shuffling a
+ * combat unit. Two traps this avoids: handing an on-screen <img> to
+ * setDragImage makes some browsers blow the ghost up to the card art's natural
+ * size, and board units have no small portrait to point at — their default
+ * ghost is the whole battlefield card. We snapshot a throwaway 46px image (the
+ * art is already on screen, so it is cached) and drop it on the next tick.
+ */
+export function setUnitDragImage(event: { dataTransfer: DataTransfer }, src: string | undefined): void {
+  if (!src || typeof document === "undefined") {
+    return;
+  }
+
+  const ghost = document.createElement("img");
+  ghost.src = src;
+  ghost.width = 46;
+  ghost.height = 46;
+  ghost.style.cssText =
+    "position:fixed;top:-1000px;left:-1000px;width:46px;height:46px;object-fit:cover;object-position:top center;border-radius:8px;";
+  document.body.appendChild(ghost);
+
+  try {
+    event.dataTransfer.setDragImage(ghost, 23, 23);
+  } catch {
+    // setDragImage can throw in rare environments; the default ghost is fine.
+  }
+
+  window.setTimeout(() => ghost.remove(), 0);
+}
