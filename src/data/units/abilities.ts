@@ -95,12 +95,16 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
-       * Thunderbirds: immediately after their attack, before retaliation,
-       * roll one Attack die and deal flat damage to the target on matching
-       * faces. The printed Stronghold card triggers on 0 or +1.
+       * Thunderbirds / Wyverns: immediately after their attack, before
+       * retaliation, roll one Attack die and deal flat damage to the target on
+       * matching faces. The printed Stronghold Thunderbird card triggers on 0
+       * or +1 (minRoll 0, no maxRoll); the Wyvern only on a "0" (minRoll 0,
+       * maxRoll 0). The face must satisfy minRoll ≤ roll ≤ maxRoll (maxRoll
+       * omitted means "no upper bound").
        */
       type: "ATTACK_DIE_FLAT_DAMAGE_TO_TARGET";
       minRoll: number;
+      maxRoll?: number;
       amount: number;
     }
   | {
@@ -313,6 +317,81 @@ export type UnitAbilityEffectDefinition =
        */
       type: "SUMMON_OR_REINFORCE_DEMONS";
       demonUnitDefId: string;
+    }
+  | {
+      /**
+       * Troglodytes / Gargoyles: "This unit ignores Paralysis effects." The
+       * unit can never gain a Paralysis token, so it never skips an activation
+       * from one (it is simply not placed).
+       */
+      type: "IGNORE_PARALYSIS";
+    }
+  | {
+      /**
+       * "Hatred" bonus (Archangels ↔ Arch Devils, Genies → Efreet, Titans →
+       * Black Dragons): "When attacking <unit>, this unit gains +N Attack."
+       * A flat Attack bonus that applies whenever this unit attacks a unit
+       * whose creature name matches `unitName`.
+       */
+      type: "ATTACK_BONUS_VS_UNIT_NAME";
+      unitName: string;
+      amount: number;
+    }
+  | {
+      /**
+       * Zombies / Manticores: "If the attacker resolves a <face> on the Attack
+       * die, gain +N Defense." A defender-side bonus applied for the incoming
+       * attack only, when that attack's resolved die is within [minRoll,
+       * maxRoll].
+       */
+      type: "DEFENSE_BONUS_ON_ATTACK_DIE";
+      minRoll: number;
+      maxRoll: number;
+      amount: number;
+    }
+  | {
+      /**
+       * Dread Knights (Pack): "If you resolve a 0 or +1 on the Attack die,
+       * increase this unit's total Attack by another +1." An attacker-side
+       * bonus added to the attack value when this unit's own resolved die is
+       * within [minRoll, maxRoll].
+       */
+      type: "ATTACK_BONUS_ON_ATTACK_DIE";
+      minRoll: number;
+      maxRoll: number;
+      amount: number;
+    }
+  | {
+      /**
+       * Manticores (Pack): "For this attack, ignore the Defense value from the
+       * target unit's card." The target's printed Defense is treated as 0 for
+       * this attack (Defense tokens and other bonuses still apply).
+       */
+      type: "IGNORE_TARGET_CARD_DEFENSE";
+    }
+  | {
+      /**
+       * Rust Dragons: "On a -1 result on the Attack die, decrease the target's
+       * Defense by N (to a minimum of 0)." After the attack, when its own
+       * resolved die equals `onRoll`, place the token on the target (a
+       * Corrosion token lasts the whole combat and is capped so Defense never
+       * drops below 0).
+       */
+      type: "ON_ATTACK_DIE_TOKEN";
+      onRoll: number;
+      token: CombatTokenKind;
+      amount: number;
+    }
+  | {
+      /**
+       * Gorgons: "After the attack, roll `diceCount` Attack dice; on all
+       * `onRoll` results, reduce the target's Health to 0." A death stare that
+       * destroys the target's current side outright (a Pack flips to its Few
+       * side as usual) when every rolled die shows `onRoll`.
+       */
+      type: "DEATH_STARE_ON_DICE";
+      diceCount: number;
+      onRoll: number;
     };
 
 /**
@@ -717,6 +796,97 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Summon Demons",
     text: "[unit_other] If one of your units has been removed from the board during this Combat, Summon a Few of Demons on an adjacent space or Reinforce a Few of Demons up to a Pack (once per Combat, instead of moving or attacking).",
     effect: { type: "SUMMON_OR_REINFORCE_DEMONS", demonUnitDefId: "inferno.demons" },
+    implementationStatus: "implemented"
+  },
+  "ignore-paralysis": {
+    id: "ignore-paralysis",
+    name: "Immune to Paralysis",
+    text: "This unit ignores Paralysis: it can never gain a Paralysis token.",
+    effect: { type: "IGNORE_PARALYSIS" },
+    implementationStatus: "implemented"
+  },
+  "archangel-hate-devils": {
+    id: "archangel-hate-devils",
+    name: "Hatred",
+    text: "When attacking Arch Devils, this unit gains +2 Attack.",
+    effect: { type: "ATTACK_BONUS_VS_UNIT_NAME", unitName: "Arch Devils", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "arch-devil-hate-angels": {
+    id: "arch-devil-hate-angels",
+    name: "Hatred",
+    text: "When attacking Archangels, this unit gains +2 Attack.",
+    effect: { type: "ATTACK_BONUS_VS_UNIT_NAME", unitName: "Archangels", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "genie-hate-efreet": {
+    id: "genie-hate-efreet",
+    name: "Hatred",
+    text: "When attacking Efreet, this unit gains +1 Attack.",
+    effect: { type: "ATTACK_BONUS_VS_UNIT_NAME", unitName: "Efreet", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "titan-hate-black-dragons": {
+    id: "titan-hate-black-dragons",
+    name: "Hatred",
+    text: "When attacking Black Dragons, this unit gains +2 Attack.",
+    effect: { type: "ATTACK_BONUS_VS_UNIT_NAME", unitName: "Black Dragons", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "zombie-resilience": {
+    id: "zombie-resilience",
+    name: "Undying Resilience",
+    text: 'If the attacker resolves a "0" or "+1" on the Attack die, this unit gains +1 Defense against that attack.',
+    effect: { type: "DEFENSE_BONUS_ON_ATTACK_DIE", minRoll: 0, maxRoll: 1, amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "zombie-resilience-weak": {
+    id: "zombie-resilience-weak",
+    name: "Undying Resilience",
+    text: 'If the attacker resolves a "+1" on the Attack die, this unit gains +1 Defense against that attack.',
+    effect: { type: "DEFENSE_BONUS_ON_ATTACK_DIE", minRoll: 1, maxRoll: 1, amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "manticore-thick-hide": {
+    id: "manticore-thick-hide",
+    name: "Thick Hide",
+    text: 'If the attacker resolves a "0" or "+1" on the Attack die, this unit gains +1 Defense against that attack.',
+    effect: { type: "DEFENSE_BONUS_ON_ATTACK_DIE", minRoll: 0, maxRoll: 1, amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "dread-knight-death-blow": {
+    id: "dread-knight-death-blow",
+    name: "Death Blow",
+    text: 'If you resolve a "0" or "+1" on the Attack die, increase this unit\'s total Attack by 1.',
+    effect: { type: "ATTACK_BONUS_ON_ATTACK_DIE", minRoll: 0, maxRoll: 1, amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "manticore-ignore-defense": {
+    id: "manticore-ignore-defense",
+    name: "Piercing Strike",
+    text: "For this attack, ignore the Defense value printed on the target's card.",
+    effect: { type: "IGNORE_TARGET_CARD_DEFENSE" },
+    implementationStatus: "implemented"
+  },
+  "wyvern-sting": {
+    id: "wyvern-sting",
+    name: "Poison Sting",
+    text: 'After the attack, roll 1 Attack die; on a "0" deal 1 damage to the target.',
+    effect: { type: "ATTACK_DIE_FLAT_DAMAGE_TO_TARGET", minRoll: 0, maxRoll: 0, amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "rust-dragon-acid": {
+    id: "rust-dragon-acid",
+    name: "Acid Breath",
+    text: 'On a "-1" on the Attack die, place an Acid token on the target: -2 Defense (to a minimum of 0) for the rest of the combat.',
+    effect: { type: "ON_ATTACK_DIE_TOKEN", onRoll: -1, token: "corrosion", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "gorgon-death-stare": {
+    id: "gorgon-death-stare",
+    name: "Death Stare",
+    text: 'After the attack, roll 2 Attack dice; on two "-1" results, reduce the target\'s Health to 0.',
+    effect: { type: "DEATH_STARE_ON_DICE", diceCount: 2, onRoll: -1 },
     implementationStatus: "implemented"
   }
 };

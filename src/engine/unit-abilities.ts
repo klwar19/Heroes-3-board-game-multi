@@ -1,6 +1,6 @@
 import { unitAbilities, type UnitAbilityDefinition, type UnitAbilityEffectDefinition } from "@/data/units/abilities";
 import { BATTLEFIELD_COLUMNS } from "./battlefield";
-import type { CombatState, CombatUnitState, DamageKind, UnitId } from "./state";
+import type { CombatState, CombatTokenKind, CombatUnitState, DamageKind, UnitId } from "./state";
 
 export type UnitAbilityDamageEffect = {
   abilityId: string;
@@ -108,10 +108,16 @@ export type AttackDieDamageFollowUp = {
   abilityId: string;
   abilityName: string;
   minRoll: number;
+  /** When set, the face must also be ≤ maxRoll (Wyverns: exactly "0"). */
+  maxRoll?: number;
   amount: number;
 };
 
-/** Thunderbirds: roll one extra Attack die and damage the original target on 0/+1. */
+/**
+ * Thunderbirds / Wyverns: roll one extra Attack die and damage the original
+ * target when the face is within [minRoll, maxRoll] (Thunderbirds 0/+1,
+ * Wyverns exactly 0).
+ */
 export function getAttackDieDamageFollowUps(unit: CombatUnitState): AttackDieDamageFollowUp[] {
   return getAbilitiesWithEffect(unit, "ATTACK_DIE_FLAT_DAMAGE_TO_TARGET").flatMap((ability) =>
     ability.effect?.type === "ATTACK_DIE_FLAT_DAMAGE_TO_TARGET"
@@ -120,6 +126,7 @@ export function getAttackDieDamageFollowUps(unit: CombatUnitState): AttackDieDam
             abilityId: ability.id,
             abilityName: ability.name,
             minRoll: ability.effect.minRoll,
+            ...(ability.effect.maxRoll !== undefined ? { maxRoll: ability.effect.maxRoll } : {}),
             amount: ability.effect.amount
           }
         ]
@@ -199,6 +206,119 @@ export function getAttackDefenseReductionAbility(
   }
 
   return null;
+}
+
+/** Manticores (Pack): treat the target's printed card Defense as 0 for this attack. */
+export function getIgnoreTargetCardDefenseAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "IGNORE_TARGET_CARD_DEFENSE")) {
+    if (ability.effect?.type === "IGNORE_TARGET_CARD_DEFENSE") {
+      return { abilityId: ability.id, abilityName: ability.name };
+    }
+  }
+
+  return null;
+}
+
+/** Troglodytes / Gargoyles: cannot gain a Paralysis token. */
+export function hasIgnoreParalysis(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "IGNORE_PARALYSIS");
+}
+
+/**
+ * "Hatred" Attack bonus: extra Attack this unit gains when its target's
+ * creature name matches a printed grudge (Archangels ↔ Arch Devils, Genies →
+ * Efreet, Titans → Black Dragons).
+ */
+export function getAttackBonusVsDefenderName(attacker: CombatUnitState, defenderName: string): number {
+  return getAbilitiesWithEffect(attacker, "ATTACK_BONUS_VS_UNIT_NAME").reduce(
+    (total, ability) =>
+      ability.effect?.type === "ATTACK_BONUS_VS_UNIT_NAME" && ability.effect.unitName === defenderName
+        ? total + ability.effect.amount
+        : total,
+    0
+  );
+}
+
+/**
+ * Zombies / Manticores: extra Defense the defender gains for an incoming attack
+ * whose resolved Attack die is within an ability's [minRoll, maxRoll] window.
+ */
+export function getDefenseBonusOnAttackDie(defender: CombatUnitState, roll: number): number {
+  return getAbilitiesWithEffect(defender, "DEFENSE_BONUS_ON_ATTACK_DIE").reduce(
+    (total, ability) =>
+      ability.effect?.type === "DEFENSE_BONUS_ON_ATTACK_DIE" &&
+      roll >= ability.effect.minRoll &&
+      roll <= ability.effect.maxRoll
+        ? total + ability.effect.amount
+        : total,
+    0
+  );
+}
+
+/**
+ * Dread Knights (Pack): extra Attack the attacker gains when its own resolved
+ * Attack die is within an ability's [minRoll, maxRoll] window.
+ */
+export function getAttackBonusOnAttackDie(attacker: CombatUnitState, roll: number): number {
+  return getAbilitiesWithEffect(attacker, "ATTACK_BONUS_ON_ATTACK_DIE").reduce(
+    (total, ability) =>
+      ability.effect?.type === "ATTACK_BONUS_ON_ATTACK_DIE" &&
+      roll >= ability.effect.minRoll &&
+      roll <= ability.effect.maxRoll
+        ? total + ability.effect.amount
+        : total,
+    0
+  );
+}
+
+export type OnAttackDieToken = {
+  abilityId: string;
+  abilityName: string;
+  onRoll: number;
+  token: CombatTokenKind;
+  amount: number;
+};
+
+/** Rust Dragons: token placed on the target when the attack's own die matches. */
+export function getOnAttackDieTokens(unit: CombatUnitState): OnAttackDieToken[] {
+  return getAbilitiesWithEffect(unit, "ON_ATTACK_DIE_TOKEN").flatMap((ability) =>
+    ability.effect?.type === "ON_ATTACK_DIE_TOKEN"
+      ? [
+          {
+            abilityId: ability.id,
+            abilityName: ability.name,
+            onRoll: ability.effect.onRoll,
+            token: ability.effect.token,
+            amount: ability.effect.amount
+          }
+        ]
+      : []
+  );
+}
+
+export type DeathStareFollowUp = {
+  abilityId: string;
+  abilityName: string;
+  diceCount: number;
+  onRoll: number;
+};
+
+/** Gorgons: roll extra dice after the attack and instakill the target on all-matching faces. */
+export function getDeathStareFollowUps(unit: CombatUnitState): DeathStareFollowUp[] {
+  return getAbilitiesWithEffect(unit, "DEATH_STARE_ON_DICE").flatMap((ability) =>
+    ability.effect?.type === "DEATH_STARE_ON_DICE"
+      ? [
+          {
+            abilityId: ability.id,
+            abilityName: ability.name,
+            diceCount: ability.effect.diceCount,
+            onRoll: ability.effect.onRoll
+          }
+        ]
+      : []
+  );
 }
 
 export type FlatDamageFollowUp = {
