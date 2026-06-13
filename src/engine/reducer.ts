@@ -579,36 +579,6 @@ function gradeAtPower(
   return matched === undefined ? null : (gradeByPower[matched] ?? null);
 }
 
-/**
- * Alamar's Resurrection vs a damaging spell: whether the hit on the protected
- * unit should be cancelled — it would reduce the unit (of an in-reach grade)
- * to 0 HP. Logs the cancel when it applies. The spell's other hits still land.
- */
-function spellHitCancelledByResurrection(
-  state: GameState,
-  stackItem: ResolutionStackItem,
-  target: CombatUnitState,
-  incomingDamage: number
-): boolean {
-  const cancel = stackItem.modifiers.cancelLethal;
-  if (
-    !cancel ||
-    cancel.unitId !== target.id ||
-    incomingDamage <= 0 ||
-    target.damage + incomingDamage < target.maxHealth ||
-    gradeRank(target.grade) > gradeRank(cancel.grade)
-  ) {
-    return false;
-  }
-  appendEvent(state, {
-    type: "UNIT_ABILITY_TRIGGERED",
-    unitId: target.id,
-    abilityId: "resurrection",
-    message: `Resurrection cancels the spell that would have destroyed ${target.cardName}.`
-  });
-  return true;
-}
-
 function getAmountByPower(amountByPower: Record<number, number> | undefined, fallback: number, power: number): number {
   if (!amountByPower) {
     return fallback;
@@ -3144,22 +3114,20 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       if (target) {
         const power = getCurrentSpellPower(stackItem, cards);
         const amount = getSpellDamageAmount(card, power);
-        if (!spellHitCancelledByResurrection(state, stackItem, target, amount)) {
-          target.damage += amount;
-          noteUnitDamagedForTokens(state, target, amount);
-          appendEvent(state, {
-            type: "DAMAGE_ASSIGNED",
-            source: {
-              type: "card",
-              cardId: card.id,
-              controllerId: stackItem.action.playerId
-            },
-            target: stackItem.action.target,
-            amount,
-            damageKind: card.effect.damageKind
-          });
-          markUnitRemovedIfNeeded(state, target);
-        }
+        target.damage += amount;
+        noteUnitDamagedForTokens(state, target, amount);
+        appendEvent(state, {
+          type: "DAMAGE_ASSIGNED",
+          source: {
+            type: "card",
+            cardId: card.id,
+            controllerId: stackItem.action.playerId
+          },
+          target: stackItem.action.target,
+          amount,
+          damageKind: card.effect.damageKind
+        });
+        markUnitRemovedIfNeeded(state, target);
       }
     }
 
@@ -3329,7 +3297,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const target = state.combat.units[stackItem.action.target.unitId];
       const power = getCurrentSpellPower(stackItem, cards);
       const amount = getAmountByPower(card.effect.amountByPower, 1, power);
-      if (target && !spellHitCancelledByResurrection(state, stackItem, target, amount)) {
+      if (target) {
         target.damage += amount;
         noteUnitDamagedForTokens(state, target, amount);
         appendEvent(state, {
@@ -3999,20 +3967,16 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
-  // Alamar's Resurrection: arm the pending attack or damaging spell so it is
-  // cancelled at resolution if it would destroy the protected unit (the
-  // attack's defender or the spell's target). The discard cost was paid above.
-  if (effect.type === "CANCEL_LETHAL_ATTACK" && stackItem) {
-    const protectedUnitId =
-      stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
-        ? stackItem.action.defenderId
-        : stackItem.action.type === "CAST_SPELL" && stackItem.action.target.type === "unit"
-          ? stackItem.action.target.unitId
-          : null;
-    if (protectedUnitId) {
-      stackItem.modifiers.cancelLethal = { unitId: protectedUnitId, grade: effect.grade };
-      stackItem.modifiers.playedCardIds.push(play.cardId);
-    }
+  // Alamar's Resurrection: arm the pending attack so it is cancelled at
+  // resolution if it would destroy the defending unit. It guards against
+  // normal attacks only — never spells or specialty damage. The discard cost
+  // was paid above.
+  if (
+    effect.type === "CANCEL_LETHAL_ATTACK" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    stackItem.modifiers.cancelLethal = { unitId: stackItem.action.defenderId, grade: effect.grade };
+    stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
   return { windowEnded: false };

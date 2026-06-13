@@ -266,8 +266,9 @@ describe("Xyron's Inferno I", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Issue 1c: Alamar's Resurrection cancels a lethal attack OR spell, by grade,
-// suppresses the saved unit's retaliation, and is paid with Power/Spell cards.
+// Issue 1c: Alamar's Resurrection cancels a lethal normal attack (only), by
+// grade, suppresses the saved unit's retaliation, and is paid with Power/Spell
+// cards. It never reacts to spells or specialty damage.
 // ---------------------------------------------------------------------------
 
 describe("Alamar's Resurrection I", () => {
@@ -333,7 +334,7 @@ describe("Alamar's Resurrection I", () => {
     expect(saved.combat!.units.unit_p1_griffins.damage).toBe(saved.combat!.units.unit_p1_griffins.maxHealth - 1);
   });
 
-  it("also cancels a lethal damaging spell aimed at your unit", () => {
+  it("does not react to a lethal spell (attacks only) — the spell still strikes", () => {
     const state = createInitialGameState("alamar-spell-seed");
     state.players.p1.hand = ["specialty.alamar.1", "stat.power"];
     state.players.p2.hand = ["spell.magic_arrow"];
@@ -343,22 +344,22 @@ describe("Alamar's Resurrection I", () => {
     state.activePlayerId = "p2";
     state.combat!.activeUnitId = "unit_p2_skeletons";
 
-    const cast = applyOk(state, {
+    // Resurrection is never offered against a spell, so no reaction window even
+    // opens for p1 — the spell resolves at once and the hit lands.
+    const resolved = applyOk(state, {
       type: "CAST_SPELL",
       playerId: "p2",
       cardId: "spell.magic_arrow",
       target: { type: "unit", unitId: "unit_p1_griffins" }
     });
-    expect(cast.reactionWindow?.triggerEvent.type).toBe("SPELL_CAST_STARTED");
-
-    const saved = applyOk(cast, {
-      type: "PLAY_REACTIONS",
-      playerId: "p1",
-      plays: [{ cardId: "specialty.alamar.1", optionIndex: 0, costCardIds: ["stat.power"] }]
-    });
-    expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
-    const griffins = saved.combat!.units.unit_p1_griffins;
-    expect(griffins.damage).toBe(griffins.maxHealth - 1); // the spell dealt no damage to it
+    expect(hasAbilityEvent(resolved, "resurrection")).toBe(false);
+    const hitGriffins = resolved.eventLog.some(
+      (event) =>
+        event.type === "DAMAGE_ASSIGNED" &&
+        event.target.type === "unit" &&
+        event.target.unitId === "unit_p1_griffins"
+    );
+    expect(hitGriffins).toBe(true);
   });
 });
 

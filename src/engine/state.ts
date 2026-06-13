@@ -420,11 +420,12 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Alamar's Resurrection: played as a reaction on an enemy attack or
-       * damaging spell that targets one of your units. If the blow would
-       * reduce that unit (of `grade` or lower) to 0 HP it is cancelled — no
-       * damage, and an attack also draws no Retaliation. The option's discard
-       * cost (Power statistics / Spells) stands in for the printed Power.
+       * Alamar's Resurrection: played as a reaction on an enemy attack that
+       * targets one of your units (normal attacks only — never spells or
+       * specialty damage). If the attack would reduce that unit (of `grade` or
+       * lower) to 0 HP it is cancelled — no damage and no Retaliation. The
+       * option's discard cost (Power statistics / Spells) stands in for the
+       * printed Power.
        */
       type: "CANCEL_LETHAL_ATTACK";
       grade: UnitGrade;

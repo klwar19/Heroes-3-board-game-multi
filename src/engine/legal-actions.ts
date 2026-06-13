@@ -2124,19 +2124,11 @@ function variantMatchesTrigger(
   if (variant.trigger.event !== triggerEvent.type) {
     // Power plays declared on a SPELL_CAST trigger may also be paid into an
     // attack window, fueling a spell instant in the same declaration.
-    if (
+    return (
       triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
       variant.trigger.event === "SPELL_CAST_STARTED" &&
       variant.effect.type === "ADD_SPELL_POWER"
-    ) {
-      return true;
-    }
-    // Alamar's Resurrection guards a unit against both attacks and damaging
-    // spells, so it reacts in either window — only on the enemy's declaration.
-    if (variant.effect.type === "CANCEL_LETHAL_ATTACK") {
-      return triggerEvent.playerId !== playerId;
-    }
-    return false;
+    );
   }
 
   const isSelf = triggerEvent.playerId === playerId;
@@ -2245,24 +2237,6 @@ export function isEffectLegalForTrigger(
 
     if (effect.type === "RECALL_SPELL") {
       return triggerEvent.playerId === playerId;
-    }
-
-    // Alamar's Resurrection vs an enemy's damaging spell aimed at your unit:
-    // offer the option whose grade matches the targeted unit.
-    if (effect.type === "CANCEL_LETHAL_ATTACK") {
-      if (triggerEvent.playerId === playerId) {
-        return false;
-      }
-      const stackItem = getPendingStackItem(state, triggerEvent);
-      if (stackItem?.action.type !== "CAST_SPELL" || stackItem.action.target.type !== "unit") {
-        return false;
-      }
-      const spell = cardLibrary[stackItem.action.cardId];
-      const dealsDamage = spell?.effect.type === "DEAL_DAMAGE" || spell?.effect.type === "AREA_DAMAGE_ADJACENT";
-      const targetUnit = state.combat?.units[stackItem.action.target.unitId];
-      return Boolean(
-        dealsDamage && targetUnit && targetUnit.controllerId === playerId && effect.grade === targetUnit.grade
-      );
     }
 
     return false;

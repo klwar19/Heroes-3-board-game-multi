@@ -316,10 +316,11 @@ function notImplementedSpecialty(
 }
 
 /**
- * Alamar's Resurrection: a reaction (attack OR damaging spell window) that
- * cancels a blow which would destroy one of your units. One option per grade;
- * its Power requirement is paid by discarding that many "power-source" cards
- * (a Power statistic or any Spell). A cost of 0 needs no discard.
+ * Alamar's Resurrection: a reaction in an attack window that cancels a normal
+ * attack which would destroy one of your units (never spells or specialty
+ * damage). One option per grade; its Power requirement is paid by discarding
+ * that many "power-source" cards (a Power statistic or any Spell). A cost of 0
+ * needs no discard.
  */
 function resurrectionSpecialty(
   level: 1 | 4 | 6,
@@ -337,7 +338,7 @@ function resurrectionSpecialty(
       "reaction",
       "alamar",
       "resurrection",
-      `Cancel an enemy attack or damaging spell that would reduce one of your units to 0 HP. Discard Power (a Power statistic or a Spell): ${costs.bronze} for a bronze unit, ${costs.silver} for silver, ${costs.gold} for gold.`
+      `Cancel an enemy attack that would reduce one of your units to 0 HP (attacks only, not spells or specialties). Discard Power (a Power statistic or a Spell): ${costs.bronze} for a bronze unit, ${costs.silver} for silver, ${costs.gold} for gold.`
     ],
     effect: {
       type: "CHOOSE_ONE",
