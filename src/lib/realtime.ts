@@ -72,7 +72,10 @@ type PartyServerMessage =
 
 function partyHttpUrl(host: string, roomId: string): string {
   const protocol = host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
-  return `${protocol}://${host}/party/${encodeURIComponent(roomId)}`;
+  // PartyKit serves the default ("main") party at /parties/main/<room> — the
+  // same path PartySocket uses for the WebSocket. (The room server adds CORS
+  // headers so these cross-origin GETs are not blocked by the browser.)
+  return `${protocol}://${host}/parties/main/${encodeURIComponent(roomId)}`;
 }
 
 function connectPartyRoom(host: string, roomId: string, handlers: RoomConnectionHandlers): RoomConnection {
@@ -82,6 +85,11 @@ function connectPartyRoom(host: string, roomId: string, handlers: RoomConnection
     (reply: Extract<PartyServerMessage, { type: "action-result" }>) => void
   >();
   let requestCounter = 0;
+  // Reset travels over the socket, not HTTP: the room server is a different
+  // origin than the app, so a cross-origin fetch would be blocked by CORS
+  // (the WebSocket is not). The next snapshot the server broadcasts is the
+  // reset result, so we resolve the reset promise on it.
+  let resolveReset: ((snapshot: GameRoomSnapshot) => void) | null = null;
 
   handlers.onStatus("connecting (edge)");
 
@@ -105,6 +113,11 @@ function connectPartyRoom(host: string, roomId: string, handlers: RoomConnection
     if (message.type === "snapshot") {
       handlers.onSnapshot(message.snapshot);
       handlers.onStatus(`live (edge) v${message.snapshot.version}`);
+      if (resolveReset) {
+        const settle = resolveReset;
+        resolveReset = null;
+        settle(message.snapshot);
+      }
       return;
     }
 
@@ -150,17 +163,20 @@ function connectPartyRoom(host: string, roomId: string, handlers: RoomConnection
 
         socket.send(JSON.stringify({ type: "action", requestId, action }));
       }),
-    resetRoom: async (options) => {
-      const response = await fetch(partyHttpUrl(host, roomId), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reset: true, ...options })
-      });
-      if (!response.ok) {
-        throw new Error("Could not reset the room.");
-      }
-      return (await response.json()) as GameRoomSnapshot;
-    },
+    resetRoom: (options) =>
+      new Promise<GameRoomSnapshot>((resolve, reject) => {
+        const timeout = window.setTimeout(() => {
+          if (resolveReset) {
+            resolveReset = null;
+            reject(new Error("Could not reset the room."));
+          }
+        }, 15000);
+        resolveReset = (snapshot) => {
+          window.clearTimeout(timeout);
+          resolve(snapshot);
+        };
+        socket.send(JSON.stringify({ type: "reset", ...options }));
+      }),
     fetchSnapshot: async () => {
       const response = await fetch(partyHttpUrl(host, roomId), { cache: "no-store" });
       if (!response.ok) {
