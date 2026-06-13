@@ -17,6 +17,7 @@ import {
   getUnitTokens,
   isArrowTowerUnit,
   isUnitAlive,
+  playerSpellCastsIgnoreLimit,
   sortUnitsForActivation,
   type CombatTokenState,
   type CombatUnitState,
@@ -659,7 +660,11 @@ export function CommandDock({
       : `Waiting for ${state.players[waitingOn]?.name ?? waitingOn}`;
 
   const player = state.players[viewerPlayerId];
+  // Expert Intelligence "ignores the limit": casts still tick the counter, so
+  // show the cap as ∞ and never mark it spent while that effect is held.
+  const ignoreSpellLimit = Boolean(player) && playerSpellCastsIgnoreLimit(state, viewerPlayerId);
   const spellLimit = 1 + (player?.combatStats.spellLimitBonusThisRound ?? 0);
+  const spellLimitLabel = ignoreSpellLimit ? "∞" : String(spellLimit);
   const spellsCast = player?.combatStats.spellsCastThisRound ?? 0;
   const crownsLeft = player ? player.limits.expertUses - player.combatStats.expertUsesSpentThisRound : 0;
 
@@ -669,10 +674,14 @@ export function CommandDock({
       {state.combat && !outcome ? (
         <div className="dockLimits" aria-label="Per-round limits">
           <span
-            className={spellsCast >= spellLimit ? "limitSpent" : ""}
-            title={`One spell per combat round${spellLimit > 1 ? ` (+${spellLimit - 1} from Knowledge)` : ""}. Hero specialties never count against it.`}
+            className={!ignoreSpellLimit && spellsCast >= spellLimit ? "limitSpent" : ""}
+            title={
+              ignoreSpellLimit
+                ? "Intelligence (expert): your spells no longer count toward the per-combat-round limit."
+                : `One spell per combat round${spellLimit > 1 ? ` (+${spellLimit - 1} from Knowledge)` : ""}. Hero specialties never count against it.`
+            }
           >
-            <Sparkles aria-hidden="true" size={12} /> Spell {spellsCast}/{spellLimit}
+            <Sparkles aria-hidden="true" size={12} /> Spell {spellsCast}/{spellLimitLabel}
           </span>
           <span title="Expert-effect crowns left this combat round">
             <Crown aria-hidden="true" size={12} /> {crownsLeft} crown{crownsLeft === 1 ? "" : "s"}

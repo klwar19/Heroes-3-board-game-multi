@@ -122,7 +122,8 @@ import {
   getNextUnitToActivate,
   isAdjacent,
   isUnitAlive,
-  rerollSourceAvailableFor
+  rerollSourceAvailableFor,
+  spellRedirectTargets
 } from "./legal-actions";
 import {
   getActivationAbilities,
@@ -357,10 +358,10 @@ function assertBatchReactionLegal(
     }
 
     const effect = card ? getEffectiveCardEffect(card, play.optionIndex) : null;
-    if (!effect || effect.type === "CANCEL_SPELL" || effect.type === "RECALL_SPELL") {
+    if (!effect || effect.type === "CANCEL_SPELL" || effect.type === "RECALL_SPELL" || effect.type === "REDIRECT_SPELL") {
       return {
         code: "ACTION_NOT_LEGAL",
-        message: "Spell-ending and recall cards must be played on their own."
+        message: "Spell-ending, recall and redirect cards must be played on their own."
       };
     }
 
@@ -4170,6 +4171,49 @@ function applyReactionPlayCore(
     return { windowEnded: true };
   }
 
+  // Magic Mirror: re-point the pending enemy spell to a new target. The card,
+  // its Power cost and the spell-limit count were already spent above. Now the
+  // controller picks the new target (of the chosen grade or lower) in a
+  // follow-up choice while the spell waits on the stack; the reaction window
+  // closes and the spell resolves against the chosen unit once it is picked.
+  if (effect.type === "REDIRECT_SPELL" && stackItem?.action.type === "CAST_SPELL") {
+    const currentTarget = stackItem.action.target;
+    const candidates =
+      currentTarget.type === "unit" ? spellRedirectTargets(state, currentTarget.unitId, effect.grade) : [];
+    if (candidates.length === 0) {
+      throw new Error("There is no legal new target for that spell.");
+    }
+
+    const castCard = cards[stackItem.action.cardId];
+    const choiceId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "ABILITY_TARGET_CHOICE",
+      playerId,
+      kind: "spell-redirect",
+      abilityId: card.id,
+      abilityName: card.name,
+      prompt: `${card.name}: choose a new target for ${castCard?.name ?? "the spell"} (${effect.grade} or lower).`,
+      sourceUnitId: null,
+      anchorUnitId: currentTarget.type === "unit" ? currentTarget.unitId : null,
+      candidateUnitIds: candidates.map((unit) => unit.id),
+      optional: false
+    };
+    appendEvent(state, {
+      type: "PENDING_CHOICE_CREATED",
+      choiceId,
+      choiceType: "ABILITY_TARGET_CHOICE",
+      playerId,
+      sourceEffectIds: [],
+      message: `${card.name}: choose where to bounce ${castCard?.name ?? "the spell"}.`
+    });
+
+    closeReactionWindow(state, "reaction-played");
+    state.phase = "choice";
+    state.priorityPlayerId = playerId;
+    return { windowEnded: true };
+  }
+
   // Empower: cast windows feed the pending spell; attack windows build the
   // Power pool a spell instant in the same declaration consumes. The
   // rulebook allows stacking several Empower plays to reach a threshold.
@@ -5716,6 +5760,28 @@ function chooseAbilityTarget(
       }
     }
     finishCombatIfNeeded(state);
+    return;
+  }
+
+  // Magic Mirror: the new target is chosen — re-point the pending spell (which
+  // waited on the stack while this choice was open) and resolve it against the
+  // chosen unit. A Fireball-style spell recomputes its splash around the new
+  // primary target on resolution.
+  if (choice.kind === "spell-redirect") {
+    const top = state.stack.at(-1);
+    if (top?.action.type === "CAST_SPELL") {
+      const fromTarget = top.action.target;
+      top.action.target = { type: "unit", unitId: action.targetUnitId };
+      appendEvent(state, {
+        type: "SPELL_REDIRECTED",
+        playerId: action.playerId,
+        spellCardId: top.action.cardId,
+        byCardId: choice.abilityId ?? "",
+        fromTarget,
+        toTarget: top.action.target
+      });
+      resolveTopStack(state, cards);
+    }
     return;
   }
 

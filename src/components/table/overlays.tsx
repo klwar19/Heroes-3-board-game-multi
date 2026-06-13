@@ -165,7 +165,12 @@ export function ReactionTray({
     const effect = card && !action.asPowerBoost ? getEffectiveCardEffect(card, action.optionIndex) : null;
     const batchable = action.asPowerBoost
       ? true
-      : Boolean(effect && effect.type !== "CANCEL_SPELL" && effect.type !== "RECALL_SPELL");
+      : Boolean(
+          effect &&
+            effect.type !== "CANCEL_SPELL" &&
+            effect.type !== "RECALL_SPELL" &&
+            effect.type !== "REDIRECT_SPELL"
+        );
     const option =
       card?.effect.type === "CHOOSE_ONE" && action.optionIndex !== undefined
         ? card.effect.options[action.optionIndex]
