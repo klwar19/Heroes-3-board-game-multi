@@ -70,7 +70,12 @@ import type {
   UnitId
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
-import { getLethalSaveUnitAbility, getUnitAbilityDefinitions, hasUnitAbilityEffect } from "./unit-abilities";
+import {
+  getLethalSaveUnitAbility,
+  getUnitAbilityDefinitions,
+  hasUnitAbilityEffect,
+  unitImmuneToSpellSchools
+} from "./unit-abilities";
 
 type ConcreteEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
 
@@ -587,14 +592,20 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
         ? [...getFriendlyTargets(state, playerId, target), ...getEnemyTargets(state, playerId, target)]
         : getEnemyTargets(state, playerId, target);
 
-  // Anti-Magic: spell-immune units cannot be targeted by Spell cards.
+  // Anti-Magic and elemental immunity: a unit cannot be targeted by a Spell it
+  // is immune to. Anti-Magic (the UNIT_SPELL_IMMUNE active effect) blocks every
+  // Spell up to its grade; an Elemental's printed immunity blocks only Magic
+  // Arrow and its own school (see unitImmuneToSpellSchools).
   if (card?.kind === "spell") {
     return targets.filter((candidate) => {
       if (candidate.type !== "unit") {
         return true;
       }
       const unit = state.combat?.units[candidate.unitId];
-      return !unit || !isUnitSpellImmune(state, unit);
+      if (!unit) {
+        return true;
+      }
+      return !isUnitSpellImmune(state, unit) && !unitImmuneToSpellSchools(unit, card.spellSchools);
     });
   }
 
@@ -2014,7 +2025,7 @@ function getLethalSaveReactions(
   }
   const playerId = defender.controllerId;
   const player = state.players[playerId];
-  if (!player || playerId === NEUTRAL_PLAYER_ID || isHandLockedInCombat(state, playerId)) {
+  if (!player || playerId === NEUTRAL_PLAYER_ID) {
     return {};
   }
 
@@ -2027,36 +2038,44 @@ function getLethalSaveReactions(
     return {};
   }
 
-  // A Resurrection-style Spell counts against the one-Spell-per-combat-round
-  // limit (Expert Knowledge / Intelligence raise it); the specialty and the
-  // Archangels' ability do not.
-  const spellLimitReached = player.combatStats.spellsCastThisRound >= spellLimitFor(state, player);
-
   const reactions: LegalAction[] = [];
-  for (const cardId of new Set(player.hand)) {
-    const card = cards[cardId];
-    if (!card || card.implementationStatus !== "implemented" || card.effect.type !== "CHOOSE_ONE") {
-      continue;
-    }
-    if (card.kind === "spell" && spellLimitReached) {
-      continue;
-    }
-    for (const [optionIndex, option] of card.effect.options.entries()) {
-      if (option.effect.type !== "CANCEL_LETHAL_ATTACK" || option.effect.grade !== defender.grade) {
+
+  // Deck-based saves (the Resurrection Spell, Alamar's Resurrection specialty)
+  // are played from the controller's hand, so they are unavailable whenever
+  // that controller "cannot use your Deck during this Combat" — a Secondary
+  // Hero leads the fight, or a heroless garrison defends. The Archangels' free
+  // unit ability below is NOT a Deck card, so it must still be offered then.
+  if (!isHandLockedInCombat(state, playerId)) {
+    // A Resurrection-style Spell counts against the one-Spell-per-combat-round
+    // limit (Expert Knowledge / Intelligence raise it); the specialty and the
+    // Archangels' ability do not.
+    const spellLimitReached = player.combatStats.spellsCastThisRound >= spellLimitFor(state, player);
+
+    for (const cardId of new Set(player.hand)) {
+      const card = cards[cardId];
+      if (!card || card.implementationStatus !== "implemented" || card.effect.type !== "CHOOSE_ONE") {
         continue;
       }
-      if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
+      if (card.kind === "spell" && spellLimitReached) {
         continue;
       }
-      reactions.push(
-        makeReactionAction(`${card.name}: ${option.label}`, {
-          type: "PLAY_REACTION",
-          playerId,
-          cardId,
-          mode: "basic",
-          optionIndex
-        })
-      );
+      for (const [optionIndex, option] of card.effect.options.entries()) {
+        if (option.effect.type !== "CANCEL_LETHAL_ATTACK" || option.effect.grade !== defender.grade) {
+          continue;
+        }
+        if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
+          continue;
+        }
+        reactions.push(
+          makeReactionAction(`${card.name}: ${option.label}`, {
+            type: "PLAY_REACTION",
+            playerId,
+            cardId,
+            mode: "basic",
+            optionIndex
+          })
+        );
+      }
     }
   }
 

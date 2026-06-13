@@ -39,12 +39,24 @@ function lethalSetup(opts: {
   archangelAlreadyUsed?: boolean;
   spellsAlreadyCast?: number;
   rolls?: number[];
+  handLockP1?: boolean;
 }): GameState {
   const state = createInitialGameState("lethal-save-seed");
   state.players.p1.hand = opts.p1Hand ?? [];
   state.players.p2.hand = [];
   if (opts.spellsAlreadyCast !== undefined) {
     state.players.p1.combatStats.spellsCastThisRound = opts.spellsAlreadyCast;
+  }
+  if (opts.handLockP1) {
+    // A Secondary Hero leads p1's side, so p1 "cannot use your Deck this
+    // Combat" — exactly the case where the Archangel free save was lost.
+    state.heroes.hero_p1.kind = "secondary";
+    state.combat!.context = {
+      kind: "player",
+      attackerHeroId: "hero_p1",
+      defenderHeroId: "hero_p2",
+      fieldId: "f:0:0"
+    };
   }
 
   const defender = state.combat!.units.unit_p1_griffins;
@@ -163,6 +175,33 @@ describe("Archangels' once-per-combat lethal save", () => {
     expect(
       actions.some((legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.alamar.6")
     ).toBe(true);
+  });
+
+  it("stays available — and is usable — when the controller cannot use their Deck", () => {
+    // A hand-locked side (Secondary Hero / heroless garrison) plays no cards,
+    // so the Resurrection spell is withheld, but the Archangels' free unit
+    // ability is not a Deck card and must still save the killing blow.
+    const declared = lethalSetup({
+      defenderGrade: "gold",
+      p1Hand: ["spell.resurrection"],
+      archangelSaver: true,
+      handLockP1: true
+    });
+    expect(declared.reactionWindow?.triggerEvent.type).toBe("UNIT_LETHAL_HIT");
+
+    const actions = p1SaveActions(declared);
+    // The Deck card is withheld…
+    expect(actions.some((legal) => legal.action.type === "PLAY_REACTION")).toBe(false);
+    // …but the Archangel free save is offered.
+    const save = actions.find(
+      (legal) => legal.action.type === "USE_UNIT_RESURRECTION" && legal.action.savingUnitId === "unit_p1_crusaders"
+    );
+    expect(save, "the Archangel save must survive the hand lock").toBeTruthy();
+
+    const saved = applyOk(declared, save!.action);
+    expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
+    expect(griffins(saved).damage).toBe(griffins(saved).maxHealth - 1); // fully saved
+    expect(saved.combat!.units.unit_p1_crusaders.usedLethalSaveThisCombat).toBe(true);
   });
 });
 
