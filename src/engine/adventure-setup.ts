@@ -17,7 +17,7 @@ import {
   startingTileByFaction
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { allTileDefinitions, DEFAULT_TILE_CONTENT, tilePoolIds } from "@/data/map/tiles";
+import { allTileDefinitions, ALL_TILE_CONTENT, DEFAULT_TILE_CONTENT, tilePoolIds } from "@/data/map/tiles";
 import type { TileContent } from "@/data/map/types";
 import { DEFAULT_SCENARIO_ID, scenarioDefinitions, type ScenarioDefinition } from "@/data/map/scenarios";
 import {
@@ -44,6 +44,7 @@ import type {
   GameRuleset,
   GameSetupOptions,
   GameState,
+  PlayerId,
   PlayerState,
   UnitLevel
 } from "./state";
@@ -62,6 +63,8 @@ export type AdventureSetupOptions = {
   difficulty?: GameDifficulty;
   scenarioId?: string;
   players?: AdventurePlayerConfig[];
+  /** Seats to open in the lobby (clamped to the scenario's min/max players). */
+  playerCount?: number;
   /** Lobby overrides for starting resources, income, units and buildings. */
   startingResources?: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction?: { gold: number; buildingMaterials: number; valuables: number };
@@ -109,6 +112,7 @@ export function scenarioStartingUnitLevels(scenario: ScenarioDefinition): Custom
 export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetupOptions {
   return {
     scenarioId: scenario.id,
+    playerCount: scenario.minPlayers,
     ruleset: "binh",
     difficulty: "impossible",
     startingResources: { ...scenario.startingResources },
@@ -377,14 +381,14 @@ export function validateCustomMapPlan(
 ): { accepted: CustomMapTilePlan[]; problems: string[] } {
   const problems: string[] = [];
   const accepted: CustomMapTilePlan[] = [];
-  const placedCenters: HexCoord[] = scenario.layout.starts.map((start) => ({ ...start }));
+  const validGroups = new Set(["starting", "far", "near", "center", "sea", "subterranean"]);
 
   const wellFormed = plans.filter((plan, index) => {
     if (!Number.isInteger(plan.row) || !Number.isInteger(plan.col)) {
       problems.push(`Tile ${index + 1}: position must be whole grid coordinates.`);
       return false;
     }
-    if (plan.group !== "far" && plan.group !== "near" && plan.group !== "center") {
+    if (!validGroups.has(plan.group)) {
       problems.push(`Tile ${index + 1}: unknown tile group.`);
       return false;
     }
@@ -392,7 +396,9 @@ export function validateCustomMapPlan(
       problems.push(`Tile ${index + 1}: rotation must be 0-5.`);
       return false;
     }
-    if (!plan.faceDown) {
+    // Starting (Ⅰ) tiles only carry a seat position; the tile art is the
+    // faction's, so they never need a chosen tile id.
+    if (plan.group !== "starting" && !plan.faceDown) {
       const def = plan.tileDefId ? allTileDefinitions[plan.tileDefId] : undefined;
       if (!def) {
         problems.push(`Tile ${index + 1}: pick a tile for the face-up slot.`);
@@ -406,9 +412,28 @@ export function validateCustomMapPlan(
     return true;
   });
 
+  // Seat anchors: the designer's own Ⅰ tiles when it placed any, otherwise the
+  // scenario sheet's fixed seats (keeps older saved maps working unchanged).
+  const startingPlans = wellFormed.filter((plan) => plan.group === "starting");
+  const placedCenters: HexCoord[] = [];
+  if (startingPlans.length > 0) {
+    for (const plan of startingPlans) {
+      const center = { row: plan.row, col: plan.col };
+      if (placedCenters.some((existing) => tileCentersOverlap(existing, center))) {
+        problems.push(`Starting tile at ${plan.row},${plan.col}: overlaps another starting tile.`);
+        continue;
+      }
+      placedCenters.push(center);
+      accepted.push(plan);
+    }
+  } else {
+    placedCenters.push(...scenario.layout.starts.map((start) => ({ ...start })));
+  }
+  const seedCenters = [...placedCenters];
+
   // Tiles must connect to the board: accept plans whose footprint touches an
   // already-placed tile until nothing more fits (order-independent).
-  const remaining = [...wellFormed];
+  const remaining = wellFormed.filter((plan) => plan.group !== "starting");
   let progressed = true;
   while (progressed) {
     progressed = false;
@@ -433,7 +458,7 @@ export function validateCustomMapPlan(
     const center = { row: plan.row, col: plan.col };
     if (placedCenters.some((existing) => hexEquals(existing, center))) {
       problems.push(`Tile at ${plan.row},${plan.col}: duplicate position.`);
-    } else if (scenario.layout.starts.some((start) => tileCentersOverlap(start, center))) {
+    } else if (seedCenters.some((start) => tileCentersOverlap(start, center))) {
       problems.push(`Tile at ${plan.row},${plan.col}: overlaps a starting tile.`);
     } else {
       problems.push(`Tile at ${plan.row},${plan.col}: must touch the starting tiles or another designed tile.`);
@@ -495,6 +520,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const nearPool = shuffleCards(tilePoolIds("near", tileContent), `${seed}#pool#near`);
   const centerPool = shuffleCards(tilePoolIds("center", tileContent), `${seed}#pool#center`);
   const farPool = shuffleCards(tilePoolIds("far", tileContent), `${seed}#pool#far`);
+  // Sea and Subterranean tiles ship in later boxes; designer maps may place
+  // them regardless of the active content sets, so draw from every set.
+  const seaPool = shuffleCards(tilePoolIds("sea", ALL_TILE_CONTENT), `${seed}#pool#sea`);
+  const subterraneanPool = shuffleCards(tilePoolIds("subterranean", ALL_TILE_CONTENT), `${seed}#pool#subterranean`);
 
   const state: GameState = {
     id: "adventure-game",
@@ -540,12 +569,25 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     }
   };
 
-  // Starting tiles: position fixed by the scenario seat, tile fixed by the
-  // chosen faction — no rotation choice. Towns and main heroes go on the
-  // tile's center field.
+  const customMap = setupOptions.customMap?.length
+    ? validateCustomMapPlan(setupOptions.customMap, scenario).accepted
+    : null;
+
+  // Seat positions: the designer's own Ⅰ tiles in placement order when it
+  // drew any, otherwise the scenario sheet's fixed seats. Each seat falls back
+  // to the scenario seat if the design left it unplaced.
+  const designerStartCenters = (customMap ?? [])
+    .filter((plan) => plan.group === "starting")
+    .map((plan) => ({ row: plan.row, col: plan.col }));
+  const startCenterFor = (index: number): HexCoord =>
+    designerStartCenters[index] ?? scenario.layout.starts[index];
+
+  // Starting tiles: position from the seat (designer or scenario), tile fixed
+  // by the chosen faction — no rotation choice. Towns and main heroes go on
+  // the tile's center field.
   playerConfigs.forEach((config, index) => {
     const startTileId = startingTileByFaction[config.factionId] ?? "S1";
-    const center = scenario.layout.starts[index];
+    const center = startCenterFor(index);
     const tile = instantiateTile(adventure, startTileId, center, 0, false);
     const townFieldId = Object.values(adventure.fields).find(
       (field) => field.tileInstanceId === tile.id && field.slot === 0
@@ -585,15 +627,18 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     }
   });
 
-  const customMap = setupOptions.customMap?.length
-    ? validateCustomMapPlan(setupOptions.customMap, scenario).accepted
-    : null;
-
   if (customMap) {
     // Map designer: hand-placed tiles instead of the scenario layout.
     // Face-up plans place their chosen tile revealed; face-down plans draw a
-    // random tile from their group's pool ("down means random").
-    const pools = { far: farPool, near: nearPool, center: centerPool };
+    // random tile from their group's pool ("down means random"). Starting (Ⅰ)
+    // tiles were already placed by faction in the seat loop above.
+    const pools: Record<string, string[]> = {
+      far: farPool,
+      near: nearPool,
+      center: centerPool,
+      sea: seaPool,
+      subterranean: subterraneanPool
+    };
 
     // Designed face-up tiles never also hide in a face-down pool draw.
     for (const plan of customMap) {
@@ -608,9 +653,12 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     }
 
     for (const plan of customMap) {
+      if (plan.group === "starting") {
+        continue;
+      }
       const center = { row: plan.row, col: plan.col };
       if (plan.faceDown) {
-        const tileDefId = pools[plan.group].pop();
+        const tileDefId = pools[plan.group]?.pop();
         if (tileDefId) {
           instantiateTile(adventure, tileDefId, center, 0, true);
         }
@@ -712,14 +760,83 @@ function rollFirstPlayer(state: GameState, seed: string): void {
 // Map-setup lobby: pick factions and heroes, then build the scenario map
 // ---------------------------------------------------------------------------
 
-const LOBBY_SEAT_NAMES = ["Player 1", "Player 2", "Player 3"];
+const LOBBY_SEAT_NAMES = ["Player 1", "Player 2", "Player 3", "Player 4"];
+
+/** Seats the lobby opens for a scenario, clamped to its min/max players. */
+function clampSeatCount(scenario: ScenarioDefinition, requested: number | undefined): number {
+  const ceiling = Math.min(scenario.maxPlayers, scenario.layout.starts.length);
+  const wanted = Number.isFinite(requested) ? Math.floor(requested as number) : scenario.minPlayers;
+  return Math.max(scenario.minPlayers, Math.min(ceiling, wanted));
+}
+
+/** A fresh lobby PlayerState: an empty seat that mirrors the setup options. */
+function makeLobbySeatPlayer(playerId: PlayerId, name: string, options: GameSetupOptions): PlayerState {
+  return {
+    id: playerId,
+    name,
+    deck: [],
+    hand: [],
+    discard: [],
+    removed: [],
+    army: [],
+    startingArmy: [],
+    resources: { ...options.startingResources },
+    production: { ...options.startingProduction },
+    townTokens: { build: true, population: true, spellBook: true },
+    morale: 0,
+    limits: { hand: 4, expertUses: 0 },
+    combatStats: {
+      spellsCastThisRound: 0,
+      spellLimitBonusThisRound: 0,
+      expertUsesSpentThisRound: 0
+    }
+  };
+}
+
+/**
+ * Grows or shrinks the lobby to `targetCount` seats in place: new seats open
+ * empty (p3, p4…), trimmed seats and their players drop out, and turn order /
+ * the active seat stay valid. Returns the seat count actually set.
+ */
+function resizeLobbySeats(state: GameState, scenario: ScenarioDefinition, targetCount: number): number {
+  const lobby = state.setupLobby;
+  if (!lobby) {
+    return 0;
+  }
+  const count = clampSeatCount(scenario, targetCount);
+  if (count === lobby.seats.length) {
+    return count;
+  }
+
+  if (count > lobby.seats.length) {
+    for (let index = lobby.seats.length; index < count; index += 1) {
+      const playerId = `p${index + 1}`;
+      const name = LOBBY_SEAT_NAMES[index] ?? `Player ${index + 1}`;
+      lobby.seats.push({ playerId, name, factionId: null, heroDefId: null });
+      state.players[playerId] = makeLobbySeatPlayer(playerId, name, lobby.options);
+    }
+  } else {
+    for (const seat of lobby.seats.slice(count)) {
+      delete state.players[seat.playerId];
+    }
+    lobby.seats = lobby.seats.slice(0, count);
+  }
+
+  state.turnOrder = lobby.seats.map((seat) => seat.playerId);
+  if (!state.turnOrder.includes(state.activePlayerId)) {
+    state.activePlayerId = state.turnOrder[0];
+  }
+  lobby.options.playerCount = count;
+  return count;
+}
 
 /** Opens a new room in the map-setup phase: seats wait for faction picks. */
 export function createAdventureLobbyState(options: AdventureSetupOptions = {}): GameState {
   const seed = options.seed ?? `homm3bg-${Date.now().toString(36)}`;
   const scenario = getScenario(options.scenarioId);
-  const seatCount = Math.min(2, scenario.maxPlayers);
   const setupOptions = defaultGameSetupOptions(scenario);
+  const seatCount = clampSeatCount(scenario, options.playerCount ?? setupOptions.playerCount);
+  setupOptions.playerCount = seatCount;
 
   const seats = Array.from({ length: seatCount }, (_, index) => ({
     playerId: `p${index + 1}`,
@@ -729,29 +846,7 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   }));
 
   const players = Object.fromEntries(
-    seats.map((seat) => {
-      const player: PlayerState = {
-        id: seat.playerId,
-        name: seat.name,
-        deck: [],
-        hand: [],
-        discard: [],
-        removed: [],
-        army: [],
-        startingArmy: [],
-        resources: { ...setupOptions.startingResources },
-        production: { ...setupOptions.startingProduction },
-        townTokens: { build: true, population: true, spellBook: true },
-        morale: 0,
-        limits: { hand: 4, expertUses: 0 },
-        combatStats: {
-          spellsCastThisRound: 0,
-          spellLimitBonusThisRound: 0,
-          expertUsesSpentThisRound: 0
-        }
-      };
-      return [seat.playerId, player] as const;
-    })
+    seats.map((seat) => [seat.playerId, makeLobbySeatPlayer(seat.playerId, seat.name, setupOptions)] as const)
   );
 
   return {
@@ -845,6 +940,18 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     lobby.scenarioId = next.scenarioId;
     lobby.options.scenarioId = next.scenarioId;
     changes.push(`scenario ${scenarioDefinitions[next.scenarioId].name}`);
+    // A new scenario may allow fewer seats — trim the lobby to fit.
+    const before = lobby.seats.length;
+    const trimmed = resizeLobbySeats(state, scenarioDefinitions[next.scenarioId], before);
+    if (trimmed !== before) {
+      changes.push(`players ${trimmed}`);
+    }
+  }
+
+  if (next.playerCount !== undefined) {
+    const scenario = getScenario(lobby.options.scenarioId);
+    const count = resizeLobbySeats(state, scenario, next.playerCount);
+    changes.push(`players ${count}`);
   }
 
   if (next.difficulty !== undefined) {

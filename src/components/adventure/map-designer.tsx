@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { Minus, Plus, RotateCcw, RotateCw, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Eye, Minus, Plus, RotateCcw, RotateCw, Shuffle, Trash2 } from "lucide-react";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { TILE_BACK_IMAGES } from "@/data/assets/homm-assets";
 import {
@@ -16,17 +16,40 @@ import {
 } from "@/engine";
 import { titleCase } from "@/components/table/utils";
 
-export const TILE_GROUP_LABELS: Record<"far" | "near" | "center", string> = {
-  far: "Far Ⅱ–Ⅲ",
-  near: "Near Ⅳ–Ⅴ",
-  center: "Center Ⅵ–Ⅶ"
+/** Tile group of a designed plan. */
+type DesignGroup = CustomMapTilePlan["group"];
+
+/** Short printed label per group (the Roman numeral on the tile back). */
+export const TILE_GROUP_LABELS: Record<DesignGroup, string> = {
+  starting: "Ⅰ Town",
+  far: "Ⅱ–Ⅲ",
+  near: "Ⅳ–Ⅴ",
+  center: "Ⅵ–Ⅶ",
+  sea: "Sea",
+  subterranean: "Underground"
 };
 
-const GROUP_COLORS: Record<"far" | "near" | "center", string> = {
+const GROUP_COLORS: Record<DesignGroup, string> = {
+  starting: "#d9b54a",
   far: "#4f8a4f",
   near: "#b08d2f",
-  center: "#a14d4d"
+  center: "#a14d4d",
+  sea: "#3f7fae",
+  subterranean: "#7a5a9e"
 };
+
+/** The draggable palette: one entry per tile type the designer can place. */
+const PALETTE: { group: DesignGroup; label: string; numeral: string; hint: string }[] = [
+  { group: "starting", label: "Town", numeral: "Ⅰ", hint: "A player's starting town. The first one placed is seat 1, the next seat 2, and so on — the tile art comes from each player's faction." },
+  { group: "far", label: "Far", numeral: "Ⅱ–Ⅲ", hint: "Weak outer tile. Placed face-down (random from the Far pool) — click it to reveal a specific tile." },
+  { group: "near", label: "Near", numeral: "Ⅳ–Ⅴ", hint: "Mid-strength tile. Placed face-down (random from the Near pool)." },
+  { group: "center", label: "Center", numeral: "Ⅵ–Ⅶ", hint: "Strong central tile. Placed face-down (random from the Center pool)." },
+  { group: "sea", label: "Sea", numeral: "🌊", hint: "Sea tile. Placed face-down (random from the Sea pool)." },
+  { group: "subterranean", label: "Underground", numeral: "⛰", hint: "Underground tile. Placed face-down (random from the Subterranean pool)." }
+];
+
+/** Groups whose tiles can be flipped face up and chosen exactly. */
+const PICKABLE_GROUPS = new Set<DesignGroup>(["far", "near", "center", "sea", "subterranean"]);
 
 /** Designer hex circumradius — the same pointy-top geometry the map uses. */
 const DESIGN_HEX = 24;
@@ -77,7 +100,6 @@ function flowerOutline(center: HexCoord, size: number): string {
       if (cellKeys.has(`${neighbor.row}:${neighbor.col}`)) {
         continue;
       }
-      // Edge between corner (direction+5)%6 and (direction)%6 faces `direction`.
       const a = corners[(direction + 5) % 6];
       const b = corners[direction % 6];
       segments.push(`M ${a.x} ${a.y} L ${b.x} ${b.y}`);
@@ -86,11 +108,17 @@ function flowerOutline(center: HexCoord, size: number): string {
   return segments.join(" ");
 }
 
+/** A live drag of a tile type from the palette, or of an already-placed tile. */
+type DesignDrag =
+  | { kind: "palette"; group: DesignGroup; clientX: number; clientY: number }
+  | { kind: "move"; index: number; group: DesignGroup; clientX: number; clientY: number };
+
 /**
- * Map designer board: a real hex-grid view of the scenario. Pan by dragging,
- * zoom with the wheel or buttons; click a ＋ flower to add a tile, click a
- * tile to select it, then flip it face up/down, choose the exact tile,
- * rotate it in 60° steps or remove it.
+ * Map designer board: a real hex-grid view of the scenario. Pan by dragging the
+ * empty background, zoom with the wheel or buttons. Drag a tile type from the
+ * palette onto the board to place it; drag a placed tile to move it; click a
+ * placed tile to reveal it (face up), flip it back to random, rotate it or
+ * remove it. The first Town (Ⅰ) tiles become the player seats.
  */
 export function MapDesigner({
   scenarioId,
@@ -101,44 +129,178 @@ export function MapDesigner({
   scenarioId: string;
   customMap: CustomMapTilePlan[];
   onChange: (next: CustomMapTilePlan[]) => void;
-  /** Hex circumradius of the design board (the lobby embeds it smaller). */
   hexSize?: number;
 }) {
   const scenario = scenarioDefinitions[scenarioId];
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [popoverAt, setPopoverAt] = useState<{ x: number; y: number } | null>(null);
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
-  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null);
+  const [drag, setDrag] = useState<DesignDrag | null>(null);
+  const [hoverSlot, setHoverSlot] = useState<HexCoord | null>(null);
+
+  const panRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null);
   const suppressClickRef = useRef(false);
+  // A pending press on a placed tile: a small move promotes it to a drag, a
+  // release in place opens its popover.
+  const pressRef = useRef<{ pointerId: number; index: number; group: DesignGroup; startX: number; startY: number; promoted: boolean } | null>(null);
+  const gRef = useRef<SVGGElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
 
   const starts = useMemo<HexCoord[]>(
     () => (scenario ? scenario.layout.starts.map((start) => ({ ...start })) : []),
     [scenario]
   );
 
-  const placed = useMemo<HexCoord[]>(
-    () => [...starts, ...customMap.map((plan) => ({ row: plan.row, col: plan.col }))],
-    [starts, customMap]
+  // Once the designer places its own Town (Ⅰ) tiles, those become the seats and
+  // the scenario's default seats step aside — mirroring the engine, whose map
+  // connectivity then anchors on the designed towns.
+  const hasDesignerStarts = customMap.some((plan) => plan.group === "starting");
+  const startingPlanIndexes = customMap
+    .map((plan, index) => (plan.group === "starting" ? index : -1))
+    .filter((index) => index >= 0);
+
+  /** Tile centers currently anchoring the board (seeds + placed), minus one. */
+  const placedCenters = useCallback(
+    (excludeIndex?: number): HexCoord[] => [
+      ...(hasDesignerStarts ? [] : starts),
+      ...customMap.filter((_, index) => index !== excludeIndex).map((plan) => ({ row: plan.row, col: plan.col }))
+    ],
+    [customMap, hasDesignerStarts, starts]
   );
 
-  // Empty lattice slots touching the current board.
-  const candidates = useMemo<HexCoord[]>(() => {
-    const seen = new Map<string, HexCoord>();
-    for (const center of placed) {
-      for (const neighbor of neighborTileCenters(center)) {
-        const key = `${neighbor.row}:${neighbor.col}`;
-        if (seen.has(key)) {
-          continue;
-        }
-        if (placed.some((existing) => hexDistance(existing, neighbor) < 3)) {
-          continue;
-        }
-        if (placed.some((existing) => tileFootprintsTouch(existing, neighbor))) {
-          seen.set(key, neighbor);
+  /** Empty lattice slots touching the current board (optionally ignoring one tile). */
+  const candidatesFor = useCallback(
+    (excludeIndex?: number): HexCoord[] => {
+      const placed = placedCenters(excludeIndex);
+      const seen = new Map<string, HexCoord>();
+      for (const center of placed) {
+        for (const neighbor of neighborTileCenters(center)) {
+          const key = `${neighbor.row}:${neighbor.col}`;
+          if (seen.has(key)) {
+            continue;
+          }
+          if (placed.some((existing) => hexDistance(existing, neighbor) < 3)) {
+            continue;
+          }
+          if (placed.some((existing) => tileFootprintsTouch(existing, neighbor))) {
+            seen.set(key, neighbor);
+          }
         }
       }
+      return [...seen.values()];
+    },
+    [placedCenters]
+  );
+
+  const activeCandidates = useMemo<HexCoord[]>(
+    () => (drag ? candidatesFor(drag.kind === "move" ? drag.index : undefined) : []),
+    [drag, candidatesFor]
+  );
+
+  // Map a screen point into the board's drawing space (accounts for viewBox,
+  // pan and zoom through the rendered group's live transform matrix).
+  const clientToLocal = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
+    const group = gRef.current;
+    const ctm = group?.getScreenCTM();
+    if (!ctm) {
+      return null;
     }
-    return [...seen.values()];
-  }, [placed]);
+    const point = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+    return { x: point.x, y: point.y };
+  }, []);
+
+  // The valid empty slot nearest a screen point, within a tile's reach.
+  const slotAt = useCallback(
+    (clientX: number, clientY: number, excludeIndex?: number): HexCoord | null => {
+      const local = clientToLocal(clientX, clientY);
+      if (!local) {
+        return null;
+      }
+      let best: HexCoord | null = null;
+      let bestDistance = Infinity;
+      for (const candidate of candidatesFor(excludeIndex)) {
+        const pixel = hexToPixel(candidate, hexSize);
+        const distance = Math.hypot(pixel.x - local.x, pixel.y - local.y);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = candidate;
+        }
+      }
+      return best && bestDistance <= hexSize * 2.4 ? best : null;
+    },
+    [candidatesFor, clientToLocal, hexSize]
+  );
+
+  const closePopover = useCallback(() => {
+    setSelectedIndex(null);
+    setPopoverAt(null);
+  }, []);
+
+  const addTile = useCallback(
+    (group: DesignGroup, center: HexCoord) => {
+      const plan: CustomMapTilePlan =
+        group === "starting"
+          ? { row: center.row, col: center.col, group, faceDown: false }
+          : { row: center.row, col: center.col, group, faceDown: true };
+      onChange([...customMap, plan]);
+    },
+    [customMap, onChange]
+  );
+
+  const moveTile = useCallback(
+    (index: number, center: HexCoord) => {
+      onChange(customMap.map((plan, planIndex) => (planIndex === index ? { ...plan, row: center.row, col: center.col } : plan)));
+    },
+    [customMap, onChange]
+  );
+
+  const updateTile = useCallback(
+    (index: number, changes: Partial<CustomMapTilePlan>) => {
+      onChange(customMap.map((plan, planIndex) => (planIndex === index ? { ...plan, ...changes } : plan)));
+    },
+    [customMap, onChange]
+  );
+
+  const removeTile = useCallback(
+    (index: number) => {
+      onChange(customMap.filter((_, planIndex) => planIndex !== index));
+      closePopover();
+    },
+    [customMap, onChange, closePopover]
+  );
+
+  // Drag lifecycle: a palette press or a promoted tile press registers window
+  // listeners so the ghost follows the pointer anywhere and the drop lands even
+  // if it ends outside the board.
+  useEffect(() => {
+    if (!drag) {
+      return;
+    }
+    const onMove = (event: PointerEvent) => {
+      setDrag((current) => (current ? { ...current, clientX: event.clientX, clientY: event.clientY } : current));
+      setHoverSlot(slotAt(event.clientX, event.clientY, drag.kind === "move" ? drag.index : undefined));
+    };
+    const onUp = (event: PointerEvent) => {
+      const slot = slotAt(event.clientX, event.clientY, drag.kind === "move" ? drag.index : undefined);
+      if (slot) {
+        if (drag.kind === "palette") {
+          addTile(drag.group, slot);
+        } else {
+          moveTile(drag.index, slot);
+        }
+      }
+      setDrag(null);
+      setHoverSlot(null);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [drag, slotAt, addTile, moveTile]);
 
   if (!scenario) {
     return null;
@@ -148,11 +310,12 @@ export function MapDesigner({
   const hexWidth = Math.sqrt(3) * size;
 
   // Project every visible flower cell to find the viewBox.
+  const allCenters = [...placedCenters(), ...candidatesFor()];
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  for (const center of [...placed, ...candidates]) {
+  for (const center of allCenters) {
     for (const cell of tileFootprint(center, 0)) {
       const { x, y } = hexToPixel(cell, size);
       minX = Math.min(minX, x - hexWidth);
@@ -172,26 +335,21 @@ export function MapDesigner({
   const usedFaceUpIds = new Set(
     customMap.filter((plan) => !plan.faceDown && plan.tileDefId).map((plan) => plan.tileDefId as string)
   );
-  const pickableTiles = Object.values(allTileDefinitions)
-    .filter((tile) => tile.group === (selected?.group ?? "near"))
-    .sort((left, right) => left.id.localeCompare(right.id));
+  const pickableTiles = selected
+    ? Object.values(allTileDefinitions)
+        .filter((tile) => tile.group === selected.group)
+        .sort((left, right) => left.id.localeCompare(right.id))
+    : [];
   const selectedTileDef = selected?.tileDefId ? allTileDefinitions[selected.tileDefId] : undefined;
 
-  const updateSelected = (changes: Partial<CustomMapTilePlan>) => {
-    if (selectedIndex === null) {
-      return;
-    }
-    onChange(customMap.map((plan, index) => (index === selectedIndex ? { ...plan, ...changes } : plan)));
-  };
-
   const rotateSelected = (steps: number) => {
-    if (!selected || selected.faceDown) {
+    if (selectedIndex === null || !selected || selected.faceDown || selected.group === "starting") {
       return;
     }
-    updateSelected({ rotation: (((selected.rotation ?? 0) + steps) % 6 + 6) % 6 });
+    updateTile(selectedIndex, { rotation: ((((selected.rotation ?? 0) + steps) % 6) + 6) % 6 });
   };
 
-  const clickGuard = () => suppressClickRef.current;
+  const seatNumberOf = (index: number) => startingPlanIndexes.indexOf(index) + 1;
 
   // --- SVG layers ----------------------------------------------------------
   const artLayer: React.ReactNode[] = [];
@@ -199,22 +357,22 @@ export function MapDesigner({
   const outlineLayer: React.ReactNode[] = [];
   const labelLayer: React.ReactNode[] = [];
 
-  const renderFlowerCells = (center: HexCoord, className: string, key: string, onClick?: () => void, title?: string) => {
+  const renderFlowerCells = (
+    center: HexCoord,
+    className: string,
+    key: string,
+    handlers?: {
+      onPointerDown?: (event: React.PointerEvent) => void;
+    },
+    title?: string
+  ) => {
     for (const [slot, cell] of tileFootprint(center, 0).entries()) {
       const { x, y } = hexToPixel(cell, size);
       cellLayer.push(
         <polygon
           className={className}
           key={`${key}-${slot}`}
-          onClick={
-            onClick
-              ? () => {
-                  if (!clickGuard()) {
-                    onClick();
-                  }
-                }
-              : undefined
-          }
+          onPointerDown={handlers?.onPointerDown}
           points={hexCorners(x, y, size - 0.8)}
         >
           {title ? <title>{title}</title> : null}
@@ -223,62 +381,63 @@ export function MapDesigner({
     }
   };
 
-  // Fixed starting tiles.
-  for (const [index, start] of starts.entries()) {
-    const centerPixel = hexToPixel(start, size);
-    const width = 3 * hexWidth;
-    const height = 5 * size;
-    artLayer.push(
-      <image
-        height={height}
-        href={TILE_BACK_IMAGES.starting}
-        key={`start-art-${index}`}
-        preserveAspectRatio="none"
-        width={width}
-        x={centerPixel.x - width / 2}
-        y={centerPixel.y - height / 2}
-      />
-    );
-    renderFlowerCells(start, "designerHexFixed", `start-${index}`, undefined, `Starting tile of seat ${index + 1} (fixed by faction)`);
-    labelLayer.push(
-      <text className="designerStartLabel" key={`start-label-${index}`} textAnchor="middle" x={centerPixel.x} y={centerPixel.y + 5}>
-        S{index + 1}
-      </text>
-    );
-    outlineLayer.push(
-      <path className="designerFlowerOutline fixed" d={flowerOutline(start, size)} key={`start-outline-${index}`} />
-    );
-  }
-
-  // Designed tiles.
-  for (const [index, plan] of customMap.entries()) {
-    const center = { row: plan.row, col: plan.col };
-    const centerPixel = hexToPixel(center, size);
-    const isSelected = selectedIndex === index;
-    const art = !plan.faceDown && plan.tileDefId ? allTileDefinitions[plan.tileDefId]?.assets?.tileImage : undefined;
-    const width = 3 * hexWidth;
-    const height = 5 * size;
-
-    if (plan.faceDown) {
+  // Scenario default seats — only while the designer has not placed its own
+  // Town tiles (then the designed towns are the seats).
+  if (!hasDesignerStarts) {
+    for (const [index, start] of starts.entries()) {
+      const centerPixel = hexToPixel(start, size);
+      const width = 3 * hexWidth;
+      const height = 5 * size;
       artLayer.push(
         <image
           height={height}
-          href={TILE_BACK_IMAGES[plan.group]}
-          key={`plan-back-${index}`}
+          href={TILE_BACK_IMAGES.starting}
+          key={`start-art-${index}`}
+          opacity={0.85}
           preserveAspectRatio="none"
           width={width}
           x={centerPixel.x - width / 2}
           y={centerPixel.y - height / 2}
         />
       );
-    } else if (art) {
+      renderFlowerCells(start, "designerHexFixed", `start-${index}`, undefined, `Default seat ${index + 1} (used unless you drag a Town tile in)`);
+      labelLayer.push(
+        <text className="designerStartLabel" key={`start-label-${index}`} textAnchor="middle" x={centerPixel.x} y={centerPixel.y + 5}>
+          S{index + 1}
+        </text>
+      );
+      outlineLayer.push(
+        <path className="designerFlowerOutline fixed" d={flowerOutline(start, size)} key={`start-outline-${index}`} />
+      );
+    }
+  }
+
+  // Designed tiles (Town seats + supply tiles).
+  for (const [index, plan] of customMap.entries()) {
+    const center = { row: plan.row, col: plan.col };
+    const centerPixel = hexToPixel(center, size);
+    const isSelected = selectedIndex === index;
+    const isDragging = drag?.kind === "move" && drag.index === index;
+    const isStart = plan.group === "starting";
+    const art = isStart
+      ? TILE_BACK_IMAGES.starting
+      : !plan.faceDown && plan.tileDefId
+        ? allTileDefinitions[plan.tileDefId]?.assets?.tileImage
+        : plan.faceDown
+          ? TILE_BACK_IMAGES[plan.group]
+          : undefined;
+    const width = 3 * hexWidth;
+    const height = 5 * size;
+
+    if (art) {
       artLayer.push(
         <image
           height={height}
           href={art}
           key={`plan-art-${index}`}
+          opacity={isDragging ? 0.3 : 1}
           preserveAspectRatio="none"
-          transform={`rotate(${(plan.rotation ?? 0) * 60} ${centerPixel.x} ${centerPixel.y})`}
+          transform={!isStart && !plan.faceDown ? `rotate(${(plan.rotation ?? 0) * 60} ${centerPixel.x} ${centerPixel.y})` : undefined}
           width={width}
           x={centerPixel.x - width / 2}
           y={centerPixel.y - height / 2}
@@ -286,14 +445,33 @@ export function MapDesigner({
       );
     }
 
+    const onPointerDown = (event: React.PointerEvent) => {
+      if (event.button !== 0) {
+        return;
+      }
+      // Take this press for the tile so the background pan does not start.
+      event.stopPropagation();
+      suppressClickRef.current = false;
+      pressRef.current = {
+        pointerId: event.pointerId,
+        index,
+        group: plan.group,
+        startX: event.clientX,
+        startY: event.clientY,
+        promoted: false
+      };
+    };
+
     renderFlowerCells(
       center,
-      `designerHexPlan ${plan.faceDown ? "down" : "up"}`,
+      `designerHexPlan ${isStart ? "starting" : plan.faceDown ? "down" : "up"} ${isSelected ? "selected" : ""} ${isDragging ? "dragging" : ""}`,
       `plan-${index}`,
-      () => setSelectedIndex(isSelected ? null : index),
-      plan.faceDown
-        ? `Face-down ${TILE_GROUP_LABELS[plan.group]} tile — drawn randomly from its pool when the adventure starts. Click to edit.`
-        : `${plan.tileDefId ?? "?"} rotated ${(plan.rotation ?? 0) * 60}°. Click to edit.`
+      { onPointerDown },
+      isStart
+        ? `Town — seat ${seatNumberOf(index)}. Drag to move, click for options.`
+        : plan.faceDown
+          ? `Face-down ${TILE_GROUP_LABELS[plan.group]} tile (random). Drag to move, click to reveal / rotate / remove.`
+          : `${plan.tileDefId ?? "?"} rotated ${(plan.rotation ?? 0) * 60}°. Drag to move, click for options.`
     );
 
     outlineLayer.push(
@@ -305,7 +483,13 @@ export function MapDesigner({
       />
     );
 
-    if (plan.faceDown || !art) {
+    if (isStart) {
+      labelLayer.push(
+        <text className="designerStartLabel" key={`plan-seat-${index}`} textAnchor="middle" x={centerPixel.x} y={centerPixel.y + 5}>
+          S{seatNumberOf(index)}
+        </text>
+      );
+    } else if (plan.faceDown || !art) {
       labelLayer.push(
         <text className="designerTileLabel" key={`plan-label-${index}`} textAnchor="middle" x={centerPixel.x} y={centerPixel.y + 4}>
           {plan.faceDown ? TILE_GROUP_LABELS[plan.group] : (plan.tileDefId ?? "?")}
@@ -314,48 +498,73 @@ export function MapDesigner({
     }
   }
 
-  // Add-slots.
-  for (const candidate of candidates) {
-    const centerPixel = hexToPixel(candidate, size);
-    renderFlowerCells(
-      candidate,
-      "designerHexAdd",
-      `add-${candidate.row}:${candidate.col}`,
-      () => {
-        onChange([...customMap, { row: candidate.row, col: candidate.col, group: "near", faceDown: true }]);
-        setSelectedIndex(customMap.length);
-      },
-      "Add a tile here (face-down Near by default — click it afterwards to change group, flip it face up, pick the exact tile or rotate it)"
-    );
-    outlineLayer.push(
-      <path className="designerFlowerOutline add" d={flowerOutline(candidate, size)} key={`add-outline-${candidate.row}:${candidate.col}`} />
-    );
-    labelLayer.push(
-      <text className="designerAddPlus" key={`add-plus-${candidate.row}:${candidate.col}`} textAnchor="middle" x={centerPixel.x} y={centerPixel.y + 7}>
-        ＋
-      </text>
-    );
+  // Drop-zone flowers, shown only while a drag is in progress.
+  if (drag) {
+    for (const candidate of activeCandidates) {
+      const isHover = hoverSlot ? candidate.row === hoverSlot.row && candidate.col === hoverSlot.col : false;
+      renderFlowerCells(candidate, `designerHexDrop ${isHover ? "hover" : ""}`, `drop-${candidate.row}:${candidate.col}`);
+      outlineLayer.push(
+        <path
+          className={`designerFlowerOutline drop ${isHover ? "hover" : ""}`}
+          d={flowerOutline(candidate, size)}
+          key={`drop-outline-${candidate.row}:${candidate.col}`}
+        />
+      );
+    }
   }
+
+  const beginPaletteDrag = (group: DesignGroup) => (event: React.PointerEvent) => {
+    if (event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    closePopover();
+    setDrag({ kind: "palette", group, clientX: event.clientX, clientY: event.clientY });
+    setHoverSlot(slotAt(event.clientX, event.clientY));
+  };
 
   return (
     <div className="mapDesigner" aria-label="Map designer">
-      <div className="designerBoardWrap">
+      <div className="designerPalette" aria-label="Tile palette">
+        <small className="palettePrompt">Drag a tile onto the map</small>
+        {PALETTE.map((entry) => (
+          <button
+            className={`paletteTile group-${entry.group}`}
+            key={entry.group}
+            onPointerDown={beginPaletteDrag(entry.group)}
+            style={{ borderColor: GROUP_COLORS[entry.group] }}
+            title={entry.hint}
+            type="button"
+          >
+            <span
+              aria-hidden="true"
+              className="paletteThumb"
+              style={{ backgroundImage: `url(${TILE_BACK_IMAGES[entry.group]})` }}
+            />
+            <span className="paletteNumeral">{entry.numeral}</span>
+            <span className="paletteLabel">{entry.label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="designerBoardWrap" ref={wrapRef}>
         <svg
-          className="designerSvg"
+          className={`designerSvg ${drag ? "dragging" : ""}`}
           onPointerCancel={(event) => {
-            if (dragRef.current?.pointerId === event.pointerId) {
-              dragRef.current = null;
-              window.setTimeout(() => {
-                suppressClickRef.current = false;
-              }, 0);
+            if (panRef.current?.pointerId === event.pointerId) {
+              panRef.current = null;
             }
           }}
           onPointerDown={(event) => {
-            if (event.button !== 0) {
+            // Background press → pan. Tile presses stopPropagation above.
+            if (event.button !== 0 || drag) {
               return;
             }
+            if (popoverAt) {
+              closePopover();
+            }
             suppressClickRef.current = false;
-            dragRef.current = {
+            panRef.current = {
               pointerId: event.pointerId,
               startX: event.clientX,
               startY: event.clientY,
@@ -365,27 +574,47 @@ export function MapDesigner({
             };
           }}
           onPointerMove={(event) => {
-            const drag = dragRef.current;
-            if (!drag || drag.pointerId !== event.pointerId) {
+            // Promote a tile press into a move-drag once it travels far enough.
+            const press = pressRef.current;
+            if (press && press.pointerId === event.pointerId && !press.promoted) {
+              if (Math.abs(event.clientX - press.startX) + Math.abs(event.clientY - press.startY) > 6) {
+                press.promoted = true;
+                pressRef.current = null;
+                closePopover();
+                setDrag({ kind: "move", index: press.index, group: press.group, clientX: event.clientX, clientY: event.clientY });
+                setHoverSlot(slotAt(event.clientX, event.clientY, press.index));
+              }
               return;
             }
-            const dx = event.clientX - drag.startX;
-            const dy = event.clientY - drag.startY;
-            if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 6) {
-              drag.moved = true;
+            const pan = panRef.current;
+            if (!pan || pan.pointerId !== event.pointerId) {
+              return;
+            }
+            const dx = event.clientX - pan.startX;
+            const dy = event.clientY - pan.startY;
+            if (!pan.moved && Math.abs(dx) + Math.abs(dy) > 6) {
+              pan.moved = true;
               suppressClickRef.current = true;
               (event.currentTarget as Element).setPointerCapture(event.pointerId);
             }
-            if (drag.moved) {
-              setCamera((current) => ({ ...current, x: drag.originX + dx, y: drag.originY + dy }));
+            if (pan.moved) {
+              setCamera((current) => ({ ...current, x: pan.originX + dx, y: pan.originY + dy }));
             }
           }}
           onPointerUp={(event) => {
-            if (dragRef.current?.pointerId === event.pointerId) {
-              dragRef.current = null;
-              window.setTimeout(() => {
-                suppressClickRef.current = false;
-              }, 0);
+            // A tile press that never became a drag is a click → open options.
+            const press = pressRef.current;
+            if (press && press.pointerId === event.pointerId && !press.promoted) {
+              pressRef.current = null;
+              const rect = wrapRef.current?.getBoundingClientRect();
+              setSelectedIndex(press.index);
+              setPopoverAt(
+                rect ? { x: event.clientX - rect.left, y: event.clientY - rect.top } : { x: 0, y: 0 }
+              );
+              return;
+            }
+            if (panRef.current?.pointerId === event.pointerId) {
+              panRef.current = null;
             }
           }}
           onWheel={(event) => {
@@ -394,13 +623,14 @@ export function MapDesigner({
           }}
           viewBox={`${minX} ${minY} ${maxX - minX} ${maxY - minY}`}
         >
-          <g transform={`translate(${camera.x} ${camera.y}) scale(${camera.scale})`} style={{ transformOrigin: "center" }}>
+          <g ref={gRef} transform={`translate(${camera.x} ${camera.y}) scale(${camera.scale})`} style={{ transformOrigin: "center" }}>
             {artLayer}
             {cellLayer}
             {outlineLayer}
             {labelLayer}
           </g>
         </svg>
+
         <div className="mapToolbar designerToolbarFloat" aria-label="Designer view controls">
           <button onClick={() => setCamera((c) => ({ ...c, scale: Math.min(3, c.scale * 1.2) }))} title="Zoom in" type="button">
             <Plus size={13} />
@@ -412,103 +642,116 @@ export function MapDesigner({
             ⤾
           </button>
         </div>
+
+        {/* Per-tile options popover, anchored where the tile was clicked. */}
+        {selected && popoverAt ? (
+          <div
+            className="designerPopover"
+            style={{ left: Math.max(8, Math.min(popoverAt.x, (wrapRef.current?.clientWidth ?? 320) - 8)), top: popoverAt.y }}
+          >
+            <header>
+              <strong>
+                {selected.group === "starting"
+                  ? `Town — seat ${seatNumberOf(selectedIndex as number)}`
+                  : `${TILE_GROUP_LABELS[selected.group]} tile`}
+              </strong>
+            </header>
+
+            {selected.group === "starting" ? (
+              <small className="popoverHint">A player&apos;s starting town. Drag it to move; its tile art comes from each player&apos;s faction.</small>
+            ) : (
+              <>
+                <div className="popoverActions">
+                  {selected.faceDown ? (
+                    <button
+                      onClick={() =>
+                        updateTile(selectedIndex as number, {
+                          faceDown: false,
+                          tileDefId:
+                            selected.tileDefId ?? pickableTiles.find((tile) => !usedFaceUpIds.has(tile.id))?.id ?? pickableTiles[0]?.id
+                        })
+                      }
+                      title="Show a specific tile, face up"
+                      type="button"
+                    >
+                      <Eye size={13} /> Reveal
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => updateTile(selectedIndex as number, { faceDown: true, tileDefId: undefined })}
+                      title="Flip face-down so a random tile of this pool is drawn when the game starts"
+                      type="button"
+                    >
+                      <Shuffle size={13} /> Flip back
+                    </button>
+                  )}
+                  {!selected.faceDown ? (
+                    <>
+                      <button onClick={() => rotateSelected(-1)} title="Rotate 60° counterclockwise" type="button">
+                        <RotateCcw size={13} />
+                      </button>
+                      <button onClick={() => rotateSelected(1)} title="Rotate 60° clockwise" type="button">
+                        <RotateCw size={13} /> {(selected.rotation ?? 0) * 60}°
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+
+                {!selected.faceDown && PICKABLE_GROUPS.has(selected.group) ? (
+                  <>
+                    <select
+                      aria-label="Tile"
+                      className="popoverSelect"
+                      onChange={(event) => updateTile(selectedIndex as number, { tileDefId: event.target.value })}
+                      value={selected.tileDefId ?? ""}
+                    >
+                      {pickableTiles.map((tile) => (
+                        <option
+                          disabled={usedFaceUpIds.has(tile.id) && tile.id !== selected.tileDefId}
+                          key={tile.id}
+                          value={tile.id}
+                        >
+                          {tile.id} — {titleCase(tile.terrain)}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedTileDef?.assets?.tileImage ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        alt={`Tile ${selectedTileDef.id}`}
+                        className="designerTilePreview"
+                        src={selectedTileDef.assets.tileImage}
+                        style={{ transform: `rotate(${(selected.rotation ?? 0) * 60}deg)` }}
+                      />
+                    ) : null}
+                  </>
+                ) : null}
+              </>
+            )}
+
+            <button className="popoverRemove" onClick={() => removeTile(selectedIndex as number)} type="button">
+              <Trash2 size={13} /> Remove
+            </button>
+          </div>
+        ) : null}
       </div>
 
-      {selected ? (
-        <div className="designerEditor" aria-label="Selected tile settings">
-          <div className="optionButtons">
-            {(["far", "near", "center"] as const).map((group) => (
-              <button
-                aria-pressed={selected.group === group}
-                className={selected.group === group ? "selected" : ""}
-                key={group}
-                onClick={() => updateSelected({ group, tileDefId: undefined })}
-                type="button"
-              >
-                {TILE_GROUP_LABELS[group]}
-              </button>
-            ))}
-          </div>
-          <div className="optionButtons">
-            <button
-              aria-pressed={selected.faceDown}
-              className={selected.faceDown ? "selected" : ""}
-              onClick={() => updateSelected({ faceDown: true, tileDefId: undefined })}
-              title="Face-down: a random tile of the group is drawn when the adventure starts"
-              type="button"
-            >
-              Face down (random)
-            </button>
-            <button
-              aria-pressed={!selected.faceDown}
-              className={!selected.faceDown ? "selected" : ""}
-              onClick={() =>
-                updateSelected({
-                  faceDown: false,
-                  tileDefId:
-                    selected.tileDefId ?? pickableTiles.find((tile) => !usedFaceUpIds.has(tile.id))?.id
-                })
-              }
-              title="Face-up: choose the exact tile, visible from the start"
-              type="button"
-            >
-              Face up (choose tile)
-            </button>
-          </div>
-          {!selected.faceDown ? (
-            <>
-              <div className="designerTilePick">
-                <select
-                  aria-label="Tile"
-                  onChange={(event) => updateSelected({ tileDefId: event.target.value })}
-                  value={selected.tileDefId ?? ""}
-                >
-                  {pickableTiles.map((tile) => (
-                    <option
-                      disabled={usedFaceUpIds.has(tile.id) && tile.id !== selected.tileDefId}
-                      key={tile.id}
-                      value={tile.id}
-                    >
-                      {tile.id} — {titleCase(tile.terrain)}
-                    </option>
-                  ))}
-                </select>
-                <button onClick={() => rotateSelected(-1)} title="Rotate the tile 60° counterclockwise" type="button">
-                  <RotateCcw size={12} />
-                </button>
-                <button onClick={() => rotateSelected(1)} title="Rotate the tile 60° clockwise" type="button">
-                  <RotateCw size={12} /> {(selected.rotation ?? 0) * 60}°
-                </button>
-              </div>
-              {selectedTileDef?.assets?.tileImage ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  alt={`Tile ${selectedTileDef.id}`}
-                  className="designerTilePreview"
-                  src={selectedTileDef.assets.tileImage}
-                  style={{ transform: `rotate(${(selected.rotation ?? 0) * 60}deg)` }}
-                />
-              ) : null}
-            </>
-          ) : null}
-          <button
-            className="designerRemove"
-            onClick={() => {
-              onChange(customMap.filter((_, index) => index !== selectedIndex));
-              setSelectedIndex(null);
-            }}
-            type="button"
-          >
-            <X size={12} /> Remove this tile
-          </button>
+      <small className="optionHint">
+        Drag a tile from the palette onto the map. Drag a placed tile to move it; click it to reveal a specific tile,
+        flip it back to random, rotate it or remove it. The Town (Ⅰ) tiles become the player seats; drag the empty
+        background to pan and scroll to zoom.
+      </small>
+
+      {/* Floating drag ghost follows the pointer. */}
+      {drag ? (
+        <div className="designerDragGhost" style={{ left: drag.clientX, top: drag.clientY }}>
+          <span
+            className="paletteThumb"
+            style={{ backgroundImage: `url(${TILE_BACK_IMAGES[drag.group]})` }}
+          />
+          <span>{TILE_GROUP_LABELS[drag.group]}</span>
         </div>
-      ) : (
-        <small className="optionHint">
-          Drag to pan, scroll to zoom. Click a ＋ flower to add a tile next to the board; click a placed tile to flip
-          it face up or down, pick the exact tile, rotate it in 60° steps or remove it. Face-down tiles draw randomly
-          from their pool when the adventure starts.
-        </small>
-      )}
+      ) : null}
     </div>
   );
 }

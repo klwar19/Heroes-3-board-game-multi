@@ -2380,6 +2380,41 @@ function GameOptionsPanel({
         <small className="optionHint">{RULESET_DESCRIPTIONS[options.ruleset]}</small>
       </div>
 
+      {(() => {
+        const scenario = scenarioDefinitions[options.scenarioId];
+        const min = scenario?.minPlayers ?? 2;
+        const max = Math.min(scenario?.maxPlayers ?? 2, scenario?.layout.starts.length ?? 2);
+        const seatCount = lobby.seats.length;
+        const counts: number[] = [];
+        for (let n = min; n <= max; n += 1) {
+          counts.push(n);
+        }
+        return counts.length > 1 ? (
+          <div className="optionRow">
+            <small title="How many seats this game opens — each needs a faction before the adventure starts">
+              Players
+            </small>
+            <div className="optionButtons">
+              {counts.map((count) => (
+                <button
+                  aria-pressed={seatCount === count}
+                  className={seatCount === count ? "selected" : ""}
+                  key={count}
+                  onClick={() => send({ playerCount: count })}
+                  title={`Play with ${count} players`}
+                  type="button"
+                >
+                  {count} players
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">
+              Seats beyond two open empty — anyone can sit in them from the table’s seat switcher and pick a faction.
+            </small>
+          </div>
+        ) : null;
+      })()}
+
       <div className="optionRow">
         <small>Starting map</small>
         <div className="optionButtons">
