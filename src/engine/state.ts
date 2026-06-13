@@ -1050,6 +1050,16 @@ export type GameEvent =
       abilityAttack?: { abilityId: string; baseAttack: number };
     }
   | {
+      /**
+       * A resolved attack would reduce a unit to 0 HP — opens the save window
+       * where that unit's controller may play Alamar's Resurrection.
+       */
+      id: string;
+      type: "UNIT_LETHAL_HIT";
+      attackerId: UnitId;
+      defenderId: UnitId;
+    }
+  | {
       id: string;
       type: "ATTACK_ROLLED";
       attackerId: UnitId;
@@ -1723,10 +1733,17 @@ export type ResolutionStackItem = {
      */
     recallSpell?: { toHand: boolean; recallPlayedCards: boolean };
     /**
-     * Alamar's Resurrection armed on this attack or spell: if it would reduce
-     * the named unit (of `grade` or lower) to 0 HP, the blow is cancelled.
+     * Alamar's Resurrection armed on this attack: if it would reduce the named
+     * unit (of `grade` or lower) to 0 HP, the blow is cancelled.
      */
     cancelLethal?: { unitId: UnitId; grade: UnitGrade };
+    /**
+     * The attack die outcome rolled before pausing for the lethal-save window,
+     * reused when the attack resumes so the die is not rerolled.
+     */
+    rolledCandidate?: { rolls: number[]; roll: number };
+    /** Set once the lethal-save window has been offered for this attack. */
+    lethalSaveOffered?: boolean;
     playedCardIds: CardId[];
   };
 };

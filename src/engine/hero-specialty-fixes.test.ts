@@ -271,8 +271,10 @@ describe("Xyron's Inferno I", () => {
 // cards. It never reacts to spells or specialty damage.
 // ---------------------------------------------------------------------------
 
-describe("Alamar's Resurrection I", () => {
-  function lethalAttackOn(defenderGrade: "bronze" | "silver", p1Hand: string[]): GameState {
+describe("Alamar's Resurrection (asked when a unit is about to die)", () => {
+  // Sets up a lethal attack on a p1 unit and applies it; the engine pauses in
+  // the lethal-save window when p1 can Resurrect (otherwise the unit just dies).
+  function lethalAttackOn(defenderGrade: "bronze" | "silver" | "gold", p1Hand: string[]): GameState {
     const state = createInitialGameState("alamar-seed");
     state.players.p1.hand = p1Hand;
     state.players.p2.hand = [];
@@ -295,7 +297,16 @@ describe("Alamar's Resurrection I", () => {
     });
   }
 
-  it("cancels a killing blow on a bronze unit (discard 1 Power) and stops its retaliation", () => {
+  it("asks the controller (a lethal-save window) only after the attack rolls lethal", () => {
+    const declared = lethalAttackOn("bronze", ["specialty.alamar.1", "stat.power"]);
+    expect(declared.reactionWindow?.triggerEvent.type).toBe("UNIT_LETHAL_HIT");
+    const offered = (declared.reactionWindow?.legalReactions.p1 ?? []).some(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.alamar.1"
+    );
+    expect(offered).toBe(true);
+  });
+
+  it("cancels the killing blow (discard 1 Power) and stops the saved unit's retaliation", () => {
     const declared = lethalAttackOn("bronze", ["specialty.alamar.1", "stat.power"]);
     const saved = applyOk(declared, {
       type: "PLAY_REACTIONS",
@@ -306,15 +317,20 @@ describe("Alamar's Resurrection I", () => {
     expect(griffins.damage).toBe(griffins.maxHealth - 1); // unchanged: the attack was cancelled
     expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
     // The blow on the griffins landed for 0, and the griffins never retaliate.
-    const blowOnGriffins = saved.eventLog.find(
-      (event) => event.type === "ATTACK_ROLLED" && event.defenderId === "unit_p1_griffins"
-    );
-    expect(blowOnGriffins && blowOnGriffins.type === "ATTACK_ROLLED" ? blowOnGriffins.damage : null).toBe(0);
     expect(saved.eventLog.some((event) => event.type === "ATTACK_ROLLED" && event.attackerId === "unit_p1_griffins")).toBe(
       false
     );
     expect(saved.combat!.attackSequence ?? null).toBeNull();
     expect(saved.players.p1.discard).toContain("stat.power");
+  });
+
+  it("lets the unit die when the controller passes the save", () => {
+    const declared = lethalAttackOn("bronze", ["specialty.alamar.1", "stat.power"]);
+    const died = applyOk(declared, { type: "PASS_REACTION", playerId: "p1" });
+    expect(hasAbilityEvent(died, "resurrection")).toBe(false);
+    // The lethal hit landed — the griffins flipped to its Few side or left.
+    const griffins = died.combat!.units.unit_p1_griffins;
+    expect(griffins.variant === "few" || griffins.damage >= griffins.maxHealth).toBe(true);
   });
 
   it("offers only the option matching the unit's grade", () => {
@@ -329,6 +345,45 @@ describe("Alamar's Resurrection I", () => {
       type: "PLAY_REACTIONS",
       playerId: "p1",
       plays: [{ cardId: "specialty.alamar.1", optionIndex: 1, costCardIds: ["stat.power", "spell.magic_arrow"] }]
+    });
+    expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
+    expect(saved.combat!.units.unit_p1_griffins.damage).toBe(saved.combat!.units.unit_p1_griffins.maxHealth - 1);
+  });
+
+  it("is not offered when the controller cannot pay the Power cost — the unit dies", () => {
+    // A gold unit needs 4 Power for Resurrection I; with only 1 Power card the
+    // save is unaffordable, so no window opens and the attack resolves.
+    const resolved = lethalAttackOn("gold", ["specialty.alamar.1", "stat.power"]);
+    expect(resolved.reactionWindow ?? null).toBeNull();
+    expect(hasAbilityEvent(resolved, "resurrection")).toBe(false);
+  });
+
+  it("works at level VI: a bronze unit is saved for free", () => {
+    const declared = lethalAttackOn("bronze", ["specialty.alamar.6"]);
+    expect(declared.reactionWindow?.triggerEvent.type).toBe("UNIT_LETHAL_HIT");
+    const bronzeOption = (declared.reactionWindow?.legalReactions.p1 ?? []).find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.alamar.6"
+    );
+    expect(bronzeOption, "the free bronze save should be offered").toBeTruthy();
+    const saved = applyOk(declared, bronzeOption!.action);
+    expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
+    const griffins = saved.combat!.units.unit_p1_griffins;
+    expect(griffins.damage).toBe(griffins.maxHealth - 1); // saved, no cards discarded
+  });
+
+  it("works at level IV: a silver unit is saved by discarding 1 Power", () => {
+    const declared = lethalAttackOn("silver", ["specialty.alamar.4", "stat.power"]);
+    const silverOption = (declared.reactionWindow?.legalReactions.p1 ?? []).find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "specialty.alamar.4" &&
+        legal.action.optionIndex === 1
+    );
+    expect(silverOption, "the silver save should be offered").toBeTruthy();
+    const saved = applyOk(declared, {
+      type: "PLAY_REACTIONS",
+      playerId: "p1",
+      plays: [{ cardId: "specialty.alamar.4", optionIndex: 1, costCardIds: ["stat.power"] }]
     });
     expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
     expect(saved.combat!.units.unit_p1_griffins.damage).toBe(saved.combat!.units.unit_p1_griffins.maxHealth - 1);

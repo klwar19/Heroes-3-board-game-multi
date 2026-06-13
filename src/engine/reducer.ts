@@ -579,6 +579,19 @@ function gradeAtPower(
   return matched === undefined ? null : (gradeByPower[matched] ?? null);
 }
 
+/**
+ * Whether the unit's controller could play Alamar's Resurrection to save it
+ * right now — exactly the reactions the lethal-save window would offer.
+ */
+function playerHasLethalSave(state: GameState, defenderId: UnitId, cards: CardLibrary): boolean {
+  const reactions = getLegalReactionsForTrigger(
+    state,
+    { id: "lethal-check", type: "UNIT_LETHAL_HIT", attackerId: "", defenderId },
+    cards
+  );
+  return Object.values(reactions).some((list) => list.length > 0);
+}
+
 function getAmountByPower(amountByPower: Record<number, number> | undefined, fallback: number, power: number): number {
   if (!amountByPower) {
     return fallback;
@@ -1485,6 +1498,35 @@ function finishResolvedAttack(
   candidate: AttackRollCandidate,
   cards: CardLibrary
 ): void {
+  // Alamar's Resurrection: before a killing normal attack lands, pause once and
+  // ask the defender's controller whether to cancel it (only if they can). The
+  // rolled die is stashed so the resumed attack uses the same outcome.
+  if (!stackItem.modifiers.lethalSaveOffered && playerHasLethalSave(state, details.defender.id, cards)) {
+    const preview = getAttackDamagePreview(
+      details.attacker,
+      details.defender,
+      candidate.roll,
+      details.attackBonus,
+      details.defenseBonus,
+      details.dieMultiplier,
+      details.abilityAttack?.baseAttack,
+      details.damageReduction
+    );
+    if (preview.damage > 0 && details.defender.damage + preview.damage >= details.defender.maxHealth) {
+      stackItem.modifiers.rolledCandidate = candidate;
+      stackItem.modifiers.lethalSaveOffered = true;
+      const lethalEvent = appendEvent(state, {
+        type: "UNIT_LETHAL_HIT",
+        attackerId: details.attacker.id,
+        defenderId: details.defender.id
+      });
+      if (openReactionWindowForTrigger(state, stackItem, lethalEvent, cards)) {
+        return;
+      }
+      stackItem.modifiers.rolledCandidate = undefined;
+    }
+  }
+
   if (details.defenseReductionAbility) {
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
@@ -3013,6 +3055,13 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   const combat = state.combat;
   const details = getAttackStackDetails(state, stackItem);
   if (!combat || !details) {
+    return;
+  }
+
+  // Resuming after the lethal-save window: the die was already rolled, so reuse
+  // that outcome instead of rolling again.
+  if (stackItem.modifiers.rolledCandidate) {
+    finishResolvedAttack(state, stackItem, details, stackItem.modifiers.rolledCandidate, cards);
     return;
   }
 
