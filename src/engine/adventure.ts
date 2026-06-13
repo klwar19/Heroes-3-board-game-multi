@@ -28,7 +28,9 @@ import { applyUnitCurrentSide } from "./unit-transforms";
 import type {
   ActiveEffectState,
   AdventureState,
+  ArtifactTier,
   AstrologersState,
+  CardId,
   CombatUnitState,
   GameDifficulty,
   GameRuleset,
@@ -855,6 +857,14 @@ function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
       return [{ type: "SUBTERRANEAN_GATE" }];
     case "DRAW_PANDORA_CARD":
       return [{ type: "DRAW_PANDORA_CARD" }];
+    case "LIBRARY_OF_ENLIGHTENMENT":
+      return [{ type: "LIBRARY_SWAP", remaining: 2 }];
+    case "STAR_AXIS":
+      return [{ type: "STAR_AXIS_SWAP" }];
+    case "BLACK_MARKET":
+      return [{ type: "BLACK_MARKET" }];
+    case "ELEMENTAL_CONFLUX":
+      return [{ type: "ELEMENTAL_CONFLUX" }];
   }
 }
 
@@ -1057,6 +1067,40 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
 }
 
 /**
+ * Star Axis (flaggable, keeps every visitor's cube): the visiting player flags
+ * it and, the first time they do, may empower one of their hand Statistic
+ * cards.
+ */
+function handleStarAxisVisit(state: GameState, hero: HeroState, field: MapFieldState): void {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return;
+  }
+
+  const playerId = hero.controllerId;
+  const alreadyHere = field.flagOwnerId === playerId || Boolean(field.extraFlagOwnerIds?.includes(playerId));
+
+  field.everFlagged = true;
+  if (!field.flagOwnerId) {
+    flagField(state, playerId, field);
+  } else if (field.flagOwnerId !== playerId && !field.extraFlagOwnerIds?.includes(playerId)) {
+    field.extraFlagOwnerIds = [...(field.extraFlagOwnerIds ?? []), playerId];
+    appendEvent(state, {
+      type: "FIELD_FLAGGED",
+      playerId,
+      fieldId: field.spaceId,
+      location: field.location,
+      previousOwnerId: null
+    });
+  }
+
+  if (!alreadyHere) {
+    adventure.pendingVisit = { heroId: hero.id, playerId, fieldId: field.spaceId, steps: [{ type: "STAR_AXIS_SWAP" }] };
+    processPendingVisit(state);
+  }
+}
+
+/**
  * Grail Hunt: if the hero is carrying the Grail Token and has reached their
  * own town, the Grail is delivered and the game is won. Returns true when it
  * triggers the win.
@@ -1100,6 +1144,72 @@ export function checkDragonConquerorHold(state: GameState, playerId: PlayerId): 
   }
 }
 
+/** Black Market artifact prices by rarity. */
+const BLACK_MARKET_PRICE: Record<ArtifactTier, number> = { minor: 5, major: 7, relic: 10 };
+
+/**
+ * Black Market browse list: the top 4 cards of the Artifact discard pile(s)
+ * (round-robin across the split decks in BINH mode), each priced by rarity.
+ */
+export function blackMarketOffers(state: GameState): { cardId: CardId; deckId: string; price: number }[] {
+  const deckIds = state.decks["artifacts"]
+    ? ["artifacts"]
+    : ["artifacts-minor", "artifacts-major", "artifacts-relic"];
+  const piles = deckIds
+    .map((id) => ({ id, cards: state.decks[id]?.discardPile ?? [] }))
+    .filter((pile) => pile.cards.length > 0);
+
+  const offers: { cardId: CardId; deckId: string; price: number }[] = [];
+  for (let depth = 0; offers.length < 4; depth += 1) {
+    let added = false;
+    for (const pile of piles) {
+      const index = pile.cards.length - 1 - depth;
+      if (index < 0) {
+        continue;
+      }
+      const cardId = pile.cards[index];
+      const tier = cardLibrary[cardId]?.artifactTier ?? "minor";
+      offers.push({ cardId, deckId: pile.id, price: BLACK_MARKET_PRICE[tier] });
+      added = true;
+      if (offers.length >= 4) {
+        break;
+      }
+    }
+    if (!added) {
+      break;
+    }
+  }
+  return offers;
+}
+
+/**
+ * Elemental Conflux: for every Dwelling (unlocked recruit tier) the player has,
+ * the first Elementals card found in that tier's Neutral deck (draw pile top
+ * first, then discard). One candidate per qualifying tier.
+ */
+export function elementalConfluxCandidates(
+  state: GameState,
+  playerId: PlayerId
+): { unitDefId: string; tier: "bronze" | "silver" | "gold" }[] {
+  const tiers = unlockedRecruitTiers(state, playerId);
+  const candidates: { unitDefId: string; tier: "bronze" | "silver" | "gold" }[] = [];
+  for (const tier of ["bronze", "silver", "gold"] as const) {
+    if (!tiers.has(tier)) {
+      continue;
+    }
+    const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+    if (!deck) {
+      continue;
+    }
+    const search = [...deck.drawPile].reverse().concat([...deck.discardPile].reverse());
+    const found = search.find((unitDefId) => coreUnitDefinitions[unitDefId]?.name.includes("Elemental"));
+    if (found) {
+      candidates.push({ unitDefId: found, tier });
+    }
+  }
+  return candidates;
+}
+
 /**
  * Begins resolving a field visit. Immediate effects apply at once; steps that
  * need player input wait in adventure.pendingVisit.
@@ -1134,6 +1244,10 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   }
   if (location.id === "dragon_utopia") {
     handleDragonUtopiaVisit(state, hero, field);
+    return;
+  }
+  if (location.id === "star_axis") {
+    handleStarAxisVisit(state, hero, field);
     return;
   }
 
@@ -1463,6 +1577,180 @@ export function processPendingVisit(state: GameState): void {
       case "REINFORCE_HALF_GOLD":
         reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, true, step.roundDown ?? false);
         break;
+      case "LIBRARY_SWAP": {
+        const player = state.players[visit.playerId];
+        if (!player || step.remaining <= 0 || !hasResources(player, { gold: 3 })) {
+          break;
+        }
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        const addSource = (cardId: CardId, source: "hand" | "discard") => {
+          if (cardLibrary[cardId]?.kind === "statistic") {
+            options.push({
+              label: `Pay 3 gold: remove ${cardLibrary[cardId]?.name ?? cardId} (${source})`,
+              steps: [{ type: "LIBRARY_REMOVE", cardId, source, remaining: step.remaining }]
+            });
+          }
+        };
+        player.hand.forEach((cardId) => addSource(cardId, "hand"));
+        player.discard.forEach((cardId) => addSource(cardId, "discard"));
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Done", steps: [] });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `Library of Enlightenment (${step.remaining} swap${step.remaining > 1 ? "s" : ""} left)`,
+          options
+        });
+        break;
+      }
+      case "LIBRARY_REMOVE": {
+        const player = state.players[visit.playerId];
+        const list = step.source === "hand" ? player?.hand : player?.discard;
+        const index = list?.indexOf(step.cardId) ?? -1;
+        if (!player || !list || index === -1 || !hasResources(player, { gold: 3 })) {
+          break;
+        }
+        spendResources(state, visit.playerId, { gold: 3 }, "Library of Enlightenment");
+        list.splice(index, 1);
+        player.removed.push(step.cardId);
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: "Library of Enlightenment: gain which Statistic?",
+          options: (["attack", "defense", "power", "knowledge"] as const).map((statisticType) => ({
+            label: `Gain ${statisticType}`,
+            steps: [{ type: "LIBRARY_GAIN", statisticType, remaining: step.remaining }]
+          }))
+        });
+        break;
+      }
+      case "LIBRARY_GAIN": {
+        state.players[visit.playerId]?.hand.push(`stat.${step.statisticType}`);
+        if (step.remaining - 1 > 0) {
+          visit.steps.unshift({ type: "LIBRARY_SWAP", remaining: step.remaining - 1 });
+        }
+        break;
+      }
+      case "STAR_AXIS_SWAP": {
+        const player = state.players[visit.playerId];
+        if (!player) {
+          break;
+        }
+        const options = player.hand
+          .filter(
+            (cardId) =>
+              cardLibrary[cardId]?.kind === "statistic" &&
+              Boolean(cardLibrary[cardId]?.statisticType) &&
+              !cardId.endsWith(".empowered")
+          )
+          .map((cardId) => ({
+            label: `Empower ${cardLibrary[cardId]?.name ?? cardId}`,
+            steps: [{ type: "STAR_AXIS_GIVE", cardId } as VisitStep]
+          }));
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Decline", steps: [] });
+        visit.steps.unshift({ type: "CHOOSE_ONE", prompt: "Star Axis: empower a Statistic card", options });
+        break;
+      }
+      case "STAR_AXIS_GIVE": {
+        const player = state.players[visit.playerId];
+        const stat = cardLibrary[step.cardId]?.statisticType;
+        const index = player?.hand.indexOf(step.cardId) ?? -1;
+        if (!player || !stat || index === -1) {
+          break;
+        }
+        player.hand.splice(index, 1);
+        player.removed.push(step.cardId);
+        player.hand.push(`stat.${stat}.empowered`);
+        break;
+      }
+      case "BLACK_MARKET": {
+        const player = state.players[visit.playerId];
+        if (!player) {
+          break;
+        }
+        const options = blackMarketOffers(state)
+          .filter((offer) => hasResources(player, { gold: offer.price }))
+          .map((offer) => ({
+            label: `Buy ${cardLibrary[offer.cardId]?.name ?? offer.cardId} (${offer.price} gold)`,
+            steps: [{ type: "BLACK_MARKET_BUY", cardId: offer.cardId, deckId: offer.deckId, price: offer.price } as VisitStep]
+          }));
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Leave", steps: [] });
+        visit.steps.unshift({ type: "CHOOSE_ONE", prompt: "Black Market: buy an artifact", options });
+        break;
+      }
+      case "BLACK_MARKET_BUY": {
+        const player = state.players[visit.playerId];
+        const deck = state.decks[step.deckId];
+        const index = deck?.discardPile.lastIndexOf(step.cardId) ?? -1;
+        if (!player || !deck || index === -1 || !hasResources(player, { gold: step.price })) {
+          break;
+        }
+        spendResources(state, visit.playerId, { gold: step.price }, "Black Market");
+        deck.discardPile.splice(index, 1);
+        player.hand.push(step.cardId);
+        break;
+      }
+      case "ELEMENTAL_CONFLUX": {
+        const candidates = elementalConfluxCandidates(state, visit.playerId);
+        if (candidates.length === 0) {
+          break;
+        }
+        const options = candidates
+          .filter(({ unitDefId }) =>
+            hasRecruitResources(state, visit.playerId, coreUnitDefinitions[unitDefId]?.neutral?.cost ?? {})
+          )
+          .map(({ unitDefId, tier }) => {
+            const cost = coreUnitDefinitions[unitDefId]?.neutral?.cost ?? {};
+            const costLabel =
+              Object.entries(cost)
+                .map(([resource, amount]) => `${amount} ${resource}`)
+                .join(" + ") || "free";
+            return {
+              label: `Recruit ${coreUnitDefinitions[unitDefId]?.name ?? unitDefId} (${costLabel})`,
+              steps: [{ type: "ELEMENTAL_RECRUIT_ONE", unitDefId, tier } as VisitStep]
+            };
+          });
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Decline", steps: [] });
+        visit.steps.unshift({ type: "CHOOSE_ONE", prompt: "Elemental Conflux: recruit an Elemental", options });
+        break;
+      }
+      case "ELEMENTAL_RECRUIT_ONE": {
+        const player = state.players[visit.playerId];
+        const def = coreUnitDefinitions[step.unitDefId];
+        const cost = def?.neutral?.cost ?? {};
+        if (!player || !def?.neutral || !hasRecruitResources(state, visit.playerId, cost)) {
+          break;
+        }
+        const deck = state.decks[NEUTRAL_DECK_IDS[step.tier]];
+        const drawIndex = deck?.drawPile.lastIndexOf(step.unitDefId) ?? -1;
+        if (deck && drawIndex !== -1) {
+          deck.drawPile.splice(drawIndex, 1);
+        } else {
+          const discardIndex = deck?.discardPile.lastIndexOf(step.unitDefId) ?? -1;
+          if (deck && discardIndex !== -1) {
+            deck.discardPile.splice(discardIndex, 1);
+          }
+        }
+        spendRecruitResources(state, visit.playerId, cost, `recruited ${def.name} at the Elemental Conflux`);
+        addArmyUnit(player, step.unitDefId, "neutral");
+        appendEvent(state, {
+          type: "UNIT_RECRUITED",
+          playerId: visit.playerId,
+          unitDefId: step.unitDefId,
+          kind: "recruit",
+          cost
+        });
+        break;
+      }
       default:
         break;
     }

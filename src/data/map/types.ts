@@ -137,6 +137,34 @@ export type LocationInteraction =
       /** Pandora's Box: draw the top card of the Pandora deck into hand. */
       type: "DRAW_PANDORA_CARD";
     }
+  | {
+      /**
+       * Library of Enlightenment: pay 3 gold to remove a Statistic card from
+       * hand or discard and replace it with any Statistic card, up to twice.
+       */
+      type: "LIBRARY_OF_ENLIGHTENMENT";
+    }
+  | {
+      /**
+       * Star Axis: remove a Statistic card from hand and replace it with the
+       * Empowered version of the same type.
+       */
+      type: "STAR_AXIS";
+    }
+  | {
+      /**
+       * Black Market: browse the top of the Artifact discard pile(s) and buy
+       * one — 5 gold Minor, 7 gold Major, 10 gold Relic.
+       */
+      type: "BLACK_MARKET";
+    }
+  | {
+      /**
+       * Elemental Conflux: for every Dwelling (unlocked recruit tier) you have,
+       * offer one Elementals card from that Neutral deck to recruit.
+       */
+      type: "ELEMENTAL_CONFLUX";
+    }
   | { type: "NOT_IMPLEMENTED"; note: string };
 
 export type LocationDefinition = {

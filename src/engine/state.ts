@@ -2389,6 +2389,60 @@ export type VisitStep =
       armyUnitId: string;
       /** Necromancy: "half the gold cost (rounded down)" instead of up. */
       roundDown?: boolean;
+    }
+  | {
+      /**
+       * Library of Enlightenment: open the swap menu — pick a Statistic card
+       * (hand or discard) to remove for 3 gold. `remaining` swaps are left.
+       */
+      type: "LIBRARY_SWAP";
+      remaining: number;
+    }
+  | {
+      /** Library: pay 3 gold, remove the chosen source, then pick a replacement. */
+      type: "LIBRARY_REMOVE";
+      cardId: CardId;
+      source: "hand" | "discard";
+      remaining: number;
+    }
+  | {
+      /** Library: gain the chosen replacement Statistic, then loop if swaps remain. */
+      type: "LIBRARY_GAIN";
+      statisticType: StatisticType;
+      remaining: number;
+    }
+  | {
+      /** Star Axis: open the menu to swap a hand Statistic for its Empowered form. */
+      type: "STAR_AXIS_SWAP";
+    }
+  | {
+      /** Star Axis: remove the chosen hand Statistic and gain its Empowered form. */
+      type: "STAR_AXIS_GIVE";
+      cardId: CardId;
+    }
+  | {
+      /** Black Market: open the buy menu over the top Artifact discards. */
+      type: "BLACK_MARKET";
+    }
+  | {
+      /** Black Market: pay the rarity price and take the chosen artifact. */
+      type: "BLACK_MARKET_BUY";
+      cardId: CardId;
+      deckId: DeckId;
+      price: number;
+    }
+  | {
+      /**
+       * Elemental Conflux: open the recruit menu — one Elementals card per
+       * Dwelling tier you have, drawn from the matching Neutral deck.
+       */
+      type: "ELEMENTAL_CONFLUX";
+    }
+  | {
+      /** Elemental Conflux: recruit the chosen Elementals card for its cost. */
+      type: "ELEMENTAL_RECRUIT_ONE";
+      unitDefId: string;
+      tier: "bronze" | "silver" | "gold";
     };
 
 export type AstrologersState = {

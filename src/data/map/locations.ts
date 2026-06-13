@@ -342,11 +342,11 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "star_axis",
     name: "Star Axis",
     category: "flaggable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Star Axis swaps a Statistic card for an Empowered one (Inferno expansion cards not yet in the library)."
-    },
-    implementationStatus: "not-implemented",
+    // Flaggable (multiple players may keep a cube here). On a player's first
+    // visit they may remove a hand Statistic card and gain the Empowered
+    // version of the same type. Handled in the engine (handleStarAxisVisit).
+    interaction: { type: "STAR_AXIS" },
+    implementationStatus: "implemented",
     source: source("star_axis")
   },
 
@@ -542,22 +542,20 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "library_of_enlightenment",
     name: "Library of Enlightenment",
     category: "revisitable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Pay 3 valuables to swap a Statistic card from hand or discard for any other, up to twice per visit (needs the stat-swap flow)."
-    },
-    implementationStatus: "not-implemented",
+    // Pay 3 gold to remove a Statistic card from hand or discard and gain any
+    // Statistic card, up to twice per visit.
+    interaction: { type: "LIBRARY_OF_ENLIGHTENMENT" },
+    implementationStatus: "implemented",
     source: source("library_of_enlightenment")
   },
   black_market: {
     id: "black_market",
     name: "Black Market",
     category: "revisitable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Browse the top 4 Artifact discards and buy one for 5/7/10 gold by rarity (needs artifact rarity data)."
-    },
-    implementationStatus: "not-implemented",
+    // Browse the top of the Artifact discard pile(s) and buy one — 5 gold
+    // Minor, 7 gold Major, 10 gold Relic.
+    interaction: { type: "BLACK_MARKET" },
+    implementationStatus: "implemented",
     source: source("black_market")
   },
   tavern: {
@@ -601,11 +599,10 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "elemental_conflux",
     name: "Elemental Conflux",
     category: "visitable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Recruit one Elemental per Dwelling from the Neutral decks (needs Dwelling tracking)."
-    },
-    implementationStatus: "not-implemented",
+    // For every Dwelling (unlocked recruit tier) you have, an Elementals card
+    // from that Neutral deck is offered to recruit; pick one or decline.
+    interaction: { type: "ELEMENTAL_CONFLUX" },
+    implementationStatus: "implemented",
     source: source("elemental_conflux")
   },
 
