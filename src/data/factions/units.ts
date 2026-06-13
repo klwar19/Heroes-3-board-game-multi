@@ -1330,4 +1330,248 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
       url: "https://en.homm3bg.wiki/units/faerie_dragons/"
     }
   },
+
+  // ---- Tower / Fortress / Conflux neutral units --------------------------
+  // Creatures from factions not yet playable as towns; they appear only as
+  // neutral guards. Single-sided stats and ability text transcribed per unit
+  // from the fan wiki (https://en.homm3bg.wiki/towns/neutral/). Abilities that
+  // the engine does not implement are kept as display-only abilityText.
+  "neutral.gnolls": {
+    id: "neutral.gnolls",
+    name: "Gnolls",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ground",
+    neutral: { attack: 2, defense: 1, health: 2, initiative: 4, cost: { gold: 3 }, abilities: [] },
+    wikiUrl: "https://en.homm3bg.wiki/units/gnolls/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Fortress unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/gnolls/"
+    }
+  },
+  "neutral.gremlins": {
+    id: "neutral.gremlins",
+    name: "Gremlins",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ranged",
+    neutral: { attack: 2, defense: 0, health: 2, initiative: 5, cost: { gold: 2 }, abilities: [] },
+    wikiUrl: "https://en.homm3bg.wiki/units/gremlins/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Tower unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/gremlins/"
+    }
+  },
+  "neutral.gargoyles": {
+    id: "neutral.gargoyles",
+    name: "Gargoyles",
+    faction: "neutral",
+    tier: "bronze",
+    type: "flying",
+    neutral: { attack: 2, defense: 1, health: 3, initiative: 9, cost: { gold: 4 }, abilities: [], abilityText: "[unit_passive] This unit ignores [paralysis] effects." },
+    wikiUrl: "https://en.homm3bg.wiki/units/gargoyles/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Tower unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/gargoyles/"
+    }
+  },
+  "neutral.lizardmen": {
+    id: "neutral.lizardmen",
+    name: "Lizardmen",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ranged",
+    neutral: { attack: 2, defense: 0, health: 4, initiative: 5, cost: { gold: 4 }, abilities: [] },
+    wikiUrl: "https://en.homm3bg.wiki/units/lizardmen/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Fortress unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/lizardmen/"
+    }
+  },
+  "neutral.iron_golems": {
+    id: "neutral.iron_golems",
+    name: "Iron Golems",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ground",
+    neutral: { attack: 2, defense: 1, health: 4, initiative: 3, cost: { gold: 6 }, abilities: [], abilityText: "[unit_passive] Reduce any [damage] from spells by 2 — to a minimum of 0." },
+    wikiUrl: "https://en.homm3bg.wiki/units/iron_golems/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Tower unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/iron_golems/"
+    }
+  },
+  "neutral.sprites": {
+    id: "neutral.sprites",
+    name: "Sprites",
+    faction: "neutral",
+    tier: "bronze",
+    type: "flying",
+    neutral: { attack: 2, defense: 0, health: 2, initiative: 7, cost: { gold: 2 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack." },
+    wikiUrl: "https://en.homm3bg.wiki/units/sprites/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Conflux unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/sprites/"
+    }
+  },
+  "neutral.dragon_flies": {
+    id: "neutral.dragon_flies",
+    name: "Dragon Flies",
+    faction: "neutral",
+    tier: "bronze",
+    type: "flying",
+    neutral: { attack: 3, defense: 0, health: 3, initiative: 8, cost: { gold: 7 }, abilities: [], abilityText: "[unit_passive] Retaliation Attacks against Dragon Flies suffer -1 [attack]." },
+    wikiUrl: "https://en.homm3bg.wiki/units/dragon_flies/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Fortress unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/dragon_flies/"
+    }
+  },
+  "neutral.air_elementals": {
+    id: "neutral.air_elementals",
+    name: "Air Elementals",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ground",
+    neutral: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 7 }, abilities: [], abilityText: "[unit_passive] Immune to Magic Arrows and Air Magic spells. This unit deals elemental damage." },
+    wikiUrl: "https://en.homm3bg.wiki/units/air_elementals/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Conflux unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/air_elementals/"
+    }
+  },
+  "neutral.ice_elementals": {
+    id: "neutral.ice_elementals",
+    name: "Ice Elementals",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ranged",
+    neutral: { attack: 2, defense: 1, health: 3, initiative: 5, cost: { gold: 7 }, abilities: [], abilityText: "[unit_passive] Immune to Magic Arrows and Water Magic spells. This unit deals elemental damage." },
+    wikiUrl: "https://en.homm3bg.wiki/units/ice_elementals/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Conflux unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/ice_elementals/"
+    }
+  },
+  "neutral.storm_elementals": {
+    id: "neutral.storm_elementals",
+    name: "Storm Elementals",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ranged",
+    neutral: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 5 }, abilities: [], abilityText: "[unit_passive] Immune to Magic Arrows and Air Magic spells. This unit deals elemental damage." },
+    wikiUrl: "https://en.homm3bg.wiki/units/storm_elementals/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Conflux unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/storm_elementals/"
+    }
+  },
+  "neutral.basilisks": {
+    id: "neutral.basilisks",
+    name: "Basilisks",
+    faction: "neutral",
+    tier: "silver",
+    type: "ground",
+    neutral: { attack: 4, defense: 1, health: 4, initiative: 5, cost: { gold: 12 }, abilities: [], abilityText: "[unit_attack] After the attack, roll 1 Attack die . On a \"0\" result, the target is [paralysis] ." },
+    wikiUrl: "https://en.homm3bg.wiki/units/basilisks/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Fortress unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/basilisks/"
+    }
+  },
+  "neutral.gorgons": {
+    id: "neutral.gorgons",
+    name: "Gorgons",
+    faction: "neutral",
+    tier: "silver",
+    type: "ground",
+    neutral: { attack: 4, defense: 2, health: 4, initiative: 5, cost: { gold: 13 }, abilities: [], abilityText: "[unit_attack] After the attack, roll 2 Attack dice . On two \"-1\" results, reduce the target's [health_points] to 0." },
+    wikiUrl: "https://en.homm3bg.wiki/units/gorgons/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Fortress unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/gorgons/"
+    }
+  },
+  "neutral.genies": {
+    id: "neutral.genies",
+    name: "Genies",
+    faction: "neutral",
+    tier: "silver",
+    type: "flying",
+    neutral: { attack: 3, defense: 1, health: 4, initiative: 9, cost: { gold: 11 }, abilities: [], abilityText: "[unit_attack] When attacking Efreet , this unit gains +1 [attack] ." },
+    wikiUrl: "https://en.homm3bg.wiki/units/genies/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Tower unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/genies/"
+    }
+  },
+  "neutral.magi": {
+    id: "neutral.magi",
+    name: "Magi",
+    faction: "neutral",
+    tier: "silver",
+    type: "ranged",
+    neutral: { attack: 3, defense: 0, health: 5, initiative: 6, cost: { gold: 11 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_attack] Ignore the combat penalties. After this unit's attack, the enemy discards a random card or a card with [power] ." },
+    wikiUrl: "https://en.homm3bg.wiki/units/magi/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Tower unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/magi/"
+    }
+  },
+  "neutral.energy_elementals": {
+    id: "neutral.energy_elementals",
+    name: "Energy Elementals",
+    faction: "neutral",
+    tier: "silver",
+    type: "flying",
+    neutral: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 11 }, abilities: [], abilityText: "[unit_passive] Immune to Magic Arrows and Fire Magic spells. This unit deals elemental damage." },
+    wikiUrl: "https://en.homm3bg.wiki/units/energy_elementals/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Conflux unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/energy_elementals/"
+    }
+  },
+  "neutral.fire_elementals": {
+    id: "neutral.fire_elementals",
+    name: "Fire Elementals",
+    faction: "neutral",
+    tier: "silver",
+    type: "ground",
+    neutral: { attack: 3, defense: 1, health: 3, initiative: 6, cost: { gold: 13 }, abilities: [], abilityText: "[unit_passive] Immune to Magic Arrows and Fire Magic spells. This unit deals elemental damage." },
+    wikiUrl: "https://en.homm3bg.wiki/units/fire_elementals/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Conflux unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/fire_elementals/"
+    }
+  },
+  "neutral.magma_elementals": {
+    id: "neutral.magma_elementals",
+    name: "Magma Elementals",
+    faction: "neutral",
+    tier: "silver",
+    type: "ground",
+    neutral: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 14 }, abilities: [], abilityText: "[unit_passive] Immune to Magic Arrows and Earth Magic spells. This unit deals elemental damage." },
+    wikiUrl: "https://en.homm3bg.wiki/units/magma_elementals/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Conflux unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/magma_elementals/"
+    }
+  },
 };
