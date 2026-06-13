@@ -43,6 +43,7 @@ import {
   type MapNoticeCue
 } from "@/components/table/overlays";
 import { CardZoomProvider, useCardZoom, ZoomButton } from "@/components/table/zoom";
+import { TableErrorBoundary } from "@/components/error-boundary";
 import {
   ADVENTURE_FEED_CUES,
   AdventureDecksPanel,
@@ -1246,7 +1247,15 @@ export default function Home() {
           <div className="adventureMidRow">
             <div className="leftRail">
               <AdventureDecksPanel
+                onAction={submitAction}
                 onShowPile={(title, cardIds, kind) => setPile({ title, cardIds, kind })}
+                scoutableDeckIds={
+                  new Set(
+                    legalActions.flatMap((legal) =>
+                      legal.action.type === "ROGUES_SCOUT_DECK" ? [legal.action.deckId] : []
+                    )
+                  )
+                }
                 view={playerView}
                 viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
               />
@@ -1553,6 +1562,16 @@ export default function Home() {
 
   // ---- Combat table (sandbox games and adventure combats) ------------------
   return (
+    <TableErrorBoundary
+      resetKey={roomVersion}
+      syncStatus={syncStatus}
+      onReset={() => {
+        connectionRef.current
+          ?.fetchSnapshot()
+          .then(ingestSnapshot)
+          .catch(() => setSyncStatus("room sync failed"));
+      }}
+    >
     <CardZoomProvider>
     <main className="tableRoot">
       <div className="tableTopRow">
@@ -1728,5 +1747,6 @@ export default function Home() {
       <FxStage cues={fxCues} onDone={handleFxDone} />
     </main>
     </CardZoomProvider>
+    </TableErrorBoundary>
   );
 }

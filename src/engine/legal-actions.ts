@@ -4,6 +4,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { sampleBuildings } from "@/data/towns/buildings";
 import {
+  armyHasMapEffect,
   getTownOfPlayer,
   getUnitSide,
   hasRecruitResources,
@@ -1405,6 +1406,34 @@ function addDeckSearchActions(actions: LegalAction[], state: GameState, playerId
   }
 }
 
+/**
+ * Rogues (army map ability): once during your turn, look at the top card of any
+ * deck. Offered per shared/neutral deck that has cards, only while it's your
+ * uninterrupted turn and the scout has not been used yet.
+ */
+function addRoguesScoutActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  if (state.combat || state.reactionWindow || state.pendingChoice || state.stack.length > 0) {
+    return;
+  }
+  if (state.activePlayerId !== playerId) {
+    return;
+  }
+  const player = state.players[playerId];
+  if (!player || player.rogueScoutUsedThisTurn || !armyHasMapEffect(state, playerId, "MAP_TURN_DECK_PEEK")) {
+    return;
+  }
+
+  for (const [deckId, deck] of Object.entries(state.decks)) {
+    if (deck.drawPile.length === 0) {
+      continue;
+    }
+    actions.push({
+      label: `Rogues: scout the top of the ${deckId} deck`,
+      action: { type: "ROGUES_SCOUT_DECK", playerId, deckId }
+    });
+  }
+}
+
 function addHeroMoveActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   if (state.combat || (state.phase !== "map" && state.phase !== "player-turn")) {
     return;
@@ -1733,6 +1762,7 @@ export function getLegalActions(
   if (!state.combat || state.phase !== "combat") {
     addHeroMoveActions(actions, state, playerId);
     addDeckSearchActions(actions, state, playerId);
+    addRoguesScoutActions(actions, state, playerId);
     actions.push({
       label: "End turn",
       action: { type: "END_TURN", playerId }

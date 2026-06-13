@@ -295,6 +295,92 @@ export function getSecondAttackCandidates(
     .map((unit) => unit.id);
 }
 
+/** Ghost Dragons (Pack): flat "+N to your Attack die result" on every attack. */
+export function getAttackDieResultBonus(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "ATTACK_DIE_RESULT_BONUS").reduce(
+    (total, ability) => total + (ability.effect?.type === "ATTACK_DIE_RESULT_BONUS" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/** Dread Knights: +N Defense while this unit is the target of a Retaliation Attack. */
+export function getDefenseBonusWhenRetaliated(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "DEFENSE_BONUS_WHEN_RETALIATED").reduce(
+    (total, ability) => total + (ability.effect?.type === "DEFENSE_BONUS_WHEN_RETALIATED" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/** Dragon Flies: Retaliation Attacks against this unit lose N Attack. */
+export function getRetaliationAgainstAttackPenalty(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "RETALIATION_AGAINST_ATTACK_PENALTY").reduce(
+    (total, ability) => total + (ability.effect?.type === "RETALIATION_AGAINST_ATTACK_PENALTY" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/** Necropolis Dread Knights (Few): the enemy's Retaliation Attack rolls at disadvantage. */
+export function hasRetaliationAgainstDisadvantage(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "RETALIATION_AGAINST_DISADVANTAGE");
+}
+
+export type RetaliationParalysis = {
+  abilityId: string;
+  abilityName: string;
+  /** When set, roll one Attack die and only paralyse on this face. */
+  onRoll?: number;
+};
+
+/** Medusas: paralysis inflicted by this unit's own Retaliation Attack. */
+export function getRetaliationParalysis(unit: CombatUnitState): RetaliationParalysis | null {
+  for (const ability of getAbilitiesWithEffect(unit, "PARALYZE_ON_RETALIATION")) {
+    if (ability.effect?.type === "PARALYZE_ON_RETALIATION") {
+      return { abilityId: ability.id, abilityName: ability.name, onRoll: ability.effect.onRoll };
+    }
+  }
+  return null;
+}
+
+export type ActivationAbility = {
+  abilityId: string;
+  abilityName: string;
+  kind: "heal-self" | "discard-enemy-morale" | "discard-enemy-card";
+  amount: number;
+};
+
+/**
+ * Auto-resolving "[activation]" abilities applied when a unit's turn comes up:
+ * self-regeneration (Wraiths, Trolls), morale drain (Ghost Dragons) and the
+ * enemy hand discard (Wraith pack). Returned in card order.
+ */
+export function getActivationAbilities(unit: CombatUnitState): ActivationAbility[] {
+  const abilities: ActivationAbility[] = [];
+  for (const ability of getUnitAbilityDefinitions(unit)) {
+    if (ability.implementationStatus !== "implemented") {
+      continue;
+    }
+    if (ability.effect?.type === "ON_ACTIVATION_HEAL_SELF") {
+      abilities.push({ abilityId: ability.id, abilityName: ability.name, kind: "heal-self", amount: ability.effect.amount });
+    } else if (ability.effect?.type === "ON_ACTIVATION_DISCARD_ENEMY_MORALE") {
+      abilities.push({ abilityId: ability.id, abilityName: ability.name, kind: "discard-enemy-morale", amount: 1 });
+    } else if (ability.effect?.type === "ON_ACTIVATION_DISCARD_ENEMY_CARD") {
+      abilities.push({ abilityId: ability.id, abilityName: ability.name, kind: "discard-enemy-card", amount: ability.effect.count });
+    }
+  }
+  return abilities;
+}
+
+/** Archangels (Few): cards drawn by the controller when combat begins. */
+export function getCombatStartDraws(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; amount: number }[] {
+  return getAbilitiesWithEffect(unit, "ON_COMBAT_START_DRAW").flatMap((ability) =>
+    ability.effect?.type === "ON_COMBAT_START_DRAW"
+      ? [{ abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount }]
+      : []
+  );
+}
+
 export function getPostAttackAbilityDamageEffects(
   combat: CombatState,
   context: PostAttackContext

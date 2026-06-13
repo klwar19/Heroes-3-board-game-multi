@@ -184,6 +184,113 @@ export type UnitAbilityEffectDefinition =
        */
       type: "SECOND_ATTACK_ONE_ADJACENT_TO_SELF";
       baseAttack?: number;
+    }
+  | {
+      /**
+       * Medusas: paralysis inflicted by THIS unit's Retaliation Attack. The
+       * Pack/Neutral cards paralyse automatically ("The target gains
+       * Paralysis"); the Few card first rolls an Attack die and only paralyses
+       * on `onRoll` ("After the Retaliation Attack, roll an Attack die, on a
+       * '0' the target is Paralysis"). The token lands on the unit the
+       * Medusas retaliated against, if it is still alive.
+       */
+      type: "PARALYZE_ON_RETALIATION";
+      /** When set, roll one Attack die and only paralyse on this face. */
+      onRoll?: number;
+    }
+  | {
+      /**
+       * Dread Knights: "When this unit is targeted by a Retaliation Attack, it
+       * gains +N Defense." The bonus only applies while this unit is the
+       * defender of a retaliation (i.e. the original attacker being struck
+       * back).
+       */
+      type: "DEFENSE_BONUS_WHEN_RETALIATED";
+      amount: number;
+    }
+  | {
+      /**
+       * Dragon Flies: "Retaliation Attacks against Dragon Flies suffer -N
+       * Attack." The penalty hits whoever retaliates against this unit (the
+       * retaliation's attacker), only while this unit is the retaliation's
+       * target.
+       */
+      type: "RETALIATION_AGAINST_ATTACK_PENALTY";
+      amount: number;
+    }
+  | {
+      /**
+       * Necropolis Dread Knights (Few): "When retaliating after this attack,
+       * the enemy rolls 2 Attack dice and resolves the lower result." The
+       * Retaliation Attack against this unit rolls at disadvantage.
+       */
+      type: "RETALIATION_AGAINST_DISADVANTAGE";
+    }
+  | {
+      /**
+       * Ghost Dragons (Pack): "[unit_attack] Add +N to your Attack die
+       * result." A flat bonus added to every attack (and Retaliation Attack)
+       * this unit makes, counted alongside the rolled die.
+       */
+      type: "ATTACK_DIE_RESULT_BONUS";
+      amount: number;
+    }
+  | {
+      /**
+       * Ghost Dragons: "[activation] Discard the enemy's positive morale
+       * token." When this unit activates, the opposing player's positive
+       * morale token (if any) is discarded.
+       */
+      type: "ON_ACTIVATION_DISCARD_ENEMY_MORALE";
+    }
+  | {
+      /**
+       * Wraiths / Trolls: "[activation] Remove up to N damage from this unit."
+       * Self-regeneration applied automatically when the unit activates.
+       */
+      type: "ON_ACTIVATION_HEAL_SELF";
+      amount: number;
+    }
+  | {
+      /**
+       * Wraiths (Pack): "[activation] …then discard N random card(s) from the
+       * enemy's hand." Resolved when the unit activates.
+       */
+      type: "ON_ACTIVATION_DISCARD_ENEMY_CARD";
+      count: number;
+    }
+  | {
+      /**
+       * Archangels (Few): "[unit_passive] When combat begins, draw N card(s)."
+       * The controller draws from their own deck once the combat's first round
+       * starts.
+       */
+      type: "ON_COMBAT_START_DRAW";
+      amount: number;
+    };
+
+/**
+ * Adventure-map ("global") abilities granted while the unit card sits in a
+ * player's army. They never fire in combat — the engine reads them from the
+ * army during the adventure round/turn structure.
+ */
+export type UnitMapAbilityEffect =
+  | {
+      /** Crystal Dragons: "At the beginning of each Resource round, gain N." */
+      type: "MAP_RESOURCE_ROUND_GAIN";
+      resource: "gold" | "buildingMaterials" | "valuables";
+      amount: number;
+    }
+  | {
+      /** Nomads: "At the end of your turn, move your Hero to an adjacent empty field." */
+      type: "MAP_END_TURN_HERO_STEP";
+    }
+  | {
+      /**
+       * Rogues: "Once during your turn, look at the top card from any deck,
+       * then put it back on the top or on the bottom of that deck."
+       */
+      type: "MAP_TURN_DECK_PEEK";
     };
 
 export type UnitAbilityDefinition = {
@@ -191,6 +298,8 @@ export type UnitAbilityDefinition = {
   name: string;
   text: string;
   effect?: UnitAbilityEffectDefinition;
+  /** Adventure-map ability granted while the unit is in a player's army. */
+  mapEffect?: UnitMapAbilityEffect;
   implementationStatus: "implemented" | "not-implemented";
 };
 
@@ -429,6 +538,111 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Hydra Assault",
     text: "Attacks up to 2 adjacent enemy units: after the primary attack, one more enemy adjacent to the Hydra takes a full separate attack at the Hydra's own attack value (you choose when several qualify). That follow-up never retaliates.",
     effect: { type: "SECOND_ATTACK_ONE_ADJACENT_TO_SELF" },
+    implementationStatus: "implemented"
+  },
+  "medusa-paralyze-retaliation": {
+    id: "medusa-paralyze-retaliation",
+    name: "Paralyzing Gaze",
+    text: "After this unit's Retaliation Attack, the target gains Paralysis (it skips its next activation; any damage clears it).",
+    effect: { type: "PARALYZE_ON_RETALIATION" },
+    implementationStatus: "implemented"
+  },
+  "medusa-paralyze-retaliation-die": {
+    id: "medusa-paralyze-retaliation-die",
+    name: "Paralyzing Gaze",
+    text: 'After this unit\'s Retaliation Attack, roll an Attack die; on a "0" the target gains Paralysis (it skips its next activation; any damage clears it).',
+    effect: { type: "PARALYZE_ON_RETALIATION", onRoll: 0 },
+    implementationStatus: "implemented"
+  },
+  "dread-knight-retaliation-defense": {
+    id: "dread-knight-retaliation-defense",
+    name: "Death Stare",
+    text: "When this unit is targeted by a Retaliation Attack, it gains +1 Defense against it.",
+    effect: { type: "DEFENSE_BONUS_WHEN_RETALIATED", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "dragon-fly-retaliation-penalty": {
+    id: "dragon-fly-retaliation-penalty",
+    name: "Dazzling Flight",
+    text: "Retaliation Attacks against this unit suffer -1 Attack.",
+    effect: { type: "RETALIATION_AGAINST_ATTACK_PENALTY", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "dread-knight-retaliation-disadvantage": {
+    id: "dread-knight-retaliation-disadvantage",
+    name: "Curse of the Damned",
+    text: "When this unit attacks, the enemy's Retaliation Attack rolls 2 Attack dice and resolves the lower result.",
+    effect: { type: "RETALIATION_AGAINST_DISADVANTAGE" },
+    implementationStatus: "implemented"
+  },
+  "ghost-dragon-morale-drain": {
+    id: "ghost-dragon-morale-drain",
+    name: "Aging",
+    text: "When this unit activates, discard the enemy's positive morale token.",
+    effect: { type: "ON_ACTIVATION_DISCARD_ENEMY_MORALE" },
+    implementationStatus: "implemented"
+  },
+  "ghost-dragon-attack-die": {
+    id: "ghost-dragon-attack-die",
+    name: "Spectral Strike",
+    text: "Add +1 to this unit's Attack die result on every attack.",
+    effect: { type: "ATTACK_DIE_RESULT_BONUS", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "wraith-heal-1": {
+    id: "wraith-heal-1",
+    name: "Regeneration",
+    text: "When this unit activates, remove up to 1 damage from it.",
+    effect: { type: "ON_ACTIVATION_HEAL_SELF", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "wraith-heal-2": {
+    id: "wraith-heal-2",
+    name: "Regeneration",
+    text: "When this unit activates, remove up to 2 damage from it.",
+    effect: { type: "ON_ACTIVATION_HEAL_SELF", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "troll-heal-3": {
+    id: "troll-heal-3",
+    name: "Regeneration",
+    text: "When this unit activates, remove up to 3 damage from it.",
+    effect: { type: "ON_ACTIVATION_HEAL_SELF", amount: 3 },
+    implementationStatus: "implemented"
+  },
+  "wraith-enemy-discard": {
+    id: "wraith-enemy-discard",
+    name: "Mana Drain",
+    text: "When this unit activates, discard 1 random card from the enemy's hand.",
+    effect: { type: "ON_ACTIVATION_DISCARD_ENEMY_CARD", count: 1 },
+    implementationStatus: "implemented"
+  },
+  "archangel-combat-start-draw": {
+    id: "archangel-combat-start-draw",
+    name: "Heavenly Blessing",
+    text: "When combat begins, the controller draws 1 card.",
+    effect: { type: "ON_COMBAT_START_DRAW", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "crystal-dragon-valuables": {
+    id: "crystal-dragon-valuables",
+    name: "Crystal Hoard",
+    text: "While in your army: at the beginning of each Resource round, gain 2 valuables.",
+    mapEffect: { type: "MAP_RESOURCE_ROUND_GAIN", resource: "valuables", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "nomad-end-turn-step": {
+    id: "nomad-end-turn-step",
+    name: "Wanderer",
+    text: "While in your army: at the end of your turn, move your Hero's model to an adjacent empty field.",
+    mapEffect: { type: "MAP_END_TURN_HERO_STEP" },
+    implementationStatus: "implemented"
+  },
+  "rogue-deck-peek": {
+    id: "rogue-deck-peek",
+    name: "Scouting",
+    text: "While in your army: once during your turn, look at the top card from any deck, then put it back on the top or on the bottom of that deck.",
+    mapEffect: { type: "MAP_TURN_DECK_PEEK" },
     implementationStatus: "implemented"
   },
   "summon-demons": {

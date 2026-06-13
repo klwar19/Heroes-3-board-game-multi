@@ -468,6 +468,13 @@ export function ReactionTray({
           {powerNeedsSpell ? (
             <span className="trayWarning">Power only counts with a Spell played into this attack — add the spell.</span>
           ) : null}
+          {crownsOver ? (
+            <span className="trayWarning" role="alert">
+              {crownsAvailable === 0
+                ? "No crowns left this combat round — turn off the Expert plays."
+                : `Only ${crownsAvailable} crown${crownsAvailable === 1 ? "" : "s"} left — you picked ${crownsSelected} Expert plays. Turn ${crownsSelected - crownsAvailable} off.`}
+            </span>
+          ) : null}
           <span className={`crownMeter ${crownsOver ? "over" : ""}`} title="Crowns selected / available">
             <Crown aria-hidden="true" size={13} /> {crownsSelected}/{crownsAvailable}
           </span>

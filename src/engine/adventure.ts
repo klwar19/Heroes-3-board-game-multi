@@ -2,6 +2,7 @@ import { astrologersCardDefinitions, type AstrologersCardDefinition } from "@/da
 import { cardLibrary } from "@/data/cards/library";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { unitAbilities, type UnitMapAbilityEffect } from "@/data/units/abilities";
 import type { UnitDefinition, UnitSideDefinition } from "@/data/factions/types";
 import { hasInternalBorder } from "@/data/map/borders";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
@@ -572,6 +573,43 @@ export function gainResources(
     valuables: gains.valuables ?? 0,
     reason
   });
+}
+
+export type ArmyMapAbility = { abilityId: string; abilityName: string; effect: UnitMapAbilityEffect };
+
+/**
+ * Adventure-map ("global") abilities granted by the unit cards currently in a
+ * player's army (Rogues' scout, Nomads' end-turn step, Crystal Dragons'
+ * Resource-round valuables). One entry per qualifying army card, so multiple
+ * copies stack.
+ */
+export function getArmyMapAbilities(state: GameState, playerId: PlayerId): ArmyMapAbility[] {
+  const player = state.players[playerId];
+  if (!player) {
+    return [];
+  }
+
+  const abilities: ArmyMapAbility[] = [];
+  for (const armyUnit of player.army) {
+    const definition = coreUnitDefinitions[armyUnit.unitDefId];
+    const side = definition?.[armyUnit.side];
+    for (const abilityId of side?.abilities ?? []) {
+      const ability = unitAbilities[abilityId];
+      if (ability?.mapEffect && ability.implementationStatus === "implemented") {
+        abilities.push({ abilityId, abilityName: ability.name, effect: ability.mapEffect });
+      }
+    }
+  }
+  return abilities;
+}
+
+/** True when the player's army grants the given map ability effect type. */
+export function armyHasMapEffect(
+  state: GameState,
+  playerId: PlayerId,
+  type: UnitMapAbilityEffect["type"]
+): boolean {
+  return getArmyMapAbilities(state, playerId).some((ability) => ability.effect.type === type);
 }
 
 export function hasResources(player: PlayerState, cost: ResourceCost): boolean {
@@ -1873,6 +1911,14 @@ export function startAdventureRound(state: GameState): void {
       gainResources(state, playerId, income, "resource round income");
     }
 
+    // Crystal Dragons (army map ability): gain the printed resource each
+    // Resource round, once per qualifying card in the army.
+    for (const ability of getArmyMapAbilities(state, playerId)) {
+      if (ability.effect.type === "MAP_RESOURCE_ROUND_GAIN") {
+        gainResources(state, playerId, { [ability.effect.resource]: ability.effect.amount }, ability.abilityName);
+      }
+    }
+
     const town = getTownOfPlayer(state, playerId);
     for (const buildingId of town?.buildings ?? []) {
       const effect = coreBuildingDefinitions[buildingId]?.effect;
@@ -2013,6 +2059,9 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
     }
   }
   player.canMulligan = true;
+  // Army map abilities reset for the new turn (Nomads' step, Rogues' scout).
+  player.nomadStepDoneThisTurn = false;
+  player.rogueScoutUsedThisTurn = false;
 
   // "Resolve any 'at the beginning of your turn' abilities after drawing":
   // Necromancy Amplifier, Portal of Summoning, Mana Vortex.
