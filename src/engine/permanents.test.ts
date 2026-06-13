@@ -110,6 +110,9 @@ describe("permanent cards", () => {
     state.players.p1.hand = [];
     state.players.p2.hand = [];
     state.players.p1.permanents = ["war_machine.ballista"];
+    // No expert uses available: the Ballista just fires its single basic shot
+    // (with a crown free it would instead offer the expert volley).
+    state.players.p1.limits.expertUses = 0;
 
     const units = state.combat!.units;
     const enemies = Object.values(units).filter((unit) => unit.controllerId === "p2");

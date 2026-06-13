@@ -25,6 +25,7 @@ import {
   removableHandCards
 } from "./adventure-reducer";
 import { effectAppliesToUnit } from "./active-effects";
+import { cardCanBoostPower } from "./effects";
 import {
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
@@ -129,7 +130,12 @@ function canAffordCardCost(state: GameState, playerId: PlayerId, cardId: string,
     rest.splice(selfIndex, 1);
   }
 
-  const eligible = cost.costCardFilter === "spell" ? rest.filter((id) => cardLibrary[id]?.kind === "spell") : rest;
+  const eligible =
+    cost.costCardFilter === "spell"
+      ? rest.filter((id) => cardLibrary[id]?.kind === "spell")
+      : cost.costCardFilter === "power-source"
+        ? rest.filter((id) => cardCanBoostPower(cardLibrary[id]))
+        : rest;
   const needed = cost.discardCards ?? 0;
   return eligible.length >= needed;
 }
@@ -882,6 +888,7 @@ function isOptionEffectPlayable(
     case "CREATE_DEFENSE_BUFF":
     case "ADD_UNIT_MAX_HEALTH":
     case "HEAL_DAMAGE":
+    case "AREA_DAMAGE_ALL_ADJACENT":
       return context === "combat" && Boolean(state.combat);
     case "SIEGE_DEMOLISH": {
       const siege = state.combat?.siege;
@@ -904,7 +911,8 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "CREATE_ATTACK_BUFF" ||
     effect.type === "CREATE_DEFENSE_BUFF" ||
     effect.type === "ADD_UNIT_MAX_HEALTH" ||
-    effect.type === "HEAL_DAMAGE"
+    effect.type === "HEAL_DAMAGE" ||
+    effect.type === "AREA_DAMAGE_ALL_ADJACENT"
   );
 }
 
@@ -1027,7 +1035,9 @@ function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDef
     effect.type === "ENEMY_MORALE_STRIP" ||
     effect.type === "ROLL_FOR_MORALE" ||
     effect.type === "RANDOM_ENEMY_DISCARD" ||
-    effect.type === "GAIN_EXPERT_USE"
+    effect.type === "GAIN_EXPERT_USE" ||
+    // Gem's First Aid: grab the Tent from the supply (or draw) on the map.
+    effect.type === "GAIN_WAR_MACHINE"
   ) {
     return true;
   }
@@ -1195,13 +1205,26 @@ function addActiveEffectActions(actions: LegalAction[], state: GameState, player
     return;
   }
 
+  const player = state.players[playerId];
   for (const effect of state.activeEffects) {
-    if (effect.controllerId !== playerId || effect.usedCombatRoundNumbers.includes(combat.round)) {
+    if (effect.controllerId !== playerId) {
       continue;
     }
 
     const healModifier = effect.modifiers.find((modifier) => modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND");
-    if (!healModifier) {
+    if (!healModifier || healModifier.type !== "HEAL_ONCE_PER_COMBAT_ROUND") {
+      continue;
+    }
+
+    // First Aid Tent: one basic heal per round, OR — if the card has an expert
+    // and an expert use is free — spend it to heal several times this round.
+    const usage = effect.healRound?.round === combat.round ? effect.healRound : undefined;
+    const expertMax = healModifier.expertUsesPerRound ?? 0;
+    const crowns = player ? expertUsesAvailable(player) : 0;
+    const canBasic = !usage;
+    const canExpertActivate = !usage && expertMax > 1 && crowns > 0;
+    const canExpertContinue = Boolean(usage?.expert && usage.count < expertMax);
+    if (!canBasic && !canExpertActivate && !canExpertContinue) {
       continue;
     }
 
@@ -1209,16 +1232,28 @@ function addActiveEffectActions(actions: LegalAction[], state: GameState, player
       if (unit.controllerId !== playerId || !isUnitAlive(unit) || unit.damage <= 0) {
         continue;
       }
+      const target = { type: "unit" as const, unitId: unit.id };
 
-      actions.push({
-        label: `${effect.name} heal ${unit.name}`,
-        action: {
-          type: "USE_ACTIVE_EFFECT",
-          playerId,
-          effectId: effect.id,
-          target: { type: "unit", unitId: unit.id }
-        }
-      });
+      // Basic heal and expert continuations omit the mode (it defaults to
+      // basic), so plays submitted without a mode still match.
+      if (canBasic) {
+        actions.push({
+          label: `${effect.name} heal ${unit.name}`,
+          action: { type: "USE_ACTIVE_EFFECT", playerId, effectId: effect.id, target }
+        });
+      }
+      if (canExpertActivate) {
+        actions.push({
+          label: `${effect.name} expert: heal ${unit.name} (1/${expertMax}, spend 1 crown)`,
+          action: { type: "USE_ACTIVE_EFFECT", playerId, effectId: effect.id, target, mode: "expert" }
+        });
+      }
+      if (canExpertContinue) {
+        actions.push({
+          label: `${effect.name} heal ${unit.name} (${(usage?.count ?? 0) + 1}/${expertMax})`,
+          action: { type: "USE_ACTIVE_EFFECT", playerId, effectId: effect.id, target }
+        });
+      }
     }
   }
 }
@@ -1254,6 +1289,62 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
             target: { type: "unit", unitId: target.id }
           }
         });
+      }
+    }
+
+    // Pit Lords' "Summon Demons" other action: only after a friendly unit has
+    // been removed this combat, and once per combat per Pit Lords unit. Used
+    // instead of moving or attacking (the caller already gated on those).
+    if (
+      ability.effect?.type === "SUMMON_OR_REINFORCE_DEMONS" &&
+      combat.unitRemovedControllerIds?.includes(playerId) &&
+      !activeUnit.summonedThisCombat
+    ) {
+      const demonDefId = ability.effect.demonUnitDefId;
+      const demonName = coreUnitDefinitions[demonDefId]?.name ?? "Demons";
+
+      // Summon: place a Few of Demons on an empty adjacent space.
+      if (getUnitSide(demonDefId, "few")) {
+        const occupied = new Set<number>(
+          Object.values(combat.units)
+            .filter(isUnitAlive)
+            .map((candidate) => candidate.position)
+        );
+        for (const position of combat.obstacles ?? []) {
+          occupied.add(position);
+        }
+        for (const position of getOrthogonalNeighbors(activeUnit.position)) {
+          if (!isBattlefieldPosition(position) || occupied.has(position)) {
+            continue;
+          }
+          actions.push({
+            label: `${activeUnit.name}: Summon a Few of ${demonName} at ${getBattlefieldLabel(position)}`,
+            action: { type: "SUMMON_DEMONS", playerId, unitId: activeUnit.id, mode: "summon", position }
+          });
+        }
+      }
+
+      // Reinforce: flip a friendly Few of Demons up to a Pack at no cost.
+      if (getUnitSide(demonDefId, "pack")) {
+        for (const candidate of Object.values(combat.units)) {
+          if (
+            candidate.controllerId === playerId &&
+            isUnitAlive(candidate) &&
+            candidate.unitDefId === demonDefId &&
+            candidate.variant === "few"
+          ) {
+            actions.push({
+              label: `${activeUnit.name}: Reinforce ${candidate.cardName} to a Pack`,
+              action: {
+                type: "SUMMON_DEMONS",
+                playerId,
+                unitId: activeUnit.id,
+                mode: "reinforce",
+                targetUnitId: candidate.id
+              }
+            });
+          }
+        }
       }
     }
 
@@ -2221,6 +2312,12 @@ export function isEffectLegalForTrigger(
     // attacker's controller plays it, and never on a ranged shot.
     if (effect.type === "IGNORE_ATTACK_DIE") {
       return attacker.controllerId === playerId && attacker.type !== "ranged";
+    }
+
+    // Alamar's Resurrection: the defender's controller may arm the option that
+    // matches their unit's grade to cancel a killing blow on it.
+    if (effect.type === "CANCEL_LETHAL_ATTACK") {
+      return defender.controllerId === playerId && effect.grade === defender.grade;
     }
 
     // Power may be paid into an attack window so a spell instant in the same

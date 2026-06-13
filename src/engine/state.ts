@@ -98,6 +98,12 @@ export type ActiveEffectModifier =
   | {
       type: "HEAL_ONCE_PER_COMBAT_ROUND";
       amount: number;
+      /**
+       * First Aid Tent expert: instead of the single basic heal, spend 1
+       * expert use to heal this many times in the round. Activating the expert
+       * and using the basic heal are mutually exclusive within a round.
+       */
+      expertUsesPerRound?: number;
     }
   | {
       type: "UNIT_CANNOT_MOVE";
@@ -192,6 +198,8 @@ export type EffectDefinition =
       type: "HEAL_DAMAGE";
       amount?: number;
       amountByPower?: Record<number, number>;
+      /** Rion's Battlefield Medic: "then draw N card(s)" after the heal. */
+      drawCards?: number;
     }
   | {
       type: "HEAL_DAMAGE_AND_REMOVE_EFFECTS";
@@ -392,6 +400,37 @@ export type EffectDefinition =
       amountByPower: Record<number, number>;
     }
   | {
+      /**
+       * Xyron's Inferno: pick a space (any unit's space); that unit and every
+       * unit orthogonally adjacent to it — friend or foe — take `amount`
+       * damage. The discard cost is carried on the card option.
+       */
+      type: "AREA_DAMAGE_ALL_ADJACENT";
+      amount: number;
+    }
+  | {
+      /**
+       * Gem's First Aid: take the named war machine card from the shared
+       * supply into hand at no cost. When the supply has none left (already
+       * taken — the player "already has" it), draw `fallbackDrawCards` instead.
+       */
+      type: "GAIN_WAR_MACHINE";
+      warMachineCardId: CardId;
+      fallbackDrawCards?: number;
+    }
+  | {
+      /**
+       * Alamar's Resurrection: played as a reaction on an enemy attack that
+       * targets one of your units (normal attacks only — never spells or
+       * specialty damage). If the attack would reduce that unit (of `grade` or
+       * lower) to 0 HP it is cancelled — no damage and no Retaliation. The
+       * option's discard cost (Power statistics / Spells) stands in for the
+       * printed Power.
+       */
+      type: "CANCEL_LETHAL_ATTACK";
+      grade: UnitGrade;
+    }
+  | {
       type: "CREATE_ACTIVE_EFFECT";
       effect: ActiveEffectDefinition;
       expertEffect?: ActiveEffectDefinition;
@@ -475,8 +514,12 @@ export type CardPlayCost = {
   discardCards?: number;
   /** Discard any number up to this many (effects may scale per card). */
   discardCardsUpTo?: number;
-  /** The discarded/removed cards must match this filter. */
-  costCardFilter?: "spell";
+  /**
+   * The discarded/removed cards must match this filter. "power-source" cards
+   * are anything that can contribute Power: a Power statistic or any Spell
+   * (Alamar's Resurrection spends these to stand in for its printed Power).
+   */
+  costCardFilter?: "spell" | "power-source";
   /** Cost cards are removed from the game rather than discarded. */
   removeCostCards?: boolean;
 };
@@ -492,6 +535,12 @@ export type WarMachineRoundStartDefinition =
       /** Ballista: automatic damage to the enemy unit with the lowest initiative. */
       kind: "damage-lowest-initiative";
       amount: number;
+      /**
+       * Ballista expert: at the round start, the owner may spend 1 expert use
+       * to fire this many shots instead of the single basic shot. Declining
+       * fires once and the Ballista does nothing more that round.
+       */
+      expertShots?: number;
     }
   | {
       /** Catapult: optionally pay the cost to damage two adjacent targets. */
@@ -668,7 +717,22 @@ export type GameAction =
     }
   | { type: "MOVE_UNIT"; playerId: PlayerId; unitId: UnitId; destination: number }
   | { type: "USE_UNIT_ABILITY"; playerId: PlayerId; unitId: UnitId; abilityId: string; target: TargetRef }
-  | { type: "USE_ACTIVE_EFFECT"; playerId: PlayerId; effectId: string; target: TargetRef }
+  | {
+      /**
+       * Pit Lords' "Summon Demons" other action: instead of moving/attacking,
+       * summon a Few of Demons onto an empty adjacent space, or reinforce a
+       * friendly Few of Demons up to a Pack. Once per combat per Pit Lords unit.
+       */
+      type: "SUMMON_DEMONS";
+      playerId: PlayerId;
+      unitId: UnitId;
+      mode: "summon" | "reinforce";
+      /** Summon: the empty space to place the new Few of Demons on. */
+      position?: number;
+      /** Reinforce: the friendly Few of Demons to flip up to a Pack. */
+      targetUnitId?: UnitId;
+    }
+  | { type: "USE_ACTIVE_EFFECT"; playerId: PlayerId; effectId: string; target: TargetRef; mode?: CardPlayMode }
   | { type: "DEFEND_UNIT"; playerId: PlayerId; unitId: UnitId }
   | { type: "END_ACTIVATION"; playerId: PlayerId; unitId: UnitId }
   | { type: "END_COMBAT_ROUND"; playerId: PlayerId }
@@ -1659,6 +1723,11 @@ export type ResolutionStackItem = {
      * when the effect they created ends.
      */
     recallSpell?: { toHand: boolean; recallPlayedCards: boolean };
+    /**
+     * Alamar's Resurrection armed on this attack or spell: if it would reduce
+     * the named unit (of `grade` or lower) to 0 HP, the blow is cancelled.
+     */
+    cancelLethal?: { unitId: UnitId; grade: UnitGrade };
     playedCardIds: CardId[];
   };
 };
@@ -1685,6 +1754,12 @@ export type ActiveEffectState = ActiveEffectDefinition & {
   usedRollEventIds: string[];
   usedChoiceIds: string[];
   usedCombatRoundNumbers: number[];
+  /**
+   * First Aid Tent: heals performed this combat round and whether the expert
+   * (multiple heals for 1 expert use) was activated, so basic and expert heals
+   * stay mutually exclusive within a round.
+   */
+  healRound?: { round: number; count: number; expert: boolean };
 };
 
 export type TurnState = {
@@ -1889,6 +1964,8 @@ export type CombatUnitState = {
    * never fires twice and the unit can act normally afterwards.
    */
   activationAbilityDone?: boolean;
+  /** Pit Lords: set once this unit has summoned/reinforced Demons this combat. */
+  summonedThisCombat?: boolean;
   retaliatedThisRound: boolean;
   defenseToken: boolean;
   /** Combat tokens currently on the card (attack/weakness/corrosion/paralysis). */
@@ -2068,6 +2145,11 @@ export type CombatState = {
    * (discard 1 random card from the enemy hand), resolved before placement.
    */
   pendingCoverOfDarkness?: PlayerId[];
+  /**
+   * Controllers who have had at least one unit removed from the board this
+   * combat (Pit Lords' "Summon Demons" triggers off a friendly removal).
+   */
+  unitRemovedControllerIds?: PlayerId[];
   dice: CombatDice;
   units: Record<UnitId, CombatUnitState>;
   /**

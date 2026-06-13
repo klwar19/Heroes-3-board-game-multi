@@ -37,6 +37,9 @@ export const implementedCardEffectTypes = [
   "CREATE_INITIATIVE_BUFF",
   "ADD_UNIT_MAX_HEALTH",
   "AREA_DAMAGE_ADJACENT",
+  "AREA_DAMAGE_ALL_ADJACENT",
+  "GAIN_WAR_MACHINE",
+  "CANCEL_LETHAL_ATTACK",
   "CONTINUE_NEUTRAL_FREE",
   "EARTHQUAKE",
   "SIEGE_DEMOLISH"
@@ -52,6 +55,28 @@ export function isImplementedCardEffect(effect: EffectDefinition): boolean {
 
 export function getCardOptions(card: CardDefinition): CardOptionDefinition[] {
   return card.effect.type === "CHOOSE_ONE" ? card.effect.options : [];
+}
+
+/**
+ * Whether a card can contribute Power: any Spell (discardable for "+1 Power")
+ * or any card carrying an ADD_SPELL_POWER effect (Power statistic, Sorcery,
+ * power artifacts). Used by Magi's Power Drain and as the "power-source" card
+ * cost filter for Alamar's Resurrection.
+ */
+export function cardCanBoostPower(card: CardDefinition | undefined): boolean {
+  if (!card) {
+    return false;
+  }
+  if (card.kind === "spell") {
+    return true;
+  }
+  if (card.effect.type === "ADD_SPELL_POWER") {
+    return true;
+  }
+  if (card.effect.type === "CHOOSE_ONE") {
+    return card.effect.options.some((option) => option.effect.type === "ADD_SPELL_POWER");
+  }
+  return false;
 }
 
 /**
@@ -73,26 +98,40 @@ export function getEffectiveCardEffect(
   return card.effect.options[optionIndex]?.effect ?? null;
 }
 
-export function getSpellDamageAmount(card: CardDefinition, power: number): number {
+/**
+ * Damage/heal amount of a concrete effect at the given power. Works on the
+ * resolved effect (e.g. one option of an "OR" card) rather than the card's
+ * printed top-level effect, so a HEAL_DAMAGE option of a CHOOSE_ONE card
+ * (Vial of Lifeblood) reads its own amount instead of the parent's zero.
+ */
+export function getEffectDamageAmount(
+  effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE" }> | null,
+  power: number
+): number {
   if (
-    card.effect.type !== "DEAL_DAMAGE" &&
-    card.effect.type !== "HEAL_DAMAGE" &&
-    card.effect.type !== "HEAL_DAMAGE_AND_REMOVE_EFFECTS"
+    !effect ||
+    (effect.type !== "DEAL_DAMAGE" &&
+      effect.type !== "HEAL_DAMAGE" &&
+      effect.type !== "HEAL_DAMAGE_AND_REMOVE_EFFECTS")
   ) {
     return 0;
   }
 
-  if (card.effect.amountByPower) {
-    const powerBreakpoints = Object.keys(card.effect.amountByPower)
+  if (effect.amountByPower) {
+    const powerBreakpoints = Object.keys(effect.amountByPower)
       .map(Number)
       .filter((value) => Number.isFinite(value))
       .sort((left, right) => left - right);
     const matchingPower = powerBreakpoints.filter((value) => value <= power).at(-1) ?? powerBreakpoints[0];
 
-    return matchingPower === undefined ? 0 : (card.effect.amountByPower[matchingPower] ?? 0);
+    return matchingPower === undefined ? 0 : (effect.amountByPower[matchingPower] ?? 0);
   }
 
-  return card.effect.amount ?? 0;
+  return effect.amount ?? 0;
+}
+
+export function getSpellDamageAmount(card: CardDefinition, power: number): number {
+  return card.effect.type === "CHOOSE_ONE" ? 0 : getEffectDamageAmount(card.effect, power);
 }
 
 export function getEffectAmount(effect: EffectDefinition, mode: CardPlayMode): number {
@@ -132,7 +171,11 @@ export function describePermanentEffect(card: CardDefinition): string {
   if (permanent.combatEffect) {
     for (const modifier of permanent.combatEffect.modifiers) {
       if (modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND") {
-        parts.push(`heal ${modifier.amount} from one of your units once per combat round`);
+        const expert =
+          modifier.expertUsesPerRound && modifier.expertUsesPerRound > 1
+            ? `; expert: spend 1 expert use to heal ${modifier.expertUsesPerRound} times instead`
+            : "";
+        parts.push(`heal ${modifier.amount} from one of your units once per combat round${expert}`);
       }
       if (modifier.type === "RANGED_IGNORE_ALL_PENALTIES") {
         parts.push("your ranged units ignore the ranged-attack penalties");
@@ -143,7 +186,11 @@ export function describePermanentEffect(card: CardDefinition): string {
     parts.push(`your ranged units get +${permanent.rangedInitiativeBonus} initiative`);
   }
   if (permanent.roundStart?.kind === "damage-lowest-initiative") {
-    parts.push(`each combat round: ${permanent.roundStart.amount} damage to the slowest enemy unit`);
+    const expert =
+      permanent.roundStart.expertShots && permanent.roundStart.expertShots > 1
+        ? `; expert: spend 1 expert use to fire ${permanent.roundStart.expertShots} times`
+        : "";
+    parts.push(`each combat round: ${permanent.roundStart.amount} damage to the slowest enemy unit${expert}`);
   }
   if (permanent.roundStart?.kind === "pay-to-splash") {
     parts.push(
@@ -189,14 +236,15 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "HEAL_DAMAGE") {
+    const draw = card.effect.drawCards ? `, then draw ${card.effect.drawCards}` : "";
     if (card.effect.amountByPower) {
       const breakpoints = Object.entries(card.effect.amountByPower)
         .map(([power, amount]) => `${power}:${amount}`)
         .join(", ");
-      return `heal damage by power (${breakpoints})`;
+      return `heal damage by power (${breakpoints})${draw}`;
     }
 
-    return `heal ${card.effect.amount ?? 0} damage`;
+    return `heal ${card.effect.amount ?? 0} damage${draw}`;
   }
 
   if (card.effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS") {
@@ -375,6 +423,23 @@ export function describeCardEffect(card: CardDefinition): string {
       .map(([power, amount]) => `${power}:${amount}`)
       .join(", ");
     return `spell damage to the target and an adjacent unit (by power ${breakpoints})`;
+  }
+
+  if (card.effect.type === "AREA_DAMAGE_ALL_ADJACENT") {
+    return `${card.effect.amount} damage to a space and every adjacent unit (friend or foe)`;
+  }
+
+  if (card.effect.type === "GAIN_WAR_MACHINE") {
+    const machine = card.effect.warMachineCardId
+      .split(".")
+      .pop()
+      ?.replace(/_/g, " ");
+    const fallback = card.effect.fallbackDrawCards ? ` (or draw ${card.effect.fallbackDrawCards} if none left)` : "";
+    return `take the ${machine} from the supply for free${fallback}`;
+  }
+
+  if (card.effect.type === "CANCEL_LETHAL_ATTACK") {
+    return `cancel a killing blow on your ${card.effect.grade} unit`;
   }
 
   return card.kind;

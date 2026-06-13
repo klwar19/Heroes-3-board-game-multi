@@ -1808,13 +1808,19 @@ export function unlockedRecruitTiers(state: GameState, playerId: PlayerId): Set<
 
 let armyCounter = 0;
 
-export function addArmyUnit(player: PlayerState, unitDefId: string, side: "few" | "pack" | "neutral"): void {
+export function addArmyUnit(
+  player: PlayerState,
+  unitDefId: string,
+  side: "few" | "pack" | "neutral"
+): PlayerState["army"][number] {
   armyCounter += 1;
-  player.army.push({
+  const armyUnit = {
     id: `army_${player.id}_${armyCounter}_${player.army.length + 1}`,
     unitDefId,
     side
-  });
+  };
+  player.army.push(armyUnit);
+  return armyUnit;
 }
 
 /** Replaces an empty unit deck with the scenario starting units. */
