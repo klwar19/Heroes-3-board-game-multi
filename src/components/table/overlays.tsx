@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { Check, CircleOff, Crown, Dices, Hourglass, Layers, Swords, Undo2 } from "lucide-react";
+import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
 import {
@@ -907,7 +908,7 @@ function MapDieCube({
       const face = RESOURCE_DIE_LAYOUT[index];
       return (
         <>
-          <img alt="" src={RESOURCE_FACE_ICONS[face.resource]} />
+          <img alt="" src={assetUrl(RESOURCE_FACE_ICONS[face.resource])} />
           <b>{face.amount}</b>
         </>
       );

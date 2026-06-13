@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { assetUrl } from "@/lib/asset-url";
 import { X, ZoomIn } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { describeCardEffect, getUnitAbilityDefinitions, type CombatUnitState } from "@/engine";
@@ -116,7 +117,7 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
                 className="zoomCardImage"
                 loading="eager"
                 referrerPolicy="no-referrer"
-                src={content.image}
+                src={assetUrl(content.image)}
               />
             ) : (
               <div className="zoomCardImage cardFaceFallback">{content.title}</div>

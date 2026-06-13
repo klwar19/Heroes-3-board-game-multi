@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { ChevronDown, ChevronUp, Crown, Mountain, ScrollText, Shield, Sparkles, Swords } from "lucide-react";
+import { assetUrl } from "@/lib/asset-url";
 import { useState } from "react";
 import {
   ATTACKER_BACKLINE,
@@ -305,7 +306,7 @@ export function BattlefieldBoard({
                   className="boardCardImage"
                   loading="eager"
                   referrerPolicy="no-referrer"
-                  src={unit.assets.cardImage}
+                  src={assetUrl(unit.assets.cardImage)}
                 />
               ) : (
                 <div className="boardCardImage cardFaceFallback">{unit.name}</div>
@@ -442,7 +443,7 @@ export function InitiativeRail({ state }: { state: GameState }) {
           type="button"
         >
           {unit.assets?.cardImage ? (
-            <img alt={unit.cardName} loading="lazy" src={unit.assets.cardImage} />
+            <img alt={unit.cardName} loading="lazy" src={assetUrl(unit.assets.cardImage)} />
           ) : (
             <span className="initCardFallback">{unit.name}</span>
           )}
@@ -484,7 +485,7 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
             className="inspectImage"
             loading="eager"
             referrerPolicy="no-referrer"
-            src={unit.assets.cardImage}
+            src={assetUrl(unit.assets.cardImage)}
           />
         ) : (
           <div className="inspectImage cardFaceFallback">{unit.cardName}</div>

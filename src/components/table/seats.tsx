@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { Anchor, Crown, Hourglass, Layers, Search, Sparkles } from "lucide-react";
+import { assetUrl } from "@/lib/asset-url";
 import { useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
 import { getDeckBack } from "@/data/decks";
@@ -50,7 +51,7 @@ export function CardFrame({
     );
   }
 
-  return <img alt={alt} className={className} loading="eager" referrerPolicy="no-referrer" src={src} title={title ?? alt} />;
+  return <img alt={alt} className={className} loading="eager" referrerPolicy="no-referrer" src={assetUrl(src)} title={title ?? alt} />;
 }
 
 /**
@@ -174,7 +175,7 @@ export function PermanentSlot({
 export function CardBack({ className, deckId }: { className?: string; deckId?: string }) {
   const back = getDeckBack(deckId);
   if (back.image) {
-    return <img alt={back.label} aria-hidden="true" className={`cardBack ${className ?? ""}`} src={back.image} />;
+    return <img alt={back.label} aria-hidden="true" className={`cardBack ${className ?? ""}`} src={assetUrl(back.image)} />;
   }
   return (
     <div className={`cardBack back-${back.styleKey} ${className ?? ""}`} aria-hidden="true" title={back.label}>

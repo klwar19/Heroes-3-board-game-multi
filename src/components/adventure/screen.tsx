@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
+import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronsUp, Hammer, Image as ImageIcon, Minus, Plus, RotateCcw, RotateCw, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
@@ -320,7 +321,7 @@ export function HexMapBoard({
       <image
         className="tileArt"
         height={height}
-        href={image}
+        href={assetUrl(image)}
         key={`art-${tile.id}`}
         // The shipped tile art is cropped to the exact 3:5*sqrt(3) flower
         // bounding box, so stretching it over the box keeps every hex edge
@@ -352,7 +353,7 @@ export function HexMapBoard({
         <image
           className="tileBackArt"
           height={backHeight}
-          href={tileBackImage(tile.group, tile.backLabel)}
+          href={assetUrl(tileBackImage(tile.group, tile.backLabel))}
           key={`back-${tile.id}`}
           // The back art fills the exact 3:5*sqrt(3) flower bounding box,
           // same as the face-up tile scans.
@@ -616,7 +617,7 @@ export function HexMapBoard({
                   className="heroSprite"
                   clipPath={`url(#heroClip-${occupant.heroId})`}
                   height={22}
-                  href={portrait}
+                  href={assetUrl(portrait)}
                   preserveAspectRatio="xMidYMid slice"
                   width={22}
                   x={-11}
@@ -667,7 +668,7 @@ export function HexMapBoard({
           <image
             className="ghostTileBack"
             height={5 * HEX_SIZE}
-            href={TILE_BACK_IMAGES.far}
+            href={assetUrl(TILE_BACK_IMAGES.far)}
             preserveAspectRatio="none"
             width={3 * HEX_WIDTH}
             x={x - (3 * HEX_WIDTH) / 2}
@@ -1047,7 +1048,7 @@ export function AdventureHud({
               key={resource.key}
               title={`${resource.label}: ${player.resources[resource.key]} — gain +${player.production[resource.key]} every resource round`}
             >
-              <img alt={resource.label} className="resourceIcon" src={RESOURCE_ICONS[resource.key]} />
+              <img alt={resource.label} className="resourceIcon" src={assetUrl(RESOURCE_ICONS[resource.key])} />
               <b>{player.resources[resource.key]}</b>
               <small className="incomeTag">+{player.production[resource.key]}</small>
             </span>
@@ -1069,7 +1070,7 @@ export function AdventureHud({
               alt={`Morale ${(player?.morale ?? 0) > 0 ? "+" : ""}${player?.morale ?? 0}`}
               className="moraleIcon"
               referrerPolicy="no-referrer"
-              src={moraleIcon(player?.morale ?? 0)}
+              src={assetUrl(moraleIcon(player?.morale ?? 0))}
               title={`Morale ${(player?.morale ?? 0) > 0 ? "+" : ""}${player?.morale ?? 0}`}
             />{" "}
             morale {(player?.morale ?? 0) > 0 ? "+" : ""}
@@ -1159,7 +1160,7 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                 type="button"
               >
                 {side?.cardImage ? (
-                  <img alt="" aria-hidden="true" className="armyUnitThumb" loading="lazy" src={side.cardImage} />
+                  <img alt="" aria-hidden="true" className="armyUnitThumb" loading="lazy" src={assetUrl(side.cardImage)} />
                 ) : (
                   <span className={`armyUnitThumb fallback tier-${def?.tier ?? "bronze"}`} />
                 )}
@@ -1334,7 +1335,7 @@ export function TownPanel({
                   className="townBuildingArt"
                   loading="lazy"
                   referrerPolicy="no-referrer"
-                  src={building.assets.image}
+                  src={assetUrl(building.assets.image)}
                 />
               ) : null}
               <strong>{building.name}</strong>
@@ -1709,7 +1710,7 @@ export function MarketPanel({
           <img
             alt="Trade table: 6 gold or 3 building materials buy 1 valuables; 2 gold buys 1 building materials; 1 valuables sells for 3 gold or 2 building materials; 1 building materials sells for 1 gold"
             className="marketTradeTable"
-            src="/assets/rulebook-trade_table.webp"
+            src={assetUrl("/assets/rulebook-trade_table.webp")}
           />
           <small className="marketCredit">Trade table from the community rulebook rewrite (back cover).</small>
           <div className="marketTradeButtons">
@@ -1753,7 +1754,7 @@ export function MarketPanel({
                   type="button"
                 >
                   {card?.assets?.cardImage ? (
-                    <img alt={card.name} loading="lazy" referrerPolicy="no-referrer" src={card.assets.cardImage} />
+                    <img alt={card.name} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(card.assets.cardImage)} />
                   ) : (
                     <span className="marketCardFallback">{card?.name ?? cardId}</span>
                   )}
@@ -1779,7 +1780,7 @@ export function MarketPanel({
             return (
               <div className={`marketMachine ${buy && !blocked ? "" : "unavailable"}`} key={cardId}>
                 {card?.assets?.cardImage ? (
-                  <img alt={card.name} loading="lazy" referrerPolicy="no-referrer" src={card.assets.cardImage} />
+                  <img alt={card.name} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(card.assets.cardImage)} />
                 ) : (
                   <span className="marketCardFallback">{card?.name ?? cardId}</span>
                 )}
@@ -1839,7 +1840,7 @@ export function FarTileTray({
           title="Face-down Far tile — contents stay hidden until placed"
           type="button"
         >
-          <img alt="Far tile back (Ⅱ–Ⅲ)" src={TILE_BACK_IMAGES.far} />
+          <img alt="Far tile back (Ⅱ–Ⅲ)" src={assetUrl(TILE_BACK_IMAGES.far)} />
         </button>
       ))}
       {placement ? <small className="farTileHint">Click a glowing spot on the map border.</small> : null}
@@ -1891,7 +1892,7 @@ export function AdventureDecksPanel({
       {player ? (
         <div className="advDeckRow own">
           <div className="advDeck" title="Your draw deck (face down)" data-fx-anchor={`deck:${viewerPlayerId}`}>
-            <img alt="Player deck back" className="cardBack small" src={getDeckBack("player").image ?? CARD_BACK_IMAGES.mm} />
+            <img alt="Player deck back" className="cardBack small" src={assetUrl(getDeckBack("player").image ?? CARD_BACK_IMAGES.mm)} />
             <small>Deck {player.deckCount}</small>
           </div>
           <button
@@ -1914,7 +1915,7 @@ export function AdventureDecksPanel({
           <div className="advDeckRow" key={deck.id}>
             <div className="advDeck" title={`${deck.name} deck (face down)`} data-fx-anchor={`deck:shared-${deck.id}`}>
               {getDeckBack(deck.id).image ? (
-                <img alt={`${deck.name} deck back`} className="cardBack small" src={getDeckBack(deck.id).image} />
+                <img alt={`${deck.name} deck back`} className="cardBack small" src={assetUrl(getDeckBack(deck.id).image)} />
               ) : (
                 <div className={`cardBack small shared back-${deck.id}`}>
                   <span>{deck.name[0]}</span>
@@ -1949,7 +1950,7 @@ export function AdventureDecksPanel({
       {astrologers ? (
         <div className="advDeckRow">
           <div className="advDeck" title="Astrologers Proclaim deck (drawn every even round)">
-            <img alt="Astrologers deck back" className="cardBack small" src={CARD_BACK_IMAGES.astrologers} />
+            <img alt="Astrologers deck back" className="cardBack small" src={assetUrl(CARD_BACK_IMAGES.astrologers)} />
             <small>Astrologers {astrologers.drawCount}</small>
           </div>
           <button
@@ -1975,7 +1976,7 @@ export function AdventureDecksPanel({
               <button
                 className={`neutralDeck ${tier}`}
                 onClick={() => onShowPile(`Neutral ${tier} — discard pile`, deckState.discardPile, "units")}
-                style={{ backgroundImage: `url(${CARD_BACK_IMAGES.neutral})` }}
+                style={{ backgroundImage: `url(${assetUrl(CARD_BACK_IMAGES.neutral)})` }}
                 title={`Neutral ${tier} deck: ${deckState.drawCount} cards, ${deckState.discardPile.length} discarded`}
                 type="button"
               >
@@ -2053,7 +2054,7 @@ function PileModalCards({ cardIds, kind }: { cardIds: string[]; kind: "cards" | 
           <li key={`${cardId}-${index}`}>
             <button className="pileCardButton" onClick={zoom} title="Read card" type="button">
               {image ? (
-                <img alt={card?.name ?? unit?.name ?? cardId} loading="lazy" referrerPolicy="no-referrer" src={image} />
+                <img alt={card?.name ?? unit?.name ?? cardId} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(image)} />
               ) : (
                 <div className="pileFallback">{astro?.name ?? card?.name ?? unit?.name ?? cardName(cardId)}</div>
               )}
@@ -2164,8 +2165,7 @@ export function PlacementPanel({
               type="button"
             >
               {portrait ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img alt="" className="placementUnitPortrait" draggable={false} loading="lazy" src={portrait} />
+                <img alt="" className="placementUnitPortrait" draggable={false} loading="lazy" src={assetUrl(portrait)} />
               ) : (
                 <span className={`tierDot ${def?.tier}`} />
               )}
@@ -2720,7 +2720,7 @@ export function SetupLobbyScreen({
                         type="button"
                       >
                         {hero?.portrait ? (
-                          <img alt={`${hero.name} portrait`} referrerPolicy="no-referrer" src={hero.portrait} />
+                          <img alt={`${hero.name} portrait`} referrerPolicy="no-referrer" src={assetUrl(hero.portrait)} />
                         ) : null}
                         <span>{hero?.name ?? heroDefId}</span>
                         <small>

@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { HERO_STAT_ICONS } from "@/data/assets/homm-assets";
+import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import {
@@ -37,7 +38,7 @@ const BOARD_THEMES: Record<string, { banner: string; edge: string }> = {
 
 /** The statistic icons are cropped from the printed board scans themselves. */
 function StatIcon({ stat }: { stat: keyof typeof HERO_STAT_ICONS }) {
-  return <img alt="" aria-hidden="true" className="hbStatIcon" src={HERO_STAT_ICONS[stat]} />;
+  return <img alt="" aria-hidden="true" className="hbStatIcon" src={assetUrl(HERO_STAT_ICONS[stat])} />;
 }
 
 function CrownIcon() {
@@ -134,7 +135,7 @@ function CardArt({ cardId, kind }: { cardId?: string; kind: "ability" | "special
 
   return (
     <div className={`hbArt hbArt-${kind}`}>
-      <img alt="" src={image} />
+      <img alt="" src={assetUrl(image)} />
     </div>
   );
 }
@@ -189,7 +190,7 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
       >
         <div className="hbTop">
           <div className="hbPortrait">
-            {heroDef.portrait ? <img alt={`${heroDef.name} portrait`} src={heroDef.portrait} /> : null}
+            {heroDef.portrait ? <img alt={`${heroDef.name} portrait`} src={assetUrl(heroDef.portrait)} /> : null}
           </div>
           <div className="hbRight">
             <button

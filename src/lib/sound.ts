@@ -1,6 +1,7 @@
 "use client";
 
 import soundManifest from "../../public/sounds/manifest.json";
+import { assetUrl } from "@/lib/asset-url";
 import { unitSoundKey, type UnitSoundAction } from "@/data/unit-sounds";
 
 /**
@@ -91,7 +92,7 @@ export function playLibrarySound(key: string, volume = 0.55): void {
     playLibrarySound(entry.random[Math.floor(Math.random() * entry.random.length)], volume);
     return;
   }
-  const audio = new Audio(entry?.src ?? `/sounds/${key}.mp3`);
+  const audio = new Audio(assetUrl(entry?.src ?? `/sounds/${key}.mp3`));
   audio.volume = volume;
   let extraPlays = Math.max(0, (entry?.repeat ?? 1) - 1);
   if (extraPlays > 0) {

@@ -1,4 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
+import { assetUrl } from "@/lib/asset-url";
 import {
   getBattlefieldLabel,
   type BuildingEffectDefinition,
@@ -338,7 +339,7 @@ export function setUnitDragImage(event: { dataTransfer: DataTransfer }, src: str
 
   // Background-image (not an <img>) so the ghost is sized by the box, not the
   // bitmap. Escape quotes/backslashes so the path can't break out of url("").
-  const safeSrc = src.replace(/["\\]/g, "\\$&");
+  const safeSrc = assetUrl(src).replace(/["\\]/g, "\\$&");
   const ghost = document.createElement("div");
   ghost.setAttribute("aria-hidden", "true");
   ghost.style.cssText =
