@@ -109,6 +109,7 @@ import {
   getAttackDefenseReductionAbility,
   getAttackDieDamageFollowUps,
   getDoubleAttackAbility,
+  getEnemyDiscardAbility,
   getFlatDamageFollowUps,
   getPostAttackAbilityDamageEffects,
   getSecondAttackAbility,
@@ -1375,6 +1376,13 @@ function finishResolvedAttack(
     return;
   }
 
+  // Neutral Magi Power Drain: the defending player picks a Power card to
+  // discard or takes a random discard. Pauses the parked retaliation when a
+  // real choice exists.
+  if (openMagiDiscardChoice(state, details.attacker, details.defender, cards)) {
+    return;
+  }
+
   resumeAttackSequence(state, cards);
 }
 
@@ -1753,6 +1761,180 @@ function applyFlatAbilityDamage(
     damageKind: "effect"
   });
   markUnitRemovedIfNeeded(state, target);
+}
+
+/**
+ * A card "can boost Power" for the Magi Power Drain: a Power statistic card
+ * (Empower) or any Spell card (every Spell may be discarded for "+1 Power").
+ */
+function cardCanBoostPower(cardId: CardId, cards: CardLibrary): boolean {
+  const card = cards[cardId];
+  if (!card) {
+    return false;
+  }
+  return card.kind === "spell" || card.statisticType === "power";
+}
+
+/** Discards one named card from a player's hand to their discard pile. */
+function discardNamedCardFromHand(state: GameState, playerId: PlayerId, cardId: CardId): boolean {
+  const player = state.players[playerId];
+  if (!player) {
+    return false;
+  }
+  const index = player.hand.indexOf(cardId);
+  if (index === -1) {
+    return false;
+  }
+  const [discarded] = player.hand.splice(index, 1);
+  player.discard.push(discarded);
+  return true;
+}
+
+/** Discards one random card from a player's hand (seeded); returns its id. */
+function discardRandomCardFromHand(state: GameState, playerId: PlayerId): CardId | null {
+  const player = state.players[playerId];
+  if (!player || player.hand.length === 0) {
+    return null;
+  }
+  const random = createSeededRandom(`${state.seed}#magi-drain#${eventSeedNumber(state)}`);
+  const index = random.nextInt(0, player.hand.length - 1);
+  const [discarded] = player.hand.splice(index, 1);
+  player.discard.push(discarded);
+  return discarded;
+}
+
+/**
+ * Neutral Magi "Power Drain". After the Magi's own attack (never a
+ * retaliation), the defending player must lose a card: with a Power card in
+ * hand they choose which Power card to discard or accept a random discard;
+ * with no Power card the random discard is forced and resolves at once.
+ * Returns true only when a choice was opened (combat is now parked on it).
+ */
+function openMagiDiscardChoice(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  cards: CardLibrary
+): boolean {
+  const ability = getEnemyDiscardAbility(attacker);
+  if (!ability) {
+    return false;
+  }
+
+  // The choice belongs to the defender's controller — only a seated player
+  // with cards is affected; the neutral seat has no hand.
+  const chooserId = defender.controllerId;
+  const chooser = state.players[chooserId];
+  if (chooserId === NEUTRAL_PLAYER_ID || !chooser || chooser.hand.length === 0) {
+    return false;
+  }
+
+  const powerCardIds = chooser.hand.filter((cardId) => cardCanBoostPower(cardId, cards));
+
+  // No Power card to spare: the random discard is forced, no decision to make.
+  if (powerCardIds.length === 0) {
+    const discarded = discardRandomCardFromHand(state, chooserId);
+    if (discarded) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: attacker.id,
+        abilityId: ability.abilityId,
+        targetUnitId: defender.id,
+        message: `${attacker.name}'s ${ability.abilityName} discards a random card from ${chooser.name}'s hand.`
+      });
+    }
+    return false;
+  }
+
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "COMBAT_HAND_DISCARD",
+    playerId: chooserId,
+    kind: "magi-power-or-random",
+    abilityId: ability.abilityId,
+    abilityName: ability.abilityName,
+    sourceUnitId: attacker.id,
+    prompt: `${attacker.name}: ${ability.abilityName} — discard a Power card of your choice, or let a random card be discarded.`,
+    powerCardIds
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = chooserId;
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "COMBAT_HAND_DISCARD",
+    playerId: chooserId,
+    sourceEffectIds: [],
+    message: `${chooser.name} chooses how to answer ${attacker.name}'s ${ability.abilityName}.`
+  });
+  return true;
+}
+
+/** Resolves the Magi Power Drain choice, then unparks the attack sequence. */
+function resolveMagiDiscard(
+  state: GameState,
+  action: Extract<GameAction, { type: "RESOLVE_COMBAT_DISCARD" }>,
+  cards: CardLibrary
+): void {
+  const choice = state.pendingChoice;
+  if (!choice || choice.type !== "COMBAT_HAND_DISCARD" || choice.id !== action.choiceId) {
+    throw new Error("There is no card-discard choice to resolve.");
+  }
+  if (choice.playerId !== action.playerId) {
+    throw new Error("Another player resolves this discard.");
+  }
+
+  const chooser = state.players[action.playerId];
+  if (!chooser) {
+    throw new Error("Unknown player.");
+  }
+
+  if (action.cardId === "random") {
+    const discarded = discardRandomCardFromHand(state, action.playerId);
+    appendEvent(state, {
+      type: "PENDING_CHOICE_RESOLVED",
+      choiceId: choice.id,
+      playerId: action.playerId,
+      selectedIndex: -1
+    });
+    if (discarded) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: choice.sourceUnitId,
+        abilityId: choice.abilityId,
+        targetUnitId: choice.sourceUnitId,
+        message: `${chooser.name} lets ${choice.abilityName} discard a random card.`
+      });
+    }
+  } else {
+    if (!choice.powerCardIds.includes(action.cardId)) {
+      throw new Error("That card cannot be chosen for the Power Drain.");
+    }
+    if (!discardNamedCardFromHand(state, action.playerId, action.cardId)) {
+      throw new Error("That card is no longer in hand.");
+    }
+    appendEvent(state, {
+      type: "PENDING_CHOICE_RESOLVED",
+      choiceId: choice.id,
+      playerId: action.playerId,
+      selectedIndex: choice.powerCardIds.indexOf(action.cardId)
+    });
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: choice.sourceUnitId,
+      abilityId: choice.abilityId,
+      targetUnitId: choice.sourceUnitId,
+      message: `${chooser.name} discards ${cards[action.cardId]?.name ?? action.cardId} to ${choice.abilityName}.`
+    });
+  }
+
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  resumeAttackSequence(state, cards);
+  finishCombatIfNeeded(state);
 }
 
 /**
@@ -5080,6 +5262,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "CHOOSE_OPTION":
         chooseOption(nextState, action);
+        break;
+      case "RESOLVE_COMBAT_DISCARD":
+        resolveMagiDiscard(nextState, action, cards);
         break;
       case "CHOOSE_ABILITY_TARGET":
         chooseAbilityTarget(nextState, action, cards);

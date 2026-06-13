@@ -142,6 +142,16 @@ export type UnitAbilityEffectDefinition =
       duration: EffectDurationDefinition;
       endsActivation: boolean;
       preventsMovement: boolean;
+    }
+  | {
+      /**
+       * Neutral Magi: after this unit's attack, the defending player must
+       * either discard a card of their choice that can contribute Power (a
+       * Power statistic or any Spell, which can be discarded for "+1 Power"),
+       * or let a random card be discarded from their hand. The choice belongs
+       * to the defender; with no Power card the random discard is forced.
+       */
+      type: "ENEMY_DISCARDS_POWER_OR_RANDOM";
     };
 
 export type UnitAbilityDefinition = {
@@ -345,6 +355,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Twin Attack Dice",
     text: "During any attack, roll 2 Attack dice and resolve the higher outcome.",
     effect: { type: "ATTACK_ROLL_ADVANTAGE" },
+    implementationStatus: "implemented"
+  },
+  "magi-power-drain": {
+    id: "magi-power-drain",
+    name: "Power Drain",
+    text: "After this unit's attack, the defending player either discards a card of their choice that can contribute Power (a Power statistic or any Spell) or lets a random card be discarded from their hand. With no Power card in hand, the random discard is forced.",
+    effect: { type: "ENEMY_DISCARDS_POWER_OR_RANDOM" },
     implementationStatus: "implemented"
   },
   "summon-demons": {

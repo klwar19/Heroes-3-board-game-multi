@@ -883,6 +883,17 @@ export type GameAction =
   | { type: "CHOOSE_OPTION"; playerId: PlayerId; choiceId: string; optionIndex: number }
   | {
       /**
+       * Resolves a COMBAT_HAND_DISCARD (Magi Power Drain): the defender either
+       * names a Power card from hand to discard, or "random" to let a random
+       * card be discarded.
+       */
+      type: "RESOLVE_COMBAT_DISCARD";
+      playerId: PlayerId;
+      choiceId: string;
+      cardId: CardId | "random";
+    }
+  | {
+      /**
        * Resolves an ABILITY_TARGET_CHOICE: picks the unit a printed attack
        * ability hits (Magog fireball splash, Cerberi second head, Liches'
        * Death Cloud) or, on AI target ties, the unit the neutrals attack.
@@ -985,7 +996,7 @@ export type GameEvent =
       id: string;
       type: "PENDING_CHOICE_CREATED";
       choiceId: string;
-      choiceType: "ATTACK_DIE_REROLL" | "ABILITY_TARGET_CHOICE";
+      choiceType: "ATTACK_DIE_REROLL" | "ABILITY_TARGET_CHOICE" | "COMBAT_HAND_DISCARD";
       playerId: PlayerId;
       sourceEffectIds: string[];
       message: string;
@@ -2557,6 +2568,25 @@ export type PendingChoice =
       baseAttack?: number;
       /** Fireball's second space may be empty: the choice can be skipped. */
       optional?: boolean;
+    }
+  | {
+      /**
+       * Neutral Magi "Power Drain": after the Magi attack, the defending
+       * player chooses to discard one of their own Power-contributing cards
+       * (a Power statistic or any Spell) or to let a random card be discarded.
+       * Created only when the defender holds at least one Power card; combat
+       * stays parked on its retaliation until this resolves.
+       */
+      id: string;
+      type: "COMBAT_HAND_DISCARD";
+      playerId: PlayerId;
+      kind: "magi-power-or-random";
+      abilityId: string;
+      abilityName: string;
+      sourceUnitId: UnitId;
+      prompt: string;
+      /** Cards in the chooser's hand that can contribute Power. */
+      powerCardIds: CardId[];
     }
   | null;
 

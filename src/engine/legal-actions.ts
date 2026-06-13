@@ -1539,6 +1539,29 @@ export function getLegalActions(
       }));
     }
 
+    if (state.pendingChoice.type === "COMBAT_HAND_DISCARD") {
+      const choice = state.pendingChoice;
+      const actions: LegalAction[] = choice.powerCardIds.map((cardId) => ({
+        label: `Discard ${cards[cardId]?.name ?? cardId}`,
+        action: {
+          type: "RESOLVE_COMBAT_DISCARD",
+          playerId,
+          choiceId: choice.id,
+          cardId
+        }
+      }));
+      actions.push({
+        label: "Let a random card be discarded",
+        action: {
+          type: "RESOLVE_COMBAT_DISCARD",
+          playerId,
+          choiceId: choice.id,
+          cardId: "random"
+        }
+      });
+      return actions;
+    }
+
     if (state.pendingChoice.type === "DECK_SEARCH") {
       const choice = state.pendingChoice;
       const actions: LegalAction[] = choice.revealedCardIds.map((cardId, index) => ({

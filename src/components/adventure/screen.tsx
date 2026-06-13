@@ -1532,6 +1532,7 @@ export function PromptTray({
   );
   const optionActions = legalActions.filter((legal) => legal.action.type === "CHOOSE_OPTION");
   const abilityTargetActions = legalActions.filter((legal) => legal.action.type === "CHOOSE_ABILITY_TARGET");
+  const combatDiscardActions = legalActions.filter((legal) => legal.action.type === "RESOLVE_COMBAT_DISCARD");
   const combatGate = legalActions.filter(
     (legal) => legal.action.type === "CONTINUE_NEUTRAL_COMBAT" || legal.action.type === "RETREAT_FROM_COMBAT"
   );
@@ -1547,6 +1548,10 @@ export function PromptTray({
     // pick from the list here or click a glowing unit on the board.
     title = choice.prompt;
     body = abilityTargetActions;
+  } else if (choice?.type === "COMBAT_HAND_DISCARD" && choice.playerId === viewerPlayerId) {
+    // Magi Power Drain: discard a chosen Power card or take a random discard.
+    title = choice.prompt;
+    body = combatDiscardActions;
   } else if (visit && visit.playerId === viewerPlayerId && visitActions.length > 0) {
     const step = visit.steps[0];
     // The market panel owns the Trading Post / War Machine Factory visits.

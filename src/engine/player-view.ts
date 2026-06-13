@@ -53,6 +53,15 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
     };
   }
 
+  // Magi Power Drain: the candidate Power cards are the defender's hand, so
+  // their identities stay private to the choosing player.
+  if (choice.type === "COMBAT_HAND_DISCARD" && choice.playerId !== viewerPlayerId) {
+    return {
+      ...cloneSerializable(choice),
+      powerCardIds: choice.powerCardIds.map(() => "hidden")
+    };
+  }
+
   return cloneSerializable(choice);
 }
 
