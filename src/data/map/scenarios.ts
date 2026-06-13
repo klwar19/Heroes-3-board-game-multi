@@ -58,17 +58,21 @@ export const scenarioDefinitions: Record<string, ScenarioDefinition> = {
     id: "skirmish",
     name: "Border Skirmish",
     description:
-      "A head-to-head duel. Starting tiles sit in opposite corners, two Near tiles bridge the middle of the map, and a Center tile guards the deep north. Flag the enemy town to win.",
+      "A free-for-all for 2–4 players. Seats sit at the four corners, two Near tiles bridge the flanks and a Center tile guards the deep north between them. The first two seats sit south for a classic head-to-head duel; a third and fourth open the northern corners. Flag an enemy town to win.",
     minPlayers: 2,
-    maxPlayers: 3,
+    maxPlayers: 4,
     difficulty: "normal",
     layout: {
-      // Chain: start1 (8,2) — near (5,3) — near (5,6) — start2 (8,8);
-      // the Center tile (2,5) touches both Near tiles from the north.
+      // Four corner seats — SW (8,2), SE (8,8), NW (2,2), NE (2,8) — bridged by
+      // two Near tiles (5,3)/(5,6) and a Center tile (2,5) so every tile
+      // transitively touches. The first two seats are the original south pair,
+      // so a 2-player game plays exactly as before; seats 3-4 add the north
+      // corners. Verified: no footprints overlap and all tiles stay connected.
       starts: [
         { row: 8, col: 2 },
         { row: 8, col: 8 },
-        { row: 11, col: 5 }
+        { row: 2, col: 2 },
+        { row: 2, col: 8 }
       ],
       near: [
         { row: 5, col: 3 },

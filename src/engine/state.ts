@@ -2321,6 +2321,8 @@ export type AdventureState = {
  */
 export type GameSetupOptions = {
   scenarioId: string;
+  /** Seats in the map-setup lobby, clamped to the scenario's min/max players. */
+  playerCount?: number;
   /** Rules variant: "legacy" (rulebook) or "binh" (house rules). */
   ruleset: GameRuleset;
   difficulty: GameDifficulty;
@@ -2372,10 +2374,16 @@ export type CustomStartingUnit = {
 export type CustomMapTilePlan = {
   row: number;
   col: number;
-  /** Which supply the tile belongs to (Far II–III, Near IV–V, Center VI–VII). */
-  group: "far" | "near" | "center";
+  /**
+   * Which pool/role the tile fills:
+   * - "starting" (Ⅰ): a seat's town — the position of player N's faction
+   *   starting tile (the tile art itself comes from the faction, never random).
+   * - "far" (Ⅱ–Ⅲ), "near" (Ⅳ–Ⅴ), "center" (Ⅵ–Ⅶ), "sea", "subterranean":
+   *   face-down draws a random tile from that supply; face-up places a chosen one.
+   */
+  group: "starting" | "far" | "near" | "center" | "sea" | "subterranean";
   faceDown: boolean;
-  /** Face-up tiles: the exact tile to place. Ignored while face-down. */
+  /** Face-up tiles: the exact tile to place. Ignored while face-down or starting. */
   tileDefId?: string;
   /** Face-up tiles: clockwise 60° steps (0-5, default 0). */
   rotation?: number;
