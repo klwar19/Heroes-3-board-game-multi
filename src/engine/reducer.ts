@@ -4387,9 +4387,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "GAIN_HERO_MOVEMENT") {
-    const hero = getMainHero(state, action.playerId);
-    if (hero) {
-      hero.movementPoints += mode === "expert" ? (effect.expertAmount ?? effect.amount) : effect.amount;
+    // Buffs reach every hero the player commands, the Secondary Hero included.
+    const amount = mode === "expert" ? (effect.expertAmount ?? effect.amount) : effect.amount;
+    for (const hero of Object.values(state.heroes)) {
+      if (hero.controllerId === action.playerId) {
+        hero.movementPoints += amount;
+      }
     }
     if (effect.moveThroughThisTurn) {
       createActiveEffect(

@@ -188,16 +188,15 @@ export function effectiveHandLimit(state: GameState, playerId: PlayerId): number
   return Math.max(1, player.limits.hand + bonus + permanentBonus);
 }
 
-/** Fixed movement points of a Secondary Hero (Tavern / Prison). */
+/** Base movement points of a Secondary Hero — buffs raise it from here. */
 export const SECONDARY_HERO_MOVEMENT = 2;
 
-/** Movement points a hero refreshes to, including Astrologers modifiers. */
+/**
+ * Movement points a hero refreshes to. The Secondary Hero's base is 2 (vs the
+ * Main Hero's 3) but it is buffed the same way: Astrologers "each Hero gains
+ * Movement" proclamations and any other movement modifier apply to it too.
+ */
 export function heroMovementMax(state: GameState, hero: HeroState): number {
-  // Secondary Heroes always have exactly their printed 2 movement points;
-  // Astrologers movement proclamations only ever move the Main Hero.
-  if (hero.kind === "secondary") {
-    return hero.movementPointsMax;
-  }
   const active = getActiveAstrologersCard(state);
   const modifier = active?.effect.type === "MOVEMENT_MODIFIER" ? active.effect.amount : 0;
   return Math.max(0, hero.movementPointsMax + modifier);

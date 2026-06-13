@@ -98,7 +98,7 @@ Citadel siege bonuses (3 Walls, 1 Gate, Arrow Tower) 🔴 — siege combat not i
 | Xyron (Heretic, magic, A1 D1 P2 K1) | Inferno | ✅ | Inferno I implemented: discard 2 cards, then 1 damage to a chosen unit's space and every adjacent unit (friend or foe). IV/VI 🟡. Starting ability Wisdom. |
 | Rashka (Demoniac, might, A2 D2 P1 K1) | Inferno | ✅ | Specialty I implemented (doubles for Efreet); IV/VI 🟡. Starting ability Scholar 🟡. |
 
-Hero board level track (verified against the wiki board scan): 2 XP per level; hand limit 4→5(III)→6(V)→7(VII); expert effects +1 at II/IV/VI; ability Search (2) at II/III/V/VII; specialties at I/IV/VI. Secondary Heroes ✅ — gained at the Tavern (7 gold), the Prison, or hired at your town for 10 gold (wearing another town hero's portrait). One per player; fixed 2 MP; play no cards in Combat; never gain experience (fights, map locations, level-ups).
+Hero board level track (verified against the wiki board scan): 2 XP per level; hand limit 4→5(III)→6(V)→7(VII); expert effects +1 at II/IV/VI; ability Search (2) at II/III/V/VII; specialties at I/IV/VI. Secondary Heroes ✅ — gained at the Tavern (7 gold), the Prison, or hired at your town for 10 gold (wearing another town hero's portrait). One per player; base 2 MP (still buffed by movement events/artifacts/abilities like any hero); play no cards in Combat; never gain experience (fights, map locations, level-ups).
 
 ## Units (`src/data/factions/units.ts`)
 

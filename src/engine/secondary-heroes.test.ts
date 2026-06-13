@@ -3,6 +3,7 @@ import type { CombatState, GameAction, GameState, MapFieldState } from "./state"
 import {
   beginFieldVisit,
   createSecondaryHero,
+  getAstrologersState,
   getMainHero,
   getSecondaryHero,
   getTownOfPlayer,
@@ -188,15 +189,27 @@ describe("Hiring a Secondary Hero (10 gold)", () => {
 });
 
 describe("Secondary Hero movement", () => {
-  it("has a fixed 2 movement points that refresh each turn", () => {
+  it("starts at a base of 2 movement points", () => {
     const state = makeGame();
     const secondary = createSecondaryHero(state, "p1", "70,70");
     expect(secondary.movementPoints).toBe(2);
+    expect(secondary.movementPointsMax).toBe(SECONDARY_HERO_MOVEMENT);
     expect(heroMovementMax(state, secondary)).toBe(2);
+  });
+
+  it("is buffed like any hero by an Astrologers movement proclamation", () => {
+    const state = makeGame();
+    const secondary = createSecondaryHero(state, "p1", "70,70");
+    // "Battalion's Stallion — Until the next Astrologers' round: each Hero
+    // gains +1 Movement." The base 2 is a floor, not a cap.
+    getAstrologersState(state)!.activeCardId = "astrologers.battalions_stallion";
+
+    expect(heroMovementMax(state, secondary)).toBe(3);
+    expect(heroMovementMax(state, getMainHero(state, "p1")!)).toBe(4);
 
     secondary.movementPoints = 0;
     refreshRoundTokens(state);
-    expect(secondary.movementPoints).toBe(2);
+    expect(secondary.movementPoints).toBe(3);
   });
 });
 
