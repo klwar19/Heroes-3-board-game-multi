@@ -208,6 +208,28 @@ export default function Home() {
     viewerRef.current = viewerPlayerId;
   }, [viewerPlayerId]);
 
+  // Map -> battle hand-off: the combat/map toggle is local and sticky, so a
+  // fight opened (or finished) while it still pointed at "map" from a previous
+  // combat would leave the player stranded on the map — the new battlefield
+  // and even the result modal never showing. Snap to the battlefield whenever
+  // a new fight starts or reaches its outcome. Edge-triggered via refs, so
+  // anyone may still flip back to the map mid-fight.
+  const lastCombatIdRef = useRef<string | null>(null);
+  const lastResultCombatIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const combatId = state?.combat?.id ?? null;
+    if (combatId && combatId !== lastCombatIdRef.current) {
+      setCombatTab("battle");
+    }
+    lastCombatIdRef.current = combatId;
+
+    const resultId = state?.combat?.outcome ? combatId : null;
+    if (resultId && resultId !== lastResultCombatIdRef.current) {
+      setCombatTab("battle");
+    }
+    lastResultCombatIdRef.current = resultId;
+  }, [state?.combat?.id, state?.combat?.outcome]);
+
   // Every server snapshot funnels through here so new attack rolls, card
   // draws, hero walks and pack flips cue their animations on every seat. The
   // first snapshot only primes the seen-sets, so a reload replays nothing.
@@ -379,7 +401,8 @@ export default function Home() {
             subtitle: `${nextState.players[visit.playerId]?.name ?? visit.playerId} ${
               visit.revisit ? "revisits" : "visits"
             }`,
-            lines
+            lines,
+            location: visit.location
           } satisfies MapNoticeCue;
         });
         setMapNotice((current) => {

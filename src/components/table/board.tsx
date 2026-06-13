@@ -25,7 +25,7 @@ import {
   type PlayerId
 } from "@/engine";
 import { ARMY_UNIT_DRAG_TYPE } from "@/components/adventure/screen";
-import { actionKey, formatEvent, isBoardTargetCardAction, sameCardSelection, unitName, type CardBoardAction } from "./utils";
+import { actionKey, formatEvent, isBoardTargetCardAction, sameCardSelection, setUnitDragImage, unitName, type CardBoardAction } from "./utils";
 import { useCardZoom } from "./zoom";
 
 /**
@@ -333,6 +333,8 @@ export function BattlefieldBoard({
                   onDragStart: (event: React.DragEvent) => {
                     event.dataTransfer.setData(ARMY_UNIT_DRAG_TYPE, unit.armyUnitId as string);
                     event.dataTransfer.effectAllowed = "move";
+                    // Without this the ghost is the whole battlefield card.
+                    setUnitDragImage(event, unit.assets?.cardImage);
                   }
                 }
               : {};

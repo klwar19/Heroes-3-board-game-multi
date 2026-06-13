@@ -46,7 +46,7 @@ import {
 } from "@/engine";
 import { moraleIcon, RESOURCE_ICONS, tileBackImage, TILE_BACK_IMAGES } from "@/data/assets/homm-assets";
 import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
-import { actionKey, cardName, formatCost, titleCase } from "@/components/table/utils";
+import { actionKey, cardName, formatCost, setUnitDragImage, titleCase } from "@/components/table/utils";
 import { useCardZoom } from "@/components/table/zoom";
 import { listSavedMaps, type SavedMapRecord } from "@/lib/saved-maps";
 
@@ -339,6 +339,10 @@ export function HexMapBoard({
     // --- Face-down tiles: the printed starry backs (roman numerals) -------
     if (tile.faceDown) {
       const discover = discoverByTile.get(tile.id);
+      // Sea tiles ship both Ⅳ–Ⅴ and Ⅵ–Ⅶ behind one wave back, so the
+      // face-down hint shows the whole Ⅳ–Ⅶ range — the exact band stays
+      // secret until the tile is revealed.
+      const backLabelDisplay = tile.group === "sea" ? "Ⅳ–Ⅶ" : tile.backLabel ?? "";
       const footprint = tileFootprint(center, 0);
       const centerPixel = hexToPixel(center, HEX_SIZE);
       const backWidth = 3 * HEX_WIDTH;
@@ -377,8 +381,8 @@ export function HexMapBoard({
             >
               <title>
                 {discover
-                  ? `Spend 1 movement point to discover this ${tile.backLabel ?? ""} tile`
-                  : `Face-down tile ${tile.backLabel ?? ""}`}
+                  ? `Spend 1 movement point to discover this ${backLabelDisplay} tile`
+                  : `Face-down tile ${backLabelDisplay}`}
               </title>
             </polygon>
           </g>
@@ -2086,10 +2090,7 @@ export function PlacementPanel({
                 event.dataTransfer.setData(ARMY_UNIT_DRAG_TYPE, unit.id);
                 event.dataTransfer.effectAllowed = "move";
                 // Drag a small portrait of the unit so it's clear what's moving.
-                const art = event.currentTarget.querySelector(".placementUnitPortrait") as HTMLElement | null;
-                if (art) {
-                  event.dataTransfer.setDragImage(art, art.offsetWidth / 2, art.offsetHeight / 2);
-                }
+                setUnitDragImage(event, portrait);
               }}
               title={isPlaced ? "Drag to another space, or click to take back" : "Drag onto your two rows (or click, then pick a space)"}
               type="button"
