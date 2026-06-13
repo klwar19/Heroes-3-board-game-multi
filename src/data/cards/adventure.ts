@@ -315,6 +315,54 @@ function notImplementedSpecialty(
   };
 }
 
+/**
+ * Alamar's Resurrection: a reaction in an attack window that cancels a normal
+ * attack which would destroy one of your units (never spells or specialty
+ * damage). One option per grade; its Power requirement is paid by discarding
+ * that many "power-source" cards (a Power statistic or any Spell). A cost of 0
+ * needs no discard.
+ */
+function resurrectionSpecialty(
+  level: 1 | 4 | 6,
+  costs: { bronze: number; silver: number; gold: number }
+): CardLibrary[string] {
+  const grades = ["bronze", "silver", "gold"] as const;
+  return {
+    id: `specialty.alamar.${level}`,
+    name: `Resurrection ${level === 1 ? "I" : level === 4 ? "IV" : "VI"}`,
+    kind: "hero-specialty",
+    timing: "reaction",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "reaction",
+      "alamar",
+      "resurrection",
+      `Cancel an enemy attack that would reduce one of your units to 0 HP (attacks only, not spells or specialties). Discard Power (a Power statistic or a Spell): ${costs.bronze} for a bronze unit, ${costs.silver} for silver, ${costs.gold} for gold.`
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: grades.map((grade) => ({
+        label:
+          costs[grade] > 0
+            ? `Save a ${grade} unit (discard ${costs[grade]} Power/Spell)`
+            : `Save a ${grade} unit`,
+        trigger: { event: "UNIT_ATTACK_DECLARED" as const, controller: "opponent" as const },
+        ...(costs[grade] > 0
+          ? { cost: { discardCards: costs[grade], costCardFilter: "power-source" as const } }
+          : {}),
+        effect: { type: "CANCEL_LETHAL_ATTACK" as const, grade }
+      }))
+    },
+    assets: {
+      cardImage: specialtyCardImage("alamar", level),
+      imageAlt: `Resurrection level ${level} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource("alamar")
+  };
+}
+
 export const adventureCards: CardLibrary = {
   "ability.leadership": {
     id: "ability.leadership",
@@ -491,11 +539,12 @@ export const adventureCards: CardLibrary = {
     kind: "hero-specialty",
     timing: "instant",
     phaseLimit: ["combat"],
-    tags: ["hero-specialty", "instant", "rion", "Printed card also draws 1 card; the draw is not modeled yet."],
+    tags: ["hero-specialty", "instant", "rion", "heal", "Remove 1 damage from one of your units, then draw 1 card."],
     target: { type: "friendly-unit", damagedOnly: true },
     effect: {
       type: "HEAL_DAMAGE",
-      amount: 1
+      amount: 1,
+      drawCards: 1
     },
     assets: {
       cardImage: "/assets/hero_specialties-rion-1.webp",
@@ -627,22 +676,68 @@ export const adventureCards: CardLibrary = {
     6,
     "For this Combat, your selected unit's initiative is increased by 1 (doubled for Sharpshooters)."
   ),
-  "specialty.gem.1": notImplementedSpecialty(
-    "gem",
-    "First Aid",
-    1,
-    "Gain a First Aid Tent card for free, or draw 1 card if you already have one.",
-    "/assets/hero_specialties-gem-1.webp"
-  ),
+  "specialty.gem.1": {
+    id: "specialty.gem.1",
+    name: "First Aid I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "gem",
+      "first-aid",
+      "Take a First Aid Tent from the War Machine supply for free, or draw 1 card if you already have one."
+    ],
+    target: { type: "none" },
+    // One supply copy of the Tent: take it when it is still there, otherwise it
+    // is already in play/owned, so draw 1 instead (the printed alternative).
+    effect: {
+      type: "GAIN_WAR_MACHINE",
+      warMachineCardId: "war_machine.first_aid_tent",
+      fallbackDrawCards: 1
+    },
+    assets: {
+      cardImage: "/assets/hero_specialties-gem-1.webp",
+      imageAlt: "First Aid level I specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("gem")
+  },
   "specialty.gem.4": notImplementedSpecialty("gem", "First Aid", 4, "Remove 2 damage from one of your units."),
   "specialty.gem.6": notImplementedSpecialty("gem", "First Aid", 6, "Your First Aid Tent's effect doubles during Combat."),
-  "specialty.xyron.1": notImplementedSpecialty(
-    "xyron",
-    "Inferno",
-    1,
-    "Activation: deal damage to units on a selected space and adjacent spaces.",
-    "/assets/hero_specialties-xyron-1.webp"
-  ),
+  "specialty.xyron.1": {
+    id: "specialty.xyron.1",
+    name: "Inferno I",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "xyron",
+      "inferno",
+      "Discard 2 cards, then select a space: every unit on that space and the spaces adjacent to it (friend or foe) takes 1 damage."
+    ],
+    target: { type: "any-unit" },
+    // Single printed line, so a one-option "OR" carries the discard-2 price and
+    // the area damage; the cost picker pays it and the target picks the centre.
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Discard 2 cards: 1 damage to a space and its neighbours",
+          cost: { discardCards: 2 },
+          effect: { type: "AREA_DAMAGE_ALL_ADJACENT", amount: 1 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "/assets/hero_specialties-xyron-1.webp",
+      imageAlt: "Inferno level I specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("xyron")
+  },
   "specialty.xyron.4": notImplementedSpecialty("xyron", "Inferno", 4, "Stronger area damage at reduced cost."),
   "specialty.xyron.6": notImplementedSpecialty("xyron", "Inferno", 6, "Area damage at no cost."),
   "specialty.rashka.1": mightSpecialtyOne("rashka", "Efreet", "Efreet"),
@@ -691,13 +786,7 @@ export const adventureCards: CardLibrary = {
   "specialty.yog.1": mightSpecialtyOne("yog", "Cyclopes", "Cyclopes"),
   "specialty.yog.4": unitInitiativeSpecialty("yog", "Cyclopes", 4, 1, "Cyclopes"),
   "specialty.yog.6": unitHealthSpecialty("yog", "Cyclopes", 6, 1, "Cyclopes"),
-  "specialty.alamar.1": notImplementedSpecialty(
-    "alamar",
-    "Resurrection",
-    1,
-    "Cancel an attack that would reduce your bronze (power 1) / silver (2) / gold (4) unit's HP to 0.",
-    "/assets/hero_specialties-alamar-1.webp"
-  ),
+  "specialty.alamar.1": resurrectionSpecialty(1, { bronze: 1, silver: 2, gold: 4 }),
   "specialty.alamar.4": notImplementedSpecialty(
     "alamar",
     "Resurrection",

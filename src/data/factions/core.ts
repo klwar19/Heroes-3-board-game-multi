@@ -885,7 +885,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     id: "inferno",
     name: "Inferno",
     color: "#e07020",
-    startingTileId: "S5",
+    startingTileId: "S6",
     heroes: ["xyron", "rashka"],
     buildings: buildingsOfFaction("inferno"),
     units: unitsOfFaction("inferno"),
@@ -945,15 +945,13 @@ export const neutralUnitIdsByTier: Record<"bronze" | "silver" | "gold" | "azure"
 };
 
 /**
- * Which starting tile faces which faction. S3 = Castle, S1 = Necropolis,
- * S2 = Dungeon (dirt/cursed/subterranean core starting tiles); S4-S6 are the
- * second printed set used for variety in multiplayer setups.
+ * Which starting tile faces which faction, derived from the faction
+ * definitions so the public faction data and the runtime setup map can never
+ * drift apart. S1 = Necropolis, S2 = Dungeon, S3 = Castle (core box dirt/
+ * cursed/subterranean tiles); S4 = Rampart, S6 = Inferno, S7 = Stronghold
+ * (expansion tiles). S5 is the Fortress tile — that faction is not playable
+ * yet, so no seat draws it.
  */
-export const startingTileByFaction: Record<string, string> = {
-  castle: "S3",
-  necropolis: "S1",
-  dungeon: "S2",
-  rampart: "S4",
-  inferno: "S6",
-  stronghold: "S7"
-};
+export const startingTileByFaction: Record<string, string> = Object.fromEntries(
+  Object.values(coreFactionDefinitions).map((faction) => [faction.id, faction.startingTileId])
+);

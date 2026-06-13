@@ -1,6 +1,7 @@
 import { cardLibrary } from "@/data/cards/library";
 import { assetUrl } from "@/lib/asset-url";
 import {
+  cardCanBoostPower,
   getBattlefieldLabel,
   type BuildingEffectDefinition,
   type CardDefinition,
@@ -11,6 +12,15 @@ import {
   type ResourceKind,
   type TargetRef
 } from "@/engine";
+
+/** Whether a hand card may pay a play's discard cost under the given filter. */
+export function costCardEligible(cardId: string, filter?: "spell" | "power-source"): boolean {
+  if (!filter) {
+    return true;
+  }
+  const card = cardLibrary[cardId];
+  return filter === "spell" ? card?.kind === "spell" : cardCanBoostPower(card);
+}
 
 export function unitName(state: GameState, unitId: string): string {
   return state.combat?.units[unitId]?.name ?? unitId;
