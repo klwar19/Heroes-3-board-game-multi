@@ -40,6 +40,11 @@ export type RoomConnection = {
   submitAction: (action: GameAction) => Promise<{ snapshot: GameRoomSnapshot; result: EngineResult }>;
   resetRoom: (options: RoomResetOptions) => Promise<GameRoomSnapshot>;
   fetchSnapshot: () => Promise<GameRoomSnapshot>;
+  /**
+   * Re-seed a room the server lost (recycle / cold start) from a cached game
+   * state. Only applied over a fresh lobby, so it never clobbers live games.
+   */
+  restoreRoom: (state: GameState) => Promise<GameRoomSnapshot>;
 };
 
 export function getPartyKitHost(): string | null {
@@ -162,6 +167,15 @@ function connectPartyRoom(host: string, roomId: string, handlers: RoomConnection
         throw new Error("Could not load room.");
       }
       return (await response.json()) as GameRoomSnapshot;
+    },
+    // PartyKit Durable Objects persist their state, so a room is never lost
+    // there — restoring is just reading the authoritative copy back.
+    restoreRoom: async () => {
+      const response = await fetch(partyHttpUrl(host, roomId), { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Could not load room.");
+      }
+      return (await response.json()) as GameRoomSnapshot;
     }
   };
 }
@@ -262,6 +276,17 @@ function connectApiRoom(roomId: string, handlers: RoomConnectionHandlers): RoomC
       });
       if (!response.ok) {
         throw new Error("Could not reset the room.");
+      }
+      return (await response.json()) as GameRoomSnapshot;
+    },
+    restoreRoom: async (state) => {
+      const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restore: true, state })
+      });
+      if (!response.ok) {
+        throw new Error("Could not restore the room.");
       }
       return (await response.json()) as GameRoomSnapshot;
     },

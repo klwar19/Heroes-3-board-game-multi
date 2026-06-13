@@ -1623,9 +1623,11 @@ export function getLegalActions(
       const verb =
         choice.kind === "second-attack"
           ? `${choice.abilityName}: attack`
-          : choice.kind === "flat-damage" || choice.kind === "spell-splash"
-            ? `${choice.abilityName}: hit`
-            : "Neutrals attack";
+          : choice.kind === "enchanter-activation"
+            ? `${choice.abilityName}: heal`
+            : choice.kind === "flat-damage" || choice.kind === "spell-splash" || choice.kind === "faerie-damage"
+              ? `${choice.abilityName}: hit`
+              : "Neutrals attack";
       const targetActions = choice.candidateUnitIds.flatMap((unitId) => {
         const unit = state.combat?.units[unitId];
         if (!unit || !isUnitAlive(unit)) {
@@ -1644,10 +1646,11 @@ export function getLegalActions(
         ];
       });
 
-      // Fireball's second space may be left empty.
+      // Optional choices carry a skip (Fireball's empty second space, the
+      // Enchanters' "+1 Attack instead" of healing).
       if (choice.optional) {
         targetActions.push({
-          label: "Skip (no second target)",
+          label: choice.skipLabel ?? "Skip (no second target)",
           action: {
             type: "CHOOSE_ABILITY_TARGET",
             playerId,

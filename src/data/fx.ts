@@ -102,6 +102,14 @@ export const cancelFx = { key: "dispel", sound: "spells/dispel" };
 export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "magog-fireball-splash": { hit: "fireball", hitSound: "spells/fireball-hit" },
   "lich-death-cloud": { hit: "death-cloud", hitSound: "spells/death-cloud" },
+  // Faerie Dragons' activation damage-spell flies as an Ice Bolt from the
+  // dragon to the chosen unit, then explodes on the hit.
+  "faerie-dragon-spell": {
+    projectile: "ice-bolt-projectile-0",
+    hit: "ice-bolt-hit",
+    sound: "spells/ice-bolt",
+    hitSound: "spells/ice-bolt-hit"
+  },
   // Future abilities (cards not implemented yet, assets ready):
   poison: { affect: [{ key: "poison" }], sound: "spells/poison" },
   paralyze: { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },

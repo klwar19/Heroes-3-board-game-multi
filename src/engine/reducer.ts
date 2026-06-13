@@ -47,9 +47,9 @@ import {
   endTurnAdventure
 } from "./adventure-reducer";
 import { chooseFaction, setGameOptions, startAdventureFromLobby } from "./adventure-setup";
-import { ATTACK_DIE_FACES, BATTLEFIELD_COLUMNS, BATTLEFIELD_ROWS, getBattlefieldCoordinates } from "./battlefield";
+import { ATTACK_DIE_FACES, BATTLEFIELD_COLUMNS, BATTLEFIELD_ROWS, getBattlefieldCoordinates, getBattlefieldLabel } from "./battlefield";
 import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
-import { isNeutralUnit, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
+import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
 import {
   applyPermanentCombatEffectsForPlayer,
   applyPermanentExpert,
@@ -107,12 +107,14 @@ import {
 } from "./legal-actions";
 import {
   getActivationAbilities,
+  getActivationDamageSpellAbility,
   getAfterRetaliationAttackAbility,
   getAttackDefenseReductionAbility,
   getAttackDieDamageFollowUps,
   getAttackDieResultBonus,
   getDefenseBonusWhenRetaliated,
   getDoubleAttackAbility,
+  getEnchanterActivationAbility,
   getEnemyDiscardAbility,
   getFlatDamageFollowUps,
   getLineAttackAbility,
@@ -120,6 +122,7 @@ import {
   getPostAttackAbilityDamageEffects,
   getRetaliationAgainstAttackPenalty,
   getRetaliationParalysis,
+  getReturnAfterAttackAbility,
   getSecondAttackAbility,
   getSecondAttackCandidates,
   getSelfAdjacentSecondAttackAbility,
@@ -1190,6 +1193,22 @@ function closePendingChoice(
 function concludeAttackerActivation(state: GameState, attacker: CombatUnitState): void {
   const combat = state.combat;
 
+  // Harpies' "Strike and Return": once the attack (and the enemy's Retaliation
+  // Attack, if any) has resolved, the harpy may fly back to the space it moved
+  // from. A neutral always returns; a player is asked to return or stay.
+  if (combat) {
+    const origin = harpyReturnOrigin(combat, attacker);
+    if (origin !== null) {
+      if (isNeutralUnit(attacker)) {
+        moveUnitToOrigin(state, attacker, origin);
+        // fall through to end the activation
+      } else {
+        openHarpyReturnChoice(state, attacker, origin);
+        return;
+      }
+    }
+  }
+
   const canRangedReposition =
     Boolean(combat) &&
     combat !== null &&
@@ -1210,6 +1229,118 @@ function concludeAttackerActivation(state: GameState, attacker: CombatUnitState)
   advanceActiveUnit(state);
   state.phase = "combat";
   state.priorityPlayerId = null;
+}
+
+/**
+ * Harpies' fly-back: the space the unit moved from this activation, if it has
+ * the "Strike and Return" ability, moved to attack, is still alive, and that
+ * origin space is free to land on. Returns null when no return is possible.
+ */
+function harpyReturnOrigin(combat: CombatState, attacker: CombatUnitState): number | null {
+  if (!getReturnAfterAttackAbility(attacker) || !isUnitAlive(attacker)) {
+    return null;
+  }
+  const origin = attacker.activationStartPosition;
+  if (origin === undefined || !attacker.movedThisActivation || origin === attacker.position) {
+    return null;
+  }
+  if (combat.obstacles?.includes(origin)) {
+    return null;
+  }
+  const occupied = Object.values(combat.units).some(
+    (unit) => unit.id !== attacker.id && isUnitAlive(unit) && unit.position === origin
+  );
+  return occupied ? null : origin;
+}
+
+/** Flies a unit back to its activation's starting space (Harpy return). */
+function moveUnitToOrigin(state: GameState, unit: CombatUnitState, origin: number): void {
+  const from = unit.position;
+  unit.position = origin;
+  unit.movedThisActivation = true;
+  appendEvent(state, {
+    type: "UNIT_MOVED",
+    playerId: unit.controllerId,
+    unitId: unit.id,
+    from,
+    to: origin
+  });
+}
+
+/** Opens the player's "fly back or stay" choice after a Harpy's attack. */
+function openHarpyReturnChoice(state: GameState, unit: CombatUnitState, origin: number): void {
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId: unit.controllerId,
+    prompt: `${unit.cardName}: fly back to ${getBattlefieldLabel(origin)} or hold at ${getBattlefieldLabel(unit.position)}?`,
+    options: [
+      { label: `Fly back to ${getBattlefieldLabel(origin)}` },
+      { label: `Stay at ${getBattlefieldLabel(unit.position)}` }
+    ],
+    context: "combat-reposition",
+    reposition: { unitId: unit.id, originPosition: origin },
+    returnPhase: "combat"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = unit.controllerId;
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId: unit.controllerId,
+    sourceEffectIds: [],
+    message: `${unit.cardName} may return to ${getBattlefieldLabel(origin)} after its attack.`
+  });
+}
+
+/**
+ * Resolves the Harpy "Strike and Return" choice: option 0 flies the unit back
+ * to its origin, option 1 leaves it where it attacked. Either way the
+ * activation then ends.
+ */
+function resolveCombatReposition(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "combat-reposition" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.reposition
+  ) {
+    throw new Error("There is no repositioning choice to resolve.");
+  }
+
+  const combat = state.combat;
+  const unit = combat?.units[choice.reposition.unitId];
+  if (!combat || !unit) {
+    throw new Error("Combat is not active.");
+  }
+
+  if (action.optionIndex === 0 && harpyReturnOrigin(combat, unit) === choice.reposition.originPosition) {
+    moveUnitToOrigin(state, unit, choice.reposition.originPosition);
+  }
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
+
+  state.pendingChoice = null;
+  unit.activatedThisRound = true;
+  advanceActiveUnit(state);
+  if (!state.pendingChoice) {
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+  }
 }
 
 /**
@@ -2322,6 +2453,10 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   activeUnit.movedThisActivation = false;
   activeUnit.attackedThisActivation = false;
   activeUnit.attacksThisActivation = 0;
+  // Remember where the unit started this activation (Harpy fly-back) and reset
+  // the once-per-activation "[activation]" choice flag (Enchanters/Faeries).
+  activeUnit.activationStartPosition = activeUnit.position;
+  activeUnit.activationAbilityDone = false;
 
   if (activeUnit.defenseToken) {
     activeUnit.defenseToken = false;
@@ -2407,6 +2542,240 @@ function advanceActiveUnit(state: GameState): void {
   }
 
   setActiveUnit(state, getNextUnitToActivate(state.combat, state.activeEffects)?.id ?? null);
+}
+
+/** Living friendly units the Enchanters could heal (other friendlies only). */
+function enchanterHealCandidates(combat: CombatState, unit: CombatUnitState): CombatUnitState[] {
+  return Object.values(combat.units).filter(
+    (candidate) =>
+      candidate.id !== unit.id &&
+      candidate.controllerId === unit.controllerId &&
+      isUnitAlive(candidate) &&
+      candidate.damage > 0
+  );
+}
+
+/** Enchanters: gain +N Attack for the rest of this combat round (self-buff). */
+function applyEnchanterBuffSelf(
+  state: GameState,
+  unit: CombatUnitState,
+  ability: { abilityId: string; abilityName: string; attackBonus: number }
+): void {
+  createActiveEffect(
+    state,
+    {
+      name: ability.abilityName,
+      scope: "unit",
+      duration: { type: "current-combat-round" },
+      polarity: "positive",
+      removable: true,
+      modifiers: [{ type: "ATTACK_BONUS", amount: ability.attackBonus }]
+    },
+    { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+    unit.controllerId,
+    { type: "unit", unitId: unit.id }
+  );
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: unit.id,
+    abilityId: ability.abilityId,
+    targetUnitId: unit.id,
+    message: `${unit.name} gains +${ability.attackBonus} Attack from ${ability.abilityName}.`
+  });
+}
+
+/** Enchanters: remove up to N damage from a chosen friendly unit. */
+function applyEnchanterHeal(
+  state: GameState,
+  unit: CombatUnitState,
+  target: CombatUnitState,
+  ability: { abilityId: string; abilityName: string; healAmount: number }
+): void {
+  healUnitDamage(
+    state,
+    { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+    { type: "unit", unitId: target.id },
+    ability.healAmount
+  );
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: unit.id,
+    abilityId: ability.abilityId,
+    targetUnitId: target.id,
+    message: `${unit.name} heals ${target.cardName} with ${ability.abilityName}.`
+  });
+}
+
+/**
+ * Faerie Dragons' activation damage-spell: flat spell damage to the chosen
+ * unit (not reduced by defense). Fires the Ice Bolt ability event for the FX,
+ * then the damage event, and finalizes a kill / the combat if it lands lethal.
+ */
+function applyActivationDamageSpell(
+  state: GameState,
+  unit: CombatUnitState,
+  target: CombatUnitState,
+  ability: { abilityId: string; abilityName: string; amount: number }
+): void {
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: unit.id,
+    abilityId: ability.abilityId,
+    targetUnitId: target.id,
+    message: `${unit.name} casts ${ability.abilityName} at ${target.cardName} for ${ability.amount} damage.`
+  });
+  target.damage += ability.amount;
+  noteUnitDamagedForTokens(state, target, ability.amount);
+  appendEvent(state, {
+    type: "DAMAGE_ASSIGNED",
+    source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+    target: { type: "unit", unitId: target.id },
+    amount: ability.amount,
+    damageKind: "spell"
+  });
+  markUnitRemovedIfNeeded(state, target);
+  finishCombatIfNeeded(state);
+}
+
+/**
+ * Auto-resolves a neutral unit's "[activation]" choice ability before it acts:
+ * a neutral Enchanter always takes the +1 Attack; a neutral Faerie Dragon zaps
+ * the unit it would attack (normal target priority). Returns true when it did
+ * something, so the caller can re-check for a finished combat.
+ */
+function applyNeutralActivationAbility(state: GameState, unit: CombatUnitState): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+
+  const enchant = getEnchanterActivationAbility(unit);
+  if (enchant) {
+    applyEnchanterBuffSelf(state, unit, enchant);
+    return true;
+  }
+
+  const faerie = getActivationDamageSpellAbility(unit);
+  if (faerie) {
+    const target = pickNeutralTarget(combat, unit);
+    if (target) {
+      applyActivationDamageSpell(state, unit, target, faerie);
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Opens a player-controlled unit's "[activation]" choice when its turn comes
+ * up (before it acts): Enchanters pick heal-a-friendly vs +1 Attack, Faerie
+ * Dragons pick the unit their Ice Bolt hits. Trivial cases (no friendly to
+ * heal, no enemy to zap) resolve automatically without a prompt. Called at the
+ * end of every action so it never collides with reaction windows, war-machine
+ * round-starts or the neutral pump.
+ */
+function maybeOpenPlayerActivationChoice(state: GameState): void {
+  const combat = state.combat;
+  if (
+    !combat ||
+    combat.outcome ||
+    combat.setup ||
+    combat.awaitingContinue ||
+    state.pendingChoice ||
+    state.reactionWindow ||
+    state.stack.length > 0
+  ) {
+    return;
+  }
+
+  const unitId = combat.activeUnitId;
+  const unit = unitId ? combat.units[unitId] : undefined;
+  if (
+    !unit ||
+    !isUnitAlive(unit) ||
+    isNeutralUnit(unit) ||
+    unit.activatedThisRound ||
+    unit.activationAbilityDone ||
+    unit.movedThisActivation ||
+    unit.attackedThisActivation
+  ) {
+    return;
+  }
+
+  const enchant = getEnchanterActivationAbility(unit);
+  if (enchant) {
+    const candidates = enchanterHealCandidates(combat, unit);
+    if (candidates.length === 0) {
+      // Nothing to heal: the only meaningful outcome is the self Attack buff.
+      applyEnchanterBuffSelf(state, unit, enchant);
+      unit.activationAbilityDone = true;
+      return;
+    }
+    const choiceId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "ABILITY_TARGET_CHOICE",
+      playerId: unit.controllerId,
+      kind: "enchanter-activation",
+      abilityId: enchant.abilityId,
+      abilityName: enchant.abilityName,
+      prompt: `${unit.cardName}: ${enchant.abilityName} — heal a friendly unit (up to ${enchant.healAmount} damage) or gain +${enchant.attackBonus} Attack.`,
+      sourceUnitId: unit.id,
+      anchorUnitId: null,
+      candidateUnitIds: candidates.map((candidate) => candidate.id),
+      optional: true,
+      skipLabel: `Gain +${enchant.attackBonus} Attack instead`
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = unit.controllerId;
+    appendEvent(state, {
+      type: "PENDING_CHOICE_CREATED",
+      choiceId,
+      choiceType: "ABILITY_TARGET_CHOICE",
+      playerId: unit.controllerId,
+      sourceEffectIds: [],
+      message: `${unit.cardName} chooses: heal a friendly unit or gain +${enchant.attackBonus} Attack.`
+    });
+    return;
+  }
+
+  const faerie = getActivationDamageSpellAbility(unit);
+  if (faerie) {
+    const targets = Object.values(combat.units).filter(
+      (candidate) => candidate.controllerId !== unit.controllerId && isUnitAlive(candidate)
+    );
+    if (targets.length === 0) {
+      // No enemy in range of the spell: the activation ability does nothing.
+      unit.activationAbilityDone = true;
+      return;
+    }
+    const choiceId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "ABILITY_TARGET_CHOICE",
+      playerId: unit.controllerId,
+      kind: "faerie-damage",
+      abilityId: faerie.abilityId,
+      abilityName: faerie.abilityName,
+      prompt: `${unit.cardName}: ${faerie.abilityName} — choose a unit to suffer ${faerie.amount} damage.`,
+      sourceUnitId: unit.id,
+      anchorUnitId: null,
+      candidateUnitIds: targets.map((candidate) => candidate.id),
+      amount: faerie.amount
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = unit.controllerId;
+    appendEvent(state, {
+      type: "PENDING_CHOICE_CREATED",
+      choiceId,
+      choiceType: "ABILITY_TARGET_CHOICE",
+      playerId: unit.controllerId,
+      sourceEffectIds: [],
+      message: `${unit.cardName} chooses a target for ${faerie.abilityName}.`
+    });
+    return;
+  }
 }
 
 function resetCombatRound(combat: CombatState): void {
@@ -4613,6 +4982,34 @@ function chooseAbilityTarget(
     return;
   }
 
+  // Enchanters' "[activation]": heal the chosen friendly unit, or (skip) take
+  // the +1 Attack. The unit stays active and acts normally afterwards.
+  if (choice.kind === "enchanter-activation") {
+    const ability = getEnchanterActivationAbility(source);
+    if (ability) {
+      const target = isSkip ? undefined : combat.units[action.targetUnitId];
+      if (target && isUnitAlive(target)) {
+        applyEnchanterHeal(state, source, target, ability);
+      } else {
+        applyEnchanterBuffSelf(state, source, ability);
+      }
+    }
+    source.activationAbilityDone = true;
+    return;
+  }
+
+  // Faerie Dragons' "[activation]": deal the flat Ice Bolt damage to the chosen
+  // unit, then the unit acts normally (or the combat ends on a lethal hit).
+  if (choice.kind === "faerie-damage") {
+    const ability = getActivationDamageSpellAbility(source);
+    const target = combat.units[action.targetUnitId];
+    if (ability && target && isUnitAlive(target)) {
+      applyActivationDamageSpell(state, source, target, ability);
+    }
+    source.activationAbilityDone = true;
+    return;
+  }
+
   if (choice.kind === "flat-damage") {
     applyFlatAbilityDamage(
       state,
@@ -5216,6 +5613,17 @@ function executeNeutralActivation(
     return;
   }
 
+  // A neutral's "[activation]" choice ability fires once, before it acts:
+  // Enchanters take +1 Attack, Faerie Dragons zap their normal target (and may
+  // end the combat outright). It never ends the activation otherwise.
+  if (!unit.activationAbilityDone) {
+    unit.activationAbilityDone = true;
+    applyNeutralActivationAbility(state, unit);
+    if (combat.outcome) {
+      return;
+    }
+  }
+
   const intent = planNeutralActivation(state, combat, unit, forcedTargetId);
 
   if (intent.kind === "choose-target") {
@@ -5602,7 +6010,16 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         spendMorale(nextState, action);
         break;
       case "CHOOSE_OPTION":
-        chooseOption(nextState, action);
+        // Harpy fly-back lives in the combat reducer (it ends an activation);
+        // every other option choice is handled by the adventure reducer.
+        if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "combat-reposition"
+        ) {
+          resolveCombatReposition(nextState, action);
+        } else {
+          chooseOption(nextState, action);
+        }
         break;
       case "RESOLVE_COMBAT_DISCARD":
         resolveMagiDiscard(nextState, action, cards);
@@ -5639,6 +6056,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           : "The action could not complete its automatic follow-up."
     });
   }
+
+  // Once everything else has settled, surface a player-controlled unit's
+  // "[activation]" choice (Enchanters' heal-or-buff, Faerie Dragons' Ice Bolt)
+  // before it acts. Runs after the neutral pump and war-machine round-starts.
+  maybeOpenPlayerActivationChoice(nextState);
 
   // Ongoing cards whose every effect has ended (expired, consumed, dispelled
   // — whatever this action did) finally reach their discard pile or hand.

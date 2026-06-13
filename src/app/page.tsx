@@ -120,6 +120,59 @@ function getInitialRoomId(): string {
   return new URLSearchParams(window.location.search).get("room") || "dev-room";
 }
 
+// ---------------------------------------------------------------------------
+// Local recovery cache: the latest in-progress game is mirrored to
+// localStorage so that if the (ephemeral) server recycles and comes back with
+// an empty setup lobby, we can push the saved game straight back instead of
+// dumping the player on the menu after a tab switch.
+// ---------------------------------------------------------------------------
+
+const ROOM_CACHE_PREFIX = "homm3bg-room:";
+
+type CachedRoom = { version: number; state: GameState };
+
+function isFreshLobbyState(state: GameState): boolean {
+  return state.phase === "setup" && Boolean(state.setupLobby);
+}
+
+function saveCachedRoom(roomId: string, version: number, state: GameState): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(ROOM_CACHE_PREFIX + roomId, JSON.stringify({ version, state }));
+  } catch {
+    // Storage full / disabled (private mode): recovery is best-effort.
+  }
+}
+
+function loadCachedRoom(roomId: string): CachedRoom | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(ROOM_CACHE_PREFIX + roomId);
+    if (!raw) {
+      return null;
+    }
+    const cached = JSON.parse(raw) as CachedRoom;
+    return cached?.state && typeof cached.version === "number" ? cached : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearCachedRoom(roomId: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.removeItem(ROOM_CACHE_PREFIX + roomId);
+  } catch {
+    // Ignore.
+  }
+}
+
 function makeDiceCue(state: GameState, event: Extract<GameEvent, { type: "ATTACK_ROLLED" }>): DiceCue {
   return {
     id: event.id,
@@ -189,6 +242,10 @@ export default function Home() {
   const seenRollIdsRef = useRef<Set<string> | null>(null);
   /** Server store generation last seen; a change means the host restarted. */
   const seenBootIdRef = useRef<string | null>(null);
+  /** Server boot we already tried to recover from (avoids restore loops). */
+  const restoredForBootRef = useRef<string | null>(null);
+  /** Stable handle to ingestSnapshot so the restore result can re-enter it. */
+  const ingestSnapshotRef = useRef<(snapshot: GameRoomSnapshot) => void>(() => {});
   const seenMapDiceIdsRef = useRef<Set<string>>(new Set());
   const seenVisitIdsRef = useRef<Set<string>>(new Set());
   const seenFirstRollIdsRef = useRef<Set<string>>(new Set());
@@ -786,7 +843,22 @@ export default function Home() {
                 break;
               }
               const at = `unit:${event.targetUnitId ?? event.unitId}`;
-              if (plan.hit) {
+              if (plan.projectile && event.targetUnitId && event.targetUnitId !== event.unitId) {
+                // Faerie Dragons' Ice Bolt flies from the caster to the target,
+                // then bursts; the damage floater waits for it to land.
+                cues.push({
+                  kind: "projectile",
+                  id: `${event.id}-ability-projectile`,
+                  fxKey: plan.projectile,
+                  from: `unit:${event.unitId}`,
+                  to: at,
+                  hitFxKey: plan.hit,
+                  sound: plan.sound,
+                  hitSound: plan.hitSound,
+                  delayMs: timeline
+                });
+                timeline += 1100;
+              } else if (plan.hit) {
                 cues.push({
                   kind: "sprite",
                   id: `${event.id}-ability`,
@@ -870,8 +942,39 @@ export default function Home() {
       // counter starts over, and refusing those snapshots froze the table
       // ("nothing moves anymore"). A boot change always wins.
       const bootChanged = Boolean(snapshot.bootId) && snapshot.bootId !== seenBootIdRef.current;
+
+      // Recovery: the server came back (new boot) holding only a fresh setup
+      // lobby while we have a saved in-progress game for this room — the room
+      // was lost to a recycle. Push our cached game back instead of dropping to
+      // the menu. Guarded per-boot so it runs at most once.
+      if (
+        bootChanged &&
+        isFreshLobbyState(snapshot.state) &&
+        restoredForBootRef.current !== (snapshot.bootId ?? null)
+      ) {
+        const cached = loadCachedRoom(roomId);
+        if (cached && !isFreshLobbyState(cached.state)) {
+          restoredForBootRef.current = snapshot.bootId ?? null;
+          seenBootIdRef.current = snapshot.bootId ?? null;
+          connectionRef.current
+            ?.restoreRoom(cached.state)
+            .then((restored) => ingestSnapshotRef.current(restored))
+            .catch(() => {
+              // Restore failed: fall back to showing whatever the server has.
+              ingestServerState(snapshot.state);
+              setRoomVersion(snapshot.version);
+            });
+          return;
+        }
+      }
+
       if (snapshot.bootId) {
         seenBootIdRef.current = snapshot.bootId;
+      }
+      // Mirror in-progress games for recovery; never cache a bare lobby (that
+      // would let a later recycle overwrite a real game).
+      if (!isFreshLobbyState(snapshot.state)) {
+        saveCachedRoom(roomId, snapshot.version, snapshot.state);
       }
       setRoomVersion((currentVersion) => {
         if (bootChanged || snapshot.version > currentVersion) {
@@ -881,8 +984,12 @@ export default function Home() {
         return currentVersion;
       });
     },
-    [ingestServerState]
+    [ingestServerState, roomId]
   );
+
+  useEffect(() => {
+    ingestSnapshotRef.current = ingestSnapshot;
+  }, [ingestSnapshot]);
 
   const dismissDice = useCallback(() => {
     setDice((current) =>
@@ -916,6 +1023,8 @@ export default function Home() {
   // otherwise the built-in API + SSE stream.
   useEffect(() => {
     seenRollIdsRef.current = null;
+    // Each room gets its own recovery attempt, even on the same server boot.
+    restoredForBootRef.current = null;
 
     const connection = connectRoom(roomId, {
       onSnapshot: ingestSnapshot,
@@ -986,6 +1095,13 @@ export default function Home() {
     try {
       const snapshot = await connection.resetRoom({ mode });
       seenRollIdsRef.current = null;
+      // A deliberate reset discards the saved game so a later recycle can't
+      // "recover" it over the new room.
+      clearCachedRoom(roomId);
+      restoredForBootRef.current = null;
+      if (snapshot.bootId) {
+        seenBootIdRef.current = snapshot.bootId;
+      }
       ingestServerState(snapshot.state);
       setRoomVersion(snapshot.version);
       setErrors([]);

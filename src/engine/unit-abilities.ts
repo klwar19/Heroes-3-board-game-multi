@@ -370,6 +370,50 @@ export function getActivationAbilities(unit: CombatUnitState): ActivationAbility
   return abilities;
 }
 
+/** Enchanters: the activation heal-a-friendly-or-buff-self choice ability. */
+export function getEnchanterActivationAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; healAmount: number; attackBonus: number } | null {
+  for (const ability of getUnitAbilityDefinitions(unit)) {
+    if (
+      ability.implementationStatus === "implemented" &&
+      ability.effect?.type === "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF"
+    ) {
+      return {
+        abilityId: ability.id,
+        abilityName: ability.name,
+        healAmount: ability.effect.healAmount,
+        attackBonus: ability.effect.attackBonus
+      };
+    }
+  }
+  return null;
+}
+
+/** Faerie Dragons: the activation flat-damage spell ("Ice Bolt"). */
+export function getActivationDamageSpellAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; amount: number } | null {
+  for (const ability of getUnitAbilityDefinitions(unit)) {
+    if (ability.implementationStatus === "implemented" && ability.effect?.type === "ON_ACTIVATION_DAMAGE_SPELL") {
+      return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
+    }
+  }
+  return null;
+}
+
+/** Harpies: the optional fly-back-to-origin repositioning after attacking. */
+export function getReturnAfterAttackAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string } | null {
+  for (const ability of getUnitAbilityDefinitions(unit)) {
+    if (ability.implementationStatus === "implemented" && ability.effect?.type === "RETURN_TO_ORIGIN_AFTER_ATTACK") {
+      return { abilityId: ability.id, abilityName: ability.name };
+    }
+  }
+  return null;
+}
+
 /** Archangels (Few): cards drawn by the controller when combat begins. */
 export function getCombatStartDraws(
   unit: CombatUnitState
