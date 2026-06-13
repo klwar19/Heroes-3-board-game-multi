@@ -46,7 +46,7 @@ Rules-correctness fixes applied to **both** modes (rulebook/wiki): second negati
 | Empty / Blocked Field | ✅ | Blocked fields cannot be entered. "Pass-through if forced" edge case not modeled. |
 | Town | ✅ | Flagging an enemy town wins in Conquest mode (other modes have their own goals). Siege combat (walls/gate/arrow tower) fires when defending a Citadel town or a captured Dragon Utopia; 8-gold garrison defence when the hero is away. |
 | Mine | ✅ | +5 gold / +2 materials / +1 valuables income; first-flag instant gain; stealing supported. |
-| Settlement | ✅ | Income choice or bronze/silver reinforcement at half cost (free on first flag). Secondary-hero spawn point not modeled (no secondary heroes yet). |
+| Settlement | ✅ | Income choice or bronze/silver reinforcement at half cost (free on first flag). Also the fallback spawn point for a hired Secondary Hero when you hold no town. |
 | Resources / Treasure symbols | ✅ | Resource die (2/4 BM, 1/2 V, 3/6 G) and treasure die (2×XP, 2×artifact search, resource die, double resource die). |
 | Artifact symbol | ✅ | Search (2) the Artifact deck. |
 | Windmill / Water Wheel / Mystical Garden / Learning Stone | ✅ | |
@@ -68,7 +68,7 @@ Rules-correctness fixes applied to **both** modes (rulebook/wiki): second negati
 | Black Market | ✅ | Buy one artifact from the discard pile by rarity (5/7/10 gold). |
 | Elemental Conflux | ✅ | Recruit one Elementals card per Dwelling tier you control. |
 | Random Town | ✅ | Defended by an unused faction's Packs (1 bronze, 2 silver, 2 gold); capture grants +10 gold income. Stays out of the random pools (the reveal roll cannot be staged) — placed via designed maps. |
-| Tavern / Prison | 🔴 | Grant a Secondary Hero — needs the (unbuilt) multi-hero subsystem. |
+| Tavern / Prison | ✅ | Grant a Secondary Hero. Tavern: pay 7 gold, then choose an enemy to discard 1 random card. Prison: free, or 3 gold if you already have one. |
 
 ## Factions and towns (`src/data/factions/core.ts`)
 
@@ -98,7 +98,7 @@ Citadel siege bonuses (3 Walls, 1 Gate, Arrow Tower) 🔴 — siege combat not i
 | Xyron (Heretic, magic, A1 D1 P2 K1) | Inferno | ✅ | Inferno I implemented: discard 2 cards, then 1 damage to a chosen unit's space and every adjacent unit (friend or foe). IV/VI 🟡. Starting ability Wisdom. |
 | Rashka (Demoniac, might, A2 D2 P1 K1) | Inferno | ✅ | Specialty I implemented (doubles for Efreet); IV/VI 🟡. Starting ability Scholar 🟡. |
 
-Hero board level track (verified against the wiki board scan): 2 XP per level; hand limit 4→5(III)→6(V)→7(VII); expert effects +1 at II/IV/VI; ability Search (2) at II/III/V/VII; specialties at I/IV/VI. Secondary heroes 🔴 (hire via Population/Tavern, 2 MP, instant-defeat option).
+Hero board level track (verified against the wiki board scan): 2 XP per level; hand limit 4→5(III)→6(V)→7(VII); expert effects +1 at II/IV/VI; ability Search (2) at II/III/V/VII; specialties at I/IV/VI. Secondary Heroes ✅ — gained at the Tavern (7 gold), the Prison, or hired at your town for 10 gold (wearing another town hero's portrait). One per player; fixed 2 MP; play no cards in Combat; never gain experience (fights, map locations, level-ups).
 
 ## Units (`src/data/factions/units.ts`)
 

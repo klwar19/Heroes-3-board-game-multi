@@ -188,8 +188,16 @@ export function effectiveHandLimit(state: GameState, playerId: PlayerId): number
   return Math.max(1, player.limits.hand + bonus + permanentBonus);
 }
 
+/** Fixed movement points of a Secondary Hero (Tavern / Prison). */
+export const SECONDARY_HERO_MOVEMENT = 2;
+
 /** Movement points a hero refreshes to, including Astrologers modifiers. */
 export function heroMovementMax(state: GameState, hero: HeroState): number {
+  // Secondary Heroes always have exactly their printed 2 movement points;
+  // Astrologers movement proclamations only ever move the Main Hero.
+  if (hero.kind === "secondary") {
+    return hero.movementPointsMax;
+  }
   const active = getActiveAstrologersCard(state);
   const modifier = active?.effect.type === "MOVEMENT_MODIFIER" ? active.effect.amount : 0;
   return Math.max(0, hero.movementPointsMax + modifier);
@@ -681,6 +689,48 @@ export function getMainHero(state: GameState, playerId: PlayerId): HeroState | n
   );
 }
 
+/** The single Secondary Hero a player may field, if they have gained one. */
+export function getSecondaryHero(state: GameState, playerId: PlayerId): HeroState | null {
+  return (
+    Object.values(state.heroes).find((hero) => hero.controllerId === playerId && hero.kind === "secondary") ?? null
+  );
+}
+
+/**
+ * Tavern / Prison / hiring at a town: give `playerId` a Secondary Hero and
+ * place its model on `fieldId`, optionally wearing another town hero's
+ * portrait (`heroDefId`). Secondary Heroes refresh to a fixed 2 movement
+ * points, never gain experience (from fights, locations or level-ups) and
+ * cannot use cards in their Combats. A player may only ever field one, so
+ * callers gate on `getSecondaryHero` first (the figure supply is one per
+ * player).
+ */
+export function createSecondaryHero(
+  state: GameState,
+  playerId: PlayerId,
+  fieldId: MapSpaceId,
+  heroDefId?: string
+): HeroState {
+  const heroId = `hero2_${playerId}`;
+  const hero: HeroState = {
+    id: heroId,
+    controllerId: playerId,
+    kind: "secondary",
+    ...(heroDefId ? { heroDefId } : {}),
+    level: 1,
+    experience: 0,
+    movementPoints: SECONDARY_HERO_MOVEMENT,
+    movementPointsMax: SECONDARY_HERO_MOVEMENT,
+    spaceId: fieldId
+  };
+  state.heroes[heroId] = hero;
+  if (state.adventure) {
+    state.adventure.lastVisitedField[heroId] = fieldId;
+  }
+  appendEvent(state, { type: "HERO_GAINED", playerId, heroId, fieldId });
+  return hero;
+}
+
 export function levelOfExperience(experience: number): number {
   return Math.min(7, 1 + Math.floor(experience / 2));
 }
@@ -865,6 +915,10 @@ function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
       return [{ type: "BLACK_MARKET" }];
     case "ELEMENTAL_CONFLUX":
       return [{ type: "ELEMENTAL_CONFLUX" }];
+    case "TAVERN":
+      return [{ type: "TAVERN" }];
+    case "PRISON":
+      return [{ type: "PRISON" }];
   }
 }
 
@@ -1371,7 +1425,8 @@ function stepNeedsInput(step: VisitStep): boolean {
     step.type === "MAGIC_SPRING" ||
     step.type === "REMOVE_HAND_CARD" ||
     step.type === "SEARCH_DISCARD" ||
-    step.type === "HILL_FORT"
+    step.type === "HILL_FORT" ||
+    step.type === "TAVERN"
   );
 }
 
@@ -1399,8 +1454,20 @@ export function processPendingVisit(state: GameState): void {
       case "GAIN_RESOURCES":
         gainResources(state, visit.playerId, step, `visited ${fieldName(state, visit.fieldId)}`);
         break;
+      case "PRISON":
+        // "Gain a Secondary Hero. Place their model on this Field. If you
+        // already have a Secondary Hero, gain 3 gold instead."
+        if (getSecondaryHero(state, visit.playerId)) {
+          gainResources(state, visit.playerId, { gold: 3 }, `visited ${fieldName(state, visit.fieldId)}`);
+        } else {
+          createSecondaryHero(state, visit.playerId, visit.fieldId);
+        }
+        break;
       case "GAIN_EXPERIENCE":
-        gainExperience(state, visit.playerId, step.amount);
+        // Secondary Heroes cannot gain experience from map locations.
+        if (state.heroes[visit.heroId]?.kind === "main") {
+          gainExperience(state, visit.playerId, step.amount);
+        }
         break;
       case "GAIN_MOVEMENT": {
         const hero = state.heroes[visit.heroId];

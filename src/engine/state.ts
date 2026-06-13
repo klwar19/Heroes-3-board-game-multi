@@ -886,6 +886,15 @@ export type GameAction =
     }
   | {
       /**
+       * Buy a Secondary Hero for 10 gold at your town (or a settlement),
+       * wearing the portrait of one of your faction's other heroes.
+       */
+      type: "HIRE_SECONDARY_HERO";
+      playerId: PlayerId;
+      heroDefId: string;
+    }
+  | {
+      /**
        * Spell Book token: pay the Mage Guild price to search the Spell deck.
        * Playing a Wisdom card with it reduces the price (2 gold basic,
        * 3 gold expert in BINH mode) and upgrades the search to 3/4 cards.
@@ -1288,6 +1297,13 @@ export type GameEvent =
       from: MapSpaceId;
       to: MapSpaceId;
       movementLeft: number;
+    }
+  | {
+      id: string;
+      type: "HERO_GAINED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      fieldId: MapSpaceId;
     }
   | {
       id: string;
@@ -2443,6 +2459,21 @@ export type VisitStep =
       type: "ELEMENTAL_RECRUIT_ONE";
       unitDefId: string;
       tier: "bronze" | "silver" | "gold";
+    }
+  | {
+      /**
+       * Tavern: pay 7 gold to gain a Secondary Hero on this field, then choose
+       * one enemy to discard 1 random card. Resolved through the visit-choice
+       * action (decline, or pick which enemy to hit).
+       */
+      type: "TAVERN";
+    }
+  | {
+      /**
+       * Prison: gain a Secondary Hero on this field, or 3 gold if you already
+       * have one. Auto-resolves with no input.
+       */
+      type: "PRISON";
     };
 
 export type AstrologersState = {

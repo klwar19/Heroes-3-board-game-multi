@@ -30,6 +30,7 @@ import {
   moveHeroAdventure,
   moveHeroPathAdventure,
   openSharedDeckSearch,
+  hireSecondaryHero,
   placeCombatUnit,
   placeTile,
   populationAction,
@@ -6268,6 +6269,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "POPULATION_ACTION":
         populationAction(nextState, action);
+        break;
+      case "HIRE_SECONDARY_HERO":
+        hireSecondaryHero(nextState, action);
         break;
       case "SPELL_BOOK_ACTION":
         spellBookAction(nextState, action);

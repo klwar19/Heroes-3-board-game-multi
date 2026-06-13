@@ -12,9 +12,11 @@ import {
   canPlaceTileAt,
   changeMorale,
   classifyHeroStep,
+  createSecondaryHero,
   declareAdventureWinner,
   drawGuardArmy,
   effectiveHandLimit,
+  getSecondaryHero,
   humanPlayerIds,
   requiredHeroDefeats,
   tryDeliverGrail,
@@ -124,6 +126,21 @@ function discardRandomCard(
     buildingId,
     message: `${buildingName} discards a random card from ${target.name}'s hand.`
   });
+}
+
+/** Tavern: the chosen enemy discards 1 random card from their hand (seeded). */
+function discardRandomHandCard(state: GameState, targetPlayerId: PlayerId): void {
+  const target = state.players[targetPlayerId];
+  if (!target || target.hand.length === 0) {
+    return;
+  }
+
+  const random = createSeededRandom(`${state.seed}#tavern-discard#${eventSeedNumber(state)}`);
+  const index = random.nextInt(0, target.hand.length - 1);
+  const [discarded] = target.hand.splice(index, 1);
+  target.discard.push(discarded);
+
+  appendEvent(state, { type: "HAND_REFRESHED", playerId: targetPlayerId, discarded: 1, drawn: 0 });
 }
 
 
@@ -959,6 +976,35 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
         resolveHillFort(state, action);
       }
       visit.steps.shift();
+      break;
+    }
+    case "TAVERN": {
+      // "You can pay 7 gold to gain a Secondary Hero. Place their model on this
+      // Field. Then, choose one enemy player to discard 1 random card."
+      visit.steps.shift();
+      if (action.decline) {
+        break;
+      }
+      const player = state.players[action.playerId];
+      if (!player) {
+        throw new Error("Unknown player at the Tavern.");
+      }
+      if (getSecondaryHero(state, action.playerId)) {
+        throw new Error("You already field a Secondary Hero.");
+      }
+      const cost = { gold: 7 };
+      if (!hasResources(player, cost)) {
+        throw new Error("The Tavern costs 7 gold.");
+      }
+      spendResources(state, action.playerId, cost, "Tavern");
+      createSecondaryHero(state, action.playerId, visit.fieldId);
+      // optionIndex selects which enemy discards (index into the enemy list);
+      // with a single opponent it is just 0.
+      const enemies = humanPlayerIds(state).filter((id) => id !== action.playerId);
+      const targetId = enemies[action.optionIndex ?? 0];
+      if (targetId) {
+        discardRandomHandCard(state, targetId);
+      }
       break;
     }
     case "DISCOVER_ADJACENT_TILE": {
@@ -2069,13 +2115,18 @@ export function finalizeAdventureCombat(state: GameState): void {
 
     if (hero && playerId) {
       if (outcome.winnerPlayerId === playerId) {
-        const level = hero.level;
-        if (context.hasAzure) {
-          gainExperience(state, playerId, MAX_EXPERIENCE_GAIN_TO_SEVEN(hero));
-        } else if (context.difficulty > level) {
-          gainExperience(state, playerId, 2);
-        } else if (context.difficulty === level) {
-          gainExperience(state, playerId, 1);
+        // Secondary Heroes never gain experience from their fights; the gold
+        // (Freelancer's Guild) and Necromancy rewards below are player-level
+        // and still apply.
+        if (hero.kind === "main") {
+          const level = hero.level;
+          if (context.hasAzure) {
+            gainExperience(state, playerId, MAX_EXPERIENCE_GAIN_TO_SEVEN(hero));
+          } else if (context.difficulty > level) {
+            gainExperience(state, playerId, 2);
+          } else if (context.difficulty === level) {
+            gainExperience(state, playerId, 1);
+          }
         }
 
         // Freelancer's Guild: "Each time you win against Neutral Units,
@@ -2132,9 +2183,10 @@ export function finalizeAdventureCombat(state: GameState): void {
   const winnerHero = attackerHero?.controllerId === winnerId ? attackerHero : defenderHero;
 
   if (loserHero) {
-    // Winner gains experience by the defeated main hero's level (no hero,
-    // no experience — a garrison defense win pays nothing).
-    if (winnerHero && loserHero.kind === "main") {
+    // Winner gains experience by the defeated main hero's level. No experience
+    // when no Main Hero stood on either side: a garrison defense win pays
+    // nothing, and a Secondary Hero never gains experience from its fights.
+    if (winnerHero && winnerHero.kind === "main" && loserHero.kind === "main") {
       if (loserHero.level > winnerHero.level) {
         gainExperience(state, winnerId, 2);
       } else if (loserHero.level === winnerHero.level) {
@@ -2291,6 +2343,57 @@ export function buildStructureAdventure(
   if (building.effect?.type === "COMBAT_CUBES") {
     gainTownCube(state, town, action.buildingId, building.effect.max);
   }
+}
+
+/** Where a hired Secondary Hero appears: the main town, else a settlement. */
+function secondaryHeroSpawnFieldId(state: GameState, playerId: PlayerId): string | null {
+  const town = getTownOfPlayer(state, playerId);
+  if (town?.fieldId) {
+    return town.fieldId;
+  }
+  const settlement = Object.values(state.adventure?.fields ?? {}).find(
+    (field) => field.location === "settlement" && field.flagOwnerId === playerId
+  );
+  return settlement?.spaceId ?? null;
+}
+
+/**
+ * Buy a Secondary Hero for 10 gold at your town (or a controlled settlement).
+ * It wears the portrait of one of your faction's other heroes; like every
+ * Secondary Hero it has 2 movement, plays no cards and never gains experience.
+ */
+export function hireSecondaryHero(
+  state: GameState,
+  action: Extract<GameAction, { type: "HIRE_SECONDARY_HERO" }>
+): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+  if (state.combat) {
+    throw new Error("Town actions cannot interrupt a combat.");
+  }
+  if (getSecondaryHero(state, action.playerId)) {
+    throw new Error("You already field a Secondary Hero.");
+  }
+  const cost = { gold: 10 };
+  if (!hasResources(player, cost)) {
+    throw new Error("Hiring a Secondary Hero costs 10 gold.");
+  }
+  const spaceId = secondaryHeroSpawnFieldId(state, action.playerId);
+  if (!spaceId) {
+    throw new Error("You need a town or settlement to hire a Secondary Hero.");
+  }
+  const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
+  if (!faction?.heroes.includes(action.heroDefId)) {
+    throw new Error("That hero does not lead your faction.");
+  }
+  if (action.heroDefId === getMainHero(state, action.playerId)?.heroDefId) {
+    throw new Error("Pick a different hero's portrait for the Secondary Hero.");
+  }
+
+  spendResources(state, action.playerId, cost, "hired a Secondary Hero");
+  createSecondaryHero(state, action.playerId, spaceId, action.heroDefId);
 }
 
 export function populationAction(state: GameState, action: Extract<GameAction, { type: "POPULATION_ACTION" }>): void {
