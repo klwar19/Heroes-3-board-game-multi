@@ -708,6 +708,23 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     boardScan: "/assets/heroes-inferno-magic-xyron.webp",
     source: heroSource("xyron")
   },
+  zydar: {
+    id: "zydar",
+    name: "Zydar",
+    faction: "inferno",
+    class: "Heretic",
+    type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 1 },
+    startingAbilityCardId: "ability.sorcery",
+    specialtyCardIds: {
+      1: "specialty.zydar.1",
+      4: "specialty.zydar.4",
+      6: "specialty.zydar.6"
+    },
+    portrait: "/assets/hero_boardart-zydar.webp",
+    boardScan: "/assets/heroes-inferno-magic-zydar.webp",
+    source: heroSource("zydar")
+  },
   rashka: {
     id: "rashka",
     name: "Rashka",
@@ -903,7 +920,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Inferno",
     color: "#e07020",
     startingTileId: "S6",
-    heroes: ["xyron", "rashka"],
+    heroes: ["xyron", "rashka", "zydar"],
     buildings: buildingsOfFaction("inferno"),
     units: unitsOfFaction("inferno"),
     townImage: "/assets/towns-inferno-empty.webp",

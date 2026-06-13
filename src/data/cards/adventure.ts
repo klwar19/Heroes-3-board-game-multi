@@ -807,6 +807,55 @@ export const adventureCards: CardLibrary = {
     6,
     "For this Combat, your selected unit's initiative is increased by 1 (doubled for Efreet)."
   ),
+  // Zydar (Inferno Heretic): spell-economy specialties. Level I implemented as
+  // a self-spell-cast reaction (draw a card or +1 Power); IV/VI data-only like
+  // the other heroes' upper specialties.
+  "specialty.zydar.1": {
+    id: "specialty.zydar.1",
+    name: "Spell Mastery I",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "zydar",
+      "After casting a Spell: draw 1 card, or instead gain +1 Power on that Spell."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "After casting a spell, draw 1 card",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "DRAW_CARDS", amount: 1 }
+        },
+        {
+          label: "+1 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 1 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("zydar", 1),
+      imageAlt: "Zydar level I specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("zydar")
+  },
+  "specialty.zydar.4": notImplementedSpecialty(
+    "zydar",
+    "Zydar",
+    4,
+    "The next Spell you cast does not count toward your spell limit (alternatively, +2 Power)."
+  ),
+  "specialty.zydar.6": notImplementedSpecialty(
+    "zydar",
+    "Zydar",
+    6,
+    "Ongoing during Combat: after casting a Spell, draw 1 card (alternatively, +2 Power)."
+  ),
   "specialty.crag_hack.1": offenseSpecialtyOne("crag_hack"),
   "specialty.crag_hack.4": offenseSpecialtyFour("crag_hack"),
   "specialty.crag_hack.6": offenseSpecialtySix("crag_hack"),
