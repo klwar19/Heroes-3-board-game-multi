@@ -92,7 +92,14 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "spell.slow": { affect: [{ key: "slow" }], sound: "spells/slow" },
   "spell.precision": { affect: [{ key: "precision" }], sound: "spells/precision" },
   "spell.curse": { affect: [{ key: "curse" }], sound: "spells/curse" },
-  "spell.dispel": { affect: [{ key: "dispel" }], sound: "spells/dispel" }
+  "spell.dispel": { affect: [{ key: "dispel" }], sound: "spells/dispel" },
+  // Summon Elemental: resolves on an empty space (no unit to anchor a sprite
+  // on), so only a cast sound is wired — the new unit appearing is the visual.
+  // Air has its own H3 summon clip; the others use the element's own voice.
+  "spell.summon_air_elemental": { sound: "spells/air-elemental" },
+  "spell.summon_earth_elemental": { sound: "units/earth-elemental-attack" },
+  "spell.summon_fire_elemental": { sound: "units/fire-elemental-attack" },
+  "spell.summon_water_elemental": { sound: "units/water-elemental-attack" }
 };
 
 /** Played at center stage when a spell is countered. */

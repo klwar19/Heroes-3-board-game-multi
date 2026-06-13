@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import soundManifest from "../../public/sounds/manifest.json";
+import { spellFxPlans } from "@/data/fx";
 import { neutralUnitIdsByTier } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { unitSoundKey } from "@/data/unit-sounds";
 import {
   applyAction,
   createInitialGameState,
@@ -290,6 +293,31 @@ function moandorOption(state: GameState, optionIndex: number) {
       legal.action.optionIndex === optionIndex
   );
 }
+
+describe("summon elemental sound coverage", () => {
+  const sounds = soundManifest as Record<string, { src?: string }>;
+  const summonSpells = [
+    "spell.summon_air_elemental",
+    "spell.summon_earth_elemental",
+    "spell.summon_fire_elemental",
+    "spell.summon_water_elemental"
+  ];
+
+  it("every summon spell has a cast sound present in the manifest", () => {
+    for (const id of summonSpells) {
+      const key = spellFxPlans[id]?.sound;
+      expect(key, `${id} cast sound`).toBeTruthy();
+      expect(sounds[key!]?.src, `${id} -> ${key}`).toBeTruthy();
+    }
+  });
+
+  it("the summoned Earth & Water Elementals speak with their own H3 voices", () => {
+    expect(unitSoundKey("neutral.earth_elementals", "attack")).toBe("units/earth-elemental-attack");
+    expect(unitSoundKey("neutral.water_elementals", "move")).toBe("units/water-elemental-move");
+    expect(unitSoundKey("neutral.air_elementals", "attack")).toBe("units/air-elemental-attack");
+    expect(unitSoundKey("neutral.fire_elementals", "attack")).toBe("units/fire-elemental-attack");
+  });
+});
 
 describe("neutral guard elementals are distinct from the summon", () => {
   const guardPool = [

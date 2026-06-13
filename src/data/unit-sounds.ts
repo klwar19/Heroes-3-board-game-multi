@@ -92,10 +92,8 @@ const creatureVoices: Record<string, string> = {
   sprites: "sprite",
   dragon_flies: "fire-dragon-fly",
   air_elementals: "air-elemental",
-  // Earth & Water Elementals reuse the thematically closest existing voices
-  // (the original game ships no separate clips for the summoned base sides).
-  earth_elementals: "magma-elemental",
-  water_elementals: "ice-elemental",
+  earth_elementals: "earth-elemental",
+  water_elementals: "water-elemental",
   ice_elementals: "ice-elemental",
   storm_elementals: "storm-elemental",
   basilisks: "basilisk",
