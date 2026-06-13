@@ -85,6 +85,18 @@ NEXT_PUBLIC_PARTYKIT_HOST=heroes3bg-rooms.<user>.partykit.dev npm run build
 
 Local PartyKit dev server: `npx partykit dev` + `NEXT_PUBLIC_PARTYKIT_HOST=127.0.0.1:1999 npm run dev`.
 
+## Deploying (keep both halves in sync)
+
+Production is **two independently-deployed pieces**, and they must run the same engine version:
+
+1. **Vercel frontend** — auto-deploys on push.
+2. **PartyKit room server** (`party/index.ts`) — the authoritative rules engine; deployed separately with `npm run deploy:partykit`.
+
+If only the frontend is updated, the UI offers new content (e.g. new heroes, **Hire a Secondary Hero**) that the stale room server then **silently rejects** — heroes that "can't be selected", hiring that "does nothing". Two guards prevent this:
+
+- **Automatic redeploy** — `.github/workflows/deploy-partykit.yml` runs `npm run deploy:partykit` on every push to the production branch, so both halves move together. One-time setup: add the `PARTYKIT_TOKEN` (from `npx partykit token generate`) and `PARTYKIT_LOGIN` repository secrets, and make sure the workflow's trigger branch matches your Vercel production branch.
+- **Version-skew banner** — the room server stamps its `ENGINE_SIGNATURE` (`src/engine/version.ts`) onto every snapshot; if it disagrees with the frontend's, the app shows a visible "room server is out of date — run `npx partykit deploy`" warning instead of failing silently. Bump `ENGINE_PROTOCOL_VERSION` when you add a `GameAction` or change the state schema; new heroes/factions/units are picked up automatically.
+
 ## Verification
 
 ```bash
