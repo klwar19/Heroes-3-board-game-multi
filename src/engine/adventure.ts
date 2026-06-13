@@ -1589,7 +1589,24 @@ export const SCHOLAR_STAT_CARDS = ["stat.attack", "stat.defense", "stat.power", 
 // Neutral armies
 // ---------------------------------------------------------------------------
 
-export type NeutralDraw = { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" };
+export type NeutralDraw = {
+  unitDefId: string;
+  tier: "bronze" | "silver" | "gold" | "azure";
+  /** Fixed creature-bank guard: minted, not drawn from a deck, never returned. */
+  bankGuard?: boolean;
+};
+
+/**
+ * Dragon Utopia guards (creature bank): one each of the four dragons, in
+ * descending strength. They are minted for the fight rather than drawn, so
+ * the Neutral azure deck is never touched.
+ */
+export const DRAGON_UTOPIA_GUARD_IDS = [
+  "neutral.azure_dragons",
+  "neutral.rust_dragons",
+  "neutral.crystal_dragons",
+  "neutral.faerie_dragons"
+] as const;
 
 /** Draws the top card of one neutral tier deck, reshuffling its discard if needed. */
 export function drawFromNeutralDeck(state: GameState, tier: "bronze" | "silver" | "gold" | "azure"): string | undefined {
@@ -1636,6 +1653,32 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
   return draws;
 }
 
+/**
+ * Builds the guard army for a field, applying the creature-bank overrides:
+ *  - Dragon Utopia: a fixed party of the four dragons (not from the deck).
+ *  - Cyclops Stockpile: the normal draw plus 2 golden Cyclopes added to the
+ *    Neutral Army (the rulebook override).
+ * Every other field draws normally from the Field Difficulty Level Table.
+ */
+export function drawGuardArmy(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
+  if (field?.location === "dragon_utopia") {
+    return DRAGON_UTOPIA_GUARD_IDS.map((unitDefId) => ({ unitDefId, tier: "azure" as const, bankGuard: true }));
+  }
+
+  const draws = drawNeutralArmy(state, difficulty);
+
+  if (field?.location === "cyclops_stockpile") {
+    // "Find 2 golden Cyclopes and add them to the Neutral Army." The single
+    // copy in the gold deck is left in place (this build holds one of each
+    // Neutral card); the two stockpile guards are minted for the fight.
+    for (let index = 0; index < 2; index += 1) {
+      draws.push({ unitDefId: "neutral.cyclopes", tier: "gold", bankGuard: true });
+    }
+  }
+
+  return draws;
+}
+
 export function makeCombatUnitFromNeutral(
   draw: NeutralDraw,
   unitId: UnitId,
@@ -1670,6 +1713,7 @@ export function makeCombatUnitFromNeutral(
     defenseToken: false,
     abilities: side.abilities,
     unitDefId: draw.unitDefId,
+    ...(draw.bankGuard ? { bankGuard: true } : {}),
     assets: {
       cardImage: side.cardImage,
       imageAlt: `Neutral ${def.name} unit card`,
@@ -2707,7 +2751,8 @@ function resolveManaVortex(state: GameState, playerId: PlayerId, discardCardId: 
 /** Groovy Satyr: swap one drawn neutral card for a fresh one of the same tier. */
 export function swapNeutralDraw(state: GameState, playerId: PlayerId, draws: NeutralDraw[], drawIndex: number): void {
   const draw = draws[drawIndex];
-  if (!draw) {
+  if (!draw || draw.bankGuard) {
+    // Fixed bank guards (Dragon Utopia, Cyclops Stockpile) are never swapped.
     return;
   }
 

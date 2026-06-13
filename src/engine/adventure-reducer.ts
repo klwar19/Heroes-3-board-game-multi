@@ -11,7 +11,7 @@ import {
   canPlaceTileAt,
   changeMorale,
   classifyHeroStep,
-  drawNeutralArmy,
+  drawGuardArmy,
   effectiveHandLimit,
   gainExperience,
   gainResources,
@@ -1522,7 +1522,9 @@ function openSatyrSwapChoice(state: GameState, draws: NeutralDraw[]): void {
     options: [
       { label: "Keep the drawn army" },
       ...draws.map((draw) => ({
-        label: `Swap ${coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId} (${draw.tier})`
+        label: draw.bankGuard
+          ? `${coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId} (bank guard — cannot swap)`
+          : `Swap ${coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId} (${draw.tier})`
       }))
     ],
     context: "satyr-swap",
@@ -1794,9 +1796,11 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
   // rulebook Combat Setup: place your units, then check the Difficulty
   // Table and draw the corresponding neutral cards.
   if (combat.context.kind === "neutral") {
-    const draws = drawNeutralArmy(state, combat.context.difficulty);
+    const guardField = state.adventure?.fields[combat.context.fieldId];
+    const draws = drawGuardArmy(state, guardField, combat.context.difficulty);
+    // The Groovy Satyr only swaps deck-drawn guards, never fixed bank guards.
     const satyrActive = getActiveAstrologersCard(state)?.effect.type === "NEUTRAL_DRAW_SWAP";
-    if (satyrActive && draws.length > 0) {
+    if (satyrActive && draws.some((draw) => !draw.bankGuard)) {
       openSatyrSwapChoice(state, draws);
       return;
     }
@@ -1990,7 +1994,9 @@ export function finalizeAdventureCombat(state: GameState): void {
   // Sync army cards with what happened on the board.
   for (const unit of Object.values(combat.units)) {
     if (unit.controllerId === NEUTRAL_PLAYER_ID) {
-      if (unit.unitDefId) {
+      // Fixed creature-bank guards were minted for this fight; only deck-drawn
+      // guards cycle back to their tier's discard pile.
+      if (unit.unitDefId && !unit.bankGuard) {
         const def = unit.grade === "gold" ? "gold" : unit.grade;
         const deck = state.decks[NEUTRAL_DECK_IDS[def as "bronze" | "silver" | "gold" | "azure"]];
         deck?.discardPile.push(unit.unitDefId);

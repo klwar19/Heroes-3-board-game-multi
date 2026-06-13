@@ -624,8 +624,8 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     name: "Cyclops Stockpile",
     category: "visitable",
     // Reward per the rulebook: roll and resolve 4 Treasure dice. The guard
-    // override (two golden Cyclopes join the defenders) still needs a
-    // neutral-army hook; the credit notes it.
+    // override (two golden Cyclopes added to the Neutral Army) is enforced in
+    // the engine's guard-army builder (drawGuardArmy).
     interaction: {
       type: "SEQUENCE",
       interactions: [
@@ -636,10 +636,7 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
       ]
     },
     implementationStatus: "implemented",
-    source: {
-      ...source("cyclops_stockpile"),
-      credit: `${wikiCredit} Guard composition override (2 golden Cyclopes) not implemented yet - the guards draw normally.`
-    }
+    source: source("cyclops_stockpile")
   },
   subterranean_gate: {
     id: "subterranean_gate",
