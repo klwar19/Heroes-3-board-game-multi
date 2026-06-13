@@ -315,6 +315,53 @@ function notImplementedSpecialty(
   };
 }
 
+/**
+ * Alamar's Resurrection: a reaction (attack OR damaging spell window) that
+ * cancels a blow which would destroy one of your units. One option per grade;
+ * its Power requirement is paid by discarding that many "power-source" cards
+ * (a Power statistic or any Spell). A cost of 0 needs no discard.
+ */
+function resurrectionSpecialty(
+  level: 1 | 4 | 6,
+  costs: { bronze: number; silver: number; gold: number }
+): CardLibrary[string] {
+  const grades = ["bronze", "silver", "gold"] as const;
+  return {
+    id: `specialty.alamar.${level}`,
+    name: `Resurrection ${level === 1 ? "I" : level === 4 ? "IV" : "VI"}`,
+    kind: "hero-specialty",
+    timing: "reaction",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "reaction",
+      "alamar",
+      "resurrection",
+      `Cancel an enemy attack or damaging spell that would reduce one of your units to 0 HP. Discard Power (a Power statistic or a Spell): ${costs.bronze} for a bronze unit, ${costs.silver} for silver, ${costs.gold} for gold.`
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: grades.map((grade) => ({
+        label:
+          costs[grade] > 0
+            ? `Save a ${grade} unit (discard ${costs[grade]} Power/Spell)`
+            : `Save a ${grade} unit`,
+        trigger: { event: "UNIT_ATTACK_DECLARED" as const, controller: "opponent" as const },
+        ...(costs[grade] > 0
+          ? { cost: { discardCards: costs[grade], costCardFilter: "power-source" as const } }
+          : {}),
+        effect: { type: "CANCEL_LETHAL_ATTACK" as const, grade }
+      }))
+    },
+    assets: {
+      cardImage: specialtyCardImage("alamar", level),
+      imageAlt: `Resurrection level ${level} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource("alamar")
+  };
+}
+
 export const adventureCards: CardLibrary = {
   "ability.leadership": {
     id: "ability.leadership",
@@ -738,33 +785,7 @@ export const adventureCards: CardLibrary = {
   "specialty.yog.1": mightSpecialtyOne("yog", "Cyclopes", "Cyclopes"),
   "specialty.yog.4": unitInitiativeSpecialty("yog", "Cyclopes", 4, 1, "Cyclopes"),
   "specialty.yog.6": unitHealthSpecialty("yog", "Cyclopes", 6, 1, "Cyclopes"),
-  "specialty.alamar.1": {
-    id: "specialty.alamar.1",
-    name: "Resurrection I",
-    kind: "hero-specialty",
-    timing: "reaction",
-    phaseLimit: ["reaction", "combat"],
-    tags: [
-      "hero-specialty",
-      "reaction",
-      "alamar",
-      "resurrection",
-      "Cancel an attack that would reduce one of your units to 0 HP. Improved by spell Power: 1 for a bronze unit, 2 for silver, 4 for gold."
-    ],
-    // Played in the attack window on one of your units; the Power paid into the
-    // window (Power cards / spell discards) sets which grade it can save.
-    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-    effect: {
-      type: "CANCEL_LETHAL_ATTACK",
-      gradeByPower: { 1: "bronze", 2: "silver", 4: "gold" }
-    },
-    assets: {
-      cardImage: "/assets/hero_specialties-alamar-1.webp",
-      imageAlt: "Resurrection level I specialty card"
-    },
-    implementationStatus: "implemented",
-    source: heroSource("alamar")
-  },
+  "specialty.alamar.1": resurrectionSpecialty(1, { bronze: 1, silver: 2, gold: 4 }),
   "specialty.alamar.4": notImplementedSpecialty(
     "alamar",
     "Resurrection",

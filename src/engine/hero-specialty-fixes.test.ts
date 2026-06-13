@@ -14,7 +14,7 @@ import { adventureCards } from "@/data/cards/adventure";
 import { unitAbilities } from "@/data/units/abilities";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { cardLibrary } from "@/data/cards/library";
-import type { GameAction, GameEvent, GameState } from "./state";
+import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -266,13 +266,14 @@ describe("Xyron's Inferno I", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Issue 1c: Alamar's Resurrection cancels a lethal attack, gated by Power
+// Issue 1c: Alamar's Resurrection cancels a lethal attack OR spell, by grade,
+// suppresses the saved unit's retaliation, and is paid with Power/Spell cards.
 // ---------------------------------------------------------------------------
 
 describe("Alamar's Resurrection I", () => {
-  function lethalAttackOn(defenderGrade: "bronze" | "silver"): GameState {
+  function lethalAttackOn(defenderGrade: "bronze" | "silver", p1Hand: string[]): GameState {
     const state = createInitialGameState("alamar-seed");
-    state.players.p1.hand = ["specialty.alamar.1", "stat.power"];
+    state.players.p1.hand = p1Hand;
     state.players.p2.hand = [];
     const defender = state.combat!.units.unit_p1_griffins; // p1's unit
     defender.grade = defenderGrade;
@@ -293,33 +294,71 @@ describe("Alamar's Resurrection I", () => {
     });
   }
 
-  it("cancels the killing blow on a bronze unit with 1 Power", () => {
-    const declared = lethalAttackOn("bronze");
+  it("cancels a killing blow on a bronze unit (discard 1 Power) and stops its retaliation", () => {
+    const declared = lethalAttackOn("bronze", ["specialty.alamar.1", "stat.power"]);
     const saved = applyOk(declared, {
       type: "PLAY_REACTIONS",
       playerId: "p1",
-      plays: [{ cardId: "specialty.alamar.1" }, { cardId: "stat.power" }]
+      plays: [{ cardId: "specialty.alamar.1", optionIndex: 0, costCardIds: ["stat.power"] }]
     });
     const griffins = saved.combat!.units.unit_p1_griffins;
     expect(griffins.damage).toBe(griffins.maxHealth - 1); // unchanged: the attack was cancelled
     expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
-    // The blow against the griffins landed for 0 (the cancel); any later
-    // ATTACK_ROLLED is the griffins' own retaliation, so filter on the defender.
+    // The blow on the griffins landed for 0, and the griffins never retaliate.
     const blowOnGriffins = saved.eventLog.find(
       (event) => event.type === "ATTACK_ROLLED" && event.defenderId === "unit_p1_griffins"
     );
     expect(blowOnGriffins && blowOnGriffins.type === "ATTACK_ROLLED" ? blowOnGriffins.damage : null).toBe(0);
+    expect(saved.eventLog.some((event) => event.type === "ATTACK_ROLLED" && event.attackerId === "unit_p1_griffins")).toBe(
+      false
+    );
+    expect(saved.combat!.attackSequence ?? null).toBeNull();
+    expect(saved.players.p1.discard).toContain("stat.power");
   });
 
-  it("does not save a silver unit with only 1 Power (grade out of reach)", () => {
-    const declared = lethalAttackOn("silver");
-    const result = applyOk(declared, {
+  it("offers only the option matching the unit's grade", () => {
+    const declared = lethalAttackOn("silver", ["specialty.alamar.1", "stat.power", "spell.magic_arrow"]);
+    const resurrectionOptions = (declared.reactionWindow?.legalReactions.p1 ?? [])
+      .filter((legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.alamar.1")
+      .map((legal) => (legal.action.type === "PLAY_REACTION" ? legal.action.optionIndex : undefined));
+    // Only the silver option (index 1) is offered for a silver unit.
+    expect(resurrectionOptions).toEqual([1]);
+
+    const saved = applyOk(declared, {
       type: "PLAY_REACTIONS",
       playerId: "p1",
-      plays: [{ cardId: "specialty.alamar.1" }, { cardId: "stat.power" }]
+      plays: [{ cardId: "specialty.alamar.1", optionIndex: 1, costCardIds: ["stat.power", "spell.magic_arrow"] }]
     });
-    expect(hasAbilityEvent(result, "resurrection")).toBe(false);
-    expect(lastAttackRolled(result)?.damage).toBeGreaterThan(0);
+    expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
+    expect(saved.combat!.units.unit_p1_griffins.damage).toBe(saved.combat!.units.unit_p1_griffins.maxHealth - 1);
+  });
+
+  it("also cancels a lethal damaging spell aimed at your unit", () => {
+    const state = createInitialGameState("alamar-spell-seed");
+    state.players.p1.hand = ["specialty.alamar.1", "stat.power"];
+    state.players.p2.hand = ["spell.magic_arrow"];
+    const defender = state.combat!.units.unit_p1_griffins;
+    defender.grade = "bronze";
+    defender.damage = defender.maxHealth - 1; // 1 HP — Magic Arrow's 1 damage is lethal
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+
+    const cast = applyOk(state, {
+      type: "CAST_SPELL",
+      playerId: "p2",
+      cardId: "spell.magic_arrow",
+      target: { type: "unit", unitId: "unit_p1_griffins" }
+    });
+    expect(cast.reactionWindow?.triggerEvent.type).toBe("SPELL_CAST_STARTED");
+
+    const saved = applyOk(cast, {
+      type: "PLAY_REACTIONS",
+      playerId: "p1",
+      plays: [{ cardId: "specialty.alamar.1", optionIndex: 0, costCardIds: ["stat.power"] }]
+    });
+    expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
+    const griffins = saved.combat!.units.unit_p1_griffins;
+    expect(griffins.damage).toBe(griffins.maxHealth - 1); // the spell dealt no damage to it
   });
 });
 
@@ -422,5 +461,144 @@ describe("Pit Lords' Summon Demons", () => {
     state.combat!.units.unit_p2_pit_lords.summonedThisCombat = true;
     const offered = getLegalActions(state, "p2").some((legal) => legal.action.type === "SUMMON_DEMONS");
     expect(offered).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// War machine expert abilities: First Aid Tent (heal 3×) and Ballista (fire 3×)
+// ---------------------------------------------------------------------------
+
+function endCombatRound(state: GameState, playerId: PlayerId): GameState {
+  state.combat!.activeUnitId = null;
+  state.activePlayerId = playerId;
+  return applyOk(state, { type: "END_COMBAT_ROUND", playerId });
+}
+
+describe("First Aid Tent expert", () => {
+  function fatInPlay(): GameState {
+    const state = createInitialGameState("fat-expert-seed");
+    state.players.p1.hand = ["war_machine.first_aid_tent"];
+    state.players.p2.hand = [];
+    // A tanky wounded friendly so it stays wounded after several heals.
+    state.combat!.units.unit_p1_crusaders.maxHealth = 6;
+    state.combat!.units.unit_p1_crusaders.damage = 4;
+    // griffins is the active p1 unit — play the Tent as a permanent.
+    return applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "war_machine.first_aid_tent",
+      target: { type: "none" }
+    });
+  }
+
+  function healEffectId(state: GameState): string {
+    const effect = state.activeEffects.find((candidate) => candidate.name === "First Aid Tent");
+    expect(effect, "the Tent's heal effect should be in play").toBeTruthy();
+    return effect!.id;
+  }
+
+  it("heals 3 times for a single expert use, then offers no more heals that round", () => {
+    let state = fatInPlay();
+    const effectId = healEffectId(state);
+    const heal = (mode?: "expert") =>
+      applyOk(state, {
+        type: "USE_ACTIVE_EFFECT",
+        playerId: "p1",
+        effectId,
+        target: { type: "unit", unitId: "unit_p1_crusaders" },
+        ...(mode ? { mode } : {})
+      });
+
+    state = heal("expert"); // activate expert: spend 1 crown, heal 1
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+    expect(state.combat!.units.unit_p1_crusaders.damage).toBe(3);
+
+    state = heal(); // 2nd heal — no extra crown
+    state = heal(); // 3rd heal
+    expect(state.combat!.units.unit_p1_crusaders.damage).toBe(1);
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+
+    // The unit is still wounded, but the 3 expert heals are spent for the round.
+    const moreHeals = getLegalActions(state, "p1").filter((legal) => legal.action.type === "USE_ACTIVE_EFFECT");
+    expect(moreHeals).toHaveLength(0);
+  });
+
+  it("blocks the expert once the basic heal was used (and vice versa)", () => {
+    let state = fatInPlay();
+    const effectId = healEffectId(state);
+
+    // A basic heal first: the expert can no longer be activated this round.
+    state = applyOk(state, {
+      type: "USE_ACTIVE_EFFECT",
+      playerId: "p1",
+      effectId,
+      target: { type: "unit", unitId: "unit_p1_crusaders" }
+    });
+    const offers = getLegalActions(state, "p1").filter((legal) => legal.action.type === "USE_ACTIVE_EFFECT");
+    expect(offers).toHaveLength(0); // basic used up the round; no expert either
+
+    const expertResult = applyAction(state, {
+      type: "USE_ACTIVE_EFFECT",
+      playerId: "p1",
+      effectId,
+      target: { type: "unit", unitId: "unit_p1_crusaders" },
+      mode: "expert"
+    });
+    expect(expertResult.errors.length).toBeGreaterThan(0);
+  });
+
+  it("cannot use the expert with no expert uses left", () => {
+    const state = fatInPlay();
+    state.players.p1.limits.expertUses = 0;
+    healEffectId(state); // the heal effect is present; only the expert is gated
+    const offered = getLegalActions(state, "p1").filter(
+      (legal) => legal.action.type === "USE_ACTIVE_EFFECT" && legal.action.mode === "expert"
+    );
+    expect(offered).toHaveLength(0);
+  });
+});
+
+describe("Ballista expert", () => {
+  function ballistaRoundStart(crowns: number): GameState {
+    const state = createInitialGameState("ballista-expert-seed");
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.players.p1.permanents = ["war_machine.ballista"];
+    state.players.p1.limits.expertUses = crowns;
+    // One clearly-slowest, tanky enemy so the volley lands on it deterministically.
+    const target = state.combat!.units.unit_p2_dread_knights;
+    target.initiative = 1;
+    target.maxHealth = 12;
+    target.damage = 0;
+    return endCombatRound(state, "p1");
+  }
+
+  it("offers fire 3× (expert) or fire once at round start when a crown is free", () => {
+    const offered = ballistaRoundStart(2);
+    expect(offered.pendingChoice?.type).toBe("OPTION_CHOICE");
+
+    const fireThrice = getLegalActions(offered, "p1").find((legal) => legal.label.includes("expert"));
+    expect(fireThrice, "the expert volley should be offered").toBeTruthy();
+
+    const fired = applyOk(offered, fireThrice!.action);
+    expect(fired.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+    expect(fired.combat!.units.unit_p2_dread_knights.damage).toBe(3); // 3 shots × 1
+    expect(fired.pendingChoice ?? null).toBeNull();
+  });
+
+  it("fires once (no crown spent) when the basic option is chosen", () => {
+    const offered = ballistaRoundStart(2);
+    const fireOnce = getLegalActions(offered, "p1").find((legal) => legal.label === "Fire once");
+    expect(fireOnce, "the basic single shot should be offered").toBeTruthy();
+
+    const fired = applyOk(offered, fireOnce!.action);
+    expect(fired.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+    expect(fired.combat!.units.unit_p2_dread_knights.damage).toBe(1);
+  });
+
+  it("just fires once (no offer) when no expert use is available", () => {
+    const fired = ballistaRoundStart(0);
+    expect(fired.pendingChoice ?? null).toBeNull();
+    expect(fired.combat!.units.unit_p2_dread_knights.damage).toBe(1);
   });
 });

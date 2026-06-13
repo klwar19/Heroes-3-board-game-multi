@@ -87,7 +87,10 @@ export const permanentCards: CardLibrary = {
         modifiers: [
           {
             type: "HEAL_ONCE_PER_COMBAT_ROUND",
-            amount: 1
+            amount: 1,
+            // Expert: spend 1 expert use to heal 3 times this round instead of
+            // the single basic heal (the two are mutually exclusive per round).
+            expertUsesPerRound: 3
           }
         ]
       }
@@ -136,7 +139,9 @@ export const permanentCards: CardLibrary = {
     tags: ["war-machine", "permanent", "damage", "wiki-reference"],
     permanent: true,
     permanentEffect: {
-      roundStart: { kind: "damage-lowest-initiative", amount: 1 }
+      // Expert: at the round start, spend 1 expert use to fire 3 times instead
+      // of the single basic shot (declining fires once, then nothing more).
+      roundStart: { kind: "damage-lowest-initiative", amount: 1, expertShots: 3 }
     },
     warMachineCosts: { factory: { gold: 7 }, tradingPost: { gold: 10 } },
     effect: { type: "ENTER_PLAY" },

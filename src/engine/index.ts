@@ -26,6 +26,7 @@ export {
   makeActiveEffect
 } from "./active-effects";
 export {
+  cardCanBoostPower,
   describeCardEffect,
   getCardEffectAmount,
   getCardOptions,

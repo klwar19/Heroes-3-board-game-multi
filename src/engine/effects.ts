@@ -58,6 +58,28 @@ export function getCardOptions(card: CardDefinition): CardOptionDefinition[] {
 }
 
 /**
+ * Whether a card can contribute Power: any Spell (discardable for "+1 Power")
+ * or any card carrying an ADD_SPELL_POWER effect (Power statistic, Sorcery,
+ * power artifacts). Used by Magi's Power Drain and as the "power-source" card
+ * cost filter for Alamar's Resurrection.
+ */
+export function cardCanBoostPower(card: CardDefinition | undefined): boolean {
+  if (!card) {
+    return false;
+  }
+  if (card.kind === "spell") {
+    return true;
+  }
+  if (card.effect.type === "ADD_SPELL_POWER") {
+    return true;
+  }
+  if (card.effect.type === "CHOOSE_ONE") {
+    return card.effect.options.some((option) => option.effect.type === "ADD_SPELL_POWER");
+  }
+  return false;
+}
+
+/**
  * Resolves the concrete effect a play applies: for "OR" cards this is the
  * chosen option's effect, otherwise the card's printed effect.
  */
@@ -149,7 +171,11 @@ export function describePermanentEffect(card: CardDefinition): string {
   if (permanent.combatEffect) {
     for (const modifier of permanent.combatEffect.modifiers) {
       if (modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND") {
-        parts.push(`heal ${modifier.amount} from one of your units once per combat round`);
+        const expert =
+          modifier.expertUsesPerRound && modifier.expertUsesPerRound > 1
+            ? `; expert: spend 1 expert use to heal ${modifier.expertUsesPerRound} times instead`
+            : "";
+        parts.push(`heal ${modifier.amount} from one of your units once per combat round${expert}`);
       }
       if (modifier.type === "RANGED_IGNORE_ALL_PENALTIES") {
         parts.push("your ranged units ignore the ranged-attack penalties");
@@ -160,7 +186,11 @@ export function describePermanentEffect(card: CardDefinition): string {
     parts.push(`your ranged units get +${permanent.rangedInitiativeBonus} initiative`);
   }
   if (permanent.roundStart?.kind === "damage-lowest-initiative") {
-    parts.push(`each combat round: ${permanent.roundStart.amount} damage to the slowest enemy unit`);
+    const expert =
+      permanent.roundStart.expertShots && permanent.roundStart.expertShots > 1
+        ? `; expert: spend 1 expert use to fire ${permanent.roundStart.expertShots} times`
+        : "";
+    parts.push(`each combat round: ${permanent.roundStart.amount} damage to the slowest enemy unit${expert}`);
   }
   if (permanent.roundStart?.kind === "pay-to-splash") {
     parts.push(
@@ -409,10 +439,7 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "CANCEL_LETHAL_ATTACK") {
-    const grades = Object.entries(card.effect.gradeByPower)
-      .map(([power, grade]) => `power ${power}: ${grade}`)
-      .join(", ");
-    return `cancel an attack that would destroy your unit (${grades})`;
+    return `cancel a killing blow on your ${card.effect.grade} unit`;
   }
 
   return card.kind;

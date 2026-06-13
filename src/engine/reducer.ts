@@ -100,7 +100,13 @@ import {
 } from "./active-effects";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
-import { getEffectAmount, getEffectDamageAmount, getEffectiveCardEffect, getSpellDamageAmount } from "./effects";
+import {
+  cardCanBoostPower,
+  getEffectAmount,
+  getEffectDamageAmount,
+  getEffectiveCardEffect,
+  getSpellDamageAmount
+} from "./effects";
 import {
   canUnitAttack,
   canUnitMoveAndAttack,
@@ -303,7 +309,6 @@ function assertBatchReactionLegal(
   let expertUsesNeeded = 0;
   let spellPlays = 0;
   let powerOnlyPlays = 0;
-  let powerSinkPlays = 0;
 
   for (const play of action.plays) {
     const singleAction: GameAction = {
@@ -352,29 +357,22 @@ function assertBatchReactionLegal(
     if (effect.type === "ADD_SPELL_POWER") {
       powerOnlyPlays += 1;
     }
-    // Alamar's Resurrection also consumes Power (it scales like a spell), so a
-    // batch carrying it may pay Power even without a spell instant.
-    if (effect.type === "CANCEL_LETHAL_ATTACK") {
-      powerSinkPlays += 1;
-    }
 
     if ((play.mode ?? "basic") === "expert") {
       expertUsesNeeded += 1;
     }
   }
 
-  // Power "dissipates" when nothing consumes it: inside an attack window, Power
-  // plays must accompany a play that uses Power — a spell instant or Alamar's
-  // Resurrection — in the same declaration.
+  // Power "dissipates" when no spell consumes it: inside an attack window,
+  // Power plays must accompany a spell instant in the same declaration.
   if (
     state.reactionWindow.triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
     powerOnlyPlays > 0 &&
-    spellPlays === 0 &&
-    powerSinkPlays === 0
+    spellPlays === 0
   ) {
     return {
       code: "ACTION_NOT_LEGAL",
-      message: "Power can only be played into an attack together with a Spell card or Resurrection."
+      message: "Power can only be played into an attack together with a Spell card."
     };
   }
 
@@ -579,6 +577,36 @@ function gradeAtPower(
     .sort((left, right) => left - right);
   const matched = thresholds.filter((value) => value <= power).at(-1);
   return matched === undefined ? null : (gradeByPower[matched] ?? null);
+}
+
+/**
+ * Alamar's Resurrection vs a damaging spell: whether the hit on the protected
+ * unit should be cancelled — it would reduce the unit (of an in-reach grade)
+ * to 0 HP. Logs the cancel when it applies. The spell's other hits still land.
+ */
+function spellHitCancelledByResurrection(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  target: CombatUnitState,
+  incomingDamage: number
+): boolean {
+  const cancel = stackItem.modifiers.cancelLethal;
+  if (
+    !cancel ||
+    cancel.unitId !== target.id ||
+    incomingDamage <= 0 ||
+    target.damage + incomingDamage < target.maxHealth ||
+    gradeRank(target.grade) > gradeRank(cancel.grade)
+  ) {
+    return false;
+  }
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: target.id,
+    abilityId: "resurrection",
+    message: `Resurrection cancels the spell that would have destroyed ${target.cardName}.`
+  });
+  return true;
 }
 
 function getAmountByPower(amountByPower: Record<number, number> | undefined, fallback: number, power: number): number {
@@ -846,10 +874,10 @@ function applyAttackDamageFromCandidate(
   dieMultiplier = 1,
   baseAttackOverride?: number,
   damageReduction = 0,
-  lethalCancel?: { gradeByPower: Record<number, UnitGrade>; power: number }
-): { damage: number; roll: number } {
+  lethalCancel?: { grade: UnitGrade }
+): { damage: number; roll: number; cancelled: boolean } {
   if (!state.combat) {
-    return { damage: 0, roll: 0 };
+    return { damage: 0, roll: 0, cancelled: false };
   }
 
   const { attackValue, defenseValue, damage } = getAttackDamagePreview(
@@ -864,34 +892,36 @@ function applyAttackDamageFromCandidate(
   );
 
   // Alamar's Resurrection: if this blow would reduce the defender to 0 HP and
-  // the Power paid into the attack window reaches the unit's grade, the attack
-  // is cancelled — no damage lands, and the unit is not destroyed.
-  if (lethalCancel && damage > 0 && defender.damage + damage >= defender.maxHealth) {
-    const maxGrade = gradeAtPower(lethalCancel.gradeByPower, lethalCancel.power);
-    if (maxGrade && gradeRank(defender.grade) <= gradeRank(maxGrade)) {
-      appendEvent(state, {
-        type: "ATTACK_ROLLED",
-        attackerId: attacker.id,
-        defenderId: defender.id,
-        rolls: candidate.rolls,
-        roll: candidate.roll,
-        ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
-        rollMode,
-        attackBonus,
-        defenseBonus,
-        attackValue,
-        defenseValue,
-        damage: 0,
-        isRetaliation
-      });
-      appendEvent(state, {
-        type: "UNIT_ABILITY_TRIGGERED",
-        unitId: defender.id,
-        abilityId: "resurrection",
-        message: `Resurrection cancels the attack that would have destroyed ${defender.cardName}.`
-      });
-      return { damage: 0, roll: candidate.roll };
-    }
+  // its grade is within reach, the whole attack is cancelled — no damage, and
+  // (handled by the caller) no Retaliation Attack either.
+  if (
+    lethalCancel &&
+    damage > 0 &&
+    defender.damage + damage >= defender.maxHealth &&
+    gradeRank(defender.grade) <= gradeRank(lethalCancel.grade)
+  ) {
+    appendEvent(state, {
+      type: "ATTACK_ROLLED",
+      attackerId: attacker.id,
+      defenderId: defender.id,
+      rolls: candidate.rolls,
+      roll: candidate.roll,
+      ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
+      rollMode,
+      attackBonus,
+      defenseBonus,
+      attackValue,
+      defenseValue,
+      damage: 0,
+      isRetaliation
+    });
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: defender.id,
+      abilityId: "resurrection",
+      message: `Resurrection cancels the attack that would have destroyed ${defender.cardName}.`
+    });
+    return { damage: 0, roll: candidate.roll, cancelled: true };
   }
 
   // Damage is not capped at the pack's health: the rulebook carries any
@@ -930,7 +960,7 @@ function applyAttackDamageFromCandidate(
 
   noteUnitDamagedForTokens(state, defender, damage);
   markUnitRemovedIfNeeded(state, defender);
-  return { damage, roll: candidate.roll };
+  return { damage, roll: candidate.roll, cancelled: false };
 }
 
 function applyPostAttackAbilityDamage(
@@ -1497,9 +1527,7 @@ function finishResolvedAttack(
 
   const cancelLethal = stackItem.modifiers.cancelLethal;
   const lethalCancel =
-    cancelLethal && cancelLethal.unitId === details.defender.id
-      ? { gradeByPower: cancelLethal.gradeByPower, power: stackItem.modifiers.spellPowerBonus }
-      : undefined;
+    cancelLethal && cancelLethal.unitId === details.defender.id ? { grade: cancelLethal.grade } : undefined;
   const attackResult = applyAttackDamageFromCandidate(
     state,
     details.attacker,
@@ -1514,6 +1542,29 @@ function finishResolvedAttack(
     details.damageReduction,
     lethalCancel
   );
+
+  // Alamar's Resurrection cancelled the whole attack: the attacker still spent
+  // its strike, but no damage, no on-attack abilities, and no Retaliation
+  // Attack follow. Conclude the activation straight away.
+  if (attackResult.cancelled) {
+    if (details.isRetaliation) {
+      details.attacker.retaliatedThisRound = true;
+    } else {
+      details.attacker.attackedThisActivation = true;
+      details.attacker.attacksThisActivation = (details.attacker.attacksThisActivation ?? 0) + 1;
+    }
+    stackItem.status = "resolved";
+    state.stack.pop();
+    if (finishCombatIfNeeded(state)) {
+      return;
+    }
+    if (details.isRetaliation && state.combat?.attackSequence?.attackerId === details.defender.id) {
+      state.combat.attackSequence = null;
+    }
+    concludeAttackerActivation(state, details.isRetaliation ? details.defender : details.attacker);
+    return;
+  }
+
   applyOnAttackTokens(state, details.attacker, details.defender, details.isRetaliation);
   applyPostAttackAbilityDamage(
     state,
@@ -2233,23 +2284,6 @@ function applyRetaliationParalysis(
  * Power-granting Artifacts, and the elemental-Magic Abilities/permanents),
  * including one tucked inside a choose-one option.
  */
-function cardCanBoostPower(cardId: CardId, cards: CardLibrary): boolean {
-  const card = cards[cardId];
-  if (!card) {
-    return false;
-  }
-  if (card.kind === "spell") {
-    return true;
-  }
-  if (card.effect.type === "ADD_SPELL_POWER") {
-    return true;
-  }
-  if (card.effect.type === "CHOOSE_ONE") {
-    return card.effect.options.some((option) => option.effect.type === "ADD_SPELL_POWER");
-  }
-  return false;
-}
-
 /** Discards one named card from a player's hand to their discard pile. */
 function discardNamedCardFromHand(state: GameState, playerId: PlayerId, cardId: CardId): boolean {
   const player = state.players[playerId];
@@ -2304,7 +2338,7 @@ function openMagiDiscardChoice(
     return false;
   }
 
-  const powerCardIds = chooser.hand.filter((cardId) => cardCanBoostPower(cardId, cards));
+  const powerCardIds = chooser.hand.filter((cardId) => cardCanBoostPower(cards[cardId]));
 
   // No Power card to spare: the random discard is forced, no decision to make.
   if (powerCardIds.length === 0) {
@@ -3110,20 +3144,22 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       if (target) {
         const power = getCurrentSpellPower(stackItem, cards);
         const amount = getSpellDamageAmount(card, power);
-        target.damage += amount;
-        noteUnitDamagedForTokens(state, target, amount);
-        appendEvent(state, {
-          type: "DAMAGE_ASSIGNED",
-          source: {
-            type: "card",
-            cardId: card.id,
-            controllerId: stackItem.action.playerId
-          },
-          target: stackItem.action.target,
-          amount,
-          damageKind: card.effect.damageKind
-        });
-        markUnitRemovedIfNeeded(state, target);
+        if (!spellHitCancelledByResurrection(state, stackItem, target, amount)) {
+          target.damage += amount;
+          noteUnitDamagedForTokens(state, target, amount);
+          appendEvent(state, {
+            type: "DAMAGE_ASSIGNED",
+            source: {
+              type: "card",
+              cardId: card.id,
+              controllerId: stackItem.action.playerId
+            },
+            target: stackItem.action.target,
+            amount,
+            damageKind: card.effect.damageKind
+          });
+          markUnitRemovedIfNeeded(state, target);
+        }
       }
     }
 
@@ -3293,7 +3329,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const target = state.combat.units[stackItem.action.target.unitId];
       const power = getCurrentSpellPower(stackItem, cards);
       const amount = getAmountByPower(card.effect.amountByPower, 1, power);
-      if (target) {
+      if (target && !spellHitCancelledByResurrection(state, stackItem, target, amount)) {
         target.damage += amount;
         noteUnitDamagedForTokens(state, target, amount);
         appendEvent(state, {
@@ -3631,6 +3667,9 @@ function payOptionCardCost(
     if (cost.costCardFilter === "spell" && cards[cardId]?.kind !== "spell") {
       throw new Error(`${cardName} can only be paid with Spell cards.`);
     }
+    if (cost.costCardFilter === "power-source" && !cardCanBoostPower(cards[cardId])) {
+      throw new Error(`${cardName} can only be paid with Power statistics or Spell cards.`);
+    }
     const left = handCounts.get(cardId) ?? 0;
     if (left <= 0) {
       throw new Error("Cost cards must come from your hand.");
@@ -3960,19 +3999,20 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
-  // Alamar's Resurrection: arm the pending attack so it is cancelled at
-  // resolution if it would destroy the defending unit (and the Power paid into
-  // this window reaches the unit's grade threshold). Power cards played in the
-  // same batch feed stackItem.modifiers.spellPowerBonus, read at resolution.
-  if (
-    effect.type === "CANCEL_LETHAL_ATTACK" &&
-    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
-  ) {
-    stackItem.modifiers.cancelLethal = {
-      unitId: stackItem.action.defenderId,
-      gradeByPower: effect.gradeByPower
-    };
-    stackItem.modifiers.playedCardIds.push(play.cardId);
+  // Alamar's Resurrection: arm the pending attack or damaging spell so it is
+  // cancelled at resolution if it would destroy the protected unit (the
+  // attack's defender or the spell's target). The discard cost was paid above.
+  if (effect.type === "CANCEL_LETHAL_ATTACK" && stackItem) {
+    const protectedUnitId =
+      stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
+        ? stackItem.action.defenderId
+        : stackItem.action.type === "CAST_SPELL" && stackItem.action.target.type === "unit"
+          ? stackItem.action.target.unitId
+          : null;
+    if (protectedUnitId) {
+      stackItem.modifiers.cancelLethal = { unitId: protectedUnitId, grade: effect.grade };
+      stackItem.modifiers.playedCardIds.push(play.cardId);
+    }
   }
 
   return { windowEnded: false };
@@ -4694,23 +4734,45 @@ function applyActiveEffectAction(
     throw new Error("That active effect cannot be used now.");
   }
 
-  if (effect.usedCombatRoundNumbers.includes(combat.round)) {
-    throw new Error("That active effect has already been used this combat round.");
-  }
-
   const healModifier = effect.modifiers.find((modifier) => modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND");
   const target = combat.units[action.target.unitId];
-  if (!healModifier || !target || target.controllerId !== action.playerId || !isUnitAlive(target) || target.damage <= 0) {
+  if (
+    !healModifier ||
+    healModifier.type !== "HEAL_ONCE_PER_COMBAT_ROUND" ||
+    !target ||
+    target.controllerId !== action.playerId ||
+    !isUnitAlive(target) ||
+    target.damage <= 0
+  ) {
     throw new Error("That active effect target is not legal.");
   }
 
-  healUnitDamage(
-    state,
-    effect.source,
-    action.target,
-    healModifier.amount
-  );
-  effect.usedCombatRoundNumbers.push(combat.round);
+  // First Aid Tent: a single basic heal per round, OR an expert activation
+  // (spend 1 expert use) that heals several times this round. Basic and expert
+  // are mutually exclusive within a round.
+  const player = state.players[action.playerId];
+  const expertMax = healModifier.expertUsesPerRound ?? 0;
+  const usage = effect.healRound?.round === combat.round ? effect.healRound : undefined;
+  const mode = action.mode ?? "basic";
+
+  if (mode === "expert") {
+    if (usage || expertMax <= 1) {
+      throw new Error("The First Aid Tent expert cannot be used this combat round.");
+    }
+    if (!player || !hasExpertUseAvailable(state, action.playerId)) {
+      throw new Error("No expert uses are available this combat round.");
+    }
+    player.combatStats.expertUsesSpentThisRound += 1;
+    effect.healRound = { round: combat.round, count: 1, expert: true };
+  } else if (!usage) {
+    effect.healRound = { round: combat.round, count: 1, expert: false };
+  } else if (usage.expert && usage.count < expertMax) {
+    usage.count += 1;
+  } else {
+    throw new Error("That active effect has already been used this combat round.");
+  }
+
+  healUnitDamage(state, effect.source, action.target, healModifier.amount);
 
   appendEvent(state, {
     type: "ACTIVE_EFFECT_USED",
@@ -4906,8 +4968,9 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
     if (!summoned) {
       throw new Error("Those Demons cannot be summoned.");
     }
-    // Treated as already activated this round; it acts from the next round.
-    summoned.activatedThisRound = true;
+    // The summoned Demons join the round immediately — they may still act this
+    // round when their initiative comes up.
+    summoned.activatedThisRound = false;
     combat.units[summoned.id] = summoned;
 
     appendEvent(state, {

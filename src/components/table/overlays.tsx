@@ -18,7 +18,7 @@ import {
   type PlayerVisibleState,
   type ReactionPlay
 } from "@/engine";
-import { cardName, formatDieFace, formatEvent, unitName } from "./utils";
+import { cardName, costCardEligible, formatDieFace, formatEvent, unitName } from "./utils";
 import { CardBack, CardFrame } from "./seats";
 import { ArtifactIcon, DieFaceIcon, DoubleDieIcon, ExperienceIcon } from "./dice-icons";
 import { useCardZoom, ZoomButton } from "./zoom";
@@ -34,7 +34,7 @@ type TrayGroup = {
   /** "Discard {card}: +1 Power" alternative play of a Spell card. */
   asPowerBoost?: boolean;
   /** Cards from hand this option demands as payment. */
-  costCards?: { exact?: number; upTo?: number; filter?: "spell" };
+  costCards?: { exact?: number; upTo?: number; filter?: "spell" | "power-source" };
 };
 
 type TraySelection = {
@@ -43,7 +43,7 @@ type TraySelection = {
   optionIndex?: number;
   mode: CardPlayMode;
   asPowerBoost?: boolean;
-  costCards?: { exact?: number; upTo?: number; filter?: "spell" };
+  costCards?: { exact?: number; upTo?: number; filter?: "spell" | "power-source" };
   /** Hand indexes chosen to pay the option's discard cost. */
   costHandIndexes: number[];
 };
@@ -431,8 +431,8 @@ export function ReactionTray({
                               const inThisPayment = Boolean(selection?.costHandIndexes.includes(payIndex));
                               const takenElsewhere = !inThisPayment && committedIndexes.has(payIndex);
                               const wrongKind =
-                                selection?.costCards?.filter === "spell" &&
-                                cardLibrary[payCardId]?.kind !== "spell";
+                                selection?.costCards?.filter !== undefined &&
+                                !costCardEligible(payCardId, selection.costCards.filter);
                               if (takenElsewhere || wrongKind) {
                                 return null;
                               }
