@@ -815,6 +815,16 @@ export type GameAction =
     }
   | {
       /**
+       * Rogues (army map ability): once during your turn, look at the top card
+       * of any deck. Reveals the deck's top card, then a Keep-on-top /
+       * Move-to-bottom choice opens.
+       */
+      type: "ROGUES_SCOUT_DECK";
+      playerId: PlayerId;
+      deckId: DeckId;
+    }
+  | {
+      /**
        * Blacksmith (Castle): once per turn — pay 6 gold to Search (2) the
        * Artifact deck, or remove an Artifact card from hand for 4 gold.
        */
@@ -1775,6 +1785,10 @@ export type PlayerState = {
   canMulligan?: boolean;
   /** Second negative morale token: the hand is discarded when the turn ends. */
   discardHandAtTurnEnd?: boolean;
+  /** Nomads (army map ability): the end-of-turn adjacent step was offered this turn. */
+  nomadStepDoneThisTurn?: boolean;
+  /** Rogues (army map ability): the once-per-turn deck peek was used this turn. */
+  rogueScoutUsedThisTurn?: boolean;
   limits: {
     hand: number;
     expertUses: number;
@@ -2522,11 +2536,14 @@ export type PendingChoice =
         | "garrison"
         | "siege-gate"
         | "siege-demolish"
+        | "rogues-scout"
         | "cover-of-darkness";
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */
       ownDeckPick?: { cardIds: CardId[] };
+      /** rogues-scout: the deck being peeked and its revealed top card. */
+      rogueScout?: { deckId: DeckId; cardId: CardId };
       /** siege-demolish: intact fortification positions and removals left. */
       siegeDemolish?: { positions: number[]; remaining: number };
       /** discard-pick: the candidate cards (index-aligned with options). */

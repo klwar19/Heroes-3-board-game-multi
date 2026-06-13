@@ -1837,13 +1837,20 @@ export function FarTileTray({
 export function AdventureDecksPanel({
   view,
   viewerPlayerId,
-  onShowPile
+  onShowPile,
+  onAction,
+  scoutableDeckIds
 }: {
   view: PlayerVisibleState;
   viewerPlayerId: PlayerId;
   onShowPile: (title: string, cardIds: string[], kind: "cards" | "units" | "astrologers") => void;
+  onAction?: (action: GameAction) => void;
+  /** Deck ids the active player's Rogues may scout this turn. */
+  scoutableDeckIds?: Set<string>;
 }) {
   const player = view.players[viewerPlayerId];
+  const scout = (deckId: string) =>
+    onAction?.({ type: "ROGUES_SCOUT_DECK", playerId: viewerPlayerId, deckId });
 
   // Legacy: Spells / Abilities / Artifacts. BINH: Basic + Expert Spells and
   // the Minor/Major/Relic artifact decks — whatever this game actually has.
@@ -1909,6 +1916,16 @@ export function AdventureDecksPanel({
               <span>{deckState.discardPile.length}</span>
               <small>Discard</small>
             </button>
+            {scoutableDeckIds?.has(deck.id) ? (
+              <button
+                className="advScout"
+                onClick={() => scout(deck.id)}
+                title="Rogues: look at the top card of this deck"
+                type="button"
+              >
+                🔎<small>Scout</small>
+              </button>
+            ) : null}
           </div>
         );
       })}
@@ -1930,22 +1947,35 @@ export function AdventureDecksPanel({
       ) : null}
       <div className="advDeckRow neutral">
         {(["bronze", "silver", "gold", "azure"] as const).map((tier) => {
-          const deckState = view.decks[NEUTRAL_DECK_IDS[tier]];
+          const deckId = NEUTRAL_DECK_IDS[tier];
+          const deckState = view.decks[deckId];
           if (!deckState) {
             return null;
           }
+          const canScout = scoutableDeckIds?.has(deckId);
           return (
-            <button
-              className={`neutralDeck ${tier}`}
-              key={tier}
-              onClick={() => onShowPile(`Neutral ${tier} — discard pile`, deckState.discardPile, "units")}
-              style={{ backgroundImage: `url(${CARD_BACK_IMAGES.neutral})` }}
-              title={`Neutral ${tier} deck: ${deckState.drawCount} cards, ${deckState.discardPile.length} discarded`}
-              type="button"
-            >
-              <span>{deckState.drawCount}</span>
-              <small>{tier}</small>
-            </button>
+            <div className="neutralDeckCell" key={tier}>
+              <button
+                className={`neutralDeck ${tier}`}
+                onClick={() => onShowPile(`Neutral ${tier} — discard pile`, deckState.discardPile, "units")}
+                style={{ backgroundImage: `url(${CARD_BACK_IMAGES.neutral})` }}
+                title={`Neutral ${tier} deck: ${deckState.drawCount} cards, ${deckState.discardPile.length} discarded`}
+                type="button"
+              >
+                <span>{deckState.drawCount}</span>
+                <small>{tier}</small>
+              </button>
+              {canScout ? (
+                <button
+                  className="advScout"
+                  onClick={() => scout(deckId)}
+                  title={`Rogues: look at the top card of the neutral ${tier} deck`}
+                  type="button"
+                >
+                  🔎
+                </button>
+              ) : null}
+            </div>
           );
         })}
       </div>

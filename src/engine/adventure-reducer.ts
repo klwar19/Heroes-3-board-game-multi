@@ -5,6 +5,7 @@ import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
   addArmyUnit,
+  armyHasMapEffect,
   beginFieldVisit,
   canCrossEdge,
   canPlaceTileAt,
@@ -47,6 +48,7 @@ import { ATTACK_DIE_FACES } from "./battlefield";
 import { createSeededRandom } from "./random";
 import { destroyFortification, intactFortificationPositions, makeArrowTowerUnit, SIEGE_ROW_POSITIONS } from "./siege";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
+import { getCombatStartDraws } from "./unit-abilities";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { applyPermanentCombatEffects, resolveWarMachineOption, startWarMachineRound } from "./permanents";
 import {
@@ -1496,6 +1498,7 @@ function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void {
 
   // In-play permanents join the fight and round-start war machines fire.
   applyPermanentCombatEffects(state);
+  applyCombatStartUnitAbilities(state);
   startWarMachineRound(state);
 }
 
@@ -1831,7 +1834,34 @@ function beginPlayerCombatRounds(state: GameState): void {
 
   // In-play permanents join the fight and round-start war machines fire.
   applyPermanentCombatEffects(state);
+  applyCombatStartUnitAbilities(state);
   startWarMachineRound(state);
+}
+
+/**
+ * "When combat begins" unit abilities (Archangels Few: draw 1 card). Each
+ * qualifying unit on the board makes its controller draw from their own deck
+ * once the first combat round opens.
+ */
+function applyCombatStartUnitAbilities(state: GameState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  for (const unit of Object.values(combat.units)) {
+    for (const draw of getCombatStartDraws(unit)) {
+      const drawn = drawCardsForPlayer(state, unit.controllerId, draw.amount);
+      if (drawn > 0) {
+        appendEvent(state, {
+          type: "UNIT_ABILITY_TRIGGERED",
+          unitId: unit.id,
+          abilityId: draw.abilityId,
+          message: `${unit.name}: ${draw.abilityName} — draw ${drawn} card${drawn === 1 ? "" : "s"}.`
+        });
+      }
+    }
+  }
 }
 
 /** Siege setup: the defender chooses which middle-row column holds the Gate. */
@@ -2727,6 +2757,53 @@ export function spendMorale(state: GameState, action: Extract<GameAction, { type
   drawCardsForPlayer(state, action.playerId, 1);
 }
 
+/**
+ * Rogues (army map ability): "Once during your turn, look at the top card from
+ * any deck, then put it back on the top or on the bottom of that deck." Reveals
+ * the chosen shared deck's top card to the player and opens the keep/bottom
+ * choice. Marks the per-turn use even if no card was revealed (empty deck).
+ */
+export function roguesScoutDeck(state: GameState, action: Extract<GameAction, { type: "ROGUES_SCOUT_DECK" }>): void {
+  assertActiveTurn(state, action.playerId);
+  assertNoPendingInput(state);
+
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+  if (!armyHasMapEffect(state, action.playerId, "MAP_TURN_DECK_PEEK")) {
+    throw new Error("No Rogues in your army to scout with.");
+  }
+  if (player.rogueScoutUsedThisTurn) {
+    throw new Error("The Rogues already scouted a deck this turn.");
+  }
+
+  const deck = state.decks[action.deckId];
+  if (!deck) {
+    throw new Error("That deck cannot be scouted.");
+  }
+  const topCardId = deck.drawPile[deck.drawPile.length - 1];
+  if (!topCardId) {
+    throw new Error("That deck has no cards to look at.");
+  }
+
+  player.rogueScoutUsedThisTurn = true;
+  player.canMulligan = false;
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: action.playerId,
+    prompt: `Rogues scout ${deckDisplayName(state, action.deckId)}: ${cardLibrary[topCardId]?.name ?? topCardId} is on top.`,
+    options: [{ label: "Keep it on top" }, { label: "Move it to the bottom" }],
+    context: "rogues-scout",
+    rogueScout: { deckId: action.deckId, cardId: topCardId },
+    returnPhase: "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = action.playerId;
+}
+
 export function chooseOption(state: GameState, action: Extract<GameAction, { type: "CHOOSE_OPTION" }>): void {
   const choice = state.pendingChoice;
   if (!choice || choice.type !== "OPTION_CHOICE" || choice.id !== action.choiceId || choice.playerId !== action.playerId) {
@@ -2835,6 +2912,25 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
+  if (choice.context === "rogues-scout") {
+    const scout = choice.rogueScout;
+    const deck = scout ? state.decks[scout.deckId] : undefined;
+    if (!scout || !deck) {
+      throw new Error("There is no scouted deck to resolve.");
+    }
+    // optionIndex 0 keeps the card on top; 1 moves the top card to the bottom.
+    if (action.optionIndex === 1 && deck.drawPile.length > 0) {
+      const top = deck.drawPile.pop();
+      if (top) {
+        deck.drawPile.unshift(top);
+      }
+    }
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    return;
+  }
+
   if (choice.context === "garrison") {
     resolveGarrisonChoice(state, action.playerId, action.optionIndex);
     return;
@@ -2929,30 +3025,18 @@ let cityHallChoiceBeingResolved: {
 // ---------------------------------------------------------------------------
 
 /**
- * Logistics (basic) trigger: when the turn is about to end and the played
- * Logistics effect is active, offer the free step onto an adjacent empty
- * field (fields with black cubes or your own flags count as empty; guarded,
- * occupied and blocked fields do not). Consumes the effect either way.
+ * Adjacent fields a hero may step onto for an "end of turn move" effect:
+ * truly empty fields, used (black-cubed) visitables, and fields this player
+ * has flagged; guarded, occupied and blocked fields do not count.
  */
-function queueLogisticsEndTurnMove(state: GameState, playerId: PlayerId): boolean {
+function getEndTurnMoveDestinations(state: GameState, playerId: PlayerId): MapSpaceId[] {
   const adventure = state.adventure;
-  const effect = state.activeEffects.find(
-    (candidate) =>
-      candidate.controllerId === playerId &&
-      candidate.modifiers.some((modifier) => modifier.type === "END_TURN_ADJACENT_MOVE")
-  );
-  if (!adventure || !effect) {
-    return false;
-  }
-
-  state.activeEffects = state.activeEffects.filter((candidate) => candidate.id !== effect.id);
-
   const hero = getMainHero(state, playerId);
-  if (!hero?.spaceId) {
-    return false;
+  if (!adventure || !hero?.spaceId) {
+    return [];
   }
 
-  const destinations = getAdjacentSpaceIds(hero.spaceId).filter((spaceId) => {
+  return getAdjacentSpaceIds(hero.spaceId).filter((spaceId) => {
     if (!canCrossEdge(state, hero.spaceId as MapSpaceId, spaceId)) {
       return false;
     }
@@ -2980,7 +3064,17 @@ function queueLogisticsEndTurnMove(state: GameState, playerId: PlayerId): boolea
     }
     return false;
   });
+}
 
+/** Queues the "move to an adjacent empty field, or stay" end-turn choice. */
+function offerEndTurnAdjacentMove(state: GameState, playerId: PlayerId, prompt: string): boolean {
+  const adventure = state.adventure;
+  const hero = getMainHero(state, playerId);
+  if (!adventure || !hero) {
+    return false;
+  }
+
+  const destinations = getEndTurnMoveDestinations(state, playerId);
   if (destinations.length === 0) {
     return false;
   }
@@ -2991,7 +3085,7 @@ function queueLogisticsEndTurnMove(state: GameState, playerId: PlayerId): boolea
     steps: [
       {
         type: "CHOOSE_ONE",
-        prompt: "Logistics: move your hero to an adjacent empty field?",
+        prompt,
         options: [
           ...destinations.map((spaceId) => ({
             label: `Move to ${spaceId}`,
@@ -3006,13 +3100,56 @@ function queueLogisticsEndTurnMove(state: GameState, playerId: PlayerId): boolea
   return true;
 }
 
+/**
+ * Logistics (basic) trigger: when the turn is about to end and the played
+ * Logistics effect is active, offer the free step onto an adjacent empty
+ * field. Consumes the effect either way.
+ */
+function queueLogisticsEndTurnMove(state: GameState, playerId: PlayerId): boolean {
+  const effect = state.activeEffects.find(
+    (candidate) =>
+      candidate.controllerId === playerId &&
+      candidate.modifiers.some((modifier) => modifier.type === "END_TURN_ADJACENT_MOVE")
+  );
+  if (!state.adventure || !effect) {
+    return false;
+  }
+
+  state.activeEffects = state.activeEffects.filter((candidate) => candidate.id !== effect.id);
+  return offerEndTurnAdjacentMove(state, playerId, "Logistics: move your hero to an adjacent empty field?");
+}
+
+/**
+ * Nomads (army map ability): "At the end of your turn, move your Hero's model
+ * to an adjacent empty field." Offered once per turn (a per-turn flag stops
+ * the End Turn re-send from re-opening it).
+ */
+function queueNomadEndTurnMove(state: GameState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  if (!player || player.nomadStepDoneThisTurn) {
+    return false;
+  }
+  if (!armyHasMapEffect(state, playerId, "MAP_END_TURN_HERO_STEP")) {
+    return false;
+  }
+  if (!offerEndTurnAdjacentMove(state, playerId, "Nomads: move your hero to an adjacent empty field?")) {
+    return false;
+  }
+  player.nomadStepDoneThisTurn = true;
+  return true;
+}
+
 export function endTurnAdventure(state: GameState, action: Extract<GameAction, { type: "END_TURN" }>): void {
   assertActiveTurn(state, action.playerId);
   assertNoPendingInput(state);
 
-  // Logistics (basic): "At the end of your turn, move your Hero's model to an
-  // adjacent empty field." The choice opens once, then the turn really ends.
+  // Logistics (basic) and Nomads (army map ability): "At the end of your turn,
+  // move your Hero's model to an adjacent empty field." Each opens its own
+  // choice once; the turn really ends on a later End Turn with none pending.
   if (queueLogisticsEndTurnMove(state, action.playerId)) {
+    return;
+  }
+  if (queueNomadEndTurnMove(state, action.playerId)) {
     return;
   }
 

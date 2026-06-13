@@ -36,6 +36,7 @@ import {
   resolveVisitStep,
   retreatFromCombat,
   revisitField,
+  roguesScoutDeck,
   setTileRotation,
   spellBookAction,
   spendMorale,
@@ -105,20 +106,26 @@ import {
   rerollSourceAvailableFor
 } from "./legal-actions";
 import {
+  getActivationAbilities,
   getAfterRetaliationAttackAbility,
   getAttackDefenseReductionAbility,
   getAttackDieDamageFollowUps,
+  getAttackDieResultBonus,
+  getDefenseBonusWhenRetaliated,
   getDoubleAttackAbility,
   getEnemyDiscardAbility,
   getFlatDamageFollowUps,
   getLineAttackAbility,
   getParalysisFollowUps,
   getPostAttackAbilityDamageEffects,
+  getRetaliationAgainstAttackPenalty,
+  getRetaliationParalysis,
   getSecondAttackAbility,
   getSecondAttackCandidates,
   getSelfAdjacentSecondAttackAbility,
   getUnitAbilityDefinitions,
   getUnitAttackRerollSources,
+  hasRetaliationAgainstDisadvantage,
   hasUnitAbilityEffect
 } from "./unit-abilities";
 import type {
@@ -1001,14 +1008,25 @@ function getAttackStackDetails(
         }
       : undefined;
 
+  // Ghost Dragons (Pack): "Add +1 to your Attack die result" on every attack
+  // and Retaliation Attack this unit makes.
+  const attackDieResultBonus = getAttackDieResultBonus(attacker);
+
+  // Retaliation-only modifiers keyed off the retaliation's defender — i.e. the
+  // original attacker being struck back: Dread Knights gain Defense, Dragon
+  // Flies sap the retaliator's Attack.
+  const retaliationDefenseBonus = isRetaliation ? getDefenseBonusWhenRetaliated(defender) : 0;
+  const retaliationAttackPenalty = isRetaliation ? getRetaliationAgainstAttackPenalty(defender) : 0;
+
   return {
     attacker,
     defender,
     isRetaliation,
     attackKind,
     rollMode,
-    attackBonus: stackItem.modifiers.attackBonus + activeAttackBonus + tokenAttack,
-    defenseBonus: defenseBonusBeforeAbility - defenseReductionAmount,
+    attackBonus:
+      stackItem.modifiers.attackBonus + activeAttackBonus + tokenAttack + attackDieResultBonus - retaliationAttackPenalty,
+    defenseBonus: defenseBonusBeforeAbility - defenseReductionAmount + retaliationDefenseBonus,
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
     ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie),
     damageReduction: siegeRangedDamageReduction(combat, attacker, defender, attackKind),
@@ -1300,6 +1318,8 @@ function finishResolvedAttack(
 
   if (details.isRetaliation) {
     details.attacker.retaliatedThisRound = true;
+    // Medusas: paralysis inflicted by this unit's own Retaliation Attack.
+    applyRetaliationParalysis(state, details.attacker, details.defender);
   } else {
     details.attacker.attackedThisActivation = true;
     details.attacker.attacksThisActivation = (details.attacker.attacksThisActivation ?? 0) + 1;
@@ -1954,6 +1974,50 @@ function applyParalysisFollowUps(
 }
 
 /**
+ * Medusas: after this unit's own Retaliation Attack, the unit it struck back
+ * gains Paralysis. The Pack/Neutral cards paralyse automatically; the Few card
+ * first rolls one Attack die and only paralyses on its `onRoll` face. The
+ * token only lands on a target still alive after the retaliation.
+ */
+function applyRetaliationParalysis(
+  state: GameState,
+  retaliator: CombatUnitState,
+  target: CombatUnitState
+): void {
+  const combat = state.combat;
+  if (!combat || !isUnitAlive(target)) {
+    return;
+  }
+  const ability = getRetaliationParalysis(retaliator);
+  if (!ability) {
+    return;
+  }
+
+  if (ability.onRoll !== undefined) {
+    const candidate = rollAttackCandidate(combat, "normal");
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: retaliator.id,
+      abilityId: ability.abilityId,
+      targetUnitId: target.id,
+      message: `${retaliator.name} rolls ${candidate.roll} for ${ability.abilityName}.`
+    });
+    if (candidate.roll !== ability.onRoll) {
+      return;
+    }
+  }
+
+  placeCombatToken(state, target, "paralysis", 0, ability.abilityName);
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: retaliator.id,
+    abilityId: ability.abilityId,
+    targetUnitId: target.id,
+    message: `${retaliator.name} paralyses ${target.cardName} with ${ability.abilityName}.`
+  });
+}
+
+/**
  * A card "can boost Power" for the Magi Power Drain — i.e. it shows the
  * [power] symbol. That is any Spell (each may be discarded for "+1 Power") or
  * any card carrying an ADD_SPELL_POWER effect (the Power statistic, the
@@ -2268,6 +2332,73 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
     unitId: activeUnit.id,
     playerId: activeUnit.controllerId
   });
+
+  // Auto-resolving "[activation]" abilities fire as the unit's turn opens:
+  // Wraith/Troll regeneration, Ghost Dragon morale drain and the Wraith-pack
+  // enemy hand discard. A paralysed unit (handled above) never reaches here.
+  applyActivationStartAbilities(state, activeUnit);
+}
+
+/**
+ * Applies the auto-resolving "[activation]" abilities of the unit whose turn
+ * just began: self-regeneration, discarding the enemy's positive morale token,
+ * and the random enemy-hand discard. All resolve without player input.
+ */
+function applyActivationStartAbilities(state: GameState, unit: CombatUnitState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  const enemyId =
+    unit.controllerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
+
+  for (const ability of getActivationAbilities(unit)) {
+    if (ability.kind === "heal-self") {
+      if (unit.damage <= 0) {
+        continue;
+      }
+      const healed = Math.min(ability.amount, unit.damage);
+      unit.damage = Math.max(0, unit.damage - ability.amount);
+      appendEvent(state, {
+        type: "DAMAGE_HEALED",
+        source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+        target: { type: "unit", unitId: unit.id },
+        amount: healed
+      });
+      continue;
+    }
+
+    if (ability.kind === "discard-enemy-morale") {
+      const enemy = state.players[enemyId];
+      if (!enemy || enemy.morale <= 0) {
+        continue;
+      }
+      enemy.morale = 0;
+      appendEvent(state, { type: "MORALE_CHANGED", playerId: enemyId, amount: -1, total: 0 });
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unit.id,
+        abilityId: ability.abilityId,
+        message: `${unit.name} discards the enemy's positive morale token.`
+      });
+      continue;
+    }
+
+    if (ability.kind === "discard-enemy-card") {
+      for (let index = 0; index < ability.amount; index += 1) {
+        if (!discardRandomCardFromHand(state, enemyId)) {
+          break;
+        }
+      }
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unit.id,
+        abilityId: ability.abilityId,
+        message: `${unit.name} drains a card from the enemy's hand.`
+      });
+    }
+  }
 }
 
 function advanceActiveUnit(state: GameState): void {
@@ -2406,7 +2537,11 @@ function openRetaliationWindow(
   state.stack.push(stackItem);
 
   const attackKind = getAttackKind(defender, attacker);
-  const rollMode = getAttackRollMode(defender, attacker, state);
+  // Necropolis Dread Knights (Few): the unit being retaliated against forces
+  // the Retaliation Attack to roll 2 dice and resolve the lower result.
+  const rollMode = hasRetaliationAgainstDisadvantage(attacker)
+    ? "disadvantage"
+    : getAttackRollMode(defender, attacker, state);
   const attackDeclared = appendEvent(state, {
     type: "UNIT_ATTACK_DECLARED",
     playerId: defender.controllerId,
@@ -5269,6 +5404,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "RETREAT_FROM_COMBAT",
   "POPULATION_ACTION",
   "SPELL_BOOK_ACTION",
+  "ROGUES_SCOUT_DECK",
   "BLACKSMITH_ACTION",
   "SPEND_MORALE",
   "CHOOSE_OPTION",
@@ -5441,6 +5577,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "SPELL_BOOK_ACTION":
         spellBookAction(nextState, action);
+        break;
+      case "ROGUES_SCOUT_DECK":
+        roguesScoutDeck(nextState, action);
         break;
       case "BLACKSMITH_ACTION":
         blacksmithAction(nextState, action);

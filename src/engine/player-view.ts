@@ -62,6 +62,19 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
     };
   }
 
+  // Rogues' scout: the peeked top card stays private to the scouting player.
+  if (
+    choice.type === "OPTION_CHOICE" &&
+    choice.context === "rogues-scout" &&
+    choice.playerId !== viewerPlayerId
+  ) {
+    return {
+      ...cloneSerializable(choice),
+      prompt: "A Rogue scouts a deck.",
+      rogueScout: choice.rogueScout ? { ...choice.rogueScout, cardId: "hidden" } : undefined
+    };
+  }
+
   return cloneSerializable(choice);
 }
 

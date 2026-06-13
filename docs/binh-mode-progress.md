@@ -34,6 +34,16 @@ Mirror of the build request. ✅ = implemented **and wired** (engine + UI + test
 - [x] Quick Combat interaction: the win still pays the Freelancer's Guild bounty, but grants no XP and never opens the Necromancy window (rulebook p.40 + the card text)
 - [x] Sandro's Cloak of the Undead King (lv I/IV/VI): the specialty card is placed on a matching unit card (map or combat) and its statistics replace the unit's until the card is defeated, when it is discarded and the card under it is revealed with the excess damage. The card rides across combats on the army card. Lv VI Legion may sit on a Few, Pack or even a Horde of Skeletons, stays on top, and the unit beneath it can still be reinforced/upgraded. The Pack of Zombies' printed abilities are inactive while a Horde covers it.
 
+## Unit ability interactions (this round)
+- [x] Retaliation triggers: Medusas paralyse the unit they retaliate against (Pack/Neutral automatically, Few only on a "0" from the post-retaliation Attack die); neutral Dread Knights gain +1 Defense while targeted by a Retaliation Attack; Dragon Flies sap 1 Attack from retaliations against them; Necropolis Dread Knights (Few) force the enemy's retaliation to roll 2 dice and resolve the lower (disadvantage)
+- [x] Activation ("when their turn comes up") triggers: Ghost Dragons discard the enemy's positive morale token (Pack also adds +1 to its Attack die result); Wraiths/Trolls regenerate damage; the Wraith Pack also discards 1 random card from the enemy's hand. (Enchanters' heal-or-buff and Faerie Dragons' damage-spell stay on the card text — they need target choices.)
+- [x] Combat-start trigger: the Few Archangel draws 1 card when combat begins (player and neutral fights); the Pack Archangel intentionally does not — it has the cancel-a-lethal-attack ability instead (still on the card text)
+- [x] Global ("[map_effect]") army abilities: Crystal Dragons gain 2 valuables at each Resource round; Nomads offer an end-of-turn step to an adjacent empty field (once per turn); Rogues scout the top card of any table deck once per turn and keep it on top or move it to the bottom (deck rail "🔎 Scout" button; the peek stays private to the scouting player). (Harpies' "return after retaliation" repositioning stays on the card text.)
+
+## Stability
+- [x] Recoverable error boundary around the table/adventure UI plus a route-level `error.tsx`: a render crash no longer dumps the whole app back to a blank menu and loses progress — the server holds the state, so the board reloads from the latest synced snapshot (auto-clears on the next frame, or a "Reload the table" button)
+- [x] Instant tray now spells out why a confirm is blocked when more Expert plays than crowns are selected (matches the existing Power-needs-a-Spell warning)
+
 ## Map-usable abilities
 - [x] Wisdom (purchase) · Estates · Luck · Logistics (end-turn step + expert +1 MP) · Scouting (next Search 3/5) · Mysticism (recall; expert recalls support cards) · Eagle Eye (dig Basic/Expert spell) · Basic X Magic (school fetch in searches; expert +3 school Power) · Scholar · Leadership · Sorcery · Armorer/Offense map draw
 - [x] Adventure hand play menu (cards with legal plays glow; cost picker for discard prices)

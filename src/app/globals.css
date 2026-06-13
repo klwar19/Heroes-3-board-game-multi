@@ -6273,3 +6273,51 @@ img.cardBack {
   font-size: 22px;
   pointer-events: none;
 }
+
+/* Recoverable crash fallback (TableErrorBoundary / route error.tsx). */
+.errorRecovery {
+  max-width: 30rem;
+  margin: 12vh auto 0;
+  padding: 1.6rem 1.8rem;
+  border: 1px solid rgba(243, 231, 200, 0.25);
+  border-radius: 12px;
+  background: rgba(20, 16, 12, 0.7);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  align-items: center;
+}
+.errorRecovery h2 {
+  margin: 0;
+  color: #f3e7c8;
+}
+.errorRecovery p {
+  margin: 0;
+  color: rgba(243, 231, 200, 0.78);
+  line-height: 1.5;
+}
+
+/* Rogues "scout a deck" button in the adventure deck rail. */
+.advScout {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  font-size: 0.7rem;
+  color: #f3e7c8;
+  background: rgba(70, 50, 110, 0.55);
+  border: 1px solid rgba(190, 160, 240, 0.5);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.advScout:hover {
+  background: rgba(96, 70, 150, 0.75);
+}
+.neutralDeckCell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}

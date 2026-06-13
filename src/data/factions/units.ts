@@ -104,7 +104,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "castle",
     tier: "gold",
     type: "flying",
-    few: { attack: 6, defense: 3, health: 8, initiative: 12, cost: { gold: 20, valuables: 1 }, abilities: [], abilityText: "1 [valuables] [unit_passive] When combat begins, draw 1 card.", cardImage: "/assets/units-castle-golden-archangels-few.webp" },
+    few: { attack: 6, defense: 3, health: 8, initiative: 12, cost: { gold: 20, valuables: 1 }, abilities: ["archangel-combat-start-draw"], abilityText: "1 [valuables] [unit_passive] When combat begins, draw 1 card.", cardImage: "/assets/units-castle-golden-archangels-few.webp" },
     pack: { attack: 7, defense: 3, health: 10, initiative: 18, cost: { gold: 30, valuables: 2 }, abilities: [], abilityText: "2 [valuables] [unit_passive] Once per Combat. Cancel an attack that would reduce another unit's [health_points] to 0.", cardImage: "/assets/units-castle-golden-archangels-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/archangels/",
     source: {
@@ -149,8 +149,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "necropolis",
     tier: "bronze",
     type: "flying",
-    few: { attack: 3, defense: 0, health: 3, initiative: 5, cost: { gold: 4 }, abilities: [], abilityText: "[activation] Remove up to 1 [damage] from this unit.", cardImage: "/assets/units-necropolis-bronze-wraiths-few.webp" },
-    pack: { attack: 3, defense: 0, health: 5, initiative: 7, cost: { gold: 6 }, abilities: [], abilityText: "[activation] Remove up to 1 [damage] from this unit, then discard 1 random card from the enemy's hand.", cardImage: "/assets/units-necropolis-bronze-wraiths-pack.webp" },
+    few: { attack: 3, defense: 0, health: 3, initiative: 5, cost: { gold: 4 }, abilities: ["wraith-heal-1"], abilityText: "[activation] Remove up to 1 [damage] from this unit.", cardImage: "/assets/units-necropolis-bronze-wraiths-few.webp" },
+    pack: { attack: 3, defense: 0, health: 5, initiative: 7, cost: { gold: 6 }, abilities: ["wraith-heal-1", "wraith-enemy-discard"], abilityText: "[activation] Remove up to 1 [damage] from this unit, then discard 1 random card from the enemy's hand.", cardImage: "/assets/units-necropolis-bronze-wraiths-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/wraiths/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -194,7 +194,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "necropolis",
     tier: "gold",
     type: "ground",
-    few: { attack: 5, defense: 2, health: 7, initiative: 7, cost: { gold: 12 }, abilities: [], abilityText: "[unit_attack] When retaliating after this attack, the enemy rolls 2 Attack dice and resolves the lower result.", cardImage: "/assets/units-necropolis-golden-dread_knights-few.webp" },
+    few: { attack: 5, defense: 2, health: 7, initiative: 7, cost: { gold: 12 }, abilities: ["dread-knight-retaliation-disadvantage"], abilityText: "[unit_attack] When retaliating after this attack, the enemy rolls 2 Attack dice and resolves the lower result.", cardImage: "/assets/units-necropolis-golden-dread_knights-few.webp" },
     pack: { attack: 6, defense: 2, health: 7, initiative: 9, cost: { gold: 20, valuables: 1 }, abilities: [], abilityText: "1 [valuables] [unit_attack] If you resolve a \"0\" or a \"+1\" on the Attack die , increase this unit's total attack value by another \"+1\".", cardImage: "/assets/units-necropolis-golden-dread_knights-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/dread_knights/",
     source: {
@@ -209,8 +209,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "necropolis",
     tier: "gold",
     type: "flying",
-    few: { attack: 6, defense: 3, health: 8, initiative: 9, cost: { gold: 19, valuables: 1 }, abilities: [], abilityText: "1 [valuables] [activation] Discard the enemy's [morale_positive] token.", cardImage: "/assets/units-necropolis-golden-ghost_dragons-few.webp" },
-    pack: { attack: 7, defense: 3, health: 9, initiative: 14, cost: { gold: 32, valuables: 2 }, abilities: [], abilityText: "2 [valuables] [activation] Discard the enemy's [morale_positive] token. [unit_attack] Add +1 to your Attack die result.", cardImage: "/assets/units-necropolis-golden-ghost_dragons-pack.webp" },
+    few: { attack: 6, defense: 3, health: 8, initiative: 9, cost: { gold: 19, valuables: 1 }, abilities: ["ghost-dragon-morale-drain"], abilityText: "1 [valuables] [activation] Discard the enemy's [morale_positive] token.", cardImage: "/assets/units-necropolis-golden-ghost_dragons-few.webp" },
+    pack: { attack: 7, defense: 3, health: 9, initiative: 14, cost: { gold: 32, valuables: 2 }, abilities: ["ghost-dragon-morale-drain", "ghost-dragon-attack-die"], abilityText: "2 [valuables] [activation] Discard the enemy's [morale_positive] token. [unit_attack] Add +1 to your Attack die result.", cardImage: "/assets/units-necropolis-golden-ghost_dragons-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/ghost_dragons/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -269,8 +269,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "dungeon",
     tier: "silver",
     type: "ranged",
-    few: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 6 }, abilities: [], abilityText: "[unit_passive] After the Retaliation Attack, roll an Attack die , on a \"0\" the target is [paralysis] .", cardImage: "/assets/units-dungeon-silver-medusas-few.webp" },
-    pack: { attack: 4, defense: 1, health: 4, initiative: 6, cost: { gold: 12 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units. [unit_retaliation] The target gains [paralysis] .", cardImage: "/assets/units-dungeon-silver-medusas-pack.webp" },
+    few: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 6 }, abilities: ["medusa-paralyze-retaliation-die"], abilityText: "[unit_passive] After the Retaliation Attack, roll an Attack die , on a \"0\" the target is [paralysis] .", cardImage: "/assets/units-dungeon-silver-medusas-few.webp" },
+    pack: { attack: 4, defense: 1, health: 4, initiative: 6, cost: { gold: 12 }, abilities: ["ignore-combat-penalties", "medusa-paralyze-retaliation"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units. [unit_retaliation] The target gains [paralysis] .", cardImage: "/assets/units-dungeon-silver-medusas-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/medusas/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -762,7 +762,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ground",
-    neutral: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 5 }, abilities: [], abilityText: "[map_effect] Once during your turn, look at the top card from any deck, then put it back on the top or on the bottom of that deck.", cardImage: "/assets/units-neutral-bronze-rogues.webp" },
+    neutral: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 5 }, abilities: ["rogue-deck-peek"], abilityText: "[map_effect] Once during your turn, look at the top card from any deck, then put it back on the top or on the bottom of that deck.", cardImage: "/assets/units-neutral-bronze-rogues.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/rogues/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -804,7 +804,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "flying",
-    neutral: { attack: 2, defense: 0, health: 4, initiative: 7, cost: { gold: 7 }, abilities: [], abilityText: "[activation] Remove up to 2 [damage] from this unit.", cardImage: "/assets/units-neutral-bronze-wraiths.webp" },
+    neutral: { attack: 2, defense: 0, health: 4, initiative: 7, cost: { gold: 7 }, abilities: ["wraith-heal-2"], abilityText: "[activation] Remove up to 2 [damage] from this unit.", cardImage: "/assets/units-neutral-bronze-wraiths.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/wraiths/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -860,7 +860,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ranged",
-    neutral: { attack: 3, defense: 1, health: 4, initiative: 6, cost: { gold: 11 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units. [unit_retaliation] The target is [paralysis] .", cardImage: "/assets/units-neutral-silver-medusas.webp" },
+    neutral: { attack: 3, defense: 1, health: 4, initiative: 6, cost: { gold: 11 }, abilities: ["ignore-combat-penalties", "medusa-paralyze-retaliation"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units. [unit_retaliation] The target is [paralysis] .", cardImage: "/assets/units-neutral-silver-medusas.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/medusas/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -902,7 +902,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ground",
-    neutral: { attack: 3, defense: 1, health: 4, initiative: 7, cost: { gold: 10 }, abilities: [], abilityText: "[map_effect] At the end of your turn, move your Hero's model to an adjacent empty field.", cardImage: "/assets/units-neutral-silver-nomads.webp" },
+    neutral: { attack: 3, defense: 1, health: 4, initiative: 7, cost: { gold: 10 }, abilities: ["nomad-end-turn-step"], abilityText: "[map_effect] At the end of your turn, move your Hero's model to an adjacent empty field.", cardImage: "/assets/units-neutral-silver-nomads.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/nomads/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1014,7 +1014,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "gold",
     type: "ground",
-    neutral: { attack: 5, defense: 1, health: 7, initiative: 7, cost: { gold: 18 }, abilities: [], abilityText: "[unit_passive] When this unit is targeted by a Retaliation Attack, it gains +1 [defense] .", cardImage: "/assets/units-neutral-golden-dread_knights.webp" },
+    neutral: { attack: 5, defense: 1, health: 7, initiative: 7, cost: { gold: 18 }, abilities: ["dread-knight-retaliation-defense"], abilityText: "[unit_passive] When this unit is targeted by a Retaliation Attack, it gains +1 [defense] .", cardImage: "/assets/units-neutral-golden-dread_knights.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/dread_knights/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1084,7 +1084,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "gold",
     type: "ground",
-    neutral: { attack: 4, defense: 0, health: 7, initiative: 7, cost: { gold: 13 }, abilities: [], abilityText: "[activation] Remove up to 3 [damage] from this unit.", cardImage: "/assets/units-neutral-golden-trolls.webp" },
+    neutral: { attack: 4, defense: 0, health: 7, initiative: 7, cost: { gold: 13 }, abilities: ["troll-heal-3"], abilityText: "[activation] Remove up to 3 [damage] from this unit.", cardImage: "/assets/units-neutral-golden-trolls.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/trolls/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1112,7 +1112,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "azure",
     type: "ground",
-    neutral: { attack: 7, defense: 3, health: 9, initiative: 16, cost: { gold: 40, valuables: 2 }, abilities: [], abilityText: "2 [valuables] [map_effect] At the beginning of each Resource round, gain 2 [valuables] .", cardImage: "/assets/units-neutral-azure-crystal_dragons.webp" },
+    neutral: { attack: 7, defense: 3, health: 9, initiative: 16, cost: { gold: 40, valuables: 2 }, abilities: ["crystal-dragon-valuables"], abilityText: "2 [valuables] [map_effect] At the beginning of each Resource round, gain 2 [valuables] .", cardImage: "/assets/units-neutral-azure-crystal_dragons.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/crystal_dragons/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1426,7 +1426,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "flying",
-    neutral: { attack: 3, defense: 0, health: 3, initiative: 8, cost: { gold: 7 }, abilities: [], abilityText: "[unit_passive] Retaliation Attacks against Dragon Flies suffer -1 [attack]." },
+    neutral: { attack: 3, defense: 0, health: 3, initiative: 8, cost: { gold: 7 }, abilities: ["dragon-fly-retaliation-penalty"], abilityText: "[unit_passive] Retaliation Attacks against Dragon Flies suffer -1 [attack]." },
     wikiUrl: "https://en.homm3bg.wiki/units/dragon_flies/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
