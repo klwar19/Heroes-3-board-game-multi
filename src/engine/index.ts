@@ -42,6 +42,8 @@ export { createSeededRandom } from "./random";
 export {
   RULESET_DESCRIPTIONS,
   RULESET_LABELS,
+  VICTORY_MODE_DESCRIPTIONS,
+  VICTORY_MODE_LABELS,
   applyUnitSideRules,
   artifactDeckAccess,
   canDrawExpertSpells,

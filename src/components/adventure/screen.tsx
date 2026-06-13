@@ -16,6 +16,8 @@ import {
   NEUTRAL_DECK_IDS,
   RULESET_DESCRIPTIONS,
   RULESET_LABELS,
+  VICTORY_MODE_DESCRIPTIONS,
+  VICTORY_MODE_LABELS,
   applyUnitSideRules,
   deckDisplayName,
   describeCardEffect,
@@ -1082,6 +1084,28 @@ export function AdventureHud({
         <strong>{RULESET_LABELS[getRuleset(state)]}</strong>
         <small>game mode</small>
       </div>
+      {(() => {
+        const mode = state.adventure?.victoryMode ?? "conquest";
+        let status = "flag an enemy town";
+        if (mode === "grail") {
+          const grail = state.adventure?.grail;
+          status =
+            grail?.status === "carried" && grail.carrierHeroId
+              ? `Grail carried by ${state.players[state.heroes[grail.carrierHeroId]?.controllerId ?? ""]?.name ?? "a hero"}`
+              : "capture the Grail / a Utopia / all heroes";
+        } else if (mode === "dragon-conqueror") {
+          const holder = Object.values(state.adventure?.fields ?? {}).find(
+            (field) => field.location === "dragon_utopia" && field.flagOwnerId
+          )?.flagOwnerId;
+          status = holder ? `Utopia held by ${state.players[holder]?.name ?? "a rival"}` : "capture the Dragon Utopia";
+        }
+        return (
+          <div className="advHudCell">
+            <strong>{VICTORY_MODE_LABELS[mode]}</strong>
+            <small>{status}</small>
+          </div>
+        );
+      })()}
       {winner ? (
         <div className="advHudCell winner">
           <strong>{state.players[winner]?.name} wins!</strong>
@@ -2461,6 +2485,30 @@ function GameOptionsPanel({
         </div>
         <small className="optionHint">{RULESET_DESCRIPTIONS[options.ruleset]}</small>
       </div>
+
+      {(() => {
+        const victoryMode = options.victoryMode ?? "conquest";
+        return (
+          <div className="optionRow">
+            <small title="How this game is won">Win condition</small>
+            <div className="optionButtons">
+              {(["conquest", "grail", "dragon-conqueror"] as const).map((mode) => (
+                <button
+                  aria-pressed={victoryMode === mode}
+                  className={victoryMode === mode ? "selected" : ""}
+                  key={mode}
+                  onClick={() => send({ victoryMode: mode })}
+                  title={VICTORY_MODE_DESCRIPTIONS[mode]}
+                  type="button"
+                >
+                  {VICTORY_MODE_LABELS[mode]}
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">{VICTORY_MODE_DESCRIPTIONS[victoryMode]}</small>
+          </div>
+        );
+      })()}
 
       {(() => {
         const scenario = scenarioDefinitions[options.scenarioId];

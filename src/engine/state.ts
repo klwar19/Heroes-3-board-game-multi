@@ -34,6 +34,17 @@ export type GameDifficulty = "easy" | "normal" | "hard" | "impossible";
  *    Pack of Cerberi attacking every adjacent enemy with full attacks.
  */
 export type GameRuleset = "legacy" | "binh";
+/**
+ * How the scenario is won:
+ *  - "conquest": flag an enemy faction Town (the classic skirmish goal).
+ *  - "grail": the objective hunt — win by capturing the Grail (dig it, then
+ *    carry it home), defeating the Dragon Utopia, or beating every enemy hero
+ *    in combat at least once (only 2 of them in a 4-player game).
+ *  - "dragon-conqueror": defeat the Dragon Utopia to capture it, then hold it.
+ *    The holder garrisons it; rivals must besiege it (Walls, Gate, Arrow
+ *    Tower) to take it. Controlling the Utopia at the start of your turn wins.
+ */
+export type VictoryMode = "conquest" | "grail" | "dragon-conqueror";
 export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon" | "stronghold";
 
 export type TargetRef = { type: "unit"; unitId: UnitId } | { type: "none" };
@@ -2198,6 +2209,11 @@ export type MapFieldState = {
   everFlagged: boolean;
   /** Resource chosen for a flagged settlement. */
   settlementResource: ResourceKind | null;
+  /**
+   * Grail Hunt: this Grail field's guards have been defeated and the Grail is
+   * waiting to be dug (1 movement point) before it can be carried home.
+   */
+  grailDiggable?: boolean;
 };
 
 export type PendingVisit = {
@@ -2437,6 +2453,25 @@ export type AdventureState = {
   lastVisitedField: Record<HeroId, MapSpaceId>;
   /** Victory: flagging an enemy town wins the scenario (default skirmish). */
   winnerPlayerId: PlayerId | null;
+  /**
+   * How this game is won. Absent on snapshots from before win conditions
+   * existed; treated as "conquest" (flag an enemy town).
+   */
+  victoryMode?: VictoryMode;
+  /**
+   * Grail Hunt: the single Grail Token's progress. Only one token exists in
+   * the game even when several Grail fields are on the map.
+   */
+  grail?: {
+    status: "uncollected" | "carried" | "delivered";
+    /** Hero physically carrying the dug Grail back toward their town. */
+    carrierHeroId?: HeroId;
+  };
+  /**
+   * Grail Hunt: distinct enemy players each player has beaten in hero combat
+   * at least once (the "defeat every enemy hero" win path).
+   */
+  heroDefeats?: Record<PlayerId, PlayerId[]>;
   /** Tile awaiting its rotation choice after a reveal or placement. */
   pendingTileChoice?: PendingTileChoice | null;
   /** Astrologers Proclaim deck state (even rounds). */
@@ -2456,6 +2491,8 @@ export type GameSetupOptions = {
   playerCount?: number;
   /** Rules variant: "legacy" (rulebook) or "binh" (house rules). */
   ruleset: GameRuleset;
+  /** Win condition: "conquest" (flag enemy town) or "grail" (the objective hunt). */
+  victoryMode?: VictoryMode;
   difficulty: GameDifficulty;
   startingResources: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };

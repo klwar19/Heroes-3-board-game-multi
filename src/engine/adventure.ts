@@ -46,6 +46,7 @@ import type {
   TownState,
   UnitId,
   UnitTransformState,
+  VictoryMode,
   VisitStep
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
@@ -437,6 +438,12 @@ export function classifyHeroStep(state: GameState, hero: HeroState, spaceId: Map
 
   if (isFieldGuarded(field) && field.flagOwnerId !== playerId) {
     return "stop";
+  }
+
+  // Dragon Conqueror: a captured Dragon Utopia is a stronghold — its holder
+  // walks on and off freely, everyone else must stop to besiege it.
+  if (field.location === "dragon_utopia" && field.flagOwnerId && adventureVictoryMode(state) === "dragon-conqueror") {
+    return field.flagOwnerId === playerId ? "open" : "stop";
   }
 
   if (!location || location.category === "empty") {
@@ -903,15 +910,193 @@ function applyTownFlag(state: GameState, playerId: PlayerId, field: MapFieldStat
   flagField(state, playerId, field);
   field.everFlagged = true;
 
-  if (state.adventure && previousOwnerId && previousOwnerId !== playerId) {
-    // Default skirmish victory: flagging an enemy faction town wins the game.
-    state.adventure.winnerPlayerId = playerId;
-    state.phase = "game-over";
-    appendEvent(state, {
-      type: "GAME_WON",
+  // Conquest victory: flagging an enemy faction town wins the game. The Grail
+  // Hunt and Dragon Conqueror modes have their own goals, so capturing a town
+  // there only transfers the flag.
+  if (adventureVictoryMode(state) === "conquest" && previousOwnerId && previousOwnerId !== playerId) {
+    declareAdventureWinner(
+      state,
       playerId,
-      reason: `flagged the enemy town of ${state.players[previousOwnerId]?.name ?? previousOwnerId}`
+      `flagged the enemy town of ${state.players[previousOwnerId]?.name ?? previousOwnerId}`
+    );
+  }
+}
+
+/** The active win condition; absent on old snapshots means "conquest". */
+export function adventureVictoryMode(state: GameState): VictoryMode {
+  return state.adventure?.victoryMode ?? "conquest";
+}
+
+/** Ends the game with a winner and the reason shown in the log. */
+export function declareAdventureWinner(state: GameState, playerId: PlayerId, reason: string): void {
+  if (!state.adventure) {
+    return;
+  }
+  state.adventure.winnerPlayerId = playerId;
+  state.phase = "game-over";
+  appendEvent(state, { type: "GAME_WON", playerId, reason });
+}
+
+/** Human seats in turn order (the neutral seat never counts). */
+export function humanPlayerIds(state: GameState): PlayerId[] {
+  return state.turnOrder.filter((id) => id !== NEUTRAL_PLAYER_ID);
+}
+
+/**
+ * Enemy heroes a player must beat to win by conquest of heroes: every enemy
+ * in a 2- or 3-player game, but only 2 of the 3 in a 4-player game.
+ */
+export function requiredHeroDefeats(playerCount: number): number {
+  return playerCount >= 4 ? 2 : Math.max(1, playerCount - 1);
+}
+
+/**
+ * The shared deck searched for a Relic artifact reward. BINH mode keeps a
+ * dedicated Relic deck; Legacy mode only has the single mixed Artifact deck.
+ */
+export function relicArtifactDeckId(state: GameState): "artifacts-relic" | "artifacts" {
+  return state.decks["artifacts-relic"] ? "artifacts-relic" : "artifacts";
+}
+
+/**
+ * Creature-bank consolation (a Grail or Dragon Utopia that is not this game's
+ * objective): "gain 10 gold and Search (2) the Relic Artifact deck."
+ */
+function giveCreatureBankConsolation(state: GameState, playerId: PlayerId, fieldName: string): void {
+  gainResources(state, playerId, { gold: 10 }, `cleared the ${fieldName}`);
+  state.adventure?.rewardQueue.push({
+    playerId,
+    kind: "shared-deck-search",
+    deckId: relicArtifactDeckId(state),
+    count: 2
+  });
+}
+
+/**
+ * Grail field visit. In Grail Hunt the first visit (after the guards fall)
+ * arms the dig; a later revisit for 1 MP collects the single Grail Token,
+ * which must then be carried home. In every other mode it is a normal
+ * Lvl-VII fight rewarding gold and a Relic artifact.
+ */
+function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldState, revisit: boolean): void {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return;
+  }
+
+  if (adventureVictoryMode(state) !== "grail") {
+    if (!field.blackCube) {
+      field.blackCube = true;
+      giveCreatureBankConsolation(state, hero.controllerId, "Grail");
+    }
+    return;
+  }
+
+  const grail = adventure.grail ?? (adventure.grail = { status: "uncollected" });
+
+  if (!revisit) {
+    // The guards have just fallen. Stop the field re-fighting and arm the dig;
+    // the Grail itself is not collected until the hero spends another MP.
+    field.blackCube = true;
+    if (grail.status === "uncollected") {
+      field.grailDiggable = true;
+    }
+    return;
+  }
+
+  // Revisit = the dig. Only the first dig mints the one Grail Token.
+  if (field.grailDiggable && grail.status === "uncollected") {
+    field.grailDiggable = false;
+    grail.status = "carried";
+    grail.carrierHeroId = hero.id;
+    appendEvent(state, {
+      type: "FIELD_FLAGGED",
+      playerId: hero.controllerId,
+      fieldId: field.spaceId,
+      location: field.location,
+      previousOwnerId: null
     });
+  }
+}
+
+/**
+ * Dragon Utopia visit (after its four dragons are defeated):
+ *  - Grail Hunt: defeating the Utopia wins outright.
+ *  - Dragon Conqueror: the victor captures and must hold it; rivals besiege it.
+ *  - Conquest: a normal Lvl-VII fight rewarding gold and a Relic artifact.
+ */
+function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFieldState): void {
+  const mode = adventureVictoryMode(state);
+
+  if (mode === "grail") {
+    declareAdventureWinner(state, hero.controllerId, "defeated the Dragon Utopia");
+    return;
+  }
+
+  if (mode === "dragon-conqueror") {
+    // Capture: flag the Utopia for the victor and keep neutrals from
+    // respawning. Holding it at the start of a later turn wins.
+    const previousOwnerId = field.flagOwnerId;
+    field.flagOwnerId = hero.controllerId;
+    field.everFlagged = true;
+    field.blackCube = false;
+    appendEvent(state, {
+      type: "FIELD_FLAGGED",
+      playerId: hero.controllerId,
+      fieldId: field.spaceId,
+      location: field.location,
+      previousOwnerId: previousOwnerId && previousOwnerId !== hero.controllerId ? previousOwnerId : null
+    });
+    return;
+  }
+
+  if (!field.blackCube) {
+    field.blackCube = true;
+    giveCreatureBankConsolation(state, hero.controllerId, "Dragon Utopia");
+  }
+}
+
+/**
+ * Grail Hunt: if the hero is carrying the Grail Token and has reached their
+ * own town, the Grail is delivered and the game is won. Returns true when it
+ * triggers the win.
+ */
+export function tryDeliverGrail(state: GameState, hero: HeroState): boolean {
+  const adventure = state.adventure;
+  if (!adventure || adventureVictoryMode(state) !== "grail") {
+    return false;
+  }
+
+  const grail = adventure.grail;
+  if (!grail || grail.status !== "carried" || grail.carrierHeroId !== hero.id) {
+    return false;
+  }
+
+  const town = getTownOfPlayer(state, hero.controllerId);
+  if (!town?.fieldId || town.fieldId !== hero.spaceId) {
+    return false;
+  }
+
+  grail.status = "delivered";
+  declareAdventureWinner(state, hero.controllerId, "carried the Grail home");
+  return true;
+}
+
+/**
+ * Dragon Conqueror: a player who controls the Dragon Utopia at the start of
+ * their turn has held it through a full round and wins.
+ */
+export function checkDragonConquerorHold(state: GameState, playerId: PlayerId): void {
+  const adventure = state.adventure;
+  if (!adventure || adventureVictoryMode(state) !== "dragon-conqueror" || adventure.winnerPlayerId) {
+    return;
+  }
+
+  const holdsUtopia = Object.values(adventure.fields).some(
+    (field) => field.location === "dragon_utopia" && field.flagOwnerId === playerId
+  );
+  if (holdsUtopia) {
+    declareAdventureWinner(state, playerId, "held the Dragon Utopia");
   }
 }
 
@@ -940,6 +1125,17 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   });
 
   adventure.lastVisitedField[heroId] = fieldId;
+
+  // Creature banks with bespoke win/objective behavior are handled before the
+  // generic visitable/flaggable routing.
+  if (location.id === "grail") {
+    handleGrailVisit(state, hero, field, revisit);
+    return;
+  }
+  if (location.id === "dragon_utopia") {
+    handleDragonUtopiaVisit(state, hero, field);
+    return;
+  }
 
   if (location.category === "visitable") {
     // "Treat it as an Empty Field as long as it has a Black Cube": a field
@@ -2076,6 +2272,13 @@ function queueHalfGoldReinforce(state: GameState, playerId: PlayerId, buildingId
 export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   if (!player) {
+    return;
+  }
+
+  // Dragon Conqueror: holding the Dragon Utopia into the start of your turn
+  // wins the game before anything else this turn resolves.
+  checkDragonConquerorHold(state, playerId);
+  if (state.adventure?.winnerPlayerId) {
     return;
   }
 

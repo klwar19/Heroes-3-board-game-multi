@@ -2972,7 +2972,12 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       }
 
       const field = adventure.fields[hero.spaceId];
-      if (field && locationDefinitions[field.location]?.category === "revisitable") {
+      if (field?.grailDiggable) {
+        actions.push({
+          label: "Dig the Grail (1 movement point)",
+          action: { type: "REVISIT_FIELD", playerId, heroId: hero.id }
+        });
+      } else if (field && locationDefinitions[field.location]?.category === "revisitable") {
         actions.push({
           label: `Revisit ${locationDefinitions[field.location]?.name ?? field.location}`,
           action: { type: "REVISIT_FIELD", playerId, heroId: hero.id }

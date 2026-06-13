@@ -5,14 +5,19 @@ import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
   addArmyUnit,
+  adventureVictoryMode,
   armyHasMapEffect,
   beginFieldVisit,
   canCrossEdge,
   canPlaceTileAt,
   changeMorale,
   classifyHeroStep,
+  declareAdventureWinner,
   drawGuardArmy,
   effectiveHandLimit,
+  humanPlayerIds,
+  requiredHeroDefeats,
+  tryDeliverGrail,
   gainExperience,
   gainResources,
   gainTownCube,
@@ -378,6 +383,11 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
     return;
   }
 
+  // Grail Hunt: carrying the Grail home onto your own town wins the game.
+  if (tryDeliverGrail(state, hero)) {
+    return;
+  }
+
   beginFieldVisit(state, hero.id, to, false);
 }
 
@@ -386,7 +396,13 @@ function garrisonDefenderFor(state: GameState, attacker: HeroState, field: MapFi
   const location = locationDefinitions[field.location];
   const isTown = location?.category === "town";
   const isSettlement = field.location === "settlement";
-  if (!isTown && !isSettlement) {
+  // Dragon Conqueror: a captured Dragon Utopia is defended like a stronghold;
+  // its holder may garrison it (8 gold) when their hero is away.
+  const isCapturedUtopia =
+    field.location === "dragon_utopia" &&
+    adventureVictoryMode(state) === "dragon-conqueror" &&
+    Boolean(field.flagOwnerId);
+  if (!isTown && !isSettlement && !isCapturedUtopia) {
     return null;
   }
 
@@ -431,7 +447,11 @@ function openGarrisonPromptIfNeeded(state: GameState, attacker: HeroState, field
     type: "OPTION_CHOICE",
     playerId: defenderId,
     prompt: `${state.players[attacker.controllerId]?.name ?? "An enemy"} attacks your ${
-      locationDefinitions[field.location]?.category === "town" ? "town" : "settlement"
+      field.location === "dragon_utopia"
+        ? "Dragon Utopia"
+        : locationDefinitions[field.location]?.category === "town"
+          ? "town"
+          : "settlement"
     } — pay 8 gold to defend with your units (no cards, your hero is away)?`,
     options: [{ label: "Pay 8 gold and defend" }, { label: "Let it fall" }],
     context: "garrison",
@@ -585,10 +605,11 @@ export function revisitField(state: GameState, action: Extract<GameAction, { typ
   }
 
   if (hero.movementPoints <= 0) {
-    throw new Error("Revisiting costs 1 movement point.");
+    throw new Error(field.grailDiggable ? "Digging the Grail costs 1 movement point." : "Revisiting costs 1 movement point.");
   }
 
-  if (locationDefinitions[field.location]?.category !== "revisitable") {
+  // Revisitable fields and a cleared Grail field (which is dug for 1 MP).
+  if (locationDefinitions[field.location]?.category !== "revisitable" && !field.grailDiggable) {
     throw new Error("Only revisitable fields can be visited again.");
   }
 
@@ -1569,11 +1590,20 @@ export function startPlayerCombat(
   const town = Object.values(state.towns).find(
     (candidate) => candidate.fieldId === fieldId && candidate.controllerId === defenderPlayerId
   );
-  const siege = Boolean(
-    town &&
-      town.factionId &&
-      town.buildings.some((buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "UNLOCK_REINFORCE")
-  );
+  // Dragon Conqueror: assaulting a captured Dragon Utopia is always a siege —
+  // the holder defends behind Walls, the Gate and the Arrow Tower.
+  const field = state.adventure?.fields[fieldId];
+  const utopiaSiege =
+    field?.location === "dragon_utopia" &&
+    adventureVictoryMode(state) === "dragon-conqueror" &&
+    field.flagOwnerId === defenderPlayerId;
+  const siege =
+    utopiaSiege ||
+    Boolean(
+      town &&
+        town.factionId &&
+        town.buildings.some((buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "UNLOCK_REINFORCE")
+    );
 
   const combat = makeCombatShell(state, attacker.controllerId, defenderPlayerId);
   combat.context = {
@@ -2120,6 +2150,24 @@ export function finalizeAdventureCombat(state: GameState): void {
     }
     changeMorale(state, loserId, -1);
     moveDefeatedHeroHome(state, loserHero);
+
+    // Grail Hunt: beating an enemy main hero counts toward the "defeat every
+    // enemy hero at least once" win path (only 2 of the 3 in a 4-player game).
+    if (
+      adventureVictoryMode(state) === "grail" &&
+      loserHero.kind === "main" &&
+      winnerId !== NEUTRAL_PLAYER_ID &&
+      loserId !== winnerId
+    ) {
+      const defeats = (adventure.heroDefeats ??= {});
+      const beaten = (defeats[winnerId] ??= []);
+      if (!beaten.includes(loserId)) {
+        beaten.push(loserId);
+      }
+      if (beaten.length >= requiredHeroDefeats(humanPlayerIds(state).length)) {
+        declareAdventureWinner(state, winnerId, "defeated the required enemy heroes");
+      }
+    }
   }
 
   for (const playerId of [winnerId, loserId]) {
@@ -2134,6 +2182,13 @@ export function finalizeAdventureCombat(state: GameState): void {
   }
 
   state.combat = null;
+
+  // A win declared above (defeat-every-hero) ends the game; do not reopen turns.
+  if (state.adventure?.winnerPlayerId) {
+    state.priorityPlayerId = null;
+    return;
+  }
+
   state.phase = "player-turn";
   state.activePlayerId = attackerHero?.controllerId ?? state.activePlayerId;
   state.priorityPlayerId = null;

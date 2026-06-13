@@ -317,23 +317,25 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
   dragon_utopia: {
     id: "dragon_utopia",
     name: "Dragon Utopia",
-    category: "flaggable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Dragon Utopia effects depend on the Scenario."
-    },
-    implementationStatus: "not-implemented",
+    category: "visitable",
+    // A Lvl-VII creature bank guarded by four dragons (azure, rust, crystal,
+    // faerie). The post-fight behavior is win-condition specific and handled
+    // in the engine (handleDragonUtopiaVisit): a Grail Hunt win, a Dragon
+    // Conqueror capture, or — in Conquest — 10 gold and a Relic artifact.
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
     source: source("dragon_utopia")
   },
   grail: {
     id: "grail",
     name: "Grail",
     category: "visitable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Grail token effects are described per Scenario."
-    },
-    implementationStatus: "not-implemented",
+    // A Lvl-VII guard. In Grail Hunt the cleared field is dug for 1 MP to gain
+    // the single Grail Token, which must be carried home to win; otherwise it
+    // is a normal fight rewarding 10 gold and a Relic artifact. Handled in the
+    // engine (handleGrailVisit).
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
     source: source("grail")
   },
   star_axis: {
