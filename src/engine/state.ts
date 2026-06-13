@@ -2387,6 +2387,13 @@ export type CustomMapTilePlan = {
   tileDefId?: string;
   /** Face-up tiles: clockwise 60° steps (0-5, default 0). */
   rotation?: number;
+  /**
+   * Sea tiles only: which guard band this slot belongs to. The Cove sea pool
+   * ships both Ⅳ–Ⅴ and Ⅵ–Ⅶ tiles behind one wave back, so the designer offers
+   * them as two palette entries — a face-down sea slot then draws only from the
+   * matching band. Undefined (older saved maps) means "any sea tile".
+   */
+  seaBand?: "iv-v" | "vi-vii";
 };
 
 /** Pre-game lobby: players pick factions and heroes before the map builds. */

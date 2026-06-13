@@ -17,6 +17,16 @@ export type SavedMapRecord = {
 
 const STORAGE_KEY = "homm3bg.saved-maps.v1";
 
+/** Every tile role the designer can place — all of these must round-trip. */
+const VALID_TILE_GROUPS = new Set<CustomMapTilePlan["group"]>([
+  "starting",
+  "far",
+  "near",
+  "center",
+  "sea",
+  "subterranean"
+]);
+
 function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   if (!tile || typeof tile !== "object") {
     return null;
@@ -25,16 +35,17 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   if (!Number.isInteger(candidate.row) || !Number.isInteger(candidate.col)) {
     return null;
   }
-  if (candidate.group !== "far" && candidate.group !== "near" && candidate.group !== "center") {
+  if (typeof candidate.group !== "string" || !VALID_TILE_GROUPS.has(candidate.group as CustomMapTilePlan["group"])) {
     return null;
   }
   return {
     row: candidate.row as number,
     col: candidate.col as number,
-    group: candidate.group,
+    group: candidate.group as CustomMapTilePlan["group"],
     faceDown: Boolean(candidate.faceDown),
     ...(typeof candidate.tileDefId === "string" ? { tileDefId: candidate.tileDefId } : {}),
-    ...(Number.isInteger(candidate.rotation) ? { rotation: ((candidate.rotation as number) % 6 + 6) % 6 } : {})
+    ...(Number.isInteger(candidate.rotation) ? { rotation: ((candidate.rotation as number) % 6 + 6) % 6 } : {}),
+    ...(candidate.seaBand === "iv-v" || candidate.seaBand === "vi-vii" ? { seaBand: candidate.seaBand } : {})
   };
 }
 

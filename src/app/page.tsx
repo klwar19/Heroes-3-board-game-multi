@@ -1124,7 +1124,7 @@ export default function Home() {
   if (adventureMode && inLobby) {
     return (
       <CardZoomProvider>
-        <main className="tableRoot adventureRoot">
+        <main className="tableRoot adventureRoot setupPhase">
           <div className="tableTopRow">
             <div className="advHud">
               <div className="advHudCell">
