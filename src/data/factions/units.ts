@@ -420,8 +420,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "rampart",
     tier: "gold",
     type: "flying",
-    few: { attack: 5, defense: 3, health: 9, initiative: 10, cost: { gold: 22, valuables: 1 }, abilities: [], abilityText: "1 [valuables] [unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 2 [attack].", cardImage: "/assets/units-rampart-golden-gold_dragons-few.webp" },
-    pack: { attack: 6, defense: 3, health: 10, initiative: 16, cost: { gold: 30, valuables: 2 }, abilities: [], abilityText: "2 [valuables] [unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 3 [attack].", cardImage: "/assets/units-rampart-golden-gold_dragons-pack.webp" },
+    few: { attack: 5, defense: 3, health: 9, initiative: 10, cost: { gold: 22, valuables: 1 }, abilities: ["dragon-line-attack-2"], abilityText: "1 [valuables] [unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 2 [attack].", cardImage: "/assets/units-rampart-golden-gold_dragons-few.webp" },
+    pack: { attack: 6, defense: 3, health: 10, initiative: 16, cost: { gold: 30, valuables: 2 }, abilities: ["dragon-line-attack-3"], abilityText: "2 [valuables] [unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 3 [attack].", cardImage: "/assets/units-rampart-golden-gold_dragons-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/gold_dragons/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
@@ -972,7 +972,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "gold",
     type: "flying",
-    neutral: { attack: 5, defense: 2, health: 7, initiative: 9, cost: { gold: 30 }, abilities: [], abilityText: "[unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 2 [attack] .", cardImage: "/assets/units-neutral-golden-black_dragons.webp" },
+    neutral: { attack: 5, defense: 2, health: 7, initiative: 9, cost: { gold: 30 }, abilities: ["dragon-line-attack-2"], abilityText: "[unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 2 [attack] . [unit_passive] Reduce [damage] from [spell] by 2, and ignore [spell] effects and [damage] from Specialty .", cardImage: "/assets/units-neutral-golden-black_dragons.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/black_dragons/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1098,7 +1098,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "azure",
     type: "flying",
-    neutral: { attack: 8, defense: 3, health: 10, initiative: 19, cost: { gold: 45, valuables: 2 }, abilities: [], abilityText: "2 [valuables] [unit_attack] If you resolve a \"-1\" on the Attack die , the target gains [paralysis] . [unit_passive] Ignore any [spell] effects and [damage] from Specialty .", cardImage: "/assets/units-neutral-azure-azure_dragons.webp" },
+    neutral: { attack: 8, defense: 3, health: 10, initiative: 19, cost: { gold: 45, valuables: 2 }, abilities: ["azure-dragon-paralysis"], abilityText: "2 [valuables] [unit_attack] If you resolve a \"-1\" on the Attack die , the target gains [paralysis] . [unit_passive] Ignore any [spell] effects and [damage] from Specialty .", cardImage: "/assets/units-neutral-azure-azure_dragons.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/azure_dragons/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1482,7 +1482,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ground",
-    neutral: { attack: 4, defense: 1, health: 4, initiative: 5, cost: { gold: 12 }, abilities: [], abilityText: "[unit_attack] After the attack, roll 1 Attack die . On a \"0\" result, the target is [paralysis] ." },
+    neutral: { attack: 4, defense: 1, health: 4, initiative: 5, cost: { gold: 12 }, abilities: ["basilisk-paralysis"], abilityText: "[unit_attack] After the attack, roll 1 Attack die . On a \"0\" result, the target is [paralysis] ." },
     wikiUrl: "https://en.homm3bg.wiki/units/basilisks/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1643,7 +1643,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "azure",
     type: "ground",
-    neutral: { attack: 7, defense: 3, health: 8, initiative: 5, cost: { gold: 40 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack. This unit attacks up to 2 adjacent enemy units." },
+    neutral: { attack: 7, defense: 3, health: 8, initiative: 5, cost: { gold: 40 }, abilities: ["ignores-retaliation", "hydra-multi-attack"], abilityText: "[unit_attack] Ignore the Retaliation Attack. This unit attacks up to 2 adjacent enemy units." },
     wikiUrl: "https://en.homm3bg.wiki/units/hydras/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1685,7 +1685,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "azure",
     type: "flying",
-    neutral: { attack: 6, defense: 3, health: 9, initiative: 10, cost: { gold: 42 }, abilities: [], abilityText: "[unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 3 [attack] ." },
+    neutral: { attack: 6, defense: 3, health: 9, initiative: 10, cost: { gold: 42 }, abilities: ["dragon-line-attack-3"], abilityText: "[unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 3 [attack] ." },
     wikiUrl: "https://en.homm3bg.wiki/units/gold_dragons/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",

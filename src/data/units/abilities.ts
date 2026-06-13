@@ -152,6 +152,38 @@ export type UnitAbilityEffectDefinition =
        * to the defender; with no Power card the random discard is forced.
        */
       type: "ENEMY_DISCARDS_POWER_OR_RANDOM";
+    }
+  | {
+      /**
+       * Gold Dragons: "Attack 2 spaces in a line." After the primary attack,
+       * a full separate attack strikes the unit directly behind the target
+       * (the next space away from the dragon), friend or foe, at the printed
+       * replacement attack value. That space is not adjacent to the dragon, so
+       * the struck unit never retaliates, and the follow-up never chains.
+       */
+      type: "SECOND_ATTACK_BEHIND_TARGET";
+      baseAttack: number;
+    }
+  | {
+      /**
+       * Azure Dragons (own attack die "-1") and Basilisks (an extra die "0"):
+       * the struck target gains a Paralysis token. "own" reads the attack's
+       * own resolved die; "extra" rolls one fresh Attack die after the attack.
+       */
+      type: "PARALYZE_TARGET_ON_DIE";
+      source: "own" | "extra";
+      onRoll: number;
+    }
+  | {
+      /**
+       * Hydras: "attacks up to 2 adjacent enemy units." After the primary
+       * attack, one more enemy adjacent to the Hydra is hit with a full
+       * separate attack (the attacker chooses when several qualify) at the
+       * Hydra's own attack value — undefined baseAttack means "use the unit's
+       * attack". That follow-up never retaliates or chains further.
+       */
+      type: "SECOND_ATTACK_ONE_ADJACENT_TO_SELF";
+      baseAttack?: number;
     };
 
 export type UnitAbilityDefinition = {
@@ -360,8 +392,43 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "magi-power-drain": {
     id: "magi-power-drain",
     name: "Power Drain",
-    text: "After this unit's attack, the defending player either discards a card of their choice that can contribute Power (a Power statistic or any Spell) or lets a random card be discarded from their hand. With no Power card in hand, the random discard is forced.",
+    text: "After this unit's attack, the defending player either discards a card of their choice that can contribute Power (a Power statistic, any Spell, or a Power-granting Artifact/Ability) or lets a random card be discarded from their hand. With no Power card in hand, the random discard is forced.",
     effect: { type: "ENEMY_DISCARDS_POWER_OR_RANDOM" },
+    implementationStatus: "implemented"
+  },
+  "dragon-line-attack-2": {
+    id: "dragon-line-attack-2",
+    name: "Dragon Breath",
+    text: "Attack 2 spaces in a line: after the attack, a full separate attack at attack 2 strikes the unit directly behind the target (friend or foe). That unit is not adjacent, so it never retaliates.",
+    effect: { type: "SECOND_ATTACK_BEHIND_TARGET", baseAttack: 2 },
+    implementationStatus: "implemented"
+  },
+  "dragon-line-attack-3": {
+    id: "dragon-line-attack-3",
+    name: "Dragon Breath",
+    text: "Attack 2 spaces in a line: after the attack, a full separate attack at attack 3 strikes the unit directly behind the target (friend or foe). That unit is not adjacent, so it never retaliates.",
+    effect: { type: "SECOND_ATTACK_BEHIND_TARGET", baseAttack: 3 },
+    implementationStatus: "implemented"
+  },
+  "azure-dragon-paralysis": {
+    id: "azure-dragon-paralysis",
+    name: "Paralyzing Breath",
+    text: 'If this unit resolves a "-1" on its Attack die, the target gains Paralysis (it skips its next activation; any damage clears it).',
+    effect: { type: "PARALYZE_TARGET_ON_DIE", source: "own", onRoll: -1 },
+    implementationStatus: "implemented"
+  },
+  "basilisk-paralysis": {
+    id: "basilisk-paralysis",
+    name: "Stone Gaze",
+    text: 'After the attack, roll 1 Attack die; on a "0" the target gains Paralysis (it skips its next activation; any damage clears it).',
+    effect: { type: "PARALYZE_TARGET_ON_DIE", source: "extra", onRoll: 0 },
+    implementationStatus: "implemented"
+  },
+  "hydra-multi-attack": {
+    id: "hydra-multi-attack",
+    name: "Hydra Assault",
+    text: "Attacks up to 2 adjacent enemy units: after the primary attack, one more enemy adjacent to the Hydra takes a full separate attack at the Hydra's own attack value (you choose when several qualify). That follow-up never retaliates.",
+    effect: { type: "SECOND_ATTACK_ONE_ADJACENT_TO_SELF" },
     implementationStatus: "implemented"
   },
   "summon-demons": {

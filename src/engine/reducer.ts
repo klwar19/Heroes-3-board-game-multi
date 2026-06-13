@@ -46,7 +46,7 @@ import {
   endTurnAdventure
 } from "./adventure-reducer";
 import { chooseFaction, setGameOptions, startAdventureFromLobby } from "./adventure-setup";
-import { ATTACK_DIE_FACES } from "./battlefield";
+import { ATTACK_DIE_FACES, BATTLEFIELD_COLUMNS, BATTLEFIELD_ROWS, getBattlefieldCoordinates } from "./battlefield";
 import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { isNeutralUnit, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
 import {
@@ -111,9 +111,12 @@ import {
   getDoubleAttackAbility,
   getEnemyDiscardAbility,
   getFlatDamageFollowUps,
+  getLineAttackAbility,
+  getParalysisFollowUps,
   getPostAttackAbilityDamageEffects,
   getSecondAttackAbility,
   getSecondAttackCandidates,
+  getSelfAdjacentSecondAttackAbility,
   getUnitAbilityDefinitions,
   getUnitAttackRerollSources,
   hasUnitAbilityEffect
@@ -1360,6 +1363,9 @@ function finishResolvedAttack(
     return;
   }
 
+  // Azure Dragons / Basilisks: paralyse the target on a matching Attack die.
+  applyParalysisFollowUps(state, details.attacker, details.defender, attackResult.roll);
+
   if (maybeDeclareDoubleAttack(state, details.attacker, details.defender, details.attackKind, attackResult.roll, cards)) {
     return;
   }
@@ -1370,8 +1376,19 @@ function finishResolvedAttack(
     return;
   }
 
-  // BINH Cerberi: queue a full separate attack against every other enemy
-  // adjacent to the attacker, then fire them one at a time.
+  // Gold Dragons' line attack: a separate attack on the unit directly behind
+  // the target, resolved before the original target's retaliation.
+  if (openGoldDragonLineAttack(state, details.attacker, details.defender, cards)) {
+    return;
+  }
+
+  // Hydras: one more separate attack against an enemy adjacent to the Hydra.
+  if (openHydraSecondAttack(state, details.attacker, details.defender, cards)) {
+    return;
+  }
+
+  // Cerberi attack-all mechanism (kept for the engine's multi-attack queue;
+  // no boxed unit uses it now that Cerberi follow the printed card).
   if (queueAttackAllFollowUps(state, details.attacker, details.defender, cards)) {
     return;
   }
@@ -1763,16 +1780,201 @@ function applyFlatAbilityDamage(
   markUnitRemovedIfNeeded(state, target);
 }
 
+/** The living unit one space beyond the target, in line away from the attacker. */
+function findUnitBehindTarget(
+  combat: CombatState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState
+): CombatUnitState | null {
+  const from = getBattlefieldCoordinates(attacker.position);
+  const at = getBattlefieldCoordinates(defender.position);
+  const rowStep = at.row - from.row;
+  const columnStep = at.column - from.column;
+  // Only a straight orthogonal line counts ("2 spaces in a line"): the dragon
+  // must sit directly next to the target.
+  if (Math.abs(rowStep) + Math.abs(columnStep) !== 1) {
+    return null;
+  }
+  const behindRow = at.row + rowStep;
+  const behindColumn = at.column + columnStep;
+  if (behindRow < 0 || behindRow >= BATTLEFIELD_ROWS || behindColumn < 0 || behindColumn >= BATTLEFIELD_COLUMNS) {
+    return null;
+  }
+  const behindPosition = behindRow * BATTLEFIELD_COLUMNS + behindColumn;
+  return Object.values(combat.units).find((unit) => unit.position === behindPosition && isUnitAlive(unit)) ?? null;
+}
+
 /**
- * A card "can boost Power" for the Magi Power Drain: a Power statistic card
- * (Empower) or any Spell card (every Spell may be discarded for "+1 Power").
+ * Gold Dragons' line attack: a full separate attack against the unit directly
+ * behind the target (friend or foe), at the printed replacement attack value.
+ * Declared like the Liches' Death Cloud, so it opens instant windows and rolls
+ * its own die; that space is never adjacent to the dragon, so it never
+ * retaliates and the follow-up never chains. Returns true when it was
+ * declared (the attack sequence is parked on it).
+ */
+function openGoldDragonLineAttack(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  cards: CardLibrary
+): boolean {
+  const combat = state.combat;
+  if (!combat || !isUnitAlive(attacker)) {
+    return false;
+  }
+  const ability = getLineAttackAbility(attacker);
+  if (!ability || (attacker.attacksThisActivation ?? 0) !== 1) {
+    return false;
+  }
+  const behind = findUnitBehindTarget(combat, attacker, defender);
+  if (!behind) {
+    return false;
+  }
+  declareAbilityAttack(state, attacker, behind.id, ability, cards);
+  return true;
+}
+
+/**
+ * Hydras' "up to 2 adjacent enemy units": after the primary attack, strike one
+ * more enemy adjacent to the Hydra with a full separate attack at its own
+ * attack value. With several candidates the attacker chooses (an
+ * ABILITY_TARGET_CHOICE the neutral seat auto-resolves); the follow-up never
+ * retaliates or chains. Returns true when paused on the choice or the attack.
+ */
+function openHydraSecondAttack(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  cards: CardLibrary
+): boolean {
+  const combat = state.combat;
+  if (!combat || !isUnitAlive(attacker) || (attacker.attacksThisActivation ?? 0) !== 1) {
+    return false;
+  }
+  const ability = getSelfAdjacentSecondAttackAbility(attacker);
+  if (!ability) {
+    return false;
+  }
+
+  const candidates = Object.values(combat.units).filter(
+    (unit) =>
+      unit.id !== defender.id &&
+      unit.id !== attacker.id &&
+      unit.controllerId !== attacker.controllerId &&
+      isUnitAlive(unit) &&
+      isAdjacent(unit.position, attacker.position)
+  );
+  if (candidates.length === 0) {
+    return false;
+  }
+
+  const baseAttack = ability.baseAttack ?? attacker.attack;
+
+  if (candidates.length === 1) {
+    declareAbilityAttack(
+      state,
+      attacker,
+      candidates[0].id,
+      { abilityId: ability.abilityId, abilityName: ability.abilityName, baseAttack },
+      cards
+    );
+    return true;
+  }
+
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "ABILITY_TARGET_CHOICE",
+    playerId: attacker.controllerId,
+    kind: "second-attack",
+    abilityId: ability.abilityId,
+    abilityName: ability.abilityName,
+    prompt: `${attacker.name}: ${ability.abilityName} — choose a second adjacent enemy to attack.`,
+    sourceUnitId: attacker.id,
+    anchorUnitId: defender.id,
+    candidateUnitIds: candidates.map((unit) => unit.id),
+    baseAttack
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = attacker.controllerId;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId: attacker.controllerId,
+    sourceEffectIds: [],
+    message: `${attacker.name} chooses a second target for ${ability.abilityName}.`
+  });
+  return true;
+}
+
+/**
+ * Azure Dragons / Basilisks: paralyse the target on a matching Attack die.
+ * "own" reads this attack's resolved roll; "extra" rolls a fresh die through
+ * the combat dice stream. The token only lands on a unit still alive.
+ */
+function applyParalysisFollowUps(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  attackRoll: number
+): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+  for (const followUp of getParalysisFollowUps(attacker)) {
+    if (!isUnitAlive(defender)) {
+      break;
+    }
+    let roll = attackRoll;
+    if (followUp.source === "extra") {
+      const candidate = rollAttackCandidate(combat, "normal");
+      roll = candidate.roll;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: attacker.id,
+        abilityId: followUp.abilityId,
+        targetUnitId: defender.id,
+        message: `${attacker.name} rolls ${roll} for ${followUp.abilityName}.`
+      });
+    }
+    if (roll !== followUp.onRoll) {
+      continue;
+    }
+    placeCombatToken(state, defender, "paralysis", 0, followUp.abilityName);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: attacker.id,
+      abilityId: followUp.abilityId,
+      targetUnitId: defender.id,
+      message: `${attacker.name} paralyses ${defender.cardName} with ${followUp.abilityName}.`
+    });
+  }
+}
+
+/**
+ * A card "can boost Power" for the Magi Power Drain — i.e. it shows the
+ * [power] symbol. That is any Spell (each may be discarded for "+1 Power") or
+ * any card carrying an ADD_SPELL_POWER effect (the Power statistic, the
+ * Power-granting Artifacts, and the elemental-Magic Abilities/permanents),
+ * including one tucked inside a choose-one option.
  */
 function cardCanBoostPower(cardId: CardId, cards: CardLibrary): boolean {
   const card = cards[cardId];
   if (!card) {
     return false;
   }
-  return card.kind === "spell" || card.statisticType === "power";
+  if (card.kind === "spell") {
+    return true;
+  }
+  if (card.effect.type === "ADD_SPELL_POWER") {
+    return true;
+  }
+  if (card.effect.type === "CHOOSE_ONE") {
+    return card.effect.options.some((option) => option.effect.type === "ADD_SPELL_POWER");
+  }
+  return false;
 }
 
 /** Discards one named card from a player's hand to their discard pile. */

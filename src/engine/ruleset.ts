@@ -31,8 +31,7 @@ export const RULESET_DESCRIPTIONS: Record<GameRuleset, string> = {
   binh:
     "BINH house rules: Basic/Expert Spell decks and Minor/Major/Relic Artifact decks with level and map gating, " +
     "Wisdom expert −3 gold, Estates 2/4 gold, Few Griffins 3 attack, Pack Griffins 1 defense, Pack Marksmen 3 HP, " +
-    "Pack Cerberi attack every adjacent enemy with full separate attacks, and Sandro's Horde/Legion of Skeletons " +
-    "fight with 3 HP."
+    "and Sandro's Horde/Legion of Skeletons fight with 3 HP."
 };
 
 // ---------------------------------------------------------------------------
@@ -44,9 +43,9 @@ export const RULESET_DESCRIPTIONS: Record<GameRuleset, string> = {
  *  - Few Griffins: 3 attack (printed 2)
  *  - Pack Griffins: 1 defense (printed 0)
  *  - Pack Marksmen: 3 HP (printed 2)
- *  - Pack/Neutral Cerberi: the 1-flat-damage second head becomes
- *    "attack all" — a full separate attack (attack 3) against every other
- *    adjacent enemy, open to instants and defense like any attack.
+ *
+ * Cerberi play by the printed card (1 flat damage to one adjacent enemy) in
+ * both modes — no longer a BINH override.
  */
 export function applyUnitSideRules(
   ruleset: GameRuleset,
@@ -66,16 +65,6 @@ export function applyUnitSideRules(
   }
   if (unitDefId === "castle.marksmen" && side === "pack") {
     return { ...definition, health: 3 };
-  }
-  if ((unitDefId === "inferno.cerberi" && side === "pack") || (unitDefId === "neutral.cerberi" && side === "neutral")) {
-    return {
-      ...definition,
-      abilities: definition.abilities.map((ability) =>
-        ability === "cerberi-second-head" ? "cerberi-attack-all" : ability
-      ),
-      abilityText:
-        "[unit_attack] Ignores Retaliation Attacks. Additionally performs a full separate attack (attack 3) against every other enemy unit adjacent to Cerberi. (BINH)"
-    };
   }
 
   return definition;

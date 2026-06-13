@@ -64,12 +64,15 @@ describe("ruleset numbers", () => {
     expect(applyUnitSideRules("legacy", "castle.marksmen", "pack", packMarksmen).health).toBe(2);
     expect(applyUnitSideRules("binh", "castle.marksmen", "pack", packMarksmen).health).toBe(3);
 
+    // Cerberi follow the printed card in BOTH modes (1 flat damage to one
+    // adjacent enemy) — no BINH attack-all swap any more.
+    expect(packCerberi.abilities).toContain("cerberi-second-head");
     expect(applyUnitSideRules("legacy", "inferno.cerberi", "pack", packCerberi).abilities).toContain(
       "cerberi-second-head"
     );
     const binhCerberi = applyUnitSideRules("binh", "inferno.cerberi", "pack", packCerberi);
-    expect(binhCerberi.abilities).toContain("cerberi-attack-all");
-    expect(binhCerberi.abilities).not.toContain("cerberi-second-head");
+    expect(binhCerberi.abilities).toContain("cerberi-second-head");
+    expect(binhCerberi.abilities).not.toContain("cerberi-attack-all");
     expect(binhCerberi.abilities).toContain("ignores-retaliation");
   });
 });
@@ -168,7 +171,9 @@ describe("morale by the book", () => {
   });
 });
 
-describe("BINH Cerberi: attack all adjacent enemies", () => {
+// Exercises the SECOND_ATTACK_ALL_ADJACENT_TO_SELF engine mechanism directly
+// (no boxed unit uses it now that Cerberi follow the printed card).
+describe("attack-all-adjacent mechanism", () => {
   function cerberiState(): GameState {
     const state = createInitialGameState();
     const cerberi = state.combat!.units.unit_p1_griffins;

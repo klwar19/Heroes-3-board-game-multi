@@ -127,6 +127,55 @@ export function getAttackDieDamageFollowUps(unit: CombatUnitState): AttackDieDam
   );
 }
 
+/** Hydras: one more separate attack against an enemy adjacent to the Hydra. */
+export function getSelfAdjacentSecondAttackAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; baseAttack?: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "SECOND_ATTACK_ONE_ADJACENT_TO_SELF")) {
+    if (ability.effect?.type === "SECOND_ATTACK_ONE_ADJACENT_TO_SELF") {
+      return { abilityId: ability.id, abilityName: ability.name, baseAttack: ability.effect.baseAttack };
+    }
+  }
+
+  return null;
+}
+
+/** Gold Dragons: a separate attack against the unit directly behind the target. */
+export function getLineAttackAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; baseAttack: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "SECOND_ATTACK_BEHIND_TARGET")) {
+    if (ability.effect?.type === "SECOND_ATTACK_BEHIND_TARGET") {
+      return { abilityId: ability.id, abilityName: ability.name, baseAttack: ability.effect.baseAttack };
+    }
+  }
+
+  return null;
+}
+
+export type ParalysisFollowUp = {
+  abilityId: string;
+  abilityName: string;
+  source: "own" | "extra";
+  onRoll: number;
+};
+
+/** Azure Dragons / Basilisks: paralyse the target on a matching Attack die face. */
+export function getParalysisFollowUps(unit: CombatUnitState): ParalysisFollowUp[] {
+  return getAbilitiesWithEffect(unit, "PARALYZE_TARGET_ON_DIE").flatMap((ability) =>
+    ability.effect?.type === "PARALYZE_TARGET_ON_DIE"
+      ? [
+          {
+            abilityId: ability.id,
+            abilityName: ability.name,
+            source: ability.effect.source,
+            onRoll: ability.effect.onRoll
+          }
+        ]
+      : []
+  );
+}
+
 /** Neutral Magi: after its attack the defender discards a Power card or a random one. */
 export function getEnemyDiscardAbility(
   unit: CombatUnitState
