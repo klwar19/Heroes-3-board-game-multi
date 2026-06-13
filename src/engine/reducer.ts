@@ -43,6 +43,7 @@ import {
   spendTownCube,
   activateTownBuilding,
   tradeResources,
+  sellScrollSpell,
   unplaceCombatUnit,
   endTurnAdventure
 } from "./adventure-reducer";
@@ -202,7 +203,8 @@ function normalizeActionForMatch(action: GameAction): GameAction {
       cardId: action.cardId,
       mode: action.mode ?? "basic",
       ...(action.optionIndex !== undefined ? { optionIndex: action.optionIndex } : {}),
-      ...(action.asPowerBoost ? { asPowerBoost: true } : {})
+      ...(action.asPowerBoost ? { asPowerBoost: true } : {}),
+      ...(action.fromScroll ? { fromScroll: action.fromScroll } : {})
     };
   }
 
@@ -409,6 +411,32 @@ function moveCardFromHandToDiscard(
     player.discard.push(cardId);
   }
   return null;
+}
+
+/**
+ * Spell Scroll consumption: a used scroll spell leaves the scroll (and the
+ * game — it never returns to a deck, hand or discard). An emptied scroll is
+ * removed. Returns whether the spell was found and consumed.
+ */
+function consumeScrollSpell(
+  state: GameState,
+  playerId: PlayerId,
+  scrollId: string,
+  cardId: string
+): boolean {
+  const player = state.players[playerId];
+  const scroll = player?.scrolls?.find((candidate) => candidate.id === scrollId);
+  const cardIndex = scroll?.spellCardIds.indexOf(cardId) ?? -1;
+  if (!player || !scroll || cardIndex === -1) {
+    return false;
+  }
+
+  scroll.spellCardIds.splice(cardIndex, 1);
+  player.removed.push(cardId);
+  if (scroll.spellCardIds.length === 0) {
+    player.scrolls = player.scrolls?.filter((candidate) => candidate.id !== scrollId);
+  }
+  return true;
 }
 
 function nextPlayerId(state: GameState, playerId: PlayerId): PlayerId {
@@ -2856,6 +2884,12 @@ function getCurrentSpellPower(stackItem: ResolutionStackItem, cards: CardLibrary
     return 0;
   }
 
+  // Spell Scroll casts are locked to the lowest power level and cannot be
+  // buffed by any source.
+  if (stackItem.modifiers.scrollLocked) {
+    return 0;
+  }
+
   const card = cards[stackItem.action.cardId];
   return (
     (card?.power ?? 0) +
@@ -2971,6 +3005,13 @@ function finalizeSpellCardDestination(
   effectCountBeforeCast: number
 ): void {
   if (stackItem.action.type !== "CAST_SPELL") {
+    return;
+  }
+
+  // Spell Scroll casts were already removed from the game when played: there is
+  // no card in hand/discard to hold ongoing, recall, or send to the discard.
+  // Any ongoing effect they created still lives on in activeEffects.
+  if (stackItem.modifiers.scrollLocked) {
     return;
   }
 
@@ -3413,9 +3454,17 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     throw new Error(`Card ${action.cardId} is not a spell.`);
   }
 
-  const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
-  if (moveError) {
-    throw new Error(moveError.message);
+  // A Spell Scroll cast pulls the spell from the scroll (it is not in hand) and
+  // removes it from the game; a normal cast moves the card hand → discard.
+  if (action.fromScroll) {
+    if (!consumeScrollSpell(state, action.playerId, action.fromScroll, action.cardId)) {
+      throw new Error("That spell is not in the named Spell Scroll.");
+    }
+  } else {
+    const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
+    if (moveError) {
+      throw new Error(moveError.message);
+    }
   }
 
   const caster = state.players[action.playerId];
@@ -3425,18 +3474,24 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
 
   const stackItem = makeStackItem(state, action);
 
-  // Astrologers — Grim Warlock: the first spell in each player's turn gets
-  // +1 Power.
-  const astrologersCard = getActiveAstrologersCard(state);
-  if (isFirstSpellThisTurn && astrologersCard?.effect.type === "FIRST_SPELL_POWER_BONUS") {
-    stackItem.modifiers.spellPowerBonus += astrologersCard.effect.amount;
-  }
+  // Scroll spells are locked to power 0 and cannot be boosted by any Power
+  // source — skip every power-granting hook below and flag the stack item.
+  if (action.fromScroll) {
+    stackItem.modifiers.scrollLocked = true;
+  } else {
+    // Astrologers — Grim Warlock: the first spell in each player's turn gets
+    // +1 Power.
+    const astrologersCard = getActiveAstrologersCard(state);
+    if (isFirstSpellThisTurn && astrologersCard?.effect.type === "FIRST_SPELL_POWER_BONUS") {
+      stackItem.modifiers.spellPowerBonus += astrologersCard.effect.amount;
+    }
 
-  // School of Magic permanent in play: matching spells get its basic bonus
-  // for free (the expert discard may replace it during the cast).
-  const schoolBonus = getPermanentSchoolBonus(state, action.playerId, card);
-  if (schoolBonus) {
-    stackItem.modifiers.schoolPowerBonus = schoolBonus.basicPower;
+    // School of Magic permanent in play: matching spells get its basic bonus
+    // for free (the expert discard may replace it during the cast).
+    const schoolBonus = getPermanentSchoolBonus(state, action.playerId, card);
+    if (schoolBonus) {
+      stackItem.modifiers.schoolPowerBonus = schoolBonus.basicPower;
+    }
   }
 
   state.stack.push(stackItem);
@@ -3588,7 +3643,15 @@ function getChosenOption(card: CardDefinition, optionIndex?: number): CardOption
 function applyReactionPlayCore(
   state: GameState,
   playerId: PlayerId,
-  play: { cardId: string; mode?: "basic" | "expert"; optionIndex?: number; costCardIds?: CardId[]; asPowerBoost?: boolean },
+  play: {
+    cardId: string;
+    mode?: "basic" | "expert";
+    optionIndex?: number;
+    costCardIds?: CardId[];
+    asPowerBoost?: boolean;
+    /** Spell Scroll reaction: power-locked to 0, consumed from the scroll. */
+    fromScroll?: string;
+  },
   cards: CardLibrary
 ): { windowEnded: boolean } {
   if (!state.reactionWindow) {
@@ -3636,7 +3699,9 @@ function applyReactionPlayCore(
   }
 
   const option = getChosenOption(card, play.optionIndex);
-  const mode = play.mode ?? "basic";
+  // Scroll spells are always cast at the lowest power level — never the expert
+  // side, never boosted.
+  const mode = play.fromScroll ? "basic" : (play.mode ?? "basic");
 
   if (option?.expertOnly && mode !== "expert") {
     throw new Error(`${option.label} is the card's expert side.`);
@@ -3684,17 +3749,25 @@ function applyReactionPlayCore(
     throw new Error(`${card.name} cannot end a spell above power ${effect.maxPower}.`);
   }
 
-  const moveError = moveCardFromHandToDiscard(
-    state,
-    playerId,
-    play.cardId,
-    option?.cost?.removeSelf ? "removed" : "discard"
-  );
-  if (moveError) {
-    throw new Error(moveError.message);
+  if (play.fromScroll) {
+    if (!consumeScrollSpell(state, playerId, play.fromScroll, play.cardId)) {
+      throw new Error("That spell is not in the named Spell Scroll.");
+    }
+  } else {
+    const moveError = moveCardFromHandToDiscard(
+      state,
+      playerId,
+      play.cardId,
+      option?.cost?.removeSelf ? "removed" : "discard"
+    );
+    if (moveError) {
+      throw new Error(moveError.message);
+    }
   }
 
-  const costCardsPaid = payOptionCardCost(state, playerId, card.name, option?.cost, play.costCardIds, cards);
+  const costCardsPaid = play.fromScroll
+    ? 0
+    : payOptionCardCost(state, playerId, card.name, option?.cost, play.costCardIds, cards);
 
   let effectAmount = getEffectAmount(effect, mode);
   if (mode === "expert") {
@@ -3784,8 +3857,10 @@ function applyReactionPlayCore(
 
     // Spell instants scale with the Power played alongside them in this
     // window; cost-paid plays (Sword of Judgement) scale per discarded card.
+    // A scroll spell ignores the window's Power pool — it is locked to power 0.
     if (effect.amountByPower && card.kind === "spell") {
-      effectAmount = getAmountByPower(effect.amountByPower, effect.amount, stackItem.modifiers.spellPowerBonus);
+      const power = play.fromScroll ? 0 : stackItem.modifiers.spellPowerBonus;
+      effectAmount = getAmountByPower(effect.amountByPower, effect.amount, power);
     }
     if (effect.perCostCard) {
       effectAmount += effect.perCostCard * costCardsPaid;
@@ -3836,7 +3911,7 @@ function applyReactionPlayCore(
       stackItem.modifiers.attackBonus += getAmountByPower(
         effect.attackBonusByPower,
         0,
-        stackItem.modifiers.spellPowerBonus
+        play.fromScroll ? 0 : stackItem.modifiers.spellPowerBonus
       );
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
@@ -5952,6 +6027,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "BUY_WAR_MACHINE":
         buyWarMachine(nextState, action);
+        break;
+      case "SELL_SCROLL_SPELL":
+        sellScrollSpell(nextState, action);
         break;
       case "USE_PERMANENT_EXPERT":
         applyPermanentExpert(nextState, action);

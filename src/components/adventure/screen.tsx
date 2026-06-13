@@ -1656,6 +1656,7 @@ export function MarketPanel({
   const sellActions = legalActions.filter(
     (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.label.startsWith("Sell ")
   );
+  const scrollSellActions = legalActions.filter((legal) => legal.action.type === "SELL_SCROLL_SPELL");
   const buyActions = legalActions.filter(
     (legal): legal is LegalAction & { action: Extract<GameAction, { type: "BUY_WAR_MACHINE" }> } =>
       legal.action.type === "BUY_WAR_MACHINE"
@@ -1759,6 +1760,35 @@ export function MarketPanel({
                     <span className="marketCardFallback">{card?.name ?? cardId}</span>
                   )}
                   <small>Sell → 1 🪙</small>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      {isTradingPost && !traded && scrollSellActions.length > 0 ? (
+        <section className="marketSell" aria-label="Sell a scroll spell">
+          <h4>Sell one Spell Scroll spell → 2 gold</h4>
+          <small>The spell is removed from the scroll (and the game). An emptied scroll is discarded.</small>
+          <div className="marketSellCards">
+            {scrollSellActions.map((legal) => {
+              const cardId = legal.action.type === "SELL_SCROLL_SPELL" ? legal.action.cardId : undefined;
+              const card = cardId ? cardLibrary[cardId] : undefined;
+              return (
+                <button
+                  className="marketSellCard"
+                  key={actionKey(legal.action)}
+                  onClick={() => onAction(legal.action)}
+                  title={legal.label}
+                  type="button"
+                >
+                  {card?.assets?.cardImage ? (
+                    <img alt={card.name} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(card.assets.cardImage)} />
+                  ) : (
+                    <span className="marketCardFallback">📜 {card?.name ?? cardId}</span>
+                  )}
+                  <small>Sell → 2 🪙</small>
                 </button>
               );
             })}

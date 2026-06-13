@@ -960,6 +960,87 @@ button.battleCell {
   font-size: 13px;
 }
 
+/* Spell Scrolls: a parchment rail beside the hand (cards are not in hand). */
+.scrollRail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-self: stretch;
+  justify-content: center;
+  padding-right: 12px;
+  margin-right: 6px;
+  border-right: 1px dashed rgba(210, 180, 120, 0.4);
+}
+
+.scrollChip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(180deg, rgba(94, 70, 32, 0.55), rgba(60, 44, 20, 0.55));
+  border: 1px solid rgba(210, 180, 120, 0.5);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.scrollGlyph {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.scrollSpells {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scrollSpell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scrollSpellName {
+  background: none;
+  border: none;
+  color: #f4e6c8;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline dotted;
+}
+
+.scrollSpellCasts {
+  display: flex;
+  gap: 4px;
+}
+
+.scrollSpellCasts .commandButton {
+  font-size: 11px;
+  padding: 2px 6px;
+}
+
+.trayTile.scrollTile {
+  border-color: rgba(210, 180, 120, 0.6);
+}
+
+/* Scroll badge on the always-visible hero board. */
+.hbScrolls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.hbScrollChip {
+  font-size: 11px;
+  background: rgba(94, 70, 32, 0.5);
+  border: 1px solid rgba(210, 180, 120, 0.5);
+  border-radius: 6px;
+  padding: 2px 6px;
+  color: #f4e6c8;
+}
+
 .fanSlot {
   position: relative;
 }

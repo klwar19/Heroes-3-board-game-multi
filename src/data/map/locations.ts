@@ -612,11 +612,8 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "spell_scroll",
     name: "Spell Scroll",
     category: "visitable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Take a Spell Scroll card and two face-down Spells (Spell Scroll cards are not in the library yet)."
-    },
-    implementationStatus: "not-implemented",
+    interaction: { type: "SPELL_SCROLL" },
+    implementationStatus: "implemented",
     source: source("spell_scroll")
   },
   cyclops_stockpile: {

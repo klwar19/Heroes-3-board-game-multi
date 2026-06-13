@@ -636,7 +636,17 @@ function addSpellActions(
       !activeUnit.attackedThisActivation
   );
 
-  for (const cardId of new Set(player.hand)) {
+  // Hand spells plus every Spell Scroll spell (scroll spells are not in hand;
+  // they cast at power 0 and are removed once used). Both share the timing and
+  // targeting rules below.
+  const castCandidates: { cardId: string; fromScroll?: string }[] = [
+    ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
+    ...(player.scrolls ?? []).flatMap((scroll) =>
+      [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
+    )
+  ];
+
+  for (const { cardId, fromScroll } of castCandidates) {
     const card = cards[cardId];
     if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
       continue;
@@ -667,12 +677,13 @@ function addSpellActions(
 
     for (const target of getTargetsForCard(state, playerId, cardId, cards)) {
       actions.push({
-        label: `Cast ${card.name}`,
+        label: fromScroll ? `Cast ${card.name} (Scroll)` : `Cast ${card.name}`,
         action: {
           type: "CAST_SPELL",
           playerId,
           cardId,
-          target
+          target,
+          ...(fromScroll ? { fromScroll } : {})
         }
       });
     }
@@ -1886,6 +1897,48 @@ export function getLegalReactionsForTrigger(
       }
     }
 
+    // Spell Scroll spells played as reactions: basic side only, power-locked
+    // to 0, removed once used. They respect the same spell-per-round limit.
+    if (spellLimitLeft > 0) {
+      for (const scroll of player.scrolls ?? []) {
+        for (const cardId of new Set(scroll.spellCardIds)) {
+          const card = cards[cardId];
+          const allowedTiming =
+            card && (card.timing === "reaction" || card.timing === "instant");
+          if (!card || card.kind !== "spell" || !allowedTiming || card.implementationStatus !== "implemented") {
+            continue;
+          }
+
+          for (const variant of getCardPlayVariants(card)) {
+            if (
+              variant.mapOnly ||
+              variant.expertOnly ||
+              variant.cost ||
+              variant.effect.type === "ADD_SPELL_POWER" ||
+              !variantMatchesTrigger(variant, triggerEvent, player.id) ||
+              !isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic")
+            ) {
+              continue;
+            }
+
+            const variantName = variant.optionLabel
+              ? `${card.name}: ${variant.optionLabel} (Scroll)`
+              : `${card.name} (Scroll)`;
+            reactions.push(
+              makeReactionAction(variantName, {
+                type: "PLAY_REACTION",
+                playerId: player.id,
+                cardId,
+                mode: "basic",
+                fromScroll: scroll.id,
+                ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
+              })
+            );
+          }
+        }
+      }
+    }
+
     // School of Magic in play: the caster may discard it for the expert
     // power bonus while their matching spell is being cast.
     const fieldExpert = getPermanentFieldExpertAction(state, player.id, triggerEvent, cards);
@@ -2365,6 +2418,15 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
           actions.push({
             label: `Buy ${offer.card.name} (${offer.cost.gold ?? 0} gold)`,
             action: { type: "BUY_WAR_MACHINE", playerId, cardId: offer.cardId }
+          });
+        }
+      }
+      // Spell Scroll spells may be sold here for 2 gold each.
+      for (const scroll of player.scrolls ?? []) {
+        for (const cardId of new Set(scroll.spellCardIds)) {
+          actions.push({
+            label: `Sell ${cards[cardId]?.name ?? cardId} (Scroll) → gain 2 gold`,
+            action: { type: "SELL_SCROLL_SPELL", playerId, scrollId: scroll.id, cardId }
           });
         }
       }
