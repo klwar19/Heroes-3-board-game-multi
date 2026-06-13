@@ -2,10 +2,13 @@ import { cardLibrary } from "@/data/cards/library";
 import { sampleBuildings } from "@/data/towns/buildings";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import {
+  addArmyUnit,
   changeMorale,
   gainResources,
   getActiveAstrologersCard,
   getMainHero,
+  getUnitSide,
+  makeCombatUnitFromArmy,
   queueNecromancyReinforce
 } from "./adventure";
 import {
@@ -47,7 +50,15 @@ import {
   endTurnAdventure
 } from "./adventure-reducer";
 import { chooseFaction, setGameOptions, startAdventureFromLobby } from "./adventure-setup";
-import { ATTACK_DIE_FACES, BATTLEFIELD_COLUMNS, BATTLEFIELD_ROWS, getBattlefieldCoordinates, getBattlefieldLabel } from "./battlefield";
+import {
+  ATTACK_DIE_FACES,
+  BATTLEFIELD_COLUMNS,
+  BATTLEFIELD_ROWS,
+  getBattlefieldCoordinates,
+  getBattlefieldLabel,
+  getOrthogonalNeighbors,
+  isBattlefieldPosition
+} from "./battlefield";
 import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
 import {
@@ -89,7 +100,7 @@ import {
 } from "./active-effects";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
-import { getEffectAmount, getEffectiveCardEffect, getSpellDamageAmount } from "./effects";
+import { getEffectAmount, getEffectDamageAmount, getEffectiveCardEffect, getSpellDamageAmount } from "./effects";
 import {
   canUnitAttack,
   canUnitMoveAndAttack,
@@ -158,6 +169,7 @@ import type {
   ResourceKind,
   ResolutionStackItem,
   RulesError,
+  UnitGrade,
   UnitId
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
@@ -291,6 +303,7 @@ function assertBatchReactionLegal(
   let expertUsesNeeded = 0;
   let spellPlays = 0;
   let powerOnlyPlays = 0;
+  let powerSinkPlays = 0;
 
   for (const play of action.plays) {
     const singleAction: GameAction = {
@@ -339,22 +352,29 @@ function assertBatchReactionLegal(
     if (effect.type === "ADD_SPELL_POWER") {
       powerOnlyPlays += 1;
     }
+    // Alamar's Resurrection also consumes Power (it scales like a spell), so a
+    // batch carrying it may pay Power even without a spell instant.
+    if (effect.type === "CANCEL_LETHAL_ATTACK") {
+      powerSinkPlays += 1;
+    }
 
     if ((play.mode ?? "basic") === "expert") {
       expertUsesNeeded += 1;
     }
   }
 
-  // Power "dissipates" when no spell consumes it: inside an attack window,
-  // Power plays must accompany a spell instant in the same declaration.
+  // Power "dissipates" when nothing consumes it: inside an attack window, Power
+  // plays must accompany a play that uses Power — a spell instant or Alamar's
+  // Resurrection — in the same declaration.
   if (
     state.reactionWindow.triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
     powerOnlyPlays > 0 &&
-    spellPlays === 0
+    spellPlays === 0 &&
+    powerSinkPlays === 0
   ) {
     return {
       code: "ACTION_NOT_LEGAL",
-      message: "Power can only be played into an attack together with a Spell card."
+      message: "Power can only be played into an attack together with a Spell card or Resurrection."
     };
   }
 
@@ -575,8 +595,28 @@ function getAmountByPower(amountByPower: Record<number, number> | undefined, fal
   return matchingPower === undefined ? fallback : (amountByPower[matchingPower] ?? fallback);
 }
 
+/**
+ * Whether a combat unit is the signature unit a hero specialty doubles for.
+ * Most specialties name one exact unit (Crusaders, Efreet…); Mutare's
+ * signature is the whole Dragons family ("a Dragons unit"), which matches
+ * every unit whose name ends in "Dragons" (Black/Gold/Ghost/Azure/Crystal/
+ * Faerie/Rust Dragons) but not Dragon Flies.
+ */
+export function unitMatchesSpecialtyName(unitName: string | undefined, target: string | undefined): boolean {
+  if (!unitName || !target) {
+    return false;
+  }
+  if (unitName === target) {
+    return true;
+  }
+  // Family descriptors like "a Dragons unit": strip the "a … unit" wrapper and
+  // match any unit whose name ends with the remaining creature family word.
+  const family = target.replace(/^an?\s+/i, "").replace(/\s+units?$/i, "").trim();
+  return family.length > 0 && family !== target && unitName.toLowerCase().endsWith(family.toLowerCase());
+}
+
 function doubleAmountForUnitName(amount: number, unit: CombatUnitState | undefined, unitName: string | undefined): number {
-  return unitName && unit?.name === unitName ? amount * 2 : amount;
+  return unitMatchesSpecialtyName(unit?.name, unitName) ? amount * 2 : amount;
 }
 
 function createAttackBuffFromCard(
@@ -805,7 +845,8 @@ function applyAttackDamageFromCandidate(
   candidate: AttackRollCandidate,
   dieMultiplier = 1,
   baseAttackOverride?: number,
-  damageReduction = 0
+  damageReduction = 0,
+  lethalCancel?: { gradeByPower: Record<number, UnitGrade>; power: number }
 ): { damage: number; roll: number } {
   if (!state.combat) {
     return { damage: 0, roll: 0 };
@@ -821,6 +862,37 @@ function applyAttackDamageFromCandidate(
     baseAttackOverride,
     damageReduction
   );
+
+  // Alamar's Resurrection: if this blow would reduce the defender to 0 HP and
+  // the Power paid into the attack window reaches the unit's grade, the attack
+  // is cancelled — no damage lands, and the unit is not destroyed.
+  if (lethalCancel && damage > 0 && defender.damage + damage >= defender.maxHealth) {
+    const maxGrade = gradeAtPower(lethalCancel.gradeByPower, lethalCancel.power);
+    if (maxGrade && gradeRank(defender.grade) <= gradeRank(maxGrade)) {
+      appendEvent(state, {
+        type: "ATTACK_ROLLED",
+        attackerId: attacker.id,
+        defenderId: defender.id,
+        rolls: candidate.rolls,
+        roll: candidate.roll,
+        ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
+        rollMode,
+        attackBonus,
+        defenseBonus,
+        attackValue,
+        defenseValue,
+        damage: 0,
+        isRetaliation
+      });
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: defender.id,
+        abilityId: "resurrection",
+        message: `Resurrection cancels the attack that would have destroyed ${defender.cardName}.`
+      });
+      return { damage: 0, roll: candidate.roll };
+    }
+  }
 
   // Damage is not capped at the pack's health: the rulebook carries any
   // excess over onto the Few side when the pack flips.
@@ -1423,6 +1495,11 @@ function finishResolvedAttack(
     });
   }
 
+  const cancelLethal = stackItem.modifiers.cancelLethal;
+  const lethalCancel =
+    cancelLethal && cancelLethal.unitId === details.defender.id
+      ? { gradeByPower: cancelLethal.gradeByPower, power: stackItem.modifiers.spellPowerBonus }
+      : undefined;
   const attackResult = applyAttackDamageFromCandidate(
     state,
     details.attacker,
@@ -1434,7 +1511,8 @@ function finishResolvedAttack(
     candidate,
     details.dieMultiplier,
     details.abilityAttack?.baseAttack,
-    details.damageReduction
+    details.damageReduction,
+    lethalCancel
   );
   applyOnAttackTokens(state, details.attacker, details.defender, details.isRetaliation);
   applyPostAttackAbilityDamage(
@@ -3792,9 +3870,11 @@ function applyReactionPlayCore(
     }
 
     // Hero specialties double their bonus when the signature unit is the one
-    // attacking (attack bonus) or being attacked (defense bonus).
-    const appliedAmount =
-      effect.doubleForUnitName && affectedUnit?.name === effect.doubleForUnitName ? effectAmount * 2 : effectAmount;
+    // attacking (attack bonus) or being attacked (defense bonus). Mutare's
+    // "a Dragons unit" matches the whole Dragons family, not one exact name.
+    const appliedAmount = unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName)
+      ? effectAmount * 2
+      : effectAmount;
 
     if (effect.stat === "attack") {
       stackItem.modifiers.attackBonus += appliedAmount;
@@ -3877,6 +3957,21 @@ function applyReactionPlayCore(
       caster.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
     }
 
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
+  // Alamar's Resurrection: arm the pending attack so it is cancelled at
+  // resolution if it would destroy the defending unit (and the Power paid into
+  // this window reaches the unit's grade threshold). Power cards played in the
+  // same batch feed stackItem.modifiers.spellPowerBonus, read at resolution.
+  if (
+    effect.type === "CANCEL_LETHAL_ATTACK" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    stackItem.modifiers.cancelLethal = {
+      unitId: stackItem.action.defenderId,
+      gradeByPower: effect.gradeByPower
+    };
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
@@ -4201,8 +4296,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         controllerId: action.playerId
       },
       target,
-      getSpellDamageAmount(card, card.power ?? 0)
+      getEffectDamageAmount(effect, card.power ?? 0)
     );
+    // Rion's Battlefield Medic: "Remove 1 damage … then draw 1 card."
+    if (effect.drawCards) {
+      drawCardsForPlayer(state, action.playerId, effect.drawCards);
+    }
   }
 
   if (effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS" && target) {
@@ -4211,7 +4310,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       cardId: card.id,
       controllerId: action.playerId
     };
-    healUnitDamage(state, source, target, getSpellDamageAmount(card, card.power ?? 0));
+    healUnitDamage(state, source, target, getEffectDamageAmount(effect, card.power ?? 0));
     removeEffectsFromTarget(state, source, target, effect.removePolarity);
   }
 
@@ -4400,6 +4499,49 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     const unit = state.combat.units[target.unitId];
     if (unit && unit.controllerId === action.playerId) {
       unit.maxHealth += doubleAmountForUnitName(effect.amount, unit, effect.doubleForUnitName);
+    }
+  }
+
+  // Xyron's Inferno: the chosen unit's space and every orthogonally adjacent
+  // space — every unit in the blast, friend or foe — takes the flat damage.
+  if (effect.type === "AREA_DAMAGE_ALL_ADJACENT" && target && state.combat) {
+    const center = state.combat.units[target.unitId];
+    if (center) {
+      const inBlast = Object.values(state.combat.units).filter(
+        (unit) =>
+          isUnitAlive(unit) && (unit.id === center.id || isAdjacent(unit.position, center.position))
+      );
+      for (const unit of inBlast) {
+        unit.damage += effect.amount;
+        noteUnitDamagedForTokens(state, unit, effect.amount);
+        appendEvent(state, {
+          type: "DAMAGE_ASSIGNED",
+          source: { type: "card", cardId: card.id, controllerId: action.playerId },
+          target: { type: "unit", unitId: unit.id },
+          amount: effect.amount,
+          damageKind: "spell"
+        });
+        markUnitRemovedIfNeeded(state, unit);
+      }
+    }
+  }
+
+  // Gem's First Aid: take the war machine from the shared supply for free, or
+  // draw the fallback card when the supply is empty (it was already taken).
+  if (effect.type === "GAIN_WAR_MACHINE") {
+    const supply = state.adventure?.warMachineSupply ?? [];
+    if (state.adventure && supply.includes(effect.warMachineCardId)) {
+      state.adventure.warMachineSupply = supply.filter((cardId) => cardId !== effect.warMachineCardId);
+      state.players[action.playerId].hand.push(effect.warMachineCardId);
+      appendEvent(state, {
+        type: "WAR_MACHINE_BOUGHT",
+        playerId: action.playerId,
+        cardId: effect.warMachineCardId,
+        cost: {},
+        at: "factory"
+      });
+    } else if (effect.fallbackDrawCards) {
+      drawCardsForPlayer(state, action.playerId, effect.fallbackDrawCards);
     }
   }
 
@@ -4698,6 +4840,117 @@ function applyUnitAbilityAction(
     advanceActiveUnit(state);
   }
 
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+}
+
+/**
+ * Pit Lords' "Summon Demons" other action: instead of moving or attacking, the
+ * active Pit Lords either summon a Few of Demons onto an empty adjacent space
+ * or reinforce a friendly Few of Demons up to a Pack — once per combat, only
+ * after one of the controller's units has been removed this combat. The new /
+ * reinforced unit also persists in the army after the combat. The summoned
+ * unit is treated as already activated this round (it acts from the next).
+ */
+function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUMMON_DEMONS" }>): void {
+  const combat = state.combat;
+  const unit = combat?.units[action.unitId];
+  const player = state.players[action.playerId];
+  const ability = unit
+    ? getUnitAbilityDefinitions(unit).find((candidate) => candidate.effect?.type === "SUMMON_OR_REINFORCE_DEMONS")
+    : undefined;
+
+  if (
+    !combat ||
+    !unit ||
+    !player ||
+    unit.controllerId !== action.playerId ||
+    combat.activeUnitId !== unit.id ||
+    unit.activatedThisRound ||
+    unit.movedThisActivation ||
+    unit.attackedThisActivation ||
+    unit.summonedThisCombat ||
+    ability?.effect?.type !== "SUMMON_OR_REINFORCE_DEMONS" ||
+    ability.implementationStatus !== "implemented" ||
+    !combat.unitRemovedControllerIds?.includes(action.playerId)
+  ) {
+    throw new Error("Summon Demons cannot be used now.");
+  }
+
+  const demonDefId = ability.effect.demonUnitDefId;
+  const ruleset = getRuleset(state);
+
+  if (action.mode === "summon") {
+    const position = action.position;
+    if (
+      position === undefined ||
+      !isBattlefieldPosition(position) ||
+      !getOrthogonalNeighbors(unit.position).includes(position) ||
+      (combat.obstacles ?? []).includes(position) ||
+      Object.values(combat.units).some((candidate) => isUnitAlive(candidate) && candidate.position === position)
+    ) {
+      throw new Error("Demons must be summoned onto an empty adjacent space.");
+    }
+    if (!getUnitSide(demonDefId, "few")) {
+      throw new Error("Those Demons have no Few side to summon.");
+    }
+
+    const armyUnit = addArmyUnit(player, demonDefId, "few");
+    const summoned = makeCombatUnitFromArmy(
+      armyUnit,
+      action.playerId,
+      `unit_${action.playerId}_${armyUnit.id}`,
+      position,
+      ruleset
+    );
+    if (!summoned) {
+      throw new Error("Those Demons cannot be summoned.");
+    }
+    // Treated as already activated this round; it acts from the next round.
+    summoned.activatedThisRound = true;
+    combat.units[summoned.id] = summoned;
+
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: ability.id,
+      targetUnitId: summoned.id,
+      message: `${unit.cardName} summons ${summoned.cardName} at ${getBattlefieldLabel(position)}.`
+    });
+  } else {
+    const targetUnit = action.targetUnitId ? combat.units[action.targetUnitId] : undefined;
+    if (
+      !targetUnit ||
+      targetUnit.controllerId !== action.playerId ||
+      !isUnitAlive(targetUnit) ||
+      targetUnit.unitDefId !== demonDefId ||
+      targetUnit.variant !== "few" ||
+      !getUnitSide(demonDefId, "pack")
+    ) {
+      throw new Error("Only a friendly Few of Demons can be reinforced to a Pack.");
+    }
+
+    targetUnit.variant = "pack";
+    applyUnitCurrentSide(targetUnit, ruleset);
+    // Mirror onto the backing army card so the reinforcement survives the combat.
+    const armyUnit = player.army.find((candidate) => candidate.id === targetUnit.armyUnitId);
+    if (armyUnit) {
+      armyUnit.side = "pack";
+    }
+
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: ability.id,
+      targetUnitId: targetUnit.id,
+      message: `${unit.cardName} reinforces ${targetUnit.cardName}.`
+    });
+  }
+
+  // The Pit Lords used their action instead of moving or attacking.
+  unit.summonedThisCombat = true;
+  unit.activatedThisRound = true;
+  advanceActiveUnit(state);
   state.phase = "combat";
   state.priorityPlayerId = null;
 }
@@ -5869,6 +6122,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "USE_UNIT_ABILITY":
         applyUnitAbilityAction(nextState, action);
+        break;
+      case "SUMMON_DEMONS":
+        summonDemons(nextState, action);
         break;
       case "USE_ACTIVE_EFFECT":
         applyActiveEffectAction(nextState, action);
