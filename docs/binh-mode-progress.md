@@ -10,6 +10,7 @@ Mirror of the build request. ✅ = implemented **and wired** (engine + UI + test
 - [x] Wisdom: basic −2 gold + Search (3); expert −3 gold + Search (4) (legacy expert keeps the printed −2)
 - [x] Estates: 2 gold basic / 4 expert (legacy printed 3/6)
 - [x] Griffins Few 3 attack · Griffins Pack 1 defense · Marksmen Pack 3 HP (army panel shows live values)
+- [x] Sandro's Cloak of the Undead King: Horde of Skeletons (lv I) and Legion of Skeletons (lv VI) fight with 3 HP (legacy printed 2); Horde of Zombies (lv IV) keeps 3 HP both modes
 - [x] Cerberi Pack/Neutral: full separate attack (attack 3) vs every other adjacent enemy, instants/defense apply, no retaliation, engine-tested
 - [x] Split spell decks with the level-4 + open-Ⅳ–Ⅴ gate and the Eagle Eye / Wisdom / Basic elemental Magic bypass (tested)
 - [x] Split artifact decks Minor/Major/Relic with position or level+Blacksmith unlocks; deck pick offered on every artifact/spell gain (tested)
@@ -27,6 +28,11 @@ Mirror of the build request. ✅ = implemented **and wired** (engine + UI + test
 - [x] Every spell discardable for the printed "+1 Power"; Empower stacks (rulebook)
 - [x] Ongoing cards last until the owner's next turn starts
 - [x] Offense/Armorer printed draw; Scholar basic = take a discard card; Magic Arrow base power 0
+
+## Necromancer content (this round)
+- [x] Necromancy ability: played in the after-win window on the map (never after Quick Combat), Necropolis heroes only; reinforces a bronze/silver unit — any unit on expert — for half the gold cost rounded down, needing no Citadel/Dwelling/Population token. The window opens on a fought neutral or PvP win and closes at turn end.
+- [x] Quick Combat interaction: the win still pays the Freelancer's Guild bounty, but grants no XP and never opens the Necromancy window (rulebook p.40 + the card text)
+- [x] Sandro's Cloak of the Undead King (lv I/IV/VI): the specialty card is placed on a matching unit card (map or combat) and its statistics replace the unit's until the card is defeated, when it is discarded and the card under it is revealed with the excess damage. The card rides across combats on the army card. Lv VI Legion may sit on a Few, Pack or even a Horde of Skeletons, stays on top, and the unit beneath it can still be reinforced/upgraded. The Pack of Zombies' printed abilities are inactive while a Horde covers it.
 
 ## Map-usable abilities
 - [x] Wisdom (purchase) · Estates · Luck · Logistics (end-turn step + expert +1 MP) · Scouting (next Search 3/5) · Mysticism (recall; expert recalls support cards) · Eagle Eye (dig Basic/Expert spell) · Basic X Magic (school fetch in searches; expert +3 school Power) · Scholar · Leadership · Sorcery · Armorer/Offense map draw
@@ -61,6 +67,6 @@ Mirror of the build request. ✅ = implemented **and wired** (engine + UI + test
 - [x] content-tracker.md + README updated
 
 ## Known gaps (tracked in content-tracker.md)
-- NI cards stay out of the decks: Chain Lightning, Resurrection, Teleport, Blind/paralysis, Mirth, Sorrow, Slayer, Dimension Door, Earthquake, Forgetfulness, Inferno, Visions; Tactics, Intelligence, Diplomacy, Necromancy, Pathfinding, Learning, Artillery, Ballistics; Charm of Mana, Greater Gnoll's Flail, Shield of the Dwarven Lords, Shackles of War, Mystic Orb, Orb of Vulnerability
+- NI cards stay out of the decks: Chain Lightning, Resurrection, Teleport, Blind/paralysis, Mirth, Sorrow, Slayer, Dimension Door, Earthquake, Forgetfulness, Inferno, Visions; Tactics, Intelligence, Diplomacy, Pathfinding, Learning, Artillery, Ballistics; Charm of Mana, Greater Gnoll's Flail, Shield of the Dwarven Lords, Shackles of War, Mystic Orb, Orb of Vulnerability (Necromancy is now in the Ability deck and implemented)
 - Map-spell Empowerment (Town Portal +MP at power 2/4) resolves at base power for now
 - Siege combat, secondary heroes, war machines beyond the Tent, scenario-specific Obelisk/Grail effects — unchanged from before

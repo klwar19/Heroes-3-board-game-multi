@@ -23,6 +23,7 @@ import {
   type HexCoord
 } from "./hex";
 import { createSeededRandom } from "./random";
+import { applyUnitCurrentSide } from "./unit-transforms";
 import type {
   ActiveEffectState,
   AdventureState,
@@ -43,6 +44,7 @@ import type {
   ResourceKind,
   TownState,
   UnitId,
+  UnitTransformState,
   VisitStep
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
@@ -1200,7 +1202,7 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "REINFORCE_HALF_GOLD":
-        reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, true);
+        reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, true, step.roundDown ?? false);
         break;
       default:
         break;
@@ -1614,7 +1616,7 @@ export function makeCombatUnitFromNeutral(
 }
 
 export function makeCombatUnitFromArmy(
-  armyUnit: { id: string; unitDefId: string; side: "few" | "pack" | "neutral" },
+  armyUnit: { id: string; unitDefId: string; side: "few" | "pack" | "neutral"; transforms?: UnitTransformState[] },
   controllerId: PlayerId,
   unitId: UnitId,
   position: number,
@@ -1628,7 +1630,7 @@ export function makeCombatUnitFromArmy(
 
   const side = applyUnitSideRules(ruleset, armyUnit.unitDefId, armyUnit.side, printed);
 
-  return {
+  const unit: CombatUnitState = {
     id: unitId,
     controllerId,
     name: def.name,
@@ -1655,6 +1657,15 @@ export function makeCombatUnitFromArmy(
       wikiUrl: def.wikiUrl
     }
   };
+
+  // Specialty cards covering the army card (Sandro's Cloak) ride into the
+  // combat: the top card's statistics replace the printed side until defeated.
+  if (armyUnit.transforms?.length) {
+    unit.transforms = armyUnit.transforms.map((entry) => ({ ...entry }));
+    applyUnitCurrentSide(unit, ruleset);
+  }
+
+  return unit;
 }
 
 /**
@@ -2394,13 +2405,18 @@ export function spendRecruitResources(state: GameState, playerId: PlayerId, cost
   );
 }
 
-/** Flips a Few army card to its Pack side, paying its (half) cost. */
+/**
+ * Flips a Few army card to its Pack side, paying its (half) cost. Half-gold
+ * effects round up by default (Saplings, settlements); Necromancy rounds
+ * down ("half the gold cost, rounded down").
+ */
 export function reinforceArmyUnit(
   state: GameState,
   playerId: PlayerId,
   armyUnitId: string,
   halfCost: boolean,
-  halfGoldOnly = false
+  halfGoldOnly = false,
+  roundDown = false
 ): void {
   const player = state.players[playerId];
   const armyUnit = player?.army.find((candidate) => candidate.id === armyUnitId);
@@ -2413,10 +2429,11 @@ export function reinforceArmyUnit(
     return;
   }
 
+  const half = (amount: number) => (roundDown ? Math.floor(amount / 2) : Math.ceil(amount / 2));
   const cost: ResourceCost = {};
   for (const [resource, amount] of Object.entries(packSide.cost) as [ResourceKind, number][]) {
     const halved = halfCost || (halfGoldOnly && resource === "gold");
-    cost[resource] = halved ? Math.ceil(amount / 2) : amount;
+    cost[resource] = halved ? half(amount) : amount;
   }
   if (!hasRecruitResources(state, playerId, cost)) {
     return;
@@ -2430,6 +2447,77 @@ export function reinforceArmyUnit(
     unitDefId: armyUnit.unitDefId,
     kind: "reinforce",
     cost
+  });
+}
+
+/**
+ * Necromancy: "Reinforce a bronze or silver unit (expert: any unit) for half
+ * the gold cost (rounded down)." Queues a unit-choice prompt over the
+ * player's Few units of the allowed tiers — no Citadel, Dwelling or
+ * Population token needed.
+ */
+export function queueNecromancyReinforce(state: GameState, playerId: PlayerId, mode: "basic" | "expert"): void {
+  const player = state.players[playerId];
+  const adventure = state.adventure;
+  if (!player || !adventure) {
+    return;
+  }
+
+  const allowedTiers = mode === "expert" ? ["bronze", "silver", "gold"] : ["bronze", "silver"];
+  const options: { label: string; steps: VisitStep[] }[] = [];
+  for (const unit of player.army) {
+    if (unit.side !== "few") {
+      continue;
+    }
+    const def = coreUnitDefinitions[unit.unitDefId];
+    const packSide = getUnitSide(unit.unitDefId, "pack");
+    if (!def || !packSide || !allowedTiers.includes(def.tier)) {
+      continue;
+    }
+
+    const cost: ResourceCost = { ...packSide.cost };
+    cost.gold = Math.floor((cost.gold ?? 0) / 2);
+    if (!hasRecruitResources(state, playerId, cost)) {
+      continue;
+    }
+
+    const costLabel =
+      Object.entries(cost)
+        .filter(([, amount]) => amount)
+        .map(([resource, amount]) => `${amount} ${resource}`)
+        .join(" + ") || "free";
+    options.push({
+      label: `Reinforce ${def.name} (${costLabel})`,
+      steps: [{ type: "REINFORCE_HALF_GOLD", armyUnitId: unit.id, roundDown: true }]
+    });
+  }
+
+  if (options.length === 0) {
+    adventure.rewardQueue.push({
+      playerId,
+      kind: "visit-steps",
+      steps: [
+        {
+          type: "CHOOSE_ONE",
+          prompt: "Necromancy: no Few bronze/silver unit you can afford to reinforce.",
+          options: [{ label: "OK", steps: [] }]
+        }
+      ]
+    });
+    return;
+  }
+
+  options.push({ label: "Skip", steps: [] });
+  adventure.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt: `Necromancy: reinforce a ${mode === "expert" ? "" : "bronze or silver "}unit for half the gold cost (rounded down)`,
+        options
+      }
+    ]
   });
 }
 

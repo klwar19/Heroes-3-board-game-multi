@@ -50,10 +50,20 @@ export {
   expertUsesAvailable,
   getRuleset,
   rulesetCardNote,
+  specialtyTransformHealth,
   spellLimitFor,
   wisdomGoldDiscount,
   wisdomSearchCount
 } from "./ruleset";
+export {
+  applyUnitCurrentSide,
+  canPlaceTransformOn,
+  insertUnitTransform,
+  makeUnitTransformState,
+  topTransform
+} from "./unit-transforms";
+export { markUnitRemovedIfNeeded } from "./combat-units";
+export { makeCombatUnitFromArmy } from "./adventure";
 export { createInitialGameState } from "./setup";
 export {
   createAdventureGameState,
@@ -241,6 +251,7 @@ export type {
   UnitLevel,
   UnitType,
   UnitId,
+  UnitTransformState,
   VisitStep,
   CombatTokenKind,
   CombatTokenState,

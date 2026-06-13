@@ -1,16 +1,52 @@
 import { expireEffectsForCombatEnd } from "./active-effects";
 import { getUnitSide } from "./adventure";
 import { appendEvent } from "./events";
+import { getRuleset } from "./ruleset";
 import { isArrowTowerUnit } from "./siege";
+import { applyUnitCurrentSide, topTransform } from "./unit-transforms";
 import type { ActiveEffectState, CombatState, CombatUnitState, GameState, PlayerId } from "./state";
 
 /**
- * Finalizes lethal damage on a combat unit: defeated "Pack" units flip to
- * their "Few" side carrying the excess damage; anything still at or past its
- * health is announced as removed. Shared by attacks, ability damage and war
- * machine shots.
+ * Finalizes lethal damage on a combat unit, peeling the physical stack top
+ * to bottom: a defeated specialty card on top (Sandro's Cloak) goes to its
+ * owner's discard pile and reveals the card under it with the excess
+ * damage; a defeated "Pack" flips to its "Few" side the same way; anything
+ * still at or past its health is announced as removed. Shared by attacks,
+ * ability damage and war machine shots.
  */
 export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState): void {
+  // Specialty cards covering the unit are defeated one by one, each leaving
+  // the excess damage on whatever it reveals.
+  while (unit.damage >= unit.maxHealth && topTransform(unit)) {
+    const defeated = unit.transforms?.pop();
+    if (!defeated) {
+      break;
+    }
+    const excess = Math.max(0, unit.damage - defeated.health);
+    applyUnitCurrentSide(unit, getRuleset(state));
+    unit.damage = Math.min(unit.maxHealth, excess);
+
+    const owner = state.players[unit.controllerId];
+    owner?.discard.push(defeated.cardId);
+    // The army card mirrors the stack so the loss survives the combat.
+    const armyUnit = owner?.army.find((candidate) => candidate.id === unit.armyUnitId);
+    if (armyUnit?.transforms) {
+      armyUnit.transforms = armyUnit.transforms.filter((entry) => entry.cardId !== defeated.cardId);
+      if (armyUnit.transforms.length === 0) {
+        delete armyUnit.transforms;
+      }
+    }
+
+    appendEvent(state, {
+      type: "SPECIALTY_CARD_DEFEATED",
+      unitId: unit.id,
+      playerId: unit.controllerId,
+      cardId: defeated.cardId,
+      revealedName: unit.cardName,
+      excessDamage: excess
+    });
+  }
+
   if (unit.damage < unit.maxHealth) {
     return;
   }
@@ -20,16 +56,9 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     if (fewSide) {
       const excess = unit.damage - unit.maxHealth;
       unit.variant = "few";
-      unit.cardName = `Few ${unit.name}`;
-      unit.attack = fewSide.attack;
-      unit.defense = fewSide.defense;
-      unit.maxHealth = fewSide.health;
-      unit.initiative = fewSide.initiative;
-      unit.abilities = fewSide.abilities;
-      unit.damage = Math.min(fewSide.health, Math.max(0, excess));
-      if (unit.assets && fewSide.cardImage) {
-        unit.assets.cardImage = fewSide.cardImage;
-      }
+      unit.damage = 0;
+      applyUnitCurrentSide(unit, getRuleset(state));
+      unit.damage = Math.min(unit.maxHealth, Math.max(0, excess));
 
       appendEvent(state, {
         type: "UNIT_FLIPPED",

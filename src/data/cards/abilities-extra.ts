@@ -250,11 +250,23 @@ export const extraAbilityCards: CardLibrary = {
     "Diplomacy",
     "Basic (Map): For every Dwelling you have, draw 1 corresponding Neutral Unit card; you can Recruit one by paying its cost. Expert: skip Combat with Neutral Units on a field whose difficulty equals your Hero's level."
   ),
-  "ability.necromancy": notImplementedAbility(
-    "necromancy",
-    "Necromancy",
-    "Basic (Map): After winning Combat (not Quick Combat), Reinforce a bronze or silver unit for half the gold cost. Expert: Reinforce any unit for half the gold cost. (Necropolis heroes only.)"
-  ),
+  "ability.necromancy": {
+    id: "ability.necromancy",
+    name: "Necromancy",
+    kind: "ability",
+    timing: "instant",
+    abilityClass: "adventure",
+    tags: [
+      "ability",
+      "map",
+      "necropolis-only",
+      "Basic: Play after winning Combat other than Quick Combat. You can Reinforce a bronze or silver unit of your choice for half the gold cost (rounded down). Expert: any unit. Necropolis heroes only — needs no Citadel, Dwelling or Population token."
+    ],
+    effect: { type: "NECROMANCY_REINFORCE" },
+    assets: abilityAssets("necromancy", "Necromancy"),
+    implementationStatus: "implemented",
+    source: abilitySource("necromancy")
+  },
   "ability.pathfinding": notImplementedAbility(
     "pathfinding",
     "Pathfinding",
@@ -330,7 +342,11 @@ export const abilityDeckLegacy: string[] = [
   "ability.logistics",
   "ability.scholar",
   "ability.first_aid",
-  "ability.ballistics"
+  "ability.ballistics",
+  // Necropolis-only (rulebook p.24): other factions may keep a drawn copy
+  // but can never play it; searches simply pass it over.
+  "ability.necromancy",
+  "ability.necromancy"
 ];
 
 /** BINH Ability deck: the legacy set plus the spell-deck key cards. */
