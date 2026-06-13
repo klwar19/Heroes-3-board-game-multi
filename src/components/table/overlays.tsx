@@ -1276,3 +1276,62 @@ export function CombatResultModal({
     </div>
   );
 }
+
+/** A1-style label for a battlefield square (4 columns, 5 rows). */
+function squareLabel(position: number): string {
+  return `${String.fromCharCode(65 + (position % 4))}${Math.floor(position / 4) + 1}`;
+}
+
+/**
+ * Neutral combat pacing pop-up: between guard walks the engine stops on
+ * `pendingNeutralStep`, the battlefield holds, and the attacking player clicks
+ * the enemy turn on. Everyone else just sees what the guard did.
+ */
+export function NeutralStepOverlay({
+  state,
+  viewerPlayerId,
+  legalActions,
+  onAction
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  legalActions: LegalAction[];
+  onAction: (action: GameAction) => void;
+}) {
+  const step = state.combat?.pendingNeutralStep;
+  if (!step) {
+    return null;
+  }
+
+  const guard = state.combat?.units[step.unitId];
+  const continueAction = legalActions.find((legal) => legal.action.type === "CONTINUE_NEUTRAL_STEP");
+  const attackerName = state.combat ? state.players[state.combat.attackerPlayerId]?.name : undefined;
+
+  return (
+    <div className="combatResultBackdrop neutralStepBackdrop" role="dialog" aria-label="Enemy turn">
+      <div className="combatResultModal neutralStepModal">
+        <header>
+          <Swords aria-hidden="true" size={18} />
+          <strong>Enemy turn</strong>
+        </header>
+        <p>
+          {step.name} {step.from === step.to ? "holds position" : `advances ${squareLabel(step.from)} → ${squareLabel(step.to)}`}.
+        </p>
+        {guard ? <small>The guard army keeps moving once you continue.</small> : null}
+        <div className="combatResultButtons">
+          {continueAction ? (
+            <button
+              className="commandButton primary"
+              onClick={() => onAction({ type: "CONTINUE_NEUTRAL_STEP", playerId: viewerPlayerId })}
+              type="button"
+            >
+              <Check aria-hidden="true" size={15} /> Continue
+            </button>
+          ) : (
+            <small className="neutralStepWaiting">Waiting for {attackerName ?? "the attacker"} to continue…</small>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

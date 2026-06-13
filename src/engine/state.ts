@@ -852,6 +852,7 @@ export type GameAction =
   | { type: "UNPLACE_COMBAT_UNIT"; playerId: PlayerId; armyUnitId: string }
   | { type: "FINISH_COMBAT_PLACEMENT"; playerId: PlayerId }
   | { type: "CONTINUE_NEUTRAL_COMBAT"; playerId: PlayerId }
+  | { type: "CONTINUE_NEUTRAL_STEP"; playerId: PlayerId }
   | { type: "RETREAT_FROM_COMBAT"; playerId: PlayerId }
   | {
       /**
@@ -1915,6 +1916,14 @@ export type PlayerState = {
    * the card may only be played while the window is open.
    */
   necromancyWindow?: boolean;
+  /**
+   * Ability cards this player acquired by drawing them out of the shared
+   * Ability deck (the level-up "Search (2) the Ability deck" reward). A
+   * Necromancy gained this way may be kept but never played — it is only a
+   * real, playable ability when it comes from a hero's printed board, not
+   * from a level-up draw (house rule).
+   */
+  deckDrawnAbilityCardIds?: CardId[];
 };
 
 /**
@@ -2109,6 +2118,22 @@ export type CombatState = {
    * 1 MP to continue for another round or retreat.
    */
   awaitingContinue: boolean;
+  /**
+   * Neutral combat pacing: when a guard unit walks (a step that is not also an
+   * attack — attacks already pause on the defender's reaction window and the
+   * attack die) the engine stops here so the table can see the move and click
+   * on. The attacking player resumes with CONTINUE_NEUTRAL_STEP and the next
+   * guard acts. Only set during neutral fights — player-vs-player and the
+   * sandbox never pause like this.
+   */
+  pendingNeutralStep?: {
+    unitId: UnitId;
+    /** Display name of the acting guard, for the pop-up. */
+    name: string;
+    /** Where the guard stepped from / to. */
+    from: number;
+    to: number;
+  } | null;
   /**
    * Round-start war machine triggers still waiting to resolve, in owner
    * order (attacker first). The Catapult parks its first chosen target here

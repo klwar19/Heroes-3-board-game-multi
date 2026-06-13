@@ -204,6 +204,41 @@ function getBlockedSpaces(combat: CombatState, movingUnit?: CombatUnitState): Se
   return blocked;
 }
 
+/**
+ * Step-count from `origin` to every square `mover` could path to, treating
+ * other units and obstacles as walls (flyers ignore them). Used by the neutral
+ * AI to walk *around* blockers toward a target rather than only ever stepping
+ * in a straight line — a unit boxed off the direct line still closes the gap.
+ * Squares the mover can never reach are absent from the result.
+ */
+export function getPathDistances(combat: CombatState, mover: CombatUnitState, origin: number): Map<number, number> {
+  const blocked = getBlockedSpaces(combat, mover);
+  // The origin (the target's own square) seeds the flood even though it is
+  // occupied — we want the distance to stand *next to* the target.
+  blocked.delete(origin);
+  const ignoresObstacles = mover.type === "flying";
+
+  const distances = new Map<number, number>([[origin, 0]]);
+  let frontier = [origin];
+  let step = 0;
+  while (frontier.length > 0) {
+    step += 1;
+    const next: number[] = [];
+    for (const position of frontier) {
+      for (const neighbor of getOrthogonalNeighbors(position)) {
+        if (distances.has(neighbor) || (!ignoresObstacles && blocked.has(neighbor))) {
+          continue;
+        }
+        distances.set(neighbor, step);
+        next.push(neighbor);
+      }
+    }
+    frontier = next;
+  }
+
+  return distances;
+}
+
 function activeEffectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitState): boolean {
   if (effect.scope === "global") {
     return true;
@@ -1082,9 +1117,12 @@ function addTurnCardActions(
     }
 
     // Necromancy: playable on the map only in the window after winning a
-    // Combat other than a Quick Combat, and only by a Necropolis hero.
+    // Combat other than a Quick Combat, and only by a Necropolis hero. A copy
+    // drawn from the Ability deck on level-up may be kept but never played
+    // (house rule) — only a hero's printed Necromancy is a real ability.
     if (card.effect.type === "NECROMANCY_REINFORCE") {
-      if (player.necromancyWindow && player.factionId === "necropolis") {
+      const drawnFromLevelUp = player.deckDrawnAbilityCardIds?.includes(cardId) ?? false;
+      if (player.necromancyWindow && player.factionId === "necropolis" && !drawnFromLevelUp) {
         const modes: CardPlayMode[] = expertUsesAvailable(player) > 0 ? ["basic", "expert"] : ["basic"];
         for (const mode of modes) {
           actions.push({
@@ -2908,6 +2946,18 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // Combat setup placement.
   if (state.combat?.setup) {
     addCombatSetupActions(actions, state, playerId);
+    return actions;
+  }
+
+  // Neutral combat pacing: a guard just walked — the attacker clicks it on
+  // before the next guard acts (see CombatState.pendingNeutralStep).
+  if (state.combat?.pendingNeutralStep && state.combat.context.kind === "neutral") {
+    if (playerId === state.combat.attackerPlayerId) {
+      actions.push({
+        label: "Continue the enemy turn",
+        action: { type: "CONTINUE_NEUTRAL_STEP", playerId }
+      });
+    }
     return actions;
   }
 
