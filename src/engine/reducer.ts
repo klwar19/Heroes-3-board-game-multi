@@ -97,7 +97,8 @@ import {
   getActiveDefenseBonus,
   getAttackRerollEffects,
   makeActiveEffect,
-  releaseEndedOngoingCards
+  releaseEndedOngoingCards,
+  unitDealsElementalDamage
 } from "./active-effects";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
@@ -662,28 +663,27 @@ function doubleAmountForUnitName(amount: number, unit: CombatUnitState | undefin
 function createAttackBuffFromCard(
   state: GameState,
   card: CardDefinition,
+  // Passed in (not read off card.effect) so it also works as a CHOOSE_ONE
+  // option (Moandor's "+2 attack"), where card.effect is the "OR" wrapper.
+  effect: Extract<EffectDefinition, { type: "CREATE_ATTACK_BUFF" }>,
   playerId: PlayerId,
   power: number,
   target: { type: "unit"; unitId: UnitId }
 ): void {
-  if (card.effect.type !== "CREATE_ATTACK_BUFF") {
-    return;
-  }
-
   const targetUnit = state.combat?.units[target.unitId];
   const amount = doubleAmountForUnitName(
-    getAmountByPower(card.effect.amountByPower, card.effect.amount ?? 0, power),
+    getAmountByPower(effect.amountByPower, effect.amount ?? 0, power),
     targetUnit,
-    card.effect.doubleForUnitName
+    effect.doubleForUnitName
   );
   createActiveEffect(
     state,
     {
-      name: card.effect.name,
+      name: effect.name,
       scope: "unit",
-      duration: card.effect.duration,
-      polarity: card.effect.polarity ?? "positive",
-      removable: card.effect.removable ?? true,
+      duration: effect.duration,
+      polarity: effect.polarity ?? "positive",
+      removable: effect.removable ?? true,
       modifiers: [
         {
           type: "ATTACK_BONUS",
@@ -1135,6 +1135,17 @@ function getAttackStackDetails(
   const retaliationDefenseBonus = isRetaliation ? getDefenseBonusWhenRetaliated(defender) : 0;
   const retaliationAttackPenalty = isRetaliation ? getRetaliationAgainstAttackPenalty(defender) : 0;
 
+  // Elemental damage (Elemental units, Moandor's Liches VI specialty): the
+  // unit's attack value cannot be RAISED by attack cards (Bloodlust, Offense,
+  // the Attack statistic, Bless's bonus…) or by Attack tokens — only LOWERED
+  // by debuffs such as a Sorceress' Weakness. Clamp the positive card/token
+  // contributions to 0 while leaving every negative one (and the printed
+  // attack) intact.
+  const dealsElemental = unitDealsElementalDamage(state, attacker);
+  const cardAttackBonus = stackItem.modifiers.attackBonus + activeAttackBonus;
+  const effectiveCardAttackBonus = dealsElemental ? Math.min(0, cardAttackBonus) : cardAttackBonus;
+  const effectiveTokenAttack = dealsElemental ? Math.min(0, tokenAttack) : tokenAttack;
+
   return {
     attacker,
     defender,
@@ -1142,7 +1153,7 @@ function getAttackStackDetails(
     attackKind,
     rollMode,
     attackBonus:
-      stackItem.modifiers.attackBonus + activeAttackBonus + tokenAttack + attackDieResultBonus - retaliationAttackPenalty,
+      effectiveCardAttackBonus + effectiveTokenAttack + attackDieResultBonus - retaliationAttackPenalty,
     defenseBonus: defenseBonusBeforeAbility - defenseReductionAmount + retaliationDefenseBonus,
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
     ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie),
@@ -3287,6 +3298,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       createAttackBuffFromCard(
         state,
         card,
+        card.effect,
         stackItem.action.playerId,
         getCurrentSpellPower(stackItem, cards),
         stackItem.action.target
@@ -3448,6 +3460,24 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
             playerId: stackItem.action.playerId,
             sourceEffectIds: [],
             message: `${card.name} may scorch a second unit.`
+          });
+        }
+      }
+    }
+
+    if (card?.effect.type === "SUMMON_ELEMENTAL" && state.combat && stackItem.action.target.type === "space") {
+      // Power 4 summons a Pack, Power 2 a Few; Power 0 has no effect.
+      const power = getCurrentSpellPower(stackItem, cards);
+      const side: "few" | "pack" | null = power >= 4 ? "pack" : power >= 2 ? "few" : null;
+      const position = stackItem.action.target.position;
+      if (side) {
+        const summoned = placeSummonedUnit(state, stackItem.action.playerId, card.effect.unitDefId, side, position);
+        if (summoned) {
+          appendEvent(state, {
+            type: "UNIT_ABILITY_TRIGGERED",
+            unitId: summoned.id,
+            abilityId: card.id,
+            message: `${state.players[stackItem.action.playerId]?.name ?? "A hero"} casts ${card.name}: ${summoned.cardName} appears at ${getBattlefieldLabel(position)}.`
           });
         }
       }
@@ -4468,7 +4498,26 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "CREATE_ATTACK_BUFF" && target) {
-    createAttackBuffFromCard(state, card, action.playerId, card.power ?? 0, target);
+    createAttackBuffFromCard(state, card, effect, action.playerId, card.power ?? 0, target);
+  }
+
+  if (effect.type === "GRANT_ELEMENTAL_DAMAGE" && target) {
+    // Moandor's Liches VI: the chosen unit deals elemental damage for the
+    // Combat (its attack can no longer be raised by attack cards/tokens).
+    createActiveEffect(
+      state,
+      {
+        name: card.name,
+        scope: "unit",
+        duration: effect.duration,
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "ELEMENTAL_DAMAGE" }]
+      },
+      { type: "card", cardId: card.id, controllerId: action.playerId },
+      action.playerId,
+      target
+    );
   }
 
   if (effect.type === "CREATE_DEFENSE_BUFF" && target) {
@@ -5013,6 +5062,61 @@ function applyUnitAbilityAction(
 
   state.phase = "combat";
   state.priorityPlayerId = null;
+}
+
+/**
+ * A combat space cannot host a summoned unit when it is off the board, holds a
+ * living unit, an obstacle token, or a siege Wall/Gate. Shared by the Summon
+ * Elemental spell's resolution and its legal-target enumeration.
+ */
+export function isSpaceBlockedForSummon(combat: CombatState, position: number): boolean {
+  if (!isBattlefieldPosition(position)) {
+    return true;
+  }
+  if ((combat.obstacles ?? []).includes(position)) {
+    return true;
+  }
+  if (combat.siege?.walls.includes(position) || combat.siege?.gatePosition === position) {
+    return true;
+  }
+  return Object.values(combat.units).some((unit) => isUnitAlive(unit) && unit.position === position);
+}
+
+/**
+ * Places a freshly summoned unit (Summon Elemental spell) onto an empty combat
+ * space: it joins the caster's army and the combat at once, acting on its own
+ * initiative this round — exactly like the Pit Lords' Demons. Returns the new
+ * combat unit, or null when the space is unusable or the side is missing.
+ */
+function placeSummonedUnit(
+  state: GameState,
+  playerId: PlayerId,
+  unitDefId: string,
+  side: "few" | "pack",
+  position: number
+): CombatUnitState | null {
+  const combat = state.combat;
+  const player = state.players[playerId];
+  if (!combat || !player || isSpaceBlockedForSummon(combat, position) || !getUnitSide(unitDefId, side)) {
+    return null;
+  }
+
+  const armyUnit = addArmyUnit(player, unitDefId, side);
+  const summoned = makeCombatUnitFromArmy(
+    armyUnit,
+    playerId,
+    `unit_${playerId}_${armyUnit.id}`,
+    position,
+    getRuleset(state)
+  );
+  if (!summoned) {
+    return null;
+  }
+
+  // It joins the round immediately — it may still act when its initiative comes.
+  summoned.activatedThisRound = false;
+  combat.units[summoned.id] = summoned;
+  return summoned;
 }
 
 /**
