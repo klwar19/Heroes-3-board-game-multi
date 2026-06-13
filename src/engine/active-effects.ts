@@ -64,6 +64,31 @@ export function makeActiveEffect(
   };
 }
 
+/**
+ * Intelligence (basic or expert): the player holds an effect letting them cast
+ * a Spell at any time during combat — even off-turn, without one of their own
+ * units being active. Used to lift the activation-timing gate on spell casts.
+ */
+export function playerHasSpellTimingFreedom(state: GameState, playerId: PlayerId): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effect.controllerId === playerId &&
+      effect.modifiers.some((modifier) => modifier.type === "SPELL_CAST_ANYTIME")
+  );
+}
+
+/**
+ * Expert Intelligence: the player's Spell casts no longer count against the
+ * one-Spell-per-combat-round limit (`spellLimitFor` returns Infinity for them).
+ */
+export function playerSpellCastsIgnoreLimit(state: GameState, playerId: PlayerId): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effect.controllerId === playerId &&
+      effect.modifiers.some((modifier) => modifier.type === "SPELL_CAST_ANYTIME" && modifier.ignoreSpellLimit === true)
+  );
+}
+
 export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitState): boolean {
   if (effect.scope === "global") {
     return true;

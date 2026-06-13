@@ -175,6 +175,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} moves their hero ${event.from} -> ${event.to} (${event.movementLeft} movement left).`;
     case "SPELL_CAST_CANCELLED":
       return `${playerName(state, event.cancelledByPlayerId)} ends ${cardName(event.spellCardId)} with ${cardName(event.cancelledByCardId)}.`;
+    case "SPELL_REDIRECTED":
+      return `${playerName(state, event.playerId)} redirects ${cardName(event.spellCardId)} to ${targetName(state, event.toTarget)} with ${cardName(event.byCardId)}.`;
     case "DAMAGE_ASSIGNED":
       return `${event.amount} ${event.damageKind} damage to ${targetName(state, event.target)}.`;
     case "DAMAGE_HEALED":

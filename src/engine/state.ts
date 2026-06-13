@@ -171,6 +171,17 @@ export type ActiveEffectModifier =
       amount: number;
     }
   | {
+      /**
+       * Intelligence: while held this Combat the controller may cast a Spell at
+       * any time — even off-turn, without one of their own units being active
+       * (it lifts the activation-timing gate, not the open-window rule). The
+       * expert side also sets `ignoreSpellLimit`, so the per-combat-round Spell
+       * limit no longer applies to that player.
+       */
+      type: "SPELL_CAST_ANYTIME";
+      ignoreSpellLimit?: boolean;
+    }
+  | {
       /** Angel Wings: walk through fields without resolving them this turn. */
       type: "HERO_MOVE_THROUGH";
     }
@@ -443,6 +454,17 @@ export type EffectDefinition =
        * printed Power.
        */
       type: "CANCEL_LETHAL_ATTACK";
+      grade: UnitGrade;
+    }
+  | {
+      /**
+       * Magic Mirror: an instant reaction to an enemy Spell cast that targets
+       * one of your units. Choose a new target for that Spell — any unit of the
+       * paid grade (Power 0 → bronze, 1 → silver, 2 → gold), set as one option
+       * per grade. The Spell then resolves against the chosen unit instead. The
+       * new target is picked in a follow-up choice after the card is played.
+       */
+      type: "REDIRECT_SPELL";
       grade: UnitGrade;
     }
   | {
@@ -1282,6 +1304,17 @@ export type GameEvent =
       spellCardId: CardId;
       cancelledByPlayerId: PlayerId;
       cancelledByCardId: CardId;
+    }
+  | {
+      /** Magic Mirror: a pending Spell was re-pointed to a new target. */
+      id: string;
+      type: "SPELL_REDIRECTED";
+      /** The player who played Magic Mirror (the original spell's target side). */
+      playerId: PlayerId;
+      spellCardId: CardId;
+      byCardId: CardId;
+      fromTarget: TargetRef;
+      toTarget: TargetRef;
     }
   | {
       id: string;
@@ -2849,6 +2882,7 @@ export type PendingChoice =
         | "neutral-target"
         | "war-machine"
         | "spell-splash"
+        | "spell-redirect"
         | "enchanter-activation"
         | "faerie-damage";
       abilityId: string | null;

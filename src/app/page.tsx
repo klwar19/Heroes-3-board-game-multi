@@ -1929,7 +1929,7 @@ export default function Home() {
       </div>
 
       <div className="tableSeatRow">
-        {isSeated ? <PlayerDock view={playerView} viewerPlayerId={viewerPlayerId} /> : <div />}
+        {isSeated ? <PlayerDock state={state} view={playerView} viewerPlayerId={viewerPlayerId} /> : <div />}
         {isSeated ? (
           <PermanentSlot
             legalActions={legalActions}

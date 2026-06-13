@@ -40,6 +40,7 @@ export const implementedCardEffectTypes = [
   "AREA_DAMAGE_ALL_ADJACENT",
   "GAIN_WAR_MACHINE",
   "CANCEL_LETHAL_ATTACK",
+  "REDIRECT_SPELL",
   "CONTINUE_NEUTRAL_FREE",
   "EARTHQUAKE",
   "SIEGE_DEMOLISH",
@@ -442,6 +443,10 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "CANCEL_LETHAL_ATTACK") {
     return `cancel a killing blow on your ${card.effect.grade} unit`;
+  }
+
+  if (card.effect.type === "REDIRECT_SPELL") {
+    return `redirect an enemy spell to a new ${card.effect.grade} target`;
   }
 
   if (card.effect.type === "SUMMON_ELEMENTAL") {

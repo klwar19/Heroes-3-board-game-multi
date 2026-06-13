@@ -24,6 +24,7 @@ export {
   getActiveDefenseBonus,
   getAttackRerollEffects,
   makeActiveEffect,
+  playerSpellCastsIgnoreLimit,
   unitDealsElementalDamage
 } from "./active-effects";
 export {

@@ -83,6 +83,6 @@ Mirror of the build request. ✅ = implemented **and wired** (engine + UI + test
 - [x] content-tracker.md + README updated
 
 ## Known gaps (tracked in content-tracker.md)
-- NI cards stay out of the decks: Chain Lightning, Resurrection, Teleport, Blind/paralysis, Mirth, Sorrow, Slayer, Dimension Door, Earthquake, Forgetfulness, Inferno, Visions; Tactics, Intelligence, Diplomacy, Pathfinding, Learning, Artillery, Ballistics; Charm of Mana, Greater Gnoll's Flail, Shield of the Dwarven Lords, Shackles of War, Mystic Orb, Orb of Vulnerability (Necromancy is now in the Ability deck and implemented)
+- NI cards stay out of the decks: Chain Lightning, Teleport, Blind/paralysis, Mirth, Sorrow, Slayer, Dimension Door, Forgetfulness, Inferno, Visions; Tactics, Diplomacy, Pathfinding, Learning, Artillery; Charm of Mana, Greater Gnoll's Flail, Shield of the Dwarven Lords, Shackles of War, Mystic Orb, Orb of Vulnerability (Necromancy, Magic Mirror and Intelligence are now implemented and in the decks)
 - Map-spell Empowerment (Town Portal +MP at power 2/4) resolves at base power for now
 - Siege combat, secondary heroes, war machines beyond the Tent, scenario-specific Obelisk/Grail effects — unchanged from before
