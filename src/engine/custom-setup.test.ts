@@ -89,9 +89,10 @@ describe("map designer", () => {
     const state = createAdventureGameState({
       seed: "designed-map",
       customMap: [
-        // Scenario layout slots are on the lattice and touch the starts.
-        { row: 5, col: 3, group: "near", faceDown: true },
-        { row: 5, col: 6, group: "far", faceDown: false, tileDefId: "F1", rotation: 2 }
+        // Both slots are gapless neighbours of seat 0 (8,2), so they interlock
+        // with the board with no hole.
+        { row: 9, col: 4, group: "near", faceDown: true },
+        { row: 11, col: 2, group: "far", faceDown: false, tileDefId: "F1", rotation: 2 }
       ]
     });
 
@@ -119,7 +120,7 @@ describe("map designer", () => {
     const scenario = getScenario("skirmish");
     const { accepted, problems } = validateCustomMapPlan(
       [
-        { row: 5, col: 3, group: "near", faceDown: true },
+        { row: 9, col: 4, group: "near", faceDown: true },
         { row: 20, col: 20, group: "near", faceDown: true }
       ],
       scenario
@@ -136,8 +137,8 @@ describe("map designer", () => {
 
     const duplicate = validateCustomMapPlan(
       [
-        { row: 5, col: 3, group: "near", faceDown: true },
-        { row: 5, col: 3, group: "center", faceDown: true }
+        { row: 9, col: 4, group: "near", faceDown: true },
+        { row: 9, col: 4, group: "center", faceDown: true }
       ],
       scenario
     );

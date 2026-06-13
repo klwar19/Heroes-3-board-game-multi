@@ -137,8 +137,11 @@ export {
   hexToPixel,
   parseHexSpaceId,
   slotDirection,
+  tileCentersAdjacent,
+  tileCentersOverlap,
   tileFootprint,
-  tileFootprintsTouch
+  tileLatticeColor,
+  tileLatticeNeighbors
 } from "./hex";
 export type { HexCoord, HexDirection } from "./hex";
 export { isNeutralUnit, pickNeutralTarget, planNeutralActivation } from "./neutral-ai";
