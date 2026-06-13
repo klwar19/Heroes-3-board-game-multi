@@ -91,7 +91,16 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
         deck: [],
         deckCount: player.deck.length,
         discard: [...player.discard],
-        removed: [...player.removed]
+        removed: [...player.removed],
+        // Spell Scrolls show their symbol to everyone, but only the owner sees
+        // which spells they hold (the cards sit face down near the hero).
+        scrolls: player.scrolls
+          ? player.scrolls.map((scroll) =>
+              playerId === viewerPlayerId
+                ? { ...scroll, spellCardIds: [...scroll.spellCardIds] }
+                : { ...scroll, spellCardIds: scroll.spellCardIds.map(() => "hidden") }
+            )
+          : undefined
       }
     ])
   );
