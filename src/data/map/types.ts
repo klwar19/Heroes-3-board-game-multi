@@ -165,6 +165,20 @@ export type LocationInteraction =
        */
       type: "ELEMENTAL_CONFLUX";
     }
+  | {
+      /**
+       * Tavern: pay 7 gold to gain a Secondary Hero on this field, then choose
+       * one enemy to discard 1 random card from their hand.
+       */
+      type: "TAVERN";
+    }
+  | {
+      /**
+       * Prison: gain a Secondary Hero on this field, or 3 gold if you already
+       * have one.
+       */
+      type: "PRISON";
+    }
   | { type: "NOT_IMPLEMENTED"; note: string };
 
 export type LocationDefinition = {

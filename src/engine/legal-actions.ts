@@ -1,14 +1,16 @@
 import { cardLibrary } from "@/data/cards/library";
-import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
+import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { sampleBuildings } from "@/data/towns/buildings";
 import {
   armyHasMapEffect,
+  getSecondaryHero,
   getTownOfPlayer,
   getUnitSide,
   hasRecruitResources,
   hasResources as playerHasResources,
+  humanPlayerIds,
   townHasBuildingEffect,
   unlockedRecruitTiers
 } from "./adventure";
@@ -596,17 +598,36 @@ function isCombatParticipant(state: GameState, playerId: PlayerId): boolean {
 }
 
 /**
- * Garrison defense lock: the town owner defending without their hero "cannot
- * use your Deck during this Combat" — every card play is off for them.
+ * Hand lock: a player "cannot use your Deck during this Combat" when they have
+ * no hero present (a garrison defended without the town hero) or when a
+ * Secondary Hero leads the fight — Secondary Heroes never play cards. Applies
+ * to the relevant side of both Neutral and player-vs-player combats.
  */
 export function isHandLockedInCombat(state: GameState, playerId: PlayerId): boolean {
   const combat = state.combat;
-  return Boolean(
-    combat &&
-      combat.context.kind === "player" &&
-      combat.context.defenderHeroId === null &&
-      combat.defenderPlayerId === playerId
-  );
+  if (!combat) {
+    return false;
+  }
+
+  if (combat.context.kind === "neutral") {
+    const hero = state.heroes[combat.context.heroId];
+    return hero?.controllerId === playerId && hero.kind === "secondary";
+  }
+
+  if (combat.context.kind !== "player") {
+    return false;
+  }
+
+  let heroId: string | null = null;
+  if (playerId === combat.attackerPlayerId) {
+    heroId = combat.context.attackerHeroId;
+  } else if (playerId === combat.defenderPlayerId) {
+    heroId = combat.context.defenderHeroId;
+  } else {
+    return false;
+  }
+
+  return heroId === null || state.heroes[heroId]?.kind === "secondary";
 }
 
 /**
@@ -2544,6 +2565,31 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
       }
     });
     actions.push({ label: "Skip", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
+    return;
+  }
+
+  if (step.type === "TAVERN") {
+    // Pay 7 gold to gain a Secondary Hero (one per player), then pick an enemy
+    // to discard a card. optionIndex selects the enemy in turn order.
+    const canGain = !getSecondaryHero(state, playerId) && playerHasResources(player, { gold: 7 });
+    if (canGain) {
+      const enemies = humanPlayerIds(state).filter((id) => id !== playerId);
+      if (enemies.length === 0) {
+        actions.push({
+          label: "Pay 7 gold to gain a Secondary Hero",
+          action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 }
+        });
+      } else {
+        enemies.forEach((enemyId, index) => {
+          actions.push({
+            label: `Pay 7 gold — ${state.players[enemyId]?.name ?? enemyId} discards a card`,
+            action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
+          });
+        });
+      }
+    }
+    actions.push({ label: "Decline", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
+    return;
   }
 }
 
@@ -2775,6 +2821,24 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
           }
         }
       }
+    }
+  }
+
+  // Buy a Secondary Hero for 10 gold (one per player). It appears at the town
+  // wearing the portrait of one of your faction's other heroes.
+  if (!getSecondaryHero(state, playerId) && playerHasResources(player, { gold: 10 })) {
+    const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
+    const mainHeroDefId = Object.values(state.heroes).find(
+      (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
+    )?.heroDefId;
+    for (const heroDefId of faction?.heroes ?? []) {
+      if (heroDefId === mainHeroDefId) {
+        continue;
+      }
+      actions.push({
+        label: `Hire Secondary Hero as ${coreHeroDefinitions[heroDefId]?.name ?? heroDefId} (10 gold)`,
+        action: { type: "HIRE_SECONDARY_HERO", playerId, heroDefId }
+      });
     }
   }
 

@@ -22,7 +22,6 @@ import {
   deckDisplayName,
   describeCardEffect,
   getActiveAstrologersCard,
-  getMainHero,
   getReachableHeroPaths,
   getRuleset,
   getTileBorderSegments,
@@ -176,7 +175,22 @@ export function HexMapBoard({
   const suppressClickRef = useRef(false);
 
   const isSeated = Boolean(state.players[viewerPlayerId]) && viewerPlayerId !== "observer";
-  const myHero = isSeated ? getMainHero(state, viewerPlayerId) : null;
+  // A player may field a Main Hero and (via Tavern / Prison) one Secondary
+  // Hero. The map controls the "active" hero; click a pawn to switch.
+  const myHeroes = useMemo(
+    () =>
+      isSeated
+        ? Object.values(state.heroes).filter((candidate) => candidate.controllerId === viewerPlayerId)
+        : [],
+    [state.heroes, isSeated, viewerPlayerId]
+  );
+  const [selectedHeroId, setSelectedHeroId] = useState<string | null>(null);
+  const myHero =
+    myHeroes.find((candidate) => candidate.id === selectedHeroId) ??
+    myHeroes.find((candidate) => candidate.kind === "main") ??
+    myHeroes[0] ??
+    null;
+  const hasSecondaryHero = myHeroes.length > 1;
   const myHeroSpaceId = myHero?.spaceId ?? null;
   const myTurn = isSeated && state.activePlayerId === viewerPlayerId;
 
@@ -601,11 +615,29 @@ export function HexMapBoard({
       for (const [index, occupant] of occupants.entries()) {
         const heroDef = occupant.heroDefId ? coreHeroDefinitions[occupant.heroDefId] : undefined;
         const portrait = heroDef?.portrait;
+        const isOwnHero = occupant.playerId === viewerPlayerId;
+        // Only offer hero switching when the player actually has a second hero.
+        const canSelectHero = isOwnHero && hasSecondaryHero && myTurn && !readOnly;
+        const isActiveHero = isOwnHero && hasSecondaryHero && myHero?.id === occupant.heroId;
         heroPawns.push(
           <g
             className="heroPawn"
             key={occupant.heroId}
-            style={{ transform: `translate(${x + index * 10 - 5}px, ${y - 4}px)` }}
+            onClick={
+              canSelectHero
+                ? (clickEvent) => {
+                    clickEvent.stopPropagation();
+                    if (suppressClickRef.current) {
+                      return;
+                    }
+                    setSelectedHeroId(occupant.heroId);
+                  }
+                : undefined
+            }
+            style={{
+              transform: `translate(${x + index * 10 - 5}px, ${y - 4}px)`,
+              cursor: canSelectHero ? "pointer" : undefined
+            }}
           >
             <circle className="heroPawnBase" r={12} />
             {portrait ? (
@@ -630,6 +662,7 @@ export function HexMapBoard({
               <circle fill={playerColor(state, occupant.playerId)} r={9} />
             )}
             <circle className="heroPawnRing" r={11} stroke={playerColor(state, occupant.playerId)} />
+            {isActiveHero ? <circle fill="none" r={13.5} stroke="#ffd34d" strokeWidth={2} /> : null}
             <line className="heroFlagPole" x1={0} x2={0} y1={-9} y2={-24} />
             <path
               d="M0 -23 L13 -19 L0 -15 Z"
@@ -874,6 +907,13 @@ export function HexMapBoard({
       {moveLockReason ? (
         <div className="mapLockHint" role="status">
           <span aria-hidden="true">🔒</span> {moveLockReason}
+        </div>
+      ) : null}
+
+      {hasSecondaryHero && myHero && !readOnly ? (
+        <div className="mapLockHint" role="status">
+          <span aria-hidden="true">🧭</span> Active: {myHero.kind === "main" ? "Main Hero" : "Secondary Hero"} (
+          {myHero.movementPoints} MP) — click a hero to switch
         </div>
       ) : null}
 
@@ -1249,6 +1289,7 @@ export function TownPanel({
   }
 
   const buildActions = legalActions.filter((legal) => legal.action.type === "BUILD_STRUCTURE");
+  const hireActions = legalActions.filter((legal) => legal.action.type === "HIRE_SECONDARY_HERO");
   const canPopulate =
     player.townTokens.population && !state.combat && legalActions.some((legal) => legal.action.type === "POPULATION_ACTION");
 
@@ -1545,6 +1586,39 @@ export function TownPanel({
               </button>
             );
           })}
+        </div>
+      ) : null}
+
+      {hireActions.length > 0 ? (
+        <div className="townActions" aria-label="Hire a Secondary Hero">
+          <h4 title="A Secondary Hero has 2 movement, plays no cards and never gains experience. One per player.">
+            Hire a Secondary Hero — 10 gold
+          </h4>
+          <div className="hireHeroRow">
+            {hireActions.map((legal) => {
+              const action = legal.action;
+              const heroDefId = action.type === "HIRE_SECONDARY_HERO" ? action.heroDefId : "";
+              const heroDef = heroDefId ? coreHeroDefinitions[heroDefId] : undefined;
+              return (
+                <button
+                  className="commandButton"
+                  key={actionKey(action)}
+                  onClick={() => onAction(action)}
+                  title={`Appears at your town as ${heroDef?.name ?? heroDefId} (10 gold)`}
+                  type="button"
+                >
+                  {heroDef?.portrait ? (
+                    <img
+                      alt=""
+                      src={assetUrl(heroDef.portrait)}
+                      style={{ width: 18, height: 18, borderRadius: "50%", objectFit: "cover", marginRight: 4, verticalAlign: "middle" }}
+                    />
+                  ) : null}
+                  {heroDef?.name ?? heroDefId}
+                </button>
+              );
+            })}
+          </div>
         </div>
       ) : null}
     </section>
@@ -2821,6 +2895,7 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   ADVENTURE_DICE_ROLLED: { icon: "🎲", cue: "dice" },
   EXPERIENCE_GAINED: { icon: "📈", cue: "experience" },
   HERO_LEVEL_UP: { icon: "⭐", cue: "level-up" },
+  HERO_GAINED: { icon: "🧙", cue: "recruit" },
   MORALE_CHANGED: { icon: "🎺", cue: "morale" },
   QUICK_COMBAT_WON: { icon: "⚡", cue: "quick-combat" },
   NEUTRAL_COMBAT_STARTED: { icon: "⚔️", cue: "combat-start" },

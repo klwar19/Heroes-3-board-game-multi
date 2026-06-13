@@ -562,22 +562,21 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "tavern",
     name: "Tavern",
     category: "revisitable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Pay 7 gold for a Secondary Hero (Secondary Heroes are not in the engine yet)."
-    },
-    implementationStatus: "not-implemented",
+    // "You can pay 7 gold to gain a Secondary Hero. Place their model on this
+    // Field. Then, choose one enemy player to discard 1 random card from their
+    // hand." Only available while you do not already field a Secondary Hero.
+    interaction: { type: "TAVERN" },
+    implementationStatus: "implemented",
     source: source("tavern")
   },
   prison: {
     id: "prison",
     name: "Prison",
     category: "visitable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Gain a Secondary Hero, or 3 experience if you already have one (Secondary Heroes are not in the engine yet)."
-    },
-    implementationStatus: "not-implemented",
+    // "Gain a Secondary Hero. Place their model on this Field. If you already
+    // have a Secondary Hero, gain 3 gold instead."
+    interaction: { type: "PRISON" },
+    implementationStatus: "implemented",
     source: source("prison")
   },
 
