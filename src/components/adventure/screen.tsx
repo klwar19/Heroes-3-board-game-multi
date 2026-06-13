@@ -2061,6 +2061,7 @@ export function PlacementPanel({
       <div className="placementUnits">
         {player.army.map((unit) => {
           const def = coreUnitDefinitions[unit.unitDefId];
+          const portrait = def?.[unit.side]?.cardImage;
           const isPlaced = placed.includes(unit.id);
           const canPlace = placeActions.some((legal) => legal.action.armyUnitId === unit.id);
           return (
@@ -2084,13 +2085,25 @@ export function PlacementPanel({
               onDragStart={(event) => {
                 event.dataTransfer.setData(ARMY_UNIT_DRAG_TYPE, unit.id);
                 event.dataTransfer.effectAllowed = "move";
+                // Drag a small portrait of the unit so it's clear what's moving.
+                const art = event.currentTarget.querySelector(".placementUnitPortrait") as HTMLElement | null;
+                if (art) {
+                  event.dataTransfer.setDragImage(art, art.offsetWidth / 2, art.offsetHeight / 2);
+                }
               }}
               title={isPlaced ? "Drag to another space, or click to take back" : "Drag onto your two rows (or click, then pick a space)"}
               type="button"
             >
-              <span className={`tierDot ${def?.tier}`} />
-              {unit.side} {def?.name ?? unit.unitDefId}
-              {isPlaced ? " ✓" : ""}
+              {portrait ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img alt="" className="placementUnitPortrait" draggable={false} loading="lazy" src={portrait} />
+              ) : (
+                <span className={`tierDot ${def?.tier}`} />
+              )}
+              <span className="placementUnitName">
+                {unit.side} {def?.name ?? unit.unitDefId}
+                {isPlaced ? " ✓" : ""}
+              </span>
             </button>
           );
         })}
