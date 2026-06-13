@@ -9,6 +9,7 @@ import {
   getUnitSide,
   hasRecruitResources,
   hasResources as playerHasResources,
+  NEUTRAL_DECK_IDS,
   townHasBuildingEffect,
   unlockedRecruitTiers
 } from "./adventure";
@@ -936,8 +937,40 @@ function isOptionEffectPlayable(
     case "ADD_UNIT_MAX_HEALTH":
     case "HEAL_DAMAGE":
     case "AREA_DAMAGE_ALL_ADJACENT":
+    case "CREATE_FIRE_SHIELD":
     case "GRANT_ELEMENTAL_DAMAGE":
       return context === "combat" && Boolean(state.combat);
+    case "DOUBLE_FIRST_AID_TENT":
+      // Gem's First Aid VI only does something with a First Aid Tent in play.
+      return (
+        context === "combat" &&
+        Boolean(state.combat) &&
+        state.activeEffects.some(
+          (active) =>
+            active.controllerId === playerId &&
+            active.modifiers.some((modifier) => modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND")
+        )
+      );
+    case "CONVERT_ARMY_UNIT": {
+      // Gelu's Sharpshooters IV: needs a Pack of Elves, the Sharpshooters still
+      // in the silver Neutral deck, and (unique) no Sharpshooters already owned.
+      if (context !== "map" || !state.adventure) {
+        return false;
+      }
+      const player = state.players[playerId];
+      const deck = state.decks[NEUTRAL_DECK_IDS[effect.toTier]];
+      if (!player || !deck) {
+        return false;
+      }
+      const hasFrom = player.army.some(
+        (unit) => unit.unitDefId === effect.fromUnitDefId && unit.side === effect.fromSide
+      );
+      const blockedByUnique =
+        Boolean(effect.unique) && player.army.some((unit) => unit.unitDefId === effect.toUnitDefId);
+      const deckHasTarget =
+        deck.drawPile.includes(effect.toUnitDefId) || deck.discardPile.includes(effect.toUnitDefId);
+      return hasFrom && !blockedByUnique && deckHasTarget;
+    }
     case "SIEGE_DEMOLISH": {
       const siege = state.combat?.siege;
       if (context !== "combat" || !siege) {

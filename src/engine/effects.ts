@@ -44,7 +44,9 @@ export const implementedCardEffectTypes = [
   "EARTHQUAKE",
   "SIEGE_DEMOLISH",
   "SUMMON_ELEMENTAL",
-  "GRANT_ELEMENTAL_DAMAGE"
+  "GRANT_ELEMENTAL_DAMAGE",
+  "DOUBLE_FIRST_AID_TENT",
+  "CONVERT_ARMY_UNIT"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {
@@ -403,6 +405,10 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "CREATE_FIRE_SHIELD") {
+    if (card.effect.amount !== undefined) {
+      const doubled = card.effect.doubleForUnitName ? ` (x2 for ${card.effect.doubleForUnitName})` : "";
+      return `a melee attacker takes ${card.effect.amount} damage after attacking the selected unit${doubled}`;
+    }
     return "adjacent attackers take damage this combat round (scales with power)";
   }
 
@@ -451,6 +457,16 @@ export function describeCardEffect(card: CardDefinition): string {
   if (card.effect.type === "GRANT_ELEMENTAL_DAMAGE") {
     const named = card.effect.targetUnitName ? `your ${card.effect.targetUnitName}` : "the unit";
     return `${named} deals elemental damage this Combat`;
+  }
+
+  if (card.effect.type === "DOUBLE_FIRST_AID_TENT") {
+    return "double your First Aid Tent's heal for this Combat";
+  }
+
+  if (card.effect.type === "CONVERT_ARMY_UNIT") {
+    const from = card.effect.fromUnitDefId.split(".").pop()?.replace(/_/g, " ");
+    const to = card.effect.toUnitDefId.split(".").pop()?.replace(/_/g, " ");
+    return `discard a ${card.effect.fromSide} of ${from} to fetch the ${to} from the ${card.effect.toTier} Neutral deck`;
   }
 
   return card.kind;
