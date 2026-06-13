@@ -127,15 +127,21 @@ import {
   getActivationAbilities,
   getActivationDamageSpellAbility,
   getAfterRetaliationAttackAbility,
+  getAttackBonusOnAttackDie,
+  getAttackBonusVsDefenderName,
   getAttackDefenseReductionAbility,
   getAttackDieDamageFollowUps,
   getAttackDieResultBonus,
+  getDeathStareFollowUps,
+  getDefenseBonusOnAttackDie,
   getDefenseBonusWhenRetaliated,
   getDoubleAttackAbility,
   getEnchanterActivationAbility,
   getEnemyDiscardAbility,
   getFlatDamageFollowUps,
+  getIgnoreTargetCardDefenseAbility,
   getLineAttackAbility,
+  getOnAttackDieTokens,
   getParalysisFollowUps,
   getPostAttackAbilityDamageEffects,
   getRetaliationAgainstAttackPenalty,
@@ -146,6 +152,7 @@ import {
   getSelfAdjacentSecondAttackAbility,
   getUnitAbilityDefinitions,
   getUnitAttackRerollSources,
+  hasIgnoreParalysis,
   hasRetaliationAgainstDisadvantage,
   hasUnitAbilityEffect
 } from "./unit-abilities";
@@ -859,10 +866,16 @@ function getAttackDamagePreview(
   dieMultiplier = 1,
   baseAttackOverride?: number,
   damageReduction = 0
-): { attackValue: number; defenseValue: number; damage: number } {
+): { attackValue: number; defenseValue: number; damage: number; dieAttackBonus: number; dieDefenseBonus: number } {
+  // Attack-die-face conditioned modifiers, resolved here so the actual hit and
+  // the lethal-save preview always agree: Dread Knights' "Death Blow" adds to
+  // the attacker's value on 0/+1, Zombies'/Manticores' resilience adds Defense
+  // for the defender on the attacker's 0/+1.
+  const dieAttackBonus = getAttackBonusOnAttackDie(attacker, roll);
+  const dieDefenseBonus = getDefenseBonusOnAttackDie(defender, roll);
   const baseAttack = baseAttackOverride ?? attacker.attack;
-  const attackValue = Math.max(0, baseAttack + attackBonus + roll * dieMultiplier);
-  const defenseValue = defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonus;
+  const attackValue = Math.max(0, baseAttack + attackBonus + dieAttackBonus + roll * dieMultiplier);
+  const defenseValue = defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonus + dieDefenseBonus;
   // Siege wall cover: "reduce the attack's damage by 1" comes off the damage,
   // not the defense.
   const damage = Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
@@ -870,7 +883,9 @@ function getAttackDamagePreview(
   return {
     attackValue,
     defenseValue,
-    damage
+    damage,
+    dieAttackBonus,
+    dieDefenseBonus
   };
 }
 
@@ -892,7 +907,7 @@ function applyAttackDamageFromCandidate(
     return { damage: 0, roll: 0, cancelled: false };
   }
 
-  const { attackValue, defenseValue, damage } = getAttackDamagePreview(
+  const { attackValue, defenseValue, damage, dieAttackBonus, dieDefenseBonus } = getAttackDamagePreview(
     attacker,
     defender,
     candidate.roll,
@@ -902,6 +917,10 @@ function applyAttackDamageFromCandidate(
     baseAttackOverride,
     damageReduction
   );
+  // Reported bonuses fold in the die-face-conditioned deltas so the event's
+  // numbers reconcile with the resolved attack/defense values.
+  const reportedAttackBonus = attackBonus + dieAttackBonus;
+  const reportedDefenseBonus = defenseBonus + dieDefenseBonus;
 
   // Alamar's Resurrection: if this blow would reduce the defender to 0 HP and
   // its grade is within reach, the whole attack is cancelled — no damage, and
@@ -920,8 +939,8 @@ function applyAttackDamageFromCandidate(
       roll: candidate.roll,
       ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
       rollMode,
-      attackBonus,
-      defenseBonus,
+      attackBonus: reportedAttackBonus,
+      defenseBonus: reportedDefenseBonus,
       attackValue,
       defenseValue,
       damage: 0,
@@ -948,8 +967,8 @@ function applyAttackDamageFromCandidate(
     roll: candidate.roll,
     ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
     rollMode,
-    attackBonus,
-    defenseBonus,
+    attackBonus: reportedAttackBonus,
+    defenseBonus: reportedDefenseBonus,
     attackValue,
     defenseValue,
     damage,
@@ -1103,24 +1122,29 @@ function getAttackStackDetails(
   const tokenAttack = tokenAttackBonus(attacker);
   const tokenDefense = tokenDefenseDelta(defender);
 
-  // Behemoths: "Decrease the target's defense by N (to a minimum of 0)" for
-  // this attack — applied after corrosion, never on retaliations or printed
-  // follow-up attacks.
+  // Attack-card "ability lowers the target's defense" sources, applied after
+  // corrosion, never on retaliations or printed follow-up attacks: Behemoths'
+  // flat crush, and the Manticore "ignore the target's printed Defense" (which
+  // subtracts the defender's printed Defense value). Both are floored together
+  // so the effective Defense never drops below 0.
   const defenseBonusBeforeAbility = stackItem.modifiers.defenseBonus + activeDefenseBonus + tokenDefense;
   const defenseReductionSource =
     !isRetaliation && !abilityAttack ? getAttackDefenseReductionAbility(attacker) : null;
+  const ignoreCardDefenseSource =
+    !isRetaliation && !abilityAttack ? getIgnoreTargetCardDefenseAbility(attacker) : null;
   const currentDefenseValue = Math.max(
     0,
     defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonusBeforeAbility
   );
-  const defenseReductionAmount = defenseReductionSource
-    ? Math.min(defenseReductionSource.amount, currentDefenseValue)
-    : 0;
+  const requestedDefenseReduction =
+    (defenseReductionSource?.amount ?? 0) + (ignoreCardDefenseSource ? defender.defense : 0);
+  const defenseReductionAmount = Math.min(requestedDefenseReduction, currentDefenseValue);
+  const reductionAbilitySource = defenseReductionSource ?? ignoreCardDefenseSource;
   const defenseReductionAbility =
-    defenseReductionSource && defenseReductionAmount > 0
+    reductionAbilitySource && defenseReductionAmount > 0
       ? {
-          abilityId: defenseReductionSource.abilityId,
-          abilityName: defenseReductionSource.abilityName,
+          abilityId: reductionAbilitySource.abilityId,
+          abilityName: reductionAbilitySource.abilityName,
           amount: defenseReductionAmount
         }
       : undefined;
@@ -1128,6 +1152,10 @@ function getAttackStackDetails(
   // Ghost Dragons (Pack): "Add +1 to your Attack die result" on every attack
   // and Retaliation Attack this unit makes.
   const attackDieResultBonus = getAttackDieResultBonus(attacker);
+
+  // "Hatred" grudge bonus (Archangels ↔ Arch Devils, Genies → Efreet, Titans →
+  // Black Dragons): extra Attack when this unit attacks the named creature.
+  const hatredAttackBonus = getAttackBonusVsDefenderName(attacker, defender.name);
 
   // Retaliation-only modifiers keyed off the retaliation's defender — i.e. the
   // original attacker being struck back: Dread Knights gain Defense, Dragon
@@ -1142,7 +1170,12 @@ function getAttackStackDetails(
     attackKind,
     rollMode,
     attackBonus:
-      stackItem.modifiers.attackBonus + activeAttackBonus + tokenAttack + attackDieResultBonus - retaliationAttackPenalty,
+      stackItem.modifiers.attackBonus +
+      activeAttackBonus +
+      tokenAttack +
+      attackDieResultBonus +
+      hatredAttackBonus -
+      retaliationAttackPenalty,
     defenseBonus: defenseBonusBeforeAbility - defenseReductionAmount + retaliationDefenseBonus,
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
     ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie),
@@ -1607,6 +1640,7 @@ function finishResolvedAttack(
   }
 
   applyOnAttackTokens(state, details.attacker, details.defender, details.isRetaliation);
+  applyOnAttackDieTokens(state, details.attacker, details.defender, attackResult.roll, details.isRetaliation);
   applyPostAttackAbilityDamage(
     state,
     details.attacker,
@@ -1681,6 +1715,12 @@ function finishResolvedAttack(
   }
 
   if (applyAttackDieDamageFollowUps(state, details.attacker, details.defender)) {
+    return;
+  }
+
+  // Gorgons' Death Stare: roll the extra dice and possibly reduce the target to
+  // 0 Health before retaliation.
+  if (applyDeathStareFollowUps(state, details.attacker, details.defender)) {
     return;
   }
 
@@ -1798,9 +1838,10 @@ function applyFireShieldDamage(
 }
 
 /**
- * Thunderbirds' lightning: roll one extra Attack die after the attack and
- * before the parked retaliation. The roll is deterministic through the same
- * combat dice stream as normal attacks.
+ * Thunderbirds' lightning / Wyverns' sting: roll one extra Attack die after the
+ * attack and before the parked retaliation, dealing flat damage when the face
+ * falls in the ability's window (Thunderbirds 0/+1, Wyverns exactly 0). The
+ * roll is deterministic through the same combat dice stream as normal attacks.
  */
 function applyAttackDieDamageFollowUps(
   state: GameState,
@@ -1827,7 +1868,7 @@ function applyAttackDieDamageFollowUps(
       message: `${attacker.name} rolls ${candidate.roll} for ${followUp.abilityName}.`
     });
 
-    if (candidate.roll < followUp.minRoll) {
+    if (candidate.roll < followUp.minRoll || (followUp.maxRoll !== undefined && candidate.roll > followUp.maxRoll)) {
       continue;
     }
 
@@ -1843,6 +1884,93 @@ function applyAttackDieDamageFollowUps(
         damageKind: "effect"
       });
     }
+    markUnitRemovedIfNeeded(state, defender);
+  }
+
+  return finishCombatIfNeeded(state);
+}
+
+/**
+ * Rust Dragons' Acid Breath: when the unit's own attack resolves on its
+ * `onRoll` face, place the printed token on the still-living target (a
+ * Corrosion token shaves Defense for the rest of combat). Never on a
+ * retaliation or a printed follow-up attack.
+ */
+function applyOnAttackDieTokens(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  attackRoll: number,
+  isRetaliation: boolean
+): void {
+  if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
+    return;
+  }
+  for (const token of getOnAttackDieTokens(attacker)) {
+    if (attackRoll !== token.onRoll) {
+      continue;
+    }
+    placeCombatToken(state, defender, token.token, token.amount, token.abilityName);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: attacker.id,
+      abilityId: token.abilityId,
+      targetUnitId: defender.id,
+      message: `${attacker.cardName} corrodes ${defender.cardName} with ${token.abilityName}.`
+    });
+  }
+}
+
+/**
+ * Gorgons' Death Stare: after the attack, roll `diceCount` Attack dice; when
+ * every one shows `onRoll`, the still-living target's current side is reduced
+ * to 0 Health (a Pack flips to its Few side as usual). Returns true when the
+ * combat ended as a result.
+ */
+function applyDeathStareFollowUps(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState
+): boolean {
+  const combat = state.combat;
+  if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
+    return false;
+  }
+
+  for (const followUp of getDeathStareFollowUps(attacker)) {
+    if (!isUnitAlive(defender)) {
+      break;
+    }
+    const rolls = Array.from({ length: Math.max(1, followUp.diceCount) }, () => rollAttackDie(combat));
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: attacker.id,
+      abilityId: followUp.abilityId,
+      targetUnitId: defender.id,
+      message: `${attacker.name} rolls ${rolls.join(", ")} for ${followUp.abilityName}.`
+    });
+    if (!rolls.every((roll) => roll === followUp.onRoll)) {
+      continue;
+    }
+    const lethal = Math.max(0, defender.maxHealth - defender.damage);
+    defender.damage = defender.maxHealth;
+    noteUnitDamagedForTokens(state, defender, lethal);
+    if (lethal > 0) {
+      appendEvent(state, {
+        type: "DAMAGE_ASSIGNED",
+        source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+        target: { type: "unit", unitId: defender.id },
+        amount: lethal,
+        damageKind: "effect"
+      });
+    }
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: attacker.id,
+      abilityId: followUp.abilityId,
+      targetUnitId: defender.id,
+      message: `${followUp.abilityName} reduces ${defender.cardName} to 0 Health.`
+    });
     markUnitRemovedIfNeeded(state, defender);
   }
 
@@ -2263,6 +2391,16 @@ function applyParalysisFollowUps(
     if (roll !== followUp.onRoll) {
       continue;
     }
+    if (hasIgnoreParalysis(defender)) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: defender.id,
+        abilityId: "ignore-paralysis",
+        targetUnitId: defender.id,
+        message: `${defender.cardName} is immune to Paralysis.`
+      });
+      continue;
+    }
     placeCombatToken(state, defender, "paralysis", 0, followUp.abilityName);
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
@@ -2306,6 +2444,17 @@ function applyRetaliationParalysis(
     if (candidate.roll !== ability.onRoll) {
       return;
     }
+  }
+
+  if (hasIgnoreParalysis(target)) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: target.id,
+      abilityId: "ignore-paralysis",
+      targetUnitId: target.id,
+      message: `${target.cardName} is immune to Paralysis.`
+    });
+    return;
   }
 
   placeCombatToken(state, target, "paralysis", 0, ability.abilityName);
