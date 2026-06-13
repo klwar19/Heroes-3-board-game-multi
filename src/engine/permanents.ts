@@ -421,6 +421,27 @@ export function applyWarMachineDamage(
   finishCombatIfNeeded(state);
 }
 
+/**
+ * Ballista volley: fire `shots` shots, each at the lowest-initiative living
+ * enemy (ties broken deterministically), stopping early if combat ends.
+ */
+function fireBallistaShots(state: GameState, playerId: PlayerId, amount: number, shots: number): void {
+  for (let shot = 0; shot < shots; shot += 1) {
+    if (state.combat?.outcome) {
+      return;
+    }
+    const enemies = enemiesOf(state, playerId);
+    if (enemies.length === 0) {
+      return;
+    }
+    const lowest = Math.min(...enemies.map((unit) => unit.initiative));
+    const target = enemies
+      .filter((unit) => unit.initiative === lowest)
+      .sort((left, right) => left.id.localeCompare(right.id))[0];
+    applyWarMachineDamage(state, playerId, target.id, amount);
+  }
+}
+
 function openWarMachineTargetChoice(
   state: GameState,
   playerId: PlayerId,
@@ -455,14 +476,20 @@ function openWarMachineTargetChoice(
   });
 }
 
-function openWarMachineOffer(state: GameState, playerId: PlayerId, prompt: string, fireLabel: string): void {
+function openWarMachineOffer(
+  state: GameState,
+  playerId: PlayerId,
+  prompt: string,
+  fireLabel: string,
+  skipLabel = "Skip"
+): void {
   const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
     id: choiceId,
     type: "OPTION_CHOICE",
     playerId,
     prompt,
-    options: [{ label: fireLabel }, { label: "Skip" }],
+    options: [{ label: fireLabel }, { label: skipLabel }],
     context: "war-machine",
     returnPhase: "combat"
   };
@@ -518,6 +545,18 @@ export function processWarMachineRound(state: GameState): void {
       if (enemies.length === 0) {
         queue.pending.shift();
         continue;
+      }
+
+      // Expert: offer firing several shots for 1 expert use, or the basic shot.
+      if (roundStart.expertShots && roundStart.expertShots > 1 && hasExpertUseLeft(state, playerId)) {
+        openWarMachineOffer(
+          state,
+          playerId,
+          `${name}: spend 1 expert use to fire ${roundStart.expertShots} times, or fire once?`,
+          `Fire ${roundStart.expertShots}× (expert)`,
+          "Fire once"
+        );
+        return;
       }
 
       const lowest = Math.min(...enemies.map((unit) => unit.initiative));
@@ -582,8 +621,26 @@ export function resolveWarMachineOption(state: GameState, playerId: PlayerId, op
   }
 
   const roundStart = activeWarMachineEntry(state, playerId)?.roundStart ?? null;
-  if (!roundStart || roundStart.kind === "damage-lowest-initiative") {
+  if (!roundStart) {
     throw new Error("That war machine has no offer to resolve.");
+  }
+
+  // Ballista expert offer: option 0 fires the expert volley (spend 1 expert
+  // use), any other option fires a single basic shot. The Ballista is done.
+  if (roundStart.kind === "damage-lowest-initiative") {
+    if (optionIndex === 0 && roundStart.expertShots) {
+      const player = state.players[playerId];
+      if (!player || !hasExpertUseLeft(state, playerId)) {
+        throw new Error("No expert uses are available this combat round.");
+      }
+      player.combatStats.expertUsesSpentThisRound += 1;
+      fireBallistaShots(state, playerId, roundStart.amount, roundStart.expertShots);
+    } else {
+      fireBallistaShots(state, playerId, roundStart.amount, 1);
+    }
+    queue.pending.shift();
+    processWarMachineRound(state);
+    return;
   }
 
   if (optionIndex !== 0) {

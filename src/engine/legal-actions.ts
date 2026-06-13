@@ -25,7 +25,7 @@ import {
   removableHandCards
 } from "./adventure-reducer";
 import { effectAppliesToUnit } from "./active-effects";
-import { getEffectiveCardEffect } from "./effects";
+import { cardCanBoostPower } from "./effects";
 import {
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
@@ -130,7 +130,12 @@ function canAffordCardCost(state: GameState, playerId: PlayerId, cardId: string,
     rest.splice(selfIndex, 1);
   }
 
-  const eligible = cost.costCardFilter === "spell" ? rest.filter((id) => cardLibrary[id]?.kind === "spell") : rest;
+  const eligible =
+    cost.costCardFilter === "spell"
+      ? rest.filter((id) => cardLibrary[id]?.kind === "spell")
+      : cost.costCardFilter === "power-source"
+        ? rest.filter((id) => cardCanBoostPower(cardLibrary[id]))
+        : rest;
   const needed = cost.discardCards ?? 0;
   return eligible.length >= needed;
 }
@@ -1162,13 +1167,26 @@ function addActiveEffectActions(actions: LegalAction[], state: GameState, player
     return;
   }
 
+  const player = state.players[playerId];
   for (const effect of state.activeEffects) {
-    if (effect.controllerId !== playerId || effect.usedCombatRoundNumbers.includes(combat.round)) {
+    if (effect.controllerId !== playerId) {
       continue;
     }
 
     const healModifier = effect.modifiers.find((modifier) => modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND");
-    if (!healModifier) {
+    if (!healModifier || healModifier.type !== "HEAL_ONCE_PER_COMBAT_ROUND") {
+      continue;
+    }
+
+    // First Aid Tent: one basic heal per round, OR — if the card has an expert
+    // and an expert use is free — spend it to heal several times this round.
+    const usage = effect.healRound?.round === combat.round ? effect.healRound : undefined;
+    const expertMax = healModifier.expertUsesPerRound ?? 0;
+    const crowns = player ? expertUsesAvailable(player) : 0;
+    const canBasic = !usage;
+    const canExpertActivate = !usage && expertMax > 1 && crowns > 0;
+    const canExpertContinue = Boolean(usage?.expert && usage.count < expertMax);
+    if (!canBasic && !canExpertActivate && !canExpertContinue) {
       continue;
     }
 
@@ -1176,16 +1194,28 @@ function addActiveEffectActions(actions: LegalAction[], state: GameState, player
       if (unit.controllerId !== playerId || !isUnitAlive(unit) || unit.damage <= 0) {
         continue;
       }
+      const target = { type: "unit" as const, unitId: unit.id };
 
-      actions.push({
-        label: `${effect.name} heal ${unit.name}`,
-        action: {
-          type: "USE_ACTIVE_EFFECT",
-          playerId,
-          effectId: effect.id,
-          target: { type: "unit", unitId: unit.id }
-        }
-      });
+      // Basic heal and expert continuations omit the mode (it defaults to
+      // basic), so plays submitted without a mode still match.
+      if (canBasic) {
+        actions.push({
+          label: `${effect.name} heal ${unit.name}`,
+          action: { type: "USE_ACTIVE_EFFECT", playerId, effectId: effect.id, target }
+        });
+      }
+      if (canExpertActivate) {
+        actions.push({
+          label: `${effect.name} expert: heal ${unit.name} (1/${expertMax}, spend 1 crown)`,
+          action: { type: "USE_ACTIVE_EFFECT", playerId, effectId: effect.id, target, mode: "expert" }
+        });
+      }
+      if (canExpertContinue) {
+        actions.push({
+          label: `${effect.name} heal ${unit.name} (${(usage?.count ?? 0) + 1}/${expertMax})`,
+          action: { type: "USE_ACTIVE_EFFECT", playerId, effectId: effect.id, target }
+        });
+      }
     }
   }
 }
@@ -2019,22 +2049,16 @@ export function getLegalReactionsForTrigger(
       }
     }
 
-    // Attack windows: only plays that consume Power — attack/defense spell
-    // instants, or Alamar's Resurrection (improved by spell power) — may be
-    // paired with Power, so Power plays are offered only while the player
-    // still holds such a play to pair them with.
-    const hasPairablePowerSink = reactions.some((legal) => {
-      if (legal.action.type !== "PLAY_REACTION" || legal.action.asPowerBoost) {
-        return false;
-      }
-      const reactionCard = cards[legal.action.cardId];
-      if (reactionCard?.kind === "spell") {
-        return true;
-      }
-      const variantEffect = getEffectiveCardEffect(reactionCard, legal.action.optionIndex);
-      return variantEffect?.type === "CANCEL_LETHAL_ATTACK";
-    });
-    if (!isAttackWindow || hasPairablePowerSink) {
+    // Attack windows: only spells that modify the attack (buffs/nerfs of
+    // attack or defense) may consume Power, so Power plays are offered only
+    // while the player still holds such an instant spell to pair them with.
+    const hasPairableSpell = reactions.some(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        !legal.action.asPowerBoost &&
+        cards[legal.action.cardId]?.kind === "spell"
+    );
+    if (!isAttackWindow || hasPairableSpell) {
       reactions.push(...powerReactions);
     }
 
@@ -2100,11 +2124,19 @@ function variantMatchesTrigger(
   if (variant.trigger.event !== triggerEvent.type) {
     // Power plays declared on a SPELL_CAST trigger may also be paid into an
     // attack window, fueling a spell instant in the same declaration.
-    return (
+    if (
       triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
       variant.trigger.event === "SPELL_CAST_STARTED" &&
       variant.effect.type === "ADD_SPELL_POWER"
-    );
+    ) {
+      return true;
+    }
+    // Alamar's Resurrection guards a unit against both attacks and damaging
+    // spells, so it reacts in either window — only on the enemy's declaration.
+    if (variant.effect.type === "CANCEL_LETHAL_ATTACK") {
+      return triggerEvent.playerId !== playerId;
+    }
+    return false;
   }
 
   const isSelf = triggerEvent.playerId === playerId;
@@ -2215,6 +2247,24 @@ export function isEffectLegalForTrigger(
       return triggerEvent.playerId === playerId;
     }
 
+    // Alamar's Resurrection vs an enemy's damaging spell aimed at your unit:
+    // offer the option whose grade matches the targeted unit.
+    if (effect.type === "CANCEL_LETHAL_ATTACK") {
+      if (triggerEvent.playerId === playerId) {
+        return false;
+      }
+      const stackItem = getPendingStackItem(state, triggerEvent);
+      if (stackItem?.action.type !== "CAST_SPELL" || stackItem.action.target.type !== "unit") {
+        return false;
+      }
+      const spell = cardLibrary[stackItem.action.cardId];
+      const dealsDamage = spell?.effect.type === "DEAL_DAMAGE" || spell?.effect.type === "AREA_DAMAGE_ADJACENT";
+      const targetUnit = state.combat?.units[stackItem.action.target.unitId];
+      return Boolean(
+        dealsDamage && targetUnit && targetUnit.controllerId === playerId && effect.grade === targetUnit.grade
+      );
+    }
+
     return false;
   }
 
@@ -2252,10 +2302,10 @@ export function isEffectLegalForTrigger(
       return attacker.controllerId === playerId && attacker.type !== "ranged";
     }
 
-    // Alamar's Resurrection: the defender's controller may arm it to cancel a
-    // killing blow on their own unit (the Power gate is checked at resolution).
+    // Alamar's Resurrection: the defender's controller may arm the option that
+    // matches their unit's grade to cancel a killing blow on it.
     if (effect.type === "CANCEL_LETHAL_ATTACK") {
-      return defender.controllerId === playerId;
+      return defender.controllerId === playerId && effect.grade === defender.grade;
     }
 
     // Power may be paid into an attack window so a spell instant in the same

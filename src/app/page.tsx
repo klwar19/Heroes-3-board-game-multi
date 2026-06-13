@@ -63,7 +63,15 @@ import {
   type HeroMoveCue,
   type TilePlacementSelection
 } from "@/components/adventure/screen";
-import { actionKey, cardName, formatEvent, titleCase, unitName, type CardBoardAction } from "@/components/table/utils";
+import {
+  actionKey,
+  cardName,
+  costCardEligible,
+  formatEvent,
+  titleCase,
+  unitName,
+  type CardBoardAction
+} from "@/components/table/utils";
 import {
   DRAW_STAGGER_MS,
   FLIGHT_MS,
@@ -120,7 +128,7 @@ function CostPlayBar({
   onConfirm,
   onCancel
 }: {
-  pending: { action: { cardId: string }; exact?: number; upTo?: number; filter?: "spell"; picks: number[] };
+  pending: { action: { cardId: string }; exact?: number; upTo?: number; filter?: "spell" | "power-source"; picks: number[] };
   hand: string[];
   onPick: (index: number) => void;
   onConfirm: (hand: string[]) => void;
@@ -135,13 +143,18 @@ function CostPlayBar({
       <strong>{cardName(pending.action.cardId)}</strong>
       <span>
         {pending.exact !== undefined ? `Discard exactly ${pending.exact}` : `Discard up to ${pending.upTo ?? 0}`}
-        {pending.filter === "spell" ? " (Spell cards only)" : ""} — {pending.picks.length} picked
+        {pending.filter === "spell"
+          ? " (Spell cards only)"
+          : pending.filter === "power-source"
+            ? " (Power statistics or Spells)"
+            : ""}{" "}
+        — {pending.picks.length} picked
       </span>
       {hand.map((cardId, index) => {
         if (index === playedIndex) {
           return null;
         }
-        const eligible = pending.filter !== "spell" || cardLibrary[cardId]?.kind === "spell";
+        const eligible = costCardEligible(cardId, pending.filter);
         const picked = pending.picks.includes(index);
         return (
           <button
@@ -266,7 +279,7 @@ export default function Home() {
     action: Extract<GameAction, { type: "PLAY_CARD" }>;
     exact?: number;
     upTo?: number;
-    filter?: "spell";
+    filter?: "spell" | "power-source";
     picks: number[];
   } | null>(null);
   const [tilePlacement, setTilePlacement] = useState<TilePlacementSelection>(null);
@@ -1613,7 +1626,12 @@ export default function Home() {
                     {pendingCostPlay.exact !== undefined
                       ? `pick exactly ${pendingCostPlay.exact} card${pendingCostPlay.exact === 1 ? "" : "s"} to discard`
                       : `pick up to ${pendingCostPlay.upTo} card${(pendingCostPlay.upTo ?? 0) === 1 ? "" : "s"} to discard`}
-                    {pendingCostPlay.filter === "spell" ? " (Spell cards only)" : ""} — {pendingCostPlay.picks.length} picked
+                    {pendingCostPlay.filter === "spell"
+                      ? " (Spell cards only)"
+                      : pendingCostPlay.filter === "power-source"
+                        ? " (Power statistics or Spells)"
+                        : ""}{" "}
+                    — {pendingCostPlay.picks.length} picked
                   </span>
                   <button
                     className="commandButton primary"
@@ -1638,7 +1656,7 @@ export default function Home() {
                     isPayingSource &&
                     handCards[index] !== undefined &&
                     index !== handCards.indexOf(pendingCostPlay!.action.cardId) &&
-                    (pendingCostPlay!.filter !== "spell" || cardLibrary[cardId]?.kind === "spell");
+                    costCardEligible(cardId, pendingCostPlay!.filter);
 
                   return (
                     <div
