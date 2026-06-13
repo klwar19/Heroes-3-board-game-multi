@@ -6,7 +6,6 @@ import {
   getMainHero,
   getTownOfPlayer,
   requiredHeroDefeats,
-  startPlayerTurn,
   tryDeliverGrail
 } from "./adventure";
 import { finalizeAdventureCombat, startPlayerCombat } from "./adventure-reducer";
