@@ -33,6 +33,7 @@ import {
   FirstPlayerRollOverlay,
   MapDiceOverlay,
   MapNoticeOverlay,
+  NeutralStepOverlay,
   ReactionTray,
   RerollModal,
   SearchModal,
@@ -1205,35 +1206,57 @@ export default function Home() {
   const resetRoom = async (mode: "adventure" | "combat-sandbox") => {
     const connection = connectionRef.current;
     if (!connection) {
+      setErrors(["Not connected to the room yet — give it a second and try again."]);
       return;
     }
 
+    // Step 1 — the network reset. This, and only this, decides whether the
+    // reset failed: a thrown error here means the server never reset.
+    let snapshot: GameRoomSnapshot;
     try {
-      const snapshot = await connection.resetRoom({ mode });
-      seenRollIdsRef.current = null;
-      // A deliberate reset discards the saved game so a later recycle can't
-      // "recover" it over the new room.
-      clearCachedRoom(roomId);
-      restoredForBootRef.current = null;
-      if (snapshot.bootId) {
-        seenBootIdRef.current = snapshot.bootId;
+      snapshot = await connection.resetRoom({ mode });
+    } catch (resetError) {
+      // The request may still have landed (a dropped response, an SSE frame
+      // that beat the HTTP reply); pull the authoritative snapshot before
+      // declaring failure so a flaky network doesn't strand the table.
+      console.error("Reset request failed; trying to resync.", resetError);
+      try {
+        snapshot = await connection.fetchSnapshot();
+      } catch (resyncError) {
+        console.error("Resync after a failed reset also failed.", resyncError);
+        setErrors(["Could not reset the room."]);
+        return;
       }
-      ingestServerState(snapshot.state);
-      setRoomVersion(snapshot.version);
-      setErrors([]);
-      setSelectedCardAction(null);
-      setHandMode(null);
-      setHandDiscards([]);
-      setCombatTab("battle");
-      setDice({ current: null, queue: [] });
-      setMapDice({ current: null, queue: [] });
-      setMapNotice({ current: null, queue: [] });
-      setFirstRoll(null);
-      setFeedItems([]);
-      setSyncStatus(`synced v${snapshot.version}`);
-    } catch {
-      setErrors(["Could not reset the room."]);
     }
+
+    // Step 2 — the reset reached the server. Applying it locally must never
+    // masquerade as a reset failure: a presentation hiccup here is logged, not
+    // surfaced as "could not reset", and never leaves the refs half-cleared.
+    seenRollIdsRef.current = null;
+    // A deliberate reset discards the saved game so a later recycle can't
+    // "recover" it over the new room.
+    clearCachedRoom(roomId);
+    restoredForBootRef.current = null;
+    if (snapshot.bootId) {
+      seenBootIdRef.current = snapshot.bootId;
+    }
+    try {
+      ingestServerState(snapshot.state);
+    } catch (ingestError) {
+      console.error("Applying the reset snapshot failed.", ingestError);
+    }
+    setRoomVersion(snapshot.version);
+    setErrors([]);
+    setSelectedCardAction(null);
+    setHandMode(null);
+    setHandDiscards([]);
+    setCombatTab("battle");
+    setDice({ current: null, queue: [] });
+    setMapDice({ current: null, queue: [] });
+    setMapNotice({ current: null, queue: [] });
+    setFirstRoll(null);
+    setFeedItems([]);
+    setSyncStatus(`synced v${snapshot.version}`);
   };
 
   const joinRoom = () => {
@@ -1976,6 +1999,12 @@ export default function Home() {
         onReset={() => resetRoom(adventureMode ? "adventure" : "combat-sandbox")}
         state={state}
         viewerPlayerId={viewerPlayerId}
+      />
+      <NeutralStepOverlay
+        legalActions={legalActions}
+        onAction={submitAction}
+        state={state}
+        viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
       />
       <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
       <RerollModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />

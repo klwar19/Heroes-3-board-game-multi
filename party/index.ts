@@ -170,10 +170,22 @@ export default class GameRoomServer implements Party.Server {
     }
   }
 
-  /** Plain HTTP access to the same room (polling fallback, debugging). */
+  /**
+   * Plain HTTP access to the same room (reset, snapshot polling, debugging).
+   * The Next.js app is almost always served from a different origin than this
+   * `*.partykit.dev` host, so every browser request here is cross-origin: we
+   * must answer the CORS pre-flight and stamp the allow-origin header, or the
+   * browser blocks the response and the caller sees "Could not reset the
+   * room." (The WebSocket has no such restriction, which is why live play
+   * works while the HTTP reset fails.)
+   */
   async onRequest(request: Party.Request): Promise<Response> {
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
     if (request.method === "GET") {
-      return Response.json(this.ensureSnapshot());
+      return jsonWithCors(this.ensureSnapshot());
     }
 
     if (request.method === "POST") {
@@ -192,7 +204,7 @@ export default class GameRoomServer implements Party.Server {
         };
         await this.persist();
         this.broadcastSnapshot();
-        return Response.json(this.snapshot);
+        return jsonWithCors(this.snapshot);
       }
 
       if (body && "action" in body && body.action) {
@@ -208,14 +220,30 @@ export default class GameRoomServer implements Party.Server {
           await this.persist();
           this.broadcastSnapshot();
         }
-        return Response.json({ snapshot: this.snapshot ?? current, result });
+        return jsonWithCors({ snapshot: this.snapshot ?? current, result });
       }
 
-      return Response.json(this.ensureSnapshot());
+      return jsonWithCors(this.ensureSnapshot());
     }
 
-    return new Response("Method not allowed", { status: 405 });
+    return new Response("Method not allowed", { status: 405, headers: CORS_HEADERS });
   }
+}
+
+/**
+ * Open CORS for the room's HTTP endpoints. The payloads are public room
+ * snapshots (no cookies or credentials), so a wildcard origin is safe and
+ * lets the app work from any deploy host.
+ */
+const CORS_HEADERS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Max-Age": "86400"
+};
+
+function jsonWithCors(data: unknown): Response {
+  return Response.json(data, { headers: CORS_HEADERS });
 }
 
 GameRoomServer satisfies Party.Worker;
