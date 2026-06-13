@@ -158,7 +158,8 @@ import {
   getUnitAttackRerollSources,
   hasIgnoreParalysis,
   hasRetaliationAgainstDisadvantage,
-  hasUnitAbilityEffect
+  hasUnitAbilityEffect,
+  unitImmuneToSpellSchools
 } from "./unit-abilities";
 import type {
   ActiveEffectDefinition,
@@ -3598,9 +3599,14 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         markUnitRemovedIfNeeded(state, target);
 
         // "Select 2 adjacent places": the caster picks one unit adjacent to
-        // the target for the same damage (the second space may be empty).
+        // the target for the same damage (the second space may be empty). A
+        // unit immune to this Spell's school (an Elemental) is not a candidate.
         const splashCandidates = Object.values(state.combat.units).filter(
-          (unit) => unit.id !== target.id && isUnitAlive(unit) && isAdjacent(unit.position, target.position)
+          (unit) =>
+            unit.id !== target.id &&
+            isUnitAlive(unit) &&
+            isAdjacent(unit.position, target.position) &&
+            !unitImmuneToSpellSchools(unit, card.spellSchools)
         );
         if (splashCandidates.length > 0) {
           const choiceId = `choice_${nextEventNumber(state)}`;
