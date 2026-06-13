@@ -68,6 +68,10 @@ export function offsetToCube(coord: HexCoord): CubeCoord {
   return { q, r, s: -q - r };
 }
 
+function axialToOffset(q: number, r: number): HexCoord {
+  return { row: r, col: q + (r - (r & 1)) / 2 };
+}
+
 export function hexDistance(left: HexCoord, right: HexCoord): number {
   const a = offsetToCube(left);
   const b = offsetToCube(right);
@@ -118,24 +122,55 @@ export function tileCentersOverlap(left: HexCoord, right: HexCoord): boolean {
   return hexDistance(left, right) < 3;
 }
 
-/** True when two tile footprints contain at least one pair of adjacent hexes. */
-export function tileFootprintsTouch(leftCenter: HexCoord, rightCenter: HexCoord): boolean {
-  // Footprints overlap below 3 and leave at least a one-hex gap above 3.
-  if (hexDistance(leftCenter, rightCenter) !== 3) {
-    return false;
-  }
+/**
+ * Center-to-center vectors (axial, with their negatives) to a tile's six
+ * gapless neighbours.
+ *
+ * Seven-hex flowers tile the plane only on a single index-7 sublattice — the
+ * classic hex-of-hexes packing where each flower's protruding fields drop into
+ * its neighbours' notches. There are 18 hexes at center-distance 3, but only
+ * these 6 interlock with no hole; the other 12 share an edge yet leave a gap
+ * the size of a field. Restricting placement to these vectors is what makes the
+ * map gapless, and any two tiles reachable through them stay on one sublattice
+ * (each vector changes the lattice color 3q+r by a multiple of 7).
+ */
+const TILE_NEIGHBOR_VECTORS_AXIAL: ReadonlyArray<readonly [number, number]> = [
+  [2, 1],
+  [1, -3],
+  [3, -2],
+  [-2, -1],
+  [-1, 3],
+  [-3, 2]
+];
 
-  const leftCells = tileFootprint(leftCenter, 0);
-  const rightCells = tileFootprint(rightCenter, 0);
-  for (const cell of leftCells) {
-    for (const neighbor of hexNeighbors(cell)) {
-      if (rightCells.some((candidate) => hexEquals(candidate, neighbor))) {
-        return true;
-      }
-    }
-  }
+/** The six tile-center positions whose flowers interlock gaplessly with `center`. */
+export function tileLatticeNeighbors(center: HexCoord): HexCoord[] {
+  const { q, r } = offsetToCube(center);
+  return TILE_NEIGHBOR_VECTORS_AXIAL.map(([dq, dr]) => axialToOffset(q + dq, r + dr));
+}
 
-  return false;
+/**
+ * True when two tile centers are gapless neighbours on the flower sublattice —
+ * i.e. their 7-field footprints interlock edge-to-edge with no hole between
+ * them. This is the placement-adjacency relation: a tile may only be added next
+ * to tiles it is gapless-adjacent to.
+ */
+export function tileCentersAdjacent(left: HexCoord, right: HexCoord): boolean {
+  const a = offsetToCube(left);
+  const b = offsetToCube(right);
+  const dq = b.q - a.q;
+  const dr = b.r - a.r;
+  return TILE_NEIGHBOR_VECTORS_AXIAL.some(([vq, vr]) => vq === dq && vr === dr);
+}
+
+/**
+ * The tile's sublattice class (0-6). Every tile center of one connected,
+ * gapless map shares a single color; mixing colors would leave field-sized
+ * holes. Useful for validating that a layout actually tiles.
+ */
+export function tileLatticeColor(center: HexCoord): number {
+  const { q, r } = offsetToCube(center);
+  return (((3 * q + r) % 7) + 7) % 7;
 }
 
 /**

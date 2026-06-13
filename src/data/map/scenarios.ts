@@ -5,9 +5,10 @@ import type { GameDifficulty } from "@/engine/state";
  * tile layout, starting resources and income, starting units and buildings,
  * how many Far (II–III) tiles each player drafts, and the victory rule.
  *
- * Coordinates are odd-r offset hex coordinates of tile centers. Neighbouring
- * tile centers sit at hex distance 3 so the 7-field flowers touch
- * edge-to-edge (see tileFootprintsTouch in the engine).
+ * Coordinates are odd-r offset hex coordinates of tile centers. Every center
+ * sits on the one index-7 flower sublattice (see tileCentersAdjacent /
+ * tileLatticeColor in the engine) so the 7-field flowers interlock gaplessly —
+ * no field-sized holes ever open between tiles.
  *
  * The exact numbers of the printed Mission Book scenarios are not publicly
  * transcribed on the fan wiki, so the default skirmish below is a faithful
@@ -58,27 +59,29 @@ export const scenarioDefinitions: Record<string, ScenarioDefinition> = {
     id: "skirmish",
     name: "Border Skirmish",
     description:
-      "A free-for-all for 2–4 players. Seats sit at the four corners, two Near tiles bridge the flanks and a Center tile guards the deep north between them. The first two seats sit south for a classic head-to-head duel; a third and fourth open the northern corners. Flag an enemy town to win.",
+      "A free-for-all for 2–4 players. Four seats ring a single Center tile, with two Near tiles filling the remaining flanks so every tile interlocks gaplessly. Seats 1 and 2 sit on opposite sides for a classic head-to-head duel; seats 3 and 4 open the other two corners. Flag an enemy town to win.",
     minPlayers: 2,
     maxPlayers: 4,
     difficulty: "normal",
     layout: {
-      // Four corner seats — SW (8,2), SE (8,8), NW (2,2), NE (2,8) — bridged by
-      // two Near tiles (5,3)/(5,6) and a Center tile (2,5) so every tile
-      // transitively touches. The first two seats are the original south pair,
-      // so a 2-player game plays exactly as before; seats 3-4 add the north
-      // corners. Verified: no footprints overlap and all tiles stay connected.
+      // A "flower of flowers": the Center tile (9,4) is the hub and the six tiles
+      // around it are its gapless neighbours — four seats plus two Near tiles.
+      // Seats 1 and 2 are an opposite pair (distance 6) so a 2-player duel has
+      // room; seats 3 and 4 fill the other corners. Every center lies on one
+      // tiling sublattice, so the map is hole-free for 2, 3 or 4 players and the
+      // whole perimeter offers notches to extend with Far tiles. Seat 1 stays at
+      // (8,2). Verified: no footprints overlap and all tiles stay connected.
       starts: [
         { row: 8, col: 2 },
-        { row: 8, col: 8 },
-        { row: 2, col: 2 },
-        { row: 2, col: 8 }
+        { row: 10, col: 7 },
+        { row: 6, col: 4 },
+        { row: 12, col: 5 }
       ],
       near: [
-        { row: 5, col: 3 },
-        { row: 5, col: 6 }
+        { row: 7, col: 6 },
+        { row: 11, col: 2 }
       ],
-      center: [{ row: 2, col: 5 }]
+      center: [{ row: 9, col: 4 }]
     },
     // Development values until the printed Mission Book sheets are imported.
     startingResources: { gold: 10, buildingMaterials: 5, valuables: 2 },

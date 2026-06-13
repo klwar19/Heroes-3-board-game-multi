@@ -34,7 +34,7 @@ import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { createSeededRandom } from "./random";
 import { appendEvent } from "./events";
 import { VICTORY_MODE_LABELS } from "./ruleset";
-import { hexEquals, tileCentersOverlap, tileFootprintsTouch, type HexCoord } from "./hex";
+import { hexEquals, tileCentersAdjacent, tileCentersOverlap, type HexCoord } from "./hex";
 import type {
   AdventureState,
   CustomMapTilePlan,
@@ -437,8 +437,10 @@ export function validateCustomMapPlan(
   }
   const seedCenters = [...placedCenters];
 
-  // Tiles must connect to the board: accept plans whose footprint touches an
-  // already-placed tile until nothing more fits (order-independent).
+  // Tiles must connect to the board gaplessly: accept plans that are a gapless
+  // neighbour of an already-placed tile until nothing more fits
+  // (order-independent). Off-lattice positions never become neighbours, so they
+  // are reported as not touching the board.
   const remaining = wellFormed.filter((plan) => plan.group !== "starting");
   let progressed = true;
   while (progressed) {
@@ -449,7 +451,7 @@ export function validateCustomMapPlan(
       if (placedCenters.some((existing) => tileCentersOverlap(existing, center))) {
         continue;
       }
-      if (!placedCenters.some((existing) => tileFootprintsTouch(existing, center))) {
+      if (!placedCenters.some((existing) => tileCentersAdjacent(existing, center))) {
         continue;
       }
       accepted.push(plan);

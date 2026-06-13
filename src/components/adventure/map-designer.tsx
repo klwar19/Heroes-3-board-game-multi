@@ -6,13 +6,13 @@ import { Eye, Minus, Plus, RotateCcw, RotateCw, Shuffle, Trash2 } from "lucide-r
 import { allTileDefinitions } from "@/data/map/tiles";
 import { TILE_BACK_IMAGES } from "@/data/assets/homm-assets";
 import {
-  hexDistance,
   hexNeighbors,
   hexToPixel,
   scenarioDefinitions,
   seaTileBand,
+  tileCentersOverlap,
   tileFootprint,
-  tileFootprintsTouch,
+  tileLatticeNeighbors,
   type CustomMapTilePlan,
   type HexCoord
 } from "@/engine";
@@ -76,24 +76,6 @@ function hexCorners(cx: number, cy: number, size: number): string {
     points.push(`${cx + size * Math.cos(angle)},${cy + size * Math.sin(angle)}`);
   }
   return points.join(" ");
-}
-
-/**
- * Centers whose 7-field flower would touch the flower at `center`: every
- * position at hex distance 3 with adjacent footprints (the same contact rule
- * the engine uses for Far-tile placement).
- */
-function neighborTileCenters(center: HexCoord): HexCoord[] {
-  const result: HexCoord[] = [];
-  for (let dRow = -3; dRow <= 3; dRow += 1) {
-    for (let dCol = -5; dCol <= 5; dCol += 1) {
-      const candidate = { row: center.row + dRow, col: center.col + dCol };
-      if (hexDistance(center, candidate) === 3 && tileFootprintsTouch(center, candidate)) {
-        result.push(candidate);
-      }
-    }
-  }
-  return result;
 }
 
 /** The outline of a 7-hex flower as one SVG path (outer edges only). */
@@ -182,23 +164,26 @@ export function MapDesigner({
     [customMap, hasDesignerStarts, starts]
   );
 
-  /** Empty lattice slots touching the current board (optionally ignoring one tile). */
+  /**
+   * Every empty gapless slot bordering the current board (optionally ignoring
+   * one tile): the union of each placed tile's six lattice neighbours, minus any
+   * that overlaps or duplicates a tile already down. These are exactly the holes
+   * a new tile can drop into, so dragging snaps only to hole-free positions.
+   */
   const candidatesFor = useCallback(
     (excludeIndex?: number): HexCoord[] => {
       const placed = placedCenters(excludeIndex);
       const seen = new Map<string, HexCoord>();
       for (const center of placed) {
-        for (const neighbor of neighborTileCenters(center)) {
+        for (const neighbor of tileLatticeNeighbors(center)) {
           const key = `${neighbor.row}:${neighbor.col}`;
           if (seen.has(key)) {
             continue;
           }
-          if (placed.some((existing) => hexDistance(existing, neighbor) < 3)) {
+          if (placed.some((existing) => tileCentersOverlap(existing, neighbor))) {
             continue;
           }
-          if (placed.some((existing) => tileFootprintsTouch(existing, neighbor))) {
-            seen.set(key, neighbor);
-          }
+          seen.set(key, neighbor);
         }
       }
       return [...seen.values()];
@@ -240,7 +225,9 @@ export function MapDesigner({
           best = candidate;
         }
       }
-      return best && bestDistance <= hexSize * 2.4 ? best : null;
+      // Snap to the nearest gap within roughly one tile's reach; gap centers are
+      // ~4.6 hex-radii apart, so this lets a drop land freely on any open notch.
+      return best && bestDistance <= hexSize * 2.8 ? best : null;
     },
     [candidatesFor, clientToLocal, hexSize]
   );

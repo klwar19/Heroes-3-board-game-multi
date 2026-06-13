@@ -18,9 +18,9 @@ import {
   hexSpaceId,
   parseHexSpaceId,
   slotDirection,
+  tileCentersAdjacent,
   tileCentersOverlap,
   tileFootprint,
-  tileFootprintsTouch,
   type HexCoord
 } from "./hex";
 import { createSeededRandom } from "./random";
@@ -546,7 +546,10 @@ export function canPlaceTileAt(
     return false;
   }
 
-  const touching = existingCenters.filter((existing) => tileFootprintsTouch(existing, center));
+  // Rulebook: a new tile must be a gapless neighbour of at least two existing
+  // tiles (nesting into the notch between them), which also pins it onto the
+  // map's single tiling sublattice so no holes can open up.
+  const touching = existingCenters.filter((existing) => tileCentersAdjacent(existing, center));
   if (touching.length < 2) {
     return false;
   }

@@ -29,7 +29,10 @@ import {
   hexToPixel,
   parseHexSpaceId,
   scenarioDefinitions,
+  tileCentersAdjacent,
+  tileCentersOverlap,
   tileFootprint,
+  tileLatticeNeighbors,
   tierOfLevel,
   UNIT_LEVELS,
   unitAbilities,
@@ -268,17 +271,24 @@ export function HexMapBoard({
     }
 
     const existing = Object.values(rawAdventure.tiles).map((tile) => ({ row: tile.centerRow, col: tile.centerCol }));
+    // Mirror the engine's canPlaceTileAt: a new tile may only land on a gapless
+    // slot of the tiling lattice that borders >=2 existing tiles (so it nests
+    // into a notch and leaves no hole) and sits next to the placing hero.
+    const seen = new Map<string, { row: number; col: number }>();
     const centers: { row: number; col: number }[] = [];
-    for (let row = heroCoord.row - 4; row <= heroCoord.row + 4; row += 1) {
-      for (let col = heroCoord.col - 4; col <= heroCoord.col + 4; col += 1) {
-        const candidate = { row, col };
-        if (existing.some((center) => hexDistance(center, candidate) < 3)) {
+    for (const center of existing) {
+      for (const candidate of tileLatticeNeighbors(center)) {
+        const key = `${candidate.row}:${candidate.col}`;
+        if (seen.has(key)) {
           continue;
         }
-        if (existing.filter((center) => hexDistance(center, candidate) === 3).length < 2) {
+        seen.set(key, candidate);
+        if (existing.some((tile) => tileCentersOverlap(tile, candidate))) {
           continue;
         }
-        // The new tile must sit next to the hero.
+        if (existing.filter((tile) => tileCentersAdjacent(tile, candidate)).length < 2) {
+          continue;
+        }
         const footprint = tileFootprint(candidate, 0);
         const nextToHero = footprint.some((cell) => hexDistance(cell, heroCoord) === 1);
         if (!nextToHero) {

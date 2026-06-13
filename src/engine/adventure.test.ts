@@ -12,8 +12,12 @@ import {
   hexDistance,
   hexNeighbors,
   hexSpaceId,
+  parseHexSpaceId,
+  tileCentersAdjacent,
+  tileCentersOverlap,
   tileFootprint,
-  tileFootprintsTouch,
+  tileLatticeColor,
+  tileLatticeNeighbors,
   NEUTRAL_PLAYER_ID,
   type GameAction,
   type GameState
@@ -62,11 +66,57 @@ describe("hex math", () => {
     expect(hexSpaceId(rotated[1])).toBe(hexSpaceId(footprint[3]));
   });
 
-  it("treats tiles as touching exactly at center distance 3", () => {
+  it("treats tiles as gapless neighbours only on the six lattice positions", () => {
     const base = { row: 8, col: 2 };
-    expect(tileFootprintsTouch(base, { row: 8, col: 5 })).toBe(true);
-    expect(tileFootprintsTouch(base, { row: 8, col: 4 })).toBe(false);
-    expect(tileFootprintsTouch(base, { row: 8, col: 6 })).toBe(false);
+    // (9,4) is a true gapless neighbour (a center-to-center lattice vector), so
+    // the two flowers interlock with no hole.
+    expect(tileCentersAdjacent(base, { row: 9, col: 4 })).toBe(true);
+    // (8,5) sits at center-distance 3 but off the tiling lattice — it shares an
+    // edge yet leaves a field-sized hole, so it is not a valid neighbour.
+    expect(tileCentersAdjacent(base, { row: 8, col: 5 })).toBe(false);
+    // (8,4) is too close: the footprints would overlap.
+    expect(tileCentersAdjacent(base, { row: 8, col: 4 })).toBe(false);
+  });
+
+  it("interlocks a flower with its six lattice neighbours into a hole-free block", () => {
+    for (const center of [
+      { row: 8, col: 2 },
+      { row: 7, col: 5 },
+      { row: 0, col: 0 },
+      { row: -3, col: 4 }
+    ]) {
+      const neighbors = tileLatticeNeighbors(center);
+      expect(neighbors).toHaveLength(6);
+      for (const neighbor of neighbors) {
+        // Each is a genuine gapless neighbour, never overlapping, all sharing the
+        // center's sublattice color.
+        expect(tileCentersAdjacent(center, neighbor)).toBe(true);
+        expect(tileCentersOverlap(center, neighbor)).toBe(false);
+        expect(tileLatticeColor(neighbor)).toBe(tileLatticeColor(center));
+      }
+
+      // The 7 flowers cover exactly 49 distinct hexes — 7 per tile, no overlap.
+      const covered = new Map<string, number>();
+      for (const tile of [center, ...neighbors]) {
+        for (const cell of tileFootprint(tile, 0)) {
+          covered.set(hexSpaceId(cell), (covered.get(hexSpaceId(cell)) ?? 0) + 1);
+        }
+      }
+      expect(covered.size).toBe(49);
+      expect([...covered.values()].every((count) => count === 1)).toBe(true);
+
+      // No empty hex is fully ringed by filled hexes: the block has no hole.
+      const filled = new Set(covered.keys());
+      for (const cell of filled) {
+        for (const ring of hexNeighbors(parseHexSpaceId(cell)!)) {
+          if (filled.has(hexSpaceId(ring))) {
+            continue;
+          }
+          const enclosed = hexNeighbors(ring).every((n) => filled.has(hexSpaceId(n)));
+          expect(enclosed).toBe(false);
+        }
+      }
+    }
   });
 });
 
@@ -101,6 +151,41 @@ describe("adventure setup", () => {
     expect(player.limits.hand).toBe(4);
     expect(player.limits.expertUses).toBe(0);
     expect(player.army.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("lays the skirmish scenario on one gapless sublattice for every seat count", () => {
+    const scenario = getScenario("skirmish");
+    const everyTile = [...scenario.layout.starts, ...scenario.layout.near, ...scenario.layout.center];
+    // A single sublattice color across all tiles is what guarantees no holes.
+    expect(new Set(everyTile.map((tile) => tileLatticeColor(tile))).size).toBe(1);
+
+    // The always-on tiles (Near + Center) plus any number of seats stay
+    // non-overlapping and connected through gapless neighbours — so 2-, 3- and
+    // 4-player maps are all one hole-free piece.
+    for (const seats of [2, 3, 4]) {
+      const placed = [
+        ...scenario.layout.starts.slice(0, seats),
+        ...scenario.layout.near,
+        ...scenario.layout.center
+      ];
+      for (let i = 0; i < placed.length; i += 1) {
+        for (let j = i + 1; j < placed.length; j += 1) {
+          expect(hexDistance(placed[i], placed[j])).toBeGreaterThanOrEqual(3);
+        }
+      }
+      const seen = new Set([hexSpaceId(placed[0])]);
+      const stack = [placed[0]];
+      while (stack.length > 0) {
+        const current = stack.pop()!;
+        for (const other of placed) {
+          if (!seen.has(hexSpaceId(other)) && tileCentersAdjacent(current, other)) {
+            seen.add(hexSpaceId(other));
+            stack.push(other);
+          }
+        }
+      }
+      expect(seen.size).toBe(placed.length);
+    }
   });
 
   it("hides face-down tiles and every far tile supply in the player view", () => {
@@ -384,77 +469,77 @@ describe("morale actions", () => {
 
 describe("tile discovery and placement", () => {
   it("reveals a face-down tile, then the player rotates it before it lands", () => {
-    let state = makeGame();
-    // (7,2) is adjacent to the face-down Near tile centered at (5,3).
-    state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:7:2" });
+    const state = makeGame();
+    // Stand on the seat-0 town-flower hex (8,3), which borders the face-down
+    // Center tile (the hub at 9,4). Placing/standing is set directly so the
+    // reveal mechanics are exercised without walking through guarded fields.
+    state.heroes.hero_p1.spaceId = "h:8:3";
+    state.heroes.hero_p1.movementPoints = 3;
     const tile = Object.values(state.adventure!.tiles).find(
-      (candidate) => candidate.centerRow === 5 && candidate.centerCol === 3
+      (candidate) => candidate.centerRow === 9 && candidate.centerCol === 4
     );
     expect(tile?.faceDown).toBe(true);
 
-    state = apply(state, { type: "DISCOVER_TILE", playerId: "p1", heroId: "hero_p1", tileInstanceId: tile!.id });
-    expect(state.heroes.hero_p1.movementPoints).toBe(1);
-    const revealed = state.adventure!.tiles[tile!.id];
+    let next = apply(state, { type: "DISCOVER_TILE", playerId: "p1", heroId: "hero_p1", tileInstanceId: tile!.id });
+    expect(next.heroes.hero_p1.movementPoints).toBe(2);
+    const revealed = next.adventure!.tiles[tile!.id];
     expect(revealed.faceDown).toBe(false);
     expect(revealed.awaitingRotation).toBe(true);
     // Fields are not on the map until the rotation locks in.
-    expect(state.adventure!.fields["h:5:3"]).toBeUndefined();
+    expect(next.adventure!.fields["h:9:4"]).toBeUndefined();
 
     // Other actions are blocked while the rotation is pending.
-    const blocked = applyAction(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:2" });
+    const blocked = applyAction(next, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:2" });
     expect(blocked.errors).toHaveLength(1);
 
-    const rotations = getLegalActions(state, "p1").filter((legal) => legal.action.type === "SET_TILE_ROTATION");
+    const rotations = getLegalActions(next, "p1").filter((legal) => legal.action.type === "SET_TILE_ROTATION");
     expect(rotations.length).toBeGreaterThan(0);
-    state = apply(state, rotations[0].action);
+    next = apply(next, rotations[0].action);
 
-    expect(state.adventure!.tiles[tile!.id].awaitingRotation).toBe(false);
-    expect(state.adventure!.fields["h:5:3"]).toBeTruthy();
+    expect(next.adventure!.tiles[tile!.id].awaitingRotation).toBe(false);
+    expect(next.adventure!.fields["h:9:4"]).toBeTruthy();
   });
 
   it("places a far tile at the border for 1 MP, touching two tiles, then rotates it", () => {
-    let state = makeGame();
-    state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:3" });
-    // Resolve the resource-die visit if it paused on a choice.
-    while (state.adventure?.pendingVisit) {
-      const actions = getLegalActions(state, "p1");
-      const gain = actions.find((legal) => !legal.label.includes("morale")) ?? actions[0];
-      state = apply(state, gain.action);
-    }
+    const state = makeGame();
+    // Stand on the seat-0 town-flower hex (7,2), which borders the empty notch
+    // at (6,4) — a gapless slot bordering the seat-0 town, the hub and a Near
+    // tile (>=2 tiles), so it is a legal placement that leaves no hole.
+    state.heroes.hero_p1.spaceId = "h:7:2";
+    state.heroes.hero_p1.movementPoints = 3;
 
     const supplyBefore = state.adventure!.playerFarTiles.p1.length;
     expect(supplyBefore).toBe(2);
 
-    // Center (8,5) touches the two starting tiles and the near tile at (5,6).
-    state = apply(state, {
+    let next = apply(state, {
       type: "PLACE_TILE",
       playerId: "p1",
       heroId: "hero_p1",
       supplyIndex: 0,
-      centerRow: 8,
-      centerCol: 5
+      centerRow: 6,
+      centerCol: 4
     });
 
-    expect(state.adventure!.playerFarTiles.p1).toHaveLength(supplyBefore - 1);
-    expect(state.heroes.hero_p1.movementPoints).toBe(1);
-    expect(state.adventure!.pendingTileChoice?.kind).toBe("place");
+    expect(next.adventure!.playerFarTiles.p1).toHaveLength(supplyBefore - 1);
+    expect(next.heroes.hero_p1.movementPoints).toBe(2);
+    expect(next.adventure!.pendingTileChoice?.kind).toBe("place");
 
-    const rotations = getLegalActions(state, "p1").filter((legal) => legal.action.type === "SET_TILE_ROTATION");
+    const rotations = getLegalActions(next, "p1").filter((legal) => legal.action.type === "SET_TILE_ROTATION");
     expect(rotations.length).toBeGreaterThan(0);
-    state = apply(state, rotations[0].action);
-    expect(state.adventure!.fields["h:8:5"]).toBeTruthy();
+    next = apply(next, rotations[0].action);
+    expect(next.adventure!.fields["h:6:4"]).toBeTruthy();
   });
 
   it("rejects placements that do not touch two tiles or sit away from the hero", () => {
     const state = makeGame();
-    // (5,9) touches nothing near the hero.
+    // (2,20) is off the lattice, touches nothing and is nowhere near the hero.
     const result = applyAction(state, {
       type: "PLACE_TILE",
       playerId: "p1",
       heroId: "hero_p1",
       supplyIndex: 0,
-      centerRow: 5,
-      centerCol: 9
+      centerRow: 2,
+      centerCol: 20
     });
     expect(result.errors).toHaveLength(1);
   });
@@ -1120,12 +1205,13 @@ describe("experience and victory", () => {
     let state = refreshP1(makeGame());
     const enemyTownField = state.towns.town_p2.fieldId ?? "";
     const hero = state.heroes.hero_p1;
-    // Teleport next to the enemy town for the test.
+    // Teleport next to the enemy town for the test. (9,7) is a ring hex of
+    // seat 1's town flower (centered at 10,7), so it borders the town center.
     state.heroes.hero_p2.spaceId = null;
-    hero.spaceId = "h:8:7";
-    state.adventure!.fields["h:8:7"] = {
+    hero.spaceId = "h:9:7";
+    state.adventure!.fields["h:9:7"] = {
       ...state.adventure!.fields[enemyTownField],
-      spaceId: "h:8:7",
+      spaceId: "h:9:7",
       location: "empty_field",
       difficulty: undefined,
       flagOwnerId: null,
@@ -1133,7 +1219,7 @@ describe("experience and victory", () => {
       everFlagged: false,
       settlementResource: null
     };
-    state.adventure!.lastVisitedField.hero_p1 = "h:8:7";
+    state.adventure!.lastVisitedField.hero_p1 = "h:9:7";
 
     state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: enemyTownField });
 
