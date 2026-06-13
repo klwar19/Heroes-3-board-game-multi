@@ -241,6 +241,26 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
                 <span className="hbSpecName">{currentSpecialtyId ? specialtyDisplayName(currentSpecialtyId) : "—"}</span>
               </button>
             </div>
+            {player.scrolls && player.scrolls.length > 0 ? (
+              <div
+                className="hbScrolls"
+                title="Spell Scrolls (cast in combat at power 0; not in hand)"
+                aria-label={`${player.scrolls.length} Spell Scroll${player.scrolls.length === 1 ? "" : "s"}`}
+              >
+                {player.scrolls.map((scroll) => {
+                  const known = scroll.spellCardIds.filter((cardId) => cardId !== "hidden");
+                  const label =
+                    known.length === scroll.spellCardIds.length
+                      ? known.map((cardId) => cardLibrary[cardId]?.name ?? cardId).join(" · ")
+                      : `${scroll.spellCardIds.length} spell${scroll.spellCardIds.length === 1 ? "" : "s"}`;
+                  return (
+                    <span className="hbScrollChip" key={scroll.id} title={label}>
+                      📜 {label}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
         </div>
 

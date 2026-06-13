@@ -112,7 +112,17 @@ export function ReactionTray({
     () =>
       legalActions
         .map((legal) => legal.action)
-        .filter((action): action is ReactionLegal => action.type === "PLAY_REACTION"),
+        .filter((action): action is ReactionLegal => action.type === "PLAY_REACTION" && !action.fromScroll),
+    [legalActions]
+  );
+
+  // Spell Scroll instants: one-click, power-locked, not in hand — kept apart
+  // from the hand-card batch tray.
+  const scrollReactions = useMemo(
+    () =>
+      legalActions
+        .map((legal) => legal.action)
+        .filter((action): action is ReactionLegal => action.type === "PLAY_REACTION" && Boolean(action.fromScroll)),
     [legalActions]
   );
 
@@ -330,7 +340,7 @@ export function ReactionTray({
         <span>{triggerText}</span>
       </header>
       <div className="trayTiles">
-        {tiles.length === 0 && !fieldExpert && buildingBoosts.length === 0 ? (
+        {tiles.length === 0 && !fieldExpert && buildingBoosts.length === 0 && scrollReactions.length === 0 ? (
           <div className="trayEmpty">No playable instants — pass to continue.</div>
         ) : null}
         {buildingBoosts.map((legal) => (
@@ -339,6 +349,17 @@ export function ReactionTray({
               <strong>🏛 Town building</strong>
               <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                 {legal.label}
+              </button>
+            </div>
+          </div>
+        ))}
+        {scrollReactions.map((action) => (
+          <div className="trayTile scrollTile" key={JSON.stringify(action)}>
+            <CardFrame cardId={action.cardId} className="trayCardImage" />
+            <div className="trayTileBody">
+              <strong>📜 {cardName(action.cardId)} (Scroll)</strong>
+              <button className="trayInstant" onClick={() => onAction(action)} type="button">
+                Play at power 0
               </button>
             </div>
           </div>

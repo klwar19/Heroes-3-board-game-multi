@@ -682,7 +682,18 @@ export type DeckSearchPick =
     };
 
 export type GameAction =
-  | { type: "CAST_SPELL"; playerId: PlayerId; cardId: CardId; target: TargetRef }
+  | {
+      type: "CAST_SPELL";
+      playerId: PlayerId;
+      cardId: CardId;
+      target: TargetRef;
+      /**
+       * Spell Scroll cast: the spell comes from this scroll (not the hand),
+       * resolves at power 0, cannot be boosted by any Power source, and is
+       * removed from the game once it resolves.
+       */
+      fromScroll?: string;
+    }
   | {
       type: "PLAY_CARD";
       playerId: PlayerId;
@@ -749,6 +760,12 @@ export type GameAction =
       costCardIds?: CardId[];
       /** Discard this Spell card for its alternative "+1 Power" effect. */
       asPowerBoost?: boolean;
+      /**
+       * Spell Scroll reaction: the spell instant comes from this scroll, not
+       * the hand. It resolves at power 0 (no boosts, no expert side) and is
+       * removed from the game once played.
+       */
+      fromScroll?: string;
     }
   | {
       /**
@@ -827,6 +844,17 @@ export type GameAction =
        */
       type: "BUY_WAR_MACHINE";
       playerId: PlayerId;
+      cardId: CardId;
+    }
+  | {
+      /**
+       * Sell one Spell Scroll spell at an open Trading Post (market) for
+       * 2 gold. The spell leaves the scroll (and the game); an emptied scroll
+       * is removed too.
+       */
+      type: "SELL_SCROLL_SPELL";
+      playerId: PlayerId;
+      scrollId: string;
       cardId: CardId;
     }
   | {
@@ -1701,6 +1729,23 @@ export type GameEvent =
       playerId: PlayerId;
       buildingId: BuildingId;
       message: string;
+    }
+  | {
+      /** A Spell Scroll was taken from a field; its 2 spells are now held. */
+      id: string;
+      type: "SPELL_SCROLL_GAINED";
+      playerId: PlayerId;
+      scrollId: string;
+      spellCardIds: CardId[];
+    }
+  | {
+      /** A Spell Scroll spell was sold at the market for gold. */
+      id: string;
+      type: "SCROLL_SPELL_SOLD";
+      playerId: PlayerId;
+      scrollId: string;
+      cardId: CardId;
+      gold: number;
     };
 
 export type ResolutionStackItem = {
@@ -1723,6 +1768,12 @@ export type ResolutionStackItem = {
     attackDieMultiplier?: number;
     /** Brimstone Stormclouds: faction cubes spent on this cast (max 1). */
     townCubePowerBonus?: number;
+    /**
+     * Spell Scroll cast: the spell resolves at power 0 and no Power source
+     * (Power cards, +1 discards, School of Magic, town cubes, Astrologers) may
+     * raise it — getCurrentSpellPower returns 0 while this is set.
+     */
+    scrollLocked?: boolean;
     /** Bless: the Attack die is not rolled (counts as 0). */
     ignoreAttackDie?: boolean;
     /** Precision: this shot ignores the ranged back-row penalty. */
@@ -1822,6 +1873,19 @@ export type TownTokenState = {
   build: boolean;
   population: boolean;
   spellBook: boolean;
+};
+
+/**
+ * A Spell Scroll near the hero board (Stronghold expansion field). Each scroll
+ * holds up to 2 Spell cards drawn from the Basic/Expert Magic decks. Its spells
+ * are NOT in the hand: the owner may cast one during combat at power 0 (it
+ * cannot be boosted by any Power source) or sell one at the market for 2 gold.
+ * A used or sold spell leaves the scroll; once both are gone the scroll is gone.
+ */
+export type SpellScrollState = {
+  id: string;
+  /** The Spell card ids held in the scroll (0-2). */
+  spellCardIds: CardId[];
 };
 
 export type PlayerState = {
@@ -1924,6 +1988,11 @@ export type PlayerState = {
    * from a level-up draw (house rule).
    */
   deckDrawnAbilityCardIds?: CardId[];
+  /**
+   * Spell Scrolls held near the hero board (not in hand). Each holds up to 2
+   * Spell cards usable in combat at power 0 or sellable at the market.
+   */
+  scrolls?: SpellScrollState[];
 };
 
 /**
@@ -2403,6 +2472,23 @@ export type VisitStep =
       armyUnitId: string;
       /** Necromancy: "half the gold cost (rounded down)" instead of up. */
       roundDown?: boolean;
+    }
+  | {
+      /**
+       * Spell Scroll field: draw `remaining` Spells (one at a time, the player
+       * picks the Basic or Expert Magic deck for each) into a single new scroll
+       * placed near the hero. Self-expands into deck-pick + DRAW_SCROLL_SPELL.
+       */
+      type: "SPELL_SCROLL";
+      remaining: number;
+      /** The scroll being filled; created on the first draw. */
+      scrollId?: string;
+    }
+  | {
+      /** One Spell Scroll draw: take the top card of `deckId` into the scroll. */
+      type: "DRAW_SCROLL_SPELL";
+      deckId: DeckId;
+      scrollId: string;
     };
 
 export type AstrologersState = {
