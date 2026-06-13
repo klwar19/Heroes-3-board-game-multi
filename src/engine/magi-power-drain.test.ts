@@ -108,6 +108,18 @@ describe("Magi Power Drain", () => {
     expect(state.phase).toBe("combat");
   });
 
+  it("counts Power-granting Abilities (Sorcery) as discardable Power cards", () => {
+    // Sorcery adds spell Power, so it shows the [power] symbol and qualifies;
+    // an Attack statistic does not.
+    const state = magiAttack(magiState(["ability.sorcery", "stat.attack"]));
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("COMBAT_HAND_DISCARD");
+    if (choice?.type !== "COMBAT_HAND_DISCARD") {
+      return;
+    }
+    expect(choice.powerCardIds).toEqual(["ability.sorcery"]);
+  });
+
   it("discards a random card when the defender declines to spend a Power card", () => {
     let state = magiAttack(magiState(["stat.power", "stat.attack"]));
     const choice = state.pendingChoice;
