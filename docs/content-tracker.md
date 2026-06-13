@@ -15,6 +15,16 @@ Chosen in the lobby ("Game mode", BINH default), stored on the game state, synce
 | **Legacy (rulebook)** | ✅ | The community rulebook as printed: one shared Spell deck and one Artifact deck (Core+Rampart+Inferno set), printed card values, printed unit stats. |
 | **House rules BINH** | ✅ | Split decks per the rulebook's optional rule + BINH gates: **Basic/Expert Spell decks** (expert draws need hero level ≥4 AND an open Ⅳ–Ⅴ/Ⅵ–Ⅶ tile, OR owning Eagle Eye / Wisdom / a Basic elemental Magic) and **Minor/Major/Relic Artifact decks** (Minor always; Major on a Ⅳ–Ⅴ+ tile or level ≥4 + Blacksmith; Relic on a Ⅵ–Ⅶ tile or level ≥6 + Blacksmith; the player picks among unlocked decks on every artifact/spell search). **Wisdom** expert −3 gold (basic −2; both Search 3/4 as printed). **Estates** 2/4 gold (printed 3/6). **Few Griffins 3 attack, Pack Griffins 1 defense, Pack Marksmen 3 HP.** BINH also adds Fortune to the spell deck and Eagle Eye/Scouting/Basic elemental Magics + extra artifacts to the pools. (Cerberi now follow the printed card in both modes — see Units.) |
 
+### Win conditions (`Win condition` lobby selector, `AdventureState.victoryMode`)
+
+| Mode | Status | Rules |
+| --- | --- | --- |
+| **Conquest** | ✅ | Flag an enemy faction Town — the default skirmish goal. |
+| **Grail Hunt** | ✅ | Win any one way: capture the Grail (defeat its Lvl-VII guard, dig it for 1 MP, carry it home to your town), defeat the Dragon Utopia, or beat every enemy hero in combat at least once (only 2 of 3 in a 4-player game). A Grail and a Dragon Utopia are forced onto the Center tiles. |
+| **Dragon Conqueror** | ✅ | Defeat the Dragon Utopia to capture it; the holder garrisons it and rivals must besiege it (Walls/Gate/Arrow Tower). Controlling it at the start of your turn wins. |
+
+Non-objective Grail/Dragon Utopia fields are normal Lvl-VII fights rewarding 10 gold + a Relic artifact (Search 2, choose 1).
+
 Rules-correctness fixes applied to **both** modes (rulebook/wiki): second negative morale token resets morale to neutral *and* discards the hand at turn end; activation-timed spells (Magic Arrow, Fireball…) cast during your own unit's activation; instant spells (Bloodlust, Stone Skin, Curse, Weakness, Bless, Precision…) play **into attack windows**, scale with Power played alongside them and count the 1-spell/round limit; every Spell card may instead be discarded for its printed "+1 Power"; Empower stacks across plays; ongoing cards last until the owner's **next** turn starts; Offense/Armorer draw their printed card; Magic Arrow starts at power 0.
 
 ## Map tiles (`src/data/map/tile-defs.ts`)
@@ -26,7 +36,7 @@ Rules-correctness fixes applied to **both** modes (rulebook/wiki): second negati
 | Far | F1–F18 | ✅ | Drafted 2 per player at setup (redrawing the last until one holds a Settlement, per the Mission Book rule); placed for 1 MP at the border touching two tiles, then rotated freely. |
 | Near | N1–N12 | ✅ | Face-down setup pool. |
 | Center | C1–C4 | ✅ | Face-down setup pool. |
-| Center | C5 | 🟡 | Inferno tile with Random Town — excluded from pools until Random Town rules exist. |
+| Center | C5 | 🟡 | Inferno tile with Random Town. Random Town rules are implemented; the tile stays out of the random pools (its reveal roll cannot be staged) and enters play through designed maps. |
 | All tiles | — | ✅ verified | Yellow borders verified against all 41 tile scans (color analysis + visual check): every border is either a full three-edge outer arc on the `outerImpassable` directions or a complete ring around a blocked field; **no internal border between two passable fields exists in the core box**. The engine renders every scanned segment, blocks movement across them, and supports `internalBorders` for future expansion tiles (engine-enforced + tested). |
 
 ## Map locations (`src/data/map/locations.ts`)
@@ -34,7 +44,7 @@ Rules-correctness fixes applied to **both** modes (rulebook/wiki): second negati
 | Location | Status | Notes |
 | --- | --- | --- |
 | Empty / Blocked Field | ✅ | Blocked fields cannot be entered. "Pass-through if forced" edge case not modeled. |
-| Town | ✅ | Flagging an enemy town wins the default skirmish. Siege combat (walls/gate/arrow tower, 8-gold defence) 🔴. |
+| Town | ✅ | Flagging an enemy town wins in Conquest mode (other modes have their own goals). Siege combat (walls/gate/arrow tower) fires when defending a Citadel town or a captured Dragon Utopia; 8-gold garrison defence when the hero is away. |
 | Mine | ✅ | +5 gold / +2 materials / +1 valuables income; first-flag instant gain; stealing supported. |
 | Settlement | ✅ | Income choice or bronze/silver reinforcement at half cost (free on first flag). Secondary-hero spawn point not modeled (no secondary heroes yet). |
 | Resources / Treasure symbols | ✅ | Resource die (2/4 BM, 1/2 V, 3/6 G) and treasure die (2×XP, 2×artifact search, resource die, double resource die). |
@@ -51,7 +61,14 @@ Rules-correctness fixes applied to **both** modes (rulebook/wiki): second negati
 | Pandora's Box | 🟡 | Dice options work. Pandora deck draw implemented with 2 of the 20 Stretch Goals cards: “up to 3 permanent cards” (the permanent-limit exception) and “your hand is increased by 1” — both playable permanents. 3 more cards exist as not-implemented library entries; the remaining 15 🔴. |
 | Stables / Sanctuary / Trading Post | ✅ | Full choose-one menu with a market panel UI (trade table image from the rulebook back cover): repeatable resource trades, sell one card for 1 gold (Specialty/Statistic/starting Ability/Magic Arrow excluded, card removed from the game), or buy a war machine at the higher price. Trading locks out the other two options within a visit, as printed. |
 | War Machine Factory | ✅ | Sells the five war machines at their lower price (shared one-copy supply; bought cards go to the buyer's hand and then live in their deck). |
-| Obelisk / Dragon Utopia / Grail / Star Axis | 🟡 | Flaggable/visitable shells; scenario-specific effects pending. |
+| Obelisk | 🟡 | Flaggable shell; scenario-specific effects pending. |
+| Dragon Utopia / Grail | ✅ | Win-condition aware (Grail Hunt / Dragon Conqueror); otherwise a Lvl-VII fight giving 10 gold + a Relic artifact. Dragon Utopia is guarded by the four dragons; Cyclops Stockpile adds 2 golden Cyclopes. |
+| Star Axis | ✅ | Multi-flaggable; first visit empowers one hand Statistic card (Inferno Empowered statistics added). |
+| Library of Enlightenment | ✅ | Pay 3 gold to swap a Statistic (hand or discard) for any other, up to twice per visit. |
+| Black Market | ✅ | Buy one artifact from the discard pile by rarity (5/7/10 gold). |
+| Elemental Conflux | ✅ | Recruit one Elementals card per Dwelling tier you control. |
+| Random Town | ✅ | Defended by an unused faction's Packs (1 bronze, 2 silver, 2 gold); capture grants +10 gold income. Stays out of the random pools (the reveal roll cannot be staged) — placed via designed maps. |
+| Tavern / Prison | 🔴 | Grant a Secondary Hero — needs the (unbuilt) multi-hero subsystem. |
 
 ## Factions and towns (`src/data/factions/core.ts`)
 

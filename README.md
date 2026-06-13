@@ -15,6 +15,16 @@ Every lobby picks one of two rule sets (the toggle sits at the top of the game o
 
 Both modes share the rulebook fixes: the second negative morale token resets you to neutral and discards your hand at turn end; activation spells (Magic Arrow, Fireball…) cast during your own unit's activation; instant spells (Bloodlust, Stone Skin, Curse, Weakness, Bless…) are played **into attacks**, scale with Power played alongside them and count toward the one-spell-per-round limit; any Spell card can instead be discarded for its printed "+1 Power". Power is never playable into an attack on its own — the engine and the instant tray both demand the spell it feeds in the same declaration. **Permanent cards** follow the printed rule: one in play per player with its effect always on, playing another discards the first, and the owner may voluntarily discard one at any time — only the Pandora's Box card "up to 3 permanent cards" raises the limit (drawable at a Pandora's Box field; the box may also raise your hand size by 1).
 
+## Win conditions
+
+A second lobby selector picks how the game is won:
+
+- **Conquest** (default) — flag an enemy faction Town.
+- **Grail Hunt** — win any one way: **capture the Grail** (defeat its level-VII guard, spend 1 more movement point to *dig* it, then carry it home to your own town), **defeat the Dragon Utopia** (azure + rust + crystal + faerie dragons), or **beat every enemy hero** in combat at least once (only 2 of the 3 in a 4-player game). The Center tiles are seeded with a Grail and a Dragon Utopia.
+- **Dragon Conqueror** — defeating the Dragon Utopia **captures** it instead of winning outright. The holder garrisons it and rivals must **besiege** it (Walls, Gate, Arrow Tower) to take it; controlling it at the start of your turn wins.
+
+A Grail or Dragon Utopia that isn't the active objective is just a normal level-VII fight, rewarding 10 gold and a Relic artifact (Search 2, choose 1).
+
 ## Adventure mode
 
 - **Map setup phase**: new rooms open in a lobby — every seat picks a faction and main hero, and the table sets the **game options**: starting map, neutral difficulty (the Field Difficulty Level Table column — **Impossible by default**), starting resources, the base resource gain (10 gold / 0 materials / 0 valuables by default), starting units and pre-built buildings. Starting units come either from the tier checkboxes or from a **custom army picker** — few or pack of ANY unit, in any combination, identical for every seat. A **map designer** can replace the scenario layout: click slots next to the fixed starting tiles to add tiles anywhere they touch the board, flip each one **face up** (pick the exact tile and rotation) or **face down** (a random tile of its Far/Near/Center pool is drawn at start). Then the map builds (starting tiles fixed by faction and seat, never rotated) and two Far (Ⅱ–Ⅲ) tiles are drafted per player (redrawing until one carries a Settlement, per the Mission Book).
