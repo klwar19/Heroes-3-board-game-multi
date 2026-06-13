@@ -5,6 +5,15 @@ export type UnitAbilityEffectDefinition =
   | { type: "IGNORE_RETALIATION" }
   | { type: "IGNORE_RANGED_BACK_ROW_PENALTY" }
   | { type: "MOVE_ANYWHERE" }
+  | {
+      /**
+       * Elemental units (Air/Earth/Fire/Water Elementals and their kin): "This
+       * unit deals elemental damage." Its attack value cannot be raised by
+       * attack cards or Attack tokens — only lowered by debuffs such as a
+       * Sorceress' Weakness. A passive, always-on trait of the printed card.
+       */
+      type: "DEALS_ELEMENTAL_DAMAGE";
+    }
   | { type: "EXTRA_RANGED_DAMAGE_ON_LOW_ROLL"; maxRoll: number; amount: number }
   | {
       /**
@@ -717,6 +726,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Summon Demons",
     text: "[unit_other] If one of your units has been removed from the board during this Combat, Summon a Few of Demons on an adjacent space or Reinforce a Few of Demons up to a Pack (once per Combat, instead of moving or attacking).",
     effect: { type: "SUMMON_OR_REINFORCE_DEMONS", demonUnitDefId: "inferno.demons" },
+    implementationStatus: "implemented"
+  },
+  "elemental-damage": {
+    id: "elemental-damage",
+    name: "Elemental Damage",
+    text: "[unit_passive] This unit deals elemental damage: its attack cannot be raised by attack cards or Attack tokens, only lowered (e.g. by a Sorceress' Weakness).",
+    effect: { type: "DEALS_ELEMENTAL_DAMAGE" },
     implementationStatus: "implemented"
   }
 };

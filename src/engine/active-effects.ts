@@ -1,5 +1,6 @@
 import { isAdjacent } from "./battlefield";
 import { appendEvent, nextEventNumber } from "./events";
+import { hasUnitAbilityEffect } from "./unit-abilities";
 import type {
   ActiveEffectDefinition,
   ActiveEffectState,
@@ -73,6 +74,24 @@ export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitS
   }
 
   return effect.target?.type === "unit" && effect.target.unitId === unit.id;
+}
+
+/**
+ * Whether a unit deals "elemental damage" right now — either its printed trait
+ * (the Elemental units) or a granted effect (Moandor's Liches VI specialty).
+ * Elemental damage cannot be raised by attack cards or Attack tokens; debuffs
+ * such as a Sorceress' Weakness still lower it (handled in the attack maths).
+ */
+export function unitDealsElementalDamage(state: GameState, unit: CombatUnitState): boolean {
+  if (hasUnitAbilityEffect(unit, "DEALS_ELEMENTAL_DAMAGE")) {
+    return true;
+  }
+
+  return state.activeEffects.some(
+    (effect) =>
+      effect.modifiers.some((modifier) => modifier.type === "ELEMENTAL_DAMAGE") &&
+      effectAppliesToUnit(effect, unit)
+  );
 }
 
 export function getActiveAttackBonus(state: GameState, context: AttackContext): number {

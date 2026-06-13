@@ -665,6 +665,58 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("sandro")
   },
+  // Moandor (Necropolis Death Knight): the Liches specialist. I/IV are the
+  // shared might/health specialties doubled for Liches; VI is his signature —
+  // make the Liches deal elemental damage, OR a flat +2 attack.
+  "specialty.moandor.1": mightSpecialtyOne("moandor", "Liches", "Liches"),
+  "specialty.moandor.4": unitHealthSpecialty("moandor", "Liches", 4, 1, "Liches"),
+  "specialty.moandor.6": {
+    id: "specialty.moandor.6",
+    name: "Liches VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "moandor",
+      "liches",
+      "For this Combat, choose one: your Liches unit deals elemental damage. — OR — your selected unit gains +2 attack."
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Liches deal elemental damage (this Combat)",
+          combatOnly: true,
+          effect: {
+            type: "GRANT_ELEMENTAL_DAMAGE",
+            targetUnitName: "Liches",
+            duration: { type: "combat" }
+          }
+        },
+        {
+          label: "+2 attack (this Combat)",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ATTACK_BUFF",
+            name: "Liches VI",
+            amount: 2,
+            duration: { type: "combat" },
+            polarity: "positive",
+            removable: false
+          }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "/assets/hero_specialties-moandor-6.webp",
+      imageAlt: "Liches level VI specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("moandor")
+  },
   "specialty.gelu.1": mightSpecialtyOne("gelu", "Sharpshooters", "Sharpshooters"),
   "specialty.gelu.4": notImplementedSpecialty(
     "gelu",

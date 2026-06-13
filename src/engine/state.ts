@@ -36,7 +36,10 @@ export type GameDifficulty = "easy" | "normal" | "hard" | "impossible";
 export type GameRuleset = "legacy" | "binh";
 export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon" | "stronghold";
 
-export type TargetRef = { type: "unit"; unitId: UnitId } | { type: "none" };
+export type TargetRef =
+  | { type: "unit"; unitId: UnitId }
+  | { type: "space"; position: number }
+  | { type: "none" };
 
 export type SourceRef =
   | { type: "card"; cardId: CardId; controllerId: PlayerId }
@@ -61,6 +64,8 @@ export type TargetDefinition =
   | { type: "enemy-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
   | { type: "friendly-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
   | { type: "any-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
+  /** Summon spells: a chosen empty space on the combat board. */
+  | { type: "empty-space" }
   | { type: "none" };
 
 export type EffectDurationDefinition =
@@ -176,6 +181,16 @@ export type ActiveEffectModifier =
   | {
       /** Golden Bow: your ranged units ignore the long-range penalty. */
       type: "RANGED_IGNORE_PENALTY";
+    }
+  | {
+      /**
+       * Moandor's Liches VI specialty: while held, the unit deals "elemental
+       * damage" — like the elemental units' printed trait. Its attack value
+       * can no longer be raised by attack cards (Bloodlust, Offense, the
+       * Attack statistic, Bless's bonus…) or Attack tokens; debuffs such as a
+       * Sorceress' Weakness still lower it.
+       */
+      type: "ELEMENTAL_DAMAGE";
     };
 
 export type ActiveEffectDefinition = {
@@ -500,6 +515,27 @@ export type EffectDefinition =
        */
       type: "SIEGE_DEMOLISH";
       target: "wall-or-gate" | "arrow-tower";
+    }
+  | {
+      /**
+       * Summon X Elemental (Conflux Expert spells): on a chosen empty space,
+       * Power 2 summons a Few and Power 4 a Pack of the school's Elemental.
+       * The unit joins the combat immediately (acts on its own initiative) and
+       * stays in the caster's army afterwards — exactly like the Pit Lords'
+       * summoned Demons.
+       */
+      type: "SUMMON_ELEMENTAL";
+      unitDefId: string;
+    }
+  | {
+      /**
+       * Moandor's Liches VI specialty (one option of its "OR"): for the rest
+       * of the Combat the chosen unit deals elemental damage. Restricted to the
+       * named unit when `targetUnitName` is set (his card reads "your Liches").
+       */
+      type: "GRANT_ELEMENTAL_DAMAGE";
+      targetUnitName?: string;
+      duration: EffectDurationDefinition;
     };
 
 /**
