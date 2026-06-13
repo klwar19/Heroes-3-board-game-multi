@@ -80,7 +80,27 @@ const creatureVoices: Record<string, string> = {
   trolls: "troll",
   azure_dragons: "azure-dragon",
   crystal_dragons: "crystal-dragon",
-  faerie_dragons: "faerie-dragon"
+  faerie_dragons: "faerie-dragon",
+  // Tower / Fortress / Conflux creatures that only appear as neutral guards.
+  // Voices follow the original game's sound sets (docs/h3-sound-reference.csv):
+  // Dragon Flies are the upgraded Serpent Fly, so they use the fire-dragon-fly set.
+  gnolls: "gnoll",
+  gremlins: "gremlin",
+  gargoyles: "stone-gargoyle",
+  lizardmen: "lizardman",
+  iron_golems: "iron-golem",
+  sprites: "sprite",
+  dragon_flies: "fire-dragon-fly",
+  air_elementals: "air-elemental",
+  ice_elementals: "ice-elemental",
+  storm_elementals: "storm-elemental",
+  basilisks: "basilisk",
+  gorgons: "gorgon",
+  genies: "genie",
+  magi: "mage",
+  energy_elementals: "energy-elemental",
+  fire_elementals: "fire-elemental",
+  magma_elementals: "magma-elemental"
 };
 
 /**
