@@ -315,7 +315,11 @@ export function ReactionTray({
   };
 
   const preview = selectionPreview(selections);
-  const passLabel = isAttackWindow ? "Done — roll the die!" : "Pass";
+  const passLabel = isAttackWindow
+    ? "Done — roll the die!"
+    : window.triggerEvent.type === "UNIT_LETHAL_HIT"
+      ? "Let it die"
+      : "Pass";
   const crownsOver = crownsSelected > crownsAvailable;
 
   return (

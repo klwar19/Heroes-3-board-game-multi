@@ -342,12 +342,14 @@ function resurrectionSpecialty(
     ],
     effect: {
       type: "CHOOSE_ONE",
+      // No per-option trigger: Resurrection is offered only in its own
+      // lethal-save window (when a unit is actually about to die), not as a
+      // normal attack-window reaction.
       options: grades.map((grade) => ({
         label:
           costs[grade] > 0
             ? `Save a ${grade} unit (discard ${costs[grade]} Power/Spell)`
             : `Save a ${grade} unit`,
-        trigger: { event: "UNIT_ATTACK_DECLARED" as const, controller: "opponent" as const },
         ...(costs[grade] > 0
           ? { cost: { discardCards: costs[grade], costCardFilter: "power-source" as const } }
           : {}),
@@ -787,16 +789,6 @@ export const adventureCards: CardLibrary = {
   "specialty.yog.4": unitInitiativeSpecialty("yog", "Cyclopes", 4, 1, "Cyclopes"),
   "specialty.yog.6": unitHealthSpecialty("yog", "Cyclopes", 6, 1, "Cyclopes"),
   "specialty.alamar.1": resurrectionSpecialty(1, { bronze: 1, silver: 2, gold: 4 }),
-  "specialty.alamar.4": notImplementedSpecialty(
-    "alamar",
-    "Resurrection",
-    4,
-    "Cancel a lethal attack: bronze power 0, silver 1, gold 3."
-  ),
-  "specialty.alamar.6": notImplementedSpecialty(
-    "alamar",
-    "Resurrection",
-    6,
-    "Cancel a lethal attack: bronze power 0, silver 0, gold 2."
-  )
+  "specialty.alamar.4": resurrectionSpecialty(4, { bronze: 0, silver: 1, gold: 3 }),
+  "specialty.alamar.6": resurrectionSpecialty(6, { bronze: 0, silver: 0, gold: 2 })
 };

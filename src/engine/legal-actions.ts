@@ -67,6 +67,7 @@ import type {
   TriggerDefinition,
   UnitId
 } from "./state";
+import { NEUTRAL_PLAYER_ID } from "./state";
 import { getUnitAbilityDefinitions, hasUnitAbilityEffect } from "./unit-abilities";
 
 type ConcreteEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
@@ -1876,11 +1877,64 @@ export function getLegalActions(
   return actions;
 }
 
+/**
+ * Alamar's Resurrection save window: when a unit is about to die, offer its
+ * controller the grade-matching, affordable Resurrection option(s) — and
+ * nothing else. Passing lets the unit die.
+ */
+function getLethalSaveReactions(
+  state: GameState,
+  triggerEvent: Extract<GameEvent, { type: "UNIT_LETHAL_HIT" }>,
+  cards: CardLibrary
+): Record<PlayerId, LegalAction[]> {
+  const defender = state.combat?.units[triggerEvent.defenderId];
+  if (!defender) {
+    return {};
+  }
+  const playerId = defender.controllerId;
+  const player = state.players[playerId];
+  if (!player || playerId === NEUTRAL_PLAYER_ID || isHandLockedInCombat(state, playerId)) {
+    return {};
+  }
+
+  const reactions: LegalAction[] = [];
+  for (const cardId of new Set(player.hand)) {
+    const card = cards[cardId];
+    if (!card || card.implementationStatus !== "implemented" || card.effect.type !== "CHOOSE_ONE") {
+      continue;
+    }
+    for (const [optionIndex, option] of card.effect.options.entries()) {
+      if (option.effect.type !== "CANCEL_LETHAL_ATTACK" || option.effect.grade !== defender.grade) {
+        continue;
+      }
+      if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
+        continue;
+      }
+      reactions.push(
+        makeReactionAction(`${card.name}: ${option.label}`, {
+          type: "PLAY_REACTION",
+          playerId,
+          cardId,
+          mode: "basic",
+          optionIndex
+        })
+      );
+    }
+  }
+
+  return reactions.length > 0 ? { [playerId]: reactions } : {};
+}
+
 export function getLegalReactionsForTrigger(
   state: GameState,
   triggerEvent: GameEvent,
   cards: CardLibrary = cardLibrary
 ): Record<PlayerId, LegalAction[]> {
+  // Alamar's Resurrection: its own save window when a unit is about to die.
+  if (triggerEvent.type === "UNIT_LETHAL_HIT") {
+    return getLethalSaveReactions(state, triggerEvent, cards);
+  }
+
   if (triggerEvent.type !== "SPELL_CAST_STARTED" && triggerEvent.type !== "UNIT_ATTACK_DECLARED") {
     return {};
   }
@@ -2276,11 +2330,8 @@ export function isEffectLegalForTrigger(
       return attacker.controllerId === playerId && attacker.type !== "ranged";
     }
 
-    // Alamar's Resurrection: the defender's controller may arm the option that
-    // matches their unit's grade to cancel a killing blow on it.
-    if (effect.type === "CANCEL_LETHAL_ATTACK") {
-      return defender.controllerId === playerId && effect.grade === defender.grade;
-    }
+    // Alamar's Resurrection is never a pre-die attack reaction — it is offered
+    // only in its own save window, when the attack would actually be lethal.
 
     // Power may be paid into an attack window so a spell instant in the same
     // declaration can consume it (the batch validator enforces the pairing).
