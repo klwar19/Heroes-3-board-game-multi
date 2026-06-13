@@ -190,6 +190,41 @@ export function resetRoom(roomId: string, options: RoomResetOptions = {}): GameR
   return snapshot;
 }
 
+/**
+ * Re-seeds a room from a client's cached game state after the server lost it
+ * (process recycle / cold start cleared the in-memory store and the temp-dir
+ * copy). To stay safe it only writes over a *fresh setup lobby* — the state a
+ * lost room is recreated as — so it can never clobber a game already in
+ * progress, and racing restores converge (the first wins; the rest are no-ops
+ * that simply return the now-restored room).
+ */
+export function restoreRoom(roomId: string, state: GameState): GameRoomSnapshot {
+  const current = getRoomRecord(roomId);
+  const currentIsFreshLobby = current.state.phase === "setup" && Boolean(current.state.setupLobby);
+  const incomingIsRealGame =
+    Boolean(state) &&
+    typeof state === "object" &&
+    Boolean(state.players) &&
+    typeof state.phase === "string" &&
+    !(state.phase === "setup" && Boolean(state.setupLobby));
+
+  if (!currentIsFreshLobby || !incomingIsRealGame) {
+    return withBootId(cloneSerializable(current));
+  }
+
+  const next: GameRoomRecord = {
+    roomId,
+    version: current.version + 1,
+    updatedAt: new Date().toISOString(),
+    state
+  };
+  roomStore.set(roomId, next);
+  persistRoom(next);
+  const snapshot = withBootId(cloneSerializable(next));
+  notifyRoomListeners(roomId, snapshot);
+  return snapshot;
+}
+
 export function submitRoomAction(
   roomId: string,
   action: GameAction

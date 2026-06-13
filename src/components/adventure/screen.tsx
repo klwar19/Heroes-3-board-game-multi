@@ -30,6 +30,7 @@ import {
   tileFootprint,
   tierOfLevel,
   UNIT_LEVELS,
+  unitAbilities,
   validateCustomMapPlan,
   astrologersCardDefinitions,
   type CustomStartingUnit,
@@ -1100,6 +1101,19 @@ export function AdventureHud({
 // Army list (the hero board itself lives in src/components/hero-board.tsx)
 // ---------------------------------------------------------------------------
 
+/**
+ * The engine's view of a unit side's abilities: the named skills actually
+ * wired into combat, with their rules text. Shown alongside the printed card
+ * text so a player can always read what the implementation does (e.g. that
+ * Few Medusas carry only "Paralyzing Gaze", not the "No Range Penalty").
+ */
+function implementedAbilityLines(abilityIds: readonly string[] | undefined): string[] {
+  return (abilityIds ?? [])
+    .map((id) => unitAbilities[id])
+    .filter((ability) => Boolean(ability) && ability.implementationStatus === "implemented")
+    .map((ability) => `✦ ${ability.name}: ${ability.text}`);
+}
+
 export function ArmyPanel({ state, playerId }: { state: GameState; playerId: PlayerId }) {
   const { zoomContent } = useCardZoom();
   const player = state.players[playerId];
@@ -1123,6 +1137,8 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
           const printed = unit.side === "few" ? def?.few : def?.pack;
           // BINH stat tweaks (Griffins, Marksmen, Cerberi) show live values.
           const side = printed ? applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed) : printed;
+          const engineLines = implementedAbilityLines(side?.abilities);
+          const hoverTitle = [side?.abilityText, ...engineLines].filter(Boolean).join("\n") || `Read ${def?.name ?? unit.unitDefId}`;
           return (
             <li key={unit.id}>
               <button
@@ -1134,11 +1150,12 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                     subtitle: def ? `${def.tier} ${def.type}` : undefined,
                     lines: [
                       side ? `Attack ${side.attack} · Defense ${side.defense} · HP ${side.health} · Initiative ${side.initiative}` : "",
-                      side?.abilityText ?? ""
+                      side?.abilityText ?? "",
+                      ...engineLines
                     ].filter(Boolean)
                   })
                 }
-                title={side?.abilityText ?? `Read ${def?.name ?? unit.unitDefId}`}
+                title={hoverTitle}
                 type="button"
               >
                 {side?.cardImage ? (
@@ -2027,7 +2044,10 @@ function PileModalCards({ cardIds, kind }: { cardIds: string[]; kind: "cards" | 
                 title: astro?.name ?? unit?.name ?? cardId,
                 image,
                 subtitle: astro ? "Astrologers Proclaim" : unit ? `${unit.tier} ${unit.type}` : undefined,
-                lines: [astro?.text ?? unit?.neutral?.abilityText ?? ""].filter(Boolean)
+                lines: [
+                  astro?.text ?? unit?.neutral?.abilityText ?? "",
+                  ...implementedAbilityLines(unit?.neutral?.abilities)
+                ].filter(Boolean)
               });
         return (
           <li key={`${cardId}-${index}`}>

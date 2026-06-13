@@ -267,6 +267,40 @@ export type UnitAbilityEffectDefinition =
        */
       type: "ON_COMBAT_START_DRAW";
       amount: number;
+    }
+  | {
+      /**
+       * Enchanters: "[activation] Remove up to `healAmount` damage from a
+       * friendly unit. Otherwise, gain +`attackBonus` Attack." When the unit
+       * activates the controller either heals a chosen *other* friendly unit
+       * or buffs the Enchanters' own Attack for the round — a neutral always
+       * takes the Attack bonus. It never ends the activation: the unit still
+       * moves and attacks afterwards.
+       */
+      type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF";
+      healAmount: number;
+      attackBonus: number;
+    }
+  | {
+      /**
+       * Faerie Dragons: "[activation] The selected unit suffers `amount`
+       * damage. This is a spell that does not count towards your spell limit."
+       * On activation the unit deals flat spell damage to a chosen target
+       * (a neutral picks it like a normal attack), then acts normally. The
+       * client plays the Ice Bolt projectile + sound for the hit.
+       */
+      type: "ON_ACTIVATION_DAMAGE_SPELL";
+      amount: number;
+    }
+  | {
+      /**
+       * Harpies: "[unit_attack] After the enemy's Retaliation Attack, this
+       * unit can return to the space from which it moved to attack." Once the
+       * attack (and any retaliation) resolves, the harpy may fly back to the
+       * space it started its activation on. A neutral always returns; a player
+       * chooses. Optional repositioning — never an extra attack.
+       */
+      type: "RETURN_TO_ORIGIN_AFTER_ATTACK";
     };
 
 /**
@@ -643,6 +677,27 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Scouting",
     text: "While in your army: once during your turn, look at the top card from any deck, then put it back on the top or on the bottom of that deck.",
     mapEffect: { type: "MAP_TURN_DECK_PEEK" },
+    implementationStatus: "implemented"
+  },
+  "enchanter-heal-or-buff": {
+    id: "enchanter-heal-or-buff",
+    name: "Enchant",
+    text: "[activation] Remove up to 2 damage from a chosen friendly unit, or instead gain +1 Attack for this combat round. (A neutral Enchanter always takes the +1 Attack.) This does not end the activation — the unit still moves and attacks.",
+    effect: { type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF", healAmount: 2, attackBonus: 1 },
+    implementationStatus: "implemented"
+  },
+  "faerie-dragon-spell": {
+    id: "faerie-dragon-spell",
+    name: "Faerie Bolt",
+    text: "[activation] The selected unit suffers 2 damage — a spell that does not count towards your spell limit. (A neutral Faerie Dragon targets it like a normal attack.) Then the unit acts normally.",
+    effect: { type: "ON_ACTIVATION_DAMAGE_SPELL", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "harpy-return": {
+    id: "harpy-return",
+    name: "Strike and Return",
+    text: "After the enemy's Retaliation Attack, this unit can return to the space it moved from to attack. (A neutral Harpy always returns; a player chooses to return or stay.)",
+    effect: { type: "RETURN_TO_ORIGIN_AFTER_ATTACK" },
     implementationStatus: "implemented"
   },
   "summon-demons": {

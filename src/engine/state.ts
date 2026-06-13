@@ -1868,6 +1868,18 @@ export type CombatUnitState = {
   attackedThisActivation?: boolean;
   /** Attacks resolved during this activation (double-attack abilities stop at 2). */
   attacksThisActivation?: number;
+  /**
+   * Position this unit stood on when its current activation began. Harpies'
+   * "Strike and Return" repositioning flies the unit back here after its
+   * attack; reset every time the unit activates.
+   */
+  activationStartPosition?: number;
+  /**
+   * Set once a unit's "[activation]" choice ability has resolved this
+   * activation (Enchanters' heal-or-buff, Faerie Dragons' damage-spell), so it
+   * never fires twice and the unit can act normally afterwards.
+   */
+  activationAbilityDone?: boolean;
   retaliatedThisRound: boolean;
   defenseToken: boolean;
   /** Combat tokens currently on the card (attack/weakness/corrosion/paralysis). */
@@ -2537,7 +2549,10 @@ export type PendingChoice =
         | "siege-gate"
         | "siege-demolish"
         | "rogues-scout"
+        | "combat-reposition"
         | "cover-of-darkness";
+      /** combat-reposition: Harpies' optional fly-back after their attack. */
+      reposition?: { unitId: UnitId; originPosition: number };
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */
@@ -2570,7 +2585,14 @@ export type PendingChoice =
       id: string;
       type: "ABILITY_TARGET_CHOICE";
       playerId: PlayerId;
-      kind: "flat-damage" | "second-attack" | "neutral-target" | "war-machine" | "spell-splash";
+      kind:
+        | "flat-damage"
+        | "second-attack"
+        | "neutral-target"
+        | "war-machine"
+        | "spell-splash"
+        | "enchanter-activation"
+        | "faerie-damage";
       abilityId: string | null;
       abilityName: string;
       prompt: string;
@@ -2579,12 +2601,14 @@ export type PendingChoice =
       /** Original attack target the follow-up is anchored to (if any). */
       anchorUnitId: UnitId | null;
       candidateUnitIds: UnitId[];
-      /** Flat damage dealt on resolution (flat-damage kind). */
+      /** Flat damage dealt on resolution (flat-damage / faerie-damage kind). */
       amount?: number;
       /** Replacement base attack of the follow-up attack (second-attack kind). */
       baseAttack?: number;
       /** Fireball's second space may be empty: the choice can be skipped. */
       optional?: boolean;
+      /** Label of the "skip" action when `optional` (default "Skip"). */
+      skipLabel?: string;
     }
   | {
       /**

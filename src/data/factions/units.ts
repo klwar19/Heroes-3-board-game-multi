@@ -239,8 +239,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "dungeon",
     tier: "bronze",
     type: "flying",
-    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 3 }, abilities: [], abilityText: "[unit_attack] After the enemy's Retaliation Attack, this unit can return to the space from which it moved to attack.", cardImage: "/assets/units-dungeon-bronze-harpies-few.webp" },
-    pack: { attack: 3, defense: 0, health: 3, initiative: 9, cost: { gold: 5 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack. This unit can return to the space from which it moved to attack.", cardImage: "/assets/units-dungeon-bronze-harpies-pack.webp" },
+    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 3 }, abilities: ["harpy-return"], abilityText: "[unit_attack] After the enemy's Retaliation Attack, this unit can return to the space from which it moved to attack.", cardImage: "/assets/units-dungeon-bronze-harpies-few.webp" },
+    pack: { attack: 3, defense: 0, health: 3, initiative: 9, cost: { gold: 5 }, abilities: ["ignores-retaliation", "harpy-return"], abilityText: "[unit_attack] Ignore the Retaliation Attack. This unit can return to the space from which it moved to attack.", cardImage: "/assets/units-dungeon-bronze-harpies-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/harpies/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -720,7 +720,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "flying",
-    neutral: { attack: 2, defense: 0, health: 4, initiative: 8, cost: { gold: 5 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack. This unit can return to the space from which it moved to attack.", cardImage: "/assets/units-neutral-bronze-harpies.webp" },
+    neutral: { attack: 2, defense: 0, health: 4, initiative: 8, cost: { gold: 5 }, abilities: ["ignores-retaliation", "harpy-return"], abilityText: "[unit_attack] Ignore the Retaliation Attack. This unit can return to the space from which it moved to attack.", cardImage: "/assets/units-neutral-bronze-harpies.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/harpies/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1028,7 +1028,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "gold",
     type: "ranged",
-    neutral: { attack: 4, defense: 1, health: 5, initiative: 5, cost: { gold: 16 }, abilities: [], abilityText: "[activation] Remove up to 2 [damage] from a friendly unit. Otherwise, Enchanters gain +1 [attack] .", cardImage: "/assets/units-neutral-golden-enchanters.webp" },
+    neutral: { attack: 4, defense: 1, health: 5, initiative: 5, cost: { gold: 16 }, abilities: ["enchanter-heal-or-buff"], abilityText: "[activation] Remove up to 2 [damage] from a friendly unit. Otherwise, Enchanters gain +1 [attack] .", cardImage: "/assets/units-neutral-golden-enchanters.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/enchanters/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1322,7 +1322,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "azure",
     type: "flying",
-    neutral: { attack: 5, defense: 2, health: 8, initiative: 15, cost: { gold: 35, valuables: 2 }, abilities: [], abilityText: "2 [valuables] [activation] The selected unit suffers 2 [damage]. This is a [spell] that does not count towards your spell limit.", cardImage: "/assets/units-neutral-azure-faerie_dragons.webp" },
+    neutral: { attack: 5, defense: 2, health: 8, initiative: 15, cost: { gold: 35, valuables: 2 }, abilities: ["faerie-dragon-spell"], abilityText: "[activation] The selected unit suffers 2 [damage]. This is a [spell] that does not count towards your spell limit.", cardImage: "/assets/units-neutral-azure-faerie_dragons.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/faerie_dragons/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
