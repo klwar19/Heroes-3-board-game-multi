@@ -51,11 +51,11 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "random_town",
     name: "Random Town",
     category: "town",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Random Town (Inferno/Stretch Goals) needs an unused faction, defending packs, walls and gate."
-    },
-    implementationStatus: "not-implemented",
+    // Defended by an unused faction's Packs (1 bronze, 2 silver, 2 gold);
+    // capturing it grants +10 gold income (and 10 gold on the first capture).
+    // The defending faction and guards are built in the engine (drawGuardArmy).
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
     source: source("random_town")
   },
   mine: {

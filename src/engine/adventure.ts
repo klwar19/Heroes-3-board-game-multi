@@ -932,6 +932,35 @@ function applyTownFlag(state: GameState, playerId: PlayerId, field: MapFieldStat
   }
 }
 
+/**
+ * Random Town capture: the conqueror gains +10 gold income (transferred from
+ * any previous holder) and, the first time the town falls, the 10 gold at once.
+ */
+function applyRandomTownFlag(state: GameState, playerId: PlayerId, field: MapFieldState): void {
+  const previousOwnerId = field.flagOwnerId;
+  if (previousOwnerId && previousOwnerId !== playerId) {
+    const previous = state.players[previousOwnerId];
+    if (previous) {
+      previous.production.gold = Math.max(0, previous.production.gold - 10);
+      appendEvent(state, { type: "PRODUCTION_CHANGED", playerId: previousOwnerId, resource: "gold", amount: -10 });
+    }
+  }
+
+  const firstCapture = !field.everFlagged;
+  flagField(state, playerId, field);
+  field.everFlagged = true;
+
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+  player.production.gold += 10;
+  appendEvent(state, { type: "PRODUCTION_CHANGED", playerId, resource: "gold", amount: 10 });
+  if (firstCapture) {
+    gainResources(state, playerId, { gold: 10 }, "captured the Random Town");
+  }
+}
+
 /** The active win condition; absent on old snapshots means "conquest". */
 export function adventureVictoryMode(state: GameState): VictoryMode {
   return state.adventure?.victoryMode ?? "conquest";
@@ -1269,7 +1298,14 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     return;
   }
 
-  if (location.id === "town" || location.id === "random_town") {
+  if (location.id === "random_town") {
+    if (field.flagOwnerId !== playerId) {
+      applyRandomTownFlag(state, playerId, field);
+    }
+    return;
+  }
+
+  if (location.id === "town") {
     if (field.flagOwnerId !== playerId) {
       applyTownFlag(state, playerId, field);
     }
@@ -2078,6 +2114,8 @@ export type NeutralDraw = {
   tier: "bronze" | "silver" | "gold" | "azure";
   /** Fixed creature-bank guard: minted, not drawn from a deck, never returned. */
   bankGuard?: boolean;
+  /** Random Town defender: fight this unit on its faction Pack side. */
+  factionPack?: boolean;
 };
 
 /**
@@ -2140,6 +2178,7 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
 /**
  * Builds the guard army for a field, applying the creature-bank overrides:
  *  - Dragon Utopia: a fixed party of the four dragons (not from the deck).
+ *  - Random Town: the rolled faction's packs (1 bronze, 2 silver, 2 gold).
  *  - Cyclops Stockpile: the normal draw plus 2 golden Cyclopes added to the
  *    Neutral Army (the rulebook override).
  * Every other field draws normally from the Field Difficulty Level Table.
@@ -2147,6 +2186,10 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
 export function drawGuardArmy(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
   if (field?.location === "dragon_utopia") {
     return DRAGON_UTOPIA_GUARD_IDS.map((unitDefId) => ({ unitDefId, tier: "azure" as const, bankGuard: true }));
+  }
+
+  if (field?.location === "random_town") {
+    return randomTownGuardDraws(state, field);
   }
 
   const draws = drawNeutralArmy(state, difficulty);
@@ -2163,6 +2206,61 @@ export function drawGuardArmy(state: GameState, field: MapFieldState | undefined
   return draws;
 }
 
+const PLAYABLE_FACTIONS = ["castle", "rampart", "inferno", "necropolis", "dungeon", "stronghold"] as const;
+
+/**
+ * Assigns (once) the unused faction defending a Random Town. The rulebook has
+ * the highest Resource-dice roller choose; here an unused faction is picked
+ * deterministically from the seed and stored on the field.
+ */
+function ensureRandomTownFaction(state: GameState, field: MapFieldState): string {
+  if (field.faction) {
+    return field.faction;
+  }
+  const used = new Set<string>();
+  for (const player of Object.values(state.players)) {
+    if (player.factionId) {
+      used.add(player.factionId);
+    }
+  }
+  const unused = PLAYABLE_FACTIONS.filter(
+    (faction) => !used.has(faction) && (coreFactionDefinitions[faction]?.units.length ?? 0) > 0
+  );
+  const pool = unused.length > 0 ? unused : [...PLAYABLE_FACTIONS];
+  const random = adventureRandom(state, `random-town-${field.spaceId}`);
+  const faction = pool[random.nextInt(0, pool.length - 1)];
+  field.faction = faction;
+  return faction;
+}
+
+/**
+ * Random Town defenders: one bronze, two silver and two gold Packs of the
+ * rolled faction (the strongest bronze stands in for the defender's choice).
+ */
+function randomTownGuardDraws(state: GameState, field: MapFieldState): NeutralDraw[] {
+  const faction = ensureRandomTownFaction(state, field);
+  const unitIds = coreFactionDefinitions[faction]?.units ?? [];
+  const byTier = (tier: "bronze" | "silver" | "gold") =>
+    unitIds.filter((id) => coreUnitDefinitions[id]?.tier === tier);
+
+  const bronze = byTier("bronze");
+  const picks: string[] = [];
+  if (bronze.length > 0) {
+    picks.push(bronze[bronze.length - 1]);
+  }
+  picks.push(...byTier("silver").slice(0, 2));
+  picks.push(...byTier("gold").slice(0, 2));
+
+  return picks
+    .filter((id) => coreUnitDefinitions[id]?.pack)
+    .map((id) => ({
+      unitDefId: id,
+      tier: coreUnitDefinitions[id]!.tier as "bronze" | "silver" | "gold",
+      factionPack: true,
+      bankGuard: true
+    }));
+}
+
 export function makeCombatUnitFromNeutral(
   draw: NeutralDraw,
   unitId: UnitId,
@@ -2170,19 +2268,22 @@ export function makeCombatUnitFromNeutral(
   ruleset: GameRuleset = "legacy"
 ): CombatUnitState | null {
   const def = coreUnitDefinitions[draw.unitDefId];
-  const printed = def?.neutral;
+  // Random Town defenders fight on their faction's Pack side; every other
+  // guard uses the single-sided Neutral card.
+  const variant: "neutral" | "pack" = draw.factionPack ? "pack" : "neutral";
+  const printed = draw.factionPack ? def?.pack : def?.neutral;
   if (!def || !printed) {
     return null;
   }
 
-  const side = applyUnitSideRules(ruleset, draw.unitDefId, "neutral", printed);
+  const side = applyUnitSideRules(ruleset, draw.unitDefId, variant, printed);
 
   return {
     id: unitId,
     controllerId: NEUTRAL_PLAYER_ID,
     name: def.name,
-    cardName: `Neutral ${def.name}`,
-    variant: "neutral",
+    cardName: `${draw.factionPack ? "Pack of" : "Neutral"} ${def.name}`,
+    variant,
     grade: def.tier,
     type: def.type,
     attack: side.attack,
@@ -2200,7 +2301,7 @@ export function makeCombatUnitFromNeutral(
     ...(draw.bankGuard ? { bankGuard: true } : {}),
     assets: {
       cardImage: side.cardImage,
-      imageAlt: `Neutral ${def.name} unit card`,
+      imageAlt: `${def.name} unit card`,
       wikiUrl: def.wikiUrl
     }
   };
