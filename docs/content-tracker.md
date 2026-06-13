@@ -82,6 +82,7 @@ Citadel siege bonuses (3 Walls, 1 Gate, Arrow Tower) 🔴 — siege combat not i
 | Gem (Druid, magic, A0 D2 P1 K2) | Rampart | ✅ | First Aid starting ability heals 1. Specialty I implemented: take the First Aid Tent from the supply for free, or draw 1 if it is gone. IV/VI 🟡. |
 | Xyron (Heretic, magic, A1 D1 P2 K1) | Inferno | ✅ | Inferno I implemented: discard 2 cards, then 1 damage to a chosen unit's space and every adjacent unit (friend or foe). IV/VI 🟡. Starting ability Wisdom. |
 | Rashka (Demoniac, might, A2 D2 P1 K1) | Inferno | ✅ | Specialty I implemented (doubles for Efreet); IV/VI 🟡. Starting ability Scholar 🟡. |
+| Zydar (Heretic, magic, A1 D1 P2 K1) | Inferno | ✅ | Spell-economy hero (wiki). Specialty I implemented — a self-spell-cast reaction: draw 1 card OR +1 Power. IV (next spell ignores the limit / +2 Power) and VI (ongoing draw-after-cast / +2 Power) 🟡. Starting ability Sorcery. Portrait/board-scan art slots pending. |
 
 Hero board level track (verified against the wiki board scan): 2 XP per level; hand limit 4→5(III)→6(V)→7(VII); expert effects +1 at II/IV/VI; ability Search (2) at II/III/V/VII; specialties at I/IV/VI. Secondary heroes 🔴 (hire via Population/Tavern, 2 MP, instant-defeat option).
 
