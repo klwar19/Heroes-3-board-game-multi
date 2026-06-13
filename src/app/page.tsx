@@ -30,6 +30,7 @@ import {
   CombatResultModal,
   DiceOverlay,
   DrawOverlay,
+  FirstPlayerRollOverlay,
   MapDiceOverlay,
   MapNoticeOverlay,
   ReactionTray,
@@ -37,6 +38,7 @@ import {
   SearchModal,
   type DiceCue,
   type DrawCue,
+  type FirstPlayerRollCue,
   type MapDiceCue,
   type MapNoticeCue
 } from "@/components/table/overlays";
@@ -175,6 +177,7 @@ export default function Home() {
     current: null,
     queue: []
   });
+  const [firstRoll, setFirstRoll] = useState<FirstPlayerRollCue | null>(null);
   const [drawCue, setDrawCue] = useState<DrawCue | null>(null);
   const [moveCue, setMoveCue] = useState<HeroMoveCue | null>(null);
   const [flippedUnitIds, setFlippedUnitIds] = useState<Set<string>>(new Set());
@@ -265,6 +268,7 @@ export default function Home() {
       setTintedUnits(new Map());
       setMapDice({ current: null, queue: [] });
       setMapNotice({ current: null, queue: [] });
+      setFirstRoll(null);
     } else {
       // Adventure feed: spell out every visit effect, fight, gain and reveal
       // as a toast. The cue name is the future audio hook.
@@ -394,25 +398,18 @@ export default function Home() {
         seenFirstRollIdsRef.current.add(event.id);
       }
       if (freshFirstRolls.length > 0) {
-        const cues = freshFirstRolls.map((event) => {
-          const lines = event.attempts.map((attempt, index) => {
-            const rolls = attempt.rolls
-              .map((roll) => `${roll.name}: ${roll.value > 0 ? "+" : ""}${roll.value}`)
-              .join("  ·  ");
-            return event.attempts.length > 1 ? `Roll ${index + 1} — ${rolls}` : rolls;
-          });
-          lines.push(`${nextState.players[event.winnerPlayerId]?.name ?? event.winnerPlayerId} plays first!`);
-          return {
-            id: event.id,
-            icon: "🎲",
-            title: "Who goes first?",
-            subtitle: "Everyone rolls the Attack die — highest starts",
-            lines
-          } satisfies MapNoticeCue;
-        });
-        setMapNotice((current) => {
-          const queue = [...current.queue, ...cues];
-          return current.current ? { ...current, queue } : { current: queue[0], queue: queue.slice(1) };
+        // The interactive ceremony replays the engine's recorded rounds: each
+        // seat rolls the Attack die, ties reroll, the highest starts.
+        const event = freshFirstRolls[freshFirstRolls.length - 1];
+        const order = nextState.turnOrder
+          .filter((id) => id !== NEUTRAL_PLAYER_ID)
+          .map((id) => ({ playerId: id, name: nextState.players[id]?.name ?? id }));
+        setFirstRoll({
+          id: event.id,
+          attempts: event.attempts,
+          winnerPlayerId: event.winnerPlayerId,
+          winnerName: nextState.players[event.winnerPlayerId]?.name ?? event.winnerPlayerId,
+          order
         });
       }
 
@@ -975,6 +972,7 @@ export default function Home() {
       setDice({ current: null, queue: [] });
       setMapDice({ current: null, queue: [] });
       setMapNotice({ current: null, queue: [] });
+      setFirstRoll(null);
       setFeedItems([]);
       setSyncStatus(`synced v${snapshot.version}`);
     } catch {
@@ -1521,6 +1519,9 @@ export default function Home() {
           {mapDice.current ? (
             <MapDiceOverlay cue={mapDice.current} key={mapDice.current.id} onDone={dismissMapDice} />
           ) : null}
+          {firstRoll ? (
+            <FirstPlayerRollOverlay cue={firstRoll} key={firstRoll.id} onDone={() => setFirstRoll(null)} />
+          ) : null}
           <FxStage cues={fxCues} onDone={handleFxDone} />
         </main>
       </CardZoomProvider>
@@ -1697,6 +1698,9 @@ export default function Home() {
       ) : null}
       {!dice.current && mapDice.current ? (
         <MapDiceOverlay cue={mapDice.current} key={mapDice.current.id} onDone={dismissMapDice} />
+      ) : null}
+      {firstRoll ? (
+        <FirstPlayerRollOverlay cue={firstRoll} key={firstRoll.id} onDone={() => setFirstRoll(null)} />
       ) : null}
       <FxStage cues={fxCues} onDone={handleFxDone} />
     </main>

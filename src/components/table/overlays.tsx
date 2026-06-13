@@ -19,6 +19,7 @@ import {
 } from "@/engine";
 import { cardName, formatDieFace, formatEvent, unitName } from "./utils";
 import { CardBack, CardFrame } from "./seats";
+import { ArtifactIcon, DieFaceIcon, DoubleDieIcon, ExperienceIcon } from "./dice-icons";
 import { useCardZoom, ZoomButton } from "./zoom";
 
 type ReactionLegal = Extract<GameAction, { type: "PLAY_REACTION" }>;
@@ -873,11 +874,12 @@ const TREASURE_DIE_LAYOUT: ("experience" | "artifact-search" | "resource-die" | 
   "double-resource-die"
 ];
 
-const TREASURE_FACE_GLYPHS: Record<string, { glyph: string; label: string }> = {
-  experience: { glyph: "⭐", label: "XP" },
-  "artifact-search": { glyph: "🗝", label: "artifact" },
-  "resource-die": { glyph: "🎲", label: "die" },
-  "double-resource-die": { glyph: "🎲🎲", label: "2 dice" }
+/** Treasure-die face art (authentic-styled SVG) and its caption. */
+const TREASURE_FACE_ICONS: Record<string, { icon: React.ReactNode; label: string }> = {
+  experience: { icon: <ExperienceIcon size={22} />, label: "½ Level" },
+  "artifact-search": { icon: <ArtifactIcon size={20} />, label: "artifact" },
+  "resource-die": { icon: <DieFaceIcon size={20} />, label: "die" },
+  "double-resource-die": { icon: <DoubleDieIcon size={22} />, label: "2 dice" }
 };
 
 const ATTACK_DIE_LAYOUT = [1, -1, 0, 0, -1, 1];
@@ -904,10 +906,10 @@ function MapDieCube({
       );
     }
     if (kind === "treasure") {
-      const face = TREASURE_FACE_GLYPHS[TREASURE_DIE_LAYOUT[index]];
+      const face = TREASURE_FACE_ICONS[TREASURE_DIE_LAYOUT[index]];
       return (
         <>
-          <span className="mapFaceGlyph">{face.glyph}</span>
+          <span className="mapFaceGlyph">{face.icon}</span>
           <small>{face.label}</small>
         </>
       );
@@ -1040,6 +1042,111 @@ export function MapNoticeOverlay({ cue, onDone }: { cue: MapNoticeCue; onDone: (
           </ul>
         ) : null}
         <small className="mapNoticeHint">click to continue</small>
+      </div>
+    </div>
+  );
+}
+
+export type FirstPlayerRollCue = {
+  id: string;
+  /** Each roll round the engine recorded; ties carry over to the next round. */
+  attempts: { rolls: { playerId: string; name: string; value: number }[] }[];
+  winnerPlayerId: string;
+  winnerName: string;
+  /** Final seating order, winner first. */
+  order: { playerId: string; name: string }[];
+};
+
+/**
+ * Determine-the-first-player ceremony, played out one roll at a time so it
+ * feels like grabbing the dice: everyone's Attack die sits ready, a button
+ * rolls them, they tumble and settle, the highest is highlighted — and a tie
+ * offers a reroll among the tied players (replaying the exact rounds the engine
+ * already decided). The last round names the starting player and the order.
+ */
+export function FirstPlayerRollOverlay({ cue, onDone }: { cue: FirstPlayerRollCue; onDone: () => void }) {
+  const [attemptIndex, setAttemptIndex] = useState(0);
+  const [phase, setPhase] = useState<"ready" | "rolling" | "revealed">("ready");
+
+  const attempt = cue.attempts[attemptIndex] ?? cue.attempts[cue.attempts.length - 1];
+  const isFinalAttempt = attemptIndex >= cue.attempts.length - 1;
+  const best = Math.max(...attempt.rolls.map((roll) => roll.value));
+  const revealed = phase === "revealed";
+  const rolling = phase === "rolling";
+
+  useEffect(() => {
+    if (!rolling) {
+      return;
+    }
+    const settle = setTimeout(() => setPhase("revealed"), 1000);
+    return () => clearTimeout(settle);
+  }, [rolling]);
+
+  const roll = () => {
+    if (phase === "ready") {
+      setPhase("rolling");
+    }
+  };
+  const reroll = () => {
+    setAttemptIndex((index) => Math.min(index + 1, cue.attempts.length - 1));
+    setPhase("ready");
+  };
+
+  return (
+    <div className="diceOverlay firstRollOverlay" role="dialog" aria-label="Who goes first?">
+      <div className="diceStage firstRollStage">
+        <header>
+          <Crown aria-hidden="true" size={16} />
+          <strong>Who goes first?</strong>
+          <span className="rollMode">
+            Everyone rolls the Attack die — highest starts{cue.attempts.length > 1 ? " · ties reroll" : ""}
+          </span>
+        </header>
+
+        <div className="firstRollContenders">
+          {attempt.rolls.map((entry) => {
+            const isLeader = revealed && entry.value === best;
+            return (
+              <div className={`firstRollContender ${revealed ? (isLeader ? "leader" : "trailing") : ""}`} key={entry.playerId}>
+                <span className="firstRollName">{entry.name}</span>
+                <DieCube dimmed={!revealed && !rolling} rolling={rolling} value={revealed ? entry.value : 0} />
+                <span className="firstRollValue">{revealed ? formatDieFace(entry.value) : "—"}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="firstRollActions">
+          {phase === "ready" ? (
+            <button className="commandButton primary" onClick={roll} type="button">
+              <Dices aria-hidden="true" size={15} /> {attemptIndex === 0 ? "Roll the dice!" : "Reroll the tie!"}
+            </button>
+          ) : null}
+          {rolling ? <span className="firstRollHint">rolling…</span> : null}
+          {revealed && !isFinalAttempt ? (
+            <>
+              <strong className="firstRollTie">It&apos;s a tie — roll again!</strong>
+              <button className="commandButton primary" onClick={reroll} type="button">
+                <Dices aria-hidden="true" size={15} /> Reroll
+              </button>
+            </>
+          ) : null}
+          {revealed && isFinalAttempt ? (
+            <>
+              <strong className="firstRollWinner">{cue.winnerName} plays first!</strong>
+              <ol className="firstRollOrder">
+                {cue.order.map((seat, index) => (
+                  <li key={seat.playerId}>
+                    <span className="firstRollSeatNo">{index + 1}</span> {seat.name}
+                  </li>
+                ))}
+              </ol>
+              <button className="commandButton primary" onClick={onDone} type="button">
+                <Check aria-hidden="true" size={15} /> Begin the adventure
+              </button>
+            </>
+          ) : null}
+        </div>
       </div>
     </div>
   );
