@@ -47,7 +47,10 @@ export type GameRuleset = "legacy" | "binh";
 export type VictoryMode = "conquest" | "grail" | "dragon-conqueror";
 export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon" | "stronghold";
 
-export type TargetRef = { type: "unit"; unitId: UnitId } | { type: "none" };
+export type TargetRef =
+  | { type: "unit"; unitId: UnitId }
+  | { type: "space"; position: number }
+  | { type: "none" };
 
 export type SourceRef =
   | { type: "card"; cardId: CardId; controllerId: PlayerId }
@@ -72,6 +75,8 @@ export type TargetDefinition =
   | { type: "enemy-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
   | { type: "friendly-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
   | { type: "any-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
+  /** Summon spells: a chosen empty space on the combat board. */
+  | { type: "empty-space" }
   | { type: "none" };
 
 export type EffectDurationDefinition =
@@ -187,6 +192,16 @@ export type ActiveEffectModifier =
   | {
       /** Golden Bow: your ranged units ignore the long-range penalty. */
       type: "RANGED_IGNORE_PENALTY";
+    }
+  | {
+      /**
+       * Moandor's Liches VI specialty: while held, the unit deals "elemental
+       * damage" — like the elemental units' printed trait. Its attack value
+       * can no longer be raised by attack cards (Bloodlust, Offense, the
+       * Attack statistic, Bless's bonus…) or Attack tokens; debuffs such as a
+       * Sorceress' Weakness still lower it.
+       */
+      type: "ELEMENTAL_DAMAGE";
     };
 
 export type ActiveEffectDefinition = {
@@ -517,6 +532,27 @@ export type EffectDefinition =
        */
       type: "SIEGE_DEMOLISH";
       target: "wall-or-gate" | "arrow-tower";
+    }
+  | {
+      /**
+       * Summon X Elemental (Conflux Expert spells): on a chosen empty space,
+       * Power 2 summons a Few and Power 4 a Pack of the school's Elemental.
+       * The unit joins the combat immediately (acts on its own initiative) and
+       * stays in the caster's army afterwards — exactly like the Pit Lords'
+       * summoned Demons.
+       */
+      type: "SUMMON_ELEMENTAL";
+      unitDefId: string;
+    }
+  | {
+      /**
+       * Moandor's Liches VI specialty (one option of its "OR"): for the rest
+       * of the Combat the chosen unit deals elemental damage. Restricted to the
+       * named unit when `targetUnitName` is set (his card reads "your Liches").
+       */
+      type: "GRANT_ELEMENTAL_DAMAGE";
+      targetUnitName?: string;
+      duration: EffectDurationDefinition;
     };
 
 /**
@@ -699,7 +735,18 @@ export type DeckSearchPick =
     };
 
 export type GameAction =
-  | { type: "CAST_SPELL"; playerId: PlayerId; cardId: CardId; target: TargetRef }
+  | {
+      type: "CAST_SPELL";
+      playerId: PlayerId;
+      cardId: CardId;
+      target: TargetRef;
+      /**
+       * Spell Scroll cast: the spell comes from this scroll (not the hand),
+       * resolves at power 0, cannot be boosted by any Power source, and is
+       * removed from the game once it resolves.
+       */
+      fromScroll?: string;
+    }
   | {
       type: "PLAY_CARD";
       playerId: PlayerId;
@@ -766,6 +813,12 @@ export type GameAction =
       costCardIds?: CardId[];
       /** Discard this Spell card for its alternative "+1 Power" effect. */
       asPowerBoost?: boolean;
+      /**
+       * Spell Scroll reaction: the spell instant comes from this scroll, not
+       * the hand. It resolves at power 0 (no boosts, no expert side) and is
+       * removed from the game once played.
+       */
+      fromScroll?: string;
     }
   | {
       /**
@@ -779,6 +832,16 @@ export type GameAction =
       plays: ReactionPlay[];
     }
   | { type: "PASS_REACTION"; playerId: PlayerId }
+  | {
+      /**
+       * Lethal-save window: cancel the killing blow with a unit ability instead
+       * of a card (Archangels' once-per-combat Resurrection). The named unit
+       * must be the one whose ability does the saving.
+       */
+      type: "USE_UNIT_RESURRECTION";
+      playerId: PlayerId;
+      savingUnitId: UnitId;
+    }
   | { type: "SEARCH_DECK"; playerId: PlayerId; deckId: DeckId; count: number }
   | { type: "RESOLVE_DECK_SEARCH"; playerId: PlayerId; choiceId: string; pick: DeckSearchPick }
   | { type: "MOVE_HERO"; playerId: PlayerId; heroId: HeroId; to: MapSpaceId }
@@ -848,6 +911,17 @@ export type GameAction =
     }
   | {
       /**
+       * Sell one Spell Scroll spell at an open Trading Post (market) for
+       * 2 gold. The spell leaves the scroll (and the game); an emptied scroll
+       * is removed too.
+       */
+      type: "SELL_SCROLL_SPELL";
+      playerId: PlayerId;
+      scrollId: string;
+      cardId: CardId;
+    }
+  | {
+      /**
        * Schools of Magic: while casting a matching spell, discard the in-play
        * permanent for its expert power bonus (replaces the basic +1; costs
        * one expert use).
@@ -869,6 +943,7 @@ export type GameAction =
   | { type: "UNPLACE_COMBAT_UNIT"; playerId: PlayerId; armyUnitId: string }
   | { type: "FINISH_COMBAT_PLACEMENT"; playerId: PlayerId }
   | { type: "CONTINUE_NEUTRAL_COMBAT"; playerId: PlayerId }
+  | { type: "CONTINUE_NEUTRAL_STEP"; playerId: PlayerId }
   | { type: "RETREAT_FROM_COMBAT"; playerId: PlayerId }
   | {
       /**
@@ -1074,6 +1149,16 @@ export type GameEvent =
       rollMode: AttackRollMode;
       /** Set for printed-ability follow-up attacks (Liches' Death Cloud). */
       abilityAttack?: { abilityId: string; baseAttack: number };
+    }
+  | {
+      /**
+       * A resolved attack would reduce a unit to 0 HP — opens the save window
+       * where that unit's controller may play Alamar's Resurrection.
+       */
+      id: string;
+      type: "UNIT_LETHAL_HIT";
+      attackerId: UnitId;
+      defenderId: UnitId;
     }
   | {
       id: string;
@@ -1723,6 +1808,23 @@ export type GameEvent =
       playerId: PlayerId;
       buildingId: BuildingId;
       message: string;
+    }
+  | {
+      /** A Spell Scroll was taken from a field; its 2 spells are now held. */
+      id: string;
+      type: "SPELL_SCROLL_GAINED";
+      playerId: PlayerId;
+      scrollId: string;
+      spellCardIds: CardId[];
+    }
+  | {
+      /** A Spell Scroll spell was sold at the market for gold. */
+      id: string;
+      type: "SCROLL_SPELL_SOLD";
+      playerId: PlayerId;
+      scrollId: string;
+      cardId: CardId;
+      gold: number;
     };
 
 export type ResolutionStackItem = {
@@ -1745,6 +1847,12 @@ export type ResolutionStackItem = {
     attackDieMultiplier?: number;
     /** Brimstone Stormclouds: faction cubes spent on this cast (max 1). */
     townCubePowerBonus?: number;
+    /**
+     * Spell Scroll cast: the spell resolves at power 0 and no Power source
+     * (Power cards, +1 discards, School of Magic, town cubes, Astrologers) may
+     * raise it — getCurrentSpellPower returns 0 while this is set.
+     */
+    scrollLocked?: boolean;
     /** Bless: the Attack die is not rolled (counts as 0). */
     ignoreAttackDie?: boolean;
     /** Precision: this shot ignores the ranged back-row penalty. */
@@ -1756,10 +1864,17 @@ export type ResolutionStackItem = {
      */
     recallSpell?: { toHand: boolean; recallPlayedCards: boolean };
     /**
-     * Alamar's Resurrection armed on this attack or spell: if it would reduce
-     * the named unit (of `grade` or lower) to 0 HP, the blow is cancelled.
+     * Alamar's Resurrection armed on this attack: if it would reduce the named
+     * unit (of `grade` or lower) to 0 HP, the blow is cancelled.
      */
     cancelLethal?: { unitId: UnitId; grade: UnitGrade };
+    /**
+     * The attack die outcome rolled before pausing for the lethal-save window,
+     * reused when the attack resumes so the die is not rerolled.
+     */
+    rolledCandidate?: { rolls: number[]; roll: number };
+    /** Set once the lethal-save window has been offered for this attack. */
+    lethalSaveOffered?: boolean;
     playedCardIds: CardId[];
   };
 };
@@ -1837,6 +1952,19 @@ export type TownTokenState = {
   build: boolean;
   population: boolean;
   spellBook: boolean;
+};
+
+/**
+ * A Spell Scroll near the hero board (Stronghold expansion field). Each scroll
+ * holds up to 2 Spell cards drawn from the Basic/Expert Magic decks. Its spells
+ * are NOT in the hand: the owner may cast one during combat at power 0 (it
+ * cannot be boosted by any Power source) or sell one at the market for 2 gold.
+ * A used or sold spell leaves the scroll; once both are gone the scroll is gone.
+ */
+export type SpellScrollState = {
+  id: string;
+  /** The Spell card ids held in the scroll (0-2). */
+  spellCardIds: CardId[];
 };
 
 export type PlayerState = {
@@ -1931,6 +2059,19 @@ export type PlayerState = {
    * the card may only be played while the window is open.
    */
   necromancyWindow?: boolean;
+  /**
+   * Ability cards this player acquired by drawing them out of the shared
+   * Ability deck (the level-up "Search (2) the Ability deck" reward). A
+   * Necromancy gained this way may be kept but never played — it is only a
+   * real, playable ability when it comes from a hero's printed board, not
+   * from a level-up draw (house rule).
+   */
+  deckDrawnAbilityCardIds?: CardId[];
+  /**
+   * Spell Scrolls held near the hero board (not in hand). Each holds up to 2
+   * Spell cards usable in combat at power 0 or sellable at the market.
+   */
+  scrolls?: SpellScrollState[];
 };
 
 /**
@@ -1990,6 +2131,8 @@ export type CombatUnitState = {
   activationAbilityDone?: boolean;
   /** Pit Lords: set once this unit has summoned/reinforced Demons this combat. */
   summonedThisCombat?: boolean;
+  /** Archangels: set once this unit has spent its once-per-combat lethal save. */
+  usedLethalSaveThisCombat?: boolean;
   retaliatedThisRound: boolean;
   defenseToken: boolean;
   /** Combat tokens currently on the card (attack/weakness/corrosion/paralysis). */
@@ -2131,6 +2274,22 @@ export type CombatState = {
    * 1 MP to continue for another round or retreat.
    */
   awaitingContinue: boolean;
+  /**
+   * Neutral combat pacing: when a guard unit walks (a step that is not also an
+   * attack — attacks already pause on the defender's reaction window and the
+   * attack die) the engine stops here so the table can see the move and click
+   * on. The attacking player resumes with CONTINUE_NEUTRAL_STEP and the next
+   * guard acts. Only set during neutral fights — player-vs-player and the
+   * sandbox never pause like this.
+   */
+  pendingNeutralStep?: {
+    unitId: UnitId;
+    /** Display name of the acting guard, for the pop-up. */
+    name: string;
+    /** Where the guard stepped from / to. */
+    from: number;
+    to: number;
+  } | null;
   /**
    * Round-start war machine triggers still waiting to resolve, in owner
    * order (attacker first). The Catapult parks its first chosen target here
@@ -2474,6 +2633,23 @@ export type VisitStep =
        * have one. Auto-resolves with no input.
        */
       type: "PRISON";
+    }
+  | {
+      /**
+       * Spell Scroll field: draw `remaining` Spells (one at a time, the player
+       * picks the Basic or Expert Magic deck for each) into a single new scroll
+       * placed near the hero. Self-expands into deck-pick + DRAW_SCROLL_SPELL.
+       */
+      type: "SPELL_SCROLL";
+      remaining: number;
+      /** The scroll being filled; created on the first draw. */
+      scrollId?: string;
+    }
+  | {
+      /** One Spell Scroll draw: take the top card of `deckId` into the scroll. */
+      type: "DRAW_SCROLL_SPELL";
+      deckId: DeckId;
+      scrollId: string;
     };
 
 export type AstrologersState = {

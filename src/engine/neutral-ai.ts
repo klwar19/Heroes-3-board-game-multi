@@ -1,5 +1,12 @@
 import { getBattlefieldDistance } from "./battlefield";
-import { canUnitAttack, canUnitMoveTo, getLegalMoveDestinations, isAdjacent, isUnitAlive } from "./legal-actions";
+import {
+  canUnitAttack,
+  canUnitMoveTo,
+  getLegalMoveDestinations,
+  getPathDistances,
+  isAdjacent,
+  isUnitAlive
+} from "./legal-actions";
 import type { CombatState, CombatUnitState, GameState, UnitGrade, UnitId } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 
@@ -186,6 +193,10 @@ export function planNeutralActivation(
   return destination === null ? { kind: "pass" } : { kind: "move", destination };
 }
 
+// Squares with no walkable path to the target sort behind every reachable one
+// while still preferring the closest of the unreachable lot.
+const BATTLEFIELD_PATH_PENALTY = 1000;
+
 function bestStepTowards(
   state: GameState,
   combat: CombatState,
@@ -199,14 +210,27 @@ function bestStepTowards(
     return null;
   }
 
-  const best = destinations.sort(
-    (left, right) =>
-      getBattlefieldDistance(left, target.position) - getBattlefieldDistance(right, target.position) ||
-      left - right
-  )[0];
+  // Distance is measured along an actual path around other units and obstacle
+  // tokens, not as the crow flies — otherwise a unit walled off the straight
+  // line reads every reachable square as "no closer" and freezes in place
+  // (the bug where a guard just never moves). Flyers ignore blockers, so for
+  // them this matches the straight-line distance.
+  const field = getPathDistances(combat, unit, target.position);
+  const distanceTo = (position: number): number =>
+    field.get(position) ?? getBattlefieldDistance(position, target.position) + BATTLEFIELD_PATH_PENALTY;
 
-  // Only move when it actually gets closer.
-  if (getBattlefieldDistance(best, target.position) >= getBattlefieldDistance(unit.position, target.position)) {
+  const here = distanceTo(unit.position);
+  const best = destinations
+    .slice()
+    .sort(
+      (left, right) =>
+        distanceTo(left) - distanceTo(right) ||
+        getBattlefieldDistance(left, target.position) - getBattlefieldDistance(right, target.position) ||
+        left - right
+    )[0];
+
+  // Only move when the step actually shortens the path to the target.
+  if (distanceTo(best) >= here) {
     return null;
   }
 

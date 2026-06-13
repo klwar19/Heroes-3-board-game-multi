@@ -896,6 +896,49 @@ describe("neutral combat", () => {
     expect(guardDistanceAfter).toBeLessThan(guardDistanceBefore);
   });
 
+  it("paces the fight: a guard's walk pauses for the table to click on", () => {
+    let state = threeUnitFight(moveOntoGuardedMine(refreshP1(makeGame())));
+
+    const combat = state.combat!;
+    const guard = Object.values(combat.units).find((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)!;
+    guard.type = "ground";
+    guard.abilities = [];
+    guard.grade = "bronze";
+    guard.position = 0; // top-left corner
+    guard.initiative = 1; // acts after the player's units defend
+
+    // One uniquely-closest target, far enough that the guard only walks this
+    // turn (cannot reach adjacent) — the pure-move case that used to flash by.
+    const marksmen = Object.values(combat.units).find((unit) => unit.name === "Marksmen")!;
+    const griffins = Object.values(combat.units).find((unit) => unit.name === "Griffins")!;
+    const halberdiers = Object.values(combat.units).find((unit) => unit.name === "Halberdiers")!;
+    halberdiers.position = 17; // distance 5 from the guard — the closest
+    marksmen.position = 18; // distance 6
+    griffins.position = 19; // distance 7
+
+    state = defendThrough(state);
+
+    // The guard walked and the engine paused on the step.
+    const step = state.combat!.pendingNeutralStep;
+    expect(step).toBeTruthy();
+    expect(step!.unitId).toBe(guard.id);
+    expect(step!.to).not.toBe(step!.from);
+    expect(state.combat!.units[guard.id].position).toBe(step!.to);
+
+    // Only the attacker may continue; doing so clears the pause.
+    const continues = getLegalActions(state, "p1").filter(
+      (entry) => entry.action.type === "CONTINUE_NEUTRAL_STEP"
+    );
+    expect(continues).toHaveLength(1);
+    const blocked = getLegalActions(state, "p2").filter(
+      (entry) => entry.action.type === "CONTINUE_NEUTRAL_STEP"
+    );
+    expect(blocked).toHaveLength(0);
+
+    state = apply(state, { type: "CONTINUE_NEUTRAL_STEP", playerId: "p1" });
+    expect(state.combat!.pendingNeutralStep ?? null).toBeNull();
+  });
+
   it("returns the hero on retreat and keeps the field guarded", () => {
     let state = moveOntoGuardedMine(refreshP1(makeGame()));
     const townSpace = state.towns.town_p1.fieldId ?? "";

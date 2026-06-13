@@ -422,3 +422,22 @@ describe("rulebook conformance fixes", () => {
     expect(hillFortCost({ buildingMaterials: 2 })).toEqual({ buildingMaterials: 2 });
   });
 });
+
+describe("Zydar (Inferno hero)", () => {
+  it("is a selectable Inferno magic hero with a valid starting ability and specialty", () => {
+    const zydar = coreHeroDefinitions.zydar;
+    expect(zydar, "Zydar hero definition").toBeTruthy();
+    expect(zydar.faction).toBe("inferno");
+    expect(zydar.type).toBe("magic");
+    expect(coreFactionDefinitions.inferno.heroes).toContain("zydar");
+    // Starting ability and every specialty card must resolve in the library.
+    expect(cardLibrary[zydar.startingAbilityCardId]).toBeTruthy();
+    for (const cardId of Object.values(zydar.specialtyCardIds)) {
+      expect(cardLibrary[cardId], `${cardId} exists`).toBeTruthy();
+    }
+    // Level I is implemented (no dead starting card) — a self-spell-cast choice.
+    const levelOne = cardLibrary[zydar.specialtyCardIds[1]];
+    expect(levelOne.implementationStatus).toBe("implemented");
+    expect(levelOne.effect.type).toBe("CHOOSE_ONE");
+  });
+});

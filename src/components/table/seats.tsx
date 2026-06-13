@@ -284,8 +284,64 @@ export function HandFan({
 
   const hiddenFromIndex = entries.length - Math.max(0, hiddenTailCount);
 
+  // Spell Scrolls sit next to the hero board, not in hand. Each held spell may
+  // be cast in combat at power 0 (CAST_SPELL with fromScroll); the engine
+  // offers a concrete action per legal target.
+  const scrolls = player.scrolls ?? [];
+  const scrollCastActions = cardActions.filter(
+    (legal) => legal.action.type === "CAST_SPELL" && legal.action.fromScroll
+  );
+
   return (
     <div className={`handFan ${trayActive ? "muted" : ""}`} aria-label="Your hand" data-fx-anchor={`hand:${viewerPlayerId}`}>
+      {scrolls.length > 0 ? (
+        <div className="scrollRail" aria-label="Spell Scrolls">
+          {scrolls.map((scroll) => (
+            <div className="scrollChip" key={scroll.id} title="Spell Scroll (cast in combat at power 0; not in hand)">
+              <span className="scrollGlyph" aria-hidden="true">📜</span>
+              <div className="scrollSpells">
+                {scroll.spellCardIds.map((spellId, spellIndex) => {
+                  const card = cardLibrary[spellId];
+                  const casts = scrollCastActions.filter(
+                    (legal) => legal.action.type === "CAST_SPELL" && legal.action.fromScroll === scroll.id && legal.action.cardId === spellId
+                  );
+                  return (
+                    <div className="scrollSpell" key={`${scroll.id}-${spellIndex}`}>
+                      <button
+                        className="scrollSpellName"
+                        onClick={() => zoomCard(spellId)}
+                        title={card ? describeCardEffect(card) : spellId}
+                        type="button"
+                      >
+                        {card?.name ?? spellId}
+                      </button>
+                      {!trayActive && casts.length > 0 ? (
+                        <div className="scrollSpellCasts">
+                          {casts.map((legal) => {
+                            const action = legal.action as CardBoardAction;
+                            const label =
+                              action.target?.type === "unit" ? `Cast → ${targetName(state, action.target)}` : "Cast";
+                            return (
+                              <button
+                                className="commandButton"
+                                key={actionKey(action)}
+                                onClick={() => onAction(action)}
+                                type="button"
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {entries.length === 0 ? <div className="handEmpty">Empty hand</div> : null}
       {entries.map((entry, entryIndex) => {
         const card = cardLibrary[entry.cardId];

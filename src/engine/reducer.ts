@@ -47,6 +47,7 @@ import {
   spendTownCube,
   activateTownBuilding,
   tradeResources,
+  sellScrollSpell,
   unplaceCombatUnit,
   endTurnAdventure
 } from "./adventure-reducer";
@@ -97,7 +98,8 @@ import {
   getActiveDefenseBonus,
   getAttackRerollEffects,
   makeActiveEffect,
-  releaseEndedOngoingCards
+  releaseEndedOngoingCards,
+  unitDealsElementalDamage
 } from "./active-effects";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
@@ -127,15 +129,22 @@ import {
   getActivationAbilities,
   getActivationDamageSpellAbility,
   getAfterRetaliationAttackAbility,
+  getAttackBonusOnAttackDie,
+  getAttackBonusVsDefenderName,
   getAttackDefenseReductionAbility,
   getAttackDieDamageFollowUps,
   getAttackDieResultBonus,
+  getDeathStareFollowUps,
+  getDefenseBonusOnAttackDie,
   getDefenseBonusWhenRetaliated,
   getDoubleAttackAbility,
   getEnchanterActivationAbility,
   getEnemyDiscardAbility,
   getFlatDamageFollowUps,
+  getIgnoreTargetCardDefenseAbility,
+  getLethalSaveUnitAbility,
   getLineAttackAbility,
+  getOnAttackDieTokens,
   getParalysisFollowUps,
   getPostAttackAbilityDamageEffects,
   getRetaliationAgainstAttackPenalty,
@@ -144,8 +153,10 @@ import {
   getSecondAttackAbility,
   getSecondAttackCandidates,
   getSelfAdjacentSecondAttackAbility,
+  getTriggeredAttackDieBonusAbilities,
   getUnitAbilityDefinitions,
   getUnitAttackRerollSources,
+  hasIgnoreParalysis,
   hasRetaliationAgainstDisadvantage,
   hasUnitAbilityEffect
 } from "./unit-abilities";
@@ -171,6 +182,7 @@ import type {
   GameState,
   LegalAction,
   PlayerId,
+  PlayerState,
   PendingChoice,
   ResourceCost,
   ResourceKind,
@@ -221,7 +233,8 @@ function normalizeActionForMatch(action: GameAction): GameAction {
       cardId: action.cardId,
       mode: action.mode ?? "basic",
       ...(action.optionIndex !== undefined ? { optionIndex: action.optionIndex } : {}),
-      ...(action.asPowerBoost ? { asPowerBoost: true } : {})
+      ...(action.asPowerBoost ? { asPowerBoost: true } : {}),
+      ...(action.fromScroll ? { fromScroll: action.fromScroll } : {})
     };
   }
 
@@ -430,6 +443,32 @@ function moveCardFromHandToDiscard(
   return null;
 }
 
+/**
+ * Spell Scroll consumption: a used scroll spell leaves the scroll (and the
+ * game — it never returns to a deck, hand or discard). An emptied scroll is
+ * removed. Returns whether the spell was found and consumed.
+ */
+function consumeScrollSpell(
+  state: GameState,
+  playerId: PlayerId,
+  scrollId: string,
+  cardId: string
+): boolean {
+  const player = state.players[playerId];
+  const scroll = player?.scrolls?.find((candidate) => candidate.id === scrollId);
+  const cardIndex = scroll?.spellCardIds.indexOf(cardId) ?? -1;
+  if (!player || !scroll || cardIndex === -1) {
+    return false;
+  }
+
+  scroll.spellCardIds.splice(cardIndex, 1);
+  player.removed.push(cardId);
+  if (scroll.spellCardIds.length === 0) {
+    player.scrolls = player.scrolls?.filter((candidate) => candidate.id !== scrollId);
+  }
+  return true;
+}
+
 function nextPlayerId(state: GameState, playerId: PlayerId): PlayerId {
   const currentIndex = state.turnOrder.indexOf(playerId);
   const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % state.turnOrder.length;
@@ -580,6 +619,19 @@ function gradeAtPower(
   return matched === undefined ? null : (gradeByPower[matched] ?? null);
 }
 
+/**
+ * Whether the unit's controller could play Alamar's Resurrection to save it
+ * right now — exactly the reactions the lethal-save window would offer.
+ */
+function playerHasLethalSave(state: GameState, defenderId: UnitId, cards: CardLibrary): boolean {
+  const reactions = getLegalReactionsForTrigger(
+    state,
+    { id: "lethal-check", type: "UNIT_LETHAL_HIT", attackerId: "", defenderId },
+    cards
+  );
+  return Object.values(reactions).some((list) => list.length > 0);
+}
+
 function getAmountByPower(amountByPower: Record<number, number> | undefined, fallback: number, power: number): number {
   if (!amountByPower) {
     return fallback;
@@ -621,28 +673,27 @@ function doubleAmountForUnitName(amount: number, unit: CombatUnitState | undefin
 function createAttackBuffFromCard(
   state: GameState,
   card: CardDefinition,
+  // Passed in (not read off card.effect) so it also works as a CHOOSE_ONE
+  // option (Moandor's "+2 attack"), where card.effect is the "OR" wrapper.
+  effect: Extract<EffectDefinition, { type: "CREATE_ATTACK_BUFF" }>,
   playerId: PlayerId,
   power: number,
   target: { type: "unit"; unitId: UnitId }
 ): void {
-  if (card.effect.type !== "CREATE_ATTACK_BUFF") {
-    return;
-  }
-
   const targetUnit = state.combat?.units[target.unitId];
   const amount = doubleAmountForUnitName(
-    getAmountByPower(card.effect.amountByPower, card.effect.amount ?? 0, power),
+    getAmountByPower(effect.amountByPower, effect.amount ?? 0, power),
     targetUnit,
-    card.effect.doubleForUnitName
+    effect.doubleForUnitName
   );
   createActiveEffect(
     state,
     {
-      name: card.effect.name,
+      name: effect.name,
       scope: "unit",
-      duration: card.effect.duration,
-      polarity: card.effect.polarity ?? "positive",
-      removable: card.effect.removable ?? true,
+      duration: effect.duration,
+      polarity: effect.polarity ?? "positive",
+      removable: effect.removable ?? true,
       modifiers: [
         {
           type: "ATTACK_BONUS",
@@ -818,10 +869,16 @@ function getAttackDamagePreview(
   dieMultiplier = 1,
   baseAttackOverride?: number,
   damageReduction = 0
-): { attackValue: number; defenseValue: number; damage: number } {
+): { attackValue: number; defenseValue: number; damage: number; dieAttackBonus: number; dieDefenseBonus: number } {
+  // Attack-die-face conditioned modifiers, resolved here so the actual hit and
+  // the lethal-save preview always agree: Dread Knights' "Death Blow" adds to
+  // the attacker's value on 0/+1, Zombies'/Manticores' resilience adds Defense
+  // for the defender on the attacker's 0/+1.
+  const dieAttackBonus = getAttackBonusOnAttackDie(attacker, roll);
+  const dieDefenseBonus = getDefenseBonusOnAttackDie(defender, roll);
   const baseAttack = baseAttackOverride ?? attacker.attack;
-  const attackValue = Math.max(0, baseAttack + attackBonus + roll * dieMultiplier);
-  const defenseValue = defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonus;
+  const attackValue = Math.max(0, baseAttack + attackBonus + dieAttackBonus + roll * dieMultiplier);
+  const defenseValue = defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonus + dieDefenseBonus;
   // Siege wall cover: "reduce the attack's damage by 1" comes off the damage,
   // not the defense.
   const damage = Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
@@ -829,7 +886,9 @@ function getAttackDamagePreview(
   return {
     attackValue,
     defenseValue,
-    damage
+    damage,
+    dieAttackBonus,
+    dieDefenseBonus
   };
 }
 
@@ -851,7 +910,7 @@ function applyAttackDamageFromCandidate(
     return { damage: 0, roll: 0, cancelled: false };
   }
 
-  const { attackValue, defenseValue, damage } = getAttackDamagePreview(
+  const { attackValue, defenseValue, damage, dieAttackBonus, dieDefenseBonus } = getAttackDamagePreview(
     attacker,
     defender,
     candidate.roll,
@@ -861,6 +920,10 @@ function applyAttackDamageFromCandidate(
     baseAttackOverride,
     damageReduction
   );
+  // Reported bonuses fold in the die-face-conditioned deltas so the event's
+  // numbers reconcile with the resolved attack/defense values.
+  const reportedAttackBonus = attackBonus + dieAttackBonus;
+  const reportedDefenseBonus = defenseBonus + dieDefenseBonus;
 
   // Alamar's Resurrection: if this blow would reduce the defender to 0 HP and
   // its grade is within reach, the whole attack is cancelled — no damage, and
@@ -879,8 +942,8 @@ function applyAttackDamageFromCandidate(
       roll: candidate.roll,
       ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
       rollMode,
-      attackBonus,
-      defenseBonus,
+      attackBonus: reportedAttackBonus,
+      defenseBonus: reportedDefenseBonus,
       attackValue,
       defenseValue,
       damage: 0,
@@ -907,13 +970,27 @@ function applyAttackDamageFromCandidate(
     roll: candidate.roll,
     ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
     rollMode,
-    attackBonus,
-    defenseBonus,
+    attackBonus: reportedAttackBonus,
+    defenseBonus: reportedDefenseBonus,
     attackValue,
     defenseValue,
     damage,
     isRetaliation
   });
+
+  // Dread Knights' "Death Blow": announce the die-triggered Attack bonus so the
+  // log and the FX/sound fire (the bonus itself is already folded into damage).
+  if (dieAttackBonus > 0) {
+    for (const ability of getTriggeredAttackDieBonusAbilities(attacker, candidate.roll)) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: attacker.id,
+        abilityId: ability.abilityId,
+        targetUnitId: defender.id,
+        message: `${attacker.cardName} lands a ${ability.abilityName} (+${ability.amount} Attack).`
+      });
+    }
+  }
 
   if (damage > 0) {
     appendEvent(state, {
@@ -1062,24 +1139,29 @@ function getAttackStackDetails(
   const tokenAttack = tokenAttackBonus(attacker);
   const tokenDefense = tokenDefenseDelta(defender);
 
-  // Behemoths: "Decrease the target's defense by N (to a minimum of 0)" for
-  // this attack — applied after corrosion, never on retaliations or printed
-  // follow-up attacks.
+  // Attack-card "ability lowers the target's defense" sources, applied after
+  // corrosion, never on retaliations or printed follow-up attacks: Behemoths'
+  // flat crush, and the Manticore "ignore the target's printed Defense" (which
+  // subtracts the defender's printed Defense value). Both are floored together
+  // so the effective Defense never drops below 0.
   const defenseBonusBeforeAbility = stackItem.modifiers.defenseBonus + activeDefenseBonus + tokenDefense;
   const defenseReductionSource =
     !isRetaliation && !abilityAttack ? getAttackDefenseReductionAbility(attacker) : null;
+  const ignoreCardDefenseSource =
+    !isRetaliation && !abilityAttack ? getIgnoreTargetCardDefenseAbility(attacker) : null;
   const currentDefenseValue = Math.max(
     0,
     defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonusBeforeAbility
   );
-  const defenseReductionAmount = defenseReductionSource
-    ? Math.min(defenseReductionSource.amount, currentDefenseValue)
-    : 0;
+  const requestedDefenseReduction =
+    (defenseReductionSource?.amount ?? 0) + (ignoreCardDefenseSource ? defender.defense : 0);
+  const defenseReductionAmount = Math.min(requestedDefenseReduction, currentDefenseValue);
+  const reductionAbilitySource = defenseReductionSource ?? ignoreCardDefenseSource;
   const defenseReductionAbility =
-    defenseReductionSource && defenseReductionAmount > 0
+    reductionAbilitySource && defenseReductionAmount > 0
       ? {
-          abilityId: defenseReductionSource.abilityId,
-          abilityName: defenseReductionSource.abilityName,
+          abilityId: reductionAbilitySource.abilityId,
+          abilityName: reductionAbilitySource.abilityName,
           amount: defenseReductionAmount
         }
       : undefined;
@@ -1088,11 +1170,26 @@ function getAttackStackDetails(
   // and Retaliation Attack this unit makes.
   const attackDieResultBonus = getAttackDieResultBonus(attacker);
 
+  // "Hatred" grudge bonus (Archangels ↔ Arch Devils, Genies → Efreet, Titans →
+  // Black Dragons): extra Attack when this unit attacks the named creature.
+  const hatredAttackBonus = getAttackBonusVsDefenderName(attacker, defender.name);
+
   // Retaliation-only modifiers keyed off the retaliation's defender — i.e. the
   // original attacker being struck back: Dread Knights gain Defense, Dragon
   // Flies sap the retaliator's Attack.
   const retaliationDefenseBonus = isRetaliation ? getDefenseBonusWhenRetaliated(defender) : 0;
   const retaliationAttackPenalty = isRetaliation ? getRetaliationAgainstAttackPenalty(defender) : 0;
+
+  // Elemental damage (Elemental units, Moandor's Liches VI specialty): the
+  // unit's attack value cannot be RAISED by attack cards (Bloodlust, Offense,
+  // the Attack statistic, Bless's bonus…) or by Attack tokens — only LOWERED
+  // by debuffs such as a Sorceress' Weakness. Clamp the positive card/token
+  // contributions to 0 while leaving every negative one (and the printed
+  // attack) intact.
+  const dealsElemental = unitDealsElementalDamage(state, attacker);
+  const cardAttackBonus = stackItem.modifiers.attackBonus + activeAttackBonus;
+  const effectiveCardAttackBonus = dealsElemental ? Math.min(0, cardAttackBonus) : cardAttackBonus;
+  const effectiveTokenAttack = dealsElemental ? Math.min(0, tokenAttack) : tokenAttack;
 
   return {
     attacker,
@@ -1101,7 +1198,13 @@ function getAttackStackDetails(
     attackKind,
     rollMode,
     attackBonus:
-      stackItem.modifiers.attackBonus + activeAttackBonus + tokenAttack + attackDieResultBonus - retaliationAttackPenalty,
+      // Elemental units clamp card/token buffs to ≤0 (main); innate ability
+      // bonuses (Ghost Dragon die result, Hatred) are added unclamped.
+      effectiveCardAttackBonus +
+      effectiveTokenAttack +
+      attackDieResultBonus +
+      hatredAttackBonus -
+      retaliationAttackPenalty,
     defenseBonus: defenseBonusBeforeAbility - defenseReductionAmount + retaliationDefenseBonus,
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
     ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie),
@@ -1486,6 +1589,35 @@ function finishResolvedAttack(
   candidate: AttackRollCandidate,
   cards: CardLibrary
 ): void {
+  // Alamar's Resurrection: before a killing normal attack lands, pause once and
+  // ask the defender's controller whether to cancel it (only if they can). The
+  // rolled die is stashed so the resumed attack uses the same outcome.
+  if (!stackItem.modifiers.lethalSaveOffered && playerHasLethalSave(state, details.defender.id, cards)) {
+    const preview = getAttackDamagePreview(
+      details.attacker,
+      details.defender,
+      candidate.roll,
+      details.attackBonus,
+      details.defenseBonus,
+      details.dieMultiplier,
+      details.abilityAttack?.baseAttack,
+      details.damageReduction
+    );
+    if (preview.damage > 0 && details.defender.damage + preview.damage >= details.defender.maxHealth) {
+      stackItem.modifiers.rolledCandidate = candidate;
+      stackItem.modifiers.lethalSaveOffered = true;
+      const lethalEvent = appendEvent(state, {
+        type: "UNIT_LETHAL_HIT",
+        attackerId: details.attacker.id,
+        defenderId: details.defender.id
+      });
+      if (openReactionWindowForTrigger(state, stackItem, lethalEvent, cards)) {
+        return;
+      }
+      stackItem.modifiers.rolledCandidate = undefined;
+    }
+  }
+
   if (details.defenseReductionAbility) {
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
@@ -1537,6 +1669,7 @@ function finishResolvedAttack(
   }
 
   applyOnAttackTokens(state, details.attacker, details.defender, details.isRetaliation);
+  applyOnAttackDieTokens(state, details.attacker, details.defender, attackResult.roll, details.isRetaliation);
   applyPostAttackAbilityDamage(
     state,
     details.attacker,
@@ -1611,6 +1744,12 @@ function finishResolvedAttack(
   }
 
   if (applyAttackDieDamageFollowUps(state, details.attacker, details.defender)) {
+    return;
+  }
+
+  // Gorgons' Death Stare: roll the extra dice and possibly reduce the target to
+  // 0 Health before retaliation.
+  if (applyDeathStareFollowUps(state, details.attacker, details.defender)) {
     return;
   }
 
@@ -1728,9 +1867,10 @@ function applyFireShieldDamage(
 }
 
 /**
- * Thunderbirds' lightning: roll one extra Attack die after the attack and
- * before the parked retaliation. The roll is deterministic through the same
- * combat dice stream as normal attacks.
+ * Thunderbirds' lightning / Wyverns' sting: roll one extra Attack die after the
+ * attack and before the parked retaliation, dealing flat damage when the face
+ * falls in the ability's window (Thunderbirds 0/+1, Wyverns exactly 0). The
+ * roll is deterministic through the same combat dice stream as normal attacks.
  */
 function applyAttackDieDamageFollowUps(
   state: GameState,
@@ -1757,7 +1897,7 @@ function applyAttackDieDamageFollowUps(
       message: `${attacker.name} rolls ${candidate.roll} for ${followUp.abilityName}.`
     });
 
-    if (candidate.roll < followUp.minRoll) {
+    if (candidate.roll < followUp.minRoll || (followUp.maxRoll !== undefined && candidate.roll > followUp.maxRoll)) {
       continue;
     }
 
@@ -1770,6 +1910,91 @@ function applyAttackDieDamageFollowUps(
         source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
         target: { type: "unit", unitId: defender.id },
         amount: assignedDamage,
+        damageKind: "effect"
+      });
+    }
+    markUnitRemovedIfNeeded(state, defender);
+  }
+
+  return finishCombatIfNeeded(state);
+}
+
+/**
+ * Rust Dragons' Acid Breath: when the unit's own attack resolves on its
+ * `onRoll` face, place the printed token on the still-living target (a
+ * Corrosion token shaves Defense for the rest of combat). Never on a
+ * retaliation or a printed follow-up attack.
+ */
+function applyOnAttackDieTokens(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  attackRoll: number,
+  isRetaliation: boolean
+): void {
+  if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
+    return;
+  }
+  for (const token of getOnAttackDieTokens(attacker)) {
+    if (attackRoll !== token.onRoll) {
+      continue;
+    }
+    placeCombatToken(state, defender, token.token, token.amount, token.abilityName);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: attacker.id,
+      abilityId: token.abilityId,
+      targetUnitId: defender.id,
+      message: `${attacker.cardName} corrodes ${defender.cardName} with ${token.abilityName}.`
+    });
+  }
+}
+
+/**
+ * Gorgons' Death Stare: after the attack, roll `diceCount` Attack dice; when
+ * every one shows `onRoll`, the still-living target's current side is reduced
+ * to 0 Health (a Pack flips to its Few side as usual). Returns true when the
+ * combat ended as a result.
+ */
+function applyDeathStareFollowUps(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState
+): boolean {
+  const combat = state.combat;
+  if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
+    return false;
+  }
+
+  for (const followUp of getDeathStareFollowUps(attacker)) {
+    if (!isUnitAlive(defender)) {
+      break;
+    }
+    const rolls = Array.from({ length: Math.max(1, followUp.diceCount) }, () => rollAttackDie(combat));
+    const petrifies = rolls.every((roll) => roll === followUp.onRoll);
+    // One ability event per stare (drives the FX/sound once): its message
+    // carries the outcome so the log reads correctly and tests can assert it.
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: attacker.id,
+      abilityId: followUp.abilityId,
+      targetUnitId: defender.id,
+      message: petrifies
+        ? `${attacker.name}'s ${followUp.abilityName} (rolled ${rolls.join(", ")}) reduces ${defender.cardName} to 0 Health.`
+        : `${attacker.name} rolls ${rolls.join(", ")} for ${followUp.abilityName}.`
+    });
+    if (!petrifies) {
+      continue;
+    }
+    const lethal = Math.max(0, defender.maxHealth - defender.damage);
+    defender.damage = defender.maxHealth;
+    noteUnitDamagedForTokens(state, defender, lethal);
+    if (lethal > 0) {
+      appendEvent(state, {
+        type: "DAMAGE_ASSIGNED",
+        source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+        target: { type: "unit", unitId: defender.id },
+        amount: lethal,
         damageKind: "effect"
       });
     }
@@ -2193,6 +2418,16 @@ function applyParalysisFollowUps(
     if (roll !== followUp.onRoll) {
       continue;
     }
+    if (hasIgnoreParalysis(defender)) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: defender.id,
+        abilityId: "ignore-paralysis",
+        targetUnitId: defender.id,
+        message: `${defender.cardName} is immune to Paralysis.`
+      });
+      continue;
+    }
     placeCombatToken(state, defender, "paralysis", 0, followUp.abilityName);
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
@@ -2236,6 +2471,17 @@ function applyRetaliationParalysis(
     if (candidate.roll !== ability.onRoll) {
       return;
     }
+  }
+
+  if (hasIgnoreParalysis(target)) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: target.id,
+      abilityId: "ignore-paralysis",
+      targetUnitId: target.id,
+      message: `${target.cardName} is immune to Paralysis.`
+    });
+    return;
   }
 
   placeCombatToken(state, target, "paralysis", 0, ability.abilityName);
@@ -2627,6 +2873,26 @@ function advanceActiveUnit(state: GameState): void {
   setActiveUnit(state, getNextUnitToActivate(state.combat, state.activeEffects)?.id ?? null);
 }
 
+/**
+ * Clears a paused neutral walk so the next guard can act. Only the player
+ * running the fight (the attacker) clicks the enemy turn on; the pump in
+ * runAdventureAutomations picks the activation back up afterwards.
+ */
+function continueNeutralStep(
+  state: GameState,
+  action: Extract<GameAction, { type: "CONTINUE_NEUTRAL_STEP" }>
+): void {
+  const combat = state.combat;
+  if (!combat?.pendingNeutralStep) {
+    throw new Error("No enemy move is waiting to continue.");
+  }
+  if (action.playerId !== combat.attackerPlayerId) {
+    throw new Error("Only the attacking player can continue the enemy turn.");
+  }
+  combat.pendingNeutralStep = null;
+  advanceActiveUnit(state);
+}
+
 /** Living friendly units the Enchanters could heal (other friendlies only). */
 function enchanterHealCandidates(combat: CombatState, unit: CombatUnitState): CombatUnitState[] {
   return Object.values(combat.units).filter(
@@ -2939,6 +3205,12 @@ function getCurrentSpellPower(stackItem: ResolutionStackItem, cards: CardLibrary
     return 0;
   }
 
+  // Spell Scroll casts are locked to the lowest power level and cannot be
+  // buffed by any source.
+  if (stackItem.modifiers.scrollLocked) {
+    return 0;
+  }
+
   const card = cards[stackItem.action.cardId];
   return (
     (card?.power ?? 0) +
@@ -3017,6 +3289,13 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     return;
   }
 
+  // Resuming after the lethal-save window: the die was already rolled, so reuse
+  // that outcome instead of rolling again.
+  if (stackItem.modifiers.rolledCandidate) {
+    finishResolvedAttack(state, stackItem, details, stackItem.modifiers.rolledCandidate, cards);
+    return;
+  }
+
   // Bless: "Ignores the Attack die roll" — the die never rolls (outcome 0),
   // so reroll effects have nothing to reroll either.
   if (details.ignoreAttackDie) {
@@ -3054,6 +3333,13 @@ function finalizeSpellCardDestination(
   effectCountBeforeCast: number
 ): void {
   if (stackItem.action.type !== "CAST_SPELL") {
+    return;
+  }
+
+  // Spell Scroll casts were already removed from the game when played: there is
+  // no card in hand/discard to hold ongoing, recall, or send to the discard.
+  // Any ongoing effect they created still lives on in activeEffects.
+  if (stackItem.modifiers.scrollLocked) {
     return;
   }
 
@@ -3177,6 +3463,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       createAttackBuffFromCard(
         state,
         card,
+        card.effect,
         stackItem.action.playerId,
         getCurrentSpellPower(stackItem, cards),
         stackItem.action.target
@@ -3343,6 +3630,24 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       }
     }
 
+    if (card?.effect.type === "SUMMON_ELEMENTAL" && state.combat && stackItem.action.target.type === "space") {
+      // Power 4 summons a Pack, Power 2 a Few; Power 0 has no effect.
+      const power = getCurrentSpellPower(stackItem, cards);
+      const side: "few" | "pack" | null = power >= 4 ? "pack" : power >= 2 ? "few" : null;
+      const position = stackItem.action.target.position;
+      if (side) {
+        const summoned = placeSummonedUnit(state, stackItem.action.playerId, card.effect.unitDefId, side, position);
+        if (summoned) {
+          appendEvent(state, {
+            type: "UNIT_ABILITY_TRIGGERED",
+            unitId: summoned.id,
+            abilityId: card.id,
+            message: `${state.players[stackItem.action.playerId]?.name ?? "A hero"} casts ${card.name}: ${summoned.cardName} appears at ${getBattlefieldLabel(position)}.`
+          });
+        }
+      }
+    }
+
     appendEvent(state, {
       type: "SPELL_CAST_RESOLVED",
       playerId: stackItem.action.playerId,
@@ -3496,9 +3801,17 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     throw new Error(`Card ${action.cardId} is not a spell.`);
   }
 
-  const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
-  if (moveError) {
-    throw new Error(moveError.message);
+  // A Spell Scroll cast pulls the spell from the scroll (it is not in hand) and
+  // removes it from the game; a normal cast moves the card hand → discard.
+  if (action.fromScroll) {
+    if (!consumeScrollSpell(state, action.playerId, action.fromScroll, action.cardId)) {
+      throw new Error("That spell is not in the named Spell Scroll.");
+    }
+  } else {
+    const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
+    if (moveError) {
+      throw new Error(moveError.message);
+    }
   }
 
   const caster = state.players[action.playerId];
@@ -3508,18 +3821,24 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
 
   const stackItem = makeStackItem(state, action);
 
-  // Astrologers — Grim Warlock: the first spell in each player's turn gets
-  // +1 Power.
-  const astrologersCard = getActiveAstrologersCard(state);
-  if (isFirstSpellThisTurn && astrologersCard?.effect.type === "FIRST_SPELL_POWER_BONUS") {
-    stackItem.modifiers.spellPowerBonus += astrologersCard.effect.amount;
-  }
+  // Scroll spells are locked to power 0 and cannot be boosted by any Power
+  // source — skip every power-granting hook below and flag the stack item.
+  if (action.fromScroll) {
+    stackItem.modifiers.scrollLocked = true;
+  } else {
+    // Astrologers — Grim Warlock: the first spell in each player's turn gets
+    // +1 Power.
+    const astrologersCard = getActiveAstrologersCard(state);
+    if (isFirstSpellThisTurn && astrologersCard?.effect.type === "FIRST_SPELL_POWER_BONUS") {
+      stackItem.modifiers.spellPowerBonus += astrologersCard.effect.amount;
+    }
 
-  // School of Magic permanent in play: matching spells get its basic bonus
-  // for free (the expert discard may replace it during the cast).
-  const schoolBonus = getPermanentSchoolBonus(state, action.playerId, card);
-  if (schoolBonus) {
-    stackItem.modifiers.schoolPowerBonus = schoolBonus.basicPower;
+    // School of Magic permanent in play: matching spells get its basic bonus
+    // for free (the expert discard may replace it during the cast).
+    const schoolBonus = getPermanentSchoolBonus(state, action.playerId, card);
+    if (schoolBonus) {
+      stackItem.modifiers.schoolPowerBonus = schoolBonus.basicPower;
+    }
   }
 
   state.stack.push(stackItem);
@@ -3674,7 +3993,15 @@ function getChosenOption(card: CardDefinition, optionIndex?: number): CardOption
 function applyReactionPlayCore(
   state: GameState,
   playerId: PlayerId,
-  play: { cardId: string; mode?: "basic" | "expert"; optionIndex?: number; costCardIds?: CardId[]; asPowerBoost?: boolean },
+  play: {
+    cardId: string;
+    mode?: "basic" | "expert";
+    optionIndex?: number;
+    costCardIds?: CardId[];
+    asPowerBoost?: boolean;
+    /** Spell Scroll reaction: power-locked to 0, consumed from the scroll. */
+    fromScroll?: string;
+  },
   cards: CardLibrary
 ): { windowEnded: boolean } {
   if (!state.reactionWindow) {
@@ -3722,7 +4049,9 @@ function applyReactionPlayCore(
   }
 
   const option = getChosenOption(card, play.optionIndex);
-  const mode = play.mode ?? "basic";
+  // Scroll spells are always cast at the lowest power level — never the expert
+  // side, never boosted.
+  const mode = play.fromScroll ? "basic" : (play.mode ?? "basic");
 
   if (option?.expertOnly && mode !== "expert") {
     throw new Error(`${option.label} is the card's expert side.`);
@@ -3770,17 +4099,25 @@ function applyReactionPlayCore(
     throw new Error(`${card.name} cannot end a spell above power ${effect.maxPower}.`);
   }
 
-  const moveError = moveCardFromHandToDiscard(
-    state,
-    playerId,
-    play.cardId,
-    option?.cost?.removeSelf ? "removed" : "discard"
-  );
-  if (moveError) {
-    throw new Error(moveError.message);
+  if (play.fromScroll) {
+    if (!consumeScrollSpell(state, playerId, play.fromScroll, play.cardId)) {
+      throw new Error("That spell is not in the named Spell Scroll.");
+    }
+  } else {
+    const moveError = moveCardFromHandToDiscard(
+      state,
+      playerId,
+      play.cardId,
+      option?.cost?.removeSelf ? "removed" : "discard"
+    );
+    if (moveError) {
+      throw new Error(moveError.message);
+    }
   }
 
-  const costCardsPaid = payOptionCardCost(state, playerId, card.name, option?.cost, play.costCardIds, cards);
+  const costCardsPaid = play.fromScroll
+    ? 0
+    : payOptionCardCost(state, playerId, card.name, option?.cost, play.costCardIds, cards);
 
   let effectAmount = getEffectAmount(effect, mode);
   if (mode === "expert") {
@@ -3870,8 +4207,10 @@ function applyReactionPlayCore(
 
     // Spell instants scale with the Power played alongside them in this
     // window; cost-paid plays (Sword of Judgement) scale per discarded card.
+    // A scroll spell ignores the window's Power pool — it is locked to power 0.
     if (effect.amountByPower && card.kind === "spell") {
-      effectAmount = getAmountByPower(effect.amountByPower, effect.amount, stackItem.modifiers.spellPowerBonus);
+      const power = play.fromScroll ? 0 : stackItem.modifiers.spellPowerBonus;
+      effectAmount = getAmountByPower(effect.amountByPower, effect.amount, power);
     }
     if (effect.perCostCard) {
       effectAmount += effect.perCostCard * costCardsPaid;
@@ -3924,7 +4263,7 @@ function applyReactionPlayCore(
       stackItem.modifiers.attackBonus += getAmountByPower(
         effect.attackBonusByPower,
         0,
-        stackItem.modifiers.spellPowerBonus
+        play.fromScroll ? 0 : stackItem.modifiers.spellPowerBonus
       );
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
@@ -4051,6 +4390,55 @@ function playReaction(
   if (windowEnded) {
     return;
   }
+
+  advanceReactionWindowAfterPlay(state, action.playerId, cards);
+}
+
+/**
+ * Archangels' lethal save: cancel the killing blow with the unit's once-per-
+ * combat ability instead of a card. Arms the pending attack's cancel (so it is
+ * voided at resolution exactly like the Resurrection card/specialty) and shuts
+ * the save window. The "resurrection" FX/sound fires when the attack resolves.
+ */
+function applyUnitResurrection(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_UNIT_RESURRECTION" }>,
+  cards: CardLibrary
+): void {
+  const window = state.reactionWindow;
+  if (!window || window.triggerEvent.type !== "UNIT_LETHAL_HIT" || window.priorityPlayerId !== action.playerId) {
+    throw new Error("No lethal-save window is open for you.");
+  }
+  const combat = state.combat;
+  const defender = combat?.units[window.triggerEvent.defenderId];
+  const saver = combat?.units[action.savingUnitId];
+  const pendingAttack = state.stack.find(
+    (item) => item.action.type === "ATTACK_UNIT" || item.action.type === "MOVE_AND_ATTACK_UNIT"
+  );
+  if (!combat || !defender || !saver || !pendingAttack) {
+    throw new Error("That resurrection cannot be used now.");
+  }
+  if (
+    saver.controllerId !== action.playerId ||
+    saver.id === defender.id ||
+    saver.damage >= saver.maxHealth ||
+    saver.usedLethalSaveThisCombat ||
+    !getLethalSaveUnitAbility(saver)
+  ) {
+    throw new Error("That unit cannot cancel the killing blow.");
+  }
+
+  saver.usedLethalSaveThisCombat = true;
+  // Grade-agnostic: matching the defender's own grade guarantees the cancel
+  // passes the grade check at resolution.
+  pendingAttack.modifiers.cancelLethal = { unitId: defender.id, grade: defender.grade };
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: saver.id,
+    abilityId: "archangel-lethal-save",
+    targetUnitId: defender.id,
+    message: `${saver.cardName} readies to cancel the killing blow on ${defender.cardName}.`
+  });
 
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
 }
@@ -4327,7 +4715,26 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "CREATE_ATTACK_BUFF" && target) {
-    createAttackBuffFromCard(state, card, action.playerId, card.power ?? 0, target);
+    createAttackBuffFromCard(state, card, effect, action.playerId, card.power ?? 0, target);
+  }
+
+  if (effect.type === "GRANT_ELEMENTAL_DAMAGE" && target) {
+    // Moandor's Liches VI: the chosen unit deals elemental damage for the
+    // Combat (its attack can no longer be raised by attack cards/tokens).
+    createActiveEffect(
+      state,
+      {
+        name: card.name,
+        scope: "unit",
+        duration: effect.duration,
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "ELEMENTAL_DAMAGE" }]
+      },
+      { type: "card", cardId: card.id, controllerId: action.playerId },
+      action.playerId,
+      target
+    );
   }
 
   if (effect.type === "CREATE_DEFENSE_BUFF" && target) {
@@ -4875,6 +5282,61 @@ function applyUnitAbilityAction(
 
   state.phase = "combat";
   state.priorityPlayerId = null;
+}
+
+/**
+ * A combat space cannot host a summoned unit when it is off the board, holds a
+ * living unit, an obstacle token, or a siege Wall/Gate. Shared by the Summon
+ * Elemental spell's resolution and its legal-target enumeration.
+ */
+export function isSpaceBlockedForSummon(combat: CombatState, position: number): boolean {
+  if (!isBattlefieldPosition(position)) {
+    return true;
+  }
+  if ((combat.obstacles ?? []).includes(position)) {
+    return true;
+  }
+  if (combat.siege?.walls.includes(position) || combat.siege?.gatePosition === position) {
+    return true;
+  }
+  return Object.values(combat.units).some((unit) => isUnitAlive(unit) && unit.position === position);
+}
+
+/**
+ * Places a freshly summoned unit (Summon Elemental spell) onto an empty combat
+ * space: it joins the caster's army and the combat at once, acting on its own
+ * initiative this round — exactly like the Pit Lords' Demons. Returns the new
+ * combat unit, or null when the space is unusable or the side is missing.
+ */
+function placeSummonedUnit(
+  state: GameState,
+  playerId: PlayerId,
+  unitDefId: string,
+  side: "few" | "pack",
+  position: number
+): CombatUnitState | null {
+  const combat = state.combat;
+  const player = state.players[playerId];
+  if (!combat || !player || isSpaceBlockedForSummon(combat, position) || !getUnitSide(unitDefId, side)) {
+    return null;
+  }
+
+  const armyUnit = addArmyUnit(player, unitDefId, side);
+  const summoned = makeCombatUnitFromArmy(
+    armyUnit,
+    playerId,
+    `unit_${playerId}_${armyUnit.id}`,
+    position,
+    getRuleset(state)
+  );
+  if (!summoned) {
+    return null;
+  }
+
+  // It joins the round immediately — it may still act when its initiative comes.
+  summoned.activatedThisRound = false;
+  combat.units[summoned.id] = summoned;
+  return summoned;
 }
 
 /**
@@ -5745,6 +6207,18 @@ function searchDeck(state: GameState, action: Extract<GameAction, { type: "SEARC
   });
 }
 
+/**
+ * Mark an ability card the player just drew out of the shared Ability deck.
+ * A Necromancy obtained this way (the level-up "Search the Ability deck"
+ * reward) is kept but never playable — see the Necromancy legality check.
+ */
+function recordDeckDrawnAbility(player: PlayerState, deckId: string, cardId: CardId): void {
+  if (deckId !== "abilities") {
+    return;
+  }
+  (player.deckDrawnAbilityCardIds ??= []).push(cardId);
+}
+
 function resolveDeckSearch(
   state: GameState,
   action: Extract<GameAction, { type: "RESOLVE_DECK_SEARCH" }>,
@@ -5797,6 +6271,7 @@ function resolveDeckSearch(
     }
 
     player.hand.push(takenCardId);
+    recordDeckDrawnAbility(player, choice.deckId, takenCardId);
     discardedCardIds = [...choice.revealedCardIds];
     deck.discardPile.push(...discardedCardIds);
   } else {
@@ -5806,6 +6281,7 @@ function resolveDeckSearch(
     }
 
     player.hand.push(keptCardId);
+    recordDeckDrawnAbility(player, choice.deckId, keptCardId);
     const keptIndex = action.pick.index;
     discardedCardIds = choice.revealedCardIds.filter((_, index) => index !== keptIndex);
     deck.discardPile.push(...discardedCardIds);
@@ -5967,6 +6443,12 @@ function executeNeutralActivation(
       from,
       to: intent.destination
     });
+    // Neutral fights pace one walk at a time: stop on the move so the table
+    // sees it and clicks CONTINUE_NEUTRAL_STEP. The next guard acts only then.
+    if (combat.context.kind === "neutral") {
+      combat.pendingNeutralStep = { unitId: unit.id, name: unit.name, from, to: intent.destination };
+      return;
+    }
     advanceActiveUnit(state);
     return;
   }
@@ -6014,6 +6496,11 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
   while (safety > 0) {
     safety -= 1;
     const combat = state.combat;
+
+    // A neutral guard just walked: hold everything until the table clicks on.
+    if (combat?.pendingNeutralStep) {
+      break;
+    }
 
     // Neutral Liches/Magogs/Cerberi resolve their own ability targets.
     if (
@@ -6197,6 +6684,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "PLAY_REACTIONS":
         playReactions(nextState, action, cards);
         break;
+      case "USE_UNIT_RESURRECTION":
+        applyUnitResurrection(nextState, action, cards);
+        break;
       case "SEARCH_DECK":
         searchDeck(nextState, action);
         break;
@@ -6243,6 +6733,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "BUY_WAR_MACHINE":
         buyWarMachine(nextState, action);
         break;
+      case "SELL_SCROLL_SPELL":
+        sellScrollSpell(nextState, action);
+        break;
       case "USE_PERMANENT_EXPERT":
         applyPermanentExpert(nextState, action);
         // The discarded permanent disappears from the open window's options.
@@ -6266,6 +6759,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "CONTINUE_NEUTRAL_COMBAT":
         continueNeutralCombat(nextState, action);
         advanceCombatRound(nextState, action.playerId);
+        break;
+      case "CONTINUE_NEUTRAL_STEP":
+        continueNeutralStep(nextState, action);
         break;
       case "RETREAT_FROM_COMBAT":
         retreatFromCombat(nextState, action);

@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronsUp, Hammer, Image as ImageIcon, Minus, Plus, RotateCcw, RotateCw, X } from "lucide-react";
+import { Check, ChevronsUp, Hammer, Image as ImageIcon, Minus, Plus, RotateCcw, RotateCw, Star, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
@@ -1268,6 +1268,13 @@ export function TownPanel({
   /** Cover of Darkness: hand-card indices picked for the discard. */
   const [coverPicks, setCoverPicks] = useState<number[]>([]);
   const [coverOpenFor, setCoverOpenFor] = useState<string | null>(null);
+  /**
+   * Building tooltip. The town panel lives inside the scrolling
+   * `.adventureRail` (overflow-y: auto), which clipped the old in-flow
+   * `.buildingTip`; we render a single fixed-position tip anchored to the
+   * hovered building instead so it always shows in full.
+   */
+  const [buildingTip, setBuildingTip] = useState<{ buildingId: string; left: number; top: number } | null>(null);
   // The basket empties when the round advances or the seat changes
   // (state-adjustment-during-render pattern).
   const [basketKey, setBasketKey] = useState("");
@@ -1290,6 +1297,12 @@ export function TownPanel({
 
   const buildActions = legalActions.filter((legal) => legal.action.type === "BUILD_STRUCTURE");
   const hireActions = legalActions.filter((legal) => legal.action.type === "HIRE_SECONDARY_HERO");
+  const anchorBuildingTip = (buildingId: string, element: HTMLElement) => {
+    const rect = element.getBoundingClientRect();
+    setBuildingTip({ buildingId, left: rect.left + rect.width / 2, top: rect.top - 8 });
+  };
+  const clearBuildingTip = (buildingId: string) =>
+    setBuildingTip((current) => (current?.buildingId === buildingId ? null : current));
   const canPopulate =
     player.townTokens.population && !state.combat && legalActions.some((legal) => legal.action.type === "POPULATION_ACTION");
 
@@ -1387,12 +1400,16 @@ export function TownPanel({
             (legal) => legal.action.type === "BUILD_STRUCTURE" && legal.action.buildingId === buildingId
           );
           const cubes = town.factionCubes?.[buildingId] ?? 0;
-          const timing = buildingTimingLabel(building);
-          const prerequisites = (building.prerequisites ?? [])
-            .map((prerequisite) => coreBuildingDefinitions[prerequisite]?.name ?? prerequisite)
-            .join(", ");
           return (
-            <div className={`townBuilding ${built ? "built" : ""}`} key={buildingId}>
+            <div
+              className={`townBuilding ${built ? "built" : ""}`}
+              key={buildingId}
+              onBlur={() => clearBuildingTip(buildingId)}
+              onFocus={(event) => anchorBuildingTip(buildingId, event.currentTarget)}
+              onMouseEnter={(event) => anchorBuildingTip(buildingId, event.currentTarget)}
+              onMouseLeave={() => clearBuildingTip(buildingId)}
+              tabIndex={0}
+            >
               {/* Building art slot: fills in as soon as assets.image lands. */}
               {building.assets?.image ? (
                 <img
@@ -1411,8 +1428,28 @@ export function TownPanel({
                   Build
                 </button>
               ) : null}
-              {/* Rules tooltip: name, cost, timing and the exact effect. */}
-              <div className="buildingTip" role="tooltip">
+            </div>
+          );
+        })}
+      </div>
+      {/* Rules tooltip rendered fixed (escapes the rail's overflow clip): name,
+          cost, prerequisites, timing and the exact effect. */}
+      {buildingTip
+        ? (() => {
+            const building = coreBuildingDefinitions[buildingTip.buildingId];
+            if (!building) {
+              return null;
+            }
+            const prerequisites = (building.prerequisites ?? [])
+              .map((prerequisite) => coreBuildingDefinitions[prerequisite]?.name ?? prerequisite)
+              .join(", ");
+            const timing = buildingTimingLabel(building);
+            return (
+              <div
+                className="buildingTip floating"
+                role="tooltip"
+                style={{ left: buildingTip.left, top: buildingTip.top }}
+              >
                 <strong>{building.name}</strong>
                 <small className="buildingTipCost">
                   {formatCost(building.cost)}
@@ -1421,10 +1458,9 @@ export function TownPanel({
                 </small>
                 <p>{describeBuildingEffect(building)}</p>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })()
+        : null}
 
       {player.townTokens.population && !state.combat ? (
         <div className="townRecruits" aria-label="Population token basket">
@@ -1445,7 +1481,7 @@ export function TownPanel({
             if (owned && owned.side !== "few") {
               return (
                 <div className="recruitRow done" key={unitDefId}>
-                  <span className={`tierDot ${unit.tier}`} />
+                  <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
                   <span className="recruitName">{unit.name}</span>
                   <small className="recruitState">pack — fully mustered</small>
                 </div>
@@ -1462,7 +1498,7 @@ export function TownPanel({
                   key={unitDefId}
                   title={upgradable ? `Reinforce ${unit.name}: Few → Pack` : undefined}
                 >
-                  <span className={`tierDot ${unit.tier}`} />
+                  <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
                   <span className="recruitName">
                     {unit.name} <span className="fewBadge">Few</span>
                   </span>
@@ -1491,7 +1527,7 @@ export function TownPanel({
             const checked = recruitIds.includes(unitDefId);
             return (
               <label className="recruitRow" key={unitDefId}>
-                <span className={`tierDot ${unit.tier}`} />
+                <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
                 <span className="recruitName">{unit.name}</span>
                 <small>{formatCost(unit.few.cost)}</small>
                 <input
@@ -1754,6 +1790,7 @@ export function MarketPanel({
   const sellActions = legalActions.filter(
     (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.label.startsWith("Sell ")
   );
+  const scrollSellActions = legalActions.filter((legal) => legal.action.type === "SELL_SCROLL_SPELL");
   const buyActions = legalActions.filter(
     (legal): legal is LegalAction & { action: Extract<GameAction, { type: "BUY_WAR_MACHINE" }> } =>
       legal.action.type === "BUY_WAR_MACHINE"
@@ -1857,6 +1894,35 @@ export function MarketPanel({
                     <span className="marketCardFallback">{card?.name ?? cardId}</span>
                   )}
                   <small>Sell → 1 🪙</small>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      {isTradingPost && !traded && scrollSellActions.length > 0 ? (
+        <section className="marketSell" aria-label="Sell a scroll spell">
+          <h4>Sell one Spell Scroll spell → 2 gold</h4>
+          <small>The spell is removed from the scroll (and the game). An emptied scroll is discarded.</small>
+          <div className="marketSellCards">
+            {scrollSellActions.map((legal) => {
+              const cardId = legal.action.type === "SELL_SCROLL_SPELL" ? legal.action.cardId : undefined;
+              const card = cardId ? cardLibrary[cardId] : undefined;
+              return (
+                <button
+                  className="marketSellCard"
+                  key={actionKey(legal.action)}
+                  onClick={() => onAction(legal.action)}
+                  title={legal.label}
+                  type="button"
+                >
+                  {card?.assets?.cardImage ? (
+                    <img alt={card.name} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(card.assets.cardImage)} />
+                  ) : (
+                    <span className="marketCardFallback">📜 {card?.name ?? cardId}</span>
+                  )}
+                  <small>Sell → 2 🪙</small>
                 </button>
               );
             })}

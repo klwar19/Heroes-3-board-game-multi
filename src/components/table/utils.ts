@@ -27,7 +27,13 @@ export function unitName(state: GameState, unitId: string): string {
 }
 
 export function targetName(state: GameState, target: TargetRef): string {
-  return target.type === "unit" ? unitName(state, target.unitId) : "no target";
+  if (target.type === "unit") {
+    return unitName(state, target.unitId);
+  }
+  if (target.type === "space") {
+    return getBattlefieldLabel(target.position);
+  }
+  return "no target";
 }
 
 export function cardName(cardId: string): string {
@@ -119,6 +125,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${unitName(state, event.attackerId)} ${event.isRetaliation ? "retaliates against" : "attacks"} ${unitName(state, event.defenderId)} (${event.attackKind}${event.rollMode === "normal" ? "" : `, ${event.rollMode}`}).`;
     case "ATTACK_ROLLED":
       return `${event.isRetaliation ? "Retaliation" : "Attack"} roll ${event.rolls.map(formatDieFace).join("/")} -> ${formatDieFace(event.roll)}: ${event.attackValue} vs ${event.defenseValue}, ${event.damage} damage.`;
+    case "UNIT_LETHAL_HIT":
+      return `${unitName(state, event.defenderId)} is about to be destroyed.`;
     case "PENDING_CHOICE_CREATED":
       return event.message;
     case "ATTACK_REROLLED":
@@ -300,6 +308,12 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return event.message;
     case "TOWN_BUILDING_USED":
       return event.message;
+    case "SPELL_SCROLL_GAINED":
+      return `${playerName(state, event.playerId)} takes a Spell Scroll holding ${event.spellCardIds
+        .map((cardId) => cardName(cardId))
+        .join(" & ")}.`;
+    case "SCROLL_SPELL_SOLD":
+      return `${playerName(state, event.playerId)} sells ${cardName(event.cardId)} from a Spell Scroll for ${event.gold} gold.`;
   }
 }
 
@@ -310,13 +324,13 @@ export function actionKey(action: GameAction): string {
 export type CardBoardAction = Extract<GameAction, { type: "CAST_SPELL" | "PLAY_CARD" }>;
 
 export type BoardTargetCardAction = CardBoardAction & {
-  target: { type: "unit"; unitId: string };
+  target: { type: "unit"; unitId: string } | { type: "space"; position: number };
 };
 
 export function isBoardTargetCardAction(action: GameAction): action is BoardTargetCardAction {
   return (
     (action.type === "CAST_SPELL" || action.type === "PLAY_CARD") &&
-    Boolean(action.target && action.target.type === "unit")
+    Boolean(action.target && (action.target.type === "unit" || action.target.type === "space"))
   );
 }
 
