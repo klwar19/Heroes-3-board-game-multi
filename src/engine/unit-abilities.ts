@@ -226,6 +226,18 @@ export function hasIgnoreParalysis(unit: CombatUnitState): boolean {
   return hasUnitAbilityEffect(unit, "IGNORE_PARALYSIS");
 }
 
+/** Archangels: the once-per-combat "cancel a killing blow on another unit" ability. */
+export function getLethalSaveUnitAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "CANCEL_LETHAL_UNIT_ABILITY")) {
+    if (ability.effect?.type === "CANCEL_LETHAL_UNIT_ABILITY") {
+      return { abilityId: ability.id, abilityName: ability.name };
+    }
+  }
+  return null;
+}
+
 /**
  * "Hatred" Attack bonus: extra Attack this unit gains when its target's
  * creature name matches a printed grudge (Archangels ↔ Arch Devils, Genies →
@@ -270,6 +282,20 @@ export function getAttackBonusOnAttackDie(attacker: CombatUnitState, roll: numbe
         ? total + ability.effect.amount
         : total,
     0
+  );
+}
+
+/** The attack-die Attack-bonus abilities that actually fired on this roll (for FX/logging). */
+export function getTriggeredAttackDieBonusAbilities(
+  attacker: CombatUnitState,
+  roll: number
+): { abilityId: string; abilityName: string; amount: number }[] {
+  return getAbilitiesWithEffect(attacker, "ATTACK_BONUS_ON_ATTACK_DIE").flatMap((ability) =>
+    ability.effect?.type === "ATTACK_BONUS_ON_ATTACK_DIE" &&
+    roll >= ability.effect.minRoll &&
+    roll <= ability.effect.maxRoll
+      ? [{ abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount }]
+      : []
   );
 }
 

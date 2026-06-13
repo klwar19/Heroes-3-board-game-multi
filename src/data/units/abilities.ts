@@ -392,6 +392,15 @@ export type UnitAbilityEffectDefinition =
       type: "DEATH_STARE_ON_DICE";
       diceCount: number;
       onRoll: number;
+    }
+  | {
+      /**
+       * Archangels (Pack): "Once per Combat. Cancel an attack that would reduce
+       * another unit's HP to 0." A free, grade-agnostic lethal save offered to
+       * the controller in the lethal-save window — for any other friendly unit,
+       * once per combat per Archangel stack.
+       */
+      type: "CANCEL_LETHAL_UNIT_ABILITY";
     };
 
 /**
@@ -887,6 +896,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Death Stare",
     text: 'After the attack, roll 2 Attack dice; on two "-1" results, reduce the target\'s Health to 0.',
     effect: { type: "DEATH_STARE_ON_DICE", diceCount: 2, onRoll: -1 },
+    implementationStatus: "implemented"
+  },
+  "archangel-lethal-save": {
+    id: "archangel-lethal-save",
+    name: "Resurrection",
+    text: "Once per Combat, cancel an attack that would reduce another friendly unit's Health to 0 (any grade, no cost).",
+    effect: { type: "CANCEL_LETHAL_UNIT_ABILITY" },
     implementationStatus: "implemented"
   }
 };

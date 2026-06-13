@@ -68,7 +68,7 @@ import type {
   UnitId
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
-import { getUnitAbilityDefinitions, hasUnitAbilityEffect } from "./unit-abilities";
+import { getLethalSaveUnitAbility, getUnitAbilityDefinitions, hasUnitAbilityEffect } from "./unit-abilities";
 
 type ConcreteEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
 
@@ -1936,8 +1936,9 @@ function getLethalSaveReactions(
   triggerEvent: Extract<GameEvent, { type: "UNIT_LETHAL_HIT" }>,
   cards: CardLibrary
 ): Record<PlayerId, LegalAction[]> {
-  const defender = state.combat?.units[triggerEvent.defenderId];
-  if (!defender) {
+  const combat = state.combat;
+  const defender = combat?.units[triggerEvent.defenderId];
+  if (!combat || !defender) {
     return {};
   }
   const playerId = defender.controllerId;
@@ -1946,10 +1947,27 @@ function getLethalSaveReactions(
     return {};
   }
 
+  // The killing blow is saved at most once: if a save is already armed on the
+  // pending attack, offer nothing more so a second source can't double-save.
+  const pendingAttack = state.stack.find(
+    (item) => item.action.type === "ATTACK_UNIT" || item.action.type === "MOVE_AND_ATTACK_UNIT"
+  );
+  if (pendingAttack?.modifiers.cancelLethal) {
+    return {};
+  }
+
+  // A Resurrection-style Spell counts against the one-Spell-per-combat-round
+  // limit (Expert Knowledge / Intelligence raise it); the specialty and the
+  // Archangels' ability do not.
+  const spellLimitReached = player.combatStats.spellsCastThisRound >= spellLimitFor(state, player);
+
   const reactions: LegalAction[] = [];
   for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
     if (!card || card.implementationStatus !== "implemented" || card.effect.type !== "CHOOSE_ONE") {
+      continue;
+    }
+    if (card.kind === "spell" && spellLimitReached) {
       continue;
     }
     for (const [optionIndex, option] of card.effect.options.entries()) {
@@ -1969,6 +1987,27 @@ function getLethalSaveReactions(
         })
       );
     }
+  }
+
+  // Archangels (Pack): a free once-per-combat cancel of a killing blow on any
+  // OTHER friendly unit (any grade), offered as a unit-ability reaction.
+  for (const unit of Object.values(combat.units)) {
+    if (
+      unit.controllerId !== playerId ||
+      unit.id === defender.id ||
+      unit.damage >= unit.maxHealth ||
+      unit.usedLethalSaveThisCombat
+    ) {
+      continue;
+    }
+    const ability = getLethalSaveUnitAbility(unit);
+    if (!ability) {
+      continue;
+    }
+    reactions.push({
+      label: `${unit.cardName}: ${ability.abilityName} (cancel the killing blow, once per Combat)`,
+      action: { type: "USE_UNIT_RESURRECTION", playerId, savingUnitId: unit.id }
+    });
   }
 
   return reactions.length > 0 ? { [playerId]: reactions } : {};

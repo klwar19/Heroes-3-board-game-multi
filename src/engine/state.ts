@@ -779,6 +779,16 @@ export type GameAction =
       plays: ReactionPlay[];
     }
   | { type: "PASS_REACTION"; playerId: PlayerId }
+  | {
+      /**
+       * Lethal-save window: cancel the killing blow with a unit ability instead
+       * of a card (Archangels' once-per-combat Resurrection). The named unit
+       * must be the one whose ability does the saving.
+       */
+      type: "USE_UNIT_RESURRECTION";
+      playerId: PlayerId;
+      savingUnitId: UnitId;
+    }
   | { type: "SEARCH_DECK"; playerId: PlayerId; deckId: DeckId; count: number }
   | { type: "RESOLVE_DECK_SEARCH"; playerId: PlayerId; choiceId: string; pick: DeckSearchPick }
   | { type: "MOVE_HERO"; playerId: PlayerId; heroId: HeroId; to: MapSpaceId }
@@ -2052,6 +2062,8 @@ export type CombatUnitState = {
   activationAbilityDone?: boolean;
   /** Pit Lords: set once this unit has summoned/reinforced Demons this combat. */
   summonedThisCombat?: boolean;
+  /** Archangels: set once this unit has spent its once-per-combat lethal save. */
+  usedLethalSaveThisCombat?: boolean;
   retaliatedThisRound: boolean;
   defenseToken: boolean;
   /** Combat tokens currently on the card (attack/weakness/corrosion/paralysis). */

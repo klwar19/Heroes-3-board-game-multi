@@ -110,6 +110,15 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
     sound: "spells/ice-bolt",
     hitSound: "spells/ice-bolt-hit"
   },
+  // Lethal-save sources (Alamar's specialty, the Resurrection spell and the
+  // Archangels' once-per-combat cancel) all emit the "resurrection" ability
+  // event when the killing blow is cancelled, so one plan covers all three.
+  resurrection: { affect: [{ key: "prayer" }], sound: "spells/resurrection" },
+  // Printed unit abilities wired with their original H3 effect + sound.
+  "wyvern-sting": { affect: [{ key: "poison" }], sound: "spells/poison" },
+  "rust-dragon-acid": { hit: "acid-breath", hitSound: "effects/acid-breath" },
+  "gorgon-death-stare": { affect: [{ key: "death-stare" }], sound: "spells/death-stare" },
+  "dread-knight-death-blow": { affect: [{ key: "death-ripple" }], sound: "effects/death-blow" },
   // Future abilities (cards not implemented yet, assets ready):
   poison: { affect: [{ key: "poison" }], sound: "spells/poison" },
   paralyze: { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },

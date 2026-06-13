@@ -416,14 +416,50 @@ export const spellCards: CardLibrary = {
     "combat",
     "Activation: Select a unit and another 2 units closest to it. Allocate damage, starting with the first selected unit: Power 0: 1/1/1 damage; Power 2: 2/1/1 damage; Power 4: 3/2/1 damage."
   ),
-  "spell.resurrection": notImplementedSpell(
-    "resurrection",
-    "Resurrection",
-    "expert",
-    "earth",
-    "instant",
-    "Instant: Cancel an attack that would reduce your unit's HP to 0. You can cast this spell immediately after the enemy unit's attack: Power 0: bronze; Power 2: bronze or silver; Power 4: bronze, silver, or gold."
-  ),
+  // Resurrection is an instant lethal save: it reuses the engine's
+  // CANCEL_LETHAL_ATTACK mechanism (shared with Alamar's specialty and the
+  // Archangels' ability), offered only in the lethal-save window, gated by the
+  // grade the paid Power covers (0 → bronze, 2 → silver, 4 → gold) and by the
+  // one-Spell-per-combat-round limit.
+  "spell.resurrection": {
+    id: "spell.resurrection",
+    name: "Resurrection",
+    kind: "spell",
+    timing: "reaction",
+    phaseLimit: ["reaction", "combat"],
+    spellLevel: "expert",
+    spellSchools: ["earth"],
+    power: 0,
+    tags: [
+      "spell",
+      "expert",
+      "earth",
+      "resurrection",
+      "Instant: Cancel an attack that would reduce your unit's HP to 0. Power 0: bronze; Power 2: bronze or silver; Power 4: bronze, silver, or gold."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        { label: "Save a bronze unit", effect: { type: "CANCEL_LETHAL_ATTACK", grade: "bronze" } },
+        {
+          label: "Save a silver unit (pay 2 Power)",
+          cost: { discardCards: 2, costCardFilter: "power-source" },
+          effect: { type: "CANCEL_LETHAL_ATTACK", grade: "silver" }
+        },
+        {
+          label: "Save a gold unit (pay 4 Power)",
+          cost: { discardCards: 4, costCardFilter: "power-source" },
+          effect: { type: "CANCEL_LETHAL_ATTACK", grade: "gold" }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "/assets/spells-resurrection.webp",
+      imageAlt: "Resurrection card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("resurrection")
+  },
   "spell.teleport": notImplementedSpell(
     "teleport",
     "Teleport",
@@ -557,7 +593,8 @@ export const spellDeckLegacy: string[] = [
   "spell.prayer",
   "spell.town_portal",
   "spell.town_portal",
-  "spell.earthquake"
+  "spell.earthquake",
+  "spell.resurrection"
 ];
 
 /** BINH split decks. */
@@ -601,5 +638,6 @@ export const spellDeckBinhExpert: string[] = [
   "spell.prayer",
   "spell.prayer",
   "spell.town_portal",
-  "spell.town_portal"
+  "spell.town_portal",
+  "spell.resurrection"
 ];
