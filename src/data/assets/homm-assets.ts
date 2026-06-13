@@ -49,14 +49,14 @@ export const TOWN_BUILDING_IMAGES: Record<string, Record<string, string>> = {
     brimstone_stormclouds: "/assets/town/inferno_brimstone_stormclouds_hd.webp"
   },
   stronghold: {
-    city_hall: "/assets/town/stronghold_city_hall_hd.webp",
-    citadel: "/assets/town/stronghold_citadel_hd.webp",
-    mage_guild: "/assets/town/stronghold_mage_guild_hd.webp",
+    city_hall: "/assets/town/stronghold_city_hall_wide_hd.webp",
+    citadel: "/assets/town/stronghold_citadel_wide_hd.webp",
+    mage_guild: "/assets/town/stronghold_mage_guild_wide_hd.webp",
     dwelling_bronze: "/assets/town/stronghold_barracks_tower_hd.webp",
-    dwelling_silver: "/assets/town/stronghold_fort_under_the_nest_hd.webp",
-    dwelling_gold: "/assets/town/stronghold_mountain_caves_hd.webp",
-    hall_of_valhalla: "/assets/town/stronghold_hall_of_valhalla_hd.webp",
-    freelancers_guild: "/assets/town/stronghold_freelancers_guild_hd.webp"
+    dwelling_silver: "/assets/town/stronghold_fort_under_the_nest_wide_hd.webp",
+    dwelling_gold: "/assets/town/stronghold_mountain_caves_wide_hd.webp",
+    hall_of_valhalla: "/assets/town/stronghold_hall_of_valhalla_wide_hd.webp",
+    freelancers_guild: "/assets/town/stronghold_freelancers_guild_wide_hd.webp"
   },
   necropolis: {
     city_hall: "/assets/town/necropolis_city_hall_large.gif",
