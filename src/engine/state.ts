@@ -467,6 +467,12 @@ export type EffectDefinition =
   | {
       type: "RECALL_SPELL";
       expertSpellLimitBonus?: number;
+      /**
+       * Empowered Knowledge (Inferno / Star Axis): raise the spell limit by
+       * this much on the basic play, no crown spent. Applied on every play;
+       * `expertSpellLimitBonus` still adds on top only on the expert play.
+       */
+      basicSpellLimitBonus?: number;
       /** Mysticism expert: also recall every card played with the spell. */
       expertRecallPlayedCards?: boolean;
     }
@@ -1972,6 +1978,12 @@ export type CombatUnitState = {
   unitDefId?: string;
   /** Adventure mode: army card instance this unit maps back to. */
   armyUnitId?: string;
+  /**
+   * Fixed creature-bank guard (Dragon Utopia's dragons, the Cyclops
+   * Stockpile's 2 golden Cyclopes): minted for this fight only, so it must
+   * not be returned to a Neutral tier deck when the combat finishes.
+   */
+  bankGuard?: boolean;
   assets?: {
     cardImage?: string;
     imageAlt?: string;

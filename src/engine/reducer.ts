@@ -3960,6 +3960,9 @@ function applyReactionPlayCore(
       recallPlayedCards: mode === "expert" && Boolean(effect.expertRecallPlayedCards)
     };
 
+    // Empowered Knowledge raises the limit on the basic play; the regular
+    // card only on the expert play.
+    caster.combatStats.spellLimitBonusThisRound += effect.basicSpellLimitBonus ?? 0;
     if (mode === "expert") {
       caster.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
     }
