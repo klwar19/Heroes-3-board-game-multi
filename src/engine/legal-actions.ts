@@ -480,7 +480,10 @@ export function canUnitMoveAndAttack(
   return canUnitAttack(virtualCombat, movedAttacker, defender);
 }
 
-function unitMatchesTarget(unit: CombatUnitState, target: Exclude<TargetDefinition, { type: "none" }>): boolean {
+/** A target definition that resolves to units (not "none" or an empty space). */
+type UnitTargetDefinition = Exclude<TargetDefinition, { type: "none" } | { type: "empty-space" }>;
+
+function unitMatchesTarget(unit: CombatUnitState, target: UnitTargetDefinition): boolean {
   if (target.unitTypes && !target.unitTypes.includes(unit.type)) {
     return false;
   }
@@ -495,7 +498,7 @@ function unitMatchesTarget(unit: CombatUnitState, target: Exclude<TargetDefiniti
 function getEnemyTargets(
   state: GameState,
   playerId: PlayerId,
-  target: Exclude<TargetDefinition, { type: "none" }>
+  target: UnitTargetDefinition
 ): TargetRef[] {
   if (!state.combat) {
     return [];
@@ -511,7 +514,7 @@ function getEnemyTargets(
 function getFriendlyTargets(
   state: GameState,
   playerId: PlayerId,
-  target: Exclude<TargetDefinition, { type: "none" }>
+  target: UnitTargetDefinition
 ): TargetRef[] {
   if (!state.combat) {
     return [];
@@ -538,10 +541,42 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
     return [{ type: "none" }];
   }
 
+  // Summon spells target a chosen empty space (no living unit, obstacle, Wall
+  // or Gate). Mirrors isSpaceBlockedForSummon in the reducer.
+  if (targetType === "empty-space") {
+    const combat = state.combat;
+    if (!combat) {
+      return [];
+    }
+    const blocked = new Set<number>();
+    for (const unit of Object.values(combat.units)) {
+      if (isUnitAlive(unit)) {
+        blocked.add(unit.position);
+      }
+    }
+    for (const position of combat.obstacles ?? []) {
+      blocked.add(position);
+    }
+    for (const position of combat.siege?.walls ?? []) {
+      blocked.add(position);
+    }
+    if (combat.siege?.gatePosition != null) {
+      blocked.add(combat.siege.gatePosition);
+    }
+
+    const spaces: TargetRef[] = [];
+    for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+      if (!blocked.has(position)) {
+        spaces.push({ type: "space", position });
+      }
+    }
+    return spaces;
+  }
+
   const target =
-    card?.target && card.target.type !== "none"
+    card?.target && card.target.type !== "none" && card.target.type !== "empty-space"
       ? card.target
-      : ({ type: targetType } as Exclude<TargetDefinition, { type: "none" }>);
+      : ({ type: targetType } as UnitTargetDefinition);
 
   const targets =
     target.type === "friendly-unit"
@@ -901,6 +936,7 @@ function isOptionEffectPlayable(
     case "ADD_UNIT_MAX_HEALTH":
     case "HEAL_DAMAGE":
     case "AREA_DAMAGE_ALL_ADJACENT":
+    case "GRANT_ELEMENTAL_DAMAGE":
       return context === "combat" && Boolean(state.combat);
     case "SIEGE_DEMOLISH": {
       const siege = state.combat?.siege;
@@ -924,7 +960,8 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "CREATE_DEFENSE_BUFF" ||
     effect.type === "ADD_UNIT_MAX_HEALTH" ||
     effect.type === "HEAL_DAMAGE" ||
-    effect.type === "AREA_DAMAGE_ALL_ADJACENT"
+    effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
+    effect.type === "GRANT_ELEMENTAL_DAMAGE"
   );
 }
 
@@ -981,9 +1018,22 @@ function addOptionPlays(
         ? ["basic", "expert"]
         : ["basic"];
 
-    const targets = optionNeedsUnitTarget(option.effect)
+    let targets = optionNeedsUnitTarget(option.effect)
       ? getTargetsForCard(state, playerId, cardId, cards)
       : [{ type: "none" } as TargetRef];
+
+    // Some options only land on a named unit (Moandor's elemental grant reads
+    // "your Liches unit").
+    const restrictName =
+      option.effect.type === "GRANT_ELEMENTAL_DAMAGE" ? option.effect.targetUnitName : undefined;
+    if (restrictName) {
+      targets = targets.filter(
+        (candidate) => candidate.type === "unit" && state.combat?.units[candidate.unitId]?.name === restrictName
+      );
+    }
+    if (targets.length === 0) {
+      continue;
+    }
 
     for (const mode of modes) {
       for (const target of targets) {

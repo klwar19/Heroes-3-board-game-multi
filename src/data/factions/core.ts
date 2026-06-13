@@ -640,6 +640,23 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     boardScan: "/assets/heroes-necropolis-might-tamika.webp",
     source: heroSource("tamika")
   },
+  moandor: {
+    id: "moandor",
+    name: "Moandor",
+    faction: "necropolis",
+    class: "Death Knight",
+    type: "might",
+    startingStats: { attack: 1, defense: 2, power: 2, knowledge: 1 },
+    startingAbilityCardId: "ability.necromancy",
+    specialtyCardIds: {
+      1: "specialty.moandor.1",
+      4: "specialty.moandor.4",
+      6: "specialty.moandor.6"
+    },
+    portrait: "/assets/hero_boardart-moandor.webp",
+    boardScan: "/assets/heroes-necropolis-might-moandor.webp",
+    source: heroSource("moandor")
+  },
   gelu: {
     id: "gelu",
     name: "Gelu",
@@ -908,7 +925,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Necropolis",
     color: "#7c4dbe",
     startingTileId: "S1",
-    heroes: ["sandro", "tamika"],
+    heroes: ["sandro", "tamika", "moandor"],
     buildings: buildingsOfFaction("necropolis"),
     units: unitsOfFaction("necropolis"),
     ignoresMorale: true,
@@ -931,16 +948,16 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
 /** Neutral unit definition ids grouped by tier, used to build the four neutral decks. */
 export const neutralUnitIdsByTier: Record<"bronze" | "silver" | "gold" | "azure", string[]> = {
   bronze: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && unit.tier === "bronze")
+    .filter((unit) => unit.faction === "neutral" && unit.tier === "bronze" && Boolean(unit.neutral))
     .map((unit) => unit.id),
   silver: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && unit.tier === "silver")
+    .filter((unit) => unit.faction === "neutral" && unit.tier === "silver" && Boolean(unit.neutral))
     .map((unit) => unit.id),
   gold: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && unit.tier === "gold")
+    .filter((unit) => unit.faction === "neutral" && unit.tier === "gold" && Boolean(unit.neutral))
     .map((unit) => unit.id),
   azure: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && unit.tier === "azure")
+    .filter((unit) => unit.faction === "neutral" && unit.tier === "azure" && Boolean(unit.neutral))
     .map((unit) => unit.id)
 };
 

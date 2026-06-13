@@ -5,6 +5,15 @@ export type UnitAbilityEffectDefinition =
   | { type: "IGNORE_RETALIATION" }
   | { type: "IGNORE_RANGED_BACK_ROW_PENALTY" }
   | { type: "MOVE_ANYWHERE" }
+  | {
+      /**
+       * Elemental units (Air/Earth/Fire/Water Elementals and their kin): "This
+       * unit deals elemental damage." Its attack value cannot be raised by
+       * attack cards or Attack tokens — only lowered by debuffs such as a
+       * Sorceress' Weakness. A passive, always-on trait of the printed card.
+       */
+      type: "DEALS_ELEMENTAL_DAMAGE";
+    }
   | { type: "EXTRA_RANGED_DAMAGE_ON_LOW_ROLL"; maxRoll: number; amount: number }
   | {
       /**
@@ -903,6 +912,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Resurrection",
     text: "Once per Combat, cancel an attack that would reduce another friendly unit's Health to 0 (any grade, no cost).",
     effect: { type: "CANCEL_LETHAL_UNIT_ABILITY" },
+    implementationStatus: "implemented"
+  },
+  "elemental-damage": {
+    id: "elemental-damage",
+    name: "Elemental Damage",
+    text: "[unit_passive] This unit deals elemental damage: its attack cannot be raised by attack cards or Attack tokens, only lowered (e.g. by a Sorceress' Weakness).",
+    effect: { type: "DEALS_ELEMENTAL_DAMAGE" },
     implementationStatus: "implemented"
   }
 };
