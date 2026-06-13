@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { neutralUnitIdsByTier } from "@/data/factions/core";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import {
   applyAction,
   createInitialGameState,
@@ -288,6 +290,50 @@ function moandorOption(state: GameState, optionIndex: number) {
       legal.action.optionIndex === optionIndex
   );
 }
+
+describe("neutral guard elementals are distinct from the summon", () => {
+  const guardPool = [
+    ...neutralUnitIdsByTier.bronze,
+    ...neutralUnitIdsByTier.silver,
+    ...neutralUnitIdsByTier.gold,
+    ...neutralUnitIdsByTier.azure
+  ];
+
+  it("pools exactly the wiki's neutral guard elementals", () => {
+    expect(neutralUnitIdsByTier.bronze).toEqual(
+      expect.arrayContaining(["neutral.air_elementals", "neutral.ice_elementals", "neutral.storm_elementals"])
+    );
+    expect(neutralUnitIdsByTier.silver).toEqual(
+      expect.arrayContaining(["neutral.fire_elementals", "neutral.energy_elementals", "neutral.magma_elementals"])
+    );
+    expect(neutralUnitIdsByTier.gold).toContain("neutral.magic_elementals");
+  });
+
+  it("keeps the summon-only Earth & Water Elementals out of the guard pool", () => {
+    expect(guardPool).not.toContain("neutral.earth_elementals");
+    expect(guardPool).not.toContain("neutral.water_elementals");
+    // They exist as summon units (Few/Pack) but carry no neutral guard side.
+    expect(coreUnitDefinitions["neutral.earth_elementals"].neutral).toBeUndefined();
+    expect(coreUnitDefinitions["neutral.water_elementals"].neutral).toBeUndefined();
+    expect(coreUnitDefinitions["neutral.earth_elementals"].few).toBeDefined();
+    expect(coreUnitDefinitions["neutral.water_elementals"].pack).toBeDefined();
+  });
+
+  it("the neutral guard side differs from the summon Few side (Air)", () => {
+    const air = coreUnitDefinitions["neutral.air_elementals"];
+    expect(air.neutral).toMatchObject({ attack: 2, defense: 0, health: 3, initiative: 7 }); // guard
+    expect(air.few).toMatchObject({ attack: 2, defense: 0, health: 4, initiative: 8 }); // summon
+  });
+
+  it("every neutral guard elemental deals elemental damage", () => {
+    for (const id of guardPool) {
+      const def = coreUnitDefinitions[id];
+      if (def.name.includes("Elemental")) {
+        expect(def.neutral?.abilities, id).toContain("elemental-damage");
+      }
+    }
+  });
+});
 
 describe("Moandor's Liches VI specialty", () => {
   it("offers the elemental-damage option only on a Liches unit", () => {

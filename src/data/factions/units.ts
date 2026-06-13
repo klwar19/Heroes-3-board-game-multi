@@ -1457,10 +1457,10 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ground",
-    // Few/Pack are the summonable Conflux sides (Summon Earth Elemental).
+    // Summon-only (Summon Earth Elemental) — no neutral guard card on the wiki,
+    // so it never joins the neutral guard pool (see neutralUnitIdsByTier).
     few: { attack: 2, defense: 2, health: 2, initiative: 5, cost: { gold: 6 }, abilities: ["elemental-damage"], abilityText: "[unit_passive] Immune to Magic Arrows and Earth Magic spells. This unit deals elemental damage." },
     pack: { attack: 3, defense: 2, health: 2, initiative: 5, cost: { gold: 9 }, abilities: ["elemental-damage"], abilityText: "[unit_passive] Immune to Magic Arrows and Earth Magic spells. This unit deals elemental damage." },
-    neutral: { attack: 2, defense: 2, health: 2, initiative: 5, cost: { gold: 7 }, abilities: ["elemental-damage"], abilityText: "[unit_passive] Immune to Magic Arrows and Earth Magic spells. This unit deals elemental damage." },
     wikiUrl: "https://en.homm3bg.wiki/units/earth_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1474,10 +1474,10 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ground",
-    // Few/Pack are the summonable Conflux sides (Summon Water Elemental).
+    // Summon-only (Summon Water Elemental) — no neutral guard card on the wiki,
+    // so it never joins the neutral guard pool (see neutralUnitIdsByTier).
     few: { attack: 2, defense: 0, health: 5, initiative: 6, cost: { gold: 6 }, abilities: ["elemental-damage"], abilityText: "[unit_passive] Immune to Magic Arrows and Water Magic spells. This unit deals elemental damage." },
     pack: { attack: 3, defense: 0, health: 5, initiative: 6, cost: { gold: 10 }, abilities: ["elemental-damage"], abilityText: "[unit_passive] Immune to Magic Arrows and Water Magic spells. This unit deals elemental damage." },
-    neutral: { attack: 2, defense: 0, health: 5, initiative: 6, cost: { gold: 8 }, abilities: ["elemental-damage"], abilityText: "[unit_passive] Immune to Magic Arrows and Water Magic spells. This unit deals elemental damage." },
     wikiUrl: "https://en.homm3bg.wiki/units/water_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",

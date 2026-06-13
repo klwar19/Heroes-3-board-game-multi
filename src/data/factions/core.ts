@@ -948,16 +948,16 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
 /** Neutral unit definition ids grouped by tier, used to build the four neutral decks. */
 export const neutralUnitIdsByTier: Record<"bronze" | "silver" | "gold" | "azure", string[]> = {
   bronze: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && unit.tier === "bronze")
+    .filter((unit) => unit.faction === "neutral" && unit.tier === "bronze" && Boolean(unit.neutral))
     .map((unit) => unit.id),
   silver: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && unit.tier === "silver")
+    .filter((unit) => unit.faction === "neutral" && unit.tier === "silver" && Boolean(unit.neutral))
     .map((unit) => unit.id),
   gold: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && unit.tier === "gold")
+    .filter((unit) => unit.faction === "neutral" && unit.tier === "gold" && Boolean(unit.neutral))
     .map((unit) => unit.id),
   azure: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && unit.tier === "azure")
+    .filter((unit) => unit.faction === "neutral" && unit.tier === "azure" && Boolean(unit.neutral))
     .map((unit) => unit.id)
 };
 
