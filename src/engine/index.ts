@@ -110,7 +110,8 @@ export {
   getUnitSide,
   heroMovementMax,
   isFieldGuarded,
-  levelOfExperience
+  levelOfExperience,
+  seaTileBand
 } from "./adventure";
 export type { HeroPathTarget, HeroStepKind } from "./adventure";
 export {

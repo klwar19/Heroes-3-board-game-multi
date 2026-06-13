@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, Hammer, Image as ImageIcon, Minus, Plus, RotateCcw, RotateCw, X } from "lucide-react";
+import { Check, ChevronsUp, Hammer, Image as ImageIcon, Minus, Plus, RotateCcw, RotateCw, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
@@ -1346,8 +1346,12 @@ export function TownPanel({
       {player.townTokens.population && !state.combat ? (
         <div className="townRecruits" aria-label="Population token basket">
           <h4 title="Each unit card exists once: recruit the Few side, later reinforce it to the Pack side — then it is complete.">
-            Population token — one card per unit type
+            Population token — recruit &amp; reinforce
           </h4>
+          <small className="recruitLegend">
+            Buy a unit&apos;s <b>Few</b> side, or <ChevronsUp aria-hidden="true" size={11} /> <b>reinforce</b> a Few you
+            already own up to its stronger <b>Pack</b> side{canReinforce ? "." : " — needs the Citadel."}
+          </small>
           {faction.units.map((unitDefId) => {
             const unit = coreUnitDefinitions[unitDefId];
             if (!unit?.few || !unlockedTiers.has(unit.tier)) {
@@ -1370,13 +1374,22 @@ export function TownPanel({
               const checked = reinforceIds.includes(owned.id);
               const upgradable = canReinforce && Boolean(def?.pack);
               return (
-                <label className={`recruitRow ${upgradable ? "" : "locked"}`} key={unitDefId}>
+                <label
+                  className={`recruitRow reinforce ${checked ? "checked" : ""} ${upgradable ? "" : "locked"}`}
+                  key={unitDefId}
+                  title={upgradable ? `Reinforce ${unit.name}: Few → Pack` : undefined}
+                >
                   <span className={`tierDot ${unit.tier}`} />
-                  <span className="recruitName">{unit.name}</span>
+                  <span className="recruitName">
+                    {unit.name} <span className="fewBadge">Few</span>
+                  </span>
                   {upgradable ? (
                     <>
-                      <small>upgrade {formatCost(def?.pack?.cost ?? {})}</small>
+                      <span className="upgradeTag">
+                        <ChevronsUp aria-hidden="true" size={12} /> Pack {formatCost(def?.pack?.cost ?? {})}
+                      </span>
                       <input
+                        aria-label={`Reinforce ${unit.name} to a pack`}
                         checked={checked}
                         onChange={() =>
                           setReinforceIds((current) =>

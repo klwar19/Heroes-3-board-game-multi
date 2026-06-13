@@ -9,6 +9,7 @@ import {
   hexNeighbors,
   hexToPixel,
   scenarioDefinitions,
+  seaTileBand,
   tileFootprint,
   tileFootprintsTouch,
   type CustomMapTilePlan,
@@ -18,6 +19,9 @@ import { titleCase } from "@/components/table/utils";
 
 /** Tile group of a designed plan. */
 type DesignGroup = CustomMapTilePlan["group"];
+
+/** Sea tiles ship two guard bands behind one wave back; the designer offers each. */
+type SeaBand = NonNullable<CustomMapTilePlan["seaBand"]>;
 
 /** Short printed label per group (the Roman numeral on the tile back). */
 export const TILE_GROUP_LABELS: Record<DesignGroup, string> = {
@@ -29,6 +33,14 @@ export const TILE_GROUP_LABELS: Record<DesignGroup, string> = {
   subterranean: "Underground"
 };
 
+/** The printed numerals for a sea tile's guard band. */
+const SEA_BAND_NUMERAL: Record<SeaBand, string> = { "iv-v": "Ⅳ–Ⅴ", "vi-vii": "Ⅵ–Ⅶ" };
+
+/** Label for a placed/dragged plan — sea reads its band, every other group its numeral. */
+function planGroupLabel(plan: { group: DesignGroup; seaBand?: SeaBand }): string {
+  return plan.group === "sea" ? `Sea ${SEA_BAND_NUMERAL[plan.seaBand ?? "iv-v"]}` : TILE_GROUP_LABELS[plan.group];
+}
+
 const GROUP_COLORS: Record<DesignGroup, string> = {
   starting: "#d9b54a",
   far: "#4f8a4f",
@@ -39,13 +51,14 @@ const GROUP_COLORS: Record<DesignGroup, string> = {
 };
 
 /** The draggable palette: one entry per tile type the designer can place. */
-const PALETTE: { group: DesignGroup; label: string; numeral: string; hint: string }[] = [
-  { group: "starting", label: "Town", numeral: "Ⅰ", hint: "A player's starting town. The first one placed is seat 1, the next seat 2, and so on — the tile art comes from each player's faction." },
-  { group: "far", label: "Far", numeral: "Ⅱ–Ⅲ", hint: "Weak outer tile. Placed face-down (random from the Far pool) — click it to reveal a specific tile." },
-  { group: "near", label: "Near", numeral: "Ⅳ–Ⅴ", hint: "Mid-strength tile. Placed face-down (random from the Near pool)." },
-  { group: "center", label: "Center", numeral: "Ⅵ–Ⅶ", hint: "Strong central tile. Placed face-down (random from the Center pool)." },
-  { group: "sea", label: "Sea", numeral: "🌊", hint: "Sea tile. Placed face-down (random from the Sea pool)." },
-  { group: "subterranean", label: "Underground", numeral: "⛰", hint: "Underground tile. Placed face-down (random from the Subterranean pool)." }
+const PALETTE: { key: string; group: DesignGroup; seaBand?: SeaBand; label: string; numeral: string; hint: string }[] = [
+  { key: "starting", group: "starting", label: "Town", numeral: "Ⅰ", hint: "A player's starting town. The first one placed is seat 1, the next seat 2, and so on — the tile art comes from each player's faction." },
+  { key: "far", group: "far", label: "Far", numeral: "Ⅱ–Ⅲ", hint: "Weak outer tile. Placed face-down (random from the Far pool) — click it to reveal a specific tile." },
+  { key: "near", group: "near", label: "Near", numeral: "Ⅳ–Ⅴ", hint: "Mid-strength tile. Placed face-down (random from the Near pool)." },
+  { key: "center", group: "center", label: "Center", numeral: "Ⅵ–Ⅶ", hint: "Strong central tile. Placed face-down (random from the Center pool)." },
+  { key: "sea-iv-v", group: "sea", seaBand: "iv-v", label: "Sea Ⅳ–Ⅴ", numeral: "🌊", hint: "Weaker sea tile (Ⅳ–Ⅴ guard band). Placed face-down — draws a random Ⅳ–Ⅴ tile from the wave pool." },
+  { key: "sea-vi-vii", group: "sea", seaBand: "vi-vii", label: "Sea Ⅵ–Ⅶ", numeral: "🌊", hint: "Stronger sea tile (Ⅵ–Ⅶ guard band). Placed face-down — draws a random Ⅵ–Ⅶ tile from the wave pool." },
+  { key: "subterranean", group: "subterranean", label: "Underground", numeral: "⛰", hint: "Underground tile. Placed face-down (random from the Subterranean pool)." }
 ];
 
 /** Groups whose tiles can be flipped face up and chosen exactly. */
@@ -110,8 +123,8 @@ function flowerOutline(center: HexCoord, size: number): string {
 
 /** A live drag of a tile type from the palette, or of an already-placed tile. */
 type DesignDrag =
-  | { kind: "palette"; group: DesignGroup; clientX: number; clientY: number }
-  | { kind: "move"; index: number; group: DesignGroup; clientX: number; clientY: number };
+  | { kind: "palette"; group: DesignGroup; seaBand?: SeaBand; clientX: number; clientY: number }
+  | { kind: "move"; index: number; group: DesignGroup; seaBand?: SeaBand; clientX: number; clientY: number };
 
 /**
  * Map designer board: a real hex-grid view of the scenario. Pan by dragging the
@@ -142,7 +155,7 @@ export function MapDesigner({
   const suppressClickRef = useRef(false);
   // A pending press on a placed tile: a small move promotes it to a drag, a
   // release in place opens its popover.
-  const pressRef = useRef<{ pointerId: number; index: number; group: DesignGroup; startX: number; startY: number; promoted: boolean } | null>(null);
+  const pressRef = useRef<{ pointerId: number; index: number; group: DesignGroup; seaBand?: SeaBand; startX: number; startY: number; promoted: boolean } | null>(null);
   const gRef = useRef<SVGGElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
@@ -237,11 +250,17 @@ export function MapDesigner({
   }, []);
 
   const addTile = useCallback(
-    (group: DesignGroup, center: HexCoord) => {
+    (group: DesignGroup, center: HexCoord, seaBand?: SeaBand) => {
       const plan: CustomMapTilePlan =
         group === "starting"
           ? { row: center.row, col: center.col, group, faceDown: false }
-          : { row: center.row, col: center.col, group, faceDown: true };
+          : {
+              row: center.row,
+              col: center.col,
+              group,
+              faceDown: true,
+              ...(group === "sea" && seaBand ? { seaBand } : {})
+            };
       onChange([...customMap, plan]);
     },
     [customMap, onChange]
@@ -284,7 +303,7 @@ export function MapDesigner({
       const slot = slotAt(event.clientX, event.clientY, drag.kind === "move" ? drag.index : undefined);
       if (slot) {
         if (drag.kind === "palette") {
-          addTile(drag.group, slot);
+          addTile(drag.group, slot, drag.seaBand);
         } else {
           moveTile(drag.index, slot);
         }
@@ -338,6 +357,9 @@ export function MapDesigner({
   const pickableTiles = selected
     ? Object.values(allTileDefinitions)
         .filter((tile) => tile.group === selected.group)
+        // Sea slots only reveal tiles from their own guard band (Ⅳ–Ⅴ vs Ⅵ–Ⅶ);
+        // legacy slots without a band still see every sea tile.
+        .filter((tile) => selected.group !== "sea" || !selected.seaBand || seaTileBand(tile) === selected.seaBand)
         .sort((left, right) => left.id.localeCompare(right.id))
     : [];
   const selectedTileDef = selected?.tileDefId ? allTileDefinitions[selected.tileDefId] : undefined;
@@ -456,6 +478,7 @@ export function MapDesigner({
         pointerId: event.pointerId,
         index,
         group: plan.group,
+        seaBand: plan.seaBand,
         startX: event.clientX,
         startY: event.clientY,
         promoted: false
@@ -470,7 +493,7 @@ export function MapDesigner({
       isStart
         ? `Town — seat ${seatNumberOf(index)}. Drag to move, click for options.`
         : plan.faceDown
-          ? `Face-down ${TILE_GROUP_LABELS[plan.group]} tile (random). Drag to move, click to reveal / rotate / remove.`
+          ? `Face-down ${planGroupLabel(plan)} tile (random). Drag to move, click to reveal / rotate / remove.`
           : `${plan.tileDefId ?? "?"} rotated ${(plan.rotation ?? 0) * 60}°. Drag to move, click for options.`
     );
 
@@ -492,7 +515,7 @@ export function MapDesigner({
     } else if (plan.faceDown || !art) {
       labelLayer.push(
         <text className="designerTileLabel" key={`plan-label-${index}`} textAnchor="middle" x={centerPixel.x} y={centerPixel.y + 4}>
-          {plan.faceDown ? TILE_GROUP_LABELS[plan.group] : (plan.tileDefId ?? "?")}
+          {plan.faceDown ? planGroupLabel(plan) : (plan.tileDefId ?? "?")}
         </text>
       );
     }
@@ -513,13 +536,13 @@ export function MapDesigner({
     }
   }
 
-  const beginPaletteDrag = (group: DesignGroup) => (event: React.PointerEvent) => {
+  const beginPaletteDrag = (group: DesignGroup, seaBand?: SeaBand) => (event: React.PointerEvent) => {
     if (event.button !== 0) {
       return;
     }
     event.preventDefault();
     closePopover();
-    setDrag({ kind: "palette", group, clientX: event.clientX, clientY: event.clientY });
+    setDrag({ kind: "palette", group, seaBand, clientX: event.clientX, clientY: event.clientY });
     setHoverSlot(slotAt(event.clientX, event.clientY));
   };
 
@@ -530,8 +553,8 @@ export function MapDesigner({
         {PALETTE.map((entry) => (
           <button
             className={`paletteTile group-${entry.group}`}
-            key={entry.group}
-            onPointerDown={beginPaletteDrag(entry.group)}
+            key={entry.key}
+            onPointerDown={beginPaletteDrag(entry.group, entry.seaBand)}
             style={{ borderColor: GROUP_COLORS[entry.group] }}
             title={entry.hint}
             type="button"
@@ -581,7 +604,7 @@ export function MapDesigner({
                 press.promoted = true;
                 pressRef.current = null;
                 closePopover();
-                setDrag({ kind: "move", index: press.index, group: press.group, clientX: event.clientX, clientY: event.clientY });
+                setDrag({ kind: "move", index: press.index, group: press.group, seaBand: press.seaBand, clientX: event.clientX, clientY: event.clientY });
                 setHoverSlot(slotAt(event.clientX, event.clientY, press.index));
               }
               return;
@@ -608,8 +631,12 @@ export function MapDesigner({
               pressRef.current = null;
               const rect = wrapRef.current?.getBoundingClientRect();
               setSelectedIndex(press.index);
+              // Clamp the popover into the board here (refs are fine in handlers)
+              // rather than reading the ref width back during render.
               setPopoverAt(
-                rect ? { x: event.clientX - rect.left, y: event.clientY - rect.top } : { x: 0, y: 0 }
+                rect
+                  ? { x: Math.max(8, Math.min(event.clientX - rect.left, rect.width - 8)), y: event.clientY - rect.top }
+                  : { x: 8, y: 0 }
               );
               return;
             }
@@ -647,13 +674,13 @@ export function MapDesigner({
         {selected && popoverAt ? (
           <div
             className="designerPopover"
-            style={{ left: Math.max(8, Math.min(popoverAt.x, (wrapRef.current?.clientWidth ?? 320) - 8)), top: popoverAt.y }}
+            style={{ left: popoverAt.x, top: popoverAt.y }}
           >
             <header>
               <strong>
                 {selected.group === "starting"
                   ? `Town — seat ${seatNumberOf(selectedIndex as number)}`
-                  : `${TILE_GROUP_LABELS[selected.group]} tile`}
+                  : `${planGroupLabel(selected)} tile`}
               </strong>
             </header>
 
@@ -749,7 +776,7 @@ export function MapDesigner({
             className="paletteThumb"
             style={{ backgroundImage: `url(${TILE_BACK_IMAGES[drag.group]})` }}
           />
-          <span>{TILE_GROUP_LABELS[drag.group]}</span>
+          <span>{planGroupLabel(drag)}</span>
         </div>
       ) : null}
     </div>

@@ -26,6 +26,7 @@ import {
   getUnitSide,
   instantiateTile,
   NEUTRAL_DECK_IDS,
+  seaTileBand,
   startAdventureRound,
   startPlayerTurn
 } from "./adventure";
@@ -640,6 +641,19 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       subterranean: subterraneanPool
     };
 
+    // A face-down sea slot draws only from its own guard band (Ⅳ–Ⅴ or Ⅵ–Ⅶ):
+    // both bands share one shuffled wave pool, so pop the topmost match.
+    // An undefined band (older saved maps) takes any sea tile.
+    const popSeaTile = (band?: "iv-v" | "vi-vii"): string | undefined => {
+      for (let index = seaPool.length - 1; index >= 0; index -= 1) {
+        const def = allTileDefinitions[seaPool[index]];
+        if (!band || (def && seaTileBand(def) === band)) {
+          return seaPool.splice(index, 1)[0];
+        }
+      }
+      return undefined;
+    };
+
     // Designed face-up tiles never also hide in a face-down pool draw.
     for (const plan of customMap) {
       if (!plan.faceDown && plan.tileDefId) {
@@ -658,7 +672,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       }
       const center = { row: plan.row, col: plan.col };
       if (plan.faceDown) {
-        const tileDefId = pools[plan.group]?.pop();
+        const tileDefId = plan.group === "sea" ? popSeaTile(plan.seaBand) : pools[plan.group]?.pop();
         if (tileDefId) {
           instantiateTile(adventure, tileDefId, center, 0, true);
         }

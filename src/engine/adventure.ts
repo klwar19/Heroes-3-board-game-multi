@@ -215,17 +215,25 @@ function adventureRandom(state: GameState, label: string) {
 let tileCounter = 0;
 
 /**
+ * Which guard band a sea tile belongs to. The Cove sea pool ships both Ⅳ–Ⅴ
+ * and Ⅵ–Ⅶ tiles behind one wave back, so the band is read from the tile's
+ * strongest guarded field — the same rule the map designer uses to offer the
+ * two sea levels separately and to draw the matching face-down pool.
+ */
+export function seaTileBand(def: TileDefinition): "iv-v" | "vi-vii" {
+  const maxDifficulty = def.fields.reduce((max, field) => Math.max(max, field.difficulty ?? 0), 0);
+  return maxDifficulty >= 6 ? "vi-vii" : "iv-v";
+}
+
+/**
  * The Roman-numeral band printed on a tile's back. Every group is uniform
- * except the Cove sea pool, which ships both Ⅳ–Ⅴ and Ⅵ–Ⅶ tiles behind one
- * wave back — so a sea tile's band is read from its strongest guarded field.
- * Getting this right keeps the revealed numerals honest and lets the BINH
- * deck-unlock rules (which key off the band) treat a Ⅵ–Ⅶ sea tile as a
- * Center tile rather than a Near one.
+ * except the Cove sea pool (see {@link seaTileBand}). Getting this right keeps
+ * the revealed numerals honest and lets the BINH deck-unlock rules (which key
+ * off the band) treat a Ⅵ–Ⅶ sea tile as a Center tile rather than a Near one.
  */
 function tileBandLabel(group: string | undefined, def: TileDefinition | undefined): string | undefined {
   if (group === "sea" && def) {
-    const maxDifficulty = def.fields.reduce((max, field) => Math.max(max, field.difficulty ?? 0), 0);
-    return maxDifficulty >= 6 ? "Ⅵ–Ⅶ" : "Ⅳ–Ⅴ";
+    return seaTileBand(def) === "vi-vii" ? "Ⅵ–Ⅶ" : "Ⅳ–Ⅴ";
   }
   return group ? TILE_BACK_LABELS[group] : undefined;
 }
