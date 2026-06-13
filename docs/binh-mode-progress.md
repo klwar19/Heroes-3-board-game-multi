@@ -55,6 +55,7 @@ Mirror of the build request. ✅ = implemented **and wired** (engine + UI + test
 
 ## Content
 - [x] Full implemented spell set incl. Fireball (second adjacent target, skippable), Fire Shield, Counterstrike, Prayer, Town Portal, Haste/Slow (live initiative order)
+- [x] **Spell Scroll** field (Stronghold): take a scroll + draw 2 Spells into it (pick Basic/Expert deck per draw), shown as a 📜 badge near the hero (not in hand, contents hidden from opponents). Cast either spell in combat at the lowest power level — cannot be buffed by any Power source, never the expert side, removed from the game on use, counts toward the spell limit. Sellable at the market for 2 gold each; an emptied scroll is discarded. Tested.
 - [x] Full implemented artifact set across three tiers with printed discard/remove costs (tray chips + hand cost picker)
 - [x] Blacksmith building implemented (artifact source)
 - [x] Dice rewards verified vs wiki (resource 2/4 BM · 1/2 V · 3/6 G; treasure 2×XP · 2×artifact search · 1/2 resource dice)

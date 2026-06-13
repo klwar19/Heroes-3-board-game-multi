@@ -1337,6 +1337,48 @@ export function tradeResources(state: GameState, action: Extract<GameAction, { t
   appendEvent(state, { type: "TRADE_EXECUTED", playerId: action.playerId, rateLabel: rate.label });
 }
 
+/** Gold paid per Spell Scroll spell sold at the market. */
+export const SCROLL_SPELL_SELL_GOLD = 2;
+
+/**
+ * Sell one Spell Scroll spell at an open Trading Post for 2 gold. The spell
+ * leaves the scroll (and the game); an emptied scroll is removed. Like card
+ * selling, this is the visit's one non-trade action.
+ */
+export function sellScrollSpell(state: GameState, action: Extract<GameAction, { type: "SELL_SCROLL_SPELL" }>): void {
+  const adventure = requireAdventure(state);
+  const visit = adventure.pendingVisit;
+  const step = visit?.steps[0];
+  if (!visit || visit.playerId !== action.playerId || step?.type !== "TRADING_POST") {
+    throw new Error("Selling a scroll spell needs an open Trading Post visit.");
+  }
+  if (step.traded) {
+    throw new Error("This visit already traded resources — scroll spells cannot be sold too.");
+  }
+
+  const player = state.players[action.playerId];
+  const scroll = player?.scrolls?.find((candidate) => candidate.id === action.scrollId);
+  const cardIndex = scroll?.spellCardIds.indexOf(action.cardId) ?? -1;
+  if (!player || !scroll || cardIndex === -1) {
+    throw new Error("That spell is not in the named Spell Scroll.");
+  }
+
+  scroll.spellCardIds.splice(cardIndex, 1);
+  player.removed.push(action.cardId);
+  if (scroll.spellCardIds.length === 0) {
+    player.scrolls = player.scrolls?.filter((candidate) => candidate.id !== action.scrollId);
+  }
+
+  gainResources(state, action.playerId, { gold: SCROLL_SPELL_SELL_GOLD }, "sold a scroll spell at the Trading Post");
+  appendEvent(state, {
+    type: "SCROLL_SPELL_SOLD",
+    playerId: action.playerId,
+    scrollId: action.scrollId,
+    cardId: action.cardId,
+    gold: SCROLL_SPELL_SELL_GOLD
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Combat lifecycle
 // ---------------------------------------------------------------------------
