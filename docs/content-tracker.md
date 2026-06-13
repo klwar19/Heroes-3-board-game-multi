@@ -74,7 +74,7 @@ Citadel siege bonuses (3 Walls, 1 Gate, Arrow Tower) 🔴 — siege combat not i
 | Rion (Cleric, magic, A1 D0 P2 K2) | Castle | ✅ | Specialty I heals 1 **and draws 1** (both modeled), IV/VI 🟡. |
 | Sandro (Necromancer, magic, A1 D0 P2 K2) | Necropolis | ✅ | Cloak of the Undead King specialties 🟡 (unit-stat replacement not modeled). |
 | Tamika (Death Knight, might, A1 D2 P2 K1) | Necropolis | ✅ | Specialty I implemented; IV/VI 🟡. |
-| Alamar (Warlock, magic, A0 D0 P3 K2) | Dungeon | ✅ | Resurrection I implemented: a reaction in an attack **or damaging-spell** window that cancels a killing blow on your unit — pick the option matching the unit's grade and discard that much Power (a Power statistic or any Spell): 1 bronze / 2 silver / 4 gold. A cancelled attack also draws **no Retaliation**. IV/VI 🟡. |
+| Alamar (Warlock, magic, A0 D0 P3 K2) | Dungeon | ✅ | Resurrection I implemented: a reaction in an attack window that cancels a killing **normal attack** on your unit (attacks only — never spells or specialty damage) — pick the option matching the unit's grade and discard that much Power (a Power statistic or any Spell): 1 bronze / 2 silver / 4 gold. A cancelled attack also draws **no Retaliation**. IV/VI 🟡. |
 | Mutare (Overlord, might, A2 D2 P1 K1) | Dungeon | ✅ | Specialty I implemented; the +1 now doubles for **every Dragons unit** (Black/Gold/Ghost/Azure/… Dragons, not Dragon Flies), IV/VI 🟡. |
 | Gelu (Ranger, might, A1 D3 P1 K1) | Rampart | ✅ | Specialty I implemented (doubles for Sharpshooters); IV/VI 🟡. Starting ability Archery. |
 | Gem (Druid, magic, A0 D2 P1 K2) | Rampart | ✅ | First Aid starting ability heals 1. Specialty I implemented: take the First Aid Tent from the supply for free, or draw 1 if it is gone. IV/VI 🟡. |
