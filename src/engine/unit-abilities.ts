@@ -127,6 +127,19 @@ export function getAttackDieDamageFollowUps(unit: CombatUnitState): AttackDieDam
   );
 }
 
+/** Neutral Magi: after its attack the defender discards a Power card or a random one. */
+export function getEnemyDiscardAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ENEMY_DISCARDS_POWER_OR_RANDOM")) {
+    if (ability.effect?.type === "ENEMY_DISCARDS_POWER_OR_RANDOM") {
+      return { abilityId: ability.id, abilityName: ability.name };
+    }
+  }
+
+  return null;
+}
+
 export function getAttackDefenseReductionAbility(
   unit: CombatUnitState
 ): { abilityId: string; abilityName: string; amount: number } | null {

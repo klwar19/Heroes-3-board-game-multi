@@ -1524,7 +1524,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ranged",
-    neutral: { attack: 3, defense: 0, health: 5, initiative: 6, cost: { gold: 11 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_attack] Ignore the combat penalties. After this unit's attack, the enemy discards a random card or a card with [power] ." },
+    neutral: { attack: 3, defense: 0, health: 5, initiative: 6, cost: { gold: 11 }, abilities: ["ignore-combat-penalties", "magi-power-drain"], abilityText: "[unit_passive] Ignore the combat penalties. [unit_attack] After this unit's attack, the enemy discards a card that can boost [power] (their choice) or a random card." },
     wikiUrl: "https://en.homm3bg.wiki/units/magi/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1572,6 +1572,125 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
       product: "Heroes of Might and Magic III: The Board Game",
       credit: "Neutral Conflux unit. Stats from the fan wiki units table. Verify against official cards before final release.",
       url: "https://en.homm3bg.wiki/units/magma_elementals/"
+    }
+  },
+
+  // ---- Gold & azure neutral units ----------------------------------------
+  // High-tier neutral guards (Tower/Fortress/Conflux/Dungeon/Rampart creatures
+  // with no playable town yet, plus the azure "mighty" tier). Stats and ability
+  // text per unit from the fan wiki. Implemented ability tags are used only
+  // where the engine already supports them (Nagas/Hydras no-retaliation, Titans
+  // no-adjacent-shot penalty); the rest stay display-only.
+  "neutral.nagas": {
+    id: "neutral.nagas",
+    name: "Nagas",
+    faction: "neutral",
+    tier: "gold",
+    type: "ground",
+    neutral: { attack: 5, defense: 1, health: 6, initiative: 6, cost: { gold: 16 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack." },
+    wikiUrl: "https://en.homm3bg.wiki/units/nagas/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Tower unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/nagas/"
+    }
+  },
+  "neutral.wyverns": {
+    id: "neutral.wyverns",
+    name: "Wyverns",
+    faction: "neutral",
+    tier: "gold",
+    type: "flying",
+    neutral: { attack: 4, defense: 1, health: 7, initiative: 8, cost: { gold: 17 }, abilities: [], abilityText: "[unit_attack] After the attack, roll 1 Attack die . On a \"0\" result, deal 1 [damage] to the target unit." },
+    wikiUrl: "https://en.homm3bg.wiki/units/wyverns/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Fortress unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/wyverns/"
+    }
+  },
+  "neutral.magic_elementals": {
+    id: "neutral.magic_elementals",
+    name: "Magic Elementals",
+    faction: "neutral",
+    tier: "gold",
+    type: "ground",
+    neutral: { attack: 3, defense: 1, health: 7, initiative: 7, cost: { gold: 19 }, abilities: [], abilityText: "[unit_passive] Immune to Magic Arrows. This unit deals elemental damage." },
+    wikiUrl: "https://en.homm3bg.wiki/units/magic_elementals/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Conflux unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/magic_elementals/"
+    }
+  },
+  "neutral.titans": {
+    id: "neutral.titans",
+    name: "Titans",
+    faction: "neutral",
+    tier: "azure",
+    type: "ranged",
+    neutral: { attack: 6, defense: 2, health: 10, initiative: 10, cost: { gold: 39 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units. [unit_attack] When attacking Black Dragons , this unit gains +2 [attack] ." },
+    wikiUrl: "https://en.homm3bg.wiki/units/titans/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Tower unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/titans/"
+    }
+  },
+  "neutral.hydras": {
+    id: "neutral.hydras",
+    name: "Hydras",
+    faction: "neutral",
+    tier: "azure",
+    type: "ground",
+    neutral: { attack: 7, defense: 3, health: 8, initiative: 5, cost: { gold: 40 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack. This unit attacks up to 2 adjacent enemy units." },
+    wikiUrl: "https://en.homm3bg.wiki/units/hydras/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Fortress unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/hydras/"
+    }
+  },
+  "neutral.phoenixes": {
+    id: "neutral.phoenixes",
+    name: "Phoenixes",
+    faction: "neutral",
+    tier: "azure",
+    type: "flying",
+    neutral: { attack: 6, defense: 2, health: 7, initiative: 12, cost: { gold: 32 }, abilities: [], abilityText: "[unit_passive] Once per Combat, when this unit's [health_points] drops to 0, set it to 1 instead. [unit_passive] Immune to Fire Magic [spell] ." },
+    wikiUrl: "https://en.homm3bg.wiki/units/phoenixes/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Conflux unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/phoenixes/"
+    }
+  },
+  "neutral.rust_dragons": {
+    id: "neutral.rust_dragons",
+    name: "Rust Dragons",
+    faction: "neutral",
+    tier: "azure",
+    type: "flying",
+    neutral: { attack: 7, defense: 3, health: 10, initiative: 17, cost: { gold: 38, valuables: 1 }, abilities: [], abilityText: "1 [valuables] [unit_attack] On a \"-1\" result on the Attack die , decrease the target's [defense] by 2 — to a minimum of 0." },
+    wikiUrl: "https://en.homm3bg.wiki/units/rust_dragons/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Dungeon unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/rust_dragons/"
+    }
+  },
+  "neutral.gold_dragons": {
+    id: "neutral.gold_dragons",
+    name: "Gold Dragons",
+    faction: "neutral",
+    tier: "azure",
+    type: "flying",
+    neutral: { attack: 6, defense: 3, health: 9, initiative: 10, cost: { gold: 42 }, abilities: [], abilityText: "[unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 3 [attack] ." },
+    wikiUrl: "https://en.homm3bg.wiki/units/gold_dragons/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Neutral Rampart unit. Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/gold_dragons/"
     }
   },
 };

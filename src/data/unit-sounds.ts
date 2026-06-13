@@ -100,7 +100,16 @@ const creatureVoices: Record<string, string> = {
   magi: "mage",
   energy_elementals: "energy-elemental",
   fire_elementals: "fire-elemental",
-  magma_elementals: "magma-elemental"
+  magma_elementals: "magma-elemental",
+  // Gold / azure neutral guards. (gold_dragons already maps above, shared with
+  // the Rampart Gold Dragons — the neutral twin reuses that voice.)
+  nagas: "naga",
+  wyverns: "wyvern",
+  magic_elementals: "magic-elemental",
+  titans: "titan",
+  hydras: "hydra",
+  phoenixes: "phoenix",
+  rust_dragons: "rust-dragon"
 };
 
 /**
