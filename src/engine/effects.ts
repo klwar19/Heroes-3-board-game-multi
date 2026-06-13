@@ -42,7 +42,9 @@ export const implementedCardEffectTypes = [
   "CANCEL_LETHAL_ATTACK",
   "CONTINUE_NEUTRAL_FREE",
   "EARTHQUAKE",
-  "SIEGE_DEMOLISH"
+  "SIEGE_DEMOLISH",
+  "SUMMON_ELEMENTAL",
+  "GRANT_ELEMENTAL_DAMAGE"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {
@@ -440,6 +442,15 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "CANCEL_LETHAL_ATTACK") {
     return `cancel a killing blow on your ${card.effect.grade} unit`;
+  }
+
+  if (card.effect.type === "SUMMON_ELEMENTAL") {
+    return "on a chosen empty space: Power 2 summons a Few, Power 4 a Pack";
+  }
+
+  if (card.effect.type === "GRANT_ELEMENTAL_DAMAGE") {
+    const named = card.effect.targetUnitName ? `your ${card.effect.targetUnitName}` : "the unit";
+    return `${named} deals elemental damage this Combat`;
   }
 
   return card.kind;

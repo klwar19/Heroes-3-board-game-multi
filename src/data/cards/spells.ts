@@ -407,6 +407,108 @@ export const spellCards: CardLibrary = {
     source: spellSource("town_portal")
   },
 
+  // ---- Summon Elemental (Conflux Expert spells) -------------------------
+  // Activation spells cast during your own unit's activation. On a chosen
+  // empty space, Power 2 summons a Few and Power 4 a Pack of the school's
+  // Elemental. The summoned unit joins the combat at once and stays in your
+  // army afterwards — just like the Pit Lords' Demons.
+  "spell.summon_air_elemental": {
+    id: "spell.summon_air_elemental",
+    name: "Summon Air Elemental",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["air"],
+    tags: [
+      "spell",
+      "expert",
+      "air",
+      "Activation: On a chosen empty space — Power 0: no effect; Power 2: Summon a Few of Air Elementals; Power 4: Summon a Pack of Air Elementals."
+    ],
+    power: 0,
+    target: { type: "empty-space" },
+    effect: { type: "SUMMON_ELEMENTAL", unitDefId: "neutral.air_elementals" },
+    assets: {
+      cardImage: "/assets/spells-summon_air_elemental.webp",
+      imageAlt: "Summon Air Elemental card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("summon_air_elemental")
+  },
+  "spell.summon_earth_elemental": {
+    id: "spell.summon_earth_elemental",
+    name: "Summon Earth Elemental",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["earth"],
+    tags: [
+      "spell",
+      "expert",
+      "earth",
+      "Activation: On a chosen empty space — Power 0: no effect; Power 2: Summon a Few of Earth Elementals; Power 4: Summon a Pack of Earth Elementals."
+    ],
+    power: 0,
+    target: { type: "empty-space" },
+    effect: { type: "SUMMON_ELEMENTAL", unitDefId: "neutral.earth_elementals" },
+    assets: {
+      cardImage: "/assets/spells-summon_earth_elemental.webp",
+      imageAlt: "Summon Earth Elemental card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("summon_earth_elemental")
+  },
+  "spell.summon_fire_elemental": {
+    id: "spell.summon_fire_elemental",
+    name: "Summon Fire Elemental",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["fire"],
+    tags: [
+      "spell",
+      "expert",
+      "fire",
+      "Activation: On a chosen empty space — Power 0: no effect; Power 2: Summon a Few of Fire Elementals; Power 4: Summon a Pack of Fire Elementals."
+    ],
+    power: 0,
+    target: { type: "empty-space" },
+    effect: { type: "SUMMON_ELEMENTAL", unitDefId: "neutral.fire_elementals" },
+    assets: {
+      cardImage: "/assets/spells-summon_fire_elemental.webp",
+      imageAlt: "Summon Fire Elemental card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("summon_fire_elemental")
+  },
+  "spell.summon_water_elemental": {
+    id: "spell.summon_water_elemental",
+    name: "Summon Water Elemental",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["water"],
+    tags: [
+      "spell",
+      "expert",
+      "water",
+      "Activation: On a chosen empty space — Power 0: no effect; Power 2: Summon a Few of Water Elementals; Power 4: Summon a Pack of Water Elementals."
+    ],
+    power: 0,
+    target: { type: "empty-space" },
+    effect: { type: "SUMMON_ELEMENTAL", unitDefId: "neutral.water_elementals" },
+    assets: {
+      cardImage: "/assets/spells-summon_water_elemental.webp",
+      imageAlt: "Summon Water Elemental card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("summon_water_elemental")
+  },
+
   // ---- Not yet implemented spells (library entries only, not in decks) ----
   "spell.chain_lightning": notImplementedSpell(
     "chain_lightning",
@@ -594,7 +696,11 @@ export const spellDeckLegacy: string[] = [
   "spell.town_portal",
   "spell.town_portal",
   "spell.earthquake",
-  "spell.resurrection"
+  "spell.resurrection",
+  "spell.summon_air_elemental",
+  "spell.summon_earth_elemental",
+  "spell.summon_fire_elemental",
+  "spell.summon_water_elemental"
 ];
 
 /** BINH split decks. */
@@ -639,5 +745,9 @@ export const spellDeckBinhExpert: string[] = [
   "spell.prayer",
   "spell.town_portal",
   "spell.town_portal",
-  "spell.resurrection"
+  "spell.resurrection",
+  "spell.summon_air_elemental",
+  "spell.summon_earth_elemental",
+  "spell.summon_fire_elemental",
+  "spell.summon_water_elemental"
 ];

@@ -92,6 +92,8 @@ const creatureVoices: Record<string, string> = {
   sprites: "sprite",
   dragon_flies: "fire-dragon-fly",
   air_elementals: "air-elemental",
+  earth_elementals: "earth-elemental",
+  water_elementals: "water-elemental",
   ice_elementals: "ice-elemental",
   storm_elementals: "storm-elemental",
   basilisks: "basilisk",

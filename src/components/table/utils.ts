@@ -27,7 +27,13 @@ export function unitName(state: GameState, unitId: string): string {
 }
 
 export function targetName(state: GameState, target: TargetRef): string {
-  return target.type === "unit" ? unitName(state, target.unitId) : "no target";
+  if (target.type === "unit") {
+    return unitName(state, target.unitId);
+  }
+  if (target.type === "space") {
+    return getBattlefieldLabel(target.position);
+  }
+  return "no target";
 }
 
 export function cardName(cardId: string): string {
@@ -316,13 +322,13 @@ export function actionKey(action: GameAction): string {
 export type CardBoardAction = Extract<GameAction, { type: "CAST_SPELL" | "PLAY_CARD" }>;
 
 export type BoardTargetCardAction = CardBoardAction & {
-  target: { type: "unit"; unitId: string };
+  target: { type: "unit"; unitId: string } | { type: "space"; position: number };
 };
 
 export function isBoardTargetCardAction(action: GameAction): action is BoardTargetCardAction {
   return (
     (action.type === "CAST_SPELL" || action.type === "PLAY_CARD") &&
-    Boolean(action.target && action.target.type === "unit")
+    Boolean(action.target && (action.target.type === "unit" || action.target.type === "space"))
   );
 }
 

@@ -23,7 +23,8 @@ export {
   getActiveAttackBonus,
   getActiveDefenseBonus,
   getAttackRerollEffects,
-  makeActiveEffect
+  makeActiveEffect,
+  unitDealsElementalDamage
 } from "./active-effects";
 export {
   cardCanBoostPower,

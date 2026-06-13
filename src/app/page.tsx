@@ -854,6 +854,12 @@ export default function Home() {
               const plan = spellFxPlans[event.spellCardId];
               if (plan && event.target.type === "unit") {
                 queueBoardFx(plan, event.id, event.playerId, event.target.unitId);
+              } else if (plan?.sound && event.target.type === "space") {
+                // Summon Elemental resolves on an empty space — no unit to
+                // anchor board FX on, so play the cast sound on the timeline.
+                const soundKey = plan.sound;
+                const at = timeline;
+                window.setTimeout(() => playLibrarySound(soundKey), at);
               }
               break;
             }
