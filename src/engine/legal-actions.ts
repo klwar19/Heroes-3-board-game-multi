@@ -35,6 +35,7 @@ import {
 } from "./battlefield";
 import { getPermanentCardIds, getPermanentSchoolBonus, warMachinesForSale } from "./permanents";
 import { getDemolishAbility, isArrowTowerUnit, siegeBlockedPositions } from "./siege";
+import { canPlaceTransformOn } from "./unit-transforms";
 import { SHARED_DECK_IDS } from "./decks";
 import { expertUsesAvailable, getRuleset, spellLimitFor, wisdomGoldDiscount, wisdomSearchCount } from "./ruleset";
 import type {
@@ -691,8 +692,7 @@ function getTransformTargets(
       (unit) =>
         unit.controllerId === playerId &&
         isUnitAlive(unit) &&
-        unit.name === effect.targetUnitName &&
-        (effect.targetVariants as string[]).includes(unit.variant)
+        canPlaceTransformOn(unit.name, unit.variant, unit.transforms, effect)
     )
     .map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
 }
@@ -775,6 +775,11 @@ function addPlayableCardActions(
           action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target }
         });
       }
+      continue;
+    }
+
+    // Necromancy is a map ability played after a combat win, never during one.
+    if (card.effect.type === "NECROMANCY_REINFORCE") {
       continue;
     }
 
@@ -1060,6 +1065,44 @@ function addTurnCardActions(
 
     if (card.effect.type === "CHOOSE_ONE") {
       addOptionPlays(actions, state, playerId, card, cardId, "map", cards);
+      continue;
+    }
+
+    // Necromancy: playable on the map only in the window after winning a
+    // Combat other than a Quick Combat, and only by a Necropolis hero.
+    if (card.effect.type === "NECROMANCY_REINFORCE") {
+      if (player.necromancyWindow && player.factionId === "necropolis") {
+        const modes: CardPlayMode[] = expertUsesAvailable(player) > 0 ? ["basic", "expert"] : ["basic"];
+        for (const mode of modes) {
+          actions.push({
+            label: `Play ${card.name}${mode === "expert" ? " (expert)" : ""}`,
+            action: { type: "PLAY_CARD", playerId, cardId, mode, target: { type: "none" } }
+          });
+        }
+      }
+      continue;
+    }
+
+    // Sandro's Cloak: place the specialty card on a matching unit card during
+    // your turn (it rides into the next combat).
+    if (card.effect.type === "TRANSFORM_UNIT") {
+      const effectDef = card.effect;
+      for (const armyUnit of player.army) {
+        const def = coreUnitDefinitions[armyUnit.unitDefId];
+        if (def && canPlaceTransformOn(def.name, armyUnit.side, armyUnit.transforms, effectDef)) {
+          actions.push({
+            label: `Place ${card.name} on ${def.name}`,
+            action: {
+              type: "PLAY_CARD",
+              playerId,
+              cardId,
+              mode: "basic",
+              target: { type: "none" },
+              armyUnitId: armyUnit.id
+            }
+          });
+        }
+      }
       continue;
     }
 

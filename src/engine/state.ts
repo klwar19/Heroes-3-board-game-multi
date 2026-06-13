@@ -237,8 +237,11 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Sandro's Cloak: the specialty card is placed on a matching unit and
-       * replaces its printed statistics for the rest of the combat.
+       * Sandro's Cloak: the specialty card is physically placed on a matching
+       * unit card and replaces its printed statistics (and silences its
+       * printed abilities) until the covering card is defeated — across
+       * combats. Defeat discards the specialty card and reveals whatever is
+       * under it with the excess damage.
        */
       type: "TRANSFORM_UNIT";
       targetUnitName: string;
@@ -249,6 +252,20 @@ export type EffectDefinition =
       health: number;
       initiative: number;
       cardImage?: string;
+      /**
+       * Cloak VI ("Legion"): the card may be placed on Few, Pack or even a
+       * Horde, always stays on top of the stack, and the unit under it may
+       * still be reinforced/upgraded while the Legion's statistics apply.
+       */
+      alwaysOnTop?: boolean;
+    }
+  | {
+      /**
+       * Necromancy: play after winning a Combat (never a Quick Combat) —
+       * Reinforce a bronze or silver unit (expert: any unit) for half the
+       * gold cost, rounded down. Necropolis heroes only.
+       */
+      type: "NECROMANCY_REINFORCE";
     }
   | {
       type: "ADD_SPELL_POWER";
@@ -626,6 +643,8 @@ export type GameAction =
       optionIndex?: number;
       /** Cards from hand paying the option's printed discard/remove cost. */
       costCardIds?: CardId[];
+      /** Map plays of specialty transforms: the army unit card to cover. */
+      armyUnitId?: string;
     }
   | {
       type: "ATTACK_UNIT";
@@ -1027,6 +1046,20 @@ export type GameEvent =
       unitId: UnitId;
       playerId: PlayerId;
       unitName: string;
+      excessDamage: number;
+    }
+  | {
+      /**
+       * A specialty card covering a unit (Sandro's Cloak) ran out of health:
+       * it goes to its owner's discard pile and the card under it is
+       * revealed with the excess damage.
+       */
+      id: string;
+      type: "SPECIALTY_CARD_DEFEATED";
+      unitId: UnitId;
+      playerId: PlayerId;
+      cardId: CardId;
+      revealedName: string;
       excessDamage: number;
     }
   | {
@@ -1639,12 +1672,36 @@ export type TurnState = {
   observingPlayerId: PlayerId | null;
 };
 
+/**
+ * A hero-specialty card physically covering a unit card (Sandro's Cloak of
+ * the Undead King): its statistics replace the unit's until defeated. Stored
+ * bottom-to-top — the LAST entry is the card on top whose statistics apply.
+ */
+export type UnitTransformState = {
+  /** The specialty card placed on the unit (discarded when defeated). */
+  cardId: CardId;
+  name: string;
+  attack: number;
+  defense: number;
+  health: number;
+  initiative: number;
+  cardImage?: string;
+  /** Cloak VI: stays on top even when more upgrades land underneath. */
+  alwaysOnTop?: boolean;
+};
+
 export type ArmyUnitState = {
   /** Stable instance id of this unit card in the player's unit deck. */
   id: string;
   unitDefId: string;
   /** "neutral": a single-sided Neutral card recruited via Portal of Summoning. */
   side: "few" | "pack" | "neutral";
+  /**
+   * Specialty cards stacked on this unit card (Sandro's Cloak), bottom-up.
+   * The top entry's statistics replace the printed side between and during
+   * combats until that covering card is defeated.
+   */
+  transforms?: UnitTransformState[];
 };
 
 export type TownTokenState = {
@@ -1735,6 +1792,12 @@ export type PlayerState = {
    * casting is still on the table.
    */
   ongoingCards?: { cardId: CardId; effectIds: string[]; returnTo: "discard" | "hand" }[];
+  /**
+   * Necromancy timing window: set when this player wins a Combat other than
+   * a Quick Combat, cleared by the next movement / town action / turn end —
+   * the card may only be played while the window is open.
+   */
+  necromancyWindow?: boolean;
 };
 
 /**
@@ -1785,6 +1848,12 @@ export type CombatUnitState = {
   /** Combat tokens currently on the card (attack/weakness/corrosion/paralysis). */
   tokens?: CombatTokenState[];
   abilities: string[];
+  /**
+   * Specialty cards covering the unit card (Sandro's Cloak), bottom-up; the
+   * top entry's statistics are the unit's current statistics. Printed
+   * abilities stay inactive while a transform is on top.
+   */
+  transforms?: UnitTransformState[];
   /** Adventure mode: unit definition this combat card represents. */
   unitDefId?: string;
   /** Adventure mode: army card instance this unit maps back to. */
@@ -2171,6 +2240,8 @@ export type VisitStep =
       /** Saplings / settlement perks: reinforce with only the gold halved. */
       type: "REINFORCE_HALF_GOLD";
       armyUnitId: string;
+      /** Necromancy: "half the gold cost (rounded down)" instead of up. */
+      roundDown?: boolean;
     };
 
 export type AstrologersState = {

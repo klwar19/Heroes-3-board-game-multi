@@ -1385,6 +1385,16 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
       fieldId: field.spaceId,
       difficulty
     });
+
+    // Quick Combat is still a win against Neutral Units: the Freelancer's
+    // Guild bounty fires. The rulebook only withholds the Combat's own
+    // rewards (experience) and — per the card — the Necromancy window.
+    const guildId = findTownBuildingWithEffect(state, playerId, "FREELANCERS_GUILD");
+    const guild = guildId ? coreBuildingDefinitions[guildId] : null;
+    if (guild?.effect?.type === "FREELANCERS_GUILD") {
+      gainResources(state, playerId, { gold: guild.effect.winGold }, "Freelancer's Guild bounty");
+    }
+
     field.everFlagged = field.everFlagged || false;
     beginFieldVisit(state, hero.id, field.spaceId, false);
     return;
@@ -1975,6 +1985,14 @@ export function finalizeAdventureCombat(state: GameState): void {
       }
     } else if (armyUnit.side !== "neutral") {
       armyUnit.side = unit.variant === "pack" ? "pack" : "few";
+      // Carry the surviving specialty stack (Sandro's Cloak) back to the
+      // unit card so it stays on across combats; a defeated Cloak already
+      // peeled off into the discard pile mid-combat.
+      if (unit.transforms?.length) {
+        armyUnit.transforms = unit.transforms.map((entry) => ({ ...entry }));
+      } else {
+        delete armyUnit.transforms;
+      }
     }
   }
 
@@ -2000,6 +2018,14 @@ export function finalizeAdventureCombat(state: GameState): void {
         const guild = guildId ? coreBuildingDefinitions[guildId] : null;
         if (guild?.effect?.type === "FREELANCERS_GUILD") {
           gainResources(state, playerId, { gold: guild.effect.winGold }, "Freelancer's Guild bounty");
+        }
+
+        // Necromancy window: "Play after winning Combat other than Quick
+        // Combat." A fought neutral win opens it; Quick Combat (handled in
+        // startNeutralEncounter) never does.
+        const winner = state.players[playerId];
+        if (winner) {
+          winner.necromancyWindow = true;
         }
       } else if (outcome.reason === "retreat") {
         const returnTo = adventure.lastVisitedField[hero.id];
@@ -2064,6 +2090,11 @@ export function finalizeAdventureCombat(state: GameState): void {
     if (playerId !== NEUTRAL_PLAYER_ID) {
       restoreStartingArmyIfEmpty(state, playerId);
     }
+  }
+
+  // Necromancy window opens for the winner of a fought PvP combat too.
+  if (winnerId !== NEUTRAL_PLAYER_ID && state.players[winnerId]) {
+    state.players[winnerId].necromancyWindow = true;
   }
 
   state.combat = null;
@@ -2988,6 +3019,8 @@ export function endTurnAdventure(state: GameState, action: Extract<GameAction, {
   const player = state.players[action.playerId];
   if (player) {
     player.canMulligan = false;
+    // The after-combat Necromancy window closes when the turn ends.
+    player.necromancyWindow = false;
     // The second negative morale token: the hand is discarded at turn end.
     if (player.discardHandAtTurnEnd) {
       const discarded = player.hand.length;

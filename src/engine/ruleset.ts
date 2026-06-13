@@ -31,7 +31,8 @@ export const RULESET_DESCRIPTIONS: Record<GameRuleset, string> = {
   binh:
     "BINH house rules: Basic/Expert Spell decks and Minor/Major/Relic Artifact decks with level and map gating, " +
     "Wisdom expert −3 gold, Estates 2/4 gold, Few Griffins 3 attack, Pack Griffins 1 defense, Pack Marksmen 3 HP, " +
-    "and Pack Cerberi attack every adjacent enemy with full separate attacks."
+    "Pack Cerberi attack every adjacent enemy with full separate attacks, and Sandro's Horde/Legion of Skeletons " +
+    "fight with 3 HP."
 };
 
 // ---------------------------------------------------------------------------
@@ -78,6 +79,19 @@ export function applyUnitSideRules(
   }
 
   return definition;
+}
+
+/**
+ * BINH house rule for Sandro's Cloak of the Undead King: the skeleton
+ * upgrades — Horde of Skeletons (level I) and Legion of Skeletons (level
+ * VI) — fight with 3 HP instead of the printed 2. The level IV Horde of
+ * Zombies keeps its printed 3 HP in both modes.
+ */
+export function specialtyTransformHealth(ruleset: GameRuleset, specialtyCardId: string, printedHealth: number): number {
+  if (ruleset === "binh" && (specialtyCardId === "specialty.sandro.1" || specialtyCardId === "specialty.sandro.6")) {
+    return 3;
+  }
+  return printedHealth;
 }
 
 // ---------------------------------------------------------------------------

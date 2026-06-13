@@ -10,6 +10,7 @@ export const implementedCardEffectTypes = [
   "ADD_COMBAT_STAT",
   "TRIPLE_ATTACK_DIE",
   "TRANSFORM_UNIT",
+  "NECROMANCY_REINFORCE",
   "ADD_SPELL_POWER",
   "GAIN_MORALE",
   "CREATE_ACTIVE_EFFECT",
@@ -225,6 +226,10 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "TRANSFORM_UNIT") {
     return `place on ${card.effect.targetVariants.join("/")} ${card.effect.targetUnitName}: becomes ${card.effect.newName} (A${card.effect.attack} D${card.effect.defense} HP${card.effect.health} I${card.effect.initiative})`;
+  }
+
+  if (card.effect.type === "NECROMANCY_REINFORCE") {
+    return "after winning a Combat (not Quick Combat): reinforce a bronze/silver unit (expert: any) for half the gold cost, rounded down";
   }
 
   if (card.effect.type === "ADD_SPELL_POWER") {

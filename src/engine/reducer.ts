@@ -1,6 +1,19 @@
 import { cardLibrary } from "@/data/cards/library";
 import { sampleBuildings } from "@/data/towns/buildings";
-import { changeMorale, gainResources, getActiveAstrologersCard, getMainHero } from "./adventure";
+import { coreUnitDefinitions } from "@/data/factions/units";
+import {
+  changeMorale,
+  gainResources,
+  getActiveAstrologersCard,
+  getMainHero,
+  queueNecromancyReinforce
+} from "./adventure";
+import {
+  applyUnitCurrentSide,
+  canPlaceTransformOn,
+  insertUnitTransform,
+  makeUnitTransformState
+} from "./unit-transforms";
 import {
   blacksmithAction,
   buildStructureAdventure,
@@ -3078,6 +3091,88 @@ function playReactions(
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
 }
 
+/**
+ * Sandro's Cloak of the Undead King: the specialty card leaves the hand and
+ * is physically placed on a matching unit card, replacing its statistics
+ * until that covering card is defeated. Placeable during your own combat
+ * (on a combat unit) or on the map (on an army unit card). The card is not
+ * discarded now — markUnitRemovedIfNeeded discards it when it is defeated.
+ */
+function playTransformCard(
+  state: GameState,
+  action: Extract<GameAction, { type: "PLAY_CARD" }>,
+  card: CardDefinition,
+  effect: Extract<ConcreteEffect, { type: "TRANSFORM_UNIT" }>
+): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+  const ruleset = getRuleset(state);
+  const entry = makeUnitTransformState(effect, card.id, ruleset);
+
+  const removeFromHand = () => {
+    const index = player.hand.indexOf(action.cardId);
+    if (index === -1) {
+      throw new Error(`${card.name} is not in your hand.`);
+    }
+    player.hand.splice(index, 1);
+  };
+
+  if (state.combat) {
+    const target = action.target?.type === "unit" ? action.target : undefined;
+    const unit = target ? state.combat.units[target.unitId] : undefined;
+    if (!unit || unit.controllerId !== action.playerId) {
+      throw new Error(`${card.name} must be placed on one of your units.`);
+    }
+    if (!canPlaceTransformOn(unit.name, unit.variant, unit.transforms, effect)) {
+      throw new Error(`${card.name} cannot be placed on ${unit.cardName}.`);
+    }
+
+    removeFromHand();
+    unit.transforms = insertUnitTransform(unit.transforms, entry);
+    applyUnitCurrentSide(unit, ruleset);
+
+    // Mirror onto the backing army card so the Cloak rides out of the combat.
+    const armyUnit = player.army.find((candidate) => candidate.id === unit.armyUnitId);
+    if (armyUnit) {
+      armyUnit.transforms = insertUnitTransform(armyUnit.transforms, { ...entry });
+    }
+
+    appendEvent(state, {
+      type: "UNIT_TRANSFORMED",
+      unitId: unit.id,
+      playerId: action.playerId,
+      newName: effect.newName,
+      byCardId: card.id
+    });
+    return;
+  }
+
+  // Map placement: cover an army unit card.
+  const armyUnit = action.armyUnitId
+    ? player.army.find((candidate) => candidate.id === action.armyUnitId)
+    : undefined;
+  if (!armyUnit) {
+    throw new Error(`${card.name} must be placed on one of your unit cards.`);
+  }
+  const def = coreUnitDefinitions[armyUnit.unitDefId];
+  if (!def || !canPlaceTransformOn(def.name, armyUnit.side, armyUnit.transforms, effect)) {
+    throw new Error(`${card.name} cannot be placed on that unit card.`);
+  }
+
+  removeFromHand();
+  armyUnit.transforms = insertUnitTransform(armyUnit.transforms, entry);
+
+  appendEvent(state, {
+    type: "UNIT_TRANSFORMED",
+    unitId: armyUnit.id,
+    playerId: action.playerId,
+    newName: effect.newName,
+    byCardId: card.id
+  });
+}
+
 function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CARD" }>, cards: CardLibrary): void {
   const card = cards[action.cardId];
   if (!card) {
@@ -3116,6 +3211,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       movementLeft: state.heroes[combat.context.heroId]?.movementPoints ?? 0
     });
     advanceCombatRound(state, action.playerId);
+    return;
+  }
+
+  // Sandro's Cloak: the specialty card leaves the hand and is physically
+  // placed on a matching unit card, replacing its statistics until defeated.
+  if (card.effect.type === "TRANSFORM_UNIT") {
+    playTransformCard(state, action, card, card.effect);
     return;
   }
 
@@ -3272,36 +3374,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     changeMorale(state, action.playerId, effect.amount);
   }
 
-  if (effect.type === "TRANSFORM_UNIT" && target && state.combat) {
-    const unit = state.combat.units[target.unitId];
-    if (
-      !unit ||
-      unit.controllerId !== action.playerId ||
-      unit.name !== effect.targetUnitName ||
-      !(effect.targetVariants as string[]).includes(unit.variant)
-    ) {
-      throw new Error(`${card.name} must be placed on a matching unit.`);
-    }
-
-    // The specialty card covers the unit card and replaces its statistics.
-    unit.name = effect.newName;
-    unit.cardName = effect.newName;
-    unit.attack = effect.attack;
-    unit.defense = effect.defense;
-    unit.maxHealth = effect.health;
-    unit.initiative = effect.initiative;
-    unit.damage = Math.min(unit.damage, effect.health);
-    if (unit.assets && effect.cardImage) {
-      unit.assets.cardImage = effect.cardImage;
-    }
-
-    appendEvent(state, {
-      type: "UNIT_TRANSFORMED",
-      unitId: unit.id,
-      playerId: action.playerId,
-      newName: effect.newName,
-      byCardId: card.id
-    });
+  if (effect.type === "NECROMANCY_REINFORCE") {
+    // Playing the card consumes the after-combat window.
+    state.players[action.playerId].necromancyWindow = false;
+    queueNecromancyReinforce(state, action.playerId, mode);
   }
 
   if (effect.type === "GAIN_RESOURCES") {

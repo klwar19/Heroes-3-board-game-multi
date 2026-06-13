@@ -521,10 +521,16 @@ export const adventureCards: CardLibrary = {
     name: "Cloak of the Undead King I",
     kind: "hero-specialty",
     timing: "instant",
-    phaseLimit: ["combat"],
-    tags: ["hero-specialty", "sandro", "transform"],
+    tags: [
+      "hero-specialty",
+      "sandro",
+      "transform",
+      "Put this card on the Pack of Skeletons Unit card; it replaces the card's statistics until defeated. (BINH: 3 HP.)"
+    ],
     // Printed card: place onto a Pack of Skeletons, replacing its statistics
-    // with the Horde of Skeletons. Discard when its HP runs out.
+    // with the Horde of Skeletons (A3 D1 HP2 I6; BINH house rule HP3). The
+    // card stays on the unit across combats; when its HP runs out it is
+    // discarded and the Pack underneath is revealed with the excess damage.
     effect: {
       type: "TRANSFORM_UNIT",
       targetUnitName: "Skeletons",
@@ -533,7 +539,8 @@ export const adventureCards: CardLibrary = {
       attack: 3,
       defense: 1,
       health: 2,
-      initiative: 6
+      initiative: 6,
+      cardImage: "/assets/hero_specialties-sandro-1.webp"
     },
     assets: {
       cardImage: "/assets/hero_specialties-sandro-1.webp",
@@ -542,18 +549,71 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("sandro")
   },
-  "specialty.sandro.4": notImplementedSpecialty(
-    "sandro",
-    "Cloak of the Undead King",
-    4,
-    "Replaces the Pack of Zombies statistics with Horde of Zombies (A4 D1 HP3 I5)."
-  ),
-  "specialty.sandro.6": notImplementedSpecialty(
-    "sandro",
-    "Cloak of the Undead King",
-    6,
-    "Replaces the Skeletons statistics with Legion of Skeletons (A4 D1 HP2 I6)."
-  ),
+  "specialty.sandro.4": {
+    id: "specialty.sandro.4",
+    name: "Cloak of the Undead King IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "sandro",
+      "transform",
+      "Put this card on the Pack of Zombies Unit card; it replaces the card's statistics until defeated. The Pack's printed abilities are inactive while covered."
+    ],
+    // Pack of Zombies only -> Horde of Zombies (A4 D1 HP3 I5). The Pack's
+    // printed abilities are inactive while the Horde is on top (wiki FAQ).
+    effect: {
+      type: "TRANSFORM_UNIT",
+      targetUnitName: "Zombies",
+      targetVariants: ["pack"],
+      newName: "Horde of Zombies",
+      attack: 4,
+      defense: 1,
+      health: 3,
+      initiative: 5,
+      cardImage: "/assets/hero_specialties-sandro-4.webp"
+    },
+    assets: {
+      cardImage: "/assets/hero_specialties-sandro-4.webp",
+      imageAlt: "Cloak of the Undead King level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("sandro")
+  },
+  "specialty.sandro.6": {
+    id: "specialty.sandro.6",
+    name: "Cloak of the Undead King VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "sandro",
+      "transform",
+      "Put this card on the Skeletons Unit card (Few, Pack or even a Horde); it becomes a Legion of Skeletons. The Legion stays on top — the Skeletons under it may still be reinforced or upgraded — and its statistics apply until defeated. (BINH: 3 HP.)"
+    ],
+    // Legion of Skeletons (A4 D1 HP2 I6; BINH house rule HP3). Placeable on
+    // Few, Pack or even a Horde of Skeletons; always stays on top while the
+    // card under it may still be reinforced (Few->Pack) or covered by the
+    // level I Horde. Defeat reveals whatever is underneath (wiki FAQ).
+    effect: {
+      type: "TRANSFORM_UNIT",
+      targetUnitName: "Skeletons",
+      targetVariants: ["few", "pack"],
+      newName: "Legion of Skeletons",
+      attack: 4,
+      defense: 1,
+      health: 2,
+      initiative: 6,
+      cardImage: "/assets/hero_specialties-sandro-6.webp",
+      alwaysOnTop: true
+    },
+    assets: {
+      cardImage: "/assets/hero_specialties-sandro-6.webp",
+      imageAlt: "Cloak of the Undead King level VI specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("sandro")
+  },
   "specialty.gelu.1": mightSpecialtyOne("gelu", "Sharpshooters", "Sharpshooters"),
   "specialty.gelu.4": notImplementedSpecialty(
     "gelu",
