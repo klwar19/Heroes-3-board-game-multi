@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { assetUrl } from "@/lib/asset-url";
 import { Eye, Minus, Plus, RotateCcw, RotateCw, Shuffle, Trash2 } from "lucide-react";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { TILE_BACK_IMAGES } from "@/data/assets/homm-assets";
@@ -413,7 +414,7 @@ export function MapDesigner({
       artLayer.push(
         <image
           height={height}
-          href={TILE_BACK_IMAGES.starting}
+          href={assetUrl(TILE_BACK_IMAGES.starting)}
           key={`start-art-${index}`}
           opacity={0.85}
           preserveAspectRatio="none"
@@ -455,7 +456,7 @@ export function MapDesigner({
       artLayer.push(
         <image
           height={height}
-          href={art}
+          href={assetUrl(art)}
           key={`plan-art-${index}`}
           opacity={isDragging ? 0.3 : 1}
           preserveAspectRatio="none"
@@ -562,7 +563,7 @@ export function MapDesigner({
             <span
               aria-hidden="true"
               className="paletteThumb"
-              style={{ backgroundImage: `url(${TILE_BACK_IMAGES[entry.group]})` }}
+              style={{ backgroundImage: `url(${assetUrl(TILE_BACK_IMAGES[entry.group])})` }}
             />
             <span className="paletteNumeral">{entry.numeral}</span>
             <span className="paletteLabel">{entry.label}</span>
@@ -747,7 +748,7 @@ export function MapDesigner({
                       <img
                         alt={`Tile ${selectedTileDef.id}`}
                         className="designerTilePreview"
-                        src={selectedTileDef.assets.tileImage}
+                        src={assetUrl(selectedTileDef.assets.tileImage)}
                         style={{ transform: `rotate(${(selected.rotation ?? 0) * 60}deg)` }}
                       />
                     ) : null}
@@ -774,7 +775,7 @@ export function MapDesigner({
         <div className="designerDragGhost" style={{ left: drag.clientX, top: drag.clientY }}>
           <span
             className="paletteThumb"
-            style={{ backgroundImage: `url(${TILE_BACK_IMAGES[drag.group]})` }}
+            style={{ backgroundImage: `url(${assetUrl(TILE_BACK_IMAGES[drag.group])})` }}
           />
           <span>{planGroupLabel(drag)}</span>
         </div>

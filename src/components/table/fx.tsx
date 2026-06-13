@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { getDeckBack } from "@/data/decks";
 import { getFxSheet } from "@/data/fx";
@@ -90,7 +91,7 @@ function makeCardFaceElement(cardId: string | undefined): HTMLElement {
   const src = card?.assets?.cardImage;
   if (src) {
     const img = document.createElement("img");
-    img.src = src;
+    img.src = assetUrl(src);
     img.alt = card?.name ?? "card";
     img.className = "fxCardFace";
     return img;
@@ -105,7 +106,7 @@ function makeCardBackElement(deckId: string | undefined): HTMLElement {
   const back = getDeckBack(deckId);
   if (back.image) {
     const img = document.createElement("img");
-    img.src = back.image;
+    img.src = assetUrl(back.image);
     img.alt = back.label;
     img.className = "fxCardBack";
     return img;
@@ -272,7 +273,7 @@ async function runSprite(stage: HTMLElement, fxKey: string, at: string, soundKey
   sprite.className = "fxSprite";
   sprite.style.width = `${sheet.frameWidth}px`;
   sprite.style.height = `${sheet.frameHeight}px`;
-  sprite.style.backgroundImage = `url(${sheet.src})`;
+  sprite.style.backgroundImage = `url(${assetUrl(sheet.src)})`;
   if (sheet.opacity !== undefined) {
     sprite.style.opacity = String(sheet.opacity);
   }
@@ -352,7 +353,7 @@ async function runProjectile(stage: HTMLElement, cue: Extract<FxCue, { kind: "pr
   sprite.className = "fxSprite fxProjectile";
   sprite.style.width = `${sheet.frameWidth}px`;
   sprite.style.height = `${sheet.frameHeight}px`;
-  sprite.style.backgroundImage = `url(${sheet.src})`;
+  sprite.style.backgroundImage = `url(${assetUrl(sheet.src)})`;
   sprite.style.left = `${from.x - sheet.frameWidth / 2}px`;
   sprite.style.top = `${from.y - sheet.frameHeight / 2}px`;
   stage.appendChild(sprite);
