@@ -70,15 +70,15 @@ export const TOWN_BUILDING_IMAGES: Record<string, Record<string, string>> = {
     cover_of_darkness: "/assets/town/necropolis_cover_of_darkness.gif"
   },
   dungeon: {
-    city_hall: "/assets/town/dungeon_city_hall_large.gif",
-    citadel: "/assets/town/dungeon_citadel_large.gif",
-    mage_guild: "/assets/town/dungeon_mage_guild_level_1_large.gif",
+    city_hall: "/assets/town/dungeon_city_hall_hd.webp",
+    citadel: "/assets/town/dungeon_citadel_hd.webp",
+    mage_guild: "/assets/town/dungeon_mage_guild_hd.webp",
     blacksmith: "/assets/town/dungeon_blacksmith_large.gif",
-    dwelling_bronze: "/assets/town/dungeon_warren.gif",
-    dwelling_silver: "/assets/town/dungeon_labyrinth.gif",
-    dwelling_gold: "/assets/town/dungeon_dragon_cave.gif",
-    portal_of_summoning: "/assets/town/dungeon_portal_of_summoning.gif",
-    mana_vortex: "/assets/town/dungeon_mana_vortex.gif"
+    dwelling_bronze: "/assets/town/dungeon_warrens_hd.webp",
+    dwelling_silver: "/assets/town/dungeon_inner_labyrinths_hd.webp",
+    dwelling_gold: "/assets/town/dungeon_ancient_lairs_hd.webp",
+    portal_of_summoning: "/assets/town/dungeon_portal_of_summoning_hd.webp",
+    mana_vortex: "/assets/town/dungeon_mana_vortex_hd.webp"
   }
 };
 
