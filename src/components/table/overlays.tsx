@@ -112,7 +112,17 @@ export function ReactionTray({
     () =>
       legalActions
         .map((legal) => legal.action)
-        .filter((action): action is ReactionLegal => action.type === "PLAY_REACTION"),
+        .filter((action): action is ReactionLegal => action.type === "PLAY_REACTION" && !action.fromScroll),
+    [legalActions]
+  );
+
+  // Spell Scroll instants: one-click, power-locked, not in hand — kept apart
+  // from the hand-card batch tray.
+  const scrollReactions = useMemo(
+    () =>
+      legalActions
+        .map((legal) => legal.action)
+        .filter((action): action is ReactionLegal => action.type === "PLAY_REACTION" && Boolean(action.fromScroll)),
     [legalActions]
   );
 
@@ -315,7 +325,11 @@ export function ReactionTray({
   };
 
   const preview = selectionPreview(selections);
-  const passLabel = isAttackWindow ? "Done — roll the die!" : "Pass";
+  const passLabel = isAttackWindow
+    ? "Done — roll the die!"
+    : window.triggerEvent.type === "UNIT_LETHAL_HIT"
+      ? "Let it die"
+      : "Pass";
   const crownsOver = crownsSelected > crownsAvailable;
 
   return (
@@ -326,7 +340,7 @@ export function ReactionTray({
         <span>{triggerText}</span>
       </header>
       <div className="trayTiles">
-        {tiles.length === 0 && !fieldExpert && buildingBoosts.length === 0 ? (
+        {tiles.length === 0 && !fieldExpert && buildingBoosts.length === 0 && scrollReactions.length === 0 ? (
           <div className="trayEmpty">No playable instants — pass to continue.</div>
         ) : null}
         {buildingBoosts.map((legal) => (
@@ -335,6 +349,17 @@ export function ReactionTray({
               <strong>🏛 Town building</strong>
               <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                 {legal.label}
+              </button>
+            </div>
+          </div>
+        ))}
+        {scrollReactions.map((action) => (
+          <div className="trayTile scrollTile" key={JSON.stringify(action)}>
+            <CardFrame cardId={action.cardId} className="trayCardImage" />
+            <div className="trayTileBody">
+              <strong>📜 {cardName(action.cardId)} (Scroll)</strong>
+              <button className="trayInstant" onClick={() => onAction(action)} type="button">
+                Play at power 0
               </button>
             </div>
           </div>
@@ -1267,6 +1292,65 @@ export function CombatResultModal({
           <button className="commandButton ghost" onClick={() => setDismissed(true)} type="button">
             Keep looking at the battlefield
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** A1-style label for a battlefield square (4 columns, 5 rows). */
+function squareLabel(position: number): string {
+  return `${String.fromCharCode(65 + (position % 4))}${Math.floor(position / 4) + 1}`;
+}
+
+/**
+ * Neutral combat pacing pop-up: between guard walks the engine stops on
+ * `pendingNeutralStep`, the battlefield holds, and the attacking player clicks
+ * the enemy turn on. Everyone else just sees what the guard did.
+ */
+export function NeutralStepOverlay({
+  state,
+  viewerPlayerId,
+  legalActions,
+  onAction
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  legalActions: LegalAction[];
+  onAction: (action: GameAction) => void;
+}) {
+  const step = state.combat?.pendingNeutralStep;
+  if (!step) {
+    return null;
+  }
+
+  const guard = state.combat?.units[step.unitId];
+  const continueAction = legalActions.find((legal) => legal.action.type === "CONTINUE_NEUTRAL_STEP");
+  const attackerName = state.combat ? state.players[state.combat.attackerPlayerId]?.name : undefined;
+
+  return (
+    <div className="combatResultBackdrop neutralStepBackdrop" role="dialog" aria-label="Enemy turn">
+      <div className="combatResultModal neutralStepModal">
+        <header>
+          <Swords aria-hidden="true" size={18} />
+          <strong>Enemy turn</strong>
+        </header>
+        <p>
+          {step.name} {step.from === step.to ? "holds position" : `advances ${squareLabel(step.from)} → ${squareLabel(step.to)}`}.
+        </p>
+        {guard ? <small>The guard army keeps moving once you continue.</small> : null}
+        <div className="combatResultButtons">
+          {continueAction ? (
+            <button
+              className="commandButton primary"
+              onClick={() => onAction({ type: "CONTINUE_NEUTRAL_STEP", playerId: viewerPlayerId })}
+              type="button"
+            >
+              <Check aria-hidden="true" size={15} /> Continue
+            </button>
+          ) : (
+            <small className="neutralStepWaiting">Waiting for {attackerName ?? "the attacker"} to continue…</small>
+          )}
         </div>
       </div>
     </div>

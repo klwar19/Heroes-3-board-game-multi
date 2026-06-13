@@ -159,6 +159,20 @@ describe("Necromancy ability — after-combat window", () => {
     expect(during.length).toBeGreaterThan(0);
   });
 
+  it("cannot be played when it was drawn from the Ability deck on level-up", () => {
+    const state = startSandroGame();
+    state.players.p1.hand = ["ability.necromancy"];
+    state.players.p1.necromancyWindow = true;
+    // Same Necropolis hero, same open window — but this copy came out of the
+    // level-up Ability-deck search, so it is kept yet unplayable.
+    state.players.p1.deckDrawnAbilityCardIds = ["ability.necromancy"];
+
+    const plays = getLegalActions(state, "p1").filter(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.necromancy"
+    );
+    expect(plays).toHaveLength(0);
+  });
+
   it("is Necropolis-only — a Castle hero who holds it can never play it", () => {
     const state = startSandroGame();
     state.players.p2.hand = ["ability.necromancy"];

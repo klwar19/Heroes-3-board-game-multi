@@ -640,6 +640,23 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     boardScan: "/assets/heroes-necropolis-might-tamika.webp",
     source: heroSource("tamika")
   },
+  moandor: {
+    id: "moandor",
+    name: "Moandor",
+    faction: "necropolis",
+    class: "Death Knight",
+    type: "might",
+    startingStats: { attack: 1, defense: 2, power: 2, knowledge: 1 },
+    startingAbilityCardId: "ability.necromancy",
+    specialtyCardIds: {
+      1: "specialty.moandor.1",
+      4: "specialty.moandor.4",
+      6: "specialty.moandor.6"
+    },
+    portrait: "/assets/hero_boardart-moandor.webp",
+    boardScan: "/assets/heroes-necropolis-might-moandor.webp",
+    source: heroSource("moandor")
+  },
   gelu: {
     id: "gelu",
     name: "Gelu",
@@ -690,6 +707,23 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     portrait: "/assets/hero_boardart-xyron.webp",
     boardScan: "/assets/heroes-inferno-magic-xyron.webp",
     source: heroSource("xyron")
+  },
+  zydar: {
+    id: "zydar",
+    name: "Zydar",
+    faction: "inferno",
+    class: "Heretic",
+    type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 1 },
+    startingAbilityCardId: "ability.sorcery",
+    specialtyCardIds: {
+      1: "specialty.zydar.1",
+      4: "specialty.zydar.4",
+      6: "specialty.zydar.6"
+    },
+    portrait: "/assets/hero_boardart-zydar.webp",
+    boardScan: "/assets/heroes-inferno-magic-zydar.webp",
+    source: heroSource("zydar")
   },
   rashka: {
     id: "rashka",
@@ -886,7 +920,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Inferno",
     color: "#e07020",
     startingTileId: "S6",
-    heroes: ["xyron", "rashka"],
+    heroes: ["xyron", "rashka", "zydar"],
     buildings: buildingsOfFaction("inferno"),
     units: unitsOfFaction("inferno"),
     townImage: "/assets/towns-inferno-empty.webp",
@@ -908,7 +942,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Necropolis",
     color: "#7c4dbe",
     startingTileId: "S1",
-    heroes: ["sandro", "tamika"],
+    heroes: ["sandro", "tamika", "moandor"],
     buildings: buildingsOfFaction("necropolis"),
     units: unitsOfFaction("necropolis"),
     ignoresMorale: true,
@@ -931,16 +965,16 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
 /** Neutral unit definition ids grouped by tier, used to build the four neutral decks. */
 export const neutralUnitIdsByTier: Record<"bronze" | "silver" | "gold" | "azure", string[]> = {
   bronze: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && unit.tier === "bronze")
+    .filter((unit) => unit.faction === "neutral" && unit.tier === "bronze" && Boolean(unit.neutral))
     .map((unit) => unit.id),
   silver: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && unit.tier === "silver")
+    .filter((unit) => unit.faction === "neutral" && unit.tier === "silver" && Boolean(unit.neutral))
     .map((unit) => unit.id),
   gold: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && unit.tier === "gold")
+    .filter((unit) => unit.faction === "neutral" && unit.tier === "gold" && Boolean(unit.neutral))
     .map((unit) => unit.id),
   azure: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && unit.tier === "azure")
+    .filter((unit) => unit.faction === "neutral" && unit.tier === "azure" && Boolean(unit.neutral))
     .map((unit) => unit.id)
 };
 

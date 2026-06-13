@@ -918,6 +918,8 @@ function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
       return [{ type: "TAVERN" }];
     case "PRISON":
       return [{ type: "PRISON" }];
+    case "SPELL_SCROLL":
+      return [{ type: "SPELL_SCROLL", remaining: 2 }];
   }
 }
 
@@ -1853,6 +1855,78 @@ export function processPendingVisit(state: GameState): void {
         });
         break;
       }
+      case "SPELL_SCROLL": {
+        const player = state.players[visit.playerId];
+        if (!player) {
+          break;
+        }
+        // The scroll is created on the first draw and threaded through the
+        // follow-up steps so both spells land in the same scroll.
+        let scrollId = step.scrollId;
+        if (!scrollId) {
+          scrollId = `scroll_${nextEventNumber(state)}`;
+          player.scrolls = player.scrolls ?? [];
+          player.scrolls.push({ id: scrollId, spellCardIds: [] });
+        }
+
+        if (step.remaining <= 0) {
+          const scroll = player.scrolls?.find((candidate) => candidate.id === scrollId);
+          if (scroll && scroll.spellCardIds.length === 0) {
+            // No spells could be drawn (decks empty): drop the empty scroll.
+            player.scrolls = player.scrolls?.filter((candidate) => candidate.id !== scrollId);
+          } else if (scroll) {
+            appendEvent(state, {
+              type: "SPELL_SCROLL_GAINED",
+              playerId: visit.playerId,
+              scrollId,
+              spellCardIds: [...scroll.spellCardIds]
+            });
+          }
+          break;
+        }
+
+        const candidates = spellDeckCandidates(state);
+        if (candidates.length === 0) {
+          // Nothing left to draw — finish (the GAINED announcement above runs
+          // once remaining hits 0).
+          visit.steps.unshift({ type: "SPELL_SCROLL", remaining: 0, scrollId });
+          break;
+        }
+
+        const ordinal = step.remaining >= 2 ? "first" : "second";
+        const drawStepsFor = (deckId: string): VisitStep[] => [
+          { type: "DRAW_SCROLL_SPELL", deckId, scrollId: scrollId! }
+        ];
+
+        if (candidates.length === 1) {
+          visit.steps.unshift(
+            ...drawStepsFor(candidates[0]),
+            { type: "SPELL_SCROLL", remaining: step.remaining - 1, scrollId }
+          );
+        } else {
+          visit.steps.unshift(
+            {
+              type: "CHOOSE_ONE",
+              prompt: `Spell Scroll: draw the ${ordinal} spell from which Magic deck?`,
+              options: candidates.map((deckId) => ({
+                label: deckId === "spells-expert" ? "Expert Magic deck" : "Basic Magic deck",
+                steps: drawStepsFor(deckId)
+              }))
+            },
+            { type: "SPELL_SCROLL", remaining: step.remaining - 1, scrollId }
+          );
+        }
+        break;
+      }
+      case "DRAW_SCROLL_SPELL": {
+        const player = state.players[visit.playerId];
+        const scroll = player?.scrolls?.find((candidate) => candidate.id === step.scrollId);
+        const drawn = drawTopOfSharedDeck(state, step.deckId);
+        if (scroll && drawn) {
+          scroll.spellCardIds.push(drawn);
+        }
+        break;
+      }
       default:
         break;
     }
@@ -1870,6 +1944,30 @@ export function processPendingVisit(state: GameState): void {
 function fieldName(state: GameState, fieldId: MapSpaceId): string {
   const field = state.adventure?.fields[fieldId];
   return field ? (locationDefinitions[field.location]?.name ?? field.location) : fieldId;
+}
+
+/** Spell decks (Basic/Expert) that still hold a card to draw into a scroll. */
+function spellDeckCandidates(state: GameState): string[] {
+  return ["spells", "spells-expert"].filter((deckId) => {
+    const deck = state.decks[deckId];
+    return Boolean(deck) && deck!.drawPile.length + deck!.discardPile.length > 0;
+  });
+}
+
+/** Draws the top card of a shared deck, reshuffling its discard if it ran dry. */
+function drawTopOfSharedDeck(state: GameState, deckId: string): string | null {
+  const deck = state.decks[deckId];
+  if (!deck) {
+    return null;
+  }
+  if (deck.drawPile.length === 0 && deck.discardPile.length > 0) {
+    deck.drawPile = shuffleCards(
+      deck.discardPile,
+      `${state.seed}#scroll-reshuffle#${deckId}#${eventSeedNumber(state)}`
+    );
+    deck.discardPile = [];
+  }
+  return deck.drawPile.pop() ?? null;
 }
 
 /**

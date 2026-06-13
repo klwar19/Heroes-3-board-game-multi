@@ -69,7 +69,8 @@ import type {
   TriggerDefinition,
   UnitId
 } from "./state";
-import { getUnitAbilityDefinitions, hasUnitAbilityEffect } from "./unit-abilities";
+import { NEUTRAL_PLAYER_ID } from "./state";
+import { getLethalSaveUnitAbility, getUnitAbilityDefinitions, hasUnitAbilityEffect } from "./unit-abilities";
 
 type ConcreteEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
 
@@ -203,6 +204,41 @@ function getBlockedSpaces(combat: CombatState, movingUnit?: CombatUnitState): Se
   }
 
   return blocked;
+}
+
+/**
+ * Step-count from `origin` to every square `mover` could path to, treating
+ * other units and obstacles as walls (flyers ignore them). Used by the neutral
+ * AI to walk *around* blockers toward a target rather than only ever stepping
+ * in a straight line — a unit boxed off the direct line still closes the gap.
+ * Squares the mover can never reach are absent from the result.
+ */
+export function getPathDistances(combat: CombatState, mover: CombatUnitState, origin: number): Map<number, number> {
+  const blocked = getBlockedSpaces(combat, mover);
+  // The origin (the target's own square) seeds the flood even though it is
+  // occupied — we want the distance to stand *next to* the target.
+  blocked.delete(origin);
+  const ignoresObstacles = mover.type === "flying";
+
+  const distances = new Map<number, number>([[origin, 0]]);
+  let frontier = [origin];
+  let step = 0;
+  while (frontier.length > 0) {
+    step += 1;
+    const next: number[] = [];
+    for (const position of frontier) {
+      for (const neighbor of getOrthogonalNeighbors(position)) {
+        if (distances.has(neighbor) || (!ignoresObstacles && blocked.has(neighbor))) {
+          continue;
+        }
+        distances.set(neighbor, step);
+        next.push(neighbor);
+      }
+    }
+    frontier = next;
+  }
+
+  return distances;
 }
 
 function activeEffectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitState): boolean {
@@ -446,7 +482,10 @@ export function canUnitMoveAndAttack(
   return canUnitAttack(virtualCombat, movedAttacker, defender);
 }
 
-function unitMatchesTarget(unit: CombatUnitState, target: Exclude<TargetDefinition, { type: "none" }>): boolean {
+/** A target definition that resolves to units (not "none" or an empty space). */
+type UnitTargetDefinition = Exclude<TargetDefinition, { type: "none" } | { type: "empty-space" }>;
+
+function unitMatchesTarget(unit: CombatUnitState, target: UnitTargetDefinition): boolean {
   if (target.unitTypes && !target.unitTypes.includes(unit.type)) {
     return false;
   }
@@ -461,7 +500,7 @@ function unitMatchesTarget(unit: CombatUnitState, target: Exclude<TargetDefiniti
 function getEnemyTargets(
   state: GameState,
   playerId: PlayerId,
-  target: Exclude<TargetDefinition, { type: "none" }>
+  target: UnitTargetDefinition
 ): TargetRef[] {
   if (!state.combat) {
     return [];
@@ -477,7 +516,7 @@ function getEnemyTargets(
 function getFriendlyTargets(
   state: GameState,
   playerId: PlayerId,
-  target: Exclude<TargetDefinition, { type: "none" }>
+  target: UnitTargetDefinition
 ): TargetRef[] {
   if (!state.combat) {
     return [];
@@ -504,10 +543,42 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
     return [{ type: "none" }];
   }
 
+  // Summon spells target a chosen empty space (no living unit, obstacle, Wall
+  // or Gate). Mirrors isSpaceBlockedForSummon in the reducer.
+  if (targetType === "empty-space") {
+    const combat = state.combat;
+    if (!combat) {
+      return [];
+    }
+    const blocked = new Set<number>();
+    for (const unit of Object.values(combat.units)) {
+      if (isUnitAlive(unit)) {
+        blocked.add(unit.position);
+      }
+    }
+    for (const position of combat.obstacles ?? []) {
+      blocked.add(position);
+    }
+    for (const position of combat.siege?.walls ?? []) {
+      blocked.add(position);
+    }
+    if (combat.siege?.gatePosition != null) {
+      blocked.add(combat.siege.gatePosition);
+    }
+
+    const spaces: TargetRef[] = [];
+    for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+      if (!blocked.has(position)) {
+        spaces.push({ type: "space", position });
+      }
+    }
+    return spaces;
+  }
+
   const target =
-    card?.target && card.target.type !== "none"
+    card?.target && card.target.type !== "none" && card.target.type !== "empty-space"
       ? card.target
-      : ({ type: targetType } as Exclude<TargetDefinition, { type: "none" }>);
+      : ({ type: targetType } as UnitTargetDefinition);
 
   const targets =
     target.type === "friendly-unit"
@@ -664,7 +735,17 @@ function addSpellActions(
       !activeUnit.attackedThisActivation
   );
 
-  for (const cardId of new Set(player.hand)) {
+  // Hand spells plus every Spell Scroll spell (scroll spells are not in hand;
+  // they cast at power 0 and are removed once used). Both share the timing and
+  // targeting rules below.
+  const castCandidates: { cardId: string; fromScroll?: string }[] = [
+    ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
+    ...(player.scrolls ?? []).flatMap((scroll) =>
+      [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
+    )
+  ];
+
+  for (const { cardId, fromScroll } of castCandidates) {
     const card = cards[cardId];
     if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
       continue;
@@ -695,12 +776,13 @@ function addSpellActions(
 
     for (const target of getTargetsForCard(state, playerId, cardId, cards)) {
       actions.push({
-        label: `Cast ${card.name}`,
+        label: fromScroll ? `Cast ${card.name} (Scroll)` : `Cast ${card.name}`,
         action: {
           type: "CAST_SPELL",
           playerId,
           cardId,
-          target
+          target,
+          ...(fromScroll ? { fromScroll } : {})
         }
       });
     }
@@ -875,6 +957,7 @@ function isOptionEffectPlayable(
     case "ADD_UNIT_MAX_HEALTH":
     case "HEAL_DAMAGE":
     case "AREA_DAMAGE_ALL_ADJACENT":
+    case "GRANT_ELEMENTAL_DAMAGE":
       return context === "combat" && Boolean(state.combat);
     case "SIEGE_DEMOLISH": {
       const siege = state.combat?.siege;
@@ -898,7 +981,8 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "CREATE_DEFENSE_BUFF" ||
     effect.type === "ADD_UNIT_MAX_HEALTH" ||
     effect.type === "HEAL_DAMAGE" ||
-    effect.type === "AREA_DAMAGE_ALL_ADJACENT"
+    effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
+    effect.type === "GRANT_ELEMENTAL_DAMAGE"
   );
 }
 
@@ -955,9 +1039,22 @@ function addOptionPlays(
         ? ["basic", "expert"]
         : ["basic"];
 
-    const targets = optionNeedsUnitTarget(option.effect)
+    let targets = optionNeedsUnitTarget(option.effect)
       ? getTargetsForCard(state, playerId, cardId, cards)
       : [{ type: "none" } as TargetRef];
+
+    // Some options only land on a named unit (Moandor's elemental grant reads
+    // "your Liches unit").
+    const restrictName =
+      option.effect.type === "GRANT_ELEMENTAL_DAMAGE" ? option.effect.targetUnitName : undefined;
+    if (restrictName) {
+      targets = targets.filter(
+        (candidate) => candidate.type === "unit" && state.combat?.units[candidate.unitId]?.name === restrictName
+      );
+    }
+    if (targets.length === 0) {
+      continue;
+    }
 
     for (const mode of modes) {
       for (const target of targets) {
@@ -1102,9 +1199,12 @@ function addTurnCardActions(
     }
 
     // Necromancy: playable on the map only in the window after winning a
-    // Combat other than a Quick Combat, and only by a Necropolis hero.
+    // Combat other than a Quick Combat, and only by a Necropolis hero. A copy
+    // drawn from the Ability deck on level-up may be kept but never played
+    // (house rule) — only a hero's printed Necromancy is a real ability.
     if (card.effect.type === "NECROMANCY_REINFORCE") {
-      if (player.necromancyWindow && player.factionId === "necropolis") {
+      const drawnFromLevelUp = player.deckDrawnAbilityCardIds?.includes(cardId) ?? false;
+      if (player.necromancyWindow && player.factionId === "necropolis" && !drawnFromLevelUp) {
         const modes: CardPlayMode[] = expertUsesAvailable(player) > 0 ? ["basic", "expert"] : ["basic"];
         for (const mode of modes) {
           actions.push({
@@ -1897,11 +1997,103 @@ export function getLegalActions(
   return actions;
 }
 
+/**
+ * Alamar's Resurrection save window: when a unit is about to die, offer its
+ * controller the grade-matching, affordable Resurrection option(s) — and
+ * nothing else. Passing lets the unit die.
+ */
+function getLethalSaveReactions(
+  state: GameState,
+  triggerEvent: Extract<GameEvent, { type: "UNIT_LETHAL_HIT" }>,
+  cards: CardLibrary
+): Record<PlayerId, LegalAction[]> {
+  const combat = state.combat;
+  const defender = combat?.units[triggerEvent.defenderId];
+  if (!combat || !defender) {
+    return {};
+  }
+  const playerId = defender.controllerId;
+  const player = state.players[playerId];
+  if (!player || playerId === NEUTRAL_PLAYER_ID || isHandLockedInCombat(state, playerId)) {
+    return {};
+  }
+
+  // The killing blow is saved at most once: if a save is already armed on the
+  // pending attack, offer nothing more so a second source can't double-save.
+  const pendingAttack = state.stack.find(
+    (item) => item.action.type === "ATTACK_UNIT" || item.action.type === "MOVE_AND_ATTACK_UNIT"
+  );
+  if (pendingAttack?.modifiers.cancelLethal) {
+    return {};
+  }
+
+  // A Resurrection-style Spell counts against the one-Spell-per-combat-round
+  // limit (Expert Knowledge / Intelligence raise it); the specialty and the
+  // Archangels' ability do not.
+  const spellLimitReached = player.combatStats.spellsCastThisRound >= spellLimitFor(state, player);
+
+  const reactions: LegalAction[] = [];
+  for (const cardId of new Set(player.hand)) {
+    const card = cards[cardId];
+    if (!card || card.implementationStatus !== "implemented" || card.effect.type !== "CHOOSE_ONE") {
+      continue;
+    }
+    if (card.kind === "spell" && spellLimitReached) {
+      continue;
+    }
+    for (const [optionIndex, option] of card.effect.options.entries()) {
+      if (option.effect.type !== "CANCEL_LETHAL_ATTACK" || option.effect.grade !== defender.grade) {
+        continue;
+      }
+      if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
+        continue;
+      }
+      reactions.push(
+        makeReactionAction(`${card.name}: ${option.label}`, {
+          type: "PLAY_REACTION",
+          playerId,
+          cardId,
+          mode: "basic",
+          optionIndex
+        })
+      );
+    }
+  }
+
+  // Archangels (Pack): a free once-per-combat cancel of a killing blow on any
+  // OTHER friendly unit (any grade), offered as a unit-ability reaction.
+  for (const unit of Object.values(combat.units)) {
+    if (
+      unit.controllerId !== playerId ||
+      unit.id === defender.id ||
+      unit.damage >= unit.maxHealth ||
+      unit.usedLethalSaveThisCombat
+    ) {
+      continue;
+    }
+    const ability = getLethalSaveUnitAbility(unit);
+    if (!ability) {
+      continue;
+    }
+    reactions.push({
+      label: `${unit.cardName}: ${ability.abilityName} (cancel the killing blow, once per Combat)`,
+      action: { type: "USE_UNIT_RESURRECTION", playerId, savingUnitId: unit.id }
+    });
+  }
+
+  return reactions.length > 0 ? { [playerId]: reactions } : {};
+}
+
 export function getLegalReactionsForTrigger(
   state: GameState,
   triggerEvent: GameEvent,
   cards: CardLibrary = cardLibrary
 ): Record<PlayerId, LegalAction[]> {
+  // Alamar's Resurrection: its own save window when a unit is about to die.
+  if (triggerEvent.type === "UNIT_LETHAL_HIT") {
+    return getLethalSaveReactions(state, triggerEvent, cards);
+  }
+
   if (triggerEvent.type !== "SPELL_CAST_STARTED" && triggerEvent.type !== "UNIT_ATTACK_DECLARED") {
     return {};
   }
@@ -1995,6 +2187,48 @@ export function getLegalReactionsForTrigger(
               ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
             })
           );
+        }
+      }
+    }
+
+    // Spell Scroll spells played as reactions: basic side only, power-locked
+    // to 0, removed once used. They respect the same spell-per-round limit.
+    if (spellLimitLeft > 0) {
+      for (const scroll of player.scrolls ?? []) {
+        for (const cardId of new Set(scroll.spellCardIds)) {
+          const card = cards[cardId];
+          const allowedTiming =
+            card && (card.timing === "reaction" || card.timing === "instant");
+          if (!card || card.kind !== "spell" || !allowedTiming || card.implementationStatus !== "implemented") {
+            continue;
+          }
+
+          for (const variant of getCardPlayVariants(card)) {
+            if (
+              variant.mapOnly ||
+              variant.expertOnly ||
+              variant.cost ||
+              variant.effect.type === "ADD_SPELL_POWER" ||
+              !variantMatchesTrigger(variant, triggerEvent, player.id) ||
+              !isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic")
+            ) {
+              continue;
+            }
+
+            const variantName = variant.optionLabel
+              ? `${card.name}: ${variant.optionLabel} (Scroll)`
+              : `${card.name} (Scroll)`;
+            reactions.push(
+              makeReactionAction(variantName, {
+                type: "PLAY_REACTION",
+                playerId: player.id,
+                cardId,
+                mode: "basic",
+                fromScroll: scroll.id,
+                ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
+              })
+            );
+          }
         }
       }
     }
@@ -2297,11 +2531,8 @@ export function isEffectLegalForTrigger(
       return attacker.controllerId === playerId && attacker.type !== "ranged";
     }
 
-    // Alamar's Resurrection: the defender's controller may arm the option that
-    // matches their unit's grade to cancel a killing blow on it.
-    if (effect.type === "CANCEL_LETHAL_ATTACK") {
-      return defender.controllerId === playerId && effect.grade === defender.grade;
-    }
+    // Alamar's Resurrection is never a pre-die attack reaction — it is offered
+    // only in its own save window, when the attack would actually be lethal.
 
     // Power may be paid into an attack window so a spell instant in the same
     // declaration can consume it (the batch validator enforces the pairing).
@@ -2484,6 +2715,15 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
           actions.push({
             label: `Buy ${offer.card.name} (${offer.cost.gold ?? 0} gold)`,
             action: { type: "BUY_WAR_MACHINE", playerId, cardId: offer.cardId }
+          });
+        }
+      }
+      // Spell Scroll spells may be sold here for 2 gold each.
+      for (const scroll of player.scrolls ?? []) {
+        for (const cardId of new Set(scroll.spellCardIds)) {
+          actions.push({
+            label: `Sell ${cards[cardId]?.name ?? cardId} (Scroll) → gain 2 gold`,
+            action: { type: "SELL_SCROLL_SPELL", playerId, scrollId: scroll.id, cardId }
           });
         }
       }
@@ -2921,6 +3161,18 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // Combat setup placement.
   if (state.combat?.setup) {
     addCombatSetupActions(actions, state, playerId);
+    return actions;
+  }
+
+  // Neutral combat pacing: a guard just walked — the attacker clicks it on
+  // before the next guard acts (see CombatState.pendingNeutralStep).
+  if (state.combat?.pendingNeutralStep && state.combat.context.kind === "neutral") {
+    if (playerId === state.combat.attackerPlayerId) {
+      actions.push({
+        label: "Continue the enemy turn",
+        action: { type: "CONTINUE_NEUTRAL_STEP", playerId }
+      });
+    }
     return actions;
   }
 

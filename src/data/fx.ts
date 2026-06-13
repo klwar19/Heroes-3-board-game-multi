@@ -92,7 +92,14 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "spell.slow": { affect: [{ key: "slow" }], sound: "spells/slow" },
   "spell.precision": { affect: [{ key: "precision" }], sound: "spells/precision" },
   "spell.curse": { affect: [{ key: "curse" }], sound: "spells/curse" },
-  "spell.dispel": { affect: [{ key: "dispel" }], sound: "spells/dispel" }
+  "spell.dispel": { affect: [{ key: "dispel" }], sound: "spells/dispel" },
+  // Summon Elemental: resolves on an empty space (no unit to anchor a sprite
+  // on), so only a cast sound is wired — the new unit appearing is the visual.
+  // Air has its own H3 summon clip; the others use the element's own voice.
+  "spell.summon_air_elemental": { sound: "spells/air-elemental" },
+  "spell.summon_earth_elemental": { sound: "units/earth-elemental-attack" },
+  "spell.summon_fire_elemental": { sound: "units/fire-elemental-attack" },
+  "spell.summon_water_elemental": { sound: "units/water-elemental-attack" }
 };
 
 /** Played at center stage when a spell is countered. */
@@ -110,6 +117,15 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
     sound: "spells/ice-bolt",
     hitSound: "spells/ice-bolt-hit"
   },
+  // Lethal-save sources (Alamar's specialty, the Resurrection spell and the
+  // Archangels' once-per-combat cancel) all emit the "resurrection" ability
+  // event when the killing blow is cancelled, so one plan covers all three.
+  resurrection: { affect: [{ key: "prayer" }], sound: "spells/resurrection" },
+  // Printed unit abilities wired with their original H3 effect + sound.
+  "wyvern-sting": { affect: [{ key: "poison" }], sound: "spells/poison" },
+  "rust-dragon-acid": { hit: "acid-breath", hitSound: "effects/acid-breath" },
+  "gorgon-death-stare": { affect: [{ key: "death-stare" }], sound: "spells/death-stare" },
+  "dread-knight-death-blow": { affect: [{ key: "death-ripple" }], sound: "effects/death-blow" },
   // Future abilities (cards not implemented yet, assets ready):
   poison: { affect: [{ key: "poison" }], sound: "spells/poison" },
   paralyze: { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },

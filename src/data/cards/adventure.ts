@@ -342,12 +342,14 @@ function resurrectionSpecialty(
     ],
     effect: {
       type: "CHOOSE_ONE",
+      // No per-option trigger: Resurrection is offered only in its own
+      // lethal-save window (when a unit is actually about to die), not as a
+      // normal attack-window reaction.
       options: grades.map((grade) => ({
         label:
           costs[grade] > 0
             ? `Save a ${grade} unit (discard ${costs[grade]} Power/Spell)`
             : `Save a ${grade} unit`,
-        trigger: { event: "UNIT_ATTACK_DECLARED" as const, controller: "opponent" as const },
         ...(costs[grade] > 0
           ? { cost: { discardCards: costs[grade], costCardFilter: "power-source" as const } }
           : {}),
@@ -663,6 +665,58 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("sandro")
   },
+  // Moandor (Necropolis Death Knight): the Liches specialist. I/IV are the
+  // shared might/health specialties doubled for Liches; VI is his signature —
+  // make the Liches deal elemental damage, OR a flat +2 attack.
+  "specialty.moandor.1": mightSpecialtyOne("moandor", "Liches", "Liches"),
+  "specialty.moandor.4": unitHealthSpecialty("moandor", "Liches", 4, 1, "Liches"),
+  "specialty.moandor.6": {
+    id: "specialty.moandor.6",
+    name: "Liches VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "moandor",
+      "liches",
+      "For this Combat, choose one: your Liches unit deals elemental damage. — OR — your selected unit gains +2 attack."
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Liches deal elemental damage (this Combat)",
+          combatOnly: true,
+          effect: {
+            type: "GRANT_ELEMENTAL_DAMAGE",
+            targetUnitName: "Liches",
+            duration: { type: "combat" }
+          }
+        },
+        {
+          label: "+2 attack (this Combat)",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ATTACK_BUFF",
+            name: "Liches VI",
+            amount: 2,
+            duration: { type: "combat" },
+            polarity: "positive",
+            removable: false
+          }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "/assets/hero_specialties-moandor-6.webp",
+      imageAlt: "Liches level VI specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("moandor")
+  },
   "specialty.gelu.1": mightSpecialtyOne("gelu", "Sharpshooters", "Sharpshooters"),
   "specialty.gelu.4": notImplementedSpecialty(
     "gelu",
@@ -753,6 +807,55 @@ export const adventureCards: CardLibrary = {
     6,
     "For this Combat, your selected unit's initiative is increased by 1 (doubled for Efreet)."
   ),
+  // Zydar (Inferno Heretic): spell-economy specialties. Level I implemented as
+  // a self-spell-cast reaction (draw a card or +1 Power); IV/VI data-only like
+  // the other heroes' upper specialties.
+  "specialty.zydar.1": {
+    id: "specialty.zydar.1",
+    name: "Spell Mastery I",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "zydar",
+      "After casting a Spell: draw 1 card, or instead gain +1 Power on that Spell."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "After casting a spell, draw 1 card",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "DRAW_CARDS", amount: 1 }
+        },
+        {
+          label: "+1 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 1 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("zydar", 1),
+      imageAlt: "Zydar level I specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("zydar")
+  },
+  "specialty.zydar.4": notImplementedSpecialty(
+    "zydar",
+    "Zydar",
+    4,
+    "The next Spell you cast does not count toward your spell limit (alternatively, +2 Power)."
+  ),
+  "specialty.zydar.6": notImplementedSpecialty(
+    "zydar",
+    "Zydar",
+    6,
+    "Ongoing during Combat: after casting a Spell, draw 1 card (alternatively, +2 Power)."
+  ),
   "specialty.crag_hack.1": offenseSpecialtyOne("crag_hack"),
   "specialty.crag_hack.4": offenseSpecialtyFour("crag_hack"),
   "specialty.crag_hack.6": offenseSpecialtySix("crag_hack"),
@@ -787,16 +890,6 @@ export const adventureCards: CardLibrary = {
   "specialty.yog.4": unitInitiativeSpecialty("yog", "Cyclopes", 4, 1, "Cyclopes"),
   "specialty.yog.6": unitHealthSpecialty("yog", "Cyclopes", 6, 1, "Cyclopes"),
   "specialty.alamar.1": resurrectionSpecialty(1, { bronze: 1, silver: 2, gold: 4 }),
-  "specialty.alamar.4": notImplementedSpecialty(
-    "alamar",
-    "Resurrection",
-    4,
-    "Cancel a lethal attack: bronze power 0, silver 1, gold 3."
-  ),
-  "specialty.alamar.6": notImplementedSpecialty(
-    "alamar",
-    "Resurrection",
-    6,
-    "Cancel a lethal attack: bronze power 0, silver 0, gold 2."
-  )
+  "specialty.alamar.4": resurrectionSpecialty(4, { bronze: 0, silver: 1, gold: 3 }),
+  "specialty.alamar.6": resurrectionSpecialty(6, { bronze: 0, silver: 0, gold: 2 })
 };

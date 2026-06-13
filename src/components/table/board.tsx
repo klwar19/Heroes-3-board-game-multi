@@ -162,6 +162,7 @@ export function BattlefieldBoard({
   const moveActionsByDestination = new Map<number, GameAction>();
   const attackActionsByDefender = new Map<string, GameAction>();
   const cardActionsByTarget = new Map<string, GameAction>();
+  const spaceCardActionsByPosition = new Map<number, GameAction>();
   const abilityTargetActions = new Map<string, GameAction>();
   const fortificationActionsByPosition = new Map<number, LegalAction>();
 
@@ -192,7 +193,12 @@ export function BattlefieldBoard({
       fortificationActionsByPosition.set(legal.action.target.position, legal);
     }
     if (selectedCardAction && isBoardTargetCardAction(legal.action) && sameCardSelection(selectedCardAction, legal.action)) {
-      cardActionsByTarget.set(legal.action.target.unitId, legal.action);
+      if (legal.action.target.type === "unit") {
+        cardActionsByTarget.set(legal.action.target.unitId, legal.action);
+      } else if (legal.action.target.type === "space") {
+        // Summon spells: highlight the empty space the elemental will appear on.
+        spaceCardActionsByPosition.set(legal.action.target.position, legal.action);
+      }
     }
   }
 
@@ -216,6 +222,7 @@ export function BattlefieldBoard({
           const moveAction = moveActionsByDestination.get(index);
           const attackAction = unit ? attackActionsByDefender.get(unit.id) : undefined;
           const cardAction = unit ? cardActionsByTarget.get(unit.id) : undefined;
+          const spaceCardAction = !unit ? spaceCardActionsByPosition.get(index) : undefined;
           const abilityAction = unit ? abilityTargetActions.get(unit.id) : undefined;
           const isActive = Boolean(unit && combat?.activeUnitId === unit.id);
           const isFlipping = Boolean(unit && flippedUnitIds?.has(unit.id));
@@ -224,7 +231,7 @@ export function BattlefieldBoard({
             isObstacle ? "obstacle" : ""
           } ${moveAction && !selectedCardAction ? "moveTarget" : ""} ${
             attackAction && !selectedCardAction ? "attackTarget" : ""
-          } ${cardAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${dropTarget ? "dropTarget" : ""}`;
+          } ${cardAction || spaceCardAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${dropTarget ? "dropTarget" : ""}`;
           const health = unit ? Math.max(0, unit.maxHealth - unit.damage) : 0;
 
           const dropProps = dropTarget
@@ -340,16 +347,18 @@ export function BattlefieldBoard({
                 }
               : {};
 
-          const interactiveAction = abilityAction ?? cardAction ?? (unit ? attackAction : moveAction);
+          const interactiveAction = abilityAction ?? cardAction ?? spaceCardAction ?? (unit ? attackAction : moveAction);
 
-          if (interactiveAction && (!selectedCardAction || cardAction)) {
+          if (interactiveAction && (!selectedCardAction || cardAction || spaceCardAction)) {
             const label = abilityAction
               ? `Ability target: ${unit?.name}`
               : cardAction
                 ? `Target ${unit?.name}`
-                : unit
-                  ? `Attack ${unit?.name}`
-                  : `Move to ${getBattlefieldLabel(index)}`;
+                : spaceCardAction
+                  ? `Cast on ${getBattlefieldLabel(index)}`
+                  : unit
+                    ? `Attack ${unit?.name}`
+                    : `Move to ${getBattlefieldLabel(index)}`;
             return (
               <button
                 aria-label={label}

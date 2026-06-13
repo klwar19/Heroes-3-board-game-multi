@@ -179,6 +179,14 @@ export type LocationInteraction =
        */
       type: "PRISON";
     }
+  | {
+      /**
+       * Spell Scroll: take a scroll and draw 2 Spells into it (the visitor
+       * picks the Basic or Expert Magic deck for each). The scroll's spells
+       * are usable in combat at power 0 or sellable at the market.
+       */
+      type: "SPELL_SCROLL";
+    }
   | { type: "NOT_IMPLEMENTED"; note: string };
 
 export type LocationDefinition = {
