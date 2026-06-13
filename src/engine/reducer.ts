@@ -153,6 +153,7 @@ import type {
   GameState,
   LegalAction,
   PlayerId,
+  PlayerState,
   PendingChoice,
   ResourceCost,
   ResourceKind,
@@ -2542,6 +2543,26 @@ function advanceActiveUnit(state: GameState): void {
   }
 
   setActiveUnit(state, getNextUnitToActivate(state.combat, state.activeEffects)?.id ?? null);
+}
+
+/**
+ * Clears a paused neutral walk so the next guard can act. Only the player
+ * running the fight (the attacker) clicks the enemy turn on; the pump in
+ * runAdventureAutomations picks the activation back up afterwards.
+ */
+function continueNeutralStep(
+  state: GameState,
+  action: Extract<GameAction, { type: "CONTINUE_NEUTRAL_STEP" }>
+): void {
+  const combat = state.combat;
+  if (!combat?.pendingNeutralStep) {
+    throw new Error("No enemy move is waiting to continue.");
+  }
+  if (action.playerId !== combat.attackerPlayerId) {
+    throw new Error("Only the attacking player can continue the enemy turn.");
+  }
+  combat.pendingNeutralStep = null;
+  advanceActiveUnit(state);
 }
 
 /** Living friendly units the Enchanters could heal (other friendlies only). */
@@ -5458,6 +5479,18 @@ function searchDeck(state: GameState, action: Extract<GameAction, { type: "SEARC
   });
 }
 
+/**
+ * Mark an ability card the player just drew out of the shared Ability deck.
+ * A Necromancy obtained this way (the level-up "Search the Ability deck"
+ * reward) is kept but never playable — see the Necromancy legality check.
+ */
+function recordDeckDrawnAbility(player: PlayerState, deckId: string, cardId: CardId): void {
+  if (deckId !== "abilities") {
+    return;
+  }
+  (player.deckDrawnAbilityCardIds ??= []).push(cardId);
+}
+
 function resolveDeckSearch(
   state: GameState,
   action: Extract<GameAction, { type: "RESOLVE_DECK_SEARCH" }>,
@@ -5510,6 +5543,7 @@ function resolveDeckSearch(
     }
 
     player.hand.push(takenCardId);
+    recordDeckDrawnAbility(player, choice.deckId, takenCardId);
     discardedCardIds = [...choice.revealedCardIds];
     deck.discardPile.push(...discardedCardIds);
   } else {
@@ -5519,6 +5553,7 @@ function resolveDeckSearch(
     }
 
     player.hand.push(keptCardId);
+    recordDeckDrawnAbility(player, choice.deckId, keptCardId);
     const keptIndex = action.pick.index;
     discardedCardIds = choice.revealedCardIds.filter((_, index) => index !== keptIndex);
     deck.discardPile.push(...discardedCardIds);
@@ -5680,6 +5715,12 @@ function executeNeutralActivation(
       from,
       to: intent.destination
     });
+    // Neutral fights pace one walk at a time: stop on the move so the table
+    // sees it and clicks CONTINUE_NEUTRAL_STEP. The next guard acts only then.
+    if (combat.context.kind === "neutral") {
+      combat.pendingNeutralStep = { unitId: unit.id, name: unit.name, from, to: intent.destination };
+      return;
+    }
     advanceActiveUnit(state);
     return;
   }
@@ -5727,6 +5768,11 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
   while (safety > 0) {
     safety -= 1;
     const combat = state.combat;
+
+    // A neutral guard just walked: hold everything until the table clicks on.
+    if (combat?.pendingNeutralStep) {
+      break;
+    }
 
     // Neutral Liches/Magogs/Cerberi resolve their own ability targets.
     if (
@@ -5976,6 +6022,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "CONTINUE_NEUTRAL_COMBAT":
         continueNeutralCombat(nextState, action);
         advanceCombatRound(nextState, action.playerId);
+        break;
+      case "CONTINUE_NEUTRAL_STEP":
+        continueNeutralStep(nextState, action);
         break;
       case "RETREAT_FROM_COMBAT":
         retreatFromCombat(nextState, action);
