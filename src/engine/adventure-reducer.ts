@@ -44,6 +44,7 @@ import {
   placeNeutralUnits,
   processPendingVisit,
   queueSkeletonReinforce,
+  reinforceArmyUnit,
   restoreStartingArmyIfEmpty,
   SCHOLAR_STAT_CARDS,
   spendRecruitResources,
@@ -205,6 +206,68 @@ export function resolveSiegeDemolishChoice(state: GameState, playerId: PlayerId,
   const remaining = choice.siegeDemolish.remaining - 1;
   if (remaining > 0 && intactFortificationPositions(siege).length > 0) {
     openSiegeDemolishChoice(state, playerId, remaining);
+  }
+}
+
+/**
+ * Neutral Skeletons: a mid-combat pop-up offering the attacker's Necropolis
+ * hero a free Few→Pack flip of any one of their bronze units. Skippable; a
+ * no-op (no choice opened) when there is no eligible bronze Few unit.
+ */
+export function openSkeletonReinforceChoice(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+  const armyUnitIds: string[] = [];
+  for (const unit of player.army) {
+    if (unit.side !== "few") {
+      continue;
+    }
+    const def = coreUnitDefinitions[unit.unitDefId];
+    const packSide = getUnitSide(unit.unitDefId, "pack");
+    if (def && packSide && def.tier === "bronze") {
+      armyUnitIds.push(unit.id);
+    }
+  }
+  if (armyUnitIds.length === 0) {
+    return;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: "Skeletons defeated: reinforce one of your bronze units for free.",
+    options: [
+      ...armyUnitIds.map((id) => {
+        const unitDefId = player.army.find((unit) => unit.id === id)?.unitDefId ?? "";
+        return { label: `Reinforce ${coreUnitDefinitions[unitDefId]?.name ?? "unit"} (free)` };
+      }),
+      { label: "Skip" }
+    ],
+    context: "skeleton-reinforce",
+    skeletonReinforce: { armyUnitIds },
+    returnPhase: "combat"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Resolves the Skeletons reinforce pick — a free Few→Pack flip — or skip. */
+export function resolveSkeletonReinforceChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (choice?.type !== "OPTION_CHOICE" || choice.context !== "skeleton-reinforce" || !choice.skeletonReinforce) {
+    throw new Error("There is no Skeletons reinforce choice to resolve.");
+  }
+
+  const armyUnitId = choice.skeletonReinforce.armyUnitIds[optionIndex];
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+
+  if (armyUnitId) {
+    reinforceArmyUnit(state, playerId, armyUnitId, false, false, false, true);
   }
 }
 
@@ -2245,8 +2308,15 @@ export function finalizeAdventureCombat(state: GameState): void {
         }
 
         // Neutral Skeletons: "After defeating Skeletons, if you control a
-        // Necropolis Hero, Reinforce 1 of your bronze units for free."
-        if (combat.skeletonGuardDefeated && playerId && winner?.factionId === "necropolis") {
+        // Necropolis Hero, Reinforce 1 of your bronze units for free." The
+        // mid-combat pop-up handles the usual case; this is the fallback for a
+        // Skeleton killed last (combat ended before the pop-up could open).
+        if (
+          combat.skeletonGuardDefeated &&
+          !combat.skeletonReinforceGranted &&
+          playerId &&
+          winner?.factionId === "necropolis"
+        ) {
           queueSkeletonReinforce(state, playerId);
         }
       } else if (outcome.reason === "retreat") {
@@ -2572,7 +2642,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       if (!packSide) {
         throw new Error("That unit has no pack side.");
       }
-      // Champions' Stables discount lowers the gold paid here.
+      // Champions' Stables discount lowers the gold paid to reinforce here.
       addCost(discountedReinforceCost(state, action.playerId, purchase.unitDefId, packSide.cost));
       target.side = "pack";
     }
@@ -3246,6 +3316,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "cover-of-darkness") {
     resolveCoverOfDarknessChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "skeleton-reinforce") {
+    resolveSkeletonReinforceChoice(state, action.playerId, action.optionIndex);
     return;
   }
 

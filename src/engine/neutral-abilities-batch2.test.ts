@@ -5,6 +5,7 @@ import { abilityFxPlans } from "@/data/fx";
 import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { discountedReinforceCost, queueSkeletonReinforce, reinforceArmyUnit, reinforceGoldDiscount } from "./adventure";
+import { openSkeletonReinforceChoice, resolveSkeletonReinforceChoice } from "./adventure-reducer";
 import {
   getForcedAttackerDie,
   getRollTwoDiceApplyBoth,
@@ -314,5 +315,38 @@ describe("Skeletons necro-reinforce", () => {
     reinforceArmyUnit(state, "p1", "bones_few", false, false, false, true);
     expect(state.players.p1.army.find((unit) => unit.id === "bones_few")?.side).toBe("pack");
     expect(state.players.p1.resources.gold).toBe(goldBefore);
+  });
+
+  it("mid-combat pop-up offers any bronze unit and reinforces it free on pick", () => {
+    const state = createAdventureGameState({ seed: "skeleton-popup", difficulty: "normal", rollFirstPlayer: false });
+    state.players.p1.army.push({ id: "bones_few", unitDefId: "necropolis.skeletons", side: "few" });
+    const goldBefore = state.players.p1.resources.gold;
+
+    openSkeletonReinforceChoice(state, "p1");
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    if (choice?.type !== "OPTION_CHOICE") return;
+    expect(choice.context).toBe("skeleton-reinforce");
+    expect(choice.returnPhase).toBe("combat");
+    expect(choice.skeletonReinforce?.armyUnitIds).toContain("bones_few");
+    // Last option is always "Skip".
+    expect(choice.options.at(-1)?.label).toBe("Skip");
+
+    const pick = choice.skeletonReinforce!.armyUnitIds.indexOf("bones_few");
+    resolveSkeletonReinforceChoice(state, "p1", pick);
+    expect(state.pendingChoice).toBeNull();
+    expect(state.players.p1.army.find((unit) => unit.id === "bones_few")?.side).toBe("pack");
+    expect(state.players.p1.resources.gold).toBe(goldBefore);
+  });
+
+  it("mid-combat pop-up is a no-op when the player has no bronze Few unit", () => {
+    const state = createAdventureGameState({ seed: "skeleton-none", difficulty: "normal", rollFirstPlayer: false });
+    // Remove any bronze Few from the starting army so nothing is eligible.
+    state.players.p1.army = state.players.p1.army.filter((unit) => {
+      const def = coreUnitDefinitions[unit.unitDefId];
+      return !(unit.side === "few" && def?.tier === "bronze");
+    });
+    openSkeletonReinforceChoice(state, "p1");
+    expect(state.pendingChoice).toBeNull();
   });
 });

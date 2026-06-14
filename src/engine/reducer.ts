@@ -28,6 +28,7 @@ import {
   finishCombatPlacement,
   hallOfValhallaBoost,
   openSiegeDemolishChoice,
+  openSkeletonReinforceChoice,
   moveHeroAdventure,
   moveHeroPathAdventure,
   openSharedDeckSearch,
@@ -7169,6 +7170,30 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       state.pendingChoice.playerId === NEUTRAL_PLAYER_ID
     ) {
       autoResolveNeutralReroll(state, cards);
+      continue;
+    }
+
+    // Neutral Skeletons: the moment a Skeleton guard falls (between
+    // activations), the attacker's Necropolis hero is offered a free bronze
+    // reinforce. A Skeleton killed last leaves combat already over, so the
+    // after-combat fallback in finalizeAdventureCombat covers that case.
+    if (
+      combat &&
+      !combat.outcome &&
+      !combat.setup &&
+      !combat.awaitingContinue &&
+      !state.reactionWindow &&
+      !state.pendingChoice &&
+      state.stack.length === 0 &&
+      combat.skeletonGuardDefeated &&
+      !combat.skeletonReinforceGranted &&
+      state.players[combat.attackerPlayerId]?.factionId === "necropolis"
+    ) {
+      combat.skeletonReinforceGranted = true;
+      openSkeletonReinforceChoice(state, combat.attackerPlayerId);
+      if (state.pendingChoice) {
+        break;
+      }
       continue;
     }
 

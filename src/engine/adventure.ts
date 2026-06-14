@@ -3513,8 +3513,8 @@ export function discountedReinforceCost(
 /**
  * Flips a Few army card to its Pack side, paying its (half) cost. Half-gold
  * effects round up by default (Saplings, settlements); Necromancy rounds
- * down ("half the gold cost, rounded down"). Champions' Stables discount is
- * folded in last.
+ * down ("half the gold cost, rounded down"). A `free` flip (Skeletons reward)
+ * spends nothing.
  */
 export function reinforceArmyUnit(
   state: GameState,
