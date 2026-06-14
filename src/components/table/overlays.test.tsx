@@ -95,7 +95,7 @@ const castArrow: LegalAction = {
 };
 
 describe("NeutralStepOverlay — guard-step pacing", () => {
-  it("auto-resumes after 3s when the player has nothing to react with", () => {
+  it("auto-resumes after 2s when the player has nothing to react with", () => {
     vi.useFakeTimers();
     const onAction = vi.fn();
     render(<NeutralStepOverlay legalActions={[resume]} onAction={onAction} state={pauseState("Griffins")} viewerPlayerId="p1" />);
@@ -104,10 +104,10 @@ describe("NeutralStepOverlay — guard-step pacing", () => {
     expect(screen.getByText(/Marksmen is about to attack your Griffins/)).toBeTruthy();
     expect(screen.getByText(/continuing automatically/i)).toBeTruthy();
 
-    // Nothing fires before the beat is up; it resumes itself at 3s.
-    act(() => vi.advanceTimersByTime(2000));
+    // Nothing fires before the beat is up; it resumes itself at 2s.
+    act(() => vi.advanceTimersByTime(1900));
     expect(onAction).not.toHaveBeenCalled();
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => vi.advanceTimersByTime(200));
     expect(onAction).toHaveBeenCalledWith({ type: "CONTINUE_NEUTRAL_STEP", playerId: "p1" });
     expect(onAction).toHaveBeenCalledTimes(1);
   });

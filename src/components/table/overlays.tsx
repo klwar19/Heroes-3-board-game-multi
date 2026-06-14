@@ -566,8 +566,10 @@ export type DiceCue = {
 };
 
 /** Tabletop pacing for the attack die: the cube tumbles, settles, then reads. */
-const DICE_ROLL_MS = 1400;
-const DICE_READ_MS = 2050;
+export const DICE_ROLL_MS = 1400;
+export const DICE_READ_MS = 2050;
+/** Total time the attack-die overlay holds the screen (roll + read). */
+export const DICE_PRESENT_MS = DICE_ROLL_MS + DICE_READ_MS;
 
 /** Cube faces: two +1, two 0, two -1 — matching the physical attack die. */
 const CUBE_FACES: { value: number; transform: string }[] = [
@@ -1417,8 +1419,13 @@ function squareLabel(position: number): string {
   return `${String.fromCharCode(65 + (position % 4))}${Math.floor(position / 4) + 1}`;
 }
 
-/** A guard step with nothing to react to resumes itself after this long. */
-const NEUTRAL_AUTO_RESUME_MS = 3000;
+/**
+ * A guard step with nothing to react to resumes itself after this long — i.e.
+ * the breather before the next neutral move. The previous step's dice and
+ * strike animation are gated out before this preview mounts (see page.tsx), so
+ * this is the clean 2s pause that follows the action, not an overlap with it.
+ */
+const NEUTRAL_AUTO_RESUME_MS = 2000;
 
 /**
  * Combat pacing / reaction pop-up (`pendingNeutralStep`). The backdrop lets
