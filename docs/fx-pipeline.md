@@ -42,19 +42,25 @@ dice / draw cues) and queues `FxCue`s:
   resizes). Bloodlust uses a red tint on the unit card, like the original
   engine's palette trick.
 - `SPELL_CAST_CANCELLED` — dispel fizzle at center stage.
-- `UNIT_ATTACK_DECLARED` — the attacker's own card lunges (melee: a thrust into
-  the target with a shake at contact; ranged: a recoil as the shot looses) and
-  the struck card recoils in place. Melee adds a slash streak + spark over the
-  target's cell; ranged flies a placeholder projectile (`.fxBolt`) cell → cell
-  with a small impact burst on arrival. The whole beat is timed to
-  `ATTACK_IMPACT_MS` so the contact lands with the `DAMAGE_ASSIGNED` number and
-  the unit's hurt cry; retaliations re-fire the same event, so they animate too.
-  Strike visuals anchor to the *cell* (not the unit) so a killing blow still
-  shows the hit after the defeated unit leaves the board. The slash, bolt and
-  impact use synthesized placeholder foley (`playMeleeImpact` / `playWhoosh` /
-  `playProjectileImpact` in `src/lib/sound.ts`) layered under the creature's H3
-  voice — swap those for recorded weapon hits without touching the FX layer.
-- `DAMAGE_ASSIGNED` / `DAMAGE_HEALED` — floating −N / +N numbers.
+- `ATTACK_ROLLED` (drives the strike) — the attacker's card lunges (melee: a
+  thrust with a shake at contact; ranged: a recoil as the shot looses), the
+  struck card recoils, and melee adds a slash streak + spark over the target's
+  cell while ranged flies a placeholder projectile (`.fxBolt`) cell → cell with
+  an impact burst. The strike is keyed off the *roll*, not `UNIT_ATTACK_DECLARED`,
+  because a reaction window can leave the declaration in an earlier snapshot than
+  the dice; the roll always shares its snapshot with the dice and damage. So the
+  whole sequence reads **dice → strike → damage**: each strike begins the instant
+  its die finishes reading (`diceDismissAt`, computed alongside the dice cues),
+  and the struck unit holds its pre-hit health — a slain unit stays on the board
+  — via the board's `damageDisplay` override until the blow lands
+  (`DAMAGE_REVEAL_DELAY_MS` after impact), so the result never resolves before
+  the roll it came from. Retaliations are just another roll, so they animate the
+  same way. The slash, bolt and impact use synthesized placeholder foley
+  (`playMeleeImpact` / `playWhoosh` / `playProjectileImpact` in `src/lib/sound.ts`)
+  layered under the creature's H3 voice — swap those for recorded weapon hits
+  without touching the FX layer.
+- `DAMAGE_ASSIGNED` / `DAMAGE_HEALED` — floating −N / +N numbers; attack damage
+  is pinned to its strike beat (`impactByTarget`), other damage to the timeline.
 - `UNIT_ABILITY_TRIGGERED` — `abilityFxPlans[abilityId]` (Magog splash and
   Lich death cloud are wired; poison / fear / acid etc. are ready for when
   those abilities exist).

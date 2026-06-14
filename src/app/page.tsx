@@ -251,6 +251,39 @@ function clearCachedRoom(roomId: string): void {
   }
 }
 
+/**
+ * After a blow's damage number / death cry are queued, the struck unit's real
+ * health (and its removal) is revealed this much later — long enough for the
+ * floater and slash to anchor to the still-standing card before it falls.
+ */
+const DAMAGE_REVEAL_DELAY_MS = 150;
+
+/**
+ * Whether a resolved attack was melee or ranged. The ATTACK_ROLLED event
+ * doesn't carry the kind, so recover it from its UNIT_ATTACK_DECLARED — which
+ * always precedes the roll in the log even when a reaction window pushes the
+ * roll into a later snapshot. Defaults to melee if the declaration scrolled off.
+ */
+function attackKindForRoll(
+  log: GameState["eventLog"],
+  attackerId: string,
+  defenderId: string,
+  isRetaliation: boolean
+): "melee" | "ranged" {
+  for (let i = log.length - 1; i >= 0; i -= 1) {
+    const event = log[i];
+    if (
+      event.type === "UNIT_ATTACK_DECLARED" &&
+      event.attackerId === attackerId &&
+      event.defenderId === defenderId &&
+      event.isRetaliation === isRetaliation
+    ) {
+      return event.attackKind;
+    }
+  }
+  return "melee";
+}
+
 function makeDiceCue(
   state: GameState,
   event: Extract<GameEvent, { type: "ATTACK_ROLLED" }>,
@@ -339,6 +372,13 @@ export default function Home() {
    * the action finishes before the next neutral move is queued up.
    */
   const [neutralResumeBlocked, setNeutralResumeBlocked] = useState(false);
+  /**
+   * unitId -> the damage value the board should show while an attack's dice and
+   * strike animation play, so a struck unit keeps its pre-hit health (and a
+   * slain unit stays on the board) until the blow lands. Cleared per unit at
+   * its impact beat.
+   */
+  const [combatDamageDisplay, setCombatDamageDisplay] = useState<Map<string, number>>(new Map());
   const seenRollIdsRef = useRef<Set<string> | null>(null);
   /** Server store generation last seen; a change means the host restarted. */
   const seenBootIdRef = useRef<string | null>(null);
@@ -361,6 +401,8 @@ export default function Home() {
   const unitDefIdsRef = useRef<Map<string, string>>(new Map());
   const hiddenHandTimerRef = useRef<number | null>(null);
   const neutralResumeTimerRef = useRef<number | null>(null);
+  /** Pending timers that reveal each unit's real health once its blow lands. */
+  const damageRevealTimersRef = useRef<number[]>([]);
   const connectionRef = useRef<RoomConnection | null>(null);
   // The draw cue needs the live seat without resubscribing the stream.
   const viewerRef = useRef<PlayerId>("p1");
@@ -459,6 +501,11 @@ export default function Home() {
         neutralResumeTimerRef.current = null;
       }
       setNeutralResumeBlocked(false);
+      for (const timer of damageRevealTimersRef.current) {
+        window.clearTimeout(timer);
+      }
+      damageRevealTimersRef.current = [];
+      setCombatDamageDisplay(new Map());
       setMapDice({ current: null, queue: [] });
       setMapNotice({ current: null, queue: [] });
       setFirstRoll(null);
@@ -786,16 +833,21 @@ export default function Home() {
       for (const event of fxEvents) {
         seenFxIdsRef.current.add(event.id);
       }
-      if (freshFx.length > 0) {
+      if (freshFx.length > 0 || fresh.length > 0) {
         const cues: FxCue[] = [];
         const viewerId = viewerRef.current;
-        // Strikes don't fire here on their own clock: each attack waits for its
-        // own die to finish reading (synced to diceDismissAt in the
-        // UNIT_ATTACK_DECLARED handler). Other combat cues sequence from zero.
-        let timeline = 0;
-        // Which fresh attack die the next declared attack maps to.
-        let diceIndex = 0;
+        // Nothing combat-side shows until the dice have rolled and read: when an
+        // attack die is in this batch the timeline starts after the dice finish,
+        // so damage numbers, ability splashes and heals never pre-empt the roll.
+        // Each attack's own strike is pinned to its die more precisely below.
+        let timeline = fresh.length > 0 ? diceClock + ATTACK_IMPACT_MS : 0;
         let viewerDraws = 0;
+        // defender unitId -> when its blow lands (its die's dismiss + the strike).
+        const impactByTarget = new Map<string, number>();
+        // defender unitId -> the pre-hit health the board shows until it lands.
+        const freezeDamage = new Map<string, number>();
+        // When the last strike's number / death has played out (drives the pause).
+        let combatPresentationEnd = 0;
 
         // A seat's deck/hand/discard anchors are on screen during combat
         // (every seat) and on the adventure map (the viewer's own seat).
@@ -829,6 +881,89 @@ export default function Home() {
           });
           playUnitSound(unitVoice(event.unitId), "move", moveDelay);
         });
+
+        // Attack strikes are driven off the rolls, not the declarations: an
+        // ATTACK_ROLLED event always shares a snapshot with its dice and damage,
+        // whereas a reaction window can leave UNIT_ATTACK_DECLARED in an earlier
+        // frame. Each strike plays the instant its die finishes reading
+        // (diceDismissAt), the struck unit holds its pre-hit health until the
+        // blow lands, and its damage number / death are pinned to that beat.
+        fresh.forEach((roll, index) => {
+          const strikeAt = diceDismissAt[index];
+          const impactAt = strikeAt + ATTACK_IMPACT_MS;
+          impactByTarget.set(roll.defenderId, impactAt);
+          combatPresentationEnd = Math.max(combatPresentationEnd, impactAt + 1200);
+
+          const attacker = nextState.combat?.units[roll.attackerId];
+          const defender = nextState.combat?.units[roll.defenderId];
+          const defenderCell =
+            defender && defender.position >= 0 ? `cell:${defender.position}` : undefined;
+          if (defender && defender.position >= 0) {
+            // Show the struck unit's pre-hit health (the blow's damage backed out)
+            // until impact, so a killing blow keeps it on the board until then.
+            freezeDamage.set(roll.defenderId, Math.max(0, defender.damage - roll.damage));
+          }
+          if (!attacker || !defenderCell) {
+            return;
+          }
+
+          const ranged =
+            attackKindForRoll(nextState.eventLog, roll.attackerId, roll.defenderId, roll.isRetaliation) ===
+            "ranged";
+          // The attacker's own H3 voice as it strikes (after the die, not on the
+          // declaration).
+          playUnitSound(unitVoice(roll.attackerId), ranged ? "shoot" : "attack", strikeAt);
+          cues.push({
+            kind: "lunge",
+            id: `${roll.id}-lunge`,
+            attackerId: roll.attackerId,
+            to: defenderCell,
+            attackKind: ranged ? "ranged" : "melee",
+            // Match the card's on-board orientation (p1 / a flipped view sit upside-down).
+            flip: (attacker.controllerId === "p1") !== boardFlipped,
+            delayMs: strikeAt
+          });
+          if (ranged) {
+            const attackerCell =
+              attacker.position >= 0 ? `cell:${attacker.position}` : `unit:${roll.attackerId}`;
+            cues.push({
+              kind: "bolt",
+              id: `${roll.id}-bolt`,
+              from: attackerCell,
+              to: defenderCell,
+              delayMs: strikeAt + RANGED_RELEASE_MS
+            });
+          } else {
+            cues.push({ kind: "slash", id: `${roll.id}-slash`, at: defenderCell, delayMs: impactAt });
+          }
+          // The struck unit recoils at the moment of impact.
+          cues.push({ kind: "shake", id: `${roll.id}-shake`, unitId: roll.defenderId, delayMs: impactAt });
+        });
+
+        // Reveal each struck unit's real health just after its blow lands (the
+        // damage number / death cry are queued for the same beat), so the hit
+        // resolves on the board only once the strike connects — never before the
+        // dice. Clear any still-pending reveal from an earlier snapshot first.
+        for (const timer of damageRevealTimersRef.current) {
+          window.clearTimeout(timer);
+        }
+        damageRevealTimersRef.current = [];
+        if (fresh.length > 0) {
+          setCombatDamageDisplay(freezeDamage);
+          impactByTarget.forEach((impactAt, unitId) => {
+            const timer = window.setTimeout(() => {
+              setCombatDamageDisplay((current) => {
+                if (!current.has(unitId)) {
+                  return current;
+                }
+                const next = new Map(current);
+                next.delete(unitId);
+                return next;
+              });
+            }, impactAt + DAMAGE_REVEAL_DELAY_MS);
+            damageRevealTimersRef.current.push(timer);
+          });
+        }
 
         // Mulligans / forced discards: the discarded cards fly out to the
         // discard pile before the replacement draws fly in. The reducer
@@ -1022,14 +1157,17 @@ export default function Home() {
             }
             case "DAMAGE_ASSIGNED": {
               if (event.target.type === "unit" && event.amount > 0) {
-                playUnitSound(unitVoice(event.target.unitId), "hurt", timeline);
+                // Attack damage lands on its strike beat; other damage (spells,
+                // ability splashes) follows the post-dice timeline.
+                const at = impactByTarget.get(event.target.unitId) ?? timeline;
+                playUnitSound(unitVoice(event.target.unitId), "hurt", at);
                 cues.push({
                   kind: "floater",
                   id: `${event.id}-floater`,
                   at: `unit:${event.target.unitId}`,
                   text: `−${event.amount}`,
                   tone: "damage",
-                  delayMs: timeline
+                  delayMs: at
                 });
               }
               break;
@@ -1102,81 +1240,10 @@ export default function Home() {
               break;
             }
             case "UNIT_ATTACK_DECLARED": {
-              // Hold the strike until this attack's die has rolled and the
-              // buffed result has been read, then play it in the die's gap.
-              const roll = fresh[diceIndex];
-              if (
-                roll &&
-                roll.attackerId === event.attackerId &&
-                roll.defenderId === event.defenderId &&
-                roll.isRetaliation === event.isRetaliation
-              ) {
-                timeline = Math.max(timeline, diceDismissAt[diceIndex]);
-                diceIndex += 1;
-              }
-
-              const ranged = event.attackKind === "ranged";
-              // The attacker's own H3 voice on the wind-up.
-              playUnitSound(unitVoice(event.attackerId), ranged ? "shoot" : "attack", timeline);
-
-              const attacker = nextState.combat?.units[event.attackerId];
-              const defender = nextState.combat?.units[event.defenderId];
-              // Anchor the strike to the defender's cell rather than the unit: a
-              // killing blow un-renders the unit, but the cell stays, so the hit
-              // still lands on screen.
-              const defenderCell =
-                defender && defender.position >= 0 ? `cell:${defender.position}` : undefined;
-              const attackStart = timeline;
-              const impactAt = timeline + ATTACK_IMPACT_MS;
-
-              if (attacker && defenderCell) {
-                // The attacker's card thrusts in (melee) or recoils (ranged).
-                cues.push({
-                  kind: "lunge",
-                  id: `${event.id}-lunge`,
-                  attackerId: event.attackerId,
-                  to: defenderCell,
-                  attackKind: event.attackKind,
-                  // Match the card's on-board orientation (p1 / a flipped view sit upside-down).
-                  flip: (attacker.controllerId === "p1") !== boardFlipped,
-                  delayMs: attackStart
-                });
-
-                if (ranged) {
-                  // Placeholder projectile from the shooter to the target; it
-                  // launches just after the loose and lands on the impact beat.
-                  const attackerCell =
-                    attacker.position >= 0 ? `cell:${attacker.position}` : `unit:${event.attackerId}`;
-                  cues.push({
-                    kind: "bolt",
-                    id: `${event.id}-bolt`,
-                    from: attackerCell,
-                    to: defenderCell,
-                    delayMs: attackStart + RANGED_RELEASE_MS
-                  });
-                } else {
-                  // Melee strike flash on the defender as the blow connects.
-                  cues.push({
-                    kind: "slash",
-                    id: `${event.id}-slash`,
-                    at: defenderCell,
-                    delayMs: impactAt
-                  });
-                }
-
-                // The struck unit recoils at the moment of impact (no-op if it
-                // was just destroyed and is no longer on the board).
-                cues.push({
-                  kind: "shake",
-                  id: `${event.id}-shake`,
-                  unitId: event.defenderId,
-                  delayMs: impactAt
-                });
-              }
-
-              // Hold the timeline at the blow so the following DAMAGE_ASSIGNED
-              // number and hurt cry land together with the strike.
-              timeline = impactAt;
+              // The strike (voice + lunge + slash/shot + the struck unit's
+              // recoil) is queued off the attack roll in the beats pre-pass
+              // above, so it lands after the dice rather than on the declaration
+              // — which a reaction window can strand a whole snapshot earlier.
               break;
             }
             case "UNIT_MOVED": {
@@ -1189,8 +1256,15 @@ export default function Home() {
               break;
             }
             case "UNIT_REMOVED": {
-              playUnitSound(unitVoice(event.unitId), "death", timeline);
-              timeline += 650;
+              // A unit slain by an attack cries out as its blow lands (just as
+              // its card is revealed gone); other removals follow the timeline.
+              const impactAt = impactByTarget.get(event.unitId);
+              if (impactAt !== undefined) {
+                playUnitSound(unitVoice(event.unitId), "death", impactAt + DAMAGE_REVEAL_DELAY_MS);
+              } else {
+                playUnitSound(unitVoice(event.unitId), "death", timeline);
+                timeline += 650;
+              }
               break;
             }
             default:
@@ -1210,13 +1284,12 @@ export default function Home() {
         }
 
         // When this snapshot resolved one or more attacks and another neutral
-        // step is queued behind it, hold that next step's preview until the
-        // dice and strike animations have finished (the preview then counts
-        // down its own 2s breather). presentationMs = the last die's dismiss
-        // plus its strike, or the end of the cue timeline if that runs longer
-        // (e.g. a death cry after the killing blow).
+        // step is queued behind it, hold that next step's preview until every
+        // die, strike, damage number and death has played out (the preview then
+        // counts down its own 2s breather). combatPresentationEnd tracks the
+        // last strike's full tail; timeline covers any trailing non-attack cues.
         if (fresh.length > 0 && nextState.combat?.pendingNeutralStep) {
-          const presentationMs = Math.max(timeline, diceClock + ATTACK_ANIM_MS);
+          const presentationMs = Math.max(timeline, combatPresentationEnd);
           if (neutralResumeTimerRef.current) {
             window.clearTimeout(neutralResumeTimerRef.current);
           }
@@ -2154,6 +2227,7 @@ export default function Home() {
         <div className="boardColumn">
           <InitiativeRail state={state} />
           <BattlefieldBoard
+            damageDisplay={combatDamageDisplay}
             flippedUnitIds={flippedUnitIds}
             legalActions={legalActions}
             onAction={submitAction}

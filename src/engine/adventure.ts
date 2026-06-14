@@ -8,7 +8,7 @@ import { hasInternalBorder } from "@/data/map/borders";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import type { LocationInteraction, TileDefinition } from "@/data/map/types";
-import { expireEffectsForTurnEnd, releaseEndedOngoingCards } from "./active-effects";
+import { expireEffectsForGameRoundEnd, expireEffectsForTurnEnd, releaseEndedOngoingCards } from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { applyUnitSideRules } from "./ruleset";
@@ -2791,6 +2791,11 @@ export function refreshRoundTokens(state: GameState): void {
  */
 export function startAdventureRound(state: GameState): void {
   const kind = state.round === 1 ? "first" : state.round % 2 === 1 ? "resource" : "astrologers";
+
+  // Torosar's Ballista IV grant ("until the end of the round") ends here.
+  for (const expired of expireEffectsForGameRoundEnd(state)) {
+    appendEvent(state, { type: "ACTIVE_EFFECT_EXPIRED", effectId: expired.id, reason: "game-round-ended" });
+  }
 
   if (kind === "astrologers") {
     // The previous proclamation lasts "until the next Astrologers' round":

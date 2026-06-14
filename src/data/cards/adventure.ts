@@ -440,42 +440,6 @@ function towerStatBoostSpecialty(
   };
 }
 
-/**
- * A faithful, display-only specialty for printed effects the engine does not
- * model yet (Chain Lightning's nearest-unit damage chain, the Ballista grants,
- * Cyra's initiative-conditional doubling). The card shows its real rules text
- * and is honestly flagged not-implemented, so it is never silently faked.
- * `hasArt` controls whether the cropped specialty scan is wired (Cyra/Torosar
- * have only placeholder art on the wiki, so theirs render as text).
- */
-function notImplementedSpecialty(
-  heroSlug: string,
-  specialtyName: string,
-  level: 1 | 4 | 6,
-  text: string,
-  hasArt: boolean
-): CardLibrary[string] {
-  return {
-    id: `specialty.${heroSlug}.${level}`,
-    name: `${specialtyName} ${towerRoman(level)}`,
-    kind: "hero-specialty",
-    timing: "combat",
-    phaseLimit: ["combat"],
-    tags: ["hero-specialty", "needs-implementation", heroSlug, text],
-    effect: { type: "DRAW_CARDS", amount: 0 },
-    ...(hasArt
-      ? {
-          assets: {
-            cardImage: specialtyCardImage(heroSlug, level),
-            imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
-          }
-        }
-      : {}),
-    implementationStatus: "not-implemented",
-    source: heroSource(heroSlug)
-  };
-}
-
 export const adventureCards: CardLibrary = {
   "ability.leadership": {
     id: "ability.leadership",
@@ -1376,9 +1340,9 @@ export const adventureCards: CardLibrary = {
     source: heroSource("dracon")
   },
   "specialty.dracon.6": unitInitiativeSpecialty("dracon", "Enchanters", 6, 2, "Magi and Enchanters"),
-  // Cyra (Wizard): the Haste specialist. I = +3 initiative for the combat
-  // (implemented). IV/VI add an initiative-comparison conditional the engine
-  // does not model yet, so they stay faithful display-only cards.
+  // Cyra (Wizard): the Haste specialist. I = +3 initiative for the combat;
+  // IV/VI add the initiative-comparison conditionals (faster foe doubles the
+  // attack bonus; slower foe meets +1 defense).
   "specialty.cyra.1": {
     id: "specialty.cyra.1",
     name: "Haste I",
@@ -1404,66 +1368,191 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("cyra")
   },
-  "specialty.cyra.4": notImplementedSpecialty(
-    "cyra",
-    "Haste",
-    4,
-    "Your selected unit gains +1 attack. The effect doubles if the attacked unit has higher initiative.",
-    false
-  ),
-  "specialty.cyra.6": notImplementedSpecialty(
-    "cyra",
-    "Haste",
-    6,
-    "For this Combat, your selected unit's initiative is increased by 3. This unit gains +1 defense against attacks made by units with lower initiative.",
-    false
-  ),
-  // Solmyr (Wizard): the Chain Lightning specialist. The nearest-unit damage
-  // chain (I/VI) and the deck dig (IV) need engine mechanics we do not have
-  // yet, so all three are faithful display-only cards (with their printed art).
-  "specialty.solmyr.1": notImplementedSpecialty(
-    "solmyr",
-    "Chain Lightning",
-    1,
-    "Select a unit and the 2 units closest to it. Allocate 1/1/0 damage, starting with the first selected unit.",
-    true
-  ),
-  "specialty.solmyr.4": notImplementedSpecialty(
-    "solmyr",
-    "Chain Lightning",
-    4,
-    "Discard up to 3 cards from your Might and Magic deck and return 1 of them to your hand.",
-    true
-  ),
-  "specialty.solmyr.6": notImplementedSpecialty(
-    "solmyr",
-    "Chain Lightning",
-    6,
-    "Select a unit and the 2 units closest to it. Allocate 2/1/1 damage, starting with the first selected unit.",
-    true
-  ),
-  // Torosar (Wizard, might): the Ballista specialist. Granting/activating extra
-  // Ballistas needs war-machine-grant mechanics we do not model yet; the wiki
-  // also only has placeholder art, so these are text-only display cards.
-  "specialty.torosar.1": notImplementedSpecialty(
-    "torosar",
-    "Ballista",
-    1,
-    "Pay 5 gold to gain a Ballista. — OR — Activate your Ballista (if you have one).",
-    false
-  ),
-  "specialty.torosar.4": notImplementedSpecialty(
-    "torosar",
-    "Ballista",
-    4,
-    "Until the end of the round, gain an additional Ballista during Combat. When played, this card counts as a Ballista.",
-    false
-  ),
-  "specialty.torosar.6": notImplementedSpecialty(
-    "torosar",
-    "Ballista",
-    6,
-    "For this Combat, gain an additional Ballista. You can activate all your Ballistas now. When played, this card counts as a Ballista.",
-    false
-  )
+  // IV: +1 attack on your unit's attack, doubled when the attacked unit is
+  // faster (a strictly higher Initiative) — played as an attack reaction.
+  "specialty.cyra.4": {
+    id: "specialty.cyra.4",
+    name: "Haste IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "cyra",
+      "haste",
+      "Your selected unit gains +1 attack. The effect doubles if the attacked unit has higher initiative."
+    ],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, doubleIfDefenderInitiativeHigher: true },
+    implementationStatus: "implemented",
+    source: heroSource("cyra")
+  },
+  // VI: +3 initiative this combat plus +1 defense against slower attackers.
+  "specialty.cyra.6": {
+    id: "specialty.cyra.6",
+    name: "Haste VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "cyra",
+      "haste",
+      "For this Combat, your selected unit's initiative is increased by 3. This unit gains +1 defense against attacks made by units with lower initiative."
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: "Haste",
+        scope: "unit",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [
+          { type: "INITIATIVE_BONUS", amount: 3 },
+          { type: "DEFENSE_VS_LOWER_INITIATIVE", amount: 1 }
+        ]
+      }
+    },
+    implementationStatus: "implemented",
+    source: heroSource("cyra")
+  },
+  // Solmyr (Wizard): the Chain Lightning specialist. I/VI fork lightning into
+  // the units closest to the selected one; IV digs his own deck for a card.
+  "specialty.solmyr.1": {
+    id: "specialty.solmyr.1",
+    name: "Chain Lightning I",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "solmyr",
+      "Select a unit and the 2 units closest to it. Allocate 1/1/0 damage, starting with the first selected unit."
+    ],
+    target: { type: "any-unit" },
+    effect: { type: "CHAIN_LIGHTNING", damages: [1, 1, 0] },
+    assets: {
+      cardImage: specialtyCardImage("solmyr", 1),
+      imageAlt: "Chain Lightning level I specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("solmyr")
+  },
+  "specialty.solmyr.4": {
+    id: "specialty.solmyr.4",
+    name: "Chain Lightning IV",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "solmyr",
+      "Discard up to 3 cards from your Might and Magic deck and return 1 of them to your hand."
+    ],
+    target: { type: "none" },
+    effect: { type: "DECK_DIG_KEEP_ONE", count: 3 },
+    assets: {
+      cardImage: specialtyCardImage("solmyr", 4),
+      imageAlt: "Chain Lightning level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("solmyr")
+  },
+  "specialty.solmyr.6": {
+    id: "specialty.solmyr.6",
+    name: "Chain Lightning VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "solmyr",
+      "Select a unit and the 2 units closest to it. Allocate 2/1/1 damage, starting with the first selected unit."
+    ],
+    target: { type: "any-unit" },
+    effect: { type: "CHAIN_LIGHTNING", damages: [2, 1, 1] },
+    assets: {
+      cardImage: specialtyCardImage("solmyr", 6),
+      imageAlt: "Chain Lightning level VI specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("solmyr")
+  },
+  // Torosar (Wizard, might): the Ballista specialist. I gains a Ballista for
+  // gold (map) or fires one now (combat); IV/VI field extra Ballistas — each
+  // "counts as a Ballista" — and VI fires all of them at once.
+  "specialty.torosar.1": {
+    id: "specialty.torosar.1",
+    name: "Ballista I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "torosar",
+      "ballista",
+      "Pay 5 gold to gain a Ballista. — OR — Activate your Ballista (if you have one)."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Pay 5 gold to gain a Ballista",
+          mapOnly: true,
+          effect: { type: "GAIN_WAR_MACHINE", warMachineCardId: "war_machine.ballista", goldCost: 5 }
+        },
+        {
+          label: "Activate your Ballista",
+          combatOnly: true,
+          effect: { type: "BALLISTA_SPECIALTY", activate: "one" }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("torosar")
+  },
+  "specialty.torosar.4": {
+    id: "specialty.torosar.4",
+    name: "Ballista IV",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "torosar",
+      "ballista",
+      "Until the end of the round, gain an additional Ballista during Combat. When played, this card counts as a Ballista."
+    ],
+    target: { type: "none" },
+    effect: { type: "BALLISTA_SPECIALTY", grant: "game-round" },
+    implementationStatus: "implemented",
+    source: heroSource("torosar")
+  },
+  "specialty.torosar.6": {
+    id: "specialty.torosar.6",
+    name: "Ballista VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "torosar",
+      "ballista",
+      "For this Combat, gain an additional Ballista. You can activate all your Ballistas now. When played, this card counts as a Ballista."
+    ],
+    target: { type: "none" },
+    effect: { type: "BALLISTA_SPECIALTY", grant: "combat", activate: "all" },
+    implementationStatus: "implemented",
+    source: heroSource("torosar")
+  }
 };

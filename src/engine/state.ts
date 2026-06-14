@@ -108,6 +108,8 @@ export type EffectDurationDefinition =
   | { type: "next-combat-round" }
   | { type: "combat-rounds"; rounds: number }
   | { type: "current-turn" }
+  /** Torosar's Ballista IV: "until the end of the round" (this game round). */
+  | { type: "current-game-round" }
   | { type: "combat" }
   | { type: "permanent" };
 
@@ -166,6 +168,22 @@ export type ActiveEffectModifier =
       /** Haste / Slow / Cape of Velocity: shifts a unit's activation order. */
       type: "INITIATIVE_BONUS";
       amount: number;
+    }
+  | {
+      /**
+       * Cyra's Haste VI: the unit gains this much Defense, but only against
+       * attacks made by a unit with strictly lower (effective) Initiative.
+       */
+      type: "DEFENSE_VS_LOWER_INITIATIVE";
+      amount: number;
+    }
+  | {
+      /**
+       * Torosar's Ballista IV/VI: while held, the controller fields one extra
+       * Ballista — it fires at every combat-round start and counts toward
+       * "activate all your Ballistas". One modifier per granted Ballista.
+       */
+      type: "EXTRA_BALLISTA";
     }
   | {
       /** Anti-Magic: the unit cannot be targeted by spells (up to a tier). */
@@ -311,6 +329,12 @@ export type EffectDefinition =
       ignoreRangedPenalty?: boolean;
       /** Hero specialties: the bonus doubles when the named unit is involved. */
       doubleForUnitName?: string;
+      /**
+       * Cyra's Haste IV: the bonus doubles when the attacked unit has strictly
+       * higher (effective) Initiative than the attacker — rewards striking
+       * faster foes.
+       */
+      doubleIfDefenderInitiativeHigher?: boolean;
     }
   | {
       /** Centaur's Axe: the attack die's outcome counts three times. */
@@ -498,6 +522,39 @@ export type EffectDefinition =
       type: "GAIN_WAR_MACHINE";
       warMachineCardId: CardId;
       fallbackDrawCards?: number;
+      /** Torosar's Ballista I: pay this much gold to gain the war machine. */
+      goldCost?: number;
+    }
+  | {
+      /**
+       * Solmyr's Chain Lightning (I: 1/1/0, VI: 2/1/1): the selected unit takes
+       * `damages[0]`; the remaining values are dealt to the units closest to it
+       * (friend or foe), the caster choosing which closest unit takes which on
+       * ties or when more than one nonzero value is left. A value of 0 means
+       * that closest unit is skipped (its damage routed away from an ally).
+       */
+      type: "CHAIN_LIGHTNING";
+      damages: number[];
+    }
+  | {
+      /**
+       * Torosar's Ballista specialty (I activate / IV / VI). `grant` fields one
+       * extra Ballista for the combat or the rest of the game round ("this card
+       * counts as a Ballista"); `activate` fires one of your Ballistas now (I)
+       * or every Ballista you field (VI, after the grant). Either part may be
+       * present alone.
+       */
+      type: "BALLISTA_SPECIALTY";
+      grant?: "combat" | "game-round";
+      activate?: "one" | "all";
+    }
+  | {
+      /**
+       * Solmyr's Chain Lightning IV: dig up to `count` cards off the top of your
+       * own Might and Magic deck, keep one in hand, and discard the rest.
+       */
+      type: "DECK_DIG_KEEP_ONE";
+      count: number;
     }
   | {
       /**
@@ -1561,7 +1618,7 @@ export type GameEvent =
       id: string;
       type: "ACTIVE_EFFECT_EXPIRED";
       effectId: string;
-      reason: "combat-round-ended" | "turn-ended" | "combat-ended";
+      reason: "combat-round-ended" | "turn-ended" | "combat-ended" | "game-round-ended";
     }
   | {
       id: string;
@@ -2020,6 +2077,8 @@ export type ActiveEffectState = ActiveEffectDefinition & {
   startedCombatRound?: number;
   expiresAtCombatRoundEnd?: number;
   expiresAtTurnEndPlayerId?: PlayerId;
+  /** Game round at whose end the effect expires ("current-game-round"). */
+  expiresAtGameRound?: number;
   usedRollEventIds: string[];
   usedChoiceIds: string[];
   usedCombatRoundNumbers: number[];
@@ -2459,8 +2518,12 @@ export type CombatState = {
    * while the second target choice is open.
    */
   warMachineRound?: {
-    /** One entry per round-start war machine: its owner and the machine card. */
-    pending: { playerId: PlayerId; cardId: CardId }[];
+    /**
+     * One entry per round-start war machine: its owner and the machine card.
+     * `granted` entries are Torosar's temporary Ballistas (no permanent card) —
+     * they fire a basic shot and skip the in-play check.
+     */
+    pending: { playerId: PlayerId; cardId: CardId; granted?: boolean }[];
     firstTargetUnitId?: UnitId | null;
   } | null;
   outcome: {
@@ -3175,7 +3238,8 @@ export type PendingChoice =
         | "spell-splash"
         | "spell-redirect"
         | "enchanter-activation"
-        | "faerie-damage";
+        | "faerie-damage"
+        | "chain-lightning";
       abilityId: string | null;
       abilityName: string;
       prompt: string;
@@ -3192,6 +3256,12 @@ export type PendingChoice =
       optional?: boolean;
       /** Label of the "skip" action when `optional` (default "Skip"). */
       skipLabel?: string;
+      /**
+       * Chain Lightning: the still-eligible "closest" units (anchorUnitId is the
+       * selected unit), and the damage values still to allocate, leftmost first.
+       */
+      chainReachableUnitIds?: UnitId[];
+      chainRemainingDamages?: number[];
     }
   | {
       /**
