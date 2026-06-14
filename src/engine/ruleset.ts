@@ -7,7 +7,8 @@ import type {
   GameState,
   HeroState,
   PlayerId,
-  PlayerState
+  PlayerState,
+  VictoryMode
 } from "./state";
 
 /**
@@ -32,6 +33,23 @@ export const RULESET_DESCRIPTIONS: Record<GameRuleset, string> = {
     "BINH house rules: Basic/Expert Spell decks and Minor/Major/Relic Artifact decks with level and map gating, " +
     "Wisdom expert −3 gold, Estates 2/4 gold, Few Griffins 3 attack, Pack Griffins 1 defense, Pack Marksmen 3 HP, " +
     "and Sandro's Horde/Legion of Skeletons fight with 3 HP."
+};
+
+export const VICTORY_MODE_LABELS: Record<VictoryMode, string> = {
+  conquest: "Conquest",
+  grail: "Grail Hunt",
+  "dragon-conqueror": "Dragon Conqueror"
+};
+
+export const VICTORY_MODE_DESCRIPTIONS: Record<VictoryMode, string> = {
+  conquest: "Flag an enemy faction Town to win — the classic skirmish goal.",
+  grail:
+    "Win any one way: capture the Grail (defeat its Lvl-VII guard, dig it for 1 movement point, then carry it " +
+    "home to your town), defeat the Dragon Utopia, or beat every enemy hero in combat at least once " +
+    "(only 2 of the 3 in a 4-player game). A Grail and a Dragon Utopia are guaranteed on the Center tiles.",
+  "dragon-conqueror":
+    "Defeat the Dragon Utopia to capture it, then hold it. The holder garrisons the Utopia and rivals must " +
+    "besiege it (Walls, Gate, Arrow Tower) to take it. Control the Utopia at the start of your turn to win."
 };
 
 // ---------------------------------------------------------------------------

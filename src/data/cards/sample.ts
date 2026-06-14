@@ -117,6 +117,120 @@ export const sampleCards: CardLibrary = {
       url: "https://en.homm3bg.wiki/statistics/knowledge/"
     }
   },
+  // Empowered Statistics (Inferno expansion / Star Axis): a single printed
+  // side worth the regular card's expert value, with no separate expert play.
+  // Attack/Defense/Power are a flat +2; Knowledge recalls the spell AND raises
+  // the spell limit by 1 without spending a crown.
+  "stat.attack.empowered": {
+    id: "stat.attack.empowered",
+    name: "Empowered Attack",
+    kind: "statistic",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    statisticType: "attack",
+    tags: ["statistic", "instant", "attack", "empowered", "wiki-reference"],
+    trigger: {
+      event: "UNIT_ATTACK_DECLARED",
+      controller: "self"
+    },
+    effect: {
+      type: "ADD_COMBAT_STAT",
+      stat: "attack",
+      amount: 2
+    },
+    assets: {
+      cardImage: "/assets/statistics-attack.webp",
+      imageAlt: "Empowered Attack statistic card"
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: wikiCredit,
+      url: "https://en.homm3bg.wiki/statistics/"
+    }
+  },
+  "stat.defense.empowered": {
+    id: "stat.defense.empowered",
+    name: "Empowered Defense",
+    kind: "statistic",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    statisticType: "defense",
+    tags: ["statistic", "instant", "defense", "empowered", "wiki-reference"],
+    trigger: {
+      event: "UNIT_ATTACK_DECLARED",
+      controller: "opponent"
+    },
+    effect: {
+      type: "ADD_COMBAT_STAT",
+      stat: "defense",
+      amount: 2
+    },
+    assets: {
+      cardImage: "/assets/statistics-defense.webp",
+      imageAlt: "Empowered Defense statistic card"
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: wikiCredit,
+      url: "https://en.homm3bg.wiki/statistics/"
+    }
+  },
+  "stat.power.empowered": {
+    id: "stat.power.empowered",
+    name: "Empowered Power",
+    kind: "statistic",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    statisticType: "power",
+    tags: ["statistic", "instant", "power", "empowered", "wiki-reference"],
+    trigger: {
+      event: "SPELL_CAST_STARTED",
+      controller: "self"
+    },
+    effect: {
+      type: "ADD_SPELL_POWER",
+      amount: 2
+    },
+    assets: {
+      cardImage: "/assets/statistics-power.webp",
+      imageAlt: "Empowered Power statistic card"
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: wikiCredit,
+      url: "https://en.homm3bg.wiki/statistics/"
+    }
+  },
+  "stat.knowledge.empowered": {
+    id: "stat.knowledge.empowered",
+    name: "Empowered Knowledge",
+    kind: "statistic",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat", "map"],
+    statisticType: "knowledge",
+    tags: ["statistic", "instant", "knowledge", "spell-recall", "empowered", "wiki-reference"],
+    trigger: {
+      event: "SPELL_CAST_STARTED",
+      controller: "self"
+    },
+    effect: {
+      type: "RECALL_SPELL",
+      basicSpellLimitBonus: 1
+    },
+    assets: {
+      cardImage: "/assets/statistics-knowledge.webp",
+      imageAlt: "Empowered Knowledge statistic card"
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
+      credit: wikiCredit,
+      url: "https://en.homm3bg.wiki/statistics/"
+    }
+  },
   "spell.magic_arrow": {
     id: "spell.magic_arrow",
     name: "Magic Arrow",

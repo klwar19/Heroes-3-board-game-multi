@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Check, ChevronsUp, Hammer, Image as ImageIcon, Minus, Plus, RotateCcw, RotateCw, Star, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
@@ -16,11 +16,12 @@ import {
   NEUTRAL_DECK_IDS,
   RULESET_DESCRIPTIONS,
   RULESET_LABELS,
+  VICTORY_MODE_DESCRIPTIONS,
+  VICTORY_MODE_LABELS,
   applyUnitSideRules,
   deckDisplayName,
   describeCardEffect,
   getActiveAstrologersCard,
-  getMainHero,
   getReachableHeroPaths,
   getRuleset,
   getTileBorderSegments,
@@ -174,7 +175,22 @@ export function HexMapBoard({
   const suppressClickRef = useRef(false);
 
   const isSeated = Boolean(state.players[viewerPlayerId]) && viewerPlayerId !== "observer";
-  const myHero = isSeated ? getMainHero(state, viewerPlayerId) : null;
+  // A player may field a Main Hero and (via Tavern / Prison) one Secondary
+  // Hero. The map controls the "active" hero; click a pawn to switch.
+  const myHeroes = useMemo(
+    () =>
+      isSeated
+        ? Object.values(state.heroes).filter((candidate) => candidate.controllerId === viewerPlayerId)
+        : [],
+    [state.heroes, isSeated, viewerPlayerId]
+  );
+  const [selectedHeroId, setSelectedHeroId] = useState<string | null>(null);
+  const myHero =
+    myHeroes.find((candidate) => candidate.id === selectedHeroId) ??
+    myHeroes.find((candidate) => candidate.kind === "main") ??
+    myHeroes[0] ??
+    null;
+  const hasSecondaryHero = myHeroes.length > 1;
   const myHeroSpaceId = myHero?.spaceId ?? null;
   const myTurn = isSeated && state.activePlayerId === viewerPlayerId;
 
@@ -599,11 +615,29 @@ export function HexMapBoard({
       for (const [index, occupant] of occupants.entries()) {
         const heroDef = occupant.heroDefId ? coreHeroDefinitions[occupant.heroDefId] : undefined;
         const portrait = heroDef?.portrait;
+        const isOwnHero = occupant.playerId === viewerPlayerId;
+        // Only offer hero switching when the player actually has a second hero.
+        const canSelectHero = isOwnHero && hasSecondaryHero && myTurn && !readOnly;
+        const isActiveHero = isOwnHero && hasSecondaryHero && myHero?.id === occupant.heroId;
         heroPawns.push(
           <g
             className="heroPawn"
             key={occupant.heroId}
-            style={{ transform: `translate(${x + index * 10 - 5}px, ${y - 4}px)` }}
+            onClick={
+              canSelectHero
+                ? (clickEvent) => {
+                    clickEvent.stopPropagation();
+                    if (suppressClickRef.current) {
+                      return;
+                    }
+                    setSelectedHeroId(occupant.heroId);
+                  }
+                : undefined
+            }
+            style={{
+              transform: `translate(${x + index * 10 - 5}px, ${y - 4}px)`,
+              cursor: canSelectHero ? "pointer" : undefined
+            }}
           >
             <circle className="heroPawnBase" r={12} />
             {portrait ? (
@@ -628,6 +662,7 @@ export function HexMapBoard({
               <circle fill={playerColor(state, occupant.playerId)} r={9} />
             )}
             <circle className="heroPawnRing" r={11} stroke={playerColor(state, occupant.playerId)} />
+            {isActiveHero ? <circle fill="none" r={13.5} stroke="#ffd34d" strokeWidth={2} /> : null}
             <line className="heroFlagPole" x1={0} x2={0} y1={-9} y2={-24} />
             <path
               d="M0 -23 L13 -19 L0 -15 Z"
@@ -875,6 +910,13 @@ export function HexMapBoard({
         </div>
       ) : null}
 
+      {hasSecondaryHero && myHero && !readOnly ? (
+        <div className="mapLockHint" role="status">
+          <span aria-hidden="true">🧭</span> Active: {myHero.kind === "main" ? "Main Hero" : "Secondary Hero"} (
+          {myHero.movementPoints} MP) — click a hero to switch
+        </div>
+      ) : null}
+
       {selectedTarget && myHero && !readOnly ? (
         <div className="moveConfirmBar" role="dialog" aria-label="Confirm movement">
           <span>
@@ -1082,6 +1124,28 @@ export function AdventureHud({
         <strong>{RULESET_LABELS[getRuleset(state)]}</strong>
         <small>game mode</small>
       </div>
+      {(() => {
+        const mode = state.adventure?.victoryMode ?? "conquest";
+        let status = "flag an enemy town";
+        if (mode === "grail") {
+          const grail = state.adventure?.grail;
+          status =
+            grail?.status === "carried" && grail.carrierHeroId
+              ? `Grail carried by ${state.players[state.heroes[grail.carrierHeroId]?.controllerId ?? ""]?.name ?? "a hero"}`
+              : "capture the Grail / a Utopia / all heroes";
+        } else if (mode === "dragon-conqueror") {
+          const holder = Object.values(state.adventure?.fields ?? {}).find(
+            (field) => field.location === "dragon_utopia" && field.flagOwnerId
+          )?.flagOwnerId;
+          status = holder ? `Utopia held by ${state.players[holder]?.name ?? "a rival"}` : "capture the Dragon Utopia";
+        }
+        return (
+          <div className="advHudCell">
+            <strong>{VICTORY_MODE_LABELS[mode]}</strong>
+            <small>{status}</small>
+          </div>
+        );
+      })()}
       {winner ? (
         <div className="advHudCell winner">
           <strong>{state.players[winner]?.name} wins!</strong>
@@ -1188,6 +1252,60 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
 // activated building actions (Blacksmith, Cover of Darkness, Castle Gate…).
 // ---------------------------------------------------------------------------
 
+/**
+ * A hero's board-art portrait, with a graceful fallback. Some heroes ship
+ * without a portrait asset (or the file 404s); rather than render a broken
+ * image — which made portrait-less heroes like Moandor and Zydar look
+ * unselectable — we show a round initial badge. Selection never depends on the
+ * portrait: the surrounding button always carries the hero's name and click.
+ */
+function HeroPortrait({
+  portrait,
+  name,
+  size,
+  style
+}: {
+  portrait: string | undefined;
+  name: string;
+  size: number;
+  style?: CSSProperties;
+}) {
+  const [failed, setFailed] = useState(false);
+  const initial = name.trim().charAt(0).toUpperCase() || "?";
+  const base: CSSProperties = { width: size, height: size, borderRadius: "50%", flex: "0 0 auto", ...style };
+
+  if (portrait && !failed) {
+    return (
+      <img
+        alt=""
+        onError={() => setFailed(true)}
+        referrerPolicy="no-referrer"
+        src={assetUrl(portrait)}
+        style={{ ...base, objectFit: "cover" }}
+      />
+    );
+  }
+
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        ...base,
+        display: "inline-grid",
+        placeItems: "center",
+        background: "rgba(170, 130, 70, 0.25)",
+        border: "1px solid rgba(170, 130, 70, 0.5)",
+        color: "#e8d9b8",
+        fontWeight: 700,
+        fontSize: Math.max(10, Math.round(size * 0.5)),
+        lineHeight: 1
+      }}
+    >
+      {initial}
+    </span>
+  );
+}
+
 export function TownPanel({
   state,
   viewerPlayerId,
@@ -1232,6 +1350,7 @@ export function TownPanel({
   }
 
   const buildActions = legalActions.filter((legal) => legal.action.type === "BUILD_STRUCTURE");
+  const hireActions = legalActions.filter((legal) => legal.action.type === "HIRE_SECONDARY_HERO");
   const anchorBuildingTip = (buildingId: string, element: HTMLElement) => {
     const rect = element.getBoundingClientRect();
     setBuildingTip({ buildingId, left: rect.left + rect.width / 2, top: rect.top - 8 });
@@ -1557,6 +1676,38 @@ export function TownPanel({
               </button>
             );
           })}
+        </div>
+      ) : null}
+
+      {hireActions.length > 0 ? (
+        <div className="townActions" aria-label="Hire a Secondary Hero">
+          <h4 title="A Secondary Hero has 2 movement, plays no cards and never gains experience. One per player.">
+            Hire a Secondary Hero — 10 gold
+          </h4>
+          <div className="hireHeroRow">
+            {hireActions.map((legal) => {
+              const action = legal.action;
+              const heroDefId = action.type === "HIRE_SECONDARY_HERO" ? action.heroDefId : "";
+              const heroDef = heroDefId ? coreHeroDefinitions[heroDefId] : undefined;
+              return (
+                <button
+                  className="commandButton"
+                  key={actionKey(action)}
+                  onClick={() => onAction(action)}
+                  title={`Appears at your town as ${heroDef?.name ?? heroDefId} (10 gold)`}
+                  type="button"
+                >
+                  <HeroPortrait
+                    name={heroDef?.name ?? heroDefId}
+                    portrait={heroDef?.portrait}
+                    size={18}
+                    style={{ marginRight: 4, verticalAlign: "middle" }}
+                  />
+                  {heroDef?.name ?? heroDefId}
+                </button>
+              );
+            })}
+          </div>
         </div>
       ) : null}
     </section>
@@ -2529,6 +2680,30 @@ function GameOptionsPanel({
       </div>
 
       {(() => {
+        const victoryMode = options.victoryMode ?? "conquest";
+        return (
+          <div className="optionRow">
+            <small title="How this game is won">Win condition</small>
+            <div className="optionButtons">
+              {(["conquest", "grail", "dragon-conqueror"] as const).map((mode) => (
+                <button
+                  aria-pressed={victoryMode === mode}
+                  className={victoryMode === mode ? "selected" : ""}
+                  key={mode}
+                  onClick={() => send({ victoryMode: mode })}
+                  title={VICTORY_MODE_DESCRIPTIONS[mode]}
+                  type="button"
+                >
+                  {VICTORY_MODE_LABELS[mode]}
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">{VICTORY_MODE_DESCRIPTIONS[victoryMode]}</small>
+          </div>
+        );
+      })()}
+
+      {(() => {
         const scenario = scenarioDefinitions[options.scenarioId];
         const min = scenario?.minPlayers ?? 2;
         const max = Math.min(scenario?.maxPlayers ?? 2, scenario?.layout.starts.length ?? 2);
@@ -2785,9 +2960,12 @@ export function SetupLobbyScreen({
                         }
                         type="button"
                       >
-                        {hero?.portrait ? (
-                          <img alt={`${hero.name} portrait`} referrerPolicy="no-referrer" src={assetUrl(hero.portrait)} />
-                        ) : null}
+                        <HeroPortrait
+                          name={hero?.name ?? heroDefId}
+                          portrait={hero?.portrait}
+                          size={34}
+                          style={{ gridRow: "span 2" }}
+                        />
                         <span>{hero?.name ?? heroDefId}</span>
                         <small>
                           {hero?.class} · {hero?.type}
@@ -2839,6 +3017,7 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   ADVENTURE_DICE_ROLLED: { icon: "🎲", cue: "dice" },
   EXPERIENCE_GAINED: { icon: "📈", cue: "experience" },
   HERO_LEVEL_UP: { icon: "⭐", cue: "level-up" },
+  HERO_GAINED: { icon: "🧙", cue: "recruit" },
   MORALE_CHANGED: { icon: "🎺", cue: "morale" },
   QUICK_COMBAT_WON: { icon: "⚡", cue: "quick-combat" },
   NEUTRAL_COMBAT_STARTED: { icon: "⚔️", cue: "combat-start" },

@@ -6,6 +6,7 @@ import {
   createAdventureGameState,
   createAdventureLobbyState,
   createInitialGameState,
+  ENGINE_SIGNATURE,
   type AdventurePlayerConfig,
   type EngineResult,
   type GameAction,
@@ -27,6 +28,8 @@ export type GameRoomSnapshot = {
    * while" freeze.
    */
   bootId?: string;
+  /** This server's ENGINE_SIGNATURE, stamped at send time (see version.ts). */
+  serverSignature?: string;
 };
 
 export type RoomResetOptions = {
@@ -99,7 +102,9 @@ function cloneSerializable<T>(value: T): T {
 }
 
 function withBootId(snapshot: GameRoomSnapshot): GameRoomSnapshot {
-  return { ...snapshot, bootId };
+  // Stamp the running server's engine signature at send time (never persisted)
+  // so clients can detect a stale room-server deploy.
+  return { ...snapshot, bootId, serverSignature: ENGINE_SIGNATURE };
 }
 
 function notifyRoomListeners(roomId: string, snapshot: GameRoomSnapshot): void {

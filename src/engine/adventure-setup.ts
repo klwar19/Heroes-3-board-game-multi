@@ -33,6 +33,7 @@ import {
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { createSeededRandom } from "./random";
 import { appendEvent } from "./events";
+import { VICTORY_MODE_LABELS } from "./ruleset";
 import { hexEquals, tileCentersOverlap, tileFootprintsTouch, type HexCoord } from "./hex";
 import type {
   AdventureState,
@@ -47,7 +48,8 @@ import type {
   GameState,
   PlayerId,
   PlayerState,
-  UnitLevel
+  UnitLevel,
+  VictoryMode
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 
@@ -61,6 +63,8 @@ export type AdventurePlayerConfig = {
 export type AdventureSetupOptions = {
   seed?: string;
   ruleset?: GameRuleset;
+  /** Win condition: "conquest" (flag enemy town) or "grail" (objective hunt). */
+  victoryMode?: VictoryMode;
   difficulty?: GameDifficulty;
   scenarioId?: string;
   players?: AdventurePlayerConfig[];
@@ -115,6 +119,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     scenarioId: scenario.id,
     playerCount: scenario.minPlayers,
     ruleset: "binh",
+    victoryMode: "conquest",
     difficulty: "impossible",
     startingResources: { ...scenario.startingResources },
     startingProduction: { ...scenario.startingProduction },
@@ -469,12 +474,44 @@ export function validateCustomMapPlan(
   return { accepted, problems };
 }
 
+/** Removes and returns a Center tile from the pool that carries `location`. */
+function takeCenterTileWith(pool: string[], location: string): string | undefined {
+  const index = pool.findIndex((tileDefId) =>
+    (allTileDefinitions[tileDefId]?.fields ?? []).some((field) => field.location === location)
+  );
+  return index >= 0 ? pool.splice(index, 1)[0] : undefined;
+}
+
+/**
+ * Center (VI–VII) tiles forced by the win condition: Grail Hunt guarantees a
+ * Grail (and a Dragon Utopia when a second Center slot exists); Dragon
+ * Conqueror guarantees a Dragon Utopia. The array is index-aligned with the
+ * scenario's Center positions; undefined entries fall back to a random draw.
+ */
+function forcedObjectiveCenterTiles(pool: string[], slots: number, mode: VictoryMode): (string | undefined)[] {
+  if (slots <= 0) {
+    return [];
+  }
+  if (mode === "grail") {
+    const forced: (string | undefined)[] = [takeCenterTileWith(pool, "grail")];
+    if (slots >= 2) {
+      forced.push(takeCenterTileWith(pool, "dragon_utopia"));
+    }
+    return forced;
+  }
+  if (mode === "dragon-conqueror") {
+    return [takeCenterTileWith(pool, "dragon_utopia")];
+  }
+  return [];
+}
+
 export function createAdventureGameState(options: AdventureSetupOptions = {}): GameState {
   const seed = options.seed ?? "homm3bg-adventure-seed";
   const scenario = getScenario(options.scenarioId);
   const setupOptions: GameSetupOptions = {
     ...defaultGameSetupOptions(scenario),
     ...(options.ruleset ? { ruleset: options.ruleset } : {}),
+    ...(options.victoryMode ? { victoryMode: options.victoryMode } : {}),
     ...(options.difficulty ? { difficulty: options.difficulty } : {}),
     ...(options.startingResources ? { startingResources: options.startingResources } : {}),
     ...(options.startingProduction ? { startingProduction: options.startingProduction } : {}),
@@ -485,6 +522,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   };
   const difficulty = setupOptions.difficulty;
   const ruleset: GameRuleset = setupOptions.ruleset;
+  const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const playerConfigs = (options.players?.length ? options.players : DEFAULT_PLAYERS).slice(
     0,
     Math.min(scenario.maxPlayers, scenario.layout.starts.length)
@@ -504,6 +542,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     rewardQueue: [],
     lastVisitedField: {},
     winnerPlayerId: null,
+    victoryMode,
+    ...(victoryMode === "grail" ? { grail: { status: "uncollected" as const }, heroDefeats: {} } : {}),
     pendingTileChoice: null,
     astrologers: {
       activeCardId: null,
@@ -688,12 +728,15 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         instantiateTile(adventure, tileDefId, center, 0, true);
       }
     }
-    for (const center of scenario.layout.center) {
-      const tileDefId = centerPool.pop();
+    // Grail Hunt / Dragon Conqueror force their objective onto the VI–VII
+    // Center tiles; any remaining Center tiles stay random.
+    const forcedCenters = forcedObjectiveCenterTiles(centerPool, scenario.layout.center.length, victoryMode);
+    scenario.layout.center.forEach((center, index) => {
+      const tileDefId = forcedCenters[index] ?? centerPool.pop();
       if (tileDefId) {
         instantiateTile(adventure, tileDefId, center, 0, true);
       }
-    }
+    });
   }
 
   // Far (II–III) tile supplies, with the settlement draft guarantee.
@@ -947,6 +990,14 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     changes.push(`game mode ${next.ruleset === "binh" ? "House rules BINH" : "Legacy (rulebook)"}`);
   }
 
+  if (next.victoryMode !== undefined) {
+    if (next.victoryMode !== "conquest" && next.victoryMode !== "grail" && next.victoryMode !== "dragon-conqueror") {
+      throw new Error("Unknown win condition.");
+    }
+    lobby.options.victoryMode = next.victoryMode;
+    changes.push(`win condition ${VICTORY_MODE_LABELS[next.victoryMode]}`);
+  }
+
   if (next.scenarioId !== undefined) {
     if (!scenarioDefinitions[next.scenarioId]) {
       throw new Error("Unknown scenario.");
@@ -1151,6 +1202,7 @@ export function startAdventureFromLobby(state: GameState, action: Extract<GameAc
     seed: state.seed,
     scenarioId: lobby.options.scenarioId,
     ruleset: lobby.options.ruleset,
+    victoryMode: lobby.options.victoryMode,
     difficulty: lobby.options.difficulty,
     startingResources: lobby.options.startingResources,
     startingProduction: lobby.options.startingProduction,

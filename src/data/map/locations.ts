@@ -51,11 +51,11 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "random_town",
     name: "Random Town",
     category: "town",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Random Town (Inferno/Stretch Goals) needs an unused faction, defending packs, walls and gate."
-    },
-    implementationStatus: "not-implemented",
+    // Defended by an unused faction's Packs (1 bronze, 2 silver, 2 gold);
+    // capturing it grants +10 gold income (and 10 gold on the first capture).
+    // The defending faction and guards are built in the engine (drawGuardArmy).
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
     source: source("random_town")
   },
   mine: {
@@ -317,34 +317,36 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
   dragon_utopia: {
     id: "dragon_utopia",
     name: "Dragon Utopia",
-    category: "flaggable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Dragon Utopia effects depend on the Scenario."
-    },
-    implementationStatus: "not-implemented",
+    category: "visitable",
+    // A Lvl-VII creature bank guarded by four dragons (azure, rust, crystal,
+    // faerie). The post-fight behavior is win-condition specific and handled
+    // in the engine (handleDragonUtopiaVisit): a Grail Hunt win, a Dragon
+    // Conqueror capture, or — in Conquest — 10 gold and a Relic artifact.
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
     source: source("dragon_utopia")
   },
   grail: {
     id: "grail",
     name: "Grail",
     category: "visitable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Grail token effects are described per Scenario."
-    },
-    implementationStatus: "not-implemented",
+    // A Lvl-VII guard. In Grail Hunt the cleared field is dug for 1 MP to gain
+    // the single Grail Token, which must be carried home to win; otherwise it
+    // is a normal fight rewarding 10 gold and a Relic artifact. Handled in the
+    // engine (handleGrailVisit).
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
     source: source("grail")
   },
   star_axis: {
     id: "star_axis",
     name: "Star Axis",
     category: "flaggable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Star Axis swaps a Statistic card for an Empowered one (Inferno expansion cards not yet in the library)."
-    },
-    implementationStatus: "not-implemented",
+    // Flaggable (multiple players may keep a cube here). On a player's first
+    // visit they may remove a hand Statistic card and gain the Empowered
+    // version of the same type. Handled in the engine (handleStarAxisVisit).
+    interaction: { type: "STAR_AXIS" },
+    implementationStatus: "implemented",
     source: source("star_axis")
   },
 
@@ -540,44 +542,41 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "library_of_enlightenment",
     name: "Library of Enlightenment",
     category: "revisitable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Pay 3 valuables to swap a Statistic card from hand or discard for any other, up to twice per visit (needs the stat-swap flow)."
-    },
-    implementationStatus: "not-implemented",
+    // Pay 3 gold to remove a Statistic card from hand or discard and gain any
+    // Statistic card, up to twice per visit.
+    interaction: { type: "LIBRARY_OF_ENLIGHTENMENT" },
+    implementationStatus: "implemented",
     source: source("library_of_enlightenment")
   },
   black_market: {
     id: "black_market",
     name: "Black Market",
     category: "revisitable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Browse the top 4 Artifact discards and buy one for 5/7/10 gold by rarity (needs artifact rarity data)."
-    },
-    implementationStatus: "not-implemented",
+    // Browse the top of the Artifact discard pile(s) and buy one — 5 gold
+    // Minor, 7 gold Major, 10 gold Relic.
+    interaction: { type: "BLACK_MARKET" },
+    implementationStatus: "implemented",
     source: source("black_market")
   },
   tavern: {
     id: "tavern",
     name: "Tavern",
     category: "revisitable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Pay 7 gold for a Secondary Hero (Secondary Heroes are not in the engine yet)."
-    },
-    implementationStatus: "not-implemented",
+    // "You can pay 7 gold to gain a Secondary Hero. Place their model on this
+    // Field. Then, choose one enemy player to discard 1 random card from their
+    // hand." Only available while you do not already field a Secondary Hero.
+    interaction: { type: "TAVERN" },
+    implementationStatus: "implemented",
     source: source("tavern")
   },
   prison: {
     id: "prison",
     name: "Prison",
     category: "visitable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Gain a Secondary Hero, or 3 experience if you already have one (Secondary Heroes are not in the engine yet)."
-    },
-    implementationStatus: "not-implemented",
+    // "Gain a Secondary Hero. Place their model on this Field. If you already
+    // have a Secondary Hero, gain 3 gold instead."
+    interaction: { type: "PRISON" },
+    implementationStatus: "implemented",
     source: source("prison")
   },
 
@@ -599,11 +598,10 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "elemental_conflux",
     name: "Elemental Conflux",
     category: "visitable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Recruit one Elemental per Dwelling from the Neutral decks (needs Dwelling tracking)."
-    },
-    implementationStatus: "not-implemented",
+    // For every Dwelling (unlocked recruit tier) you have, an Elementals card
+    // from that Neutral deck is offered to recruit; pick one or decline.
+    interaction: { type: "ELEMENTAL_CONFLUX" },
+    implementationStatus: "implemented",
     source: source("elemental_conflux")
   },
 
@@ -621,8 +619,8 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     name: "Cyclops Stockpile",
     category: "visitable",
     // Reward per the rulebook: roll and resolve 4 Treasure dice. The guard
-    // override (two golden Cyclopes join the defenders) still needs a
-    // neutral-army hook; the credit notes it.
+    // override (two golden Cyclopes added to the Neutral Army) is enforced in
+    // the engine's guard-army builder (drawGuardArmy).
     interaction: {
       type: "SEQUENCE",
       interactions: [
@@ -633,10 +631,7 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
       ]
     },
     implementationStatus: "implemented",
-    source: {
-      ...source("cyclops_stockpile"),
-      credit: `${wikiCredit} Guard composition override (2 golden Cyclopes) not implemented yet - the guards draw normally.`
-    }
+    source: source("cyclops_stockpile")
   },
   subterranean_gate: {
     id: "subterranean_gate",
