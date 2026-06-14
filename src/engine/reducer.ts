@@ -140,6 +140,7 @@ import {
 import {
   getActivationAbilities,
   getActivationDamageSpellAbility,
+  getActivationSpellPowerBoost,
   getAfterRetaliationAttackAbility,
   getAttackBonusOnAttackDie,
   getAttackBonusVsDefenderName,
@@ -3440,31 +3441,6 @@ function applyActivationStartAbilities(state: GameState, unit: CombatUnitState):
       });
       continue;
     }
-
-    if (ability.kind === "boost-first-spell-power") {
-      // Tower Magi (Pack): the controller's first spell this combat round gains
-      // +N power. A player-scope effect consumed on that cast (see CAST_SPELL),
-      // lapsing at the round's end if unused.
-      createActiveEffect(
-        state,
-        {
-          name: ability.abilityName,
-          scope: "player",
-          duration: { type: "current-combat-round" },
-          polarity: "positive",
-          removable: false,
-          modifiers: [{ type: "SPELL_POWER_FIRST_CAST", amount: ability.amount }]
-        },
-        { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
-        unit.controllerId
-      );
-      appendEvent(state, {
-        type: "UNIT_ABILITY_TRIGGERED",
-        unitId: unit.id,
-        abilityId: ability.abilityId,
-        message: `${unit.name} will add +${ability.amount} power to ${unit.controllerId}'s first spell this round.`
-      });
-    }
   }
 }
 
@@ -4475,24 +4451,19 @@ function applyEnemySpellHandTax(state: GameState, casterId: PlayerId): void {
 }
 
 /**
- * Tower Magi (Pack): the total "+power to your first spell this round" a player
- * holds from active effects (a non-consuming sum — the cast flow only applies it
- * on the round's first spell and the current-combat-round effect lapses on its
- * own).
+ * Tower Magi (Pack) "[activation] +N power to the first spell you cast this
+ * round": the bonus is only available while the Magi is the active unit — i.e.
+ * during its own turn — so this reads the boost off the currently-active unit
+ * when it belongs to the caster. 0 at any other time (off-turn, another unit
+ * active, no combat).
  */
-function firstSpellPowerBonusFor(state: GameState, playerId: PlayerId): number {
-  let bonus = 0;
-  for (const effect of state.activeEffects) {
-    if (effect.controllerId !== playerId) {
-      continue;
-    }
-    for (const modifier of effect.modifiers) {
-      if (modifier.type === "SPELL_POWER_FIRST_CAST") {
-        bonus += modifier.amount;
-      }
-    }
+function activeUnitSpellPowerBoostFor(state: GameState, playerId: PlayerId): number {
+  const combat = state.combat;
+  const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+  if (!activeUnit || activeUnit.controllerId !== playerId) {
+    return 0;
   }
-  return bonus;
+  return getActivationSpellPowerBoost(activeUnit);
 }
 
 function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_SPELL" }>, cards: CardLibrary): void {
@@ -4535,12 +4506,11 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
       stackItem.modifiers.spellPowerBonus += astrologersCard.effect.amount;
     }
 
-    // Tower Magi (Pack) "[activation] +N power to the first spell this round":
-    // apply the granted bonus to the round's first cast (the effect lapses at
-    // round end and the gate keeps it to a single cast, so it is not removed
-    // here — a Magi that re-activates next round grants it again).
+    // Tower Magi (Pack) "[activation] +N power to the first spell you cast this
+    // round": only while the Magi itself is the active unit (its own turn), and
+    // only for the round's first spell.
     if (isFirstSpellThisRound) {
-      const magiPower = firstSpellPowerBonusFor(state, action.playerId);
+      const magiPower = activeUnitSpellPowerBoostFor(state, action.playerId);
       if (magiPower > 0) {
         stackItem.modifiers.spellPowerBonus += magiPower;
       }

@@ -262,16 +262,6 @@ export type ActiveEffectModifier =
        */
       type: "DRAW_ON_SPELL_CAST";
       amount: number;
-    }
-  | {
-      /**
-       * Tower Magi (Pack) "[activation] Add +N power to the first spell you cast
-       * this round": a player-scope, current-combat-round effect granting this
-       * much extra power to the controller's first Spell of the round. Consumed
-       * when that spell is cast; otherwise it lapses at the round's end.
-       */
-      type: "SPELL_POWER_FIRST_CAST";
-      amount: number;
     };
 
 export type ActiveEffectDefinition = {

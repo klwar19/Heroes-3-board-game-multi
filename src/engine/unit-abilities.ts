@@ -528,7 +528,7 @@ export function getRetaliationParalysis(unit: CombatUnitState): RetaliationParal
 export type ActivationAbility = {
   abilityId: string;
   abilityName: string;
-  kind: "heal-self" | "discard-enemy-morale" | "discard-enemy-card" | "boost-first-spell-power";
+  kind: "heal-self" | "discard-enemy-morale" | "discard-enemy-card";
   amount: number;
 };
 
@@ -549,11 +549,22 @@ export function getActivationAbilities(unit: CombatUnitState): ActivationAbility
       abilities.push({ abilityId: ability.id, abilityName: ability.name, kind: "discard-enemy-morale", amount: 1 });
     } else if (ability.effect?.type === "ON_ACTIVATION_DISCARD_ENEMY_CARD") {
       abilities.push({ abilityId: ability.id, abilityName: ability.name, kind: "discard-enemy-card", amount: ability.effect.count });
-    } else if (ability.effect?.type === "ON_ACTIVATION_SPELL_POWER_FIRST_CAST") {
-      abilities.push({ abilityId: ability.id, abilityName: ability.name, kind: "boost-first-spell-power", amount: ability.effect.amount });
     }
   }
   return abilities;
+}
+
+/**
+ * Tower Magi (Pack): the extra power this unit grants "to the first spell you
+ * cast this round" — applied only while the Magi is the active unit (its own
+ * turn), so the caller checks the active unit at cast time. 0 for other units.
+ */
+export function getActivationSpellPowerBoost(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "ON_ACTIVATION_SPELL_POWER_FIRST_CAST").reduce(
+    (total, ability) =>
+      total + (ability.effect?.type === "ON_ACTIVATION_SPELL_POWER_FIRST_CAST" ? ability.effect.amount : 0),
+    0
+  );
 }
 
 /** Enchanters: the activation heal-a-friendly-or-buff-self choice ability. */
