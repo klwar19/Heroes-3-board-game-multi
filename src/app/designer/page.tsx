@@ -84,9 +84,10 @@ export default function MapDesignerPage() {
         </Link>
         <h1>Map designer</h1>
         <p>
-          Build a map around the fixed starting tiles: add a slot, flip it face up (choose the exact tile and
-          rotation) or face down (random from its pool), then save the design. Saved maps live in this browser and
-          are picked in the map-setup lobby under “Map design”.
+          Build a map around the starting tiles, dropping tiles wherever you like — they can interlock, leave gaps,
+          touch at a corner or sit apart on their own. Flip a tile face up (choose the exact tile and rotation) or face
+          down (random from its pool), then save the design. Saved maps live in this browser and are picked in the
+          map-setup lobby under “Map design”.
         </p>
       </header>
 
