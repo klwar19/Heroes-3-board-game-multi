@@ -89,6 +89,8 @@ const creatureVoices: Record<string, string> = {
   gargoyles: "stone-gargoyle",
   lizardmen: "lizardman",
   iron_golems: "iron-golem",
+  // Steel Golems are the Iron Golem's upgrade and reuse its voice set.
+  steel_golems: "iron-golem",
   sprites: "sprite",
   dragon_flies: "fire-dragon-fly",
   air_elementals: "air-elemental",

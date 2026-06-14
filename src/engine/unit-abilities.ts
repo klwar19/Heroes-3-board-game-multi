@@ -638,14 +638,40 @@ export function getPostAttackAbilityDamageEffects(
 
 /**
  * Iron/Gold/Diamond Golems, neutral Black Dragons: total reduction applied to
- * each instance of Spell damage this unit takes. The caller floors the dealt
- * damage at 0.
+ * each instance of Spell damage this unit takes. The Steel Golems' "spell or
+ * Specialty" passive counts here too. The caller floors the dealt damage at 0.
  */
 export function getSpellDamageReduction(unit: CombatUnitState): number {
-  return getAbilitiesWithEffect(unit, "REDUCE_SPELL_DAMAGE").reduce(
-    (total, ability) => total + (ability.effect?.type === "REDUCE_SPELL_DAMAGE" ? ability.effect.amount : 0),
+  return getAbilitiesWithEffect(unit, "REDUCE_SPELL_DAMAGE")
+    .reduce((total, ability) => total + (ability.effect?.type === "REDUCE_SPELL_DAMAGE" ? ability.effect.amount : 0), 0)
+    + getAbilitiesWithEffect(unit, "REDUCE_SPELL_AND_SPECIALTY_DAMAGE").reduce(
+      (total, ability) => total + (ability.effect?.type === "REDUCE_SPELL_AND_SPECIALTY_DAMAGE" ? ability.effect.amount : 0),
+      0
+    );
+}
+
+/**
+ * Steel Golems: total reduction applied to each instance of Hero-Specialty
+ * damage this unit takes (Xyron's Inferno, Solmyr's Chain Lightning). Ordinary
+ * spell-reducing golems have none — their passive only softens Spell damage.
+ */
+export function getSpecialtyDamageReduction(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "REDUCE_SPELL_AND_SPECIALTY_DAMAGE").reduce(
+    (total, ability) => total + (ability.effect?.type === "REDUCE_SPELL_AND_SPECIALTY_DAMAGE" ? ability.effect.amount : 0),
     0
   );
+}
+
+/** Ghost Dragons (neutral): the post-attack die that may shove the target away. */
+export function getKnockbackAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; onRoll: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "KNOCKBACK_AFTER_ATTACK")) {
+    if (ability.effect?.type === "KNOCKBACK_AFTER_ATTACK") {
+      return { abilityId: ability.id, abilityName: ability.name, onRoll: ability.effect.onRoll };
+    }
+  }
+  return null;
 }
 
 /** Vampires: the self-heal taken after this unit's own attack (never a retaliation). */
