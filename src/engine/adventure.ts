@@ -773,9 +773,16 @@ export function changeMorale(state: GameState, playerId: PlayerId, amount: numbe
   }
 
   let next = player.morale;
+  let overflow = 0;
   for (let step = 0; step < Math.abs(amount); step += 1) {
     if (amount > 0) {
-      next = Math.min(1, next + 1);
+      // The positive token caps at +1; any further gain does not stack but
+      // must be spent right away (draw / discard-redraw) — tracked as overflow.
+      if (next >= 1) {
+        overflow += 1;
+      } else {
+        next += 1;
+      }
     } else if (next <= -1) {
       // Negative + negative → neutral, and the hand is discarded at turn end.
       next = 0;
@@ -785,6 +792,9 @@ export function changeMorale(state: GameState, playerId: PlayerId, amount: numbe
     }
   }
   player.morale = next;
+  if (overflow > 0) {
+    player.moraleOverflow = (player.moraleOverflow ?? 0) + overflow;
+  }
 
   appendEvent(state, { type: "MORALE_CHANGED", playerId, amount, total: player.morale });
 }
