@@ -21,6 +21,9 @@ import { NEUTRAL_PLAYER_ID } from "./state";
  * - Among equally valid targets they attack the closest. When targets are
  *   still tied after that, the rulebook says the player chooses — the
  *   activation pauses on an ABILITY_TARGET_CHOICE so the table decides.
+ * - Summoned units (Summon Elemental) have no printed grade, so the tier rule
+ *   does not apply to them: they sort behind every graded enemy and are only
+ *   targeted once no real unit is left.
  * - Neutral units never defend.
  */
 
@@ -89,11 +92,15 @@ export function getNeutralTargetTies(combat: CombatState, attacker: CombatUnitSt
   }
 
   const best = pool[0];
-  const bestPriority = tierPriority(attacker.grade, best.grade);
+  const bestSummoned = Boolean(best.summoned);
+  // A summoned best target means only summoned units remain — they share no
+  // grade, so the tie group is decided purely by distance.
+  const bestPriority = bestSummoned ? 0 : tierPriority(attacker.grade, best.grade);
   const bestDistance = getBattlefieldDistance(attacker.position, best.position);
   return pool.filter(
     (unit) =>
-      tierPriority(attacker.grade, unit.grade) === bestPriority &&
+      Boolean(unit.summoned) === bestSummoned &&
+      (bestSummoned || tierPriority(attacker.grade, unit.grade) === bestPriority) &&
       getBattlefieldDistance(attacker.position, unit.position) === bestDistance
   );
 }
@@ -103,9 +110,20 @@ export function sortNeutralTargetCandidates(
   candidates: CombatUnitState[]
 ): CombatUnitState[] {
   return [...candidates].sort((left, right) => {
-    const priority = tierPriority(attacker.grade, left.grade) - tierPriority(attacker.grade, right.grade);
-    if (priority !== 0) {
-      return priority;
+    // Gradeless summoned units always sort behind graded ones, whatever their
+    // tier or distance — the AI exhausts real targets first.
+    const summonedDelta = (left.summoned ? 1 : 0) - (right.summoned ? 1 : 0);
+    if (summonedDelta !== 0) {
+      return summonedDelta;
+    }
+
+    // Tier priority only applies between graded units; two summoned units have
+    // no grade to compare, so they fall straight through to distance.
+    if (!left.summoned) {
+      const priority = tierPriority(attacker.grade, left.grade) - tierPriority(attacker.grade, right.grade);
+      if (priority !== 0) {
+        return priority;
+      }
     }
 
     const distance =

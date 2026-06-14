@@ -323,7 +323,7 @@ export function BattlefieldBoard({
                 <strong>{unit.cardName}</strong>
                 <span>
                   {health}/{unit.maxHealth} HP
-                  {unit.defenseToken ? " +DEF" : ""}
+                  {unit.defenseToken ? " DEF" : ""}
                 </span>
               </div>
               <TokenChips unit={unit} />
@@ -509,8 +509,9 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
         </span>
         <div className="inspectStats">
           <span title="Attack">⚔ {unit.attack}</span>
-          <span title="Defense">
-            <Shield aria-hidden="true" size={12} /> {unit.defense + (unit.defenseToken ? 1 : 0)}
+          <span title={unit.defenseToken ? "Defense (defending: rolls +1 for +1 Defense when struck)" : "Defense"}>
+            <Shield aria-hidden="true" size={12} /> {unit.defense}
+            {unit.defenseToken ? " (defending)" : ""}
           </span>
           <span title="Health">
             ♥ {health}/{unit.maxHealth}

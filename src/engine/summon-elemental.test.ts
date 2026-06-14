@@ -9,6 +9,8 @@ import {
   createInitialGameState,
   getLegalActions,
   makeActiveEffect,
+  NEUTRAL_PLAYER_ID,
+  pickNeutralTarget,
   unitDealsElementalDamage
 } from "./index";
 import type { ActiveEffectModifier, GameAction, GameEvent, GameState } from "./state";
@@ -302,6 +304,59 @@ describe("Summon Elemental spell", () => {
     const { state, position } = castSummon("spell.summon_earth_elemental", 2);
     const summoned = unitAt(state, position);
     expect(summoned && unitDealsElementalDamage(state, summoned)).toBe(true);
+  });
+});
+
+describe("Neutral AI vs summoned (gradeless) units", () => {
+  // A neutral guard attacks every real, graded enemy before it turns on a
+  // summoned unit — the same-tier rule never applies to a gradeless summon.
+  function setup(): GameState {
+    const state = createInitialGameState("summon-ai-seed");
+    const combat = state.combat!;
+    const attacker = combat.units.unit_p1_griffins;
+    const real = combat.units.unit_p2_skeletons;
+    const summoned = combat.units.unit_p2_vampires;
+
+    attacker.controllerId = NEUTRAL_PLAYER_ID;
+    attacker.type = "ground";
+    attacker.grade = "bronze";
+    attacker.position = 0;
+
+    // The real target shares the attacker's tier but sits farther away…
+    real.controllerId = "p2";
+    real.grade = "bronze";
+    real.position = 2;
+    real.summoned = false;
+
+    // …while the summoned unit is the same tier AND closer — yet still skipped.
+    summoned.controllerId = "p2";
+    summoned.grade = "bronze";
+    summoned.position = 1;
+    summoned.summoned = true;
+
+    combat.units = { [attacker.id]: attacker, [real.id]: real, [summoned.id]: summoned };
+    return state;
+  }
+
+  it("targets a farther graded unit over a closer summoned one", () => {
+    const state = setup();
+    const combat = state.combat!;
+    const target = pickNeutralTarget(combat, combat.units.unit_p1_griffins);
+    expect(target?.id).toBe("unit_p2_skeletons");
+  });
+
+  it("falls back to a summoned unit only when no graded enemy remains", () => {
+    const state = setup();
+    const combat = state.combat!;
+    delete combat.units.unit_p2_skeletons;
+    const target = pickNeutralTarget(combat, combat.units.unit_p1_griffins);
+    expect(target?.id).toBe("unit_p2_vampires");
+  });
+
+  it("the Summon Elemental spell flags its conjured unit as summoned", () => {
+    const { state, position } = castSummon("spell.summon_air_elemental", 2);
+    const summoned = unitAt(state, position);
+    expect(summoned?.summoned).toBe(true);
   });
 });
 

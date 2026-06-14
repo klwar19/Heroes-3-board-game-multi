@@ -1257,6 +1257,12 @@ export type GameEvent =
       rollMode: AttackRollMode;
       attackBonus: number;
       defenseBonus: number;
+      /**
+       * Defending unit's per-attack Defense roll: a unit that took the Defend
+       * action rolls one Attack die each time it is struck and only gains +1
+       * Defense on a "+1" face. Present whenever the defender was defending.
+       */
+      defendRoll?: number;
       attackValue: number;
       defenseValue: number;
       damage: number;
@@ -1971,6 +1977,12 @@ export type ResolutionStackItem = {
     rolledCandidate?: { rolls: number[]; roll: number };
     /** Set once the lethal-save window has been offered for this attack. */
     lethalSaveOffered?: boolean;
+    /**
+     * A defending defender's Defense roll for this attack, rolled once and
+     * reused across the lethal-save window so the same outcome decides the hit.
+     * Only a "+1" grants +1 Defense.
+     */
+    defendRoll?: number;
     playedCardIds: CardId[];
   };
 };
@@ -2257,6 +2269,13 @@ export type CombatUnitState = {
    * not be returned to a Neutral tier deck when the combat finishes.
    */
   bankGuard?: boolean;
+  /**
+   * Conjured onto the battlefield by a spell (Summon Elemental). Summoned
+   * units carry no printed grade, so the neutral AI's same-tier targeting rule
+   * never applies to them — guards attack every real, graded enemy first and
+   * only turn on a summoned unit when nothing else is left.
+   */
+  summoned?: boolean;
   assets?: {
     cardImage?: string;
     imageAlt?: string;
@@ -2796,6 +2815,11 @@ export type PendingTileChoice = {
   tileInstanceId: string;
   playerId: PlayerId;
   kind: "reveal" | "place";
+  /**
+   * The hero that placed this tile (Far placements only). The chosen rotation
+   * must leave a border-line doorway this hero can cross onto the tile through.
+   */
+  heroId?: HeroId;
 };
 
 /** Result of the start-of-game Attack-die roll for the first player. */

@@ -5,6 +5,7 @@ import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { sampleBuildings } from "@/data/towns/buildings";
 import {
   armyHasMapEffect,
+  canHeroReachPlacedTile,
   getSecondaryHero,
   getTownOfPlayer,
   getUnitSide,
@@ -3387,8 +3388,23 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     const tile = adventure.tiles[tileChoice.tileInstanceId];
     if (tileChoice.playerId === playerId && tile) {
       const anyConnected = [0, 1, 2, 3, 4, 5].some((rotation) => isTileRotationConnected(state, tile, rotation));
+      // Far placements also require a rotation the placing hero can cross onto.
+      const placingHero = tileChoice.kind === "place" && tileChoice.heroId ? state.heroes[tileChoice.heroId] : null;
+      const center = { row: tile.centerRow, col: tile.centerCol };
+      const anyReachable =
+        placingHero != null &&
+        [0, 1, 2, 3, 4, 5].some((rotation) =>
+          canHeroReachPlacedTile(state, placingHero, tile.tileDefId, center, rotation)
+        );
       for (let rotation = 0; rotation < 6; rotation += 1) {
         if (anyConnected && !isTileRotationConnected(state, tile, rotation)) {
+          continue;
+        }
+        if (
+          placingHero &&
+          anyReachable &&
+          !canHeroReachPlacedTile(state, placingHero, tile.tileDefId, center, rotation)
+        ) {
           continue;
         }
         actions.push({
