@@ -155,6 +155,7 @@ import {
   getFlatDamageFollowUps,
   getForcedAttackerDie,
   getIgnoreTargetCardDefenseAbility,
+  getKnockbackAbility,
   getLethalSaveUnitAbility,
   getLineAttackAbility,
   getOnAttackDieDraw,
@@ -169,6 +170,7 @@ import {
   getSecondAttackAbility,
   getSecondAttackCandidates,
   getSelfAdjacentSecondAttackAbility,
+  getSpecialtyDamageReduction,
   getSpellDamageReduction,
   getSpellDamageReductionAura,
   getTriggeredAttackDieBonusAbilities,
@@ -1005,6 +1007,36 @@ function unitIgnoresCardDamage(unit: CombatUnitState, card: CardDefinition | und
     return unitImmuneToSpellSchools(unit, card.spellSchools);
   }
   return false;
+}
+
+/**
+ * Damage actually dealt to a unit by a card, after immunity and the golems'
+ * damage-reduction passives, floored at 0. The source card's kind decides which
+ * reduction applies: Spell cards are softened by "reduce Spell damage" (Iron/
+ * Gold/Diamond Golems, Steel Golems, Black Dragons), Hero-Specialty cards only
+ * by the Steel Golems' "spell or Specialty" passive. Used at every
+ * card-sourced combat-damage site (direct, area, Xyron's Inferno, Chain
+ * Lightning); non-card Spell damage (Earthquake, the Faerie bolt) stays on
+ * reducedSpellDamage.
+ */
+function reducedCardDamage(
+  state: GameState,
+  unit: CombatUnitState,
+  card: CardDefinition | undefined,
+  amount: number
+): number {
+  if (unitIgnoresCardDamage(unit, card)) {
+    return 0;
+  }
+  const reduction =
+    card?.kind === "hero-specialty"
+      ? getSpecialtyDamageReduction(unit)
+      : card?.kind === "spell"
+        ? // Spell-kind: include the Rampart Unicorns' adjacency aura, not just
+          // the unit's own "reduce Spell damage" passive.
+          totalSpellDamageReduction(state, unit)
+        : 0;
+  return Math.max(0, amount - reduction);
 }
 
 // (finishCombatIfNeeded lives in combat-units.ts.)
@@ -2075,6 +2107,14 @@ function finishResolvedAttack(
     return;
   }
 
+  // Ghost Dragons (neutral): roll for the knock-back last — moving the target
+  // out of reach is what denies its Retaliation Attack, so it must resolve
+  // before the parked retaliation. Pauses when the defender has a real choice
+  // of empty spaces.
+  if (openGhostDragonKnockback(state, details.attacker, details.defender)) {
+    return;
+  }
+
   resumeAttackSequence(state, cards);
 }
 
@@ -2998,6 +3038,196 @@ function resolveMagiDiscard(
       message: `${chooser.name} discards ${cards[action.cardId]?.name ?? action.cardId} to ${choice.abilityName}.`
     });
   }
+
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  resumeAttackSequence(state, cards);
+  finishCombatIfNeeded(state);
+}
+
+/**
+ * Ghost Dragons' knock-back destinations: the empty spaces 1 step away from the
+ * target that are not adjacent to the Ghost Dragons. Obstacles and other living
+ * units block a space; the target's own space is never a candidate (it must
+ * move). Sorted by board position so a forced/auto pick is deterministic.
+ */
+function getKnockbackDestinations(
+  combat: CombatState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState
+): number[] {
+  const occupied = new Set<number>();
+  for (const unit of Object.values(combat.units)) {
+    if (unit.id !== defender.id && isUnitAlive(unit) && isBattlefieldPosition(unit.position)) {
+      occupied.add(unit.position);
+    }
+  }
+  return getOrthogonalNeighbors(defender.position)
+    .filter(
+      (position) =>
+        !occupied.has(position) &&
+        !(combat.obstacles?.includes(position) ?? false) &&
+        !isAdjacent(position, attacker.position)
+    )
+    .sort((left, right) => left - right);
+}
+
+/** Shoves a knocked-back unit to the chosen space and logs the move. */
+function applyKnockback(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  destination: number,
+  ability: { abilityId: string; abilityName: string }
+): void {
+  const from = defender.position;
+  defender.position = destination;
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: ability.abilityId,
+    targetUnitId: defender.id,
+    message: `${attacker.name}'s ${ability.abilityName} shoves ${defender.cardName} to ${getBattlefieldLabel(destination)}.`
+  });
+  appendEvent(state, {
+    type: "UNIT_MOVED",
+    playerId: defender.controllerId,
+    unitId: defender.id,
+    from,
+    to: destination
+  });
+}
+
+/** Opens the defender's "choose where you're knocked back" space picker. */
+function openKnockbackChoice(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  destinations: number[],
+  ability: { abilityId: string; abilityName: string }
+): void {
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId: defender.controllerId,
+    prompt: `${attacker.name}'s ${ability.abilityName}: choose where ${defender.cardName} is pushed.`,
+    options: destinations.map((position) => ({ label: `Move to ${getBattlefieldLabel(position)}` })),
+    context: "combat-knockback",
+    knockback: { unitId: defender.id, attackerId: attacker.id, positions: destinations },
+    returnPhase: "combat"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = defender.controllerId;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId: defender.controllerId,
+    sourceEffectIds: [],
+    message: `${defender.cardName} is knocked back — ${state.players[defender.controllerId]?.name ?? defender.controllerId} chooses where.`
+  });
+}
+
+/**
+ * Ghost Dragons (neutral): after their attack, roll 1 Attack die; on the
+ * knock-back face the still-living target is shoved one empty space away from
+ * the dragon (the defender picks; a neutral target or a single forced space is
+ * moved at once). Being pushed out of reach denies the Retaliation Attack — the
+ * parked sequence re-checks adjacency. With no valid space the target stays and
+ * retaliates as normal. Returns true only when it pauses on the defender's
+ * choice.
+ */
+function openGhostDragonKnockback(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState
+): boolean {
+  const combat = state.combat;
+  if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
+    return false;
+  }
+  const ability = getKnockbackAbility(attacker);
+  if (!ability) {
+    return false;
+  }
+
+  // "After the attack, roll 1 Attack die."
+  const candidate = rollAttackCandidate(combat, "normal");
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: ability.abilityId,
+    targetUnitId: defender.id,
+    message: `${attacker.name} rolls ${candidate.roll} for ${ability.abilityName}.`
+  });
+  if (candidate.roll !== ability.onRoll) {
+    return false;
+  }
+
+  const destinations = getKnockbackDestinations(combat, attacker, defender);
+  if (destinations.length === 0) {
+    // "If no valid space exists, the unit remains in place and retaliation occurs."
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: attacker.id,
+      abilityId: ability.abilityId,
+      targetUnitId: defender.id,
+      message: `${defender.cardName} has nowhere to be pushed and holds its ground.`
+    });
+    return false;
+  }
+
+  // The defending player chooses the destination; a neutral target (no seat to
+  // ask) or a single forced space resolves immediately.
+  if (isNeutralUnit(defender) || destinations.length === 1) {
+    applyKnockback(state, attacker, defender, destinations[0], ability);
+    return false;
+  }
+
+  openKnockbackChoice(state, attacker, defender, destinations, ability);
+  return true;
+}
+
+/** Resolves the Ghost Dragon knock-back space pick, then unparks the attack. */
+function resolveKnockbackChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
+  cards: CardLibrary
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "combat-knockback" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.knockback
+  ) {
+    throw new Error("There is no knock-back choice to resolve.");
+  }
+
+  const combat = state.combat;
+  const defender = combat?.units[choice.knockback.unitId];
+  const attacker = combat?.units[choice.knockback.attackerId];
+  const destination = choice.knockback.positions[action.optionIndex];
+  if (!combat || !defender || !attacker || destination === undefined) {
+    throw new Error("That knock-back destination is not available.");
+  }
+
+  const ability = getKnockbackAbility(attacker) ?? {
+    abilityId: "ghost-dragon-knockback",
+    abilityName: "Knock Back"
+  };
+  applyKnockback(state, attacker, defender, destination, ability);
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
 
   state.pendingChoice = null;
   state.phase = "combat";
@@ -4002,7 +4232,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       if (target) {
         // The primary target's own spell-damage reduction applies here; the
         // splash keeps the raw `amount` and is reduced per splash-target below.
-        const dealt = unitIgnoresCardDamage(target, card) ? 0 : reducedSpellDamage(state, target, amount);
+        const dealt = reducedCardDamage(state, target, card, amount);
         target.damage += dealt;
         noteUnitDamagedForTokens(state, target, dealt);
         appendEvent(state, {
@@ -5102,7 +5332,7 @@ function playTransformCard(
 function dealChainLightningDamage(
   state: GameState,
   playerId: PlayerId,
-  cardId: CardId,
+  card: CardDefinition | undefined,
   unitId: UnitId,
   amount: number
 ): void {
@@ -5110,13 +5340,19 @@ function dealChainLightningDamage(
   if (!unit || !isUnitAlive(unit) || amount <= 0) {
     return;
   }
-  unit.damage += amount;
-  noteUnitDamagedForTokens(state, unit, amount);
+  // Chain Lightning is Solmyr's Specialty: Steel Golems soften it and a
+  // Specialty-immune unit (Azure/Black Dragon Pack) shrugs it off entirely.
+  const dealt = reducedCardDamage(state, unit, card, amount);
+  if (dealt <= 0) {
+    return;
+  }
+  unit.damage += dealt;
+  noteUnitDamagedForTokens(state, unit, dealt);
   appendEvent(state, {
     type: "DAMAGE_ASSIGNED",
-    source: { type: "card", cardId, controllerId: playerId },
+    source: { type: "card", cardId: card?.id ?? "", controllerId: playerId },
     target: { type: "unit", unitId: unit.id },
-    amount,
+    amount: dealt,
     damageKind: "spell"
   });
   markUnitRemovedIfNeeded(state, unit);
@@ -5169,7 +5405,7 @@ function closestChainTarget(state: GameState, primaryId: UnitId, candidates: Uni
 function advanceChainLightning(
   state: GameState,
   playerId: PlayerId,
-  cardId: CardId,
+  card: CardDefinition | undefined,
   primaryId: UnitId,
   reachable: UnitId[],
   remaining: number[]
@@ -5200,7 +5436,7 @@ function advanceChainLightning(
         type: "ABILITY_TARGET_CHOICE",
         playerId,
         kind: "chain-lightning",
-        abilityId: cardId,
+        abilityId: card?.id ?? "",
         abilityName: "Chain Lightning",
         prompt: `Chain Lightning: deal ${value} damage to one of the closest units.`,
         sourceUnitId: null,
@@ -5227,7 +5463,7 @@ function advanceChainLightning(
     if (!target) {
       break;
     }
-    dealChainLightningDamage(state, playerId, cardId, target, value);
+    dealChainLightningDamage(state, playerId, card, target, value);
     pool = pool.filter((id) => id !== target);
     values.shift();
   }
@@ -5239,7 +5475,7 @@ function advanceChainLightning(
 function startChainLightning(
   state: GameState,
   playerId: PlayerId,
-  cardId: CardId,
+  card: CardDefinition | undefined,
   primaryId: UnitId,
   damages: number[]
 ): void {
@@ -5247,7 +5483,7 @@ function startChainLightning(
     return;
   }
   const reachable = chainLightningReachable(state, primaryId);
-  dealChainLightningDamage(state, playerId, cardId, primaryId, damages[0] ?? 0);
+  dealChainLightningDamage(state, playerId, card, primaryId, damages[0] ?? 0);
   if (finishCombatIfNeeded(state)) {
     return;
   }
@@ -5256,7 +5492,7 @@ function startChainLightning(
   advanceChainLightning(
     state,
     playerId,
-    cardId,
+    card,
     primaryId,
     reachable,
     damages.slice(1).filter((value) => value > 0)
@@ -5654,7 +5890,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           isUnitAlive(unit) && (unit.id === center.id || isAdjacent(unit.position, center.position))
       );
       for (const unit of inBlast) {
-        const dealt = unitIgnoresCardDamage(unit, card) ? 0 : reducedSpellDamage(state, unit, effect.amount);
+        const dealt = reducedCardDamage(state, unit, card, effect.amount);
         unit.damage += dealt;
         noteUnitDamagedForTokens(state, unit, dealt);
         appendEvent(state, {
@@ -5672,7 +5908,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // Solmyr's Chain Lightning (I/VI): the selected unit takes the leftmost bolt,
   // then the chain forks to the units closest to it (the caster allocating).
   if (effect.type === "CHAIN_LIGHTNING" && target && state.combat) {
-    startChainLightning(state, action.playerId, card.id, target.unitId, effect.damages);
+    startChainLightning(state, action.playerId, card, target.unitId, effect.damages);
   }
 
   // Torosar's Ballista specialty: field an extra Ballista (this combat or the
@@ -6611,15 +6847,15 @@ function chooseAbilityTarget(
   // Solmyr's Chain Lightning: the chosen closest unit takes the current bolt,
   // then the chain continues with the remaining bolts (or finishes).
   if (choice.kind === "chain-lightning") {
-    const cardId = choice.abilityId ?? "";
+    const chainCard = cards[choice.abilityId ?? ""];
     const remaining = choice.chainRemainingDamages ?? [];
-    dealChainLightningDamage(state, action.playerId, cardId, action.targetUnitId, remaining[0] ?? 0);
+    dealChainLightningDamage(state, action.playerId, chainCard, action.targetUnitId, remaining[0] ?? 0);
     if (finishCombatIfNeeded(state)) {
       return;
     }
     const reachable = (choice.chainReachableUnitIds ?? []).filter((id) => id !== action.targetUnitId);
     if (choice.anchorUnitId) {
-      advanceChainLightning(state, action.playerId, cardId, choice.anchorUnitId, reachable, remaining.slice(1));
+      advanceChainLightning(state, action.playerId, chainCard, choice.anchorUnitId, reachable, remaining.slice(1));
     }
     return;
   }
@@ -7894,13 +8130,19 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         spendMorale(nextState, action);
         break;
       case "CHOOSE_OPTION":
-        // Harpy fly-back lives in the combat reducer (it ends an activation);
-        // every other option choice is handled by the adventure reducer.
+        // Harpy fly-back and Ghost Dragon knock-back live in the combat reducer
+        // (they move a unit mid/post-attack); every other option choice is
+        // handled by the adventure reducer.
         if (
           nextState.pendingChoice?.type === "OPTION_CHOICE" &&
           nextState.pendingChoice.context === "combat-reposition"
         ) {
           resolveCombatReposition(nextState, action);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "combat-knockback"
+        ) {
+          resolveKnockbackChoice(nextState, action, cards);
         } else {
           chooseOption(nextState, action);
         }

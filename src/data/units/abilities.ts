@@ -452,6 +452,30 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
+       * Steel Golems: "Reduce damage taken by this unit from spell or Specialty
+       * by N — to a minimum of 0." Like the Iron/Gold/Diamond Golems' spell
+       * reduction, but it also softens Hero-Specialty damage (Xyron's Inferno,
+       * Solmyr's Chain Lightning). Counts toward both getSpellDamageReduction
+       * and getSpecialtyDamageReduction.
+       */
+      type: "REDUCE_SPELL_AND_SPECIALTY_DAMAGE";
+      amount: number;
+    }
+  | {
+      /**
+       * Ghost Dragons (neutral): "[unit_attack] After the attack, roll 1 Attack
+       * die; if the result is `onRoll`, the target must immediately move away 1
+       * space." The defender picks an empty space adjacent to the target that is
+       * not adjacent to the Ghost Dragons; a neutral target is moved
+       * automatically. Being shoved out of reach means the target can no longer
+       * make its Retaliation Attack. With no valid space the target stays put
+       * and retaliates as normal.
+       */
+      type: "KNOCKBACK_AFTER_ATTACK";
+      onRoll: number;
+    }
+  | {
+      /**
        * Vampires: "[unit_attack] …then remove up to N damage from this unit."
        * After this unit's own attack (never a Retaliation Attack) it heals
        * itself by up to `amount`.
@@ -904,6 +928,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "ATTACK_DIE_RESULT_BONUS", amount: 1 },
     implementationStatus: "implemented"
   },
+  "ghost-dragon-knockback": {
+    id: "ghost-dragon-knockback",
+    name: "Knock Back",
+    text: 'After the attack, roll 1 Attack die; on a "0" the target must immediately move away 1 space — the defending player chooses an empty space not adjacent to the Ghost Dragons. Pushed out of reach, the target cannot retaliate. With no valid space it stays and retaliates as normal.',
+    effect: { type: "KNOCKBACK_AFTER_ATTACK", onRoll: 0 },
+    implementationStatus: "implemented"
+  },
   "wraith-heal-1": {
     id: "wraith-heal-1",
     name: "Regeneration",
@@ -1186,6 +1217,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Spell Resistance",
     text: "[unit_passive] Reduce any damage from spells by 3 (to a minimum of 0).",
     effect: { type: "REDUCE_SPELL_DAMAGE", amount: 3 },
+    implementationStatus: "implemented"
+  },
+  "reduce-spell-and-specialty-damage-2": {
+    id: "reduce-spell-and-specialty-damage-2",
+    name: "Magical Resistance",
+    text: "[unit_passive] Reduce any damage this unit takes from spells or Specialty by 2 (to a minimum of 0).",
+    effect: { type: "REDUCE_SPELL_AND_SPECIALTY_DAMAGE", amount: 2 },
     implementationStatus: "implemented"
   },
   "vampire-heal-on-attack": {

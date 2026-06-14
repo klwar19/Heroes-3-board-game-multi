@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { coreTileDefinitions } from "@/data/map/tile-defs";
-import { instantiateTile } from "./adventure";
+import { changeMorale, instantiateTile } from "./adventure";
 import {
   applyAction,
   canHeroReachPlacedTile,
@@ -462,6 +462,53 @@ describe("morale actions", () => {
     expect(state.players.p1.discard).toHaveLength(3);
   });
 
+  it("does not stack past the +1 cap: extra gains become overflow tokens to spend", () => {
+    const state = makeGame();
+    state.players.p1.morale = 1;
+
+    changeMorale(state, "p1", 1);
+    // The stored token stays capped at +1; the extra is held as overflow.
+    expect(state.players.p1.morale).toBe(1);
+    expect(state.players.p1.moraleOverflow).toBe(1);
+
+    // The spend actions are offered for the overflow even at the cap.
+    const labels = getLegalActions(state, "p1").map((legal) => legal.label);
+    expect(labels).toContain("Spend morale: draw a card");
+  });
+
+  it("spends the overflow token first, leaving the stored +1 token intact", () => {
+    let state = makeGame();
+    state.players.p1.morale = 1;
+    state.players.p1.moraleOverflow = 1;
+    const handBefore = state.players.p1.hand.length;
+
+    state = apply(state, { type: "SPEND_MORALE", playerId: "p1", benefit: "draw" });
+
+    expect(state.players.p1.moraleOverflow).toBe(0);
+    expect(state.players.p1.morale).toBe(1); // stored token untouched
+    expect(state.players.p1.hand.length).toBe(handBefore + 1);
+
+    // The stored token can then still be spent normally.
+    state = apply(state, { type: "SPEND_MORALE", playerId: "p1", benefit: "draw" });
+    expect(state.players.p1.morale).toBe(0);
+  });
+
+  it("offers the token's draw / discard-redraw even when the player owns no Town", () => {
+    const state = makeGame();
+    state.players.p1.morale = 1;
+    // A player who has lost their Town still holds the morale token and may
+    // spend it for a draw — the use is not gated on standing at a Town.
+    for (const town of Object.values(state.towns)) {
+      if (town.controllerId === "p1") {
+        town.controllerId = NEUTRAL_PLAYER_ID;
+      }
+    }
+
+    const labels = getLegalActions(state, "p1").map((legal) => legal.label);
+    expect(labels).toContain("Spend morale: draw a card");
+    expect(labels.some((label) => label.includes("discard any cards"))).toBe(true);
+  });
+
   it("offers a morale reroll when an adventure die is rolled", () => {
     let state = makeGame();
     state.players.p1.morale = 1;
@@ -668,6 +715,23 @@ describe("map setup lobby", () => {
     // Setup defaults: Impossible neutrals, base income 10 gold / 0 / 0.
     expect(state.adventure?.difficulty).toBe("impossible");
     expect(state.players.p1.production).toEqual({ gold: 10, buildingMaterials: 0, valuables: 0 });
+  });
+
+  it("rolls for the starting player before any starting hand is dealt", () => {
+    let state = createAdventureLobbyState({ seed: "first-player-order" });
+    state = apply(state, { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: "catherine" });
+    state = apply(state, { type: "CHOOSE_FACTION", playerId: "p2", factionId: "inferno", heroDefId: "xyron" });
+    state = apply(state, { type: "START_ADVENTURE", playerId: "p1" });
+
+    const firstRollAt = state.eventLog.findIndex((event) => event.type === "FIRST_PLAYER_ROLLED");
+    const firstDrawAt = state.eventLog.findIndex((event) => event.type === "CARDS_DRAWN");
+    // The opening ceremony leads the game: the roll is logged before the deal.
+    expect(firstRollAt).toBeGreaterThanOrEqual(0);
+    expect(firstDrawAt).toBeGreaterThanOrEqual(0);
+    expect(firstRollAt).toBeLessThan(firstDrawAt);
+    // The deal still happens — every seat opens with a full starting hand.
+    expect(state.players.p1.hand).toHaveLength(4);
+    expect(state.players.p2.hand).toHaveLength(4);
   });
 
   it("lets seats adjust difficulty, resources, income, starting units and buildings before the start", () => {
