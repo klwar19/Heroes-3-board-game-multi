@@ -1440,6 +1440,16 @@ export function TownPanel({
       legal.action.type === "USE_TOWN_BUILDING"
   );
 
+  // City Hall's "— OR —" income is resolved through a round-start OPTION_CHOICE.
+  // Surface it on the City Hall building itself so the player can pick the bonus
+  // in place (the floating prompt offers the same choice as a safety net).
+  const cityHallChoiceActions: LegalAction[] =
+    state.pendingChoice?.type === "OPTION_CHOICE" &&
+    state.pendingChoice.context === "city-hall" &&
+    state.pendingChoice.playerId === viewerPlayerId
+      ? legalActions.filter((legal) => legal.action.type === "CHOOSE_OPTION")
+      : [];
+
   const submitCoverOfDarkness = (buildingId: string) => {
     const cardIds = coverPicks.map((index) => player.hand[index]).filter(Boolean);
     onAction({
@@ -1460,6 +1470,9 @@ export function TownPanel({
     const building = coreBuildingDefinitions[buildingId];
     if (!building) {
       return [];
+    }
+    if (building.effect?.type === "RESOURCE_ROUND_CHOICE") {
+      return cityHallChoiceActions;
     }
     return buildingUseActions.filter((legal) => {
       const action = legal.action;
@@ -1493,6 +1506,12 @@ export function TownPanel({
     }
     const usedThisRound = (player.buildingUsedRound?.[building.id] ?? 0) === state.round;
     switch (effect.type) {
+      case "RESOURCE_ROUND_CHOICE":
+        return hasActions
+          ? "Choose this round's bonus:"
+          : effect.options.length > 1
+            ? "Pick one of these at the start of each Resource round."
+            : "Collected at the start of each Resource round.";
       case "COMBAT_CUBES": {
         const cubes = town.factionCubes?.[building.id] ?? 0;
         const bonus = effect.spend === "spell-power" ? "+1 Power per cube (max 1 per spell)" : "+1 attack or defense per cube";
