@@ -4526,6 +4526,79 @@ button.hbSlot:disabled { cursor: default; }
   animation: fxBloodlustPulse 1.6s ease-in-out both;
 }
 
+/* ---- Combat strike effects ------------------------------------------------
+   The attacker's card lunges and the struck card recoils via the FX layer
+   (real board cards, animated in JS). These screen-space overlays sell the
+   contact itself: a melee slash streak + spark, and a placeholder ranged
+   projectile with a small impact burst. Art is intentionally CSS-only for now
+   — real slash / projectile sprites can drop into the matching FX handlers
+   later without touching the rest of the pipeline. */
+.fxSlash {
+  position: absolute;
+  z-index: 3;
+  width: 0;
+  height: 0;
+  transform: translate(-50%, -50%) rotate(var(--fx-slash-rot, -45deg));
+  pointer-events: none;
+}
+
+.fxSlashStreak {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 7px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent 4%,
+    rgb(255 246 214 / 85%) 40%,
+    rgb(255 255 255 / 98%) 52%,
+    rgb(255 214 150 / 80%) 64%,
+    transparent 96%
+  );
+  box-shadow:
+    0 0 10px rgb(255 226 158 / 80%),
+    0 0 22px rgb(255 180 90 / 55%);
+  filter: drop-shadow(0 0 4px rgb(255 255 255 / 70%));
+  will-change: transform, opacity;
+}
+
+.fxSlashSpark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(255 255 255 / 95%) 0%, rgb(255 222 150 / 70%) 35%, transparent 70%);
+  will-change: transform, opacity;
+}
+
+.fxBolt {
+  position: absolute;
+  width: 30px;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent 0%, rgb(180 210 255 / 35%) 30%, rgb(220 235 255 / 95%) 75%, #fff 100%);
+  box-shadow:
+    0 0 8px rgb(150 190 255 / 85%),
+    0 0 16px rgb(110 150 255 / 55%);
+  pointer-events: none;
+  z-index: 3;
+  will-change: transform, opacity;
+}
+
+.fxImpactSpark {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(255 255 255 / 95%) 0%, rgb(190 215 255 / 70%) 38%, transparent 72%);
+  pointer-events: none;
+  z-index: 3;
+  will-change: transform, opacity;
+}
+
 /* ---- Deck-back variants ---------------------------------------------------
    Until real back art lands in /public/assets (see src/data/decks.ts), each
    deck gets its own trim color so piles and flights read at a glance. */
