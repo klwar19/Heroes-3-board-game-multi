@@ -67,7 +67,8 @@ export type FactionId =
   | "necropolis"
   | "dungeon"
   | "stronghold"
-  | "fortress";
+  | "fortress"
+  | "tower";
 
 export type TargetRef =
   | { type: "unit"; unitId: UnitId }
@@ -2567,7 +2568,7 @@ export type AdventureReward =
       playerId: PlayerId;
       kind: "discard-pick";
       count: number;
-      filter?: "spell" | "non-artifact" | "specialty";
+      filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic";
       fromTop?: number;
       shuffleRestIntoDeck?: boolean;
     }
@@ -2693,7 +2694,7 @@ export type VisitStep =
       /** Queue a discard-pile pick through the shared reward pipeline. */
       type: "DISCARD_PICK";
       count: number;
-      filter?: "spell" | "non-artifact" | "specialty";
+      filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic";
     }
   | {
       /**
@@ -3129,7 +3130,7 @@ export type PendingChoice =
       discardPick?: {
         cardIds: CardId[];
         remaining: number;
-        filter?: "spell" | "non-artifact" | "specialty";
+        filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic";
         fromTop?: number;
         shuffleRestIntoDeck?: boolean;
       };

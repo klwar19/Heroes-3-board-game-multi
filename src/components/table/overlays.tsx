@@ -7,7 +7,7 @@ import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
 import { getFxSheet } from "@/data/fx";
-import { playLibrarySound } from "@/lib/sound";
+import { playDiceRoll, playLibrarySound } from "@/lib/sound";
 import {
   getEffectAmount,
   getEffectiveCardEffect,
@@ -22,7 +22,7 @@ import {
 } from "@/engine";
 import { cardName, costCardEligible, formatDieFace, formatEvent, unitName } from "./utils";
 import { CardBack, CardFrame } from "./seats";
-import { ArtifactIcon, DieFaceIcon, DoubleDieIcon, ExperienceIcon } from "./dice-icons";
+import { AnkhIcon, CrossedShovelsIcon, StarBannerIcon } from "./dice-icons";
 import { useCardZoom, ZoomButton } from "./zoom";
 
 type ReactionLegal = Extract<GameAction, { type: "PLAY_REACTION" }>;
@@ -557,7 +557,17 @@ export type DiceCue = {
   defenseBonus: number;
   damage: number;
   isRetaliation: boolean;
+  /**
+   * Hold the board (no overlay) this long before the cube starts tumbling.
+   * Set for a neutral guard that moved into range first, so the table watches
+   * it slide in, pauses, then sees the attack die thrown.
+   */
+  preDelayMs?: number;
 };
+
+/** Tabletop pacing for the attack die: the cube tumbles, settles, then reads. */
+const DICE_ROLL_MS = 1400;
+const DICE_READ_MS = 2050;
 
 /** Cube faces: two +1, two 0, two -1 — matching the physical attack die. */
 const CUBE_FACES: { value: number; transform: string }[] = [
@@ -594,17 +604,35 @@ function DieCube({ value, rolling, dimmed }: { value: number; rolling: boolean; 
 
 /** Rendered with `key={cue.id}` so each roll mounts fresh in the rolling phase. */
 export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void }) {
-  const [phase, setPhase] = useState<"rolling" | "settled">("rolling");
+  const preDelay = cue.preDelayMs ?? 0;
+  // "waiting": board visible while a guard finishes sliding into range.
+  const [phase, setPhase] = useState<"waiting" | "rolling" | "settled">(preDelay > 0 ? "waiting" : "rolling");
 
   useEffect(() => {
-    const settleId = setTimeout(() => setPhase("settled"), 1000);
-    const doneId = setTimeout(onDone, 3100);
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const beginRoll = () => {
+      setPhase("rolling");
+      playDiceRoll(cue.rolls.length, DICE_ROLL_MS - 120);
+    };
+    if (preDelay > 0) {
+      timers.push(setTimeout(beginRoll, preDelay));
+    } else {
+      beginRoll();
+    }
+    timers.push(setTimeout(() => setPhase("settled"), preDelay + DICE_ROLL_MS));
+    timers.push(setTimeout(onDone, preDelay + DICE_ROLL_MS + DICE_READ_MS));
 
     return () => {
-      clearTimeout(settleId);
-      clearTimeout(doneId);
+      for (const timer of timers) {
+        clearTimeout(timer);
+      }
     };
-  }, [onDone]);
+  }, [onDone, preDelay, cue.rolls.length]);
+
+  // During the pre-attack pause keep the board clear so the guard's move reads.
+  if (phase === "waiting") {
+    return null;
+  }
 
   const rolling = phase === "rolling";
 
@@ -916,10 +944,10 @@ const TREASURE_DIE_LAYOUT: ("experience" | "artifact-search" | "resource-die" | 
 
 /** Treasure-die face art (authentic-styled SVG) and its caption. */
 const TREASURE_FACE_ICONS: Record<string, { icon: React.ReactNode; label: string }> = {
-  experience: { icon: <ExperienceIcon size={22} />, label: "½ Level" },
-  "artifact-search": { icon: <ArtifactIcon size={20} />, label: "artifact" },
-  "resource-die": { icon: <DieFaceIcon size={20} />, label: "die" },
-  "double-resource-die": { icon: <DoubleDieIcon size={22} />, label: "2 dice" }
+  experience: { icon: <StarBannerIcon size={24} />, label: "½ Level" },
+  "artifact-search": { icon: <AnkhIcon size={22} />, label: "artifact" },
+  "resource-die": { icon: <CrossedShovelsIcon size={22} />, label: "resource" },
+  "double-resource-die": { icon: <CrossedShovelsIcon size={22} />, label: "×2" }
 };
 
 const ATTACK_DIE_LAYOUT = [1, -1, 0, 0, -1, 1];
@@ -940,7 +968,11 @@ function MapDieCube({
       const face = RESOURCE_DIE_LAYOUT[index];
       return (
         <>
-          <img alt="" src={assetUrl(RESOURCE_FACE_ICONS[face.resource])} />
+          {/* The source art is a resource on a leather tile; the wrapper crops
+              the leather frame away so only the gold/ore/crystal reads. */}
+          <span className="mapDieResource">
+            <img alt="" src={assetUrl(RESOURCE_FACE_ICONS[face.resource])} />
+          </span>
           <b>{face.amount}</b>
         </>
       );
@@ -1005,19 +1037,21 @@ const MAP_DICE_TITLES: Record<MapDiceCue["dice"], string> = {
  */
 export function MapDiceOverlay({ cue, onDone }: { cue: MapDiceCue; onDone: () => void }) {
   const [phase, setPhase] = useState<"rolling" | "settled">("rolling");
+  const faceIndexes = mapDiceFaceIndexes(cue);
+  const dieCount = faceIndexes.length;
 
   useEffect(() => {
-    const settleId = setTimeout(() => setPhase("settled"), 950);
-    const doneId = setTimeout(onDone, 2900);
+    playDiceRoll(dieCount, DICE_ROLL_MS - 120);
+    const settleId = setTimeout(() => setPhase("settled"), DICE_ROLL_MS);
+    const doneId = setTimeout(onDone, DICE_ROLL_MS + DICE_READ_MS);
 
     return () => {
       clearTimeout(settleId);
       clearTimeout(doneId);
     };
-  }, [onDone]);
+  }, [onDone, dieCount]);
 
   const rolling = phase === "rolling";
-  const faceIndexes = mapDiceFaceIndexes(cue);
 
   return (
     <div className="diceOverlay mapDiceOverlay" role="status" aria-label={`${MAP_DICE_TITLES[cue.dice]} roll`} onClick={onDone}>
