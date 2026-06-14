@@ -28,7 +28,7 @@ import {
   observatoryDiscoverTargets,
   removableHandCards
 } from "./adventure-reducer";
-import { effectAppliesToUnit, playerHasSpellTimingFreedom } from "./active-effects";
+import { effectiveInitiative, playerHasSpellTimingFreedom } from "./active-effects";
 import { cardCanBoostPower } from "./effects";
 import {
   BATTLEFIELD_CELL_COUNT,
@@ -40,7 +40,7 @@ import {
   isAdjacent,
   isBattlefieldPosition
 } from "./battlefield";
-import { getPermanentCardIds, getPermanentSchoolBonus, warMachinesForSale } from "./permanents";
+import { countBallistas, getPermanentCardIds, getPermanentSchoolBonus, warMachinesForSale } from "./permanents";
 import { getDemolishAbility, isArrowTowerUnit, siegeBlockedPositions } from "./siege";
 import { canPlaceTransformOn } from "./unit-transforms";
 import { SHARED_DECK_IDS } from "./decks";
@@ -348,24 +348,6 @@ export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitSt
     blocked,
     unit.type === "flying"
   ).filter(isBattlefieldPosition);
-}
-
-/** Initiative including Haste/Slow and other lasting bonuses on the unit. */
-export function effectiveInitiative(unit: CombatUnitState, activeEffects: ActiveEffectState[] = []): number {
-  const bonus = activeEffects.reduce((total, effect) => {
-    if (!effectAppliesToUnit(effect, unit)) {
-      return total;
-    }
-    return (
-      total +
-      effect.modifiers.reduce(
-        (sum, modifier) => (modifier.type === "INITIATIVE_BONUS" ? sum + modifier.amount : sum),
-        0
-      )
-    );
-  }, 0);
-
-  return unit.initiative + bonus;
 }
 
 export function sortUnitsForActivation(combat: CombatState, activeEffects: ActiveEffectState[] = []): CombatUnitState[] {
@@ -1086,6 +1068,28 @@ function isOptionEffectPlayable(
         ? Boolean(siege.arrowTowerUnitId)
         : siege.walls.length > 0 || siege.gatePosition !== null;
     }
+    case "GAIN_WAR_MACHINE": {
+      // Torosar's Ballista I "Pay 5 gold to gain a Ballista": needs the machine
+      // still in the supply and enough gold (a map/economy play).
+      if (context !== "map" || !state.adventure) {
+        return false;
+      }
+      if (!(state.adventure.warMachineSupply ?? []).includes(effect.warMachineCardId)) {
+        return false;
+      }
+      const buyer = state.players[playerId];
+      return !effect.goldCost || (buyer?.resources.gold ?? 0) >= effect.goldCost;
+    }
+    case "BALLISTA_SPECIALTY":
+      // Torosar's Ballista I "Activate your Ballista" needs one to activate; the
+      // IV/VI grants always do something (and bring their own Ballista).
+      if (context !== "combat" || !state.combat) {
+        return false;
+      }
+      if (effect.activate === "one" && !effect.grant) {
+        return countBallistas(state, playerId) >= 1;
+      }
+      return true;
     default:
       return false;
   }
@@ -1958,7 +1962,10 @@ export function getLegalActions(
             ? `${choice.abilityName}: heal`
             : choice.kind === "spell-redirect"
               ? `${choice.abilityName}: redirect to`
-              : choice.kind === "flat-damage" || choice.kind === "spell-splash" || choice.kind === "faerie-damage"
+              : choice.kind === "flat-damage" ||
+                  choice.kind === "spell-splash" ||
+                  choice.kind === "faerie-damage" ||
+                  choice.kind === "chain-lightning"
                 ? `${choice.abilityName}: hit`
                 : "Neutrals attack";
       const targetActions = choice.candidateUnitIds.flatMap((unitId) => {
