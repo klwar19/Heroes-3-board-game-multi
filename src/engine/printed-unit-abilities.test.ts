@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { applyAction, createInitialGameState } from "./index";
 import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
@@ -156,6 +158,23 @@ describe("Neutral Halfling — twin Attack dice", () => {
         (event): event is Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }> => event.type === "UNIT_ATTACK_DECLARED"
       )?.rollMode
     ).toBe("advantage");
+  });
+});
+
+describe("Neutral roster card art", () => {
+  const neutralUnits = Object.values(coreUnitDefinitions).filter((def) => def.neutral);
+  const assetPath = (src: string) => fileURLToPath(new URL(`../../public${src}`, import.meta.url));
+
+  it("wires a card image for every neutral unit", () => {
+    const missing = neutralUnits.filter((def) => !def.neutral?.cardImage).map((def) => def.id);
+    expect(missing).toEqual([]);
+  });
+
+  it("every referenced neutral card image exists on disk", () => {
+    const broken = neutralUnits
+      .map((def) => def.neutral!.cardImage as string)
+      .filter((src) => !existsSync(assetPath(src)));
+    expect(broken).toEqual([]);
   });
 });
 

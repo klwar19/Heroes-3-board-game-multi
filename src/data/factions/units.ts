@@ -1224,7 +1224,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ground",
-    neutral: { attack: 1, defense: 0, health: 4, initiative: 6, cost: { gold: 4 }, abilities: [] },
+    neutral: { attack: 1, defense: 0, health: 4, initiative: 6, cost: { gold: 4 }, abilities: [], cardImage: "/assets/units-blank-bronze.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/goblins/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
@@ -1238,7 +1238,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ground",
-    neutral: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 6 }, abilities: ["wolf-raiders-strike-twice"], abilityText: "[unit_attack] Attack this target again. The second attack happens after the target retaliates (if possible)." },
+    neutral: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 6 }, abilities: ["wolf-raiders-strike-twice"], abilityText: "[unit_attack] Attack this target again. The second attack happens after the target retaliates (if possible).", cardImage: "/assets/units-blank-bronze.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/wolf_raiders/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
@@ -1252,7 +1252,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ranged",
-    neutral: { attack: 2, defense: 1, health: 4, initiative: 4, cost: { gold: 7 }, abilities: [] },
+    neutral: { attack: 2, defense: 1, health: 4, initiative: 4, cost: { gold: 7 }, abilities: [], cardImage: "/assets/units-blank-bronze.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/orcs/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
@@ -1266,7 +1266,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ground",
-    neutral: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 10 }, abilities: ["ogres-attack-token-pack"], abilityText: "[unit_other] Place a +2 [attack] token on a chosen [unit_ground] or [unit_flying] unit for 2 Combat rounds." },
+    neutral: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 10 }, abilities: ["ogres-attack-token-pack"], abilityText: "[unit_other] Place a +2 [attack] token on a chosen [unit_ground] or [unit_flying] unit for 2 Combat rounds.", cardImage: "/assets/units-blank-silver.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/ogres/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
@@ -1280,7 +1280,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "flying",
-    neutral: { attack: 3, defense: 0, health: 6, initiative: 9, cost: { gold: 13 }, abilities: ["thunderbirds-lightning"], abilityText: "[unit_passive] Right after this unit's attack and before any Retaliation, roll 1 Attack die, on a \"0\" or \"+1\", deal 1 [damage] to the target." },
+    neutral: { attack: 3, defense: 0, health: 6, initiative: 9, cost: { gold: 13 }, abilities: ["thunderbirds-lightning"], abilityText: "[unit_passive] Right after this unit's attack and before any Retaliation, roll 1 Attack die, on a \"0\" or \"+1\", deal 1 [damage] to the target.", cardImage: "/assets/units-blank-silver.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/thunderbirds/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
@@ -1294,7 +1294,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "gold",
     type: "ranged",
-    neutral: { attack: 5, defense: 1, health: 6, initiative: 8, cost: { gold: 19 }, abilities: ["cyclops-demolish-full"], abilityText: "[unit_other] This unit can destroy a Wall, the Gate, or the Arrow Tower." },
+    neutral: { attack: 5, defense: 1, health: 6, initiative: 8, cost: { gold: 19 }, abilities: ["cyclops-demolish-full"], abilityText: "[unit_other] This unit can destroy a Wall, the Gate, or the Arrow Tower.", cardImage: "/assets/units-blank-golden.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/cyclopes/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
@@ -1308,7 +1308,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "gold",
     type: "ground",
-    neutral: { attack: 5, defense: 1, health: 8, initiative: 9, cost: { gold: 26 }, abilities: ["behemoth-defense-crush-pack", "behemoth-corrosion"], abilityText: "[unit_attack] Decrease the target's [defense] by 2 (to a minimum of 0). After the attack, place 1 Corrosion token on the target." },
+    neutral: { attack: 5, defense: 1, health: 8, initiative: 9, cost: { gold: 26 }, abilities: ["behemoth-defense-crush-pack", "behemoth-corrosion"], abilityText: "[unit_attack] Decrease the target's [defense] by 2 (to a minimum of 0). After the attack, place 1 Corrosion token on the target.", cardImage: "/assets/units-blank-golden.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/behemoths/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
@@ -1342,7 +1342,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ground",
-    neutral: { attack: 2, defense: 1, health: 2, initiative: 4, cost: { gold: 3 }, abilities: [] },
+    neutral: { attack: 2, defense: 1, health: 2, initiative: 4, cost: { gold: 3 }, abilities: [], cardImage: "/assets/units-neutral-bronze-gnolls.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/gnolls/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1356,7 +1356,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ranged",
-    neutral: { attack: 2, defense: 0, health: 2, initiative: 5, cost: { gold: 2 }, abilities: [] },
+    neutral: { attack: 2, defense: 0, health: 2, initiative: 5, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-neutral-bronze-gremlins.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/gremlins/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1370,7 +1370,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "flying",
-    neutral: { attack: 2, defense: 1, health: 3, initiative: 9, cost: { gold: 4 }, abilities: ["ignore-paralysis"], abilityText: "[unit_passive] This unit ignores [paralysis] effect.", cardImage: "/assets/units-blank-bronze.webp" },
+    neutral: { attack: 2, defense: 1, health: 3, initiative: 9, cost: { gold: 4 }, abilities: ["ignore-paralysis"], abilityText: "[unit_passive] This unit ignores [paralysis] effect.", cardImage: "/assets/units-neutral-bronze-gargoyles.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/gargoyles/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1384,7 +1384,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ranged",
-    neutral: { attack: 2, defense: 0, health: 4, initiative: 5, cost: { gold: 4 }, abilities: [] },
+    neutral: { attack: 2, defense: 0, health: 4, initiative: 5, cost: { gold: 4 }, abilities: [], cardImage: "/assets/units-neutral-bronze-lizardmen.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/lizardmen/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1398,7 +1398,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ground",
-    neutral: { attack: 2, defense: 1, health: 4, initiative: 3, cost: { gold: 6 }, abilities: [], abilityText: "[unit_passive] Reduce any [damage] from spells by 2 — to a minimum of 0." },
+    neutral: { attack: 2, defense: 1, health: 4, initiative: 3, cost: { gold: 6 }, abilities: [], abilityText: "[unit_passive] Reduce any [damage] from spells by 2 — to a minimum of 0.", cardImage: "/assets/units-neutral-bronze-iron_golems.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/iron_golems/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1412,7 +1412,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "flying",
-    neutral: { attack: 2, defense: 0, health: 2, initiative: 7, cost: { gold: 2 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack." },
+    neutral: { attack: 2, defense: 0, health: 2, initiative: 7, cost: { gold: 2 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack.", cardImage: "/assets/units-blank-bronze.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/sprites/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1426,7 +1426,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "flying",
-    neutral: { attack: 3, defense: 0, health: 3, initiative: 8, cost: { gold: 7 }, abilities: ["dragon-fly-retaliation-penalty"], abilityText: "[unit_passive] Retaliation Attacks against Dragon Flies suffer -1 [attack]." },
+    neutral: { attack: 3, defense: 0, health: 3, initiative: 8, cost: { gold: 7 }, abilities: ["dragon-fly-retaliation-penalty"], abilityText: "[unit_passive] Retaliation Attacks against Dragon Flies suffer -1 [attack].", cardImage: "/assets/units-neutral-bronze-dragon_flies.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/dragon_flies/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1443,7 +1443,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // Few/Pack are the summonable Conflux sides (Summon Air Elemental).
     few: { attack: 2, defense: 0, health: 4, initiative: 8, cost: { gold: 6 }, abilities: ["elemental-damage", "air-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Air Magic spells. This unit deals elemental damage." },
     pack: { attack: 3, defense: 0, health: 4, initiative: 8, cost: { gold: 9 }, abilities: ["elemental-damage", "air-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Air Magic spells. This unit deals elemental damage." },
-    neutral: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 7 }, abilities: ["elemental-damage", "air-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Air Magic spells. This unit deals elemental damage." },
+    neutral: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 7 }, abilities: ["elemental-damage", "air-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Air Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-blank-bronze.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/air_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1491,7 +1491,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ranged",
-    neutral: { attack: 2, defense: 1, health: 3, initiative: 5, cost: { gold: 7 }, abilities: ["elemental-damage", "water-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Water Magic spells. This unit deals elemental damage." },
+    neutral: { attack: 2, defense: 1, health: 3, initiative: 5, cost: { gold: 7 }, abilities: ["elemental-damage", "water-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Water Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-blank-bronze.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/ice_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1505,7 +1505,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ranged",
-    neutral: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 5 }, abilities: ["elemental-damage", "air-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Air Magic spells. This unit deals elemental damage." },
+    neutral: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 5 }, abilities: ["elemental-damage", "air-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Air Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-blank-bronze.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/storm_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1519,7 +1519,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ground",
-    neutral: { attack: 4, defense: 1, health: 4, initiative: 5, cost: { gold: 12 }, abilities: ["basilisk-paralysis"], abilityText: "[unit_attack] After the attack, roll 1 Attack die . On a \"0\" result, the target is [paralysis] ." },
+    neutral: { attack: 4, defense: 1, health: 4, initiative: 5, cost: { gold: 12 }, abilities: ["basilisk-paralysis"], abilityText: "[unit_attack] After the attack, roll 1 Attack die . On a \"0\" result, the target is [paralysis] .", cardImage: "/assets/units-neutral-silver-basilisks.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/basilisks/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1533,7 +1533,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ground",
-    neutral: { attack: 4, defense: 2, health: 4, initiative: 5, cost: { gold: 13 }, abilities: ["gorgon-death-stare"], abilityText: "[unit_attack] After the attack, roll 2 Attack dice . On two \"-1\" results, reduce the target's [health_points] to 0." },
+    neutral: { attack: 4, defense: 2, health: 4, initiative: 5, cost: { gold: 13 }, abilities: ["gorgon-death-stare"], abilityText: "[unit_attack] After the attack, roll 2 Attack dice . On two \"-1\" results, reduce the target's [health_points] to 0.", cardImage: "/assets/units-neutral-silver-gorgons.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/gorgons/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1547,7 +1547,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "flying",
-    neutral: { attack: 3, defense: 1, health: 4, initiative: 9, cost: { gold: 11 }, abilities: ["genie-hate-efreet"], abilityText: "[unit_attack] When attacking Efreet , this unit gains +1 [attack] ." },
+    neutral: { attack: 3, defense: 1, health: 4, initiative: 9, cost: { gold: 11 }, abilities: ["genie-hate-efreet"], abilityText: "[unit_attack] When attacking Efreet , this unit gains +1 [attack] .", cardImage: "/assets/units-neutral-silver-genies.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/genies/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1561,7 +1561,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ranged",
-    neutral: { attack: 3, defense: 0, health: 5, initiative: 6, cost: { gold: 11 }, abilities: ["ignore-combat-penalties", "magi-power-drain"], abilityText: "[unit_passive] Ignore the combat penalties. [unit_attack] After this unit's attack, the enemy discards a card that can boost [power] (their choice) or a random card." },
+    neutral: { attack: 3, defense: 0, health: 5, initiative: 6, cost: { gold: 11 }, abilities: ["ignore-combat-penalties", "magi-power-drain"], abilityText: "[unit_passive] Ignore the combat penalties. [unit_attack] After this unit's attack, the enemy discards a card that can boost [power] (their choice) or a random card.", cardImage: "/assets/units-neutral-silver-magi.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/magi/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1575,7 +1575,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "flying",
-    neutral: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 11 }, abilities: ["elemental-damage", "fire-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Fire Magic spells. This unit deals elemental damage." },
+    neutral: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 11 }, abilities: ["elemental-damage", "fire-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Fire Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-blank-silver.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/energy_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1592,7 +1592,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // Few/Pack are the summonable Conflux sides (Summon Fire Elemental).
     few: { attack: 2, defense: 1, health: 4, initiative: 5, cost: { gold: 12 }, abilities: ["elemental-damage", "fire-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Fire Magic spells. This unit deals elemental damage." },
     pack: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 16 }, abilities: ["elemental-damage", "fire-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Fire Magic spells. This unit deals elemental damage." },
-    neutral: { attack: 3, defense: 1, health: 3, initiative: 6, cost: { gold: 13 }, abilities: ["elemental-damage", "fire-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Fire Magic spells. This unit deals elemental damage." },
+    neutral: { attack: 3, defense: 1, health: 3, initiative: 6, cost: { gold: 13 }, abilities: ["elemental-damage", "fire-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Fire Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-blank-silver.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/fire_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1606,7 +1606,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ground",
-    neutral: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 14 }, abilities: ["elemental-damage", "earth-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Earth Magic spells. This unit deals elemental damage." },
+    neutral: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 14 }, abilities: ["elemental-damage", "earth-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Earth Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-blank-silver.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/magma_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1627,7 +1627,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "gold",
     type: "ground",
-    neutral: { attack: 5, defense: 1, health: 6, initiative: 6, cost: { gold: 16 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack." },
+    neutral: { attack: 5, defense: 1, health: 6, initiative: 6, cost: { gold: 16 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack.", cardImage: "/assets/units-neutral-golden-nagas.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/nagas/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1641,7 +1641,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "gold",
     type: "flying",
-    neutral: { attack: 4, defense: 1, health: 7, initiative: 8, cost: { gold: 17 }, abilities: ["wyvern-sting"], abilityText: "[unit_attack] After the attack, roll 1 Attack die . On a \"0\" result, deal 1 [damage] to the target unit." },
+    neutral: { attack: 4, defense: 1, health: 7, initiative: 8, cost: { gold: 17 }, abilities: ["wyvern-sting"], abilityText: "[unit_attack] After the attack, roll 1 Attack die . On a \"0\" result, deal 1 [damage] to the target unit.", cardImage: "/assets/units-neutral-golden-wyverns.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/wyverns/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1655,7 +1655,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "gold",
     type: "ground",
-    neutral: { attack: 3, defense: 1, health: 7, initiative: 7, cost: { gold: 19 }, abilities: ["elemental-damage", "magic-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows. This unit deals elemental damage." },
+    neutral: { attack: 3, defense: 1, health: 7, initiative: 7, cost: { gold: 19 }, abilities: ["elemental-damage", "magic-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows. This unit deals elemental damage.", cardImage: "/assets/units-blank-golden.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/magic_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1669,7 +1669,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "azure",
     type: "ranged",
-    neutral: { attack: 6, defense: 2, health: 10, initiative: 10, cost: { gold: 39 }, abilities: ["ignore-combat-penalties", "titan-hate-black-dragons"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units. [unit_attack] When attacking Black Dragons , this unit gains +2 [attack] ." },
+    neutral: { attack: 6, defense: 2, health: 10, initiative: 10, cost: { gold: 39 }, abilities: ["ignore-combat-penalties", "titan-hate-black-dragons"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units. [unit_attack] When attacking Black Dragons , this unit gains +2 [attack] .", cardImage: "/assets/units-neutral-azure-titans.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/titans/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1683,7 +1683,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "azure",
     type: "ground",
-    neutral: { attack: 7, defense: 3, health: 8, initiative: 5, cost: { gold: 40 }, abilities: ["ignores-retaliation", "hydra-multi-attack"], abilityText: "[unit_attack] Ignore the Retaliation Attack. This unit attacks up to 2 adjacent enemy units." },
+    neutral: { attack: 7, defense: 3, health: 8, initiative: 5, cost: { gold: 40 }, abilities: ["ignores-retaliation", "hydra-multi-attack"], abilityText: "[unit_attack] Ignore the Retaliation Attack. This unit attacks up to 2 adjacent enemy units.", cardImage: "/assets/units-neutral-azure-hydras.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/hydras/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1697,7 +1697,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "azure",
     type: "flying",
-    neutral: { attack: 6, defense: 2, health: 7, initiative: 12, cost: { gold: 32 }, abilities: [], abilityText: "[unit_passive] Once per Combat, when this unit's [health_points] drops to 0, set it to 1 instead. [unit_passive] Immune to Fire Magic [spell] ." },
+    neutral: { attack: 6, defense: 2, health: 7, initiative: 12, cost: { gold: 32 }, abilities: [], abilityText: "[unit_passive] Once per Combat, when this unit's [health_points] drops to 0, set it to 1 instead. [unit_passive] Immune to Fire Magic [spell] .", cardImage: "/assets/units-blank-azure.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/phoenixes/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1711,7 +1711,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "azure",
     type: "flying",
-    neutral: { attack: 7, defense: 3, health: 10, initiative: 17, cost: { gold: 38, valuables: 1 }, abilities: ["rust-dragon-acid"], abilityText: "1 [valuables] [unit_attack] On a \"-1\" result on the Attack die , decrease the target's [defense] by 2 — to a minimum of 0." },
+    neutral: { attack: 7, defense: 3, health: 10, initiative: 17, cost: { gold: 38, valuables: 1 }, abilities: ["rust-dragon-acid"], abilityText: "1 [valuables] [unit_attack] On a \"-1\" result on the Attack die , decrease the target's [defense] by 2 — to a minimum of 0.", cardImage: "/assets/units-neutral-azure-rust_dragons.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/rust_dragons/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1725,7 +1725,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "azure",
     type: "flying",
-    neutral: { attack: 6, defense: 3, health: 9, initiative: 10, cost: { gold: 42 }, abilities: ["dragon-line-attack-3"], abilityText: "[unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 3 [attack] ." },
+    neutral: { attack: 6, defense: 3, health: 9, initiative: 10, cost: { gold: 42 }, abilities: ["dragon-line-attack-3"], abilityText: "[unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 3 [attack] .", cardImage: "/assets/units-neutral-azure-gold_dragons.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/gold_dragons/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
