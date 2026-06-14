@@ -37,14 +37,29 @@ export type GameRuleset = "legacy" | "binh";
 /**
  * How the scenario is won:
  *  - "conquest": flag an enemy faction Town (the classic skirmish goal).
- *  - "grail": the objective hunt — win by capturing the Grail (dig it, then
- *    carry it home), defeating the Dragon Utopia, or beating every enemy hero
- *    in combat at least once (only 2 of them in a 4-player game).
+ *  - "grail": the Grail hunt — win by capturing the Grail (defeat its guard,
+ *    dig it, then carry it home) or by beating every enemy hero in combat at
+ *    least once (only 2 of them in a 4-player game). The Dragon Utopia is NOT
+ *    an objective here; it is just a creature bank.
+ *  - "dragon-hunt": win by defeating the Dragon Utopia (no need to hold it) or
+ *    by beating every enemy hero in combat at least once (only 2 in a 4-player
+ *    game).
  *  - "dragon-conqueror": defeat the Dragon Utopia to capture it, then hold it.
  *    The holder garrisons it; rivals must besiege it (Walls, Gate, Arrow
  *    Tower) to take it. Controlling the Utopia at the start of your turn wins.
  */
-export type VictoryMode = "conquest" | "grail" | "dragon-conqueror";
+export type VictoryMode = "conquest" | "grail" | "dragon-hunt" | "dragon-conqueror";
+
+/**
+ * Whether a player-vs-player Combat costs the fighters their dead units:
+ *  - "normal": casualties are kept — destroyed unit cards leave the army and
+ *    damaged Packs flip to Few (the rulebook outcome).
+ *  - "none": a friendly-fight option — after a PvP Combat ends, neither side
+ *    loses any unit cards or has a Pack downgraded. The fight still resolves a
+ *    winner (and the loser still pays gold, loses morale and retreats home);
+ *    only the troops are spared. Does not affect fights against Neutral guards.
+ */
+export type PvpTroopLoss = "normal" | "none";
 export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon" | "stronghold";
 
 export type TargetRef =
@@ -2796,6 +2811,11 @@ export type AdventureState = {
    */
   victoryMode?: VictoryMode;
   /**
+   * Whether dead units are kept after a player-vs-player Combat. Absent on
+   * older snapshots; treated as "normal" (the rulebook — casualties are lost).
+   */
+  pvpTroopLoss?: PvpTroopLoss;
+  /**
    * Grail Hunt: the single Grail Token's progress. Only one token exists in
    * the game even when several Grail fields are on the map.
    */
@@ -2805,8 +2825,8 @@ export type AdventureState = {
     carrierHeroId?: HeroId;
   };
   /**
-   * Grail Hunt: distinct enemy players each player has beaten in hero combat
-   * at least once (the "defeat every enemy hero" win path).
+   * Grail Hunt / Dragon Hunt: distinct enemy players each player has beaten in
+   * hero combat at least once (the "defeat every enemy hero" win path).
    */
   heroDefeats?: Record<PlayerId, PlayerId[]>;
   /** Tile awaiting its rotation choice after a reveal or placement. */
@@ -2828,8 +2848,10 @@ export type GameSetupOptions = {
   playerCount?: number;
   /** Rules variant: "legacy" (rulebook) or "binh" (house rules). */
   ruleset: GameRuleset;
-  /** Win condition: "conquest" (flag enemy town) or "grail" (the objective hunt). */
+  /** Win condition: "conquest" (flag enemy town), "grail", "dragon-hunt" or "dragon-conqueror". */
   victoryMode?: VictoryMode;
+  /** PvP Combat casualties: "normal" (lose dead units) or "none" (keep troops). */
+  pvpTroopLoss?: PvpTroopLoss;
   difficulty: GameDifficulty;
   startingResources: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };
