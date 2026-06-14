@@ -520,6 +520,37 @@ export type UnitAbilityEffectDefinition =
        * Specialty effects (buffs/debuffs) still apply.
        */
       type: "IMMUNE_TO_SPECIALTY_DAMAGE";
+    }
+  | {
+      /**
+       * Rampart Unicorns (Pack): "Reduce any damage from spells dealt to this
+       * and adjacent friendly unit(s) by N." An aura — the reduction protects
+       * the Unicorns themselves and every friendly unit adjacent to them. The
+       * Few side instead carries a self-only REDUCE_SPELL_DAMAGE.
+       */
+      type: "REDUCE_SPELL_DAMAGE_AURA";
+      amount: number;
+    }
+  | {
+      /**
+       * Dungeon Minotaurs (Few/Pack): "If you resolve a '-1' on the Attack die,
+       * draw a card." After this unit's attack resolves on `onRoll`, its
+       * controller draws `amount` card(s). (The neutral Minotaur rerolls the
+       * "-1" instead — a different printed card.)
+       */
+      type: "ON_ATTACK_DIE_DRAW";
+      onRoll: number;
+      amount: number;
+    }
+  | {
+      /**
+       * Tower Magi (Pack): "[activation] Add +N power to the first spell you
+       * cast this round." When this unit activates, its controller's first
+       * Spell cast in the current combat round gains `amount` power; unused, it
+       * lapses at the end of the combat round.
+       */
+      type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST";
+      amount: number;
     };
 
 /**
@@ -631,6 +662,10 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "FLAT_DAMAGE_ADJACENT_TO_SELF", amount: 1 },
     implementationStatus: "implemented"
   },
+  // No shipping unit carries this any more (the printed Cerberi use
+  // `cerberi-second-head`). It is intentionally retained as the engine's
+  // generic "attack every adjacent enemy" multi-attack-queue capability and is
+  // exercised by ruleset.test.ts — do not delete without removing that test.
   "cerberi-attack-all": {
     id: "cerberi-attack-all",
     name: "Three-Headed Assault",
@@ -1227,6 +1262,47 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Specialty Ward",
     text: "[unit_passive] Ignore damage from Specialty cards (non-damage Specialty effects still apply).",
     effect: { type: "IMMUNE_TO_SPECIALTY_DAMAGE" },
+    implementationStatus: "implemented"
+  },
+  // Tower Iron Golems (Few) / Rampart Unicorns (Few): self-only −1 spell damage.
+  "reduce-spell-damage-1": {
+    id: "reduce-spell-damage-1",
+    name: "Spell Resistance",
+    text: "[unit_passive] Reduce any damage from spells by 1 (to a minimum of 0).",
+    effect: { type: "REDUCE_SPELL_DAMAGE", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Rampart Unicorns (Pack): −1 spell damage to itself and adjacent friendly units.
+  "unicorn-spell-ward-aura": {
+    id: "unicorn-spell-ward-aura",
+    name: "Spell Ward",
+    text: "[unit_passive] Reduce any damage from spells dealt to this and adjacent friendly unit(s) by 1 (to a minimum of 0).",
+    effect: { type: "REDUCE_SPELL_DAMAGE_AURA", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Inferno Efreet (Few): immune to Magic Arrow only (the Pack also resists Fire,
+  // which the shared `efreet-fire-immunity` covers).
+  "efreet-magic-arrow-immunity": {
+    id: "efreet-magic-arrow-immunity",
+    name: "Magic Arrow Immunity",
+    text: "[unit_passive] Ignores any damage from Magic Arrows.",
+    effect: { type: "IMMUNE_TO_SPELL_SCHOOLS", schools: ["any"] },
+    implementationStatus: "implemented"
+  },
+  // Dungeon Minotaurs (Few/Pack): draw a card whenever the attack die resolves "-1".
+  "minotaur-draw-on-miss": {
+    id: "minotaur-draw-on-miss",
+    name: "Bull Resolve",
+    text: '[unit_attack] If you resolve a "-1" on the Attack die, draw a card.',
+    effect: { type: "ON_ATTACK_DIE_DRAW", onRoll: -1, amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Tower Magi (Pack): on activation, your first spell this combat round gets +1 power.
+  "magi-power-boost": {
+    id: "magi-power-boost",
+    name: "Mage's Insight",
+    text: "[activation] Add +1 power to the first spell you cast this round.",
+    effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1 },
     implementationStatus: "implemented"
   }
 };
