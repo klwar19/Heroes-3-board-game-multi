@@ -12,7 +12,9 @@ import {
   hexDistance,
   hexNeighbors,
   hexSpaceId,
+  hexToPixel,
   parseHexSpaceId,
+  pixelToHex,
   tileCentersAdjacent,
   tileCentersOverlap,
   tileFootprint,
@@ -64,6 +66,22 @@ describe("hex math", () => {
     expect(new Set(rotated.map(hexSpaceId))).toEqual(new Set(footprint.map(hexSpaceId)));
     // Rotation by two steps moves slot 1 to where slot 3 was.
     expect(hexSpaceId(rotated[1])).toBe(hexSpaceId(footprint[3]));
+  });
+
+  it("maps pixels back to the hex under them (inverse of hexToPixel)", () => {
+    const size = 24;
+    for (const coord of [
+      { row: 0, col: 0 },
+      { row: 8, col: 2 },
+      { row: 9, col: 4 },
+      { row: 5, col: -3 },
+      { row: -4, col: 7 }
+    ]) {
+      // A hex center round-trips exactly, as does any point jittered within it.
+      const center = hexToPixel(coord, size);
+      expect(pixelToHex(center.x, center.y, size)).toEqual(coord);
+      expect(pixelToHex(center.x + size * 0.3, center.y - size * 0.3, size)).toEqual(coord);
+    }
   });
 
   it("treats tiles as gapless neighbours only on the six lattice positions", () => {
@@ -883,6 +901,13 @@ describe("neutral combat", () => {
         state = apply(state, { type: "PASS_REACTION", playerId: state.reactionWindow.priorityPlayerId });
         continue;
       }
+      // The pre-activation reaction pause: this driver does not react, it just
+      // lets the guard act (the guard-walk pause below is left for the caller).
+      const pre = state.combat?.pendingNeutralStep;
+      if (pre?.kind === "pre-activation") {
+        state = apply(state, { type: "CONTINUE_NEUTRAL_STEP", playerId: pre.reactingPlayerId ?? "p1" });
+        continue;
+      }
       const choice = state.pendingChoice;
       if (choice?.type === "ATTACK_DIE_REROLL") {
         state = apply(state, {
@@ -981,7 +1006,7 @@ describe("neutral combat", () => {
     expect(guardDistanceAfter).toBeLessThan(guardDistanceBefore);
   });
 
-  it("paces the fight: a guard's walk pauses for the table to click on", () => {
+  it("paces the fight: the engine pauses before a guard takes its turn", () => {
     let state = threeUnitFight(moveOntoGuardedMine(refreshP1(makeGame())));
 
     const combat = state.combat!;
@@ -1001,16 +1026,29 @@ describe("neutral combat", () => {
     marksmen.position = 18; // distance 6
     griffins.position = 19; // distance 7
 
-    state = defendThrough(state);
+    // Defend the player units until the guard's pre-activation pause comes up —
+    // without resuming it (so we can inspect the pause itself).
+    let safety = 20;
+    while (safety > 0 && state.combat && !state.combat.pendingNeutralStep) {
+      safety -= 1;
+      if (state.reactionWindow) {
+        state = apply(state, { type: "PASS_REACTION", playerId: state.reactionWindow.priorityPlayerId });
+        continue;
+      }
+      const active = state.combat.activeUnitId ? state.combat.units[state.combat.activeUnitId] : null;
+      if (active?.controllerId !== "p1") {
+        break;
+      }
+      state = apply(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: active.id });
+    }
 
-    // The guard walked and the engine paused on the step.
+    // The engine paused before the guard acts, previewing its planned move.
     const step = state.combat!.pendingNeutralStep;
-    expect(step).toBeTruthy();
-    expect(step!.unitId).toBe(guard.id);
-    expect(step!.to).not.toBe(step!.from);
-    expect(state.combat!.units[guard.id].position).toBe(step!.to);
+    expect(step?.kind).toBe("pre-activation");
+    expect(step?.unitId).toBe(guard.id);
+    expect(step?.intent?.kind).toBe("move");
 
-    // Only the attacker may continue; doing so clears the pause.
+    // Only the attacker holds the pause; doing so resumes it and the guard walks.
     const continues = getLegalActions(state, "p1").filter(
       (entry) => entry.action.type === "CONTINUE_NEUTRAL_STEP"
     );
@@ -1020,8 +1058,9 @@ describe("neutral combat", () => {
     );
     expect(blocked).toHaveLength(0);
 
+    const before = state.combat!.units[guard.id].position;
     state = apply(state, { type: "CONTINUE_NEUTRAL_STEP", playerId: "p1" });
-    expect(state.combat!.pendingNeutralStep ?? null).toBeNull();
+    expect(state.combat!.units[guard.id].position).not.toBe(before);
   });
 
   it("returns the hero on retreat and keeps the field guarded", () => {

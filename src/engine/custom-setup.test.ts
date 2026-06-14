@@ -116,17 +116,19 @@ describe("map designer", () => {
     expect(faceDown!.tileDefId).not.toBe("F1");
   });
 
-  it("rejects designed tiles that do not touch the board", () => {
+  it("accepts free-form tiles that leave gaps or float disconnected from the board", () => {
     const scenario = getScenario("skirmish");
     const { accepted, problems } = validateCustomMapPlan(
       [
+        // Interlocks with seat 0, leaving no hole.
         { row: 9, col: 4, group: "near", faceDown: true },
+        // Far off on its own — a detached island (room for future teleport gates).
         { row: 20, col: 20, group: "near", faceDown: true }
       ],
       scenario
     );
-    expect(accepted).toHaveLength(1);
-    expect(problems[0]).toContain("must touch");
+    expect(accepted).toHaveLength(2);
+    expect(problems).toHaveLength(0);
   });
 
   it("rejects overlapping and duplicate positions", () => {
