@@ -644,6 +644,118 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     }
   },
 
+  // ---- Fortress expansion -------------------------------------------------
+  // Few/Pack stats, costs and ability text transcribed from each unit's
+  // Fortress section on the fan wiki. Card art is the wiki's Fortress card
+  // faces (units-fortress-<tier>-<slug>-<side>.webp), normalised by
+  // scripts/fetch-fortress-art.py. Implemented ability tags are used wherever
+  // the engine supports the printed effect; the rest stay display-only text.
+  "fortress.gnolls": {
+    id: "fortress.gnolls",
+    name: "Gnolls",
+    faction: "fortress",
+    tier: "bronze",
+    type: "ground",
+    few: { attack: 2, defense: 1, health: 3, initiative: 4, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-fortress-bronze-gnolls-few.webp" },
+    pack: { attack: 2, defense: 1, health: 4, initiative: 5, cost: { gold: 3 }, abilities: [], cardImage: "/assets/units-fortress-bronze-gnolls-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/gnolls/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Fortress Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/gnolls/"
+    }
+  },
+  "fortress.lizardmen": {
+    id: "fortress.lizardmen",
+    name: "Lizardmen",
+    faction: "fortress",
+    tier: "bronze",
+    type: "ranged",
+    few: { attack: 2, defense: 0, health: 3, initiative: 4, cost: { gold: 3 }, abilities: [], cardImage: "/assets/units-fortress-bronze-lizardmen-few.webp" },
+    pack: { attack: 3, defense: 0, health: 3, initiative: 5, cost: { gold: 5 }, abilities: [], cardImage: "/assets/units-fortress-bronze-lizardmen-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/lizardmen/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Fortress Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/lizardmen/"
+    }
+  },
+  "fortress.dragon_flies": {
+    id: "fortress.dragon_flies",
+    name: "Dragon Flies",
+    faction: "fortress",
+    tier: "bronze",
+    type: "flying",
+    few: { attack: 3, defense: 0, health: 3, initiative: 8, cost: { gold: 4 }, abilities: [], abilityText: "[unit_attack] Remove all [ongoing] effects played on the target by the enemy player.", cardImage: "/assets/units-fortress-bronze-dragon_flies-few.webp" },
+    pack: { attack: 3, defense: 1, health: 3, initiative: 12, cost: { gold: 7 }, abilities: ["dragon-fly-retaliation-penalty"], abilityText: "[unit_attack] Remove all [ongoing] effects played on the target by the enemy player. [unit_retaliation] If the target retaliates, it suffers -1 [attack] .", cardImage: "/assets/units-fortress-bronze-dragon_flies-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/dragon_flies/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Fortress Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/dragon_flies/"
+    }
+  },
+  "fortress.basilisks": {
+    id: "fortress.basilisks",
+    name: "Basilisks",
+    faction: "fortress",
+    tier: "silver",
+    type: "ground",
+    few: { attack: 4, defense: 1, health: 4, initiative: 5, cost: { gold: 6 }, abilities: ["fortress-basilisk-paralysis"], abilityText: "[unit_attack] On a \"-1\" on the Attack die , the target gains [paralysis] .", cardImage: "/assets/units-fortress-silver-basilisks-few.webp" },
+    pack: { attack: 4, defense: 1, health: 5, initiative: 7, cost: { gold: 9 }, abilities: ["fortress-basilisk-paralysis"], abilityText: "[unit_attack] On a \"-1\" on the Attack die , the target gains [paralysis] .", cardImage: "/assets/units-fortress-silver-basilisks-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/basilisks/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Fortress Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/basilisks/"
+    }
+  },
+  "fortress.gorgons": {
+    id: "fortress.gorgons",
+    name: "Gorgons",
+    faction: "fortress",
+    tier: "silver",
+    type: "ground",
+    few: { attack: 4, defense: 2, health: 5, initiative: 5, cost: { gold: 9 }, abilities: [], cardImage: "/assets/units-fortress-silver-gorgons-few.webp" },
+    pack: { attack: 5, defense: 2, health: 5, initiative: 6, cost: { gold: 14 }, abilities: ["fortress-gorgon-death-stare"], abilityText: "[unit_attack] After the attack, roll 2 Attack dice . On a double \"0\", reduce the target's [health_points] to 0.", cardImage: "/assets/units-fortress-silver-gorgons-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/gorgons/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Fortress Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/gorgons/"
+    }
+  },
+  "fortress.wyverns": {
+    id: "fortress.wyverns",
+    name: "Wyverns",
+    faction: "fortress",
+    tier: "gold",
+    type: "flying",
+    few: { attack: 5, defense: 1, health: 8, initiative: 7, cost: { gold: 12 }, abilities: [], abilityText: "[unit_attack] Place 1 faction cube on the target. At the beginning of its every activation, remove it to inflict 1 [damage] .", cardImage: "/assets/units-fortress-golden-wyverns-few.webp" },
+    pack: { attack: 6, defense: 1, health: 8, initiative: 11, cost: { gold: 18, valuables: 1 }, abilities: [], abilityText: "[unit_attack] Place 2 faction cubes on the target. At the beginning of its every activation, remove 1 of them to inflict 1 [damage] .", cardImage: "/assets/units-fortress-golden-wyverns-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/wyverns/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Fortress Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/wyverns/"
+    }
+  },
+  "fortress.hydras": {
+    id: "fortress.hydras",
+    name: "Hydras",
+    faction: "fortress",
+    tier: "gold",
+    type: "ground",
+    few: { attack: 6, defense: 3, health: 8, initiative: 5, cost: { gold: 20, valuables: 1 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack.", cardImage: "/assets/units-fortress-golden-hydras-few.webp" },
+    pack: { attack: 7, defense: 3, health: 10, initiative: 7, cost: { gold: 28, valuables: 2 }, abilities: ["ignores-retaliation", "hydra-multi-attack"], abilityText: "[unit_attack] Ignore the Retaliation Attack. This unit attacks up to 2 adjacent enemy units.", cardImage: "/assets/units-fortress-golden-hydras-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/hydras/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Fortress Expansion)",
+      credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/hydras/"
+    }
+  },
+
   "neutral.boars": {
     id: "neutral.boars",
     name: "Boars",

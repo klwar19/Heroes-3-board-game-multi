@@ -2879,8 +2879,13 @@ function isOwnTownOrSettlementField(state: GameState, playerId: PlayerId, spaceI
 }
 
 /**
- * Brimstone Stormclouds: while one of your spells is on the stack, remove a
- * faction cube from the building for +1 Power (max 1 cube per spell).
+ * Faction cube buildings:
+ *  - Brimstone Stormclouds (spell-power): while one of your spells is on the
+ *    stack, remove a cube for +1 Power (max 1 cube per spell).
+ *  - Cage of Warlords (attack-or-defense): while one of your units' attacks
+ *    waits to resolve, remove a cube for +1 attack (you are the attacker) or
+ *    +1 defense (your unit is the target). Several cubes may stack on one
+ *    attack — the printed "+1 per cube".
  */
 export function spendTownCube(state: GameState, action: Extract<GameAction, { type: "SPEND_TOWN_CUBE" }>): void {
   const town = getTownOfPlayer(state, action.playerId);
@@ -2889,32 +2894,59 @@ export function spendTownCube(state: GameState, action: Extract<GameAction, { ty
     throw new Error("That cube building is not available.");
   }
 
-  if (building.effect.spend !== "spell-power") {
-    throw new Error("Those cubes do not power spells.");
-  }
-
   const cubes = town.factionCubes?.[action.buildingId] ?? 0;
   if (cubes <= 0) {
     throw new Error("No faction cubes are stored on the building.");
   }
 
-  const stackItem = state.stack.at(-1);
-  if (!stackItem || stackItem.action.type !== "CAST_SPELL" || stackItem.action.playerId !== action.playerId) {
-    throw new Error("Spend the cube while one of your spells is being cast.");
+  if (building.effect.spend === "spell-power") {
+    const stackItem = state.stack.at(-1);
+    if (!stackItem || stackItem.action.type !== "CAST_SPELL" || stackItem.action.playerId !== action.playerId) {
+      throw new Error("Spend the cube while one of your spells is being cast.");
+    }
+    if ((stackItem.modifiers.townCubePowerBonus ?? 0) >= 1) {
+      throw new Error("Only one cube may power each spell.");
+    }
+    town.factionCubes = { ...town.factionCubes, [action.buildingId]: cubes - 1 };
+    stackItem.modifiers.townCubePowerBonus = (stackItem.modifiers.townCubePowerBonus ?? 0) + 1;
+    appendEvent(state, {
+      type: "TOWN_BUILDING_USED",
+      playerId: action.playerId,
+      buildingId: action.buildingId,
+      message: `${building.name}: a faction cube burns for +1 Power (${cubes - 1} left).`
+    });
+    return;
   }
 
-  if ((stackItem.modifiers.townCubePowerBonus ?? 0) >= 1) {
-    throw new Error("Only one cube may power each spell.");
+  // attack-or-defense (Cage of Warlords).
+  if (action.boost !== "attack" && action.boost !== "defense") {
+    throw new Error("Choose +1 attack or +1 defense for the cube.");
+  }
+  const stackItem = state.stack.at(-1);
+  const atkAction = stackItem?.action;
+  if (!stackItem || !atkAction || (atkAction.type !== "ATTACK_UNIT" && atkAction.type !== "MOVE_AND_ATTACK_UNIT")) {
+    throw new Error("Spend the cube while one of your units' attacks waits to resolve.");
+  }
+  if (action.boost === "attack") {
+    const attacker = state.combat?.units[atkAction.attackerId];
+    if (!attacker || attacker.controllerId !== action.playerId) {
+      throw new Error("Only the attacking player can spend a cube for +1 attack.");
+    }
+    stackItem.modifiers.attackBonus += 1;
+  } else {
+    const defender = state.combat?.units[atkAction.defenderId];
+    if (!defender || defender.controllerId !== action.playerId) {
+      throw new Error("Only the defending player can spend a cube for +1 defense.");
+    }
+    stackItem.modifiers.defenseBonus += 1;
   }
 
   town.factionCubes = { ...town.factionCubes, [action.buildingId]: cubes - 1 };
-  stackItem.modifiers.townCubePowerBonus = (stackItem.modifiers.townCubePowerBonus ?? 0) + 1;
-
   appendEvent(state, {
     type: "TOWN_BUILDING_USED",
     playerId: action.playerId,
     buildingId: action.buildingId,
-    message: `${building.name}: a faction cube burns for +1 Power (${cubes - 1} left).`
+    message: `${building.name}: a faction cube burns for +1 ${action.boost} (${cubes - 1} left).`
   });
 }
 

@@ -1,6 +1,13 @@
 import type { ResourceCost, UnitType } from "@/engine/state";
 
-export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon" | "stronghold";
+export type FactionId =
+  | "castle"
+  | "rampart"
+  | "inferno"
+  | "necropolis"
+  | "dungeon"
+  | "stronghold"
+  | "fortress";
 export type UnitTier = "bronze" | "silver" | "gold" | "azure";
 
 export type UnitSideDefinition = {
@@ -162,6 +169,16 @@ export type TownBuildingEffect =
        */
       type: "FREELANCERS_GUILD";
       winGold: number;
+    }
+  | {
+      /**
+       * Blood Obelisk (Fortress): at the beginning of each Resource round you
+       * may Search(`count`) your own discard pile and take 1 card to hand.
+       * (The printed card also offers the same Search instantly after your
+       * Town is sieged; only the recurring Resource-round trigger is wired.)
+       */
+      type: "RESOURCE_ROUND_SEARCH_DISCARD";
+      count: number;
     }
   | {
       /**

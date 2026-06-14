@@ -404,3 +404,40 @@ describe("Gorgon death stare", () => {
     expect(defenderDamage(next)).toBe(4);
   });
 });
+
+describe("Fortress Basilisk — Stone Gaze on the main die '-1'", () => {
+  it("paralyses the target on a '-1' attack roll", () => {
+    const next = rangedDuel({ attackerAbilities: ["fortress-basilisk-paralysis"], rolls: [-1, 0, 0] });
+    expect(hasParalysis(next)).toBe(true);
+  });
+
+  it("does not paralyse on any other roll (control)", () => {
+    const next = rangedDuel({ attackerAbilities: ["fortress-basilisk-paralysis"], rolls: [0, 0, 0] });
+    expect(hasParalysis(next)).toBe(false);
+  });
+});
+
+describe("Fortress Gorgon — Death Stare on a double '0'", () => {
+  it("reduces the target to 0 Health on two '0' results", () => {
+    // attack die +1 (4 damage vs 8 HP, not lethal), then the stare dice 0/0.
+    const next = rangedDuel({
+      attackerAbilities: ["fortress-gorgon-death-stare"],
+      defenderMaxHealth: 8,
+      defenderVariant: "few",
+      rolls: [1, 0, 0]
+    });
+    expect(abilityMessages(next).some((message) => message.includes("to 0 Health"))).toBe(true);
+    expect(removedUnitIds(next)).toContain("unit_p2_skeletons");
+  });
+
+  it("does nothing when the stare dice are not both '0'", () => {
+    const next = rangedDuel({
+      attackerAbilities: ["fortress-gorgon-death-stare"],
+      defenderMaxHealth: 8,
+      defenderVariant: "few",
+      rolls: [1, 0, -1]
+    });
+    expect(removedUnitIds(next)).not.toContain("unit_p2_skeletons");
+    expect(defenderDamage(next)).toBe(4);
+  });
+});

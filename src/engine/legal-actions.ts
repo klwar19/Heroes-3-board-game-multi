@@ -2429,6 +2429,34 @@ export function getLegalReactionsForTrigger(
       }
     }
 
+    // Cage of Warlords: while an attack waits to resolve, remove a faction
+    // cube for +1 attack (you are the attacker) or +1 defense (your unit is
+    // the target). One per cube — offered again while cubes remain.
+    if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
+      const attacker = state.combat?.units[triggerEvent.attackerId];
+      const defender = state.combat?.units[triggerEvent.defenderId];
+      const town = Object.values(state.towns).find((candidate) => candidate.controllerId === player.id);
+      for (const buildingId of town?.buildings ?? []) {
+        const building = coreBuildingDefinitions[buildingId];
+        const cubes = town?.factionCubes?.[buildingId] ?? 0;
+        if (building?.effect?.type !== "COMBAT_CUBES" || building.effect.spend !== "attack-or-defense" || cubes <= 0) {
+          continue;
+        }
+        if (attacker && attacker.controllerId === player.id) {
+          reactions.push({
+            label: `${building.name}: remove 1 cube for +1 attack (${cubes} stored)`,
+            action: { type: "SPEND_TOWN_CUBE", playerId: player.id, buildingId, boost: "attack" }
+          });
+        }
+        if (defender && defender.controllerId === player.id) {
+          reactions.push({
+            label: `${building.name}: remove 1 cube for +1 defense (${cubes} stored)`,
+            action: { type: "SPEND_TOWN_CUBE", playerId: player.id, buildingId, boost: "defense" }
+          });
+        }
+      }
+    }
+
     // The printed alternative bottom effect: discard any Spell card for
     // +1 Power — toward your own cast, or paired with an instant spell in an
     // attack window (the batch validator enforces the pairing).

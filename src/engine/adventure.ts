@@ -2495,7 +2495,15 @@ export function drawGuardArmy(state: GameState, field: MapFieldState | undefined
   return draws;
 }
 
-const PLAYABLE_FACTIONS = ["castle", "rampart", "inferno", "necropolis", "dungeon", "stronghold"] as const;
+const PLAYABLE_FACTIONS = [
+  "castle",
+  "rampart",
+  "inferno",
+  "necropolis",
+  "dungeon",
+  "stronghold",
+  "fortress"
+] as const;
 
 /**
  * Assigns (once) the unused faction defending a Random Town. The rulebook has
@@ -2862,6 +2870,16 @@ export function startAdventureRound(state: GameState): void {
       }
       if (effect?.type === "COMBAT_CUBES" && effect.gainOn === "resource" && town) {
         gainTownCube(state, town, buildingId, effect.max);
+      }
+      if (effect?.type === "RESOURCE_ROUND_SEARCH_DISCARD") {
+        // Blood Obelisk: Search(count) your discard pile and take 1 card.
+        // No-ops on an empty discard pile (handled by the discard-pick reward).
+        state.adventure?.rewardQueue.push({
+          playerId,
+          kind: "discard-pick",
+          count: 1,
+          fromTop: effect.count
+        });
       }
     }
   }

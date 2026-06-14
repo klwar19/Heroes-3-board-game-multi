@@ -60,7 +60,14 @@ export type VictoryMode = "conquest" | "grail" | "dragon-hunt" | "dragon-conquer
  *    only the troops are spared. Does not affect fights against Neutral guards.
  */
 export type PvpTroopLoss = "normal" | "none";
-export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon" | "stronghold";
+export type FactionId =
+  | "castle"
+  | "rampart"
+  | "inferno"
+  | "necropolis"
+  | "dungeon"
+  | "stronghold"
+  | "fortress";
 
 export type TargetRef =
   | { type: "unit"; unitId: UnitId }
@@ -1098,10 +1105,16 @@ export type GameAction =
        * Brimstone Stormclouds (and cube buildings like it): while one of your
        * spells is waiting to resolve, remove 1 faction cube from the building
        * for +1 Power on that spell (max 1 cube per spell).
+       *
+       * Cage of Warlords (Fortress) reuses this with `boost`: while one of your
+       * units' attacks waits to resolve, remove 1 cube for +1 attack (you are
+       * the attacker) or +1 defense (your unit is the target). One bonus per
+       * cube, several may be spent on the same attack.
        */
       type: "SPEND_TOWN_CUBE";
       playerId: PlayerId;
       buildingId: BuildingId;
+      boost?: "attack" | "defense";
     }
   | {
       /**
