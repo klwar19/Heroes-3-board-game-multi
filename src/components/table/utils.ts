@@ -173,6 +173,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} keeps a ${event.deckId} card${event.pick === "discard-top" ? " from the discard" : ""}; ${event.discardedCardIds.length} discarded.`;
     case "HERO_MOVED":
       return `${playerName(state, event.playerId)} moves their hero ${event.from} -> ${event.to} (${event.movementLeft} movement left).`;
+    case "HERO_GAINED":
+      return `${playerName(state, event.playerId)} gains a Secondary Hero at ${event.fieldId}.`;
     case "SPELL_CAST_CANCELLED":
       return `${playerName(state, event.cancelledByPlayerId)} ends ${cardName(event.spellCardId)} with ${cardName(event.cancelledByCardId)}.`;
     case "DAMAGE_ASSIGNED":

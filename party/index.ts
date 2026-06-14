@@ -4,6 +4,7 @@ import {
   createAdventureGameState,
   createAdventureLobbyState,
   createInitialGameState,
+  ENGINE_SIGNATURE,
   type AdventurePlayerConfig,
   type GameAction,
   type GameDifficulty,
@@ -28,6 +29,12 @@ export type RoomSnapshot = {
   version: number;
   updatedAt: string;
   state: GameState;
+  /**
+   * This server's ENGINE_SIGNATURE, stamped onto every snapshot at send time
+   * (see src/engine/version.ts). Lets the client warn when the room server is
+   * running older engine code than the frontend.
+   */
+  serverSignature?: string;
 };
 
 export type RoomResetOptions = {
@@ -104,17 +111,26 @@ export default class GameRoomServer implements Party.Server {
     }
   }
 
+  /**
+   * Stamp this server's engine signature onto an outgoing snapshot. Done at
+   * send time (not persisted) so a snapshot stored by an older deploy is
+   * always re-broadcast with the *running* server's signature.
+   */
+  private signed(snapshot: RoomSnapshot): RoomSnapshot {
+    return { ...snapshot, serverSignature: ENGINE_SIGNATURE };
+  }
+
   private broadcastSnapshot(): void {
     if (!this.snapshot) {
       return;
     }
 
-    const message: ServerMessage = { type: "snapshot", snapshot: this.snapshot };
+    const message: ServerMessage = { type: "snapshot", snapshot: this.signed(this.snapshot) };
     this.room.broadcast(JSON.stringify(message));
   }
 
   onConnect(connection: Party.Connection): void {
-    const message: ServerMessage = { type: "snapshot", snapshot: this.ensureSnapshot() };
+    const message: ServerMessage = { type: "snapshot", snapshot: this.signed(this.ensureSnapshot()) };
     connection.send(JSON.stringify(message));
   }
 
@@ -127,7 +143,7 @@ export default class GameRoomServer implements Party.Server {
     }
 
     if (message.type === "sync") {
-      const reply: ServerMessage = { type: "snapshot", snapshot: this.ensureSnapshot() };
+      const reply: ServerMessage = { type: "snapshot", snapshot: this.signed(this.ensureSnapshot()) };
       sender.send(JSON.stringify(reply));
       return;
     }
@@ -164,7 +180,7 @@ export default class GameRoomServer implements Party.Server {
         type: "action-result",
         requestId: message.requestId,
         errors: result.errors.map((error) => ({ code: error.code, message: error.message })),
-        snapshot: this.snapshot ?? current
+        snapshot: this.signed(this.snapshot ?? current)
       };
       sender.send(JSON.stringify(reply));
     }
@@ -185,7 +201,7 @@ export default class GameRoomServer implements Party.Server {
     }
 
     if (request.method === "GET") {
-      return jsonWithCors(this.ensureSnapshot());
+      return jsonWithCors(this.signed(this.ensureSnapshot()));
     }
 
     if (request.method === "POST") {
@@ -204,7 +220,7 @@ export default class GameRoomServer implements Party.Server {
         };
         await this.persist();
         this.broadcastSnapshot();
-        return jsonWithCors(this.snapshot);
+        return jsonWithCors(this.signed(this.snapshot));
       }
 
       if (body && "action" in body && body.action) {
@@ -220,10 +236,10 @@ export default class GameRoomServer implements Party.Server {
           await this.persist();
           this.broadcastSnapshot();
         }
-        return jsonWithCors({ snapshot: this.snapshot ?? current, result });
+        return jsonWithCors({ snapshot: this.signed(this.snapshot ?? current), result });
       }
 
-      return jsonWithCors(this.ensureSnapshot());
+      return jsonWithCors(this.signed(this.ensureSnapshot()));
     }
 
     return new Response("Method not allowed", { status: 405, headers: CORS_HEADERS });

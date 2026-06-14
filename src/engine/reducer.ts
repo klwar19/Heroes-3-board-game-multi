@@ -31,6 +31,7 @@ import {
   moveHeroAdventure,
   moveHeroPathAdventure,
   openSharedDeckSearch,
+  hireSecondaryHero,
   placeCombatUnit,
   placeTile,
   populationAction,
@@ -158,7 +159,8 @@ import {
   getUnitAttackRerollSources,
   hasIgnoreParalysis,
   hasRetaliationAgainstDisadvantage,
-  hasUnitAbilityEffect
+  hasUnitAbilityEffect,
+  unitImmuneToSpellSchools
 } from "./unit-abilities";
 import type {
   ActiveEffectDefinition,
@@ -3659,9 +3661,14 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         markUnitRemovedIfNeeded(state, target);
 
         // "Select 2 adjacent places": the caster picks one unit adjacent to
-        // the target for the same damage (the second space may be empty).
+        // the target for the same damage (the second space may be empty). A
+        // unit immune to this Spell's school (an Elemental) is not a candidate.
         const splashCandidates = Object.values(state.combat.units).filter(
-          (unit) => unit.id !== target.id && isUnitAlive(unit) && isAdjacent(unit.position, target.position)
+          (unit) =>
+            unit.id !== target.id &&
+            isUnitAlive(unit) &&
+            isAdjacent(unit.position, target.position) &&
+            !unitImmuneToSpellSchools(unit, card.spellSchools)
         );
         if (splashCandidates.length > 0) {
           const choiceId = `choice_${nextEventNumber(state)}`;
@@ -4359,6 +4366,9 @@ function applyReactionPlayCore(
       recallPlayedCards: mode === "expert" && Boolean(effect.expertRecallPlayedCards)
     };
 
+    // Empowered Knowledge raises the limit on the basic play; the regular
+    // card only on the expert play.
+    caster.combatStats.spellLimitBonusThisRound += effect.basicSpellLimitBonus ?? 0;
     if (mode === "expert") {
       caster.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
     }
@@ -4863,9 +4873,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "GAIN_HERO_MOVEMENT") {
-    const hero = getMainHero(state, action.playerId);
-    if (hero) {
-      hero.movementPoints += mode === "expert" ? (effect.expertAmount ?? effect.amount) : effect.amount;
+    // Buffs reach every hero the player commands, the Secondary Hero included.
+    const amount = mode === "expert" ? (effect.expertAmount ?? effect.amount) : effect.amount;
+    for (const hero of Object.values(state.heroes)) {
+      if (hero.controllerId === action.playerId) {
+        hero.movementPoints += amount;
+      }
     }
     if (effect.moveThroughThisTurn) {
       createActiveEffect(
@@ -6882,6 +6895,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "POPULATION_ACTION":
         populationAction(nextState, action);
+        break;
+      case "HIRE_SECONDARY_HERO":
+        hireSecondaryHero(nextState, action);
         break;
       case "SPELL_BOOK_ACTION":
         spellBookAction(nextState, action);
