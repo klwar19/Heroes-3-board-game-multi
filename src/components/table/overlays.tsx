@@ -22,7 +22,7 @@ import {
 } from "@/engine";
 import { cardName, costCardEligible, formatDieFace, formatEvent, unitName } from "./utils";
 import { CardBack, CardFrame } from "./seats";
-import { ArtifactIcon, DieFaceIcon, DoubleDieIcon, ExperienceIcon } from "./dice-icons";
+import { AnkhIcon, CrossedShovelsIcon, StarBannerIcon } from "./dice-icons";
 import { useCardZoom, ZoomButton } from "./zoom";
 
 type ReactionLegal = Extract<GameAction, { type: "PLAY_REACTION" }>;
@@ -944,10 +944,10 @@ const TREASURE_DIE_LAYOUT: ("experience" | "artifact-search" | "resource-die" | 
 
 /** Treasure-die face art (authentic-styled SVG) and its caption. */
 const TREASURE_FACE_ICONS: Record<string, { icon: React.ReactNode; label: string }> = {
-  experience: { icon: <ExperienceIcon size={22} />, label: "½ Level" },
-  "artifact-search": { icon: <ArtifactIcon size={20} />, label: "artifact" },
-  "resource-die": { icon: <DieFaceIcon size={20} />, label: "die" },
-  "double-resource-die": { icon: <DoubleDieIcon size={22} />, label: "2 dice" }
+  experience: { icon: <StarBannerIcon size={24} />, label: "½ Level" },
+  "artifact-search": { icon: <AnkhIcon size={22} />, label: "artifact" },
+  "resource-die": { icon: <CrossedShovelsIcon size={22} />, label: "resource" },
+  "double-resource-die": { icon: <CrossedShovelsIcon size={22} />, label: "×2" }
 };
 
 const ATTACK_DIE_LAYOUT = [1, -1, 0, 0, -1, 1];
@@ -968,7 +968,11 @@ function MapDieCube({
       const face = RESOURCE_DIE_LAYOUT[index];
       return (
         <>
-          <img alt="" src={assetUrl(RESOURCE_FACE_ICONS[face.resource])} />
+          {/* The source art is a resource on a leather tile; the wrapper crops
+              the leather frame away so only the gold/ore/crystal reads. */}
+          <span className="mapDieResource">
+            <img alt="" src={assetUrl(RESOURCE_FACE_ICONS[face.resource])} />
+          </span>
           <b>{face.amount}</b>
         </>
       );

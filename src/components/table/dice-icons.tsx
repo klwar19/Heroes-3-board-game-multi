@@ -8,59 +8,58 @@
 
 type IconProps = { size?: number; className?: string };
 
-/** Half an Experience Level — an upward chevron over a level bar (Treasure die). */
-export function ExperienceIcon({ size = 20, className }: IconProps) {
+/** Experience — a heraldic pennant charged with a star (Treasure die). */
+export function StarBannerIcon({ size = 22, className }: IconProps) {
   return (
     <svg aria-hidden="true" className={className} height={size} viewBox="0 0 24 24" width={size}>
+      {/* hanging rod */}
+      <rect fill="currentColor" height="2.6" rx="1.1" width="18" x="3" y="2.4" />
+      {/* banner with a fishtail (swallowtail) hem */}
+      <path d="M5 5h14v13l-3.5-2.8-3.5 2.8-3.5-2.8L5 18z" fill="currentColor" />
+      {/* five-pointed star, picked out in the table's green */}
       <path
-        d="M12 3 4 11h4v3h8v-3h4z"
-        fill="currentColor"
-        stroke="currentColor"
-        strokeLinejoin="round"
-        strokeWidth="1.2"
+        d="M12 6.8 13.0 9.43 15.8 9.56 13.62 11.33 14.35 14.04 12 12.5 9.65 14.04 10.38 11.33 8.2 9.56 11.0 9.43Z"
+        fill="#5f8a63"
       />
-      <rect fill="currentColor" height="3" rx="1" width="12" x="6" y="17" />
     </svg>
   );
 }
 
-/** Search the Artifact deck — a classic key (Treasure die). */
-export function ArtifactIcon({ size = 20, className }: IconProps) {
+/** Search the Artifact deck — an ankh amulet / relic (Treasure die). */
+export function AnkhIcon({ size = 20, className }: IconProps) {
   return (
     <svg aria-hidden="true" className={className} height={size} viewBox="0 0 24 24" width={size}>
-      <circle cx="8" cy="8" fill="none" r="4.4" stroke="currentColor" strokeWidth="2.2" />
-      <circle cx="8" cy="8" fill="currentColor" r="1.5" />
-      <path d="M11 11 20 20" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />
-      <path d="M16.5 16.5 19 14M18.5 18.5 21 16" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />
+      {/* looped head (ring with a hole) */}
+      <path
+        d="M12 1.8c-2.5 0-4.3 1.9-4.3 4.3 0 1.9 1.2 3.4 3 4v1.1h2.6V10.1c1.8-.6 3-2.1 3-4C16.3 3.7 14.5 1.8 12 1.8zm0 2.3c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2z"
+        fill="currentColor"
+      />
+      {/* flared crossbar */}
+      <path d="M4.5 11.4h15l-1.4 2.6H5.9z" fill="currentColor" />
+      {/* stem */}
+      <rect fill="currentColor" height="8.4" width="2.8" x="10.6" y="11.4" />
+      {/* pedestal foot */}
+      <path d="M8.4 19.6h7.2v2.6h-2v-1.1h-3.2v1.1h-2z" fill="currentColor" />
     </svg>
   );
 }
 
-/** A single small die showing five pips (Treasure die: roll one Resource die). */
-export function DieFaceIcon({ size = 20, className }: IconProps) {
+/** Roll the Resource die — two crossed digging tools (a shovel and a spade). */
+export function CrossedShovelsIcon({ size = 20, className }: IconProps) {
   return (
     <svg aria-hidden="true" className={className} height={size} viewBox="0 0 24 24" width={size}>
-      <rect fill="none" height="17" rx="4" stroke="currentColor" strokeWidth="2" width="17" x="3.5" y="3.5" />
-      <circle cx="8" cy="8" fill="currentColor" r="1.5" />
-      <circle cx="16" cy="8" fill="currentColor" r="1.5" />
-      <circle cx="12" cy="12" fill="currentColor" r="1.5" />
-      <circle cx="8" cy="16" fill="currentColor" r="1.5" />
-      <circle cx="16" cy="16" fill="currentColor" r="1.5" />
-    </svg>
-  );
-}
-
-/** Two dice (Treasure die: roll two Resource dice, choose one). */
-export function DoubleDieIcon({ size = 22, className }: IconProps) {
-  return (
-    <svg aria-hidden="true" className={className} height={size} viewBox="0 0 24 24" width={size}>
-      <rect fill="currentColor" height="13" opacity="0.45" rx="3" width="13" x="2.5" y="8.5" />
-      <rect fill="none" height="13" rx="3" stroke="currentColor" strokeWidth="1.7" width="13" x="2.5" y="8.5" />
-      <rect fill="var(--die-paper, #f3e7c8)" height="13" rx="3" stroke="currentColor" strokeWidth="1.7" width="13" x="8.5" y="2.5" />
-      <circle cx="12" cy="6" fill="currentColor" r="1.2" />
-      <circle cx="18" cy="6" fill="currentColor" r="1.2" />
-      <circle cx="12" cy="12" fill="currentColor" r="1.2" />
-      <circle cx="18" cy="12" fill="currentColor" r="1.2" />
+      <g transform="rotate(32 12 12)">
+        {/* pointed shovel blade */}
+        <path d="M12 2.4 14.5 6Q14.5 8.1 12 8.5 9.5 8.1 9.5 6Z" fill="currentColor" />
+        <rect fill="currentColor" height="9.6" rx="1" width="2" x="11" y="8" />
+        <rect fill="currentColor" height="2.2" rx="1.1" width="6.6" x="8.7" y="17.2" />
+      </g>
+      <g transform="rotate(-32 12 12)">
+        {/* flat spade blade */}
+        <rect fill="currentColor" height="4.4" rx="0.8" width="5.6" x="9.2" y="2.6" />
+        <rect fill="currentColor" height="11" rx="1" width="2" x="11" y="6.6" />
+        <rect fill="currentColor" height="2.2" rx="1.1" width="6.6" x="8.7" y="17.2" />
+      </g>
     </svg>
   );
 }
