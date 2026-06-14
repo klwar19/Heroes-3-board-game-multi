@@ -367,11 +367,12 @@ export default function Home() {
   const [hiddenHandTail, setHiddenHandTail] = useState(0);
   const [tintedUnits, setTintedUnits] = useState<Map<string, string>>(new Map());
   /**
-   * While a neutral guard's dice + strike animation is still playing, the next
-   * guard's "react?" preview (and its auto-resume countdown) is held back, so
-   * the action finishes before the next neutral move is queued up.
+   * True while a combat attack's dice + strike animation + damage are still
+   * playing out. Holds back anything that would otherwise resolve over the top
+   * of the roll: the next neutral guard's "react?" preview, and the end-of-combat
+   * result modal on a killing blow. Cleared a beat after the last strike lands.
    */
-  const [neutralResumeBlocked, setNeutralResumeBlocked] = useState(false);
+  const [combatPresenting, setCombatPresenting] = useState(false);
   /**
    * unitId -> the damage value the board should show while an attack's dice and
    * strike animation play, so a struck unit keeps its pre-hit health (and a
@@ -400,7 +401,7 @@ export default function Home() {
   // combat arrives in the snapshot where the combat is already gone.
   const unitDefIdsRef = useRef<Map<string, string>>(new Map());
   const hiddenHandTimerRef = useRef<number | null>(null);
-  const neutralResumeTimerRef = useRef<number | null>(null);
+  const combatPresentTimerRef = useRef<number | null>(null);
   /** Pending timers that reveal each unit's real health once its blow lands. */
   const damageRevealTimersRef = useRef<number[]>([]);
   const connectionRef = useRef<RoomConnection | null>(null);
@@ -422,6 +423,20 @@ export default function Home() {
     const combatId = state?.combat?.id ?? null;
     if (combatId && combatId !== lastCombatIdRef.current) {
       setCombatTab("battle");
+      // A fresh battle starts with a clean presentation slate, so a die,
+      // freeze or pause left mid-flight by the previous combat can't bleed
+      // into (and mis-sequence) this battle's first attack.
+      setDice({ current: null, queue: [] });
+      setCombatDamageDisplay(new Map());
+      setCombatPresenting(false);
+      if (combatPresentTimerRef.current) {
+        window.clearTimeout(combatPresentTimerRef.current);
+        combatPresentTimerRef.current = null;
+      }
+      for (const timer of damageRevealTimersRef.current) {
+        window.clearTimeout(timer);
+      }
+      damageRevealTimersRef.current = [];
     }
     lastCombatIdRef.current = combatId;
 
@@ -496,11 +511,11 @@ export default function Home() {
       setFxCues([]);
       setHiddenHandTail(0);
       setTintedUnits(new Map());
-      if (neutralResumeTimerRef.current) {
-        window.clearTimeout(neutralResumeTimerRef.current);
-        neutralResumeTimerRef.current = null;
+      if (combatPresentTimerRef.current) {
+        window.clearTimeout(combatPresentTimerRef.current);
+        combatPresentTimerRef.current = null;
       }
-      setNeutralResumeBlocked(false);
+      setCombatPresenting(false);
       for (const timer of damageRevealTimersRef.current) {
         window.clearTimeout(timer);
       }
@@ -1283,20 +1298,21 @@ export default function Home() {
           setFxCues((current) => [...current, ...cues]);
         }
 
-        // When this snapshot resolved one or more attacks and another neutral
-        // step is queued behind it, hold that next step's preview until every
-        // die, strike, damage number and death has played out (the preview then
-        // counts down its own 2s breather). combatPresentationEnd tracks the
-        // last strike's full tail; timeline covers any trailing non-attack cues.
-        if (fresh.length > 0 && nextState.combat?.pendingNeutralStep) {
+        // Whenever this snapshot resolved one or more attacks, hold the things
+        // that would otherwise resolve over the roll until every die, strike,
+        // damage number and death has played out: the next neutral guard's
+        // "react?" preview (which then counts down its own 2s breather) and, on
+        // the combat-ending blow, the victory/defeat modal. combatPresentationEnd
+        // tracks the last strike's full tail; timeline covers trailing cues.
+        if (fresh.length > 0) {
           const presentationMs = Math.max(timeline, combatPresentationEnd);
-          if (neutralResumeTimerRef.current) {
-            window.clearTimeout(neutralResumeTimerRef.current);
+          if (combatPresentTimerRef.current) {
+            window.clearTimeout(combatPresentTimerRef.current);
           }
-          setNeutralResumeBlocked(true);
-          neutralResumeTimerRef.current = window.setTimeout(() => {
-            setNeutralResumeBlocked(false);
-            neutralResumeTimerRef.current = null;
+          setCombatPresenting(true);
+          combatPresentTimerRef.current = window.setTimeout(() => {
+            setCombatPresenting(false);
+            combatPresentTimerRef.current = null;
           }, presentationMs);
         }
       }
@@ -2339,21 +2355,26 @@ export default function Home() {
           viewerPlayerId={viewerPlayerId}
         />
       ) : null}
-      <CombatResultModal
-        key={`result-${state.combat?.id ?? "none"}`}
-        legalActions={legalActions}
-        onAction={submitAction}
-        onReset={() => resetRoom(adventureMode ? "adventure" : "combat-sandbox")}
-        state={state}
-        viewerPlayerId={viewerPlayerId}
-      />
+      {/* Hold the victory/defeat notice until the killing blow's dice + strike
+          + death have played out, so the battle never "ends" before the roll
+          that ended it. (Retreat/surrender carry no roll, so it shows at once.) */}
+      {!combatPresenting ? (
+        <CombatResultModal
+          key={`result-${state.combat?.id ?? "none"}`}
+          legalActions={legalActions}
+          onAction={submitAction}
+          onReset={() => resetRoom(adventureMode ? "adventure" : "combat-sandbox")}
+          state={state}
+          viewerPlayerId={viewerPlayerId}
+        />
+      ) : null}
       {/* Keep the next guard's "react?" preview (and its auto-resume countdown)
           off screen while the current action is still playing — both the
           attack dice (dice.current) and the strike animation that follows them
-          (neutralResumeBlocked). The component mounts fresh only once both have
+          (combatPresenting). The component mounts fresh only once both have
           cleared, so the next neutral move is queued a clean ~2s after the
           previous strike finishes rather than over the top of it. */}
-      {!dice.current && !neutralResumeBlocked ? (
+      {!dice.current && !combatPresenting ? (
         <NeutralStepOverlay
           legalActions={legalActions}
           onAction={submitAction}
