@@ -10,6 +10,7 @@ import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import type { TownBuildingDefinition } from "@/data/factions/types";
 import { locationDefinitions } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
@@ -252,7 +253,9 @@ export function HexMapBoard({
     key: "",
     target: null
   });
-  const moveSelectionKey = `${myHeroSpaceId}|${state.activePlayerId}|${state.round}`;
+  // Keyed by the active hero too, so switching heroes (even two standing on the
+  // same field) drops a move target picked for the other one.
+  const moveSelectionKey = `${myHero?.id ?? "none"}|${myHeroSpaceId}|${state.activePlayerId}|${state.round}`;
   if (moveSelection.key !== moveSelectionKey) {
     setMoveSelection({ key: moveSelectionKey, target: null });
   }
@@ -646,7 +649,12 @@ export function HexMapBoard({
             }
             style={{
               transform: `translate(${x + index * 10 - 5}px, ${y - 4}px)`,
-              cursor: canSelectHero ? "pointer" : undefined
+              cursor: canSelectHero ? "pointer" : undefined,
+              // The .heroPawn layer is pointer-events:none so map clicks fall
+              // through to the hex underneath. Re-enable it on a pawn the viewer
+              // may switch to — otherwise its click-to-switch never fires and a
+              // Secondary Hero can never be selected.
+              pointerEvents: canSelectHero ? "auto" : "none"
             }}
           >
             <circle className="heroPawnBase" r={12} />
@@ -1331,7 +1339,8 @@ export function TownPanel({
   const [reinforceIds, setReinforceIds] = useState<string[]>([]);
   /** Cover of Darkness: hand-card indices picked for the discard. */
   const [coverPicks, setCoverPicks] = useState<number[]>([]);
-  const [coverOpenFor, setCoverOpenFor] = useState<string | null>(null);
+  /** Which built building's effect / use panel is expanded in place. */
+  const [openBuildingId, setOpenBuildingId] = useState<string | null>(null);
   /**
    * Building tooltip. The town panel lives inside the scrolling
    * `.adventureRail` (overflow-y: auto), which clipped the old in-flow
@@ -1348,7 +1357,7 @@ export function TownPanel({
     setRecruitIds([]);
     setReinforceIds([]);
     setCoverPicks([]);
-    setCoverOpenFor(null);
+    setOpenBuildingId(null);
   }
 
   const player = state.players[viewerPlayerId];
@@ -1441,8 +1450,80 @@ export function TownPanel({
       cardIds
     });
     setCoverPicks([]);
-    setCoverOpenFor(null);
+    setOpenBuildingId(null);
   };
+
+  // --- Built special buildings: an "in place" effect / use panel -----------
+  // The active "use" actions belong to one building each: Spell Book → Mage
+  // Guild, Blacksmith → the artifact smith, USE_TOWN_BUILDING → its own id.
+  const activeActionsForBuilding = (buildingId: string): LegalAction[] => {
+    const building = coreBuildingDefinitions[buildingId];
+    if (!building) {
+      return [];
+    }
+    return buildingUseActions.filter((legal) => {
+      const action = legal.action;
+      if (action.type === "USE_TOWN_BUILDING") {
+        return action.buildingId === buildingId;
+      }
+      if (action.type === "SPELL_BOOK_ACTION") {
+        return building.effect?.type === "MAGE_GUILD";
+      }
+      if (action.type === "BLACKSMITH_ACTION") {
+        return building.effect?.type === "ARTIFACT_SMITH";
+      }
+      return false;
+    });
+  };
+
+  // Dwellings and the Citadel are structural; every other built building with
+  // an effect earns a button so the player can read or use it in place.
+  const hasEffectPanel = (building: TownBuildingDefinition): boolean => {
+    const type = building.effect?.type;
+    return Boolean(
+      type && type !== "UNLOCK_RECRUIT_TIER" && type !== "UNLOCK_REINFORCE" && type !== "NOT_IMPLEMENTED"
+    );
+  };
+
+  // Live status / where-to-use note shown under the effect text.
+  const buildingPanelNote = (building: TownBuildingDefinition, hasActions: boolean): string | null => {
+    const effect = building.effect;
+    if (!effect) {
+      return null;
+    }
+    const usedThisRound = (player.buildingUsedRound?.[building.id] ?? 0) === state.round;
+    switch (effect.type) {
+      case "COMBAT_CUBES": {
+        const cubes = town.factionCubes?.[building.id] ?? 0;
+        const bonus = effect.spend === "spell-power" ? "+1 Power per cube (max 1 per spell)" : "+1 attack or defense per cube";
+        return `${cubes} of ${effect.max} faction cube${cubes === 1 ? "" : "s"} stored — remove them during any combat for ${bonus}.`;
+      }
+      case "HALL_OF_VALHALLA":
+        return usedThisRound
+          ? "Already used this round — offered again next round."
+          : `Ready — offered in combat when one of your units attacks (+${effect.amount} attack, once per round).`;
+      case "FREELANCERS_GUILD":
+        return "Always on — the bonus applies automatically.";
+      case "MAGE_GUILD":
+      case "ARTIFACT_SMITH":
+      case "COVER_OF_DARKNESS":
+      case "CASTLE_GATE":
+        if (hasActions) {
+          return null;
+        }
+        return usedThisRound
+          ? "Already used this round."
+          : "Becomes available on your turn (token and resources permitting).";
+      default:
+        // Round / turn-start automatic effects (City Hall, Brotherhood, Mystic
+        // Pond, Saplings, Necromancy Amplifier, Portal, Mana Vortex…).
+        return "Resolves automatically at the listed time — watch for its prompt.";
+    }
+  };
+
+  const openBuilding =
+    openBuildingId && town.buildings.includes(openBuildingId) ? coreBuildingDefinitions[openBuildingId] : null;
+  const openBuildingActions = openBuilding ? activeActionsForBuilding(openBuilding.id) : [];
 
   return (
     <section className="townPanel" aria-label={`${faction.name} town`}>
@@ -1464,6 +1545,9 @@ export function TownPanel({
             (legal) => legal.action.type === "BUILD_STRUCTURE" && legal.action.buildingId === buildingId
           );
           const cubes = town.factionCubes?.[buildingId] ?? 0;
+          const effectPanel = built && hasEffectPanel(building);
+          const open = openBuildingId === buildingId;
+          const actionable = effectPanel && activeActionsForBuilding(buildingId).length > 0;
           return (
             <div
               className={`townBuilding ${built ? "built" : ""}`}
@@ -1490,6 +1574,19 @@ export function TownPanel({
               {action ? (
                 <button className="commandButton" onClick={() => onAction(action.action)} type="button">
                   Build
+                </button>
+              ) : null}
+              {effectPanel ? (
+                <button
+                  aria-expanded={open}
+                  className={`commandButton buildingEffectButton ${actionable ? "actionable" : ""}`}
+                  onClick={() => {
+                    setOpenBuildingId(open ? null : buildingId);
+                    setCoverPicks([]);
+                  }}
+                  type="button"
+                >
+                  {actionable ? "Use ▾" : "Effect ▾"}
                 </button>
               ) : null}
             </div>
@@ -1521,6 +1618,78 @@ export function TownPanel({
                   {timing ? ` · ${timing}` : ""}
                 </small>
                 <p>{describeBuildingEffect(building)}</p>
+              </div>
+            );
+          })()
+        : null}
+
+      {/* In-place effect / use panel for the building whose button is open: the
+          exact effect, a live status line, and any action it offers right now
+          (Spell Book, Blacksmith, Castle Gate, Cover of Darkness's card picker). */}
+      {openBuilding && hasEffectPanel(openBuilding)
+        ? (() => {
+            const note = buildingPanelNote(openBuilding, openBuildingActions.length > 0);
+            const timing = buildingTimingLabel(openBuilding);
+            const isCover = openBuilding.effect?.type === "COVER_OF_DARKNESS";
+            const coverAction = isCover
+              ? openBuildingActions.find((legal) => legal.action.type === "USE_TOWN_BUILDING")
+              : undefined;
+            // Pull the id out where the type is narrowed so the click closure
+            // below keeps it (TS widens action property access inside closures).
+            const coverBuildingId =
+              coverAction?.action.type === "USE_TOWN_BUILDING" ? coverAction.action.buildingId : null;
+            return (
+              <div className="townActions townBuildingDetail" aria-label={`${openBuilding.name} effect`}>
+                <h4>
+                  {openBuilding.name}
+                  {timing ? <small>{timing}</small> : null}
+                </h4>
+                <p className="buildingDetailText">{describeBuildingEffect(openBuilding)}</p>
+                {note ? <small className="buildingDetailStatus">{note}</small> : null}
+                {coverBuildingId ? (
+                  <div className="coverPicker">
+                    <small>Pick 1–2 cards to discard, then draw that many:</small>
+                    <div className="coverPickerCards">
+                      {player.hand.map((cardId, index) => {
+                        const picked = coverPicks.includes(index);
+                        return (
+                          <label key={`${cardId}-${index}`}>
+                            <input
+                              checked={picked}
+                              disabled={!picked && coverPicks.length >= 2}
+                              onChange={() =>
+                                setCoverPicks((current) =>
+                                  picked ? current.filter((value) => value !== index) : [...current, index]
+                                )
+                              }
+                              type="checkbox"
+                            />
+                            {cardLibrary[cardId]?.name ?? cardId}
+                          </label>
+                        );
+                      })}
+                      <button
+                        className="commandButton primary"
+                        disabled={coverPicks.length === 0}
+                        onClick={() => submitCoverOfDarkness(coverBuildingId)}
+                        type="button"
+                      >
+                        Discard {coverPicks.length || ""} and draw
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  openBuildingActions.map((legal) => (
+                    <button
+                      className="commandButton"
+                      key={actionKey(legal.action)}
+                      onClick={() => onAction(legal.action)}
+                      type="button"
+                    >
+                      {legal.label}
+                    </button>
+                  ))
+                )}
               </div>
             );
           })()
@@ -1624,68 +1793,6 @@ export function TownPanel({
           ) : (
             <small className="basketHint">The token flips after one purchase action — stock up in one go.</small>
           )}
-        </div>
-      ) : null}
-
-      {buildingUseActions.length > 0 ? (
-        <div className="townActions" aria-label="Town building actions">
-          {buildingUseActions.map((legal) => {
-            const action = legal.action;
-            // Cover of Darkness needs its discard picks chosen first.
-            if (action.type === "USE_TOWN_BUILDING" && action.optionIndex === 0 && action.cardIds) {
-              const buildingId = action.buildingId;
-              const open = coverOpenFor === buildingId;
-              return (
-                <div className="coverPicker" key={actionKey(action)}>
-                  <button
-                    className="commandButton"
-                    onClick={() => {
-                      setCoverOpenFor(open ? null : buildingId);
-                      setCoverPicks([]);
-                    }}
-                    type="button"
-                  >
-                    {legal.label}
-                  </button>
-                  {open ? (
-                    <div className="coverPickerCards">
-                      {player.hand.map((cardId, index) => {
-                        const picked = coverPicks.includes(index);
-                        return (
-                          <label key={`${cardId}-${index}`}>
-                            <input
-                              checked={picked}
-                              disabled={!picked && coverPicks.length >= 2}
-                              onChange={() =>
-                                setCoverPicks((current) =>
-                                  picked ? current.filter((value) => value !== index) : [...current, index]
-                                )
-                              }
-                              type="checkbox"
-                            />
-                            {cardLibrary[cardId]?.name ?? cardId}
-                          </label>
-                        );
-                      })}
-                      <button
-                        className="commandButton primary"
-                        disabled={coverPicks.length === 0}
-                        onClick={() => submitCoverOfDarkness(buildingId)}
-                        type="button"
-                      >
-                        Discard {coverPicks.length || ""} and draw
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            }
-            return (
-              <button className="commandButton" key={actionKey(action)} onClick={() => onAction(action)} type="button">
-                {legal.label}
-              </button>
-            );
-          })}
         </div>
       ) : null}
 
