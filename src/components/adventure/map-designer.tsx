@@ -8,6 +8,7 @@ import { TILE_BACK_IMAGES } from "@/data/assets/homm-assets";
 import {
   hexNeighbors,
   hexToPixel,
+  pixelToHex,
   scenarioDefinitions,
   seaTileBand,
   tileCentersOverlap,
@@ -167,8 +168,9 @@ export function MapDesigner({
   /**
    * Every empty gapless slot bordering the current board (optionally ignoring
    * one tile): the union of each placed tile's six lattice neighbours, minus any
-   * that overlaps or duplicates a tile already down. These are exactly the holes
-   * a new tile can drop into, so dragging snaps only to hole-free positions.
+   * that overlaps a tile already down. These are the positions where a tile
+   * interlocks with no hole — shown as faint guides while dragging — but a tile
+   * may now be dropped freely on any non-overlapping hex, not only these.
    */
   const candidatesFor = useCallback(
     (excludeIndex?: number): HexCoord[] => {
@@ -208,28 +210,24 @@ export function MapDesigner({
     return { x: point.x, y: point.y };
   }, []);
 
-  // The valid empty slot nearest a screen point, within a tile's reach.
+  // The hex a drop would land on: simply the one under the pointer, free to be
+  // any hex on the grid. Only a position whose flower would overlap an existing
+  // tile is rejected (overlapping tiles can't share fields) — holes, tip-only
+  // contact and fully detached tiles are all allowed.
   const slotAt = useCallback(
     (clientX: number, clientY: number, excludeIndex?: number): HexCoord | null => {
       const local = clientToLocal(clientX, clientY);
       if (!local) {
         return null;
       }
-      let best: HexCoord | null = null;
-      let bestDistance = Infinity;
-      for (const candidate of candidatesFor(excludeIndex)) {
-        const pixel = hexToPixel(candidate, hexSize);
-        const distance = Math.hypot(pixel.x - local.x, pixel.y - local.y);
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          best = candidate;
-        }
+      const target = pixelToHex(local.x, local.y, hexSize);
+      const placed = placedCenters(excludeIndex);
+      if (placed.some((existing) => tileCentersOverlap(existing, target))) {
+        return null;
       }
-      // Snap to the nearest gap within roughly one tile's reach; gap centers are
-      // ~4.6 hex-radii apart, so this lets a drop land freely on any open notch.
-      return best && bestDistance <= hexSize * 2.8 ? best : null;
+      return target;
     },
-    [candidatesFor, clientToLocal, hexSize]
+    [clientToLocal, hexSize, placedCenters]
   );
 
   const closePopover = useCallback(() => {
@@ -353,7 +351,9 @@ export function MapDesigner({
   const selectedTileDef = selected?.tileDefId ? allTileDefinitions[selected.tileDefId] : undefined;
 
   const rotateSelected = (steps: number) => {
-    if (selectedIndex === null || !selected || selected.faceDown || selected.group === "starting") {
+    // Starting tiles take their faction art at a fixed orientation; every other
+    // tile rotates freely, whether face up or face down.
+    if (selectedIndex === null || !selected || selected.group === "starting") {
       return;
     }
     updateTile(selectedIndex, { rotation: ((((selected.rotation ?? 0) + steps) % 6) + 6) % 6 });
@@ -447,7 +447,7 @@ export function MapDesigner({
           key={`plan-art-${index}`}
           opacity={isDragging ? 0.3 : 1}
           preserveAspectRatio="none"
-          transform={!isStart && !plan.faceDown ? `rotate(${(plan.rotation ?? 0) * 60} ${centerPixel.x} ${centerPixel.y})` : undefined}
+          transform={!isStart ? `rotate(${(plan.rotation ?? 0) * 60} ${centerPixel.x} ${centerPixel.y})` : undefined}
           width={width}
           x={centerPixel.x - width / 2}
           y={centerPixel.y - height / 2}
@@ -509,17 +509,24 @@ export function MapDesigner({
     }
   }
 
-  // Drop-zone flowers, shown only while a drag is in progress.
+  // While dragging: faint guides at the gapless interlock slots, plus a solid
+  // preview at the hex the tile will actually land on — anywhere, hole or not.
   if (drag) {
+    const hoverKey = hoverSlot ? `${hoverSlot.row}:${hoverSlot.col}` : null;
     for (const candidate of activeCandidates) {
-      const isHover = hoverSlot ? candidate.row === hoverSlot.row && candidate.col === hoverSlot.col : false;
-      renderFlowerCells(candidate, `designerHexDrop ${isHover ? "hover" : ""}`, `drop-${candidate.row}:${candidate.col}`);
+      const key = `${candidate.row}:${candidate.col}`;
+      if (key === hoverKey) {
+        continue; // the live preview already covers this slot
+      }
+      renderFlowerCells(candidate, "designerHexDrop", `drop-${key}`);
       outlineLayer.push(
-        <path
-          className={`designerFlowerOutline drop ${isHover ? "hover" : ""}`}
-          d={flowerOutline(candidate, size)}
-          key={`drop-outline-${candidate.row}:${candidate.col}`}
-        />
+        <path className="designerFlowerOutline drop" d={flowerOutline(candidate, size)} key={`drop-outline-${key}`} />
+      );
+    }
+    if (hoverSlot) {
+      renderFlowerCells(hoverSlot, "designerHexDrop hover", "drop-hover");
+      outlineLayer.push(
+        <path className="designerFlowerOutline drop hover" d={flowerOutline(hoverSlot, size)} key="drop-outline-hover" />
       );
     }
   }
@@ -700,16 +707,12 @@ export function MapDesigner({
                       <Shuffle size={13} /> Flip back
                     </button>
                   )}
-                  {!selected.faceDown ? (
-                    <>
-                      <button onClick={() => rotateSelected(-1)} title="Rotate 60° counterclockwise" type="button">
-                        <RotateCcw size={13} />
-                      </button>
-                      <button onClick={() => rotateSelected(1)} title="Rotate 60° clockwise" type="button">
-                        <RotateCw size={13} /> {(selected.rotation ?? 0) * 60}°
-                      </button>
-                    </>
-                  ) : null}
+                  <button onClick={() => rotateSelected(-1)} title="Rotate 60° counterclockwise" type="button">
+                    <RotateCcw size={13} />
+                  </button>
+                  <button onClick={() => rotateSelected(1)} title="Rotate 60° clockwise" type="button">
+                    <RotateCw size={13} /> {(selected.rotation ?? 0) * 60}°
+                  </button>
                 </div>
 
                 {!selected.faceDown && PICKABLE_GROUPS.has(selected.group) ? (
@@ -752,9 +755,10 @@ export function MapDesigner({
       </div>
 
       <small className="optionHint">
-        Drag a tile from the palette onto the map. Drag a placed tile to move it; click it to reveal a specific tile,
-        flip it back to random, rotate it or remove it. The Town (Ⅰ) tiles become the player seats; drag the empty
-        background to pan and scroll to zoom.
+        Drag a tile from the palette and drop it anywhere — tiles can interlock, leave gaps, touch at just a corner or
+        float on their own (room for teleport gates later); green guides mark where a tile nests with no hole. Drag a
+        placed tile to move it; click it to reveal a specific tile, flip it back to random, rotate it or remove it. The
+        Town (Ⅰ) tiles become the player seats; drag the empty background to pan and scroll to zoom.
       </small>
 
       {/* Floating drag ghost follows the pointer. */}
