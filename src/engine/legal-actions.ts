@@ -29,7 +29,7 @@ import {
   observatoryDiscoverTargets,
   removableHandCards
 } from "./adventure-reducer";
-import { effectiveInitiative, playerHasSpellTimingFreedom } from "./active-effects";
+import { effectAppliesToUnit, effectiveInitiative, playerHasSpellTimingFreedom } from "./active-effects";
 import { cardCanBoostPower } from "./effects";
 import {
   BATTLEFIELD_CELL_COUNT,
@@ -76,6 +76,7 @@ import { NEUTRAL_PLAYER_ID } from "./state";
 import {
   getLethalSaveUnitAbility,
   getUnitAbilityDefinitions,
+  hasBindAdjacentEnemies,
   hasUnitAbilityEffect,
   unitImmuneToSpellSchools
 } from "./unit-abilities";
@@ -160,6 +161,9 @@ export function gradeRank(grade: CombatUnitState["grade"]): number {
 export function isUnitSpellImmune(state: GameState, unit: CombatUnitState): boolean {
   return state.activeEffects.some(
     (effect) =>
+      // A Gargoyle/Titan that ignores ongoing (Spell) effects ignores an
+      // Anti-Magic placed on it too, so it is not made spell-immune by it.
+      effectAppliesToUnit(effect, unit) &&
       effect.target?.type === "unit" &&
       effect.target.unitId === unit.id &&
       effect.modifiers.some(
@@ -294,23 +298,11 @@ export function getPathDistances(combat: CombatState, mover: CombatUnitState, or
   return distances;
 }
 
-function activeEffectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitState): boolean {
-  if (effect.scope === "global") {
-    return true;
-  }
-
-  if (effect.scope === "player") {
-    return effect.controllerId === unit.controllerId;
-  }
-
-  return effect.target?.type === "unit" && effect.target.unitId === unit.id;
-}
-
 function hasCannotMoveEffect(state: GameState | undefined, unit: CombatUnitState): boolean {
   return Boolean(
     state?.activeEffects.some(
       (effect) =>
-        activeEffectAppliesToUnit(effect, unit) &&
+        effectAppliesToUnit(effect, unit) &&
         effect.modifiers.some((modifier) => modifier.type === "UNIT_CANNOT_MOVE")
     )
   );
@@ -325,12 +317,32 @@ export function canUnitMoveTo(
   return getLegalMoveDestinations(combat, unit, state).includes(destination);
 }
 
+/**
+ * Rampart Dendroids (Pack) "Bind": an enemy that begins its activation adjacent
+ * to a living Dendroid cannot move. Evaluated against the unit's current
+ * position — callers only reach here before the active unit has moved, so its
+ * position is exactly where its activation began.
+ */
+function isBoundByAdjacentEnemy(combat: CombatState, unit: CombatUnitState): boolean {
+  return Object.values(combat.units).some(
+    (binder) =>
+      binder.controllerId !== unit.controllerId &&
+      isUnitAlive(binder) &&
+      hasBindAdjacentEnemies(binder) &&
+      isAdjacent(binder.position, unit.position)
+  );
+}
+
 export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitState, state?: GameState): number[] {
   if (!isUnitAlive(unit) || unit.activatedThisRound || unit.movedThisActivation) {
     return [];
   }
 
   if (hasCannotMoveEffect(state, unit)) {
+    return [];
+  }
+
+  if (isBoundByAdjacentEnemy(combat, unit)) {
     return [];
   }
 
@@ -410,7 +422,7 @@ function hasRangedPenaltyWaiver(state: GameState | undefined, unit: CombatUnitSt
   return Boolean(
     state?.activeEffects.some(
       (effect) =>
-        activeEffectAppliesToUnit(effect, unit) &&
+        effectAppliesToUnit(effect, unit) &&
         effect.modifiers.some((modifier) => modifier.type === "RANGED_IGNORE_ALL_PENALTIES")
     )
   );
@@ -1586,6 +1598,23 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
             abilityId: ability.id,
             target: { type: "unit", unitId: target.id }
           }
+        });
+      }
+    }
+
+    // Tower Genies (Few) "Wish" other action: dig Spells out of your own deck.
+    // Used instead of moving/attacking, and only when the deck (or its discard
+    // pile, which reshuffles in) still holds a card to dig.
+    if (
+      ability.effect?.type === "DECK_DISCARD_TAKE_SPELL" &&
+      ability.effect.trigger === "other-action" &&
+      !activeUnit.attackedThisActivation
+    ) {
+      const player = state.players[playerId];
+      if ((player?.deck.length ?? 0) + (player?.discard.length ?? 0) > 0) {
+        actions.push({
+          label: `${activeUnit.name}: ${ability.name} (discard ${ability.effect.count} from your deck, take a Spell)`,
+          action: { type: "USE_GENIE_DECK_DRAW", playerId, unitId: activeUnit.id }
         });
       }
     }

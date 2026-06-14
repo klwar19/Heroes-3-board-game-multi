@@ -345,8 +345,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "rampart",
     tier: "bronze",
     type: "ground",
-    few: { attack: 2, defense: 1, health: 3, initiative: 3, cost: { gold: 3 }, abilities: [], abilityText: "[unit_passive] If this unit is targeted by any Spell or Specialty card, roll 1 Attack die. On a \"+1\" result, ignore the card's effect.", cardImage: "/assets/units-rampart-bronze-dwarves-few.webp" },
-    pack: { attack: 3, defense: 1, health: 3, initiative: 5, cost: { gold: 4 }, abilities: [], abilityText: "[unit_passive] If this unit is targeted by any Spell or Specialty card, roll 1 Attack die. On a \"+1\" result, ignore the card's effect.", cardImage: "/assets/units-rampart-bronze-dwarves-pack.webp" },
+    few: { attack: 2, defense: 1, health: 3, initiative: 3, cost: { gold: 3 }, abilities: ["dwarf-magic-resistance"], abilityText: "[unit_passive] If this unit is targeted by any Spell or Specialty card, roll 1 Attack die. On a \"+1\" result, ignore the card's effect.", cardImage: "/assets/units-rampart-bronze-dwarves-few.webp" },
+    pack: { attack: 3, defense: 1, health: 3, initiative: 5, cost: { gold: 4 }, abilities: ["dwarf-magic-resistance"], abilityText: "[unit_passive] If this unit is targeted by any Spell or Specialty card, roll 1 Attack die. On a \"+1\" result, ignore the card's effect.", cardImage: "/assets/units-rampart-bronze-dwarves-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/dwarves/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
@@ -376,7 +376,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "silver",
     type: "flying",
     few: { attack: 3, defense: 0, health: 5, initiative: 8, cost: { gold: 6 }, abilities: [], cardImage: "/assets/units-rampart-silver-pegasi-few.webp" },
-    pack: { attack: 4, defense: 0, health: 6, initiative: 12, cost: { gold: 10 }, abilities: [], abilityText: "[unit_passive] The [power] of all enemy spells is reduced by 1 (to a minimum of 0).", cardImage: "/assets/units-rampart-silver-pegasi-pack.webp" },
+    pack: { attack: 4, defense: 0, health: 6, initiative: 12, cost: { gold: 10 }, abilities: ["pegasi-magic-damper"], abilityText: "[unit_passive] The [power] of all enemy spells is reduced by 1 (to a minimum of 0).", cardImage: "/assets/units-rampart-silver-pegasi-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/pegasi/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
@@ -391,7 +391,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "silver",
     type: "ground",
     few: { attack: 4, defense: 2, health: 5, initiative: 3, cost: { gold: 8 }, abilities: [], cardImage: "/assets/units-rampart-silver-dendroids-few.webp" },
-    pack: { attack: 4, defense: 2, health: 6, initiative: 4, cost: { gold: 15 }, abilities: [], abilityText: "[unit_passive] Enemy units that start activation adjacent to this unit cannot move.", cardImage: "/assets/units-rampart-silver-dendroids-pack.webp" },
+    pack: { attack: 4, defense: 2, health: 6, initiative: 4, cost: { gold: 15 }, abilities: ["dendroid-bind"], abilityText: "[unit_passive] Enemy units that start activation adjacent to this unit cannot move.", cardImage: "/assets/units-rampart-silver-dendroids-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/dendroids/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
@@ -731,8 +731,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "fortress",
     tier: "gold",
     type: "flying",
-    few: { attack: 5, defense: 1, health: 8, initiative: 7, cost: { gold: 12 }, abilities: [], abilityText: "[unit_attack] Place 1 faction cube on the target. At the beginning of its every activation, remove it to inflict 1 [damage] .", cardImage: "/assets/units-fortress-golden-wyverns-few.webp" },
-    pack: { attack: 6, defense: 1, health: 8, initiative: 11, cost: { gold: 18, valuables: 1 }, abilities: [], abilityText: "[unit_attack] Place 2 faction cubes on the target. At the beginning of its every activation, remove 1 of them to inflict 1 [damage] .", cardImage: "/assets/units-fortress-golden-wyverns-pack.webp" },
+    few: { attack: 5, defense: 1, health: 8, initiative: 7, cost: { gold: 12 }, abilities: ["wyvern-poison-cube-few"], abilityText: "[unit_attack] Place 1 faction cube on the target. At the beginning of its every activation, remove it to inflict 1 [damage] .", cardImage: "/assets/units-fortress-golden-wyverns-few.webp" },
+    pack: { attack: 6, defense: 1, health: 8, initiative: 11, cost: { gold: 18, valuables: 1 }, abilities: ["wyvern-poison-cube-pack"], abilityText: "[unit_attack] Place 2 faction cubes on the target. At the beginning of its every activation, remove 1 of them to inflict 1 [damage] .", cardImage: "/assets/units-fortress-golden-wyverns-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/wyverns/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Fortress Expansion)",
@@ -781,8 +781,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "tower",
     tier: "bronze",
     type: "flying",
-    few: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 3 }, abilities: [], abilityText: "[unit_passive] This unit ignores any [ongoing] Spell effects.", cardImage: "/assets/units-tower-bronze-gargoyles-few.webp" },
-    pack: { attack: 3, defense: 1, health: 3, initiative: 9, cost: { gold: 4 }, abilities: [], abilityText: "[unit_passive] This unit ignores any [ongoing] Spell effects.", cardImage: "/assets/units-tower-bronze-gargoyles-pack.webp" },
+    few: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 3 }, abilities: ["gargoyle-spell-ward"], abilityText: "[unit_passive] This unit ignores any [ongoing] Spell effects.", cardImage: "/assets/units-tower-bronze-gargoyles-few.webp" },
+    pack: { attack: 3, defense: 1, health: 3, initiative: 9, cost: { gold: 4 }, abilities: ["gargoyle-spell-ward"], abilityText: "[unit_passive] This unit ignores any [ongoing] Spell effects.", cardImage: "/assets/units-tower-bronze-gargoyles-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/gargoyles/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
@@ -826,8 +826,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "tower",
     tier: "silver",
     type: "flying",
-    few: { attack: 3, defense: 1, health: 6, initiative: 7, cost: { gold: 8 }, abilities: [], abilityText: "[unit_other] Discard 3 cards from your deck and take a [spell] discarded this way to your hand.", cardImage: "/assets/units-tower-silver-genies-few.webp" },
-    pack: { attack: 4, defense: 1, health: 6, initiative: 8, cost: { gold: 12 }, abilities: [], abilityText: "[unit_attack] Discard up to 3 cards from your deck and take a [spell] discarded this way to your hand.", cardImage: "/assets/units-tower-silver-genies-pack.webp" },
+    few: { attack: 3, defense: 1, health: 6, initiative: 7, cost: { gold: 8 }, abilities: ["genie-spell-draw-few"], abilityText: "[unit_other] Discard 3 cards from your deck and take a [spell] discarded this way to your hand.", cardImage: "/assets/units-tower-silver-genies-few.webp" },
+    pack: { attack: 4, defense: 1, health: 6, initiative: 8, cost: { gold: 12 }, abilities: ["genie-spell-draw-pack"], abilityText: "[unit_attack] Discard up to 3 cards from your deck and take a [spell] discarded this way to your hand.", cardImage: "/assets/units-tower-silver-genies-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/genies/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
@@ -856,8 +856,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "tower",
     tier: "gold",
     type: "ground",
-    few: { attack: 6, defense: 3, health: 8, initiative: 7, cost: { gold: 18, valuables: 1 }, abilities: [], abilityText: "[unit_passive] Ignore any [ongoing] effects on this unit.", cardImage: "/assets/units-tower-golden-titans-few.webp" },
-    pack: { attack: 6, defense: 3, health: 8, initiative: 11, cost: { gold: 32, valuables: 2 }, abilities: ["ignore-combat-penalties"], type: "ranged", abilityText: "[unit_passive] Ignore any [ongoing] effects on this unit and combat penalties against adjacent units.", cardImage: "/assets/units-tower-golden-titans-pack.webp" },
+    few: { attack: 6, defense: 3, health: 8, initiative: 7, cost: { gold: 18, valuables: 1 }, abilities: ["titan-ignore-ongoing"], abilityText: "[unit_passive] Ignore any [ongoing] effects on this unit.", cardImage: "/assets/units-tower-golden-titans-few.webp" },
+    pack: { attack: 6, defense: 3, health: 8, initiative: 11, cost: { gold: 32, valuables: 2 }, abilities: ["ignore-combat-penalties", "titan-ignore-ongoing"], type: "ranged", abilityText: "[unit_passive] Ignore any [ongoing] effects on this unit and combat penalties against adjacent units.", cardImage: "/assets/units-tower-golden-titans-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/titans/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",

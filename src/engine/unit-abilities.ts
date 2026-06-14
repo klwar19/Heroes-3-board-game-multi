@@ -711,3 +711,64 @@ export function getForcedAttackerDie(unit: CombatUnitState): number | null {
 export function hasImmuneToSpecialtyDamage(unit: CombatUnitState): boolean {
   return hasUnitAbilityEffect(unit, "IMMUNE_TO_SPECIALTY_DAMAGE");
 }
+
+/** Fortress Wyverns: the poison cubes planted on the target by this unit's attack. */
+export function getOnAttackPoisonCubes(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; count: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ON_ATTACK_POISON_CUBES")) {
+    if (ability.effect?.type === "ON_ATTACK_POISON_CUBES" && ability.effect.count > 0) {
+      return { abilityId: ability.id, abilityName: ability.name, count: ability.effect.count };
+    }
+  }
+  return null;
+}
+
+/** Rampart Dwarves: the Attack-die face that lets this unit shrug off a Spell/Specialty card. */
+export function getCardNegateOnDie(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; onRoll: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "NEGATE_CARD_ON_DIE")) {
+    if (ability.effect?.type === "NEGATE_CARD_ON_DIE") {
+      return { abilityId: ability.id, abilityName: ability.name, onRoll: ability.effect.onRoll };
+    }
+  }
+  return null;
+}
+
+/** Rampart Pegasi (Pack): the Power this unit shaves off every enemy Spell while it lives. */
+export function getEnemySpellPowerReduction(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "REDUCE_ENEMY_SPELL_POWER").reduce(
+    (total, ability) =>
+      total + (ability.effect?.type === "REDUCE_ENEMY_SPELL_POWER" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/** Rampart Dendroids (Pack): enemies starting adjacent to this unit cannot move (Bind). */
+export function hasBindAdjacentEnemies(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "BIND_ADJACENT_ENEMIES");
+}
+
+/** Tower Gargoyles: ongoing effects created by a Spell card never apply to this unit. */
+export function hasIgnoreOngoingSpellEffects(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "IGNORE_ONGOING_SPELL_EFFECTS");
+}
+
+/** Tower Titans: every ongoing effect on this unit is ignored, whatever its source. */
+export function hasIgnoreOngoingEffects(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "IGNORE_ONGOING_EFFECTS");
+}
+
+/** Tower Genies: the "discard from your deck, take a Spell" ability for the given trigger. */
+export function getDeckDiscardTakeSpell(
+  unit: CombatUnitState,
+  trigger: "other-action" | "on-attack"
+): { abilityId: string; abilityName: string; count: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "DECK_DISCARD_TAKE_SPELL")) {
+    if (ability.effect?.type === "DECK_DISCARD_TAKE_SPELL" && ability.effect.trigger === trigger) {
+      return { abilityId: ability.id, abilityName: ability.name, count: ability.effect.count };
+    }
+  }
+  return null;
+}
