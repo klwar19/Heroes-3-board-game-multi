@@ -40,6 +40,18 @@ export type FxCue =
       delayMs?: number;
       sound?: boolean;
     }
+  | {
+      /** A combat unit sliding from one battle cell to another. */
+      kind: "move";
+      id: string;
+      unitId: string;
+      from: string;
+      to: string;
+      cardImage?: string;
+      /** The card reads upside-down on the board (p1 / flipped view). */
+      flip?: boolean;
+      delayMs?: number;
+    }
   | { kind: "sprite"; id: string; fxKey: string; at: string; delayMs?: number; sound?: string }
   | {
       kind: "projectile";
@@ -60,6 +72,14 @@ export const FLIGHT_MS = 620;
 export const HOLD_CENTER_MS = 900;
 export const FLIGHT_OUT_MS = 480;
 export const DRAW_STAGGER_MS = 120;
+
+/** A combat unit's card glides between battle cells over this long. */
+export const COMBAT_MOVE_MS = 640;
+/**
+ * Neutral fights only: once a guard has slid into place the board holds for
+ * this long so the table reads the move before the attack die is thrown.
+ */
+export const NEUTRAL_ATTACK_PAUSE_MS = 2000;
 
 const SAFETY_TIMEOUT_MS = 9000;
 
@@ -253,6 +273,98 @@ async function runFlight(stage: HTMLElement, cue: Extract<FxCue, { kind: "flight
     playCardPlace();
   } finally {
     holder.remove();
+  }
+}
+
+/**
+ * A combat unit gliding from one cell to another. By the time this runs the
+ * board already shows the unit at its destination, so we hide the real card
+ * and fly a ghost copy from the old square along a gentle arc, leaving a short
+ * fading trail of after-images behind it. A missing card (combat ended, unit
+ * removed) consumes the cue silently.
+ */
+async function runMove(stage: HTMLElement, cue: Extract<FxCue, { kind: "move" }>): Promise<void> {
+  const fromRect = resolveAnchorRect(cue.from);
+  // Size and land on the real card so the ghost lines up exactly when it stops.
+  const realCard = document.querySelector(`[data-fx-unit="${cue.unitId}"] .boardCard`);
+  const toRect = realCard instanceof HTMLElement ? realCard.getBoundingClientRect() : resolveAnchorRect(cue.to);
+  if (!fromRect || !toRect || toRect.width === 0) {
+    return;
+  }
+
+  const w = toRect.width;
+  const h = toRect.height;
+  const start = centerOf(fromRect);
+  const end = centerOf(toRect);
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  // Longer hops lift a touch higher, capped so neighbouring steps stay grounded.
+  const lift = Math.min(26, 8 + Math.hypot(dx, dy) * 0.06);
+  const rotate = cue.flip ? " rotate(180deg)" : "";
+
+  const makeGhost = (): HTMLElement => {
+    const ghost = document.createElement("div");
+    ghost.className = "fxMoveGhost";
+    ghost.style.width = `${w}px`;
+    ghost.style.height = `${h}px`;
+    ghost.style.left = `${start.x - w / 2}px`;
+    ghost.style.top = `${start.y - h / 2}px`;
+    if (cue.cardImage) {
+      const img = document.createElement("img");
+      img.src = assetUrl(cue.cardImage);
+      img.alt = "";
+      img.className = "fxMoveGhostCard";
+      img.style.transform = rotate.trim() || "none";
+      ghost.appendChild(img);
+    } else {
+      const fallback = document.createElement("div");
+      fallback.className = "fxMoveGhostCard fxMoveGhostFallback";
+      fallback.style.transform = rotate.trim() || "none";
+      ghost.appendChild(fallback);
+    }
+    return ghost;
+  };
+
+  const keyframes: Keyframe[] = [
+    { transform: `translate(0px, 0px)${rotate} scale(1)`, offset: 0 },
+    { transform: `translate(${dx * 0.5}px, ${dy * 0.5 - lift}px)${rotate} scale(1.06)`, offset: 0.5 },
+    { transform: `translate(${dx}px, ${dy}px)${rotate} scale(1)`, offset: 1 }
+  ];
+  const easing = "cubic-bezier(0.34, 0.72, 0.36, 1)";
+
+  // Two faint after-images lag behind the leader for a sense of speed.
+  const trail = [0, 1, 2].map((index) => {
+    const node = makeGhost();
+    if (index > 0) {
+      node.classList.add("fxMoveEcho");
+      node.style.opacity = `${0.26 - (index - 1) * 0.11}`;
+    }
+    stage.appendChild(node);
+    return { node, index };
+  });
+
+  const realEl = realCard instanceof HTMLElement ? realCard : null;
+  if (realEl) {
+    realEl.style.opacity = "0";
+  }
+
+  try {
+    await Promise.all(
+      trail.map(({ node, index }) =>
+        animate(node, keyframes, {
+          duration: COMBAT_MOVE_MS + index * 70,
+          easing,
+          fill: "forwards"
+        })
+      )
+    );
+  } finally {
+    for (const { node } of trail) {
+      node.remove();
+    }
+    if (realEl) {
+      realEl.style.opacity = "";
+    }
   }
 }
 
@@ -476,6 +588,8 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
         switch (cue.kind) {
           case "flight":
             return runFlight(stage, cue);
+          case "move":
+            return runMove(stage, cue);
           case "sprite":
             return runSprite(stage, cue.fxKey, cue.at, cue.sound);
           case "projectile":

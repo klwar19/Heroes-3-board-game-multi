@@ -1,12 +1,70 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NeutralStepOverlay } from "./overlays";
+import { DiceOverlay, NeutralStepOverlay, type DiceCue } from "./overlays";
 import type { GameState, LegalAction } from "@/engine";
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+});
+
+/** A bare attack-roll cue; `preDelayMs` is the neutral move-then-attack hold. */
+function diceCue(overrides: Partial<DiceCue> = {}): DiceCue {
+  return {
+    id: "roll1",
+    rolls: [1],
+    roll: 1,
+    dieMultiplier: 1,
+    rollMode: "normal",
+    attackerName: "Marksmen",
+    defenderName: "Griffins",
+    attackValue: 8,
+    defenseValue: 5,
+    attackBonus: 0,
+    defenseBonus: 0,
+    damage: 3,
+    isRetaliation: false,
+    ...overrides
+  };
+}
+
+describe("DiceOverlay — tabletop pacing & neutral pre-attack pause", () => {
+  it("rolls right away and settles after the roll when there is no pre-delay", () => {
+    vi.useFakeTimers();
+    const onDone = vi.fn();
+    render(<DiceOverlay cue={diceCue()} onDone={onDone} />);
+
+    // The dice are on screen from the first frame.
+    expect(screen.getByRole("status", { name: /attack roll/i })).toBeTruthy();
+
+    // It holds for the full roll-then-read window before dismissing itself.
+    act(() => vi.advanceTimersByTime(3000));
+    expect(onDone).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(600));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the board clear during the pause, then throws the die", () => {
+    vi.useFakeTimers();
+    const onDone = vi.fn();
+    // A neutral guard slid into range first: hold ~2.6s before the die appears.
+    render(<DiceOverlay cue={diceCue({ preDelayMs: 2640 })} onDone={onDone} />);
+
+    // Nothing renders while the guard's move is read on the board below.
+    expect(screen.queryByRole("status", { name: /attack roll/i })).toBeNull();
+    act(() => vi.advanceTimersByTime(2000));
+    expect(screen.queryByRole("status", { name: /attack roll/i })).toBeNull();
+
+    // After the pause the die is thrown, and only then does the read clock start.
+    act(() => vi.advanceTimersByTime(700));
+    expect(screen.getByRole("status", { name: /attack roll/i })).toBeTruthy();
+    expect(onDone).not.toHaveBeenCalled();
+
+    // The pre-delay shifts the whole roll-then-read window later.
+    act(() => vi.advanceTimersByTime(3500));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
 });
 
 /** Minimal state carrying a pre-activation guard pause for the overlay. */
