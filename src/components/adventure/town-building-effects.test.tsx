@@ -96,6 +96,44 @@ describe("TownPanel — in-place special-building effect / use buttons", () => {
     });
   });
 
+  it("lets the player choose the City Hall OR bonus in place", () => {
+    const { state } = townWith("castle", ["castle.city_hall"]);
+    // A resource-round City Hall choice is pending for p1.
+    (state as unknown as { pendingChoice: unknown }).pendingChoice = {
+      id: "choice_ch",
+      type: "OPTION_CHOICE",
+      playerId: "p1",
+      prompt: "City Hall: choose this round's bonus",
+      options: [{ label: "Gain 5 gold" }, { label: "Gain +1 movement point this round" }],
+      context: "city-hall",
+      returnPhase: "player-turn"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = "p1";
+    const onAction = vi.fn();
+    render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={onAction} state={state} viewerPlayerId="p1" />);
+
+    // With a choice pending the City Hall reads as actionable ("Use"), and
+    // opening it shows BOTH options to pick in place.
+    fireEvent.click(within(tileFor("City Hall")).getByRole("button", { name: /Use/ }));
+    const panel = screen.getByLabelText("City Hall effect");
+    fireEvent.click(within(panel).getByRole("button", { name: /Gain 5 gold/i }));
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction.mock.calls[0][0]).toMatchObject({ type: "CHOOSE_OPTION", playerId: "p1", optionIndex: 0 });
+  });
+
+  it("shows the City Hall OR options as plain effect text when no choice is pending", () => {
+    const { state } = townWith("inferno", ["inferno.city_hall"]);
+    render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
+
+    const panel = openPanel("City Hall");
+    // Both OR options are described even outside a Resource round.
+    expect(panel.textContent).toMatch(/6 gold/i);
+    expect(panel.textContent).toMatch(/3 building materials/i);
+    expect(panel.textContent).toMatch(/Resource round/i);
+  });
+
   it("offers no effect button for a plain dwelling", () => {
     const { state } = townWith("castle", ["castle.dwelling_bronze"]);
     render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
