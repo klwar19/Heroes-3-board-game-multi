@@ -972,6 +972,30 @@ function addPlayableCardActions(
   }
 }
 
+/**
+ * The reactions a combat participant may take OFF-TURN — while it is not one of
+ * their own units' activation: cast a Spell (Intelligence lifts the activation-
+ * timing gate; trigger-free instant spells are castable by anyone), play an
+ * instant ability/card (e.g. Intelligence itself), or use an active effect.
+ *
+ * This is exactly the set offered during a "pre-activation" reaction pause, and
+ * the pump uses a non-empty result to decide whether opening that pause for a
+ * player is worthwhile. It only returns anything while a combat card window is
+ * open (no attack/reaction/choice resolving), so callers can rely on it being
+ * empty whenever the player has nothing useful to do.
+ */
+export function getOffTurnCombatReactions(
+  state: GameState,
+  playerId: PlayerId,
+  cards: CardLibrary = cardLibrary
+): LegalAction[] {
+  const actions: LegalAction[] = [];
+  addActiveEffectActions(actions, state, playerId);
+  addSpellActions(actions, state, playerId, cards);
+  addPlayableCardActions(actions, state, playerId, cards);
+  return actions;
+}
+
 /** Effects an "OR" option may resolve directly in the given context. */
 function isOptionEffectPlayable(
   state: GameState,
@@ -3291,12 +3315,22 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
-  // Neutral combat pacing: a guard just walked — the attacker clicks it on
-  // before the next guard acts (see CombatState.pendingNeutralStep).
-  if (state.combat?.pendingNeutralStep && state.combat.context.kind === "neutral") {
-    if (playerId === state.combat.attackerPlayerId) {
+  // Combat pacing / reaction pause (see CombatState.pendingNeutralStep). The
+  // reacting player may cast/react first (pre-activation) and then resumes; the
+  // guard-walk pause just lets the table click the enemy move on.
+  if (state.combat?.pendingNeutralStep) {
+    const pause = state.combat.pendingNeutralStep;
+    const reactor = pause.reactingPlayerId ?? state.combat.attackerPlayerId;
+    if (playerId === reactor) {
+      if (pause.kind === "pre-activation") {
+        // Cast Intelligence-enabled spells, trigger-free instant spells, play
+        // an instant ability, or use an active effect — all before the unit
+        // acts. (addSpellActions already gates activation spells on the
+        // Intelligence freedom, so only the right spells are offered off-turn.)
+        actions.push(...getOffTurnCombatReactions(state, playerId, cards));
+      }
       actions.push({
-        label: "Continue the enemy turn",
+        label: pause.kind === "pre-activation" ? "Let the unit act" : "Continue the enemy turn",
         action: { type: "CONTINUE_NEUTRAL_STEP", playerId }
       });
     }

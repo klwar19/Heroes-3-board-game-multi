@@ -1249,6 +1249,11 @@ export type GameEvent =
       roll: number;
       /** Centaur's Axe: the die outcome is multiplied before it is applied. */
       dieMultiplier?: number;
+      /**
+       * The Attack die was not rolled (Bless ignores it; Elemental damage
+       * never uses it). The client skips the rolling-dice cinematic for these.
+       */
+      noDie?: boolean;
       rollMode: AttackRollMode;
       attackBonus: number;
       defenseBonus: number;
@@ -2226,6 +2231,13 @@ export type CombatUnitState = {
   usedLethalSaveThisCombat?: boolean;
   retaliatedThisRound: boolean;
   defenseToken: boolean;
+  /**
+   * Set once the pre-activation reaction pause has been resolved for this
+   * unit's current activation, so the pump does not re-open it after the
+   * reacting player casts/plays during the pause. Reset every time the unit
+   * becomes active (setActiveUnit).
+   */
+  reactionPauseAcked?: boolean;
   /** Combat tokens currently on the card (attack/weakness/corrosion/paralysis). */
   tokens?: CombatTokenState[];
   abilities: string[];
@@ -2366,20 +2378,45 @@ export type CombatState = {
    */
   awaitingContinue: boolean;
   /**
-   * Neutral combat pacing: when a guard unit walks (a step that is not also an
-   * attack — attacks already pause on the defender's reaction window and the
-   * attack die) the engine stops here so the table can see the move and click
-   * on. The attacking player resumes with CONTINUE_NEUTRAL_STEP and the next
-   * guard acts. Only set during neutral fights — player-vs-player and the
-   * sandbox never pause like this.
+   * Combat pacing / reaction pause. The engine stops here and waits for one
+   * player to resume with CONTINUE_NEUTRAL_STEP. Two kinds:
+   *
+   *  - "pre-activation": before a unit takes its turn, the OTHER side gets a
+   *    window to react first — cast Intelligence-enabled spells (Magic Arrow,
+   *    Fireball…), trigger-free instant spells, or play an instant ability /
+   *    use an active effect. Set in neutral fights (the human reacts before
+   *    each guard acts) and in player-vs-player fights whenever the reacting
+   *    side holds Intelligence (the anytime-cast freedom). `reactingPlayerId`
+   *    holds priority; `intent` previews what the guard is about to do.
+   *  - "guard-walk": after a neutral guard walks (a pure move — attacks pause
+   *    on the defender's reaction window and the attack die instead) the engine
+   *    stops so the table can see the move. Neutral fights only.
+   *
+   * The sandbox never pauses like this (its pump does not run).
    */
   pendingNeutralStep?: {
+    /** Older snapshots have no kind; treat a missing kind as "guard-walk". */
+    kind?: "pre-activation" | "guard-walk";
     unitId: UnitId;
-    /** Display name of the acting guard, for the pop-up. */
+    /** Display name of the acting unit, for the pop-up. */
     name: string;
-    /** Where the guard stepped from / to. */
-    from: number;
-    to: number;
+    /**
+     * The player who holds priority during the pause and resumes it. Defaults
+     * to the attacker on older snapshots (the only reactor a guard-walk had).
+     */
+    reactingPlayerId?: PlayerId;
+    /** Where a guard stepped from / to ("guard-walk" only). */
+    from?: number;
+    to?: number;
+    /** "pre-activation": a preview of what the (neutral) unit is about to do. */
+    intent?: {
+      kind: "attack" | "move" | "pass";
+      /** "attack": the unit the guard will strike (when already decided). */
+      targetUnitId?: UnitId;
+      targetName?: string;
+      /** "move"/"move-and-attack": where the guard will step to. */
+      destination?: number;
+    };
   } | null;
   /**
    * Round-start war machine triggers still waiting to resolve, in owner

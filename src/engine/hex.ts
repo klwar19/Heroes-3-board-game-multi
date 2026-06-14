@@ -184,3 +184,35 @@ export function hexToPixel(coord: HexCoord, size: number): { x: number; y: numbe
     y: size * 1.5 * coord.row
   };
 }
+
+/**
+ * Nearest hex to a pixel point (pointy-top, odd-r) — the inverse of
+ * `hexToPixel` with the same `size` circumradius. The map designer uses this to
+ * drop a tile freely on whatever hex the pointer is over, instead of snapping to
+ * a fixed lattice slot.
+ */
+export function pixelToHex(x: number, y: number, size: number): HexCoord {
+  const r = y / (size * 1.5);
+  const q = x / (Math.sqrt(3) * size) - r / 2;
+  return cubeRound(q, r);
+}
+
+/** Rounds fractional axial coordinates to the nearest whole hex (offset form). */
+function cubeRound(qf: number, rf: number): HexCoord {
+  const sf = -qf - rf;
+  let q = Math.round(qf);
+  let r = Math.round(rf);
+  const s = Math.round(sf);
+  const dq = Math.abs(q - qf);
+  const dr = Math.abs(r - rf);
+  const ds = Math.abs(s - sf);
+  // Snap the coordinate that drifted most back onto the q+r+s=0 plane.
+  if (dq > dr && dq > ds) {
+    q = -r - s;
+  } else if (dr > ds) {
+    r = -q - s;
+  }
+  // Math.round and the negations above can produce -0; fold it to +0 so hex
+  // coordinates compare and serialize cleanly.
+  return axialToOffset(q === 0 ? 0 : q, r === 0 ? 0 : r);
+}
