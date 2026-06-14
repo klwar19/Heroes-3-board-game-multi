@@ -4,7 +4,7 @@
 
 import { Check, CircleOff, Crown, Dices, Hourglass, Layers, Swords, Undo2 } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
 import {
   getEffectAmount,
@@ -1308,16 +1308,21 @@ function squareLabel(position: number): string {
   return `${String.fromCharCode(65 + (position % 4))}${Math.floor(position / 4) + 1}`;
 }
 
+/** A guard step with nothing to react to resumes itself after this long. */
+const NEUTRAL_AUTO_RESUME_MS = 3000;
+
 /**
  * Combat pacing / reaction pop-up (`pendingNeutralStep`). The backdrop lets
  * clicks through (it is `pointer-events: none`), so while it floats at the top
  * the reacting player can still cast spells / play instants from their hand and
- * the board below. Two kinds:
- *  - "pre-activation": before a unit acts, the reacting side may cast (an
- *    Intelligence-enabled Magic Arrow / Fireball, a trigger-free instant) or
- *    play an instant ability, then clicks "Let the unit act". The pop-up
- *    previews what a guard is about to do.
- *  - "guard-walk": a neutral guard finished a move; the attacker clicks it on.
+ * the board below.
+ *
+ * Neutral fights pause before EVERY guard step so the table sees each guard
+ * about to act; the reacting player may cast an Intelligence-enabled Spell
+ * (Magic Arrow, Fireball…), a trigger-free instant, or play an instant ability
+ * first, then "Let the unit act". When there is nothing they can do, the pause
+ * resumes itself after a short beat. (Old snapshots may carry a "guard-walk"
+ * pause; it is handled the same way.)
  */
 export function NeutralStepOverlay({
   state,
@@ -1331,14 +1336,37 @@ export function NeutralStepOverlay({
   onAction: (action: GameAction) => void;
 }) {
   const step = state.combat?.pendingNeutralStep;
+  const continueAction = legalActions.find((legal) => legal.action.type === "CONTINUE_NEUTRAL_STEP");
+  // Anything other than "Let the unit act" is a real reaction worth pausing
+  // for; with nothing else to do the pause auto-resumes so the fight flows.
+  const hasReactions = legalActions.some((legal) => legal.action.type !== "CONTINUE_NEUTRAL_STEP");
+  const autoResume = Boolean(step && continueAction) && !hasReactions;
+  const pauseUnitId = step?.unitId;
+
+  // Keep the latest dispatcher in a ref (updated in an effect, never during
+  // render) so the auto-resume timer is keyed to the guard rather than reset by
+  // an unrelated re-render of the parent (onAction is a fresh closure each time).
+  const onActionRef = useRef(onAction);
+  useEffect(() => {
+    onActionRef.current = onAction;
+  });
+  useEffect(() => {
+    if (!autoResume || !pauseUnitId) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      onActionRef.current({ type: "CONTINUE_NEUTRAL_STEP", playerId: viewerPlayerId });
+    }, NEUTRAL_AUTO_RESUME_MS);
+    return () => clearTimeout(timer);
+  }, [autoResume, pauseUnitId, viewerPlayerId]);
+
   if (!step) {
     return null;
   }
 
-  const continueAction = legalActions.find((legal) => legal.action.type === "CONTINUE_NEUTRAL_STEP");
   const reactorId = step.reactingPlayerId ?? state.combat?.attackerPlayerId;
   const reactorName = reactorId ? state.players[reactorId]?.name : undefined;
-  const isPre = step.kind === "pre-activation";
+  const isPre = step.kind !== "guard-walk";
 
   // Pre-activation preview: what the (neutral) unit is about to do.
   let summary: string;
@@ -1365,13 +1393,13 @@ export function NeutralStepOverlay({
       <div className="combatResultModal neutralStepModal">
         <header>
           <Swords aria-hidden="true" size={18} />
-          <strong>{isPre ? "React before the enemy acts" : "Enemy turn"}</strong>
+          <strong>{isPre ? "Enemy turn — react?" : "Enemy turn"}</strong>
         </header>
         <p>{summary}</p>
-        {isPre ? (
+        {hasReactions ? (
           <small>Cast a Spell or play an instant now, or let the unit take its turn.</small>
         ) : (
-          <small>The guard army keeps moving once you continue.</small>
+          <small>Nothing to react with — continuing automatically…</small>
         )}
         <div className="combatResultButtons">
           {continueAction ? (

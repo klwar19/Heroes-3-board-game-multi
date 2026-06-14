@@ -6663,19 +6663,10 @@ function executeNeutralActivation(
       from,
       to: intent.destination
     });
-    // Neutral fights pace one walk at a time: stop on the move so the table
-    // sees it and clicks CONTINUE_NEUTRAL_STEP. The next guard acts only then.
-    if (combat.context.kind === "neutral") {
-      combat.pendingNeutralStep = {
-        kind: "guard-walk",
-        unitId: unit.id,
-        name: unit.name,
-        reactingPlayerId: combat.attackerPlayerId,
-        from,
-        to: intent.destination
-      };
-      return;
-    }
+    // The pre-activation reaction pause already paced this guard (the human saw
+    // it about to move and had their window), so the move just advances to the
+    // next unit — whose own pre-activation pause holds the board to show this
+    // move's result.
     advanceActiveUnit(state);
     return;
   }
@@ -6770,12 +6761,16 @@ function reactionPauseReactor(
     if (isHandLockedInCombat(state, candidate)) {
       continue;
     }
-    // Player-vs-player pauses are gated on the Intelligence freedom; neutral
-    // fights pause for any usable off-turn reaction.
-    if (combat.context.kind === "player" && !playerHasSpellTimingFreedom(state, candidate)) {
-      continue;
+    // Neutral fights pace EVERY guard step: the pause always opens for the
+    // human attacker so they see the guard about to act and can react if they
+    // can (the client auto-resumes after a beat when there is nothing to do).
+    if (combat.context.kind === "neutral") {
+      return candidate;
     }
-    if (getOffTurnCombatReactions(state, candidate, cards).length > 0) {
+    // Player-vs-player pauses only while the side holds the Intelligence
+    // freedom and actually has an off-turn play to make — they already get the
+    // attack/spell reaction windows otherwise.
+    if (playerHasSpellTimingFreedom(state, candidate) && getOffTurnCombatReactions(state, candidate, cards).length > 0) {
       return candidate;
     }
   }
