@@ -1652,6 +1652,9 @@ export function processPendingVisit(state: GameState): void {
       case "REINFORCE_ARMY_UNIT":
         reinforceArmyUnit(state, visit.playerId, step.armyUnitId, step.halfCost);
         break;
+      case "REINFORCE_FREE":
+        reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, false, false, true);
+        break;
       case "SEARCH_SHARED_DECK":
         adventure.rewardQueue.push({
           playerId: visit.playerId,
@@ -3456,10 +3459,62 @@ export function spendRecruitResources(state: GameState, playerId: PlayerId, cost
   );
 }
 
+/** Whether a hero the player controls stands on a field carrying `location`. */
+export function playerHeroOnLocation(state: GameState, playerId: PlayerId, location: string): boolean {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return false;
+  }
+  return Object.values(state.heroes).some(
+    (hero) =>
+      hero.controllerId === playerId && hero.spaceId !== null && adventure.fields[hero.spaceId]?.location === location
+  );
+}
+
+/**
+ * Champions' "Stable Master": gold knocked off a unit's reinforcement cost
+ * while a hero the player controls stands on the matching field (Stables).
+ * Reads the unit's printed MAP_REINFORCE_DISCOUNT map abilities.
+ */
+export function reinforceGoldDiscount(state: GameState, playerId: PlayerId, unitDefId: string): number {
+  const def = coreUnitDefinitions[unitDefId];
+  if (!def) {
+    return 0;
+  }
+  const abilityIds = new Set<string>([
+    ...(def.few?.abilities ?? []),
+    ...(def.pack?.abilities ?? []),
+    ...(def.neutral?.abilities ?? [])
+  ]);
+  let discount = 0;
+  for (const abilityId of abilityIds) {
+    const mapEffect = unitAbilities[abilityId]?.mapEffect;
+    if (mapEffect?.type === "MAP_REINFORCE_DISCOUNT" && playerHeroOnLocation(state, playerId, mapEffect.location)) {
+      discount += mapEffect.amount;
+    }
+  }
+  return discount;
+}
+
+/** Applies the Champions' reinforcement gold discount to a pack cost (gold floored at 0). */
+export function discountedReinforceCost(
+  state: GameState,
+  playerId: PlayerId,
+  unitDefId: string,
+  cost: ResourceCost
+): ResourceCost {
+  const discount = reinforceGoldDiscount(state, playerId, unitDefId);
+  if (discount <= 0) {
+    return cost;
+  }
+  return { ...cost, gold: Math.max(0, (cost.gold ?? 0) - discount) };
+}
+
 /**
  * Flips a Few army card to its Pack side, paying its (half) cost. Half-gold
  * effects round up by default (Saplings, settlements); Necromancy rounds
- * down ("half the gold cost, rounded down").
+ * down ("half the gold cost, rounded down"). Champions' Stables discount is
+ * folded in last.
  */
 export function reinforceArmyUnit(
   state: GameState,
@@ -3467,7 +3522,9 @@ export function reinforceArmyUnit(
   armyUnitId: string,
   halfCost: boolean,
   halfGoldOnly = false,
-  roundDown = false
+  roundDown = false,
+  /** Neutral Skeletons reward: a free Few→Pack flip (no resources spent). */
+  free = false
 ): void {
   const player = state.players[playerId];
   const armyUnit = player?.army.find((candidate) => candidate.id === armyUnitId);
@@ -3482,22 +3539,74 @@ export function reinforceArmyUnit(
 
   const half = (amount: number) => (roundDown ? Math.floor(amount / 2) : Math.ceil(amount / 2));
   const cost: ResourceCost = {};
-  for (const [resource, amount] of Object.entries(packSide.cost) as [ResourceKind, number][]) {
-    const halved = halfCost || (halfGoldOnly && resource === "gold");
-    cost[resource] = halved ? half(amount) : amount;
+  if (!free) {
+    for (const [resource, amount] of Object.entries(packSide.cost) as [ResourceKind, number][]) {
+      const halved = halfCost || (halfGoldOnly && resource === "gold");
+      cost[resource] = halved ? half(amount) : amount;
+    }
   }
-  if (!hasRecruitResources(state, playerId, cost)) {
+  const finalCost = free ? {} : discountedReinforceCost(state, playerId, armyUnit.unitDefId, cost);
+  if (!hasRecruitResources(state, playerId, finalCost)) {
     return;
   }
 
-  spendRecruitResources(state, playerId, cost, halfCost || halfGoldOnly ? "half-cost reinforcement" : "reinforcement");
+  spendRecruitResources(
+    state,
+    playerId,
+    finalCost,
+    free ? "free reinforcement" : halfCost || halfGoldOnly ? "half-cost reinforcement" : "reinforcement"
+  );
   armyUnit.side = "pack";
   appendEvent(state, {
     type: "UNIT_RECRUITED",
     playerId,
     unitDefId: armyUnit.unitDefId,
     kind: "reinforce",
-    cost
+    cost: finalCost
+  });
+}
+
+/**
+ * Neutral Skeletons: "After defeating Skeletons, if you control a Necropolis
+ * Hero, Reinforce 1 of your bronze units for free." Queues a post-combat
+ * choice over the player's Few bronze units (a free Few→Pack flip), skippable.
+ * No-op when the player has no eligible bronze Few unit.
+ */
+export function queueSkeletonReinforce(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  const adventure = state.adventure;
+  if (!player || !adventure) {
+    return;
+  }
+  const options: { label: string; steps: VisitStep[] }[] = [];
+  for (const unit of player.army) {
+    if (unit.side !== "few") {
+      continue;
+    }
+    const def = coreUnitDefinitions[unit.unitDefId];
+    const packSide = getUnitSide(unit.unitDefId, "pack");
+    if (!def || !packSide || def.tier !== "bronze") {
+      continue;
+    }
+    options.push({
+      label: `Reinforce ${def.name} (free)`,
+      steps: [{ type: "REINFORCE_FREE", armyUnitId: unit.id }]
+    });
+  }
+  if (options.length === 0) {
+    return;
+  }
+  options.push({ label: "Skip", steps: [] });
+  adventure.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt: "Skeletons defeated: reinforce a bronze unit for free.",
+        options
+      }
+    ]
   });
 }
 

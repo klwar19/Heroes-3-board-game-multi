@@ -89,10 +89,14 @@ export function unitImmuneToSpellSchools(
 }
 
 export function getUnitAttackRerollSources(
-  unit: CombatUnitState
+  unit: CombatUnitState,
+  /** Whether the unit moved during this attack — gates Champions' "Charge". */
+  moved = false
 ): { name: string; rerolls: number; onlyOnRoll?: number }[] {
   return getAbilitiesWithEffect(unit, "ATTACK_DIE_REROLL").flatMap((ability) =>
-    ability.effect?.type === "ATTACK_DIE_REROLL" && ability.effect.rerollsPerAttack > 0
+    ability.effect?.type === "ATTACK_DIE_REROLL" &&
+    ability.effect.rerollsPerAttack > 0 &&
+    (!ability.effect.requiresMoved || moved)
       ? [{ name: ability.name, rerolls: ability.effect.rerollsPerAttack, onlyOnRoll: ability.effect.onlyOnRoll }]
       : []
   );
@@ -676,4 +680,34 @@ export function hasDefenseTokenAura(unit: CombatUnitState): boolean {
 /** Familiars: enemies pay one card whenever they cast a Spell from hand near this unit. */
 export function hasSpellCastHandTax(unit: CombatUnitState): boolean {
   return hasUnitAbilityEffect(unit, "SPELL_CAST_HAND_TAX");
+}
+
+/** Neutral Champions: "roll 2 Attack dice and apply both outcomes" (reroll each "-1"). */
+export function getRollTwoDiceApplyBoth(unit: CombatUnitState): { rerollMinusOnce: boolean } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ROLL_TWO_DICE_APPLY_BOTH")) {
+    if (ability.effect?.type === "ROLL_TWO_DICE_APPLY_BOTH") {
+      return { rerollMinusOnce: ability.effect.rerollMinusOnce };
+    }
+  }
+  return null;
+}
+
+/** Mummies (offence): this unit's own Attack die always counts as 0. */
+export function hasIgnoreOwnAttackDie(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "IGNORE_OWN_ATTACK_DIE");
+}
+
+/** Mummies (defence): the value an attacker's die is forced to while this unit defends, if any. */
+export function getForcedAttackerDie(unit: CombatUnitState): number | null {
+  for (const ability of getAbilitiesWithEffect(unit, "FORCE_ATTACKER_DIE")) {
+    if (ability.effect?.type === "FORCE_ATTACKER_DIE") {
+      return ability.effect.value;
+    }
+  }
+  return null;
+}
+
+/** Azure / Black Dragons (Pack): no damage from Specialty cards (non-damage Specialty still applies). */
+export function hasImmuneToSpecialtyDamage(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "IMMUNE_TO_SPECIALTY_DAMAGE");
 }

@@ -5,6 +5,7 @@ import { getRuleset } from "./ruleset";
 import { isArrowTowerUnit } from "./siege";
 import { getSelfRebirthAbility } from "./unit-abilities";
 import { applyUnitCurrentSide, topTransform } from "./unit-transforms";
+import { NEUTRAL_PLAYER_ID } from "./state";
 import type { ActiveEffectState, CombatState, CombatUnitState, GameState, PlayerId } from "./state";
 
 /**
@@ -106,6 +107,12 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     if (!removed.includes(unit.controllerId)) {
       state.combat.unitRemovedControllerIds = [...removed, unit.controllerId];
     }
+  }
+
+  // Neutral Skeletons: a destroyed Skeleton guard lets the attacker's
+  // Necropolis hero reinforce a bronze unit for free (resolved after combat).
+  if (state.combat && unit.controllerId === NEUTRAL_PLAYER_ID && unit.unitDefId === "neutral.skeletons") {
+    state.combat.skeletonGuardDefeated = true;
   }
 
   // A shot-down Arrow Tower also leaves the siege bookkeeping.

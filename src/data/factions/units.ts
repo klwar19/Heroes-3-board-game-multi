@@ -89,8 +89,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "castle",
     tier: "gold",
     type: "ground",
-    few: { attack: 5, defense: 2, health: 7, initiative: 7, cost: { gold: 12 }, abilities: [], abilityText: ".", cardImage: "/assets/units-castle-golden-champions-few.webp" },
-    pack: { attack: 6, defense: 2, health: 7, initiative: 9, cost: { gold: 20, valuables: 1 }, abilities: [], abilityText: "1 [valuables] [unit_attack] If this unit's movement ends in a space other than where it started, you may reroll an Attack die .", cardImage: "/assets/units-castle-golden-champions-pack.webp" },
+    few: { attack: 5, defense: 2, health: 7, initiative: 7, cost: { gold: 12 }, abilities: ["champion-stables-discount"], abilityText: "[map_effect] If your hero is on a field with Stables, this unit's reinforcement cost is reduced by 6 [gold] .", cardImage: "/assets/units-castle-golden-champions-few.webp" },
+    pack: { attack: 6, defense: 2, health: 7, initiative: 9, cost: { gold: 20, valuables: 1 }, abilities: ["champion-move-reroll"], abilityText: "1 [valuables] [unit_attack] If this unit's movement ends in a space other than where it started, you may reroll an Attack die .", cardImage: "/assets/units-castle-golden-champions-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/champions/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -314,8 +314,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "dungeon",
     tier: "gold",
     type: "flying",
-    few: { attack: 6, defense: 3, health: 8, initiative: 11, cost: { gold: 19, valuables: 1 }, abilities: [], abilityText: "1 [valuables] [unit_passive] Reduce [damage] taken by this unit from [spell] by 2 to a minimum of 0.", cardImage: "/assets/units-dungeon-golden-black_dragons-few.webp" },
-    pack: { attack: 8, defense: 3, health: 8, initiative: 15, cost: { gold: 33, valuables: 2 }, abilities: [], abilityText: "2 [valuables] [unit_passive] Ignore any [spell] effects and [damage] from Specialty .", cardImage: "/assets/units-dungeon-golden-black_dragons-pack.webp" },
+    few: { attack: 6, defense: 3, health: 8, initiative: 11, cost: { gold: 19, valuables: 1 }, abilities: ["reduce-spell-damage-2"], abilityText: "1 [valuables] [unit_passive] Reduce [damage] taken by this unit from [spell] by 2 to a minimum of 0.", cardImage: "/assets/units-dungeon-golden-black_dragons-few.webp" },
+    pack: { attack: 8, defense: 3, health: 8, initiative: 15, cost: { gold: 33, valuables: 2 }, abilities: ["immune-all-spells", "immune-specialty-damage"], abilityText: "2 [valuables] [unit_passive] Ignore any [spell] effects and [damage] from Specialty .", cardImage: "/assets/units-dungeon-golden-black_dragons-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/black_dragons/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1110,7 +1110,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ground",
-    neutral: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 8 }, abilities: [], abilityText: "[unit_attack] Ignore the result on the Attack die . [unit_passive] Whenever this unit is attacked, set your opponent's Attack die to \"-1\".", cardImage: "/assets/units-neutral-silver-mummies.webp" },
+    neutral: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 8 }, abilities: ["mummy-ignore-own-die", "mummy-force-attacker-die"], abilityText: "[unit_attack] Ignore the result on the Attack die . [unit_passive] Whenever this unit is attacked, set your opponent's Attack die to \"-1\".", cardImage: "/assets/units-neutral-silver-mummies.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/mummies/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1194,7 +1194,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "gold",
     type: "flying",
-    neutral: { attack: 5, defense: 2, health: 7, initiative: 9, cost: { gold: 30 }, abilities: ["dragon-line-attack-2", "reduce-spell-damage-2"], abilityText: "[unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 2 [attack] . [unit_passive] Reduce [damage] from [spell] by 2, and ignore [spell] effects and [damage] from Specialty .", cardImage: "/assets/units-neutral-golden-black_dragons.webp" },
+    neutral: { attack: 5, defense: 2, health: 7, initiative: 9, cost: { gold: 30 }, abilities: ["dragon-line-attack-2"], abilityText: "[unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 2 [attack] .", cardImage: "/assets/units-neutral-golden-black_dragons.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/black_dragons/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1208,7 +1208,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "gold",
     type: "ground",
-    neutral: { attack: 4, defense: 2, health: 6, initiative: 8, cost: { gold: 18 }, abilities: [], abilityText: "[unit_attack] Roll 2 Attack dice and apply both outcomes. [unit_passive] Reroll this unit's all \"-1\" rolls.", cardImage: "/assets/units-neutral-golden-champions.webp" },
+    neutral: { attack: 4, defense: 2, health: 6, initiative: 8, cost: { gold: 18 }, abilities: ["champion-roll-two-dice-reroll"], abilityText: "[unit_attack] Roll 2 Attack dice and apply both outcomes. Reroll this unit's all \"-1\" rolls.", cardImage: "/assets/units-neutral-golden-champions.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/champions/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1320,7 +1320,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "azure",
     type: "flying",
-    neutral: { attack: 8, defense: 3, health: 10, initiative: 19, cost: { gold: 45, valuables: 2 }, abilities: ["azure-dragon-paralysis"], abilityText: "2 [valuables] [unit_attack] If you resolve a \"-1\" on the Attack die , the target gains [paralysis] . [unit_passive] Ignore any [spell] effects and [damage] from Specialty .", cardImage: "/assets/units-neutral-azure-azure_dragons.webp" },
+    neutral: { attack: 8, defense: 3, health: 10, initiative: 19, cost: { gold: 45, valuables: 2 }, abilities: ["azure-dragon-paralysis", "immune-all-spells", "immune-specialty-damage"], abilityText: "2 [valuables] [unit_attack] If you resolve a \"-1\" on the Attack die , the target gains [paralysis] . [unit_passive] Ignore any [spell] effects and [damage] from Specialty .", cardImage: "/assets/units-neutral-azure-azure_dragons.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/azure_dragons/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
