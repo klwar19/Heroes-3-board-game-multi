@@ -40,6 +40,7 @@ import {
   ReactionTray,
   RerollModal,
   SearchModal,
+  DICE_PRESENT_MS,
   type DiceCue,
   type DrawCue,
   type FirstPlayerRollCue,
@@ -79,6 +80,7 @@ import {
   type CardBoardAction
 } from "@/components/table/utils";
 import {
+  ATTACK_ANIM_MS,
   ATTACK_IMPACT_MS,
   COMBAT_MOVE_MS,
   DRAW_STAGGER_MS,
@@ -331,6 +333,12 @@ export default function Home() {
   const [fxCues, setFxCues] = useState<FxCue[]>([]);
   const [hiddenHandTail, setHiddenHandTail] = useState(0);
   const [tintedUnits, setTintedUnits] = useState<Map<string, string>>(new Map());
+  /**
+   * While a neutral guard's dice + strike animation is still playing, the next
+   * guard's "react?" preview (and its auto-resume countdown) is held back, so
+   * the action finishes before the next neutral move is queued up.
+   */
+  const [neutralResumeBlocked, setNeutralResumeBlocked] = useState(false);
   const seenRollIdsRef = useRef<Set<string> | null>(null);
   /** Server store generation last seen; a change means the host restarted. */
   const seenBootIdRef = useRef<string | null>(null);
@@ -352,6 +360,7 @@ export default function Home() {
   // combat arrives in the snapshot where the combat is already gone.
   const unitDefIdsRef = useRef<Map<string, string>>(new Map());
   const hiddenHandTimerRef = useRef<number | null>(null);
+  const neutralResumeTimerRef = useRef<number | null>(null);
   const connectionRef = useRef<RoomConnection | null>(null);
   // The draw cue needs the live seat without resubscribing the stream.
   const viewerRef = useRef<PlayerId>("p1");
@@ -445,6 +454,11 @@ export default function Home() {
       setFxCues([]);
       setHiddenHandTail(0);
       setTintedUnits(new Map());
+      if (neutralResumeTimerRef.current) {
+        window.clearTimeout(neutralResumeTimerRef.current);
+        neutralResumeTimerRef.current = null;
+      }
+      setNeutralResumeBlocked(false);
       setMapDice({ current: null, queue: [] });
       setMapNotice({ current: null, queue: [] });
       setFirstRoll(null);
@@ -639,19 +653,35 @@ export default function Home() {
       );
       const neutralPreDelayMs = movedNeutralAttackerIds.size > 0 ? COMBAT_MOVE_MS + NEUTRAL_ATTACK_PAUSE_MS : 0;
 
-      if (fresh.length > 0) {
-        // Only the guard's own (first) attack roll waits; its retaliation and
-        // any follow-up rolls fire straight away.
-        const pendingPreDelay = new Set(movedNeutralAttackerIds);
-        const freshCues = fresh.map((event) => {
-          if (neutralPreDelayMs > 0 && pendingPreDelay.has(event.attackerId)) {
-            pendingPreDelay.delete(event.attackerId);
-            return makeDiceCue(nextState, event, neutralPreDelayMs);
-          }
-          return makeDiceCue(nextState, event);
-        });
+      // Each attack die is its own beat: the cube rolls and reads, then the
+      // table holds (ATTACK_ANIM_MS) so the striking unit's lunge / slash / shot
+      // plays in the gap before the next die is thrown. `diceDismissAt[k]` is
+      // when the k-th die finishes reading (the moment its strike begins),
+      // measured from this snapshot; the FX timeline below pins its strikes to
+      // those beats, and the total drives the post-action pause.
+      const pendingPreDelay = new Set(movedNeutralAttackerIds);
+      const diceDismissAt: number[] = [];
+      let diceClock = 0;
+      const freshDiceCues = fresh.map((event, index) => {
+        let preDelay = 0;
+        // The guard that just slid into range waits out its move + the
+        // pre-attack pause before its first die.
+        if (neutralPreDelayMs > 0 && pendingPreDelay.has(event.attackerId)) {
+          pendingPreDelay.delete(event.attackerId);
+          preDelay += neutralPreDelayMs;
+        }
+        // Every later die holds for the previous attack's strike animation.
+        if (index > 0) {
+          preDelay += ATTACK_ANIM_MS;
+        }
+        diceClock += preDelay + DICE_PRESENT_MS;
+        diceDismissAt.push(diceClock);
+        return makeDiceCue(nextState, event, preDelay);
+      });
+
+      if (freshDiceCues.length > 0) {
         setDice((current) => {
-          const queue = [...current.queue, ...freshCues];
+          const queue = [...current.queue, ...freshDiceCues];
           if (!current.current && queue.length > 0) {
             return { current: queue[0], queue: queue.slice(1) };
           }
@@ -759,10 +789,12 @@ export default function Home() {
       if (freshFx.length > 0) {
         const cues: FxCue[] = [];
         const viewerId = viewerRef.current;
-        // When an attack roll cues in the same batch, let the dice settle
-        // before its damage number pops. A neutral guard's move-then-attack
-        // also holds its die (neutralPreDelayMs), so its damage waits too.
-        let timeline = neutralPreDelayMs + (fresh.length > 0 ? 1200 : 0);
+        // Strikes don't fire here on their own clock: each attack waits for its
+        // own die to finish reading (synced to diceDismissAt in the
+        // UNIT_ATTACK_DECLARED handler). Other combat cues sequence from zero.
+        let timeline = 0;
+        // Which fresh attack die the next declared attack maps to.
+        let diceIndex = 0;
         let viewerDraws = 0;
 
         // A seat's deck/hand/discard anchors are on screen during combat
@@ -1070,6 +1102,19 @@ export default function Home() {
               break;
             }
             case "UNIT_ATTACK_DECLARED": {
+              // Hold the strike until this attack's die has rolled and the
+              // buffed result has been read, then play it in the die's gap.
+              const roll = fresh[diceIndex];
+              if (
+                roll &&
+                roll.attackerId === event.attackerId &&
+                roll.defenderId === event.defenderId &&
+                roll.isRetaliation === event.isRetaliation
+              ) {
+                timeline = Math.max(timeline, diceDismissAt[diceIndex]);
+                diceIndex += 1;
+              }
+
               const ranged = event.attackKind === "ranged";
               // The attacker's own H3 voice on the wind-up.
               playUnitSound(unitVoice(event.attackerId), ranged ? "shoot" : "attack", timeline);
@@ -1162,6 +1207,24 @@ export default function Home() {
         }
         if (cues.length > 0) {
           setFxCues((current) => [...current, ...cues]);
+        }
+
+        // When this snapshot resolved one or more attacks and another neutral
+        // step is queued behind it, hold that next step's preview until the
+        // dice and strike animations have finished (the preview then counts
+        // down its own 2s breather). presentationMs = the last die's dismiss
+        // plus its strike, or the end of the cue timeline if that runs longer
+        // (e.g. a death cry after the killing blow).
+        if (fresh.length > 0 && nextState.combat?.pendingNeutralStep) {
+          const presentationMs = Math.max(timeline, diceClock + ATTACK_ANIM_MS);
+          if (neutralResumeTimerRef.current) {
+            window.clearTimeout(neutralResumeTimerRef.current);
+          }
+          setNeutralResumeBlocked(true);
+          neutralResumeTimerRef.current = window.setTimeout(() => {
+            setNeutralResumeBlocked(false);
+            neutralResumeTimerRef.current = null;
+          }, presentationMs);
         }
       }
     }
@@ -2210,12 +2273,13 @@ export default function Home() {
         state={state}
         viewerPlayerId={viewerPlayerId}
       />
-      {/* Keep the enemy-turn pause (and its auto-resume countdown) off screen
-          while the attack dice are still rolling, so a neutral guard's roll
-          finishes before the next guard's "react?" notice and 3s countdown
-          begin. The component mounts fresh once the dice clear, starting its
-          timer only then. */}
-      {!dice.current ? (
+      {/* Keep the next guard's "react?" preview (and its auto-resume countdown)
+          off screen while the current action is still playing — both the
+          attack dice (dice.current) and the strike animation that follows them
+          (neutralResumeBlocked). The component mounts fresh only once both have
+          cleared, so the next neutral move is queued a clean ~2s after the
+          previous strike finishes rather than over the top of it. */}
+      {!dice.current && !neutralResumeBlocked ? (
         <NeutralStepOverlay
           legalActions={legalActions}
           onAction={submitAction}

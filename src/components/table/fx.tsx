@@ -132,6 +132,13 @@ export const COMBAT_MOVE_MS = 640;
 export const ATTACK_IMPACT_MS = 500;
 export const RANGED_RELEASE_MS = 120;
 const BOLT_FLIGHT_MS = ATTACK_IMPACT_MS - RANGED_RELEASE_MS;
+/**
+ * Time reserved for one unit's whole strike to play out (lunge in, hit, recover)
+ * once its attack die has finished reading. The dice queue holds this long
+ * between successive rolls so each attack animates in its own gap, and the FX
+ * timeline lines its strikes up to the same beat. Covers the full lunge.
+ */
+export const ATTACK_ANIM_MS = 900;
 /** Full attacker lunge (thrust then recover); the thrust peaks near impact. */
 const MELEE_LUNGE_MS = 820;
 /** A shooter's recoil kick as the shot is released. */
