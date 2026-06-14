@@ -108,7 +108,7 @@ describe("neutral roster carries the newly implemented ability ids", () => {
     "neutral.iron_golems": ["reduce-spell-damage-2"],
     "neutral.gold_golems": ["reduce-spell-damage-2"],
     "neutral.diamond_golems": ["reduce-spell-damage-3"],
-    "neutral.black_dragons": ["dragon-line-attack-2", "reduce-spell-damage-2"],
+    "neutral.black_dragons": ["dragon-line-attack-2"],
     "neutral.vampires": ["ignores-retaliation", "vampire-heal-on-attack"],
     "neutral.halberdiers": ["halberdier-defense-aura"],
     "neutral.familiars": ["familiar-spell-tax"]

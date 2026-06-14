@@ -2486,6 +2486,11 @@ export type CombatState = {
    * combat (Pit Lords' "Summon Demons" triggers off a friendly removal).
    */
   unitRemovedControllerIds?: PlayerId[];
+  /**
+   * Neutral Skeletons: set once a Skeleton guard has been destroyed this
+   * combat, so the attacker's Necropolis hero gets the free bronze reinforce.
+   */
+  skeletonGuardDefeated?: boolean;
   dice: CombatDice;
   units: Record<UnitId, CombatUnitState>;
   /**
@@ -2614,6 +2619,11 @@ export type VisitStep =
       type: "REINFORCE_ARMY_UNIT";
       armyUnitId: string;
       halfCost: boolean;
+    }
+  | {
+      /** Neutral Skeletons reward: reinforce one Few unit for free (Few→Pack). */
+      type: "REINFORCE_FREE";
+      armyUnitId: string;
     }
   | { type: "SEARCH_SHARED_DECK"; deckId: DeckId; count: number }
   | { type: "SETTLEMENT_CHOICE" }

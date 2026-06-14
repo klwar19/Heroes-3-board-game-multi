@@ -145,6 +145,13 @@ export type UnitAbilityEffectDefinition =
        * rerolled again (the source never depletes).
        */
       onlyOnRoll?: number;
+      /**
+       * Castle Champions: "If this unit's movement ends in a space other than
+       * where it started, you may reroll an Attack die." The reroll is only
+       * offered when this unit moved during its own attack (never on a
+       * Retaliation Attack, where it did not move).
+       */
+      requiresMoved?: boolean;
     }
   | {
       /** Neutral Crusaders: roll 2 Attack dice, resolve the higher outcome. */
@@ -478,6 +485,41 @@ export type UnitAbilityEffectDefinition =
        * extra random card from hand.
        */
       type: "SPELL_CAST_HAND_TAX";
+    }
+  | {
+      /**
+       * Neutral Champions: "Roll 2 Attack dice and apply both outcomes." Both
+       * dice are summed into the attack's die result. `rerollMinusOnce` also
+       * rerolls each "-1" face exactly once before summing (the neutral card's
+       * "Reroll this unit's all '-1' rolls").
+       */
+      type: "ROLL_TWO_DICE_APPLY_BOTH";
+      rerollMinusOnce: boolean;
+    }
+  | {
+      /**
+       * Mummies (offence): "Ignore the result on the Attack die." This unit's
+       * own attacks always resolve as if the die showed 0 (the die is not
+       * rolled / its face is discarded).
+       */
+      type: "IGNORE_OWN_ATTACK_DIE";
+    }
+  | {
+      /**
+       * Mummies (defence): "Whenever this unit is attacked, set the opponent's
+       * Attack die to `value`." While this unit is the defender, the attacker's
+       * resolved die is forced to `value` (-1 for Mummies).
+       */
+      type: "FORCE_ATTACKER_DIE";
+      value: number;
+    }
+  | {
+      /**
+       * Azure Dragons / Black Dragons (Pack): "ignore damage from Specialty."
+       * This unit takes no damage from Hero Specialty cards; non-damage
+       * Specialty effects (buffs/debuffs) still apply.
+       */
+      type: "IMMUNE_TO_SPECIALTY_DAMAGE";
     };
 
 /**
@@ -502,6 +544,17 @@ export type UnitMapAbilityEffect =
        * then put it back on the top or on the bottom of that deck."
        */
       type: "MAP_TURN_DECK_PEEK";
+    }
+  | {
+      /**
+       * Champions: "If your hero is on a field with Stables, this unit's
+       * reinforcement cost is reduced by N gold." Applied to this unit's
+       * Few→Pack reinforcement while a hero the player controls stands on a
+       * field carrying `location`.
+       */
+      type: "MAP_REINFORCE_DISCOUNT";
+      location: string;
+      amount: number;
     };
 
 export type UnitAbilityDefinition = {
@@ -1119,6 +1172,61 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Mana Leech",
     text: "[unit_passive] Whenever an enemy casts a spell from hand, they must discard 1 card from hand.",
     effect: { type: "SPELL_CAST_HAND_TAX" },
+    implementationStatus: "implemented"
+  },
+  // Castle Champions (Few): the only printed ability on the Few side.
+  "champion-stables-discount": {
+    id: "champion-stables-discount",
+    name: "Stable Master",
+    text: "[map_effect] If your hero is on a field with Stables, this unit's reinforcement cost is reduced by 6 gold.",
+    mapEffect: { type: "MAP_REINFORCE_DISCOUNT", location: "stables", amount: 6 },
+    implementationStatus: "implemented"
+  },
+  // Castle Champions (Pack): the only printed ability on the Pack side.
+  "champion-move-reroll": {
+    id: "champion-move-reroll",
+    name: "Charge",
+    text: "[unit_attack] If this unit's movement ends in a space other than where it started, you may reroll an Attack die.",
+    effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, requiresMoved: true },
+    implementationStatus: "implemented"
+  },
+  // Neutral Champions: roll 2 dice, reroll each "-1" once, then sum both.
+  "champion-roll-two-dice-reroll": {
+    id: "champion-roll-two-dice-reroll",
+    name: "Champion's Charge",
+    text: 'Roll 2 Attack dice and apply both outcomes. Reroll this unit\'s all "-1" rolls.',
+    effect: { type: "ROLL_TWO_DICE_APPLY_BOTH", rerollMinusOnce: true },
+    implementationStatus: "implemented"
+  },
+  // Mummies: own attack die counts as 0; an attacker's die is forced to -1.
+  "mummy-ignore-own-die": {
+    id: "mummy-ignore-own-die",
+    name: "Cursed Strike",
+    text: "[unit_attack] Ignore the result on this unit's Attack die (it always counts as 0).",
+    effect: { type: "IGNORE_OWN_ATTACK_DIE" },
+    implementationStatus: "implemented"
+  },
+  "mummy-force-attacker-die": {
+    id: "mummy-force-attacker-die",
+    name: "Mummy's Curse",
+    text: 'Whenever this unit is attacked, the attacker\'s Attack die is set to "-1".',
+    effect: { type: "FORCE_ATTACKER_DIE", value: -1 },
+    implementationStatus: "implemented"
+  },
+  // Azure Dragons / Black Dragons (Pack): immune to every Spell, and to damage
+  // from Specialty cards (non-damage Specialty effects still apply).
+  "immune-all-spells": {
+    id: "immune-all-spells",
+    name: "Spell Immunity",
+    text: "[unit_passive] Immune to all Spells.",
+    effect: { type: "IMMUNE_TO_SPELL_SCHOOLS", schools: ["any", "air", "earth", "fire", "water"] },
+    implementationStatus: "implemented"
+  },
+  "immune-specialty-damage": {
+    id: "immune-specialty-damage",
+    name: "Specialty Ward",
+    text: "[unit_passive] Ignore damage from Specialty cards (non-damage Specialty effects still apply).",
+    effect: { type: "IMMUNE_TO_SPECIALTY_DAMAGE" },
     implementationStatus: "implemented"
   }
 };

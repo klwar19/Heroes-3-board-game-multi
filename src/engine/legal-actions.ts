@@ -6,6 +6,7 @@ import { sampleBuildings } from "@/data/towns/buildings";
 import {
   armyHasMapEffect,
   canHeroReachPlacedTile,
+  discountedReinforceCost,
   getSecondaryHero,
   getTownOfPlayer,
   getUnitSide,
@@ -3120,7 +3121,8 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       if (canReinforce) {
         const target = player.army.find((armyUnit) => armyUnit.unitDefId === unitDefId && armyUnit.side === "few");
         const packSide = unit.pack;
-        if (target && packSide && hasRecruitResources(state, playerId, packSide.cost)) {
+        const reinforceCost = packSide ? discountedReinforceCost(state, playerId, unitDefId, packSide.cost) : undefined;
+        if (target && packSide && reinforceCost && hasRecruitResources(state, playerId, reinforceCost)) {
           actions.push({
             label: `Reinforce ${unit.name} to a pack`,
             action: {

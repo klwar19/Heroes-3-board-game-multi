@@ -147,6 +147,7 @@ import {
   getEnchanterActivationAbility,
   getEnemyDiscardAbility,
   getFlatDamageFollowUps,
+  getForcedAttackerDie,
   getIgnoreTargetCardDefenseAbility,
   getLethalSaveUnitAbility,
   getLineAttackAbility,
@@ -156,6 +157,7 @@ import {
   getPostAttackAbilityDamageEffects,
   getRetaliationAgainstAttackPenalty,
   getRetaliationParalysis,
+  getRollTwoDiceApplyBoth,
   getReturnAfterAttackAbility,
   getSecondAttackAbility,
   getSecondAttackCandidates,
@@ -165,7 +167,9 @@ import {
   getUnitAbilityDefinitions,
   getUnitAttackRerollSources,
   hasDefenseTokenAura,
+  hasIgnoreOwnAttackDie,
   hasIgnoreParalysis,
+  hasImmuneToSpecialtyDamage,
   hasRetaliationAgainstDisadvantage,
   hasSpellCastHandTax,
   hasUnitAbilityEffect,
@@ -550,6 +554,21 @@ function rollAttackDice(combat: CombatState, rollMode: AttackRollMode): { rolls:
     rolls,
     selectedRoll: rolls[0] ?? 0
   };
+}
+
+/**
+ * Neutral Champions' "roll 2 Attack dice and apply both outcomes": roll two
+ * dice, reroll each "-1" once when `rerollMinusOnce`, then sum both faces into a
+ * single resolved roll. The reroll is built in, so no reroll choice is opened.
+ */
+function rollApplyBothCandidate(combat: CombatState, rerollMinusOnce: boolean): AttackRollCandidate {
+  const rollOne = () => {
+    const value = rollAttackDie(combat);
+    return rerollMinusOnce && value === -1 ? rollAttackDie(combat) : value;
+  };
+  const first = rollOne();
+  const second = rollOne();
+  return { rolls: [first, second], roll: first + second };
 }
 
 function hasExpertUseAvailable(state: GameState, playerId: PlayerId): boolean {
@@ -940,6 +959,27 @@ function reducedSpellDamage(target: CombatUnitState, amount: number): number {
   return Math.max(0, amount - getSpellDamageReduction(target));
 }
 
+/**
+ * Azure Dragons / Black Dragons (Pack): a unit that takes NO damage from this
+ * card — "immune to all Spells" blocks every Spell, "immune to Specialty
+ * damage" blocks Hero Specialty cards. Non-damage Specialty effects are applied
+ * elsewhere and are unaffected. The Spell-targeting filter already keeps an
+ * all-school-immune unit from being targeted/splashed; this closes the
+ * remaining area-damage paths that bypass that filter.
+ */
+function unitIgnoresCardDamage(unit: CombatUnitState, card: CardDefinition | undefined): boolean {
+  if (!card) {
+    return false;
+  }
+  if (card.kind === "hero-specialty") {
+    return hasImmuneToSpecialtyDamage(unit);
+  }
+  if (card.kind === "spell") {
+    return unitImmuneToSpellSchools(unit, card.spellSchools);
+  }
+  return false;
+}
+
 // (finishCombatIfNeeded lives in combat-units.ts.)
 
 function rollAttackCandidate(combat: CombatState, rollMode: AttackRollMode): AttackRollCandidate {
@@ -1321,7 +1361,9 @@ function getAttackStackDetails(
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
     // Elemental damage never rolls the Attack die and ignores Defense entirely:
     // the hit always lands for the (un-buffable) Attack value.
-    ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie) || dealsElemental,
+    // Mummies "ignore the result on the Attack die" — their own attack die is
+    // treated as 0, exactly like Bless / Elemental damage.
+    ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie) || dealsElemental || hasIgnoreOwnAttackDie(attacker),
     ignoreDefense: dealsElemental,
     damageReduction: siegeRangedDamageReduction(combat, attacker, defender, attackKind),
     defenseReductionAbility,
@@ -1344,9 +1386,11 @@ function getRerollUsesForEffect(effect: ActiveEffectState): number {
 function buildRerollSources(
   state: GameState,
   attacker: CombatUnitState,
-  rerollEffects: ActiveEffectState[]
+  rerollEffects: ActiveEffectState[],
+  /** Whether the attacker moved this attack — gates Champions' "Charge" reroll. */
+  moved = false
 ): AttackRerollSource[] {
-  const abilitySources: AttackRerollSource[] = getUnitAttackRerollSources(attacker).map((source) => ({
+  const abilitySources: AttackRerollSource[] = getUnitAttackRerollSources(attacker, moved).map((source) => ({
     name: source.name,
     remaining: source.rerolls,
     used: 0,
@@ -3576,13 +3620,33 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     return;
   }
 
+  // Mummies (defence): "set the opponent's Attack die to -1." While a Mummy is
+  // the defender the attacker's die is forced — no roll, no reroll.
+  const forcedDie = getForcedAttackerDie(details.defender);
+  if (forcedDie !== null) {
+    finishResolvedAttack(state, stackItem, details, { rolls: [forcedDie], roll: forcedDie }, cards);
+    return;
+  }
+
+  // Neutral Champions: "roll 2 Attack dice and apply both outcomes" — reroll
+  // each "-1" once, then sum both faces. The reroll is intrinsic to the ability,
+  // so no separate reroll choice is opened.
+  const applyBoth = getRollTwoDiceApplyBoth(details.attacker);
+  if (applyBoth) {
+    finishResolvedAttack(state, stackItem, details, rollApplyBothCandidate(combat, applyBoth.rerollMinusOnce), cards);
+    return;
+  }
+
   const candidate = rollAttackCandidate(combat, details.rollMode);
   const rerollEffects = getAttackRerollEffects(state, {
     attacker: details.attacker,
     defender: details.defender,
     attackKind: details.attackKind
   }).filter((effect) => !effect.usedChoiceIds.includes(stackItem.id));
-  const rerollSources = buildRerollSources(state, details.attacker, rerollEffects);
+  // Champions' "Charge" only offers its reroll when the unit moved to attack
+  // (never on a Retaliation Attack, where it did not move).
+  const moved = !details.isRetaliation && Boolean(details.attacker.movedThisActivation);
+  const rerollSources = buildRerollSources(state, details.attacker, rerollEffects, moved);
 
   // Only pause when a source can actually fire on this roll — the Crusaders'
   // 'every "0"' reroll never interrupts a +1.
@@ -3674,9 +3738,13 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       if (target) {
         const power = getCurrentSpellPower(stackItem, cards);
         const rawAmount = getSpellDamageAmount(card, power);
-        // "Reduce any damage from spells by N" applies to Spell-kind damage only.
-        const amount =
-          card.effect.damageKind === "spell" ? reducedSpellDamage(target, rawAmount) : rawAmount;
+        // Spell/Specialty immunity zeroes the hit; otherwise "reduce spell
+        // damage by N" applies to Spell-kind damage only.
+        const amount = unitIgnoresCardDamage(target, card)
+          ? 0
+          : card.effect.damageKind === "spell"
+            ? reducedSpellDamage(target, rawAmount)
+            : rawAmount;
         target.damage += amount;
         noteUnitDamagedForTokens(state, target, amount);
         appendEvent(state, {
@@ -3856,7 +3924,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       if (target) {
         // The primary target's own spell-damage reduction applies here; the
         // splash keeps the raw `amount` and is reduced per splash-target below.
-        const dealt = reducedSpellDamage(target, amount);
+        const dealt = unitIgnoresCardDamage(target, card) ? 0 : reducedSpellDamage(target, amount);
         target.damage += dealt;
         noteUnitDamagedForTokens(state, target, dealt);
         appendEvent(state, {
@@ -5298,7 +5366,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           isUnitAlive(unit) && (unit.id === center.id || isAdjacent(unit.position, center.position))
       );
       for (const unit of inBlast) {
-        const dealt = reducedSpellDamage(unit, effect.amount);
+        const dealt = unitIgnoresCardDamage(unit, card) ? 0 : reducedSpellDamage(unit, effect.amount);
         unit.damage += dealt;
         noteUnitDamagedForTokens(state, unit, dealt);
         appendEvent(state, {

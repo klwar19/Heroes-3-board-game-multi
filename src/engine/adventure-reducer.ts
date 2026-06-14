@@ -27,6 +27,7 @@ import {
   gainTownCube,
   getActiveAstrologersCard,
   getAdjacentSpaceIds,
+  discountedReinforceCost,
   getMainHero,
   getTileFootprintSpaceIds,
   getTownOfPlayer,
@@ -42,6 +43,7 @@ import {
   NEUTRAL_DECK_IDS,
   placeNeutralUnits,
   processPendingVisit,
+  queueSkeletonReinforce,
   restoreStartingArmyIfEmpty,
   SCHOLAR_STAT_CARDS,
   spendRecruitResources,
@@ -2241,6 +2243,12 @@ export function finalizeAdventureCombat(state: GameState): void {
         if (winner) {
           winner.necromancyWindow = true;
         }
+
+        // Neutral Skeletons: "After defeating Skeletons, if you control a
+        // Necropolis Hero, Reinforce 1 of your bronze units for free."
+        if (combat.skeletonGuardDefeated && playerId && winner?.factionId === "necropolis") {
+          queueSkeletonReinforce(state, playerId);
+        }
       } else if (outcome.reason === "retreat") {
         const returnTo = adventure.lastVisitedField[hero.id];
         if (returnTo) {
@@ -2564,7 +2572,8 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       if (!packSide) {
         throw new Error("That unit has no pack side.");
       }
-      addCost(packSide.cost);
+      // Champions' Stables discount lowers the gold paid here.
+      addCost(discountedReinforceCost(state, action.playerId, purchase.unitDefId, packSide.cost));
       target.side = "pack";
     }
   }
@@ -2596,7 +2605,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
           playerId: action.playerId,
           unitDefId: purchase.unitDefId,
           kind: "reinforce",
-          cost: getUnitSide(purchase.unitDefId, "pack")?.cost ?? {}
+          cost: discountedReinforceCost(state, action.playerId, purchase.unitDefId, getUnitSide(purchase.unitDefId, "pack")?.cost ?? {})
         });
       }
     }

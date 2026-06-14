@@ -121,6 +121,9 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // Archangels' once-per-combat cancel) all emit the "resurrection" ability
   // event when the killing blow is cancelled, so one plan covers all three.
   resurrection: { affect: [{ key: "prayer" }], sound: "spells/resurrection" },
+  // Phoenixes' Rebirth reuses the resurrection cue when the killing blow is
+  // shrugged off and the bird clings to life at 1 Health.
+  "phoenix-rebirth": { affect: [{ key: "prayer" }], sound: "spells/resurrection" },
   // Printed unit abilities wired with their original H3 effect + sound.
   "wyvern-sting": { affect: [{ key: "poison" }], sound: "spells/poison" },
   "rust-dragon-acid": { hit: "acid-breath", hitSound: "effects/acid-breath" },
