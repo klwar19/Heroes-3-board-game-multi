@@ -562,6 +562,57 @@ export const spellCards: CardLibrary = {
     implementationStatus: "implemented",
     source: spellSource("resurrection")
   },
+  // Magic Mirror is an instant reaction to an enemy Spell that targets one of
+  // your units: choose a new target for that Spell, gated by the Power paid
+  // (0 → bronze, 1 → silver, 2 → gold — one option per grade, like
+  // Resurrection). The new target is picked in a follow-up choice; the Spell
+  // then resolves against it. Casting Magic Mirror counts as your Spell for the
+  // combat round (Expert Knowledge / Intelligence raise or waive that limit).
+  "spell.magic_mirror": {
+    id: "spell.magic_mirror",
+    name: "Magic Mirror",
+    kind: "spell",
+    timing: "reaction",
+    phaseLimit: ["reaction", "combat"],
+    spellLevel: "expert",
+    spellSchools: ["air"],
+    power: 0,
+    tags: [
+      "spell",
+      "expert",
+      "air",
+      "magic-mirror",
+      "Instant: When your unit is about to be targeted or damaged by a spell, choose a new target for that spell. Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or gold."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Redirect the spell to a bronze unit",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "REDIRECT_SPELL", grade: "bronze" }
+        },
+        {
+          label: "Redirect to a bronze or silver unit (pay 1 Power)",
+          cost: { discardCards: 1, costCardFilter: "power-source" },
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "REDIRECT_SPELL", grade: "silver" }
+        },
+        {
+          label: "Redirect to a bronze, silver, or gold unit (pay 2 Power)",
+          cost: { discardCards: 2, costCardFilter: "power-source" },
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "REDIRECT_SPELL", grade: "gold" }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "/assets/spells-magic_mirror.webp",
+      imageAlt: "Magic Mirror card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("magic_mirror")
+  },
   "spell.teleport": notImplementedSpell(
     "teleport",
     "Teleport",
@@ -697,6 +748,7 @@ export const spellDeckLegacy: string[] = [
   "spell.town_portal",
   "spell.earthquake",
   "spell.resurrection",
+  "spell.magic_mirror",
   "spell.summon_air_elemental",
   "spell.summon_earth_elemental",
   "spell.summon_fire_elemental",
@@ -746,6 +798,7 @@ export const spellDeckBinhExpert: string[] = [
   "spell.town_portal",
   "spell.town_portal",
   "spell.resurrection",
+  "spell.magic_mirror",
   "spell.summon_air_elemental",
   "spell.summon_earth_elemental",
   "spell.summon_fire_elemental",

@@ -295,26 +295,6 @@ function dessaSpecialtySix(): CardLibrary[string] {
   };
 }
 
-function notImplementedSpecialty(
-  heroSlug: string,
-  heroName: string,
-  level: 1 | 4 | 6,
-  text: string,
-  cardImage?: string
-): CardLibrary[string] {
-  return {
-    id: `specialty.${heroSlug}.${level}`,
-    name: `${heroName} ${level === 1 ? "I" : level === 4 ? "IV" : "VI"}`,
-    kind: "hero-specialty",
-    timing: "ongoing",
-    tags: ["hero-specialty", heroSlug, "needs-implementation", text],
-    effect: { type: "DRAW_CARDS", amount: 0 },
-    assets: cardImage ? { cardImage, imageAlt: `${heroName} level ${level} specialty card` } : undefined,
-    implementationStatus: "not-implemented",
-    source: heroSource(heroSlug)
-  };
-}
-
 /**
  * Alamar's Resurrection: a reaction in an attack window that cancels a normal
  * attack which would destroy one of your units (never spells or specialty
@@ -496,45 +476,21 @@ export const adventureCards: CardLibrary = {
   },
 
   // ---- Hero specialties --------------------------------------------------
+  // Catherine (Knight): the Crusaders specialist. I = +1 attack/defence; IV =
+  // +1 HP for the combat; VI = +1 initiative for the combat — all doubled when
+  // the bonus lands on a Crusaders unit.
   "specialty.catherine.1": mightSpecialtyOne("catherine", "Crusaders", "Crusaders"),
-  "specialty.catherine.4": notImplementedSpecialty(
-    "catherine",
-    "Crusaders",
-    4,
-    "For this Combat, your selected unit's HP is increased by 1 (doubled for Crusaders)."
-  ),
-  "specialty.catherine.6": notImplementedSpecialty(
-    "catherine",
-    "Crusaders",
-    6,
-    "For this Combat, your selected unit's initiative is increased by 1 (doubled for Crusaders)."
-  ),
+  "specialty.catherine.4": unitHealthSpecialty("catherine", "Crusaders", 4, 1, "Crusaders"),
+  "specialty.catherine.6": unitInitiativeSpecialty("catherine", "Crusaders", 6, 1, "Crusaders"),
+  // Tamika (Death Knight): the Dread Knights specialist (same I/IV/VI shape).
   "specialty.tamika.1": mightSpecialtyOne("tamika", "Dread Knights", "Dread Knights"),
-  "specialty.tamika.4": notImplementedSpecialty(
-    "tamika",
-    "Dread Knights",
-    4,
-    "For this Combat, your selected unit's HP is increased by 1 (doubled for Dread Knights)."
-  ),
-  "specialty.tamika.6": notImplementedSpecialty(
-    "tamika",
-    "Dread Knights",
-    6,
-    "For this Combat, your selected unit's initiative is increased by 1 (doubled for Dread Knights)."
-  ),
+  "specialty.tamika.4": unitHealthSpecialty("tamika", "Dread Knights", 4, 1, "Dread Knights"),
+  "specialty.tamika.6": unitInitiativeSpecialty("tamika", "Dread Knights", 6, 1, "Dread Knights"),
+  // Mutare (Overlord): the Dragons specialist — the bonus doubles for every
+  // unit in the Dragons family (Black/Gold/Ghost/…), never Dragon Flies.
   "specialty.mutare.1": mightSpecialtyOne("mutare", "Dragons", "a Dragons unit"),
-  "specialty.mutare.4": notImplementedSpecialty(
-    "mutare",
-    "Dragons",
-    4,
-    "For this Combat, your selected unit's HP is increased by 1 (doubled for Dragons)."
-  ),
-  "specialty.mutare.6": notImplementedSpecialty(
-    "mutare",
-    "Dragons",
-    6,
-    "For this Combat, your selected unit's initiative is increased by 1 (doubled for Dragons)."
-  ),
+  "specialty.mutare.4": unitHealthSpecialty("mutare", "Dragons", 4, 1, "a Dragons unit"),
+  "specialty.mutare.6": unitInitiativeSpecialty("mutare", "Dragons", 6, 1, "a Dragons unit"),
   "specialty.rion.1": {
     id: "specialty.rion.1",
     name: "Battlefield Medic I",
@@ -555,18 +511,82 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("rion")
   },
-  "specialty.rion.4": notImplementedSpecialty(
-    "rion",
-    "Battlefield Medic",
-    4,
-    "Remove 1 damage or paralysis from one of your units, then draw 1 card."
-  ),
-  "specialty.rion.6": notImplementedSpecialty(
-    "rion",
-    "Battlefield Medic",
-    6,
-    "Remove up to 2 damage or paralysis from one of your units, then draw 2 cards and discard 1."
-  ),
+  // Rion's Battlefield Medic IV: the level-I heal, now able to clear a
+  // Paralysis token instead of damage. Choose-one so the player picks which
+  // affliction to lift; either way Rion then draws 1.
+  "specialty.rion.4": {
+    id: "specialty.rion.4",
+    name: "Battlefield Medic IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "rion",
+      "heal",
+      "Remove 1 damage or paralysis from one of your units, then draw 1 card."
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Remove 1 damage, then draw 1",
+          effect: { type: "HEAL_DAMAGE", amount: 1, drawCards: 1 }
+        },
+        {
+          label: "Remove paralysis, then draw 1",
+          effect: { type: "HEAL_DAMAGE", amount: 0, removeParalysis: true, drawCards: 1 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("rion", 4),
+      imageAlt: "Battlefield Medic level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("rion")
+  },
+  // Rion's Battlefield Medic VI: removes up to 2 damage (or paralysis), then
+  // draws 2 and discards 1. The discard is the option's printed cost (the
+  // chosen pitch comes from the current hand before the two cards are drawn).
+  "specialty.rion.6": {
+    id: "specialty.rion.6",
+    name: "Battlefield Medic VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "rion",
+      "heal",
+      "Remove up to 2 damage or paralysis from one of your units, then draw 2 cards and discard 1 card from your hand."
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Remove up to 2 damage, then draw 2 and discard 1",
+          cost: { discardCards: 1 },
+          effect: { type: "HEAL_DAMAGE", amount: 2, drawCards: 2 }
+        },
+        {
+          label: "Remove paralysis, then draw 2 and discard 1",
+          cost: { discardCards: 1 },
+          effect: { type: "HEAL_DAMAGE", amount: 0, removeParalysis: true, drawCards: 2 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("rion", 6),
+      imageAlt: "Battlefield Medic level VI specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("rion")
+  },
   "specialty.sandro.1": {
     id: "specialty.sandro.1",
     name: "Cloak of the Undead King I",
@@ -717,19 +737,54 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("moandor")
   },
-  "specialty.gelu.1": mightSpecialtyOne("gelu", "Sharpshooters", "Sharpshooters"),
-  "specialty.gelu.4": notImplementedSpecialty(
-    "gelu",
-    "Sharpshooters",
-    4,
-    "Convert a bronze ranged unit into Sharpshooters."
-  ),
-  "specialty.gelu.6": notImplementedSpecialty(
-    "gelu",
-    "Sharpshooters",
-    6,
-    "For this Combat, your selected unit's initiative is increased by 1 (doubled for Sharpshooters)."
-  ),
+  // Gelu (Ranger): the Sharpshooters specialist. His +1 attack/defence (I) and
+  // +2 initiative (VI) double for BOTH the Elves and Sharpshooters units (wiki).
+  "specialty.gelu.1": mightSpecialtyOne("gelu", "Sharpshooters", "Elves and Sharpshooters"),
+  // Gelu IV: trade a Pack of Elves for the unique Sharpshooters Neutral card,
+  // or just draw a card. The Sharpshooters card leaves the silver Neutral deck
+  // and joins your unit deck; only one Sharpshooters may be controlled at once.
+  "specialty.gelu.4": {
+    id: "specialty.gelu.4",
+    name: "Sharpshooters IV",
+    kind: "hero-specialty",
+    timing: "map",
+    tags: [
+      "hero-specialty",
+      "map",
+      "gelu",
+      "sharpshooters",
+      "If you have a Pack of Elves Unit card, discard it, then search the Neutral Unit silver deck for the Sharpshooters card and add it to your Unit deck (only 1 Sharpshooters at a time). — OR — Draw a card."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Discard a Pack of Elves → take the Sharpshooters",
+          mapOnly: true,
+          effect: {
+            type: "CONVERT_ARMY_UNIT",
+            fromUnitDefId: "rampart.elves",
+            fromSide: "pack",
+            toUnitDefId: "neutral.sharpshooters",
+            toTier: "silver",
+            unique: true
+          }
+        },
+        {
+          label: "Draw a card",
+          effect: { type: "DRAW_CARDS", amount: 1 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("gelu", 4),
+      imageAlt: "Sharpshooters level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("gelu")
+  },
+  "specialty.gelu.6": unitInitiativeSpecialty("gelu", "Sharpshooters", 6, 2, "Elves and Sharpshooters"),
   "specialty.gem.1": {
     id: "specialty.gem.1",
     name: "First Aid I",
@@ -757,8 +812,50 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("gem")
   },
-  "specialty.gem.4": notImplementedSpecialty("gem", "First Aid", 4, "Remove 2 damage from one of your units."),
-  "specialty.gem.6": notImplementedSpecialty("gem", "First Aid", 6, "Your First Aid Tent's effect doubles during Combat."),
+  // Gem's First Aid IV: a straight "remove 2 damage from one of your units".
+  "specialty.gem.4": {
+    id: "specialty.gem.4",
+    name: "First Aid IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["combat"],
+    tags: ["hero-specialty", "instant", "gem", "heal", "Remove 2 damage from one of your units."],
+    target: { type: "friendly-unit", damagedOnly: true },
+    effect: { type: "HEAL_DAMAGE", amount: 2 },
+    assets: {
+      cardImage: specialtyCardImage("gem", 4),
+      imageAlt: "First Aid level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("gem")
+  },
+  // Gem's First Aid VI: "For this Combat, double your First Aid Tent's effect."
+  // Only offered with a Tent in play; doubles its per-round heal for the combat.
+  "specialty.gem.6": {
+    id: "specialty.gem.6",
+    name: "First Aid VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: ["hero-specialty", "combat", "gem", "first-aid", "For this Combat, double your First Aid Tent's effect."],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Double your First Aid Tent's heal this Combat",
+          combatOnly: true,
+          effect: { type: "DOUBLE_FIRST_AID_TENT" }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("gem", 6),
+      imageAlt: "First Aid level VI specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("gem")
+  },
   "specialty.xyron.1": {
     id: "specialty.xyron.1",
     name: "Inferno I",
@@ -792,21 +889,129 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("xyron")
   },
-  "specialty.xyron.4": notImplementedSpecialty("xyron", "Inferno", 4, "Stronger area damage at reduced cost."),
-  "specialty.xyron.6": notImplementedSpecialty("xyron", "Inferno", 6, "Area damage at no cost."),
+  // Xyron's Inferno IV: the level-I blast for a single discard instead of two.
+  "specialty.xyron.4": {
+    id: "specialty.xyron.4",
+    name: "Inferno IV",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "xyron",
+      "inferno",
+      "Discard 1 card, then select a space: every unit on that space and the spaces adjacent to it (friend or foe) takes 1 damage."
+    ],
+    target: { type: "any-unit" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Discard 1 card: 1 damage to a space and its neighbours",
+          cost: { discardCards: 1 },
+          effect: { type: "AREA_DAMAGE_ALL_ADJACENT", amount: 1 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("xyron", 4),
+      imageAlt: "Inferno level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("xyron")
+  },
+  // Xyron's Inferno VI: the same blast at no cost.
+  "specialty.xyron.6": {
+    id: "specialty.xyron.6",
+    name: "Inferno VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "xyron",
+      "inferno",
+      "Select a space: every unit on that space and the spaces adjacent to it (friend or foe) takes 1 damage."
+    ],
+    target: { type: "any-unit" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "1 damage to a space and its neighbours",
+          effect: { type: "AREA_DAMAGE_ALL_ADJACENT", amount: 1 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("xyron", 6),
+      imageAlt: "Inferno level VI specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("xyron")
+  },
+  // Rashka (Demoniac): the Efreet specialist. I = +1 attack/defence (doubled
+  // for Efreet); IV/VI grant a Fire Shield — a melee (ground/flying) attacker
+  // takes 1 damage after attacking the chosen unit, doubled to 2 on an Efreet
+  // at level VI (the Efreet's printed Fire Shield trait).
   "specialty.rashka.1": mightSpecialtyOne("rashka", "Efreet", "Efreet"),
-  "specialty.rashka.4": notImplementedSpecialty(
-    "rashka",
-    "Efreet",
-    4,
-    "For this Combat, your selected unit's HP is increased by 1 (doubled for Efreet)."
-  ),
-  "specialty.rashka.6": notImplementedSpecialty(
-    "rashka",
-    "Efreet",
-    6,
-    "For this Combat, your selected unit's initiative is increased by 1 (doubled for Efreet)."
-  ),
+  "specialty.rashka.4": {
+    id: "specialty.rashka.4",
+    name: "Efreet IV",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "rashka",
+      "fire-shield",
+      "Until the end of Combat, when your selected unit is attacked by a ground or flying unit, the attacker takes 1 damage."
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_FIRE_SHIELD",
+      amount: 1,
+      duration: { type: "combat" },
+      removable: false
+    },
+    assets: {
+      cardImage: specialtyCardImage("rashka", 4),
+      imageAlt: "Efreet level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("rashka")
+  },
+  "specialty.rashka.6": {
+    id: "specialty.rashka.6",
+    name: "Efreet VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "rashka",
+      "fire-shield",
+      "Until the end of Combat, when your selected unit is attacked by a ground or flying unit, the attacker takes 1 damage. This effect doubles for the Efreet unit."
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_FIRE_SHIELD",
+      amount: 1,
+      duration: { type: "combat" },
+      doubleForUnitName: "Efreet",
+      removable: false
+    },
+    assets: {
+      cardImage: specialtyCardImage("rashka", 6),
+      imageAlt: "Efreet level VI specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("rashka")
+  },
   // Zydar (Inferno Heretic): spell-economy specialties. Level I implemented as
   // a self-spell-cast reaction (draw a card or +1 Power); IV/VI data-only like
   // the other heroes' upper specialties.
@@ -844,18 +1049,99 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("zydar")
   },
-  "specialty.zydar.4": notImplementedSpecialty(
-    "zydar",
-    "Zydar",
-    4,
-    "The next Spell you cast does not count toward your spell limit (alternatively, +2 Power)."
-  ),
-  "specialty.zydar.6": notImplementedSpecialty(
-    "zydar",
-    "Zydar",
-    6,
-    "Ongoing during Combat: after casting a Spell, draw 1 card (alternatively, +2 Power)."
-  ),
+  // Zydar's Spell Mastery IV: either the next Spell this round does not count
+  // toward the one-per-round limit (modeled as +1 to the limit for the round),
+  // or +2 Power on a Spell you are casting.
+  "specialty.zydar.4": {
+    id: "specialty.zydar.4",
+    name: "Spell Mastery IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "zydar",
+      "The next Spell you cast does not count toward the limit. — OR — +2 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Your next Spell this round ignores the spell limit",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Spell Mastery IV",
+              scope: "player",
+              duration: { type: "current-combat-round" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [{ type: "SPELL_LIMIT_BONUS", amount: 1 }]
+            }
+          }
+        },
+        {
+          label: "+2 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("zydar", 4),
+      imageAlt: "Zydar level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("zydar")
+  },
+  // Zydar's Spell Mastery VI: an ongoing "draw 1 after each Spell you cast"
+  // (until the end of the Combat round), or +2 Power on a Spell you are casting.
+  "specialty.zydar.6": {
+    id: "specialty.zydar.6",
+    name: "Spell Mastery VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "zydar",
+      "Until the end of the Combat round, after casting a Spell, draw 1 card. — OR — +2 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Until end of round: draw 1 after each Spell you cast",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Spell Mastery VI",
+              scope: "player",
+              duration: { type: "current-combat-round" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [{ type: "DRAW_ON_SPELL_CAST", amount: 1 }]
+            }
+          }
+        },
+        {
+          label: "+2 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("zydar", 6),
+      imageAlt: "Zydar level VI specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("zydar")
+  },
   "specialty.crag_hack.1": offenseSpecialtyOne("crag_hack"),
   "specialty.crag_hack.4": offenseSpecialtyFour("crag_hack"),
   "specialty.crag_hack.6": offenseSpecialtySix("crag_hack"),

@@ -1,6 +1,6 @@
 import { unitAbilities, type UnitAbilityDefinition, type UnitAbilityEffectDefinition } from "@/data/units/abilities";
 import { BATTLEFIELD_COLUMNS } from "./battlefield";
-import type { CombatState, CombatTokenKind, CombatUnitState, DamageKind, UnitId } from "./state";
+import type { CombatState, CombatTokenKind, CombatUnitState, DamageKind, SpellSchool, UnitId } from "./state";
 
 export type UnitAbilityDamageEffect = {
   abilityId: string;
@@ -52,6 +52,40 @@ function getAbilitiesWithEffect(
   return getUnitAbilityDefinitions(unit).filter(
     (ability) => ability.implementationStatus === "implemented" && ability.effect?.type === effectType
   );
+}
+
+/**
+ * The Spell schools an Elemental is printed immune to — Magic Arrow's school
+ * ("any") plus its own element (Air/Earth/Fire/Water), or just "any" for Magic
+ * Elementals. Empty for ordinary units.
+ */
+export function getUnitImmuneSpellSchools(unit: CombatUnitState): SpellSchool[] {
+  const schools = new Set<SpellSchool>();
+  for (const ability of getAbilitiesWithEffect(unit, "IMMUNE_TO_SPELL_SCHOOLS")) {
+    if (ability.effect?.type === "IMMUNE_TO_SPELL_SCHOOLS") {
+      for (const school of ability.effect.schools) {
+        schools.add(school);
+      }
+    }
+  }
+  return [...schools];
+}
+
+/**
+ * Whether a unit's printed elemental immunity blocks a Spell of the given
+ * schools: a Spell is immune when any of its schools is one the unit is immune
+ * to ("any" is Magic Arrow's school). Other (non-elemental) units are never
+ * immune by this trait.
+ */
+export function unitImmuneToSpellSchools(
+  unit: CombatUnitState,
+  spellSchools: readonly SpellSchool[] | undefined
+): boolean {
+  if (!spellSchools || spellSchools.length === 0) {
+    return false;
+  }
+  const immune = getUnitImmuneSpellSchools(unit);
+  return immune.length > 0 && spellSchools.some((school) => immune.includes(school));
 }
 
 export function getUnitAttackRerollSources(

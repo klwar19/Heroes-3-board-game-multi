@@ -239,12 +239,49 @@ export const extraAbilityCards: CardLibrary = {
   "ability.basic_fire_magic": basicSchoolMagic("fire"),
   "ability.basic_water_magic": basicSchoolMagic("water"),
 
-  // ---- Known but not yet implemented ability cards ------------------------
-  "ability.intelligence": notImplementedAbility(
-    "intelligence",
-    "Intelligence",
-    "Basic: During Combat, before any unit activates, play a Spell card (still limited per Combat round). Expert: that spell does not count toward your spell limit."
-  ),
+  // Intelligence rewrites WHEN spells may be cast. Played during combat, it
+  // grants an ongoing freedom for the rest of that combat: the controller may
+  // cast a Spell at any time — even off-turn, without one of their own units
+  // being active (it lifts the activation-timing gate, not the open-window
+  // rule). The expert side additionally ignores the one-Spell-per-combat-round
+  // limit for that player (the `ignoreSpellLimit` modifier → spellLimitFor
+  // returns Infinity). The freedom is enforced in the spell legal-action gate.
+  "ability.intelligence": {
+    id: "ability.intelligence",
+    name: "Intelligence",
+    kind: "ability",
+    timing: "instant",
+    phaseLimit: ["combat"],
+    abilityClass: "magic",
+    tags: [
+      "ability",
+      "magic",
+      "spell-timing",
+      "Instant (Combat): Until the end of the Combat you may cast a Spell at any time — even off-turn, without one of your units being active (still one Spell per Combat round). Expert: your Spell casts no longer count toward that limit."
+    ],
+    effect: {
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: "Intelligence",
+        scope: "player",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "SPELL_CAST_ANYTIME" }]
+      },
+      expertEffect: {
+        name: "Expert Intelligence",
+        scope: "player",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "SPELL_CAST_ANYTIME", ignoreSpellLimit: true }]
+      }
+    },
+    assets: abilityAssets("intelligence", "Intelligence"),
+    implementationStatus: "implemented",
+    source: abilitySource("intelligence")
+  },
   "ability.diplomacy": notImplementedAbility(
     "diplomacy",
     "Diplomacy",
@@ -343,6 +380,7 @@ export const abilityDeckLegacy: string[] = [
   "ability.scholar",
   "ability.first_aid",
   "ability.ballistics",
+  "ability.intelligence",
   // Necropolis-only (rulebook p.24): other factions may keep a drawn copy
   // but can never play it; searches simply pass it over.
   "ability.necromancy",
