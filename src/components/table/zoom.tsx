@@ -79,6 +79,9 @@ export function unitZoomContent(unit: CombatUnitState): ZoomContent {
  */
 export function CardZoomProvider({ children }: { children: ReactNode }) {
   const [content, setContent] = useState<ZoomContent | null>(null);
+  // Fall back to the text frame if a card's scan is missing (e.g. Moandor's
+  // specialties); keyed by src so each newly zoomed card tries its own art.
+  const [failedImageSrc, setFailedImageSrc] = useState<string | null>(null);
 
   const value = useMemo<CardZoomContextValue>(
     () => ({
@@ -111,11 +114,12 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
       {content ? (
         <div aria-label={`${content.title} enlarged`} className="zoomBackdrop" onClick={close} role="dialog">
           <div className="zoomCardStage">
-            {content.image ? (
+            {content.image && failedImageSrc !== content.image ? (
               <img
                 alt={content.title}
                 className="zoomCardImage"
                 loading="eager"
+                onError={() => setFailedImageSrc(content.image ?? null)}
                 referrerPolicy="no-referrer"
                 src={assetUrl(content.image)}
               />

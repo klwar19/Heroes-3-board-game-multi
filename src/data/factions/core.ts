@@ -653,9 +653,16 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.moandor.4",
       6: "specialty.moandor.6"
     },
-    portrait: "/assets/hero_boardart-moandor.webp",
-    boardScan: "/assets/heroes-necropolis-might-moandor.webp",
-    source: heroSource("moandor")
+    // Moandor's printed hero board is not on the fan wiki, so there is no board
+    // scan to crop. The portrait is the classic PC hero portrait from
+    // heroes.thelazy.net (upscaled, hosted locally).
+    portrait: "/assets/hero_portraits-moandor.webp",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Core Game)",
+      credit:
+        "Hero board data from the fan wiki; the printed board is not on the wiki, so the portrait is the classic PC hero portrait from heroes.thelazy.net (upscaled, hosted locally). Verify against official components before final release.",
+      url: "https://heroes.thelazy.net/index.php/Moandor"
+    }
   },
   gelu: {
     id: "gelu",

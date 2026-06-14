@@ -1017,7 +1017,7 @@ export const adventureCards: CardLibrary = {
   // the other heroes' upper specialties.
   "specialty.zydar.1": {
     id: "specialty.zydar.1",
-    name: "Spell Mastery I",
+    name: "Sorcery I",
     kind: "hero-specialty",
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
@@ -1049,12 +1049,12 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("zydar")
   },
-  // Zydar's Spell Mastery IV: either the next Spell this round does not count
+  // Zydar's Sorcery IV: either the next Spell this round does not count
   // toward the one-per-round limit (modeled as +1 to the limit for the round),
   // or +2 Power on a Spell you are casting.
   "specialty.zydar.4": {
     id: "specialty.zydar.4",
-    name: "Spell Mastery IV",
+    name: "Sorcery IV",
     kind: "hero-specialty",
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
@@ -1073,7 +1073,7 @@ export const adventureCards: CardLibrary = {
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
             effect: {
-              name: "Spell Mastery IV",
+              name: "Sorcery IV",
               scope: "player",
               duration: { type: "current-combat-round" },
               polarity: "positive",
@@ -1096,11 +1096,11 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("zydar")
   },
-  // Zydar's Spell Mastery VI: an ongoing "draw 1 after each Spell you cast"
+  // Zydar's Sorcery VI: an ongoing "draw 1 after each Spell you cast"
   // (until the end of the Combat round), or +2 Power on a Spell you are casting.
   "specialty.zydar.6": {
     id: "specialty.zydar.6",
-    name: "Spell Mastery VI",
+    name: "Sorcery VI",
     kind: "hero-specialty",
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
@@ -1119,7 +1119,7 @@ export const adventureCards: CardLibrary = {
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
             effect: {
-              name: "Spell Mastery VI",
+              name: "Sorcery VI",
               scope: "player",
               duration: { type: "current-combat-round" },
               polarity: "positive",

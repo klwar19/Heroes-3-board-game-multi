@@ -2,6 +2,8 @@
 
 /* eslint-disable @next/next/no-img-element */
 
+import { useState } from "react";
+
 import { HERO_STAT_ICONS } from "@/data/assets/homm-assets";
 import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
@@ -129,13 +131,17 @@ function TypeEmblem({ type }: { type: "might" | "magic" }) {
 function CardArt({ cardId, kind }: { cardId?: string; kind: "ability" | "specialty" }) {
   const card = cardId ? cardLibrary[cardId] : undefined;
   const image = card?.assets?.cardImage;
-  if (!image) {
+  // Some cards have no scan yet (e.g. Moandor's specialties are not on the fan
+  // wiki); fall back to the empty-art slot rather than a broken image. Keyed by
+  // src so a different card in the same slot still renders.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  if (!image || failedSrc === image) {
     return <div className={`hbArt hbArt-${kind} hbArtEmpty`} />;
   }
 
   return (
     <div className={`hbArt hbArt-${kind}`}>
-      <img alt="" src={assetUrl(image)} />
+      <img alt="" onError={() => setFailedSrc(image)} src={assetUrl(image)} />
     </div>
   );
 }
@@ -205,7 +211,7 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
                     })
                   : undefined
               }
-              title="View the printed board scan"
+              title={heroDef.boardScan ? "View the printed board scan" : undefined}
               type="button"
             >
               <span className="hbName">{heroDef.name}</span>

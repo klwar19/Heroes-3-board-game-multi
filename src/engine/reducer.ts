@@ -686,7 +686,7 @@ function doubleAmountForUnitName(amount: number, unit: CombatUnitState | undefin
 /**
  * Records that `player` cast a Spell this combat round/turn (the printed
  * one-Spell-per-round accounting) and fires any ongoing "after casting a Spell,
- * draw N cards" effects (Zydar's Spell Mastery VI).
+ * draw N cards" effects (Zydar's Sorcery VI).
  */
 function noteSpellCast(state: GameState, player: PlayerState): void {
   player.combatStats.spellsCastThisRound += 1;

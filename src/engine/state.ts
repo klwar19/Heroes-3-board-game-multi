@@ -231,7 +231,7 @@ export type ActiveEffectModifier =
     }
   | {
       /**
-       * Zydar's Spell Mastery VI (ongoing): until the end of the Combat round,
+       * Zydar's Sorcery VI (ongoing): until the end of the Combat round,
        * the owner draws this many cards after each Spell they cast.
        */
       type: "DRAW_ON_SPELL_CAST";
