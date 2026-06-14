@@ -46,6 +46,10 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
       return effect.spend === "spell-power"
         ? `When built and at the beginning of each ${effect.gainOn === "astrologers" ? "Astrologers'" : "Resource"} round, place a faction cube here (max ${effect.max}). During any combat, remove a cube while casting a spell to gain +1 Power (max 1 cube per spell).`
         : `When built and at the beginning of each ${effect.gainOn === "astrologers" ? "Astrologers'" : "Resource"} round, place a faction cube here (max ${effect.max}). During any combat, remove cubes for +1 attack or +1 defense per cube.`;
+    case "HALL_OF_VALHALLA":
+      return `Once per round during a combat, one of your units gains +${effect.amount} attack on a single attack (chosen while the attack is waiting to resolve).`;
+    case "FREELANCERS_GUILD":
+      return `Always on: each time you win against Neutral Units, gain ${effect.winGold} gold. When recruiting or reinforcing you may also pay the gold cost with building materials and valuables.`;
     case "ARTIFACT_SMITH":
       return `Once during your turn, choose one: pay ${effect.searchCost} gold to Search (2) the Artifact deck, OR remove an Artifact card from your hand to gain ${effect.sellGold} gold. Counts as an artifact source (hero level 4+ may search Major, 6+ Relic artifacts in BINH mode).`;
     case "NOT_IMPLEMENTED":
@@ -73,7 +77,10 @@ export function buildingTimingLabel(building: TownBuildingDefinition): string | 
     case "ARTIFACT_SMITH":
       return "during your turn";
     case "COMBAT_CUBES":
+    case "HALL_OF_VALHALLA":
       return "during combat";
+    case "FREELANCERS_GUILD":
+      return "always on";
     case "MAGE_GUILD":
       return "town action";
     default:

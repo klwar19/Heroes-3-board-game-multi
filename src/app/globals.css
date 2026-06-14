@@ -5950,6 +5950,37 @@ img.cardBack {
   text-align: left;
 }
 
+/* The "Effect ▾" / "Use ▾" button shown on every built special building. */
+.buildingEffectButton {
+  align-self: flex-start;
+  padding: 2px 7px;
+  font-size: 10px;
+}
+
+.buildingEffectButton.actionable {
+  border-color: rgba(120, 200, 120, 0.65);
+  color: #cdeccd;
+}
+
+/* The in-place panel that the Effect / Use button expands. */
+.townBuildingDetail h4 small {
+  font-weight: 500;
+  color: #b9a273;
+  text-transform: capitalize;
+}
+
+.buildingDetailText {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: #ecdcb5;
+}
+
+.buildingDetailStatus {
+  color: #c7b187;
+  font-size: 0.68rem;
+}
+
 .coverPicker {
   display: flex;
   flex-direction: column;
