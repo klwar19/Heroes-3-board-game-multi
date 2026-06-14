@@ -157,6 +157,7 @@ import {
   getIgnoreTargetCardDefenseAbility,
   getLethalSaveUnitAbility,
   getLineAttackAbility,
+  getOnAttackDieDraw,
   getOnAttackDieTokens,
   getOnAttackSelfHeal,
   getParalysisFollowUps,
@@ -169,6 +170,7 @@ import {
   getSecondAttackCandidates,
   getSelfAdjacentSecondAttackAbility,
   getSpellDamageReduction,
+  getSpellDamageReductionAura,
   getTriggeredAttackDieBonusAbilities,
   getUnitAbilityDefinitions,
   getUnitAttackRerollSources,
@@ -961,8 +963,27 @@ function healUnitDamage(
  * floored at 0. Applied at every Spell-damage site (direct, area and the
  * Faerie Dragon's bolt).
  */
-function reducedSpellDamage(target: CombatUnitState, amount: number): number {
-  return Math.max(0, amount - getSpellDamageReduction(target));
+function totalSpellDamageReduction(state: GameState, target: CombatUnitState): number {
+  let total = getSpellDamageReduction(target);
+  const combat = state.combat;
+  if (combat) {
+    // Aura sources (Rampart Unicorns Pack) shield themselves and adjacent
+    // friendly units — sum every friendly aura on or beside the target.
+    for (const unit of Object.values(combat.units)) {
+      if (!isUnitAlive(unit) || unit.controllerId !== target.controllerId) {
+        continue;
+      }
+      if (unit.id !== target.id && !isAdjacent(unit.position, target.position)) {
+        continue;
+      }
+      total += getSpellDamageReductionAura(unit);
+    }
+  }
+  return total;
+}
+
+function reducedSpellDamage(state: GameState, target: CombatUnitState, amount: number): number {
+  return Math.max(0, amount - totalSpellDamageReduction(state, target));
 }
 
 /**
@@ -1927,6 +1948,8 @@ function finishResolvedAttack(
 
   applyOnAttackTokens(state, details.attacker, details.defender, details.isRetaliation);
   applyOnAttackDieTokens(state, details.attacker, details.defender, attackResult.roll, details.isRetaliation);
+  // Dungeon Minotaurs: draw a card when this unit's Attack die resolves "-1".
+  applyOnAttackDieDraw(state, details.attacker, attackResult.roll);
   applyPostAttackAbilityDamage(
     state,
     details.attacker,
@@ -2208,6 +2231,27 @@ function applyOnAttackDieTokens(
       abilityId: token.abilityId,
       targetUnitId: defender.id,
       message: `${attacker.cardName} corrodes ${defender.cardName} with ${token.abilityName}.`
+    });
+  }
+}
+
+/**
+ * Dungeon Minotaurs: "If you resolve a '-1' on the Attack die, draw a card."
+ * Fires after this unit's attack (or Retaliation Attack) resolves on the
+ * matching face; the controller draws the printed number of cards. (The neutral
+ * Minotaur rerolls the "-1" instead — it never carries this ability.)
+ */
+function applyOnAttackDieDraw(state: GameState, attacker: CombatUnitState, attackRoll: number): void {
+  for (const draw of getOnAttackDieDraw(attacker)) {
+    if (attackRoll !== draw.onRoll) {
+      continue;
+    }
+    drawCardsForPlayer(state, attacker.controllerId, draw.amount);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: attacker.id,
+      abilityId: draw.abilityId,
+      message: `${attacker.name} draws ${draw.amount} card${draw.amount === 1 ? "" : "s"} (${draw.abilityName}).`
     });
   }
 }
@@ -3164,6 +3208,32 @@ function applyActivationStartAbilities(state: GameState, unit: CombatUnitState):
         abilityId: ability.abilityId,
         message: `${unit.name} drains a card from the enemy's hand.`
       });
+      continue;
+    }
+
+    if (ability.kind === "boost-first-spell-power") {
+      // Tower Magi (Pack): the controller's first spell this combat round gains
+      // +N power. A player-scope effect consumed on that cast (see CAST_SPELL),
+      // lapsing at the round's end if unused.
+      createActiveEffect(
+        state,
+        {
+          name: ability.abilityName,
+          scope: "player",
+          duration: { type: "current-combat-round" },
+          polarity: "positive",
+          removable: false,
+          modifiers: [{ type: "SPELL_POWER_FIRST_CAST", amount: ability.amount }]
+        },
+        { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+        unit.controllerId
+      );
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unit.id,
+        abilityId: ability.abilityId,
+        message: `${unit.name} will add +${ability.amount} power to ${unit.controllerId}'s first spell this round.`
+      });
     }
   }
 }
@@ -3290,7 +3360,7 @@ function applyActivationDamageSpell(
   ability: { abilityId: string; abilityName: string; amount: number }
 ): void {
   // Golems et al. reduce Spell damage — the Faerie Bolt is explicitly a spell.
-  const dealt = reducedSpellDamage(target, ability.amount);
+  const dealt = reducedSpellDamage(state, target, ability.amount);
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: unit.id,
@@ -3751,7 +3821,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         const amount = unitIgnoresCardDamage(target, card)
           ? 0
           : card.effect.damageKind === "spell"
-            ? reducedSpellDamage(target, rawAmount)
+            ? reducedSpellDamage(state, target, rawAmount)
             : rawAmount;
         target.damage += amount;
         noteUnitDamagedForTokens(state, target, amount);
@@ -3932,7 +4002,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       if (target) {
         // The primary target's own spell-damage reduction applies here; the
         // splash keeps the raw `amount` and is reduced per splash-target below.
-        const dealt = unitIgnoresCardDamage(target, card) ? 0 : reducedSpellDamage(target, amount);
+        const dealt = unitIgnoresCardDamage(target, card) ? 0 : reducedSpellDamage(state, target, amount);
         target.damage += dealt;
         noteUnitDamagedForTokens(state, target, dealt);
         appendEvent(state, {
@@ -4174,6 +4244,27 @@ function applyEnemySpellHandTax(state: GameState, casterId: PlayerId): void {
   }
 }
 
+/**
+ * Tower Magi (Pack): the total "+power to your first spell this round" a player
+ * holds from active effects (a non-consuming sum — the cast flow only applies it
+ * on the round's first spell and the current-combat-round effect lapses on its
+ * own).
+ */
+function firstSpellPowerBonusFor(state: GameState, playerId: PlayerId): number {
+  let bonus = 0;
+  for (const effect of state.activeEffects) {
+    if (effect.controllerId !== playerId) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "SPELL_POWER_FIRST_CAST") {
+        bonus += modifier.amount;
+      }
+    }
+  }
+  return bonus;
+}
+
 function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_SPELL" }>, cards: CardLibrary): void {
   const card = cards[action.cardId];
   if (!card || card.kind !== "spell") {
@@ -4197,6 +4288,7 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
 
   const caster = state.players[action.playerId];
   const isFirstSpellThisTurn = (caster.combatStats.spellsCastThisTurn ?? 0) === 0;
+  const isFirstSpellThisRound = (caster.combatStats.spellsCastThisRound ?? 0) === 0;
   noteSpellCast(state, caster);
 
   const stackItem = makeStackItem(state, action);
@@ -4211,6 +4303,17 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     const astrologersCard = getActiveAstrologersCard(state);
     if (isFirstSpellThisTurn && astrologersCard?.effect.type === "FIRST_SPELL_POWER_BONUS") {
       stackItem.modifiers.spellPowerBonus += astrologersCard.effect.amount;
+    }
+
+    // Tower Magi (Pack) "[activation] +N power to the first spell this round":
+    // apply the granted bonus to the round's first cast (the effect lapses at
+    // round end and the gate keeps it to a single cast, so it is not removed
+    // here — a Magi that re-activates next round grants it again).
+    if (isFirstSpellThisRound) {
+      const magiPower = firstSpellPowerBonusFor(state, action.playerId);
+      if (magiPower > 0) {
+        stackItem.modifiers.spellPowerBonus += magiPower;
+      }
     }
 
     // School of Magic permanent in play: matching spells get its basic bonus
@@ -5551,7 +5654,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           isUnitAlive(unit) && (unit.id === center.id || isAdjacent(unit.position, center.position))
       );
       for (const unit of inBlast) {
-        const dealt = unitIgnoresCardDamage(unit, card) ? 0 : reducedSpellDamage(unit, effect.amount);
+        const dealt = unitIgnoresCardDamage(unit, card) ? 0 : reducedSpellDamage(state, unit, effect.amount);
         unit.damage += dealt;
         noteUnitDamagedForTokens(state, unit, dealt);
         appendEvent(state, {
@@ -6227,7 +6330,7 @@ function resolveEarthquakeSpell(state: GameState, playerId: PlayerId, power: num
       if (!positions.some((position) => isAdjacent(unit.position, position))) {
         continue;
       }
-      const dealt = reducedSpellDamage(unit, 1);
+      const dealt = reducedSpellDamage(state, unit, 1);
       unit.damage += dealt;
       noteUnitDamagedForTokens(state, unit, dealt);
       appendEvent(state, {
@@ -6466,7 +6569,7 @@ function chooseAbilityTarget(
     if (!isSkip) {
       const target = combat.units[action.targetUnitId];
       if (target && isUnitAlive(target)) {
-        const dealt = reducedSpellDamage(target, choice.amount ?? 1);
+        const dealt = reducedSpellDamage(state, target, choice.amount ?? 1);
         target.damage += dealt;
         noteUnitDamagedForTokens(state, target, dealt);
         appendEvent(state, {

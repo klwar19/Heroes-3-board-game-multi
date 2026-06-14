@@ -528,7 +528,7 @@ export function getRetaliationParalysis(unit: CombatUnitState): RetaliationParal
 export type ActivationAbility = {
   abilityId: string;
   abilityName: string;
-  kind: "heal-self" | "discard-enemy-morale" | "discard-enemy-card";
+  kind: "heal-self" | "discard-enemy-morale" | "discard-enemy-card" | "boost-first-spell-power";
   amount: number;
 };
 
@@ -549,6 +549,8 @@ export function getActivationAbilities(unit: CombatUnitState): ActivationAbility
       abilities.push({ abilityId: ability.id, abilityName: ability.name, kind: "discard-enemy-morale", amount: 1 });
     } else if (ability.effect?.type === "ON_ACTIVATION_DISCARD_ENEMY_CARD") {
       abilities.push({ abilityId: ability.id, abilityName: ability.name, kind: "discard-enemy-card", amount: ability.effect.count });
+    } else if (ability.effect?.type === "ON_ACTIVATION_SPELL_POWER_FIRST_CAST") {
+      abilities.push({ abilityId: ability.id, abilityName: ability.name, kind: "boost-first-spell-power", amount: ability.effect.amount });
     }
   }
   return abilities;
@@ -645,6 +647,30 @@ export function getSpellDamageReduction(unit: CombatUnitState): number {
   return getAbilitiesWithEffect(unit, "REDUCE_SPELL_DAMAGE").reduce(
     (total, ability) => total + (ability.effect?.type === "REDUCE_SPELL_DAMAGE" ? ability.effect.amount : 0),
     0
+  );
+}
+
+/**
+ * Rampart Unicorns (Pack): the spell-damage reduction this unit radiates to
+ * itself and adjacent friendly units. The caller (reducedSpellDamage) sums the
+ * target's own REDUCE_SPELL_DAMAGE with the auras of the target itself and its
+ * adjacent allies.
+ */
+export function getSpellDamageReductionAura(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "REDUCE_SPELL_DAMAGE_AURA").reduce(
+    (total, ability) => total + (ability.effect?.type === "REDUCE_SPELL_DAMAGE_AURA" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/** Dungeon Minotaurs: cards the attacker draws when its attack die shows `onRoll`. */
+export function getOnAttackDieDraw(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; onRoll: number; amount: number }[] {
+  return getAbilitiesWithEffect(unit, "ON_ATTACK_DIE_DRAW").flatMap((ability) =>
+    ability.effect?.type === "ON_ATTACK_DIE_DRAW"
+      ? [{ abilityId: ability.id, abilityName: ability.name, onRoll: ability.effect.onRoll, amount: ability.effect.amount }]
+      : []
   );
 }
 
