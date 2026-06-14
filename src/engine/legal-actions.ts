@@ -566,11 +566,16 @@ function getFriendlyTargets(
 
 function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string, cards: CardLibrary): TargetRef[] {
   const card = cards[cardId];
+  // Self-resolving effects (Leadership's morale token, active effects) never
+  // pick a unit: they default to a no-target play. Only effects that actually
+  // strike a unit fall back to "enemy-unit".
+  const selfTargetedEffect =
+    card?.effect.type === "CREATE_ACTIVE_EFFECT" || card?.effect.type === "GAIN_MORALE";
   const targetType =
     card?.target?.type ??
     (card?.effect.type === "HEAL_DAMAGE"
       ? "friendly-unit"
-      : card?.effect.type === "CREATE_ACTIVE_EFFECT"
+      : selfTargetedEffect
         ? "none"
         : "enemy-unit");
 
@@ -671,9 +676,12 @@ function getPlayableModesForCard(state: GameState, playerId: PlayerId, card: Car
     (card.effect.type === "ADD_COMBAT_STAT" ||
       card.effect.type === "ADD_SPELL_POWER" ||
       card.effect.type === "CREATE_ACTIVE_EFFECT" ||
-      card.effect.type === "CREATE_ATTACK_DIE_REROLL") &&
+      card.effect.type === "CREATE_ATTACK_DIE_REROLL" ||
+      // Leadership: the expert side (draw 2) is usable mid-battle for an expert use.
+      card.effect.type === "GAIN_MORALE") &&
     ((card.effect.type === "CREATE_ACTIVE_EFFECT" && card.effect.expertEffect) ||
       (card.effect.type === "CREATE_ATTACK_DIE_REROLL" && card.effect.expertRerolls && card.effect.expertRerolls > 0) ||
+      (card.effect.type === "GAIN_MORALE" && card.effect.expertDrawCards !== undefined) ||
       ("expertAmount" in card.effect && card.effect.expertAmount !== undefined)) &&
     state.players[playerId].combatStats.expertUsesSpentThisRound < state.players[playerId].limits.expertUses
   ) {
@@ -3270,18 +3278,32 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       });
     }
   }
+}
 
-  if (player.morale > 0) {
+/**
+ * The positive morale token's non-reroll uses, by the book ("Draw a card from
+ * your Deck" / "Discard any number of cards, then draw that many") — spendable
+ * at any time while you hold the token, not only while standing at your Town.
+ * The third use, rerolling a Die you have thrown, is offered inside the dice
+ * flows (adventure rolls and the combat attack-die reroll) instead.
+ */
+function addMoraleActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  // The stored +1 token, or an overflow token gained past the cap that must be
+  // spent now — both resolve through the same draw / discard-redraw actions.
+  if (!player || ((player.morale ?? 0) <= 0 && (player.moraleOverflow ?? 0) <= 0)) {
+    return;
+  }
+
+  actions.push({
+    label: "Spend morale: draw a card",
+    action: { type: "SPEND_MORALE", playerId, benefit: "draw" }
+  });
+  if (player.hand.length > 0) {
     actions.push({
-      label: "Spend morale: draw a card",
-      action: { type: "SPEND_MORALE", playerId, benefit: "draw" }
+      label: "Spend morale: discard any cards, draw that many",
+      action: { type: "SPEND_MORALE", playerId, benefit: "redraw", discardCardIds: [] }
     });
-    if (player.hand.length > 0) {
-      actions.push({
-        label: "Spend morale: discard any cards, draw that many",
-        action: { type: "SPEND_MORALE", playerId, benefit: "redraw", discardCardIds: [] }
-      });
-    }
   }
 }
 
@@ -3415,6 +3437,10 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     addPlayableCardActions(actions, state, playerId, cards);
     if (isCombatParticipant(state, playerId)) {
       addPermanentDiscardActions(actions, state, playerId);
+      // A morale token (e.g. gained by playing Leadership mid-battle) may also
+      // be spent for its draw / discard-redraw here; the reroll use is offered
+      // by the attack-die reroll choice instead.
+      addMoraleActions(actions, state, playerId);
     }
     return actions;
   }
@@ -3459,8 +3485,10 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
-  // Town and morale actions may happen during any player's turn.
+  // Town and morale actions may happen during any player's turn. The morale
+  // token's draw / discard-redraw is spendable anywhere, not only at a Town.
   addTownActions(actions, state, playerId);
+  addMoraleActions(actions, state, playerId);
 
   if (state.activePlayerId !== playerId) {
     return actions;

@@ -1264,7 +1264,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "gold",
     type: "flying",
-    neutral: { attack: 5, defense: 2, health: 6, initiative: 9, cost: { gold: 28 }, abilities: [], abilityText: "[unit_attack] After the attack, roll 1 Attack die ; if the result is \"0\", the target must immediately move away 1 space.", cardImage: "/assets/units-neutral-golden-ghost_dragons.webp" },
+    neutral: { attack: 5, defense: 2, health: 6, initiative: 9, cost: { gold: 28 }, abilities: ["ghost-dragon-knockback"], abilityText: "[unit_attack] After the attack, roll 1 Attack die ; if the result is \"0\", the target must immediately move away 1 space.", cardImage: "/assets/units-neutral-golden-ghost_dragons.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/ghost_dragons/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1626,6 +1626,21 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
       product: "Heroes of Might and Magic III: The Board Game",
       credit: "Neutral Tower unit. Stats from the fan wiki units table. Verify against official cards before final release.",
       url: "https://en.homm3bg.wiki/units/iron_golems/"
+    }
+  },
+  "neutral.steel_golems": {
+    id: "neutral.steel_golems",
+    name: "Steel Golems",
+    faction: "neutral",
+    tier: "silver",
+    type: "ground",
+    // No card art converted yet: the board falls back to the named card frame.
+    neutral: { attack: 3, defense: 2, health: 3, initiative: 5, cost: { gold: 12 }, abilities: ["reduce-spell-and-specialty-damage-2"], abilityText: "[unit_passive] Reduce any [damage] this unit takes from spells or Specialty by 2 — to a minimum of 0." },
+    wikiUrl: "https://en.homm3bg.wiki/units/steel_golems/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals 2024)",
+      credit: "Neutral unit. Stats and ability from the fan wiki unit page. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/steel_golems/"
     }
   },
   "neutral.sprites": {

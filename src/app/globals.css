@@ -3144,6 +3144,39 @@ button.hbSlot:disabled { cursor: default; }
   margin-bottom: 10px;
 }
 
+.moraleOverflowBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 6, 3, 0.72);
+  z-index: 85;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.moraleOverflowPopup {
+  width: min(420px, 90vw);
+  background: linear-gradient(180deg, #2c2114, #1d160d);
+  border: 1px solid rgba(220, 175, 95, 0.55);
+  border-radius: 12px;
+  padding: 18px;
+  color: #f0dcb8;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+}
+
+.moraleOverflowPopup p {
+  margin: 8px 0 14px;
+  font-size: 0.92rem;
+  color: #d8c39a;
+}
+
+.moraleOverflowPopup .handButtons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
 .pileModal ul {
   margin: 0;
   padding: 0;

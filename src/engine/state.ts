@@ -2201,6 +2201,13 @@ export type PlayerState = {
   /** +1 positive morale token (max 1) or a single negative token (-1). */
   morale: number;
   /**
+   * Positive morale gained while already at the +1 cap: the token does not
+   * stack, so each extra one must be spent immediately (draw a card, or
+   * discard any number and draw that many). The UI pops up to resolve it;
+   * the reroll use does not apply to these.
+   */
+  moraleOverflow?: number;
+  /**
    * Over the hand limit at the start of the turn: the player must discard
    * down (REFRESH_HAND) before doing anything else.
    */
@@ -3203,9 +3210,16 @@ export type PendingChoice =
         | "skeleton-reinforce"
         | "rogues-scout"
         | "combat-reposition"
+        | "combat-knockback"
         | "cover-of-darkness";
       /** combat-reposition: Harpies' optional fly-back after their attack. */
       reposition?: { unitId: UnitId; originPosition: number };
+      /**
+       * combat-knockback: the Ghost Dragons shoved `unitId` after their attack;
+       * the defender picks which empty space (index-aligned with the options) to
+       * move to. `attackerId` is the Ghost Dragons whose attack triggered it.
+       */
+      knockback?: { unitId: UnitId; attackerId: UnitId; positions: number[] };
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */
