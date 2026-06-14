@@ -20,10 +20,13 @@ Both modes share the rulebook fixes: the second negative morale token resets you
 A second lobby selector picks how the game is won:
 
 - **Conquest** (default) — flag an enemy faction Town.
-- **Grail Hunt** — win any one way: **capture the Grail** (defeat its level-VII guard, spend 1 more movement point to *dig* it, then carry it home to your own town), **defeat the Dragon Utopia** (azure + rust + crystal + faerie dragons), or **beat every enemy hero** in combat at least once (only 2 of the 3 in a 4-player game). The Center tiles are seeded with a Grail and a Dragon Utopia.
+- **Grail Hunt** — win either way: **capture the Grail** (defeat its level-VII guard, spend 1 more movement point to *dig* it, then carry it home to your own town), or **beat every enemy hero** in combat at least once (only 2 of the 3 in a 4-player game). A Grail is seeded on a Center tile; the Dragon Utopia is **not** an objective here.
+- **Dragon Hunt** — win either way: **defeat the Dragon Utopia** (azure + rust + crystal + faerie dragons) — no need to hold it afterwards — or **beat every enemy hero** in combat at least once (only 2 of the 3 in a 4-player game). A Dragon Utopia is seeded on a Center tile.
 - **Dragon Conqueror** — defeating the Dragon Utopia **captures** it instead of winning outright. The holder garrisons it and rivals must **besiege** it (Walls, Gate, Arrow Tower) to take it; controlling it at the start of your turn wins.
 
 A Grail or Dragon Utopia that isn't the active objective is just a normal level-VII fight, rewarding 10 gold and a Relic artifact (Search 2, choose 1).
+
+A third selector, **PvP combat**, chooses what a player-vs-player fight costs: **Lose troops** (the rulebook — destroyed unit cards leave the army and damaged Packs flip to Few) or **Keep troops** (a friendly-fight option — the winner is still decided and the loser still pays gold, loses morale and retreats, but neither army loses any units). Fights against Neutral guards always cost casualties.
 
 ## Adventure mode
 

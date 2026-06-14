@@ -20,10 +20,18 @@ Chosen in the lobby ("Game mode", BINH default), stored on the game state, synce
 | Mode | Status | Rules |
 | --- | --- | --- |
 | **Conquest** | ✅ | Flag an enemy faction Town — the default skirmish goal. |
-| **Grail Hunt** | ✅ | Win any one way: capture the Grail (defeat its Lvl-VII guard, dig it for 1 MP, carry it home to your town), defeat the Dragon Utopia, or beat every enemy hero in combat at least once (only 2 of 3 in a 4-player game). A Grail and a Dragon Utopia are forced onto the Center tiles. |
+| **Grail Hunt** | ✅ | Win either way: capture the Grail (defeat its Lvl-VII guard, dig it for 1 MP, carry it home to your town), or beat every enemy hero in combat at least once (only 2 of 3 in a 4-player game). A Grail is forced onto a Center tile; the Dragon Utopia is **not** an objective here. |
+| **Dragon Hunt** | ✅ | Win either way: defeat the Dragon Utopia (no need to hold it afterwards), or beat every enemy hero in combat at least once (only 2 of 3 in a 4-player game). A Dragon Utopia is forced onto a Center tile. |
 | **Dragon Conqueror** | ✅ | Defeat the Dragon Utopia to capture it; the holder garrisons it and rivals must besiege it (Walls/Gate/Arrow Tower). Controlling it at the start of your turn wins. |
 
 Non-objective Grail/Dragon Utopia fields are normal Lvl-VII fights rewarding 10 gold + a Relic artifact (Search 2, choose 1).
+
+### PvP troop loss (`PvP combat` lobby selector, `AdventureState.pvpTroopLoss`)
+
+| Option | Status | Rules |
+| --- | --- | --- |
+| **Lose troops** (default) | ✅ | A player-vs-player Combat costs casualties: destroyed unit cards leave the army and damaged Packs flip to Few. |
+| **Keep troops** | ✅ | After a player-vs-player Combat neither side loses a unit card or has a Pack downgraded. The winner is still decided (loser pays gold, loses morale and retreats home). Fights against Neutral guards are unaffected. |
 
 Rules-correctness fixes applied to **both** modes (rulebook/wiki): second negative morale token resets morale to neutral *and* discards the hand at turn end; activation-timed spells (Magic Arrow, Fireball…) cast during your own unit's activation; instant spells (Bloodlust, Stone Skin, Curse, Weakness, Bless, Precision…) play **into attack windows**, scale with Power played alongside them and count the 1-spell/round limit; every Spell card may instead be discarded for its printed "+1 Power"; Empower stacks across plays; ongoing cards last until the owner's **next** turn starts; Offense/Armorer draw their printed card; Magic Arrow starts at power 0.
 
@@ -63,7 +71,7 @@ Rules-correctness fixes applied to **both** modes (rulebook/wiki): second negati
 | Spell Scroll (Stronghold) | ✅ | Take a scroll and draw **2 Spells** into it — the visitor picks the Basic or Expert Magic deck per draw (the single Spell deck in Legacy). The scroll sits next to the hero (📜 badge, not in hand; contents hidden from opponents). Either spell may be **cast in combat at power 0** — it cannot be buffed by any Power source (Power cards, +1 discards, School of Magic, town cubes, Astrologers) and is never the expert side — through the normal cast/instant timing windows; using it removes it from the game. The spell still counts toward the one-spell-per-combat-round limit. Spells may also be **sold at the market for 2 gold** each. An emptied scroll is discarded. Tested in `spell-scroll.test.ts`. |
 | War Machine Factory | ✅ | Sells the five war machines at their lower price (shared one-copy supply; bought cards go to the buyer's hand and then live in their deck). |
 | Obelisk | 🟡 | Flaggable shell; scenario-specific effects pending. |
-| Dragon Utopia / Grail | ✅ | Win-condition aware (Grail Hunt / Dragon Conqueror); otherwise a Lvl-VII fight giving 10 gold + a Relic artifact. Dragon Utopia is guarded by the four dragons; Cyclops Stockpile adds 2 golden Cyclopes. |
+| Dragon Utopia / Grail | ✅ | Win-condition aware (Grail wins in Grail Hunt; Dragon Utopia wins in Dragon Hunt / is captured in Dragon Conqueror); otherwise a Lvl-VII fight giving 10 gold + a Relic artifact. Dragon Utopia is guarded by the four dragons; Cyclops Stockpile adds 2 golden Cyclopes. |
 | Star Axis | ✅ | Multi-flaggable; first visit empowers one hand Statistic card (Inferno Empowered statistics added). |
 | Library of Enlightenment | ✅ | Pay 3 gold to swap a Statistic (hand or discard) for any other, up to twice per visit. |
 | Black Market | ✅ | Buy one artifact from the discard pile by rarity (5/7/10 gold). |

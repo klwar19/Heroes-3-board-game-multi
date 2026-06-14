@@ -43,6 +43,8 @@ export {
 export { getPlayerView } from "./player-view";
 export { createSeededRandom } from "./random";
 export {
+  PVP_TROOP_LOSS_DESCRIPTIONS,
+  PVP_TROOP_LOSS_LABELS,
   RULESET_DESCRIPTIONS,
   RULESET_LABELS,
   VICTORY_MODE_DESCRIPTIONS,

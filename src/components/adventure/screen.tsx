@@ -14,6 +14,8 @@ import { locationDefinitions } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
   NEUTRAL_DECK_IDS,
+  PVP_TROOP_LOSS_DESCRIPTIONS,
+  PVP_TROOP_LOSS_LABELS,
   RULESET_DESCRIPTIONS,
   RULESET_LABELS,
   VICTORY_MODE_DESCRIPTIONS,
@@ -1142,7 +1144,9 @@ export function AdventureHud({
           status =
             grail?.status === "carried" && grail.carrierHeroId
               ? `Grail carried by ${state.players[state.heroes[grail.carrierHeroId]?.controllerId ?? ""]?.name ?? "a hero"}`
-              : "capture the Grail / a Utopia / all heroes";
+              : "capture the Grail / beat all heroes";
+        } else if (mode === "dragon-hunt") {
+          status = "defeat the Dragon Utopia / beat all heroes";
         } else if (mode === "dragon-conqueror") {
           const holder = Object.values(state.adventure?.fields ?? {}).find(
             (field) => field.location === "dragon_utopia" && field.flagOwnerId
@@ -2695,7 +2699,7 @@ function GameOptionsPanel({
           <div className="optionRow">
             <small title="How this game is won">Win condition</small>
             <div className="optionButtons">
-              {(["conquest", "grail", "dragon-conqueror"] as const).map((mode) => (
+              {(["conquest", "grail", "dragon-hunt", "dragon-conqueror"] as const).map((mode) => (
                 <button
                   aria-pressed={victoryMode === mode}
                   className={victoryMode === mode ? "selected" : ""}
@@ -2709,6 +2713,30 @@ function GameOptionsPanel({
               ))}
             </div>
             <small className="optionHint">{VICTORY_MODE_DESCRIPTIONS[victoryMode]}</small>
+          </div>
+        );
+      })()}
+
+      {(() => {
+        const pvpTroopLoss = options.pvpTroopLoss ?? "normal";
+        return (
+          <div className="optionRow">
+            <small title="Whether player-vs-player Combat costs the fighters their dead units">PvP combat</small>
+            <div className="optionButtons">
+              {(["normal", "none"] as const).map((mode) => (
+                <button
+                  aria-pressed={pvpTroopLoss === mode}
+                  className={pvpTroopLoss === mode ? "selected" : ""}
+                  key={mode}
+                  onClick={() => send({ pvpTroopLoss: mode })}
+                  title={PVP_TROOP_LOSS_DESCRIPTIONS[mode]}
+                  type="button"
+                >
+                  {PVP_TROOP_LOSS_LABELS[mode]}
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">{PVP_TROOP_LOSS_DESCRIPTIONS[pvpTroopLoss]}</small>
           </div>
         );
       })()}

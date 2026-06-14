@@ -28,7 +28,8 @@ import {
   NEUTRAL_DECK_IDS,
   seaTileBand,
   startAdventureRound,
-  startPlayerTurn
+  startPlayerTurn,
+  victoryModeCountsHeroDefeats
 } from "./adventure";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { createSeededRandom } from "./random";
@@ -48,6 +49,7 @@ import type {
   GameState,
   PlayerId,
   PlayerState,
+  PvpTroopLoss,
   UnitLevel,
   VictoryMode
 } from "./state";
@@ -63,8 +65,10 @@ export type AdventurePlayerConfig = {
 export type AdventureSetupOptions = {
   seed?: string;
   ruleset?: GameRuleset;
-  /** Win condition: "conquest" (flag enemy town) or "grail" (objective hunt). */
+  /** Win condition: "conquest", "grail", "dragon-hunt" or "dragon-conqueror". */
   victoryMode?: VictoryMode;
+  /** PvP Combat casualties: "normal" (lose dead units) or "none" (keep troops). */
+  pvpTroopLoss?: PvpTroopLoss;
   difficulty?: GameDifficulty;
   scenarioId?: string;
   players?: AdventurePlayerConfig[];
@@ -120,6 +124,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     playerCount: scenario.minPlayers,
     ruleset: "binh",
     victoryMode: "conquest",
+    pvpTroopLoss: "normal",
     difficulty: "impossible",
     startingResources: { ...scenario.startingResources },
     startingProduction: { ...scenario.startingProduction },
@@ -486,22 +491,19 @@ function takeCenterTileWith(pool: string[], location: string): string | undefine
 
 /**
  * Center (VI–VII) tiles forced by the win condition: Grail Hunt guarantees a
- * Grail (and a Dragon Utopia when a second Center slot exists); Dragon
- * Conqueror guarantees a Dragon Utopia. The array is index-aligned with the
- * scenario's Center positions; undefined entries fall back to a random draw.
+ * Grail; Dragon Hunt and Dragon Conqueror guarantee a Dragon Utopia. The array
+ * is index-aligned with the scenario's Center positions; undefined entries fall
+ * back to a random draw. Grail Hunt no longer forces a Dragon Utopia — it is
+ * not an objective there, so any second Center tile is drawn at random.
  */
 function forcedObjectiveCenterTiles(pool: string[], slots: number, mode: VictoryMode): (string | undefined)[] {
   if (slots <= 0) {
     return [];
   }
   if (mode === "grail") {
-    const forced: (string | undefined)[] = [takeCenterTileWith(pool, "grail")];
-    if (slots >= 2) {
-      forced.push(takeCenterTileWith(pool, "dragon_utopia"));
-    }
-    return forced;
+    return [takeCenterTileWith(pool, "grail")];
   }
-  if (mode === "dragon-conqueror") {
+  if (mode === "dragon-hunt" || mode === "dragon-conqueror") {
     return [takeCenterTileWith(pool, "dragon_utopia")];
   }
   return [];
@@ -514,6 +516,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...defaultGameSetupOptions(scenario),
     ...(options.ruleset ? { ruleset: options.ruleset } : {}),
     ...(options.victoryMode ? { victoryMode: options.victoryMode } : {}),
+    ...(options.pvpTroopLoss ? { pvpTroopLoss: options.pvpTroopLoss } : {}),
     ...(options.difficulty ? { difficulty: options.difficulty } : {}),
     ...(options.startingResources ? { startingResources: options.startingResources } : {}),
     ...(options.startingProduction ? { startingProduction: options.startingProduction } : {}),
@@ -525,6 +528,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const difficulty = setupOptions.difficulty;
   const ruleset: GameRuleset = setupOptions.ruleset;
   const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
+  const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
   const playerConfigs = (options.players?.length ? options.players : DEFAULT_PLAYERS).slice(
     0,
     Math.min(scenario.maxPlayers, scenario.layout.starts.length)
@@ -545,7 +549,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     lastVisitedField: {},
     winnerPlayerId: null,
     victoryMode,
-    ...(victoryMode === "grail" ? { grail: { status: "uncollected" as const }, heroDefeats: {} } : {}),
+    pvpTroopLoss,
+    ...(victoryMode === "grail" ? { grail: { status: "uncollected" as const } } : {}),
+    // Grail Hunt and Dragon Hunt both track the "defeat every enemy hero" path.
+    ...(victoryModeCountsHeroDefeats(victoryMode) ? { heroDefeats: {} } : {}),
     pendingTileChoice: null,
     astrologers: {
       activeCardId: null,
@@ -993,11 +1000,20 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   }
 
   if (next.victoryMode !== undefined) {
-    if (next.victoryMode !== "conquest" && next.victoryMode !== "grail" && next.victoryMode !== "dragon-conqueror") {
+    const validVictoryModes: VictoryMode[] = ["conquest", "grail", "dragon-hunt", "dragon-conqueror"];
+    if (!validVictoryModes.includes(next.victoryMode)) {
       throw new Error("Unknown win condition.");
     }
     lobby.options.victoryMode = next.victoryMode;
     changes.push(`win condition ${VICTORY_MODE_LABELS[next.victoryMode]}`);
+  }
+
+  if (next.pvpTroopLoss !== undefined) {
+    if (next.pvpTroopLoss !== "normal" && next.pvpTroopLoss !== "none") {
+      throw new Error("Unknown PvP troop-loss option.");
+    }
+    lobby.options.pvpTroopLoss = next.pvpTroopLoss;
+    changes.push(`PvP combat ${next.pvpTroopLoss === "none" ? "keeps troops" : "loses troops"}`);
   }
 
   if (next.scenarioId !== undefined) {
@@ -1205,6 +1221,7 @@ export function startAdventureFromLobby(state: GameState, action: Extract<GameAc
     scenarioId: lobby.options.scenarioId,
     ruleset: lobby.options.ruleset,
     victoryMode: lobby.options.victoryMode,
+    pvpTroopLoss: lobby.options.pvpTroopLoss,
     difficulty: lobby.options.difficulty,
     startingResources: lobby.options.startingResources,
     startingProduction: lobby.options.startingProduction,

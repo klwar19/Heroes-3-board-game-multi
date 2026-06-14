@@ -270,7 +270,8 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "ADD_COMBAT_STAT") {
     const doubled = card.effect.doubleForUnitName ? ` (x2 for ${card.effect.doubleForUnitName})` : "";
-    return `+${card.effect.amount} ${card.effect.stat}, expert +${card.effect.expertAmount ?? card.effect.amount}${doubled}`;
+    const draw = card.effect.drawCards ? `, then draw ${card.effect.drawCards}` : "";
+    return `+${card.effect.amount} ${card.effect.stat}, expert +${card.effect.expertAmount ?? card.effect.amount}${doubled}${draw}`;
   }
 
   if (card.effect.type === "TRIPLE_ATTACK_DIE") {
@@ -286,7 +287,8 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "ADD_SPELL_POWER") {
-    return `+${card.effect.amount} power, expert +${card.effect.expertAmount ?? card.effect.amount}`;
+    const draw = card.effect.drawCards ? `, then draw ${card.effect.drawCards}` : "";
+    return `+${card.effect.amount} power, expert +${card.effect.expertAmount ?? card.effect.amount}${draw}`;
   }
 
   if (card.effect.type === "CREATE_ACTIVE_EFFECT") {

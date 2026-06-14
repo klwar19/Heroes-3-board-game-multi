@@ -5,6 +5,7 @@ import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
   addArmyUnit,
+  adventurePvpTroopLoss,
   adventureVictoryMode,
   armyHasMapEffect,
   beginFieldVisit,
@@ -49,6 +50,7 @@ import {
   swapNeutralDraw,
   townHasBuildingEffect,
   unlockedRecruitTiers,
+  victoryModeCountsHeroDefeats,
   type NeutralDraw
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
@@ -2109,6 +2111,12 @@ export function finalizeAdventureCombat(state: GameState): void {
   const context = combat.context;
   const outcome = combat.outcome;
 
+  // "Keep troops" option: a player-vs-player fight spares both armies. The
+  // winner is still decided below, but no unit card is removed and no Pack is
+  // downgraded — the army cards stay exactly as they entered the fight. Fights
+  // against Neutral guards always cost casualties as normal.
+  const keepTroops = context.kind === "player" && adventurePvpTroopLoss(state) === "none";
+
   // Sync army cards with what happened on the board.
   for (const unit of Object.values(combat.units)) {
     if (unit.controllerId === NEUTRAL_PLAYER_ID) {
@@ -2119,6 +2127,13 @@ export function finalizeAdventureCombat(state: GameState): void {
         const deck = state.decks[NEUTRAL_DECK_IDS[def as "bronze" | "silver" | "gold" | "azure"]];
         deck?.discardPile.push(unit.unitDefId);
       }
+      continue;
+    }
+
+    // The army card is left untouched: dead units survive and Packs are not
+    // flipped to Few (a defeated Sandro's Cloak still peeled to the discard
+    // pile mid-combat — that recyclable card is not a "troop").
+    if (keepTroops) {
       continue;
     }
 
@@ -2245,10 +2260,11 @@ export function finalizeAdventureCombat(state: GameState): void {
     changeMorale(state, loserId, -1);
     moveDefeatedHeroHome(state, loserHero);
 
-    // Grail Hunt: beating an enemy main hero counts toward the "defeat every
-    // enemy hero at least once" win path (only 2 of the 3 in a 4-player game).
+    // Grail Hunt & Dragon Hunt: beating an enemy main hero counts toward the
+    // "defeat every enemy hero at least once" win path (only 2 of the 3 in a
+    // 4-player game).
     if (
-      adventureVictoryMode(state) === "grail" &&
+      victoryModeCountsHeroDefeats(adventureVictoryMode(state)) &&
       loserHero.kind === "main" &&
       winnerId !== NEUTRAL_PLAYER_ID &&
       loserId !== winnerId

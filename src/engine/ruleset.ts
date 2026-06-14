@@ -38,18 +38,32 @@ export const RULESET_DESCRIPTIONS: Record<GameRuleset, string> = {
 export const VICTORY_MODE_LABELS: Record<VictoryMode, string> = {
   conquest: "Conquest",
   grail: "Grail Hunt",
+  "dragon-hunt": "Dragon Hunt",
   "dragon-conqueror": "Dragon Conqueror"
 };
 
 export const VICTORY_MODE_DESCRIPTIONS: Record<VictoryMode, string> = {
   conquest: "Flag an enemy faction Town to win — the classic skirmish goal.",
   grail:
-    "Win any one way: capture the Grail (defeat its Lvl-VII guard, dig it for 1 movement point, then carry it " +
-    "home to your town), defeat the Dragon Utopia, or beat every enemy hero in combat at least once " +
-    "(only 2 of the 3 in a 4-player game). A Grail and a Dragon Utopia are guaranteed on the Center tiles.",
+    "Win either way: capture the Grail (defeat its Lvl-VII guard, dig it for 1 movement point, then carry it " +
+    "home to your town), or beat every enemy hero in combat at least once (only 2 of the 3 in a 4-player game). " +
+    "A Grail is guaranteed on a Center tile; the Dragon Utopia is just a creature bank here.",
+  "dragon-hunt":
+    "Win either way: defeat the Dragon Utopia (no need to hold it afterwards), or beat every enemy hero in combat " +
+    "at least once (only 2 of the 3 in a 4-player game). A Dragon Utopia is guaranteed on a Center tile.",
   "dragon-conqueror":
     "Defeat the Dragon Utopia to capture it, then hold it. The holder garrisons the Utopia and rivals must " +
     "besiege it (Walls, Gate, Arrow Tower) to take it. Control the Utopia at the start of your turn to win."
+};
+
+export const PVP_TROOP_LOSS_LABELS: Record<"normal" | "none", string> = {
+  normal: "Lose troops",
+  none: "Keep troops"
+};
+
+export const PVP_TROOP_LOSS_DESCRIPTIONS: Record<"normal" | "none", string> = {
+  normal: "Player-vs-player Combat costs casualties as normal: destroyed unit cards leave the army and damaged Packs flip to Few.",
+  none: "Friendly fights: after a player-vs-player Combat neither side loses any units. The winner is still decided (the loser pays gold, loses morale and retreats), but no troops are lost. Fights against Neutral guards are unaffected."
 };
 
 // ---------------------------------------------------------------------------

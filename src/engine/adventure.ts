@@ -1024,6 +1024,23 @@ export function adventureVictoryMode(state: GameState): VictoryMode {
   return state.adventure?.victoryMode ?? "conquest";
 }
 
+/**
+ * Whether a player-vs-player Combat keeps both armies intact. Absent on old
+ * snapshots means "normal" (casualties are lost, the rulebook outcome).
+ */
+export function adventurePvpTroopLoss(state: GameState): "normal" | "none" {
+  return state.adventure?.pvpTroopLoss ?? "normal";
+}
+
+/**
+ * Whether the "defeat every enemy hero" path can win this game. Shared by the
+ * Grail Hunt and Dragon Hunt modes — both let a player win by military
+ * dominance even if they never reach the objective creature bank.
+ */
+export function victoryModeCountsHeroDefeats(mode: VictoryMode): boolean {
+  return mode === "grail" || mode === "dragon-hunt";
+}
+
 /** Ends the game with a winner and the reason shown in the log. */
 export function declareAdventureWinner(state: GameState, playerId: PlayerId, reason: string): void {
   if (!state.adventure) {
@@ -1118,14 +1135,15 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
 
 /**
  * Dragon Utopia visit (after its four dragons are defeated):
- *  - Grail Hunt: defeating the Utopia wins outright.
+ *  - Dragon Hunt: defeating the Utopia wins outright (no need to hold it).
  *  - Dragon Conqueror: the victor captures and must hold it; rivals besiege it.
- *  - Conquest: a normal Lvl-VII fight rewarding gold and a Relic artifact.
+ *  - Grail Hunt & Conquest: a normal Lvl-VII creature bank rewarding gold and a
+ *    Relic artifact — the Utopia is NOT a win condition in those modes.
  */
 function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFieldState): void {
   const mode = adventureVictoryMode(state);
 
-  if (mode === "grail") {
+  if (mode === "dragon-hunt") {
     declareAdventureWinner(state, hero.controllerId, "defeated the Dragon Utopia");
     return;
   }
