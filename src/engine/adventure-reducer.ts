@@ -2063,6 +2063,19 @@ export function resolveSiegeGateChoice(state: GameState, playerId: PlayerId, opt
   });
 
   beginPlayerCombatRounds(state);
+
+  // Blood Obelisk: "instantly, after your Town has been sieged, Search(4) your
+  // discard pile." Opens for the besieged defender at the start of the siege —
+  // opened directly because the reward-queue pump is gated off mid-combat.
+  if (!state.pendingChoice) {
+    const obeliskId = getTownOfPlayer(state, playerId)?.buildings.find(
+      (id) => coreBuildingDefinitions[id]?.effect?.type === "RESOURCE_ROUND_SEARCH_DISCARD"
+    );
+    const obeliskEffect = obeliskId ? coreBuildingDefinitions[obeliskId]?.effect : undefined;
+    if (obeliskEffect?.type === "RESOURCE_ROUND_SEARCH_DISCARD") {
+      openDiscardPickChoice(state, playerId, { count: 1, fromTop: obeliskEffect.count });
+    }
+  }
 }
 
 export function continueNeutralCombat(
@@ -3276,6 +3289,15 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
         });
       }
     }
+    if (option.tradingPost) {
+      // Fortress City Hall: open a Trading Post to exchange resources, exactly
+      // like stepping onto a Trading Post field.
+      state.adventure?.rewardQueue.push({
+        playerId: action.playerId,
+        kind: "visit-steps",
+        steps: [{ type: "TRADING_POST" }]
+      });
+    }
   }
 
   cityHallChoiceBeingResolved = null;
@@ -3298,6 +3320,7 @@ let cityHallChoiceBeingResolved: {
     movement?: number;
     drawCards?: number;
     reinforceBronzeFree?: boolean;
+    tradingPost?: boolean;
   }[];
 } | null = null;
 
@@ -3557,6 +3580,64 @@ export function openSharedDeckSearch(state: GameState, playerId: PlayerId, deckI
 // ---------------------------------------------------------------------------
 
 /**
+/**
+ * Opens a "Search(N) your discard pile, take 1" choice (Scholar, Rib Cage,
+ * Blood Obelisk). Returns false (opening nothing) when no card qualifies, so
+ * callers can fall through. Used both by the reward-queue pump and directly by
+ * the Blood Obelisk siege trigger (which fires mid-combat, where the pump is
+ * gated off).
+ */
+function openDiscardPickChoice(
+  state: GameState,
+  playerId: PlayerId,
+  pick: { count: number; filter?: "spell" | "non-artifact" | "specialty"; fromTop?: number; shuffleRestIntoDeck?: boolean }
+): boolean {
+  const player = state.players[playerId];
+  if (!player) {
+    return false;
+  }
+
+  const pool = pick.fromTop ? player.discard.slice(-pick.fromTop) : [...player.discard];
+  const candidates = pool.filter((cardId) => {
+    const kind = cardLibrary[cardId]?.kind;
+    if (pick.filter === "spell") {
+      return kind === "spell";
+    }
+    if (pick.filter === "non-artifact") {
+      return kind !== "artifact";
+    }
+    if (pick.filter === "specialty") {
+      return kind === "hero-specialty";
+    }
+    return true;
+  });
+
+  if (candidates.length === 0) {
+    return false;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Take a card from your discard pile${pick.count > 1 ? ` (${pick.count} left)` : ""}`,
+    options: candidates.map((cardId) => ({ label: `Take ${cardLibrary[cardId]?.name ?? cardId}` })),
+    context: "discard-pick",
+    discardPick: {
+      cardIds: candidates,
+      remaining: pick.count,
+      filter: pick.filter,
+      fromTop: pick.fromTop,
+      shuffleRestIntoDeck: pick.shuffleRestIntoDeck
+    },
+    returnPhase: state.combat ? "combat" : "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  return true;
+}
+
+/**
  * Opens the next queued reward when nothing else is waiting on input. Deck
  * searches reuse the shared DECK_SEARCH pending choice; City Hall choices
  * open an OPTION_CHOICE.
@@ -3639,50 +3720,17 @@ export function pumpAdventureQueues(state: GameState): void {
 
     if (reward.kind === "discard-pick") {
       adventure.rewardQueue.shift();
-      const player = state.players[reward.playerId];
-      if (!player) {
-        continue;
-      }
-
-      const pool = reward.fromTop ? player.discard.slice(-reward.fromTop) : [...player.discard];
-      const candidates = pool.filter((cardId) => {
-        const kind = cardLibrary[cardId]?.kind;
-        if (reward.filter === "spell") {
-          return kind === "spell";
-        }
-        if (reward.filter === "non-artifact") {
-          return kind !== "artifact";
-        }
-        if (reward.filter === "specialty") {
-          return kind === "hero-specialty";
-        }
-        return true;
-      });
-
-      if (candidates.length === 0) {
-        continue;
-      }
-
-      const choiceId = `choice_${nextEventNumber(state)}`;
-      state.pendingChoice = {
-        id: choiceId,
-        type: "OPTION_CHOICE",
-        playerId: reward.playerId,
-        prompt: `Take a card from your discard pile${reward.count > 1 ? ` (${reward.count} left)` : ""}`,
-        options: candidates.map((cardId) => ({ label: `Take ${cardLibrary[cardId]?.name ?? cardId}` })),
-        context: "discard-pick",
-        discardPick: {
-          cardIds: candidates,
-          remaining: reward.count,
+      if (
+        openDiscardPickChoice(state, reward.playerId, {
+          count: reward.count,
           filter: reward.filter,
           fromTop: reward.fromTop,
           shuffleRestIntoDeck: reward.shuffleRestIntoDeck
-        },
-        returnPhase: state.combat ? "combat" : "player-turn"
-      };
-      state.phase = "choice";
-      state.priorityPlayerId = reward.playerId;
-      return;
+        })
+      ) {
+        return;
+      }
+      continue;
     }
 
     if (reward.kind === "city-hall-choice") {

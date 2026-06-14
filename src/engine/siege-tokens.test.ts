@@ -177,6 +177,38 @@ describe("siege combat", () => {
     return state;
   }
 
+  it("Blood Obelisk lets the besieged town Search(4) its discard pile", () => {
+    let state = makeSiegeReady();
+    state.towns.town_p2.buildings.push("fortress.blood_obelisk");
+    state.players.p2.discard = ["spell.magic_arrow", "stat.attack"];
+
+    state = applyOk(state, {
+      type: "MOVE_HERO",
+      playerId: "p1",
+      heroId: "hero_p1",
+      to: state.towns.town_p2.fieldId ?? ""
+    });
+    state = placeArmies(state);
+
+    const gate = state.pendingChoice;
+    expect(gate?.type).toBe("OPTION_CHOICE");
+    if (gate?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the siege-gate choice");
+    }
+    expect(gate.context).toBe("siege-gate");
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p2", choiceId: gate.id, optionIndex: 1 });
+
+    // Placing the fortifications immediately opens the Blood Obelisk Search(4)
+    // for the besieged player (p2).
+    const search = state.pendingChoice;
+    expect(search?.type).toBe("OPTION_CHOICE");
+    if (search?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the Blood Obelisk discard-pick");
+    }
+    expect(search.context).toBe("discard-pick");
+    expect(search.playerId).toBe("p2");
+  });
+
   it("raises walls, gate and arrow tower when a citadel town is attacked", () => {
     let state = makeSiegeReady();
     state = applyOk(state, {
