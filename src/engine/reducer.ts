@@ -99,6 +99,7 @@ import {
   getActiveDefenseBonus,
   getAttackRerollEffects,
   makeActiveEffect,
+  playerHasSpellTimingFreedom,
   releaseEndedOngoingCards,
   unitDealsElementalDamage
 } from "./active-effects";
@@ -122,7 +123,9 @@ import {
   getLegalMoveDestinations,
   getLegalReactionsForTrigger,
   getNextUnitToActivate,
+  getOffTurnCombatReactions,
   isAdjacent,
+  isHandLockedInCombat,
   isUnitAlive,
   rerollSourceAvailableFor,
   spellRedirectTargets
@@ -940,7 +943,8 @@ function getAttackDamagePreview(
   defenseBonus: number,
   dieMultiplier = 1,
   baseAttackOverride?: number,
-  damageReduction = 0
+  damageReduction = 0,
+  ignoreDefense = false
 ): { attackValue: number; defenseValue: number; damage: number; dieAttackBonus: number; dieDefenseBonus: number } {
   // Attack-die-face conditioned modifiers, resolved here so the actual hit and
   // the lethal-save preview always agree: Dread Knights' "Death Blow" adds to
@@ -950,7 +954,9 @@ function getAttackDamagePreview(
   const dieDefenseBonus = getDefenseBonusOnAttackDie(defender, roll);
   const baseAttack = baseAttackOverride ?? attacker.attack;
   const attackValue = Math.max(0, baseAttack + attackBonus + dieAttackBonus + roll * dieMultiplier);
-  const defenseValue = defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonus + dieDefenseBonus;
+  // Elemental damage ignores Defense outright; otherwise sum printed Defense,
+  // the Defense token, played Defense buffs and any die-face Defense bonus.
+  const defenseValue = ignoreDefense ? 0 : defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonus + dieDefenseBonus;
   // Siege wall cover: "reduce the attack's damage by 1" comes off the damage,
   // not the defense.
   const damage = Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
@@ -976,7 +982,9 @@ function applyAttackDamageFromCandidate(
   dieMultiplier = 1,
   baseAttackOverride?: number,
   damageReduction = 0,
-  lethalCancel?: { grade: UnitGrade }
+  lethalCancel?: { grade: UnitGrade },
+  ignoreDefense = false,
+  noDie = false
 ): { damage: number; roll: number; cancelled: boolean } {
   if (!state.combat) {
     return { damage: 0, roll: 0, cancelled: false };
@@ -990,7 +998,8 @@ function applyAttackDamageFromCandidate(
     defenseBonus,
     dieMultiplier,
     baseAttackOverride,
-    damageReduction
+    damageReduction,
+    ignoreDefense
   );
   // Reported bonuses fold in the die-face-conditioned deltas so the event's
   // numbers reconcile with the resolved attack/defense values.
@@ -1013,6 +1022,7 @@ function applyAttackDamageFromCandidate(
       rolls: candidate.rolls,
       roll: candidate.roll,
       ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
+      ...(noDie ? { noDie: true } : {}),
       rollMode,
       attackBonus: reportedAttackBonus,
       defenseBonus: reportedDefenseBonus,
@@ -1041,6 +1051,7 @@ function applyAttackDamageFromCandidate(
     rolls: candidate.rolls,
     roll: candidate.roll,
     ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
+    ...(noDie ? { noDie: true } : {}),
     rollMode,
     attackBonus: reportedAttackBonus,
     defenseBonus: reportedDefenseBonus,
@@ -1153,8 +1164,14 @@ function getAttackStackDetails(
       attackBonus: number;
       defenseBonus: number;
       dieMultiplier: number;
-      /** Bless: the Attack die is skipped and counts as 0. */
+      /** Bless / Elemental damage: the Attack die is skipped and counts as 0. */
       ignoreAttackDie: boolean;
+      /**
+       * Elemental damage: the defender's Defense is ignored entirely (printed
+       * Defense, Defense token, and any Defense buffs), so the hit lands for the
+       * attacker's full Attack value.
+       */
+      ignoreDefense: boolean;
       /** Siege wall cover: damage knocked off a ranged hit (0 or 1). */
       damageReduction: number;
       /** Behemoths: the announced defense reduction applied to this attack. */
@@ -1279,7 +1296,10 @@ function getAttackStackDetails(
       retaliationAttackPenalty,
     defenseBonus: defenseBonusBeforeAbility - defenseReductionAmount + retaliationDefenseBonus,
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
-    ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie),
+    // Elemental damage never rolls the Attack die and ignores Defense entirely:
+    // the hit always lands for the (un-buffable) Attack value.
+    ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie) || dealsElemental,
+    ignoreDefense: dealsElemental,
     damageReduction: siegeRangedDamageReduction(combat, attacker, defender, attackKind),
     defenseReductionAbility,
     abilityAttack
@@ -1673,7 +1693,8 @@ function finishResolvedAttack(
       details.defenseBonus,
       details.dieMultiplier,
       details.abilityAttack?.baseAttack,
-      details.damageReduction
+      details.damageReduction,
+      details.ignoreDefense
     );
     if (preview.damage > 0 && details.defender.damage + preview.damage >= details.defender.maxHealth) {
       stackItem.modifiers.rolledCandidate = candidate;
@@ -1715,7 +1736,9 @@ function finishResolvedAttack(
     details.dieMultiplier,
     details.abilityAttack?.baseAttack,
     details.damageReduction,
-    lethalCancel
+    lethalCancel,
+    details.ignoreDefense,
+    details.ignoreAttackDie
   );
 
   // Alamar's Resurrection cancelled the whole attack: the attacker still spent
@@ -2854,6 +2877,10 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   activeUnit.movedThisActivation = false;
   activeUnit.attackedThisActivation = false;
   activeUnit.attacksThisActivation = 0;
+  // A fresh activation may open one pre-activation reaction pause for the
+  // opposing side (resolved once, then this guards against re-opening it after
+  // the reacting player casts/plays during the pause).
+  activeUnit.reactionPauseAcked = false;
   // Remember where the unit started this activation (Harpy fly-back) and reset
   // the once-per-activation "[activation]" choice flag (Enchanters/Faeries).
   activeUnit.activationStartPosition = activeUnit.position;
@@ -2946,21 +2973,41 @@ function advanceActiveUnit(state: GameState): void {
 }
 
 /**
- * Clears a paused neutral walk so the next guard can act. Only the player
- * running the fight (the attacker) clicks the enemy turn on; the pump in
- * runAdventureAutomations picks the activation back up afterwards.
+ * Resolves the current combat pause so the fight resumes. Only the player who
+ * holds the pause (the reacting side) clicks it on; the pump in
+ * runAdventureAutomations picks the activation back up afterwards:
+ *
+ *  - "pre-activation": the reacting side is done casting/reacting — mark the
+ *    unit so the pump runs its activation (a guard acts; a player-vs-player
+ *    unit is handed back to its controller) instead of re-opening the pause.
+ *  - "guard-walk": the table clicked the guard's walk on — advance to the next
+ *    unit (the walking guard's activation already ended).
  */
 function continueNeutralStep(
   state: GameState,
   action: Extract<GameAction, { type: "CONTINUE_NEUTRAL_STEP" }>
 ): void {
   const combat = state.combat;
-  if (!combat?.pendingNeutralStep) {
-    throw new Error("No enemy move is waiting to continue.");
+  const pause = combat?.pendingNeutralStep;
+  if (!combat || !pause) {
+    throw new Error("No combat pause is waiting to continue.");
   }
-  if (action.playerId !== combat.attackerPlayerId) {
-    throw new Error("Only the attacking player can continue the enemy turn.");
+  const reactor = pause.reactingPlayerId ?? combat.attackerPlayerId;
+  if (action.playerId !== reactor) {
+    throw new Error("Only the reacting player can continue the combat.");
   }
+
+  if (pause.kind === "pre-activation") {
+    const unit = combat.units[pause.unitId];
+    if (unit) {
+      unit.reactionPauseAcked = true;
+    }
+    combat.pendingNeutralStep = null;
+    // Leave activeUnitId as-is: the pump runs the guard's activation, or hands
+    // a player-vs-player unit back to its controller to drive.
+    return;
+  }
+
   combat.pendingNeutralStep = null;
   advanceActiveUnit(state);
 }
@@ -4440,6 +4487,8 @@ function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, ca
     return;
   }
 
+  // A fresh play clears everyone's earlier pass so opponents get a new chance
+  // to respond once this player is finished.
   state.reactionWindow.passedPlayerIds = [];
   refreshReactionWindowLegalReactions(state, cards);
 
@@ -4449,11 +4498,18 @@ function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, ca
     return;
   }
 
+  // The player who just acted KEEPS priority so they can commit several
+  // instants in a row before opponents respond — e.g. stacking Power on their
+  // own spell cast. This matches the board game, where the caster finishes
+  // empowering and only then is Resistance / a counter decided against the
+  // FINAL power. Priority moves on only when they pass (passReaction) or run
+  // out of legal plays (then refreshReactionWindowLegalReactions hands it to
+  // the next allowed player). Previously priority advanced after a single
+  // play, stranding a caster who wanted to add a second Power card.
   const allowedPlayerIds = state.reactionWindow.allowedPlayerIds;
-  const currentIndex = allowedPlayerIds.indexOf(playerId);
-  const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % allowedPlayerIds.length;
-  state.reactionWindow.priorityPlayerId = allowedPlayerIds[nextIndex];
-  state.priorityPlayerId = allowedPlayerIds[nextIndex];
+  const keepPriority = allowedPlayerIds.includes(playerId) ? playerId : allowedPlayerIds[0];
+  state.reactionWindow.priorityPlayerId = keepPriority;
+  state.priorityPlayerId = keepPriority;
 }
 
 /**
@@ -6636,12 +6692,10 @@ function executeNeutralActivation(
       from,
       to: intent.destination
     });
-    // Neutral fights pace one walk at a time: stop on the move so the table
-    // sees it and clicks CONTINUE_NEUTRAL_STEP. The next guard acts only then.
-    if (combat.context.kind === "neutral") {
-      combat.pendingNeutralStep = { unitId: unit.id, name: unit.name, from, to: intent.destination };
-      return;
-    }
+    // The pre-activation reaction pause already paced this guard (the human saw
+    // it about to move and had their window), so the move just advances to the
+    // next unit — whose own pre-activation pause holds the board to show this
+    // move's result.
     advanceActiveUnit(state);
     return;
   }
@@ -6672,6 +6726,88 @@ function executeNeutralActivation(
 }
 
 /**
+ * A preview of what a neutral guard is about to do, shown in the pre-activation
+ * reaction pop-up so the reacting player knows what they are reacting to. A
+ * target tie is reported as a plain "attack" (the exact target is chosen after
+ * the pause resumes).
+ */
+function previewNeutralIntent(
+  state: GameState,
+  combat: CombatState,
+  unit: CombatUnitState
+): NonNullable<NonNullable<CombatState["pendingNeutralStep"]>["intent"]> {
+  const intent = planNeutralActivation(state, combat, unit);
+  switch (intent.kind) {
+    case "attack":
+    case "move-and-attack": {
+      const target = combat.units[intent.defenderId];
+      return {
+        kind: "attack",
+        targetUnitId: intent.defenderId,
+        targetName: target?.name,
+        ...(intent.kind === "move-and-attack" ? { destination: intent.destination } : {})
+      };
+    }
+    case "move":
+      return { kind: "move", destination: intent.destination };
+    case "choose-target":
+      return { kind: "attack" };
+    default:
+      return { kind: "pass" };
+  }
+}
+
+/**
+ * Who, if anyone, gets a pre-activation reaction pause before `active` takes
+ * its turn — the participant on the OTHER side who can meaningfully react now:
+ *
+ *  - Neutral fights: the human attacker, whenever they hold any off-turn
+ *    reaction (an Intelligence-enabled spell, a trigger-free instant spell, an
+ *    instant ability, or a usable active effect). This is the "neutral combat
+ *    goes slower so you can cast Intelligence / an instant" window.
+ *  - Player-vs-player: the opposing player, but only while they hold the
+ *    Intelligence anytime-cast freedom — they already get attack/spell reaction
+ *    windows otherwise, so the pause is reserved for the off-turn casting that
+ *    Intelligence unlocks.
+ *
+ * Returns null in the sandbox, for neutral reactors, hand-locked sides
+ * (heroless garrison / Secondary Hero), and whenever nothing can be done.
+ */
+function reactionPauseReactor(
+  state: GameState,
+  combat: CombatState,
+  active: CombatUnitState,
+  cards: CardLibrary
+): PlayerId | null {
+  if (combat.context.kind === "sandbox") {
+    return null;
+  }
+
+  for (const candidate of [combat.attackerPlayerId, combat.defenderPlayerId]) {
+    if (candidate === active.controllerId || candidate === NEUTRAL_PLAYER_ID) {
+      continue;
+    }
+    if (isHandLockedInCombat(state, candidate)) {
+      continue;
+    }
+    // Neutral fights pace EVERY guard step: the pause always opens for the
+    // human attacker so they see the guard about to act and can react if they
+    // can (the client auto-resumes after a beat when there is nothing to do).
+    if (combat.context.kind === "neutral") {
+      return candidate;
+    }
+    // Player-vs-player pauses only while the side holds the Intelligence
+    // freedom and actually has an off-turn play to make — they already get the
+    // attack/spell reaction windows otherwise.
+    if (playerHasSpellTimingFreedom(state, candidate) && getOffTurnCombatReactions(state, candidate, cards).length > 0) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Adventure-mode engine pump, run after every applied action: advances
  * neutral activations, gates the neutral combat time limit, finalizes
  * adventure combats, and opens queued rewards. Stops whenever a human
@@ -6690,9 +6826,16 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
     safety -= 1;
     const combat = state.combat;
 
-    // A neutral guard just walked: hold everything until the table clicks on.
+    // A combat pause is open (a guard walked, or a pre-activation reaction
+    // window): hold everything until the reacting player clicks on. If the
+    // combat ended meanwhile — e.g. the reactor cast a lethal spell during the
+    // pause — drop the pause so the outcome can finalize below.
     if (combat?.pendingNeutralStep) {
-      break;
+      if (combat.outcome) {
+        combat.pendingNeutralStep = null;
+      } else {
+        break;
+      }
     }
 
     // Neutral Liches/Magogs/Cerberi resolve their own ability targets.
@@ -6735,9 +6878,34 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       }
 
       const active = combat.units[combat.activeUnitId];
-      if (active && isNeutralUnit(active) && !active.activatedThisRound && isUnitAlive(active)) {
-        executeNeutralActivation(state, active, cards);
-        continue;
+      if (active && isUnitAlive(active) && !active.activatedThisRound) {
+        // Pre-activation reaction pause: before this unit acts, give the other
+        // side a window to cast (Intelligence-enabled spells, trigger-free
+        // instant spells) or play an instant ability. Neutral fights "go
+        // slower" so the human can react to each guard; player-vs-player only
+        // pauses while a side holds the Intelligence freedom.
+        if (!active.reactionPauseAcked) {
+          const reactor = reactionPauseReactor(state, combat, active, cards);
+          if (reactor) {
+            combat.pendingNeutralStep = {
+              kind: "pre-activation",
+              unitId: active.id,
+              name: active.name,
+              reactingPlayerId: reactor,
+              ...(isNeutralUnit(active) ? { intent: previewNeutralIntent(state, combat, active) } : {})
+            };
+            state.priorityPlayerId = reactor;
+            break;
+          }
+          active.reactionPauseAcked = true;
+        }
+
+        if (isNeutralUnit(active)) {
+          executeNeutralActivation(state, active, cards);
+          continue;
+        }
+        // A human-controlled unit is active (player-vs-player): the pump stops
+        // and waits for that player to drive it.
       }
     }
 

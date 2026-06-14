@@ -35,7 +35,7 @@ import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { createSeededRandom } from "./random";
 import { appendEvent } from "./events";
 import { VICTORY_MODE_LABELS } from "./ruleset";
-import { hexEquals, tileCentersAdjacent, tileCentersOverlap, type HexCoord } from "./hex";
+import { hexEquals, tileCentersOverlap, type HexCoord } from "./hex";
 import type {
   AdventureState,
   CustomMapTilePlan,
@@ -381,10 +381,13 @@ export function draftFarTiles(pool: string[], scenario: ScenarioDefinition): str
 }
 
 /**
- * Validates a designed map against a scenario: every tile must sit on the
- * tile lattice without overlapping the starting tiles or each other, and the
- * whole design must connect (transitively touch) the starting tiles. Returns
- * the accepted plans in placeable order plus human-readable problems.
+ * Validates a designed map against a scenario. The map designer is free-form:
+ * tiles may leave holes between them, touch only at a tip, or even float
+ * disconnected from the board (room for future teleport gates) — so the only
+ * placement rule is that two tiles may not overlap (overlapping flowers would
+ * fight over the same hex fields). Malformed, duplicate and overlapping tiles
+ * are dropped with a human-readable reason; everything else is accepted exactly
+ * where the designer placed it.
  */
 export function validateCustomMapPlan(
   plans: CustomMapTilePlan[],
@@ -440,42 +443,25 @@ export function validateCustomMapPlan(
   } else {
     placedCenters.push(...scenario.layout.starts.map((start) => ({ ...start })));
   }
-  const seedCenters = [...placedCenters];
-
-  // Tiles must connect to the board gaplessly: accept plans that are a gapless
-  // neighbour of an already-placed tile until nothing more fits
-  // (order-independent). Off-lattice positions never become neighbours, so they
-  // are reported as not touching the board.
-  const remaining = wellFormed.filter((plan) => plan.group !== "starting");
-  let progressed = true;
-  while (progressed) {
-    progressed = false;
-    for (let index = 0; index < remaining.length; index += 1) {
-      const plan = remaining[index];
-      const center = { row: plan.row, col: plan.col };
-      if (placedCenters.some((existing) => tileCentersOverlap(existing, center))) {
-        continue;
-      }
-      if (!placedCenters.some((existing) => tileCentersAdjacent(existing, center))) {
-        continue;
-      }
-      accepted.push(plan);
-      placedCenters.push(center);
-      remaining.splice(index, 1);
-      index -= 1;
-      progressed = true;
+  // Supply tiles drop wherever the designer placed them — holes, tip-only
+  // contact and disconnected islands are all allowed. The one rule is no
+  // overlap: a tile that would share fields with one already down (a seat or an
+  // earlier supply tile) is dropped, with exact duplicates called out as such.
+  for (const plan of wellFormed) {
+    if (plan.group === "starting") {
+      continue;
     }
-  }
-
-  for (const plan of remaining) {
     const center = { row: plan.row, col: plan.col };
     if (placedCenters.some((existing) => hexEquals(existing, center))) {
       problems.push(`Tile at ${plan.row},${plan.col}: duplicate position.`);
-    } else if (seedCenters.some((start) => tileCentersOverlap(start, center))) {
-      problems.push(`Tile at ${plan.row},${plan.col}: overlaps a starting tile.`);
-    } else {
-      problems.push(`Tile at ${plan.row},${plan.col}: must touch the starting tiles or another designed tile.`);
+      continue;
     }
+    if (placedCenters.some((existing) => tileCentersOverlap(existing, center))) {
+      problems.push(`Tile at ${plan.row},${plan.col}: overlaps another tile.`);
+      continue;
+    }
+    accepted.push(plan);
+    placedCenters.push(center);
   }
 
   return { accepted, problems };
@@ -723,7 +709,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       if (plan.faceDown) {
         const tileDefId = plan.group === "sea" ? popSeaTile(plan.seaBand) : pools[plan.group]?.pop();
         if (tileDefId) {
-          instantiateTile(adventure, tileDefId, center, 0, true);
+          // "Down means random", but the designer's chosen orientation still
+          // rides along — the random tile is revealed at the slot's rotation.
+          instantiateTile(adventure, tileDefId, center, plan.rotation ?? 0, true);
         }
       } else if (plan.tileDefId) {
         instantiateTile(adventure, plan.tileDefId, center, plan.rotation ?? 0, false);

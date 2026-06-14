@@ -114,6 +114,17 @@ function duel(configure: (state: GameState) => void): GameState {
   return state;
 }
 
+function firstAttack(state: GameState): Extract<GameEvent, { type: "ATTACK_ROLLED" }> {
+  const rolled = state.eventLog.find(
+    (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> =>
+      event.type === "ATTACK_ROLLED" && !event.isRetaliation
+  );
+  if (!rolled) {
+    throw new Error("no attack was rolled");
+  }
+  return rolled;
+}
+
 function attack(state: GameState): GameState {
   return settle(
     applyOk(state, {
@@ -168,6 +179,41 @@ describe("elemental damage — attack maths", () => {
       ];
     });
     expect(firstAttackValue(attack(state))).toBe(1); // 3 + 0(buff) - 2(weakness)
+  });
+
+  it("a normal unit's damage is reduced by the defender's Defense", () => {
+    const state = duel((draft) => {
+      draft.combat!.units.unit_p2_skeletons.defense = 2;
+    });
+    const event = firstAttack(attack(state));
+    expect(event.defenseValue).toBe(2);
+    expect(event.damage).toBe(1); // 3 attack - 2 defense - 0 die
+  });
+
+  it("an elemental unit ignores the defender's Defense entirely", () => {
+    const state = duel((draft) => {
+      draft.combat!.units.unit_p1_griffins.abilities = ["elemental-damage"];
+      draft.combat!.units.unit_p2_skeletons.defense = 2;
+      draft.combat!.units.unit_p2_skeletons.defenseToken = true;
+    });
+    const resolved = attack(state);
+    const event = firstAttack(resolved);
+    expect(event.defenseValue).toBe(0); // printed Defense + token both ignored
+    expect(event.damage).toBe(3); // the full Attack value lands
+    expect(resolved.combat!.units.unit_p2_skeletons.damage).toBe(3);
+  });
+
+  it("an elemental unit never rolls the Attack die — damage is just its Attack", () => {
+    const state = duel((draft) => {
+      draft.combat!.units.unit_p1_griffins.abilities = ["elemental-damage"];
+      // A +1 face is queued; a normal unit would add it, an elemental ignores it.
+      draft.combat!.dice.scriptedRolls = [1, 1, 1, 1];
+    });
+    const event = firstAttack(attack(state));
+    expect(event.noDie).toBe(true);
+    expect(event.roll).toBe(0); // the die was skipped, not the scripted +1
+    expect(event.attackValue).toBe(3); // attack only, no die swing
+    expect(event.damage).toBe(3);
   });
 
   it("the printed neutral Air Elemental deals elemental damage", () => {

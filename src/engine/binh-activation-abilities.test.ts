@@ -326,6 +326,13 @@ function defendThrough(state: GameState): GameState {
       state = applyOk(state, { type: "PASS_REACTION", playerId: state.reactionWindow.priorityPlayerId });
       continue;
     }
+    // The pre-activation reaction pause: this driver does not react, it just
+    // lets the guard act.
+    const pre = state.combat?.pendingNeutralStep;
+    if (pre?.kind === "pre-activation") {
+      state = applyOk(state, { type: "CONTINUE_NEUTRAL_STEP", playerId: pre.reactingPlayerId ?? "p1" });
+      continue;
+    }
     const choice = state.pendingChoice;
     if (choice?.type === "ATTACK_DIE_REROLL") {
       state = applyOk(state, { type: "CHOOSE_PENDING_ROLL", playerId: choice.playerId, choiceId: choice.id, candidateIndex: 0 });
