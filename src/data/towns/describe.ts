@@ -32,6 +32,8 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
       return "At the beginning of each Resource round, roll 1 Resource die and gain the rolled resources.";
     case "ASTROLOGERS_HALF_GOLD_REINFORCE":
       return `At the beginning of each Astrologers' round, you may instantly reinforce one of your ${effect.tiers.join(" or ")} units for half of the gold cost.`;
+    case "ASTROLOGERS_TAKE_STATISTIC":
+      return "At the beginning of each Astrologers' round, you may take 1 Knowledge or 1 Power Statistic card from your discard pile to your hand.";
     case "TURN_START_NECROMANCY":
       return "At the beginning of your turn, choose one: search the Ability deck for a Necromancy card and put it in your hand, OR take 1 Specialty card from your discard pile to your hand.";
     case "TURN_START_PORTAL_SUMMON":
@@ -67,6 +69,7 @@ export function buildingTimingLabel(building: TownBuildingDefinition): string | 
     case "RESOURCE_ROUND_RESOURCE_DIE":
       return "start of Resource rounds";
     case "ASTROLOGERS_HALF_GOLD_REINFORCE":
+    case "ASTROLOGERS_TAKE_STATISTIC":
       return "start of Astrologers' rounds";
     case "TURN_START_NECROMANCY":
     case "TURN_START_PORTAL_SUMMON":

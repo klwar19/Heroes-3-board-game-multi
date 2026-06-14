@@ -60,7 +60,7 @@ export type VictoryMode = "conquest" | "grail" | "dragon-hunt" | "dragon-conquer
  *    only the troops are spared. Does not affect fights against Neutral guards.
  */
 export type PvpTroopLoss = "normal" | "none";
-export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon" | "stronghold";
+export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon" | "stronghold" | "tower";
 
 export type TargetRef =
   | { type: "unit"; unitId: UnitId }
@@ -2554,7 +2554,7 @@ export type AdventureReward =
       playerId: PlayerId;
       kind: "discard-pick";
       count: number;
-      filter?: "spell" | "non-artifact" | "specialty";
+      filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic";
       fromTop?: number;
       shuffleRestIntoDeck?: boolean;
     }
@@ -2680,7 +2680,7 @@ export type VisitStep =
       /** Queue a discard-pile pick through the shared reward pipeline. */
       type: "DISCARD_PICK";
       count: number;
-      filter?: "spell" | "non-artifact" | "specialty";
+      filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic";
     }
   | {
       /**
@@ -3116,7 +3116,7 @@ export type PendingChoice =
       discardPick?: {
         cardIds: CardId[];
         remaining: number;
-        filter?: "spell" | "non-artifact" | "specialty";
+        filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic";
         fromTop?: number;
         shuffleRestIntoDeck?: boolean;
       };
