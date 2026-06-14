@@ -883,6 +883,13 @@ describe("neutral combat", () => {
         state = apply(state, { type: "PASS_REACTION", playerId: state.reactionWindow.priorityPlayerId });
         continue;
       }
+      // The pre-activation reaction pause: this driver does not react, it just
+      // lets the guard act (the guard-walk pause below is left for the caller).
+      const pre = state.combat?.pendingNeutralStep;
+      if (pre?.kind === "pre-activation") {
+        state = apply(state, { type: "CONTINUE_NEUTRAL_STEP", playerId: pre.reactingPlayerId ?? "p1" });
+        continue;
+      }
       const choice = state.pendingChoice;
       if (choice?.type === "ATTACK_DIE_REROLL") {
         state = apply(state, {

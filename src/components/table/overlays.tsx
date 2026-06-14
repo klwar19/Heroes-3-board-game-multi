@@ -1309,9 +1309,15 @@ function squareLabel(position: number): string {
 }
 
 /**
- * Neutral combat pacing pop-up: between guard walks the engine stops on
- * `pendingNeutralStep`, the battlefield holds, and the attacking player clicks
- * the enemy turn on. Everyone else just sees what the guard did.
+ * Combat pacing / reaction pop-up (`pendingNeutralStep`). The backdrop lets
+ * clicks through (it is `pointer-events: none`), so while it floats at the top
+ * the reacting player can still cast spells / play instants from their hand and
+ * the board below. Two kinds:
+ *  - "pre-activation": before a unit acts, the reacting side may cast (an
+ *    Intelligence-enabled Magic Arrow / Fireball, a trigger-free instant) or
+ *    play an instant ability, then clicks "Let the unit act". The pop-up
+ *    previews what a guard is about to do.
+ *  - "guard-walk": a neutral guard finished a move; the attacker clicks it on.
  */
 export function NeutralStepOverlay({
   state,
@@ -1329,21 +1335,44 @@ export function NeutralStepOverlay({
     return null;
   }
 
-  const guard = state.combat?.units[step.unitId];
   const continueAction = legalActions.find((legal) => legal.action.type === "CONTINUE_NEUTRAL_STEP");
-  const attackerName = state.combat ? state.players[state.combat.attackerPlayerId]?.name : undefined;
+  const reactorId = step.reactingPlayerId ?? state.combat?.attackerPlayerId;
+  const reactorName = reactorId ? state.players[reactorId]?.name : undefined;
+  const isPre = step.kind === "pre-activation";
+
+  // Pre-activation preview: what the (neutral) unit is about to do.
+  let summary: string;
+  if (isPre) {
+    const intent = step.intent;
+    if (intent?.kind === "attack") {
+      summary = intent.targetName
+        ? `${step.name} is about to attack your ${intent.targetName}.`
+        : `${step.name} is about to attack.`;
+    } else if (intent?.kind === "move") {
+      summary = `${step.name} is about to move.`;
+    } else {
+      summary = `${step.name} is about to take its turn.`;
+    }
+  } else {
+    summary =
+      step.from === undefined || step.to === undefined || step.from === step.to
+        ? `${step.name} holds position.`
+        : `${step.name} advances ${squareLabel(step.from)} → ${squareLabel(step.to)}.`;
+  }
 
   return (
     <div className="combatResultBackdrop neutralStepBackdrop" role="dialog" aria-label="Enemy turn">
       <div className="combatResultModal neutralStepModal">
         <header>
           <Swords aria-hidden="true" size={18} />
-          <strong>Enemy turn</strong>
+          <strong>{isPre ? "React before the enemy acts" : "Enemy turn"}</strong>
         </header>
-        <p>
-          {step.name} {step.from === step.to ? "holds position" : `advances ${squareLabel(step.from)} → ${squareLabel(step.to)}`}.
-        </p>
-        {guard ? <small>The guard army keeps moving once you continue.</small> : null}
+        <p>{summary}</p>
+        {isPre ? (
+          <small>Cast a Spell or play an instant now, or let the unit take its turn.</small>
+        ) : (
+          <small>The guard army keeps moving once you continue.</small>
+        )}
         <div className="combatResultButtons">
           {continueAction ? (
             <button
@@ -1351,10 +1380,10 @@ export function NeutralStepOverlay({
               onClick={() => onAction({ type: "CONTINUE_NEUTRAL_STEP", playerId: viewerPlayerId })}
               type="button"
             >
-              <Check aria-hidden="true" size={15} /> Continue
+              <Check aria-hidden="true" size={15} /> {isPre ? "Let the unit act" : "Continue"}
             </button>
           ) : (
-            <small className="neutralStepWaiting">Waiting for {attackerName ?? "the attacker"} to continue…</small>
+            <small className="neutralStepWaiting">Waiting for {reactorName ?? "the attacker"}…</small>
           )}
         </div>
       </div>
