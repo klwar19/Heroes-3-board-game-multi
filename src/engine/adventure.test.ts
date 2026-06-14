@@ -462,6 +462,22 @@ describe("morale actions", () => {
     expect(state.players.p1.discard).toHaveLength(3);
   });
 
+  it("offers the token's draw / discard-redraw even when the player owns no Town", () => {
+    const state = makeGame();
+    state.players.p1.morale = 1;
+    // A player who has lost their Town still holds the morale token and may
+    // spend it for a draw — the use is not gated on standing at a Town.
+    for (const town of Object.values(state.towns)) {
+      if (town.controllerId === "p1") {
+        town.controllerId = NEUTRAL_PLAYER_ID;
+      }
+    }
+
+    const labels = getLegalActions(state, "p1").map((legal) => legal.label);
+    expect(labels).toContain("Spend morale: draw a card");
+    expect(labels.some((label) => label.includes("discard any cards"))).toBe(true);
+  });
+
   it("offers a morale reroll when an adventure die is rolled", () => {
     let state = makeGame();
     state.players.p1.morale = 1;
