@@ -3,6 +3,7 @@ import { getUnitSide } from "./adventure";
 import { appendEvent } from "./events";
 import { getRuleset } from "./ruleset";
 import { isArrowTowerUnit } from "./siege";
+import { getSelfRebirthAbility } from "./unit-abilities";
 import { applyUnitCurrentSide, topTransform } from "./unit-transforms";
 import type { ActiveEffectState, CombatState, CombatUnitState, GameState, PlayerId } from "./state";
 
@@ -72,6 +73,24 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
         return;
       }
     }
+  }
+
+  // Phoenixes: "Once per Combat, when this unit's HP drops to 0, set it to 1
+  // instead." The last-ditch self-save, taken automatically once any Pack→Few
+  // flip is exhausted — the unit survives the killing blow at 1 Health. Works
+  // against every damage source (attacks, ability damage, spells, war machines)
+  // because they all funnel through here.
+  const rebirth = getSelfRebirthAbility(unit);
+  if (rebirth && !unit.usedRebirthThisCombat) {
+    unit.usedRebirthThisCombat = true;
+    unit.damage = Math.max(0, unit.maxHealth - 1);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: rebirth.abilityId,
+      message: `${unit.cardName} is reborn and clings to life at 1 Health.`
+    });
+    return;
   }
 
   appendEvent(state, {

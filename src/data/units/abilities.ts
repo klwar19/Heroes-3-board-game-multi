@@ -431,6 +431,53 @@ export type UnitAbilityEffectDefinition =
        * the attacker placed on the target are left in place.
        */
       type: "DISPEL_ENEMY_EFFECTS_ON_TARGET";
+    }
+  | {
+      /**
+       * Iron/Gold/Diamond Golems, neutral Black Dragons: "Reduce any damage
+       * from spells by N (to a minimum of 0)." A passive applied to every
+       * instance of Spell damage the unit takes — direct damage spells, area
+       * spells and the Faerie Dragon's bolt — before it is added to the unit's
+       * damage. Independent of the Elementals' school immunity.
+       */
+      type: "REDUCE_SPELL_DAMAGE";
+      amount: number;
+    }
+  | {
+      /**
+       * Vampires: "[unit_attack] …then remove up to N damage from this unit."
+       * After this unit's own attack (never a Retaliation Attack) it heals
+       * itself by up to `amount`.
+       */
+      type: "ON_ATTACK_HEAL_SELF";
+      amount: number;
+    }
+  | {
+      /**
+       * Phoenixes: "Once per Combat, when this unit's HP drops to 0, set it to
+       * 1 instead." An automatic self-rebirth taken the moment a lethal blow
+       * (from any source) would remove the unit, leaving it alive at 1 Health.
+       */
+      type: "SELF_REBIRTH_ONCE";
+    }
+  | {
+      /**
+       * Neutral Halberdiers: "Treat allied adjacent units as if they had a
+       * Defense token." While this unit is alive, every friendly unit adjacent
+       * to it rolls the Defend die when attacked (a "+1" face grants +1
+       * Defense), exactly as a real Defense token would, without spending an
+       * action.
+       */
+      type: "DEFENSE_TOKEN_AURA";
+    }
+  | {
+      /**
+       * Familiars: "Whenever an enemy casts a spell from hand, they must
+       * discard 1 card from hand." A passive tax: while a living Familiar is on
+       * the opposing side, each Spell an enemy casts from hand costs them one
+       * extra random card from hand.
+       */
+      type: "SPELL_CAST_HAND_TAX";
     };
 
 /**
@@ -1003,6 +1050,75 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Magic Arrow Immunity",
     text: "[unit_passive] Immune to Magic Arrow.",
     effect: { type: "IMMUNE_TO_SPELL_SCHOOLS", schools: ["any"] },
+    implementationStatus: "implemented"
+  },
+  // Neutral Minotaurs: "Reroll this unit's '-1' outcome on the Attack die."
+  // Face-gated like the Crusaders' reroll — every fresh "-1" may be rerolled
+  // again and the source never depletes.
+  "minotaur-reroll": {
+    id: "minotaur-reroll",
+    name: "Minotaur Fury",
+    text: 'Reroll every "-1" on this unit\'s Attack die — the new result replaces the old one.',
+    effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, onlyOnRoll: -1 },
+    implementationStatus: "implemented"
+  },
+  // Efreet: a non-Elemental unit that still carries the Fire/Magic-Arrow
+  // immunity (it does NOT deal elemental damage, so no DEALS_ELEMENTAL_DAMAGE).
+  "efreet-fire-immunity": {
+    id: "efreet-fire-immunity",
+    name: "Fire Immunity",
+    text: "[unit_passive] Ignores any damage from Magic Arrows or spells from the Fire School of Magic.",
+    effect: { type: "IMMUNE_TO_SPELL_SCHOOLS", schools: ["any", "fire"] },
+    implementationStatus: "implemented"
+  },
+  // Phoenixes: immune to Fire Magic only (NOT Magic Arrow).
+  "phoenix-fire-immunity": {
+    id: "phoenix-fire-immunity",
+    name: "Fire Immunity",
+    text: "[unit_passive] Immune to Fire Magic spells.",
+    effect: { type: "IMMUNE_TO_SPELL_SCHOOLS", schools: ["fire"] },
+    implementationStatus: "implemented"
+  },
+  "phoenix-rebirth": {
+    id: "phoenix-rebirth",
+    name: "Rebirth",
+    text: "[unit_passive] Once per Combat, when this unit's Health would drop to 0, set it to 1 instead.",
+    effect: { type: "SELF_REBIRTH_ONCE" },
+    implementationStatus: "implemented"
+  },
+  "reduce-spell-damage-2": {
+    id: "reduce-spell-damage-2",
+    name: "Spell Resistance",
+    text: "[unit_passive] Reduce any damage from spells by 2 (to a minimum of 0).",
+    effect: { type: "REDUCE_SPELL_DAMAGE", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "reduce-spell-damage-3": {
+    id: "reduce-spell-damage-3",
+    name: "Spell Resistance",
+    text: "[unit_passive] Reduce any damage from spells by 3 (to a minimum of 0).",
+    effect: { type: "REDUCE_SPELL_DAMAGE", amount: 3 },
+    implementationStatus: "implemented"
+  },
+  "vampire-heal-on-attack": {
+    id: "vampire-heal-on-attack",
+    name: "Life Drain",
+    text: "[unit_attack] After this unit's attack, remove up to 2 damage from it.",
+    effect: { type: "ON_ATTACK_HEAL_SELF", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "halberdier-defense-aura": {
+    id: "halberdier-defense-aura",
+    name: "Phalanx",
+    text: "[unit_passive] Treat allied units adjacent to this unit as if they had a Defense token.",
+    effect: { type: "DEFENSE_TOKEN_AURA" },
+    implementationStatus: "implemented"
+  },
+  "familiar-spell-tax": {
+    id: "familiar-spell-tax",
+    name: "Mana Leech",
+    text: "[unit_passive] Whenever an enemy casts a spell from hand, they must discard 1 card from hand.",
+    effect: { type: "SPELL_CAST_HAND_TAX" },
     implementationStatus: "implemented"
   }
 };
