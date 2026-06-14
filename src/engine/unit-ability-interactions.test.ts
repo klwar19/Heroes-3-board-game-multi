@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createAdventureGameState, createInitialGameState, makeCombatUnitFromArmy } from "./index";
+import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions, makeCombatUnitFromArmy } from "./index";
 import { startAdventureRound } from "./adventure";
 import { getCombatStartDraws } from "./unit-abilities";
 import type { CombatUnitState, GameAction, GameEvent, GameState, PlayerId } from "./state";
@@ -101,6 +101,53 @@ function meleeDuel(): GameState {
   setActive(state, "p1", "unit_p1_griffins");
   return state;
 }
+
+describe("Leadership in battle", () => {
+  it("is played without selecting a unit and grants a positive morale token", () => {
+    const state = meleeDuel();
+    state.players.p1.hand = ["ability.leadership"];
+    state.players.p1.morale = 0;
+
+    const plays = getLegalActions(state, "p1").filter(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.leadership"
+    );
+    // Every Leadership play is a no-target play — never one play per enemy unit
+    // and never an enemy-unit target prompt (the old default for untargeted cards).
+    expect(plays.length).toBeGreaterThan(0);
+    for (const play of plays) {
+      expect(play.action).toMatchObject({ type: "PLAY_CARD", target: { type: "none" } });
+    }
+
+    const basic = plays.find((play) => play.action.type === "PLAY_CARD" && play.action.mode === "basic");
+    const next = applyOk(state, basic!.action);
+    expect(next.players.p1.morale).toBe(1);
+  });
+
+  it("offers the expert side (draw 2) mid-battle for an expert use", () => {
+    const state = meleeDuel();
+    state.players.p1.hand = ["ability.leadership"];
+    state.players.p1.deck = ["ability.luck", "ability.luck", "ability.luck"];
+    state.players.p1.morale = 0;
+    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
+    state.players.p1.limits.expertUses = 1;
+
+    const expert = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "ability.leadership" &&
+        legal.action.mode === "expert"
+    );
+    expect(expert).toBeTruthy();
+    expect(expert!.action).toMatchObject({ target: { type: "none" } });
+
+    const handBefore = state.players.p1.hand.length;
+    const next = applyOk(state, expert!.action);
+    expect(next.players.p1.morale).toBe(1);
+    // Expert draws 2 (the played Leadership leaves hand, then +2 drawn).
+    expect(next.players.p1.hand.length).toBe(handBefore - 1 + 2);
+    expect(next.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
+});
 
 describe("Medusas paralysis on retaliation", () => {
   it("Pack/Neutral Medusas paralyse the unit they retaliate against", () => {
