@@ -5,7 +5,15 @@ import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { getDeckBack } from "@/data/decks";
 import { getFxSheet } from "@/data/fx";
-import { playCardPlace, playCardSwish, playLibrarySound, playShuffle } from "@/lib/sound";
+import {
+  playCardPlace,
+  playCardSwish,
+  playLibrarySound,
+  playMeleeImpact,
+  playProjectileImpact,
+  playShuffle,
+  playWhoosh
+} from "@/lib/sound";
 
 /**
  * Presentation layer for everything that physically moves on the table:
@@ -65,7 +73,44 @@ export type FxCue =
       hitSound?: string;
     }
   | { kind: "floater"; id: string; at: string; text: string; tone: "damage" | "heal" | "info"; delayMs?: number }
-  | { kind: "pulse"; id: string; at: string; text?: string; delayMs?: number };
+  | { kind: "pulse"; id: string; at: string; text?: string; delayMs?: number }
+  | {
+      /**
+       * The attacking unit's own card thrusts at its target (melee) or kicks
+       * back as it looses a shot (ranged). Animates the real board card so it
+       * reads as the unit itself moving; `to` points the lunge at the
+       * defender's cell and `flip` matches the card's on-board orientation.
+       */
+      kind: "lunge";
+      id: string;
+      attackerId: string;
+      to: string;
+      attackKind: "melee" | "ranged";
+      flip?: boolean;
+      delayMs?: number;
+    }
+  | {
+      /** The struck unit's card recoils in place at the moment of impact. */
+      kind: "shake";
+      id: string;
+      unitId: string;
+      delayMs?: number;
+    }
+  | {
+      /** A melee strike flash (placeholder slash) landing on a cell. */
+      kind: "slash";
+      id: string;
+      at: string;
+      delayMs?: number;
+    }
+  | {
+      /** A placeholder ranged projectile flying from one cell to another. */
+      kind: "bolt";
+      id: string;
+      from: string;
+      to: string;
+      delayMs?: number;
+    };
 
 /** Flight timing shared with the cue builders in page.tsx. */
 export const FLIGHT_MS = 620;
@@ -75,6 +120,28 @@ export const DRAW_STAGGER_MS = 120;
 
 /** A combat unit's card glides between battle cells over this long. */
 export const COMBAT_MOVE_MS = 640;
+
+/**
+ * Attack choreography. From the attack being declared to the blow landing is
+ * `ATTACK_IMPACT_MS`; the damage number, hurt cry, slash and the struck unit's
+ * recoil are all aligned to that beat (page.tsx advances its cue timeline by
+ * exactly this much per attack). A ranged shot leaves the shooter after
+ * `RANGED_RELEASE_MS` and its projectile flies for the remainder, so it lands
+ * on the same beat as a melee strike.
+ */
+export const ATTACK_IMPACT_MS = 500;
+export const RANGED_RELEASE_MS = 120;
+const BOLT_FLIGHT_MS = ATTACK_IMPACT_MS - RANGED_RELEASE_MS;
+/** Full attacker lunge (thrust then recover); the thrust peaks near impact. */
+const MELEE_LUNGE_MS = 820;
+/** A shooter's recoil kick as the shot is released. */
+const RANGED_RECOIL_MS = 440;
+/** The struck unit's recoil vibration. */
+const DEFENDER_SHAKE_MS = 360;
+/** The melee slash flash sweeping across the target. */
+const MELEE_SLASH_MS = 320;
+/** The little burst where a projectile lands. */
+const PROJECTILE_IMPACT_MS = 260;
 /**
  * Neutral fights only: once a guard has slid into place the board holds for
  * this long so the table reads the move before the attack die is thrown.
@@ -368,6 +435,238 @@ async function runMove(stage: HTMLElement, cue: Extract<FxCue, { kind: "move" }>
   }
 }
 
+/** The live board card for a unit, if it is currently rendered on screen. */
+function boardCardFor(unitId: string): HTMLElement | null {
+  const el = document.querySelector(`[data-fx-unit="${unitId}"] .boardCard`);
+  return el instanceof HTMLElement ? el : null;
+}
+
+/**
+ * The attacker's own card thrusts at the target (melee) or kicks back as it
+ * looses a shot (ranged), then settles. The card lives inside the battlefield,
+ * which is rotated 180° in the defender's seat view (and p1's cards carry their
+ * own 180° flip), so the animation is composited onto the card's existing
+ * transform (`composite: "add"`) and the screen-space lunge vector is flipped
+ * back into that rotated frame when `flip` is set. A removed attacker (combat
+ * ended) or a missing target consumes the cue silently.
+ */
+async function runLunge(cue: Extract<FxCue, { kind: "lunge" }>): Promise<void> {
+  const card = boardCardFor(cue.attackerId);
+  const targetRect = resolveAnchorRect(cue.to);
+  if (!card || !targetRect) {
+    return;
+  }
+  const cardRect = card.getBoundingClientRect();
+  if (cardRect.width === 0) {
+    return;
+  }
+
+  const from = centerOf(cardRect);
+  const to = centerOf(targetRect);
+  const dist = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+  const ux = (to.x - from.x) / dist;
+  const uy = (to.y - from.y) / dist;
+  // Map the screen-space direction into the (possibly 180°-rotated) frame the
+  // card's own transform lives in.
+  const sign = cue.flip ? -1 : 1;
+
+  card.style.zIndex = "6";
+  try {
+    if (cue.attackKind === "ranged") {
+      const kick = Math.min(dist * 0.14, cardRect.width * 0.32);
+      const kx = -sign * ux * kick;
+      const ky = -sign * uy * kick;
+      await animate(
+        card,
+        [
+          { transform: "translate(0px, 0px)", offset: 0 },
+          { transform: `translate(${kx}px, ${ky}px)`, offset: 0.28 },
+          { transform: `translate(${kx * 0.4}px, ${ky * 0.4}px)`, offset: 0.5 },
+          { transform: "translate(0px, 0px)", offset: 1 }
+        ],
+        { duration: RANGED_RECOIL_MS, easing: "cubic-bezier(0.2, 0.8, 0.3, 1)", composite: "add" }
+      );
+      return;
+    }
+
+    const reach = Math.min(dist * 0.46, cardRect.width * 0.8);
+    const fx = sign * ux * reach;
+    const fy = sign * uy * reach;
+    const bx = -sign * ux * reach * 0.16;
+    const by = -sign * uy * reach * 0.16;
+    // Perpendicular jitter gives the thrust a brief shake at the moment of contact.
+    const jit = cardRect.width * 0.07;
+    const px = -uy * jit;
+    const py = ux * jit;
+    await animate(
+      card,
+      [
+        { transform: "translate(0px, 0px)", offset: 0 },
+        { transform: `translate(${bx}px, ${by}px)`, offset: 0.22 },
+        { transform: `translate(${fx}px, ${fy}px)`, offset: 0.56 },
+        { transform: `translate(${fx + px}px, ${fy + py}px)`, offset: 0.63 },
+        { transform: `translate(${fx - px}px, ${fy - py}px)`, offset: 0.7 },
+        { transform: `translate(${fx * 0.45}px, ${fy * 0.45}px)`, offset: 0.82 },
+        { transform: "translate(0px, 0px)", offset: 1 }
+      ],
+      { duration: MELEE_LUNGE_MS, easing: "cubic-bezier(0.34, 0.62, 0.28, 1)", composite: "add" }
+    );
+  } finally {
+    card.style.zIndex = "";
+  }
+}
+
+/**
+ * The struck unit's card vibrates in place. Composited onto the card's resting
+ * transform and built from symmetric jitter, so it reads the same whichever way
+ * the board (or the card) is flipped. A unit destroyed by the blow is no longer
+ * on the board, so the cue simply finds no card and ends — the slash on its
+ * cell and its death cry carry the hit instead.
+ */
+async function runShake(cue: Extract<FxCue, { kind: "shake" }>): Promise<void> {
+  const card = boardCardFor(cue.unitId);
+  if (!card || card.getBoundingClientRect().width === 0) {
+    return;
+  }
+  await animate(
+    card,
+    [
+      { transform: "translate(0px, 0px) scale(1)", offset: 0 },
+      { transform: "translate(-3px, 2px) scale(1.05)", offset: 0.15 },
+      { transform: "translate(3px, -2px) scale(1.03)", offset: 0.3 },
+      { transform: "translate(-3px, 1px) scale(1.02)", offset: 0.45 },
+      { transform: "translate(2px, -1px) scale(1.01)", offset: 0.62 },
+      { transform: "translate(-1px, 1px) scale(1)", offset: 0.8 },
+      { transform: "translate(0px, 0px) scale(1)", offset: 1 }
+    ],
+    { duration: DEFENDER_SHAKE_MS, easing: "ease-out", composite: "add" }
+  );
+}
+
+/**
+ * A melee strike landing: a bright slash streak sweeps across the target cell
+ * with an impact spark at its center. Anchored to the cell (not the unit) so it
+ * still plays on a killing blow. Placeholder art — a real slash sprite can drop
+ * straight into this handler later.
+ */
+async function runSlash(stage: HTMLElement, cue: Extract<FxCue, { kind: "slash" }>): Promise<void> {
+  const rect = resolveAnchorRect(cue.at);
+  if (!rect) {
+    return;
+  }
+  const center = centerOf(rect);
+  const reach = Math.max(rect.width, rect.height);
+  const angle = -32 - Math.random() * 46;
+
+  const container = document.createElement("div");
+  container.className = "fxSlash";
+  container.style.left = `${center.x}px`;
+  container.style.top = `${center.y}px`;
+  container.style.setProperty("--fx-slash-rot", `${angle}deg`);
+
+  const streak = document.createElement("div");
+  streak.className = "fxSlashStreak";
+  streak.style.width = `${reach * 1.15}px`;
+
+  const spark = document.createElement("div");
+  spark.className = "fxSlashSpark";
+
+  container.append(streak, spark);
+  stage.appendChild(container);
+  playMeleeImpact();
+
+  try {
+    await Promise.all([
+      animate(
+        streak,
+        [
+          { transform: "translate(-50%, -50%) translateX(-55%) scaleX(0.15)", opacity: 0, offset: 0 },
+          { transform: "translate(-50%, -50%) translateX(-12%) scaleX(1)", opacity: 1, offset: 0.35 },
+          { transform: "translate(-50%, -50%) translateX(22%) scaleX(1.05)", opacity: 0, offset: 1 }
+        ],
+        { duration: MELEE_SLASH_MS, easing: "cubic-bezier(0.2, 0.7, 0.3, 1)" }
+      ),
+      animate(
+        spark,
+        [
+          { transform: "translate(-50%, -50%) scale(0.3)", opacity: 0, offset: 0 },
+          { transform: "translate(-50%, -50%) scale(1)", opacity: 0.95, offset: 0.3 },
+          { transform: "translate(-50%, -50%) scale(1.5)", opacity: 0, offset: 1 }
+        ],
+        { duration: MELEE_SLASH_MS, easing: "ease-out" }
+      )
+    ]);
+  } finally {
+    container.remove();
+  }
+}
+
+/** The little burst of light where a projectile lands. */
+async function runProjectileImpact(stage: HTMLElement, point: { x: number; y: number }): Promise<void> {
+  const spark = document.createElement("div");
+  spark.className = "fxImpactSpark";
+  spark.style.left = `${point.x}px`;
+  spark.style.top = `${point.y}px`;
+  stage.appendChild(spark);
+  playProjectileImpact();
+  try {
+    await animate(
+      spark,
+      [
+        { transform: "translate(-50%, -50%) scale(0.3)", opacity: 0, offset: 0 },
+        { transform: "translate(-50%, -50%) scale(1)", opacity: 0.9, offset: 0.3 },
+        { transform: "translate(-50%, -50%) scale(1.6)", opacity: 0, offset: 1 }
+      ],
+      { duration: PROJECTILE_IMPACT_MS, easing: "ease-out" }
+    );
+  } finally {
+    spark.remove();
+  }
+}
+
+/**
+ * A placeholder ranged projectile: a glowing bolt flies from the shooter's cell
+ * to the target's, then bursts. Real projectile art can replace `.fxBolt` and
+ * this flight without touching the rest of the pipeline.
+ */
+async function runBolt(stage: HTMLElement, cue: Extract<FxCue, { kind: "bolt" }>): Promise<void> {
+  const fromRect = resolveAnchorRect(cue.from);
+  const toRect = resolveAnchorRect(cue.to);
+  if (!fromRect || !toRect) {
+    return;
+  }
+  const from = centerOf(fromRect);
+  const to = centerOf(toRect);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+
+  const bolt = document.createElement("div");
+  bolt.className = "fxBolt";
+  stage.appendChild(bolt);
+  const halfW = bolt.offsetWidth / 2 || 15;
+  const halfH = bolt.offsetHeight / 2 || 3;
+  bolt.style.left = `${from.x - halfW}px`;
+  bolt.style.top = `${from.y - halfH}px`;
+  playWhoosh();
+
+  try {
+    await animate(
+      bolt,
+      [
+        { transform: `translate(0px, 0px) rotate(${angle}deg) scaleX(0.6)`, opacity: 0, offset: 0 },
+        { transform: `translate(${dx * 0.1}px, ${dy * 0.1}px) rotate(${angle}deg) scaleX(1)`, opacity: 1, offset: 0.12 },
+        { transform: `translate(${dx}px, ${dy}px) rotate(${angle}deg) scaleX(1)`, opacity: 1, offset: 1 }
+      ],
+      { duration: BOLT_FLIGHT_MS, easing: "cubic-bezier(0.45, 0.15, 0.85, 0.55)", fill: "forwards" }
+    );
+  } finally {
+    bolt.remove();
+  }
+
+  await runProjectileImpact(stage, to);
+}
+
 /** Steps a converted .def sheet frame by frame over the anchored cell. */
 async function runSprite(stage: HTMLElement, fxKey: string, at: string, soundKey?: string): Promise<void> {
   const sheet = getFxSheet(fxKey);
@@ -598,6 +897,14 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
             return runFloater(stage, cue);
           case "pulse":
             return runPulse(stage, cue);
+          case "lunge":
+            return runLunge(cue);
+          case "shake":
+            return runShake(cue);
+          case "slash":
+            return runSlash(stage, cue);
+          case "bolt":
+            return runBolt(stage, cue);
         }
       };
 

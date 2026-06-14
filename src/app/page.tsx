@@ -79,6 +79,7 @@ import {
   type CardBoardAction
 } from "@/components/table/utils";
 import {
+  ATTACK_IMPACT_MS,
   COMBAT_MOVE_MS,
   DRAW_STAGGER_MS,
   FLIGHT_MS,
@@ -86,6 +87,7 @@ import {
   FxStage,
   HOLD_CENTER_MS,
   NEUTRAL_ATTACK_PAUSE_MS,
+  RANGED_RELEASE_MS,
   type FxCue
 } from "@/components/table/fx";
 import { abilityFxPlans, cancelFx, spellFxPlans, type SpellFxPlan } from "@/data/fx";
@@ -1068,12 +1070,68 @@ export default function Home() {
               break;
             }
             case "UNIT_ATTACK_DECLARED": {
-              playUnitSound(
-                unitVoice(event.attackerId),
-                event.attackKind === "ranged" ? "shoot" : "attack",
-                timeline
-              );
-              timeline += 500;
+              const ranged = event.attackKind === "ranged";
+              // The attacker's own H3 voice on the wind-up.
+              playUnitSound(unitVoice(event.attackerId), ranged ? "shoot" : "attack", timeline);
+
+              const attacker = nextState.combat?.units[event.attackerId];
+              const defender = nextState.combat?.units[event.defenderId];
+              // Anchor the strike to the defender's cell rather than the unit: a
+              // killing blow un-renders the unit, but the cell stays, so the hit
+              // still lands on screen.
+              const defenderCell =
+                defender && defender.position >= 0 ? `cell:${defender.position}` : undefined;
+              const attackStart = timeline;
+              const impactAt = timeline + ATTACK_IMPACT_MS;
+
+              if (attacker && defenderCell) {
+                // The attacker's card thrusts in (melee) or recoils (ranged).
+                cues.push({
+                  kind: "lunge",
+                  id: `${event.id}-lunge`,
+                  attackerId: event.attackerId,
+                  to: defenderCell,
+                  attackKind: event.attackKind,
+                  // Match the card's on-board orientation (p1 / a flipped view sit upside-down).
+                  flip: (attacker.controllerId === "p1") !== boardFlipped,
+                  delayMs: attackStart
+                });
+
+                if (ranged) {
+                  // Placeholder projectile from the shooter to the target; it
+                  // launches just after the loose and lands on the impact beat.
+                  const attackerCell =
+                    attacker.position >= 0 ? `cell:${attacker.position}` : `unit:${event.attackerId}`;
+                  cues.push({
+                    kind: "bolt",
+                    id: `${event.id}-bolt`,
+                    from: attackerCell,
+                    to: defenderCell,
+                    delayMs: attackStart + RANGED_RELEASE_MS
+                  });
+                } else {
+                  // Melee strike flash on the defender as the blow connects.
+                  cues.push({
+                    kind: "slash",
+                    id: `${event.id}-slash`,
+                    at: defenderCell,
+                    delayMs: impactAt
+                  });
+                }
+
+                // The struck unit recoils at the moment of impact (no-op if it
+                // was just destroyed and is no longer on the board).
+                cues.push({
+                  kind: "shake",
+                  id: `${event.id}-shake`,
+                  unitId: event.defenderId,
+                  delayMs: impactAt
+                });
+              }
+
+              // Hold the timeline at the blow so the following DAMAGE_ASSIGNED
+              // number and hurt cry land together with the strike.
+              timeline = impactAt;
               break;
             }
             case "UNIT_MOVED": {

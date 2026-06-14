@@ -42,6 +42,18 @@ dice / draw cues) and queues `FxCue`s:
   resizes). Bloodlust uses a red tint on the unit card, like the original
   engine's palette trick.
 - `SPELL_CAST_CANCELLED` — dispel fizzle at center stage.
+- `UNIT_ATTACK_DECLARED` — the attacker's own card lunges (melee: a thrust into
+  the target with a shake at contact; ranged: a recoil as the shot looses) and
+  the struck card recoils in place. Melee adds a slash streak + spark over the
+  target's cell; ranged flies a placeholder projectile (`.fxBolt`) cell → cell
+  with a small impact burst on arrival. The whole beat is timed to
+  `ATTACK_IMPACT_MS` so the contact lands with the `DAMAGE_ASSIGNED` number and
+  the unit's hurt cry; retaliations re-fire the same event, so they animate too.
+  Strike visuals anchor to the *cell* (not the unit) so a killing blow still
+  shows the hit after the defeated unit leaves the board. The slash, bolt and
+  impact use synthesized placeholder foley (`playMeleeImpact` / `playWhoosh` /
+  `playProjectileImpact` in `src/lib/sound.ts`) layered under the creature's H3
+  voice — swap those for recorded weapon hits without touching the FX layer.
 - `DAMAGE_ASSIGNED` / `DAMAGE_HEALED` — floating −N / +N numbers.
 - `UNIT_ABILITY_TRIGGERED` — `abilityFxPlans[abilityId]` (Magog splash and
   Lich death cloud are wired; poison / fear / acid etc. are ready for when

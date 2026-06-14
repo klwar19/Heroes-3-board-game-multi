@@ -247,3 +247,30 @@ export function playDiceRoll(dieCount = 1, settleMs = 1300): void {
   // The die finally comes to rest: one lower, firmer knock on the felt.
   playNoise({ durationMs: 80, from: 520, to: 220, q: 0.85, gain: 0.13, attackMs: 3 }, settleMs);
 }
+
+/**
+ * Combat-strike foley. These are synthesized placeholders (the same
+ * filtered-noise toolkit as the dice / card sounds) layered under each unit's
+ * own H3 voice clip, so a melee blow reads "grunt + thwack" and a shot reads
+ * "loose + whoosh + thud". Swap the bodies for recorded weapon hits later;
+ * callers (the FX layer) need not change.
+ */
+
+/** A melee weapon connecting: a low body thud plus a sharp metallic crack. */
+export function playMeleeImpact(delayMs = 0): void {
+  // Low, blunt body of the hit.
+  playNoise({ durationMs: 95, from: 330, to: 105, q: 0.8, gain: 0.15, attackMs: 2 }, delayMs);
+  // Bright transient on top so it cuts through as a strike, not just a thump.
+  playNoise({ durationMs: 55, from: 2700, to: 950, q: 1.25, gain: 0.08, attackMs: 1 }, delayMs + 4);
+}
+
+/** A projectile leaving the shooter: an airy high-to-low whoosh. */
+export function playWhoosh(delayMs = 0): void {
+  playNoise({ durationMs: 220, from: 1850, to: 520, q: 0.7, gain: 0.07, attackMs: 18 }, delayMs);
+}
+
+/** A projectile landing: a lighter thud than a melee blow, with a tick. */
+export function playProjectileImpact(delayMs = 0): void {
+  playNoise({ durationMs: 70, from: 880, to: 300, q: 1.0, gain: 0.11, attackMs: 2 }, delayMs);
+  playNoise({ durationMs: 38, from: 2200, to: 1200, q: 1.4, gain: 0.05, attackMs: 1 }, delayMs + 3);
+}
