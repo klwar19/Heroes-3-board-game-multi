@@ -92,6 +92,16 @@ export const TOWN_BUILDING_IMAGES: Record<string, Record<string, string>> = {
     dwelling_gold: "/assets/town/fortress_hydra_pond.gif",
     blood_obelisk: "/assets/town/fortress_blood_obelisk.gif",
     cage_of_warlords: "/assets/town/fortress_cage_of_warlords.gif"
+  },
+  tower: {
+    city_hall: "/assets/town/tower_city_hall_large.gif",
+    citadel: "/assets/town/tower_citadel_large.gif",
+    mage_guild: "/assets/town/tower_mage_guild_level_1_large.gif",
+    dwelling_bronze: "/assets/town/tower_workshop.gif",
+    dwelling_silver: "/assets/town/tower_mage_tower.gif",
+    dwelling_gold: "/assets/town/tower_cloud_temple.gif",
+    artifact_merchants: "/assets/town/tower_artifact_merchants.gif",
+    wall_of_knowledge: "/assets/town/tower_wall_of_knowledge.gif"
   }
 };
 

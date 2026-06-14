@@ -3590,7 +3590,12 @@ export function openSharedDeckSearch(state: GameState, playerId: PlayerId, deckI
 function openDiscardPickChoice(
   state: GameState,
   playerId: PlayerId,
-  pick: { count: number; filter?: "spell" | "non-artifact" | "specialty"; fromTop?: number; shuffleRestIntoDeck?: boolean }
+  pick: {
+    count: number;
+    filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic";
+    fromTop?: number;
+    shuffleRestIntoDeck?: boolean;
+  }
 ): boolean {
   const player = state.players[playerId];
   if (!player) {
@@ -3608,6 +3613,10 @@ function openDiscardPickChoice(
     }
     if (pick.filter === "specialty") {
       return kind === "hero-specialty";
+    }
+    if (pick.filter === "power-or-knowledge-statistic") {
+      const statisticType = cardLibrary[cardId]?.statisticType;
+      return kind === "statistic" && (statisticType === "power" || statisticType === "knowledge");
     }
     return true;
   });

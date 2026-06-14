@@ -12,7 +12,8 @@ const townProducts: Record<string, string> = {
   rampart: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
   inferno: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
   stronghold: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
-  fortress: "Heroes of Might and Magic III: The Board Game (Fortress Expansion)"
+  fortress: "Heroes of Might and Magic III: The Board Game (Fortress Expansion)",
+  tower: "Heroes of Might and Magic III: The Board Game (Tower Expansion)"
 };
 
 function townSource(faction: string) {
@@ -29,6 +30,30 @@ function heroSource(slug: string) {
     credit:
       "Hero board data and board scan from the fan wiki; the portrait is the board-game art cropped from that scan (hosted locally). Verify against official components before final release.",
     url: `https://en.homm3bg.wiki/heroes/${slug}/`
+  };
+}
+
+function towerHeroSource(slug: string) {
+  return {
+    product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
+    credit:
+      "Hero board data and board scan from the fan wiki Tower pages; the portrait is the board-game art cropped from that scan (hosted locally). Verify against official components before final release.",
+    url: `https://en.homm3bg.wiki/heroes/${slug}/`
+  };
+}
+
+/**
+ * Source for the two Tower heroes whose printed boards are not on the fan wiki
+ * yet (only placeholder art): stats follow the verified Wizard/Alchemist board
+ * pattern and the portrait is the classic PC hero portrait (heroes.thelazy.net,
+ * upscaled, hosted locally), exactly like Moandor.
+ */
+function towerPcPortraitHeroSource(slug: string, pcName: string) {
+  return {
+    product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
+    credit:
+      "Hero roster, class and specialty from the fan wiki Tower town page. The printed board is not on the wiki yet, so the starting statistics follow the verified Wizard/Alchemist board pattern and the portrait is the classic PC hero portrait from heroes.thelazy.net (upscaled, hosted locally). Verify against official components before final release.",
+    url: `https://heroes.thelazy.net/index.php/${pcName}`
   };
 }
 
@@ -561,6 +586,93 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     source: townSource("dungeon")
   },
 
+  // ---- Tower (expansion) -------------------------------------------------
+  "tower.city_hall": {
+    id: "tower.city_hall",
+    name: "City Hall",
+    faction: "tower",
+    cost: { gold: 10, buildingMaterials: 4 },
+    effect: {
+      type: "RESOURCE_ROUND_CHOICE",
+      options: [
+        { label: "Gain 4 gold", gold: 4 },
+        { label: "Draw 1 card from your deck", drawCards: 1 }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: townSource("tower")
+  },
+  "tower.citadel": {
+    id: "tower.citadel",
+    name: "Citadel",
+    faction: "tower",
+    cost: { gold: 8, buildingMaterials: 5, valuables: 1 },
+    effect: { type: "UNLOCK_REINFORCE" },
+    implementationStatus: "implemented",
+    source: townSource("tower")
+  },
+  "tower.mage_guild": {
+    id: "tower.mage_guild",
+    name: "Mage Guild",
+    faction: "tower",
+    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
+    effect: { type: "MAGE_GUILD" },
+    spellBookCost: 5,
+    implementationStatus: "implemented",
+    source: townSource("tower")
+  },
+  "tower.dwelling_bronze": {
+    id: "tower.dwelling_bronze",
+    name: "Alchemical Workshop",
+    faction: "tower",
+    cost: { gold: 5, buildingMaterials: 3, valuables: 1 },
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" },
+    implementationStatus: "implemented",
+    source: townSource("tower")
+  },
+  "tower.dwelling_silver": {
+    id: "tower.dwelling_silver",
+    name: "Enchanted Towers",
+    faction: "tower",
+    cost: { gold: 8, buildingMaterials: 6, valuables: 3 },
+    prerequisites: ["tower.dwelling_bronze"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "silver" },
+    implementationStatus: "implemented",
+    source: townSource("tower")
+  },
+  "tower.dwelling_gold": {
+    id: "tower.dwelling_gold",
+    name: "Golden Temples",
+    faction: "tower",
+    cost: { gold: 10, buildingMaterials: 9, valuables: 4 },
+    prerequisites: ["tower.dwelling_silver"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "gold" },
+    implementationStatus: "implemented",
+    source: townSource("tower")
+  },
+  "tower.artifact_merchants": {
+    id: "tower.artifact_merchants",
+    name: "Artifact Merchants",
+    faction: "tower",
+    cost: { gold: 8, buildingMaterials: 6, valuables: 1 },
+    // "During your turn, choose one: 1. Pay 7 gold to Search(2) Artifacts.
+    // 2. Remove an Artifact card from your hand to gain 2 gold." Also the
+    // artifact source that unlocks the BINH Major/Relic decks at hero level 4/6.
+    effect: { type: "ARTIFACT_SMITH", searchCost: 7, sellGold: 2 },
+    implementationStatus: "implemented",
+    source: townSource("tower")
+  },
+  "tower.wall_of_knowledge": {
+    id: "tower.wall_of_knowledge",
+    name: "Wall of Knowledge",
+    faction: "tower",
+    cost: { gold: 6, buildingMaterials: 4, valuables: 1 },
+    // "At the beginning of each Astrologers' round, you can take 1 Knowledge
+    // or 1 Power Statistic card from your discard pile to your hand."
+    effect: { type: "ASTROLOGERS_TAKE_STATISTIC" },
+    implementationStatus: "implemented",
+    source: townSource("tower")
+  },
   // ---- Fortress (expansion) ----------------------------------------------
   "fortress.city_hall": {
     id: "fortress.city_hall",
@@ -977,6 +1089,108 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     boardScan: "/assets/heroes-dungeon-might-mutare.webp",
     source: heroSource("mutare")
   },
+
+  // ---- Tower (expansion) -------------------------------------------------
+  dracon: {
+    id: "dracon",
+    name: "Dracon",
+    faction: "tower",
+    class: "Wizard",
+    type: "magic",
+    startingStats: { attack: 0, defense: 0, power: 2, knowledge: 3 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: {
+      1: "specialty.dracon.1",
+      4: "specialty.dracon.4",
+      6: "specialty.dracon.6"
+    },
+    portrait: "/assets/hero_boardart-dracon.webp",
+    boardScan: "/assets/heroes-tower-magic-dracon.webp",
+    source: towerHeroSource("dracon")
+  },
+  iona: {
+    id: "iona",
+    name: "Iona",
+    faction: "tower",
+    class: "Alchemist",
+    type: "might",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.intelligence",
+    specialtyCardIds: {
+      1: "specialty.iona.1",
+      4: "specialty.iona.4",
+      6: "specialty.iona.6"
+    },
+    portrait: "/assets/hero_boardart-iona.webp",
+    boardScan: "/assets/heroes-tower-might-iona.webp",
+    source: towerHeroSource("iona")
+  },
+  josephine: {
+    id: "josephine",
+    name: "Josephine",
+    faction: "tower",
+    class: "Alchemist",
+    type: "might",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.sorcery",
+    specialtyCardIds: {
+      1: "specialty.josephine.1",
+      4: "specialty.josephine.4",
+      6: "specialty.josephine.6"
+    },
+    portrait: "/assets/hero_boardart-josephine.webp",
+    boardScan: "/assets/heroes-tower-might-josephine.webp",
+    source: towerHeroSource("josephine")
+  },
+  solmyr: {
+    id: "solmyr",
+    name: "Solmyr",
+    faction: "tower",
+    class: "Wizard",
+    type: "magic",
+    startingStats: { attack: 0, defense: 0, power: 2, knowledge: 3 },
+    startingAbilityCardId: "ability.sorcery",
+    specialtyCardIds: {
+      1: "specialty.solmyr.1",
+      4: "specialty.solmyr.4",
+      6: "specialty.solmyr.6"
+    },
+    portrait: "/assets/hero_boardart-solmyr.webp",
+    boardScan: "/assets/heroes-tower-magic-solmyr.webp",
+    source: towerHeroSource("solmyr")
+  },
+  cyra: {
+    id: "cyra",
+    name: "Cyra",
+    faction: "tower",
+    class: "Wizard",
+    type: "magic",
+    startingStats: { attack: 0, defense: 0, power: 2, knowledge: 3 },
+    startingAbilityCardId: "ability.diplomacy",
+    specialtyCardIds: {
+      1: "specialty.cyra.1",
+      4: "specialty.cyra.4",
+      6: "specialty.cyra.6"
+    },
+    portrait: "/assets/hero_portraits-cyra.webp",
+    source: towerPcPortraitHeroSource("cyra", "Cyra")
+  },
+  torosar: {
+    id: "torosar",
+    name: "Torosar",
+    faction: "tower",
+    class: "Wizard",
+    type: "might",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.mysticism",
+    specialtyCardIds: {
+      1: "specialty.torosar.1",
+      4: "specialty.torosar.4",
+      6: "specialty.torosar.6"
+    },
+    portrait: "/assets/hero_portraits-torosar.webp",
+    source: towerPcPortraitHeroSource("torosar", "Torosar")
+  },
   bron: {
     id: "bron",
     name: "Bron",
@@ -1092,6 +1306,17 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     units: unitsOfFaction("dungeon"),
     townImage: "/assets/towns-dungeon-empty.webp",
     source: townSource("dungeon")
+  },
+  tower: {
+    id: "tower",
+    name: "Tower",
+    color: "#2bb3c0",
+    startingTileId: "#S1",
+    heroes: ["cyra", "dracon", "iona", "josephine", "solmyr", "torosar"],
+    buildings: buildingsOfFaction("tower"),
+    units: unitsOfFaction("tower"),
+    townImage: "/assets/towns-tower-empty.webp",
+    source: townSource("tower")
   },
   fortress: {
     id: "fortress",

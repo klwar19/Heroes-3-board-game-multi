@@ -345,6 +345,137 @@ function resurrectionSpecialty(
   };
 }
 
+function towerRoman(level: 1 | 4 | 6): "I" | "IV" | "VI" {
+  return level === 1 ? "I" : level === 4 ? "IV" : "VI";
+}
+
+/** "+1 HP for this Combat" to a chosen friendly unit, doubled for the signature unit (any level). */
+function towerHealthSpecialty(
+  heroSlug: string,
+  specialtyName: string,
+  level: 1 | 4 | 6,
+  amount: number,
+  doubledUnit: string
+): CardLibrary[string] {
+  return {
+    id: `specialty.${heroSlug}.${level}`,
+    name: `${specialtyName} ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: ["hero-specialty", "combat", heroSlug, "health"],
+    target: { type: "friendly-unit" },
+    effect: { type: "ADD_UNIT_MAX_HEALTH", amount, doubleForUnitName: doubledUnit },
+    assets: {
+      cardImage: specialtyCardImage(heroSlug, level),
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource(heroSlug)
+  };
+}
+
+/** "+1 attack OR +1 defense", doubled for the signature unit (any level). */
+function towerAttackOrDefenseSpecialty(
+  heroSlug: string,
+  specialtyName: string,
+  level: 1 | 4 | 6,
+  doubledUnit: string
+): CardLibrary[string] {
+  return {
+    id: `specialty.${heroSlug}.${level}`,
+    name: `${specialtyName} ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: ["hero-specialty", "instant", heroSlug],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: `+1 attack (x2 for ${doubledUnit})`,
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, doubleForUnitName: doubledUnit }
+        },
+        {
+          label: `+1 defense (x2 for ${doubledUnit})`,
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1, doubleForUnitName: doubledUnit }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage(heroSlug, level),
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource(heroSlug)
+  };
+}
+
+/** A flat +N attack/defense to a single attack, doubled for the signature unit. */
+function towerStatBoostSpecialty(
+  heroSlug: string,
+  specialtyName: string,
+  level: 1 | 4 | 6,
+  stat: "attack" | "defense",
+  amount: number,
+  doubledUnit: string
+): CardLibrary[string] {
+  return {
+    id: `specialty.${heroSlug}.${level}`,
+    name: `${specialtyName} ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: ["hero-specialty", "instant", heroSlug],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: stat === "attack" ? "self" : "opponent" },
+    effect: { type: "ADD_COMBAT_STAT", stat, amount, doubleForUnitName: doubledUnit },
+    assets: {
+      cardImage: specialtyCardImage(heroSlug, level),
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource(heroSlug)
+  };
+}
+
+/**
+ * A faithful, display-only specialty for printed effects the engine does not
+ * model yet (Chain Lightning's nearest-unit damage chain, the Ballista grants,
+ * Cyra's initiative-conditional doubling). The card shows its real rules text
+ * and is honestly flagged not-implemented, so it is never silently faked.
+ * `hasArt` controls whether the cropped specialty scan is wired (Cyra/Torosar
+ * have only placeholder art on the wiki, so theirs render as text).
+ */
+function notImplementedSpecialty(
+  heroSlug: string,
+  specialtyName: string,
+  level: 1 | 4 | 6,
+  text: string,
+  hasArt: boolean
+): CardLibrary[string] {
+  return {
+    id: `specialty.${heroSlug}.${level}`,
+    name: `${specialtyName} ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: ["hero-specialty", "needs-implementation", heroSlug, text],
+    effect: { type: "DRAW_CARDS", amount: 0 },
+    ...(hasArt
+      ? {
+          assets: {
+            cardImage: specialtyCardImage(heroSlug, level),
+            imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+          }
+        }
+      : {}),
+    implementationStatus: "not-implemented",
+    source: heroSource(heroSlug)
+  };
+}
+
 export const adventureCards: CardLibrary = {
   "ability.leadership": {
     id: "ability.leadership",
@@ -1186,5 +1317,153 @@ export const adventureCards: CardLibrary = {
   "specialty.bron.6": unitInitiativeSpecialty("bron", "Basilisks", 6, 2, "Basilisks"),
   "specialty.wystan.1": mightSpecialtyOne("wystan", "Lizardmen", "Lizardmen"),
   "specialty.wystan.4": unitHealthSpecialty("wystan", "Lizardmen", 4, 1, "Lizardmen"),
-  "specialty.wystan.6": unitInitiativeSpecialty("wystan", "Lizardmen", 6, 2, "Lizardmen")
+  "specialty.wystan.6": unitInitiativeSpecialty("wystan", "Lizardmen", 6, 2, "Lizardmen"),
+
+  // ---- Tower heroes ------------------------------------------------------
+  // Iona (Alchemist): the Genies specialist. I = +1 HP for the combat; IV =
+  // +1 attack/defence; VI = +2 defence — all doubled for a Genies unit.
+  "specialty.iona.1": towerHealthSpecialty("iona", "Genies", 1, 1, "Genies"),
+  "specialty.iona.4": towerAttackOrDefenseSpecialty("iona", "Genies", 4, "Genies"),
+  "specialty.iona.6": towerStatBoostSpecialty("iona", "Genies", 6, "defense", 2, "Genies"),
+  // Josephine (Alchemist): the Golems specialist. I = +1 HP; IV = +1 A/D;
+  // VI = +2 attack — all doubled for any Golems unit (Iron/Diamond/Gold).
+  "specialty.josephine.1": towerHealthSpecialty("josephine", "Golems", 1, 1, "a Golems unit"),
+  "specialty.josephine.4": towerAttackOrDefenseSpecialty("josephine", "Golems", 4, "a Golems unit"),
+  "specialty.josephine.6": towerStatBoostSpecialty("josephine", "Golems", 6, "attack", 2, "a Golems unit"),
+  // Dracon (Wizard): the Enchanters specialist. I = +1 A/D doubled for Magi
+  // and Enchanters; IV = trade a Pack of Magi for the unique Enchanters card
+  // (or draw); VI = +2 initiative for the combat, doubled for Magi/Enchanters.
+  "specialty.dracon.1": mightSpecialtyOne("dracon", "Enchanters", "Magi and Enchanters"),
+  "specialty.dracon.4": {
+    id: "specialty.dracon.4",
+    name: "Enchanters IV",
+    kind: "hero-specialty",
+    timing: "map",
+    tags: [
+      "hero-specialty",
+      "map",
+      "dracon",
+      "enchanters",
+      "If you have a Pack of Magi Unit card, discard it, then search the Neutral Unit golden deck for the Enchanters card and add it to your Unit deck (only 1 Enchanters at a time). — OR — Draw a card."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Discard a Pack of Magi → take the Enchanters",
+          mapOnly: true,
+          effect: {
+            type: "CONVERT_ARMY_UNIT",
+            fromUnitDefId: "tower.magi",
+            fromSide: "pack",
+            toUnitDefId: "neutral.enchanters",
+            toTier: "gold",
+            unique: true
+          }
+        },
+        {
+          label: "Draw a card",
+          effect: { type: "DRAW_CARDS", amount: 1 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("dracon", 4),
+      imageAlt: "Enchanters level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("dracon")
+  },
+  "specialty.dracon.6": unitInitiativeSpecialty("dracon", "Enchanters", 6, 2, "Magi and Enchanters"),
+  // Cyra (Wizard): the Haste specialist. I = +3 initiative for the combat
+  // (implemented). IV/VI add an initiative-comparison conditional the engine
+  // does not model yet, so they stay faithful display-only cards.
+  "specialty.cyra.1": {
+    id: "specialty.cyra.1",
+    name: "Haste I",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "cyra",
+      "haste",
+      "For this Combat, your selected unit's Initiative is increased by 3."
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_INITIATIVE_BUFF",
+      name: "Haste",
+      amount: 3,
+      duration: { type: "combat" },
+      polarity: "positive",
+      removable: false
+    },
+    implementationStatus: "implemented",
+    source: heroSource("cyra")
+  },
+  "specialty.cyra.4": notImplementedSpecialty(
+    "cyra",
+    "Haste",
+    4,
+    "Your selected unit gains +1 attack. The effect doubles if the attacked unit has higher initiative.",
+    false
+  ),
+  "specialty.cyra.6": notImplementedSpecialty(
+    "cyra",
+    "Haste",
+    6,
+    "For this Combat, your selected unit's initiative is increased by 3. This unit gains +1 defense against attacks made by units with lower initiative.",
+    false
+  ),
+  // Solmyr (Wizard): the Chain Lightning specialist. The nearest-unit damage
+  // chain (I/VI) and the deck dig (IV) need engine mechanics we do not have
+  // yet, so all three are faithful display-only cards (with their printed art).
+  "specialty.solmyr.1": notImplementedSpecialty(
+    "solmyr",
+    "Chain Lightning",
+    1,
+    "Select a unit and the 2 units closest to it. Allocate 1/1/0 damage, starting with the first selected unit.",
+    true
+  ),
+  "specialty.solmyr.4": notImplementedSpecialty(
+    "solmyr",
+    "Chain Lightning",
+    4,
+    "Discard up to 3 cards from your Might and Magic deck and return 1 of them to your hand.",
+    true
+  ),
+  "specialty.solmyr.6": notImplementedSpecialty(
+    "solmyr",
+    "Chain Lightning",
+    6,
+    "Select a unit and the 2 units closest to it. Allocate 2/1/1 damage, starting with the first selected unit.",
+    true
+  ),
+  // Torosar (Wizard, might): the Ballista specialist. Granting/activating extra
+  // Ballistas needs war-machine-grant mechanics we do not model yet; the wiki
+  // also only has placeholder art, so these are text-only display cards.
+  "specialty.torosar.1": notImplementedSpecialty(
+    "torosar",
+    "Ballista",
+    1,
+    "Pay 5 gold to gain a Ballista. — OR — Activate your Ballista (if you have one).",
+    false
+  ),
+  "specialty.torosar.4": notImplementedSpecialty(
+    "torosar",
+    "Ballista",
+    4,
+    "Until the end of the round, gain an additional Ballista during Combat. When played, this card counts as a Ballista.",
+    false
+  ),
+  "specialty.torosar.6": notImplementedSpecialty(
+    "torosar",
+    "Ballista",
+    6,
+    "For this Combat, gain an additional Ballista. You can activate all your Ballistas now. When played, this card counts as a Ballista.",
+    false
+  )
 };

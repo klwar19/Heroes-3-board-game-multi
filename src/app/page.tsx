@@ -23,6 +23,7 @@ import {
   EffectsRail,
   InitiativeRail,
   InspectPanel,
+  isBoardFlipped,
   LogDrawer
 } from "@/components/table/board";
 import { CardFrame, DeckWells, HandFan, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
@@ -78,11 +79,13 @@ import {
   type CardBoardAction
 } from "@/components/table/utils";
 import {
+  COMBAT_MOVE_MS,
   DRAW_STAGGER_MS,
   FLIGHT_MS,
   FLIGHT_OUT_MS,
   FxStage,
   HOLD_CENTER_MS,
+  NEUTRAL_ATTACK_PAUSE_MS,
   type FxCue
 } from "@/components/table/fx";
 import { abilityFxPlans, cancelFx, spellFxPlans, type SpellFxPlan } from "@/data/fx";
@@ -244,7 +247,11 @@ function clearCachedRoom(roomId: string): void {
   }
 }
 
-function makeDiceCue(state: GameState, event: Extract<GameEvent, { type: "ATTACK_ROLLED" }>): DiceCue {
+function makeDiceCue(
+  state: GameState,
+  event: Extract<GameEvent, { type: "ATTACK_ROLLED" }>,
+  preDelayMs = 0
+): DiceCue {
   return {
     id: event.id,
     rolls: event.rolls,
@@ -258,7 +265,8 @@ function makeDiceCue(state: GameState, event: Extract<GameEvent, { type: "ATTACK
     attackBonus: event.attackBonus,
     defenseBonus: event.defenseBonus,
     damage: event.damage,
-    isRetaliation: event.isRetaliation
+    isRetaliation: event.isRetaliation,
+    ...(preDelayMs > 0 ? { preDelayMs } : {})
   };
 }
 
@@ -611,9 +619,37 @@ export default function Home() {
         seen.add(event.id);
       }
 
+      // Combat unit moves arriving this batch (peeked without consuming the FX
+      // seen-set, which the card-flight pass below owns). A neutral guard that
+      // slides into range and then attacks in the same step has its move and
+      // attack roll bundled together — hold the dice so the table watches the
+      // guard arrive and pause before the die is thrown.
+      const freshCombatMoves = nextState.combat
+        ? nextState.eventLog.filter(
+            (event): event is Extract<GameEvent, { type: "UNIT_MOVED" }> =>
+              event.type === "UNIT_MOVED" && !seenFxIdsRef.current.has(event.id)
+          )
+        : [];
+      const movedNeutralAttackerIds = new Set(
+        freshCombatMoves
+          .filter((move) => move.playerId === NEUTRAL_PLAYER_ID && fresh.some((roll) => roll.attackerId === move.unitId))
+          .map((move) => move.unitId)
+      );
+      const neutralPreDelayMs = movedNeutralAttackerIds.size > 0 ? COMBAT_MOVE_MS + NEUTRAL_ATTACK_PAUSE_MS : 0;
+
       if (fresh.length > 0) {
+        // Only the guard's own (first) attack roll waits; its retaliation and
+        // any follow-up rolls fire straight away.
+        const pendingPreDelay = new Set(movedNeutralAttackerIds);
+        const freshCues = fresh.map((event) => {
+          if (neutralPreDelayMs > 0 && pendingPreDelay.has(event.attackerId)) {
+            pendingPreDelay.delete(event.attackerId);
+            return makeDiceCue(nextState, event, neutralPreDelayMs);
+          }
+          return makeDiceCue(nextState, event);
+        });
         setDice((current) => {
-          const queue = [...current.queue, ...fresh.map((event) => makeDiceCue(nextState, event))];
+          const queue = [...current.queue, ...freshCues];
           if (!current.current && queue.length > 0) {
             return { current: queue[0], queue: queue.slice(1) };
           }
@@ -722,8 +758,9 @@ export default function Home() {
         const cues: FxCue[] = [];
         const viewerId = viewerRef.current;
         // When an attack roll cues in the same batch, let the dice settle
-        // before its damage number pops.
-        let timeline = fresh.length > 0 ? 1200 : 0;
+        // before its damage number pops. A neutral guard's move-then-attack
+        // also holds its die (neutralPreDelayMs), so its damage waits too.
+        let timeline = neutralPreDelayMs + (fresh.length > 0 ? 1200 : 0);
         let viewerDraws = 0;
 
         // A seat's deck/hand/discard anchors are on screen during combat
@@ -736,6 +773,28 @@ export default function Home() {
         // the killing blow still gets its death cry.
         const unitVoice = (unitId: string) =>
           nextState.combat?.units[unitId]?.unitDefId ?? unitDefIdsRef.current.get(unitId);
+
+        // Combat steps: a unit's card visibly glides from its old cell to its
+        // new one instead of teleporting, trailing a couple of after-images and
+        // its footstep sound. The board has already re-rendered the unit at its
+        // destination, so the FX layer hides the real card and flies a ghost.
+        const boardFlipped = isBoardFlipped(nextState, viewerId);
+        freshCombatMoves.forEach((event, index) => {
+          const unit = nextState.combat?.units[event.unitId];
+          const moveDelay = index * 130;
+          cues.push({
+            kind: "move",
+            id: `${event.id}-move`,
+            unitId: event.unitId,
+            from: `cell:${event.from}`,
+            to: `unit:${event.unitId}`,
+            cardImage: unit?.assets?.cardImage,
+            // Match the card's on-board orientation (p1 / a flipped view sit upside-down).
+            flip: (unit?.controllerId === "p1") !== boardFlipped,
+            delayMs: moveDelay
+          });
+          playUnitSound(unitVoice(event.unitId), "move", moveDelay);
+        });
 
         // Mulligans / forced discards: the discarded cards fly out to the
         // discard pile before the replacement draws fly in. The reducer
@@ -1018,8 +1077,8 @@ export default function Home() {
               break;
             }
             case "UNIT_MOVED": {
-              playUnitSound(unitVoice(event.unitId), "move", timeline);
-              timeline += 350;
+              // The card-glide and footstep are queued in the movement pre-pass
+              // above (on their own timeline), so nothing to do here.
               break;
             }
             case "UNIT_DEFENDED": {

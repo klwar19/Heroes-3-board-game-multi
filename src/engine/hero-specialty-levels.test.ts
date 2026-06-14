@@ -52,16 +52,55 @@ function findPlay(state: GameState, cardId: string, optionIndex?: number, unitId
 }
 
 // ---------------------------------------------------------------------------
-// Every IV/VI specialty is now implemented (no dead "needs-implementation").
+// Every IV/VI specialty is implemented (no dead "needs-implementation"), with a
+// single explicitly-tracked exception: the Tower expansion heroes whose printed
+// specialties need engine subsystems we have not built yet — Solmyr's Chain
+// Lightning (a damage chain to the nearest units), Torosar's Ballista grants,
+// and Cyra's initiative-conditional doubling. Those ship as faithful, honestly
+// flagged not-implemented cards (real rules text + art), exactly like the
+// not-implemented Tactics/Diplomacy abilities. The allowlist below keeps the
+// full invariant for every other hero so none can silently regress.
 // ---------------------------------------------------------------------------
 
+const PENDING_TOWER_SPECIALTIES = new Set([
+  "specialty.cyra.4",
+  "specialty.cyra.6",
+  "specialty.solmyr.1",
+  "specialty.solmyr.4",
+  "specialty.solmyr.6",
+  "specialty.torosar.1",
+  "specialty.torosar.4",
+  "specialty.torosar.6"
+]);
+
+const TOWER_HERO_SLUGS = ["cyra", "dracon", "iona", "josephine", "solmyr", "torosar"];
+
 describe("all hero specialties are implemented", () => {
-  it("has no remaining not-implemented hero specialty (I/IV/VI for every hero)", () => {
+  it("has no remaining not-implemented hero specialty outside the tracked Tower pending set", () => {
     const specialties = Object.values(adventureCards).filter((card) => card.kind === "hero-specialty");
     expect(specialties.length).toBeGreaterThan(0);
     for (const card of specialties) {
+      if (PENDING_TOWER_SPECIALTIES.has(card.id)) {
+        continue;
+      }
       expect(card.implementationStatus, `${card.id} should be implemented`).toBe("implemented");
       expect(card.tags, `${card.id} still flagged needs-implementation`).not.toContain("needs-implementation");
+    }
+  });
+
+  it("only ever defers Tower hero specialties (originals can never regress)", () => {
+    for (const id of PENDING_TOWER_SPECIALTIES) {
+      const card = adventureCards[id];
+      expect(card, `${id} should exist`).toBeTruthy();
+      expect(card.kind).toBe("hero-specialty");
+      // The id is "specialty.<heroSlug>.<level>" and must be a Tower hero.
+      const heroSlug = id.split(".")[1];
+      expect(TOWER_HERO_SLUGS, `${id} is not a Tower hero specialty`).toContain(heroSlug);
+      // A pending entry must genuinely still be pending — once implemented,
+      // it must be removed from this allowlist.
+      expect(card.implementationStatus, `${id} is implemented now; drop it from PENDING_TOWER_SPECIALTIES`).toBe(
+        "not-implemented"
+      );
     }
   });
 });

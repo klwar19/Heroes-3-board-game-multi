@@ -35,7 +35,7 @@ import { useCardZoom } from "./zoom";
  * sandbox seats p1 in the top rows (flip for p1); adventure combats seat the
  * attacker in the bottom rows, so only the defender's view flips.
  */
-function isBoardFlipped(state: GameState, viewerPlayerId: PlayerId): boolean {
+export function isBoardFlipped(state: GameState, viewerPlayerId: PlayerId): boolean {
   const combat = state.combat;
   if (!combat) {
     return viewerPlayerId === "p1";
