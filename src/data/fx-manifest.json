@@ -1826,6 +1826,26 @@
       "canvasHeight": 96
     }
   },
+  "new-day": {
+    "src": "/assets/fx/new-day.webp",
+    "label": "New Day",
+    "group": "ui",
+    "role": "affect",
+    "frames": 10,
+    "cols": 10,
+    "rows": 1,
+    "frameWidth": 175,
+    "frameHeight": 166,
+    "fps": 8,
+    "anchor": "center",
+    "sourceDef": "d92adc45-NewDay.def",
+    "trim": {
+      "x": 0,
+      "y": 0,
+      "canvasWidth": 175,
+      "canvasHeight": 166
+    }
+  },
   "paralyze": {
     "src": "/assets/fx/paralyze.webp",
     "label": "Paralyze (Scorpicore)",
