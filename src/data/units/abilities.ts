@@ -688,6 +688,15 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "PARALYZE_TARGET_ON_DIE", source: "extra", onRoll: 0 },
     implementationStatus: "implemented"
   },
+  "fortress-basilisk-paralysis": {
+    id: "fortress-basilisk-paralysis",
+    name: "Stone Gaze",
+    // Fortress Basilisks paralyse on a "-1" on their own Attack die (no extra
+    // roll), exactly like the Azure Dragon's paralysis.
+    text: 'On a "-1" on the Attack die, the target gains Paralysis (it skips its next activation; any damage clears it).',
+    effect: { type: "PARALYZE_TARGET_ON_DIE", source: "own", onRoll: -1 },
+    implementationStatus: "implemented"
+  },
   "hydra-multi-attack": {
     id: "hydra-multi-attack",
     name: "Hydra Assault",
@@ -917,6 +926,14 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Death Stare",
     text: 'After the attack, roll 2 Attack dice; on two "-1" results, reduce the target\'s Health to 0.',
     effect: { type: "DEATH_STARE_ON_DICE", diceCount: 2, onRoll: -1 },
+    implementationStatus: "implemented"
+  },
+  "fortress-gorgon-death-stare": {
+    id: "fortress-gorgon-death-stare",
+    name: "Death Stare",
+    // Fortress Mighty Gorgons (Pack) trigger on a double "0" instead of "-1".
+    text: 'After the attack, roll 2 Attack dice; on a double "0", reduce the target\'s Health to 0.',
+    effect: { type: "DEATH_STARE_ON_DICE", diceCount: 2, onRoll: 0 },
     implementationStatus: "implemented"
   },
   "archangel-lethal-save": {

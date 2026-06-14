@@ -1177,5 +1177,14 @@ export const adventureCards: CardLibrary = {
   "specialty.yog.6": unitHealthSpecialty("yog", "Cyclopes", 6, 1, "Cyclopes"),
   "specialty.alamar.1": resurrectionSpecialty(1, { bronze: 1, silver: 2, gold: 4 }),
   "specialty.alamar.4": resurrectionSpecialty(4, { bronze: 0, silver: 1, gold: 3 }),
-  "specialty.alamar.6": resurrectionSpecialty(6, { bronze: 0, silver: 0, gold: 2 })
+  "specialty.alamar.6": resurrectionSpecialty(6, { bronze: 0, silver: 0, gold: 2 }),
+  // Fortress (Beastmasters): unit specialists, like Catherine/Shiva. Bron =
+  // Basilisks; Wystan = Lizardmen. I = +1 attack/defence; IV = +1 HP for the
+  // combat; VI = +2 initiative for the combat — all doubled on the signature unit.
+  "specialty.bron.1": mightSpecialtyOne("bron", "Basilisks", "Basilisks"),
+  "specialty.bron.4": unitHealthSpecialty("bron", "Basilisks", 4, 1, "Basilisks"),
+  "specialty.bron.6": unitInitiativeSpecialty("bron", "Basilisks", 6, 2, "Basilisks"),
+  "specialty.wystan.1": mightSpecialtyOne("wystan", "Lizardmen", "Lizardmen"),
+  "specialty.wystan.4": unitHealthSpecialty("wystan", "Lizardmen", 4, 1, "Lizardmen"),
+  "specialty.wystan.6": unitInitiativeSpecialty("wystan", "Lizardmen", 6, 2, "Lizardmen")
 };

@@ -79,6 +79,19 @@ export const TOWN_BUILDING_IMAGES: Record<string, Record<string, string>> = {
     dwelling_gold: "/assets/town/dungeon_ancient_lairs_hd.webp",
     portal_of_summoning: "/assets/town/dungeon_portal_of_summoning_hd.webp",
     mana_vortex: "/assets/town/dungeon_mana_vortex_hd.webp"
+  },
+  fortress: {
+    city_hall: "/assets/town/fortress_city_hall_large.gif",
+    citadel: "/assets/town/fortress_citadel_large.gif",
+    mage_guild: "/assets/town/fortress_mage_guild_level_1_large.gif",
+    // Board dwellings (Den / Swamp Lairs / Nest upon the Pond) map to a fitting
+    // low/mid/high PC Fortress dwelling; the two faction buildings use the
+    // matching PC structures.
+    dwelling_bronze: "/assets/town/fortress_lizard_den.gif",
+    dwelling_silver: "/assets/town/fortress_gorgon_lair.gif",
+    dwelling_gold: "/assets/town/fortress_hydra_pond.gif",
+    blood_obelisk: "/assets/town/fortress_blood_obelisk.gif",
+    cage_of_warlords: "/assets/town/fortress_cage_of_warlords.gif"
   }
 };
 

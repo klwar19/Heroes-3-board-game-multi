@@ -11,7 +11,8 @@ const townProducts: Record<string, string> = {
   dungeon: "Heroes of Might and Magic III: The Board Game (Core Game)",
   rampart: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
   inferno: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
-  stronghold: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)"
+  stronghold: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
+  fortress: "Heroes of Might and Magic III: The Board Game (Fortress Expansion)"
 };
 
 function townSource(faction: string) {
@@ -558,6 +559,92 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     effect: { type: "TURN_START_MANA_VORTEX" },
     implementationStatus: "implemented",
     source: townSource("dungeon")
+  },
+
+  // ---- Fortress (expansion) ----------------------------------------------
+  "fortress.city_hall": {
+    id: "fortress.city_hall",
+    name: "City Hall",
+    faction: "fortress",
+    cost: { gold: 10, buildingMaterials: 4 },
+    effect: {
+      type: "RESOURCE_ROUND_CHOICE",
+      options: [{ label: "Gain 5 gold", gold: 5 }]
+    },
+    implementationStatus: "implemented",
+    source: townSource("fortress")
+  },
+  "fortress.citadel": {
+    id: "fortress.citadel",
+    name: "Citadel",
+    faction: "fortress",
+    cost: { gold: 8, buildingMaterials: 5, valuables: 1 },
+    effect: { type: "UNLOCK_REINFORCE" },
+    implementationStatus: "implemented",
+    source: townSource("fortress")
+  },
+  "fortress.mage_guild": {
+    id: "fortress.mage_guild",
+    name: "Mage Guild",
+    faction: "fortress",
+    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
+    effect: { type: "MAGE_GUILD" },
+    spellBookCost: 5,
+    implementationStatus: "implemented",
+    source: townSource("fortress")
+  },
+  "fortress.dwelling_bronze": {
+    id: "fortress.dwelling_bronze",
+    name: "Den",
+    faction: "fortress",
+    cost: { gold: 5, buildingMaterials: 3, valuables: 1 },
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" },
+    implementationStatus: "implemented",
+    source: townSource("fortress")
+  },
+  "fortress.dwelling_silver": {
+    id: "fortress.dwelling_silver",
+    name: "Swamp Lairs",
+    faction: "fortress",
+    cost: { gold: 8, buildingMaterials: 6, valuables: 3 },
+    prerequisites: ["fortress.dwelling_bronze"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "silver" },
+    implementationStatus: "implemented",
+    source: townSource("fortress")
+  },
+  "fortress.dwelling_gold": {
+    id: "fortress.dwelling_gold",
+    name: "Nest upon the Pond",
+    faction: "fortress",
+    cost: { gold: 10, buildingMaterials: 9, valuables: 4 },
+    prerequisites: ["fortress.dwelling_silver"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "gold" },
+    implementationStatus: "implemented",
+    source: townSource("fortress")
+  },
+  "fortress.blood_obelisk": {
+    id: "fortress.blood_obelisk",
+    name: "Blood Obelisk",
+    faction: "fortress",
+    cost: { gold: 6, buildingMaterials: 6 },
+    // "At the beginning of each Resource round or instantly, after your Town
+    // has been sieged, you can Search(4) your discard pile." The recurring
+    // Resource-round Search is wired; the post-siege instant is noted only.
+    effect: { type: "RESOURCE_ROUND_SEARCH_DISCARD", count: 4 },
+    implementationStatus: "implemented",
+    source: townSource("fortress")
+  },
+  "fortress.cage_of_warlords": {
+    id: "fortress.cage_of_warlords",
+    name: "Cage of Warlords",
+    faction: "fortress",
+    cost: { gold: 6, buildingMaterials: 4, valuables: 1 },
+    // "When built and at the beginning of each Resource round, place a faction
+    // cube here (to a maximum of 2). During any Combat, a player can remove
+    // them to gain +1 attack or +1 defense per 1 cube."
+    effect: { type: "COMBAT_CUBES", max: 2, gainOn: "resource", spend: "attack-or-defense" },
+    implementationStatus: "implemented",
+    source: townSource("fortress")
   }
 };
 
@@ -884,6 +971,40 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     portrait: "/assets/hero_boardart-mutare.webp",
     boardScan: "/assets/heroes-dungeon-might-mutare.webp",
     source: heroSource("mutare")
+  },
+  bron: {
+    id: "bron",
+    name: "Bron",
+    faction: "fortress",
+    class: "Beastmaster",
+    type: "might",
+    startingStats: { attack: 0, defense: 4, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.resistance",
+    specialtyCardIds: {
+      1: "specialty.bron.1",
+      4: "specialty.bron.4",
+      6: "specialty.bron.6"
+    },
+    portrait: "/assets/hero_boardart-bron.webp",
+    boardScan: "/assets/heroes-fortress-might-bron.webp",
+    source: heroSource("bron")
+  },
+  wystan: {
+    id: "wystan",
+    name: "Wystan",
+    faction: "fortress",
+    class: "Beastmaster",
+    type: "might",
+    startingStats: { attack: 0, defense: 4, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.archery",
+    specialtyCardIds: {
+      1: "specialty.wystan.1",
+      4: "specialty.wystan.4",
+      6: "specialty.wystan.6"
+    },
+    portrait: "/assets/hero_boardart-wystan.webp",
+    boardScan: "/assets/heroes-fortress-might-wystan.webp",
+    source: heroSource("wystan")
   }
 };
 
@@ -966,6 +1087,16 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     units: unitsOfFaction("dungeon"),
     townImage: "/assets/towns-dungeon-empty.webp",
     source: townSource("dungeon")
+  },
+  fortress: {
+    id: "fortress",
+    name: "Fortress",
+    color: "#6b8e23",
+    startingTileId: "S5",
+    heroes: ["bron", "wystan"],
+    buildings: buildingsOfFaction("fortress"),
+    units: unitsOfFaction("fortress"),
+    source: townSource("fortress")
   }
 };
 
