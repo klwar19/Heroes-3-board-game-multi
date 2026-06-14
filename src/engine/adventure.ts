@@ -2574,7 +2574,7 @@ export function makeCombatUnitFromNeutral(
     cardName: `${draw.factionPack ? "Pack of" : "Neutral"} ${def.name}`,
     variant,
     grade: def.tier,
-    type: def.type,
+    type: side.type ?? def.type,
     attack: side.attack,
     defense: side.defense,
     maxHealth: side.health,
@@ -2618,7 +2618,7 @@ export function makeCombatUnitFromArmy(
     cardName: `${armyUnit.side === "few" ? "Few" : armyUnit.side === "pack" ? "Pack of" : "Neutral"} ${def.name}`,
     variant: armyUnit.side,
     grade: def.tier,
-    type: def.type,
+    type: side.type ?? def.type,
     attack: side.attack,
     defense: side.defense,
     maxHealth: side.health,
@@ -2807,6 +2807,33 @@ export function startAdventureRound(state: GameState): void {
         }
         if (effect?.type === "COMBAT_CUBES" && effect.gainOn === "astrologers" && town) {
           gainTownCube(state, town, buildingId, effect.max);
+        }
+        if (effect?.type === "ASTROLOGERS_TAKE_STATISTIC") {
+          // Wall of Knowledge: optionally take a Knowledge or Power Statistic
+          // card from the discard pile to hand (only offered when one exists).
+          const hasStatInDiscard = player.discard.some((cardId) => {
+            const card = cardLibrary[cardId];
+            return card?.kind === "statistic" && (card.statisticType === "power" || card.statisticType === "knowledge");
+          });
+          if (hasStatInDiscard) {
+            state.adventure?.rewardQueue.push({
+              playerId,
+              kind: "visit-steps",
+              steps: [
+                {
+                  type: "CHOOSE_ONE",
+                  prompt: `${coreBuildingDefinitions[buildingId]?.name ?? "Wall of Knowledge"}: take a Knowledge or Power Statistic card from your discard pile?`,
+                  options: [
+                    {
+                      label: "Take a Knowledge or Power Statistic card",
+                      steps: [{ type: "DISCARD_PICK", count: 1, filter: "power-or-knowledge-statistic" }]
+                    },
+                    { label: "Skip", steps: [] }
+                  ]
+                }
+              ]
+            });
+          }
         }
       }
     }

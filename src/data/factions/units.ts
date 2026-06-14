@@ -644,6 +644,117 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     }
   },
 
+  // ---- Tower expansion ---------------------------------------------------
+  // Stats, costs and ability text transcribed from the fan wiki Tower town
+  // page and each unit page (https://en.homm3bg.wiki/towns/tower/). Gremlins
+  // and Titans change type when reinforced (Few = ground, Pack = ranged), so
+  // their Pack side carries a per-side `type` override.
+  "tower.gremlins": {
+    id: "tower.gremlins",
+    name: "Gremlins",
+    faction: "tower",
+    tier: "bronze",
+    type: "ground",
+    few: { attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 0 }, abilities: [], cardImage: "/assets/units-tower-bronze-gremlins-few.webp" },
+    pack: { attack: 2, defense: 0, health: 2, initiative: 5, cost: { gold: 2 }, abilities: [], type: "ranged", cardImage: "/assets/units-tower-bronze-gremlins-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/gremlins/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
+      credit: "Stats from the fan wiki Tower town and unit pages. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/gremlins/"
+    }
+  },
+  "tower.gargoyles": {
+    id: "tower.gargoyles",
+    name: "Gargoyles",
+    faction: "tower",
+    tier: "bronze",
+    type: "flying",
+    few: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 3 }, abilities: [], abilityText: "[unit_passive] This unit ignores any [ongoing] Spell effects.", cardImage: "/assets/units-tower-bronze-gargoyles-few.webp" },
+    pack: { attack: 3, defense: 1, health: 3, initiative: 9, cost: { gold: 4 }, abilities: [], abilityText: "[unit_passive] This unit ignores any [ongoing] Spell effects.", cardImage: "/assets/units-tower-bronze-gargoyles-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/gargoyles/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
+      credit: "Stats from the fan wiki Tower town and unit pages. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/gargoyles/"
+    }
+  },
+  "tower.iron_golems": {
+    id: "tower.iron_golems",
+    name: "Iron Golems",
+    faction: "tower",
+    tier: "bronze",
+    type: "ground",
+    few: { attack: 3, defense: 1, health: 3, initiative: 4, cost: { gold: 4 }, abilities: [], abilityText: "[unit_passive] This unit reduces any [damage] it takes from spells by 1 — to a minimum of 0.", cardImage: "/assets/units-tower-bronze-iron_golems-few.webp" },
+    pack: { attack: 3, defense: 2, health: 3, initiative: 5, cost: { gold: 7 }, abilities: [], abilityText: "[unit_passive] This unit reduces any [damage] it takes from spells by 2 — to a minimum of 0.", cardImage: "/assets/units-tower-bronze-iron_golems-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/iron_golems/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
+      credit: "Stats from the fan wiki Tower town and unit pages. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/iron_golems/"
+    }
+  },
+  "tower.magi": {
+    id: "tower.magi",
+    name: "Magi",
+    faction: "tower",
+    tier: "silver",
+    type: "ranged",
+    few: { attack: 3, defense: 0, health: 4, initiative: 5, cost: { gold: 6 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_attack] Ignore combat penalties.", cardImage: "/assets/units-tower-silver-magi-few.webp" },
+    pack: { attack: 4, defense: 1, health: 4, initiative: 6, cost: { gold: 11 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_attack] Ignore combat penalties. [activation] Add +1 [power] to the first spell you cast this round.", cardImage: "/assets/units-tower-silver-magi-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/magi/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
+      credit: "Stats from the fan wiki Tower town and unit pages. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/magi/"
+    }
+  },
+  "tower.genies": {
+    id: "tower.genies",
+    name: "Genies",
+    faction: "tower",
+    tier: "silver",
+    type: "flying",
+    few: { attack: 3, defense: 1, health: 6, initiative: 7, cost: { gold: 8 }, abilities: [], abilityText: "[unit_other] Discard 3 cards from your deck and take a [spell] discarded this way to your hand.", cardImage: "/assets/units-tower-silver-genies-few.webp" },
+    pack: { attack: 4, defense: 1, health: 6, initiative: 8, cost: { gold: 12 }, abilities: [], abilityText: "[unit_attack] Discard up to 3 cards from your deck and take a [spell] discarded this way to your hand.", cardImage: "/assets/units-tower-silver-genies-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/genies/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
+      credit: "Stats from the fan wiki Tower town and unit pages. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/genies/"
+    }
+  },
+  "tower.nagas": {
+    id: "tower.nagas",
+    name: "Nagas",
+    faction: "tower",
+    tier: "gold",
+    type: "ground",
+    few: { attack: 5, defense: 2, health: 7, initiative: 6, cost: { gold: 13 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore Retaliation Attacks.", cardImage: "/assets/units-tower-golden-nagas-few.webp" },
+    pack: { attack: 6, defense: 2, health: 7, initiative: 8, cost: { gold: 18, valuables: 1 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore Retaliation Attacks.", cardImage: "/assets/units-tower-golden-nagas-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/nagas/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
+      credit: "Stats from the fan wiki Tower town and unit pages. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/nagas/"
+    }
+  },
+  "tower.titans": {
+    id: "tower.titans",
+    name: "Titans",
+    faction: "tower",
+    tier: "gold",
+    type: "ground",
+    few: { attack: 6, defense: 3, health: 8, initiative: 7, cost: { gold: 18, valuables: 1 }, abilities: [], abilityText: "[unit_passive] Ignore any [ongoing] effects on this unit.", cardImage: "/assets/units-tower-golden-titans-few.webp" },
+    pack: { attack: 6, defense: 3, health: 8, initiative: 11, cost: { gold: 32, valuables: 2 }, abilities: ["ignore-combat-penalties"], type: "ranged", abilityText: "[unit_passive] Ignore any [ongoing] effects on this unit and combat penalties against adjacent units.", cardImage: "/assets/units-tower-golden-titans-pack.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/titans/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
+      credit: "Stats from the fan wiki Tower town and unit pages. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/titans/"
+    }
+  },
+
   "neutral.boars": {
     id: "neutral.boars",
     name: "Boars",
