@@ -2491,6 +2491,8 @@ export type CombatState = {
    * combat, so the attacker's Necropolis hero gets the free bronze reinforce.
    */
   skeletonGuardDefeated?: boolean;
+  /** Set once the Skeletons reinforce has been offered (mid-combat or after). */
+  skeletonReinforceGranted?: boolean;
   dice: CombatDice;
   units: Record<UnitId, CombatUnitState>;
   /**
@@ -3125,6 +3127,7 @@ export type PendingChoice =
         | "garrison"
         | "siege-gate"
         | "siege-demolish"
+        | "skeleton-reinforce"
         | "rogues-scout"
         | "combat-reposition"
         | "cover-of-darkness";
@@ -3138,6 +3141,8 @@ export type PendingChoice =
       rogueScout?: { deckId: DeckId; cardId: CardId };
       /** siege-demolish: intact fortification positions and removals left. */
       siegeDemolish?: { positions: number[]; remaining: number };
+      /** skeleton-reinforce: the bronze Few army units that may be flipped free. */
+      skeletonReinforce?: { armyUnitIds: string[] };
       /** discard-pick: the candidate cards (index-aligned with options). */
       discardPick?: {
         cardIds: CardId[];
