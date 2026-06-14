@@ -11,6 +11,7 @@ import {
   hasRecruitResources,
   hasResources as playerHasResources,
   humanPlayerIds,
+  NEUTRAL_DECK_IDS,
   townHasBuildingEffect,
   unlockedRecruitTiers
 } from "./adventure";
@@ -26,7 +27,7 @@ import {
   observatoryDiscoverTargets,
   removableHandCards
 } from "./adventure-reducer";
-import { effectAppliesToUnit } from "./active-effects";
+import { effectAppliesToUnit, playerHasSpellTimingFreedom } from "./active-effects";
 import { cardCanBoostPower } from "./effects";
 import {
   BATTLEFIELD_CELL_COUNT,
@@ -70,7 +71,12 @@ import type {
   UnitId
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
-import { getLethalSaveUnitAbility, getUnitAbilityDefinitions, hasUnitAbilityEffect } from "./unit-abilities";
+import {
+  getLethalSaveUnitAbility,
+  getUnitAbilityDefinitions,
+  hasUnitAbilityEffect,
+  unitImmuneToSpellSchools
+} from "./unit-abilities";
 
 type ConcreteEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
 
@@ -143,19 +149,64 @@ function canAffordCardCost(state: GameState, playerId: PlayerId, cardId: string,
   return eligible.length >= needed;
 }
 
+/** Grade ordering shared by spell-immunity and Magic Mirror grade gates. */
+export function gradeRank(grade: CombatUnitState["grade"]): number {
+  return grade === "bronze" ? 0 : grade === "silver" ? 1 : grade === "gold" ? 2 : 3;
+}
+
 /** Whether a unit currently has spell immunity covering its grade. */
 export function isUnitSpellImmune(state: GameState, unit: CombatUnitState): boolean {
-  const rank = (grade: CombatUnitState["grade"]) =>
-    grade === "bronze" ? 0 : grade === "silver" ? 1 : grade === "gold" ? 2 : 3;
-
   return state.activeEffects.some(
     (effect) =>
       effect.target?.type === "unit" &&
       effect.target.unitId === unit.id &&
       effect.modifiers.some(
-        (modifier) => modifier.type === "UNIT_SPELL_IMMUNE" && rank(unit.grade) <= rank(modifier.maxGrade)
+        (modifier) => modifier.type === "UNIT_SPELL_IMMUNE" && gradeRank(unit.grade) <= gradeRank(modifier.maxGrade)
       )
   );
+}
+
+/**
+ * Magic Mirror: legal new targets for a pending Spell when redirecting it.
+ * Any unit of the paid grade or lower (Power 0 → bronze, 1 → silver, 2 → gold),
+ * friend or foe, except the unit currently targeted, and never a unit immune to
+ * spells of its grade (a spell "cannot be targeted" at an immune unit).
+ */
+export function spellRedirectTargets(
+  state: GameState,
+  currentTargetUnitId: UnitId,
+  maxGrade: CombatUnitState["grade"]
+): CombatUnitState[] {
+  const combat = state.combat;
+  if (!combat) {
+    return [];
+  }
+  return Object.values(combat.units).filter(
+    (unit) =>
+      unit.id !== currentTargetUnitId &&
+      isUnitAlive(unit) &&
+      gradeRank(unit.grade) <= gradeRank(maxGrade) &&
+      !isUnitSpellImmune(state, unit)
+  );
+}
+
+/**
+ * The unit a pending SPELL_CAST_STARTED is currently aimed at, when that unit
+ * belongs to `playerId` — i.e. when Magic Mirror's "your unit is about to be
+ * targeted by a spell" condition holds for that player. Reads the live stack
+ * item so a chain of redirects keys off the current target, not the original.
+ */
+export function pendingSpellTargetForPlayer(
+  state: GameState,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" }>,
+  playerId: PlayerId
+): CombatUnitState | null {
+  const stackItem = state.stack.find((item) => item.triggerEventIds.includes(triggerEvent.id));
+  if (!stackItem || stackItem.action.type !== "CAST_SPELL" || stackItem.action.target.type !== "unit") {
+    return null;
+  }
+  const targetUnit = state.combat?.units[stackItem.action.target.unitId];
+  return targetUnit && targetUnit.controllerId === playerId ? targetUnit : null;
 }
 
 export function isUnitAlive(unit: CombatUnitState): boolean {
@@ -587,14 +638,20 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
         ? [...getFriendlyTargets(state, playerId, target), ...getEnemyTargets(state, playerId, target)]
         : getEnemyTargets(state, playerId, target);
 
-  // Anti-Magic: spell-immune units cannot be targeted by Spell cards.
+  // Anti-Magic and elemental immunity: a unit cannot be targeted by a Spell it
+  // is immune to. Anti-Magic (the UNIT_SPELL_IMMUNE active effect) blocks every
+  // Spell up to its grade; an Elemental's printed immunity blocks only Magic
+  // Arrow and its own school (see unitImmuneToSpellSchools).
   if (card?.kind === "spell") {
     return targets.filter((candidate) => {
       if (candidate.type !== "unit") {
         return true;
       }
       const unit = state.combat?.units[candidate.unitId];
-      return !unit || !isUnitSpellImmune(state, unit);
+      if (!unit) {
+        return true;
+      }
+      return !isUnitSpellImmune(state, unit) && !unitImmuneToSpellSchools(unit, card.spellSchools);
     });
   }
 
@@ -728,12 +785,16 @@ function addSpellActions(
 
   const combat = state.combat;
   const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
-  const ownActivationOpen = Boolean(
-    activeUnit &&
-      activeUnit.controllerId === playerId &&
-      !activeUnit.activatedThisRound &&
-      !activeUnit.attackedThisActivation
-  );
+  // Intelligence lifts the activation-timing gate: its holder may cast an
+  // activation spell at any open moment of the combat, even off-turn, without
+  // one of their own units being active.
+  const ownActivationOpen =
+    Boolean(
+      activeUnit &&
+        activeUnit.controllerId === playerId &&
+        !activeUnit.activatedThisRound &&
+        !activeUnit.attackedThisActivation
+    ) || playerHasSpellTimingFreedom(state, playerId);
 
   // Hand spells plus every Spell Scroll spell (scroll spells are not in hand;
   // they cast at power 0 and are removed once used). Both share the timing and
@@ -957,8 +1018,40 @@ function isOptionEffectPlayable(
     case "ADD_UNIT_MAX_HEALTH":
     case "HEAL_DAMAGE":
     case "AREA_DAMAGE_ALL_ADJACENT":
+    case "CREATE_FIRE_SHIELD":
     case "GRANT_ELEMENTAL_DAMAGE":
       return context === "combat" && Boolean(state.combat);
+    case "DOUBLE_FIRST_AID_TENT":
+      // Gem's First Aid VI only does something with a First Aid Tent in play.
+      return (
+        context === "combat" &&
+        Boolean(state.combat) &&
+        state.activeEffects.some(
+          (active) =>
+            active.controllerId === playerId &&
+            active.modifiers.some((modifier) => modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND")
+        )
+      );
+    case "CONVERT_ARMY_UNIT": {
+      // Gelu's Sharpshooters IV: needs a Pack of Elves, the Sharpshooters still
+      // in the silver Neutral deck, and (unique) no Sharpshooters already owned.
+      if (context !== "map" || !state.adventure) {
+        return false;
+      }
+      const player = state.players[playerId];
+      const deck = state.decks[NEUTRAL_DECK_IDS[effect.toTier]];
+      if (!player || !deck) {
+        return false;
+      }
+      const hasFrom = player.army.some(
+        (unit) => unit.unitDefId === effect.fromUnitDefId && unit.side === effect.fromSide
+      );
+      const blockedByUnique =
+        Boolean(effect.unique) && player.army.some((unit) => unit.unitDefId === effect.toUnitDefId);
+      const deckHasTarget =
+        deck.drawPile.includes(effect.toUnitDefId) || deck.discardPile.includes(effect.toUnitDefId);
+      return hasFrom && !blockedByUnique && deckHasTarget;
+    }
     case "SIEGE_DEMOLISH": {
       const siege = state.combat?.siege;
       if (context !== "combat" || !siege) {
@@ -1838,9 +1931,11 @@ export function getLegalActions(
           ? `${choice.abilityName}: attack`
           : choice.kind === "enchanter-activation"
             ? `${choice.abilityName}: heal`
-            : choice.kind === "flat-damage" || choice.kind === "spell-splash" || choice.kind === "faerie-damage"
-              ? `${choice.abilityName}: hit`
-              : "Neutrals attack";
+            : choice.kind === "spell-redirect"
+              ? `${choice.abilityName}: redirect to`
+              : choice.kind === "flat-damage" || choice.kind === "spell-splash" || choice.kind === "faerie-damage"
+                ? `${choice.abilityName}: hit`
+                : "Neutrals attack";
       const targetActions = choice.candidateUnitIds.flatMap((unitId) => {
         const unit = state.combat?.units[unitId];
         if (!unit || !isUnitAlive(unit)) {
@@ -2014,7 +2109,7 @@ function getLethalSaveReactions(
   }
   const playerId = defender.controllerId;
   const player = state.players[playerId];
-  if (!player || playerId === NEUTRAL_PLAYER_ID || isHandLockedInCombat(state, playerId)) {
+  if (!player || playerId === NEUTRAL_PLAYER_ID) {
     return {};
   }
 
@@ -2027,36 +2122,44 @@ function getLethalSaveReactions(
     return {};
   }
 
-  // A Resurrection-style Spell counts against the one-Spell-per-combat-round
-  // limit (Expert Knowledge / Intelligence raise it); the specialty and the
-  // Archangels' ability do not.
-  const spellLimitReached = player.combatStats.spellsCastThisRound >= spellLimitFor(state, player);
-
   const reactions: LegalAction[] = [];
-  for (const cardId of new Set(player.hand)) {
-    const card = cards[cardId];
-    if (!card || card.implementationStatus !== "implemented" || card.effect.type !== "CHOOSE_ONE") {
-      continue;
-    }
-    if (card.kind === "spell" && spellLimitReached) {
-      continue;
-    }
-    for (const [optionIndex, option] of card.effect.options.entries()) {
-      if (option.effect.type !== "CANCEL_LETHAL_ATTACK" || option.effect.grade !== defender.grade) {
+
+  // Deck-based saves (the Resurrection Spell, Alamar's Resurrection specialty)
+  // are played from the controller's hand, so they are unavailable whenever
+  // that controller "cannot use your Deck during this Combat" — a Secondary
+  // Hero leads the fight, or a heroless garrison defends. The Archangels' free
+  // unit ability below is NOT a Deck card, so it must still be offered then.
+  if (!isHandLockedInCombat(state, playerId)) {
+    // A Resurrection-style Spell counts against the one-Spell-per-combat-round
+    // limit (Expert Knowledge / Intelligence raise it); the specialty and the
+    // Archangels' ability do not.
+    const spellLimitReached = player.combatStats.spellsCastThisRound >= spellLimitFor(state, player);
+
+    for (const cardId of new Set(player.hand)) {
+      const card = cards[cardId];
+      if (!card || card.implementationStatus !== "implemented" || card.effect.type !== "CHOOSE_ONE") {
         continue;
       }
-      if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
+      if (card.kind === "spell" && spellLimitReached) {
         continue;
       }
-      reactions.push(
-        makeReactionAction(`${card.name}: ${option.label}`, {
-          type: "PLAY_REACTION",
-          playerId,
-          cardId,
-          mode: "basic",
-          optionIndex
-        })
-      );
+      for (const [optionIndex, option] of card.effect.options.entries()) {
+        if (option.effect.type !== "CANCEL_LETHAL_ATTACK" || option.effect.grade !== defender.grade) {
+          continue;
+        }
+        if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
+          continue;
+        }
+        reactions.push(
+          makeReactionAction(`${card.name}: ${option.label}`, {
+            type: "PLAY_REACTION",
+            playerId,
+            cardId,
+            mode: "basic",
+            optionIndex
+          })
+        );
+      }
     }
   }
 
@@ -2153,6 +2256,30 @@ export function getLegalReactionsForTrigger(
             reactions.push(action);
           }
         };
+
+        // Magic Mirror: offered (one option per grade) only when the pending
+        // enemy Spell currently targets one of this player's units and at least
+        // one legal new target of that grade exists. The new target is chosen
+        // in a follow-up choice once the card is played, so no target rides on
+        // the reaction action itself.
+        if (variant.effect.type === "REDIRECT_SPELL") {
+          const targetUnit =
+            triggerEvent.type === "SPELL_CAST_STARTED"
+              ? pendingSpellTargetForPlayer(state, triggerEvent, player.id)
+              : null;
+          if (targetUnit && spellRedirectTargets(state, targetUnit.id, variant.effect.grade).length > 0) {
+            reactions.push(
+              makeReactionAction(variantName, {
+                type: "PLAY_REACTION",
+                playerId: player.id,
+                cardId,
+                mode: "basic",
+                ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
+              })
+            );
+          }
+          continue;
+        }
 
         // Permanents only join reaction windows through their expert side
         // (School of Magic from hand); their basic side is the enter-play

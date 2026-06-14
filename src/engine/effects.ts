@@ -40,11 +40,14 @@ export const implementedCardEffectTypes = [
   "AREA_DAMAGE_ALL_ADJACENT",
   "GAIN_WAR_MACHINE",
   "CANCEL_LETHAL_ATTACK",
+  "REDIRECT_SPELL",
   "CONTINUE_NEUTRAL_FREE",
   "EARTHQUAKE",
   "SIEGE_DEMOLISH",
   "SUMMON_ELEMENTAL",
-  "GRANT_ELEMENTAL_DAMAGE"
+  "GRANT_ELEMENTAL_DAMAGE",
+  "DOUBLE_FIRST_AID_TENT",
+  "CONVERT_ARMY_UNIT"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {
@@ -403,6 +406,10 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "CREATE_FIRE_SHIELD") {
+    if (card.effect.amount !== undefined) {
+      const doubled = card.effect.doubleForUnitName ? ` (x2 for ${card.effect.doubleForUnitName})` : "";
+      return `a melee attacker takes ${card.effect.amount} damage after attacking the selected unit${doubled}`;
+    }
     return "adjacent attackers take damage this combat round (scales with power)";
   }
 
@@ -444,6 +451,10 @@ export function describeCardEffect(card: CardDefinition): string {
     return `cancel a killing blow on your ${card.effect.grade} unit`;
   }
 
+  if (card.effect.type === "REDIRECT_SPELL") {
+    return `redirect an enemy spell to a new ${card.effect.grade} target`;
+  }
+
   if (card.effect.type === "SUMMON_ELEMENTAL") {
     return "on a chosen empty space: Power 2 summons a Few, Power 4 a Pack";
   }
@@ -451,6 +462,16 @@ export function describeCardEffect(card: CardDefinition): string {
   if (card.effect.type === "GRANT_ELEMENTAL_DAMAGE") {
     const named = card.effect.targetUnitName ? `your ${card.effect.targetUnitName}` : "the unit";
     return `${named} deals elemental damage this Combat`;
+  }
+
+  if (card.effect.type === "DOUBLE_FIRST_AID_TENT") {
+    return "double your First Aid Tent's heal for this Combat";
+  }
+
+  if (card.effect.type === "CONVERT_ARMY_UNIT") {
+    const from = card.effect.fromUnitDefId.split(".").pop()?.replace(/_/g, " ");
+    const to = card.effect.toUnitDefId.split(".").pop()?.replace(/_/g, " ");
+    return `discard a ${card.effect.fromSide} of ${from} to fetch the ${to} from the ${card.effect.toTier} Neutral deck`;
   }
 
   return card.kind;

@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Check, ChevronsUp, Hammer, Image as ImageIcon, Minus, Plus, RotateCcw, RotateCw, Star, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
@@ -1262,6 +1262,60 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
 // activated building actions (Blacksmith, Cover of Darkness, Castle Gate…).
 // ---------------------------------------------------------------------------
 
+/**
+ * A hero's board-art portrait, with a graceful fallback. Some heroes ship
+ * without a portrait asset (or the file 404s); rather than render a broken
+ * image — which made portrait-less heroes like Moandor and Zydar look
+ * unselectable — we show a round initial badge. Selection never depends on the
+ * portrait: the surrounding button always carries the hero's name and click.
+ */
+function HeroPortrait({
+  portrait,
+  name,
+  size,
+  style
+}: {
+  portrait: string | undefined;
+  name: string;
+  size: number;
+  style?: CSSProperties;
+}) {
+  const [failed, setFailed] = useState(false);
+  const initial = name.trim().charAt(0).toUpperCase() || "?";
+  const base: CSSProperties = { width: size, height: size, borderRadius: "50%", flex: "0 0 auto", ...style };
+
+  if (portrait && !failed) {
+    return (
+      <img
+        alt=""
+        onError={() => setFailed(true)}
+        referrerPolicy="no-referrer"
+        src={assetUrl(portrait)}
+        style={{ ...base, objectFit: "cover" }}
+      />
+    );
+  }
+
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        ...base,
+        display: "inline-grid",
+        placeItems: "center",
+        background: "rgba(170, 130, 70, 0.25)",
+        border: "1px solid rgba(170, 130, 70, 0.5)",
+        color: "#e8d9b8",
+        fontWeight: 700,
+        fontSize: Math.max(10, Math.round(size * 0.5)),
+        lineHeight: 1
+      }}
+    >
+      {initial}
+    </span>
+  );
+}
+
 export function TownPanel({
   state,
   viewerPlayerId,
@@ -1653,13 +1707,12 @@ export function TownPanel({
                   title={`Appears at your town as ${heroDef?.name ?? heroDefId} (10 gold)`}
                   type="button"
                 >
-                  {heroDef?.portrait ? (
-                    <img
-                      alt=""
-                      src={assetUrl(heroDef.portrait)}
-                      style={{ width: 18, height: 18, borderRadius: "50%", objectFit: "cover", marginRight: 4, verticalAlign: "middle" }}
-                    />
-                  ) : null}
+                  <HeroPortrait
+                    name={heroDef?.name ?? heroDefId}
+                    portrait={heroDef?.portrait}
+                    size={18}
+                    style={{ marginRight: 4, verticalAlign: "middle" }}
+                  />
                   {heroDef?.name ?? heroDefId}
                 </button>
               );
@@ -2917,9 +2970,12 @@ export function SetupLobbyScreen({
                         }
                         type="button"
                       >
-                        {hero?.portrait ? (
-                          <img alt={`${hero.name} portrait`} referrerPolicy="no-referrer" src={assetUrl(hero.portrait)} />
-                        ) : null}
+                        <HeroPortrait
+                          name={hero?.name ?? heroDefId}
+                          portrait={hero?.portrait}
+                          size={34}
+                          style={{ gridRow: "span 2" }}
+                        />
                         <span>{hero?.name ?? heroDefId}</span>
                         <small>
                           {hero?.class} · {hero?.type}

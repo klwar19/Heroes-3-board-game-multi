@@ -403,6 +403,18 @@ export function rulesetCardNote(ruleset: GameRuleset, cardId: string): string | 
 
 /** Spell limit per combat round, including lasting bonuses. */
 export function spellLimitFor(state: GameState, player: PlayerState): number {
+  // Expert Intelligence "ignores the limit": the one-Spell-per-round cap no
+  // longer applies to that player, so every limit check (which all derive from
+  // this value) passes for as long as the effect is held.
+  const ignoresLimit = state.activeEffects.some(
+    (effect) =>
+      effect.controllerId === player.id &&
+      effect.modifiers.some((modifier) => modifier.type === "SPELL_CAST_ANYTIME" && modifier.ignoreSpellLimit === true)
+  );
+  if (ignoresLimit) {
+    return Number.POSITIVE_INFINITY;
+  }
+
   const effectBonus = state.activeEffects.reduce((total, effect) => {
     if (effect.controllerId !== player.id) {
       return total;

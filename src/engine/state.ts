@@ -182,6 +182,17 @@ export type ActiveEffectModifier =
       amount: number;
     }
   | {
+      /**
+       * Intelligence: while held this Combat the controller may cast a Spell at
+       * any time — even off-turn, without one of their own units being active
+       * (it lifts the activation-timing gate, not the open-window rule). The
+       * expert side also sets `ignoreSpellLimit`, so the per-combat-round Spell
+       * limit no longer applies to that player.
+       */
+      type: "SPELL_CAST_ANYTIME";
+      ignoreSpellLimit?: boolean;
+    }
+  | {
       /** Angel Wings: walk through fields without resolving them this turn. */
       type: "HERO_MOVE_THROUGH";
     }
@@ -202,6 +213,14 @@ export type ActiveEffectModifier =
        * Sorceress' Weakness still lower it.
        */
       type: "ELEMENTAL_DAMAGE";
+    }
+  | {
+      /**
+       * Zydar's Spell Mastery VI (ongoing): until the end of the Combat round,
+       * the owner draws this many cards after each Spell they cast.
+       */
+      type: "DRAW_ON_SPELL_CAST";
+      amount: number;
     };
 
 export type ActiveEffectDefinition = {
@@ -226,6 +245,11 @@ export type EffectDefinition =
       amountByPower?: Record<number, number>;
       /** Rion's Battlefield Medic: "then draw N card(s)" after the heal. */
       drawCards?: number;
+      /**
+       * Rion's Battlefield Medic IV/VI: "Remove … damage or paralysis …" — also
+       * clears the target's Paralysis token (a heal of 0 still clears it).
+       */
+      removeParalysis?: boolean;
     }
   | {
       type: "HEAL_DAMAGE_AND_REMOVE_EFFECTS";
@@ -396,10 +420,18 @@ export type EffectDefinition =
       duration: EffectDurationDefinition;
     }
   | {
-      /** Fire Shield: adjacent attackers take damage this combat round. */
+      /**
+       * Fire Shield: a melee (ground/flying) attacker takes damage after its
+       * attack. The Fire Shield spell scales with Power (`amountByPower`);
+       * Rashka's Demoniac specialty uses a flat `amount` instead, doubled when
+       * placed on the named unit (`doubleForUnitName`, his Efreet at level VI).
+       */
       type: "CREATE_FIRE_SHIELD";
-      amountByPower: Record<number, number>;
+      amount?: number;
+      amountByPower?: Record<number, number>;
       duration: EffectDurationDefinition;
+      doubleForUnitName?: string;
+      removable?: boolean;
     }
   | {
       /** Haste / Slow / initiative artifacts: a lasting initiative shift. */
@@ -454,6 +486,17 @@ export type EffectDefinition =
        * printed Power.
        */
       type: "CANCEL_LETHAL_ATTACK";
+      grade: UnitGrade;
+    }
+  | {
+      /**
+       * Magic Mirror: an instant reaction to an enemy Spell cast that targets
+       * one of your units. Choose a new target for that Spell — any unit of the
+       * paid grade (Power 0 → bronze, 1 → silver, 2 → gold), set as one option
+       * per grade. The Spell then resolves against the chosen unit instead. The
+       * new target is picked in a follow-up choice after the card is played.
+       */
+      type: "REDIRECT_SPELL";
       grade: UnitGrade;
     }
   | {
@@ -553,6 +596,28 @@ export type EffectDefinition =
       type: "GRANT_ELEMENTAL_DAMAGE";
       targetUnitName?: string;
       duration: EffectDurationDefinition;
+    }
+  | {
+      /**
+       * Gem's First Aid VI: "For this Combat, double your First Aid Tent's
+       * effect." Doubles the heal amount of the player's in-play First Aid Tent
+       * for the rest of the current combat.
+       */
+      type: "DOUBLE_FIRST_AID_TENT";
+    }
+  | {
+      /**
+       * Gelu's Sharpshooters IV: discard a Pack of the `from` unit from your
+       * army, then search the named Neutral tier deck for the `to` unit and add
+       * it to your unit deck. `unique` enforces "you can control only 1 at a
+       * time".
+       */
+      type: "CONVERT_ARMY_UNIT";
+      fromUnitDefId: string;
+      fromSide: "few" | "pack";
+      toUnitDefId: string;
+      toTier: "bronze" | "silver" | "gold" | "azure";
+      unique?: boolean;
     };
 
 /**
@@ -1308,6 +1373,17 @@ export type GameEvent =
       spellCardId: CardId;
       cancelledByPlayerId: PlayerId;
       cancelledByCardId: CardId;
+    }
+  | {
+      /** Magic Mirror: a pending Spell was re-pointed to a new target. */
+      id: string;
+      type: "SPELL_REDIRECTED";
+      /** The player who played Magic Mirror (the original spell's target side). */
+      playerId: PlayerId;
+      spellCardId: CardId;
+      byCardId: CardId;
+      fromTarget: TargetRef;
+      toTarget: TargetRef;
     }
   | {
       id: string;
@@ -2983,6 +3059,7 @@ export type PendingChoice =
         | "neutral-target"
         | "war-machine"
         | "spell-splash"
+        | "spell-redirect"
         | "enchanter-activation"
         | "faerie-damage";
       abilityId: string | null;

@@ -1,0 +1,50 @@
+# Keeps the PartyKit room server in lockstep with the Vercel frontend.
+#
+# Why this exists: the app deploys as two halves — the Vercel frontend (auto-
+# deploys on push) and the PartyKit room server (the authoritative rules
+# engine, in party/index.ts). When only the frontend was redeployed, the UI
+# offered new content (e.g. Moandor/Zydar, Hire a Secondary Hero) that the
+# stale room server then silently rejected. This workflow redeploys PartyKit
+# on every push to the production branch so both halves always match.
+#
+# One-time setup — add these repository secrets (Settings → Secrets and
+# variables → Actions):
+#   PARTYKIT_TOKEN  — required for non-interactive auth. Generate locally with
+#                     `npx partykit token generate` (run `npx partykit login`
+#                     first) and paste the value.
+#   PARTYKIT_LOGIN  — your PartyKit/GitHub username (the "<user>" in
+#                     heroes3bg-rooms.<user>.partykit.dev, e.g. klwar19).
+#
+# NOTE: the trigger branch below must match the branch Vercel deploys to
+# production. Change `main` if your Vercel production branch is different.
+
+name: Deploy PartyKit
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Never let two deploys race; keep only the newest per branch.
+concurrency:
+  group: deploy-partykit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-partykit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Gate the deploy on a green engine: never ship a room server that fails
+      # the rules tests or typecheck.
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run deploy:partykit
+        env:
+          PARTYKIT_TOKEN: ${{ secrets.PARTYKIT_TOKEN }}
+          PARTYKIT_LOGIN: ${{ secrets.PARTYKIT_LOGIN }}

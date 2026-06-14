@@ -11,6 +11,7 @@ import {
   describeCardEffect,
   describePermanentEffect,
   getPermanentCardIds,
+  playerSpellCastsIgnoreLimit,
   type GameAction,
   type GameState,
   type LegalAction,
@@ -226,8 +227,9 @@ export function HandFan({
   );
 
   const playerState = state.players[viewerPlayerId];
+  const ignoreSpellLimit = Boolean(playerState) && playerSpellCastsIgnoreLimit(state, viewerPlayerId);
   const spellLimit = 1 + (playerState?.combatStats.spellLimitBonusThisRound ?? 0);
-  const spellLimitReached = (playerState?.combatStats.spellsCastThisRound ?? 0) >= spellLimit;
+  const spellLimitReached = !ignoreSpellLimit && (playerState?.combatStats.spellsCastThisRound ?? 0) >= spellLimit;
   const activeUnit = state.combat?.activeUnitId ? state.combat.units[state.combat.activeUnitId] : undefined;
   const ownActivationOpen = Boolean(
     activeUnit &&
@@ -452,6 +454,7 @@ export function OpponentBar({
           return null;
         }
         const spellLimit = 1 + player.combatStats.spellLimitBonusThisRound;
+        const spellLimitLabel = playerSpellCastsIgnoreLimit(state, playerId) ? "∞" : String(spellLimit);
         const crownsLeft = player.limits.expertUses - player.combatStats.expertUsesSpentThisRound;
 
         return (
@@ -463,7 +466,7 @@ export function OpponentBar({
                   <Crown aria-hidden="true" size={12} /> {crownsLeft}
                 </span>
                 <span title="Spells cast / limit">
-                  <Sparkles aria-hidden="true" size={12} /> {player.combatStats.spellsCastThisRound}/{spellLimit}
+                  <Sparkles aria-hidden="true" size={12} /> {player.combatStats.spellsCastThisRound}/{spellLimitLabel}
                 </span>
               </span>
             </div>
@@ -500,9 +503,11 @@ export function OpponentBar({
 }
 
 export function PlayerDock({
+  state,
   view,
   viewerPlayerId
 }: {
+  state: GameState;
   view: PlayerVisibleState;
   viewerPlayerId: PlayerId;
 }) {
@@ -512,6 +517,7 @@ export function PlayerDock({
   }
 
   const spellLimit = 1 + player.combatStats.spellLimitBonusThisRound;
+  const spellLimitLabel = playerSpellCastsIgnoreLimit(state, viewerPlayerId) ? "∞" : String(spellLimit);
   const crownsLeft = player.limits.expertUses - player.combatStats.expertUsesSpentThisRound;
 
   return (
@@ -540,7 +546,7 @@ export function PlayerDock({
           <Crown aria-hidden="true" size={13} /> {crownsLeft} crown{crownsLeft === 1 ? "" : "s"}
         </span>
         <span title="Spells cast this combat round">
-          <Sparkles aria-hidden="true" size={13} /> {player.combatStats.spellsCastThisRound}/{spellLimit} spells
+          <Sparkles aria-hidden="true" size={13} /> {player.combatStats.spellsCastThisRound}/{spellLimitLabel} spells
         </span>
         <span title="Gold / materials / valuables">
           {player.resources.gold}g · {player.resources.buildingMaterials}m · {player.resources.valuables}v
