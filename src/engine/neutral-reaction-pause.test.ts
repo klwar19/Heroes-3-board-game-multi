@@ -135,17 +135,28 @@ describe("neutral combat — pre-activation reaction pause (Intelligence / insta
     expect(blocked.state.combat!.pendingNeutralStep?.kind).toBe("pre-activation");
   });
 
-  it("does NOT pause before a guard when the player has no off-turn reaction", () => {
+  it("still pauses before every guard with nothing to react with, offering only the resume", () => {
     let state = neutralFightWithGuard(rangedGuard);
-    // No Intelligence and an empty hand: nothing to react with.
+    // No Intelligence and an empty hand: nothing to react with — but neutral
+    // fights pace EVERY guard step, so the pause still opens (the client then
+    // auto-resumes it after a short beat).
     state.players.p1.hand = [];
     const guard = guardId(state);
 
     state = defendActivePlayerUnit(state);
 
-    // The guard shot straight away (an attack opens its own reaction window /
-    // rolls the die) — there is no pre-activation pause to click through.
-    expect(state.combat!.pendingNeutralStep?.kind).not.toBe("pre-activation");
+    const pause = state.combat!.pendingNeutralStep;
+    expect(pause?.kind).toBe("pre-activation");
+    expect(pause?.unitId).toBe(guard);
+
+    // The only thing the player can do is let the guard act (the UI turns that
+    // into a 3s auto-resume) — there is no cast/instant to play.
+    const actions = getLegalActions(state, "p1");
+    expect(actions.every((legal) => legal.action.type === "CONTINUE_NEUTRAL_STEP")).toBe(true);
+    expect(actions.some((legal) => legal.action.type === "CONTINUE_NEUTRAL_STEP")).toBe(true);
+
+    // Resuming lets the guard shoot.
+    state = apply(state, { type: "CONTINUE_NEUTRAL_STEP", playerId: "p1" });
     const attacked = state.eventLog.some(
       (event) => event.type === "UNIT_ATTACK_DECLARED" && event.attackerId === guard
     );
