@@ -3624,6 +3624,10 @@ export function pumpAdventureQueues(state: GameState): void {
         if (reward.filter === "specialty") {
           return kind === "hero-specialty";
         }
+        if (reward.filter === "power-or-knowledge-statistic") {
+          const statisticType = cardLibrary[cardId]?.statisticType;
+          return kind === "statistic" && (statisticType === "power" || statisticType === "knowledge");
+        }
         return true;
       });
 
