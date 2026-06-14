@@ -554,6 +554,19 @@ export function getActivationAbilities(unit: CombatUnitState): ActivationAbility
   return abilities;
 }
 
+/**
+ * Tower Magi (Pack): the extra power this unit grants "to the first spell you
+ * cast this round" — applied only while the Magi is the active unit (its own
+ * turn), so the caller checks the active unit at cast time. 0 for other units.
+ */
+export function getActivationSpellPowerBoost(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "ON_ACTIVATION_SPELL_POWER_FIRST_CAST").reduce(
+    (total, ability) =>
+      total + (ability.effect?.type === "ON_ACTIVATION_SPELL_POWER_FIRST_CAST" ? ability.effect.amount : 0),
+    0
+  );
+}
+
 /** Enchanters: the activation heal-a-friendly-or-buff-self choice ability. */
 export function getEnchanterActivationAbility(
   unit: CombatUnitState
@@ -638,14 +651,64 @@ export function getPostAttackAbilityDamageEffects(
 
 /**
  * Iron/Gold/Diamond Golems, neutral Black Dragons: total reduction applied to
- * each instance of Spell damage this unit takes. The caller floors the dealt
- * damage at 0.
+ * each instance of Spell damage this unit takes. The Steel Golems' "spell or
+ * Specialty" passive counts here too. The caller floors the dealt damage at 0.
  */
 export function getSpellDamageReduction(unit: CombatUnitState): number {
-  return getAbilitiesWithEffect(unit, "REDUCE_SPELL_DAMAGE").reduce(
-    (total, ability) => total + (ability.effect?.type === "REDUCE_SPELL_DAMAGE" ? ability.effect.amount : 0),
+  return getAbilitiesWithEffect(unit, "REDUCE_SPELL_DAMAGE")
+    .reduce((total, ability) => total + (ability.effect?.type === "REDUCE_SPELL_DAMAGE" ? ability.effect.amount : 0), 0)
+    + getAbilitiesWithEffect(unit, "REDUCE_SPELL_AND_SPECIALTY_DAMAGE").reduce(
+      (total, ability) => total + (ability.effect?.type === "REDUCE_SPELL_AND_SPECIALTY_DAMAGE" ? ability.effect.amount : 0),
+      0
+    );
+}
+
+/**
+ * Steel Golems: total reduction applied to each instance of Hero-Specialty
+ * damage this unit takes (Xyron's Inferno, Solmyr's Chain Lightning). Ordinary
+ * spell-reducing golems have none — their passive only softens Spell damage.
+ */
+export function getSpecialtyDamageReduction(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "REDUCE_SPELL_AND_SPECIALTY_DAMAGE").reduce(
+    (total, ability) => total + (ability.effect?.type === "REDUCE_SPELL_AND_SPECIALTY_DAMAGE" ? ability.effect.amount : 0),
     0
   );
+}
+
+/**
+ * Rampart Unicorns (Pack): the spell-damage reduction this unit radiates to
+ * itself and adjacent friendly units. The caller (reducedSpellDamage) sums the
+ * target's own REDUCE_SPELL_DAMAGE with the auras of the target itself and its
+ * adjacent allies.
+ */
+export function getSpellDamageReductionAura(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "REDUCE_SPELL_DAMAGE_AURA").reduce(
+    (total, ability) => total + (ability.effect?.type === "REDUCE_SPELL_DAMAGE_AURA" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/** Dungeon Minotaurs: cards the attacker draws when its attack die shows `onRoll`. */
+export function getOnAttackDieDraw(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; onRoll: number; amount: number }[] {
+  return getAbilitiesWithEffect(unit, "ON_ATTACK_DIE_DRAW").flatMap((ability) =>
+    ability.effect?.type === "ON_ATTACK_DIE_DRAW"
+      ? [{ abilityId: ability.id, abilityName: ability.name, onRoll: ability.effect.onRoll, amount: ability.effect.amount }]
+      : []
+  );
+}
+
+/** Ghost Dragons (neutral): the post-attack die that may shove the target away. */
+export function getKnockbackAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; onRoll: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "KNOCKBACK_AFTER_ATTACK")) {
+    if (ability.effect?.type === "KNOCKBACK_AFTER_ATTACK") {
+      return { abilityId: ability.id, abilityName: ability.name, onRoll: ability.effect.onRoll };
+    }
+  }
+  return null;
 }
 
 /** Vampires: the self-heal taken after this unit's own attack (never a retaliation). */

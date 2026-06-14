@@ -446,6 +446,18 @@ export default function Home() {
   const combatPresentTimerRef = useRef<number | null>(null);
   /** Pending timers that reveal each unit's real health once its blow lands. */
   const damageRevealTimersRef = useRef<number[]>([]);
+  /**
+   * The opening deal, held behind the first-player ceremony: the roll must lead
+   * the game, so the freshly dealt hand's deck->hand flights wait here and run
+   * only when the player dismisses the roll.
+   */
+  const deferredStartDrawRef = useRef<{ fxCues: FxCue[]; viewerDraws: number; revealAtMs: number } | null>(null);
+  /**
+   * Visit toasts whose dice are still tumbling, held until the die settles so
+   * the roll reads first and the calculation/notice follow — never spoiling the
+   * result mid-roll. Accumulates across batches while any map die is on screen.
+   */
+  const pendingDiceFeedRef = useRef<{ items: AdventureFeedItem[]; sounds: string[] }>({ items: [], sounds: [] });
   const connectionRef = useRef<RoomConnection | null>(null);
   // The draw cue needs the live seat without resubscribing the stream.
   const viewerRef = useRef<PlayerId>("p1");
@@ -488,6 +500,26 @@ export default function Home() {
     }
     lastResultCombatIdRef.current = resultId;
   }, [state?.combat?.id, state?.combat?.outcome]);
+
+  // Drops a batch of feed toasts on screen with their staggered audio cues and
+  // an 8s auto-expiry. Pulled out so a visit's toasts can either show at once or
+  // wait out a die roll (see pendingDiceFeedRef) through the same path.
+  const showFeedItems = useCallback((items: AdventureFeedItem[], sounds: string[]) => {
+    if (items.length === 0) {
+      return;
+    }
+    sounds
+      .filter((key, index) => sounds.indexOf(key) === index)
+      .slice(0, 3)
+      .forEach((key, index) => {
+        window.setTimeout(() => playLibrarySound(key, MAP_CUE_VOLUME), index * 220);
+      });
+    setFeedItems((current) => [...current, ...items].slice(-6));
+    window.setTimeout(() => {
+      const expired = new Set(items.map((item) => item.id));
+      setFeedItems((current) => current.filter((item) => !expired.has(item.id)));
+    }, 8000);
+  }, []);
 
   // Every server snapshot funnels through here so new attack rolls, card
   // draws, hero walks and pack flips cue their animations on every seat. The
@@ -567,6 +599,8 @@ export default function Home() {
       setMapNotice({ current: null, queue: [] });
       setFirstRoll(null);
       setNewDay({ current: null, queue: [] });
+      deferredStartDrawRef.current = null;
+      pendingDiceFeedRef.current = { items: [], sounds: [] };
     } else {
       // Adventure feed: spell out every visit effect, fight, gain and reveal
       // as a toast. The cue name is the future audio hook.
@@ -589,9 +623,6 @@ export default function Home() {
             cueSounds.push(key);
           }
         }
-        cueSounds.slice(0, 3).forEach((key, index) => {
-          window.setTimeout(() => playLibrarySound(key, MAP_CUE_VOLUME), index * 220);
-        });
 
         const items = freshFeed.map((event) => {
           const cue = ADVENTURE_FEED_CUES[event.type];
@@ -602,11 +633,21 @@ export default function Home() {
             text: formatEvent(event, nextState)
           } satisfies AdventureFeedItem;
         });
-        setFeedItems((current) => [...current, ...items].slice(-6));
-        window.setTimeout(() => {
-          const expired = new Set(items.map((item) => item.id));
-          setFeedItems((current) => current.filter((item) => !expired.has(item.id)));
-        }, 8000);
+
+        // A visit that throws the yellow/Resource die rolls first: hold its
+        // toasts (the calculation and notice) until the die settles, rather
+        // than spelling out the result while the cube is still tumbling. The
+        // seen-set for map dice is stamped just below, so an as-yet-unseen
+        // ADVENTURE_DICE_ROLLED in this batch marks a live roll to wait on.
+        const rollingMapDice = mapDiceEvents.some((event) => !seenMapDiceIdsRef.current.has(event.id));
+        if (rollingMapDice) {
+          pendingDiceFeedRef.current = {
+            items: [...pendingDiceFeedRef.current.items, ...items],
+            sounds: [...pendingDiceFeedRef.current.sounds, ...cueSounds]
+          };
+        } else {
+          showFeedItems(items, cueSounds);
+        }
       }
 
       // Map dice: every Resource / Treasure / Attack die rolled on the map
@@ -696,7 +737,11 @@ export default function Home() {
       for (const event of firstRolls) {
         seenFirstRollIdsRef.current.add(event.id);
       }
-      if (freshFirstRolls.length > 0) {
+      // The opening ceremony leads everything else: while it shows, the deal's
+      // deck->hand flights wait (stashed below), so the roll plays first and the
+      // cards draw only once the player begins the adventure.
+      const isGameStart = freshFirstRolls.length > 0;
+      if (isGameStart) {
         // The interactive ceremony replays the engine's recorded rounds: each
         // seat rolls the Attack die, ties reroll, the highest starts.
         const event = freshFirstRolls[freshFirstRolls.length - 1];
@@ -1329,15 +1374,25 @@ export default function Home() {
           }
         }
 
-        if (viewerDraws > 0) {
-          setHiddenHandTail(viewerDraws);
-          if (hiddenHandTimerRef.current) {
-            window.clearTimeout(hiddenHandTimerRef.current);
+        if (isGameStart) {
+          // Roll first, then deal: hide the freshly dealt hand now and stash its
+          // deck->hand flights so they run the moment the player dismisses the
+          // first-player ceremony (dismissFirstRoll flushes deferredStartDrawRef).
+          if (viewerDraws > 0) {
+            setHiddenHandTail(viewerDraws);
           }
-          hiddenHandTimerRef.current = window.setTimeout(() => setHiddenHandTail(0), timeline + 80);
-        }
-        if (cues.length > 0) {
-          setFxCues((current) => [...current, ...cues]);
+          deferredStartDrawRef.current = { fxCues: cues, viewerDraws, revealAtMs: timeline + 80 };
+        } else {
+          if (viewerDraws > 0) {
+            setHiddenHandTail(viewerDraws);
+            if (hiddenHandTimerRef.current) {
+              window.clearTimeout(hiddenHandTimerRef.current);
+            }
+            hiddenHandTimerRef.current = window.setTimeout(() => setHiddenHandTail(0), timeline + 80);
+          }
+          if (cues.length > 0) {
+            setFxCues((current) => [...current, ...cues]);
+          }
         }
 
         // Whenever this snapshot resolved one or more attacks, hold the things
@@ -1361,7 +1416,7 @@ export default function Home() {
     }
 
     setState(nextState);
-  }, []);
+  }, [showFeedItems]);
 
   const ingestSnapshot = useCallback(
     (snapshot: GameRoomSnapshot) => {
@@ -1456,6 +1511,41 @@ export default function Home() {
         : { current: null, queue: [] }
     );
   }, []);
+
+  // Closing the first-player ceremony releases the opening deal: the deck->hand
+  // flights stashed at game start fly now, and the freshly dealt hand reveals as
+  // they land — the roll having led, the cards draw after.
+  const dismissFirstRoll = useCallback(() => {
+    const deferred = deferredStartDrawRef.current;
+    deferredStartDrawRef.current = null;
+    if (deferred) {
+      if (deferred.fxCues.length > 0) {
+        setFxCues((current) => [...current, ...deferred.fxCues]);
+      }
+      if (deferred.viewerDraws > 0) {
+        if (hiddenHandTimerRef.current) {
+          window.clearTimeout(hiddenHandTimerRef.current);
+        }
+        hiddenHandTimerRef.current = window.setTimeout(() => setHiddenHandTail(0), deferred.revealAtMs);
+      }
+    }
+    setFirstRoll(null);
+  }, []);
+
+  // The yellow/Resource die reads first: once the last map die clears the
+  // screen, release the visit toasts (the calculation and notice) held behind
+  // it. Fires on natural settle and on a click-to-skip alike, since both drain
+  // the queue down to nothing.
+  useEffect(() => {
+    if (mapDice.current) {
+      return;
+    }
+    const pending = pendingDiceFeedRef.current;
+    if (pending.items.length > 0) {
+      pendingDiceFeedRef.current = { items: [], sounds: [] };
+      showFeedItems(pending.items, pending.sounds);
+    }
+  }, [mapDice, showFeedItems]);
 
   const handleFxDone = useCallback((id: string) => {
     setFxCues((current) => current.filter((cue) => cue.id !== id));
@@ -1632,6 +1722,8 @@ export default function Home() {
     setFirstRoll(null);
     setNewDay({ current: null, queue: [] });
     setFeedItems([]);
+    deferredStartDrawRef.current = null;
+    pendingDiceFeedRef.current = { items: [], sounds: [] };
     setSyncStatus(`synced v${snapshot.version}`);
   };
 
@@ -2209,7 +2301,7 @@ export default function Home() {
             />
           ) : null}
           {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
-          {drawCue ? <DrawOverlay cue={drawCue} key={drawCue.id} onDone={() => setDrawCue(null)} /> : null}
+          {drawCue && !firstRoll ? <DrawOverlay cue={drawCue} key={drawCue.id} onDone={() => setDrawCue(null)} /> : null}
           {mapNotice.current && !mapDice.current ? (
             <MapNoticeOverlay cue={mapNotice.current} key={mapNotice.current.id} onDone={dismissMapNotice} />
           ) : null}
@@ -2217,7 +2309,7 @@ export default function Home() {
             <MapDiceOverlay cue={mapDice.current} key={mapDice.current.id} onDone={dismissMapDice} />
           ) : null}
           {firstRoll ? (
-            <FirstPlayerRollOverlay cue={firstRoll} key={firstRoll.id} onDone={() => setFirstRoll(null)} />
+            <FirstPlayerRollOverlay cue={firstRoll} key={firstRoll.id} onDone={dismissFirstRoll} />
           ) : null}
           {!firstRoll && newDay.current ? (
             <NewDayOverlay cue={newDay.current} key={newDay.current.id} onDone={dismissNewDay} />
@@ -2450,7 +2542,9 @@ export default function Home() {
       <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
       <RerollModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
       {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
-      {drawCue && !dice.current ? <DrawOverlay cue={drawCue} key={drawCue.id} onDone={() => setDrawCue(null)} /> : null}
+      {drawCue && !dice.current && !firstRoll ? (
+        <DrawOverlay cue={drawCue} key={drawCue.id} onDone={() => setDrawCue(null)} />
+      ) : null}
       {dice.current ? <DiceOverlay cue={dice.current} key={dice.current.id} onDone={dismissDice} /> : null}
       {!dice.current && mapNotice.current && !mapDice.current ? (
         <MapNoticeOverlay cue={mapNotice.current} key={mapNotice.current.id} onDone={dismissMapNotice} />
@@ -2459,7 +2553,7 @@ export default function Home() {
         <MapDiceOverlay cue={mapDice.current} key={mapDice.current.id} onDone={dismissMapDice} />
       ) : null}
       {firstRoll ? (
-        <FirstPlayerRollOverlay cue={firstRoll} key={firstRoll.id} onDone={() => setFirstRoll(null)} />
+        <FirstPlayerRollOverlay cue={firstRoll} key={firstRoll.id} onDone={dismissFirstRoll} />
       ) : null}
       {!firstRoll && newDay.current ? (
         <NewDayOverlay cue={newDay.current} key={newDay.current.id} onDone={dismissNewDay} />

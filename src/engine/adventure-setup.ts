@@ -741,17 +741,19 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     adventure.playerFarTiles[config.id] = draftFarTiles(farPool, scenario);
   }
 
-  // Everyone draws their starting hand at setup so it is visible from the
-  // first moment; the active player's turn then starts as usual.
-  for (const config of playerConfigs) {
-    drawCardsForPlayer(state, config.id, state.players[config.id].limits.hand);
-  }
-
+  // Roll for the starting player FIRST — before a single card is dealt — so
+  // the game opens with the first-player ceremony and only then deals hands.
   // Official setup step 22: every player rolls the Attack die, the highest
   // result starts (ties reroll among the tied players). The full roll history
   // is kept on the adventure so every seat can read it.
   if (options.rollFirstPlayer !== false) {
     rollFirstPlayer(state, seed);
+  }
+
+  // Then everyone draws their starting hand (visible from the first moment),
+  // and the active player's turn starts as usual.
+  for (const config of playerConfigs) {
+    drawCardsForPlayer(state, config.id, state.players[config.id].limits.hand);
   }
 
   startAdventureRound(state);
