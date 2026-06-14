@@ -2191,6 +2191,13 @@ export type PlayerState = {
   /** +1 positive morale token (max 1) or a single negative token (-1). */
   morale: number;
   /**
+   * Positive morale gained while already at the +1 cap: the token does not
+   * stack, so each extra one must be spent immediately (draw a card, or
+   * discard any number and draw that many). The UI pops up to resolve it;
+   * the reroll use does not apply to these.
+   */
+  moraleOverflow?: number;
+  /**
    * Over the hand limit at the start of the turn: the player must discard
    * down (REFRESH_HAND) before doing anything else.
    */
