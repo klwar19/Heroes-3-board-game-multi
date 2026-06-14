@@ -520,6 +520,74 @@ export type UnitAbilityEffectDefinition =
        * Specialty effects (buffs/debuffs) still apply.
        */
       type: "IMMUNE_TO_SPECIALTY_DAMAGE";
+    }
+  | {
+      /**
+       * Fortress Wyverns: "[unit_attack] Place N faction cube(s) on the target.
+       * At the beginning of its every activation, remove 1 of them to inflict 1
+       * damage." A poison-style damage-over-time — the cubes ride the struck
+       * unit and bleed it for 1 each time it activates until they run out. Cubes
+       * from repeated Wyvern hits accumulate on the same target.
+       */
+      type: "ON_ATTACK_POISON_CUBES";
+      count: number;
+    }
+  | {
+      /**
+       * Rampart Dwarves: "[unit_passive] If this unit is targeted by any Spell
+       * or Specialty card, roll 1 Attack die. On a '+1' result, ignore the
+       * card's effect." The die is rolled whether the card is friendly or
+       * hostile; on a matching face the whole card has no effect on this unit.
+       */
+      type: "NEGATE_CARD_ON_DIE";
+      onRoll: number;
+    }
+  | {
+      /**
+       * Rampart Pegasi (Pack): "[unit_passive] The Power of all enemy spells is
+       * reduced by N (to a minimum of 0)." A passive aura: while this unit
+       * lives, every Spell cast by the opposing side resolves at `amount` less
+       * Power.
+       */
+      type: "REDUCE_ENEMY_SPELL_POWER";
+      amount: number;
+    }
+  | {
+      /**
+       * Rampart Dendroids (Pack): "[unit_passive] Enemy units that start their
+       * activation adjacent to this unit cannot move." A Bind aura, evaluated at
+       * the start of each enemy activation; a bound unit may still attack.
+       */
+      type: "BIND_ADJACENT_ENEMIES";
+    }
+  | {
+      /**
+       * Tower Gargoyles: "[unit_passive] This unit ignores any ongoing Spell
+       * effects." Ongoing effects created by a Spell card never apply to this
+       * unit (friendly or hostile); ongoing effects from other sources
+       * (artifacts, specialties) still apply.
+       */
+      type: "IGNORE_ONGOING_SPELL_EFFECTS";
+    }
+  | {
+      /**
+       * Tower Titans: "[unit_passive] Ignore any ongoing effects on this unit."
+       * Every ongoing effect — created by a Spell, Artifact or Specialty,
+       * friendly or hostile — is ignored while it would apply to this unit.
+       */
+      type: "IGNORE_ONGOING_EFFECTS";
+    }
+  | {
+      /**
+       * Tower Genies: "Discard up to N cards from your deck and take a Spell
+       * discarded this way to your hand." The Few uses it as an other action
+       * (instead of moving/attacking); the Pack triggers it after its attack.
+       * The deck reshuffles its discard pile to complete the count if it runs
+       * out; among the discarded Spells the controller takes one to hand.
+       */
+      type: "DECK_DISCARD_TAKE_SPELL";
+      count: number;
+      trigger: "other-action" | "on-attack";
     };
 
 /**
@@ -1227,6 +1295,84 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Specialty Ward",
     text: "[unit_passive] Ignore damage from Specialty cards (non-damage Specialty effects still apply).",
     effect: { type: "IMMUNE_TO_SPECIALTY_DAMAGE" },
+    implementationStatus: "implemented"
+  },
+  // Fortress Wyverns: the poison-cube damage-over-time (distinct from the
+  // neutral Wyvern's die-roll "wyvern-sting"). The Few plants 1 cube, the Pack
+  // 2; each of the target's activations removes one cube for 1 damage.
+  "wyvern-poison-cube-few": {
+    id: "wyvern-poison-cube-few",
+    name: "Poison",
+    text: "[unit_attack] Place 1 faction cube on the target. At the beginning of its every activation, remove it to inflict 1 damage.",
+    effect: { type: "ON_ATTACK_POISON_CUBES", count: 1 },
+    implementationStatus: "implemented"
+  },
+  "wyvern-poison-cube-pack": {
+    id: "wyvern-poison-cube-pack",
+    name: "Poison",
+    text: "[unit_attack] Place 2 faction cubes on the target. At the beginning of its every activation, remove 1 of them to inflict 1 damage.",
+    effect: { type: "ON_ATTACK_POISON_CUBES", count: 2 },
+    implementationStatus: "implemented"
+  },
+  // Rampart Dwarves: roll an Attack die whenever a Spell or Specialty targets
+  // them; a "+1" shrugs the whole card off (friendly buffs included).
+  "dwarf-magic-resistance": {
+    id: "dwarf-magic-resistance",
+    name: "Magic Resistance",
+    text: '[unit_passive] If this unit is targeted by any Spell or Specialty card, roll 1 Attack die. On a "+1" result, ignore the card\'s effect.',
+    effect: { type: "NEGATE_CARD_ON_DIE", onRoll: 1 },
+    implementationStatus: "implemented"
+  },
+  // Rampart Pegasi (Pack): a living Pegasi shaves 1 Power off every Spell the
+  // opposing side casts (to a minimum of 0).
+  "pegasi-magic-damper": {
+    id: "pegasi-magic-damper",
+    name: "Magic Damper",
+    text: "[unit_passive] The Power of all enemy spells is reduced by 1 (to a minimum of 0).",
+    effect: { type: "REDUCE_ENEMY_SPELL_POWER", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Rampart Dendroids (Pack): enemies beginning their activation next to a
+  // Dendroid are rooted in place for that activation (they may still attack).
+  "dendroid-bind": {
+    id: "dendroid-bind",
+    name: "Bind",
+    text: "[unit_passive] Enemy units that start their activation adjacent to this unit cannot move.",
+    effect: { type: "BIND_ADJACENT_ENEMIES" },
+    implementationStatus: "implemented"
+  },
+  // Tower Gargoyles: immune to ongoing effects that come from a Spell (other
+  // ongoing sources, e.g. artifacts, still affect them).
+  "gargoyle-spell-ward": {
+    id: "gargoyle-spell-ward",
+    name: "Spell Ward",
+    text: "[unit_passive] This unit ignores any ongoing Spell effects.",
+    effect: { type: "IGNORE_ONGOING_SPELL_EFFECTS" },
+    implementationStatus: "implemented"
+  },
+  // Tower Titans: immune to every ongoing effect on themselves — from Spells,
+  // Artifacts or Specialties, friendly or hostile.
+  "titan-ignore-ongoing": {
+    id: "titan-ignore-ongoing",
+    name: "Unbreakable Will",
+    text: "[unit_passive] Ignore any ongoing effects on this unit.",
+    effect: { type: "IGNORE_ONGOING_EFFECTS" },
+    implementationStatus: "implemented"
+  },
+  // Tower Genies: dig Spells out of your own deck. Few = other action (discard
+  // exactly 3); Pack = after its attack (discard up to 3).
+  "genie-spell-draw-few": {
+    id: "genie-spell-draw-few",
+    name: "Wish",
+    text: "[unit_other] Discard 3 cards from your deck and take a Spell discarded this way to your hand.",
+    effect: { type: "DECK_DISCARD_TAKE_SPELL", count: 3, trigger: "other-action" },
+    implementationStatus: "implemented"
+  },
+  "genie-spell-draw-pack": {
+    id: "genie-spell-draw-pack",
+    name: "Wish",
+    text: "[unit_attack] Discard up to 3 cards from your deck and take a Spell discarded this way to your hand.",
+    effect: { type: "DECK_DISCARD_TAKE_SPELL", count: 3, trigger: "on-attack" },
     implementationStatus: "implemented"
   }
 };
