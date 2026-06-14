@@ -151,6 +151,7 @@ import {
   getLethalSaveUnitAbility,
   getLineAttackAbility,
   getOnAttackDieTokens,
+  getOnAttackSelfHeal,
   getParalysisFollowUps,
   getPostAttackAbilityDamageEffects,
   getRetaliationAgainstAttackPenalty,
@@ -159,11 +160,14 @@ import {
   getSecondAttackAbility,
   getSecondAttackCandidates,
   getSelfAdjacentSecondAttackAbility,
+  getSpellDamageReduction,
   getTriggeredAttackDieBonusAbilities,
   getUnitAbilityDefinitions,
   getUnitAttackRerollSources,
+  hasDefenseTokenAura,
   hasIgnoreParalysis,
   hasRetaliationAgainstDisadvantage,
+  hasSpellCastHandTax,
   hasUnitAbilityEffect,
   unitImmuneToSpellSchools
 } from "./unit-abilities";
@@ -924,6 +928,16 @@ function healUnitDamage(
     target,
     amount: healedAmount
   });
+}
+
+/**
+ * Spell damage actually dealt to a unit after its "Reduce any damage from
+ * spells by N" passive (Iron/Gold/Diamond Golems, neutral Black Dragons),
+ * floored at 0. Applied at every Spell-damage site (direct, area and the
+ * Faerie Dragon's bolt).
+ */
+function reducedSpellDamage(target: CombatUnitState, amount: number): number {
+  return Math.max(0, amount - getSpellDamageReduction(target));
 }
 
 // (finishCombatIfNeeded lives in combat-units.ts.)
@@ -1690,12 +1704,36 @@ function getAfterRetaliationAttack(
  * on the same outcome and an attacker's reroll never re-rolls it. It is skipped
  * when the attack ignores Defense (Elemental damage), where the shield is moot.
  */
+/**
+ * Neutral Halberdiers' "Phalanx": a living friendly unit adjacent to the
+ * defender lends it a virtual Defense token. The aura never benefits the
+ * Halberdiers' enemies and never the defender from itself.
+ */
+function hasAdjacentDefenseAura(state: GameState, defender: CombatUnitState): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+  return Object.values(combat.units).some(
+    (unit) =>
+      unit.id !== defender.id &&
+      unit.controllerId === defender.controllerId &&
+      isUnitAlive(unit) &&
+      isAdjacent(unit.position, defender.position) &&
+      hasDefenseTokenAura(unit)
+  );
+}
+
 function resolveDefendBonus(
   state: GameState,
   stackItem: ResolutionStackItem,
   details: NonNullable<ReturnType<typeof getAttackStackDetails>>
 ): { roll: number; bonus: number } | null {
-  if (!details.defender.defenseToken || details.ignoreDefense) {
+  // A real Defense token, or a virtual one from an adjacent Halberdier's
+  // "Phalanx" aura, lets the defender roll the Defend die (a "+1" face → +1
+  // Defense). The shield is moot when the attack ignores Defense (Elemental).
+  const hasShield = details.defender.defenseToken || hasAdjacentDefenseAura(state, details.defender);
+  if (!hasShield || details.ignoreDefense) {
     return null;
   }
   const combat = state.combat;
@@ -1707,6 +1745,35 @@ function resolveDefendBonus(
   }
   const roll = stackItem.modifiers.defendRoll;
   return { roll, bonus: roll === 1 ? 1 : 0 };
+}
+
+/**
+ * Vampires: "[unit_attack] …then remove up to N damage from this unit." The
+ * self-heal lands after the unit's own attack — never a Retaliation Attack —
+ * and is capped at the damage currently on the unit.
+ */
+function applyOnAttackSelfHeal(state: GameState, attacker: CombatUnitState, isRetaliation: boolean): void {
+  if (isRetaliation) {
+    return;
+  }
+  const heal = getOnAttackSelfHeal(attacker);
+  if (!heal || attacker.damage <= 0) {
+    return;
+  }
+  const healed = Math.min(heal.amount, attacker.damage);
+  attacker.damage = Math.max(0, attacker.damage - heal.amount);
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: heal.abilityId,
+    message: `${attacker.cardName} drains life and heals ${healed} damage.`
+  });
+  appendEvent(state, {
+    type: "DAMAGE_HEALED",
+    source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+    target: { type: "unit", unitId: attacker.id },
+    amount: healed
+  });
 }
 
 function finishResolvedAttack(
@@ -1817,6 +1884,8 @@ function finishResolvedAttack(
     attackResult.damage
   );
   applyFireShieldDamage(state, details.attacker, details.defender, details.attackKind);
+  // Vampires: drain life back to themselves after their own attack.
+  applyOnAttackSelfHeal(state, details.attacker, details.isRetaliation);
 
   if (details.isRetaliation) {
     details.attacker.retaliatedThisRound = true;
@@ -3168,20 +3237,22 @@ function applyActivationDamageSpell(
   target: CombatUnitState,
   ability: { abilityId: string; abilityName: string; amount: number }
 ): void {
+  // Golems et al. reduce Spell damage — the Faerie Bolt is explicitly a spell.
+  const dealt = reducedSpellDamage(target, ability.amount);
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: unit.id,
     abilityId: ability.abilityId,
     targetUnitId: target.id,
-    message: `${unit.name} casts ${ability.abilityName} at ${target.cardName} for ${ability.amount} damage.`
+    message: `${unit.name} casts ${ability.abilityName} at ${target.cardName} for ${dealt} damage.`
   });
-  target.damage += ability.amount;
-  noteUnitDamagedForTokens(state, target, ability.amount);
+  target.damage += dealt;
+  noteUnitDamagedForTokens(state, target, dealt);
   appendEvent(state, {
     type: "DAMAGE_ASSIGNED",
     source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
     target: { type: "unit", unitId: target.id },
-    amount: ability.amount,
+    amount: dealt,
     damageKind: "spell"
   });
   markUnitRemovedIfNeeded(state, target);
@@ -3602,7 +3673,10 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target) {
         const power = getCurrentSpellPower(stackItem, cards);
-        const amount = getSpellDamageAmount(card, power);
+        const rawAmount = getSpellDamageAmount(card, power);
+        // "Reduce any damage from spells by N" applies to Spell-kind damage only.
+        const amount =
+          card.effect.damageKind === "spell" ? reducedSpellDamage(target, rawAmount) : rawAmount;
         target.damage += amount;
         noteUnitDamagedForTokens(state, target, amount);
         appendEvent(state, {
@@ -3780,13 +3854,16 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const power = getCurrentSpellPower(stackItem, cards);
       const amount = getAmountByPower(card.effect.amountByPower, 1, power);
       if (target) {
-        target.damage += amount;
-        noteUnitDamagedForTokens(state, target, amount);
+        // The primary target's own spell-damage reduction applies here; the
+        // splash keeps the raw `amount` and is reduced per splash-target below.
+        const dealt = reducedSpellDamage(target, amount);
+        target.damage += dealt;
+        noteUnitDamagedForTokens(state, target, dealt);
         appendEvent(state, {
           type: "DAMAGE_ASSIGNED",
           source: { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
           target: stackItem.action.target,
-          amount,
+          amount: dealt,
           damageKind: "spell"
         });
         markUnitRemovedIfNeeded(state, target);
@@ -3994,6 +4071,33 @@ function closeReactionWindow(state: GameState, reason: "all-pass" | "reaction-pl
   state.priorityPlayerId = null;
 }
 
+/**
+ * Familiars' "Mana Leech": while a living enemy Familiar is in the combat, a
+ * player who casts a Spell from hand must discard one extra random card. Scroll
+ * casts are not "from hand" and are exempt.
+ */
+function applyEnemySpellHandTax(state: GameState, casterId: PlayerId): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+  const familiar = Object.values(combat.units).find(
+    (unit) => unit.controllerId !== casterId && isUnitAlive(unit) && hasSpellCastHandTax(unit)
+  );
+  if (!familiar) {
+    return;
+  }
+  const discarded = discardRandomCardFromHand(state, casterId);
+  if (discarded) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: familiar.id,
+      abilityId: "familiar-spell-tax",
+      message: `${familiar.cardName} leeches a card from the spellcaster's hand.`
+    });
+  }
+}
+
 function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_SPELL" }>, cards: CardLibrary): void {
   const card = cards[action.cardId];
   if (!card || card.kind !== "spell") {
@@ -4011,6 +4115,8 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     if (moveError) {
       throw new Error(moveError.message);
     }
+    // Familiars tax each enemy Spell cast from hand by one extra random card.
+    applyEnemySpellHandTax(state, action.playerId);
   }
 
   const caster = state.players[action.playerId];
@@ -5192,13 +5298,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           isUnitAlive(unit) && (unit.id === center.id || isAdjacent(unit.position, center.position))
       );
       for (const unit of inBlast) {
-        unit.damage += effect.amount;
-        noteUnitDamagedForTokens(state, unit, effect.amount);
+        const dealt = reducedSpellDamage(unit, effect.amount);
+        unit.damage += dealt;
+        noteUnitDamagedForTokens(state, unit, dealt);
         appendEvent(state, {
           type: "DAMAGE_ASSIGNED",
           source: { type: "card", cardId: card.id, controllerId: action.playerId },
           target: { type: "unit", unitId: unit.id },
-          amount: effect.amount,
+          amount: dealt,
           damageKind: "spell"
         });
         markUnitRemovedIfNeeded(state, unit);
@@ -5785,13 +5892,14 @@ function resolveEarthquakeSpell(state: GameState, playerId: PlayerId, power: num
       if (!positions.some((position) => isAdjacent(unit.position, position))) {
         continue;
       }
-      unit.damage += 1;
-      noteUnitDamagedForTokens(state, unit, 1);
+      const dealt = reducedSpellDamage(unit, 1);
+      unit.damage += dealt;
+      noteUnitDamagedForTokens(state, unit, dealt);
       appendEvent(state, {
         type: "DAMAGE_ASSIGNED",
         source: { type: "system" },
         target: { type: "unit", unitId: unit.id },
-        amount: 1,
+        amount: dealt,
         damageKind: "spell"
       });
       markUnitRemovedIfNeeded(state, unit);
@@ -6023,13 +6131,14 @@ function chooseAbilityTarget(
     if (!isSkip) {
       const target = combat.units[action.targetUnitId];
       if (target && isUnitAlive(target)) {
-        target.damage += choice.amount ?? 1;
-        noteUnitDamagedForTokens(state, target, choice.amount ?? 1);
+        const dealt = reducedSpellDamage(target, choice.amount ?? 1);
+        target.damage += dealt;
+        noteUnitDamagedForTokens(state, target, dealt);
         appendEvent(state, {
           type: "DAMAGE_ASSIGNED",
           source: { type: "system" },
           target: { type: "unit", unitId: target.id },
-          amount: choice.amount ?? 1,
+          amount: dealt,
           damageKind: "spell"
         });
         markUnitRemovedIfNeeded(state, target);
@@ -6137,6 +6246,58 @@ function chooseAbilityTarget(
  * priority; only when none qualifies does the mandatory hit fall on a
  * friendly neutral (or the Liches themselves).
  */
+/**
+ * A neutral attacker (Minotaurs, Champions) auto-resolves its own attack-die
+ * reroll: it rerolls every "-1" its face-gated ability allows — never spending
+ * a depleting source, which neutrals never have — then keeps the final roll and
+ * resumes the attack. The neutral player makes no choices, so the adventure
+ * pump drives this the moment such a choice opens.
+ */
+function autoResolveNeutralReroll(state: GameState, cards: CardLibrary): void {
+  const choice = state.pendingChoice;
+  const combat = state.combat;
+  if (!choice || choice.type !== "ATTACK_DIE_REROLL" || !combat) {
+    return;
+  }
+
+  let safety = 12;
+  while (safety > 0) {
+    safety -= 1;
+    const currentRoll = choice.candidates.at(-1)?.roll ?? 0;
+    const source = choice.rerollSources.find((candidate) => rerollSourceAvailableFor(candidate, currentRoll));
+    // Only face-gated ability rerolls (the Minotaur/Champion "-1") ever apply to
+    // a neutral; stop once the current face can no longer be rerolled.
+    if (!source || source.onlyOnRoll === undefined) {
+      break;
+    }
+    const candidate = rollAttackCandidate(combat, choice.rollMode);
+    choice.candidates.push(candidate);
+    choice.remainingRerolls = countAvailableRerolls(choice.rerollSources, candidate.roll);
+    appendEvent(state, {
+      type: "ATTACK_REROLLED",
+      choiceId: choice.id,
+      playerId: choice.playerId,
+      rolls: candidate.rolls,
+      roll: candidate.roll,
+      remainingRerolls: choice.remainingRerolls,
+      sourceName: source.name
+    });
+  }
+
+  const stackItem = state.stack.find((item) => item.id === choice.stackItemId);
+  const details = stackItem ? getAttackStackDetails(state, stackItem) : null;
+  const candidate = choice.candidates.at(-1);
+  if (!stackItem || !details || !candidate) {
+    // The pending attack vanished (combat ended mid-pause): drop the choice.
+    state.pendingChoice = null;
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    return;
+  }
+  closePendingChoice(state, choice, choice.candidates.length - 1);
+  finishResolvedAttack(state, stackItem, details, candidate, cards);
+}
+
 function autoResolveNeutralAbilityChoice(state: GameState, cards: CardLibrary): boolean {
   const choice = state.pendingChoice;
   const combat = state.combat;
@@ -6932,6 +7093,15 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       if (autoResolveNeutralAbilityChoice(state, cards)) {
         continue;
       }
+    }
+
+    // Neutral Minotaurs/Champions auto-reroll their own "-1" attack die.
+    if (
+      state.pendingChoice?.type === "ATTACK_DIE_REROLL" &&
+      state.pendingChoice.playerId === NEUTRAL_PLAYER_ID
+    ) {
+      autoResolveNeutralReroll(state, cards);
+      continue;
     }
 
     if (

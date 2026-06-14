@@ -2255,6 +2255,8 @@ export type CombatUnitState = {
   summonedThisCombat?: boolean;
   /** Archangels: set once this unit has spent its once-per-combat lethal save. */
   usedLethalSaveThisCombat?: boolean;
+  /** Phoenixes: set once this unit has spent its once-per-combat Rebirth self-save. */
+  usedRebirthThisCombat?: boolean;
   retaliatedThisRound: boolean;
   defenseToken: boolean;
   /**

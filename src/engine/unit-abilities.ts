@@ -631,3 +631,49 @@ export function getPostAttackAbilityDamageEffects(
 
   return effects;
 }
+
+/**
+ * Iron/Gold/Diamond Golems, neutral Black Dragons: total reduction applied to
+ * each instance of Spell damage this unit takes. The caller floors the dealt
+ * damage at 0.
+ */
+export function getSpellDamageReduction(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "REDUCE_SPELL_DAMAGE").reduce(
+    (total, ability) => total + (ability.effect?.type === "REDUCE_SPELL_DAMAGE" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/** Vampires: the self-heal taken after this unit's own attack (never a retaliation). */
+export function getOnAttackSelfHeal(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; amount: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ON_ATTACK_HEAL_SELF")) {
+    if (ability.effect?.type === "ON_ATTACK_HEAL_SELF") {
+      return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
+    }
+  }
+  return null;
+}
+
+/** Phoenixes: the once-per-combat self-rebirth that survives a killing blow at 1 Health. */
+export function getSelfRebirthAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "SELF_REBIRTH_ONCE")) {
+    if (ability.effect?.type === "SELF_REBIRTH_ONCE") {
+      return { abilityId: ability.id, abilityName: ability.name };
+    }
+  }
+  return null;
+}
+
+/** Neutral Halberdiers: this unit grants adjacent allies a virtual Defense token. */
+export function hasDefenseTokenAura(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "DEFENSE_TOKEN_AURA");
+}
+
+/** Familiars: enemies pay one card whenever they cast a Spell from hand near this unit. */
+export function hasSpellCastHandTax(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "SPELL_CAST_HAND_TAX");
+}
