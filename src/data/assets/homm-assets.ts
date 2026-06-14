@@ -79,6 +79,16 @@ export const TOWN_BUILDING_IMAGES: Record<string, Record<string, string>> = {
     dwelling_gold: "/assets/town/dungeon_ancient_lairs_hd.webp",
     portal_of_summoning: "/assets/town/dungeon_portal_of_summoning_hd.webp",
     mana_vortex: "/assets/town/dungeon_mana_vortex_hd.webp"
+  },
+  tower: {
+    city_hall: "/assets/town/tower_city_hall_large.gif",
+    citadel: "/assets/town/tower_citadel_large.gif",
+    mage_guild: "/assets/town/tower_mage_guild_level_1_large.gif",
+    dwelling_bronze: "/assets/town/tower_workshop.gif",
+    dwelling_silver: "/assets/town/tower_mage_tower.gif",
+    dwelling_gold: "/assets/town/tower_cloud_temple.gif",
+    artifact_merchants: "/assets/town/tower_artifact_merchants.gif",
+    wall_of_knowledge: "/assets/town/tower_wall_of_knowledge.gif"
   }
 };
 

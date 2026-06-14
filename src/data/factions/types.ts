@@ -1,6 +1,6 @@
 import type { ResourceCost, UnitType } from "@/engine/state";
 
-export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon" | "stronghold";
+export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon" | "stronghold" | "tower";
 export type UnitTier = "bronze" | "silver" | "gold" | "azure";
 
 export type UnitSideDefinition = {
@@ -15,6 +15,12 @@ export type UnitSideDefinition = {
   /** Printed rules text for display until the ability is implemented. */
   abilityText?: string;
   cardImage?: string;
+  /**
+   * Per-side unit type override. A few units change type when reinforced
+   * (Tower Gremlins/Titans go from ground to ranged on their Pack side). When
+   * absent the combat unit uses the definition-level `type`.
+   */
+  type?: UnitType;
 };
 
 export type UnitDefinition = {
@@ -102,6 +108,14 @@ export type TownBuildingEffect =
        * your discard pile.
        */
       type: "TURN_START_NECROMANCY";
+    }
+  | {
+      /**
+       * Wall of Knowledge: at the beginning of each Astrologers' round, you
+       * may take 1 Knowledge or 1 Power Statistic card from your discard pile
+       * to your hand.
+       */
+      type: "ASTROLOGERS_TAKE_STATISTIC";
     }
   | {
       /**
