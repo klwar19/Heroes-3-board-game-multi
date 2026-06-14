@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createAdventureGameState, createInitialGameState, makeCombatUnitFromArmy } from "./index";
+import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions, makeCombatUnitFromArmy } from "./index";
 import { startAdventureRound } from "./adventure";
 import { getCombatStartDraws } from "./unit-abilities";
 import type { CombatUnitState, GameAction, GameEvent, GameState, PlayerId } from "./state";
@@ -101,6 +101,25 @@ function meleeDuel(): GameState {
   setActive(state, "p1", "unit_p1_griffins");
   return state;
 }
+
+describe("Leadership in battle", () => {
+  it("is played without selecting a unit and grants a positive morale token", () => {
+    const state = meleeDuel();
+    state.players.p1.hand = ["ability.leadership"];
+    state.players.p1.morale = 0;
+
+    const plays = getLegalActions(state, "p1").filter(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.leadership"
+    );
+    // Exactly one no-target play — never one play per enemy unit, and never an
+    // enemy-unit target prompt (the old default for untargeted cards).
+    expect(plays).toHaveLength(1);
+    expect(plays[0].action).toMatchObject({ type: "PLAY_CARD", target: { type: "none" } });
+
+    const next = applyOk(state, plays[0].action);
+    expect(next.players.p1.morale).toBe(1);
+  });
+});
 
 describe("Medusas paralysis on retaliation", () => {
   it("Pack/Neutral Medusas paralyse the unit they retaliate against", () => {
