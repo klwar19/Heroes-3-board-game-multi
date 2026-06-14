@@ -142,6 +142,7 @@ export function BattlefieldBoard({
   selectedCardAction,
   flippedUnitIds,
   tintedUnits,
+  damageDisplay,
   onAction,
   onInspect
 }: {
@@ -153,11 +154,22 @@ export function BattlefieldBoard({
   flippedUnitIds?: ReadonlySet<string>;
   /** unitId -> tint key ("bloodlust") while a palette-style effect plays. */
   tintedUnits?: ReadonlyMap<string, string>;
+  /**
+   * unitId -> the damage value to *show* instead of the unit's real one, while
+   * an attack's dice + strike animation play out. Lets a struck unit hold its
+   * pre-hit health (and a slain unit stay on the board) until the blow visibly
+   * lands, so damage never resolves before the roll it came from.
+   */
+  damageDisplay?: ReadonlyMap<string, number>;
   onAction: (action: GameAction) => void;
   onInspect: (unitId: string) => void;
 }) {
   const combat = state.combat;
   const flipped = isBoardFlipped(state, viewerPlayerId);
+  // Health to render for a unit: a deferred value during an attack animation,
+  // otherwise its true damage. A unit reads as alive while its shown damage is
+  // below its max, so a killing blow keeps the card on the board until impact.
+  const shownDamage = (unit: CombatUnitState) => damageDisplay?.get(unit.id) ?? unit.damage;
   const unitsByPosition = new Map<number, CombatUnitState>();
   const obstacles = new Set(combat?.obstacles ?? []);
   const moveActionsByDestination = new Map<number, GameAction>();
@@ -174,7 +186,7 @@ export function BattlefieldBoard({
 
   if (combat) {
     for (const unit of Object.values(combat.units)) {
-      if (isUnitAlive(unit) && unit.position >= 0) {
+      if (shownDamage(unit) < unit.maxHealth && unit.position >= 0) {
         unitsByPosition.set(unit.position, unit);
       }
     }
@@ -233,7 +245,7 @@ export function BattlefieldBoard({
           } ${moveAction && !selectedCardAction ? "moveTarget" : ""} ${
             attackAction && !selectedCardAction ? "attackTarget" : ""
           } ${cardAction || spaceCardAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${dropTarget ? "dropTarget" : ""}`;
-          const health = unit ? Math.max(0, unit.maxHealth - unit.damage) : 0;
+          const health = unit ? Math.max(0, unit.maxHealth - shownDamage(unit)) : 0;
 
           const dropProps = dropTarget
             ? {

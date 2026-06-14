@@ -20,6 +20,7 @@ export type { SharedDeckId } from "./decks";
 export {
   expireEffectsForCombatEnd,
   expireEffectsForCombatRoundEnd,
+  expireEffectsForGameRoundEnd,
   expireEffectsForTurnEnd,
   getActiveAttackBonus,
   getActiveDefenseBonus,

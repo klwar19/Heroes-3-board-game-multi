@@ -1,5 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
-import { makeActiveEffect } from "./active-effects";
+import { countExtraBallistas, effectiveInitiative, makeActiveEffect } from "./active-effects";
 import { hasResources, processPendingVisit, spendResources } from "./adventure";
 import { isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
@@ -330,6 +330,12 @@ function activeWarMachineEntry(
     return null;
   }
 
+  // Torosar's granted Ballistas have no permanent card: they fire a plain basic
+  // shot (no expert volley) and skip the in-play check.
+  if (head.granted) {
+    return { cardId: head.cardId, roundStart: { kind: "damage-lowest-initiative", amount: 1 } };
+  }
+
   // The machine must still be in play (its expert/discard may have removed it).
   if (!getPermanentCardIds(state, playerId).includes(head.cardId)) {
     return null;
@@ -337,6 +343,20 @@ function activeWarMachineEntry(
 
   const roundStart = getRoundStartDefinitionForCard(head.cardId);
   return roundStart ? { cardId: head.cardId, roundStart } : null;
+}
+
+/** Whether an in-play permanent is a Ballista (a round-start single-shot machine). */
+function isBallistaCard(cardId: CardId): boolean {
+  return getRoundStartDefinitionForCard(cardId)?.kind === "damage-lowest-initiative";
+}
+
+/**
+ * How many Ballistas a player fields: every in-play war-machine Ballista plus
+ * each of Torosar's temporary grants ("this card counts as a Ballista").
+ */
+export function countBallistas(state: GameState, playerId: PlayerId): number {
+  const permanentBallistas = getPermanentCardIds(state, playerId).filter(isBallistaCard).length;
+  return permanentBallistas + countExtraBallistas(state, playerId);
 }
 
 function livingUnits(state: GameState): CombatUnitState[] {
@@ -363,11 +383,17 @@ export function startWarMachineRound(state: GameState): void {
     return;
   }
 
-  const pending = [combat.attackerPlayerId, combat.defenderPlayerId].flatMap((playerId) =>
-    getPermanentCardIds(state, playerId)
+  const pending = [combat.attackerPlayerId, combat.defenderPlayerId].flatMap((playerId) => [
+    ...getPermanentCardIds(state, playerId)
       .filter((cardId) => getRoundStartDefinitionForCard(cardId))
-      .map((cardId) => ({ playerId, cardId }))
-  );
+      .map((cardId) => ({ playerId, cardId })),
+    // Torosar's granted Ballistas each fire their own basic shot at round start.
+    ...Array.from({ length: countExtraBallistas(state, playerId) }, () => ({
+      playerId,
+      cardId: "war_machine.ballista" as CardId,
+      granted: true
+    }))
+  ]);
   combat.warMachineRound = pending.length > 0 ? { pending, firstTargetUnitId: null } : null;
   processWarMachineRound(state);
 }
@@ -386,14 +412,16 @@ export function applyWarMachineDamage(
   playerId: PlayerId,
   targetUnitId: UnitId,
   amount: number,
-  message?: string
+  message?: string,
+  sourceCardId?: CardId
 ): void {
   const combat = state.combat;
   const target = combat?.units[targetUnitId];
   const cardId =
-    combat?.warMachineRound?.pending[0]?.playerId === playerId
+    sourceCardId ??
+    (combat?.warMachineRound?.pending[0]?.playerId === playerId
       ? combat.warMachineRound.pending[0].cardId
-      : (getPermanentCardIds(state, playerId)[0] ?? null);
+      : (getPermanentCardIds(state, playerId)[0] ?? null));
   if (!combat || !target || !isAlive(target) || !cardId) {
     return;
   }
@@ -425,7 +453,13 @@ export function applyWarMachineDamage(
  * Ballista volley: fire `shots` shots, each at the lowest-initiative living
  * enemy (ties broken deterministically), stopping early if combat ends.
  */
-function fireBallistaShots(state: GameState, playerId: PlayerId, amount: number, shots: number): void {
+function fireBallistaShots(
+  state: GameState,
+  playerId: PlayerId,
+  amount: number,
+  shots: number,
+  sourceCardId?: CardId
+): void {
   for (let shot = 0; shot < shots; shot += 1) {
     if (state.combat?.outcome) {
       return;
@@ -434,12 +468,24 @@ function fireBallistaShots(state: GameState, playerId: PlayerId, amount: number,
     if (enemies.length === 0) {
       return;
     }
-    const lowest = Math.min(...enemies.map((unit) => unit.initiative));
+    const lowest = Math.min(...enemies.map((unit) => effectiveInitiative(unit, state.activeEffects)));
     const target = enemies
-      .filter((unit) => unit.initiative === lowest)
+      .filter((unit) => effectiveInitiative(unit, state.activeEffects) === lowest)
       .sort((left, right) => left.id.localeCompare(right.id))[0];
-    applyWarMachineDamage(state, playerId, target.id, amount);
+    applyWarMachineDamage(state, playerId, target.id, amount, undefined, sourceCardId);
   }
+}
+
+/**
+ * Torosar's "Activate your Ballista(s)": fire `count` extra Ballista shots
+ * immediately (each = 1 damage to the lowest-initiative enemy). Ties resolve
+ * deterministically, exactly like the expert volley.
+ */
+export function activateBallistas(state: GameState, playerId: PlayerId, count: number): void {
+  if (count <= 0) {
+    return;
+  }
+  fireBallistaShots(state, playerId, 1, count, "war_machine.ballista");
 }
 
 function openWarMachineTargetChoice(
@@ -559,8 +605,8 @@ export function processWarMachineRound(state: GameState): void {
         return;
       }
 
-      const lowest = Math.min(...enemies.map((unit) => unit.initiative));
-      const candidates = enemies.filter((unit) => unit.initiative === lowest);
+      const lowest = Math.min(...enemies.map((unit) => effectiveInitiative(unit, state.activeEffects)));
+      const candidates = enemies.filter((unit) => effectiveInitiative(unit, state.activeEffects) === lowest);
       if (candidates.length === 1) {
         applyWarMachineDamage(state, playerId, candidates[0].id, roundStart.amount);
         queue.pending.shift();

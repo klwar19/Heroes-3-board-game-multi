@@ -134,7 +134,7 @@ export function livingControllerIds(combat: CombatState): Set<PlayerId> {
 export function appendExpiredEffectEvents(
   state: GameState,
   effects: ActiveEffectState[],
-  reason: "combat-round-ended" | "turn-ended" | "combat-ended"
+  reason: "combat-round-ended" | "turn-ended" | "combat-ended" | "game-round-ended"
 ): void {
   for (const effect of effects) {
     appendEvent(state, {
