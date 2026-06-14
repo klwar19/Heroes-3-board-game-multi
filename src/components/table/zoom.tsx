@@ -63,7 +63,7 @@ export function unitZoomContent(unit: CombatUnitState): ZoomContent {
     image: unit.assets?.cardImage,
     subtitle: `${titleCase(unit.grade)} ${unit.type} · initiative ${unit.initiative}`,
     lines: [
-      `Attack ${unit.attack} · Defense ${unit.defense}${unit.defenseToken ? " (+1 token)" : ""} · HP ${health}/${unit.maxHealth}`,
+      `Attack ${unit.attack} · Defense ${unit.defense}${unit.defenseToken ? " (defending: rolls +1 for +1 Defense)" : ""} · HP ${health}/${unit.maxHealth}`,
       ...abilities.map(
         (ability) =>
           `${ability.name}: ${ability.text}${ability.implementationStatus === "implemented" ? "" : " (manual rule)"}`

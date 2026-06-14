@@ -107,6 +107,7 @@ export {
   TRADE_RATES,
   TREASURE_DIE_FACES,
   canCrossEdge,
+  canHeroReachPlacedTile,
   classifyHeroStep,
   effectiveHandLimit,
   gainExperience,

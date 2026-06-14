@@ -706,7 +706,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ranged",
-    neutral: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 5 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one. Ignore combat penalties.", cardImage: "/assets/units-neutral-bronze-halflings.webp" },
+    neutral: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 5 }, abilities: ["attack-roll-advantage", "ignore-combat-penalties"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one. Ignore combat penalties.", cardImage: "/assets/units-neutral-bronze-halflings.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/halflings/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1370,7 +1370,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "flying",
-    neutral: { attack: 2, defense: 1, health: 3, initiative: 9, cost: { gold: 4 }, abilities: ["ignore-paralysis"], abilityText: "[unit_passive] This unit ignores [paralysis] effects." },
+    neutral: { attack: 2, defense: 1, health: 3, initiative: 9, cost: { gold: 4 }, abilities: ["ignore-paralysis"], abilityText: "[unit_passive] This unit ignores [paralysis] effect.", cardImage: "/assets/units-blank-bronze.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/gargoyles/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",

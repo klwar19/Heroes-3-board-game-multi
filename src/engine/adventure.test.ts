@@ -3,6 +3,7 @@ import { coreTileDefinitions } from "@/data/map/tile-defs";
 import { instantiateTile } from "./adventure";
 import {
   applyAction,
+  canHeroReachPlacedTile,
   createAdventureGameState,
   createAdventureLobbyState,
   draftFarTiles,
@@ -560,6 +561,77 @@ describe("tile discovery and placement", () => {
       centerCol: 20
     });
     expect(result.errors).toHaveLength(1);
+  });
+
+  it("only offers far-tile rotations the placing hero can cross onto", () => {
+    const state = makeGame();
+    // From h:9:1 the (10,0) notch has a rotation (2) whose border line seals the
+    // tile off from the hero, while the others leave a doorway — so the gate has
+    // both an allowed and a rejected rotation to exercise.
+    state.heroes.hero_p1.spaceId = "h:9:1";
+    state.heroes.hero_p1.movementPoints = 3;
+    const tileDefId = state.adventure!.playerFarTiles.p1[0];
+    const center = { row: 10, col: 0 };
+
+    const next = apply(state, {
+      type: "PLACE_TILE",
+      playerId: "p1",
+      heroId: "hero_p1",
+      supplyIndex: 0,
+      centerRow: 10,
+      centerCol: 0
+    });
+
+    // The placing hero is recorded so the rotation gate knows who must cross in.
+    expect(next.adventure!.pendingTileChoice?.heroId).toBe("hero_p1");
+
+    const hero = next.heroes.hero_p1;
+    const offered = getLegalActions(next, "p1")
+      .filter((legal): legal is typeof legal & { action: { type: "SET_TILE_ROTATION"; rotation: number } } =>
+        legal.action.type === "SET_TILE_ROTATION"
+      )
+      .map((legal) => legal.action.rotation);
+    expect(offered.length).toBeGreaterThan(0);
+
+    // This geometry has at least one sealed-off rotation and at least one open
+    // one, so both gate branches get exercised.
+    const reach = [0, 1, 2, 3, 4, 5].map((rotation) => canHeroReachPlacedTile(next, hero, tileDefId, center, rotation));
+    expect(reach.some((value) => value)).toBe(true);
+    expect(reach.some((value) => !value)).toBe(true);
+
+    // Every offered rotation is one the hero can actually cross onto, and any
+    // rotation the hero cannot cross onto is withheld and rejected by the engine.
+    const tileInstanceId = next.adventure!.pendingTileChoice!.tileInstanceId;
+    for (let rotation = 0; rotation < 6; rotation += 1) {
+      expect(offered.includes(rotation)).toBe(reach[rotation]);
+      if (!reach[rotation]) {
+        const rejected = applyAction(next, {
+          type: "SET_TILE_ROTATION",
+          playerId: "p1",
+          tileInstanceId,
+          rotation
+        });
+        expect(rejected.errors).toHaveLength(1);
+      }
+    }
+
+    // A doorway rotation still confirms and materializes the tile.
+    const openRotation = reach.findIndex((value) => value);
+    const confirmed = apply(next, {
+      type: "SET_TILE_ROTATION",
+      playerId: "p1",
+      tileInstanceId,
+      rotation: openRotation
+    });
+    expect(confirmed.adventure!.tiles[tileInstanceId].awaitingRotation).toBe(false);
+  });
+
+  it("reports a hero cannot cross to a disconnected area", () => {
+    const state = makeGame();
+    state.heroes.hero_p1.spaceId = "h:7:2";
+    const tileDefId = state.adventure!.playerFarTiles.p1[0];
+    // A center far off in empty space shares no crossable edge with the hero.
+    expect(canHeroReachPlacedTile(state, state.heroes.hero_p1, tileDefId, { row: 50, col: 50 }, 0)).toBe(false);
   });
 });
 

@@ -124,7 +124,11 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "UNIT_ATTACK_DECLARED":
       return `${unitName(state, event.attackerId)} ${event.isRetaliation ? "retaliates against" : "attacks"} ${unitName(state, event.defenderId)} (${event.attackKind}${event.rollMode === "normal" ? "" : `, ${event.rollMode}`}).`;
     case "ATTACK_ROLLED":
-      return `${event.isRetaliation ? "Retaliation" : "Attack"} roll ${event.rolls.map(formatDieFace).join("/")} -> ${formatDieFace(event.roll)}: ${event.attackValue} vs ${event.defenseValue}, ${event.damage} damage.`;
+      return `${event.isRetaliation ? "Retaliation" : "Attack"} roll ${event.rolls.map(formatDieFace).join("/")} -> ${formatDieFace(event.roll)}: ${event.attackValue} vs ${event.defenseValue}, ${event.damage} damage.${
+        event.defendRoll !== undefined
+          ? ` Defend roll ${formatDieFace(event.defendRoll)} (${event.defendRoll === 1 ? "+1 Defense" : "no bonus"}).`
+          : ""
+      }`;
     case "UNIT_LETHAL_HIT":
       return `${unitName(state, event.defenderId)} is about to be destroyed.`;
     case "PENDING_CHOICE_CREATED":

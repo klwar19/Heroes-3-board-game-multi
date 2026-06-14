@@ -10,6 +10,7 @@ import {
   armyHasMapEffect,
   beginFieldVisit,
   canCrossEdge,
+  canHeroReachPlacedTile,
   canPlaceTileAt,
   changeMorale,
   classifyHeroStep,
@@ -78,6 +79,7 @@ import type {
   CombatState,
   GameAction,
   GameState,
+  HeroId,
   HeroState,
   MapFieldState,
   MapSpaceId,
@@ -677,11 +679,17 @@ export function revealTileForHero(
  * always rotate Map Tiles when placing or revealing them"). Fields only
  * materialize once SET_TILE_ROTATION confirms the orientation.
  */
-function beginTileRotation(state: GameState, playerId: PlayerId, tile: MapTileState, kind: "reveal" | "place"): void {
+function beginTileRotation(
+  state: GameState,
+  playerId: PlayerId,
+  tile: MapTileState,
+  kind: "reveal" | "place",
+  heroId?: HeroId
+): void {
   const adventure = requireAdventure(state);
   tile.faceDown = false;
   tile.awaitingRotation = true;
-  adventure.pendingTileChoice = { tileInstanceId: tile.id, playerId, kind };
+  adventure.pendingTileChoice = { tileInstanceId: tile.id, playerId, kind, ...(heroId ? { heroId } : {}) };
 
   if (kind === "reveal") {
     appendEvent(state, {
@@ -792,6 +800,19 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
     throw new Error("Rotate the tile so a path connects it to the rest of the map (border lines cannot seal it off).");
   }
 
+  // A placed Far tile must keep a doorway the placing hero can cross onto, in
+  // whatever rotation the player settles on.
+  const placingHero = pending.kind === "place" && pending.heroId ? state.heroes[pending.heroId] : null;
+  if (placingHero) {
+    const center = { row: tile.centerRow, col: tile.centerCol };
+    const anyReachable = [0, 1, 2, 3, 4, 5].some((candidate) =>
+      canHeroReachPlacedTile(state, placingHero, tile.tileDefId, center, candidate)
+    );
+    if (anyReachable && !canHeroReachPlacedTile(state, placingHero, tile.tileDefId, center, rotation)) {
+      throw new Error("Rotate the tile so your hero can cross onto it (a border line is sealing it off).");
+    }
+  }
+
   tile.rotation = rotation;
   tile.awaitingRotation = false;
   adventure.pendingTileChoice = null;
@@ -841,11 +862,17 @@ export function placeTile(state: GameState, action: Extract<GameAction, { type: 
     );
   }
 
+  // The hero has to be able to cross onto the new tile through some rotation —
+  // otherwise its border lines would seal it off and the placement is wasted.
+  if (![0, 1, 2, 3, 4, 5].some((rotation) => canHeroReachPlacedTile(state, hero, tileDefId, center, rotation))) {
+    throw new Error("Your hero can't cross onto that tile from here — its border lines seal it off. Pick another spot.");
+  }
+
   closeMulliganWindow(state, action.playerId);
   supply.splice(action.supplyIndex, 1);
   hero.movementPoints -= 1;
   const tile = instantiateTile(adventure, tileDefId, center, 0, false, { materialize: false });
-  beginTileRotation(state, action.playerId, tile, "place");
+  beginTileRotation(state, action.playerId, tile, "place", hero.id);
 }
 
 // ---------------------------------------------------------------------------

@@ -565,6 +565,110 @@ export function canPlaceTileAt(
   return nextToHero;
 }
 
+/**
+ * Whether the hero placing a Far (Ⅱ–Ⅲ) tile could actually cross onto it once
+ * it lands at `rotation`. A new tile sits next to the hero, but a solid yellow
+ * border on the facing edge — on the hero's field or the new tile's — can wall
+ * it off; the rulebook forbids placing a tile the hero cannot reach.
+ *
+ * The new tile's fields are not materialized yet, so its own fields are read
+ * from the definition (slot → location and outer-arc seal) and the rest of the
+ * map from the already-revealed fields. A flood fill over crossable edges from
+ * the hero decides whether the hero's field and any field of the new tile share
+ * a connected component. Border lines are permanent while guards and rival
+ * heroes are not, so transient blockers are ignored: this answers "can the hero
+ * ever cross there", not "this turn".
+ */
+export function canHeroReachPlacedTile(
+  state: GameState,
+  hero: HeroState,
+  tileDefId: string,
+  center: HexCoord,
+  rotation: number
+): boolean {
+  const adventure = state.adventure;
+  const def = allTileDefinitions[tileDefId];
+  if (!adventure || !def || !hero.spaceId || !adventure.fields[hero.spaceId]) {
+    return false;
+  }
+
+  const footprint = tileFootprint(center, rotation);
+  // Map every candidate hex to its tile slot (0 = center, 1–6 = ring).
+  const candidateSlots = new Map<MapSpaceId, number>();
+  footprint.forEach((cell, slot) => candidateSlots.set(hexSpaceId(cell), slot));
+
+  type Cell = { tileId: string; slot: number; blocked: boolean; sealed: boolean };
+  const cellAt = (spaceId: MapSpaceId): Cell | null => {
+    const candidateSlot = candidateSlots.get(spaceId);
+    if (candidateSlot !== undefined) {
+      const fieldDef = def.fields[candidateSlot];
+      return {
+        tileId: "__candidate__",
+        slot: candidateSlot,
+        blocked: locationDefinitions[fieldDef?.location]?.category === "blocked",
+        // A ring field's outer-arc seal travels with its slot; the center never seals.
+        sealed: candidateSlot !== 0 && Boolean(def.outerImpassable[candidateSlot - 1])
+      };
+    }
+    const field = adventure.fields[spaceId];
+    if (!field) {
+      return null;
+    }
+    return {
+      tileId: field.tileInstanceId,
+      slot: field.slot,
+      blocked: locationDefinitions[field.location]?.category === "blocked",
+      sealed: isOuterEdgeSealed(adventure, field)
+    };
+  };
+
+  const internalBorderBlocks = (cell: Cell, otherSlot: number): boolean => {
+    const tileDef =
+      cell.tileId === "__candidate__" ? def : allTileDefinitions[adventure.tiles[cell.tileId]?.tileDefId ?? ""];
+    return tileDef ? hasInternalBorder(tileDef, cell.slot, otherSlot) : false;
+  };
+
+  const canCross = (from: Cell, to: Cell): boolean => {
+    if (to.blocked) {
+      return false;
+    }
+    if (from.tileId === to.tileId) {
+      // Same tile: only a printed internal yellow line blocks the step.
+      return !internalBorderBlocks(from, to.slot);
+    }
+    // Crossing between tiles needs both outer arcs open.
+    return !from.sealed && !to.sealed;
+  };
+
+  // Flood fill from the hero; succeed the moment a crossable step lands on the
+  // new tile.
+  const start = hero.spaceId;
+  const visited = new Set<MapSpaceId>([start]);
+  const queue: MapSpaceId[] = [start];
+  while (queue.length > 0) {
+    const currentId = queue.shift() as MapSpaceId;
+    const current = cellAt(currentId);
+    if (!current) {
+      continue;
+    }
+    for (const neighborId of getAdjacentSpaceIds(currentId)) {
+      if (visited.has(neighborId)) {
+        continue;
+      }
+      const neighbor = cellAt(neighborId);
+      if (!neighbor || !canCross(current, neighbor)) {
+        continue;
+      }
+      if (candidateSlots.has(neighborId)) {
+        return true;
+      }
+      visited.add(neighborId);
+      queue.push(neighborId);
+    }
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Resources, morale, experience
 // ---------------------------------------------------------------------------

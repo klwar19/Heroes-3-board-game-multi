@@ -941,6 +941,7 @@ function getAttackDamagePreview(
   roll: number,
   attackBonus: number,
   defenseBonus: number,
+  defendBonus: number,
   dieMultiplier = 1,
   baseAttackOverride?: number,
   damageReduction = 0,
@@ -955,8 +956,9 @@ function getAttackDamagePreview(
   const baseAttack = baseAttackOverride ?? attacker.attack;
   const attackValue = Math.max(0, baseAttack + attackBonus + dieAttackBonus + roll * dieMultiplier);
   // Elemental damage ignores Defense outright; otherwise sum printed Defense,
-  // the Defense token, played Defense buffs and any die-face Defense bonus.
-  const defenseValue = ignoreDefense ? 0 : defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonus + dieDefenseBonus;
+  // the Defend roll's bonus (0 or +1, rolled per attack by the caller), played
+  // Defense buffs and any die-face Defense bonus.
+  const defenseValue = ignoreDefense ? 0 : defender.defense + defendBonus + defenseBonus + dieDefenseBonus;
   // Siege wall cover: "reduce the attack's damage by 1" comes off the damage,
   // not the defense.
   const damage = Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
@@ -978,6 +980,8 @@ function applyAttackDamageFromCandidate(
   rollMode: AttackRollMode,
   attackBonus: number,
   defenseBonus: number,
+  defendBonus: number,
+  defendRoll: number | undefined,
   candidate: AttackRollCandidate,
   dieMultiplier = 1,
   baseAttackOverride?: number,
@@ -996,6 +1000,7 @@ function applyAttackDamageFromCandidate(
     candidate.roll,
     attackBonus,
     defenseBonus,
+    defendBonus,
     dieMultiplier,
     baseAttackOverride,
     damageReduction,
@@ -1023,6 +1028,7 @@ function applyAttackDamageFromCandidate(
       roll: candidate.roll,
       ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
       ...(noDie ? { noDie: true } : {}),
+      ...(defendRoll !== undefined ? { defendRoll } : {}),
       rollMode,
       attackBonus: reportedAttackBonus,
       defenseBonus: reportedDefenseBonus,
@@ -1052,6 +1058,7 @@ function applyAttackDamageFromCandidate(
     roll: candidate.roll,
     ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
     ...(noDie ? { noDie: true } : {}),
+    ...(defendRoll !== undefined ? { defendRoll } : {}),
     rollMode,
     attackBonus: reportedAttackBonus,
     defenseBonus: reportedDefenseBonus,
@@ -1238,10 +1245,11 @@ function getAttackStackDetails(
     !isRetaliation && !abilityAttack ? getAttackDefenseReductionAbility(attacker) : null;
   const ignoreCardDefenseSource =
     !isRetaliation && !abilityAttack ? getIgnoreTargetCardDefenseAbility(attacker) : null;
-  const currentDefenseValue = Math.max(
-    0,
-    defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonusBeforeAbility
-  );
+  // The Defend roll's +1 is a separate per-attack shield resolved at damage
+  // time, not part of the printed/buffed Defense an ability (Behemoth crush,
+  // Manticore "ignore printed Defense") can reduce — so it stays out of this
+  // clamp and is simply added on top afterwards.
+  const currentDefenseValue = Math.max(0, defender.defense + defenseBonusBeforeAbility);
   const requestedDefenseReduction =
     (defenseReductionSource?.amount ?? 0) + (ignoreCardDefenseSource ? defender.defense : 0);
   const defenseReductionAmount = Math.min(requestedDefenseReduction, currentDefenseValue);
@@ -1674,6 +1682,32 @@ function getAfterRetaliationAttack(
   return ability ? { ...ability, targetUnitId: defender.id } : undefined;
 }
 
+/**
+ * The Defend action's per-attack shield: a defending unit rolls one Attack die
+ * each time it is struck and only gains +1 Defense on a "+1" face. The roll is
+ * taken once and stashed on the stack item, so the lethal-save window resumes
+ * on the same outcome and an attacker's reroll never re-rolls it. It is skipped
+ * when the attack ignores Defense (Elemental damage), where the shield is moot.
+ */
+function resolveDefendBonus(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  details: NonNullable<ReturnType<typeof getAttackStackDetails>>
+): { roll: number; bonus: number } | null {
+  if (!details.defender.defenseToken || details.ignoreDefense) {
+    return null;
+  }
+  const combat = state.combat;
+  if (!combat) {
+    return null;
+  }
+  if (stackItem.modifiers.defendRoll === undefined) {
+    stackItem.modifiers.defendRoll = rollAttackDie(combat);
+  }
+  const roll = stackItem.modifiers.defendRoll;
+  return { roll, bonus: roll === 1 ? 1 : 0 };
+}
+
 function finishResolvedAttack(
   state: GameState,
   stackItem: ResolutionStackItem,
@@ -1681,6 +1715,11 @@ function finishResolvedAttack(
   candidate: AttackRollCandidate,
   cards: CardLibrary
 ): void {
+  // A defending defender rolls its Defense die now (once, then reused), so the
+  // lethal-save preview and the resolved hit agree on whether the shield held.
+  const defend = resolveDefendBonus(state, stackItem, details);
+  const defendBonus = defend?.bonus ?? 0;
+
   // Alamar's Resurrection: before a killing normal attack lands, pause once and
   // ask the defender's controller whether to cancel it (only if they can). The
   // rolled die is stashed so the resumed attack uses the same outcome.
@@ -1691,6 +1730,7 @@ function finishResolvedAttack(
       candidate.roll,
       details.attackBonus,
       details.defenseBonus,
+      defendBonus,
       details.dieMultiplier,
       details.abilityAttack?.baseAttack,
       details.damageReduction,
@@ -1732,6 +1772,8 @@ function finishResolvedAttack(
     details.rollMode,
     details.attackBonus,
     details.defenseBonus,
+    defendBonus,
+    defend?.roll,
     candidate,
     details.dieMultiplier,
     details.abilityAttack?.baseAttack,
@@ -5562,6 +5604,9 @@ function placeSummonedUnit(
 
   // It joins the round immediately — it may still act when its initiative comes.
   summoned.activatedThisRound = false;
+  // Conjured units have no printed grade: flag them so the neutral AI skips its
+  // same-tier rule for them and only attacks them once no graded target remains.
+  summoned.summoned = true;
   combat.units[summoned.id] = summoned;
   return summoned;
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import { applyAction, createInitialGameState } from "./index";
 import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
@@ -136,6 +137,38 @@ function removedUnitIds(state: GameState): string[] {
     .map((event) => event.unitId);
 }
 
+describe("Neutral Halfling — twin Attack dice", () => {
+  it("carries both the advantage-roll and ignore-penalty abilities", () => {
+    const abilities = coreUnitDefinitions["neutral.halflings"].neutral?.abilities ?? [];
+    expect(abilities).toContain("attack-roll-advantage");
+    expect(abilities).toContain("ignore-combat-penalties");
+  });
+
+  it("rolls two Attack dice and resolves the higher one", () => {
+    // rolls -1 then +1: the advantage roll keeps +1 → attack 3 + 1 = 4 damage.
+    const resolved = rangedDuel({
+      attackerAbilities: coreUnitDefinitions["neutral.halflings"].neutral?.abilities ?? [],
+      rolls: [-1, 1]
+    });
+    expect(defenderDamage(resolved)).toBe(4);
+    expect(
+      resolved.eventLog.find(
+        (event): event is Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }> => event.type === "UNIT_ATTACK_DECLARED"
+      )?.rollMode
+    ).toBe("advantage");
+  });
+});
+
+describe("Neutral Gargoyle — art and skill", () => {
+  it("has a card image wired (no missing art)", () => {
+    expect(coreUnitDefinitions["neutral.gargoyles"].neutral?.cardImage).toBeTruthy();
+  });
+
+  it("keeps its paralysis-immunity skill (per the fan wiki)", () => {
+    expect(coreUnitDefinitions["neutral.gargoyles"].neutral?.abilities ?? []).toContain("ignore-paralysis");
+  });
+});
+
 describe("Paralysis immunity (Troglodytes / Gargoyles)", () => {
   it("blocks an Azure Dragon's paralysis on a '-1' roll", () => {
     const next = rangedDuel({
@@ -228,22 +261,75 @@ describe("Manticore Pack ignores the target's card Defense", () => {
     ).toBe(3);
   });
 
-  it("leaves a Defense token intact", () => {
-    // defense 3 ignored, but the +1 Defense token remains → attack 3, defense 1 → 2 damage
+  it("leaves a winning Defend roll intact", () => {
+    // Printed defense 3 ignored, but the Defend roll's +1 shield still applies
+    // when it comes up "+1": attack die 0, defend die +1 → attack 3, defense 1 → 2 damage
     expect(
       defenderDamage(
         rangedDuel({
           attackerAbilities: ["manticore-ignore-defense"],
           defenderDefense: 3,
           defenderDefenseToken: true,
-          rolls: [0]
+          rolls: [0, 1]
         })
       )
     ).toBe(2);
   });
 
+  it("a losing Defend roll grants no shield (printed defense already ignored)", () => {
+    // attack die 0, defend die 0 → no +1 shield, printed defense ignored → 3 damage
+    expect(
+      defenderDamage(
+        rangedDuel({
+          attackerAbilities: ["manticore-ignore-defense"],
+          defenderDefense: 3,
+          defenderDefenseToken: true,
+          rolls: [0, 0]
+        })
+      )
+    ).toBe(3);
+  });
+
   it("control: without the ability the printed Defense applies", () => {
     expect(defenderDamage(rangedDuel({ attackerAbilities: [], defenderDefense: 3, rolls: [0] }))).toBe(0);
+  });
+});
+
+describe("Defend roll (per-attack +1 shield)", () => {
+  // The defender (Skeletons) takes the Defend action; the attacker (Marksmen,
+  // attack 3) shoots it. The attack die is rolls[0], the Defend die rolls[1].
+  it("grants +1 Defense only on a '+1' Defend roll", () => {
+    // attack die 0, defend die +1 → defense 1 → 3 - 1 = 2 damage
+    expect(defenderDamage(rangedDuel({ defenderDefenseToken: true, rolls: [0, 1] }))).toBe(2);
+  });
+
+  it("grants no bonus on a '0' Defend roll", () => {
+    // attack die 0, defend die 0 → defense 0 → 3 damage
+    expect(defenderDamage(rangedDuel({ defenderDefenseToken: true, rolls: [0, 0] }))).toBe(3);
+  });
+
+  it("grants no bonus on a '-1' Defend roll (never reduces Defense)", () => {
+    // attack die 0, defend die -1 → defense 0 (not -1) → 3 damage
+    expect(defenderDamage(rangedDuel({ defenderDefenseToken: true, rolls: [0, -1] }))).toBe(3);
+  });
+
+  it("is a separate die from the attack die", () => {
+    // attack die +1 → attack 4, defend die +1 → defense 1 → 4 - 1 = 3 damage
+    const resolved = rangedDuel({ defenderDefenseToken: true, rolls: [1, 1] });
+    expect(defenderDamage(resolved)).toBe(3);
+    const rolled = resolved.eventLog.find(
+      (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> => event.type === "ATTACK_ROLLED"
+    );
+    expect(rolled?.defendRoll).toBe(1);
+    expect(rolled?.defenseValue).toBe(1);
+  });
+
+  it("does not roll a Defend die for an undefended target", () => {
+    const resolved = rangedDuel({ rolls: [0] });
+    const rolled = resolved.eventLog.find(
+      (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> => event.type === "ATTACK_ROLLED"
+    );
+    expect(rolled?.defendRoll).toBeUndefined();
   });
 });
 

@@ -22,6 +22,7 @@ import {
   VICTORY_MODE_DESCRIPTIONS,
   VICTORY_MODE_LABELS,
   applyUnitSideRules,
+  canHeroReachPlacedTile,
   deckDisplayName,
   describeCardEffect,
   getActiveAstrologersCard,
@@ -266,7 +267,7 @@ export function HexMapBoard({
     setMoveSelection({ key: moveSelectionKey, target });
 
   const placementCenters = useMemo(() => {
-    if (!placement || !rawAdventure || !myHeroSpaceId) {
+    if (!placement || !rawAdventure || !myHeroSpaceId || !myHero) {
       return [] as { row: number; col: number }[];
     }
 
@@ -275,6 +276,8 @@ export function HexMapBoard({
       return [];
     }
 
+    const placingHero = myHero;
+    const tileDefId = rawAdventure.playerFarTiles?.[viewerPlayerId]?.[placement.supplyIndex];
     const existing = Object.values(rawAdventure.tiles).map((tile) => ({ row: tile.centerRow, col: tile.centerCol }));
     // Mirror the engine's canPlaceTileAt: a new tile may only land on a gapless
     // slot of the tiling lattice that borders >=2 existing tiles (so it nests
@@ -299,11 +302,21 @@ export function HexMapBoard({
         if (!nextToHero) {
           continue;
         }
+        // Mirror the engine's placement guard: only highlight spots the hero can
+        // actually cross onto in some rotation (border lines must not seal it off).
+        if (
+          tileDefId &&
+          ![0, 1, 2, 3, 4, 5].some((rotation) =>
+            canHeroReachPlacedTile(state, placingHero, tileDefId, candidate, rotation)
+          )
+        ) {
+          continue;
+        }
         centers.push(candidate);
       }
     }
     return centers;
-  }, [placement, rawAdventure, myHeroSpaceId]);
+  }, [placement, rawAdventure, myHeroSpaceId, myHero, state, viewerPlayerId]);
 
   if (!adventure || !rawAdventure) {
     return null;
