@@ -138,6 +138,7 @@ export {
   hexSpaceId,
   hexToPixel,
   parseHexSpaceId,
+  pixelToHex,
   slotDirection,
   tileCentersAdjacent,
   tileCentersOverlap,

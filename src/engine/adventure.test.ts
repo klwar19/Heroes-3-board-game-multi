@@ -12,7 +12,9 @@ import {
   hexDistance,
   hexNeighbors,
   hexSpaceId,
+  hexToPixel,
   parseHexSpaceId,
+  pixelToHex,
   tileCentersAdjacent,
   tileCentersOverlap,
   tileFootprint,
@@ -64,6 +66,22 @@ describe("hex math", () => {
     expect(new Set(rotated.map(hexSpaceId))).toEqual(new Set(footprint.map(hexSpaceId)));
     // Rotation by two steps moves slot 1 to where slot 3 was.
     expect(hexSpaceId(rotated[1])).toBe(hexSpaceId(footprint[3]));
+  });
+
+  it("maps pixels back to the hex under them (inverse of hexToPixel)", () => {
+    const size = 24;
+    for (const coord of [
+      { row: 0, col: 0 },
+      { row: 8, col: 2 },
+      { row: 9, col: 4 },
+      { row: 5, col: -3 },
+      { row: -4, col: 7 }
+    ]) {
+      // A hex center round-trips exactly, as does any point jittered within it.
+      const center = hexToPixel(coord, size);
+      expect(pixelToHex(center.x, center.y, size)).toEqual(coord);
+      expect(pixelToHex(center.x + size * 0.3, center.y - size * 0.3, size)).toEqual(coord);
+    }
   });
 
   it("treats tiles as gapless neighbours only on the six lattice positions", () => {
