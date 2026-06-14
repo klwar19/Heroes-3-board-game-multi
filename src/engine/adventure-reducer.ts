@@ -3089,9 +3089,23 @@ export function hallOfValhallaBoost(
  */
 export function spendMorale(state: GameState, action: Extract<GameAction, { type: "SPEND_MORALE" }>): void {
   const player = state.players[action.playerId];
-  if (!player || player.morale < 1) {
+  const hasOverflow = (player?.moraleOverflow ?? 0) > 0;
+  if (!player || (!hasOverflow && player.morale < 1)) {
     throw new Error("No positive morale token to spend.");
   }
+
+  // Overflow tokens (gained past the +1 cap, awaiting a forced spend) are spent
+  // before the stored token and never change its value; the stored token, when
+  // spent, drops morale back to neutral.
+  const consumeToken = () => {
+    appendEvent(state, { type: "MORALE_SPENT", playerId: action.playerId, benefit: action.benefit });
+    if ((player.moraleOverflow ?? 0) > 0) {
+      player.moraleOverflow = (player.moraleOverflow ?? 0) - 1;
+      return;
+    }
+    player.morale -= 1;
+    appendEvent(state, { type: "MORALE_CHANGED", playerId: action.playerId, amount: -1, total: player.morale });
+  };
 
   if (action.benefit === "redraw") {
     const discards = action.discardCardIds ?? [];
@@ -3111,9 +3125,7 @@ export function spendMorale(state: GameState, action: Extract<GameAction, { type
       handCounts.set(cardId, left - 1);
     }
 
-    player.morale -= 1;
-    appendEvent(state, { type: "MORALE_SPENT", playerId: action.playerId, benefit: "redraw" });
-    appendEvent(state, { type: "MORALE_CHANGED", playerId: action.playerId, amount: -1, total: player.morale });
+    consumeToken();
 
     for (const cardId of discards) {
       const index = player.hand.indexOf(cardId);
@@ -3124,9 +3136,7 @@ export function spendMorale(state: GameState, action: Extract<GameAction, { type
     return;
   }
 
-  player.morale -= 1;
-  appendEvent(state, { type: "MORALE_SPENT", playerId: action.playerId, benefit: "draw" });
-  appendEvent(state, { type: "MORALE_CHANGED", playerId: action.playerId, amount: -1, total: player.morale });
+  consumeToken();
   drawCardsForPlayer(state, action.playerId, 1);
 }
 
