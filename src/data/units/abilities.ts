@@ -1,4 +1,4 @@
-import type { CombatTokenKind, EffectDurationDefinition, UnitType } from "@/engine/state";
+import type { CombatTokenKind, EffectDurationDefinition, SpellSchool, UnitType } from "@/engine/state";
 
 export type UnitAbilityEffectDefinition =
   | { type: "ALLOW_UNLIMITED_RETALIATION" }
@@ -13,6 +13,18 @@ export type UnitAbilityEffectDefinition =
        * Sorceress' Weakness. A passive, always-on trait of the printed card.
        */
       type: "DEALS_ELEMENTAL_DAMAGE";
+    }
+  | {
+      /**
+       * Elemental units: "Immune to Magic Arrow and <element> Magic spells."
+       * The unit cannot be targeted by — nor affected by — any Spell card whose
+       * school appears in this list. "any" is the school of Magic Arrow (the
+       * only school-"any" Spell), so it represents the Magic-Arrow immunity;
+       * "air"/"earth"/"fire"/"water" cover that school's Spells. Magic
+       * Elementals list only "any" (Magic-Arrow immunity, no school immunity).
+       */
+      type: "IMMUNE_TO_SPELL_SCHOOLS";
+      schools: SpellSchool[];
     }
   | { type: "EXTRA_RANGED_DAMAGE_ON_LOW_ROLL"; maxRoll: number; amount: number }
   | {
@@ -919,6 +931,45 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Elemental Damage",
     text: "[unit_passive] This unit deals elemental damage: its attack cannot be raised by attack cards or Attack tokens, only lowered (e.g. by a Sorceress' Weakness).",
     effect: { type: "DEALS_ELEMENTAL_DAMAGE" },
+    implementationStatus: "implemented"
+  },
+  // Elemental spell immunity — "Immune to Magic Arrow and <element> Magic
+  // spells." Air/Storm share Air; Earth/Magma share Earth; Fire/Energy share
+  // Fire; Water/Ice share Water. Magic Elementals are immune to Magic Arrow
+  // only. "any" is Magic Arrow's school (see IMMUNE_TO_SPELL_SCHOOLS).
+  "air-elemental-immunity": {
+    id: "air-elemental-immunity",
+    name: "Air Immunity",
+    text: "[unit_passive] Immune to Magic Arrow and Air Magic spells.",
+    effect: { type: "IMMUNE_TO_SPELL_SCHOOLS", schools: ["any", "air"] },
+    implementationStatus: "implemented"
+  },
+  "earth-elemental-immunity": {
+    id: "earth-elemental-immunity",
+    name: "Earth Immunity",
+    text: "[unit_passive] Immune to Magic Arrow and Earth Magic spells.",
+    effect: { type: "IMMUNE_TO_SPELL_SCHOOLS", schools: ["any", "earth"] },
+    implementationStatus: "implemented"
+  },
+  "fire-elemental-immunity": {
+    id: "fire-elemental-immunity",
+    name: "Fire Immunity",
+    text: "[unit_passive] Immune to Magic Arrow and Fire Magic spells.",
+    effect: { type: "IMMUNE_TO_SPELL_SCHOOLS", schools: ["any", "fire"] },
+    implementationStatus: "implemented"
+  },
+  "water-elemental-immunity": {
+    id: "water-elemental-immunity",
+    name: "Water Immunity",
+    text: "[unit_passive] Immune to Magic Arrow and Water Magic spells.",
+    effect: { type: "IMMUNE_TO_SPELL_SCHOOLS", schools: ["any", "water"] },
+    implementationStatus: "implemented"
+  },
+  "magic-elemental-immunity": {
+    id: "magic-elemental-immunity",
+    name: "Magic Arrow Immunity",
+    text: "[unit_passive] Immune to Magic Arrow.",
+    effect: { type: "IMMUNE_TO_SPELL_SCHOOLS", schools: ["any"] },
     implementationStatus: "implemented"
   }
 };

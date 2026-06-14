@@ -9,6 +9,7 @@ import {
   getMainHero,
   getUnitSide,
   makeCombatUnitFromArmy,
+  NEUTRAL_DECK_IDS,
   queueNecromancyReinforce
 } from "./adventure";
 import {
@@ -30,6 +31,7 @@ import {
   moveHeroAdventure,
   moveHeroPathAdventure,
   openSharedDeckSearch,
+  hireSecondaryHero,
   placeCombatUnit,
   placeTile,
   populationAction,
@@ -158,7 +160,8 @@ import {
   getUnitAttackRerollSources,
   hasIgnoreParalysis,
   hasRetaliationAgainstDisadvantage,
-  hasUnitAbilityEffect
+  hasUnitAbilityEffect,
+  unitImmuneToSpellSchools
 } from "./unit-abilities";
 import type {
   ActiveEffectDefinition,
@@ -657,6 +660,13 @@ export function unitMatchesSpecialtyName(unitName: string | undefined, target: s
   if (!unitName || !target) {
     return false;
   }
+  // Multi-unit descriptors ("Elves and Sharpshooters", "X or Y" — Gelu's
+  // specialty doubles for two unit types): match when the unit is any of them.
+  if (/\s+(?:and|or)\s+/i.test(target)) {
+    return target
+      .split(/\s+(?:and|or)\s+/i)
+      .some((part) => unitMatchesSpecialtyName(unitName, part.trim()));
+  }
   if (unitName === target) {
     return true;
   }
@@ -668,6 +678,31 @@ export function unitMatchesSpecialtyName(unitName: string | undefined, target: s
 
 function doubleAmountForUnitName(amount: number, unit: CombatUnitState | undefined, unitName: string | undefined): number {
   return unitMatchesSpecialtyName(unit?.name, unitName) ? amount * 2 : amount;
+}
+
+/**
+ * Records that `player` cast a Spell this combat round/turn (the printed
+ * one-Spell-per-round accounting) and fires any ongoing "after casting a Spell,
+ * draw N cards" effects (Zydar's Spell Mastery VI).
+ */
+function noteSpellCast(state: GameState, player: PlayerState): void {
+  player.combatStats.spellsCastThisRound += 1;
+  player.combatStats.spellsCastThisTurn = (player.combatStats.spellsCastThisTurn ?? 0) + 1;
+
+  let draws = 0;
+  for (const effect of state.activeEffects) {
+    if (effect.controllerId !== player.id) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "DRAW_ON_SPELL_CAST") {
+        draws += modifier.amount;
+      }
+    }
+  }
+  if (draws > 0) {
+    drawCardsForPlayer(state, player.id, draws);
+  }
 }
 
 function createAttackBuffFromCard(
@@ -743,6 +778,43 @@ function createDefenseBuffFromCard(
       cardId: card.id,
       controllerId: playerId
     },
+    playerId,
+    target
+  );
+}
+
+/**
+ * Fire Shield active effect: the Fire Shield spell scales with `power`
+ * (`amountByPower`); hero specialties (Rashka) pass a flat `amount`, doubled
+ * when the shield lands on the specialty's signature unit (his Efreet at VI).
+ */
+function createFireShieldFromCard(
+  state: GameState,
+  card: CardDefinition,
+  effect: Extract<EffectDefinition, { type: "CREATE_FIRE_SHIELD" }>,
+  playerId: PlayerId,
+  power: number,
+  target: { type: "unit"; unitId: UnitId }
+): void {
+  const targetUnit = state.combat?.units[target.unitId];
+  const base = effect.amountByPower
+    ? getAmountByPower(effect.amountByPower, effect.amount ?? 1, power)
+    : (effect.amount ?? 0);
+  const amount = doubleAmountForUnitName(base, targetUnit, effect.doubleForUnitName);
+  if (amount <= 0) {
+    return;
+  }
+  createActiveEffect(
+    state,
+    {
+      name: card.name,
+      scope: "unit",
+      duration: effect.duration,
+      polarity: "positive",
+      removable: effect.removable ?? true,
+      modifiers: [{ type: "FIRE_SHIELD", amount }]
+    },
+    { type: "card", cardId: card.id, controllerId: playerId },
     playerId,
     target
   );
@@ -3541,20 +3613,12 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     }
 
     if (card?.effect.type === "CREATE_FIRE_SHIELD" && state.combat && stackItem.action.target.type === "unit") {
-      const power = getCurrentSpellPower(stackItem, cards);
-      const amount = getAmountByPower(card.effect.amountByPower, 1, power);
-      createActiveEffect(
+      createFireShieldFromCard(
         state,
-        {
-          name: card.name,
-          scope: "unit",
-          duration: card.effect.duration,
-          polarity: "positive",
-          removable: true,
-          modifiers: [{ type: "FIRE_SHIELD", amount }]
-        },
-        { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+        card,
+        card.effect,
         stackItem.action.playerId,
+        getCurrentSpellPower(stackItem, cards),
         stackItem.action.target
       );
     }
@@ -3598,9 +3662,14 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         markUnitRemovedIfNeeded(state, target);
 
         // "Select 2 adjacent places": the caster picks one unit adjacent to
-        // the target for the same damage (the second space may be empty).
+        // the target for the same damage (the second space may be empty). A
+        // unit immune to this Spell's school (an Elemental) is not a candidate.
         const splashCandidates = Object.values(state.combat.units).filter(
-          (unit) => unit.id !== target.id && isUnitAlive(unit) && isAdjacent(unit.position, target.position)
+          (unit) =>
+            unit.id !== target.id &&
+            isUnitAlive(unit) &&
+            isAdjacent(unit.position, target.position) &&
+            !unitImmuneToSpellSchools(unit, card.spellSchools)
         );
         if (splashCandidates.length > 0) {
           const choiceId = `choice_${nextEventNumber(state)}`;
@@ -3815,9 +3884,8 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
   }
 
   const caster = state.players[action.playerId];
-  caster.combatStats.spellsCastThisRound += 1;
   const isFirstSpellThisTurn = (caster.combatStats.spellsCastThisTurn ?? 0) === 0;
-  caster.combatStats.spellsCastThisTurn = (caster.combatStats.spellsCastThisTurn ?? 0) + 1;
+  noteSpellCast(state, caster);
 
   const stackItem = makeStackItem(state, action);
 
@@ -4125,8 +4193,7 @@ function applyReactionPlayCore(
   }
 
   if (card.kind === "spell" && state.combat && player) {
-    player.combatStats.spellsCastThisRound += 1;
-    player.combatStats.spellsCastThisTurn = (player.combatStats.spellsCastThisTurn ?? 0) + 1;
+    noteSpellCast(state, player);
   }
 
   const optionLabel =
@@ -4343,6 +4410,9 @@ function applyReactionPlayCore(
       recallPlayedCards: mode === "expert" && Boolean(effect.expertRecallPlayedCards)
     };
 
+    // Empowered Knowledge raises the limit on the basic play; the regular
+    // card only on the expert play.
+    caster.combatStats.spellLimitBonusThisRound += effect.basicSpellLimitBonus ?? 0;
     if (mode === "expert") {
       caster.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
     }
@@ -4681,8 +4751,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     if (playerForLimit.combatStats.spellsCastThisRound >= spellLimitFor(state, playerForLimit)) {
       throw new Error("Spell limit reached for this combat round.");
     }
-    playerForLimit.combatStats.spellsCastThisRound += 1;
-    playerForLimit.combatStats.spellsCastThisTurn = (playerForLimit.combatStats.spellsCastThisTurn ?? 0) + 1;
+    noteSpellCast(state, playerForLimit);
   }
 
   const moveError = moveCardFromHandToDiscard(
@@ -4734,6 +4803,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       target,
       getEffectDamageAmount(effect, card.power ?? 0)
     );
+    // Rion's Battlefield Medic IV/VI: "Remove … damage or paralysis …" — the
+    // chosen unit also loses its Paralysis token.
+    if (effect.removeParalysis && state.combat) {
+      const unit = state.combat.units[target.unitId];
+      if (unit && hasToken(unit, "paralysis")) {
+        removeToken(state, unit, "paralysis", "dispelled");
+      }
+    }
     // Rion's Battlefield Medic: "Remove 1 damage … then draw 1 card."
     if (effect.drawCards) {
       drawCardsForPlayer(state, action.playerId, effect.drawCards);
@@ -4779,6 +4856,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "CREATE_DEFENSE_BUFF" && target) {
     createDefenseBuffFromCard(state, card, action.playerId, card.power ?? 0, target);
+  }
+
+  // Rashka's Demoniac specialty (IV/VI): a Fire Shield on the chosen unit —
+  // melee attackers take 1 damage (2 for an Efreet at level VI).
+  if (effect.type === "CREATE_FIRE_SHIELD" && target && state.combat) {
+    createFireShieldFromCard(state, card, effect, action.playerId, card.power ?? 0, target);
   }
 
   if (effect.type === "CREATE_ATTACK_DIE_REROLL") {
@@ -4834,9 +4917,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "GAIN_HERO_MOVEMENT") {
-    const hero = getMainHero(state, action.playerId);
-    if (hero) {
-      hero.movementPoints += mode === "expert" ? (effect.expertAmount ?? effect.amount) : effect.amount;
+    // Buffs reach every hero the player commands, the Secondary Hero included.
+    const amount = mode === "expert" ? (effect.expertAmount ?? effect.amount) : effect.amount;
+    for (const hero of Object.values(state.heroes)) {
+      if (hero.controllerId === action.playerId) {
+        hero.movementPoints += amount;
+      }
     }
     if (effect.moveThroughThisTurn) {
       createActiveEffect(
@@ -4997,6 +5083,54 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       });
     } else if (effect.fallbackDrawCards) {
       drawCardsForPlayer(state, action.playerId, effect.fallbackDrawCards);
+    }
+  }
+
+  // Gem's First Aid VI: double the in-play First Aid Tent's per-round heal for
+  // the rest of this Combat. The Tent's combat effect is rebuilt fresh (amount
+  // 1) at the start of the player's next combat, so the doubling never carries.
+  if (effect.type === "DOUBLE_FIRST_AID_TENT") {
+    for (const active of state.activeEffects) {
+      if (active.controllerId !== action.playerId) {
+        continue;
+      }
+      for (const modifier of active.modifiers) {
+        if (modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND") {
+          modifier.amount *= 2;
+        }
+      }
+    }
+  }
+
+  // Gelu's Sharpshooters IV: discard a Pack of Elves, then fetch the single
+  // Sharpshooters card from the silver Neutral deck into your unit deck.
+  if (effect.type === "CONVERT_ARMY_UNIT") {
+    const player = state.players[action.playerId];
+    const deck = state.decks[NEUTRAL_DECK_IDS[effect.toTier]];
+    const fromIndex =
+      player?.army.findIndex(
+        (unit) => unit.unitDefId === effect.fromUnitDefId && unit.side === effect.fromSide
+      ) ?? -1;
+    const alreadyHas = effect.unique
+      ? (player?.army.some((unit) => unit.unitDefId === effect.toUnitDefId) ?? false)
+      : false;
+    const inDraw = deck?.drawPile.indexOf(effect.toUnitDefId) ?? -1;
+    const inDiscard = deck?.discardPile.indexOf(effect.toUnitDefId) ?? -1;
+    if (player && deck && fromIndex >= 0 && !alreadyHas && (inDraw >= 0 || inDiscard >= 0)) {
+      player.army.splice(fromIndex, 1);
+      if (inDraw >= 0) {
+        deck.drawPile.splice(inDraw, 1);
+      } else {
+        deck.discardPile.splice(inDiscard, 1);
+      }
+      addArmyUnit(player, effect.toUnitDefId, "neutral");
+      appendEvent(state, {
+        type: "UNIT_RECRUITED",
+        playerId: action.playerId,
+        unitDefId: effect.toUnitDefId,
+        kind: "recruit",
+        cost: {}
+      });
     }
   }
 
@@ -6827,6 +6961,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "POPULATION_ACTION":
         populationAction(nextState, action);
+        break;
+      case "HIRE_SECONDARY_HERO":
+        hireSecondaryHero(nextState, action);
         break;
       case "SPELL_BOOK_ACTION":
         spellBookAction(nextState, action);

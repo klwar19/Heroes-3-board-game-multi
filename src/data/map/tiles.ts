@@ -34,10 +34,11 @@ export const ALL_TILE_CONTENT: TileContent[] = [
 ];
 
 /**
- * Tile ids of one supply pool. Random Town tiles stay out of face-down pools
- * (the rulebook only allows them when an unused faction exists and the
- * engine cannot resolve that fight yet); Sea and Subterranean tiles only
- * come in through scenarios that ask for them by group.
+ * Tile ids of one supply pool. Random Town tiles stay out of the random
+ * face-down pools (the printed reveal asks every player to roll for the
+ * defending faction, which the lobby cannot stage) — the engine resolves the
+ * fight and capture when a designed map places one. Sea and Subterranean tiles
+ * only come in through scenarios that ask for them by group.
  */
 export function tilePoolIds(group: TileGroup, content: readonly TileContent[]): string[] {
   return Object.values(allTileDefinitions)

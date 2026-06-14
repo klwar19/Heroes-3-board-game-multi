@@ -34,6 +34,17 @@ export type GameDifficulty = "easy" | "normal" | "hard" | "impossible";
  *    Pack of Cerberi attacking every adjacent enemy with full attacks.
  */
 export type GameRuleset = "legacy" | "binh";
+/**
+ * How the scenario is won:
+ *  - "conquest": flag an enemy faction Town (the classic skirmish goal).
+ *  - "grail": the objective hunt — win by capturing the Grail (dig it, then
+ *    carry it home), defeating the Dragon Utopia, or beating every enemy hero
+ *    in combat at least once (only 2 of them in a 4-player game).
+ *  - "dragon-conqueror": defeat the Dragon Utopia to capture it, then hold it.
+ *    The holder garrisons it; rivals must besiege it (Walls, Gate, Arrow
+ *    Tower) to take it. Controlling the Utopia at the start of your turn wins.
+ */
+export type VictoryMode = "conquest" | "grail" | "dragon-conqueror";
 export type FactionId = "castle" | "rampart" | "inferno" | "necropolis" | "dungeon" | "stronghold";
 
 export type TargetRef =
@@ -202,6 +213,14 @@ export type ActiveEffectModifier =
        * Sorceress' Weakness still lower it.
        */
       type: "ELEMENTAL_DAMAGE";
+    }
+  | {
+      /**
+       * Zydar's Spell Mastery VI (ongoing): until the end of the Combat round,
+       * the owner draws this many cards after each Spell they cast.
+       */
+      type: "DRAW_ON_SPELL_CAST";
+      amount: number;
     };
 
 export type ActiveEffectDefinition = {
@@ -226,6 +245,11 @@ export type EffectDefinition =
       amountByPower?: Record<number, number>;
       /** Rion's Battlefield Medic: "then draw N card(s)" after the heal. */
       drawCards?: number;
+      /**
+       * Rion's Battlefield Medic IV/VI: "Remove … damage or paralysis …" — also
+       * clears the target's Paralysis token (a heal of 0 still clears it).
+       */
+      removeParalysis?: boolean;
     }
   | {
       type: "HEAL_DAMAGE_AND_REMOVE_EFFECTS";
@@ -396,10 +420,18 @@ export type EffectDefinition =
       duration: EffectDurationDefinition;
     }
   | {
-      /** Fire Shield: adjacent attackers take damage this combat round. */
+      /**
+       * Fire Shield: a melee (ground/flying) attacker takes damage after its
+       * attack. The Fire Shield spell scales with Power (`amountByPower`);
+       * Rashka's Demoniac specialty uses a flat `amount` instead, doubled when
+       * placed on the named unit (`doubleForUnitName`, his Efreet at level VI).
+       */
       type: "CREATE_FIRE_SHIELD";
-      amountByPower: Record<number, number>;
+      amount?: number;
+      amountByPower?: Record<number, number>;
       duration: EffectDurationDefinition;
+      doubleForUnitName?: string;
+      removable?: boolean;
     }
   | {
       /** Haste / Slow / initiative artifacts: a lasting initiative shift. */
@@ -504,6 +536,12 @@ export type EffectDefinition =
   | {
       type: "RECALL_SPELL";
       expertSpellLimitBonus?: number;
+      /**
+       * Empowered Knowledge (Inferno / Star Axis): raise the spell limit by
+       * this much on the basic play, no crown spent. Applied on every play;
+       * `expertSpellLimitBonus` still adds on top only on the expert play.
+       */
+      basicSpellLimitBonus?: number;
       /** Mysticism expert: also recall every card played with the spell. */
       expertRecallPlayedCards?: boolean;
     }
@@ -558,6 +596,28 @@ export type EffectDefinition =
       type: "GRANT_ELEMENTAL_DAMAGE";
       targetUnitName?: string;
       duration: EffectDurationDefinition;
+    }
+  | {
+      /**
+       * Gem's First Aid VI: "For this Combat, double your First Aid Tent's
+       * effect." Doubles the heal amount of the player's in-play First Aid Tent
+       * for the rest of the current combat.
+       */
+      type: "DOUBLE_FIRST_AID_TENT";
+    }
+  | {
+      /**
+       * Gelu's Sharpshooters IV: discard a Pack of the `from` unit from your
+       * army, then search the named Neutral tier deck for the `to` unit and add
+       * it to your unit deck. `unique` enforces "you can control only 1 at a
+       * time".
+       */
+      type: "CONVERT_ARMY_UNIT";
+      fromUnitDefId: string;
+      fromSide: "few" | "pack";
+      toUnitDefId: string;
+      toTier: "bronze" | "silver" | "gold" | "azure";
+      unique?: boolean;
     };
 
 /**
@@ -963,6 +1023,15 @@ export type GameAction =
       type: "POPULATION_ACTION";
       playerId: PlayerId;
       purchases: { kind: "recruit" | "reinforce"; unitDefId: string; armyUnitId?: string }[];
+    }
+  | {
+      /**
+       * Buy a Secondary Hero for 10 gold at your town (or a settlement),
+       * wearing the portrait of one of your faction's other heroes.
+       */
+      type: "HIRE_SECONDARY_HERO";
+      playerId: PlayerId;
+      heroDefId: string;
     }
   | {
       /**
@@ -1389,6 +1458,13 @@ export type GameEvent =
       from: MapSpaceId;
       to: MapSpaceId;
       movementLeft: number;
+    }
+  | {
+      id: string;
+      type: "HERO_GAINED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      fieldId: MapSpaceId;
     }
   | {
       id: string;
@@ -2148,6 +2224,12 @@ export type CombatUnitState = {
   unitDefId?: string;
   /** Adventure mode: army card instance this unit maps back to. */
   armyUnitId?: string;
+  /**
+   * Fixed creature-bank guard (Dragon Utopia's dragons, the Cyclops
+   * Stockpile's 2 golden Cyclopes): minted for this fight only, so it must
+   * not be returned to a Neutral tier deck when the combat finishes.
+   */
+  bankGuard?: boolean;
   assets?: {
     cardImage?: string;
     imageAlt?: string;
@@ -2378,6 +2460,11 @@ export type MapFieldState = {
   everFlagged: boolean;
   /** Resource chosen for a flagged settlement. */
   settlementResource: ResourceKind | null;
+  /**
+   * Grail Hunt: this Grail field's guards have been defeated and the Grail is
+   * waiting to be dug (1 movement point) before it can be carried home.
+   */
+  grailDiggable?: boolean;
 };
 
 export type PendingVisit = {
@@ -2556,6 +2643,75 @@ export type VisitStep =
     }
   | {
       /**
+       * Library of Enlightenment: open the swap menu — pick a Statistic card
+       * (hand or discard) to remove for 3 gold. `remaining` swaps are left.
+       */
+      type: "LIBRARY_SWAP";
+      remaining: number;
+    }
+  | {
+      /** Library: pay 3 gold, remove the chosen source, then pick a replacement. */
+      type: "LIBRARY_REMOVE";
+      cardId: CardId;
+      source: "hand" | "discard";
+      remaining: number;
+    }
+  | {
+      /** Library: gain the chosen replacement Statistic, then loop if swaps remain. */
+      type: "LIBRARY_GAIN";
+      statisticType: StatisticType;
+      remaining: number;
+    }
+  | {
+      /** Star Axis: open the menu to swap a hand Statistic for its Empowered form. */
+      type: "STAR_AXIS_SWAP";
+    }
+  | {
+      /** Star Axis: remove the chosen hand Statistic and gain its Empowered form. */
+      type: "STAR_AXIS_GIVE";
+      cardId: CardId;
+    }
+  | {
+      /** Black Market: open the buy menu over the top Artifact discards. */
+      type: "BLACK_MARKET";
+    }
+  | {
+      /** Black Market: pay the rarity price and take the chosen artifact. */
+      type: "BLACK_MARKET_BUY";
+      cardId: CardId;
+      deckId: DeckId;
+      price: number;
+    }
+  | {
+      /**
+       * Elemental Conflux: open the recruit menu — one Elementals card per
+       * Dwelling tier you have, drawn from the matching Neutral deck.
+       */
+      type: "ELEMENTAL_CONFLUX";
+    }
+  | {
+      /** Elemental Conflux: recruit the chosen Elementals card for its cost. */
+      type: "ELEMENTAL_RECRUIT_ONE";
+      unitDefId: string;
+      tier: "bronze" | "silver" | "gold";
+    }
+  | {
+      /**
+       * Tavern: pay 7 gold to gain a Secondary Hero on this field, then choose
+       * one enemy to discard 1 random card. Resolved through the visit-choice
+       * action (decline, or pick which enemy to hit).
+       */
+      type: "TAVERN";
+    }
+  | {
+      /**
+       * Prison: gain a Secondary Hero on this field, or 3 gold if you already
+       * have one. Auto-resolves with no input.
+       */
+      type: "PRISON";
+    }
+  | {
+      /**
        * Spell Scroll field: draw `remaining` Spells (one at a time, the player
        * picks the Basic or Expert Magic deck for each) into a single new scroll
        * placed near the hero. Self-expands into deck-pick + DRAW_SCROLL_SPELL.
@@ -2634,6 +2790,25 @@ export type AdventureState = {
   lastVisitedField: Record<HeroId, MapSpaceId>;
   /** Victory: flagging an enemy town wins the scenario (default skirmish). */
   winnerPlayerId: PlayerId | null;
+  /**
+   * How this game is won. Absent on snapshots from before win conditions
+   * existed; treated as "conquest" (flag an enemy town).
+   */
+  victoryMode?: VictoryMode;
+  /**
+   * Grail Hunt: the single Grail Token's progress. Only one token exists in
+   * the game even when several Grail fields are on the map.
+   */
+  grail?: {
+    status: "uncollected" | "carried" | "delivered";
+    /** Hero physically carrying the dug Grail back toward their town. */
+    carrierHeroId?: HeroId;
+  };
+  /**
+   * Grail Hunt: distinct enemy players each player has beaten in hero combat
+   * at least once (the "defeat every enemy hero" win path).
+   */
+  heroDefeats?: Record<PlayerId, PlayerId[]>;
   /** Tile awaiting its rotation choice after a reveal or placement. */
   pendingTileChoice?: PendingTileChoice | null;
   /** Astrologers Proclaim deck state (even rounds). */
@@ -2653,6 +2828,8 @@ export type GameSetupOptions = {
   playerCount?: number;
   /** Rules variant: "legacy" (rulebook) or "binh" (house rules). */
   ruleset: GameRuleset;
+  /** Win condition: "conquest" (flag enemy town) or "grail" (the objective hunt). */
+  victoryMode?: VictoryMode;
   difficulty: GameDifficulty;
   startingResources: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };

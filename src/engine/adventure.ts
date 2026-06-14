@@ -28,7 +28,9 @@ import { applyUnitCurrentSide } from "./unit-transforms";
 import type {
   ActiveEffectState,
   AdventureState,
+  ArtifactTier,
   AstrologersState,
+  CardId,
   CombatUnitState,
   GameDifficulty,
   GameRuleset,
@@ -46,6 +48,7 @@ import type {
   TownState,
   UnitId,
   UnitTransformState,
+  VictoryMode,
   VisitStep
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
@@ -185,7 +188,14 @@ export function effectiveHandLimit(state: GameState, playerId: PlayerId): number
   return Math.max(1, player.limits.hand + bonus + permanentBonus);
 }
 
-/** Movement points a hero refreshes to, including Astrologers modifiers. */
+/** Base movement points of a Secondary Hero — buffs raise it from here. */
+export const SECONDARY_HERO_MOVEMENT = 2;
+
+/**
+ * Movement points a hero refreshes to. The Secondary Hero's base is 2 (vs the
+ * Main Hero's 3) but it is buffed the same way: Astrologers "each Hero gains
+ * Movement" proclamations and any other movement modifier apply to it too.
+ */
 export function heroMovementMax(state: GameState, hero: HeroState): number {
   const active = getActiveAstrologersCard(state);
   const modifier = active?.effect.type === "MOVEMENT_MODIFIER" ? active.effect.amount : 0;
@@ -439,6 +449,12 @@ export function classifyHeroStep(state: GameState, hero: HeroState, spaceId: Map
     return "stop";
   }
 
+  // Dragon Conqueror: a captured Dragon Utopia is a stronghold — its holder
+  // walks on and off freely, everyone else must stop to besiege it.
+  if (field.location === "dragon_utopia" && field.flagOwnerId && adventureVictoryMode(state) === "dragon-conqueror") {
+    return field.flagOwnerId === playerId ? "open" : "stop";
+  }
+
   if (!location || location.category === "empty") {
     return "open";
   }
@@ -672,6 +688,48 @@ export function getMainHero(state: GameState, playerId: PlayerId): HeroState | n
   );
 }
 
+/** The single Secondary Hero a player may field, if they have gained one. */
+export function getSecondaryHero(state: GameState, playerId: PlayerId): HeroState | null {
+  return (
+    Object.values(state.heroes).find((hero) => hero.controllerId === playerId && hero.kind === "secondary") ?? null
+  );
+}
+
+/**
+ * Tavern / Prison / hiring at a town: give `playerId` a Secondary Hero and
+ * place its model on `fieldId`, optionally wearing another town hero's
+ * portrait (`heroDefId`). Secondary Heroes refresh to a fixed 2 movement
+ * points, never gain experience (from fights, locations or level-ups) and
+ * cannot use cards in their Combats. A player may only ever field one, so
+ * callers gate on `getSecondaryHero` first (the figure supply is one per
+ * player).
+ */
+export function createSecondaryHero(
+  state: GameState,
+  playerId: PlayerId,
+  fieldId: MapSpaceId,
+  heroDefId?: string
+): HeroState {
+  const heroId = `hero2_${playerId}`;
+  const hero: HeroState = {
+    id: heroId,
+    controllerId: playerId,
+    kind: "secondary",
+    ...(heroDefId ? { heroDefId } : {}),
+    level: 1,
+    experience: 0,
+    movementPoints: SECONDARY_HERO_MOVEMENT,
+    movementPointsMax: SECONDARY_HERO_MOVEMENT,
+    spaceId: fieldId
+  };
+  state.heroes[heroId] = hero;
+  if (state.adventure) {
+    state.adventure.lastVisitedField[heroId] = fieldId;
+  }
+  appendEvent(state, { type: "HERO_GAINED", playerId, heroId, fieldId });
+  return hero;
+}
+
 export function levelOfExperience(experience: number): number {
   return Math.min(7, 1 + Math.floor(experience / 2));
 }
@@ -848,6 +906,18 @@ function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
       return [{ type: "SUBTERRANEAN_GATE" }];
     case "DRAW_PANDORA_CARD":
       return [{ type: "DRAW_PANDORA_CARD" }];
+    case "LIBRARY_OF_ENLIGHTENMENT":
+      return [{ type: "LIBRARY_SWAP", remaining: 2 }];
+    case "STAR_AXIS":
+      return [{ type: "STAR_AXIS_SWAP" }];
+    case "BLACK_MARKET":
+      return [{ type: "BLACK_MARKET" }];
+    case "ELEMENTAL_CONFLUX":
+      return [{ type: "ELEMENTAL_CONFLUX" }];
+    case "TAVERN":
+      return [{ type: "TAVERN" }];
+    case "PRISON":
+      return [{ type: "PRISON" }];
     case "SPELL_SCROLL":
       return [{ type: "SPELL_SCROLL", remaining: 2 }];
   }
@@ -905,16 +975,323 @@ function applyTownFlag(state: GameState, playerId: PlayerId, field: MapFieldStat
   flagField(state, playerId, field);
   field.everFlagged = true;
 
-  if (state.adventure && previousOwnerId && previousOwnerId !== playerId) {
-    // Default skirmish victory: flagging an enemy faction town wins the game.
-    state.adventure.winnerPlayerId = playerId;
-    state.phase = "game-over";
-    appendEvent(state, {
-      type: "GAME_WON",
+  // Conquest victory: flagging an enemy faction town wins the game. The Grail
+  // Hunt and Dragon Conqueror modes have their own goals, so capturing a town
+  // there only transfers the flag.
+  if (adventureVictoryMode(state) === "conquest" && previousOwnerId && previousOwnerId !== playerId) {
+    declareAdventureWinner(
+      state,
       playerId,
-      reason: `flagged the enemy town of ${state.players[previousOwnerId]?.name ?? previousOwnerId}`
+      `flagged the enemy town of ${state.players[previousOwnerId]?.name ?? previousOwnerId}`
+    );
+  }
+}
+
+/**
+ * Random Town capture: the conqueror gains +10 gold income (transferred from
+ * any previous holder) and, the first time the town falls, the 10 gold at once.
+ */
+function applyRandomTownFlag(state: GameState, playerId: PlayerId, field: MapFieldState): void {
+  const previousOwnerId = field.flagOwnerId;
+  if (previousOwnerId && previousOwnerId !== playerId) {
+    const previous = state.players[previousOwnerId];
+    if (previous) {
+      previous.production.gold = Math.max(0, previous.production.gold - 10);
+      appendEvent(state, { type: "PRODUCTION_CHANGED", playerId: previousOwnerId, resource: "gold", amount: -10 });
+    }
+  }
+
+  const firstCapture = !field.everFlagged;
+  flagField(state, playerId, field);
+  field.everFlagged = true;
+
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+  player.production.gold += 10;
+  appendEvent(state, { type: "PRODUCTION_CHANGED", playerId, resource: "gold", amount: 10 });
+  if (firstCapture) {
+    gainResources(state, playerId, { gold: 10 }, "captured the Random Town");
+  }
+}
+
+/** The active win condition; absent on old snapshots means "conquest". */
+export function adventureVictoryMode(state: GameState): VictoryMode {
+  return state.adventure?.victoryMode ?? "conquest";
+}
+
+/** Ends the game with a winner and the reason shown in the log. */
+export function declareAdventureWinner(state: GameState, playerId: PlayerId, reason: string): void {
+  if (!state.adventure) {
+    return;
+  }
+  state.adventure.winnerPlayerId = playerId;
+  state.phase = "game-over";
+  appendEvent(state, { type: "GAME_WON", playerId, reason });
+}
+
+/** Human seats in turn order (the neutral seat never counts). */
+export function humanPlayerIds(state: GameState): PlayerId[] {
+  return state.turnOrder.filter((id) => id !== NEUTRAL_PLAYER_ID);
+}
+
+/**
+ * Enemy heroes a player must beat to win by conquest of heroes: every enemy
+ * in a 2- or 3-player game, but only 2 of the 3 in a 4-player game.
+ */
+export function requiredHeroDefeats(playerCount: number): number {
+  return playerCount >= 4 ? 2 : Math.max(1, playerCount - 1);
+}
+
+/**
+ * The shared deck searched for a Relic artifact reward. BINH mode keeps a
+ * dedicated Relic deck; Legacy mode only has the single mixed Artifact deck.
+ */
+export function relicArtifactDeckId(state: GameState): "artifacts-relic" | "artifacts" {
+  return state.decks["artifacts-relic"] ? "artifacts-relic" : "artifacts";
+}
+
+/**
+ * Creature-bank consolation (a Grail or Dragon Utopia that is not this game's
+ * objective): "gain 10 gold and Search (2) the Relic Artifact deck."
+ */
+function giveCreatureBankConsolation(state: GameState, playerId: PlayerId, fieldName: string): void {
+  gainResources(state, playerId, { gold: 10 }, `cleared the ${fieldName}`);
+  state.adventure?.rewardQueue.push({
+    playerId,
+    kind: "shared-deck-search",
+    deckId: relicArtifactDeckId(state),
+    count: 2
+  });
+}
+
+/**
+ * Grail field visit. In Grail Hunt the first visit (after the guards fall)
+ * arms the dig; a later revisit for 1 MP collects the single Grail Token,
+ * which must then be carried home. In every other mode it is a normal
+ * Lvl-VII fight rewarding gold and a Relic artifact.
+ */
+function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldState, revisit: boolean): void {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return;
+  }
+
+  if (adventureVictoryMode(state) !== "grail") {
+    if (!field.blackCube) {
+      field.blackCube = true;
+      giveCreatureBankConsolation(state, hero.controllerId, "Grail");
+    }
+    return;
+  }
+
+  const grail = adventure.grail ?? (adventure.grail = { status: "uncollected" });
+
+  if (!revisit) {
+    // The guards have just fallen. Stop the field re-fighting and arm the dig;
+    // the Grail itself is not collected until the hero spends another MP.
+    field.blackCube = true;
+    if (grail.status === "uncollected") {
+      field.grailDiggable = true;
+    }
+    return;
+  }
+
+  // Revisit = the dig. Only the first dig mints the one Grail Token.
+  if (field.grailDiggable && grail.status === "uncollected") {
+    field.grailDiggable = false;
+    grail.status = "carried";
+    grail.carrierHeroId = hero.id;
+    appendEvent(state, {
+      type: "FIELD_FLAGGED",
+      playerId: hero.controllerId,
+      fieldId: field.spaceId,
+      location: field.location,
+      previousOwnerId: null
     });
   }
+}
+
+/**
+ * Dragon Utopia visit (after its four dragons are defeated):
+ *  - Grail Hunt: defeating the Utopia wins outright.
+ *  - Dragon Conqueror: the victor captures and must hold it; rivals besiege it.
+ *  - Conquest: a normal Lvl-VII fight rewarding gold and a Relic artifact.
+ */
+function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFieldState): void {
+  const mode = adventureVictoryMode(state);
+
+  if (mode === "grail") {
+    declareAdventureWinner(state, hero.controllerId, "defeated the Dragon Utopia");
+    return;
+  }
+
+  if (mode === "dragon-conqueror") {
+    // Capture: flag the Utopia for the victor and keep neutrals from
+    // respawning. Holding it at the start of a later turn wins.
+    const previousOwnerId = field.flagOwnerId;
+    field.flagOwnerId = hero.controllerId;
+    field.everFlagged = true;
+    field.blackCube = false;
+    appendEvent(state, {
+      type: "FIELD_FLAGGED",
+      playerId: hero.controllerId,
+      fieldId: field.spaceId,
+      location: field.location,
+      previousOwnerId: previousOwnerId && previousOwnerId !== hero.controllerId ? previousOwnerId : null
+    });
+    return;
+  }
+
+  if (!field.blackCube) {
+    field.blackCube = true;
+    giveCreatureBankConsolation(state, hero.controllerId, "Dragon Utopia");
+  }
+}
+
+/**
+ * Star Axis (flaggable, keeps every visitor's cube): the visiting player flags
+ * it and, the first time they do, may empower one of their hand Statistic
+ * cards.
+ */
+function handleStarAxisVisit(state: GameState, hero: HeroState, field: MapFieldState): void {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return;
+  }
+
+  const playerId = hero.controllerId;
+  const alreadyHere = field.flagOwnerId === playerId || Boolean(field.extraFlagOwnerIds?.includes(playerId));
+
+  field.everFlagged = true;
+  if (!field.flagOwnerId) {
+    flagField(state, playerId, field);
+  } else if (field.flagOwnerId !== playerId && !field.extraFlagOwnerIds?.includes(playerId)) {
+    field.extraFlagOwnerIds = [...(field.extraFlagOwnerIds ?? []), playerId];
+    appendEvent(state, {
+      type: "FIELD_FLAGGED",
+      playerId,
+      fieldId: field.spaceId,
+      location: field.location,
+      previousOwnerId: null
+    });
+  }
+
+  if (!alreadyHere) {
+    adventure.pendingVisit = { heroId: hero.id, playerId, fieldId: field.spaceId, steps: [{ type: "STAR_AXIS_SWAP" }] };
+    processPendingVisit(state);
+  }
+}
+
+/**
+ * Grail Hunt: if the hero is carrying the Grail Token and has reached their
+ * own town, the Grail is delivered and the game is won. Returns true when it
+ * triggers the win.
+ */
+export function tryDeliverGrail(state: GameState, hero: HeroState): boolean {
+  const adventure = state.adventure;
+  if (!adventure || adventureVictoryMode(state) !== "grail") {
+    return false;
+  }
+
+  const grail = adventure.grail;
+  if (!grail || grail.status !== "carried" || grail.carrierHeroId !== hero.id) {
+    return false;
+  }
+
+  const town = getTownOfPlayer(state, hero.controllerId);
+  if (!town?.fieldId || town.fieldId !== hero.spaceId) {
+    return false;
+  }
+
+  grail.status = "delivered";
+  declareAdventureWinner(state, hero.controllerId, "carried the Grail home");
+  return true;
+}
+
+/**
+ * Dragon Conqueror: a player who controls the Dragon Utopia at the start of
+ * their turn has held it through a full round and wins.
+ */
+export function checkDragonConquerorHold(state: GameState, playerId: PlayerId): void {
+  const adventure = state.adventure;
+  if (!adventure || adventureVictoryMode(state) !== "dragon-conqueror" || adventure.winnerPlayerId) {
+    return;
+  }
+
+  const holdsUtopia = Object.values(adventure.fields).some(
+    (field) => field.location === "dragon_utopia" && field.flagOwnerId === playerId
+  );
+  if (holdsUtopia) {
+    declareAdventureWinner(state, playerId, "held the Dragon Utopia");
+  }
+}
+
+/** Black Market artifact prices by rarity. */
+const BLACK_MARKET_PRICE: Record<ArtifactTier, number> = { minor: 5, major: 7, relic: 10 };
+
+/**
+ * Black Market browse list: the top 4 cards of the Artifact discard pile(s)
+ * (round-robin across the split decks in BINH mode), each priced by rarity.
+ */
+export function blackMarketOffers(state: GameState): { cardId: CardId; deckId: string; price: number }[] {
+  const deckIds = state.decks["artifacts"]
+    ? ["artifacts"]
+    : ["artifacts-minor", "artifacts-major", "artifacts-relic"];
+  const piles = deckIds
+    .map((id) => ({ id, cards: state.decks[id]?.discardPile ?? [] }))
+    .filter((pile) => pile.cards.length > 0);
+
+  const offers: { cardId: CardId; deckId: string; price: number }[] = [];
+  for (let depth = 0; offers.length < 4; depth += 1) {
+    let added = false;
+    for (const pile of piles) {
+      const index = pile.cards.length - 1 - depth;
+      if (index < 0) {
+        continue;
+      }
+      const cardId = pile.cards[index];
+      const tier = cardLibrary[cardId]?.artifactTier ?? "minor";
+      offers.push({ cardId, deckId: pile.id, price: BLACK_MARKET_PRICE[tier] });
+      added = true;
+      if (offers.length >= 4) {
+        break;
+      }
+    }
+    if (!added) {
+      break;
+    }
+  }
+  return offers;
+}
+
+/**
+ * Elemental Conflux: for every Dwelling (unlocked recruit tier) the player has,
+ * the first Elementals card found in that tier's Neutral deck (draw pile top
+ * first, then discard). One candidate per qualifying tier.
+ */
+export function elementalConfluxCandidates(
+  state: GameState,
+  playerId: PlayerId
+): { unitDefId: string; tier: "bronze" | "silver" | "gold" }[] {
+  const tiers = unlockedRecruitTiers(state, playerId);
+  const candidates: { unitDefId: string; tier: "bronze" | "silver" | "gold" }[] = [];
+  for (const tier of ["bronze", "silver", "gold"] as const) {
+    if (!tiers.has(tier)) {
+      continue;
+    }
+    const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+    if (!deck) {
+      continue;
+    }
+    const search = [...deck.drawPile].reverse().concat([...deck.discardPile].reverse());
+    const found = search.find((unitDefId) => coreUnitDefinitions[unitDefId]?.name.includes("Elemental"));
+    if (found) {
+      candidates.push({ unitDefId: found, tier });
+    }
+  }
+  return candidates;
 }
 
 /**
@@ -943,6 +1320,21 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
 
   adventure.lastVisitedField[heroId] = fieldId;
 
+  // Creature banks with bespoke win/objective behavior are handled before the
+  // generic visitable/flaggable routing.
+  if (location.id === "grail") {
+    handleGrailVisit(state, hero, field, revisit);
+    return;
+  }
+  if (location.id === "dragon_utopia") {
+    handleDragonUtopiaVisit(state, hero, field);
+    return;
+  }
+  if (location.id === "star_axis") {
+    handleStarAxisVisit(state, hero, field);
+    return;
+  }
+
   if (location.category === "visitable") {
     // "Treat it as an Empty Field as long as it has a Black Cube": a field
     // that already carries its cube does nothing on re-entry. The cube goes
@@ -961,7 +1353,14 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     return;
   }
 
-  if (location.id === "town" || location.id === "random_town") {
+  if (location.id === "random_town") {
+    if (field.flagOwnerId !== playerId) {
+      applyRandomTownFlag(state, playerId, field);
+    }
+    return;
+  }
+
+  if (location.id === "town") {
     if (field.flagOwnerId !== playerId) {
       applyTownFlag(state, playerId, field);
     }
@@ -1027,7 +1426,8 @@ function stepNeedsInput(step: VisitStep): boolean {
     step.type === "MAGIC_SPRING" ||
     step.type === "REMOVE_HAND_CARD" ||
     step.type === "SEARCH_DISCARD" ||
-    step.type === "HILL_FORT"
+    step.type === "HILL_FORT" ||
+    step.type === "TAVERN"
   );
 }
 
@@ -1055,8 +1455,20 @@ export function processPendingVisit(state: GameState): void {
       case "GAIN_RESOURCES":
         gainResources(state, visit.playerId, step, `visited ${fieldName(state, visit.fieldId)}`);
         break;
+      case "PRISON":
+        // "Gain a Secondary Hero. Place their model on this Field. If you
+        // already have a Secondary Hero, gain 3 gold instead."
+        if (getSecondaryHero(state, visit.playerId)) {
+          gainResources(state, visit.playerId, { gold: 3 }, `visited ${fieldName(state, visit.fieldId)}`);
+        } else {
+          createSecondaryHero(state, visit.playerId, visit.fieldId);
+        }
+        break;
       case "GAIN_EXPERIENCE":
-        gainExperience(state, visit.playerId, step.amount);
+        // Secondary Heroes cannot gain experience from map locations.
+        if (state.heroes[visit.heroId]?.kind === "main") {
+          gainExperience(state, visit.playerId, step.amount);
+        }
         break;
       case "GAIN_MOVEMENT": {
         const hero = state.heroes[visit.heroId];
@@ -1269,6 +1681,180 @@ export function processPendingVisit(state: GameState): void {
       case "REINFORCE_HALF_GOLD":
         reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, true, step.roundDown ?? false);
         break;
+      case "LIBRARY_SWAP": {
+        const player = state.players[visit.playerId];
+        if (!player || step.remaining <= 0 || !hasResources(player, { gold: 3 })) {
+          break;
+        }
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        const addSource = (cardId: CardId, source: "hand" | "discard") => {
+          if (cardLibrary[cardId]?.kind === "statistic") {
+            options.push({
+              label: `Pay 3 gold: remove ${cardLibrary[cardId]?.name ?? cardId} (${source})`,
+              steps: [{ type: "LIBRARY_REMOVE", cardId, source, remaining: step.remaining }]
+            });
+          }
+        };
+        player.hand.forEach((cardId) => addSource(cardId, "hand"));
+        player.discard.forEach((cardId) => addSource(cardId, "discard"));
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Done", steps: [] });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `Library of Enlightenment (${step.remaining} swap${step.remaining > 1 ? "s" : ""} left)`,
+          options
+        });
+        break;
+      }
+      case "LIBRARY_REMOVE": {
+        const player = state.players[visit.playerId];
+        const list = step.source === "hand" ? player?.hand : player?.discard;
+        const index = list?.indexOf(step.cardId) ?? -1;
+        if (!player || !list || index === -1 || !hasResources(player, { gold: 3 })) {
+          break;
+        }
+        spendResources(state, visit.playerId, { gold: 3 }, "Library of Enlightenment");
+        list.splice(index, 1);
+        player.removed.push(step.cardId);
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: "Library of Enlightenment: gain which Statistic?",
+          options: (["attack", "defense", "power", "knowledge"] as const).map((statisticType) => ({
+            label: `Gain ${statisticType}`,
+            steps: [{ type: "LIBRARY_GAIN", statisticType, remaining: step.remaining }]
+          }))
+        });
+        break;
+      }
+      case "LIBRARY_GAIN": {
+        state.players[visit.playerId]?.hand.push(`stat.${step.statisticType}`);
+        if (step.remaining - 1 > 0) {
+          visit.steps.unshift({ type: "LIBRARY_SWAP", remaining: step.remaining - 1 });
+        }
+        break;
+      }
+      case "STAR_AXIS_SWAP": {
+        const player = state.players[visit.playerId];
+        if (!player) {
+          break;
+        }
+        const options = player.hand
+          .filter(
+            (cardId) =>
+              cardLibrary[cardId]?.kind === "statistic" &&
+              Boolean(cardLibrary[cardId]?.statisticType) &&
+              !cardId.endsWith(".empowered")
+          )
+          .map((cardId) => ({
+            label: `Empower ${cardLibrary[cardId]?.name ?? cardId}`,
+            steps: [{ type: "STAR_AXIS_GIVE", cardId } as VisitStep]
+          }));
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Decline", steps: [] });
+        visit.steps.unshift({ type: "CHOOSE_ONE", prompt: "Star Axis: empower a Statistic card", options });
+        break;
+      }
+      case "STAR_AXIS_GIVE": {
+        const player = state.players[visit.playerId];
+        const stat = cardLibrary[step.cardId]?.statisticType;
+        const index = player?.hand.indexOf(step.cardId) ?? -1;
+        if (!player || !stat || index === -1) {
+          break;
+        }
+        player.hand.splice(index, 1);
+        player.removed.push(step.cardId);
+        player.hand.push(`stat.${stat}.empowered`);
+        break;
+      }
+      case "BLACK_MARKET": {
+        const player = state.players[visit.playerId];
+        if (!player) {
+          break;
+        }
+        const options = blackMarketOffers(state)
+          .filter((offer) => hasResources(player, { gold: offer.price }))
+          .map((offer) => ({
+            label: `Buy ${cardLibrary[offer.cardId]?.name ?? offer.cardId} (${offer.price} gold)`,
+            steps: [{ type: "BLACK_MARKET_BUY", cardId: offer.cardId, deckId: offer.deckId, price: offer.price } as VisitStep]
+          }));
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Leave", steps: [] });
+        visit.steps.unshift({ type: "CHOOSE_ONE", prompt: "Black Market: buy an artifact", options });
+        break;
+      }
+      case "BLACK_MARKET_BUY": {
+        const player = state.players[visit.playerId];
+        const deck = state.decks[step.deckId];
+        const index = deck?.discardPile.lastIndexOf(step.cardId) ?? -1;
+        if (!player || !deck || index === -1 || !hasResources(player, { gold: step.price })) {
+          break;
+        }
+        spendResources(state, visit.playerId, { gold: step.price }, "Black Market");
+        deck.discardPile.splice(index, 1);
+        player.hand.push(step.cardId);
+        break;
+      }
+      case "ELEMENTAL_CONFLUX": {
+        const candidates = elementalConfluxCandidates(state, visit.playerId);
+        if (candidates.length === 0) {
+          break;
+        }
+        const options = candidates
+          .filter(({ unitDefId }) =>
+            hasRecruitResources(state, visit.playerId, coreUnitDefinitions[unitDefId]?.neutral?.cost ?? {})
+          )
+          .map(({ unitDefId, tier }) => {
+            const cost = coreUnitDefinitions[unitDefId]?.neutral?.cost ?? {};
+            const costLabel =
+              Object.entries(cost)
+                .map(([resource, amount]) => `${amount} ${resource}`)
+                .join(" + ") || "free";
+            return {
+              label: `Recruit ${coreUnitDefinitions[unitDefId]?.name ?? unitDefId} (${costLabel})`,
+              steps: [{ type: "ELEMENTAL_RECRUIT_ONE", unitDefId, tier } as VisitStep]
+            };
+          });
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Decline", steps: [] });
+        visit.steps.unshift({ type: "CHOOSE_ONE", prompt: "Elemental Conflux: recruit an Elemental", options });
+        break;
+      }
+      case "ELEMENTAL_RECRUIT_ONE": {
+        const player = state.players[visit.playerId];
+        const def = coreUnitDefinitions[step.unitDefId];
+        const cost = def?.neutral?.cost ?? {};
+        if (!player || !def?.neutral || !hasRecruitResources(state, visit.playerId, cost)) {
+          break;
+        }
+        const deck = state.decks[NEUTRAL_DECK_IDS[step.tier]];
+        const drawIndex = deck?.drawPile.lastIndexOf(step.unitDefId) ?? -1;
+        if (deck && drawIndex !== -1) {
+          deck.drawPile.splice(drawIndex, 1);
+        } else {
+          const discardIndex = deck?.discardPile.lastIndexOf(step.unitDefId) ?? -1;
+          if (deck && discardIndex !== -1) {
+            deck.discardPile.splice(discardIndex, 1);
+          }
+        }
+        spendRecruitResources(state, visit.playerId, cost, `recruited ${def.name} at the Elemental Conflux`);
+        addArmyUnit(player, step.unitDefId, "neutral");
+        appendEvent(state, {
+          type: "UNIT_RECRUITED",
+          playerId: visit.playerId,
+          unitDefId: step.unitDefId,
+          kind: "recruit",
+          cost
+        });
+        break;
+      }
       case "SPELL_SCROLL": {
         const player = state.players[visit.playerId];
         if (!player) {
@@ -1687,7 +2273,26 @@ export const SCHOLAR_STAT_CARDS = ["stat.attack", "stat.defense", "stat.power", 
 // Neutral armies
 // ---------------------------------------------------------------------------
 
-export type NeutralDraw = { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" };
+export type NeutralDraw = {
+  unitDefId: string;
+  tier: "bronze" | "silver" | "gold" | "azure";
+  /** Fixed creature-bank guard: minted, not drawn from a deck, never returned. */
+  bankGuard?: boolean;
+  /** Random Town defender: fight this unit on its faction Pack side. */
+  factionPack?: boolean;
+};
+
+/**
+ * Dragon Utopia guards (creature bank): one each of the four dragons, in
+ * descending strength. They are minted for the fight rather than drawn, so
+ * the Neutral azure deck is never touched.
+ */
+export const DRAGON_UTOPIA_GUARD_IDS = [
+  "neutral.azure_dragons",
+  "neutral.rust_dragons",
+  "neutral.crystal_dragons",
+  "neutral.faerie_dragons"
+] as const;
 
 /** Draws the top card of one neutral tier deck, reshuffling its discard if needed. */
 export function drawFromNeutralDeck(state: GameState, tier: "bronze" | "silver" | "gold" | "azure"): string | undefined {
@@ -1734,6 +2339,92 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
   return draws;
 }
 
+/**
+ * Builds the guard army for a field, applying the creature-bank overrides:
+ *  - Dragon Utopia: a fixed party of the four dragons (not from the deck).
+ *  - Random Town: the rolled faction's packs (1 bronze, 2 silver, 2 gold).
+ *  - Cyclops Stockpile: the normal draw plus 2 golden Cyclopes added to the
+ *    Neutral Army (the rulebook override).
+ * Every other field draws normally from the Field Difficulty Level Table.
+ */
+export function drawGuardArmy(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
+  if (field?.location === "dragon_utopia") {
+    return DRAGON_UTOPIA_GUARD_IDS.map((unitDefId) => ({ unitDefId, tier: "azure" as const, bankGuard: true }));
+  }
+
+  if (field?.location === "random_town") {
+    return randomTownGuardDraws(state, field);
+  }
+
+  const draws = drawNeutralArmy(state, difficulty);
+
+  if (field?.location === "cyclops_stockpile") {
+    // "Find 2 golden Cyclopes and add them to the Neutral Army." The single
+    // copy in the gold deck is left in place (this build holds one of each
+    // Neutral card); the two stockpile guards are minted for the fight.
+    for (let index = 0; index < 2; index += 1) {
+      draws.push({ unitDefId: "neutral.cyclopes", tier: "gold", bankGuard: true });
+    }
+  }
+
+  return draws;
+}
+
+const PLAYABLE_FACTIONS = ["castle", "rampart", "inferno", "necropolis", "dungeon", "stronghold"] as const;
+
+/**
+ * Assigns (once) the unused faction defending a Random Town. The rulebook has
+ * the highest Resource-dice roller choose; here an unused faction is picked
+ * deterministically from the seed and stored on the field.
+ */
+function ensureRandomTownFaction(state: GameState, field: MapFieldState): string {
+  if (field.faction) {
+    return field.faction;
+  }
+  const used = new Set<string>();
+  for (const player of Object.values(state.players)) {
+    if (player.factionId) {
+      used.add(player.factionId);
+    }
+  }
+  const unused = PLAYABLE_FACTIONS.filter(
+    (faction) => !used.has(faction) && (coreFactionDefinitions[faction]?.units.length ?? 0) > 0
+  );
+  const pool = unused.length > 0 ? unused : [...PLAYABLE_FACTIONS];
+  const random = adventureRandom(state, `random-town-${field.spaceId}`);
+  const faction = pool[random.nextInt(0, pool.length - 1)];
+  field.faction = faction;
+  return faction;
+}
+
+/**
+ * Random Town defenders: one bronze, two silver and two gold Packs of the
+ * rolled faction (the strongest bronze stands in for the defender's choice).
+ */
+function randomTownGuardDraws(state: GameState, field: MapFieldState): NeutralDraw[] {
+  const faction = ensureRandomTownFaction(state, field);
+  const unitIds = coreFactionDefinitions[faction]?.units ?? [];
+  const byTier = (tier: "bronze" | "silver" | "gold") =>
+    unitIds.filter((id) => coreUnitDefinitions[id]?.tier === tier);
+
+  const bronze = byTier("bronze");
+  const picks: string[] = [];
+  if (bronze.length > 0) {
+    picks.push(bronze[bronze.length - 1]);
+  }
+  picks.push(...byTier("silver").slice(0, 2));
+  picks.push(...byTier("gold").slice(0, 2));
+
+  return picks
+    .filter((id) => coreUnitDefinitions[id]?.pack)
+    .map((id) => ({
+      unitDefId: id,
+      tier: coreUnitDefinitions[id]!.tier as "bronze" | "silver" | "gold",
+      factionPack: true,
+      bankGuard: true
+    }));
+}
+
 export function makeCombatUnitFromNeutral(
   draw: NeutralDraw,
   unitId: UnitId,
@@ -1741,19 +2432,22 @@ export function makeCombatUnitFromNeutral(
   ruleset: GameRuleset = "legacy"
 ): CombatUnitState | null {
   const def = coreUnitDefinitions[draw.unitDefId];
-  const printed = def?.neutral;
+  // Random Town defenders fight on their faction's Pack side; every other
+  // guard uses the single-sided Neutral card.
+  const variant: "neutral" | "pack" = draw.factionPack ? "pack" : "neutral";
+  const printed = draw.factionPack ? def?.pack : def?.neutral;
   if (!def || !printed) {
     return null;
   }
 
-  const side = applyUnitSideRules(ruleset, draw.unitDefId, "neutral", printed);
+  const side = applyUnitSideRules(ruleset, draw.unitDefId, variant, printed);
 
   return {
     id: unitId,
     controllerId: NEUTRAL_PLAYER_ID,
     name: def.name,
-    cardName: `Neutral ${def.name}`,
-    variant: "neutral",
+    cardName: `${draw.factionPack ? "Pack of" : "Neutral"} ${def.name}`,
+    variant,
     grade: def.tier,
     type: def.type,
     attack: side.attack,
@@ -1768,9 +2462,10 @@ export function makeCombatUnitFromNeutral(
     defenseToken: false,
     abilities: side.abilities,
     unitDefId: draw.unitDefId,
+    ...(draw.bankGuard ? { bankGuard: true } : {}),
     assets: {
       cardImage: side.cardImage,
-      imageAlt: `Neutral ${def.name} unit card`,
+      imageAlt: `${def.name} unit card`,
       wikiUrl: def.wikiUrl
     }
   };
@@ -2130,6 +2825,13 @@ function queueHalfGoldReinforce(state: GameState, playerId: PlayerId, buildingId
 export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   if (!player) {
+    return;
+  }
+
+  // Dragon Conqueror: holding the Dragon Utopia into the start of your turn
+  // wins the game before anything else this turn resolves.
+  checkDragonConquerorHold(state, playerId);
+  if (state.adventure?.winnerPlayerId) {
     return;
   }
 
@@ -2805,7 +3507,8 @@ function resolveManaVortex(state: GameState, playerId: PlayerId, discardCardId: 
 /** Groovy Satyr: swap one drawn neutral card for a fresh one of the same tier. */
 export function swapNeutralDraw(state: GameState, playerId: PlayerId, draws: NeutralDraw[], drawIndex: number): void {
   const draw = draws[drawIndex];
-  if (!draw) {
+  if (!draw || draw.bankGuard) {
+    // Fixed bank guards (Dragon Utopia, Cyclops Stockpile) are never swapped.
     return;
   }
 
