@@ -6542,3 +6542,179 @@ img.cardBack {
   align-items: center;
   gap: 3px;
 }
+
+/* ===========================================================================
+   Heroes III interface art (scripts/convert-h3-ui-defs.py):
+   command-button icons, the lobby New Game plate, the player's own deck pile
+   lifted above the hand, and the New Day sunrise played at every turn start.
+   =========================================================================== */
+
+/* Crossed-swords "ready for combat" icon on the deploy lock-in button, and the
+   classic shield on the in-combat Defend command. */
+.combatButtonIcon,
+.defendButtonIcon {
+  height: 22px;
+  width: auto;
+  vertical-align: middle;
+  margin-right: 6px;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 55%));
+}
+
+.combatReadyButton,
+.commandButton.defendButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Lobby "Start the adventure": the ornate Heroes III New Game plate is the
+   button — the gold chrome steps back so only the art shows. */
+.commandButton.newGameButton,
+.commandButton.newGameButton:disabled {
+  background: none;
+  border: none;
+  padding: 4px;
+  box-shadow: none;
+  line-height: 0;
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+.commandButton.newGameButton:hover:not(:disabled) {
+  background: none;
+  filter: brightness(1.08) drop-shadow(0 6px 14px rgb(0 0 0 / 55%));
+  transform: translateY(-1px) scale(1.02);
+}
+
+.newGameButtonArt {
+  display: block;
+  width: clamp(180px, 22vw, 240px);
+  height: auto;
+  filter: drop-shadow(0 4px 10px rgb(0 0 0 / 55%));
+}
+
+/* Your draw deck + discard, lifted above the hand and enlarged so "your cards"
+   read as one block with the hand fan below. */
+.ownDeckPile {
+  display: flex;
+  align-self: flex-start;
+  align-items: flex-end;
+  gap: 14px;
+  padding: 8px 14px 10px;
+  border-radius: 12px;
+  border: 1px solid rgb(214 178 104 / 55%);
+  background:
+    radial-gradient(ellipse at 50% 0%, rgb(120 92 40 / 35%), transparent 70%),
+    rgb(28 21 12 / 92%);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 35%), 0 6px 16px rgb(0 0 0 / 35%);
+}
+
+.ownDeckSpot,
+.ownDiscardSpot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.ownDeckBack {
+  width: 74px;
+  height: 104px;
+  border-radius: 9px;
+  object-fit: cover;
+  box-shadow: 0 0 0 2px rgb(214 178 104 / 65%), 0 6px 14px rgb(0 0 0 / 55%);
+}
+
+.ownDiscardSpot {
+  width: 74px;
+  height: 104px;
+  justify-content: center;
+  border-radius: 9px;
+  border: 1px dashed rgb(214 178 104 / 70%);
+  background: rgb(16 11 6 / 70%);
+  color: #ecd7ab;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.ownDiscardSpot:hover {
+  background: rgb(70 50 26 / 80%);
+  transform: translateY(-2px);
+}
+
+.ownDeckCount {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffe6ad;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 80%);
+}
+
+.ownDeckSpot small,
+.ownDiscardSpot small {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #c2a777;
+}
+
+/* New Day: the Heroes III sunrise plays center screen at every turn start,
+   driven off the shared TURN_STARTED event so every seat sees it alike. */
+.newDayOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: grid;
+  place-items: center;
+  background: rgb(8 8 7 / 45%);
+  backdrop-filter: blur(2px);
+  /* A brief, self-dismissing cinematic — never trap clicks beneath it. */
+  pointer-events: none;
+  animation: overlayIn 200ms ease;
+}
+
+.newDayStage {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: 22px 24px 18px;
+  border: 2px solid var(--gold);
+  border-radius: 16px;
+  background: rgb(16 14 12 / 96%);
+  box-shadow: 0 30px 80px rgb(0 0 0 / 65%);
+  animation: newDayPop 360ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@keyframes newDayPop {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.newDaySprite {
+  border-radius: 10px;
+  background-repeat: no-repeat;
+  box-shadow: 0 0 0 2px rgb(214 178 104 / 55%), 0 10px 26px rgb(0 0 0 / 60%);
+}
+
+.newDayCaption {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  color: var(--text);
+}
+
+.newDayCaption strong {
+  font-size: 18px;
+  letter-spacing: 0.04em;
+}
+
+.newDayCaption span {
+  font-size: 13px;
+  color: #d9c08c;
+}

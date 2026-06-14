@@ -2,10 +2,12 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Check, CircleOff, Crown, Dices, Hourglass, Layers, Swords, Undo2 } from "lucide-react";
+import { Check, CircleOff, Crown, Dices, Hourglass, Layers, Sunrise, Swords, Undo2 } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
+import { getFxSheet } from "@/data/fx";
+import { playLibrarySound } from "@/lib/sound";
 import {
   getEffectAmount,
   getEffectiveCardEffect,
@@ -1132,7 +1134,7 @@ export type FirstPlayerRollCue = {
  */
 export function FirstPlayerRollOverlay({ cue, onDone }: { cue: FirstPlayerRollCue; onDone: () => void }) {
   const [attemptIndex, setAttemptIndex] = useState(0);
-  const [phase, setPhase] = useState<"ready" | "rolling" | "revealed">("ready");
+  const [phase, setPhase] = useState<"rolling" | "revealed">("rolling");
 
   const attempt = cue.attempts[attemptIndex] ?? cue.attempts[cue.attempts.length - 1];
   const isFinalAttempt = attemptIndex >= cue.attempts.length - 1;
@@ -1140,23 +1142,27 @@ export function FirstPlayerRollOverlay({ cue, onDone }: { cue: FirstPlayerRollCu
   const revealed = phase === "revealed";
   const rolling = phase === "rolling";
 
+  // The ceremony auto-plays straight off the shared cue, so every seat watches
+  // the identical sequence on the same beat — nobody clicks to roll, and a tie
+  // rolls on by itself. Only the final "Begin" dismissal is left to each seat.
   useEffect(() => {
-    if (!rolling) {
+    if (phase !== "rolling") {
       return;
     }
-    const settle = setTimeout(() => setPhase("revealed"), 1000);
-    return () => clearTimeout(settle);
-  }, [rolling]);
+    const settle = window.setTimeout(() => setPhase("revealed"), 1000);
+    return () => window.clearTimeout(settle);
+  }, [phase, attemptIndex]);
 
-  const roll = () => {
-    if (phase === "ready") {
-      setPhase("rolling");
+  useEffect(() => {
+    if (phase !== "revealed" || isFinalAttempt) {
+      return;
     }
-  };
-  const reroll = () => {
-    setAttemptIndex((index) => Math.min(index + 1, cue.attempts.length - 1));
-    setPhase("ready");
-  };
+    const next = window.setTimeout(() => {
+      setAttemptIndex((index) => Math.min(index + 1, cue.attempts.length - 1));
+      setPhase("rolling");
+    }, 1600);
+    return () => window.clearTimeout(next);
+  }, [phase, isFinalAttempt, cue.attempts.length]);
 
   return (
     <div className="diceOverlay firstRollOverlay" role="dialog" aria-label="Who goes first?">
@@ -1175,27 +1181,17 @@ export function FirstPlayerRollOverlay({ cue, onDone }: { cue: FirstPlayerRollCu
             return (
               <div className={`firstRollContender ${revealed ? (isLeader ? "leader" : "trailing") : ""}`} key={entry.playerId}>
                 <span className="firstRollName">{entry.name}</span>
-                <DieCube dimmed={!revealed && !rolling} rolling={rolling} value={revealed ? entry.value : 0} />
-                <span className="firstRollValue">{revealed ? formatDieFace(entry.value) : "—"}</span>
+                <DieCube dimmed={false} rolling={rolling} value={revealed ? entry.value : 0} />
+                <span className="firstRollValue">{revealed ? formatDieFace(entry.value) : "…"}</span>
               </div>
             );
           })}
         </div>
 
         <div className="firstRollActions">
-          {phase === "ready" ? (
-            <button className="commandButton primary" onClick={roll} type="button">
-              <Dices aria-hidden="true" size={15} /> {attemptIndex === 0 ? "Roll the dice!" : "Reroll the tie!"}
-            </button>
-          ) : null}
           {rolling ? <span className="firstRollHint">rolling…</span> : null}
           {revealed && !isFinalAttempt ? (
-            <>
-              <strong className="firstRollTie">It&apos;s a tie — roll again!</strong>
-              <button className="commandButton primary" onClick={reroll} type="button">
-                <Dices aria-hidden="true" size={15} /> Reroll
-              </button>
-            </>
+            <strong className="firstRollTie">It&apos;s a tie — rolling again!</strong>
           ) : null}
           {revealed && isFinalAttempt ? (
             <>
@@ -1212,6 +1208,85 @@ export function FirstPlayerRollOverlay({ cue, onDone }: { cue: FirstPlayerRollCu
               </button>
             </>
           ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export type NewDayCue = {
+  id: string;
+  playerName: string;
+  round: number;
+};
+
+/**
+ * "A new day" cinematic: the classic Heroes III sunrise (NewDay.def, ten
+ * frames) plays center screen at the start of every turn — the same for every
+ * seat, because it is driven off the shared TURN_STARTED event rather than any
+ * one client's clock. The new-day chime plays alongside it; the overlay is
+ * non-interactive (pointer-events: none) and clears itself once it has played.
+ */
+export function NewDayOverlay({ cue, onDone }: { cue: NewDayCue; onDone: () => void }) {
+  const spriteRef = useRef<HTMLDivElement | null>(null);
+  const onDoneRef = useRef(onDone);
+
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  }, [onDone]);
+
+  useEffect(() => {
+    playLibrarySound("adventure/new-day", 0.6);
+    const sheet = getFxSheet("new-day");
+    const sprite = spriteRef.current;
+    const playMs = sheet ? (sheet.frames / sheet.fps) * 1000 : 1200;
+    const holdMs = 1100;
+    const start = performance.now();
+    let raf = 0;
+
+    const step = (now: number) => {
+      const elapsed = now - start;
+      if (sprite && sheet) {
+        const frame = Math.min(sheet.frames - 1, Math.floor((elapsed / 1000) * sheet.fps));
+        const col = frame % sheet.cols;
+        const row = Math.floor(frame / sheet.cols);
+        sprite.style.backgroundPosition = `-${col * sheet.frameWidth}px -${row * sheet.frameHeight}px`;
+      }
+      if (elapsed < playMs) {
+        raf = requestAnimationFrame(step);
+      }
+    };
+    raf = requestAnimationFrame(step);
+    const done = window.setTimeout(() => onDoneRef.current(), playMs + holdMs);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(done);
+    };
+  }, []);
+
+  const sheet = getFxSheet("new-day");
+
+  return (
+    <div className="newDayOverlay" role="status" aria-label="A new day dawns">
+      <div className="newDayStage">
+        {sheet ? (
+          <div
+            className="newDaySprite"
+            ref={spriteRef}
+            style={{
+              width: `${sheet.frameWidth}px`,
+              height: `${sheet.frameHeight}px`,
+              backgroundImage: `url(${assetUrl(sheet.src)})`
+            }}
+          />
+        ) : null}
+        <div className="newDayCaption">
+          <Sunrise aria-hidden="true" size={18} />
+          <strong>A new day dawns</strong>
+          <span>
+            {cue.playerName}&apos;s turn · round {cue.round}
+          </span>
         </div>
       </div>
     </div>
@@ -1308,10 +1383,21 @@ function squareLabel(position: number): string {
   return `${String.fromCharCode(65 + (position % 4))}${Math.floor(position / 4) + 1}`;
 }
 
+/** A guard step with nothing to react to resumes itself after this long. */
+const NEUTRAL_AUTO_RESUME_MS = 3000;
+
 /**
- * Neutral combat pacing pop-up: between guard walks the engine stops on
- * `pendingNeutralStep`, the battlefield holds, and the attacking player clicks
- * the enemy turn on. Everyone else just sees what the guard did.
+ * Combat pacing / reaction pop-up (`pendingNeutralStep`). The backdrop lets
+ * clicks through (it is `pointer-events: none`), so while it floats at the top
+ * the reacting player can still cast spells / play instants from their hand and
+ * the board below.
+ *
+ * Neutral fights pause before EVERY guard step so the table sees each guard
+ * about to act; the reacting player may cast an Intelligence-enabled Spell
+ * (Magic Arrow, Fireball…), a trigger-free instant, or play an instant ability
+ * first, then "Let the unit act". When there is nothing they can do, the pause
+ * resumes itself after a short beat. (Old snapshots may carry a "guard-walk"
+ * pause; it is handled the same way.)
  */
 export function NeutralStepOverlay({
   state,
@@ -1325,25 +1411,71 @@ export function NeutralStepOverlay({
   onAction: (action: GameAction) => void;
 }) {
   const step = state.combat?.pendingNeutralStep;
+  const continueAction = legalActions.find((legal) => legal.action.type === "CONTINUE_NEUTRAL_STEP");
+  // Anything other than "Let the unit act" is a real reaction worth pausing
+  // for; with nothing else to do the pause auto-resumes so the fight flows.
+  const hasReactions = legalActions.some((legal) => legal.action.type !== "CONTINUE_NEUTRAL_STEP");
+  const autoResume = Boolean(step && continueAction) && !hasReactions;
+  const pauseUnitId = step?.unitId;
+
+  // Keep the latest dispatcher in a ref (updated in an effect, never during
+  // render) so the auto-resume timer is keyed to the guard rather than reset by
+  // an unrelated re-render of the parent (onAction is a fresh closure each time).
+  const onActionRef = useRef(onAction);
+  useEffect(() => {
+    onActionRef.current = onAction;
+  });
+  useEffect(() => {
+    if (!autoResume || !pauseUnitId) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      onActionRef.current({ type: "CONTINUE_NEUTRAL_STEP", playerId: viewerPlayerId });
+    }, NEUTRAL_AUTO_RESUME_MS);
+    return () => clearTimeout(timer);
+  }, [autoResume, pauseUnitId, viewerPlayerId]);
+
   if (!step) {
     return null;
   }
 
-  const guard = state.combat?.units[step.unitId];
-  const continueAction = legalActions.find((legal) => legal.action.type === "CONTINUE_NEUTRAL_STEP");
-  const attackerName = state.combat ? state.players[state.combat.attackerPlayerId]?.name : undefined;
+  const reactorId = step.reactingPlayerId ?? state.combat?.attackerPlayerId;
+  const reactorName = reactorId ? state.players[reactorId]?.name : undefined;
+  const isPre = step.kind !== "guard-walk";
+
+  // Pre-activation preview: what the (neutral) unit is about to do.
+  let summary: string;
+  if (isPre) {
+    const intent = step.intent;
+    if (intent?.kind === "attack") {
+      summary = intent.targetName
+        ? `${step.name} is about to attack your ${intent.targetName}.`
+        : `${step.name} is about to attack.`;
+    } else if (intent?.kind === "move") {
+      summary = `${step.name} is about to move.`;
+    } else {
+      summary = `${step.name} is about to take its turn.`;
+    }
+  } else {
+    summary =
+      step.from === undefined || step.to === undefined || step.from === step.to
+        ? `${step.name} holds position.`
+        : `${step.name} advances ${squareLabel(step.from)} → ${squareLabel(step.to)}.`;
+  }
 
   return (
     <div className="combatResultBackdrop neutralStepBackdrop" role="dialog" aria-label="Enemy turn">
       <div className="combatResultModal neutralStepModal">
         <header>
           <Swords aria-hidden="true" size={18} />
-          <strong>Enemy turn</strong>
+          <strong>{isPre ? "Enemy turn — react?" : "Enemy turn"}</strong>
         </header>
-        <p>
-          {step.name} {step.from === step.to ? "holds position" : `advances ${squareLabel(step.from)} → ${squareLabel(step.to)}`}.
-        </p>
-        {guard ? <small>The guard army keeps moving once you continue.</small> : null}
+        <p>{summary}</p>
+        {hasReactions ? (
+          <small>Cast a Spell or play an instant now, or let the unit take its turn.</small>
+        ) : (
+          <small>Nothing to react with — continuing automatically…</small>
+        )}
         <div className="combatResultButtons">
           {continueAction ? (
             <button
@@ -1351,10 +1483,10 @@ export function NeutralStepOverlay({
               onClick={() => onAction({ type: "CONTINUE_NEUTRAL_STEP", playerId: viewerPlayerId })}
               type="button"
             >
-              <Check aria-hidden="true" size={15} /> Continue
+              <Check aria-hidden="true" size={15} /> {isPre ? "Let the unit act" : "Continue"}
             </button>
           ) : (
-            <small className="neutralStepWaiting">Waiting for {attackerName ?? "the attacker"} to continue…</small>
+            <small className="neutralStepWaiting">Waiting for {reactorName ?? "the attacker"}…</small>
           )}
         </div>
       </div>

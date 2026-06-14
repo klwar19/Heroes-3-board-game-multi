@@ -98,22 +98,26 @@ export const RESOURCE_ICONS = {
 } as const;
 
 /**
- * Morale birds per track state (-2 … +1), cropped from the classic Luck /
- * Morale sprite sheet (spriters-resource.com, Heroes of Might and Magic 3,
- * ripped by Cyrus Annihilator): bright gold bird = +1, stone bird = 0, one
- * tarnished bird = −1, two tarnished birds = −2.
+ * Morale birds, the classic Heroes III IMRL42 sprite set (one frame per track
+ * step, −3 … +3): the gold bird soaring with wings spread for high morale down
+ * through the tarnished, grounded bird for low morale, with the stone bird at
+ * neutral. Decoded straight from the original def by
+ * scripts/convert-h3-ui-defs.py so the symbols match the game exactly.
  */
-export const MORALE_STATE_ICONS: Record<"1" | "0" | "-1" | "-2", string> = {
-  "1": "/assets/icons/morale-plus1.webp",
-  "0": "/assets/icons/morale-neutral.webp",
-  "-1": "/assets/icons/morale-minus1.webp",
-  "-2": "/assets/icons/morale-minus2.webp"
+export const MORALE_STATE_ICONS: Record<string, string> = {
+  "3": "/assets/icons/morale-h3-p3.png",
+  "2": "/assets/icons/morale-h3-p2.png",
+  "1": "/assets/icons/morale-h3-p1.png",
+  "0": "/assets/icons/morale-h3-0.png",
+  "-1": "/assets/icons/morale-h3-m1.png",
+  "-2": "/assets/icons/morale-h3-m2.png",
+  "-3": "/assets/icons/morale-h3-m3.png"
 };
 
-/** Icon for a morale value, clamped to the printed track (-2 … +1). */
+/** Icon for a morale value, clamped to the morale-bird track (−3 … +3). */
 export function moraleIcon(morale: number): string {
-  const clamped = Math.max(-2, Math.min(1, Math.round(morale)));
-  return MORALE_STATE_ICONS[String(clamped) as "1" | "0" | "-1" | "-2"];
+  const clamped = Math.max(-3, Math.min(3, Math.round(morale)));
+  return MORALE_STATE_ICONS[String(clamped)] ?? MORALE_STATE_ICONS["0"];
 }
 
 /**

@@ -2205,6 +2205,50 @@ export function FarTileTray({
 // Decks rail and discard piles
 // ---------------------------------------------------------------------------
 
+/**
+ * The player's own draw deck and discard pile, shown large and highlighted
+ * directly above the hand so "your cards" read as one block. The deck shows
+ * its face-down back with a live count; the discard opens the full pile.
+ */
+export function AdventureOwnDeck({
+  view,
+  viewerPlayerId,
+  onShowPile
+}: {
+  view: PlayerVisibleState;
+  viewerPlayerId: PlayerId;
+  onShowPile: (title: string, cardIds: string[], kind: "cards" | "units" | "astrologers") => void;
+}) {
+  const player = view.players[viewerPlayerId];
+  if (!player) {
+    return null;
+  }
+
+  return (
+    <div className="ownDeckPile" aria-label="Your deck and discard">
+      <div
+        className="ownDeckSpot"
+        data-fx-anchor={`deck:${viewerPlayerId}`}
+        title="Your draw deck (face down — reshuffles from the discard when empty)"
+      >
+        <img alt="Your deck back" className="ownDeckBack" src={assetUrl(getDeckBack("player").image ?? CARD_BACK_IMAGES.mm)} />
+        <span className="ownDeckCount">{player.deckCount}</span>
+        <small>Deck</small>
+      </div>
+      <button
+        className="ownDiscardSpot"
+        data-fx-anchor={`discard:${viewerPlayerId}`}
+        onClick={() => onShowPile(`${player.name} — discard pile`, player.discard, "cards")}
+        title="Open your discard pile"
+        type="button"
+      >
+        <span className="ownDeckCount">{player.discard.length}</span>
+        <small>Discard</small>
+      </button>
+    </div>
+  );
+}
+
 export function AdventureDecksPanel({
   view,
   viewerPlayerId,
@@ -2219,7 +2263,6 @@ export function AdventureDecksPanel({
   /** Deck ids the active player's Rogues may scout this turn. */
   scoutableDeckIds?: Set<string>;
 }) {
-  const player = view.players[viewerPlayerId];
   const scout = (deckId: string) =>
     onAction?.({ type: "ROGUES_SCOUT_DECK", playerId: viewerPlayerId, deckId });
 
@@ -2241,24 +2284,7 @@ export function AdventureDecksPanel({
   const astrologers = view.decks.astrologers;
 
   return (
-    <section className="advDecks" aria-label="Decks and discard piles">
-      {player ? (
-        <div className="advDeckRow own">
-          <div className="advDeck" title="Your draw deck (face down)" data-fx-anchor={`deck:${viewerPlayerId}`}>
-            <img alt="Player deck back" className="cardBack small" src={assetUrl(getDeckBack("player").image ?? CARD_BACK_IMAGES.mm)} />
-            <small>Deck {player.deckCount}</small>
-          </div>
-          <button
-            className="advDiscard"
-            data-fx-anchor={`discard:${viewerPlayerId}`}
-            onClick={() => onShowPile(`${player.name} — discard pile`, player.discard, "cards")}
-            type="button"
-          >
-            <span>{player.discard.length}</span>
-            <small>Discard</small>
-          </button>
-        </div>
-      ) : null}
+    <section className="advDecks" aria-label="Shared decks and discard piles">
       {sharedDecks.map((deck) => {
         const deckState = view.decks[deck.id];
         if (!deckState) {
@@ -2551,7 +2577,8 @@ export function PlacementPanel({
         <small>Drag units onto your back and front lines — placed units can be dragged around freely until you lock in.</small>
       )}
       {finish ? (
-        <button className="commandButton primary" onClick={() => onAction(finish.action)} type="button">
+        <button className="commandButton primary combatReadyButton" onClick={() => onAction(finish.action)} type="button">
+          <img alt="" aria-hidden="true" className="combatButtonIcon" src={assetUrl("/assets/ui/combat-button.png")} />
           {versusNeutrals ? "Lock in — reveal the guards" : "Ready for battle"}
         </button>
       ) : null}
@@ -3120,12 +3147,21 @@ export function SetupLobbyScreen({
 
       {mySeat ? (
         <button
-          className="commandButton primary startAdventure"
+          className={`commandButton primary startAdventure ${allChosen ? "newGameButton" : ""}`}
           disabled={!allChosen}
           onClick={() => onAction({ type: "START_ADVENTURE", playerId: viewerPlayerId })}
+          title={allChosen ? "Start the adventure" : "Every seat must pick a faction and hero first"}
           type="button"
         >
-          {allChosen ? "Start the adventure" : "Waiting for every seat to pick…"}
+          {allChosen ? (
+            <img
+              alt="Start the adventure"
+              className="newGameButtonArt"
+              src={assetUrl("/assets/ui/new-game-button.png")}
+            />
+          ) : (
+            "Waiting for every seat to pick…"
+          )}
         </button>
       ) : null}
     </section>
