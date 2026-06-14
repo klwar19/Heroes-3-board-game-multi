@@ -39,6 +39,9 @@ export const implementedCardEffectTypes = [
   "AREA_DAMAGE_ADJACENT",
   "AREA_DAMAGE_ALL_ADJACENT",
   "GAIN_WAR_MACHINE",
+  "CHAIN_LIGHTNING",
+  "BALLISTA_SPECIALTY",
+  "DECK_DIG_KEEP_ONE",
   "CANCEL_LETHAL_ATTACK",
   "REDIRECT_SPELL",
   "CONTINUE_NEUTRAL_FREE",
@@ -445,8 +448,34 @@ export function describeCardEffect(card: CardDefinition): string {
       .split(".")
       .pop()
       ?.replace(/_/g, " ");
+    const price = card.effect.goldCost ? `for ${card.effect.goldCost} gold` : "for free";
     const fallback = card.effect.fallbackDrawCards ? ` (or draw ${card.effect.fallbackDrawCards} if none left)` : "";
-    return `take the ${machine} from the supply for free${fallback}`;
+    return `take the ${machine} from the supply ${price}${fallback}`;
+  }
+
+  if (card.effect.type === "CHAIN_LIGHTNING") {
+    return `deal ${card.effect.damages.join("/")} damage to the selected unit and the units closest to it`;
+  }
+
+  if (card.effect.type === "BALLISTA_SPECIALTY") {
+    const parts: string[] = [];
+    if (card.effect.grant) {
+      parts.push(
+        card.effect.grant === "game-round"
+          ? "gain an extra Ballista until the end of the round"
+          : "gain an extra Ballista for this combat"
+      );
+    }
+    if (card.effect.activate === "all") {
+      parts.push("activate all your Ballistas");
+    } else if (card.effect.activate === "one") {
+      parts.push("activate your Ballista");
+    }
+    return parts.join("; ") || "Ballista";
+  }
+
+  if (card.effect.type === "DECK_DIG_KEEP_ONE") {
+    return `discard up to ${card.effect.count} cards from your deck and return 1 of them to your hand`;
   }
 
   if (card.effect.type === "CANCEL_LETHAL_ATTACK") {

@@ -58,6 +58,7 @@ export function makeActiveEffect(
     startedCombatRound: state.combat?.round,
     expiresAtCombatRoundEnd: getExpiresAtCombatRoundEnd(state, effect.duration),
     expiresAtTurnEndPlayerId: effect.duration.type === "current-turn" ? controllerId : undefined,
+    expiresAtGameRound: effect.duration.type === "current-game-round" ? state.round : undefined,
     usedRollEventIds: [],
     usedChoiceIds: [],
     usedCombatRoundNumbers: []
@@ -165,6 +166,61 @@ export function getActiveDefenseBonus(state: GameState, unit: CombatUnitState): 
   }, 0);
 }
 
+/** Initiative including Haste/Slow and other lasting bonuses on the unit. */
+export function effectiveInitiative(unit: CombatUnitState, activeEffects: ActiveEffectState[] = []): number {
+  const bonus = activeEffects.reduce((total, effect) => {
+    if (!effectAppliesToUnit(effect, unit)) {
+      return total;
+    }
+    return (
+      total +
+      effect.modifiers.reduce(
+        (sum, modifier) => (modifier.type === "INITIATIVE_BONUS" ? sum + modifier.amount : sum),
+        0
+      )
+    );
+  }, 0);
+
+  return unit.initiative + bonus;
+}
+
+/**
+ * Cyra's Haste VI: extra Defense the unit gets only against an attacker with
+ * strictly lower (effective) Initiative. Returns 0 unless `attacker` is slower.
+ */
+export function getConditionalDefenseBonus(
+  state: GameState,
+  defender: CombatUnitState,
+  attacker: CombatUnitState
+): number {
+  if (effectiveInitiative(attacker, state.activeEffects) >= effectiveInitiative(defender, state.activeEffects)) {
+    return 0;
+  }
+
+  return state.activeEffects.reduce((total, effect) => {
+    if (!effectAppliesToUnit(effect, defender)) {
+      return total;
+    }
+    return (
+      total +
+      effect.modifiers.reduce(
+        (sum, modifier) => (modifier.type === "DEFENSE_VS_LOWER_INITIATIVE" ? sum + modifier.amount : sum),
+        0
+      )
+    );
+  }, 0);
+}
+
+/** Torosar's temporary Ballistas: number of EXTRA_BALLISTA grants a player holds. */
+export function countExtraBallistas(state: GameState, playerId: PlayerId): number {
+  return state.activeEffects.reduce((total, effect) => {
+    if (effect.controllerId !== playerId) {
+      return total;
+    }
+    return total + effect.modifiers.filter((modifier) => modifier.type === "EXTRA_BALLISTA").length;
+  }, 0);
+}
+
 export function getAttackRerollEffects(state: GameState, context: AttackContext): ActiveEffectState[] {
   return state.activeEffects.filter((effect) => {
     if (!effectAppliesToUnit(effect, context.attacker)) {
@@ -190,6 +246,22 @@ export function expireEffectsForTurnEnd(state: GameState, playerId: PlayerId): A
   const expired = state.activeEffects.filter((effect) => effect.expiresAtTurnEndPlayerId === playerId);
   if (expired.length > 0) {
     state.activeEffects = state.activeEffects.filter((effect) => effect.expiresAtTurnEndPlayerId !== playerId);
+  }
+
+  return expired;
+}
+
+/**
+ * Expires "current-game-round" effects (Torosar's Ballista IV grant) once a
+ * later game round has begun — run at the start of every game round.
+ */
+export function expireEffectsForGameRoundEnd(state: GameState): ActiveEffectState[] {
+  const expired = state.activeEffects.filter(
+    (effect) => effect.expiresAtGameRound !== undefined && effect.expiresAtGameRound < state.round
+  );
+  if (expired.length > 0) {
+    const expiredIds = new Set(expired.map((effect) => effect.id));
+    state.activeEffects = state.activeEffects.filter((effect) => !expiredIds.has(effect.id));
   }
 
   return expired;

@@ -58,6 +58,7 @@ import {
   BATTLEFIELD_COLUMNS,
   BATTLEFIELD_ROWS,
   getBattlefieldCoordinates,
+  getBattlefieldDistance,
   getBattlefieldLabel,
   getOrthogonalNeighbors,
   isBattlefieldPosition
@@ -65,9 +66,11 @@ import {
 import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
 import {
+  activateBallistas,
   applyPermanentCombatEffectsForPlayer,
   applyPermanentExpert,
   buyWarMachine,
+  countBallistas,
   discardPermanentVoluntarily,
   getPermanentSchoolBonus,
   putPermanentIntoPlay,
@@ -94,11 +97,13 @@ import {
 } from "./tokens";
 import {
   effectAppliesToUnit,
+  effectiveInitiative,
   expireEffectsForCombatRoundEnd,
   expireEffectsForTurnEnd,
   getActiveAttackBonus,
   getActiveDefenseBonus,
   getAttackRerollEffects,
+  getConditionalDefenseBonus,
   makeActiveEffect,
   playerHasSpellTimingFreedom,
   releaseEndedOngoingCards,
@@ -1228,7 +1233,9 @@ function getAttackStackDetails(
     defender,
     attackKind
   });
-  const activeDefenseBonus = getActiveDefenseBonus(state, defender);
+  // Cyra's Haste VI: +Defense only against an attacker slower than the defender.
+  const conditionalDefenseBonus = getConditionalDefenseBonus(state, defender, attacker);
+  const activeDefenseBonus = getActiveDefenseBonus(state, defender) + conditionalDefenseBonus;
   const abilityAttack = stackItem.action.type === "ATTACK_UNIT" ? stackItem.action.abilityAttack : undefined;
 
   // Combat tokens: Attack/Weakness tokens shift the attacker, Corrosion the
@@ -4459,9 +4466,17 @@ function applyReactionPlayCore(
     // Hero specialties double their bonus when the signature unit is the one
     // attacking (attack bonus) or being attacked (defense bonus). Mutare's
     // "a Dragons unit" matches the whole Dragons family, not one exact name.
-    const appliedAmount = unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName)
-      ? effectAmount * 2
-      : effectAmount;
+    // Cyra's Haste IV instead doubles when the attacked unit is faster than the
+    // attacker (a strictly higher effective Initiative).
+    const defenderIsFaster =
+      Boolean(effect.doubleIfDefenderInitiativeHigher) &&
+      Boolean(attacker) &&
+      Boolean(defender) &&
+      effectiveInitiative(defender!, state.activeEffects) > effectiveInitiative(attacker!, state.activeEffects);
+    const appliedAmount =
+      unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName) || defenderIsFaster
+        ? effectAmount * 2
+        : effectAmount;
 
     if (effect.stat === "attack") {
       stackItem.modifiers.attackBonus += appliedAmount;
@@ -4799,6 +4814,175 @@ function playTransformCard(
     newName: effect.newName,
     byCardId: card.id
   });
+}
+
+// ---------------------------------------------------------------------------
+// Solmyr's Chain Lightning (I: 1/1/0, VI: 2/1/1)
+// ---------------------------------------------------------------------------
+
+/** Deals one bolt of Chain Lightning damage (spell damage) to a living unit. */
+function dealChainLightningDamage(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardId,
+  unitId: UnitId,
+  amount: number
+): void {
+  const unit = state.combat?.units[unitId];
+  if (!unit || !isUnitAlive(unit) || amount <= 0) {
+    return;
+  }
+  unit.damage += amount;
+  noteUnitDamagedForTokens(state, unit, amount);
+  appendEvent(state, {
+    type: "DAMAGE_ASSIGNED",
+    source: { type: "card", cardId, controllerId: playerId },
+    target: { type: "unit", unitId: unit.id },
+    amount,
+    damageKind: "spell"
+  });
+  markUnitRemovedIfNeeded(state, unit);
+}
+
+/**
+ * The units the chain can reach: the two living units closest to the selected
+ * unit, with every unit tied at the second-nearest distance included so the
+ * caster picks which of them are struck. Friendly units count.
+ */
+function chainLightningReachable(state: GameState, primaryId: UnitId): UnitId[] {
+  const combat = state.combat;
+  const primary = combat?.units[primaryId];
+  if (!combat || !primary) {
+    return [];
+  }
+  const others = Object.values(combat.units)
+    .filter((unit) => unit.id !== primaryId && isUnitAlive(unit))
+    .map((unit) => ({ id: unit.id, distance: getBattlefieldDistance(primary.position, unit.position) }))
+    .sort((left, right) => left.distance - right.distance || left.id.localeCompare(right.id));
+  if (others.length <= 2) {
+    return others.map((entry) => entry.id);
+  }
+  const boundary = others[1].distance;
+  return others.filter((entry) => entry.distance <= boundary).map((entry) => entry.id);
+}
+
+/** Closest of `candidates` to the selected unit (id breaks ties), for forced hits. */
+function closestChainTarget(state: GameState, primaryId: UnitId, candidates: UnitId[]): UnitId | null {
+  const combat = state.combat;
+  const primary = combat?.units[primaryId];
+  if (!combat || !primary || candidates.length === 0) {
+    return null;
+  }
+  return [...candidates]
+    .filter((id) => combat.units[id] && isUnitAlive(combat.units[id]))
+    .sort((left, right) => {
+      const leftDistance = getBattlefieldDistance(primary.position, combat.units[left]!.position);
+      const rightDistance = getBattlefieldDistance(primary.position, combat.units[right]!.position);
+      return leftDistance - rightDistance || left.localeCompare(right);
+    })[0] ?? null;
+}
+
+/**
+ * Allocates the remaining Chain Lightning bolts among the reachable units. Each
+ * nonzero value goes to one reachable unit; when more units than bolts remain
+ * the caster chooses (otherwise the forced targets are auto-resolved). Opens an
+ * ABILITY_TARGET_CHOICE when a genuine choice is needed, else finishes.
+ */
+function advanceChainLightning(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardId,
+  primaryId: UnitId,
+  reachable: UnitId[],
+  remaining: number[]
+): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  let pool = reachable;
+  const values = [...remaining];
+  while (values.length > 0) {
+    const candidates = pool.filter((id) => combat.units[id] && isUnitAlive(combat.units[id]));
+    if (candidates.length === 0) {
+      break;
+    }
+    const value = values[0];
+    if (value <= 0) {
+      values.shift();
+      continue;
+    }
+    // A genuine choice only exists when more than one candidate could take this
+    // bolt and there are spare candidates beyond the bolts left to place.
+    if (candidates.length > 1 && candidates.length > values.length) {
+      const choiceId = `choice_${nextEventNumber(state)}`;
+      state.pendingChoice = {
+        id: choiceId,
+        type: "ABILITY_TARGET_CHOICE",
+        playerId,
+        kind: "chain-lightning",
+        abilityId: cardId,
+        abilityName: "Chain Lightning",
+        prompt: `Chain Lightning: deal ${value} damage to one of the closest units.`,
+        sourceUnitId: null,
+        anchorUnitId: primaryId,
+        candidateUnitIds: candidates,
+        amount: value,
+        chainReachableUnitIds: pool,
+        chainRemainingDamages: values
+      };
+      state.phase = "choice";
+      state.priorityPlayerId = playerId;
+      appendEvent(state, {
+        type: "PENDING_CHOICE_CREATED",
+        choiceId,
+        choiceType: "ABILITY_TARGET_CHOICE",
+        playerId,
+        sourceEffectIds: [],
+        message: `${state.players[playerId]?.name ?? playerId} aims Chain Lightning.`
+      });
+      return;
+    }
+
+    const target = closestChainTarget(state, primaryId, candidates);
+    if (!target) {
+      break;
+    }
+    dealChainLightningDamage(state, playerId, cardId, target, value);
+    pool = pool.filter((id) => id !== target);
+    values.shift();
+  }
+
+  finishCombatIfNeeded(state);
+}
+
+/** Opens Solmyr's Chain Lightning: hit the selected unit, then chain outward. */
+function startChainLightning(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardId,
+  primaryId: UnitId,
+  damages: number[]
+): void {
+  if (!state.combat) {
+    return;
+  }
+  const reachable = chainLightningReachable(state, primaryId);
+  dealChainLightningDamage(state, playerId, cardId, primaryId, damages[0] ?? 0);
+  if (finishCombatIfNeeded(state)) {
+    return;
+  }
+  // Zero bolts (Chain Lightning I's "0") are no-ops: an untargeted closest unit
+  // simply takes nothing, so only the nonzero bolts need allocating.
+  advanceChainLightning(
+    state,
+    playerId,
+    cardId,
+    primaryId,
+    reachable,
+    damages.slice(1).filter((value) => value > 0)
+  );
 }
 
 function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CARD" }>, cards: CardLibrary): void {
@@ -5206,18 +5390,94 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
-  // Gem's First Aid: take the war machine from the shared supply for free, or
-  // draw the fallback card when the supply is empty (it was already taken).
+  // Solmyr's Chain Lightning (I/VI): the selected unit takes the leftmost bolt,
+  // then the chain forks to the units closest to it (the caster allocating).
+  if (effect.type === "CHAIN_LIGHTNING" && target && state.combat) {
+    startChainLightning(state, action.playerId, card.id, target.unitId, effect.damages);
+  }
+
+  // Torosar's Ballista specialty: field an extra Ballista (this combat or the
+  // rest of the round) and/or activate Ballistas for an immediate shot each.
+  if (effect.type === "BALLISTA_SPECIALTY" && state.combat) {
+    if (effect.grant) {
+      createActiveEffect(
+        state,
+        {
+          name: "Ballista",
+          scope: "player",
+          duration: effect.grant === "game-round" ? { type: "current-game-round" } : { type: "combat" },
+          polarity: "positive",
+          removable: false,
+          modifiers: [{ type: "EXTRA_BALLISTA" }]
+        },
+        { type: "card", cardId: card.id, controllerId: action.playerId },
+        action.playerId
+      );
+    }
+    // "Activate all your Ballistas" counts the just-granted one too.
+    if (effect.activate === "all") {
+      activateBallistas(state, action.playerId, countBallistas(state, action.playerId));
+    } else if (effect.activate === "one" && countBallistas(state, action.playerId) >= 1) {
+      activateBallistas(state, action.playerId, 1);
+    }
+  }
+
+  // Solmyr's Chain Lightning IV: dig the top of your own deck, keep 1, discard
+  // the rest. One revealed card is auto-kept; with several, the owner chooses.
+  if (effect.type === "DECK_DIG_KEEP_ONE") {
+    const digPlayer = state.players[action.playerId];
+    const revealed: CardId[] = [];
+    for (let index = 0; index < effect.count; index += 1) {
+      const drawn = digPlayer.deck.pop();
+      if (!drawn) {
+        break;
+      }
+      revealed.push(drawn);
+    }
+    if (revealed.length === 1) {
+      digPlayer.hand.push(revealed[0]);
+    } else if (revealed.length > 1) {
+      state.pendingChoice = {
+        id: `choice_${nextEventNumber(state)}`,
+        type: "OPTION_CHOICE",
+        playerId: action.playerId,
+        prompt: `${card.name}: keep one card; the rest go to your discard pile.`,
+        options: revealed.map((cardId) => ({ label: `Keep ${cards[cardId]?.name ?? cardId}` })),
+        context: "own-deck-pick",
+        ownDeckPick: { cardIds: revealed },
+        returnPhase: state.combat ? "combat" : "player-turn"
+      };
+      state.phase = "choice";
+      state.priorityPlayerId = action.playerId;
+    }
+  }
+
+  // Gem's First Aid: take the war machine from the shared supply for free
+  // (Torosar's Ballista I pays gold), or draw the fallback when none remain.
   if (effect.type === "GAIN_WAR_MACHINE") {
     const supply = state.adventure?.warMachineSupply ?? [];
     if (state.adventure && supply.includes(effect.warMachineCardId)) {
+      const cost = effect.goldCost ? { gold: effect.goldCost } : {};
+      if (effect.goldCost) {
+        const buyer = state.players[action.playerId];
+        if (!buyer || buyer.resources.gold < effect.goldCost) {
+          throw new Error(`Not enough gold to gain the ${cards[effect.warMachineCardId]?.name ?? "war machine"}.`);
+        }
+        buyer.resources.gold -= effect.goldCost;
+        appendEvent(state, {
+          type: "RESOURCES_SPENT",
+          playerId: action.playerId,
+          cost,
+          reason: `gained the ${cards[effect.warMachineCardId]?.name ?? "war machine"}`
+        });
+      }
       state.adventure.warMachineSupply = supply.filter((cardId) => cardId !== effect.warMachineCardId);
       state.players[action.playerId].hand.push(effect.warMachineCardId);
       appendEvent(state, {
         type: "WAR_MACHINE_BOUGHT",
         playerId: action.playerId,
         cardId: effect.warMachineCardId,
-        cost: {},
+        cost,
         at: "factory"
       });
     } else if (effect.fallbackDrawCards) {
@@ -5275,6 +5535,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (playedToDiscard) {
     holdOngoingCardIfEffectCreated(state, action.playerId, action.cardId, effectCountBeforePlay, "discard");
+  }
+
+  // A play that opened a choice (Chain Lightning's allocation, Solmyr IV's deck
+  // dig) owns the phase/priority it just set — don't stomp it back to combat.
+  if (state.pendingChoice) {
+    return;
   }
 
   if (state.phase === "combat" || state.combat) {
@@ -6057,6 +6323,22 @@ function chooseAbilityTarget(
         toTarget: top.action.target
       });
       resolveTopStack(state, cards);
+    }
+    return;
+  }
+
+  // Solmyr's Chain Lightning: the chosen closest unit takes the current bolt,
+  // then the chain continues with the remaining bolts (or finishes).
+  if (choice.kind === "chain-lightning") {
+    const cardId = choice.abilityId ?? "";
+    const remaining = choice.chainRemainingDamages ?? [];
+    dealChainLightningDamage(state, action.playerId, cardId, action.targetUnitId, remaining[0] ?? 0);
+    if (finishCombatIfNeeded(state)) {
+      return;
+    }
+    const reachable = (choice.chainReachableUnitIds ?? []).filter((id) => id !== action.targetUnitId);
+    if (choice.anchorUnitId) {
+      advanceChainLightning(state, action.playerId, cardId, choice.anchorUnitId, reachable, remaining.slice(1));
     }
     return;
   }
