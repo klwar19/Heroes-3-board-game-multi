@@ -35,6 +35,7 @@ import {
   MapDiceOverlay,
   MapNoticeOverlay,
   NeutralStepOverlay,
+  NewDayOverlay,
   ReactionTray,
   RerollModal,
   SearchModal,
@@ -42,7 +43,8 @@ import {
   type DrawCue,
   type FirstPlayerRollCue,
   type MapDiceCue,
-  type MapNoticeCue
+  type MapNoticeCue,
+  type NewDayCue
 } from "@/components/table/overlays";
 import { CardZoomProvider, useCardZoom, ZoomButton } from "@/components/table/zoom";
 import { TableErrorBoundary } from "@/components/error-boundary";
@@ -51,6 +53,7 @@ import {
   AdventureDecksPanel,
   AdventureEventFeed,
   AdventureHud,
+  AdventureOwnDeck,
   ArmyPanel,
   FarTileTray,
   HexMapBoard,
@@ -307,6 +310,10 @@ export default function Home() {
     queue: []
   });
   const [firstRoll, setFirstRoll] = useState<FirstPlayerRollCue | null>(null);
+  const [newDay, setNewDay] = useState<{ current: NewDayCue | null; queue: NewDayCue[] }>({
+    current: null,
+    queue: []
+  });
   const [drawCue, setDrawCue] = useState<DrawCue | null>(null);
   const [moveCue, setMoveCue] = useState<HeroMoveCue | null>(null);
   const [flippedUnitIds, setFlippedUnitIds] = useState<Set<string>>(new Set());
@@ -324,6 +331,7 @@ export default function Home() {
   const seenMapDiceIdsRef = useRef<Set<string>>(new Set());
   const seenVisitIdsRef = useRef<Set<string>>(new Set());
   const seenFirstRollIdsRef = useRef<Set<string>>(new Set());
+  const seenTurnIdsRef = useRef<Set<string>>(new Set());
   const seenDrawIdsRef = useRef<Set<string>>(new Set());
   const seenFlipIdsRef = useRef<Set<string>>(new Set());
   const seenMoveIdsRef = useRef<Set<string>>(new Set());
@@ -386,6 +394,9 @@ export default function Home() {
     const mapDiceEvents = nextState.eventLog.filter(
       (event): event is Extract<GameEvent, { type: "ADVENTURE_DICE_ROLLED" }> => event.type === "ADVENTURE_DICE_ROLLED"
     );
+    const turnEvents = nextState.eventLog.filter(
+      (event): event is Extract<GameEvent, { type: "TURN_STARTED" }> => event.type === "TURN_STARTED"
+    );
     const visitEvents = nextState.eventLog.filter(
       (event): event is Extract<GameEvent, { type: "FIELD_VISITED" }> => event.type === "FIELD_VISITED"
     );
@@ -417,6 +428,9 @@ export default function Home() {
       seenFirstRollIdsRef.current = new Set(
         nextState.eventLog.filter((event) => event.type === "FIRST_PLAYER_ROLLED").map((event) => event.id)
       );
+      // A fresh connection joins mid-game without replaying every past turn's
+      // sunrise: the first snapshot's TURN_STARTED events count as already seen.
+      seenTurnIdsRef.current = new Set(turnEvents.map((event) => event.id));
       // Fresh room connection: drop any presentation state from the last room.
       setFxCues([]);
       setHiddenHandTail(0);
@@ -424,6 +438,7 @@ export default function Home() {
       setMapDice({ current: null, queue: [] });
       setMapNotice({ current: null, queue: [] });
       setFirstRoll(null);
+      setNewDay({ current: null, queue: [] });
     } else {
       // Adventure feed: spell out every visit effect, fight, gain and reveal
       // as a toast. The cue name is the future audio hook.
@@ -567,6 +582,24 @@ export default function Home() {
           winnerName: nextState.players[event.winnerPlayerId]?.name ?? event.winnerPlayerId,
           order
         });
+      }
+
+      // New day: the sunrise cinematic at the start of every turn, driven off
+      // the shared TURN_STARTED event so it plays the same for every seat. A
+      // newer turn supersedes any sunrise still queued (never shown), so quick
+      // back-to-back turns never stack up a backlog of sunrises.
+      const freshTurns = turnEvents.filter((event) => !seenTurnIdsRef.current.has(event.id));
+      for (const event of turnEvents) {
+        seenTurnIdsRef.current.add(event.id);
+      }
+      if (freshTurns.length > 0) {
+        const latest = freshTurns[freshTurns.length - 1];
+        const cue = {
+          id: latest.id,
+          playerName: nextState.players[latest.playerId]?.name ?? latest.playerId,
+          round: latest.round
+        } satisfies NewDayCue;
+        setNewDay((current) => (current.current ? { current: current.current, queue: [cue] } : { current: cue, queue: [] }));
       }
 
       const seen = seenRollIdsRef.current;
@@ -1102,6 +1135,14 @@ export default function Home() {
     );
   }, []);
 
+  const dismissNewDay = useCallback(() => {
+    setNewDay((current) =>
+      current.queue.length > 0
+        ? { current: current.queue[0], queue: current.queue.slice(1) }
+        : { current: null, queue: [] }
+    );
+  }, []);
+
   const handleFxDone = useCallback((id: string) => {
     setFxCues((current) => current.filter((cue) => cue.id !== id));
   }, []);
@@ -1275,6 +1316,7 @@ export default function Home() {
     setMapDice({ current: null, queue: [] });
     setMapNotice({ current: null, queue: [] });
     setFirstRoll(null);
+    setNewDay({ current: null, queue: [] });
     setFeedItems([]);
     setSyncStatus(`synced v${snapshot.version}`);
   };
@@ -1604,6 +1646,11 @@ export default function Home() {
 
           {isSeated ? (
             <div className={`adventureHand ${selecting ? "refreshing" : ""}`} aria-label="Your hand">
+              <AdventureOwnDeck
+                onShowPile={(title, cardIds, kind) => setPile({ title, cardIds, kind })}
+                view={playerView}
+                viewerPlayerId={viewerPlayerId}
+              />
               <div className="handTopBar">
                 <small>
                   Hand {handCards.length}/{handLimit}
@@ -1849,6 +1896,9 @@ export default function Home() {
           {firstRoll ? (
             <FirstPlayerRollOverlay cue={firstRoll} key={firstRoll.id} onDone={() => setFirstRoll(null)} />
           ) : null}
+          {!firstRoll && newDay.current ? (
+            <NewDayOverlay cue={newDay.current} key={newDay.current.id} onDone={dismissNewDay} />
+          ) : null}
           <FxStage cues={fxCues} onDone={handleFxDone} />
         </main>
       </CardZoomProvider>
@@ -2054,6 +2104,9 @@ export default function Home() {
       ) : null}
       {firstRoll ? (
         <FirstPlayerRollOverlay cue={firstRoll} key={firstRoll.id} onDone={() => setFirstRoll(null)} />
+      ) : null}
+      {!firstRoll && newDay.current ? (
+        <NewDayOverlay cue={newDay.current} key={newDay.current.id} onDone={dismissNewDay} />
       ) : null}
       <FxStage cues={fxCues} onDone={handleFxDone} />
     </main>

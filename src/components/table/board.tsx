@@ -689,7 +689,15 @@ export function CommandDock({
         </div>
       ) : null}
       {commands.map((legal) => (
-        <button className="commandButton" key={actionKey(legal.action)} onClick={() => onAction(legal.action)} type="button">
+        <button
+          className={`commandButton ${legal.action.type === "DEFEND_UNIT" ? "defendButton" : ""}`}
+          key={actionKey(legal.action)}
+          onClick={() => onAction(legal.action)}
+          type="button"
+        >
+          {legal.action.type === "DEFEND_UNIT" ? (
+            <img alt="" aria-hidden="true" className="defendButtonIcon" src={assetUrl("/assets/ui/defend-button.png")} />
+          ) : null}
           {commandLabel(legal)}
         </button>
       ))}
