@@ -717,6 +717,23 @@ describe("map setup lobby", () => {
     expect(state.players.p1.production).toEqual({ gold: 10, buildingMaterials: 0, valuables: 0 });
   });
 
+  it("rolls for the starting player before any starting hand is dealt", () => {
+    let state = createAdventureLobbyState({ seed: "first-player-order" });
+    state = apply(state, { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: "catherine" });
+    state = apply(state, { type: "CHOOSE_FACTION", playerId: "p2", factionId: "inferno", heroDefId: "xyron" });
+    state = apply(state, { type: "START_ADVENTURE", playerId: "p1" });
+
+    const firstRollAt = state.eventLog.findIndex((event) => event.type === "FIRST_PLAYER_ROLLED");
+    const firstDrawAt = state.eventLog.findIndex((event) => event.type === "CARDS_DRAWN");
+    // The opening ceremony leads the game: the roll is logged before the deal.
+    expect(firstRollAt).toBeGreaterThanOrEqual(0);
+    expect(firstDrawAt).toBeGreaterThanOrEqual(0);
+    expect(firstRollAt).toBeLessThan(firstDrawAt);
+    // The deal still happens — every seat opens with a full starting hand.
+    expect(state.players.p1.hand).toHaveLength(4);
+    expect(state.players.p2.hand).toHaveLength(4);
+  });
+
   it("lets seats adjust difficulty, resources, income, starting units and buildings before the start", () => {
     let state = createAdventureLobbyState({ seed: "lobby-seed" });
     expect(state.setupLobby?.options.difficulty).toBe("impossible");

@@ -3217,6 +3217,7 @@ export type PendingChoice =
         | "rogues-scout"
         | "combat-reposition"
         | "genie-take-spell"
+        | "combat-knockback"
         | "cover-of-darkness";
       /** combat-reposition: Harpies' optional fly-back after their attack. */
       reposition?: { unitId: UnitId; originPosition: number };
@@ -3226,6 +3227,12 @@ export type PendingChoice =
        * discard. `mode` decides how combat resumes afterwards.
        */
       genieTakeSpell?: { spellCardIds: CardId[]; unitId: UnitId; mode: "other-action" | "on-attack"; abilityId: string };
+      /**
+       * combat-knockback: the Ghost Dragons shoved `unitId` after their attack;
+       * the defender picks which empty space (index-aligned with the options) to
+       * move to. `attackerId` is the Ghost Dragons whose attack triggered it.
+       */
+      knockback?: { unitId: UnitId; attackerId: UnitId; positions: number[] };
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */

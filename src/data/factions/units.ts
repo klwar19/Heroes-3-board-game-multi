@@ -284,8 +284,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "dungeon",
     tier: "silver",
     type: "ground",
-    few: { attack: 4, defense: 2, health: 4, initiative: 6, cost: { gold: 8 }, abilities: [], abilityText: "[unit_attack] If you resolve a \"-1\" on the Attack die , draw a card,", cardImage: "/assets/units-dungeon-silver-minotaurs-few.webp" },
-    pack: { attack: 5, defense: 2, health: 4, initiative: 8, cost: { gold: 14 }, abilities: [], abilityText: "[unit_attack] If you resolve a \"-1\" on the Attack die , draw a card,", cardImage: "/assets/units-dungeon-silver-minotaurs-pack.webp" },
+    few: { attack: 4, defense: 2, health: 4, initiative: 6, cost: { gold: 8 }, abilities: ["minotaur-draw-on-miss"], abilityText: "[unit_attack] If you resolve a \"-1\" on the Attack die , draw a card.", cardImage: "/assets/units-dungeon-silver-minotaurs-few.webp" },
+    pack: { attack: 5, defense: 2, health: 4, initiative: 8, cost: { gold: 14 }, abilities: ["minotaur-draw-on-miss"], abilityText: "[unit_attack] If you resolve a \"-1\" on the Attack die , draw a card.", cardImage: "/assets/units-dungeon-silver-minotaurs-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/minotaurs/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -405,8 +405,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "rampart",
     tier: "gold",
     type: "ground",
-    few: { attack: 5, defense: 1, health: 8, initiative: 7, cost: { gold: 11 }, abilities: [], abilityText: "[unit_passive] Reduce any [damage] from [spell] dealt to this unit by 1 (to a minimum of 0).", cardImage: "/assets/units-rampart-golden-unicorns-few.webp" },
-    pack: { attack: 6, defense: 1, health: 8, initiative: 9, cost: { gold: 18, valuables: 1 }, abilities: [], abilityText: "1 [valuables] [unit_passive] Reduce any [damage] from [spell] dealt to this and adjacent friendly unit(s) by 1 (to a minimum of 0).", cardImage: "/assets/units-rampart-golden-unicorns-pack.webp" },
+    few: { attack: 5, defense: 1, health: 8, initiative: 7, cost: { gold: 11 }, abilities: ["reduce-spell-damage-1"], abilityText: "[unit_passive] Reduce any [damage] from [spell] dealt to this unit by 1 (to a minimum of 0).", cardImage: "/assets/units-rampart-golden-unicorns-few.webp" },
+    pack: { attack: 6, defense: 1, health: 8, initiative: 9, cost: { gold: 18, valuables: 1 }, abilities: ["unicorn-spell-ward-aura"], abilityText: "1 [valuables] [unit_passive] Reduce any [damage] from [spell] dealt to this and adjacent friendly unit(s) by 1 (to a minimum of 0).", cardImage: "/assets/units-rampart-golden-unicorns-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/unicorns/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
@@ -438,7 +438,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "bronze",
     type: "ground",
     few: { attack: 2, defense: 1, health: 2, initiative: 5, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-inferno-bronze-familiars-few.webp" },
-    pack: { attack: 3, defense: 1, health: 2, initiative: 7, cost: { gold: 3 }, abilities: [], abilityText: "[unit_passive] Whenever an enemy casts a [spell] from hand, they must discard 1 card from hand.", cardImage: "/assets/units-inferno-bronze-familiars-pack.webp" },
+    pack: { attack: 3, defense: 1, health: 2, initiative: 7, cost: { gold: 3 }, abilities: ["familiar-spell-tax"], abilityText: "[unit_passive] Whenever an enemy casts a [spell] from hand, they must discard 1 card from hand.", cardImage: "/assets/units-inferno-bronze-familiars-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/familiars/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
@@ -512,8 +512,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "inferno",
     tier: "gold",
     type: "flying",
-    few: { attack: 5, defense: 1, health: 7, initiative: 9, cost: { gold: 12 }, abilities: [], abilityText: "[unit_passive] Ignores any [damage] from Magic Arrows.", cardImage: "/assets/units-inferno-golden-efreet-few.webp" },
-    pack: { attack: 6, defense: 1, health: 7, initiative: 13, cost: { gold: 18, valuables: 1 }, abilities: [], abilityText: "1 [valuables] [unit_passive] Ignores any [damage] from Magic Arrows or spells from the Fire School of Magic.", cardImage: "/assets/units-inferno-golden-efreet-pack.webp" },
+    few: { attack: 5, defense: 1, health: 7, initiative: 9, cost: { gold: 12 }, abilities: ["efreet-magic-arrow-immunity"], abilityText: "[unit_passive] Ignores any [damage] from Magic Arrows.", cardImage: "/assets/units-inferno-golden-efreet-few.webp" },
+    pack: { attack: 6, defense: 1, health: 7, initiative: 13, cost: { gold: 18, valuables: 1 }, abilities: ["efreet-fire-immunity"], abilityText: "1 [valuables] [unit_passive] Ignores any [damage] from Magic Arrows or spells from the Fire School of Magic.", cardImage: "/assets/units-inferno-golden-efreet-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/efreet/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
@@ -796,8 +796,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "tower",
     tier: "bronze",
     type: "ground",
-    few: { attack: 3, defense: 1, health: 3, initiative: 4, cost: { gold: 4 }, abilities: [], abilityText: "[unit_passive] This unit reduces any [damage] it takes from spells by 1 — to a minimum of 0.", cardImage: "/assets/units-tower-bronze-iron_golems-few.webp" },
-    pack: { attack: 3, defense: 2, health: 3, initiative: 5, cost: { gold: 7 }, abilities: [], abilityText: "[unit_passive] This unit reduces any [damage] it takes from spells by 2 — to a minimum of 0.", cardImage: "/assets/units-tower-bronze-iron_golems-pack.webp" },
+    few: { attack: 3, defense: 1, health: 3, initiative: 4, cost: { gold: 4 }, abilities: ["reduce-spell-damage-1"], abilityText: "[unit_passive] This unit reduces any [damage] it takes from spells by 1 — to a minimum of 0.", cardImage: "/assets/units-tower-bronze-iron_golems-few.webp" },
+    pack: { attack: 3, defense: 2, health: 3, initiative: 5, cost: { gold: 7 }, abilities: ["reduce-spell-damage-2"], abilityText: "[unit_passive] This unit reduces any [damage] it takes from spells by 2 — to a minimum of 0.", cardImage: "/assets/units-tower-bronze-iron_golems-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/iron_golems/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
@@ -812,7 +812,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "silver",
     type: "ranged",
     few: { attack: 3, defense: 0, health: 4, initiative: 5, cost: { gold: 6 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_attack] Ignore combat penalties.", cardImage: "/assets/units-tower-silver-magi-few.webp" },
-    pack: { attack: 4, defense: 1, health: 4, initiative: 6, cost: { gold: 11 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_attack] Ignore combat penalties. [activation] Add +1 [power] to the first spell you cast this round.", cardImage: "/assets/units-tower-silver-magi-pack.webp" },
+    pack: { attack: 4, defense: 1, health: 4, initiative: 6, cost: { gold: 11 }, abilities: ["ignore-combat-penalties", "magi-power-boost"], abilityText: "[unit_attack] Ignore combat penalties. [activation] Add +1 [power] to the first spell you cast this round.", cardImage: "/assets/units-tower-silver-magi-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/magi/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
@@ -1264,7 +1264,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "gold",
     type: "flying",
-    neutral: { attack: 5, defense: 2, health: 6, initiative: 9, cost: { gold: 28 }, abilities: [], abilityText: "[unit_attack] After the attack, roll 1 Attack die ; if the result is \"0\", the target must immediately move away 1 space.", cardImage: "/assets/units-neutral-golden-ghost_dragons.webp" },
+    neutral: { attack: 5, defense: 2, health: 6, initiative: 9, cost: { gold: 28 }, abilities: ["ghost-dragon-knockback"], abilityText: "[unit_attack] After the attack, roll 1 Attack die ; if the result is \"0\", the target must immediately move away 1 space.", cardImage: "/assets/units-neutral-golden-ghost_dragons.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/ghost_dragons/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1626,6 +1626,21 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
       product: "Heroes of Might and Magic III: The Board Game",
       credit: "Neutral Tower unit. Stats from the fan wiki units table. Verify against official cards before final release.",
       url: "https://en.homm3bg.wiki/units/iron_golems/"
+    }
+  },
+  "neutral.steel_golems": {
+    id: "neutral.steel_golems",
+    name: "Steel Golems",
+    faction: "neutral",
+    tier: "silver",
+    type: "ground",
+    // No card art converted yet: the board falls back to the named card frame.
+    neutral: { attack: 3, defense: 2, health: 3, initiative: 5, cost: { gold: 12 }, abilities: ["reduce-spell-and-specialty-damage-2"], abilityText: "[unit_passive] Reduce any [damage] this unit takes from spells or Specialty by 2 — to a minimum of 0." },
+    wikiUrl: "https://en.homm3bg.wiki/units/steel_golems/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals 2024)",
+      credit: "Neutral unit. Stats and ability from the fan wiki unit page. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/steel_golems/"
     }
   },
   "neutral.sprites": {

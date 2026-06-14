@@ -452,6 +452,30 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
+       * Steel Golems: "Reduce damage taken by this unit from spell or Specialty
+       * by N — to a minimum of 0." Like the Iron/Gold/Diamond Golems' spell
+       * reduction, but it also softens Hero-Specialty damage (Xyron's Inferno,
+       * Solmyr's Chain Lightning). Counts toward both getSpellDamageReduction
+       * and getSpecialtyDamageReduction.
+       */
+      type: "REDUCE_SPELL_AND_SPECIALTY_DAMAGE";
+      amount: number;
+    }
+  | {
+      /**
+       * Ghost Dragons (neutral): "[unit_attack] After the attack, roll 1 Attack
+       * die; if the result is `onRoll`, the target must immediately move away 1
+       * space." The defender picks an empty space adjacent to the target that is
+       * not adjacent to the Ghost Dragons; a neutral target is moved
+       * automatically. Being shoved out of reach means the target can no longer
+       * make its Retaliation Attack. With no valid space the target stays put
+       * and retaliates as normal.
+       */
+      type: "KNOCKBACK_AFTER_ATTACK";
+      onRoll: number;
+    }
+  | {
+      /**
        * Vampires: "[unit_attack] …then remove up to N damage from this unit."
        * After this unit's own attack (never a Retaliation Attack) it heals
        * itself by up to `amount`.
@@ -554,6 +578,16 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
+       * Rampart Unicorns (Pack): "Reduce any damage from spells dealt to this
+       * and adjacent friendly unit(s) by N." An aura — the reduction protects
+       * the Unicorns themselves and every friendly unit adjacent to them. The
+       * Few side instead carries a self-only REDUCE_SPELL_DAMAGE.
+       */
+      type: "REDUCE_SPELL_DAMAGE_AURA";
+      amount: number;
+    }
+  | {
+      /**
        * Rampart Dendroids (Pack): "[unit_passive] Enemy units that start their
        * activation adjacent to this unit cannot move." A Bind aura, evaluated at
        * the start of each enemy activation; a bound unit may still attack.
@@ -588,6 +622,27 @@ export type UnitAbilityEffectDefinition =
       type: "DECK_DISCARD_TAKE_SPELL";
       count: number;
       trigger: "other-action" | "on-attack";
+    }
+  | {
+      /**
+       * Dungeon Minotaurs (Few/Pack): "If you resolve a '-1' on the Attack die,
+       * draw a card." After this unit's attack resolves on `onRoll`, its
+       * controller draws `amount` card(s). (The neutral Minotaur rerolls the
+       * "-1" instead — a different printed card.)
+       */
+      type: "ON_ATTACK_DIE_DRAW";
+      onRoll: number;
+      amount: number;
+    }
+  | {
+      /**
+       * Tower Magi (Pack): "[activation] Add +N power to the first spell you
+       * cast this round." When this unit activates, its controller's first
+       * Spell cast in the current combat round gains `amount` power; unused, it
+       * lapses at the end of the combat round.
+       */
+      type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST";
+      amount: number;
     };
 
 /**
@@ -699,6 +754,10 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "FLAT_DAMAGE_ADJACENT_TO_SELF", amount: 1 },
     implementationStatus: "implemented"
   },
+  // No shipping unit carries this any more (the printed Cerberi use
+  // `cerberi-second-head`). It is intentionally retained as the engine's
+  // generic "attack every adjacent enemy" multi-attack-queue capability and is
+  // exercised by ruleset.test.ts — do not delete without removing that test.
   "cerberi-attack-all": {
     id: "cerberi-attack-all",
     name: "Three-Headed Assault",
@@ -935,6 +994,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Spectral Strike",
     text: "Add +1 to this unit's Attack die result on every attack.",
     effect: { type: "ATTACK_DIE_RESULT_BONUS", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "ghost-dragon-knockback": {
+    id: "ghost-dragon-knockback",
+    name: "Knock Back",
+    text: 'After the attack, roll 1 Attack die; on a "0" the target must immediately move away 1 space — the defending player chooses an empty space not adjacent to the Ghost Dragons. Pushed out of reach, the target cannot retaliate. With no valid space it stays and retaliates as normal.',
+    effect: { type: "KNOCKBACK_AFTER_ATTACK", onRoll: 0 },
     implementationStatus: "implemented"
   },
   "wraith-heal-1": {
@@ -1221,6 +1287,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "REDUCE_SPELL_DAMAGE", amount: 3 },
     implementationStatus: "implemented"
   },
+  "reduce-spell-and-specialty-damage-2": {
+    id: "reduce-spell-and-specialty-damage-2",
+    name: "Magical Resistance",
+    text: "[unit_passive] Reduce any damage this unit takes from spells or Specialty by 2 (to a minimum of 0).",
+    effect: { type: "REDUCE_SPELL_AND_SPECIALTY_DAMAGE", amount: 2 },
+    implementationStatus: "implemented"
+  },
   "vampire-heal-on-attack": {
     id: "vampire-heal-on-attack",
     name: "Life Drain",
@@ -1373,6 +1446,47 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Wish",
     text: "[unit_attack] Discard up to 3 cards from your deck and take a Spell discarded this way to your hand.",
     effect: { type: "DECK_DISCARD_TAKE_SPELL", count: 3, trigger: "on-attack" },
+    implementationStatus: "implemented"
+  },
+  // Tower Iron Golems (Few) / Rampart Unicorns (Few): self-only −1 spell damage.
+  "reduce-spell-damage-1": {
+    id: "reduce-spell-damage-1",
+    name: "Spell Resistance",
+    text: "[unit_passive] Reduce any damage from spells by 1 (to a minimum of 0).",
+    effect: { type: "REDUCE_SPELL_DAMAGE", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Rampart Unicorns (Pack): −1 spell damage to itself and adjacent friendly units.
+  "unicorn-spell-ward-aura": {
+    id: "unicorn-spell-ward-aura",
+    name: "Spell Ward",
+    text: "[unit_passive] Reduce any damage from spells dealt to this and adjacent friendly unit(s) by 1 (to a minimum of 0).",
+    effect: { type: "REDUCE_SPELL_DAMAGE_AURA", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Inferno Efreet (Few): immune to Magic Arrow only (the Pack also resists Fire,
+  // which the shared `efreet-fire-immunity` covers).
+  "efreet-magic-arrow-immunity": {
+    id: "efreet-magic-arrow-immunity",
+    name: "Magic Arrow Immunity",
+    text: "[unit_passive] Ignores any damage from Magic Arrows.",
+    effect: { type: "IMMUNE_TO_SPELL_SCHOOLS", schools: ["any"] },
+    implementationStatus: "implemented"
+  },
+  // Dungeon Minotaurs (Few/Pack): draw a card whenever the attack die resolves "-1".
+  "minotaur-draw-on-miss": {
+    id: "minotaur-draw-on-miss",
+    name: "Bull Resolve",
+    text: '[unit_attack] If you resolve a "-1" on the Attack die, draw a card.',
+    effect: { type: "ON_ATTACK_DIE_DRAW", onRoll: -1, amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Tower Magi (Pack): on activation, your first spell this combat round gets +1 power.
+  "magi-power-boost": {
+    id: "magi-power-boost",
+    name: "Mage's Insight",
+    text: "[activation] Add +1 power to the first spell you cast this round.",
+    effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1 },
     implementationStatus: "implemented"
   }
 };
