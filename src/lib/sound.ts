@@ -210,3 +210,40 @@ export function playShuffle(delayMs = 0): void {
     );
   }
 }
+
+/**
+ * Tabletop dice roll: a rattle of wooden knocks that bounce off the table and
+ * spread out as the die loses energy, then a firmer settling thud when it comes
+ * to rest. This makes the on-screen dice read as a physical throw instead of a
+ * silent CSS tumble. `settleMs` should match the moment the visual cube stops
+ * spinning so the final knock lands with the result.
+ */
+export function playDiceRoll(dieCount = 1, settleMs = 1300): void {
+  if (muted || typeof window === "undefined") {
+    return;
+  }
+  const ctx = getContext();
+  if (!ctx || ctx.state !== "running") {
+    return;
+  }
+
+  // Bounces start fast and tight, then grow apart (a decaying bounce); a touch
+  // of jitter on timing and pitch keeps it from sounding metronomic. More dice
+  // pack a few extra knocks into the same window.
+  const knocks = Math.min(18, 10 + dieCount * 2);
+  let t = 30;
+  for (let i = 0; i < knocks; i += 1) {
+    const progress = i / knocks;
+    const gap = 48 + progress * progress * 210 + Math.random() * 30;
+    t += gap;
+    if (t >= settleMs) {
+      break;
+    }
+    const freq = 1550 - progress * 760 + (Math.random() * 260 - 130);
+    const gain = 0.045 + (1 - progress) * 0.05;
+    playNoise({ durationMs: 20 + Math.random() * 16, from: freq, to: freq * 0.55, q: 1.1, gain, attackMs: 2 }, t);
+  }
+
+  // The die finally comes to rest: one lower, firmer knock on the felt.
+  playNoise({ durationMs: 80, from: 520, to: 220, q: 0.85, gain: 0.13, attackMs: 3 }, settleMs);
+}
