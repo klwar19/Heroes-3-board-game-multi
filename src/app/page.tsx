@@ -4,6 +4,7 @@ import { Crosshair, Eye, Map as MapIcon, StepForward, Swords } from "lucide-reac
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   effectiveHandLimit,
+  ENGINE_SIGNATURE,
   getLegalActions,
   getPlayerView,
   getRuleset,
@@ -269,6 +270,13 @@ export default function Home() {
   const [roomInput, setRoomInput] = useState(getInitialRoomId);
   const [roomVersion, setRoomVersion] = useState(0);
   const [syncStatus, setSyncStatus] = useState("connecting");
+  /**
+   * The room server's engine signature from the latest snapshot. When it
+   * disagrees with this frontend's ENGINE_SIGNATURE the room server is running
+   * older engine code (PartyKit was not redeployed) and will reject actions
+   * the UI offers — we warn instead of failing silently. See engine/version.ts.
+   */
+  const [serverSignature, setServerSignature] = useState<string | null>(null);
   const [selectedCardAction, setSelectedCardAction] = useState<CardBoardAction | null>(null);
   const [inspectedUnitId, setInspectedUnitId] = useState<string | null>(null);
   const [handMode, setHandMode] = useState<HandMode>(null);
@@ -1010,6 +1018,12 @@ export default function Home() {
 
   const ingestSnapshot = useCallback(
     (snapshot: GameRoomSnapshot) => {
+      // Record the room server's engine signature from every frame (even ones
+      // the version gate later drops) so a stale-server warning shows promptly.
+      if (snapshot.serverSignature) {
+        setServerSignature(snapshot.serverSignature);
+      }
+
       // The version gate keeps out-of-order frames from rolling the table
       // back — but when the server process restarted (new bootId) its version
       // counter starts over, and refusing those snapshots froze the table
@@ -1373,9 +1387,24 @@ export default function Home() {
     </div>
   );
 
+  // The room server (PartyKit) reported a different engine signature than this
+  // frontend: it is running older code and will silently reject newer actions
+  // (the Moandor/Zydar/Hire-Secondary-Hero class of bug). Warn loudly.
+  const serverStale = serverSignature !== null && serverSignature !== ENGINE_SIGNATURE;
+
   const errorBanner =
-    errors.length > 0 ? (
+    serverStale || errors.length > 0 ? (
       <div className="errorBanner" aria-label="Rules errors">
+        {serverStale ? (
+          <span className="serverStaleWarning">
+            ⚠ The room server is out of date — new content (extra heroes, Secondary Heroes…) will be rejected until
+            it&apos;s redeployed. Run <code>npx partykit deploy</code> to update it.
+            <small>
+              {" "}
+              (server {serverSignature}, app {ENGINE_SIGNATURE})
+            </small>
+          </span>
+        ) : null}
         {errors.map((error) => (
           <span key={error}>{error}</span>
         ))}

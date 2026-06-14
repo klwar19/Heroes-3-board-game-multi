@@ -15,6 +15,16 @@ Chosen in the lobby ("Game mode", BINH default), stored on the game state, synce
 | **Legacy (rulebook)** | ✅ | The community rulebook as printed: one shared Spell deck and one Artifact deck (Core+Rampart+Inferno set), printed card values, printed unit stats. |
 | **House rules BINH** | ✅ | Split decks per the rulebook's optional rule + BINH gates: **Basic/Expert Spell decks** (expert draws need hero level ≥4 AND an open Ⅳ–Ⅴ/Ⅵ–Ⅶ tile, OR owning Eagle Eye / Wisdom / a Basic elemental Magic) and **Minor/Major/Relic Artifact decks** (Minor always; Major on a Ⅳ–Ⅴ+ tile or level ≥4 + Blacksmith; Relic on a Ⅵ–Ⅶ tile or level ≥6 + Blacksmith; the player picks among unlocked decks on every artifact/spell search). **Wisdom** expert −3 gold (basic −2; both Search 3/4 as printed). **Estates** 2/4 gold (printed 3/6). **Few Griffins 3 attack, Pack Griffins 1 defense, Pack Marksmen 3 HP.** BINH also adds Fortune to the spell deck and Eagle Eye/Scouting/Basic elemental Magics + extra artifacts to the pools. (Cerberi now follow the printed card in both modes — see Units.) |
 
+### Win conditions (`Win condition` lobby selector, `AdventureState.victoryMode`)
+
+| Mode | Status | Rules |
+| --- | --- | --- |
+| **Conquest** | ✅ | Flag an enemy faction Town — the default skirmish goal. |
+| **Grail Hunt** | ✅ | Win any one way: capture the Grail (defeat its Lvl-VII guard, dig it for 1 MP, carry it home to your town), defeat the Dragon Utopia, or beat every enemy hero in combat at least once (only 2 of 3 in a 4-player game). A Grail and a Dragon Utopia are forced onto the Center tiles. |
+| **Dragon Conqueror** | ✅ | Defeat the Dragon Utopia to capture it; the holder garrisons it and rivals must besiege it (Walls/Gate/Arrow Tower). Controlling it at the start of your turn wins. |
+
+Non-objective Grail/Dragon Utopia fields are normal Lvl-VII fights rewarding 10 gold + a Relic artifact (Search 2, choose 1).
+
 Rules-correctness fixes applied to **both** modes (rulebook/wiki): second negative morale token resets morale to neutral *and* discards the hand at turn end; activation-timed spells (Magic Arrow, Fireball…) cast during your own unit's activation; instant spells (Bloodlust, Stone Skin, Curse, Weakness, Bless, Precision…) play **into attack windows**, scale with Power played alongside them and count the 1-spell/round limit; every Spell card may instead be discarded for its printed "+1 Power"; Empower stacks across plays; ongoing cards last until the owner's **next** turn starts; Offense/Armorer draw their printed card; Magic Arrow starts at power 0.
 
 ## Map tiles (`src/data/map/tile-defs.ts`)
@@ -26,7 +36,7 @@ Rules-correctness fixes applied to **both** modes (rulebook/wiki): second negati
 | Far | F1–F18 | ✅ | Drafted 2 per player at setup (redrawing the last until one holds a Settlement, per the Mission Book rule); placed for 1 MP at the border touching two tiles, then rotated freely. |
 | Near | N1–N12 | ✅ | Face-down setup pool. |
 | Center | C1–C4 | ✅ | Face-down setup pool. |
-| Center | C5 | 🟡 | Inferno tile with Random Town — excluded from pools until Random Town rules exist. |
+| Center | C5 | 🟡 | Inferno tile with Random Town. Random Town rules are implemented; the tile stays out of the random pools (its reveal roll cannot be staged) and enters play through designed maps. |
 | All tiles | — | ✅ verified | Yellow borders verified against all 41 tile scans (color analysis + visual check): every border is either a full three-edge outer arc on the `outerImpassable` directions or a complete ring around a blocked field; **no internal border between two passable fields exists in the core box**. The engine renders every scanned segment, blocks movement across them, and supports `internalBorders` for future expansion tiles (engine-enforced + tested). |
 
 ## Map locations (`src/data/map/locations.ts`)
@@ -34,9 +44,9 @@ Rules-correctness fixes applied to **both** modes (rulebook/wiki): second negati
 | Location | Status | Notes |
 | --- | --- | --- |
 | Empty / Blocked Field | ✅ | Blocked fields cannot be entered. "Pass-through if forced" edge case not modeled. |
-| Town | ✅ | Flagging an enemy town wins the default skirmish. Siege combat (walls/gate/arrow tower, 8-gold defence) 🔴. |
+| Town | ✅ | Flagging an enemy town wins in Conquest mode (other modes have their own goals). Siege combat (walls/gate/arrow tower) fires when defending a Citadel town or a captured Dragon Utopia; 8-gold garrison defence when the hero is away. |
 | Mine | ✅ | +5 gold / +2 materials / +1 valuables income; first-flag instant gain; stealing supported. |
-| Settlement | ✅ | Income choice or bronze/silver reinforcement at half cost (free on first flag). Secondary-hero spawn point not modeled (no secondary heroes yet). |
+| Settlement | ✅ | Income choice or bronze/silver reinforcement at half cost (free on first flag). Also the fallback spawn point for a hired Secondary Hero when you hold no town. |
 | Resources / Treasure symbols | ✅ | Resource die (2/4 BM, 1/2 V, 3/6 G) and treasure die (2×XP, 2×artifact search, resource die, double resource die). |
 | Artifact symbol | ✅ | Search (2) the Artifact deck. |
 | Windmill / Water Wheel / Mystical Garden / Learning Stone | ✅ | |
@@ -52,7 +62,14 @@ Rules-correctness fixes applied to **both** modes (rulebook/wiki): second negati
 | Stables / Sanctuary / Trading Post | ✅ | Full choose-one menu with a market panel UI (trade table image from the rulebook back cover): repeatable resource trades, sell one card for 1 gold (Specialty/Statistic/starting Ability/Magic Arrow excluded, card removed from the game), sell a **Spell Scroll spell for 2 gold** each, or buy a war machine at the higher price. Trading locks out the other two options within a visit, as printed. |
 | Spell Scroll (Stronghold) | ✅ | Take a scroll and draw **2 Spells** into it — the visitor picks the Basic or Expert Magic deck per draw (the single Spell deck in Legacy). The scroll sits next to the hero (📜 badge, not in hand; contents hidden from opponents). Either spell may be **cast in combat at power 0** — it cannot be buffed by any Power source (Power cards, +1 discards, School of Magic, town cubes, Astrologers) and is never the expert side — through the normal cast/instant timing windows; using it removes it from the game. The spell still counts toward the one-spell-per-combat-round limit. Spells may also be **sold at the market for 2 gold** each. An emptied scroll is discarded. Tested in `spell-scroll.test.ts`. |
 | War Machine Factory | ✅ | Sells the five war machines at their lower price (shared one-copy supply; bought cards go to the buyer's hand and then live in their deck). |
-| Obelisk / Dragon Utopia / Grail / Star Axis | 🟡 | Flaggable/visitable shells; scenario-specific effects pending. |
+| Obelisk | 🟡 | Flaggable shell; scenario-specific effects pending. |
+| Dragon Utopia / Grail | ✅ | Win-condition aware (Grail Hunt / Dragon Conqueror); otherwise a Lvl-VII fight giving 10 gold + a Relic artifact. Dragon Utopia is guarded by the four dragons; Cyclops Stockpile adds 2 golden Cyclopes. |
+| Star Axis | ✅ | Multi-flaggable; first visit empowers one hand Statistic card (Inferno Empowered statistics added). |
+| Library of Enlightenment | ✅ | Pay 3 gold to swap a Statistic (hand or discard) for any other, up to twice per visit. |
+| Black Market | ✅ | Buy one artifact from the discard pile by rarity (5/7/10 gold). |
+| Elemental Conflux | ✅ | Recruit one Elementals card per Dwelling tier you control. |
+| Random Town | ✅ | Defended by an unused faction's Packs (1 bronze, 2 silver, 2 gold); capture grants +10 gold income. Stays out of the random pools (the reveal roll cannot be staged) — placed via designed maps. |
+| Tavern / Prison | ✅ | Grant a Secondary Hero. Tavern: pay 7 gold, then choose an enemy to discard 1 random card. Prison: free, or 3 gold if you already have one. |
 
 ## Factions and towns (`src/data/factions/core.ts`)
 
@@ -71,20 +88,20 @@ Citadel siege bonuses (3 Walls, 1 Gate, Arrow Tower) 🔴 — siege combat not i
 
 | Hero | Faction | Status | Notes |
 | --- | --- | --- | --- |
-| Catherine (Knight, might, A2 D2 P1 K1) | Castle | ✅ | Specialty I implemented (+1 A or +1 D, doubled for Crusaders), IV/VI 🟡. |
-| Rion (Cleric, magic, A1 D0 P2 K2) | Castle | ✅ | Specialty I heals 1 **and draws 1** (both modeled), IV/VI 🟡. |
+| Catherine (Knight, might, A2 D2 P1 K1) | Castle | ✅ | **Crusaders specialist, I/IV/VI all implemented**: I = +1 A or +1 D, IV = +1 HP for the combat, VI = +1 initiative for the combat — each doubled when it lands on a Crusaders unit. |
+| Rion (Cleric, magic, A1 D0 P2 K2) | Castle | ✅ | **Battlefield Medic, I/IV/VI all implemented**: I removes 1 damage + draw 1; IV removes 1 damage **or a Paralysis token** + draw 1; VI removes up to 2 damage or paralysis, then draws 2 and discards 1 (the chosen discard is the option's printed cost). |
 | Sandro (Necromancer, magic, A1 D0 P2 K2) | Necropolis | ✅ | Cloak of the Undead King specialties 🟡 (unit-stat replacement not modeled). |
-| Tamika (Death Knight, might, A1 D2 P2 K1) | Necropolis | ✅ | Specialty I implemented; IV/VI 🟡. |
+| Tamika (Death Knight, might, A1 D2 P2 K1) | Necropolis | ✅ | **Dread Knights specialist, I/IV/VI all implemented** (I = +1 A/D, IV = +1 HP, VI = +1 initiative; each doubled for Dread Knights). |
 | Moandor (Death Knight, might, A1 D2 P2 K1) | Necropolis | ✅ | The Liches specialist (starting ability Necromancy). **I/IV/VI all implemented**: I = +1 attack OR +1 defence (doubled for Liches); IV = +1 HP for the combat (doubled for Liches); **VI = choose one — your Liches deal elemental damage for the combat, OR +2 attack**. |
 | Alamar (Warlock, magic, A0 D0 P3 K2) | Dungeon | ✅ | Resurrection **I/IV/VI all implemented**. When a killing **normal attack** would reduce one of your units to 0 HP (attacks only — never spells or specialty damage), the engine opens a save window and **asks the unit's controller** whether to cancel it. The grade-matching option costs Power paid by discarding that many Power-source cards (a Power statistic or any Spell): **I** 1/2/4, **IV** 0/1/3, **VI** 0/0/2 for bronze/silver/gold (0 = free). A cancelled attack draws **no Retaliation**. The save is only offered when the controller can afford it; passing lets the unit die. |
-| Mutare (Overlord, might, A2 D2 P1 K1) | Dungeon | ✅ | Specialty I implemented; the +1 now doubles for **every Dragons unit** (Black/Gold/Ghost/Azure/… Dragons, not Dragon Flies), IV/VI 🟡. |
-| Gelu (Ranger, might, A1 D3 P1 K1) | Rampart | ✅ | Specialty I implemented (doubles for Sharpshooters); IV/VI 🟡. Starting ability Archery. |
-| Gem (Druid, magic, A0 D2 P1 K2) | Rampart | ✅ | First Aid starting ability heals 1. Specialty I implemented: take the First Aid Tent from the supply for free, or draw 1 if it is gone. IV/VI 🟡. |
-| Xyron (Heretic, magic, A1 D1 P2 K1) | Inferno | ✅ | Inferno I implemented: discard 2 cards, then 1 damage to a chosen unit's space and every adjacent unit (friend or foe). IV/VI 🟡. Starting ability Wisdom. |
-| Rashka (Demoniac, might, A2 D2 P1 K1) | Inferno | ✅ | Specialty I implemented (doubles for Efreet); IV/VI 🟡. Starting ability Scholar 🟡. |
-| Zydar (Heretic, magic, A1 D1 P2 K1) | Inferno | ✅ | Spell-economy hero (wiki). Specialty I implemented — a self-spell-cast reaction: draw 1 card OR +1 Power. IV (next spell ignores the limit / +2 Power) and VI (ongoing draw-after-cast / +2 Power) 🟡. Starting ability Sorcery. Portrait/board-scan art slots pending. |
+| Mutare (Overlord, might, A2 D2 P1 K1) | Dungeon | ✅ | **Dragons specialist, I/IV/VI all implemented** (+1 A/D, +1 HP, +1 initiative); the bonus doubles for **every Dragons unit** (Black/Gold/Ghost/Azure/… Dragons, not Dragon Flies). |
+| Gelu (Ranger, might, A1 D3 P1 K1) | Rampart | ✅ | **Sharpshooters specialist, I/IV/VI all implemented.** I (+1 A/D) and VI (+2 initiative) each double for **both the Elves and the Sharpshooters** units. IV is a map play: discard a Pack of Elves to search the silver Neutral deck for the unique Sharpshooters card and add it to your unit deck (or just draw a card). Starting ability Archery. |
+| Gem (Druid, magic, A0 D2 P1 K2) | Rampart | ✅ | First Aid starting ability heals 1. **First Aid specialty I/IV/VI all implemented**: I takes the First Aid Tent from the supply for free (or draws 1 if gone); IV removes 2 damage from one of your units; VI doubles your in-play First Aid Tent's heal for the rest of the Combat. |
+| Xyron (Heretic, magic, A1 D1 P2 K1) | Inferno | ✅ | **Inferno specialty I/IV/VI all implemented**: pick a space — that unit and every orthogonally adjacent unit (friend or foe) takes 1 damage — for a 2-card discard (I), a 1-card discard (IV), or free (VI). Starting ability Wisdom. |
+| Rashka (Demoniac, might, A2 D2 P1 K1) | Inferno | ✅ | **Efreet specialist, I/IV/VI all implemented**: I = +1 A/D (doubled for Efreet); IV/VI grant a Fire Shield for the Combat — a melee (ground/flying) attacker takes 1 damage after striking the chosen unit, doubled to 2 when the shield is on an Efreet (VI). Starting ability Scholar 🟡. |
+| Zydar (Heretic, magic, A1 D1 P2 K1) | Inferno | ✅ | Spell-economy hero (wiki). **Spell Mastery I/IV/VI all implemented**: I = after a cast, draw 1 OR +1 Power; IV = your next Spell this round ignores the one-per-round limit (+1 to the limit) OR +2 Power; VI = ongoing "draw 1 after each Spell you cast" until the round ends OR +2 Power. Starting ability Sorcery. Portrait/board-scan art slots pending. |
 
-Hero board level track (verified against the wiki board scan): 2 XP per level; hand limit 4→5(III)→6(V)→7(VII); expert effects +1 at II/IV/VI; ability Search (2) at II/III/V/VII; specialties at I/IV/VI. Secondary heroes 🔴 (hire via Population/Tavern, 2 MP, instant-defeat option).
+Hero board level track (verified against the wiki board scan): 2 XP per level; hand limit 4→5(III)→6(V)→7(VII); expert effects +1 at II/IV/VI; ability Search (2) at II/III/V/VII; specialties at I/IV/VI. Secondary Heroes ✅ — gained at the Tavern (7 gold), the Prison, or hired at your town for 10 gold (wearing another town hero's portrait). One per player; base 2 MP (still buffed by movement events/artifacts/abilities like any hero); play no cards in Combat; never gain experience (fights, map locations, level-ups).
 
 ## Units (`src/data/factions/units.ts`)
 
@@ -133,7 +150,7 @@ Hero board level track (verified against the wiki board scan): 2 XP per level; h
 | Artifacts known but not implemented | 🟡 | Charm of Mana, Greater Gnoll's Flail, Shield of the Dwarven Lords, Shackles of War, Mystic Orb of Mana, Orb of Vulnerability (out of the decks). |
 | War machines: First Aid Tent, Ammo Cart, Ballista, Catapult, Cannon | ✅ | Permanent cards (one in play per player; playing another discards the first). FAT heals 1 once per combat round, **or expert: spend 1 expert use to heal 3 times that round instead** (basic and expert are mutually exclusive per round); Ammo Cart waives the ranged penalties and gives ranged units +2 initiative; Ballista auto-hits the slowest enemy at every round start (ties pause for the owner), **or expert: when an expert use is free the owner is asked at round start to spend it and fire 3 times instead of once**; Catapult may pay 1 material for 1 damage to two adjacent targets (walls/gate pending sieges); Cannon may spend 1 expert use for 2 damage. The expert abilities require the war-machine card in play and a free expert use. Bought at the Factory (3/5/7/8/10 gold) or Trading Post (6/8/10/12/14). Catapult/Cannon card scans missing on the wiki — text fallback renders. |
 | Schools of Magic: Fire/Water/Air/Earth Magic (Tower) | ✅ | Permanent cards: +1 power for the school's spells while in play (Magic Arrow counts for every school); expert discards the card — from hand or from play — for +3 power on one matching cast (replaces the +1, costs an expert use). Distinct from the BINH "Basic X Magic" fetch permanents above. |
-| Hero specialties (18) | see Heroes | Every level-I specialty is now implemented (might heroes, Rion's heal+draw, Gem's First Aid Tent grab, Xyron's Inferno blast, Alamar's Resurrection cancel) so no selectable hero starts with a dead card. IV/VI mostly 🟡. |
+| Hero specialties (18) | see Heroes | **Every hero's I/IV/VI specialties are now implemented** — no `notImplementedSpecialty` placeholders remain. Might heroes share +1 A/D (I), +1 HP (IV) and +1 initiative (VI) doubled for their signature unit; the rest carry their printed effects (Rion's heal/cleanse + draw, Gem's First Aid Tent grab/heal/double, Xyron's area blast, Rashka's Fire Shield, Gelu's Elves→Sharpshooters trade, Zydar's spell-economy, Sandro's Cloak, Moandor's Liches, Alamar's Resurrection). |
 | Astrologers Proclaim deck (19 core cards) | ✅ | Drawn and resolved every even round; "until the next Astrologers round" effects (movement, hand limit, spell hooks, die rerolls, neutral-draw swaps) enforced by the engine; income modifiers apply at the next Resource round. Texts from the wiki (`src/data/cards/astrologers.ts`). |
 | Card backs | 🟡 | Placeholder "H3" back; owner will supply final back-side images. |
 | Building tiles art | 🟡 | `assets.image`/`assets.icon` slots wired through data and town panel; awaiting scans. |

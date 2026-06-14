@@ -139,6 +139,48 @@ export type LocationInteraction =
     }
   | {
       /**
+       * Library of Enlightenment: pay 3 gold to remove a Statistic card from
+       * hand or discard and replace it with any Statistic card, up to twice.
+       */
+      type: "LIBRARY_OF_ENLIGHTENMENT";
+    }
+  | {
+      /**
+       * Star Axis: remove a Statistic card from hand and replace it with the
+       * Empowered version of the same type.
+       */
+      type: "STAR_AXIS";
+    }
+  | {
+      /**
+       * Black Market: browse the top of the Artifact discard pile(s) and buy
+       * one — 5 gold Minor, 7 gold Major, 10 gold Relic.
+       */
+      type: "BLACK_MARKET";
+    }
+  | {
+      /**
+       * Elemental Conflux: for every Dwelling (unlocked recruit tier) you have,
+       * offer one Elementals card from that Neutral deck to recruit.
+       */
+      type: "ELEMENTAL_CONFLUX";
+    }
+  | {
+      /**
+       * Tavern: pay 7 gold to gain a Secondary Hero on this field, then choose
+       * one enemy to discard 1 random card from their hand.
+       */
+      type: "TAVERN";
+    }
+  | {
+      /**
+       * Prison: gain a Secondary Hero on this field, or 3 gold if you already
+       * have one.
+       */
+      type: "PRISON";
+    }
+  | {
+      /**
        * Spell Scroll: take a scroll and draw 2 Spells into it (the visitor
        * picks the Basic or Expert Magic deck for each). The scroll's spells
        * are usable in combat at power 0 or sellable at the market.

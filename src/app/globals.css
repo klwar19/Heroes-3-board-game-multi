@@ -144,6 +144,28 @@ button {
 .errorBanner {
   border-color: var(--red);
   background: rgb(77 37 35 / 95%);
+  flex-wrap: wrap;
+}
+
+/* Room-server version skew: louder than a rules error and self-explaining
+   (see src/engine/version.ts). Amber so it reads as "fix your deploy", not a
+   per-action rules rejection. */
+.serverStaleWarning {
+  flex: 1 1 100%;
+  font-weight: 600;
+  color: #ffd9a8;
+}
+
+.serverStaleWarning code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 35%);
+  font-size: 0.92em;
+}
+
+.serverStaleWarning small {
+  opacity: 0.7;
+  font-weight: 400;
 }
 
 .targetBanner {

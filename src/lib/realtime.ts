@@ -20,6 +20,12 @@ export type GameRoomSnapshot = {
   state: GameState;
   /** Server store generation — changes when the host process restarted. */
   bootId?: string;
+  /**
+   * The room server's ENGINE_SIGNATURE (see src/engine/version.ts), stamped at
+   * send time. The client compares it against its own to detect a stale
+   * room-server deploy. Absent from very old servers that predate this field.
+   */
+  serverSignature?: string;
 };
 
 export type RoomResetOptions = {
