@@ -190,6 +190,48 @@ function CostPlayBar({
   );
 }
 
+/**
+ * Morale caps at +1. Gaining a positive token while already at the cap (e.g.
+ * playing Leadership at full morale) does not stack — the extra token must be
+ * spent right away. This modal pops up to spend it: draw a card, or discard and
+ * draw that many (rerolling a die is not an option for the overflow token).
+ */
+function MoraleOverflowPrompt({
+  count,
+  canRedraw,
+  onDraw,
+  onRedraw
+}: {
+  count: number;
+  canRedraw: boolean;
+  onDraw: () => void;
+  onRedraw: () => void;
+}) {
+  if (count <= 0) {
+    return null;
+  }
+  return (
+    <div className="moraleOverflowBackdrop" role="dialog" aria-modal="true" aria-label="Spend extra morale">
+      <div className="moraleOverflowPopup">
+        <strong>Morale is already at its maximum (+1)</strong>
+        <p>
+          You gained {count} more positive morale token{count === 1 ? "" : "s"}. It cannot be stored — spend it now.
+        </p>
+        <div className="handButtons">
+          <button className="commandButton primary" onClick={onDraw} type="button">
+            Draw a card
+          </button>
+          {canRedraw ? (
+            <button className="commandButton" onClick={onRedraw} type="button">
+              Discard &amp; draw
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function getInitialRoomId(): string {
   if (typeof window === "undefined") {
     return "dev-room";
@@ -1746,6 +1788,7 @@ export default function Home() {
     const canMulligan =
       Boolean(viewer?.canMulligan) && state.activePlayerId === viewerPlayerId && !forcedDiscard && handCards.length > 0;
     const hasMorale = (viewer?.morale ?? 0) > 0;
+    const moraleOverflow = viewer?.moraleOverflow ?? 0;
     const overLimit = viewer ? handCards.length - handDiscards.length - handLimit : 0;
     const selecting = handMode !== null || forcedDiscard;
     const mapReadOnly = combatVisible;
@@ -2141,6 +2184,14 @@ export default function Home() {
           <PromptTray legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
           <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
           <LogDrawer state={state} />
+          {isSeated && handMode === null && !forcedDiscard ? (
+            <MoraleOverflowPrompt
+              canRedraw={handCards.length > 0}
+              count={moraleOverflow}
+              onDraw={() => submitAction({ type: "SPEND_MORALE", playerId: viewerPlayerId, benefit: "draw" })}
+              onRedraw={() => setHandMode("morale-redraw")}
+            />
+          ) : null}
           {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
           {drawCue ? <DrawOverlay cue={drawCue} key={drawCue.id} onDone={() => setDrawCue(null)} /> : null}
           {mapNotice.current && !mapDice.current ? (
@@ -2181,6 +2232,20 @@ export default function Home() {
       </div>
 
       {errorBanner}
+
+      {isSeated && handMode === null ? (
+        <MoraleOverflowPrompt
+          canRedraw={(playerView.players[viewerPlayerId]?.hand?.length ?? 0) > 0}
+          count={state.players[viewerPlayerId]?.moraleOverflow ?? 0}
+          onDraw={() => submitAction({ type: "SPEND_MORALE", playerId: viewerPlayerId, benefit: "draw" })}
+          onRedraw={() => {
+            // The selective discard-and-draw picker lives on the map view; flip
+            // to it so the player can pick which cards to cycle.
+            setCombatTab("map");
+            setHandMode("morale-redraw");
+          }}
+        />
+      ) : null}
 
       {adventureMode && state.combat ? (
         <div className="combatContextBanner">

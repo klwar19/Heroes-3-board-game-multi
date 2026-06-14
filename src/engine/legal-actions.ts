@@ -676,9 +676,12 @@ function getPlayableModesForCard(state: GameState, playerId: PlayerId, card: Car
     (card.effect.type === "ADD_COMBAT_STAT" ||
       card.effect.type === "ADD_SPELL_POWER" ||
       card.effect.type === "CREATE_ACTIVE_EFFECT" ||
-      card.effect.type === "CREATE_ATTACK_DIE_REROLL") &&
+      card.effect.type === "CREATE_ATTACK_DIE_REROLL" ||
+      // Leadership: the expert side (draw 2) is usable mid-battle for an expert use.
+      card.effect.type === "GAIN_MORALE") &&
     ((card.effect.type === "CREATE_ACTIVE_EFFECT" && card.effect.expertEffect) ||
       (card.effect.type === "CREATE_ATTACK_DIE_REROLL" && card.effect.expertRerolls && card.effect.expertRerolls > 0) ||
+      (card.effect.type === "GAIN_MORALE" && card.effect.expertDrawCards !== undefined) ||
       ("expertAmount" in card.effect && card.effect.expertAmount !== undefined)) &&
     state.players[playerId].combatStats.expertUsesSpentThisRound < state.players[playerId].limits.expertUses
   ) {
@@ -3286,7 +3289,9 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
  */
 function addMoraleActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
-  if (!player || (player.morale ?? 0) <= 0) {
+  // The stored +1 token, or an overflow token gained past the cap that must be
+  // spent now — both resolve through the same draw / discard-redraw actions.
+  if (!player || ((player.morale ?? 0) <= 0 && (player.moraleOverflow ?? 0) <= 0)) {
     return;
   }
 
