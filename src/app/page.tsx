@@ -603,8 +603,11 @@ export default function Home() {
       }
 
       const seen = seenRollIdsRef.current;
-      const fresh = rolls.filter((event) => !seen.has(event.id));
-      for (const event of fresh) {
+      // Attacks that never rolled the Attack die (Bless, Elemental damage) carry
+      // no rolling-dice cinematic — the damage shows through the normal hit
+      // floater instead. Mark them seen so they are skipped, never queued.
+      const fresh = rolls.filter((event) => !seen.has(event.id) && !event.noDie);
+      for (const event of rolls) {
         seen.add(event.id);
       }
 
@@ -2059,24 +2062,29 @@ export default function Home() {
         onDismiss={(id) => setFeedItems((current) => current.filter((item) => item.id !== id))}
       />
       <PromptTray legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
-      <ReactionTray
-        key={`${state.reactionWindow?.id ?? "none"}:${state.reactionWindow?.priorityPlayerId ?? ""}`}
-        legalActions={legalActions}
-        onAction={submitAction}
-        onViewHand={
-          isSeated
-            ? () =>
-                setPile({
-                  title: "Your hand",
-                  cardIds: playerView.players[viewerPlayerId]?.hand ?? [],
-                  kind: "cards"
-                })
-            : undefined
-        }
-        state={state}
-        view={playerView}
-        viewerPlayerId={viewerPlayerId}
-      />
+      {/* Hold the instant window back until the attack-die animation has fully
+          played out, so a post-roll reaction prompt (e.g. a lethal-save window
+          in a neutral fight) never pops over the rolling dice. */}
+      {!dice.current ? (
+        <ReactionTray
+          key={`${state.reactionWindow?.id ?? "none"}:${state.reactionWindow?.priorityPlayerId ?? ""}`}
+          legalActions={legalActions}
+          onAction={submitAction}
+          onViewHand={
+            isSeated
+              ? () =>
+                  setPile({
+                    title: "Your hand",
+                    cardIds: playerView.players[viewerPlayerId]?.hand ?? [],
+                    kind: "cards"
+                  })
+              : undefined
+          }
+          state={state}
+          view={playerView}
+          viewerPlayerId={viewerPlayerId}
+        />
+      ) : null}
       <CombatResultModal
         key={`result-${state.combat?.id ?? "none"}`}
         legalActions={legalActions}
@@ -2085,12 +2093,19 @@ export default function Home() {
         state={state}
         viewerPlayerId={viewerPlayerId}
       />
-      <NeutralStepOverlay
-        legalActions={legalActions}
-        onAction={submitAction}
-        state={state}
-        viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
-      />
+      {/* Keep the enemy-turn pause (and its auto-resume countdown) off screen
+          while the attack dice are still rolling, so a neutral guard's roll
+          finishes before the next guard's "react?" notice and 3s countdown
+          begin. The component mounts fresh once the dice clear, starting its
+          timer only then. */}
+      {!dice.current ? (
+        <NeutralStepOverlay
+          legalActions={legalActions}
+          onAction={submitAction}
+          state={state}
+          viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
+        />
+      ) : null}
       <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
       <RerollModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
       {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
