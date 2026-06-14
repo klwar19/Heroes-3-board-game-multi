@@ -43,8 +43,12 @@ export function CardFrame({
   const card = cardId ? cardLibrary[cardId] : undefined;
   const src = card?.assets?.cardImage;
   const alt = card?.assets?.imageAlt ?? card?.name ?? cardId ?? "card";
+  // Some cards have no scan yet (e.g. Moandor's specialties are not on the fan
+  // wiki); show the named text frame rather than a broken image. Keyed by src
+  // so a different card reusing this frame still renders its art.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
-  if (!src) {
+  if (!src || failedSrc === src) {
     return (
       <div className={`${className} cardFaceFallback`} title={title ?? alt}>
         {card?.name ?? cardId ?? "?"}
@@ -52,7 +56,17 @@ export function CardFrame({
     );
   }
 
-  return <img alt={alt} className={className} loading="eager" referrerPolicy="no-referrer" src={assetUrl(src)} title={title ?? alt} />;
+  return (
+    <img
+      alt={alt}
+      className={className}
+      loading="eager"
+      onError={() => setFailedSrc(src)}
+      referrerPolicy="no-referrer"
+      src={assetUrl(src)}
+      title={title ?? alt}
+    />
+  );
 }
 
 /**

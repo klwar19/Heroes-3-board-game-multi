@@ -464,7 +464,7 @@ describe("Xyron's Inferno IV/VI", () => {
 // Zydar IV (next spell ignores the limit) and VI (ongoing draw-after-cast).
 // ---------------------------------------------------------------------------
 
-describe("Zydar's Spell Mastery IV/VI", () => {
+describe("Zydar's Sorcery IV/VI", () => {
   it("IV raises the spell limit by 1 for the round (the next spell is 'free')", () => {
     const state = createInitialGameState("zydar-iv");
     state.players.p1.hand = ["specialty.zydar.4"];
