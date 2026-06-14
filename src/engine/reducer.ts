@@ -943,7 +943,8 @@ function getAttackDamagePreview(
   defenseBonus: number,
   dieMultiplier = 1,
   baseAttackOverride?: number,
-  damageReduction = 0
+  damageReduction = 0,
+  ignoreDefense = false
 ): { attackValue: number; defenseValue: number; damage: number; dieAttackBonus: number; dieDefenseBonus: number } {
   // Attack-die-face conditioned modifiers, resolved here so the actual hit and
   // the lethal-save preview always agree: Dread Knights' "Death Blow" adds to
@@ -953,7 +954,9 @@ function getAttackDamagePreview(
   const dieDefenseBonus = getDefenseBonusOnAttackDie(defender, roll);
   const baseAttack = baseAttackOverride ?? attacker.attack;
   const attackValue = Math.max(0, baseAttack + attackBonus + dieAttackBonus + roll * dieMultiplier);
-  const defenseValue = defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonus + dieDefenseBonus;
+  // Elemental damage ignores Defense outright; otherwise sum printed Defense,
+  // the Defense token, played Defense buffs and any die-face Defense bonus.
+  const defenseValue = ignoreDefense ? 0 : defender.defense + (defender.defenseToken ? 1 : 0) + defenseBonus + dieDefenseBonus;
   // Siege wall cover: "reduce the attack's damage by 1" comes off the damage,
   // not the defense.
   const damage = Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
@@ -979,7 +982,9 @@ function applyAttackDamageFromCandidate(
   dieMultiplier = 1,
   baseAttackOverride?: number,
   damageReduction = 0,
-  lethalCancel?: { grade: UnitGrade }
+  lethalCancel?: { grade: UnitGrade },
+  ignoreDefense = false,
+  noDie = false
 ): { damage: number; roll: number; cancelled: boolean } {
   if (!state.combat) {
     return { damage: 0, roll: 0, cancelled: false };
@@ -993,7 +998,8 @@ function applyAttackDamageFromCandidate(
     defenseBonus,
     dieMultiplier,
     baseAttackOverride,
-    damageReduction
+    damageReduction,
+    ignoreDefense
   );
   // Reported bonuses fold in the die-face-conditioned deltas so the event's
   // numbers reconcile with the resolved attack/defense values.
@@ -1016,6 +1022,7 @@ function applyAttackDamageFromCandidate(
       rolls: candidate.rolls,
       roll: candidate.roll,
       ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
+      ...(noDie ? { noDie: true } : {}),
       rollMode,
       attackBonus: reportedAttackBonus,
       defenseBonus: reportedDefenseBonus,
@@ -1044,6 +1051,7 @@ function applyAttackDamageFromCandidate(
     rolls: candidate.rolls,
     roll: candidate.roll,
     ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
+    ...(noDie ? { noDie: true } : {}),
     rollMode,
     attackBonus: reportedAttackBonus,
     defenseBonus: reportedDefenseBonus,
@@ -1156,8 +1164,14 @@ function getAttackStackDetails(
       attackBonus: number;
       defenseBonus: number;
       dieMultiplier: number;
-      /** Bless: the Attack die is skipped and counts as 0. */
+      /** Bless / Elemental damage: the Attack die is skipped and counts as 0. */
       ignoreAttackDie: boolean;
+      /**
+       * Elemental damage: the defender's Defense is ignored entirely (printed
+       * Defense, Defense token, and any Defense buffs), so the hit lands for the
+       * attacker's full Attack value.
+       */
+      ignoreDefense: boolean;
       /** Siege wall cover: damage knocked off a ranged hit (0 or 1). */
       damageReduction: number;
       /** Behemoths: the announced defense reduction applied to this attack. */
@@ -1282,7 +1296,10 @@ function getAttackStackDetails(
       retaliationAttackPenalty,
     defenseBonus: defenseBonusBeforeAbility - defenseReductionAmount + retaliationDefenseBonus,
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
-    ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie),
+    // Elemental damage never rolls the Attack die and ignores Defense entirely:
+    // the hit always lands for the (un-buffable) Attack value.
+    ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie) || dealsElemental,
+    ignoreDefense: dealsElemental,
     damageReduction: siegeRangedDamageReduction(combat, attacker, defender, attackKind),
     defenseReductionAbility,
     abilityAttack
@@ -1676,7 +1693,8 @@ function finishResolvedAttack(
       details.defenseBonus,
       details.dieMultiplier,
       details.abilityAttack?.baseAttack,
-      details.damageReduction
+      details.damageReduction,
+      details.ignoreDefense
     );
     if (preview.damage > 0 && details.defender.damage + preview.damage >= details.defender.maxHealth) {
       stackItem.modifiers.rolledCandidate = candidate;
@@ -1718,7 +1736,9 @@ function finishResolvedAttack(
     details.dieMultiplier,
     details.abilityAttack?.baseAttack,
     details.damageReduction,
-    lethalCancel
+    lethalCancel,
+    details.ignoreDefense,
+    details.ignoreAttackDie
   );
 
   // Alamar's Resurrection cancelled the whole attack: the attacker still spent
@@ -4467,6 +4487,8 @@ function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, ca
     return;
   }
 
+  // A fresh play clears everyone's earlier pass so opponents get a new chance
+  // to respond once this player is finished.
   state.reactionWindow.passedPlayerIds = [];
   refreshReactionWindowLegalReactions(state, cards);
 
@@ -4476,11 +4498,18 @@ function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, ca
     return;
   }
 
+  // The player who just acted KEEPS priority so they can commit several
+  // instants in a row before opponents respond — e.g. stacking Power on their
+  // own spell cast. This matches the board game, where the caster finishes
+  // empowering and only then is Resistance / a counter decided against the
+  // FINAL power. Priority moves on only when they pass (passReaction) or run
+  // out of legal plays (then refreshReactionWindowLegalReactions hands it to
+  // the next allowed player). Previously priority advanced after a single
+  // play, stranding a caster who wanted to add a second Power card.
   const allowedPlayerIds = state.reactionWindow.allowedPlayerIds;
-  const currentIndex = allowedPlayerIds.indexOf(playerId);
-  const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % allowedPlayerIds.length;
-  state.reactionWindow.priorityPlayerId = allowedPlayerIds[nextIndex];
-  state.priorityPlayerId = allowedPlayerIds[nextIndex];
+  const keepPriority = allowedPlayerIds.includes(playerId) ? playerId : allowedPlayerIds[0];
+  state.reactionWindow.priorityPlayerId = keepPriority;
+  state.priorityPlayerId = keepPriority;
 }
 
 /**

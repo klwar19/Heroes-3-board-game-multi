@@ -1234,6 +1234,11 @@ export type GameEvent =
       roll: number;
       /** Centaur's Axe: the die outcome is multiplied before it is applied. */
       dieMultiplier?: number;
+      /**
+       * The Attack die was not rolled (Bless ignores it; Elemental damage
+       * never uses it). The client skips the rolling-dice cinematic for these.
+       */
+      noDie?: boolean;
       rollMode: AttackRollMode;
       attackBonus: number;
       defenseBonus: number;

@@ -321,9 +321,14 @@ describe("rules engine prototype", () => {
       mode: "expert"
     });
 
+    // The caster keeps priority while they still hold Power cards, so they can
+    // finish empowering before the defender weighs Resistance. Pass to hand the
+    // window over at the final power.
+    const handed = passPriority(powered);
+
     // At power 3 the basic Resistance play is gone, but the expert play (end
     // any spell) keeps the defender in the window until they pass.
-    const p2Reactions = getLegalActions(powered, "p2");
+    const p2Reactions = getLegalActions(handed, "p2");
     expect(
       p2Reactions.some(
         (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.resistance" && legal.action.mode === "basic"
@@ -335,7 +340,7 @@ describe("rules engine prototype", () => {
       )
     ).toBe(true);
 
-    const result = passAllReactions(powered);
+    const result = passAllReactions(handed);
 
     expect(result.reactionWindow).toBeNull();
     expect(result.combat?.units.unit_p2_vampires.damage).toBe(3);
@@ -1839,10 +1844,14 @@ describe("rules engine prototype", () => {
     expect(attackerBatch.players.p1.discard).toEqual(["stat.attack", "stat.attack", "ability.offense"]);
     // No dice rolled yet: the defender still gets a chance to respond.
     expect(findEvent(attackerBatch, "ATTACK_ROLLED")).toBeUndefined();
-    expect(attackerBatch.reactionWindow?.priorityPlayerId).toBe("p2");
+    // The attacker keeps priority to commit more instants (they still hold the
+    // Centaur's Axe); passing hands the window to the defender.
+    expect(attackerBatch.reactionWindow?.priorityPlayerId).toBe("p1");
+    const attackerDone = passPriority(attackerBatch);
+    expect(attackerDone.reactionWindow?.priorityPlayerId).toBe("p2");
 
     // Defender answers with both defense instants at once.
-    const defenderBatch = applyOk(attackerBatch, {
+    const defenderBatch = applyOk(attackerDone, {
       type: "PLAY_REACTIONS",
       playerId: "p2",
       plays: [
@@ -1927,9 +1936,12 @@ describe("rules engine prototype", () => {
       cardId: "stat.power",
       mode: "expert"
     });
+    // The caster keeps priority while empowering; pass to let the defender
+    // answer the final power-3 spell.
+    const handed = passPriority(powered);
 
     // Spell is now power 3. Basic Resistance (cap 1) must be rejected.
-    const basicAttempt = applyAction(powered, {
+    const basicAttempt = applyAction(handed, {
       type: "PLAY_REACTION",
       playerId: "p2",
       cardId: "ability.resistance",
@@ -1938,7 +1950,7 @@ describe("rules engine prototype", () => {
     expect(basicAttempt.errors).not.toEqual([]);
 
     // Expert Resistance always ends the spell.
-    const result = applyOk(powered, {
+    const result = applyOk(handed, {
       type: "PLAY_REACTION",
       playerId: "p2",
       cardId: "ability.resistance",
