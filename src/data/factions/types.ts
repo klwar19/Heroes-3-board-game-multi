@@ -81,6 +81,8 @@ export type CityHallOption = {
   reinforceBronzeFree?: boolean;
   /** Stronghold City Hall / Tower City Hall: draw cards from the M&M deck. */
   drawCards?: number;
+  /** Fortress City Hall: open a Trading Post to exchange resources. */
+  tradingPost?: boolean;
 };
 
 export type TownBuildingEffect =

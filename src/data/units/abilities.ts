@@ -422,6 +422,15 @@ export type UnitAbilityEffectDefinition =
        * once per combat per Archangel stack.
        */
       type: "CANCEL_LETHAL_UNIT_ABILITY";
+    }
+  | {
+      /**
+       * Dragon Flies: on attack, remove every ongoing effect the target's own
+       * controller placed on the target (attack/defense/initiative buffs,
+       * Anti-Magic, etc.) — a dispel of the enemy's own enhancements. Debuffs
+       * the attacker placed on the target are left in place.
+       */
+      type: "DISPEL_ENEMY_EFFECTS_ON_TARGET";
     };
 
 /**
@@ -730,6 +739,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Dazzling Flight",
     text: "Retaliation Attacks against this unit suffer -1 Attack.",
     effect: { type: "RETALIATION_AGAINST_ATTACK_PENALTY", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "dragon-fly-dispel": {
+    id: "dragon-fly-dispel",
+    name: "Dispel",
+    text: "On attack, remove every ongoing effect the target's own controller placed on it (attack/defense/initiative buffs, Anti-Magic, etc.).",
+    effect: { type: "DISPEL_ENEMY_EFFECTS_ON_TARGET" },
     implementationStatus: "implemented"
   },
   "dread-knight-retaliation-disadvantage": {

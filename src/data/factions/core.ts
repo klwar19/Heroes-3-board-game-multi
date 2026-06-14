@@ -567,9 +567,14 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     name: "City Hall",
     faction: "fortress",
     cost: { gold: 10, buildingMaterials: 4 },
+    // "At the beginning of each Resource round, choose: 5 gold — OR — exchange
+    // resources like in the Trading Post."
     effect: {
       type: "RESOURCE_ROUND_CHOICE",
-      options: [{ label: "Gain 5 gold", gold: 5 }]
+      options: [
+        { label: "Gain 5 gold", gold: 5 },
+        { label: "Exchange resources (Trading Post)", tradingPost: true }
+      ]
     },
     implementationStatus: "implemented",
     source: townSource("fortress")

@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import { applyAction, createInitialGameState } from "./index";
 import { createAdventureGameState } from "./adventure-setup";
 import { startAdventureRound } from "./adventure";
+import { pumpAdventureQueues } from "./adventure-reducer";
+import { makeActiveEffect } from "./active-effects";
 import { getLegalActions } from "./legal-actions";
 import { coreFactionDefinitions, coreHeroDefinitions, startingTileByFaction } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -212,5 +214,116 @@ describe("Blood Obelisk resource-round Search", () => {
     );
     expect(search, "Blood Obelisk should queue a discard-pick").toBeTruthy();
     expect(search?.kind === "discard-pick" && search.fromTop).toBe(4);
+  });
+});
+
+describe("Dragon Flies dispel", () => {
+  it("strips the enemy's own ongoing buffs from the target but keeps the attacker's debuff", () => {
+    let state = rangedAttackState();
+    state.combat!.units.unit_p1_marksmen.abilities = ["dragon-fly-dispel"];
+
+    state.activeEffects.push(
+      // p2 buffed its own unit (a unit-targeted Stone Skin)…
+      makeActiveEffect(
+        state,
+        {
+          name: "Stone Skin",
+          scope: "unit",
+          duration: { type: "combat" },
+          polarity: "positive",
+          removable: true,
+          modifiers: [{ type: "DEFENSE_BONUS", amount: 2 }]
+        },
+        { type: "card", cardId: "spell.stone_skin", controllerId: "p2" },
+        "p2",
+        { type: "unit", unitId: "unit_p2_skeletons" }
+      ),
+      // …and runs a player-scope Archery aura.
+      makeActiveEffect(
+        state,
+        {
+          name: "Archery",
+          scope: "player",
+          duration: { type: "combat" },
+          polarity: "positive",
+          removable: true,
+          modifiers: [{ type: "RANGED_ATTACK_BONUS", amount: 1, nonAdjacentOnly: true }]
+        },
+        { type: "card", cardId: "ability.archery", controllerId: "p2" },
+        "p2"
+      ),
+      // p1's own debuff on the enemy unit must survive the dispel.
+      makeActiveEffect(
+        state,
+        {
+          name: "Curse",
+          scope: "unit",
+          duration: { type: "combat" },
+          polarity: "negative",
+          removable: true,
+          modifiers: [{ type: "DEFENSE_BONUS", amount: -1 }]
+        },
+        { type: "card", cardId: "spell.curse", controllerId: "p1" },
+        "p1",
+        { type: "unit", unitId: "unit_p2_skeletons" }
+      )
+    );
+
+    state = applyOk(state, ATTACK);
+    state = settle(state);
+
+    const names = state.activeEffects.map((effect) => effect.name);
+    expect(names).not.toContain("Stone Skin");
+    expect(names).not.toContain("Archery");
+    expect(names).toContain("Curse");
+  });
+
+  it("removes the Anti-Magic immunity the enemy cast on the target", () => {
+    let state = rangedAttackState();
+    state.combat!.units.unit_p1_marksmen.abilities = ["dragon-fly-dispel"];
+    state.activeEffects.push(
+      makeActiveEffect(
+        state,
+        {
+          name: "Anti-Magic",
+          scope: "unit",
+          duration: { type: "combat" },
+          polarity: "positive",
+          removable: true,
+          modifiers: [{ type: "UNIT_SPELL_IMMUNE", maxGrade: "gold" }]
+        },
+        { type: "card", cardId: "spell.anti_magic", controllerId: "p2" },
+        "p2",
+        { type: "unit", unitId: "unit_p2_skeletons" }
+      )
+    );
+
+    state = applyOk(state, ATTACK);
+    state = settle(state);
+    expect(state.activeEffects.some((effect) => effect.name === "Anti-Magic")).toBe(false);
+  });
+});
+
+describe("Fortress City Hall trading option", () => {
+  it("opens a Trading Post when the exchange-resources option is chosen", () => {
+    const state = createAdventureGameState({ seed: "cityhall-seed", rollFirstPlayer: false });
+    state.towns.town_p1.factionId = "fortress";
+    state.towns.town_p1.buildings = ["fortress.city_hall"];
+    state.adventure!.rewardQueue = [];
+
+    state.round = 3; // resource round → City Hall offers its choice
+    startAdventureRound(state);
+    pumpAdventureQueues(state);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    if (choice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the City Hall choice");
+    }
+    expect(choice.context).toBe("city-hall");
+
+    // Option 0 = gain gold; option 1 = exchange resources (Trading Post).
+    const next = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 1 });
+    expect(next.adventure?.pendingVisit?.steps[0]?.type).toBe("TRADING_POST");
   });
 });

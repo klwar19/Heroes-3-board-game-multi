@@ -686,8 +686,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "fortress",
     tier: "bronze",
     type: "flying",
-    few: { attack: 3, defense: 0, health: 3, initiative: 8, cost: { gold: 4 }, abilities: [], abilityText: "[unit_attack] Remove all [ongoing] effects played on the target by the enemy player.", cardImage: "/assets/units-fortress-bronze-dragon_flies-few.webp" },
-    pack: { attack: 3, defense: 1, health: 3, initiative: 12, cost: { gold: 7 }, abilities: ["dragon-fly-retaliation-penalty"], abilityText: "[unit_attack] Remove all [ongoing] effects played on the target by the enemy player. [unit_retaliation] If the target retaliates, it suffers -1 [attack] .", cardImage: "/assets/units-fortress-bronze-dragon_flies-pack.webp" },
+    few: { attack: 3, defense: 0, health: 3, initiative: 8, cost: { gold: 4 }, abilities: ["dragon-fly-dispel"], abilityText: "[unit_attack] Remove all [ongoing] effects played on the target by the enemy player.", cardImage: "/assets/units-fortress-bronze-dragon_flies-few.webp" },
+    pack: { attack: 3, defense: 1, health: 3, initiative: 12, cost: { gold: 7 }, abilities: ["dragon-fly-dispel", "dragon-fly-retaliation-penalty"], abilityText: "[unit_attack] Remove all [ongoing] effects played on the target by the enemy player. [unit_retaliation] If the target retaliates, it suffers -1 [attack] .", cardImage: "/assets/units-fortress-bronze-dragon_flies-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/dragon_flies/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Fortress Expansion)",

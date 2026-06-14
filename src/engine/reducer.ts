@@ -93,6 +93,7 @@ import {
   tokenDefenseDelta
 } from "./tokens";
 import {
+  effectAppliesToUnit,
   expireEffectsForCombatRoundEnd,
   expireEffectsForTurnEnd,
   getActiveAttackBonus,
@@ -1893,6 +1894,9 @@ function finishResolvedAttack(
   // Azure Dragons / Basilisks: paralyse the target on a matching Attack die.
   applyParalysisFollowUps(state, details.attacker, details.defender, attackResult.roll);
 
+  // Dragon Flies: dispel the enemy's ongoing buffs on the target.
+  applyDispelFollowUps(state, details.attacker, details.defender);
+
   if (maybeDeclareDoubleAttack(state, details.attacker, details.defender, details.attackKind, attackResult.roll, cards)) {
     return;
   }
@@ -2574,6 +2578,43 @@ function applyParalysisFollowUps(
       message: `${attacker.name} paralyses ${defender.cardName} with ${followUp.abilityName}.`
     });
   }
+}
+
+/**
+ * Dragon Flies: on attack, dispel every ongoing effect the target's own
+ * controller placed on it — its unit-targeted buffs (attack/defense/initiative
+ * tokens, Anti-Magic immunity) and the enemy's player-scope auras (Archery,
+ * …). Effects the attacker placed on the target (debuffs) and global effects
+ * are left untouched. Ongoing cards behind the removed effects return to their
+ * owner's discard via the central `releaseEndedOngoingCards` pass.
+ */
+function applyDispelFollowUps(state: GameState, attacker: CombatUnitState, defender: CombatUnitState): void {
+  if (!hasUnitAbilityEffect(attacker, "DISPEL_ENEMY_EFFECTS_ON_TARGET")) {
+    return;
+  }
+
+  const removed = state.activeEffects.filter(
+    (effect) =>
+      effect.controllerId === defender.controllerId &&
+      effect.scope !== "global" &&
+      effectAppliesToUnit(effect, defender)
+  );
+  if (removed.length === 0) {
+    return;
+  }
+
+  const removedIds = new Set(removed.map((effect) => effect.id));
+  state.activeEffects = state.activeEffects.filter((effect) => !removedIds.has(effect.id));
+
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: "dragon-fly-dispel",
+    targetUnitId: defender.id,
+    message: `${attacker.name} dispels ${removed.length} ongoing effect(s) on ${defender.name}: ${removed
+      .map((effect) => effect.name)
+      .join(", ")}.`
+  });
 }
 
 /**
