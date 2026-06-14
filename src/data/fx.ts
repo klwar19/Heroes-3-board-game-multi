@@ -129,6 +129,19 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "rust-dragon-acid": { hit: "acid-breath", hitSound: "effects/acid-breath" },
   "gorgon-death-stare": { affect: [{ key: "death-stare" }], sound: "spells/death-stare" },
   "dread-knight-death-blow": { affect: [{ key: "death-ripple" }], sound: "effects/death-blow" },
+  // Fortress Wyverns' poison cubes: the poison cloud both when the cubes are
+  // planted (on the attack) and when one bleeds the unit at its activation.
+  "wyvern-poison-cube-few": { affect: [{ key: "poison" }], sound: "spells/poison" },
+  "wyvern-poison-cube-pack": { affect: [{ key: "poison" }], sound: "spells/poison" },
+  "wyvern-poison-cube": { affect: [{ key: "poison" }], sound: "spells/poison" },
+  // Rampart Dendroids' Bind: roots lash out as the Dendroid attacks.
+  "dendroid-bind": { affect: [{ key: "bind" }], sound: "effects/bind" },
+  // Rampart Dwarves' Magic Resistance: a warding shimmer when a Spell/Specialty
+  // is rolled against (the "magic resist" cue from the original game).
+  "dwarf-magic-resistance": { affect: [{ key: "anti-magic" }], sound: "effects/magic-resist" },
+  // Tower Genies' Wish: a sparkle of fortune as a Spell is conjured to hand.
+  "genie-spell-draw-few": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
+  "genie-spell-draw-pack": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
   // Future abilities (cards not implemented yet, assets ready):
   poison: { affect: [{ key: "poison" }], sound: "spells/poison" },
   paralyze: { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },

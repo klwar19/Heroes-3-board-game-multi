@@ -176,6 +176,7 @@ import {
   getTriggeredAttackDieBonusAbilities,
   getUnitAbilityDefinitions,
   getUnitAttackRerollSources,
+  hasBindAdjacentEnemies,
   hasDefenseTokenAura,
   hasIgnoreOwnAttackDie,
   hasIgnoreParalysis,
@@ -1965,6 +1966,7 @@ function finishResolvedAttack(
 
   applyOnAttackTokens(state, details.attacker, details.defender, details.isRetaliation);
   applyOnAttackPoisonCubes(state, details.attacker, details.defender, details.isRetaliation);
+  applyDendroidBindFx(state, details.attacker, details.defender, details.isRetaliation);
   applyOnAttackDieTokens(state, details.attacker, details.defender, attackResult.roll, details.isRetaliation);
   applyPostAttackAbilityDamage(
     state,
@@ -2196,6 +2198,30 @@ function applyPoisonCubesAtActivation(state: GameState, unit: CombatUnitState): 
   }
   markUnitRemovedIfNeeded(state, unit);
   return !isUnitAlive(unit);
+}
+
+/**
+ * Rampart Dendroids' Bind: the root mechanic is a passive aura enforced in
+ * movement legality, but its visual/sound plays as the Dendroid attacks — roots
+ * lash out at the struck target. Cosmetic only: emits the ability event the FX
+ * layer keys off (never on a retaliation).
+ */
+function applyDendroidBindFx(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  isRetaliation: boolean
+): void {
+  if (isRetaliation || !state.combat || !hasBindAdjacentEnemies(attacker) || !isUnitAlive(defender)) {
+    return;
+  }
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: "dendroid-bind",
+    targetUnitId: defender.id,
+    message: `${attacker.cardName}'s roots ensnare ${defender.cardName}.`
+  });
 }
 
 /**

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
+import { abilityFxPlans, getFxSheet } from "@/data/fx";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
-import { effectAppliesToUnit, getActiveDefenseBonus, makeActiveEffect } from "./active-effects";
+import { effectAppliesToUnit, effectiveInitiative, makeActiveEffect } from "./active-effects";
 import { getLegalMoveDestinations } from "./legal-actions";
 import type { GameAction, GameEvent, GameState, PlayerId, SourceRef } from "./state";
 
@@ -332,6 +333,27 @@ describe("Dendroid Bind", () => {
     ally.activatedThisRound = false;
     expect(getLegalMoveDestinations(state.combat!, ally, state).length).toBeGreaterThan(0);
   });
+
+  it("plays its Bind effect (a UNIT_ABILITY_TRIGGERED event the FX layer keys off) when it attacks", () => {
+    const state = createInitialGameState("dendroid-fx-seed");
+    const dendroid = state.combat!.units.unit_p1_marksmen;
+    dendroid.abilities = ["dendroid-bind"];
+    dendroid.type = "ground";
+    dendroid.attack = 3;
+    dendroid.position = 9; // adjacent to the target at 13
+    const target = state.combat!.units.unit_p2_skeletons;
+    target.position = 13;
+    target.maxHealth = 20;
+    target.damage = 0;
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    script(state, [0, 0, 0, 0]);
+    setActive(state, "p1", "unit_p1_marksmen");
+    const next = settle(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_marksmen", defenderId: "unit_p2_skeletons" })
+    );
+    expect(abilityEventIds(next)).toContain("dendroid-bind");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -339,54 +361,76 @@ describe("Dendroid Bind", () => {
 // ---------------------------------------------------------------------------
 
 describe("Gargoyle / Titan ongoing-effect immunity", () => {
-  function debuff(state: GameState, source: SourceRef, unitId: string) {
+  // Slow is a genuinely *ongoing* Spell (CREATE_INITIATIVE_BUFF, lasts the whole
+  // combat). Curse, by contrast, is an *instant* per-attack defense debuff and
+  // never an ongoing effect — so it is deliberately not used to model one here.
+  function slow(state: GameState, source: SourceRef, unitId: string) {
     return makeActiveEffect(
       state,
-      { name: "Test debuff", scope: "unit", duration: { type: "combat" }, modifiers: [{ type: "DEFENSE_BONUS", amount: -3 }] },
+      {
+        name: "Slow",
+        scope: "unit",
+        duration: { type: "combat" },
+        polarity: "negative",
+        modifiers: [{ type: "INITIATIVE_BONUS", amount: -3 }]
+      },
       source,
       "p1",
       { type: "unit", unitId }
     );
   }
 
-  const spellSource: SourceRef = { type: "card", cardId: "spell.curse", controllerId: "p1" };
-  const systemSource: SourceRef = { type: "system" };
+  const spellSource: SourceRef = { type: "card", cardId: "spell.slow", controllerId: "p1" };
+  const nonSpellSource: SourceRef = { type: "system" };
 
   it("Gargoyles ignore a Spell-sourced ongoing effect but keep non-Spell ones", () => {
     const state = createInitialGameState();
     const unit = state.combat!.units.unit_p2_skeletons;
     unit.abilities = ["gargoyle-spell-ward"];
-    expect(effectAppliesToUnit(debuff(state, spellSource, unit.id), unit)).toBe(false);
-    expect(effectAppliesToUnit(debuff(state, systemSource, unit.id), unit)).toBe(true);
+    expect(effectAppliesToUnit(slow(state, spellSource, unit.id), unit)).toBe(false);
+    expect(effectAppliesToUnit(slow(state, nonSpellSource, unit.id), unit)).toBe(true);
   });
 
   it("Titans ignore every ongoing effect on them, whatever its source", () => {
     const state = createInitialGameState();
     const unit = state.combat!.units.unit_p2_skeletons;
     unit.abilities = ["titan-ignore-ongoing"];
-    expect(effectAppliesToUnit(debuff(state, spellSource, unit.id), unit)).toBe(false);
-    expect(effectAppliesToUnit(debuff(state, systemSource, unit.id), unit)).toBe(false);
+    expect(effectAppliesToUnit(slow(state, spellSource, unit.id), unit)).toBe(false);
+    expect(effectAppliesToUnit(slow(state, nonSpellSource, unit.id), unit)).toBe(false);
   });
 
   it("an ordinary unit is affected by both", () => {
     const state = createInitialGameState();
     const unit = state.combat!.units.unit_p2_skeletons;
     unit.abilities = [];
-    expect(effectAppliesToUnit(debuff(state, spellSource, unit.id), unit)).toBe(true);
-    expect(effectAppliesToUnit(debuff(state, systemSource, unit.id), unit)).toBe(true);
+    expect(effectAppliesToUnit(slow(state, spellSource, unit.id), unit)).toBe(true);
+    expect(effectAppliesToUnit(slow(state, nonSpellSource, unit.id), unit)).toBe(true);
   });
 
-  it("a Curse's Defense penalty never touches a Titan's effective Defense", () => {
+  it("a Spell's Slow never touches a Titan's effective initiative", () => {
     const state = createInitialGameState();
     const titan = state.combat!.units.unit_p2_skeletons;
     titan.abilities = ["titan-ignore-ongoing"];
-    state.activeEffects.push(debuff(state, spellSource, titan.id));
-    expect(getActiveDefenseBonus(state, titan)).toBe(0);
+    const base = titan.initiative;
+    state.activeEffects.push(slow(state, spellSource, titan.id));
+    expect(effectiveInitiative(titan, state.activeEffects)).toBe(base);
 
     const normal = state.combat!.units.unit_p2_vampires;
     normal.abilities = [];
-    state.activeEffects.push(debuff(state, spellSource, normal.id));
-    expect(getActiveDefenseBonus(state, normal)).toBe(-3);
+    const normalBase = normal.initiative;
+    state.activeEffects.push(slow(state, spellSource, normal.id));
+    expect(effectiveInitiative(normal, state.activeEffects)).toBe(normalBase - 3);
+  });
+
+  it("a Gargoyle shrugs off a Spell's Slow but a non-Spell initiative drop still lands", () => {
+    const state = createInitialGameState();
+    const gargoyle = state.combat!.units.unit_p2_skeletons;
+    gargoyle.abilities = ["gargoyle-spell-ward"];
+    const base = gargoyle.initiative;
+    state.activeEffects.push(slow(state, spellSource, gargoyle.id));
+    expect(effectiveInitiative(gargoyle, state.activeEffects)).toBe(base); // the Spell is ignored
+    state.activeEffects.push(slow(state, nonSpellSource, gargoyle.id));
+    expect(effectiveInitiative(gargoyle, state.activeEffects)).toBe(base - 3); // a non-Spell source lands
   });
 });
 
@@ -488,4 +532,38 @@ describe("Genie Wish (Pack — on attack)", () => {
     // The attack resolved normally and combat moved on (no dangling choice).
     expect(next.combat!.units.unit_p2_skeletons.damage).toBeGreaterThan(0);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Battle FX — every newly wired ability has a real sprite sheet + a sound, so
+// the effect is seen and heard (not just applied silently).
+// ---------------------------------------------------------------------------
+
+describe("the new abilities all have battle FX (sprite + sound) wired", () => {
+  const ids = [
+    "wyvern-poison-cube-few",
+    "wyvern-poison-cube-pack",
+    "wyvern-poison-cube",
+    "dendroid-bind",
+    "dwarf-magic-resistance",
+    "genie-spell-draw-few",
+    "genie-spell-draw-pack"
+  ];
+
+  for (const id of ids) {
+    it(`${id} has a sound and a real sprite sheet`, () => {
+      const plan = abilityFxPlans[id];
+      expect(plan, id).toBeTruthy();
+      expect(typeof plan.sound, `${id} sound`).toBe("string");
+      const spriteKeys = [
+        ...(plan.affect?.map((entry) => entry.key) ?? []),
+        ...(plan.hit ? [plan.hit] : []),
+        ...(plan.projectile ? [plan.projectile] : [])
+      ];
+      expect(spriteKeys.length, `${id} sprites`).toBeGreaterThan(0);
+      for (const key of spriteKeys) {
+        expect(getFxSheet(key), `${id} sprite "${key}" must exist`).toBeTruthy();
+      }
+    });
+  }
 });
