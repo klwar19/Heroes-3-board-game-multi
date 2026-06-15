@@ -195,6 +195,12 @@ export type ActiveEffectModifier =
        */
       type: "ADVENTURE_DIE_REROLL";
       dice: "treasure" | "resource" | "any";
+      /**
+       * Fortune: a shared budget of N rerolls across this effect's adventure
+       * dice (Power 0/1/2 -> 1/2/3), spent one at a time. When omitted (Luck),
+       * the once-per-die-type model applies instead.
+       */
+      rerolls?: number;
     }
   | {
       /**
@@ -359,6 +365,11 @@ export type EffectDefinition =
       amount?: number;
       amountByPower?: Record<number, number>;
       removePolarity: "negative" | "any-removable";
+      /**
+       * Cure: "Remove any effect or paralysis from the selected unit" — also
+       * clears the target's Paralysis token (a heal of 0 still clears it).
+       */
+      removeParalysis?: boolean;
     }
   | { type: "CANCEL_SPELL"; maxPower?: number; expertIgnoresMaxPower?: boolean }
   | {
@@ -542,6 +553,12 @@ export type EffectDefinition =
   | {
       /** Town Portal: move the hero to a controlled town or settlement. */
       type: "TELEPORT_HERO_TO_TOWN";
+      /**
+       * Power 2/4: arriving also grants the hero +1/+2 movement. Encoded as the
+       * higher-cost options of the spell's CHOOSE_ONE (paid with power-source
+       * cards), like Fly / Dimension Door.
+       */
+      movementBonus?: number;
     }
   | {
       /** Speculum: discover a face-down tile adjacent to the hero's tile. */
@@ -800,6 +817,12 @@ export type EffectDefinition =
       basicRerolls: number;
       expertRerolls?: number;
       rerollsByPower?: Record<number, number>;
+      /**
+       * Fortune: the effect ALSO rerolls the adventure-map Treasure and Resource
+       * dice (a shared ADVENTURE_DIE_REROLL budget equal to the reroll count), so
+       * the same card works in combat (Attack die) and on the map.
+       */
+      adventureDice?: boolean;
       duration: EffectDurationDefinition;
       /**
        * Mirth: the duration scales with the Power paid rather than the reroll
@@ -3261,6 +3284,8 @@ export type VisitStep =
       spaceId: MapSpaceId;
       /** Whether arriving resolves the field like a normal visit. */
       visit?: boolean;
+      /** Town Portal Power 2/4: movement granted to the hero on arrival. */
+      movementBonus?: number;
     }
   | {
       /** Scholar basic / Rib Cage / Crown of Dragontooth: discard-pile pick. */
@@ -3724,6 +3749,7 @@ export type PendingChoice =
         | "diplomacy-recruit"
         | "dimension-door"
         | "learning-level-up"
+        | "fortune-boost"
         | "visions-boost"
         | "visions-deck"
         | "visions-scry";
@@ -3798,6 +3824,14 @@ export type PendingChoice =
        * is how many have already been paid, capped by `cardsByPower`.
        */
       visionsBoost?: { boost: number; spellCardIds: CardId[]; cardsByPower: Record<number, number> };
+      /**
+       * fortune-boost: paying Fortune's Power on the map. `spellCardIds` are the
+       * power-source cards in hand offered to discard for +1 reroll each (index-
+       * aligned with the leading options; the trailing option plays now).
+       * `boost` is how many have been paid; `cardId` is the Fortune card whose
+       * rerollsByPower maps the boost to the final reroll budget.
+       */
+      fortuneBoost?: { boost: number; spellCardIds: CardId[]; cardId: CardId };
       /**
        * visions-deck: the Neutral tier decks Visions may scry (index-aligned with
        * the options) and how many cards the chosen power level draws.

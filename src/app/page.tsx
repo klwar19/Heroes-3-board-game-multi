@@ -1204,6 +1204,7 @@ export default function Home() {
               if (!seatVisible(event.playerId)) {
                 break;
               }
+              const start = timeline;
               cues.push({
                 kind: "flight",
                 id: `${event.id}-play`,
@@ -1211,9 +1212,36 @@ export default function Home() {
                 to: `discard:${event.playerId}`,
                 cardId: event.cardId,
                 holdMs: HOLD_CENTER_MS,
-                delayMs: timeline
+                delayMs: start
               });
               timeline += FLIGHT_MS + HOLD_CENTER_MS + FLIGHT_OUT_MS;
+              // A Spell that resolves through a card play (rather than a spell
+              // cast) carries its cue here: map spells (Town Portal, Fly,
+              // Visions…) and combat trigger/reaction instants (Weakness,
+              // Slayer, Sorrow, Magic Mirror, Prayer…). A played card has no
+              // board target, so its sprite bursts at centre stage over the
+              // card. A Spell discarded for its "+1 Power" side toward another
+              // cast is not itself resolving, so it is skipped (it still gets
+              // the card-flight foley).
+              const isPowerBoost = event.optionLabel?.startsWith("+1 Power") ?? false;
+              const playedPlan = isPowerBoost ? undefined : spellFxPlans[event.cardId];
+              if (playedPlan) {
+                const at = start + FLIGHT_MS;
+                const affectKey = playedPlan.affect?.[0]?.key;
+                if (affectKey) {
+                  cues.push({
+                    kind: "sprite",
+                    id: `${event.id}-played-fx`,
+                    fxKey: affectKey,
+                    at: "center",
+                    sound: playedPlan.sound,
+                    delayMs: at
+                  });
+                } else if (playedPlan.sound) {
+                  const soundKey = playedPlan.sound;
+                  window.setTimeout(() => playLibrarySound(soundKey), at);
+                }
+              }
               break;
             }
             case "SPELL_CAST_STARTED": {
@@ -1235,14 +1263,50 @@ export default function Home() {
             }
             case "SPELL_CAST_RESOLVED": {
               const plan = spellFxPlans[event.spellCardId];
-              if (plan && event.target.type === "unit") {
+              if (!plan) {
+                break;
+              }
+              if (event.target.type === "unit") {
                 queueBoardFx(plan, event.id, `hand:${event.playerId}`, event.target.unitId);
-              } else if (plan?.sound && event.target.type === "space") {
-                // Summon Elemental resolves on an empty space — no unit to
-                // anchor board FX on, so play the cast sound on the timeline.
-                const soundKey = plan.sound;
+              } else if (event.target.type === "space") {
+                // An area spell on a chosen space (Inferno) bursts its hit sprite
+                // on that cell with the cast sound; Summon Elemental has only a
+                // sound. Advancing the timeline by the presentation keeps the
+                // damage it deals queued strictly behind the sprite.
                 const at = timeline;
-                window.setTimeout(() => playLibrarySound(soundKey), at);
+                if (plan.hit) {
+                  cues.push({
+                    kind: "sprite",
+                    id: `${event.id}-hit`,
+                    fxKey: plan.hit,
+                    at: `cell:${event.target.position}`,
+                    sound: plan.hitSound ?? plan.sound,
+                    delayMs: at
+                  });
+                  timeline = at + spellPresentationMs(plan);
+                } else if (plan.sound) {
+                  const soundKey = plan.sound;
+                  window.setTimeout(() => playLibrarySound(soundKey), at);
+                }
+              } else if (plan.affect || plan.sound) {
+                // A player-scoped spell with no single target unit (Mirth):
+                // there is nothing on the board to anchor on, so its sprite
+                // bursts at centre stage with the cast sound.
+                const at = timeline;
+                const affectKey = plan.affect?.[0]?.key;
+                if (affectKey) {
+                  cues.push({
+                    kind: "sprite",
+                    id: `${event.id}-fx`,
+                    fxKey: affectKey,
+                    at: "center",
+                    sound: plan.sound,
+                    delayMs: at
+                  });
+                } else if (plan.sound) {
+                  const soundKey = plan.sound;
+                  window.setTimeout(() => playLibrarySound(soundKey), at);
+                }
               }
               break;
             }
