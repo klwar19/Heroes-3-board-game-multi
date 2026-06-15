@@ -586,4 +586,47 @@ describe("Diplomacy skip is gated on matching level", () => {
     expect(state.pendingChoice).toBeNull();
     expect(state.combat).not.toBeNull();
   });
+
+  it("empowered skip claims the field and resolves its effect WITHOUT spending a crown", () => {
+    let state = refreshP1(makeGame());
+    const hero = getMainHero(state, "p1")!;
+    hero.level = 2;
+    hero.spaceId = "test-field";
+    state.players.p1.hand = ["ability.diplomacy"];
+    // A crown is available — the Empowered skip (expert effect) must not spend it.
+    state.players.p1.limits.expertUses = 1;
+    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
+    const xpBefore = hero.experience;
+    state.adventure!.fields["test-field"] = {
+      spaceId: "test-field",
+      tileInstanceId: "t",
+      slot: 0,
+      location: "mine",
+      difficulty: 2,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    };
+
+    startNeutralEncounter(state, hero, state.adventure!.fields["test-field"]);
+    const choice = state.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("diplomacy-skip");
+    state = apply(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (choice as { id: string }).id,
+      optionIndex: 0
+    });
+
+    // Claims the field (resolving its effect — the mine is flagged) for no XP...
+    expect(state.adventure!.fields["test-field"].flagOwnerId).toBe("p1");
+    expect(getMainHero(state, "p1")!.experience).toBe(xpBefore);
+    expect(state.combat).toBeNull();
+    // ...and the Empowered mechanic spends NO expert use (crown).
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+    expect(state.players.p1.limits.expertUses).toBe(1);
+    // The card is spent for that one use (either side).
+    expect(state.players.p1.discard).toContain("ability.diplomacy");
+  });
 });

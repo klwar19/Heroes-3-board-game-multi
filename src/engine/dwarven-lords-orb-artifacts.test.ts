@@ -351,7 +351,7 @@ describe("Orb of Vulnerability — negate spell-related abilities (option A)", (
     expect(arrowAtPower1(true)).toBe(2);
   });
 
-  it("playing option A creates the combat-wide effect and removes the card from the game", () => {
+  it("playing option A creates the combat-wide effect and discards the card normally", () => {
     const state = createInitialGameState("orb-play");
     state.players.p1.hand = [ORB];
     state.players.p1.removed = [];
@@ -368,9 +368,14 @@ describe("Orb of Vulnerability — negate spell-related abilities (option A)", (
         effect.modifiers.some((modifier) => modifier.type === "SUPPRESS_SPELL_ABILITIES")
       )
     ).toBe(true);
-    expect(after.players.p1.removed).toContain(ORB);
+    // The printed card has no remove-from-game clause. Its combat-long
+    // suppression effect keeps the card physically in play; once the effect
+    // ends it returns to the discard pile — never to the removed-from-game zone.
+    expect(after.players.p1.removed).not.toContain(ORB);
     expect(after.players.p1.hand).not.toContain(ORB);
-    expect(after.players.p1.discard).not.toContain(ORB);
+    const held = (after.players.p1.ongoingCards ?? []).find((entry) => entry.cardId === ORB);
+    expect(held, "Orb should be held in play by its ongoing suppression effect").toBeTruthy();
+    expect(held?.returnTo).toBe("discard");
   });
 });
 

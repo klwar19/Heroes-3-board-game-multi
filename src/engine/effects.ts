@@ -23,6 +23,7 @@ export const implementedCardEffectTypes = [
   "GAIN_HERO_MOVEMENT",
   "GAIN_EXPERT_USE",
   "TAKE_FROM_DISCARD",
+  "SCHOLAR_EMPOWER_SWAP",
   "CARD_DECK_SEARCH",
   "RANDOM_ENEMY_DISCARD",
   "ENEMY_MORALE_STRIP",
@@ -53,6 +54,7 @@ export const implementedCardEffectTypes = [
   "BALLISTA_SPECIALTY",
   "DAMAGE_LOWEST_INITIATIVE_ENEMY",
   "ARTILLERY_BALLISTA_VOLLEY",
+  "FIRST_AID_TENT_VOLLEY",
   "DECK_DIG_KEEP_ONE",
   "CANCEL_LETHAL_ATTACK",
   "REDIRECT_SPELL",
@@ -196,11 +198,8 @@ export function describePermanentEffect(card: CardDefinition): string {
   if (permanent.combatEffect) {
     for (const modifier of permanent.combatEffect.modifiers) {
       if (modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND") {
-        const expert =
-          modifier.expertUsesPerRound && modifier.expertUsesPerRound > 1
-            ? `; expert: spend 1 expert use to heal ${modifier.expertUsesPerRound} times instead`
-            : "";
-        parts.push(`heal ${modifier.amount} from one of your units once per combat round${expert}`);
+        // The expert "heal 3×" lives on the First Aid ability card, not here.
+        parts.push(`heal ${modifier.amount} from one of your units once per combat round`);
       }
       if (modifier.type === "RANGED_IGNORE_ALL_PENALTIES") {
         parts.push("your ranged units ignore the ranged-attack penalties");
@@ -503,13 +502,7 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "SKIP_ACTIVATION") {
-    if (card.effect.gradeByPower) {
-      const breakpoints = Object.entries(card.effect.gradeByPower)
-        .map(([power, grade]) => `${power}:${grade}`)
-        .join(", ");
-      return `when a unit is about to activate, skip its activation (reachable grade by power ${breakpoints})`;
-    }
-    return `when a ${card.effect.grade ?? "bronze"}-or-lower unit is about to activate, skip its activation`;
+    return `when a ${card.effect.grade}-or-lower unit is about to activate, skip its activation`;
   }
 
   if (card.effect.type === "SLAYER_ATTACK") {

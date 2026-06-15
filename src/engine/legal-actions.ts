@@ -8,12 +8,14 @@ import {
   armyHasMapEffect,
   canHeroReachPlacedTile,
   discountedReinforceCost,
+  getMainHero,
   getSecondaryHero,
   getTownOfPlayer,
   getUnitSide,
   hasRecruitResources,
   hasResources as playerHasResources,
   humanPlayerIds,
+  isSeaField,
   NEUTRAL_DECK_IDS,
   RESOURCE_GAIN_LEVEL_AMOUNTS,
   SURRENDER_GOLD_COST,
@@ -49,7 +51,14 @@ import {
   isAdjacent,
   isBattlefieldPosition
 } from "./battlefield";
-import { countBallistas, getPermanentCardIds, getPermanentSchoolBonus, warMachinesForSale } from "./permanents";
+import {
+  countBallistas,
+  firstAidVolleyHeals,
+  getPermanentCardIds,
+  getPermanentSchoolBonus,
+  playerCanUseFirstAidVolley,
+  warMachinesForSale
+} from "./permanents";
 import { getDemolishAbility, isArrowTowerUnit, siegeBlockedPositions } from "./siege";
 import { canPlaceTransformOn } from "./unit-transforms";
 import { SHARED_DECK_IDS } from "./decks";
@@ -165,26 +174,6 @@ function canAffordCardCost(state: GameState, playerId: PlayerId, cardId: string,
 /** Grade ordering shared by spell-immunity and Magic Mirror grade gates. */
 export function gradeRank(grade: CombatUnitState["grade"]): number {
   return grade === "bronze" ? 0 : grade === "silver" ? 1 : grade === "gold" ? 2 : 3;
-}
-
-/**
- * Sorrow's reachable grade at a given Power: the highest grade whose Power
- * breakpoint the paid Power meets (e.g. { 0: bronze, 2: silver, 4: gold }).
- * Falls back to a fixed `grade` when the effect carries no Power table.
- */
-function skipActivationReachableGrade(
-  effect: Extract<ConcreteEffect, { type: "SKIP_ACTIVATION" }>,
-  power: number
-): CombatUnitState["grade"] | null {
-  if (effect.gradeByPower) {
-    const thresholds = Object.keys(effect.gradeByPower)
-      .map(Number)
-      .filter((value) => Number.isFinite(value))
-      .sort((left, right) => left - right);
-    const matched = thresholds.filter((value) => value <= power).at(-1);
-    return matched === undefined ? null : (effect.gradeByPower[matched] ?? null);
-  }
-  return effect.grade ?? null;
 }
 
 /**
@@ -644,7 +633,17 @@ function getFriendlyTargets(
     .map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
 }
 
-function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string, cards: CardLibrary): TargetRef[] {
+function getTargetsForCard(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: string,
+  cards: CardLibrary,
+  /**
+   * Per-option target override (Ring of the Wayfarer): when a CHOOSE_ONE option
+   * carries its own `target`, it is used instead of the card-level one.
+   */
+  overrideTarget?: TargetDefinition
+): TargetRef[] {
   const card = cards[cardId];
   // Self-resolving effects (Leadership's morale token, active effects) never
   // pick a unit: they default to a no-target play. Only effects that actually
@@ -654,8 +653,9 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
     card?.effect.type === "GAIN_MORALE" ||
     // Mirth: a player-scoped reroll buff picks no unit.
     card?.effect.type === "CREATE_ATTACK_DIE_REROLL";
+  const cardTarget = overrideTarget ?? card?.target;
   const targetType =
-    card?.target?.type ??
+    cardTarget?.type ??
     (card?.effect.type === "HEAL_DAMAGE"
       ? "friendly-unit"
       : selfTargetedEffect
@@ -712,11 +712,11 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
   }
 
   const target =
-    card?.target &&
-    card.target.type !== "none" &&
-    card.target.type !== "empty-space" &&
-    card.target.type !== "any-space"
-      ? card.target
+    cardTarget &&
+    cardTarget.type !== "none" &&
+    cardTarget.type !== "empty-space" &&
+    cardTarget.type !== "any-space"
+      ? cardTarget
       : ({ type: targetType } as UnitTargetDefinition);
 
   const targets =
@@ -1187,6 +1187,21 @@ function isOptionEffectPlayable(
         return true;
       });
     }
+    case "SCHOLAR_EMPOWER_SWAP": {
+      // Scholar's expert swap: map-only, and only with a non-empowered Statistic
+      // card in hand or discard to trade in.
+      if (context !== "map" || !state.adventure) {
+        return false;
+      }
+      const player = state.players[playerId];
+      if (!player) {
+        return false;
+      }
+      return [...player.hand, ...player.discard].some((cardId) => {
+        const card = cardLibrary[cardId];
+        return card?.kind === "statistic" && Boolean(card.statisticType) && !cardId.endsWith(".empowered");
+      });
+    }
     case "CARD_DECK_SEARCH":
     case "EAGLE_EYE_DIG":
     case "TELEPORT_HERO_TO_TOWN":
@@ -1217,6 +1232,10 @@ function isOptionEffectPlayable(
     case "CREATE_FIRE_SHIELD":
     case "GRANT_ELEMENTAL_DAMAGE":
     case "DAMAGE_LOWEST_INITIATIVE_ENEMY":
+      return context === "combat" && Boolean(state.combat);
+    case "PLACE_PARALYSIS":
+      // Ring of the Wayfarer's paralysis side is a combat play; the neutral /
+      // opening-round gate lives on its `requiresNeutralCombatStart` flag.
       return context === "combat" && Boolean(state.combat);
     case "BLOCK_ENEMY_SURRENDER":
       // Shackles of War (house rule): only at the start of a player-vs-player
@@ -1291,6 +1310,13 @@ function isOptionEffectPlayable(
 
 /** Whether the option's effect needs a unit on the battlefield as target. */
 function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
+  // A unit-scoped active effect (Pendant of Second Sight's Paralysis immunity)
+  // is placed on a chosen unit; player/global-scoped ones (Golden Bow, the
+  // Orbs) pick no unit.
+  if (effect.type === "CREATE_ACTIVE_EFFECT") {
+    return effect.effect.scope === "unit";
+  }
+
   return (
     effect.type === "CREATE_INITIATIVE_BUFF" ||
     effect.type === "CREATE_ATTACK_BUFF" ||
@@ -1299,8 +1325,22 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "HEAL_DAMAGE" ||
     effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
     effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
-    effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY"
+    effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" ||
+    effect.type === "PLACE_PARALYSIS"
   );
+}
+
+/** Highest grade unlocked by the paid power (mirrors the reducer's gate). */
+function gradeAtPower(
+  gradeByPower: Record<number, CombatUnitState["grade"]>,
+  power: number
+): CombatUnitState["grade"] | null {
+  const thresholds = Object.keys(gradeByPower)
+    .map(Number)
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right);
+  const matched = thresholds.filter((value) => value <= power).at(-1);
+  return matched === undefined ? null : (gradeByPower[matched] ?? null);
 }
 
 /**
@@ -1345,6 +1385,21 @@ function addOptionPlays(
     if (option.requiresEmptyDiscard && (state.players[playerId]?.discard.length ?? 0) > 0) {
       continue;
     }
+    // Crown of the Five Seas' sea side: only while this player's main Hero is on
+    // a Sea (water-terrain) field.
+    if (option.requiresSeaTile) {
+      const hero = getMainHero(state, playerId);
+      if (!hero?.spaceId || !isSeaField(state, hero.spaceId)) {
+        continue;
+      }
+    }
+    // Ring of the Wayfarer's paralysis side: only at the start (opening round)
+    // of a Combat against Neutral Units.
+    if (option.requiresNeutralCombatStart) {
+      if (!state.combat || state.combat.context.kind !== "neutral" || state.combat.round !== 1) {
+        continue;
+      }
+    }
     if (!isOptionEffectPlayable(state, playerId, option.effect, context)) {
       continue;
     }
@@ -1361,7 +1416,7 @@ function addOptionPlays(
         : ["basic"];
 
     let targets = optionNeedsUnitTarget(option.effect)
-      ? getTargetsForCard(state, playerId, cardId, cards)
+      ? getTargetsForCard(state, playerId, cardId, cards, option.target)
       : [{ type: "none" } as TargetRef];
 
     // Some options only land on a named unit (Moandor's elemental grant reads
@@ -1372,6 +1427,25 @@ function addOptionPlays(
       targets = targets.filter(
         (candidate) => candidate.type === "unit" && state.combat?.units[candidate.unitId]?.name === restrictName
       );
+    }
+
+    // Ring of the Wayfarer's paralysis side reads "any unit except Azure": its
+    // gradeByPower gate unlocks gold at Power 0, so units above that grade
+    // (Azure) are never legal targets — keep the offered list in step with the
+    // resolution gate rather than offering a no-op.
+    if (option.effect.type === "PLACE_PARALYSIS") {
+      const gradeByPower = option.effect.gradeByPower;
+      targets = targets.filter((candidate) => {
+        if (candidate.type !== "unit") {
+          return true;
+        }
+        const unit = state.combat?.units[candidate.unitId];
+        if (!unit) {
+          return false;
+        }
+        const maxGrade = gradeAtPower(gradeByPower, card.power ?? 0);
+        return maxGrade !== null && gradeRank(unit.grade) <= gradeRank(maxGrade);
+      });
     }
     if (targets.length === 0) {
       continue;
@@ -1624,7 +1698,6 @@ function addActiveEffectActions(actions: LegalAction[], state: GameState, player
     return;
   }
 
-  const player = state.players[playerId];
   for (const effect of state.activeEffects) {
     if (effect.controllerId !== playerId) {
       continue;
@@ -1635,13 +1708,14 @@ function addActiveEffectActions(actions: LegalAction[], state: GameState, player
       continue;
     }
 
-    // First Aid Tent: one basic heal per round, OR — if the card has an expert
-    // and an expert use is free — spend it to heal several times this round.
+    // First Aid Tent: one basic heal per round, OR — if the player holds the
+    // First Aid ability card with a free expert use — spend it (discarding the
+    // card) to heal the same target several times this round. The volley size is
+    // read from that card (firstAidVolleyHeals), mirroring Artillery/Ballista.
     const usage = effect.healRound?.round === combat.round ? effect.healRound : undefined;
-    const expertMax = healModifier.expertUsesPerRound ?? 0;
-    const crowns = player ? expertUsesAvailable(player) : 0;
+    const expertMax = firstAidVolleyHeals();
     const canBasic = !usage;
-    const canExpertActivate = !usage && expertMax > 1 && crowns > 0;
+    const canExpertActivate = !usage && playerCanUseFirstAidVolley(state, playerId);
     const canExpertContinue = Boolean(usage?.expert && usage.count < expertMax);
     if (!canBasic && !canExpertActivate && !canExpertContinue) {
       continue;
@@ -2719,6 +2793,43 @@ export function getLegalReactionsForTrigger(
       }
     }
 
+    // Resistance against an instant Spell buff the OTHER side has played into
+    // this attack (Curse/Weakness/Bloodlust/Precision/Bless/Slayer): the player
+    // whose unit it was cast against may end it, exactly like Resistance counters
+    // an Activation cast — basic ends a spell at or below its power cap, expert
+    // ends any power (spending a crown). Reversing the buff is handled by the
+    // reducer; only the offer is built here.
+    if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
+      const attackItem = state.stack.at(-1);
+      const instants =
+        attackItem?.action.type === "ATTACK_UNIT" || attackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
+          ? (attackItem.modifiers.cancellableSpellInstants ?? [])
+          : [];
+      if (instants.some((entry) => entry.playerId !== player.id)) {
+        const spellPower = attackItem?.modifiers.spellPowerBonus ?? 0;
+        for (const cardId of new Set(player.hand)) {
+          const card = cards[cardId];
+          if (
+            !card ||
+            card.effect.type !== "CANCEL_SPELL" ||
+            card.implementationStatus !== "implemented" ||
+            (card.timing !== "reaction" && card.timing !== "instant")
+          ) {
+            continue;
+          }
+          const cancel = card.effect;
+          if (cancel.maxPower === undefined || spellPower <= cancel.maxPower) {
+            reactions.push(makeReactionAction(card.name, { type: "PLAY_REACTION", playerId: player.id, cardId, mode: "basic" }));
+          }
+          if (cancel.expertIgnoresMaxPower && expertUsesLeft > 0) {
+            reactions.push(
+              makeReactionAction(`${card.name} expert`, { type: "PLAY_REACTION", playerId: player.id, cardId, mode: "expert" })
+            );
+          }
+        }
+      }
+    }
+
     // Hall of Valhalla: once per round, +1 attack on one of your attacks.
     if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
       const attacker = state.combat?.units[triggerEvent.attackerId];
@@ -2767,44 +2878,16 @@ export function getLegalReactionsForTrigger(
       }
     }
 
-    // Sorrow: in the activation-skip window, "+1 Power" is offered only while the
-    // player holds a Sorrow that still needs Power to reach the unit about to act
-    // — there must be enough affordable Power (the window pool plus the Spells
-    // they could discard, reserving one Sorrow to play) AND the grade must not
-    // already be free. This opens the window for a silver/gold target so the
-    // player can ramp Power up, yet never dangles a useless boost on a bronze one
-    // or one they could never afford (a gold unit reached only at Power 4).
-    let activationSkipNeedsPower = false;
-    if (triggerEvent.type === "UNIT_ACTIVATION_STARTED" && triggerEvent.playerId !== player.id) {
-      const skipUnit = state.combat?.units[triggerEvent.unitId];
-      const skipEffects = [...new Set(player.hand)]
-        .map((cardId) => cards[cardId])
-        .filter((card): card is CardDefinition => Boolean(card) && card.kind === "spell")
-        .map((card) => (card.effect.type === "SKIP_ACTIVATION" ? card.effect : null))
-        .filter((effect): effect is Extract<ConcreteEffect, { type: "SKIP_ACTIVATION" }> => Boolean(effect));
-      if (skipUnit && isUnitAlive(skipUnit) && skipEffects.length > 0) {
-        const windowPower = state.reactionWindow?.spellPowerBonus ?? 0;
-        const spellCount = player.hand.filter((cardId) => cards[cardId]?.kind === "spell").length;
-        const maxPower = windowPower + Math.max(0, spellCount - 1);
-        const bestReach = (power: number) =>
-          skipEffects.reduce<number>((best, effect) => {
-            const grade = skipActivationReachableGrade(effect, power);
-            return grade ? Math.max(best, gradeRank(grade)) : best;
-          }, -1);
-        const targetRank = gradeRank(skipUnit.grade);
-        activationSkipNeedsPower = targetRank > bestReach(windowPower) && targetRank <= bestReach(maxPower);
-      }
-    }
-
     // The printed alternative bottom effect: discard any Spell card for
-    // +1 Power — toward your own cast, paired with an instant spell in an
-    // attack window (the batch validator enforces the pairing), or banked into
-    // the Sorrow activation-skip window above.
+    // +1 Power — toward your own cast, or paired with an instant spell in an
+    // attack window (the batch validator enforces the pairing). NOT offered in
+    // the Sorrow activation-skip window: that window has no spell on the stack
+    // to empower, and Sorrow pays its own Power as the chosen option's cost.
     const boostLegal =
       (triggerEvent.type === "SPELL_CAST_STARTED"
         ? triggerEvent.playerId === player.id
         : isCombatParticipant(state, player.id)) &&
-      (triggerEvent.type !== "UNIT_ACTIVATION_STARTED" || activationSkipNeedsPower);
+      triggerEvent.type !== "UNIT_ACTIVATION_STARTED";
     if (boostLegal) {
       for (const cardId of new Set(player.hand)) {
         const card = cards[cardId];
@@ -2982,22 +3065,20 @@ export function isEffectLegalForTrigger(
   mode: CardPlayMode
 ): boolean {
   // Sorrow: skip the about-to-activate unit. Offered to the unit's opponent
-  // only, and only while that unit's grade is within reach of the Power already
-  // banked in this activation-skip window (bronze is free; +2/+4 Power, paid by
-  // discarding Spells into the window, reach silver/gold). The window-opening
-  // and power-boost offers (see getLegalReactionsForTrigger) make sure the
-  // player can ramp the Power up first.
+  // only, and only the CHOOSE_ONE option whose grade matches that unit (bronze
+  // free, silver pay 2, gold pay 4) — so the tray shows a single "skip this
+  // unit" choice with its cost picker. Whether that cost is affordable is judged
+  // separately by canAffordCardCost, so a grade you cannot pay never opens the
+  // window.
   if (triggerEvent.type === "UNIT_ACTIVATION_STARTED") {
-    if (effect.type !== "SKIP_ACTIVATION") {
+    if (effect.type !== "SKIP_ACTIVATION" || !effect.grade) {
       return false;
     }
     if (triggerEvent.playerId === playerId) {
       return false;
     }
     const unit = state.combat?.units[triggerEvent.unitId];
-    const windowPower = state.reactionWindow?.spellPowerBonus ?? 0;
-    const reachable = skipActivationReachableGrade(effect, windowPower);
-    return Boolean(unit && isUnitAlive(unit) && reachable && gradeRank(unit.grade) <= gradeRank(reachable));
+    return Boolean(unit && isUnitAlive(unit) && gradeRank(unit.grade) === gradeRank(effect.grade));
   }
 
   // Card draws are timing-free instants: they fit inside any open window.

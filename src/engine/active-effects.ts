@@ -1,10 +1,16 @@
 import { cardLibrary } from "@/data/cards/library";
 import { isAdjacent } from "./battlefield";
 import { appendEvent, nextEventNumber } from "./events";
-import { hasIgnoreOngoingEffects, hasIgnoreOngoingSpellEffects, hasUnitAbilityEffect } from "./unit-abilities";
+import {
+  hasIgnoreOngoingEffects,
+  hasIgnoreOngoingSpellEffects,
+  hasIgnoreParalysis,
+  hasUnitAbilityEffect
+} from "./unit-abilities";
 import type {
   ActiveEffectDefinition,
   ActiveEffectState,
+  CardDefinition,
   CombatUnitState,
   EffectDurationDefinition,
   GameState,
@@ -116,6 +122,37 @@ export function playerCannotSurrenderCombat(state: GameState, playerId: PlayerId
 }
 
 /**
+ * Elemental Orbs (Driving Rain / Silt / Tempestuous Fire / the Firmament),
+ * option A: the multiplier applied to the effective Power of a Spell `playerId`
+ * is casting. Every in-play SPELL_POWER_DOUBLE effect whose school matches the
+ * spell — or any of them when the spell is school-agnostic ("any", e.g. Magic
+ * Arrow), mirroring how the school-locked +Power boosts qualify — doubles it.
+ * Returns 1 when no orb applies (so a non-matching school is never touched).
+ */
+export function getSchoolPowerMultiplier(
+  state: GameState,
+  playerId: PlayerId,
+  spellCard: CardDefinition | undefined
+): number {
+  const schools = spellCard?.spellSchools ?? [];
+  let multiplier = 1;
+  for (const effect of state.activeEffects) {
+    if (effect.controllerId !== playerId) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (
+        modifier.type === "SPELL_POWER_DOUBLE" &&
+        (schools.includes(modifier.school) || schools.includes("any"))
+      ) {
+        multiplier *= 2;
+      }
+    }
+  }
+  return multiplier;
+}
+
+/**
  * Whether an ongoing effect was created by a Spell card. Tower Gargoyles ignore
  * only those; Tower Titans ignore every ongoing effect whatever its source.
  */
@@ -159,6 +196,24 @@ export function unitDealsElementalDamage(state: GameState, unit: CombatUnitState
   return state.activeEffects.some(
     (effect) =>
       effect.modifiers.some((modifier) => modifier.type === "ELEMENTAL_DAMAGE") &&
+      effectAppliesToUnit(effect, unit)
+  );
+}
+
+/**
+ * Whether `unit` cannot gain a Paralysis token right now: either the printed
+ * `ignore-paralysis` ability (Troglodytes / Gargoyles) or a Pendant of Second
+ * Sight PARALYSIS_IMMUNITY effect placed on it for the Combat. Every Paralysis
+ * source — the Blind Spell and the medusa-style follow-ups — checks this.
+ */
+export function unitImmuneToParalysis(state: GameState, unit: CombatUnitState): boolean {
+  if (hasIgnoreParalysis(unit)) {
+    return true;
+  }
+
+  return state.activeEffects.some(
+    (effect) =>
+      effect.modifiers.some((modifier) => modifier.type === "PARALYSIS_IMMUNITY") &&
       effectAppliesToUnit(effect, unit)
   );
 }
@@ -217,10 +272,19 @@ export function effectiveInitiative(unit: CombatUnitState, activeEffects: Active
     }
     return (
       total +
-      effect.modifiers.reduce(
-        (sum, modifier) => (modifier.type === "INITIATIVE_BONUS" ? sum + modifier.amount : sum),
-        0
-      )
+      effect.modifiers.reduce((sum, modifier) => {
+        // Haste / Slow / Cape of Velocity shift any unit's activation order.
+        if (modifier.type === "INITIATIVE_BONUS") {
+          return sum + modifier.amount;
+        }
+        // Expert Archery's "+1 initiative" lands on the player's Ranged units
+        // only. The effect is player-scoped (effectAppliesToUnit already passed),
+        // so the Ranged gate is the unit's own type — melee units are untouched.
+        if (modifier.type === "RANGED_INITIATIVE_BONUS" && unit.type === "ranged") {
+          return sum + modifier.amount;
+        }
+        return sum;
+      }, 0)
     );
   }, 0);
 

@@ -744,12 +744,12 @@ export const spellCards: CardLibrary = {
     source: spellSource("mirth")
   },
   // Sorrow (Expert Earth, Instant; Rampart Expansion): when an enemy unit is
-  // about to activate, skip its activation. Played for FREE against a bronze
-  // unit (Power 0); the reachable grade rises with the Power paid into the
-  // activation-skip window — discard further Spells for "+1 Power" each to reach
-  // silver (Power 2) or gold (Power 4). The window banks that Power (it has no
-  // stack item), and SKIP_ACTIVATION reads it via `gradeByPower`. The universal
-  // "OR Instant: +1 Power" side is the generic power-source discard.
+  // about to activate, skip its activation. The reachable grade is set by the
+  // Power paid (0 → bronze, 2 → silver, 4 → gold), modelled as one CHOOSE_ONE
+  // option per grade — free for bronze, pay 2/4 power-source cards for silver/
+  // gold (like Resurrection). The legal-action layer offers exactly the option
+  // matching the unit about to act, and only when it is affordable, so the tray
+  // shows a single "skip this unit (pay N)" choice with the cost picker.
   "spell.sorrow": {
     id: "spell.sorrow",
     name: "Sorrow",
@@ -759,7 +759,6 @@ export const spellCards: CardLibrary = {
     spellLevel: "expert",
     spellSchools: ["earth"],
     power: 0,
-    trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "opponent" },
     tags: [
       "spell",
       "expert",
@@ -767,8 +766,26 @@ export const spellCards: CardLibrary = {
       "Instant: When a unit is about to activate, skip this unit's activation: Power 0: bronze; Power 2: bronze or silver; Power 4: bronze, silver, or gold. — OR — Instant: +1 Power."
     ],
     effect: {
-      type: "SKIP_ACTIVATION",
-      gradeByPower: { 0: "bronze", 2: "silver", 4: "gold" }
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Skip a bronze unit's activation",
+          trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "opponent" },
+          effect: { type: "SKIP_ACTIVATION", grade: "bronze" }
+        },
+        {
+          label: "Skip a silver unit (pay 2 Power)",
+          cost: { discardCards: 2, costCardFilter: "power-source" },
+          trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "opponent" },
+          effect: { type: "SKIP_ACTIVATION", grade: "silver" }
+        },
+        {
+          label: "Skip a gold unit (pay 4 Power)",
+          cost: { discardCards: 4, costCardFilter: "power-source" },
+          trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "opponent" },
+          effect: { type: "SKIP_ACTIVATION", grade: "gold" }
+        }
+      ]
     },
     assets: {
       cardImage: "/assets/spells-sorrow.webp",

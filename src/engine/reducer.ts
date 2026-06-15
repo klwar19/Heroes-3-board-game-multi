@@ -8,6 +8,7 @@ import {
   getActiveAstrologersCard,
   getMainHero,
   getUnitSide,
+  isSeaField,
   makeCombatUnitFromArmy,
   NEUTRAL_DECK_IDS,
   queueNecromancyReinforce
@@ -82,10 +83,13 @@ import {
   buyWarMachine,
   countBallistas,
   discardPermanentVoluntarily,
+  firstAidVolleyHeals,
   getPermanentSchoolBonus,
   isLowestInitiativeEnemy,
+  playerCanUseFirstAidVolley,
   putPermanentIntoPlay,
   resolveWarMachineTarget,
+  spendFirstAidExpert,
   startWarMachineRound
 } from "./permanents";
 import { createSeededRandom } from "./random";
@@ -116,10 +120,12 @@ import {
   getActiveDefenseBonus,
   getAttackRerollEffects,
   getConditionalDefenseBonus,
+  getSchoolPowerMultiplier,
   makeActiveEffect,
   playerHasSpellTimingFreedom,
   releaseEndedOngoingCards,
-  unitDealsElementalDamage
+  unitDealsElementalDamage,
+  unitImmuneToParalysis
 } from "./active-effects";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
@@ -198,7 +204,6 @@ import {
   hasBindAdjacentEnemies,
   hasDefenseTokenAura,
   hasIgnoreOwnAttackDie,
-  hasIgnoreParalysis,
   hasImmuneToSpecialtyDamage,
   hasRetaliationAgainstDisadvantage,
   hasSpellCastHandTax,
@@ -368,27 +373,6 @@ function assertBatchReactionLegal(
     handCounts.set(cardId, (handCounts.get(cardId) ?? 0) + 1);
   }
 
-  // Sorrow batches "+1 Power" discards into the activation-skip window before the
-  // skip reads the pool, so its SKIP_ACTIVATION play is checked against the Power
-  // those discards will have banked — not the empty pool the window starts at.
-  // (The boosts themselves stay validated at the current pool, where the window
-  // offers them.) Computed by briefly projecting the pool, then restoring it.
-  const isActivationSkipWindow = state.reactionWindow.triggerEvent.type === "UNIT_ACTIVATION_STARTED";
-  const batchedPower = action.plays.filter((play) => play.asPowerBoost).length;
-  let legalActionsAtFullPower = legalActions;
-  if (isActivationSkipWindow && batchedPower > 0) {
-    // getLegalActions returns the window's cached reaction list, so recompute the
-    // reactions fresh against the projected pool instead (then restore the pool).
-    const savedPower = state.reactionWindow.spellPowerBonus;
-    state.reactionWindow.spellPowerBonus = (savedPower ?? 0) + batchedPower;
-    try {
-      legalActionsAtFullPower =
-        getLegalReactionsForTrigger(state, state.reactionWindow.triggerEvent, cards)[action.playerId] ?? [];
-    } finally {
-      state.reactionWindow.spellPowerBonus = savedPower;
-    }
-  }
-
   let expertUsesNeeded = 0;
   let spellPlays = 0;
   let powerOnlyPlays = 0;
@@ -403,16 +387,7 @@ function assertBatchReactionLegal(
       ...(play.asPowerBoost ? { asPowerBoost: true } : {})
     };
 
-    // A SKIP_ACTIVATION play (Sorrow) reads the post-batch Power pool; everything
-    // else (including the boosts) is judged at the pool the window has now.
-    const playEffect =
-      !play.asPowerBoost && cards[play.cardId]
-        ? getEffectiveCardEffect(cards[play.cardId]!, play.optionIndex)
-        : null;
-    const legalForPlay =
-      isActivationSkipWindow && playEffect?.type === "SKIP_ACTIVATION" ? legalActionsAtFullPower : legalActions;
-
-    if (!legalForPlay.some((legal) => actionsMatch(legal.action, singleAction))) {
+    if (!legalActions.some((legal) => actionsMatch(legal.action, singleAction))) {
       return {
         code: "ACTION_NOT_LEGAL",
         message: `${cards[play.cardId]?.name ?? play.cardId} is not a legal reaction right now.`
@@ -811,6 +786,45 @@ function recomputePowerScaledAttackInstants(stackItem: ResolutionStackItem): voi
       stackItem.modifiers.defenseBonus += delta;
     }
     record.appliedAmount = newApplied;
+  }
+}
+
+/**
+ * Resistance ending an instant Spell buff already played into an attack: undo
+ * that one spell's contribution so the attack resolves as if it were never cast.
+ * Pulls its power-scaled attack/defense record back out (subtracting the bonus
+ * it currently contributes), then clears the per-card flags it set — Bless's
+ * ignored die, Precision's ranged-penalty waiver, and Slayer's extra rolls/draw.
+ */
+function reverseCancelledInstantSpell(stackItem: ResolutionStackItem, cardId: CardId, cards: CardLibrary): void {
+  const records = stackItem.modifiers.powerScaledAttackInstants;
+  if (records) {
+    for (let index = records.length - 1; index >= 0; index -= 1) {
+      if (records[index].cardId !== cardId) {
+        continue;
+      }
+      const record = records[index];
+      if (record.stat === "attack") {
+        stackItem.modifiers.attackBonus -= record.appliedAmount;
+      } else {
+        stackItem.modifiers.defenseBonus -= record.appliedAmount;
+      }
+      records.splice(index, 1);
+      break;
+    }
+  }
+
+  const effect = cards[cardId]?.effect;
+  if (effect?.type === "IGNORE_ATTACK_DIE") {
+    stackItem.modifiers.ignoreAttackDie = false;
+  }
+  if (effect?.type === "ADD_COMBAT_STAT" && effect.ignoreRangedPenalty) {
+    stackItem.modifiers.ignoreRangedPenalty = false;
+  }
+  if (effect?.type === "SLAYER_ATTACK") {
+    stackItem.modifiers.slayerRolls = undefined;
+    stackItem.modifiers.slayerRollsByPower = undefined;
+    stackItem.modifiers.slayerDraw = undefined;
   }
 }
 
@@ -3142,7 +3156,7 @@ function applyParalysisFollowUps(
     if (roll !== followUp.onRoll) {
       continue;
     }
-    if (hasIgnoreParalysis(defender)) {
+    if (unitImmuneToParalysis(state, defender)) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: defender.id,
@@ -3234,7 +3248,7 @@ function applyRetaliationParalysis(
     }
   }
 
-  if (hasIgnoreParalysis(target)) {
+  if (unitImmuneToParalysis(state, target)) {
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: target.id,
@@ -4388,9 +4402,14 @@ function getCurrentSpellPower(state: GameState, stackItem: ResolutionStackItem, 
     (stackItem.modifiers.schoolPowerBonus ?? 0) +
     (stackItem.modifiers.townCubePowerBonus ?? 0);
 
+  // Elemental Orbs (option A): the matching in-play orb doubles the whole Power
+  // brought to a spell of its School ("double the power used for this spell")
+  // before the enemy reduction is taken off.
+  const doubled = base * getSchoolPowerMultiplier(state, stackItem.action.playerId, card);
+
   // Rampart Pegasi: an enemy Pegasi pack reduces the Power of every Spell this
   // caster resolves (to a minimum of 0).
-  return Math.max(0, base - enemySpellPowerReduction(state, stackItem.action.playerId));
+  return Math.max(0, doubled - enemySpellPowerReduction(state, stackItem.action.playerId));
 }
 
 function shouldRetaliate(
@@ -4867,13 +4886,25 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
 
     // Blind: place a Paralysis token on the selected enemy unit, gated by the
     // Power paid (0 → bronze, 1 → silver, 2 → gold). Above the unlocked grade
-    // the cast does nothing — mirrors Anti-Magic's resolution-time gate.
+    // the cast does nothing — mirrors Anti-Magic's resolution-time gate. A unit
+    // that cannot gain Paralysis (the printed ignore-paralysis ability, or a
+    // Pendant of Second Sight immunity) shrugs the token off all the same.
     if (card?.effect.type === "PLACE_PARALYSIS" && state.combat && stackItem.action.target.type === "unit") {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
-        placeCombatToken(state, target, "paralysis", 0, card.name);
+        if (unitImmuneToParalysis(state, target)) {
+          appendEvent(state, {
+            type: "UNIT_ABILITY_TRIGGERED",
+            unitId: target.id,
+            abilityId: "ignore-paralysis",
+            targetUnitId: target.id,
+            message: `${target.cardName} is immune to Paralysis.`
+          });
+        } else {
+          placeCombatToken(state, target, "paralysis", 0, card.name);
+        }
       }
     }
 
@@ -5538,30 +5569,21 @@ function applyReactionPlayCore(
 
   // The printed alternative bottom effect of every Spell card: discard it
   // for +1 Power toward the pending cast (or the spell instant in this
-  // attack window). The Sorrow activation-skip window has no stack item to
-  // hold the Power, so it banks it on the reaction window itself instead.
+  // attack window).
   if (play.asPowerBoost) {
     if (card.kind !== "spell") {
       throw new Error("Only Spell cards can be discarded for +1 Power.");
     }
-    const windowPool =
-      !stackItemForBoost && state.reactionWindow?.triggerEvent.type === "UNIT_ACTIVATION_STARTED"
-        ? state.reactionWindow
-        : null;
-    if (!stackItemForBoost && !windowPool) {
+    if (!stackItemForBoost) {
       throw new Error("There is nothing to empower.");
     }
     const moveError = moveCardFromHandToDiscard(state, playerId, play.cardId);
     if (moveError) {
       throw new Error(moveError.message);
     }
-    if (windowPool) {
-      windowPool.spellPowerBonus = (windowPool.spellPowerBonus ?? 0) + 1;
-    } else {
-      stackItemForBoost!.modifiers.spellPowerBonus += 1;
-      stackItemForBoost!.modifiers.playedCardIds.push(play.cardId);
-      recomputePowerScaledAttackInstants(stackItemForBoost!);
-    }
+    stackItemForBoost.modifiers.spellPowerBonus += 1;
+    stackItemForBoost.modifiers.playedCardIds.push(play.cardId);
+    recomputePowerScaledAttackInstants(stackItemForBoost);
     appendEvent(state, {
       type: "CARD_PLAYED",
       playerId,
@@ -5701,6 +5723,40 @@ function applyReactionPlayCore(
     return { windowEnded: true };
   }
 
+  // Resistance against an instant Spell buff the OTHER side played into this
+  // attack (Curse/Weakness/Bloodlust/Precision/Bless/Slayer): reverse the most
+  // recent such spell so the attack proceeds as if it were never cast. The
+  // attack itself is untouched and the window stays open, so each side can keep
+  // responding (cast another buff, resist again) until both pass.
+  if (
+    effect.type === "CANCEL_SPELL" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    const instants = stackItem.modifiers.cancellableSpellInstants ?? [];
+    let index = -1;
+    for (let i = instants.length - 1; i >= 0; i -= 1) {
+      if (instants[i].playerId !== playerId) {
+        index = i;
+        break;
+      }
+    }
+    if (index === -1) {
+      throw new Error("There is no enemy Spell to resist on this attack.");
+    }
+    const cancelled = instants[index];
+    reverseCancelledInstantSpell(stackItem, cancelled.cardId, cards);
+    instants.splice(index, 1);
+    appendEvent(state, {
+      type: "SPELL_CAST_CANCELLED",
+      playerId: cancelled.playerId,
+      spellCardId: cancelled.cardId,
+      cancelledByPlayerId: playerId,
+      cancelledByCardId: play.cardId
+    });
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+    return { windowEnded: false };
+  }
+
   // Magic Mirror: re-point the pending enemy spell to a new target. The card,
   // its Power cost and the spell-limit count were already spent above. Now the
   // controller picks the new target (of the chosen grade or lower) in a
@@ -5744,19 +5800,15 @@ function applyReactionPlayCore(
     return { windowEnded: true };
   }
 
-  // Sorrow: skip the activation of the unit that is about to act. Played for
-  // free against a bronze unit; the reachable grade rises with the Power paid
-  // into this activation-skip window (0 → bronze, 2 → silver, 4 → gold). The
-  // window carries that Power pool, since it has no stack item to hold it.
+  // Sorrow: skip the activation of the unit that is about to act. The chosen
+  // CHOOSE_ONE option carries the grade reached (bronze free, silver/gold paid
+  // via its discard cost, already settled above). The about-to-activate unit
+  // comes from the activation-skip window's trigger event.
   if (effect.type === "SKIP_ACTIVATION") {
     const triggerEvent = state.reactionWindow?.triggerEvent;
-    const windowPower = state.reactionWindow?.spellPowerBonus ?? 0;
-    const reachableGrade = effect.gradeByPower
-      ? gradeAtPower(effect.gradeByPower, windowPower)
-      : (effect.grade ?? null);
     const unit =
       triggerEvent?.type === "UNIT_ACTIVATION_STARTED" ? state.combat?.units[triggerEvent.unitId] : undefined;
-    if (unit && isUnitAlive(unit) && reachableGrade && gradeRank(unit.grade) <= gradeRank(reachableGrade)) {
+    if (unit && isUnitAlive(unit) && effect.grade && gradeRank(unit.grade) <= gradeRank(effect.grade)) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: unit.id,
@@ -5904,6 +5956,13 @@ function applyReactionPlayCore(
     if (effect.drawCards) {
       drawCardsForPlayer(state, playerId, effect.drawCards);
     }
+
+    // Spells (Curse/Weakness/Bloodlust/Precision) may be cancelled by the other
+    // side's Resistance; the Attack/Defense statistics and Gnoll artifacts that
+    // share this effect are not Spells, so they are never recorded.
+    if (card.kind === "spell") {
+      (stackItem.modifiers.cancellableSpellInstants ??= []).push({ cardId: card.id, playerId });
+    }
   }
 
   // Shield of the Dwarven Lords: played in the post-roll window. Arm the pending
@@ -5954,6 +6013,7 @@ function applyReactionPlayCore(
       }
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
+    (stackItem.modifiers.cancellableSpellInstants ??= []).push({ cardId: card.id, playerId });
   }
 
   // Frenzy: the pending attack ignores the attacked unit's Defense (counts as 0).
@@ -5999,6 +6059,7 @@ function applyReactionPlayCore(
       if (!play.fromScroll) {
         stackItem.modifiers.slayerRollsByPower = effect.rollsByPower;
       }
+      (stackItem.modifiers.cancellableSpellInstants ??= []).push({ cardId: card.id, playerId });
     }
   }
 
@@ -6603,6 +6664,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "ARTILLERY_BALLISTA_VOLLEY") {
     throw new Error("Artillery's expert side resolves when your Ballista fires, not from hand.");
   }
+  // First Aid's expert side is likewise not played from hand: it is offered when
+  // this player activates their First Aid Tent's heal (see permanents.ts).
+  if (effect.type === "FIRST_AID_TENT_VOLLEY") {
+    throw new Error("First Aid's expert side resolves when you use your First Aid Tent, not from hand.");
+  }
 
   const option = getChosenOption(card, action.optionIndex);
   const mode = action.mode ?? "basic";
@@ -6611,6 +6677,21 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
   if (option?.mapOnly && state.combat) {
     throw new Error(`${option.label} cannot be used during combat.`);
+  }
+  // Crown of the Five Seas' sea side: only while this player's main Hero stands
+  // on a Sea (water-terrain) field.
+  if (option?.requiresSeaTile) {
+    const hero = getMainHero(state, action.playerId);
+    if (!hero?.spaceId || !isSeaField(state, hero.spaceId)) {
+      throw new Error(`${option.label} requires your Hero to be on a Sea tile.`);
+    }
+  }
+  // Ring of the Wayfarer's paralysis side: only at the opening round of a
+  // Combat against Neutral Units.
+  if (option?.requiresNeutralCombatStart) {
+    if (!state.combat || state.combat.context.kind !== "neutral" || state.combat.round !== 1) {
+      throw new Error(`${option.label} is played at the start of a Combat with Neutral Units.`);
+    }
   }
   if (mode === "expert" && !hasExpertUseAvailable(state, action.playerId)) {
     throw new Error("No expert uses are available this combat round.");
@@ -6740,6 +6821,19 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "CREATE_DEFENSE_BUFF" && target) {
     createDefenseBuffFromCard(state, card, action.playerId, card.power ?? 0, target);
+  }
+
+  // Ring of the Wayfarer's paralysis side: place a Paralysis token on the
+  // chosen unit, gated by the grade the paid Power unlocks (Power 0 -> gold, so
+  // an Azure unit — above the gate — is left untouched, matching "except
+  // Azure"). The Blind Spell shares the PLACE_PARALYSIS effect but resolves via
+  // the spell stack, so this branch only fires for directly-played cards.
+  if (effect.type === "PLACE_PARALYSIS" && state.combat && target) {
+    const maxGrade = gradeAtPower(effect.gradeByPower, card.power ?? 0);
+    const unit = state.combat.units[target.unitId];
+    if (unit && maxGrade && gradeRank(unit.grade) <= gradeRank(maxGrade)) {
+      placeCombatToken(state, unit, "paralysis", 0, card.name);
+    }
   }
 
   // Rashka's Demoniac specialty (IV/VI): a Fire Shield on the chosen unit —
@@ -6932,6 +7026,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       filter: effect.filter,
       fromTop: effect.fromTop,
       shuffleRestIntoDeck: effect.shuffleRestIntoDeck
+    });
+  }
+
+  // Scholar (expert): open the interactive Empowered-Statistic swap (up to
+  // `count` removals). The Scholar card was already removed by cost.removeSelf.
+  if (effect.type === "SCHOLAR_EMPOWER_SWAP") {
+    state.adventure?.rewardQueue.unshift({
+      playerId: action.playerId,
+      kind: "visit-steps",
+      steps: [{ type: "SCHOLAR_EMPOWER_PICK", remaining: effect.count, takenTypes: [] }]
     });
   }
 
@@ -7380,22 +7484,21 @@ function applyActiveEffectAction(
     throw new Error("That active effect target is not legal.");
   }
 
-  // First Aid Tent: a single basic heal per round, OR an expert activation
-  // (spend 1 expert use) that heals several times this round. Basic and expert
-  // are mutually exclusive within a round.
-  const player = state.players[action.playerId];
-  const expertMax = healModifier.expertUsesPerRound ?? 0;
+  // First Aid Tent: a single basic heal per round, OR an expert activation that
+  // heals several times this round. The expert is the First Aid ability card's
+  // expert side — the player must hold that card with a free expert use; playing
+  // it spends the crown and discards the card. Basic and expert are mutually
+  // exclusive within a round. The volley size (`expertMax`) is read from the
+  // First Aid card, so it stays the source of truth (mirrors Artillery/Ballista).
+  const expertMax = firstAidVolleyHeals();
   const usage = effect.healRound?.round === combat.round ? effect.healRound : undefined;
   const mode = action.mode ?? "basic";
 
   if (mode === "expert") {
-    if (usage || expertMax <= 1) {
-      throw new Error("The First Aid Tent expert cannot be used this combat round.");
+    if (usage || !playerCanUseFirstAidVolley(state, action.playerId)) {
+      throw new Error("First Aid's expert side needs the First Aid card and a free expert use this round.");
     }
-    if (!player || !hasExpertUseAvailable(state, action.playerId)) {
-      throw new Error("No expert uses are available this combat round.");
-    }
-    player.combatStats.expertUsesSpentThisRound += 1;
+    spendFirstAidExpert(state, action.playerId);
     effect.healRound = { round: combat.round, count: 1, expert: true };
   } else if (!usage) {
     effect.healRound = { round: combat.round, count: 1, expert: false };
