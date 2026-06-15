@@ -932,6 +932,8 @@ export const spellDeckLegacy: string[] = [
   "spell.earthquake",
   "spell.resurrection",
   "spell.magic_mirror",
+  "spell.blind",
+  "spell.chain_lightning",
   "spell.summon_air_elemental",
   "spell.summon_earth_elemental",
   "spell.summon_fire_elemental",
@@ -969,6 +971,7 @@ export const spellDeckBinhBasic: string[] = [
   "spell.precision",
   "spell.fortune",
   "spell.fortune",
+  "spell.blind",
   "spell.earthquake"
 ];
 
@@ -985,6 +988,7 @@ export const spellDeckBinhExpert: string[] = [
   "spell.town_portal",
   "spell.resurrection",
   "spell.magic_mirror",
+  "spell.chain_lightning",
   "spell.summon_air_elemental",
   "spell.summon_earth_elemental",
   "spell.summon_fire_elemental",

@@ -8,10 +8,11 @@ import {
 import type { GameAction, GameState, UnitId } from "./state";
 
 /**
- * Engine coverage for "library-only" cards that used to ship as inert
- * `DRAW_CARDS amount: 0` stubs (they did nothing and were kept out of every
- * deck so no one could play a non-functional card). Each test plays the real
- * card through the engine and fails if its wiring is removed.
+ * Engine coverage for cards that used to ship as inert `DRAW_CARDS amount: 0`
+ * stubs (they did nothing and were once kept out of every deck so no one could
+ * play a non-functional card). They are now fully implemented and dealt into
+ * the shared draw decks. Each test plays the real card through the engine and
+ * fails if its wiring is removed.
  */
 
 function applyOk(state: GameState, action: GameAction): GameState {
