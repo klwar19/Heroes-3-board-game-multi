@@ -2601,14 +2601,24 @@ export function getLegalReactionsForTrigger(
 
     // Attack windows: only spells that modify the attack (buffs/nerfs of
     // attack or defense) may consume Power, so Power plays are offered only
-    // while the player still holds such an instant spell to pair them with.
+    // while the player still holds such an instant spell to pair them with…
     const hasPairableSpell = reactions.some(
       (legal) =>
         legal.action.type === "PLAY_REACTION" &&
         !legal.action.asPowerBoost &&
         cards[legal.action.cardId]?.kind === "spell"
     );
-    if (!isAttackWindow || hasPairableSpell) {
+    // …or while a Power-scaling spell this player already cast into the attack
+    // is still on the stack waiting to grow (the caster keeps priority and may
+    // keep empowering a Bloodlust/Bless after playing it).
+    const attackStackItem = isAttackWindow ? state.stack.at(-1) : undefined;
+    const attackOwner =
+      attackStackItem?.action.type === "ATTACK_UNIT" || attackStackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
+        ? attackStackItem.action.playerId
+        : undefined;
+    const hasEmpowerablePlayed =
+      attackOwner === player.id && (attackStackItem?.modifiers.powerScaledAttackInstants?.length ?? 0) > 0;
+    if (!isAttackWindow || hasPairableSpell || hasEmpowerablePlayed) {
       reactions.push(...powerReactions);
     }
 

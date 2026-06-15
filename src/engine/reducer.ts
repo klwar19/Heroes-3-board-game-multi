@@ -741,6 +741,35 @@ function getAmountByPower(amountByPower: Record<number, number> | undefined, fal
 }
 
 /**
+ * Re-derive every Power-scaling attack/defense instant recorded on an attack
+ * stack item against the item's current spellPowerBonus, folding the delta into
+ * attackBonus/defenseBonus. Called whenever fresh Power is paid into the attack
+ * window so a Bloodlust/Bless/Precision cast earlier keeps growing instead of
+ * being frozen at the Power it had when first played.
+ */
+function recomputePowerScaledAttackInstants(stackItem: ResolutionStackItem): void {
+  const records = stackItem.modifiers.powerScaledAttackInstants;
+  if (!records || records.length === 0) {
+    return;
+  }
+  const power = stackItem.modifiers.spellPowerBonus;
+  for (const record of records) {
+    const scaled = getAmountByPower(record.amountByPower, record.baseAmount, power);
+    const newApplied = (scaled + record.fixedBonus) * record.doubleFactor;
+    const delta = newApplied - record.appliedAmount;
+    if (delta === 0) {
+      continue;
+    }
+    if (record.stat === "attack") {
+      stackItem.modifiers.attackBonus += delta;
+    } else {
+      stackItem.modifiers.defenseBonus += delta;
+    }
+    record.appliedAmount = newApplied;
+  }
+}
+
+/**
  * Whether a combat unit is the signature unit a hero specialty doubles for.
  * Most specialties name one exact unit (Crusaders, Efreet…); Mutare's
  * signature is the whole Dragons family ("a Dragons unit"), which matches
@@ -5200,6 +5229,7 @@ function applyReactionPlayCore(
     }
     stackItemForBoost.modifiers.spellPowerBonus += 1;
     stackItemForBoost.modifiers.playedCardIds.push(play.cardId);
+    recomputePowerScaledAttackInstants(stackItemForBoost);
     appendEvent(state, {
       type: "CARD_PLAYED",
       playerId,
@@ -5414,6 +5444,7 @@ function applyReactionPlayCore(
     }
     stackItem.modifiers.spellPowerBonus += effectAmount;
     stackItem.modifiers.playedCardIds.push(play.cardId);
+    recomputePowerScaledAttackInstants(stackItem);
     if (effect.drawCards) {
       drawCardsForPlayer(state, playerId, effect.drawCards);
     }
@@ -5460,10 +5491,9 @@ function applyReactionPlayCore(
       Boolean(attacker) &&
       Boolean(defender) &&
       effectiveInitiative(defender!, state.activeEffects) > effectiveInitiative(attacker!, state.activeEffects);
-    const appliedAmount =
-      unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName) || defenderIsFaster
-        ? effectAmount * 2
-        : effectAmount;
+    const doubleFactor =
+      unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName) || defenderIsFaster ? 2 : 1;
+    const appliedAmount = effectAmount * doubleFactor;
 
     if (effect.stat === "attack") {
       stackItem.modifiers.attackBonus += appliedAmount;
@@ -5471,6 +5501,24 @@ function applyReactionPlayCore(
       stackItem.modifiers.defenseBonus += appliedAmount;
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
+
+    // A Power-scaling spell instant (Bloodlust, Precision, Curse, Weakness…)
+    // is recorded so Power the caster pays LATER in this same attack window
+    // re-derives its bonus from the new total Power. Scroll spells are locked
+    // to power 0 and never recorded. The non-spell Attack/Defense statistic is
+    // a flat bonus that does not scale, so it is not recorded either.
+    if (effect.amountByPower && card.kind === "spell" && !play.fromScroll) {
+      const fixedBonus = effect.perCostCard ? effect.perCostCard * costCardsPaid : 0;
+      (stackItem.modifiers.powerScaledAttackInstants ??= []).push({
+        cardId: card.id,
+        stat: effect.stat,
+        amountByPower: effect.amountByPower,
+        baseAmount: effect.amount,
+        fixedBonus,
+        doubleFactor,
+        appliedAmount
+      });
+    }
 
     // Precision lifts the ranged penalty for this shot.
     if (effect.ignoreRangedPenalty) {
@@ -5514,11 +5562,24 @@ function applyReactionPlayCore(
   ) {
     stackItem.modifiers.ignoreAttackDie = true;
     if (effect.attackBonusByPower) {
-      stackItem.modifiers.attackBonus += getAmountByPower(
+      const blessBonus = getAmountByPower(
         effect.attackBonusByPower,
         0,
         play.fromScroll ? 0 : stackItem.modifiers.spellPowerBonus
       );
+      stackItem.modifiers.attackBonus += blessBonus;
+      // Bless's Power-scaled attack bonus can also grow with Power paid later.
+      if (!play.fromScroll) {
+        (stackItem.modifiers.powerScaledAttackInstants ??= []).push({
+          cardId: card.id,
+          stat: "attack",
+          amountByPower: effect.attackBonusByPower,
+          baseAmount: 0,
+          fixedBonus: 0,
+          doubleFactor: 1,
+          appliedAmount: blessBonus
+        });
+      }
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
@@ -5650,14 +5711,25 @@ function playReaction(
   action: Extract<GameAction, { type: "PLAY_REACTION" }>,
   cards: CardLibrary
 ): void {
-  // Power has no standalone effect during an attack — it may only be paid
-  // together with an instant spell in one declaration (PLAY_REACTIONS), the
-  // same rule the batch validator enforces.
+  // Power has no standalone effect during an attack UNLESS a Power-scaling
+  // spell instant has already been played into this window: the caster keeps
+  // priority and may keep empowering it (Bloodlust cast, then a Power card to
+  // lift it further). With nothing on the table to empower, lone Power still
+  // "dissipates" and is rejected — the same rule the batch validator enforces.
   if (state.reactionWindow?.triggerEvent.type === "UNIT_ATTACK_DECLARED") {
     const card = cards[action.cardId];
     const effect = card && !action.asPowerBoost ? getEffectiveCardEffect(card, action.optionIndex) : null;
     if (action.asPowerBoost || effect?.type === "ADD_SPELL_POWER") {
-      throw new Error("Power can only be played into an attack together with a Spell card.");
+      const stackItem = state.stack.at(-1);
+      const attackOwner =
+        stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
+          ? stackItem.action.playerId
+          : undefined;
+      const empowerable =
+        attackOwner === action.playerId && (stackItem?.modifiers.powerScaledAttackInstants?.length ?? 0) > 0;
+      if (!empowerable) {
+        throw new Error("Power can only be played into an attack together with a Spell card.");
+      }
     }
   }
 

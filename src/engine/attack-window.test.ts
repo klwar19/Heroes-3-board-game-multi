@@ -80,6 +80,62 @@ describe("attack-window power pairing", () => {
     expect(played.players.p1.combatStats.spellsCastThisRound).toBe(1);
   });
 
+  it("lets the caster keep empowering a spell instant played earlier in the same attack window", () => {
+    // p1 casts Bloodlust on its own (power 0 → +1 attack), keeps priority, then
+    // pays the Power statistic as a SEPARATE play to lift it to +2. p2 holds no
+    // instants, so the window only closes once p1 has finished empowering.
+    const state = declareMeleeAttack(["spell.bloodlust", "stat.power"], []);
+
+    const afterSpell = applyOk(state, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "spell.bloodlust",
+      mode: "basic"
+    });
+
+    // The window is still open with p1 on priority, and Power is now offered
+    // (it was illegal a moment ago with nothing on the table to empower).
+    expect(afterSpell.reactionWindow?.priorityPlayerId).toBe("p1");
+    const offers = afterSpell.reactionWindow?.legalReactions.p1 ?? [];
+    expect(
+      offers.some((legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "stat.power")
+    ).toBe(true);
+
+    const afterPower = applyOk(afterSpell, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "stat.power",
+      mode: "basic"
+    });
+
+    const rolled = [...afterPower.eventLog].reverse().find((event) => event.type === "ATTACK_ROLLED");
+    expect(rolled && rolled.type === "ATTACK_ROLLED" ? rolled.attackBonus : null).toBe(2);
+  });
+
+  it("still rejects a lone Power play before any empowerable spell is on the table", () => {
+    // Nothing has been cast into the attack yet, so the Power statistic still
+    // "dissipates" and cannot be played on its own (regression guard).
+    const state = declareMeleeAttack(["spell.bloodlust", "stat.power"], []);
+    const result = applyAction(state, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "stat.power",
+      mode: "basic"
+    });
+    expect(result.errors[0]?.message).toContain("Power can only be played into an attack together with a Spell card");
+  });
+
+  it("re-derives the spell bonus from the FINAL Power across several separate empower plays", () => {
+    // Bloodlust, then two Power plays one at a time: power 2 lifts it to +3.
+    const state = declareMeleeAttack(["spell.bloodlust", "stat.power", "stat.power"], []);
+    let next = applyOk(state, { type: "PLAY_REACTION", playerId: "p1", cardId: "spell.bloodlust", mode: "basic" });
+    next = applyOk(next, { type: "PLAY_REACTION", playerId: "p1", cardId: "stat.power", mode: "basic" });
+    next = applyOk(next, { type: "PLAY_REACTION", playerId: "p1", cardId: "stat.power", mode: "basic" });
+
+    const rolled = [...next.eventLog].reverse().find((event) => event.type === "ATTACK_ROLLED");
+    expect(rolled && rolled.type === "ATTACK_ROLLED" ? rolled.attackBonus : null).toBe(3);
+  });
+
   it("still allows the +1 Power discard toward your own spell cast", () => {
     const state = createInitialGameState("attack-window-seed-2");
     state.players.p1.hand = ["spell.magic_arrow", "spell.bloodlust"];
