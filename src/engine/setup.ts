@@ -134,7 +134,14 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
           "spell.magic_arrow",
           "spell.bloodlust",
           "artifact.centaurs_axe",
-          "ability.offense"
+          "ability.offense",
+          // New spells wired in for the battle simulator:
+          //  - Inferno: cast on a space during your unit's activation.
+          //  - Slayer: react to your own attack on the gold Dread Knights.
+          //  - Sorrow: react when an enemy unit is about to activate.
+          "spell.inferno",
+          "spell.slayer",
+          "spell.sorrow"
         ],
         deck: [
           "war_machine.first_aid_tent",
