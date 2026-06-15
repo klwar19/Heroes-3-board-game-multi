@@ -151,7 +151,15 @@ describe("previously-silent spells are wired (SFX + animation)", () => {
     "spell.mirth": { sprite: "mirth", sound: "spells/mirth" },
     "spell.sorrow": { sprite: "sorrow", sound: "spells/sorrow" },
     "spell.slayer": { sprite: "slayer", sound: "spells/slayer" },
-    "spell.magic_mirror": { sprite: "magic-mirror", sound: "spells/magic-mirror" }
+    "spell.magic_mirror": { sprite: "magic-mirror", sound: "spells/magic-mirror" },
+    // Tower-expansion / stretch-goal defensive spells: each ships a converted
+    // sprite sheet + measured sound that the plan must keep referencing.
+    "spell.shield": { sprite: "shield", sound: "spells/shield" },
+    "spell.air_shield": { sprite: "air-shield", sound: "spells/air-shield" },
+    "spell.protection_from_air": { sprite: "protect-air", sound: "spells/protect-air" },
+    "spell.protection_from_earth": { sprite: "protect-earth", sound: "spells/protect-earth" },
+    "spell.protection_from_fire": { sprite: "protect-fire", sound: "spells/protect-fire" },
+    "spell.protection_from_water": { sprite: "protect-water", sound: "spells/protect-water" }
   };
 
   it.each(Object.entries(SPRITE_AND_SOUND))("wires %s with a real sprite + sound", (id, expected) => {

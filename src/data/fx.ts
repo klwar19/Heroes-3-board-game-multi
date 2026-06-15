@@ -116,6 +116,17 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "spell.sorrow": { affect: [{ key: "sorrow" }], sound: "spells/sorrow" },
   "spell.slayer": { affect: [{ key: "slayer" }], sound: "spells/slayer" },
   "spell.magic_mirror": { affect: [{ key: "magic-mirror" }], sound: "spells/magic-mirror" },
+  // Shield / Air Shield: a warding shimmer over the buffed unit with the H3 cast
+  // cue (their sprite sheets + sounds were converted but never wired).
+  "spell.shield": { affect: [{ key: "shield" }], sound: "spells/shield" },
+  "spell.air_shield": { affect: [{ key: "air-shield" }], sound: "spells/air-shield" },
+  // Protection from Air/Earth/Fire/Water: these resolve by cancelling the enemy
+  // Spell, so their sprite + sound play off the SPELL_CAST_CANCELLED cue (keyed
+  // by the cancelling card in page.tsx) rather than a SPELL_CAST_RESOLVED.
+  "spell.protection_from_air": { affect: [{ key: "protect-air" }], sound: "spells/protect-air" },
+  "spell.protection_from_earth": { affect: [{ key: "protect-earth" }], sound: "spells/protect-earth" },
+  "spell.protection_from_fire": { affect: [{ key: "protect-fire" }], sound: "spells/protect-fire" },
+  "spell.protection_from_water": { affect: [{ key: "protect-water" }], sound: "spells/protect-water" },
   // Map spells resolve on the adventure map (no battle board to anchor sprites
   // on), so only a cast sound is wired; page.tsx plays it off the CARD_PLAYED
   // cue for map-timed cards. Town Portal and Dimension Door share the H3
