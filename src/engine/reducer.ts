@@ -1132,6 +1132,22 @@ function totalSpellDamageReduction(state: GameState, target: CombatUnitState): n
     return 0;
   }
   let total = getSpellDamageReduction(target);
+
+  // Interference: a unit-scoped Defense bonus that also blunts Spell damage.
+  // Sum every SPELL_DAMAGE_REDUCTION modifier on an effect that applies to the
+  // target (Titans/Gargoyles' ignore-ongoing-effects passives are honoured by
+  // effectAppliesToUnit, exactly as they are for any other ongoing effect).
+  for (const effect of state.activeEffects) {
+    if (!effectAppliesToUnit(effect, target)) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "SPELL_DAMAGE_REDUCTION") {
+        total += modifier.amount;
+      }
+    }
+  }
+
   const combat = state.combat;
   if (combat) {
     // Aura sources (Rampart Unicorns Pack) shield themselves and adjacent
@@ -5463,6 +5479,11 @@ function effectSupportsExpertPlay(effect: NonNullable<ReturnType<typeof getEffec
     return Boolean(effect.expertIgnoresMaxPower);
   }
 
+  // Interference's expert side (+2 instead of +1) always exists.
+  if (effect.type === "INTERFERE_SPELL") {
+    return true;
+  }
+
   return false;
 }
 
@@ -6092,6 +6113,40 @@ function applyReactionPlayCore(
       caster.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
     }
 
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
+  // Interference: react to an enemy damaging Spell aimed at one of your units
+  // by granting that unit +1 (expert +2) Defense for the rest of the Combat —
+  // a bonus that also reduces Spell damage (DEFENSE_BONUS for attacks,
+  // SPELL_DAMAGE_REDUCTION for spells). Created here, before the pending Spell
+  // resolves (the reaction window closes first), so it softens the very Spell
+  // that triggered it and every later Spell that hits the same unit.
+  if (effect.type === "INTERFERE_SPELL" && stackItem?.action.type === "CAST_SPELL") {
+    const targetRef = stackItem.action.target;
+    const targetUnit = targetRef.type === "unit" ? state.combat?.units[targetRef.unitId] : undefined;
+    // The legal-reaction gate already restricts this to the reacting player's
+    // own targeted unit; re-checked here so a stale window can never buff an
+    // enemy unit or a dead one.
+    if (targetUnit && targetUnit.controllerId === playerId && isUnitAlive(targetUnit)) {
+      createActiveEffect(
+        state,
+        {
+          name: mode === "expert" ? "Expert Interference" : "Interference",
+          scope: "unit",
+          duration: { type: "combat" },
+          polarity: "positive",
+          removable: true,
+          modifiers: [
+            { type: "DEFENSE_BONUS", amount: effectAmount },
+            { type: "SPELL_DAMAGE_REDUCTION", amount: effectAmount }
+          ]
+        },
+        { type: "card", cardId: card.id, controllerId: playerId },
+        playerId,
+        { type: "unit", unitId: targetUnit.id }
+      );
+    }
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 

@@ -2980,6 +2980,11 @@ export function effectHasExpertMode(effect: ConcreteEffect): boolean {
     return Boolean(effect.expertIgnoresMaxPower);
   }
 
+  // Interference always has an expert side (+2 instead of +1).
+  if (effect.type === "INTERFERE_SPELL") {
+    return true;
+  }
+
   return false;
 }
 
@@ -3059,6 +3064,27 @@ export function isEffectLegalForTrigger(
 
     if (effect.type === "RECALL_SPELL") {
       return triggerEvent.playerId === playerId;
+    }
+
+    // Interference: offered to the targeted side only (never the caster) when
+    // the pending Spell deals Spell damage to one of this player's units. The
+    // bonus lands on that unit; an enemy buff/debuff or a non-damaging spell
+    // never opens the window.
+    if (effect.type === "INTERFERE_SPELL") {
+      if (triggerEvent.playerId === playerId) {
+        return false;
+      }
+      if (!pendingSpellTargetForPlayer(state, triggerEvent, playerId)) {
+        return false;
+      }
+      const stackItem = getPendingStackItem(state, triggerEvent);
+      const pendingSpell =
+        stackItem?.action.type === "CAST_SPELL" ? cardLibrary[stackItem.action.cardId] : undefined;
+      return Boolean(
+        pendingSpell &&
+          pendingSpell.effect.type === "DEAL_DAMAGE" &&
+          pendingSpell.effect.damageKind === "spell"
+      );
     }
 
     return false;

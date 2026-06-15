@@ -350,6 +350,18 @@ export type ActiveEffectModifier =
        * exactly like the printed `ignore-paralysis` unit ability does.
        */
       type: "PARALYSIS_IMMUNITY";
+    }
+  | {
+      /**
+       * Interference ability: the affected unit reduces the damage it takes
+       * from Spells by this much — a Defense bonus that, unusually, also blunts
+       * Spell damage. Summed into totalSpellDamageReduction alongside the
+       * Golems'/Black Dragons' printed "reduce Spell damage" passives. The same
+       * Interference play also grants a plain DEFENSE_BONUS (vs attacks), so a
+       * unit carrying it gets the bonus against both attacks and spells.
+       */
+      type: "SPELL_DAMAGE_REDUCTION";
+      amount: number;
     };
 
 export type ActiveEffectDefinition = {
@@ -859,6 +871,19 @@ export type EffectDefinition =
        */
       type: "REDIRECT_SPELL";
       grade: UnitGrade;
+    }
+  | {
+      /**
+       * Interference: an instant reaction to an enemy damaging Spell that
+       * targets one of your units. Grants that unit +amount Defense for the
+       * rest of the Combat — a Defense bonus that, unusually, also reduces the
+       * incoming Spell's damage (and any later Spell damage to that unit). Basic
+       * +1 / expert +2. Modelled as a unit-scoped effect carrying both a
+       * DEFENSE_BONUS and a SPELL_DAMAGE_REDUCTION modifier.
+       */
+      type: "INTERFERE_SPELL";
+      amount: number;
+      expertAmount: number;
     }
   | {
       type: "CREATE_ACTIVE_EFFECT";
