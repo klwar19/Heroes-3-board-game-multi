@@ -83,6 +83,8 @@ Mirror of the build request. ✅ = implemented **and wired** (engine + UI + test
 - [x] content-tracker.md + README updated
 
 ## Known gaps (tracked in content-tracker.md)
-- NI cards stay out of the decks: Chain Lightning, Teleport, Blind/paralysis, Mirth, Sorrow, Slayer, Dimension Door, Forgetfulness, Inferno, Visions; Tactics, Diplomacy, Pathfinding, Learning; Charm of Mana, Greater Gnoll's Flail, Shield of the Dwarven Lords, Shackles of War, Mystic Orb, Orb of Vulnerability (Necromancy, Magic Mirror, Intelligence and Artillery are now implemented and in the decks)
+- Some library cards now have working engine effects but are still kept out of the decks (effect tested in `library-cards.test.ts`, deck inclusion is a separate balance decision): Chain Lightning, Blind, Greater Gnoll's Flail, Mystic Orb of Mana, Charm of Mana, Shackles of War.
+- Shackles of War option 1 also added a real PvP **Retreat/Surrender** (combat round 1, the conceding hero loses). Modeling note: the conceding player loses the combat and consequences reuse the normal PvP loss path; the exact surrender gold cost from the rulebook is not modeled.
+- Still inert / out of the decks (no engine effect yet): Teleport, Mirth, Sorrow, Slayer, Dimension Door, Forgetfulness, Inferno, Visions; Tactics, Diplomacy, Pathfinding, Learning; Shield of the Dwarven Lords, Orb of Vulnerability (Necromancy, Magic Mirror, Intelligence and Artillery are now implemented and in the decks — Artillery's basic shot and its expert Ballista 3× volley both run)
 - Map-spell Empowerment (Town Portal +MP at power 2/4) resolves at base power for now
 - Siege combat, secondary heroes, war machines beyond the Tent, scenario-specific Obelisk/Grail effects — unchanged from before

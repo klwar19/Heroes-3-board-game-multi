@@ -212,11 +212,12 @@ export function playShuffle(delayMs = 0): void {
 }
 
 /**
- * Tabletop dice roll: a rattle of wooden knocks that bounce off the table and
- * spread out as the die loses energy, then a firmer settling thud when it comes
- * to rest. This makes the on-screen dice read as a physical throw instead of a
- * silent CSS tumble. `settleMs` should match the moment the visual cube stops
- * spinning so the final knock lands with the result.
+ * Tabletop dice roll: an airy throw, then a rattle of wooden knocks that bounce
+ * off the table and spread out as the die sheds energy, and finally a firm
+ * settling thud — with a little rock as it tips onto its face — when it comes to
+ * rest. This makes the on-screen dice read as a physical throw, not a silent CSS
+ * tumble. `settleMs` should match the moment the visual cube stops spinning so
+ * the closing thud lands together with the result.
  */
 export function playDiceRoll(dieCount = 1, settleMs = 1300): void {
   if (muted || typeof window === "undefined") {
@@ -227,25 +228,36 @@ export function playDiceRoll(dieCount = 1, settleMs = 1300): void {
     return;
   }
 
-  // Bounces start fast and tight, then grow apart (a decaying bounce); a touch
-  // of jitter on timing and pitch keeps it from sounding metronomic. More dice
-  // pack a few extra knocks into the same window.
-  const knocks = Math.min(18, 10 + dieCount * 2);
-  let t = 30;
+  // The die leaves the hand: a short, soft whoosh of air.
+  playNoise({ durationMs: 170, from: 920, to: 280, q: 0.7, gain: 0.05, attackMs: 26 }, 10);
+
+  // Bounces start fast and tight, then grow apart (a decaying bounce) and lose
+  // volume as the die slows; a touch of jitter on timing and pitch keeps it from
+  // sounding metronomic. More dice pack a few extra knocks into the same window.
+  // The pitch sits in a "wooden die on felt" range rather than a bright tick.
+  const knocks = Math.min(24, 13 + dieCount * 2);
+  let t = 90;
   for (let i = 0; i < knocks; i += 1) {
     const progress = i / knocks;
-    const gap = 48 + progress * progress * 210 + Math.random() * 30;
+    // Quadratic spread: knocks crowd the start, then spill out toward the rest.
+    const gap = 42 + progress * progress * 250 + Math.random() * 34;
     t += gap;
     if (t >= settleMs) {
       break;
     }
-    const freq = 1550 - progress * 760 + (Math.random() * 260 - 130);
-    const gain = 0.045 + (1 - progress) * 0.05;
-    playNoise({ durationMs: 20 + Math.random() * 16, from: freq, to: freq * 0.55, q: 1.1, gain, attackMs: 2 }, t);
+    const freq = 1360 - progress * 680 + (Math.random() * 240 - 120);
+    // A weightier clack early on, fading to faint taps as it loses energy.
+    const gain = 0.05 + (1 - progress) * 0.07;
+    playNoise(
+      { durationMs: 22 + Math.random() * 18, from: freq, to: freq * 0.5, q: 1.05, gain, attackMs: 2 },
+      t
+    );
   }
 
-  // The die finally comes to rest: one lower, firmer knock on the felt.
-  playNoise({ durationMs: 80, from: 520, to: 220, q: 0.85, gain: 0.13, attackMs: 3 }, settleMs);
+  // The die comes to rest: a low, firm thud on the felt, then a quick lighter
+  // tick as it rocks and tips flat onto its face.
+  playNoise({ durationMs: 100, from: 470, to: 170, q: 0.8, gain: 0.17, attackMs: 3 }, settleMs);
+  playNoise({ durationMs: 46, from: 880, to: 360, q: 1.0, gain: 0.07, attackMs: 2 }, settleMs + 78);
 }
 
 /**
