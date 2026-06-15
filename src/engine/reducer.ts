@@ -660,6 +660,30 @@ function gradeAtPower(
   return matched === undefined ? null : (gradeByPower[matched] ?? null);
 }
 
+/** Chain Lightning Spell: the damage allocation unlocked by the paid Power. */
+function chainDamagesAtPower(
+  damagesByPower: Record<number, number[]>,
+  power: number
+): number[] | null {
+  const thresholds = Object.keys(damagesByPower)
+    .map(Number)
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right);
+  const matched = thresholds.filter((value) => value <= power).at(-1);
+  return matched === undefined ? null : (damagesByPower[matched] ?? null);
+}
+
+/** Resolves a CHAIN_LIGHTNING effect's allocation array for the paid Power. */
+function chainLightningDamages(
+  effect: Extract<EffectDefinition, { type: "CHAIN_LIGHTNING" }>,
+  power: number
+): number[] {
+  if (effect.damagesByPower) {
+    return chainDamagesAtPower(effect.damagesByPower, power) ?? effect.damages ?? [];
+  }
+  return effect.damages ?? [];
+}
+
 /**
  * Whether the unit's controller could play Alamar's Resurrection to save it
  * right now — exactly the reactions the lethal-save window would offer.
@@ -4179,6 +4203,31 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       );
     }
 
+    // Chain Lightning Spell: hit the selected unit, then fork to the units
+    // closest to it. The allocation (1/1/1, 2/1/1, 3/2/1) scales with Power.
+    if (card?.effect.type === "CHAIN_LIGHTNING" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(stackItem, cards);
+      startChainLightning(
+        state,
+        stackItem.action.playerId,
+        card,
+        stackItem.action.target.unitId,
+        chainLightningDamages(card.effect, power)
+      );
+    }
+
+    // Blind: place a Paralysis token on the selected enemy unit, gated by the
+    // Power paid (0 → bronze, 1 → silver, 2 → gold). Above the unlocked grade
+    // the cast does nothing — mirrors Anti-Magic's resolution-time gate.
+    if (card?.effect.type === "PLACE_PARALYSIS" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        placeCombatToken(state, target, "paralysis", 0, card.name);
+      }
+    }
+
     if (card?.effect.type === "CLEAR_RETALIATION" && state.combat && stackItem.action.target.type === "unit") {
       const power = getCurrentSpellPower(stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
@@ -4979,6 +5028,12 @@ function applyReactionPlayCore(
         damageKind: "effect"
       });
       markUnitRemovedIfNeeded(state, affectedUnit);
+    }
+
+    // Greater Gnoll's Flail (+2 attack): the boosted unit suffers −1 defense
+    // (a Corrosion token) until the end of the Combat.
+    if (effect.selfCorrosion && affectedUnit && state.combat) {
+      placeCombatToken(state, affectedUnit, "corrosion", effect.selfCorrosion, card.name);
     }
 
     if (effect.drawCards) {
@@ -5877,8 +5932,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   // Solmyr's Chain Lightning (I/VI): the selected unit takes the leftmost bolt,
   // then the chain forks to the units closest to it (the caster allocating).
+  // Specialty cards carry a fixed `damages`; a power-scaled `damagesByPower`
+  // (the Spell, never reached here) would use the card's printed power.
   if (effect.type === "CHAIN_LIGHTNING" && target && state.combat) {
-    startChainLightning(state, action.playerId, card, target.unitId, effect.damages);
+    startChainLightning(state, action.playerId, card, target.unitId, chainLightningDamages(effect, card.power ?? 0));
   }
 
   // Torosar's Ballista specialty: field an extra Ballista (this combat or the

@@ -517,12 +517,40 @@ export const artifactCards: CardLibrary = {
     "minor",
     "Discard 2 cards, then draw 3 cards. — OR — Draw 2 cards, then discard 1 card."
   ),
-  "artifact.greater_gnolls_flail": notImplementedArtifact(
-    "greater_gnolls_flail",
-    "Greater Gnoll's Flail",
-    "minor",
-    "+2 attack, then this unit suffers -1 defense until the end of the Combat. — OR — +1 attack."
-  ),
+  // Greater Gnoll's Flail: played while one of your units is attacking. The
+  // big swing adds +2 attack but leaves the unit a Corrosion token (−1 defense
+  // for the rest of the Combat); the safe option is a plain +1 attack.
+  "artifact.greater_gnolls_flail": {
+    id: "artifact.greater_gnolls_flail",
+    name: "Greater Gnoll's Flail",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "minor",
+    tags: [
+      "artifact",
+      "minor",
+      "+2 attack, then this unit suffers -1 defense until the end of the Combat. — OR — +1 attack."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+2 attack, then -1 defense until the end of the Combat",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, selfCorrosion: 1 }
+        },
+        {
+          label: "+1 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "greater_gnolls_flail", "Greater Gnoll's Flail"),
+    implementationStatus: "implemented",
+    source: artifactSource("greater_gnolls_flail")
+  },
   "artifact.shield_of_the_dwarven_lords": notImplementedArtifact(
     "shield_of_the_dwarven_lords",
     "Shield of the Dwarven Lords",

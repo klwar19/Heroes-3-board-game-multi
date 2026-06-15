@@ -323,6 +323,12 @@ export type EffectDefinition =
       drawCards?: number;
       /** Sword of Hellfire / Shield of the Damned: the unit also takes damage. */
       selfDamage?: number;
+      /**
+       * Greater Gnoll's Flail (+2 attack option): the boosted unit also receives
+       * a Corrosion token of this size (−1 defense, to a minimum of 0) that
+       * lasts until the end of the Combat.
+       */
+      selfCorrosion?: number;
       /** Bloodlust/Golden Bow: only these unit types may receive the bonus. */
       unitTypes?: UnitType[];
       /** Precision: the shot also ignores the ranged combat penalty. */
@@ -527,14 +533,41 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Solmyr's Chain Lightning (I: 1/1/0, VI: 2/1/1): the selected unit takes
-       * `damages[0]`; the remaining values are dealt to the units closest to it
-       * (friend or foe), the caster choosing which closest unit takes which on
-       * ties or when more than one nonzero value is left. A value of 0 means
-       * that closest unit is skipped (its damage routed away from an ally).
+       * Solmyr's Chain Lightning (I: 1/1/0, VI: 2/1/1) and the Chain Lightning
+       * Spell: the selected unit takes `damages[0]`; the remaining values are
+       * dealt to the units closest to it (friend or foe), the caster choosing
+       * which closest unit takes which on ties or when more than one nonzero
+       * value is left. A value of 0 means that closest unit is skipped (its
+       * damage routed away from an ally).
+       *
+       * Hero specialties use the fixed `damages`. The Spell scales its
+       * allocation with the Power paid via `damagesByPower` (0 → 1/1/1,
+       * 2 → 2/1/1, 4 → 3/2/1) — the array at the highest threshold the paid
+       * Power reaches is used.
        */
       type: "CHAIN_LIGHTNING";
-      damages: number[];
+      damages?: number[];
+      damagesByPower?: Record<number, number[]>;
+    }
+  | {
+      /**
+       * Blind Spell: place a Paralysis token on the selected enemy unit, gated
+       * by the Power paid (0 → bronze, 1 → silver, 2 → gold). A paralysed unit
+       * skips its next activation (the token is removed instead) and the token
+       * comes off the moment the unit takes any damage. Casting on a unit above
+       * the unlocked grade does nothing — exactly like Anti-Magic's gate.
+       */
+      type: "PLACE_PARALYSIS";
+      gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
+       * Artillery (basic): deal `amount` spell-style effect damage to the enemy
+       * unit with the lowest (effective) Initiative. When several enemies tie
+       * for the lowest the caster picks which one is struck.
+       */
+      type: "DAMAGE_LOWEST_INITIATIVE";
+      amount: number;
     }
   | {
       /**
