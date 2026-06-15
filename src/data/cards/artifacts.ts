@@ -1492,6 +1492,9 @@ export const artifactDeckLegacy: string[] = [
   "artifact.speculum",
   "artifact.torso_of_legion",
   "artifact.boots_of_speed",
+  "artifact.charm_of_mana",
+  "artifact.greater_gnolls_flail",
+  "artifact.shield_of_the_dwarven_lords",
   // major
   "artifact.dragon_scale_shield",
   "artifact.endless_bag_of_gold",
@@ -1505,6 +1508,8 @@ export const artifactDeckLegacy: string[] = [
   "artifact.everpouring_vial_of_mercury",
   "artifact.breastplate_of_brimstone",
   "artifact.shield_of_the_damned",
+  "artifact.mystic_orb_of_mana",
+  "artifact.shackles_of_war",
   // relic
   "artifact.angel_wings",
   "artifact.dragon_scale_armor",
@@ -1513,7 +1518,8 @@ export const artifactDeckLegacy: string[] = [
   "artifact.sword_of_judgement",
   "artifact.titans_cuirass",
   "artifact.titans_gladius",
-  "artifact.crown_of_dragontooth"
+  "artifact.crown_of_dragontooth",
+  "artifact.orb_of_vulnerability"
 ];
 
 /** BINH Minor Artifact deck (adds the BINH-extra minors). */
@@ -1536,7 +1542,10 @@ export const artifactDeckBinhMinor: string[] = [
   "artifact.skull_helmet",
   "artifact.equestrians_gloves",
   "artifact.glyph_of_gallantry",
-  "artifact.quiet_eye_of_the_dragon"
+  "artifact.quiet_eye_of_the_dragon",
+  "artifact.charm_of_mana",
+  "artifact.greater_gnolls_flail",
+  "artifact.shield_of_the_dwarven_lords"
 ];
 
 /** BINH Major Artifact deck (adds the BINH-extra majors). */
@@ -1554,7 +1563,9 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.breastplate_of_brimstone",
   "artifact.shield_of_the_damned",
   "artifact.pendant_of_courage",
-  "artifact.necklace_of_dragonteeth"
+  "artifact.necklace_of_dragonteeth",
+  "artifact.mystic_orb_of_mana",
+  "artifact.shackles_of_war"
 ];
 
 /** BINH Relic Artifact deck (adds the BINH-extra relics). */
@@ -1570,5 +1581,6 @@ export const artifactDeckBinhRelic: string[] = [
   "artifact.helm_of_heavenly_enlightenment",
   "artifact.celestial_necklace_of_bliss",
   "artifact.lions_shield_of_courage",
-  "artifact.sandals_of_the_saint"
+  "artifact.sandals_of_the_saint",
+  "artifact.orb_of_vulnerability"
 ];
