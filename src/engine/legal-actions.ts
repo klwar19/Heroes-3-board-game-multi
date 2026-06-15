@@ -3051,6 +3051,13 @@ export function isEffectLegalForTrigger(
       return attacker.controllerId === playerId && defender.grade === "gold";
     }
 
+    // Frenzy: only the attacker's controller, and only when the chosen option's
+    // grade reaches the defender (the option's discard cost paid the Power).
+    // Offering only the grade-reaching options keeps a wasted pierce off the menu.
+    if (effect.type === "IGNORE_DEFENSE") {
+      return attacker.controllerId === playerId && gradeRank(defender.grade) <= gradeRank(effect.grade);
+    }
+
     // Alamar's Resurrection is never a pre-die attack reaction — it is offered
     // only in its own save window, when the attack would actually be lethal.
 
