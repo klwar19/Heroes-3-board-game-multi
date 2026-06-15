@@ -1273,9 +1273,9 @@ export const spellCards: CardLibrary = {
   // reversed). The card's two printed tiers ("Power 0 / Power 1") are the engine's
   // basic / expert play: basic ends a Basic Spell of the School; the expert play
   // (spending a crown, like every other expert play) ends a Basic OR Expert
-  // Spell. A School-agnostic Spell (Magic Arrow) is never "from the School of X
-  // Magic", so Protection never touches it. The "OR Instant: +1 Power" side is
-  // the universal power-source discard.
+  // Spell. A School-agnostic Spell (Magic Arrow) counts as belonging to every
+  // School, so any Protection can end it. The "OR Instant: +1 Power" side is the
+  // universal power-source discard.
   "spell.protection_from_air": {
     id: "spell.protection_from_air",
     name: "Protection from Air",
