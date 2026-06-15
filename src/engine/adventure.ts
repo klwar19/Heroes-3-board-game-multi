@@ -3224,6 +3224,18 @@ export function startAdventureRound(state: GameState): void {
       }
     }
 
+    // Income artifacts in play (Eversmoking Ring of Sulfur, Inexhaustible Cart
+    // of Ore): gain the printed resource each Resources round while the
+    // permanent stays in play. Read inline — permanents.ts imports this module,
+    // so it cannot be imported back here.
+    const incomePermanentIds = player.permanents ?? (player.permanent ? [player.permanent] : []);
+    for (const permanentId of incomePermanentIds) {
+      const incomeGain = cardLibrary[permanentId]?.permanentEffect?.resourceRoundGain;
+      if (incomeGain) {
+        gainResources(state, playerId, { [incomeGain.resource]: incomeGain.amount }, cardLibrary[permanentId]?.name ?? "income artifact");
+      }
+    }
+
     const town = getTownOfPlayer(state, playerId);
     for (const buildingId of town?.buildings ?? []) {
       const effect = coreBuildingDefinitions[buildingId]?.effect;

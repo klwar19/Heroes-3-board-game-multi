@@ -18,7 +18,11 @@ const SCANLESS_ARTIFACTS = new Set([
   "skull_helmet",
   "celestial_necklace_of_bliss",
   "lions_shield_of_courage",
-  "sandals_of_the_saint"
+  "sandals_of_the_saint",
+  // Newly added wiki artifacts without a card scan yet: show the deck back.
+  "eversmoking_ring_of_sulfur",
+  "inexhaustible_cart_of_ore",
+  "endless_purse_of_gold"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
@@ -623,6 +627,78 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("shield_of_the_yawning_dead")
   },
+  // Income permanents: option 0 (ENTER_PLAY) keeps the card in play next to the
+  // hero board and pays 1 resource at the start of every Resources round
+  // (engine: permanentEffect.resourceRoundGain, applied in startAdventureRound).
+  // Like every permanent it occupies the single permanent slot — playing
+  // another permanent discards it (and vice versa), in combat as well. Option 1
+  // cracks the card open: it is removed from the game for a one-off larger gain.
+  "artifact.eversmoking_ring_of_sulfur": {
+    id: "artifact.eversmoking_ring_of_sulfur",
+    name: "Eversmoking Ring of Sulfur",
+    kind: "artifact",
+    timing: "ongoing",
+    artifactTier: "minor",
+    permanent: true,
+    permanentEffect: { resourceRoundGain: { resource: "valuables", amount: 1 } },
+    tags: [
+      "artifact",
+      "minor",
+      "permanent",
+      "income",
+      "At the beginning of each Resources round, gain 1 valuables. — OR — Remove this card, then gain 2 valuables."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "At the beginning of each Resources round, gain 1 valuables",
+          effect: { type: "ENTER_PLAY" }
+        },
+        {
+          label: "Remove this card: gain 2 valuables",
+          cost: { removeSelf: true },
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 2 } }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "eversmoking_ring_of_sulfur", "Eversmoking Ring of Sulfur"),
+    implementationStatus: "implemented",
+    source: artifactSource("eversmoking_ring_of_sulfur")
+  },
+  "artifact.inexhaustible_cart_of_ore": {
+    id: "artifact.inexhaustible_cart_of_ore",
+    name: "Inexhaustible Cart of Ore",
+    kind: "artifact",
+    timing: "ongoing",
+    artifactTier: "minor",
+    permanent: true,
+    permanentEffect: { resourceRoundGain: { resource: "buildingMaterials", amount: 1 } },
+    tags: [
+      "artifact",
+      "minor",
+      "permanent",
+      "income",
+      "At the beginning of each Resources round, gain 1 building materials. — OR — Remove this card, then gain 3 building materials."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "At the beginning of each Resources round, gain 1 building materials",
+          effect: { type: "ENTER_PLAY" }
+        },
+        {
+          label: "Remove this card: gain 3 building materials",
+          cost: { removeSelf: true },
+          effect: { type: "GAIN_RESOURCES", gain: { buildingMaterials: 3 } }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "inexhaustible_cart_of_ore", "Inexhaustible Cart of Ore"),
+    implementationStatus: "implemented",
+    source: artifactSource("inexhaustible_cart_of_ore")
+  },
 
   // ---- Major artifacts ----------------------------------------------------
   "artifact.dragon_scale_shield": {
@@ -676,6 +752,38 @@ export const artifactCards: CardLibrary = {
     assets: artifactAssets("major", "endless_bag_of_gold", "Endless Bag of Gold"),
     implementationStatus: "implemented",
     source: artifactSource("endless_bag_of_gold")
+  },
+  // Endless Purse of Gold: like the Bag, but the "crack it open" side both
+  // removes the card from the game AND discards 2 other cards from hand
+  // (engine: cost.removeSelf + cost.discardCards) for the larger 8-gold payout.
+  "artifact.endless_purse_of_gold": {
+    id: "artifact.endless_purse_of_gold",
+    name: "Endless Purse of Gold",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Gain 3 gold. — OR — Remove this card and discard 2 cards from your hand, then gain 8 gold."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Gain 3 gold",
+          effect: { type: "GAIN_RESOURCES", gain: { gold: 3 } }
+        },
+        {
+          label: "Remove this card and discard 2 cards: gain 8 gold",
+          cost: { removeSelf: true, discardCards: 2 },
+          effect: { type: "GAIN_RESOURCES", gain: { gold: 8 } }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "endless_purse_of_gold", "Endless Purse of Gold"),
+    implementationStatus: "implemented",
+    source: artifactSource("endless_purse_of_gold")
   },
   "artifact.head_of_legion": {
     id: "artifact.head_of_legion",
@@ -1484,8 +1592,10 @@ export const artifactDeckLegacy: string[] = [
   "artifact.buckler_of_the_gnoll_king",
   "artifact.centaurs_axe",
   "artifact.dragon_wing_tabard",
+  "artifact.eversmoking_ring_of_sulfur",
   "artifact.hourglass_of_the_evil_hour",
   "artifact.inexhaustible_cart_of_lumber",
+  "artifact.inexhaustible_cart_of_ore",
   "artifact.legs_of_legion",
   "artifact.loins_of_legion",
   "artifact.red_dragon_flame_tongue",
@@ -1504,6 +1614,7 @@ export const artifactDeckLegacy: string[] = [
   // major
   "artifact.dragon_scale_shield",
   "artifact.endless_bag_of_gold",
+  "artifact.endless_purse_of_gold",
   "artifact.head_of_legion",
   "artifact.ogres_club_of_havoc",
   "artifact.tunic_of_the_cyclops_king",
@@ -1541,8 +1652,10 @@ export const artifactDeckBinhMinor: string[] = [
   "artifact.buckler_of_the_gnoll_king",
   "artifact.centaurs_axe",
   "artifact.dragon_wing_tabard",
+  "artifact.eversmoking_ring_of_sulfur",
   "artifact.hourglass_of_the_evil_hour",
   "artifact.inexhaustible_cart_of_lumber",
+  "artifact.inexhaustible_cart_of_ore",
   "artifact.legs_of_legion",
   "artifact.loins_of_legion",
   "artifact.red_dragon_flame_tongue",
@@ -1564,6 +1677,7 @@ export const artifactDeckBinhMinor: string[] = [
 export const artifactDeckBinhMajor: string[] = [
   "artifact.dragon_scale_shield",
   "artifact.endless_bag_of_gold",
+  "artifact.endless_purse_of_gold",
   "artifact.head_of_legion",
   "artifact.ogres_club_of_havoc",
   "artifact.tunic_of_the_cyclops_king",
