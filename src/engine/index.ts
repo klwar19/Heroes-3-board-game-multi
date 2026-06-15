@@ -124,6 +124,7 @@ export {
   isFieldGuarded,
   isSeaField,
   levelOfExperience,
+  seaStepHalts,
   seaTileBand
 } from "./adventure";
 export type { HeroMovementCapabilities, HeroPathTarget, HeroStepKind } from "./adventure";

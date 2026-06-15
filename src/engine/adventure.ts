@@ -390,11 +390,29 @@ export function isSeaField(state: GameState, spaceId: MapSpaceId): boolean {
 }
 
 /**
+ * Whether taking a single step from `from` to `to` ends the hero's movement for
+ * the turn. Without Water Walk, any step that touches the open sea — wading in
+ * (land→sea), wading out (sea→land), or moving within it (sea→sea) — is a
+ * one-and-done step: the hero keeps their remaining movement points (a neutral
+ * combat may still spend them) but cannot take another step. Water Walk lets the
+ * hero move across the sea freely.
+ */
+export function seaStepHalts(
+  state: GameState,
+  from: MapSpaceId,
+  to: MapSpaceId,
+  movement: HeroMovementCapabilities = NO_MOVEMENT_CAPABILITIES
+): boolean {
+  return !movement.waterWalk && (isSeaField(state, from) || isSeaField(state, to));
+}
+
+/**
  * Whether a hero may cross between two adjacent hexes: both must belong to
  * revealed tiles, the destination must not be a blocked field (unless the hero
- * is flying / has move-through) nor a sea field (unless water-walking), and when
- * the hexes belong to different tiles neither side's outer edge may be sealed
- * (solid yellow border on the physical tile).
+ * is flying / has move-through), and when the hexes belong to different tiles
+ * neither side's outer edge may be sealed (solid yellow border on the tile).
+ * Stepping onto the sea is allowed here; whether it halts the hero afterwards
+ * is decided by {@link seaStepHalts}.
  */
 export function canCrossEdge(
   state: GameState,
@@ -594,6 +612,10 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
           continue;
         }
 
+        // A sea-touching step halts the hero, so the field can be reached but
+        // the walk cannot continue past it (and an allied hero there, which you
+        // could otherwise pass through, becomes unreachable).
+        const halts = seaStepHalts(state, node.spaceId, neighbor, movement);
         visited.add(neighbor);
         const path = [...node.path, neighbor];
 
@@ -603,12 +625,16 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
         }
 
         if (kind === "pass-only") {
-          next.push({ spaceId: neighbor, path });
+          if (!halts) {
+            next.push({ spaceId: neighbor, path });
+          }
           continue;
         }
 
         results.set(neighbor, { spaceId: neighbor, path, cost: path.length });
-        next.push({ spaceId: neighbor, path });
+        if (!halts) {
+          next.push({ spaceId: neighbor, path });
+        }
       }
     }
     frontier = next;

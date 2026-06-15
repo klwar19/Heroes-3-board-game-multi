@@ -39,7 +39,7 @@ import {
   heroAtSpace,
   instantiateTile,
   isFieldGuarded,
-  isSeaField,
+  seaStepHalts,
   makeCombatUnitFromArmy,
   makeCombatUnitFromNeutral,
   materializeTileFields,
@@ -445,7 +445,7 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
     movementLeft: hero.movementPoints
   });
 
-  haltAfterSeaEntry(state, hero, to);
+  haltAfterSeaStep(state, hero, from, to);
 
   if (passThrough) {
     return;
@@ -455,13 +455,14 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
 }
 
 /**
- * Wading into the open sea ends a hero's movement for the turn unless they are
- * Water Walking: they keep their remaining movement points (so a neutral combat
- * on that sea field can still spend them to continue) but cannot take another
- * step. Stepping onto land never halts, so a hero can always leave the shore.
+ * Any step that touches the open sea — wading in, wading out, or moving within
+ * it — ends a hero's movement for the turn unless they are Water Walking. The
+ * hero keeps their remaining movement points (so a neutral combat on a sea
+ * field can still spend them to continue) but cannot take another step; with
+ * Water Walk they move across the sea freely.
  */
-function haltAfterSeaEntry(state: GameState, hero: HeroState, to: MapSpaceId): void {
-  if (isSeaField(state, to) && !getHeroMovementCapabilities(state, hero).waterWalk) {
+function haltAfterSeaStep(state: GameState, hero: HeroState, from: MapSpaceId, to: MapSpaceId): void {
+  if (seaStepHalts(state, from, to, getHeroMovementCapabilities(state, hero))) {
     hero.movementHaltedThisTurn = true;
   }
 }
@@ -626,8 +627,8 @@ function dimensionDoorTeleport(state: GameState, hero: HeroState, to: MapSpaceId
     to,
     movementLeft: hero.movementPoints
   });
-  // Landing on the open sea halts further movement just like walking onto it.
-  haltAfterSeaEntry(state, hero, to);
+  // A teleport that touches the sea halts further movement, like a sea step.
+  haltAfterSeaStep(state, hero, from, to);
   resolveHeroArrival(state, hero, to);
 }
 
@@ -811,6 +812,11 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
     if (kind === "stop" && !isLast) {
       throw new Error("A field along the path would stop the hero; walk there first.");
     }
+    // A sea-touching step (without Water Walk) halts the hero, so it can only be
+    // the final step of the walk.
+    if (seaStepHalts(state, cursor, step, movement) && !isLast) {
+      throw new Error("The hero would be halted at the sea; that step must be the last of the walk.");
+    }
     if (kind === "pass-only" && isLast) {
       throw new Error("The walk cannot end on a field the hero can only pass through.");
     }
@@ -827,7 +833,8 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
     const passThrough = classifyHeroStep(state, hero, step, movement) === "pass-only";
     performHeroStep(state, hero, step, passThrough);
 
-    if (heroStepNeedsInput(state)) {
+    // Wading into/out of the sea ends the walk even if points remain.
+    if (hero.movementHaltedThisTurn || heroStepNeedsInput(state)) {
       break;
     }
   }

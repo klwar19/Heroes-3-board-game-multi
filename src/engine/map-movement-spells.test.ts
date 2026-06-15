@@ -354,18 +354,37 @@ describe("sea movement without Water Walk", () => {
     expect(heroP1(state).movementPoints).toBe(2);
   });
 
-  it("never needs Water Walk to step from the sea back onto land (no stranding)", () => {
+  it("wading off the sea onto land reaches the shore (no stranding) but also halts", () => {
     const state = makeGame();
     const { land, sea } = setupCoast(state);
     const hero = heroP1(state);
     hero.spaceId = sea; // as if the turn began on the sea
     hero.movementHaltedThisTurn = false;
 
+    // Leaving the sea is always possible — you are never stranded — but the
+    // step itself ends the turn's movement (sea→land halts too, without Walk).
     expect(canCrossEdge(state, sea, land)).toBe(true);
+    expect(getHeroMoveDestinations(state, hero)).toContain(land);
     const moved = applyAction(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: land });
     expect(moved.errors).toHaveLength(0);
     expect(moved.state.heroes.hero_p1.spaceId).toBe(land);
-    expect(moved.state.heroes.hero_p1.movementHaltedThisTurn).toBeFalsy();
+    expect(moved.state.heroes.hero_p1.movementHaltedThisTurn).toBe(true);
+  });
+
+  it("a walk cannot continue past a sea step", () => {
+    const state = makeGame();
+    const { land, sea } = setupCoast(state);
+    const hero = heroP1(state);
+    hero.spaceId = sea; // start on the sea
+    hero.movementHaltedThisTurn = false;
+    const land2 = getAdjacentSpaceIds(land).find(
+      (id) => state.adventure!.fields[id] && id !== sea && !isSeaField(state, id)
+    );
+    expect(land2).toBeDefined();
+    setField(state, land2!, "empty_field");
+
+    // sea -> land would halt, so it cannot be a non-final step of a path.
+    expectError(state, { type: "MOVE_HERO_PATH", playerId: "p1", heroId: "hero_p1", path: [land, land2!] });
   });
 });
 
