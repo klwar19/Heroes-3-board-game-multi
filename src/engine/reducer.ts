@@ -1676,7 +1676,8 @@ function getAttackStackDetails(
     // Mummies "ignore the result on the Attack die" — their own attack die is
     // treated as 0, exactly like Bless / Elemental damage.
     ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie) || dealsElemental || hasIgnoreOwnAttackDie(attacker),
-    ignoreDefense: dealsElemental,
+    // Frenzy sets modifiers.ignoreDefense; Elemental damage ignores Defense innately.
+    ignoreDefense: dealsElemental || Boolean(stackItem.modifiers.ignoreDefense),
     damageReduction: siegeRangedDamageReduction(combat, attacker, defender, attackKind),
     defenseReductionAbility,
     abilityAttack
@@ -4820,6 +4821,23 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       );
     }
 
+    // Dispel: strip every removable ongoing effect from the selected unit, gated
+    // by the Power-reached grade (0 → bronze, 1 → silver, 2 → gold) just like
+    // Anti-Magic / Blind. Casting above the unlocked grade does nothing.
+    if (card?.effect.type === "DISPEL_EFFECTS" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        removeEffectsFromTarget(
+          state,
+          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          stackItem.action.target,
+          "any-removable"
+        );
+      }
+    }
+
     // Forgetfulness: the selected enemy ranged unit cannot attack during its
     // next activation. The reachable grade rises with the Power paid; above it
     // the cast does nothing (the Anti-Magic/Blind gate).
@@ -5852,6 +5870,21 @@ function applyReactionPlayCore(
           appliedAmount: blessBonus
         });
       }
+    }
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
+  // Frenzy: the pending attack ignores the attacked unit's Defense (counts as 0).
+  // Gated by the defender's grade — the chosen option's discard cost already paid
+  // the Power, so the option carries a fixed reachable `grade`. Casting an option
+  // whose grade the defender exceeds spends the card but pierces nothing.
+  if (
+    effect.type === "IGNORE_DEFENSE" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    const defender = state.combat?.units[stackItem.action.defenderId];
+    if (defender && gradeRank(defender.grade) <= gradeRank(effect.grade)) {
+      stackItem.modifiers.ignoreDefense = true;
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }

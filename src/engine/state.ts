@@ -710,6 +710,34 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Dispel Spell (Basic Water): strip every removable ongoing effect from
+       * the selected unit — Haste, Slow, Bless's bonus, Anti-Magic, Forgetfulness,
+       * Fire Shield, an enemy's buffs… anything created `removable` and bound to
+       * that unit. The reachable grade rises with the Power paid (0 → bronze,
+       * 1 → silver, 2 → gold), exactly like Anti-Magic / Blind: casting on a unit
+       * above the unlocked grade does nothing.
+       *
+       * The printed card also "removes effects from the space the unit occupies";
+       * the engine models no space-bound (obstacle) effects, so only the unit's
+       * own effects are removed — the complete behaviour for what is modelled.
+       */
+      type: "DISPEL_EFFECTS";
+      gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
+       * Frenzy Spell (Expert Fire, Instant on the attacker's side): the pending
+       * attack ignores the attacked unit's Defense entirely — its Defense counts
+       * as 0, the Shield/Defend roll included — reusing the same `ignoreDefense`
+       * path as Elemental damage. Gated by the defender's grade (Power 0 → bronze,
+       * 2 → silver, 4 → gold); the Power is paid as the chosen option's discard
+       * cost, the cost-gated grade pattern shared with Resurrection / Magic Mirror.
+       */
+      type: "IGNORE_DEFENSE";
+      grade: UnitGrade;
+    }
+  | {
+      /**
        * Torosar's Ballista specialty (I activate / IV / VI). `grant` fields one
        * extra Ballista for the combat or the rest of the game round ("this card
        * counts as a Ballista"); `activate` fires one of your Ballistas now (I)
@@ -2444,6 +2472,8 @@ export type ResolutionStackItem = {
     scrollLocked?: boolean;
     /** Bless: the Attack die is not rolled (counts as 0). */
     ignoreAttackDie?: boolean;
+    /** Frenzy: this attack ignores the defender's Defense (counts as 0). */
+    ignoreDefense?: boolean;
     /**
      * Slayer: roll the Attack die this many times against a gold defender and
      * count the "+1" faces as the die's whole contribution (every "-1" is
