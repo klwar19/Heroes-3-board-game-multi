@@ -33,9 +33,21 @@ function neutralFightWithGuard(reshape: (guard: CombatUnitState, state: GameStat
   let state = moveOntoGuardedMine(refreshP1(makeGame()));
   const armyUnit = state.players.p1.army[0];
   state = apply(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: armyUnit.id, position: 13 });
-  state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+  // Freeze the player unit's initiative high BEFORE finishing placement (the
+  // neutral guard is only drawn during FINISH) so the player unit acts first no
+  // matter which guard the seed deals.
   for (const unit of Object.values(state.combat!.units)) {
-    unit.initiative = unit.controllerId === NEUTRAL_PLAYER_ID ? 1 : 99;
+    if (unit.controllerId !== NEUTRAL_PLAYER_ID) {
+      unit.initiative = 99;
+    }
+  }
+  state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+  // Now the guard exists: drop it to the bottom of the order so its activation
+  // comes up right after the player's, and let the test reshape it.
+  for (const unit of Object.values(state.combat!.units)) {
+    if (unit.controllerId === NEUTRAL_PLAYER_ID) {
+      unit.initiative = 1;
+    }
   }
   const guard = Object.values(state.combat!.units).find((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)!;
   reshape(guard, state);

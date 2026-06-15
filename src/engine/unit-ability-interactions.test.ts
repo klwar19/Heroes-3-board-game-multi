@@ -357,6 +357,18 @@ describe("army map abilities", () => {
     expect(state.players[active].resources.valuables).toBe(before + 2);
   });
 
+  it("Peasants grant 3 gold at the start of a Resource round", () => {
+    const state = adventure();
+    const active = state.activePlayerId;
+    state.players[active].army.push({ id: "army_pe", unitDefId: "neutral.peasants", side: "neutral" });
+    state.players[active].production = { gold: 0, buildingMaterials: 0, valuables: 0 };
+    const before = state.players[active].resources.gold;
+    state.round = 3; // an odd round after the first = a Resource round.
+
+    startAdventureRound(state);
+    expect(state.players[active].resources.gold).toBe(before + 3);
+  });
+
   it("Rogues scout a deck and may move its top card to the bottom, once per turn", () => {
     const state = adventure();
     const active = state.activePlayerId;

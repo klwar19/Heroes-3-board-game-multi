@@ -745,6 +745,11 @@ export function hasSpellCastHandTax(unit: CombatUnitState): boolean {
   return hasUnitAbilityEffect(unit, "SPELL_CAST_HAND_TAX");
 }
 
+/** Neutral Pegasi: enemies discard an extra Power card whenever they cast a Spell near this unit. */
+export function hasSpellCastPowerTax(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "SPELL_CAST_POWER_TAX");
+}
+
 /** Neutral Champions: "roll 2 Attack dice and apply both outcomes" (reroll each "-1"). */
 export function getRollTwoDiceApplyBoth(unit: CombatUnitState): { rerollMinusOnce: boolean } | null {
   for (const ability of getAbilitiesWithEffect(unit, "ROLL_TWO_DICE_APPLY_BOTH")) {

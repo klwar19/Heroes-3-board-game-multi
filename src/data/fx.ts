@@ -93,14 +93,12 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "spell.precision": { affect: [{ key: "precision" }], sound: "spells/precision" },
   "spell.curse": { affect: [{ key: "curse" }], sound: "spells/curse" },
   "spell.dispel": { affect: [{ key: "dispel" }], sound: "spells/dispel" },
-  // Damage spells: Chain Lightning forks lightning from the first struck unit
-  // (reuses the bolt + crackle pair, like Lightning Bolt); Inferno bursts on the
-  // chosen space (the space-target branch in page.tsx plays the hit on that cell).
+  // Chain Lightning forks lightning from the first struck unit (reuses the
+  // bolt + crackle pair, like Lightning Bolt). Inferno's plan is defined below.
   "spell.chain_lightning": {
     affect: [{ key: "lightning-bolt" }, { key: "lightning-crackle", delayMs: 220 }],
     sound: "spells/chain-lightning"
   },
-  "spell.inferno": { hit: "inferno", sound: "spells/inferno" },
   // Blind drops the paralyze sprite on the target with the Blind cast cue — both
   // the paralyze sheet and blind.mp3 were converted but had never been wired.
   "spell.blind": { affect: [{ key: "paralyze" }], sound: "spells/blind" },
@@ -133,7 +131,12 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "spell.summon_air_elemental": { sound: "spells/air-elemental" },
   "spell.summon_earth_elemental": { sound: "units/earth-elemental-attack" },
   "spell.summon_fire_elemental": { sound: "units/fire-elemental-attack" },
-  "spell.summon_water_elemental": { sound: "units/water-elemental-attack" }
+  "spell.summon_water_elemental": { sound: "units/water-elemental-attack" },
+  // Inferno: the dice (rolled out first under the cast roar, see SPELL_DICE_ROLLED)
+  // settle, then this fire sheet erupts over the chosen space with the fire-storm
+  // impact before the per-unit damage floats. `sound` rides under the dice; the
+  // `hit` burst + `hitSound` land on the space once the roll has read out.
+  "spell.inferno": { hit: "inferno", sound: "spells/inferno", hitSound: "effects/fire-storm" }
 };
 
 /** Played at center stage when a spell is countered. */
@@ -176,6 +179,9 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // Tower Genies' Wish: a sparkle of fortune as a Spell is conjured to hand.
   "genie-spell-draw-few": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
   "genie-spell-draw-pack": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
+  // Slayer Spell: after its dice read out (they ride the attack-die overlay), the
+  // slayer glyph flares over the gold target as the empowered blow lands.
+  slayer: { affect: [{ key: "slayer" }], sound: "spells/slayer" },
   // Future abilities (cards not implemented yet, assets ready):
   poison: { affect: [{ key: "poison" }], sound: "spells/poison" },
   paralyze: { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },

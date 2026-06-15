@@ -970,7 +970,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ground",
-    neutral: { attack: 1, defense: 0, health: 2, initiative: 3, cost: { gold: 3 }, abilities: [], abilityText: ".", cardImage: "/assets/units-neutral-bronze-peasants.webp" },
+    neutral: { attack: 1, defense: 0, health: 2, initiative: 3, cost: { gold: 3 }, abilities: ["peasant-gold-income"], abilityText: "[map_effect] At the beginning of each Resource round, gain 3 [gold].", cardImage: "/assets/units-neutral-bronze-peasants.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/peasants/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1553,6 +1553,106 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     }
   },
 
+  // ---- Rampart neutral units ---------------------------------------------
+  // Single-sided neutral guard versions of the six core Rampart creatures.
+  // Stats and ability text transcribed from each card face on the fan wiki
+  // (card art normalised to /assets/units-neutral-<tier>-<slug>.webp). The
+  // neutral guards reuse the faction creatures' implemented ability tags —
+  // EXCEPT the neutral Pegasi (a different printed ability, see below) and the
+  // neutral Unicorn, whose card prints a Retaliation paralysis instead of the
+  // faction Unicorn's spell-damage reduction.
+  "neutral.centaurs": {
+    id: "neutral.centaurs",
+    name: "Centaurs",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ground",
+    neutral: { attack: 2, defense: 0, health: 5, initiative: 7, cost: { gold: 3 }, abilities: [], cardImage: "/assets/units-neutral-bronze-centaurs.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/centaurs/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
+      credit: "Neutral Rampart unit. Stats and ability transcribed from the card face on the fan wiki. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/centaurs/"
+    }
+  },
+  "neutral.dwarves": {
+    id: "neutral.dwarves",
+    name: "Dwarves",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ground",
+    neutral: { attack: 2, defense: 1, health: 4, initiative: 3, cost: { gold: 4 }, abilities: ["dwarf-magic-resistance"], abilityText: "[unit_passive] If this unit is targeted by any Spell or Specialty card, roll 1 Attack die. On a \"+1\" result, ignore the card's effect.", cardImage: "/assets/units-neutral-bronze-dwarves.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/dwarves/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
+      credit: "Neutral Rampart unit. Stats and ability transcribed from the card face on the fan wiki. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/dwarves/"
+    }
+  },
+  "neutral.elves": {
+    id: "neutral.elves",
+    name: "Elves",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ranged",
+    neutral: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 7 }, abilities: ["double-attack-low-roll"], abilityText: "[unit_attack] If a target is a non adjacent unit, on a \"-1\" or \"0\" result, attack this target again.", cardImage: "/assets/units-neutral-bronze-elves.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/elves/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
+      credit: "Neutral Rampart unit. Stats and ability transcribed from the card face on the fan wiki. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/elves/"
+    }
+  },
+  "neutral.pegasi": {
+    id: "neutral.pegasi",
+    name: "Pegasi",
+    faction: "neutral",
+    tier: "silver",
+    type: "flying",
+    // The neutral Pegasi card prints a DIFFERENT ability from the Rampart Pegasi
+    // (which dampens enemy spell Power). engine: pegasi-power-tax gates enemy
+    // spellcasting — they must pay (discard) a card with Power to cast a Spell,
+    // and cannot cast at all when they have no Power card to pay.
+    neutral: { attack: 3, defense: 0, health: 5, initiative: 8, cost: { gold: 14 }, abilities: ["pegasi-power-tax"], abilityText: "[unit_passive] Whenever an enemy casts a [spell], they must discard an additional card with [power].", cardImage: "/assets/units-neutral-silver-pegasi.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/pegasi/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
+      credit: "Neutral Rampart unit. Stats and ability transcribed from the card face on the fan wiki. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/pegasi/"
+    }
+  },
+  "neutral.dendroids": {
+    id: "neutral.dendroids",
+    name: "Dendroids",
+    faction: "neutral",
+    tier: "silver",
+    type: "ground",
+    neutral: { attack: 3, defense: 2, health: 6, initiative: 3, cost: { gold: 12 }, abilities: ["dendroid-bind"], abilityText: "[unit_passive] Enemy units that start activation adjacent to this unit cannot move.", cardImage: "/assets/units-neutral-silver-dendroids.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/dendroids/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
+      credit: "Neutral Rampart unit. Stats and ability transcribed from the card face on the fan wiki. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/dendroids/"
+    }
+  },
+  "neutral.unicorns": {
+    id: "neutral.unicorns",
+    name: "Unicorns",
+    faction: "neutral",
+    tier: "gold",
+    type: "ground",
+    // The neutral Unicorn card prints a Retaliation paralysis (NOT the Rampart
+    // Unicorn's spell-damage reduction). engine: unicorn-paralyze-retaliation
+    // (the implemented PARALYZE_ON_RETALIATION effect, shared with Medusas).
+    neutral: { attack: 5, defense: 1, health: 7, initiative: 7, cost: { gold: 18 }, abilities: ["unicorn-paralyze-retaliation"], abilityText: "[unit_retaliation] The target is [paralysis].", cardImage: "/assets/units-neutral-golden-unicorns.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/unicorns/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Rampart Expansion)",
+      credit: "Neutral Rampart unit. Stats and ability transcribed from the card face on the fan wiki. Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/unicorns/"
+    }
+  },
+
   // ---- Tower / Fortress / Conflux neutral units --------------------------
   // Creatures from factions not yet playable as towns; they appear only as
   // neutral guards. Single-sided stats and ability text transcribed per unit
@@ -1692,12 +1792,16 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     id: "neutral.earth_elementals",
     name: "Earth Elementals",
     faction: "neutral",
-    tier: "bronze",
+    tier: "gold",
     type: "ground",
-    // Summon-only (Summon Earth Elemental) — no neutral guard card on the wiki,
-    // so it never joins the neutral guard pool (see neutralUnitIdsByTier).
+    // Summon spell forms (Few/Pack via Summon Earth Elemental) AND a single
+    // Neutral guard card. The fan wiki lists a gold-tier Neutral Earth Elemental
+    // (3/2/5/4, 16 gold) whose stats differ from the summon Few/Pack — so the
+    // guard joins the gold neutral deck (see neutralUnitIdsByTier). No elemental
+    // has a printed card scan on the wiki, so the guard uses the blank frame.
     few: { attack: 2, defense: 2, health: 2, initiative: 5, cost: { gold: 6 }, abilities: ["elemental-damage", "earth-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Earth Magic spells. This unit deals elemental damage." },
     pack: { attack: 3, defense: 2, health: 2, initiative: 5, cost: { gold: 9 }, abilities: ["elemental-damage", "earth-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Earth Magic spells. This unit deals elemental damage." },
+    neutral: { attack: 3, defense: 2, health: 5, initiative: 4, cost: { gold: 16 }, abilities: ["elemental-damage", "earth-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Earth Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-blank-golden.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/earth_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
@@ -1709,12 +1813,16 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     id: "neutral.water_elementals",
     name: "Water Elementals",
     faction: "neutral",
-    tier: "bronze",
+    tier: "silver",
     type: "ground",
-    // Summon-only (Summon Water Elemental) — no neutral guard card on the wiki,
-    // so it never joins the neutral guard pool (see neutralUnitIdsByTier).
+    // Summon spell forms (Few/Pack via Summon Water Elemental) AND a single
+    // Neutral guard card. The fan wiki lists a silver-tier Neutral Water
+    // Elemental (2/1/4/5, 10 gold) whose stats differ from the summon Few/Pack —
+    // so the guard joins the silver neutral deck (see neutralUnitIdsByTier). No
+    // elemental has a printed card scan on the wiki, so the guard uses the blank frame.
     few: { attack: 2, defense: 0, health: 5, initiative: 6, cost: { gold: 6 }, abilities: ["elemental-damage", "water-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Water Magic spells. This unit deals elemental damage." },
     pack: { attack: 3, defense: 0, health: 5, initiative: 6, cost: { gold: 10 }, abilities: ["elemental-damage", "water-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Water Magic spells. This unit deals elemental damage." },
+    neutral: { attack: 2, defense: 1, health: 4, initiative: 5, cost: { gold: 10 }, abilities: ["elemental-damage", "water-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Water Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-blank-silver.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/water_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",

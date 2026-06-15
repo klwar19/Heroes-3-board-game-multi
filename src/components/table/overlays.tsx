@@ -573,9 +573,27 @@ export type DiceCue = {
   damage: number;
   isRetaliation: boolean;
   /**
+   * Every die rolled counts toward the outcome (Slayer counts the "+1"s; the
+   * Champions' "apply both" sums two faces). The overlay then keeps every die
+   * lit rather than dimming the "unused" ones it greys out for an advantage/
+   * disadvantage keep-one roll.
+   */
+  sumAllDice?: boolean;
+  /**
+   * Spell-roll mode (Inferno): the cube(s) size a Spell's own effect, so the
+   * overlay shows the spell's name and a "N hits" read-out instead of the
+   * attacker-vs-defender combat breakdown.
+   */
+  spellMode?: boolean;
+  /** Spell-mode heading (the spell's name). */
+  title?: string;
+  /** Spell-mode read-out under the dice (e.g. "3 hits → 3 damage each"). */
+  caption?: string;
+  /**
    * Hold the board (no overlay) this long before the cube starts tumbling.
    * Set for a neutral guard that moved into range first, so the table watches
-   * it slide in, pauses, then sees the attack die thrown.
+   * it slide in, pauses, then sees the attack die thrown — and used by the
+   * Inferno roll to wait out the spell card's flight before the dice tumble.
    */
   preDelayMs?: number;
 };
@@ -662,19 +680,28 @@ export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void 
   const rolling = phase === "rolling";
 
   return (
-    <div className="diceOverlay" role="status" aria-label="Attack roll" onClick={onDone}>
+    <div
+      className="diceOverlay"
+      role="status"
+      aria-label={cue.spellMode ? `${cue.title ?? "Spell"} roll` : "Attack roll"}
+      onClick={onDone}
+    >
       <div className="diceStage">
         <header>
           <Dices aria-hidden="true" size={16} />
           <strong>
-            {cue.isRetaliation ? "Retaliation!" : "Attack!"} {cue.attackerName} → {cue.defenderName}
+            {cue.spellMode
+              ? (cue.title ?? "Spell")
+              : `${cue.isRetaliation ? "Retaliation!" : "Attack!"} ${cue.attackerName} → ${cue.defenderName}`}
           </strong>
           {cue.rollMode !== "normal" ? <span className="rollMode">{cue.rollMode}</span> : null}
         </header>
         <div className="diceRow">
           {cue.rolls.map((roll, index) => (
             <DieCube
-              dimmed={!rolling && cue.rolls.length > 1 && roll !== cue.roll}
+              // Summed rolls (Slayer / Inferno / "apply both") keep every die lit —
+              // only an advantage/disadvantage keep-one roll dims the unused face.
+              dimmed={!rolling && !cue.sumAllDice && cue.rolls.length > 1 && roll !== cue.roll}
               key={index}
               rolling={rolling}
               value={roll}
@@ -687,19 +714,27 @@ export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void 
           ) : null}
         </div>
         <div className={`diceBreakdown ${rolling ? "hidden" : ""}`}>
-          <span className="formula">
-            ⚔ {cue.attackValue - cue.roll * cue.dieMultiplier - cue.attackBonus}
-            {cue.attackBonus !== 0 ? ` + ${cue.attackBonus}` : ""} {cue.roll >= 0 ? "+" : "−"} {Math.abs(cue.roll)}
-            {cue.dieMultiplier !== 1 ? `×${cue.dieMultiplier}` : ""} = {cue.attackValue}
-          </span>
-          <span className="versus">vs</span>
-          <span className="formula">
-            🛡 {cue.defenseValue - cue.defenseBonus}
-            {cue.defenseBonus !== 0 ? ` + ${cue.defenseBonus}` : ""} = {cue.defenseValue}
-          </span>
-          <strong className={`damageResult ${cue.damage > 0 ? "hit" : "blocked"}`}>
-            {cue.damage > 0 ? `${cue.damage} damage` : "No damage"}
-          </strong>
+          {cue.spellMode ? (
+            <strong className={`damageResult ${cue.roll > 0 ? "hit" : "blocked"}`}>
+              {cue.caption ?? (cue.roll > 0 ? `${cue.roll} hit${cue.roll === 1 ? "" : "s"}` : "No effect")}
+            </strong>
+          ) : (
+            <>
+              <span className="formula">
+                ⚔ {cue.attackValue - cue.roll * cue.dieMultiplier - cue.attackBonus}
+                {cue.attackBonus !== 0 ? ` + ${cue.attackBonus}` : ""} {cue.roll >= 0 ? "+" : "−"} {Math.abs(cue.roll)}
+                {cue.dieMultiplier !== 1 ? `×${cue.dieMultiplier}` : ""} = {cue.attackValue}
+              </span>
+              <span className="versus">vs</span>
+              <span className="formula">
+                🛡 {cue.defenseValue - cue.defenseBonus}
+                {cue.defenseBonus !== 0 ? ` + ${cue.defenseBonus}` : ""} = {cue.defenseValue}
+              </span>
+              <strong className={`damageResult ${cue.damage > 0 ? "hit" : "blocked"}`}>
+                {cue.damage > 0 ? `${cue.damage} damage` : "No damage"}
+              </strong>
+            </>
+          )}
         </div>
       </div>
     </div>
