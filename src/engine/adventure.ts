@@ -3933,6 +3933,63 @@ export function discountedReinforceCost(
 }
 
 /**
+ * Total one-shot gold discount a player currently holds on Recruitment and
+ * Reinforcement, from the Legion artifacts (Legs/Loins/Torso/Arms/Head of
+ * Legion). Each artifact's discount side creates a current-turn RECRUIT_DISCOUNT
+ * active effect; the amounts pool together so a player who played more than one
+ * piece this turn gets their sum. Pure read — the discount is only spent once a
+ * recruit/reinforce actually uses it (see consumeRecruitDiscount).
+ */
+export function recruitDiscountAmount(state: GameState, playerId: PlayerId): number {
+  return state.activeEffects.reduce((total, effect) => {
+    if (effect.controllerId !== playerId) {
+      return total;
+    }
+    return (
+      total +
+      effect.modifiers.reduce(
+        (sum, modifier) => (modifier.type === "RECRUIT_DISCOUNT" ? sum + modifier.amount : sum),
+        0
+      )
+    );
+  }, 0);
+}
+
+/**
+ * Applies the player's pooled Legion discount to a Recruitment/Reinforcement
+ * cost: the gold component drops by the discount "to a minimum of 0"; other
+ * resources are untouched (the artifacts only ever knock off gold). Read-only —
+ * returns the same cost object when nothing applies and never spends the
+ * discount, so it is safe to call from affordability checks and the UI.
+ */
+export function applyRecruitDiscount(state: GameState, playerId: PlayerId, cost: ResourceCost): ResourceCost {
+  const discount = recruitDiscountAmount(state, playerId);
+  const gold = cost.gold ?? 0;
+  if (discount <= 0 || gold <= 0) {
+    return cost;
+  }
+  return { ...cost, gold: Math.max(0, gold - discount) };
+}
+
+/**
+ * Spends the player's Legion discounts after a Recruitment/Reinforcement that
+ * used them: removes every RECRUIT_DISCOUNT effect they hold (each is a
+ * single-purpose, single-modifier effect created by a Legion artifact). The
+ * Population token allows only one recruit/reinforce action per turn and these
+ * discounts last only the current turn, so this is the single window in which
+ * they are spent. No-op when none are held.
+ */
+export function consumeRecruitDiscount(state: GameState, playerId: PlayerId): void {
+  state.activeEffects = state.activeEffects.filter(
+    (effect) =>
+      !(
+        effect.controllerId === playerId &&
+        effect.modifiers.some((modifier) => modifier.type === "RECRUIT_DISCOUNT")
+      )
+  );
+}
+
+/**
  * Flips a Few army card to its Pack side, paying its (half) cost. Half-gold
  * effects round up by default (Saplings, settlements); Necromancy rounds
  * down ("half the gold cost, rounded down"). A `free` flip (Skeletons reward)

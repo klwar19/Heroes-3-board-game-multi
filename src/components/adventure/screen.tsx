@@ -32,6 +32,7 @@ import {
   hexDistance,
   hexToPixel,
   parseHexSpaceId,
+  recruitDiscountAmount,
   scenarioDefinitions,
   tileCentersAdjacent,
   tileCentersOverlap,
@@ -1450,6 +1451,13 @@ export function TownPanel({
     if (pack) {
       addCost(pack.cost);
     }
+  }
+  // Legion artifacts: the held one-shot gold discount comes off the basket's
+  // gold (to a minimum of 0) so the shown total and the affordability gate
+  // match what the engine will actually charge.
+  const recruitDiscount = recruitDiscountAmount(state, viewerPlayerId);
+  if (recruitDiscount > 0 && basketCost.gold) {
+    basketCost.gold = Math.max(0, basketCost.gold - recruitDiscount);
   }
   const basketAffordable =
     (basketCost.gold ?? 0) <= player.resources.gold &&
