@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import {
+  applyAction,
+  createAdventureGameState,
+  createInitialGameState,
+  getLegalActions
+} from "./index";
 import type { GameAction, GameState, UnitId } from "./state";
 
 /**
@@ -180,5 +185,111 @@ describe("Greater Gnoll's Flail artifact", () => {
   it("the +1 attack option has no Corrosion downside", () => {
     const played = flailAttack(1);
     expect(hasToken(played, "unit_p1_griffins", "corrosion")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Artillery (basic ability): deal 1 damage to the enemy unit with the lowest
+// (effective) Initiative. (The expert Ballista synergy is intentionally not
+// wired — the engine offers only the basic play.)
+// ---------------------------------------------------------------------------
+
+describe("Artillery ability (basic)", () => {
+  it("deals 1 damage to the enemy unit with the lowest initiative", () => {
+    const state = createInitialGameState("artillery-1");
+    state.players.p1.hand = ["ability.artillery"];
+    state.players.p2.hand = [];
+    state.combat!.units.unit_p2_skeletons.initiative = 1; // the slowest enemy
+    state.combat!.units.unit_p2_vampires.initiative = 6;
+    state.combat!.units.unit_p2_dread_knights.initiative = 9;
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.maxHealth = 20;
+    }
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.artillery"
+    );
+    expect(play, "Artillery should be playable in combat").toBeTruthy();
+    const result = applyOk(state, play!.action);
+    expect(result.combat!.units.unit_p2_skeletons.damage).toBe(1);
+    expect(result.combat!.units.unit_p2_vampires.damage).toBe(0);
+    expect(result.combat!.units.unit_p2_dread_knights.damage).toBe(0);
+  });
+
+  it("offers only the basic play (no expert Ballista side is wired)", () => {
+    const state = createInitialGameState("artillery-modes");
+    state.players.p1.hand = ["ability.artillery"];
+    const modes = getLegalActions(state, "p1")
+      .filter((legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.artillery")
+      .map((legal) => (legal.action.type === "PLAY_CARD" ? legal.action.mode : undefined));
+    expect(modes).toEqual(["basic"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mystic Orb of Mana (Major artifact, map play):
+//   Option 0: Search (4) — look at the top 4 of your discard pile, take 1.
+//   Option 1: only if your discard pile is empty, draw 2 cards.
+// ---------------------------------------------------------------------------
+
+describe("Mystic Orb of Mana artifact", () => {
+  function orbState(seed: string): GameState {
+    const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+    state.activePlayerId = "p1";
+    state.players.p1.hand = ["artifact.mystic_orb_of_mana"];
+    return state;
+  }
+
+  function findPlay(state: GameState, optionIndex: number) {
+    return getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "artifact.mystic_orb_of_mana" &&
+        legal.action.optionIndex === optionIndex
+    );
+  }
+
+  it("Search (4) takes one of the top four discarded cards into hand", () => {
+    const state = orbState("orb-search");
+    // bottom → top; only the top four (the last four) are eligible.
+    state.players.p1.discard = ["spell.haste", "stat.attack", "stat.defense", "stat.power", "spell.bless"];
+    const play = findPlay(state, 0);
+    expect(play, "Search option should be offered while the discard has cards").toBeTruthy();
+    const opened = applyOk(state, play!.action);
+    expect(opened.pendingChoice?.type).toBe("OPTION_CHOICE");
+    expect(opened.pendingChoice && "context" in opened.pendingChoice ? opened.pendingChoice.context : null).toBe(
+      "discard-pick"
+    );
+    // The bottom card ("spell.haste") is below the top four — not a candidate.
+    const choice = opened.pendingChoice!;
+    const labels = choice.type === "OPTION_CHOICE" ? choice.options.map((option) => option.label) : [];
+    expect(labels.some((label) => label.includes("Haste"))).toBe(false);
+    expect(labels.length).toBe(4);
+
+    const choiceId = choice.id;
+    const took = applyOk(opened, { type: "CHOOSE_OPTION", playerId: "p1", choiceId, optionIndex: 0 });
+    // One card was taken into hand. The discard started at 5, gained the Orb on
+    // play (6), and lost the taken card (5).
+    expect(took.players.p1.hand.length).toBe(1);
+    expect(took.players.p1.discard.length).toBe(5);
+    // The taken card is one of the eligible top-four (never the buried Haste).
+    expect(took.players.p1.hand[0]).not.toBe("spell.haste");
+  });
+
+  it("the draw-2 option is gated to an empty discard pile", () => {
+    // Non-empty discard: the draw-2 side is not offered, the Search side is.
+    const withDiscard = orbState("orb-gate");
+    withDiscard.players.p1.discard = ["stat.attack"];
+    expect(findPlay(withDiscard, 1), "draw-2 must be hidden while the discard has cards").toBeFalsy();
+    expect(findPlay(withDiscard, 0), "Search must be offered while the discard has cards").toBeTruthy();
+
+    // Empty discard: the draw-2 side appears and draws two cards.
+    const empty = orbState("orb-draw");
+    empty.players.p1.discard = [];
+    empty.players.p1.deck = ["stat.attack", "stat.defense", "stat.power"];
+    const draw = findPlay(empty, 1);
+    expect(draw, "draw-2 must be offered on an empty discard").toBeTruthy();
+    const result = applyOk(empty, draw!.action);
+    // Orb left the hand (→ discard) and two cards were drawn in its place.
+    expect(result.players.p1.hand.length).toBe(2);
   });
 });

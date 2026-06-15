@@ -825,6 +825,12 @@ export type CardOptionDefinition = {
   combatOnly?: boolean;
   /** This option is the card's expert side: playing it spends a crown. */
   expertOnly?: boolean;
+  /**
+   * Mystic Orb of Mana's second option ("Only if your discard pile is empty:
+   * draw 2 cards"): the option is offered only while the player's discard pile
+   * holds no cards.
+   */
+  requiresEmptyDiscard?: boolean;
   effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
 };
 

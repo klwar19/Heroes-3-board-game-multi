@@ -5730,6 +5730,33 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     createAttackRerollEffectFromCard(state, card, action.playerId, mode);
   }
 
+  // Artillery (basic): 1 damage to the enemy unit with the lowest (effective)
+  // Initiative; ties broken deterministically. (The card's expert Ballista
+  // synergy — "resolve the Ballista's effect against the same target 3 times"
+  // — is NOT wired; only the basic side runs.)
+  if (effect.type === "DAMAGE_LOWEST_INITIATIVE" && state.combat) {
+    const enemies = Object.values(state.combat.units).filter(
+      (unit) => unit.controllerId !== action.playerId && isUnitAlive(unit)
+    );
+    if (enemies.length > 0) {
+      const lowest = Math.min(...enemies.map((unit) => effectiveInitiative(unit, state.activeEffects)));
+      const target = enemies
+        .filter((unit) => effectiveInitiative(unit, state.activeEffects) === lowest)
+        .sort((left, right) => left.id.localeCompare(right.id))[0];
+      target.damage += effect.amount;
+      noteUnitDamagedForTokens(state, target, effect.amount);
+      appendEvent(state, {
+        type: "DAMAGE_ASSIGNED",
+        source: { type: "card", cardId: card.id, controllerId: action.playerId },
+        target: { type: "unit", unitId: target.id },
+        amount: effect.amount,
+        damageKind: "effect"
+      });
+      markUnitRemovedIfNeeded(state, target);
+      finishCombatIfNeeded(state);
+    }
+  }
+
   if (effect.type === "SIEGE_DEMOLISH") {
     const siege = state.combat?.siege;
     if (!siege) {
