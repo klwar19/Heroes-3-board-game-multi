@@ -92,7 +92,15 @@ import {
   RANGED_RELEASE_MS,
   type FxCue
 } from "@/components/table/fx";
-import { abilityFxPlans, cancelFx, spellFxPlans, type SpellFxPlan } from "@/data/fx";
+import {
+  abilityFxPlans,
+  cancelFx,
+  healFxPlans,
+  spellFxPlans,
+  spellPresentationMs,
+  type SpellFxPlan
+} from "@/data/fx";
+import { orderFxEventsForPresentation } from "@/components/table/fx-sequence";
 import {
   LOCATION_VISIT_SOUNDS,
   MAP_CUE_SOUNDS,
@@ -938,6 +946,7 @@ export default function Home() {
       if (freshFx.length > 0 || fresh.length > 0) {
         const cues: FxCue[] = [];
         const viewerId = viewerRef.current;
+        const inCombat = Boolean(nextState.combat);
         // Nothing combat-side shows until the dice have rolled and read: when an
         // attack die is in this batch the timeline starts after the dice finish,
         // so damage numbers, ability splashes and heals never pre-empt the roll.
@@ -947,7 +956,21 @@ export default function Home() {
         // defender unitId -> when its blow lands (its die's dismiss + the strike).
         const impactByTarget = new Map<string, number>();
         // defender unitId -> the pre-hit health the board shows until it lands.
+        // Populated for attacks here, and for spell/ability damage & heals in the
+        // event loop below so a struck/healed unit holds its old health on the
+        // board until the spell that changed it has finished animating.
         const freezeDamage = new Map<string, number>();
+        // unitId -> when a spell/ability hit/heal it visibly resolves (its number
+        // floats, the bar moves, a slain unit falls). Set after the effect's
+        // sprites + sound finish, never during them.
+        const spellRevealAt = new Map<string, number>();
+        // unitId -> total spell/ability damage seen this batch, so repeated hits
+        // freeze back to the health from before the first one.
+        const spellDamageSeen = new Map<string, number>();
+        // True once any spell/ability has queued damage, a heal or a death in
+        // combat — holds the victory notice and the next guard's prompt until the
+        // effect (and the death it caused) has played out, exactly like a strike.
+        let combatFxActive = false;
         // When the last strike's number / death has played out (drives the pause).
         let combatPresentationEnd = 0;
 
@@ -1042,30 +1065,10 @@ export default function Home() {
           cues.push({ kind: "shake", id: `${roll.id}-shake`, unitId: roll.defenderId, delayMs: impactAt });
         });
 
-        // Reveal each struck unit's real health just after its blow lands (the
-        // damage number / death cry are queued for the same beat), so the hit
-        // resolves on the board only once the strike connects — never before the
-        // dice. Clear any still-pending reveal from an earlier snapshot first.
-        for (const timer of damageRevealTimersRef.current) {
-          window.clearTimeout(timer);
-        }
-        damageRevealTimersRef.current = [];
-        if (fresh.length > 0) {
-          setCombatDamageDisplay(freezeDamage);
-          impactByTarget.forEach((impactAt, unitId) => {
-            const timer = window.setTimeout(() => {
-              setCombatDamageDisplay((current) => {
-                if (!current.has(unitId)) {
-                  return current;
-                }
-                const next = new Map(current);
-                next.delete(unitId);
-                return next;
-              });
-            }, impactAt + DAMAGE_REVEAL_DELAY_MS);
-            damageRevealTimersRef.current.push(timer);
-          });
-        }
+        // A struck unit holds its pre-hit health until its blow lands (above for
+        // attacks, in the event loop below for spell/ability hits & heals). The
+        // freeze map and the per-unit reveal beats are applied together once the
+        // whole batch is sequenced — see "Reveal frozen health" after the loop.
 
         // Mulligans / forced discards: the discarded cards fly out to the
         // discard pile before the replacement draws fly in. The reducer
@@ -1090,26 +1093,33 @@ export default function Home() {
           timeline += FLIGHT_MS + (flightCount - 1) * 90;
         }
 
+        // Queue a spell/ability's board presentation (projectile, hit burst,
+        // affect shimmer and/or tint) anchored on the target, starting at the
+        // current timeline. `fromAnchor` is where a projectile launches from
+        // (the caster's hand for spells, the casting unit for abilities). The
+        // timeline is advanced by the effect's *full* on-screen + audio length
+        // (spellPresentationMs), so whatever the engine resolved next — a damage
+        // number, a heal, a death — is queued strictly after it finishes.
         const queueBoardFx = (
           plan: SpellFxPlan,
           eventId: string,
-          casterId: PlayerId,
+          fromAnchor: string,
           targetUnitId: string
         ) => {
           const at = `unit:${targetUnitId}`;
+          const start = timeline;
           if (plan.projectile) {
             cues.push({
               kind: "projectile",
               id: `${eventId}-projectile`,
               fxKey: plan.projectile,
-              from: `hand:${casterId}`,
+              from: fromAnchor,
               to: at,
               hitFxKey: plan.hit,
               sound: plan.sound,
               hitSound: plan.hitSound,
-              delayMs: timeline
+              delayMs: start
             });
-            timeline += 1100;
           } else if (plan.hit) {
             cues.push({
               kind: "sprite",
@@ -1117,9 +1127,8 @@ export default function Home() {
               fxKey: plan.hit,
               at,
               sound: plan.hitSound ?? plan.sound,
-              delayMs: timeline
+              delayMs: start
             });
-            timeline += 850;
           }
           plan.affect?.forEach((entry, index) => {
             cues.push({
@@ -1128,12 +1137,9 @@ export default function Home() {
               fxKey: entry.key,
               at,
               sound: index === 0 ? plan.sound : undefined,
-              delayMs: timeline + (entry.delayMs ?? 0)
+              delayMs: start + (entry.delayMs ?? 0)
             });
           });
-          if (plan.affect && plan.affect.length > 0) {
-            timeline += 950;
-          }
           if (plan.tint) {
             const tint = plan.tint;
             const soundKey = plan.sound;
@@ -1149,12 +1155,15 @@ export default function Home() {
                   return next;
                 });
               }, 1600);
-            }, timeline);
-            timeline += 900;
+            }, start);
           }
+          timeline = start + spellPresentationMs(plan);
         };
 
-        for (const event of freshFx) {
+        // Walk the events in *presentation* order, not log order: a spell's
+        // sprite must lead the damage / death / heal it caused, even though the
+        // engine records the outcome first (the spell is still on the stack).
+        for (const event of orderFxEventsForPresentation(freshFx)) {
           switch (event.type) {
             case "CARDS_DRAWN": {
               if (event.count <= 0 || !seatVisible(event.playerId)) {
@@ -1227,7 +1236,7 @@ export default function Home() {
             case "SPELL_CAST_RESOLVED": {
               const plan = spellFxPlans[event.spellCardId];
               if (plan && event.target.type === "unit") {
-                queueBoardFx(plan, event.id, event.playerId, event.target.unitId);
+                queueBoardFx(plan, event.id, `hand:${event.playerId}`, event.target.unitId);
               } else if (plan?.sound && event.target.type === "space") {
                 // Summon Elemental resolves on an empty space — no unit to
                 // anchor board FX on, so play the cast sound on the timeline.
@@ -1259,31 +1268,74 @@ export default function Home() {
             }
             case "DAMAGE_ASSIGNED": {
               if (event.target.type === "unit" && event.amount > 0) {
-                // Attack damage lands on its strike beat; other damage (spells,
-                // ability splashes) follows the post-dice timeline.
-                const at = impactByTarget.get(event.target.unitId) ?? timeline;
-                playUnitSound(unitVoice(event.target.unitId), "hurt", at);
+                const targetId = event.target.unitId;
+                // Attack damage lands on its strike beat; spell/ability damage
+                // lands only once its sprite + sound have finished (the timeline
+                // was just advanced past them by queueBoardFx / the ability cue).
+                const attackBeat = impactByTarget.get(targetId);
+                const at = attackBeat ?? timeline;
+                playUnitSound(unitVoice(targetId), "hurt", at);
                 cues.push({
                   kind: "floater",
                   id: `${event.id}-floater`,
-                  at: `unit:${event.target.unitId}`,
+                  at: `unit:${targetId}`,
                   text: `−${event.amount}`,
                   tone: "damage",
                   delayMs: at
                 });
+                // Spell/ability hit (not a strike): freeze the struck unit's
+                // pre-hit health on the board so a wound — or a death — never
+                // shows before its spell finished. Revealed a beat after the
+                // number floats. Attack hits already do this in the pre-pass.
+                if (attackBeat === undefined && inCombat) {
+                  const defender = nextState.combat?.units[targetId];
+                  if (defender && defender.position >= 0) {
+                    const seen = (spellDamageSeen.get(targetId) ?? 0) + event.amount;
+                    spellDamageSeen.set(targetId, seen);
+                    freezeDamage.set(targetId, Math.max(0, defender.damage - seen));
+                  }
+                  const revealAt = at + DAMAGE_REVEAL_DELAY_MS;
+                  spellRevealAt.set(targetId, Math.max(spellRevealAt.get(targetId) ?? 0, revealAt));
+                  combatFxActive = true;
+                  combatPresentationEnd = Math.max(combatPresentationEnd, revealAt + 1200);
+                }
               }
               break;
             }
             case "DAMAGE_HEALED": {
               if (event.target.type === "unit" && event.amount > 0) {
+                const targetId = event.target.unitId;
+                // First Aid Tent (and any future non-spell heal) heals outside the
+                // spell flow, so it carries its own shimmer + chime here. Spell
+                // heals (Cure) already animated through their cast above, so the
+                // registry deliberately omits them — no double cue.
+                const healPlan =
+                  event.source.type === "card" ? healFxPlans[event.source.cardId] : undefined;
+                if (healPlan) {
+                  queueBoardFx(healPlan, `${event.id}-heal`, `unit:${targetId}`, targetId);
+                }
+                // The "+N" and the bar climbing back up wait for the heal effect
+                // (its own here, or the Cure cast just queued) to finish.
+                const at = timeline;
                 cues.push({
                   kind: "floater",
                   id: `${event.id}-floater`,
-                  at: `unit:${event.target.unitId}`,
+                  at: `unit:${targetId}`,
                   text: `+${event.amount}`,
                   tone: "heal",
-                  delayMs: timeline
+                  delayMs: at
                 });
+                if (inCombat) {
+                  const unit = nextState.combat?.units[targetId];
+                  if (unit && unit.position >= 0) {
+                    // Hold the more-wounded pre-heal health until the shimmer ends.
+                    freezeDamage.set(targetId, Math.min(unit.maxHealth, unit.damage + event.amount));
+                    const revealAt = at + DAMAGE_REVEAL_DELAY_MS;
+                    spellRevealAt.set(targetId, Math.max(spellRevealAt.get(targetId) ?? 0, revealAt));
+                    combatFxActive = true;
+                    combatPresentationEnd = Math.max(combatPresentationEnd, revealAt + 800);
+                  }
+                }
               }
               break;
             }
@@ -1292,46 +1344,14 @@ export default function Home() {
               if (!plan) {
                 break;
               }
-              const at = `unit:${event.targetUnitId ?? event.unitId}`;
-              if (plan.projectile && event.targetUnitId && event.targetUnitId !== event.unitId) {
-                // Faerie Dragons' Ice Bolt flies from the caster to the target,
-                // then bursts; the damage floater waits for it to land.
-                cues.push({
-                  kind: "projectile",
-                  id: `${event.id}-ability-projectile`,
-                  fxKey: plan.projectile,
-                  from: `unit:${event.unitId}`,
-                  to: at,
-                  hitFxKey: plan.hit,
-                  sound: plan.sound,
-                  hitSound: plan.hitSound,
-                  delayMs: timeline
-                });
-                timeline += 1100;
-              } else if (plan.hit) {
-                cues.push({
-                  kind: "sprite",
-                  id: `${event.id}-ability`,
-                  fxKey: plan.hit,
-                  at,
-                  sound: plan.hitSound ?? plan.sound,
-                  delayMs: timeline
-                });
-                timeline += 700;
-              }
-              plan.affect?.forEach((entry, index) => {
-                cues.push({
-                  kind: "sprite",
-                  id: `${event.id}-ability-${index}`,
-                  fxKey: entry.key,
-                  at,
-                  sound: index === 0 ? plan.sound : undefined,
-                  delayMs: timeline + (entry.delayMs ?? 0)
-                });
-              });
-              if (plan.affect && plan.affect.length > 0) {
-                timeline += 800;
-              }
+              const targetUnitId = event.targetUnitId ?? event.unitId;
+              // A bolt only flies when there's a separate target to fly to;
+              // a self-anchored ability drops its projectile and just bursts in
+              // place. Either way queueBoardFx advances the timeline by the
+              // effect's full length so the damage it deals waits for it.
+              const flies = Boolean(plan.projectile && event.targetUnitId && event.targetUnitId !== event.unitId);
+              const effectivePlan = flies ? plan : { ...plan, projectile: undefined };
+              queueBoardFx(effectivePlan, `${event.id}-ability`, `unit:${event.unitId}`, targetUnitId);
               break;
             }
             // Creature voices: the unit's own H3 clips, sequenced on the
@@ -1358,11 +1378,17 @@ export default function Home() {
               break;
             }
             case "UNIT_REMOVED": {
-              // A unit slain by an attack cries out as its blow lands (just as
-              // its card is revealed gone); other removals follow the timeline.
+              // A unit slain by an attack cries out as its blow lands; one slain
+              // by a spell/ability cries out as it falls — the beat its frozen
+              // health is revealed, just after its damage number, never during
+              // the spell. Other removals follow the timeline.
               const impactAt = impactByTarget.get(event.unitId);
+              const spellFallAt = spellRevealAt.get(event.unitId);
               if (impactAt !== undefined) {
                 playUnitSound(unitVoice(event.unitId), "death", impactAt + DAMAGE_REVEAL_DELAY_MS);
+              } else if (spellFallAt !== undefined) {
+                playUnitSound(unitVoice(event.unitId), "death", spellFallAt);
+                combatPresentationEnd = Math.max(combatPresentationEnd, spellFallAt + 1200);
               } else {
                 playUnitSound(unitVoice(event.unitId), "death", timeline);
                 timeline += 650;
@@ -1372,6 +1398,40 @@ export default function Home() {
             default:
               break;
           }
+        }
+
+        // Reveal frozen health. Every struck/healed unit shows its old health
+        // until its blow/spell visibly resolves, then snaps to the real value
+        // (a slain unit vanishes, a healed one fills back up). Attacks reveal a
+        // beat after their strike lands; spells/heals at the beat recorded while
+        // the loop sequenced them — always after the effect has played. Only
+        // touched when this batch froze something, so a still-pending reveal from
+        // an earlier snapshot is left to fire on its own.
+        if (freezeDamage.size > 0) {
+          for (const timer of damageRevealTimersRef.current) {
+            window.clearTimeout(timer);
+          }
+          damageRevealTimersRef.current = [];
+          const revealAt = new Map<string, number>(spellRevealAt);
+          impactByTarget.forEach((impactMs, unitId) => {
+            // Cover blocked attacks (frozen with no damage event) too.
+            revealAt.set(unitId, Math.max(revealAt.get(unitId) ?? 0, impactMs + DAMAGE_REVEAL_DELAY_MS));
+          });
+          setCombatDamageDisplay(freezeDamage);
+          freezeDamage.forEach((_shown, unitId) => {
+            const at = revealAt.get(unitId) ?? 0;
+            const timer = window.setTimeout(() => {
+              setCombatDamageDisplay((current) => {
+                if (!current.has(unitId)) {
+                  return current;
+                }
+                const next = new Map(current);
+                next.delete(unitId);
+                return next;
+              });
+            }, at);
+            damageRevealTimersRef.current.push(timer);
+          });
         }
 
         if (isGameStart) {
@@ -1395,13 +1455,15 @@ export default function Home() {
           }
         }
 
-        // Whenever this snapshot resolved one or more attacks, hold the things
-        // that would otherwise resolve over the roll until every die, strike,
-        // damage number and death has played out: the next neutral guard's
-        // "react?" preview (which then counts down its own 2s breather) and, on
-        // the combat-ending blow, the victory/defeat modal. combatPresentationEnd
-        // tracks the last strike's full tail; timeline covers trailing cues.
-        if (fresh.length > 0) {
+        // Whenever this snapshot resolved one or more attacks — or a spell /
+        // ability that dealt damage, healed or killed in combat — hold the things
+        // that would otherwise resolve over the top of it until every die,
+        // strike, sprite, damage number and death has played out: the next
+        // neutral guard's "react?" preview (which then counts down its own 2s
+        // breather) and, on the killing blow, the victory/defeat modal.
+        // combatPresentationEnd tracks the last effect's full tail; timeline
+        // covers trailing cues.
+        if (fresh.length > 0 || combatFxActive) {
           const presentationMs = Math.max(timeline, combatPresentationEnd);
           if (combatPresentTimerRef.current) {
             window.clearTimeout(combatPresentTimerRef.current);

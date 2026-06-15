@@ -549,24 +549,46 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: abilitySource("scholar")
   },
+  // engine: Tactics is NOT played through PLAY_CARD. Holding this card, the
+  // engine opens a start-of-combat swap window (regular side) once all units are
+  // placed/revealed, and offers a swap on your turn before your active unit
+  // moves (expert side). Both run through SWAP_COMBAT_UNITS and discard this
+  // card; the expert swap also spends one expert use. The CHOOSE_ONE options
+  // below name those two sides; their TACTICS_SWAP effect is a declarative
+  // marker (see swapCombatUnits / openTacticsSetupWindows in adventure-reducer).
   "ability.tactics": {
     id: "ability.tactics",
     name: "Tactics",
     kind: "ability",
-    timing: "instant",
+    timing: "combat",
+    phaseLimit: ["combat"],
     abilityClass: "might",
     tags: [
       "ability",
       "combat",
-      "needs-implementation",
-      "Switch the position of two of your units at the start of Combat (expert: during Combat)."
+      "Regular: at the start of Combat, switch the position of any 2 of your units. Expert: switch any 2 of your units during Combat, on your turn before your active unit moves."
     ],
-    effect: { type: "DRAW_CARDS", amount: 0 },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Regular: at the start of Combat, switch the position of any 2 of your units",
+          combatOnly: true,
+          effect: { type: "TACTICS_SWAP" }
+        },
+        {
+          label: "Expert: during Combat (before your active unit moves), switch the position of any 2 of your units",
+          combatOnly: true,
+          expertOnly: true,
+          effect: { type: "TACTICS_SWAP" }
+        }
+      ]
+    },
     assets: {
       cardImage: "/assets/abilities-tactics.webp",
       imageAlt: "Tactics ability card"
     },
-    implementationStatus: "not-implemented",
+    implementationStatus: "implemented",
     source: abilitySource("tactics")
   },
 

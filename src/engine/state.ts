@@ -698,6 +698,35 @@ export type EffectDefinition =
       toUnitDefId: string;
       toTier: "bronze" | "silver" | "gold" | "azure";
       unique?: boolean;
+    }
+  | {
+      /**
+       * Mutare / Cassiopeia's Tactics ability. A declarative marker only:
+       * Tactics is never resolved through PLAY_CARD. The regular swap is offered
+       * in the start-of-combat Tactics window, and the expert swap on the
+       * holder's turn before their active unit moves; both run through the
+       * SWAP_COMBAT_UNITS action and discard the card (expert also spends one
+       * expert use). See swapCombatUnits in adventure-reducer.ts.
+       */
+      type: "TACTICS_SWAP";
+    }
+  | {
+      /**
+       * Cyra's Diplomacy, Map side: draw 1 Neutral Unit card per Dwelling the
+       * player controls, then open a recruit choice over the draws (pay the
+       * chosen unit's Recruitment cost; the rest return to their tier decks).
+       * Resolved in openDiplomacyRecruit.
+       */
+      type: "DIPLOMACY_RECRUIT";
+    }
+  | {
+      /**
+       * Cyra's Diplomacy, Instant side. A declarative marker: the skip is
+       * offered automatically as a pop-up when a hero meets Neutral Units whose
+       * Field Difficulty equals the hero's level (never played from hand). See
+       * the "diplomacy-skip" pending choice in adventure-reducer.ts.
+       */
+      type: "DIPLOMACY_SKIP_COMBAT";
     };
 
 /**
@@ -1097,6 +1126,23 @@ export type GameAction =
   | { type: "PLACE_COMBAT_UNIT"; playerId: PlayerId; armyUnitId: string; position: number }
   | { type: "UNPLACE_COMBAT_UNIT"; playerId: PlayerId; armyUnitId: string }
   | { type: "FINISH_COMBAT_PLACEMENT"; playerId: PlayerId }
+  | {
+      /**
+       * Tactics ability: switch the positions of two of your own units, either
+       * in the start-of-combat Tactics window (free) or on your turn before your
+       * active unit moves (expert, spends one expert use). Both spend the Tactics
+       * card. Validated in swapCombatUnits.
+       */
+      type: "SWAP_COMBAT_UNITS";
+      playerId: PlayerId;
+      unitIdA: UnitId;
+      unitIdB: UnitId;
+    }
+  | {
+      /** Decline a start-of-combat Tactics swap window without swapping. */
+      type: "FINISH_TACTICS";
+      playerId: PlayerId;
+    }
   | { type: "CONTINUE_NEUTRAL_COMBAT"; playerId: PlayerId }
   | { type: "CONTINUE_NEUTRAL_STEP"; playerId: PlayerId }
   | { type: "RETREAT_FROM_COMBAT"; playerId: PlayerId }
@@ -1886,6 +1932,31 @@ export type GameEvent =
       playerId: PlayerId;
     }
   | {
+      /** Tactics: two of a player's units switched battlefield positions. */
+      id: string;
+      type: "COMBAT_UNITS_SWAPPED";
+      playerId: PlayerId;
+      unitIdA: UnitId;
+      unitIdB: UnitId;
+      mode: "basic" | "expert";
+    }
+  | {
+      /** Diplomacy (Map): the Neutral Unit cards drawn, one per Dwelling. */
+      id: string;
+      type: "DIPLOMACY_NEUTRALS_DRAWN";
+      playerId: PlayerId;
+      unitDefIds: string[];
+    }
+  | {
+      /** Diplomacy (Instant): a matching-level Neutral fight skipped for no XP. */
+      id: string;
+      type: "DIPLOMACY_COMBAT_SKIPPED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      fieldId: MapSpaceId;
+      difficulty: number;
+    }
+  | {
       id: string;
       type: "UNIT_RECRUITED";
       playerId: PlayerId;
@@ -2607,6 +2678,16 @@ export type CombatState = {
    */
   pendingCoverOfDarkness?: PlayerId[];
   /**
+   * Tactics ability: participants still entitled to a start-of-combat unit
+   * swap, attacker first then a hero-present PvP defender. Set once all units
+   * are placed/revealed for each player who holds a playable Tactics card and
+   * fields at least two living units. The head holds priority (phase stays
+   * "combat-setup", setup is already null); SWAP_COMBAT_UNITS performs one swap
+   * (spending the card) and FINISH_TACTICS declines, each popping the queue.
+   * Combat round 1 begins (finalizeCombatStart) only once the queue drains.
+   */
+  pendingTacticsSwaps?: PlayerId[] | null;
+  /**
    * Controllers who have had at least one unit removed from the board this
    * combat (Pit Lords' "Summon Demons" triggers off a friendly removal).
    */
@@ -3266,7 +3347,9 @@ export type PendingChoice =
         | "combat-reposition"
         | "genie-take-spell"
         | "combat-knockback"
-        | "cover-of-darkness";
+        | "cover-of-darkness"
+        | "diplomacy-skip"
+        | "diplomacy-recruit";
       /** combat-reposition: Harpies' optional fly-back after their attack. */
       reposition?: { unitId: UnitId; originPosition: number };
       /**
@@ -3301,6 +3384,21 @@ export type PendingChoice =
       };
       /** eagle-eye: the dug spell waiting on take/discard. */
       eagleEye?: { deckId: DeckId; cardId: CardId };
+      /**
+       * diplomacy-skip: the neutral fight Cyra's Diplomacy may skip. Option 0
+       * uses the card (claim the field, no XP); option 1 fights normally.
+       */
+      diplomacySkip?: { heroId: HeroId; fieldId: MapSpaceId; difficulty: number };
+      /**
+       * diplomacy-recruit: the Neutral Unit cards drawn (one per Dwelling) and
+       * the affordable subset offered as recruit options, in option order. The
+       * final option always declines; every undrawn-but-recruited card and all
+       * declined draws return to their tier deck's discard pile.
+       */
+      diplomacyRecruit?: {
+        draws: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
+        recruitable: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
+      };
       returnPhase: GamePhase;
     }
   | {
