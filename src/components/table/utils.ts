@@ -131,6 +131,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       }`;
     case "UNIT_LETHAL_HIT":
       return `${unitName(state, event.defenderId)} is about to be destroyed.`;
+    case "ATTACK_DIE_SETTLED":
+      return `Attack die settled on ${formatDieFace(event.roll)}: ${unitName(state, event.defenderId)} may ignore it.`;
     case "PENDING_CHOICE_CREATED":
       return event.message;
     case "ATTACK_REROLLED":
@@ -156,6 +158,13 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "COMBAT_ROUND_ENDED":
       return `Combat round ${event.round} ends.`;
     case "COMBAT_ENDED":
+      // House rule: a Surrender is a paid escape, not a win for the opponent.
+      if (event.reason === "surrender") {
+        return `${playerName(state, event.defeatedPlayerId)} surrenders the combat (10 gold, army kept) — not a win for ${playerName(state, event.winnerPlayerId)}.`;
+      }
+      if (event.reason === "retreat") {
+        return `${playerName(state, event.defeatedPlayerId)} retreats; ${playerName(state, event.winnerPlayerId)} wins the combat.`;
+      }
       return `${playerName(state, event.winnerPlayerId)} wins the combat.`;
     case "TURN_ENDED":
       return `${playerName(state, event.playerId)} ends the turn.`;
@@ -338,6 +347,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         .join(" & ")}.`;
     case "SCROLL_SPELL_SOLD":
       return `${playerName(state, event.playerId)} sells ${cardName(event.cardId)} from a Spell Scroll for ${event.gold} gold.`;
+    case "SANDBOX_CARD_ADDED":
+      return event.message;
   }
 }
 

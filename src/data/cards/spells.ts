@@ -1085,6 +1085,8 @@ export const spellDeckLegacy: string[] = [
   "spell.anti_magic",
   "spell.anti_magic",
   "spell.precision",
+  "spell.fortune",
+  "spell.fortune",
   "spell.fireball",
   "spell.fireball",
   "spell.fire_shield",
@@ -1098,6 +1100,8 @@ export const spellDeckLegacy: string[] = [
   "spell.earthquake",
   "spell.resurrection",
   "spell.magic_mirror",
+  "spell.blind",
+  "spell.chain_lightning",
   "spell.summon_air_elemental",
   "spell.summon_earth_elemental",
   "spell.summon_fire_elemental",
@@ -1143,7 +1147,9 @@ export const spellDeckBinhBasic: string[] = [
   "spell.precision",
   "spell.fortune",
   "spell.fortune",
+  "spell.blind",
   "spell.earthquake",
+  "spell.forgetfulness",
   "spell.visions"
 ];
 
@@ -1160,11 +1166,17 @@ export const spellDeckBinhExpert: string[] = [
   "spell.town_portal",
   "spell.resurrection",
   "spell.magic_mirror",
+  "spell.chain_lightning",
   "spell.summon_air_elemental",
   "spell.summon_earth_elemental",
   "spell.summon_fire_elemental",
   "spell.summon_water_elemental",
   "spell.dimension_door",
   "spell.fly",
-  "spell.water_walk"
+  "spell.water_walk",
+  // Rampart + Inferno expansion spells (expert tier, per each card's spellLevel).
+  "spell.mirth",
+  "spell.sorrow",
+  "spell.slayer",
+  "spell.inferno"
 ];

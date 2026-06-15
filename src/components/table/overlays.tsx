@@ -12,6 +12,7 @@ import {
   getEffectAmount,
   getEffectiveCardEffect,
   getPermanentCardIds,
+  SURRENDER_GOLD_COST,
   type CardPlayMode,
   type GameAction,
   type GameState,
@@ -1389,22 +1390,35 @@ export function CombatResultModal({
   const viewerLost = outcome.defeatedPlayerId === viewerPlayerId;
   const acknowledge = legalActions.find((legal) => legal.action.type === "ACKNOWLEDGE_COMBAT_END");
 
+  // Where a withdrawing hero ends up: a player-vs-player loser falls back to a
+  // friendly base (moveDefeatedHeroHome); a neutral retreat returns to the last
+  // visited field.
+  const fallBackTo = combat.context.kind === "player" ? "a friendly Town or Settlement" : "the last visited field";
+
   const title =
-    outcome.reason === "retreat"
+    outcome.reason === "surrender"
       ? viewerLost
-        ? "You retreat"
-        : `${defeatedName} retreats`
-      : viewerWon
-        ? "Victory!"
-        : viewerLost
-          ? "Defeat"
-          : `${winnerName} wins`;
+        ? "You surrender"
+        : `${defeatedName} surrenders`
+      : outcome.reason === "retreat"
+        ? viewerLost
+          ? "You retreat"
+          : `${defeatedName} retreats`
+        : viewerWon
+          ? "Victory!"
+          : viewerLost
+            ? "Defeat"
+            : `${winnerName} wins`;
   const detail =
-    outcome.reason === "retreat"
-      ? `${defeatedName} falls back to the last visited field. The combat is over.`
-      : `${winnerName} defeats ${defeatedName}${
-          outcome.reason === "all-enemy-units-defeated" ? " — every opposing unit is gone" : ""
-        }.`;
+    outcome.reason === "surrender"
+      ? // House rule: a paid escape that keeps the army and is NOT a win for the
+        // opponent (no experience, no Necromancy, no victory credit).
+        `${defeatedName} pays ${SURRENDER_GOLD_COST} gold and withdraws to ${fallBackTo} with their whole army — it does not count as a win for ${winnerName}.`
+      : outcome.reason === "retreat"
+        ? `${defeatedName} falls back to ${fallBackTo}. The combat is over.`
+        : `${winnerName} defeats ${defeatedName}${
+            outcome.reason === "all-enemy-units-defeated" ? " — every opposing unit is gone" : ""
+          }.`;
 
   return (
     <div className="combatResultBackdrop" role="dialog" aria-label="Combat result">

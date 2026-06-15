@@ -31,26 +31,6 @@ function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: s
   };
 }
 
-function notImplementedArtifact(
-  slug: string,
-  name: string,
-  tier: "minor" | "major" | "relic",
-  text: string
-): CardLibrary[string] {
-  return {
-    id: `artifact.${slug}`,
-    name,
-    kind: "artifact",
-    timing: "instant",
-    artifactTier: tier,
-    tags: ["artifact", tier, "needs-implementation", text],
-    effect: { type: "DRAW_CARDS", amount: 0 },
-    assets: artifactAssets(tier, slug, name),
-    implementationStatus: "not-implemented",
-    source: artifactSource(slug)
-  };
-}
-
 export const artifactCards: CardLibrary = {
   // ---- Minor artifacts ----------------------------------------------------
   "artifact.armor_of_wonder": {
@@ -578,12 +558,43 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("greater_gnolls_flail")
   },
-  "artifact.shield_of_the_dwarven_lords": notImplementedArtifact(
-    "shield_of_the_dwarven_lords",
-    "Shield of the Dwarven Lords",
-    "minor",
-    "Use this after the Attack die roll. Ignore the Attack die and any additional effects it triggered. — OR — +1 defense."
-  ),
+  // Shield of the Dwarven Lords: the top side is a post-roll defender reaction.
+  // It is offered only in the dedicated ATTACK_DIE_SETTLED window (engine:
+  // IGNORE_ATTACK_DIE_RESULT) — never as a free combat instant or in the normal
+  // attack-declared window — and ignores the rolled die plus every effect that
+  // die face triggered (Death Blow, the Minotaurs' draw, paralysis, the ranged
+  // low-roll bolt, the Zombie/Manticore die-defense bonus). The bottom side is
+  // the ordinary +1 defense reaction against an incoming attack.
+  "artifact.shield_of_the_dwarven_lords": {
+    id: "artifact.shield_of_the_dwarven_lords",
+    name: "Shield of the Dwarven Lords",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "minor",
+    tags: [
+      "artifact",
+      "minor",
+      "Use this after the Attack die roll. Ignore the Attack die and any additional effects it triggered. — OR — +1 defense."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "After the Attack die roll: ignore the die and the effects it triggered",
+          effect: { type: "IGNORE_ATTACK_DIE_RESULT" }
+        },
+        {
+          label: "+1 defense",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1 }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "shield_of_the_dwarven_lords", "Shield of the Dwarven Lords"),
+    implementationStatus: "implemented",
+    source: artifactSource("shield_of_the_dwarven_lords")
+  },
   "artifact.shield_of_the_yawning_dead": {
     id: "artifact.shield_of_the_yawning_dead",
     name: "Shield of the Yawning Dead",
@@ -1017,9 +1028,11 @@ export const artifactCards: CardLibrary = {
     source: artifactSource("necklace_of_dragonteeth")
   },
   // Shackles of War: option 0, played at the start of a player-vs-player
-  // combat, locks the enemy hero in — they can neither Retreat nor Surrender
-  // (BLOCK_ENEMY_ESCAPE → a CANNOT_ESCAPE_COMBAT effect on the enemy). Option 1
-  // draws 2 and discards one of the two drawn cards.
+  // combat, stops the enemy hero Surrendering (BLOCK_ENEMY_SURRENDER → a
+  // CANNOT_SURRENDER_COMBAT effect on the enemy). House rule: it only blocks the
+  // paid Surrender escape — the enemy can still Retreat (and a fought-out loss
+  // is unaffected), so the printed "neither Retreat nor Surrender" is narrowed
+  // to Surrender here. Option 1 draws 2 and discards one of the two drawn cards.
   "artifact.shackles_of_war": {
     id: "artifact.shackles_of_war",
     name: "Shackles of War",
@@ -1029,15 +1042,15 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "If played at the start of Combat, the Enemy Hero can neither Retreat nor Surrender. — OR — Draw 2 cards, choose 1 card and discard the other."
+      "If played at the start of Combat, the Enemy Hero cannot Surrender (house rule: Retreat still allowed). — OR — Draw 2 cards, choose 1 card and discard the other."
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Lock the enemy hero in: no Retreat or Surrender this combat",
+          label: "Lock the enemy hero in: no Surrender this combat (they may still Retreat)",
           combatOnly: true,
-          effect: { type: "BLOCK_ENEMY_ESCAPE" }
+          effect: { type: "BLOCK_ENEMY_SURRENDER" }
         },
         {
           label: "Draw 2 cards, then discard one of them",
@@ -1409,12 +1422,53 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("sandals_of_the_saint")
   },
-  "artifact.orb_of_vulnerability": notImplementedArtifact(
-    "orb_of_vulnerability",
-    "Orb of Vulnerability",
-    "relic",
-    "During this Combat, negate all units' special abilities related to spells. Remove this card instead of discarding it. — OR — +2 Power."
-  )
+  // Orb of Vulnerability: option A is a combat instant that, for the rest of the
+  // Combat, switches off every unit's innate spell-related ability — both armies
+  // (engine: SUPPRESS_SPELL_ABILITIES negates Dwarf Magic Resistance, all
+  // "reduce Spell damage" passives and the Unicorns' aura, printed spell-school
+  // immunity, and the Pegasi enemy-spell Power drain). The card is removed from
+  // the game (cost.removeSelf), not discarded. Anti-Magic is a Spell-granted
+  // effect rather than a unit ability, so it is intentionally NOT negated.
+  "artifact.orb_of_vulnerability": {
+    id: "artifact.orb_of_vulnerability",
+    name: "Orb of Vulnerability",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "relic",
+    tags: [
+      "artifact",
+      "relic",
+      "During this Combat, negate all units' special abilities related to spells. Remove this card instead of discarding it. — OR — +2 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: negate all units' spell-related abilities (remove this card)",
+          combatOnly: true,
+          cost: { removeSelf: true },
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Orb of Vulnerability",
+              scope: "global",
+              duration: { type: "combat" },
+              modifiers: [{ type: "SUPPRESS_SPELL_ABILITIES" }]
+            }
+          }
+        },
+        {
+          label: "+2 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2 }
+        }
+      ]
+    },
+    assets: artifactAssets("relic", "orb_of_vulnerability", "Orb of Vulnerability"),
+    implementationStatus: "implemented",
+    source: artifactSource("orb_of_vulnerability")
+  }
 };
 
 /**
@@ -1440,6 +1494,13 @@ export const artifactDeckLegacy: string[] = [
   "artifact.speculum",
   "artifact.torso_of_legion",
   "artifact.boots_of_speed",
+  "artifact.charm_of_mana",
+  "artifact.greater_gnolls_flail",
+  "artifact.shield_of_the_dwarven_lords",
+  "artifact.skull_helmet",
+  "artifact.equestrians_gloves",
+  "artifact.glyph_of_gallantry",
+  "artifact.quiet_eye_of_the_dragon",
   // major
   "artifact.dragon_scale_shield",
   "artifact.endless_bag_of_gold",
@@ -1453,6 +1514,10 @@ export const artifactDeckLegacy: string[] = [
   "artifact.everpouring_vial_of_mercury",
   "artifact.breastplate_of_brimstone",
   "artifact.shield_of_the_damned",
+  "artifact.mystic_orb_of_mana",
+  "artifact.shackles_of_war",
+  "artifact.pendant_of_courage",
+  "artifact.necklace_of_dragonteeth",
   // relic
   "artifact.angel_wings",
   "artifact.dragon_scale_armor",
@@ -1461,7 +1526,12 @@ export const artifactDeckLegacy: string[] = [
   "artifact.sword_of_judgement",
   "artifact.titans_cuirass",
   "artifact.titans_gladius",
-  "artifact.crown_of_dragontooth"
+  "artifact.crown_of_dragontooth",
+  "artifact.orb_of_vulnerability",
+  "artifact.helm_of_heavenly_enlightenment",
+  "artifact.celestial_necklace_of_bliss",
+  "artifact.lions_shield_of_courage",
+  "artifact.sandals_of_the_saint"
 ];
 
 /** BINH Minor Artifact deck (adds the BINH-extra minors). */
@@ -1484,7 +1554,10 @@ export const artifactDeckBinhMinor: string[] = [
   "artifact.skull_helmet",
   "artifact.equestrians_gloves",
   "artifact.glyph_of_gallantry",
-  "artifact.quiet_eye_of_the_dragon"
+  "artifact.quiet_eye_of_the_dragon",
+  "artifact.charm_of_mana",
+  "artifact.greater_gnolls_flail",
+  "artifact.shield_of_the_dwarven_lords"
 ];
 
 /** BINH Major Artifact deck (adds the BINH-extra majors). */
@@ -1502,7 +1575,9 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.breastplate_of_brimstone",
   "artifact.shield_of_the_damned",
   "artifact.pendant_of_courage",
-  "artifact.necklace_of_dragonteeth"
+  "artifact.necklace_of_dragonteeth",
+  "artifact.mystic_orb_of_mana",
+  "artifact.shackles_of_war"
 ];
 
 /** BINH Relic Artifact deck (adds the BINH-extra relics). */
@@ -1518,5 +1593,6 @@ export const artifactDeckBinhRelic: string[] = [
   "artifact.helm_of_heavenly_enlightenment",
   "artifact.celestial_necklace_of_bliss",
   "artifact.lions_shield_of_courage",
-  "artifact.sandals_of_the_saint"
+  "artifact.sandals_of_the_saint",
+  "artifact.orb_of_vulnerability"
 ];

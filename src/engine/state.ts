@@ -182,11 +182,11 @@ export type ActiveEffectModifier =
     }
   | {
       /**
-       * Shackles of War (option 1): while held, the affected player's Hero can
-       * neither Retreat nor Surrender from the current Combat. Player-scoped,
-       * lasts the Combat.
+       * Shackles of War (house rule): while held, the affected player's Hero
+       * cannot *Surrender* the current Combat. Retreat (and a fought-out loss)
+       * is unaffected. Player-scoped, lasts the Combat.
        */
-      type: "CANNOT_ESCAPE_COMBAT";
+      type: "CANNOT_SURRENDER_COMBAT";
     }
   | {
       /**
@@ -312,6 +312,18 @@ export type ActiveEffectModifier =
        */
       type: "DRAW_ON_SPELL_CAST";
       amount: number;
+    }
+  | {
+      /**
+       * Orb of Vulnerability (option A): for the rest of the Combat every unit's
+       * innate special ability "related to spells" is switched off — magic
+       * resistance (the Dwarves' die roll), spell-damage reduction (Golems,
+       * Black Dragons, the Unicorns' aura), printed spell-school immunity
+       * (Elementals, Efreet, Phoenix…) and the Pegasi's enemy-spell Power drain.
+       * Combat-scoped and side-agnostic, so a single grant covers both armies.
+       * (Anti-Magic is a Spell-granted effect, not a unit ability, so it stays.)
+       */
+      type: "SUPPRESS_SPELL_ABILITIES";
     };
 
 export type ActiveEffectDefinition = {
@@ -544,6 +556,18 @@ export type EffectDefinition =
       /** Bless: ignore the Attack die; higher Power adds attack on top. */
       type: "IGNORE_ATTACK_DIE";
       attackBonusByPower?: Record<number, number>;
+    }
+  | {
+      /**
+       * Shield of the Dwarven Lords (option A): a defender's reaction played
+       * AFTER the Attack die is rolled. It ignores the rolled die (the face
+       * contributes 0 to the attack) and every additional effect that die face
+       * triggered — Dread Knights' Death Blow, the Minotaurs' draw, the
+       * Thunderbird/Wyvern follow-up bolt, the Azure/Basilisk paralysis, the
+       * Zombie/Manticore die-defense bonus. Only offered in the dedicated
+       * post-roll window (ATTACK_DIE_SETTLED), never as a free combat instant.
+       */
+      type: "IGNORE_ATTACK_DIE_RESULT";
     }
   | {
       /** Anti-Magic: spell immunity for a unit (tier rises with Power). */
@@ -814,11 +838,12 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Shackles of War (option 1): played at the start of a player-vs-player
-       * Combat, the enemy player's Hero can neither Retreat nor Surrender for
-       * the rest of that Combat (a CANNOT_ESCAPE_COMBAT effect on the enemy).
+       * Shackles of War (house rule): played at the start of a player-vs-player
+       * Combat, the enemy player's Hero cannot *Surrender* for the rest of that
+       * Combat (a CANNOT_SURRENDER_COMBAT effect on the enemy). Retreat and a
+       * fought-out loss are unaffected.
        */
-      type: "BLOCK_ENEMY_ESCAPE";
+      type: "BLOCK_ENEMY_SURRENDER";
     }
   | {
       /**
@@ -1238,6 +1263,12 @@ export type GameAction =
     }
   | { type: "SEARCH_DECK"; playerId: PlayerId; deckId: DeckId; count: number }
   | { type: "RESOLVE_DECK_SEARCH"; playerId: PlayerId; choiceId: string; pick: DeckSearchPick }
+  /**
+   * Combat test mode only: drop any card straight into a player's hand so a
+   * tester can exercise its mechanic without searching for it. Rejected outside
+   * the combat sandbox; see sandboxAddCard.
+   */
+  | { type: "SANDBOX_ADD_CARD"; playerId: PlayerId; cardId: CardId }
   | { type: "MOVE_HERO"; playerId: PlayerId; heroId: HeroId; to: MapSpaceId }
   | {
       /**
@@ -1369,10 +1400,12 @@ export type GameAction =
   | { type: "RETREAT_FROM_COMBAT"; playerId: PlayerId }
   | {
       /**
-       * Player-vs-player combats: at the start of the combat (round 1) a
-       * participating hero may Surrender — the combat ends with that player as
-       * the loser. Blocked while the player is under Shackles of War's
-       * "neither Retreat nor Surrender" effect.
+       * Player-vs-player combats (house rule): at the start of the combat
+       * (round 1) a participating hero may Surrender for a flat 10-gold toll
+       * paid to the opponent — they keep their whole army, take no morale hit,
+       * return home, and the opponent gains nothing toward winning. Offered
+       * only with the full 10 gold in hand, and blocked while the player is
+       * under Shackles of War.
        */
       type: "SURRENDER_COMBAT";
       playerId: PlayerId;
@@ -1609,6 +1642,18 @@ export type GameEvent =
       defenderId: UnitId;
     }
   | {
+      /**
+       * The Attack die has been rolled (and any rerolls resolved) but the hit
+       * has not yet landed — opens the window where the defender may play Shield
+       * of the Dwarven Lords to ignore the die and the effects it triggered.
+       */
+      id: string;
+      type: "ATTACK_DIE_SETTLED";
+      attackerId: UnitId;
+      defenderId: UnitId;
+      roll: number;
+    }
+  | {
       id: string;
       type: "ATTACK_ROLLED";
       attackerId: UnitId;
@@ -1826,6 +1871,13 @@ export type GameEvent =
       count: number;
       requested: number;
       reshuffledDiscard: boolean;
+    }
+  | {
+      id: string;
+      type: "SANDBOX_CARD_ADDED";
+      playerId: PlayerId;
+      cardId: CardId;
+      message: string;
     }
   | {
       id: string;
@@ -2393,6 +2445,17 @@ export type ResolutionStackItem = {
     rolledCandidate?: { rolls: number[]; roll: number };
     /** Set once the lethal-save window has been offered for this attack. */
     lethalSaveOffered?: boolean;
+    /**
+     * Shield of the Dwarven Lords: set once the post-roll die-cancel window has
+     * been offered for this attack, so it is opened at most once.
+     */
+    dieCancelOffered?: boolean;
+    /**
+     * Shield of the Dwarven Lords resolved: the rolled Attack die (and every
+     * effect that die face would have triggered) is ignored — the face counts
+     * as 0 and no die-triggered ability fires.
+     */
+    attackDieCancelled?: boolean;
     /**
      * A defending defender's Defense roll for this attack, rolled once and
      * reused across the lethal-save window so the same outcome decides the hit.

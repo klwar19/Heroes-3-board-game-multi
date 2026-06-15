@@ -33,6 +33,7 @@ export const implementedCardEffectTypes = [
   "DISCOVER_TILE_CARD",
   "CLEAR_RETALIATION",
   "IGNORE_ATTACK_DIE",
+  "IGNORE_ATTACK_DIE_RESULT",
   "CREATE_SPELL_IMMUNITY",
   "CREATE_FIRE_SHIELD",
   "CREATE_INITIATIVE_BUFF",
@@ -42,11 +43,11 @@ export const implementedCardEffectTypes = [
   "GAIN_WAR_MACHINE",
   "CHAIN_LIGHTNING",
   "PLACE_PARALYSIS",
+  "BLOCK_ENEMY_SURRENDER",
   "SKIP_ACTIVATION",
   "SLAYER_ATTACK",
   "INFERNO",
   "FORGETFULNESS",
-  "BLOCK_ENEMY_ESCAPE",
   "BALLISTA_SPECIALTY",
   "DAMAGE_LOWEST_INITIATIVE_ENEMY",
   "ARTILLERY_BALLISTA_VOLLEY",
@@ -423,6 +424,10 @@ export function describeCardEffect(card: CardDefinition): string {
     return "ignore the Attack die roll (power adds attack)";
   }
 
+  if (card.effect.type === "IGNORE_ATTACK_DIE_RESULT") {
+    return "after the Attack die roll: ignore the die and any effects it triggered";
+  }
+
   if (card.effect.type === "CREATE_SPELL_IMMUNITY") {
     return "the unit cannot be targeted by spells (tier rises with power)";
   }
@@ -483,6 +488,10 @@ export function describeCardEffect(card: CardDefinition): string {
     return "place a Paralysis token on the selected enemy unit (tier rises with power)";
   }
 
+  if (card.effect.type === "BLOCK_ENEMY_SURRENDER") {
+    return "the enemy hero cannot Surrender this combat (Retreat still allowed)";
+  }
+
   if (card.effect.type === "SKIP_ACTIVATION") {
     return `when a ${card.effect.grade}-or-lower unit is about to activate, skip its activation`;
   }
@@ -503,10 +512,6 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "FORGETFULNESS") {
     return "the selected enemy ranged unit cannot attack during its next activation (tier rises with power)";
-  }
-
-  if (card.effect.type === "BLOCK_ENEMY_ESCAPE") {
-    return "the enemy hero can neither Retreat nor Surrender this combat";
   }
 
   if (card.effect.type === "BALLISTA_SPECIALTY") {

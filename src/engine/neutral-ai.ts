@@ -1,6 +1,7 @@
 import { getBattlefieldDistance } from "./battlefield";
 import {
   canUnitAttack,
+  canUnitMoveAndAttack,
   canUnitMoveTo,
   getLegalMoveDestinations,
   getPathDistances,
@@ -13,14 +14,22 @@ import { NEUTRAL_PLAYER_ID } from "./state";
 /**
  * Neutral activation logic per the community rulebook's AI rules:
  *
+ * - A Neutral Unit "must always attack if possible" (rulebook, Combat Round
+ *   Structure). So it only ever picks among the enemies it can actually hit
+ *   THIS activation — already in range/adjacent, or (melee & flyers) reachable
+ *   to a space next to the target. It never walks toward an out-of-reach
+ *   favourite while a different enemy stands ready to be struck; it moves
+ *   without attacking only when it can reach no one this activation.
  * - Ground and flying units prioritise attacking units of the same tier,
  *   then lower tiers in descending order, then higher tiers in ascending
  *   order.
  * - Ranged units prioritise other ranged units with the same tier order;
  *   only when no ranged target exists do they fall back to ground/flying.
- * - Among equally valid targets they attack the closest. When targets are
- *   still tied after that, the rulebook says the player chooses — the
- *   activation pauses on an ABILITY_TARGET_CHOICE so the table decides.
+ *   They never move-then-shoot, so they only count targets they can hit from
+ *   where they stand. An engaged ranged unit must hit an adjacent enemy.
+ * - Among equally valid (attackable) targets they attack the closest. When
+ *   targets are still tied after that, the rulebook says the player chooses —
+ *   the activation pauses on an ABILITY_TARGET_CHOICE so the table decides.
  * - Summoned units (Summon Elemental) have no printed grade, so the tier rule
  *   does not apply to them: they sort behind every graded enemy and are only
  *   targeted once no real unit is left.
@@ -81,28 +90,69 @@ export function pickNeutralTarget(combat: CombatState, attacker: CombatUnitState
 }
 
 /**
- * Targets the rulebook leaves to the table: candidates that tie the best
- * target on both priority class and distance. Returns 2+ entries only when
- * there is a real tie.
+ * Within a priority-sorted pool, the leading group the rulebook leaves to the
+ * table: entries that tie the front-runner on both priority class and distance.
+ * Returns 2+ entries only when there is a real tie.
  */
-export function getNeutralTargetTies(combat: CombatState, attacker: CombatUnitState): CombatUnitState[] {
-  const pool = rankedTargetPool(combat, attacker);
-  if (pool.length < 2) {
-    return pool;
+function leadingTieGroup(attacker: CombatUnitState, sortedPool: CombatUnitState[]): CombatUnitState[] {
+  if (sortedPool.length < 2) {
+    return sortedPool;
   }
 
-  const best = pool[0];
+  const best = sortedPool[0];
   const bestSummoned = Boolean(best.summoned);
   // A summoned best target means only summoned units remain — they share no
   // grade, so the tie group is decided purely by distance.
   const bestPriority = bestSummoned ? 0 : tierPriority(attacker.grade, best.grade);
   const bestDistance = getBattlefieldDistance(attacker.position, best.position);
-  return pool.filter(
+  return sortedPool.filter(
     (unit) =>
       Boolean(unit.summoned) === bestSummoned &&
       (bestSummoned || tierPriority(attacker.grade, unit.grade) === bestPriority) &&
       getBattlefieldDistance(attacker.position, unit.position) === bestDistance
   );
+}
+
+/**
+ * Ties across every enemy, ignoring whether they can be reached this
+ * activation. Kept for callers that want the abstract priority tie; the
+ * activation planner uses {@link attackableTargetPool} so it only ever ties
+ * over enemies it can actually strike.
+ */
+export function getNeutralTargetTies(combat: CombatState, attacker: CombatUnitState): CombatUnitState[] {
+  return leadingTieGroup(attacker, rankedTargetPool(combat, attacker));
+}
+
+/**
+ * The priority-ordered subset of enemies this unit can actually attack THIS
+ * activation: already in range/adjacent, or (melee & flyers) reachable to a
+ * space adjacent to the target. Ranged units never move-then-shoot, so they
+ * only keep targets they can hit from where they stand.
+ *
+ * Built off {@link rankedTargetPool} so the same tier order, ranged-preference
+ * and "closest" sorting — plus the engaged-ranged "must hit an adjacent enemy"
+ * rule — all carry over; this only drops the ones the unit cannot reach to
+ * strike. An empty result means the unit can hit no one this activation.
+ */
+function attackableTargetPool(
+  state: GameState,
+  combat: CombatState,
+  attacker: CombatUnitState
+): CombatUnitState[] {
+  const ranked = rankedTargetPool(combat, attacker);
+  // Compute reachable spaces once; ranged units don't use them (no move-shoot).
+  const reachSpaces = attacker.type === "ranged" ? [] : getLegalMoveDestinations(combat, attacker, state);
+  return ranked.filter((target) => {
+    if (canUnitAttack(combat, attacker, target, state.activeEffects)) {
+      return true;
+    }
+    if (attacker.type === "ranged") {
+      return false;
+    }
+    return reachSpaces.some(
+      (space) => isAdjacent(space, target.position) && canUnitMoveAndAttack(combat, attacker, space, target, state)
+    );
+  });
 }
 
 export function sortNeutralTargetCandidates(
@@ -164,49 +214,80 @@ export function planNeutralActivation(
     return { kind: "pass" };
   }
 
-  let target: CombatUnitState | null = null;
+  // The player resolved a target tie: commit to that exact unit if it still
+  // stands — strike it directly or close the last step into it.
   if (forcedTargetId) {
-    target = combat.units[forcedTargetId] ?? null;
-    if (target && !isUnitAlive(target)) {
-      target = null;
+    const forced = combat.units[forcedTargetId] ?? null;
+    if (forced && isUnitAlive(forced)) {
+      return attackOrReach(state, combat, unit, forced) ?? approachTarget(state, combat, unit, forced);
     }
+    // The chosen target is gone — fall through and re-plan from scratch.
   }
 
-  if (!target) {
-    const ties = getNeutralTargetTies(combat, unit);
+  // Rulebook: a Neutral Unit "must always attack if possible." Choose only
+  // among the enemies the unit can actually strike this activation, never
+  // wandering toward an out-of-reach favourite while an attackable enemy waits.
+  const attackable = attackableTargetPool(state, combat, unit);
+  if (attackable.length > 0) {
+    const ties = leadingTieGroup(unit, attackable);
     if (!forcedTargetId && ties.length > 1) {
       return { kind: "choose-target", candidateIds: ties.map((candidate) => candidate.id) };
     }
-    target = ties[0] ?? null;
+    const target = ties[0];
+    // attackable membership guarantees a hit is reachable, but keep the
+    // approach fallback so a stale plan never returns a non-attacking nothing.
+    return attackOrReach(state, combat, unit, target) ?? approachTarget(state, combat, unit, target);
   }
 
+  // It can reach no one this activation: advance on the top-priority target to
+  // set up a strike next round (or pass if it cannot close the gap).
+  const target = pickNeutralTarget(combat, unit);
   if (!target) {
     return { kind: "pass" };
   }
+  return approachTarget(state, combat, unit, target);
+}
 
+/**
+ * Strike the target from here, or (melee & flyers) move into the nearest space
+ * adjacent to it and strike. Returns null when the unit cannot reach the target
+ * to attack it this activation — ranged units never move-then-shoot.
+ */
+function attackOrReach(
+  state: GameState,
+  combat: CombatState,
+  unit: CombatUnitState,
+  target: CombatUnitState
+): NeutralIntent | null {
   if (canUnitAttack(combat, unit, target, state.activeEffects)) {
     return { kind: "attack", defenderId: target.id };
   }
 
   if (unit.type === "ranged") {
-    // A ranged unit that cannot attack (should not happen on an open board)
-    // steps toward the target instead.
-    const destination = bestStepTowards(state, combat, unit, target);
-    return destination === null ? { kind: "pass" } : { kind: "move", destination };
+    return null;
   }
 
-  // Melee and flying: find a reachable space adjacent to the target.
-  const destinations = getLegalMoveDestinations(combat, unit, state);
-  const attackSpots = destinations.filter((destination) => isAdjacent(destination, target.position));
-  if (attackSpots.length > 0) {
-    const destination = attackSpots.sort(
-      (left, right) =>
-        getBattlefieldDistance(unit.position, left) - getBattlefieldDistance(unit.position, right) ||
-        left - right
-    )[0];
-    return { kind: "move-and-attack", destination, defenderId: target.id };
+  const attackSpots = getLegalMoveDestinations(combat, unit, state).filter(
+    (space) => isAdjacent(space, target.position) && canUnitMoveAndAttack(combat, unit, space, target, state)
+  );
+  if (attackSpots.length === 0) {
+    return null;
   }
 
+  const destination = attackSpots.sort(
+    (left, right) =>
+      getBattlefieldDistance(unit.position, left) - getBattlefieldDistance(unit.position, right) || left - right
+  )[0];
+  return { kind: "move-and-attack", destination, defenderId: target.id };
+}
+
+/** Step toward a target the unit cannot strike yet, or pass if it cannot close in. */
+function approachTarget(
+  state: GameState,
+  combat: CombatState,
+  unit: CombatUnitState,
+  target: CombatUnitState
+): NeutralIntent {
   const destination = bestStepTowards(state, combat, unit, target);
   return destination === null ? { kind: "pass" } : { kind: "move", destination };
 }

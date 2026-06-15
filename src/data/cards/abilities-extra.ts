@@ -466,6 +466,19 @@ export const abilityDeckLegacy: string[] = [
   "ability.ballistics",
   "ability.artillery",
   "ability.intelligence",
+  "ability.tactics",
+  "ability.diplomacy",
+  // Eagle Eye / Scouting and the elemental Magic schools (also in the BINH deck).
+  "ability.scouting",
+  "ability.eagle_eye",
+  "ability.basic_air_magic",
+  "ability.basic_earth_magic",
+  "ability.basic_fire_magic",
+  "ability.basic_water_magic",
+  "ability.air_magic",
+  "ability.earth_magic",
+  "ability.fire_magic",
+  "ability.water_magic",
   // Necropolis-only (rulebook p.24): other factions may keep a drawn copy
   // but can never play it; searches simply pass it over.
   "ability.necromancy",
@@ -480,5 +493,12 @@ export const abilityDeckBinh: string[] = [
   "ability.basic_air_magic",
   "ability.basic_earth_magic",
   "ability.basic_fire_magic",
-  "ability.basic_water_magic"
+  "ability.basic_water_magic",
+  // Tower expansion Schools of Magic (permanents): +1 power for their school
+  // while in play, expert discard for +3 on one cast. Grouped with the other
+  // magic-school expansion cards in the BINH deck.
+  "ability.air_magic",
+  "ability.earth_magic",
+  "ability.fire_magic",
+  "ability.water_magic"
 ];
