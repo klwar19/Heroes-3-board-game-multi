@@ -177,12 +177,14 @@ export {
   getLegalMoveDestinations,
   getLegalReactionsForTrigger,
   getNextUnitToActivate,
+  getPendingReactionPower,
   getUnitMoveRange,
   isAdjacent,
   isEffectLegalForTrigger,
   isUnitAlive,
   sortUnitsForActivation
 } from "./legal-actions";
+export type { PendingReactionPower } from "./legal-actions";
 export {
   getPostAttackAbilityDamageEffects,
   getUnitAbilityDefinitions,

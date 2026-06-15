@@ -548,8 +548,30 @@ function makeStackItem(state: GameState, action: GameAction): ResolutionStackIte
   };
 }
 
-function reactionPlayerOrder(state: GameState, legalReactions: Record<PlayerId, LegalAction[]>): PlayerId[] {
-  return state.turnOrder.filter((playerId) => (legalReactions[playerId] ?? []).length > 0);
+function reactionPlayerOrder(
+  state: GameState,
+  legalReactions: Record<PlayerId, LegalAction[]>,
+  triggerEvent?: GameEvent
+): PlayerId[] {
+  const eligible = state.turnOrder.filter((playerId) => (legalReactions[playerId] ?? []).length > 0);
+
+  // The initiator of a cast or attack acts FIRST so they can finish empowering
+  // (paying Power into a spell / attack) before the opponent decides Resistance
+  // or Magic Mirror against the FINAL power — the board-game order. Only the
+  // caster/attacker may add Power, so without this an opponent earlier in turn
+  // order could Resist a power-0 spell before it was ever empowered, and
+  // "cast at the power you used" could never happen. Their playerId is the
+  // initiator for both windows (the retaliating unit's controller for a
+  // retaliation). Other windows (Sorrow activation-skip, lethal saves) keep
+  // plain turn order.
+  const initiator =
+    triggerEvent && (triggerEvent.type === "SPELL_CAST_STARTED" || triggerEvent.type === "UNIT_ATTACK_DECLARED")
+      ? triggerEvent.playerId
+      : null;
+  if (initiator && eligible.includes(initiator)) {
+    return [initiator, ...eligible.filter((playerId) => playerId !== initiator)];
+  }
+  return eligible;
 }
 
 function rollAttackDie(combat: CombatState): number {
@@ -4301,7 +4323,7 @@ function refreshReactionWindowLegalReactions(state: GameState, cards: CardLibrar
   }
 
   const legalReactions = getLegalReactionsForTrigger(state, state.reactionWindow.triggerEvent, cards);
-  const allowedPlayerIds = reactionPlayerOrder(state, legalReactions);
+  const allowedPlayerIds = reactionPlayerOrder(state, legalReactions, state.reactionWindow.triggerEvent);
 
   state.reactionWindow.legalReactions = legalReactions;
   state.reactionWindow.allowedPlayerIds = allowedPlayerIds;
@@ -4323,7 +4345,7 @@ function openReactionWindowForTrigger(
   cards: CardLibrary
 ): boolean {
   const legalReactions = getLegalReactionsForTrigger(state, triggerEvent, cards);
-  const allowedPlayerIds = reactionPlayerOrder(state, legalReactions);
+  const allowedPlayerIds = reactionPlayerOrder(state, legalReactions, triggerEvent);
 
   if (allowedPlayerIds.length === 0) {
     return false;
@@ -5404,7 +5426,7 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   stackItem.triggerEventIds.push(spellStarted.id);
 
   const legalReactions = getLegalReactionsForTrigger(state, spellStarted, cards);
-  if (reactionPlayerOrder(state, legalReactions).length === 0) {
+  if (reactionPlayerOrder(state, legalReactions, spellStarted).length === 0) {
     resolveTopStack(state, cards);
     return;
   }
