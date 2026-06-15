@@ -222,6 +222,17 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Shield / Air Shield: extra Defense that applies only against an attacker
+       * of a given UNIT TYPE — "ground-or-flying" (Shield) matches any non-ranged
+       * attacker; "ranged" (Air Shield) matches a ranged attacker. Lasts the
+       * Combat and is read in getAttackerTypeDefenseBonus during the attack maths.
+       */
+      type: "DEFENSE_VS_ATTACKER_TYPE";
+      attackerType: "ground-or-flying" | "ranged";
+      amount: number;
+    }
+  | {
+      /**
        * Torosar's Ballista IV/VI: while held, the controller fields one extra
        * Ballista — it fires at every combat-round start and counts toward
        * "activate all your Ballistas". One modifier per granted Ballista.
@@ -350,6 +361,18 @@ export type ActiveEffectModifier =
        * exactly like the printed `ignore-paralysis` unit ability does.
        */
       type: "PARALYSIS_IMMUNITY";
+    }
+  | {
+      /**
+       * Interference ability: the affected unit reduces the damage it takes
+       * from Spells by this much — a Defense bonus that, unusually, also blunts
+       * Spell damage. Summed into totalSpellDamageReduction alongside the
+       * Golems'/Black Dragons' printed "reduce Spell damage" passives. The same
+       * Interference play also grants a plain DEFENSE_BONUS (vs attacks), so a
+       * unit carrying it gets the bonus against both attacks and spells.
+       */
+      type: "SPELL_DAMAGE_REDUCTION";
+      amount: number;
     };
 
 export type ActiveEffectDefinition = {
@@ -391,7 +414,25 @@ export type EffectDefinition =
        */
       removeParalysis?: boolean;
     }
-  | { type: "CANCEL_SPELL"; maxPower?: number; expertIgnoresMaxPower?: boolean }
+  | {
+      type: "CANCEL_SPELL";
+      maxPower?: number;
+      expertIgnoresMaxPower?: boolean;
+      /**
+       * Protection from Air/Earth/Fire/Water: the cancel only applies to a spell
+       * belonging to one of these Schools. A school-agnostic spell ("any", e.g.
+       * Magic Arrow) counts as belonging to every School, so any Protection can
+       * end it. Resistance leaves this undefined (it cancels any school).
+       */
+      schools?: SpellSchool[];
+      /**
+       * Protection from X gates on the cancelled spell's printed LEVEL, not its
+       * power: the basic play cancels a Basic spell only; the expert play
+       * (expertIgnoresMaxSpellLevel) cancels a Basic OR Expert spell.
+       */
+      maxSpellLevel?: "basic" | "expert";
+      expertIgnoresMaxSpellLevel?: boolean;
+    }
   | {
       type: "DRAW_CARDS";
       amount: number;
@@ -861,6 +902,19 @@ export type EffectDefinition =
       grade: UnitGrade;
     }
   | {
+      /**
+       * Interference: an instant reaction to an enemy damaging Spell that
+       * targets one of your units. Grants that unit +amount Defense for the
+       * rest of the Combat — a Defense bonus that, unusually, also reduces the
+       * incoming Spell's damage (and any later Spell damage to that unit). Basic
+       * +1 / expert +2. Modelled as a unit-scoped effect carrying both a
+       * DEFENSE_BONUS and a SPELL_DAMAGE_REDUCTION modifier.
+       */
+      type: "INTERFERE_SPELL";
+      amount: number;
+      expertAmount: number;
+    }
+  | {
       type: "CREATE_ACTIVE_EFFECT";
       effect: ActiveEffectDefinition;
       expertEffect?: ActiveEffectDefinition;
@@ -884,6 +938,12 @@ export type EffectDefinition =
       duration: EffectDurationDefinition;
       polarity?: "positive" | "negative" | "neutral";
       removable?: boolean;
+      /**
+       * Shield / Air Shield: when set, the buff is conditional — its Defense only
+       * applies against an attacker of this UNIT TYPE ("ground-or-flying" =
+       * Shield, "ranged" = Air Shield). Omitted for a plain, always-on +Defense.
+       */
+      vsAttackerType?: "ground-or-flying" | "ranged";
     }
   | {
       type: "CREATE_ATTACK_DIE_REROLL";
@@ -1159,6 +1219,26 @@ export type CardOptionDefinition = {
    * holds no cards.
    */
   requiresEmptyDiscard?: boolean;
+  /**
+   * Crown of the Five Seas' sea side ("If this Hero is on a Sea tile …"): the
+   * option is offered only while the playing player's main Hero stands on a Sea
+   * (water-terrain) field.
+   */
+  requiresSeaTile?: boolean;
+  /**
+   * Ring of the Wayfarer's paralysis side ("At start of Combat with Neutral
+   * Units …"): offered only on the opening round of a Combat against Neutral
+   * Units.
+   */
+  requiresNeutralCombatStart?: boolean;
+  /**
+   * Per-option target override for a CHOOSE_ONE card whose options strike
+   * different sides. Ring of the Wayfarer's initiative side buffs a friendly
+   * unit (the card-level `target`) while its paralysis side hits any non-Azure
+   * unit, so that option carries its own `any-unit` target. Falls back to the
+   * card-level `target` when absent.
+   */
+  target?: TargetDefinition;
   effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
 };
 

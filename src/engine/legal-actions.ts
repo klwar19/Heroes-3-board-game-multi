@@ -4,15 +4,18 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { sampleBuildings } from "@/data/towns/buildings";
 import {
+  applyRecruitDiscount,
   armyHasMapEffect,
   canHeroReachPlacedTile,
   discountedReinforceCost,
+  getMainHero,
   getSecondaryHero,
   getTownOfPlayer,
   getUnitSide,
   hasRecruitResources,
   hasResources as playerHasResources,
   humanPlayerIds,
+  isSeaField,
   NEUTRAL_DECK_IDS,
   RESOURCE_GAIN_LEVEL_AMOUNTS,
   SURRENDER_GOLD_COST,
@@ -37,7 +40,7 @@ import {
   playerCannotSurrenderCombat,
   playerHasSpellTimingFreedom
 } from "./active-effects";
-import { cardCanBoostPower } from "./effects";
+import { cancelSpellAllowsSchoolAndLevel, cardCanBoostPower } from "./effects";
 import {
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
@@ -631,7 +634,17 @@ function getFriendlyTargets(
     .map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
 }
 
-function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string, cards: CardLibrary): TargetRef[] {
+function getTargetsForCard(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: string,
+  cards: CardLibrary,
+  /**
+   * Per-option target override (Ring of the Wayfarer): when a CHOOSE_ONE option
+   * carries its own `target`, it is used instead of the card-level one.
+   */
+  overrideTarget?: TargetDefinition
+): TargetRef[] {
   const card = cards[cardId];
   // Self-resolving effects (Leadership's morale token, active effects) never
   // pick a unit: they default to a no-target play. Only effects that actually
@@ -641,8 +654,9 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
     card?.effect.type === "GAIN_MORALE" ||
     // Mirth: a player-scoped reroll buff picks no unit.
     card?.effect.type === "CREATE_ATTACK_DIE_REROLL";
+  const cardTarget = overrideTarget ?? card?.target;
   const targetType =
-    card?.target?.type ??
+    cardTarget?.type ??
     (card?.effect.type === "HEAL_DAMAGE"
       ? "friendly-unit"
       : selfTargetedEffect
@@ -699,11 +713,11 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
   }
 
   const target =
-    card?.target &&
-    card.target.type !== "none" &&
-    card.target.type !== "empty-space" &&
-    card.target.type !== "any-space"
-      ? card.target
+    cardTarget &&
+    cardTarget.type !== "none" &&
+    cardTarget.type !== "empty-space" &&
+    cardTarget.type !== "any-space"
+      ? cardTarget
       : ({ type: targetType } as UnitTargetDefinition);
 
   const targets =
@@ -1220,6 +1234,10 @@ function isOptionEffectPlayable(
     case "GRANT_ELEMENTAL_DAMAGE":
     case "DAMAGE_LOWEST_INITIATIVE_ENEMY":
       return context === "combat" && Boolean(state.combat);
+    case "PLACE_PARALYSIS":
+      // Ring of the Wayfarer's paralysis side is a combat play; the neutral /
+      // opening-round gate lives on its `requiresNeutralCombatStart` flag.
+      return context === "combat" && Boolean(state.combat);
     case "BLOCK_ENEMY_SURRENDER":
       // Shackles of War (house rule): only at the start of a player-vs-player
       // combat, where there is an enemy hero who could otherwise surrender.
@@ -1308,8 +1326,22 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "HEAL_DAMAGE" ||
     effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
     effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
-    effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY"
+    effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" ||
+    effect.type === "PLACE_PARALYSIS"
   );
+}
+
+/** Highest grade unlocked by the paid power (mirrors the reducer's gate). */
+function gradeAtPower(
+  gradeByPower: Record<number, CombatUnitState["grade"]>,
+  power: number
+): CombatUnitState["grade"] | null {
+  const thresholds = Object.keys(gradeByPower)
+    .map(Number)
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right);
+  const matched = thresholds.filter((value) => value <= power).at(-1);
+  return matched === undefined ? null : (gradeByPower[matched] ?? null);
 }
 
 /**
@@ -1354,6 +1386,21 @@ function addOptionPlays(
     if (option.requiresEmptyDiscard && (state.players[playerId]?.discard.length ?? 0) > 0) {
       continue;
     }
+    // Crown of the Five Seas' sea side: only while this player's main Hero is on
+    // a Sea (water-terrain) field.
+    if (option.requiresSeaTile) {
+      const hero = getMainHero(state, playerId);
+      if (!hero?.spaceId || !isSeaField(state, hero.spaceId)) {
+        continue;
+      }
+    }
+    // Ring of the Wayfarer's paralysis side: only at the start (opening round)
+    // of a Combat against Neutral Units.
+    if (option.requiresNeutralCombatStart) {
+      if (!state.combat || state.combat.context.kind !== "neutral" || state.combat.round !== 1) {
+        continue;
+      }
+    }
     if (!isOptionEffectPlayable(state, playerId, option.effect, context)) {
       continue;
     }
@@ -1370,7 +1417,7 @@ function addOptionPlays(
         : ["basic"];
 
     let targets = optionNeedsUnitTarget(option.effect)
-      ? getTargetsForCard(state, playerId, cardId, cards)
+      ? getTargetsForCard(state, playerId, cardId, cards, option.target)
       : [{ type: "none" } as TargetRef];
 
     // Some options only land on a named unit (Moandor's elemental grant reads
@@ -1381,6 +1428,25 @@ function addOptionPlays(
       targets = targets.filter(
         (candidate) => candidate.type === "unit" && state.combat?.units[candidate.unitId]?.name === restrictName
       );
+    }
+
+    // Ring of the Wayfarer's paralysis side reads "any unit except Azure": its
+    // gradeByPower gate unlocks gold at Power 0, so units above that grade
+    // (Azure) are never legal targets — keep the offered list in step with the
+    // resolution gate rather than offering a no-op.
+    if (option.effect.type === "PLACE_PARALYSIS") {
+      const gradeByPower = option.effect.gradeByPower;
+      targets = targets.filter((candidate) => {
+        if (candidate.type !== "unit") {
+          return true;
+        }
+        const unit = state.combat?.units[candidate.unitId];
+        if (!unit) {
+          return false;
+        }
+        const maxGrade = gradeAtPower(gradeByPower, card.power ?? 0);
+        return maxGrade !== null && gradeRank(unit.grade) <= gradeRank(maxGrade);
+      });
     }
     if (targets.length === 0) {
       continue;
@@ -2740,7 +2806,8 @@ export function getLegalReactionsForTrigger(
         attackItem?.action.type === "ATTACK_UNIT" || attackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
           ? (attackItem.modifiers.cancellableSpellInstants ?? [])
           : [];
-      if (instants.some((entry) => entry.playerId !== player.id)) {
+      const enemyInstants = instants.filter((entry) => entry.playerId !== player.id);
+      if (enemyInstants.length > 0) {
         const spellPower = attackItem?.modifiers.spellPowerBonus ?? 0;
         for (const cardId of new Set(player.hand)) {
           const card = cards[cardId];
@@ -2753,10 +2820,22 @@ export function getLegalReactionsForTrigger(
             continue;
           }
           const cancel = card.effect;
-          if (cancel.maxPower === undefined || spellPower <= cancel.maxPower) {
+          // Protection-from-X is offered only when an enemy instant of its own
+          // School (and, at basic, Basic level) is on the attack; Resistance, with
+          // no such gate, matches every enemy instant.
+          const matchesAt = (mode: CardPlayMode) =>
+            enemyInstants.some((entry) =>
+              cancelSpellAllowsSchoolAndLevel(
+                cancel,
+                { schools: cards[entry.cardId]?.spellSchools ?? [], level: cards[entry.cardId]?.spellLevel },
+                mode
+              )
+            );
+          // Basic still respects Resistance's power cap (Protection has none).
+          if ((cancel.maxPower === undefined || spellPower <= cancel.maxPower) && matchesAt("basic")) {
             reactions.push(makeReactionAction(card.name, { type: "PLAY_REACTION", playerId: player.id, cardId, mode: "basic" }));
           }
-          if (cancel.expertIgnoresMaxPower && expertUsesLeft > 0) {
+          if ((cancel.expertIgnoresMaxPower || cancel.expertIgnoresMaxSpellLevel) && expertUsesLeft > 0 && matchesAt("expert")) {
             reactions.push(
               makeReactionAction(`${card.name} expert`, { type: "PLAY_REACTION", playerId: player.id, cardId, mode: "expert" })
             );
@@ -3067,7 +3146,14 @@ export function effectHasExpertMode(effect: ConcreteEffect): boolean {
   }
 
   if (effect.type === "CANCEL_SPELL") {
-    return Boolean(effect.expertIgnoresMaxPower);
+    // Resistance's expert ignores the power cap; Protection-from-X's expert
+    // ignores the spell-level cap. Either makes the card's expert play real.
+    return Boolean(effect.expertIgnoresMaxPower || effect.expertIgnoresMaxSpellLevel);
+  }
+
+  // Interference always has an expert side (+2 instead of +1).
+  if (effect.type === "INTERFERE_SPELL") {
+    return true;
   }
 
   return false;
@@ -3133,6 +3219,21 @@ export function isEffectLegalForTrigger(
         return false;
       }
 
+      // Protection-from-X: the pending spell must belong to the card's School,
+      // and (basic play) be a Basic spell. Resistance leaves both gates open.
+      const pendingStackItem = getPendingStackItem(state, triggerEvent);
+      const pendingSpell =
+        pendingStackItem?.action.type === "CAST_SPELL" ? cardLibrary[pendingStackItem.action.cardId] : undefined;
+      if (
+        !cancelSpellAllowsSchoolAndLevel(
+          effect,
+          { schools: pendingSpell?.spellSchools ?? [], level: pendingSpell?.spellLevel },
+          mode
+        )
+      ) {
+        return false;
+      }
+
       // Expert play (e.g. Expert Resistance) ends a spell of any power. The
       // basic play only applies while the spell's current power, including
       // Power cards already committed, is at or below the printed limit.
@@ -3149,6 +3250,27 @@ export function isEffectLegalForTrigger(
 
     if (effect.type === "RECALL_SPELL") {
       return triggerEvent.playerId === playerId;
+    }
+
+    // Interference: offered to the targeted side only (never the caster) when
+    // the pending Spell deals Spell damage to one of this player's units. The
+    // bonus lands on that unit; an enemy buff/debuff or a non-damaging spell
+    // never opens the window.
+    if (effect.type === "INTERFERE_SPELL") {
+      if (triggerEvent.playerId === playerId) {
+        return false;
+      }
+      if (!pendingSpellTargetForPlayer(state, triggerEvent, playerId)) {
+        return false;
+      }
+      const stackItem = getPendingStackItem(state, triggerEvent);
+      const pendingSpell =
+        stackItem?.action.type === "CAST_SPELL" ? cardLibrary[stackItem.action.cardId] : undefined;
+      return Boolean(
+        pendingSpell &&
+          pendingSpell.effect.type === "DEAL_DAMAGE" &&
+          pendingSpell.effect.damageKind === "spell"
+      );
     }
 
     return false;
@@ -3673,7 +3795,9 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       // Each unit card exists once: a type already in the army cannot be
       // recruited again — only its Few card may be reinforced to the Pack.
       const owned = player.army.some((armyUnit) => armyUnit.unitDefId === unitDefId);
-      if (!owned && hasRecruitResources(state, playerId, fewSide.cost)) {
+      // Legion artifacts may make an otherwise-unaffordable unit recruitable —
+      // count their one-shot gold discount when offering the action.
+      if (!owned && hasRecruitResources(state, playerId, applyRecruitDiscount(state, playerId, fewSide.cost))) {
         actions.push({
           label: `Recruit few ${unit.name}`,
           action: {
@@ -3687,7 +3811,11 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       if (canReinforce) {
         const target = player.army.find((armyUnit) => armyUnit.unitDefId === unitDefId && armyUnit.side === "few");
         const packSide = unit.pack;
-        const reinforceCost = packSide ? discountedReinforceCost(state, playerId, unitDefId, packSide.cost) : undefined;
+        // Both reinforcement discounts stack on the gold paid here: the
+        // Champions' Stables map discount, then the Legion artifacts' one-shot.
+        const reinforceCost = packSide
+          ? applyRecruitDiscount(state, playerId, discountedReinforceCost(state, playerId, unitDefId, packSide.cost))
+          : undefined;
         if (target && packSide && reinforceCost && hasRecruitResources(state, playerId, reinforceCost)) {
           actions.push({
             label: `Reinforce ${unit.name} to a pack`,

@@ -1371,12 +1371,16 @@ export default function Home() {
               break;
             }
             case "SPELL_CAST_CANCELLED": {
+              // Protection from X carries its own element sprite + sound (keyed by
+              // the cancelling card); a generic counter (Resistance) falls back to
+              // the dispel fizzle.
+              const cancelPlan = spellFxPlans[event.cancelledByCardId];
               cues.push({
                 kind: "sprite",
                 id: `${event.id}-fizzle`,
-                fxKey: cancelFx.key,
+                fxKey: cancelPlan?.affect?.[0]?.key ?? cancelFx.key,
                 at: "center",
-                sound: cancelFx.sound,
+                sound: cancelPlan?.sound ?? cancelFx.sound,
                 delayMs: timeline
               });
               cues.push({
