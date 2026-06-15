@@ -26,8 +26,10 @@ import {
   discoverTile,
   finalizeAdventureCombat,
   finishCombatPlacement,
+  finishTactics,
   giveUpAdventure,
   hallOfValhallaBoost,
+  openDiplomacyRecruit,
   openSiegeDemolishChoice,
   openSkeletonReinforceChoice,
   moveHeroAdventure,
@@ -35,6 +37,7 @@ import {
   openSharedDeckSearch,
   hireSecondaryHero,
   placeCombatUnit,
+  swapCombatUnits,
   placeTile,
   populationAction,
   pumpAdventureQueues,
@@ -5741,6 +5744,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     throw new Error(`${card.name} needs a chosen option.`);
   }
 
+  // Tactics is never played from hand: the swap is offered by the engine in the
+  // start-of-combat window or on the holder's turn (SWAP_COMBAT_UNITS), and
+  // Diplomacy's skip is offered as a pop-up at a matching-level Neutral field.
+  if (effect.type === "TACTICS_SWAP") {
+    throw new Error("Tactics is used through the combat swap window, not played from hand.");
+  }
+  if (effect.type === "DIPLOMACY_SKIP_COMBAT") {
+    throw new Error("Diplomacy's skip is offered when your hero meets matching-level Neutral Units.");
+  }
+
   const option = getChosenOption(card, action.optionIndex);
   const mode = action.mode ?? "basic";
   if (option?.expertOnly && mode !== "expert") {
@@ -5958,6 +5971,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "GAIN_EXPERT_USE") {
     const player = state.players[action.playerId];
     player.combatStats.expertUseBonusThisRound = (player.combatStats.expertUseBonusThisRound ?? 0) + effect.amount;
+  }
+
+  if (effect.type === "DIPLOMACY_RECRUIT") {
+    openDiplomacyRecruit(state, action.playerId);
   }
 
   if (effect.type === "TAKE_FROM_DISCARD") {
@@ -8287,6 +8304,8 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "TRADE_RESOURCES",
   "PLACE_COMBAT_UNIT",
   "UNPLACE_COMBAT_UNIT",
+  "SWAP_COMBAT_UNITS",
+  "FINISH_TACTICS",
   "FINISH_COMBAT_PLACEMENT",
   "CONTINUE_NEUTRAL_COMBAT",
   "RETREAT_FROM_COMBAT",
@@ -8465,6 +8484,12 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "FINISH_COMBAT_PLACEMENT":
         finishCombatPlacement(nextState, action);
+        break;
+      case "SWAP_COMBAT_UNITS":
+        swapCombatUnits(nextState, action);
+        break;
+      case "FINISH_TACTICS":
+        finishTactics(nextState, action);
         break;
       case "CONTINUE_NEUTRAL_COMBAT":
         continueNeutralCombat(nextState, action);
