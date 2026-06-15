@@ -86,7 +86,6 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
     affect: [{ key: "fortune" }],
     sound: "spells/fortune"
   },
-  // Ready for future cards - the sheets and sounds are already converted.
   "spell.bless": { affect: [{ key: "bless" }], sound: "spells/bless" },
   "spell.prayer": { affect: [{ key: "prayer" }], sound: "spells/prayer" },
   "spell.haste": { affect: [{ key: "haste" }], sound: "spells/haste" },
@@ -94,6 +93,38 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "spell.precision": { affect: [{ key: "precision" }], sound: "spells/precision" },
   "spell.curse": { affect: [{ key: "curse" }], sound: "spells/curse" },
   "spell.dispel": { affect: [{ key: "dispel" }], sound: "spells/dispel" },
+  // Chain Lightning forks lightning from the first struck unit (reuses the
+  // bolt + crackle pair, like Lightning Bolt). Inferno's plan is defined below.
+  "spell.chain_lightning": {
+    affect: [{ key: "lightning-bolt" }, { key: "lightning-crackle", delayMs: 220 }],
+    sound: "spells/chain-lightning"
+  },
+  // Blind drops the paralyze sprite on the target with the Blind cast cue — both
+  // the paralyze sheet and blind.mp3 were converted but had never been wired.
+  "spell.blind": { affect: [{ key: "paralyze" }], sound: "spells/blind" },
+  // Combat buffs / debuffs / reactions: each has its converted sheet and sound.
+  // The ones cast on a chosen unit (Weakness, Anti-Magic, Fire Shield,
+  // Counterstrike, Forgetfulness) shimmer over that unit; the player-scoped or
+  // reaction ones (Mirth, Sorrow, Slayer, Magic Mirror) resolve with no single
+  // unit to anchor on, so their cast sound carries the cue (see page.tsx).
+  "spell.weakness": { affect: [{ key: "weakness" }], sound: "spells/weakness" },
+  "spell.anti_magic": { affect: [{ key: "anti-magic" }], sound: "spells/anti-magic" },
+  "spell.fire_shield": { affect: [{ key: "fire-shield" }], sound: "spells/fire-shield" },
+  "spell.counterstrike": { affect: [{ key: "counterstrike" }], sound: "spells/counterstrike" },
+  "spell.forgetfulness": { affect: [{ key: "forgetfulness" }], sound: "spells/forgetfulness" },
+  "spell.mirth": { affect: [{ key: "mirth" }], sound: "spells/mirth" },
+  "spell.sorrow": { affect: [{ key: "sorrow" }], sound: "spells/sorrow" },
+  "spell.slayer": { affect: [{ key: "slayer" }], sound: "spells/slayer" },
+  "spell.magic_mirror": { affect: [{ key: "magic-mirror" }], sound: "spells/magic-mirror" },
+  // Map spells resolve on the adventure map (no battle board to anchor sprites
+  // on), so only a cast sound is wired; page.tsx plays it off the CARD_PLAYED
+  // cue for map-timed cards. Town Portal and Dimension Door share the H3
+  // teleport cue; Fly / Water Walk / Visions have their own clips.
+  "spell.town_portal": { sound: "spells/teleport" },
+  "spell.dimension_door": { sound: "spells/teleport" },
+  "spell.fly": { sound: "spells/fly" },
+  "spell.water_walk": { sound: "spells/water-walk" },
+  "spell.visions": { sound: "spells/visions" },
   // Summon Elemental: resolves on an empty space (no unit to anchor a sprite
   // on), so only a cast sound is wired — the new unit appearing is the visual.
   // Air has its own H3 summon clip; the others use the element's own voice.

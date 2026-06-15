@@ -566,6 +566,58 @@ function spendArtilleryExpert(state: GameState, playerId: PlayerId): void {
   });
 }
 
+const FIRST_AID_ABILITY_ID = "ability.first_aid" as CardId;
+
+/** How many times the First Aid expert side resolves the Tent heal, read from its card. */
+export function firstAidVolleyHeals(): number {
+  const effect = cardLibrary[FIRST_AID_ABILITY_ID]?.effect;
+  if (effect?.type === "CHOOSE_ONE") {
+    for (const option of effect.options) {
+      if (option.effect.type === "FIRST_AID_TENT_VOLLEY") {
+        return option.effect.heals;
+      }
+    }
+  }
+  return 1;
+}
+
+/**
+ * Whether `playerId` may turn their First Aid Tent's heal into the expert
+ * same-target volley: they hold the First Aid ability card and have a free
+ * expert use (crown). Playing it consumes the card — one volley per card. The
+ * Tent itself must already be in play for the heal to exist at all.
+ */
+export function playerCanUseFirstAidVolley(state: GameState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  return Boolean(
+    player &&
+      player.hand.includes(FIRST_AID_ABILITY_ID) &&
+      hasExpertUseLeft(state, playerId) &&
+      firstAidVolleyHeals() > 1
+  );
+}
+
+/** Pays the First Aid expert cost: spend a crown and play (discard) the card. */
+export function spendFirstAidExpert(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+  player.combatStats.expertUsesSpentThisRound += 1;
+  const handIndex = player.hand.indexOf(FIRST_AID_ABILITY_ID);
+  if (handIndex !== -1) {
+    player.hand.splice(handIndex, 1);
+    player.discard.push(FIRST_AID_ABILITY_ID);
+  }
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId: FIRST_AID_ABILITY_ID,
+    timing: cardLibrary[FIRST_AID_ABILITY_ID]?.timing ?? "instant",
+    mode: "expert"
+  });
+}
+
 /**
  * Torosar's "Activate your Ballista(s)": fire `count` extra Ballista shots
  * immediately (each = 1 damage to the lowest-initiative enemy). Ties resolve

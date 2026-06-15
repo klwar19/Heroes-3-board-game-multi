@@ -23,6 +23,7 @@ export const implementedCardEffectTypes = [
   "GAIN_HERO_MOVEMENT",
   "GAIN_EXPERT_USE",
   "TAKE_FROM_DISCARD",
+  "SCHOLAR_EMPOWER_SWAP",
   "CARD_DECK_SEARCH",
   "RANDOM_ENEMY_DISCARD",
   "ENEMY_MORALE_STRIP",
@@ -48,9 +49,12 @@ export const implementedCardEffectTypes = [
   "SLAYER_ATTACK",
   "INFERNO",
   "FORGETFULNESS",
+  "DISPEL_EFFECTS",
+  "IGNORE_DEFENSE",
   "BALLISTA_SPECIALTY",
   "DAMAGE_LOWEST_INITIATIVE_ENEMY",
   "ARTILLERY_BALLISTA_VOLLEY",
+  "FIRST_AID_TENT_VOLLEY",
   "DECK_DIG_KEEP_ONE",
   "CANCEL_LETHAL_ATTACK",
   "REDIRECT_SPELL",
@@ -194,11 +198,8 @@ export function describePermanentEffect(card: CardDefinition): string {
   if (permanent.combatEffect) {
     for (const modifier of permanent.combatEffect.modifiers) {
       if (modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND") {
-        const expert =
-          modifier.expertUsesPerRound && modifier.expertUsesPerRound > 1
-            ? `; expert: spend 1 expert use to heal ${modifier.expertUsesPerRound} times instead`
-            : "";
-        parts.push(`heal ${modifier.amount} from one of your units once per combat round${expert}`);
+        // The expert "heal 3×" lives on the First Aid ability card, not here.
+        parts.push(`heal ${modifier.amount} from one of your units once per combat round`);
       }
       if (modifier.type === "RANGED_IGNORE_ALL_PENALTIES") {
         parts.push("your ranged units ignore the ranged-attack penalties");
@@ -219,6 +220,11 @@ export function describePermanentEffect(card: CardDefinition): string {
   if (permanent.roundStart?.kind === "expert-shot") {
     parts.push(`each combat round: may spend 1 expert use for ${permanent.roundStart.amount} damage to an enemy unit`);
   }
+  if (permanent.resourceRoundGain) {
+    parts.push(
+      `gain ${permanent.resourceRoundGain.amount} ${permanent.resourceRoundGain.resource} at the start of each Resources round`
+    );
+  }
   if (permanent.permanentLimitOverride) {
     parts.push(`you may keep up to ${permanent.permanentLimitOverride} permanent cards in play, including this one`);
   }
@@ -230,12 +236,15 @@ export function describePermanentEffect(card: CardDefinition): string {
 }
 
 export function describeCardEffect(card: CardDefinition): string {
-  if (card.permanent) {
-    return `Permanent — ${describePermanentEffect(card)}`;
-  }
-
+  // "OR" cards list both option labels — checked before the permanent case so a
+  // hybrid permanent/instant artifact (income rings/carts) shows its enter-play
+  // income side AND its remove-for-resources side, not just the permanent one.
   if (card.effect.type === "CHOOSE_ONE") {
     return card.effect.options.map((option) => option.label).join(" OR ");
+  }
+
+  if (card.permanent) {
+    return `Permanent — ${describePermanentEffect(card)}`;
   }
 
   if (card.effect.type === "DRAW_CARDS") {
@@ -493,13 +502,7 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "SKIP_ACTIVATION") {
-    if (card.effect.gradeByPower) {
-      const breakpoints = Object.entries(card.effect.gradeByPower)
-        .map(([power, grade]) => `${power}:${grade}`)
-        .join(", ");
-      return `when a unit is about to activate, skip its activation (reachable grade by power ${breakpoints})`;
-    }
-    return `when a ${card.effect.grade ?? "bronze"}-or-lower unit is about to activate, skip its activation`;
+    return `when a ${card.effect.grade}-or-lower unit is about to activate, skip its activation`;
   }
 
   if (card.effect.type === "SLAYER_ATTACK") {
@@ -518,6 +521,17 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "FORGETFULNESS") {
     return "the selected enemy ranged unit cannot attack during its next activation (tier rises with power)";
+  }
+
+  if (card.effect.type === "DISPEL_EFFECTS") {
+    const breakpoints = Object.entries(card.effect.gradeByPower)
+      .map(([power, grade]) => `${power}:${grade}`)
+      .join(", ");
+    return `remove every removable ongoing effect from the selected unit (reachable grade by power ${breakpoints})`;
+  }
+
+  if (card.effect.type === "IGNORE_DEFENSE") {
+    return `this attack ignores the ${card.effect.grade} defender's Defense (it counts as 0)`;
   }
 
   if (card.effect.type === "BALLISTA_SPECIALTY") {

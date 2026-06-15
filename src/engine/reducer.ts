@@ -38,6 +38,7 @@ import {
   openDimensionDoorChoice,
   openMarket,
   openSharedDeckSearch,
+  openFortuneBoostStep,
   hireSecondaryHero,
   placeCombatUnit,
   swapCombatUnits,
@@ -81,10 +82,13 @@ import {
   buyWarMachine,
   countBallistas,
   discardPermanentVoluntarily,
+  firstAidVolleyHeals,
   getPermanentSchoolBonus,
   isLowestInitiativeEnemy,
+  playerCanUseFirstAidVolley,
   putPermanentIntoPlay,
   resolveWarMachineTarget,
+  spendFirstAidExpert,
   startWarMachineRound
 } from "./permanents";
 import { createSeededRandom } from "./random";
@@ -144,10 +148,10 @@ import {
   getLegalReactionsForTrigger,
   getNextUnitToActivate,
   getOffTurnCombatReactions,
-  handCanPayPowerTax,
   isAdjacent,
   isHandLockedInCombat,
   isUnitAlive,
+  payablePowerCardIds,
   rerollSourceAvailableFor,
   spellAbilitiesSuppressed,
   spellRedirectTargets
@@ -368,27 +372,6 @@ function assertBatchReactionLegal(
     handCounts.set(cardId, (handCounts.get(cardId) ?? 0) + 1);
   }
 
-  // Sorrow batches "+1 Power" discards into the activation-skip window before the
-  // skip reads the pool, so its SKIP_ACTIVATION play is checked against the Power
-  // those discards will have banked — not the empty pool the window starts at.
-  // (The boosts themselves stay validated at the current pool, where the window
-  // offers them.) Computed by briefly projecting the pool, then restoring it.
-  const isActivationSkipWindow = state.reactionWindow.triggerEvent.type === "UNIT_ACTIVATION_STARTED";
-  const batchedPower = action.plays.filter((play) => play.asPowerBoost).length;
-  let legalActionsAtFullPower = legalActions;
-  if (isActivationSkipWindow && batchedPower > 0) {
-    // getLegalActions returns the window's cached reaction list, so recompute the
-    // reactions fresh against the projected pool instead (then restore the pool).
-    const savedPower = state.reactionWindow.spellPowerBonus;
-    state.reactionWindow.spellPowerBonus = (savedPower ?? 0) + batchedPower;
-    try {
-      legalActionsAtFullPower =
-        getLegalReactionsForTrigger(state, state.reactionWindow.triggerEvent, cards)[action.playerId] ?? [];
-    } finally {
-      state.reactionWindow.spellPowerBonus = savedPower;
-    }
-  }
-
   let expertUsesNeeded = 0;
   let spellPlays = 0;
   let powerOnlyPlays = 0;
@@ -403,16 +386,7 @@ function assertBatchReactionLegal(
       ...(play.asPowerBoost ? { asPowerBoost: true } : {})
     };
 
-    // A SKIP_ACTIVATION play (Sorrow) reads the post-batch Power pool; everything
-    // else (including the boosts) is judged at the pool the window has now.
-    const playEffect =
-      !play.asPowerBoost && cards[play.cardId]
-        ? getEffectiveCardEffect(cards[play.cardId]!, play.optionIndex)
-        : null;
-    const legalForPlay =
-      isActivationSkipWindow && playEffect?.type === "SKIP_ACTIVATION" ? legalActionsAtFullPower : legalActions;
-
-    if (!legalForPlay.some((legal) => actionsMatch(legal.action, singleAction))) {
+    if (!legalActions.some((legal) => actionsMatch(legal.action, singleAction))) {
       return {
         code: "ACTION_NOT_LEGAL",
         message: `${cards[play.cardId]?.name ?? play.cardId} is not a legal reaction right now.`
@@ -815,6 +789,45 @@ function recomputePowerScaledAttackInstants(stackItem: ResolutionStackItem): voi
 }
 
 /**
+ * Resistance ending an instant Spell buff already played into an attack: undo
+ * that one spell's contribution so the attack resolves as if it were never cast.
+ * Pulls its power-scaled attack/defense record back out (subtracting the bonus
+ * it currently contributes), then clears the per-card flags it set — Bless's
+ * ignored die, Precision's ranged-penalty waiver, and Slayer's extra rolls/draw.
+ */
+function reverseCancelledInstantSpell(stackItem: ResolutionStackItem, cardId: CardId, cards: CardLibrary): void {
+  const records = stackItem.modifiers.powerScaledAttackInstants;
+  if (records) {
+    for (let index = records.length - 1; index >= 0; index -= 1) {
+      if (records[index].cardId !== cardId) {
+        continue;
+      }
+      const record = records[index];
+      if (record.stat === "attack") {
+        stackItem.modifiers.attackBonus -= record.appliedAmount;
+      } else {
+        stackItem.modifiers.defenseBonus -= record.appliedAmount;
+      }
+      records.splice(index, 1);
+      break;
+    }
+  }
+
+  const effect = cards[cardId]?.effect;
+  if (effect?.type === "IGNORE_ATTACK_DIE") {
+    stackItem.modifiers.ignoreAttackDie = false;
+  }
+  if (effect?.type === "ADD_COMBAT_STAT" && effect.ignoreRangedPenalty) {
+    stackItem.modifiers.ignoreRangedPenalty = false;
+  }
+  if (effect?.type === "SLAYER_ATTACK") {
+    stackItem.modifiers.slayerRolls = undefined;
+    stackItem.modifiers.slayerRollsByPower = undefined;
+    stackItem.modifiers.slayerDraw = undefined;
+  }
+}
+
+/**
  * Whether a combat unit is the signature unit a hero specialty doubles for.
  * Most specialties name one exact unit (Crusaders, Efreet…); Mutare's
  * signature is the whole Dragons family ("a Dragons unit"), which matches
@@ -1015,6 +1028,23 @@ function createAttackRerollEffectFromCard(
       ? (durationAtPower(card.effect.durationByPower, power) ?? card.effect.duration)
       : card.effect.duration;
 
+  const modifiers: ActiveEffectDefinition["modifiers"] = [
+    {
+      type: "ATTACK_DIE_REROLL",
+      maxUsesPerRoll,
+      consumeEffectOnUse: card.effect.consumeEffectOnUse
+    }
+  ];
+  // Fortune also rerolls the adventure-map Treasure and Resource dice, sharing
+  // a single budget equal to the reroll count (Power 0/1/2 -> 1/2/3). Both die
+  // types draw from the same `rerolls` budget on the effect.
+  if (card.effect.adventureDice) {
+    modifiers.push(
+      { type: "ADVENTURE_DIE_REROLL", dice: "treasure", rerolls: maxUsesPerRoll },
+      { type: "ADVENTURE_DIE_REROLL", dice: "resource", rerolls: maxUsesPerRoll }
+    );
+  }
+
   createActiveEffect(
     state,
     {
@@ -1023,13 +1053,7 @@ function createAttackRerollEffectFromCard(
       duration,
       polarity: "positive",
       removable: false,
-      modifiers: [
-        {
-          type: "ATTACK_DIE_REROLL",
-          maxUsesPerRoll,
-          consumeEffectOnUse: card.effect.consumeEffectOnUse
-        }
-      ]
+      modifiers
     },
     {
       type: "card",
@@ -1677,7 +1701,8 @@ function getAttackStackDetails(
     // Mummies "ignore the result on the Attack die" — their own attack die is
     // treated as 0, exactly like Bless / Elemental damage.
     ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie) || dealsElemental || hasIgnoreOwnAttackDie(attacker),
-    ignoreDefense: dealsElemental,
+    // Frenzy sets modifiers.ignoreDefense; Elemental damage ignores Defense innately.
+    ignoreDefense: dealsElemental || Boolean(stackItem.modifiers.ignoreDefense),
     damageReduction: siegeRangedDamageReduction(combat, attacker, defender, attackKind),
     defenseReductionAbility,
     abilityAttack
@@ -3347,8 +3372,12 @@ function openMagiDiscardChoice(
   return true;
 }
 
-/** Resolves the Magi Power Drain choice, then unparks the attack sequence. */
-function resolveMagiDiscard(
+/**
+ * Resolves a COMBAT_HAND_DISCARD. For the Magi Power Drain it discards the chosen
+ * (or random) card and unparks the attack; for the Neutral Pegasi "Mystic Toll"
+ * it discards the chosen Power card and then casts the deferred Spell.
+ */
+function resolveCombatHandDiscard(
   state: GameState,
   action: Extract<GameAction, { type: "RESOLVE_COMBAT_DISCARD" }>,
   cards: CardLibrary
@@ -3364,6 +3393,50 @@ function resolveMagiDiscard(
   const chooser = state.players[action.playerId];
   if (!chooser) {
     throw new Error("Unknown player.");
+  }
+
+  // Neutral Pegasi "Mystic Toll": pay the chosen Power card, then cast the held
+  // Spell. No random option — the caster picks which Power card to pay.
+  if (choice.kind === "pegasi-toll") {
+    if (action.cardId === "random") {
+      throw new Error("The Pegasi toll must be paid with a chosen card that has Power.");
+    }
+    if (!choice.powerCardIds.includes(action.cardId)) {
+      throw new Error("That card cannot pay the Pegasi toll.");
+    }
+    if (!discardNamedCardFromHand(state, action.playerId, action.cardId)) {
+      throw new Error("That card is no longer in hand.");
+    }
+    const toll = choice.tollSpell;
+    appendEvent(state, {
+      type: "PENDING_CHOICE_RESOLVED",
+      choiceId: choice.id,
+      playerId: action.playerId,
+      selectedIndex: choice.powerCardIds.indexOf(action.cardId)
+    });
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: choice.sourceUnitId,
+      abilityId: choice.abilityId,
+      message: `${chooser.name} pays ${cards[action.cardId]?.name ?? action.cardId} to the ${choice.abilityName}.`
+    });
+    state.pendingChoice = null;
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    if (toll) {
+      performSpellCast(
+        state,
+        {
+          type: "CAST_SPELL",
+          playerId: action.playerId,
+          cardId: toll.cardId,
+          target: toll.target,
+          ...(toll.fromScroll ? { fromScroll: toll.fromScroll } : {})
+        },
+        cards
+      );
+    }
+    return;
   }
 
   if (action.cardId === "random") {
@@ -4683,6 +4756,15 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       };
       healUnitDamage(state, source, stackItem.action.target, amount);
       removeEffectsFromTarget(state, source, stackItem.action.target, card.effect.removePolarity);
+      // Cure: "Remove any effect or paralysis …" — the chosen unit also loses
+      // its Paralysis token (the effect removes the token, not just ongoing
+      // effects). A heal of 0 still clears it.
+      if (card.effect.removeParalysis) {
+        const unit = state.combat.units[stackItem.action.target.unitId];
+        if (unit && hasToken(unit, "paralysis")) {
+          removeToken(state, unit, "paralysis", "dispelled");
+        }
+      }
     }
 
     if (card?.effect.type === "CREATE_ACTIVE_EFFECT") {
@@ -4836,6 +4918,23 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         stackItem.action.target.position,
         getAmountByPower(card.effect.rollsByPower, 1, getCurrentSpellPower(state, stackItem, cards))
       );
+    }
+
+    // Dispel: strip every removable ongoing effect from the selected unit, gated
+    // by the Power-reached grade (0 → bronze, 1 → silver, 2 → gold) just like
+    // Anti-Magic / Blind. Casting above the unlocked grade does nothing.
+    if (card?.effect.type === "DISPEL_EFFECTS" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        removeEffectsFromTarget(
+          state,
+          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          stackItem.action.target,
+          "any-removable"
+        );
+      }
     }
 
     // Forgetfulness: the selected enemy ranged unit cannot attack during its
@@ -5135,62 +5234,6 @@ function applyEnemySpellHandTax(state: GameState, casterId: PlayerId): void {
 }
 
 /**
- * Discards one Power-bearing card (a Power statistic or any Spell) from a
- * player's hand, chosen at random among their Power cards. Unlike the Magi
- * Power Drain, the Pegasi card has no "or a random card" clause, so with no
- * Power card in hand nothing is discarded (returns null). Resolves immediately
- * — no choice prompt — so a neutral-controlled Pegasi needs no decision.
- */
-function discardPowerCardFromHand(
-  state: GameState,
-  playerId: PlayerId,
-  cards: CardLibrary
-): CardId | null {
-  const player = state.players[playerId];
-  if (!player || player.hand.length === 0) {
-    return null;
-  }
-  const powerIndices = player.hand
-    .map((cardId, index) => (cardCanBoostPower(cards[cardId]) ? index : -1))
-    .filter((index) => index >= 0);
-  if (powerIndices.length === 0) {
-    return null;
-  }
-  const random = createSeededRandom(`${state.seed}#pegasi-tax#${eventSeedNumber(state)}`);
-  const index = powerIndices[random.nextInt(0, powerIndices.length - 1)];
-  const [discarded] = player.hand.splice(index, 1);
-  player.discard.push(discarded);
-  return discarded;
-}
-
-/**
- * Neutral Pegasi "Mystic Toll": pays the toll for a Spell cast by discarding one
- * Power card (a random Power card) from the caster's hand. castSpell only calls
- * this once it has verified the toll can be paid, so a Power card is present.
- */
-function applyEnemySpellPowerTax(state: GameState, casterId: PlayerId, cards: CardLibrary): void {
-  const combat = state.combat;
-  if (!combat) {
-    return;
-  }
-  const pegasi = Object.values(combat.units).find(
-    (unit) => unit.controllerId !== casterId && isUnitAlive(unit) && hasSpellCastPowerTax(unit)
-  );
-  if (!pegasi) {
-    return;
-  }
-  const discarded = discardPowerCardFromHand(state, casterId, cards);
-  if (discarded) {
-    appendEvent(state, {
-      type: "UNIT_ABILITY_TRIGGERED",
-      unitId: pegasi.id,
-      abilityId: "pegasi-power-tax",
-      message: `${pegasi.cardName}'s Mystic Toll: the spellcaster pays a card with Power to cast.`
-    });
-  }
-}
-
-/**
  * Tower Magi (Pack) "[activation] +N power to the first spell you cast this
  * round": the bonus is only available while the Magi is the active unit — i.e.
  * during its own turn — so this reads the boost off the currently-active unit
@@ -5213,14 +5256,88 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
   }
 
   // Neutral Pegasi "Mystic Toll": a living enemy Pegasi gates this cast behind
-  // paying an extra Power card. Verify the toll can be paid before consuming
-  // the spell — with no spare Power card, the Spell cannot be cast at all.
-  const owesPowerToll = combatEnemyImposesPowerTax(state, action.playerId);
-  if (owesPowerToll) {
+  // paying a card with Power. The caster picks which Power card to pay BEFORE
+  // the Spell is cast (a player-choice prompt); with no spare Power card the
+  // Spell cannot be cast at all. The cast is deferred until the toll resolves.
+  if (combatEnemyImposesPowerTax(state, action.playerId)) {
     const caster = state.players[action.playerId];
-    if (!caster || !handCanPayPowerTax(caster.hand, cards, action.cardId, Boolean(action.fromScroll))) {
+    const payable = caster
+      ? payablePowerCardIds(caster.hand, cards, action.cardId, Boolean(action.fromScroll))
+      : [];
+    if (payable.length === 0) {
       throw new Error("An enemy Pegasi blocks this Spell: you must discard a card with Power to cast, and have none to pay.");
     }
+    openPegasiTollChoice(state, action, payable, cards);
+    return;
+  }
+
+  performSpellCast(state, action, cards);
+}
+
+/**
+ * Opens the Neutral Pegasi "Mystic Toll" prompt: the caster chooses which Power
+ * card to discard to pay for the Spell. The Spell cast is held in `tollSpell`
+ * and replayed by resolveCombatHandDiscard once the toll is paid.
+ */
+function openPegasiTollChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CAST_SPELL" }>,
+  payableCardIds: CardId[],
+  cards: CardLibrary
+): void {
+  const combat = state.combat;
+  const pegasi = combat
+    ? Object.values(combat.units).find(
+        (unit) => unit.controllerId !== action.playerId && isUnitAlive(unit) && hasSpellCastPowerTax(unit)
+      )
+    : undefined;
+  if (!pegasi) {
+    // No enemy Pegasi after all (defensive): cast normally, no toll.
+    performSpellCast(state, action, cards);
+    return;
+  }
+
+  const chooser = state.players[action.playerId];
+  const spellName = cards[action.cardId]?.name ?? action.cardId;
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "COMBAT_HAND_DISCARD",
+    playerId: action.playerId,
+    kind: "pegasi-toll",
+    abilityId: "pegasi-power-tax",
+    abilityName: "Mystic Toll",
+    sourceUnitId: pegasi.id,
+    prompt: `${pegasi.cardName}'s Mystic Toll — discard a card with Power to cast ${spellName}.`,
+    powerCardIds: payableCardIds,
+    tollSpell: {
+      cardId: action.cardId,
+      target: action.target,
+      ...(action.fromScroll ? { fromScroll: action.fromScroll } : {})
+    }
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = action.playerId;
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "COMBAT_HAND_DISCARD",
+    playerId: action.playerId,
+    sourceEffectIds: [],
+    message: `${chooser?.name ?? action.playerId} must pay a card with Power to cast ${spellName}.`
+  });
+}
+
+/**
+ * Casts the Spell for real: consume it, apply the Familiar tax, build the stack
+ * item and open the reaction window / resolve. Split from castSpell so the
+ * Neutral Pegasi toll can be paid first and the cast replayed unchanged.
+ */
+function performSpellCast(state: GameState, action: Extract<GameAction, { type: "CAST_SPELL" }>, cards: CardLibrary): void {
+  const card = cards[action.cardId];
+  if (!card || card.kind !== "spell") {
+    throw new Error(`Card ${action.cardId} is not a spell.`);
   }
 
   // A Spell Scroll cast pulls the spell from the scroll (it is not in hand) and
@@ -5236,11 +5353,6 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     }
     // Familiars tax each enemy Spell cast from hand by one extra random card.
     applyEnemySpellHandTax(state, action.playerId);
-  }
-
-  // Neutral Pegasi: pay the toll — discard one Power card to complete the cast.
-  if (owesPowerToll) {
-    applyEnemySpellPowerTax(state, action.playerId, cards);
   }
 
   const caster = state.players[action.playerId];
@@ -5456,30 +5568,21 @@ function applyReactionPlayCore(
 
   // The printed alternative bottom effect of every Spell card: discard it
   // for +1 Power toward the pending cast (or the spell instant in this
-  // attack window). The Sorrow activation-skip window has no stack item to
-  // hold the Power, so it banks it on the reaction window itself instead.
+  // attack window).
   if (play.asPowerBoost) {
     if (card.kind !== "spell") {
       throw new Error("Only Spell cards can be discarded for +1 Power.");
     }
-    const windowPool =
-      !stackItemForBoost && state.reactionWindow?.triggerEvent.type === "UNIT_ACTIVATION_STARTED"
-        ? state.reactionWindow
-        : null;
-    if (!stackItemForBoost && !windowPool) {
+    if (!stackItemForBoost) {
       throw new Error("There is nothing to empower.");
     }
     const moveError = moveCardFromHandToDiscard(state, playerId, play.cardId);
     if (moveError) {
       throw new Error(moveError.message);
     }
-    if (windowPool) {
-      windowPool.spellPowerBonus = (windowPool.spellPowerBonus ?? 0) + 1;
-    } else {
-      stackItemForBoost!.modifiers.spellPowerBonus += 1;
-      stackItemForBoost!.modifiers.playedCardIds.push(play.cardId);
-      recomputePowerScaledAttackInstants(stackItemForBoost!);
-    }
+    stackItemForBoost.modifiers.spellPowerBonus += 1;
+    stackItemForBoost.modifiers.playedCardIds.push(play.cardId);
+    recomputePowerScaledAttackInstants(stackItemForBoost);
     appendEvent(state, {
       type: "CARD_PLAYED",
       playerId,
@@ -5619,6 +5722,40 @@ function applyReactionPlayCore(
     return { windowEnded: true };
   }
 
+  // Resistance against an instant Spell buff the OTHER side played into this
+  // attack (Curse/Weakness/Bloodlust/Precision/Bless/Slayer): reverse the most
+  // recent such spell so the attack proceeds as if it were never cast. The
+  // attack itself is untouched and the window stays open, so each side can keep
+  // responding (cast another buff, resist again) until both pass.
+  if (
+    effect.type === "CANCEL_SPELL" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    const instants = stackItem.modifiers.cancellableSpellInstants ?? [];
+    let index = -1;
+    for (let i = instants.length - 1; i >= 0; i -= 1) {
+      if (instants[i].playerId !== playerId) {
+        index = i;
+        break;
+      }
+    }
+    if (index === -1) {
+      throw new Error("There is no enemy Spell to resist on this attack.");
+    }
+    const cancelled = instants[index];
+    reverseCancelledInstantSpell(stackItem, cancelled.cardId, cards);
+    instants.splice(index, 1);
+    appendEvent(state, {
+      type: "SPELL_CAST_CANCELLED",
+      playerId: cancelled.playerId,
+      spellCardId: cancelled.cardId,
+      cancelledByPlayerId: playerId,
+      cancelledByCardId: play.cardId
+    });
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+    return { windowEnded: false };
+  }
+
   // Magic Mirror: re-point the pending enemy spell to a new target. The card,
   // its Power cost and the spell-limit count were already spent above. Now the
   // controller picks the new target (of the chosen grade or lower) in a
@@ -5662,19 +5799,15 @@ function applyReactionPlayCore(
     return { windowEnded: true };
   }
 
-  // Sorrow: skip the activation of the unit that is about to act. Played for
-  // free against a bronze unit; the reachable grade rises with the Power paid
-  // into this activation-skip window (0 → bronze, 2 → silver, 4 → gold). The
-  // window carries that Power pool, since it has no stack item to hold it.
+  // Sorrow: skip the activation of the unit that is about to act. The chosen
+  // CHOOSE_ONE option carries the grade reached (bronze free, silver/gold paid
+  // via its discard cost, already settled above). The about-to-activate unit
+  // comes from the activation-skip window's trigger event.
   if (effect.type === "SKIP_ACTIVATION") {
     const triggerEvent = state.reactionWindow?.triggerEvent;
-    const windowPower = state.reactionWindow?.spellPowerBonus ?? 0;
-    const reachableGrade = effect.gradeByPower
-      ? gradeAtPower(effect.gradeByPower, windowPower)
-      : (effect.grade ?? null);
     const unit =
       triggerEvent?.type === "UNIT_ACTIVATION_STARTED" ? state.combat?.units[triggerEvent.unitId] : undefined;
-    if (unit && isUnitAlive(unit) && reachableGrade && gradeRank(unit.grade) <= gradeRank(reachableGrade)) {
+    if (unit && isUnitAlive(unit) && effect.grade && gradeRank(unit.grade) <= gradeRank(effect.grade)) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: unit.id,
@@ -5822,6 +5955,13 @@ function applyReactionPlayCore(
     if (effect.drawCards) {
       drawCardsForPlayer(state, playerId, effect.drawCards);
     }
+
+    // Spells (Curse/Weakness/Bloodlust/Precision) may be cancelled by the other
+    // side's Resistance; the Attack/Defense statistics and Gnoll artifacts that
+    // share this effect are not Spells, so they are never recorded.
+    if (card.kind === "spell") {
+      (stackItem.modifiers.cancellableSpellInstants ??= []).push({ cardId: card.id, playerId });
+    }
   }
 
   // Shield of the Dwarven Lords: played in the post-roll window. Arm the pending
@@ -5872,6 +6012,22 @@ function applyReactionPlayCore(
       }
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
+    (stackItem.modifiers.cancellableSpellInstants ??= []).push({ cardId: card.id, playerId });
+  }
+
+  // Frenzy: the pending attack ignores the attacked unit's Defense (counts as 0).
+  // Gated by the defender's grade — the chosen option's discard cost already paid
+  // the Power, so the option carries a fixed reachable `grade`. Casting an option
+  // whose grade the defender exceeds spends the card but pierces nothing.
+  if (
+    effect.type === "IGNORE_DEFENSE" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    const defender = state.combat?.units[stackItem.action.defenderId];
+    if (defender && gradeRank(defender.grade) <= gradeRank(effect.grade)) {
+      stackItem.modifiers.ignoreDefense = true;
+    }
+    stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
   if (
@@ -5902,6 +6058,7 @@ function applyReactionPlayCore(
       if (!play.fromScroll) {
         stackItem.modifiers.slayerRollsByPower = effect.rollsByPower;
       }
+      (stackItem.modifiers.cancellableSpellInstants ??= []).push({ cardId: card.id, playerId });
     }
   }
 
@@ -6456,15 +6613,24 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   // Permanents enter play instead of resolving an effect; any permanent
-  // already in play goes to the discard pile.
-  if (card.permanent) {
+  // already in play goes to the discard pile (the printed one-permanent limit,
+  // enforced in combat as well — playing another permanent discards this one,
+  // and vice versa). A plain permanent (war machine, School of Magic) always
+  // enters play. A hybrid artifact whose CHOOSE_ONE offers an enter-play side
+  // (ENTER_PLAY) alongside a one-shot instant (income rings/carts) enters play
+  // only when that side is chosen; its instant side falls through below.
+  const entersPlayAsPermanent =
+    Boolean(card.permanent) &&
+    (card.effect.type !== "CHOOSE_ONE" || getChosenOption(card, action.optionIndex)?.effect.type === "ENTER_PLAY");
+  if (entersPlayAsPermanent) {
     putPermanentIntoPlay(state, action.playerId, action.cardId);
     appendEvent(state, {
       type: "CARD_PLAYED",
       playerId: action.playerId,
       cardId: action.cardId,
       timing: card.timing,
-      mode: "basic"
+      mode: "basic",
+      optionLabel: getChosenOption(card, action.optionIndex)?.label
     });
     if (state.phase === "combat" || state.combat) {
       state.phase = "combat";
@@ -6496,6 +6662,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // player's Ballista fires at the start of a combat round (see permanents.ts).
   if (effect.type === "ARTILLERY_BALLISTA_VOLLEY") {
     throw new Error("Artillery's expert side resolves when your Ballista fires, not from hand.");
+  }
+  // First Aid's expert side is likewise not played from hand: it is offered when
+  // this player activates their First Aid Tent's heal (see permanents.ts).
+  if (effect.type === "FIRST_AID_TENT_VOLLEY") {
+    throw new Error("First Aid's expert side resolves when you use your First Aid Tent, not from hand.");
   }
 
   const option = getChosenOption(card, action.optionIndex);
@@ -6596,6 +6767,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     };
     healUnitDamage(state, source, target, getEffectDamageAmount(effect, card.power ?? 0));
     removeEffectsFromTarget(state, source, target, effect.removePolarity);
+    // Cure: "Remove any effect or paralysis …" — also clears the Paralysis token.
+    if (effect.removeParalysis && state.combat) {
+      const unit = state.combat.units[target.unitId];
+      if (unit && hasToken(unit, "paralysis")) {
+        removeToken(state, unit, "paralysis", "dispelled");
+      }
+    }
   }
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
@@ -6636,7 +6814,15 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "CREATE_ATTACK_DIE_REROLL") {
-    createAttackRerollEffectFromCard(state, card, action.playerId, mode);
+    if (effect.adventureDice && !state.combat) {
+      // Fortune on the adventure map: there is no Hero Power statistic, so the
+      // reroll count is paid the board-game way — discard power-source cards for
+      // +1 reroll each (Power 0/1/2 -> 1/2/3). The boost choice does that, then
+      // creates the Treasure/Resource reroll effect at the chosen Power.
+      openFortuneBoostStep(state, action.playerId, card, 0);
+    } else {
+      createAttackRerollEffectFromCard(state, card, action.playerId, mode);
+    }
   }
 
   // Shackles of War (house rule): the enemy hero cannot Surrender this Combat
@@ -6814,6 +7000,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     });
   }
 
+  // Scholar (expert): open the interactive Empowered-Statistic swap (up to
+  // `count` removals). The Scholar card was already removed by cost.removeSelf.
+  if (effect.type === "SCHOLAR_EMPOWER_SWAP") {
+    state.adventure?.rewardQueue.unshift({
+      playerId: action.playerId,
+      kind: "visit-steps",
+      steps: [{ type: "SCHOLAR_EMPOWER_PICK", remaining: effect.count, takenTypes: [] }]
+    });
+  }
+
   if (effect.type === "CARD_DECK_SEARCH") {
     state.adventure?.rewardQueue.unshift({
       playerId: action.playerId,
@@ -6856,7 +7052,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "TELEPORT_HERO_TO_TOWN") {
-    queueTownPortalChoice(state, action.playerId);
+    queueTownPortalChoice(state, action.playerId, effect.movementBonus ?? 0);
   }
 
   if (effect.type === "DISCOVER_TILE_CARD") {
@@ -7173,21 +7369,40 @@ function resolveEagleEyeDig(state: GameState, playerId: PlayerId, mode: CardPlay
 }
 
 /** Town Portal: choose a controlled town or flagged settlement to move to. */
-function queueTownPortalChoice(state: GameState, playerId: PlayerId): void {
+function queueTownPortalChoice(state: GameState, playerId: PlayerId, movementBonus: number): void {
   const adventure = state.adventure;
   const hero = getMainHero(state, playerId);
   if (!adventure || !hero) {
     return;
   }
 
+  // Rulebook restriction: "If the selected town already has a hero in it, and
+  // the teleporting hero would not be able to move out of the city during this
+  // turn, they can not teleport to the town." The Power-scaled movement bonus
+  // counts toward being able to leave, so it is added to the projection.
+  const projectedMovement = hero.movementPoints + movementBonus;
+  const fieldHasOtherHero = (spaceId: string) =>
+    Object.values(state.heroes).some((other) => other.id !== hero.id && other.spaceId === spaceId);
+  const destinationAllowed = (spaceId: string) => !fieldHasOtherHero(spaceId) || projectedMovement > 0;
+
   const destinations: { label: string; spaceId: string }[] = [];
   for (const town of Object.values(state.towns)) {
-    if (town.controllerId === playerId && town.fieldId && town.fieldId !== hero.spaceId) {
+    if (
+      town.controllerId === playerId &&
+      town.fieldId &&
+      town.fieldId !== hero.spaceId &&
+      destinationAllowed(town.fieldId)
+    ) {
       destinations.push({ label: `Town (${town.factionId ?? town.id})`, spaceId: town.fieldId });
     }
   }
   for (const field of Object.values(adventure.fields)) {
-    if (field.location === "settlement" && field.flagOwnerId === playerId && field.spaceId !== hero.spaceId) {
+    if (
+      field.location === "settlement" &&
+      field.flagOwnerId === playerId &&
+      field.spaceId !== hero.spaceId &&
+      destinationAllowed(field.spaceId)
+    ) {
       destinations.push({ label: `Settlement at ${field.spaceId}`, spaceId: field.spaceId });
     }
   }
@@ -7206,7 +7421,9 @@ function queueTownPortalChoice(state: GameState, playerId: PlayerId): void {
         options: [
           ...destinations.map((destination) => ({
             label: destination.label,
-            steps: [{ type: "TELEPORT_HERO" as const, heroId: hero.id, spaceId: destination.spaceId }]
+            steps: [
+              { type: "TELEPORT_HERO" as const, heroId: hero.id, spaceId: destination.spaceId, movementBonus }
+            ]
           })),
           { label: "Cancel (stay)", steps: [] }
         ]
@@ -7238,22 +7455,21 @@ function applyActiveEffectAction(
     throw new Error("That active effect target is not legal.");
   }
 
-  // First Aid Tent: a single basic heal per round, OR an expert activation
-  // (spend 1 expert use) that heals several times this round. Basic and expert
-  // are mutually exclusive within a round.
-  const player = state.players[action.playerId];
-  const expertMax = healModifier.expertUsesPerRound ?? 0;
+  // First Aid Tent: a single basic heal per round, OR an expert activation that
+  // heals several times this round. The expert is the First Aid ability card's
+  // expert side — the player must hold that card with a free expert use; playing
+  // it spends the crown and discards the card. Basic and expert are mutually
+  // exclusive within a round. The volley size (`expertMax`) is read from the
+  // First Aid card, so it stays the source of truth (mirrors Artillery/Ballista).
+  const expertMax = firstAidVolleyHeals();
   const usage = effect.healRound?.round === combat.round ? effect.healRound : undefined;
   const mode = action.mode ?? "basic";
 
   if (mode === "expert") {
-    if (usage || expertMax <= 1) {
-      throw new Error("The First Aid Tent expert cannot be used this combat round.");
+    if (usage || !playerCanUseFirstAidVolley(state, action.playerId)) {
+      throw new Error("First Aid's expert side needs the First Aid card and a free expert use this round.");
     }
-    if (!player || !hasExpertUseAvailable(state, action.playerId)) {
-      throw new Error("No expert uses are available this combat round.");
-    }
-    player.combatStats.expertUsesSpentThisRound += 1;
+    spendFirstAidExpert(state, action.playerId);
     effect.healRound = { round: combat.round, count: 1, expert: true };
   } else if (!usage) {
     effect.healRound = { round: combat.round, count: 1, expert: false };
@@ -9447,7 +9663,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         }
         break;
       case "RESOLVE_COMBAT_DISCARD":
-        resolveMagiDiscard(nextState, action, cards);
+        resolveCombatHandDiscard(nextState, action, cards);
         break;
       case "CHOOSE_ABILITY_TARGET":
         chooseAbilityTarget(nextState, action, cards);
