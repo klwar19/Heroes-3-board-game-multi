@@ -261,6 +261,16 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} deploys ${unitName(state, event.unitId)} at ${getBattlefieldLabel(event.position)}.`;
     case "COMBAT_PLACEMENT_FINISHED":
       return `${playerName(state, event.playerId)} is ready for battle.`;
+    case "COMBAT_UNITS_SWAPPED":
+      return `${playerName(state, event.playerId)} uses Tactics${
+        event.mode === "expert" ? " (expert)" : ""
+      } to switch ${unitName(state, event.unitIdA)} and ${unitName(state, event.unitIdB)}.`;
+    case "DIPLOMACY_NEUTRALS_DRAWN":
+      return `${playerName(state, event.playerId)} uses Diplomacy and draws ${event.unitDefIds
+        .map((unitDefId) => unitDefId.split(".")[1] ?? unitDefId)
+        .join(", ")}.`;
+    case "DIPLOMACY_COMBAT_SKIPPED":
+      return `${playerName(state, event.playerId)} uses Diplomacy to skip the level ${event.difficulty} Neutral Units and claim the field (no experience).`;
     case "UNIT_RECRUITED":
       return `${playerName(state, event.playerId)} ${event.kind === "recruit" ? "recruits" : "reinforces"} ${event.unitDefId.split(".")[1] ?? event.unitDefId} for ${formatCost(event.cost)}.`;
     case "SPELLS_PURCHASED":
@@ -281,6 +291,14 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return event.message;
     case "GAME_WON":
       return `${playerName(state, event.playerId)} wins the game: ${event.reason}!`;
+    case "PLAYER_ELIMINATED":
+      return `${playerName(state, event.playerId)} is eliminated — ${event.reason}. They become an observer.`;
+    case "PLAYER_ELIMINATION_CLOCK":
+      return event.turnsLeft === null
+        ? `${playerName(state, event.playerId)} secures a base — no longer facing elimination.`
+        : `${playerName(state, event.playerId)} holds no Town or Settlement — ${event.turnsLeft} turn${
+            event.turnsLeft === 1 ? "" : "s"
+          } left before elimination.`;
     case "TILE_ROTATION_SET":
       return `${playerName(state, event.playerId)} sets ${event.tileDefId} to ${event.rotation * 60}°.`;
     case "ASTROLOGERS_DRAWN":

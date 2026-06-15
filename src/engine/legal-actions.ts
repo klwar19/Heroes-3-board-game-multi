@@ -14,6 +14,7 @@ import {
   hasResources as playerHasResources,
   humanPlayerIds,
   NEUTRAL_DECK_IDS,
+  RESOURCE_GAIN_LEVEL_AMOUNTS,
   townHasBuildingEffect,
   unlockedRecruitTiers
 } from "./adventure";
@@ -29,7 +30,12 @@ import {
   observatoryDiscoverTargets,
   removableHandCards
 } from "./adventure-reducer";
-import { effectiveInitiative, playerCannotEscapeCombat, playerHasSpellTimingFreedom } from "./active-effects";
+import {
+  effectAppliesToUnit,
+  effectiveInitiative,
+  playerCannotEscapeCombat,
+  playerHasSpellTimingFreedom
+} from "./active-effects";
 import { cardCanBoostPower } from "./effects";
 import {
   BATTLEFIELD_CELL_COUNT,
@@ -76,6 +82,7 @@ import { NEUTRAL_PLAYER_ID } from "./state";
 import {
   getLethalSaveUnitAbility,
   getUnitAbilityDefinitions,
+  hasBindAdjacentEnemies,
   hasUnitAbilityEffect,
   unitImmuneToSpellSchools
 } from "./unit-abilities";
@@ -160,6 +167,9 @@ export function gradeRank(grade: CombatUnitState["grade"]): number {
 export function isUnitSpellImmune(state: GameState, unit: CombatUnitState): boolean {
   return state.activeEffects.some(
     (effect) =>
+      // A Gargoyle/Titan that ignores ongoing (Spell) effects ignores an
+      // Anti-Magic placed on it too, so it is not made spell-immune by it.
+      effectAppliesToUnit(effect, unit) &&
       effect.target?.type === "unit" &&
       effect.target.unitId === unit.id &&
       effect.modifiers.some(
@@ -294,23 +304,11 @@ export function getPathDistances(combat: CombatState, mover: CombatUnitState, or
   return distances;
 }
 
-function activeEffectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitState): boolean {
-  if (effect.scope === "global") {
-    return true;
-  }
-
-  if (effect.scope === "player") {
-    return effect.controllerId === unit.controllerId;
-  }
-
-  return effect.target?.type === "unit" && effect.target.unitId === unit.id;
-}
-
 function hasCannotMoveEffect(state: GameState | undefined, unit: CombatUnitState): boolean {
   return Boolean(
     state?.activeEffects.some(
       (effect) =>
-        activeEffectAppliesToUnit(effect, unit) &&
+        effectAppliesToUnit(effect, unit) &&
         effect.modifiers.some((modifier) => modifier.type === "UNIT_CANNOT_MOVE")
     )
   );
@@ -325,12 +323,32 @@ export function canUnitMoveTo(
   return getLegalMoveDestinations(combat, unit, state).includes(destination);
 }
 
+/**
+ * Rampart Dendroids (Pack) "Bind": an enemy that begins its activation adjacent
+ * to a living Dendroid cannot move. Evaluated against the unit's current
+ * position — callers only reach here before the active unit has moved, so its
+ * position is exactly where its activation began.
+ */
+function isBoundByAdjacentEnemy(combat: CombatState, unit: CombatUnitState): boolean {
+  return Object.values(combat.units).some(
+    (binder) =>
+      binder.controllerId !== unit.controllerId &&
+      isUnitAlive(binder) &&
+      hasBindAdjacentEnemies(binder) &&
+      isAdjacent(binder.position, unit.position)
+  );
+}
+
 export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitState, state?: GameState): number[] {
   if (!isUnitAlive(unit) || unit.activatedThisRound || unit.movedThisActivation) {
     return [];
   }
 
   if (hasCannotMoveEffect(state, unit)) {
+    return [];
+  }
+
+  if (isBoundByAdjacentEnemy(combat, unit)) {
     return [];
   }
 
@@ -410,7 +428,7 @@ function hasRangedPenaltyWaiver(state: GameState | undefined, unit: CombatUnitSt
   return Boolean(
     state?.activeEffects.some(
       (effect) =>
-        activeEffectAppliesToUnit(effect, unit) &&
+        effectAppliesToUnit(effect, unit) &&
         effect.modifiers.some((modifier) => modifier.type === "RANGED_IGNORE_ALL_PENALTIES")
     )
   );
@@ -1031,6 +1049,9 @@ function isOptionEffectPlayable(
     case "DISCOVER_TILE_CARD":
     case "GAIN_HERO_MOVEMENT":
       return context === "map" && Boolean(state.adventure);
+    case "DIPLOMACY_RECRUIT":
+      // Diplomacy's Map side only does something with at least one Dwelling.
+      return context === "map" && Boolean(state.adventure) && unlockedRecruitTiers(state, playerId).size > 0;
     case "CREATE_INITIATIVE_BUFF":
     case "CREATE_ATTACK_BUFF":
     case "CREATE_DEFENSE_BUFF":
@@ -1597,6 +1618,23 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
             abilityId: ability.id,
             target: { type: "unit", unitId: target.id }
           }
+        });
+      }
+    }
+
+    // Tower Genies (Few) "Wish" other action: dig Spells out of your own deck.
+    // Used instead of moving/attacking, and only when the deck (or its discard
+    // pile, which reshuffles in) still holds a card to dig.
+    if (
+      ability.effect?.type === "DECK_DISCARD_TAKE_SPELL" &&
+      ability.effect.trigger === "other-action" &&
+      !activeUnit.attackedThisActivation
+    ) {
+      const player = state.players[playerId];
+      if ((player?.deck.length ?? 0) + (player?.discard.length ?? 0) > 0) {
+        actions.push({
+          label: `${activeUnit.name}: ${ability.name} (discard ${ability.effect.count} from your deck, take a Spell)`,
+          action: { type: "USE_GENIE_DECK_DRAW", playerId, unitId: activeUnit.id }
         });
       }
     }
@@ -2870,6 +2908,24 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     return;
   }
 
+  if (step.type === "RESOURCE_GAIN_LEVEL") {
+    actions.push(
+      {
+        label: `Raise Gold income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.gold} (one level)`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 }
+      },
+      {
+        label: `Raise Building Materials income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.buildingMaterials} (one level)`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 1 }
+      },
+      {
+        label: `Raise Valuables income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.valuables} (one level)`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 2 }
+      }
+    );
+    return;
+  }
+
   if (step.type === "WITCH_HUT") {
     // The rulebook reveals the top Ability card before the player decides.
     const top = state.decks.abilities?.drawPile.at(-1);
@@ -3088,6 +3144,65 @@ function addCombatSetupActions(actions: LegalAction[], state: GameState, playerI
       label: "Ready for battle",
       action: { type: "FINISH_COMBAT_PLACEMENT", playerId }
     });
+  }
+}
+
+/** A player's living, swappable (non-Arrow-Tower) units, left-to-right. */
+function tacticsSwappableUnits(combat: CombatState, playerId: PlayerId): CombatUnitState[] {
+  return Object.values(combat.units)
+    .filter((unit) => unit.controllerId === playerId && isUnitAlive(unit) && !isArrowTowerUnit(unit))
+    .sort((left, right) => left.position - right.position);
+}
+
+/** Start-of-combat Tactics window: every two-unit switch, plus "keep". */
+function addTacticsSetupActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  const combat = state.combat;
+  if (!combat || combat.pendingTacticsSwaps?.[0] !== playerId) {
+    return;
+  }
+
+  const units = tacticsSwappableUnits(combat, playerId);
+  for (let i = 0; i < units.length; i += 1) {
+    for (let j = i + 1; j < units.length; j += 1) {
+      actions.push({
+        label: `Tactics: switch ${units[i].cardName} (${getBattlefieldLabel(units[i].position)}) and ${units[j].cardName} (${getBattlefieldLabel(units[j].position)})`,
+        action: { type: "SWAP_COMBAT_UNITS", playerId, unitIdA: units[i].id, unitIdB: units[j].id }
+      });
+    }
+  }
+
+  actions.push({
+    label: "Tactics: keep your current positions",
+    action: { type: "FINISH_TACTICS", playerId }
+  });
+}
+
+/**
+ * Expert Tactics mid-combat: on the holder's turn, before their active unit has
+ * moved or attacked, spend one expert use to switch any two of their units.
+ */
+function addTacticsCombatActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  const combat = state.combat;
+  if (!combat || state.phase !== "combat" || state.pendingChoice || state.reactionWindow || state.stack.length > 0) {
+    return;
+  }
+  const player = state.players[playerId];
+  if (!player || !player.hand.includes("ability.tactics") || expertUsesAvailable(player) <= 0) {
+    return;
+  }
+  const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : null;
+  if (!active || active.controllerId !== playerId || active.movedThisActivation || active.attackedThisActivation) {
+    return;
+  }
+
+  const units = tacticsSwappableUnits(combat, playerId);
+  for (let i = 0; i < units.length; i += 1) {
+    for (let j = i + 1; j < units.length; j += 1) {
+      actions.push({
+        label: `Tactics (expert): switch ${units[i].cardName} (${getBattlefieldLabel(units[i].position)}) and ${units[j].cardName} (${getBattlefieldLabel(units[j].position)})`,
+        action: { type: "SWAP_COMBAT_UNITS", playerId, unitIdA: units[i].id, unitIdB: units[j].id }
+      });
+    }
   }
 }
 
@@ -3408,6 +3523,15 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
+  // Start-of-combat Tactics window: the head of the queue switches two of their
+  // units or declines, before round 1 begins.
+  if (state.combat?.pendingTacticsSwaps && state.combat.pendingTacticsSwaps.length > 0) {
+    if (state.combat.pendingTacticsSwaps[0] === playerId) {
+      addTacticsSetupActions(actions, state, playerId);
+    }
+    return actions;
+  }
+
   // Combat setup placement.
   if (state.combat?.setup) {
     addCombatSetupActions(actions, state, playerId);
@@ -3472,6 +3596,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   if (state.combat && state.phase === "combat") {
     addActiveEffectActions(actions, state, playerId);
     addUnitActions(actions, state, playerId);
+    addTacticsCombatActions(actions, state, playerId);
     addSpellActions(actions, state, playerId, cards);
     addPlayableCardActions(actions, state, playerId, cards);
     if (isCombatParticipant(state, playerId)) {
@@ -3597,6 +3722,22 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     label: "End turn",
     action: { type: "END_TURN", playerId }
   });
+
+  // Concede: only on your own quiet map turn (never mid-Combat — "you cannot
+  // surrender when defending your Faction Town", rulebook p.46).
+  if (
+    !state.combat &&
+    !state.pendingChoice &&
+    !state.reactionWindow &&
+    !adventure.pendingVisit &&
+    !adventure.pendingTileChoice &&
+    !state.players[playerId]?.eliminated
+  ) {
+    actions.push({
+      label: "Give up (become an observer)",
+      action: { type: "GIVE_UP", playerId }
+    });
+  }
 
   return actions;
 }

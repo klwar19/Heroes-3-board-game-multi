@@ -282,11 +282,43 @@ export const extraAbilityCards: CardLibrary = {
     implementationStatus: "implemented",
     source: abilitySource("intelligence")
   },
-  "ability.diplomacy": notImplementedAbility(
-    "diplomacy",
-    "Diplomacy",
-    "Basic (Map): For every Dwelling you have, draw 1 corresponding Neutral Unit card; you can Recruit one by paying its cost. Expert: skip Combat with Neutral Units on a field whose difficulty equals your Hero's level."
-  ),
+  // engine: Diplomacy has two regular uses (per the fan wiki — neither is the
+  // expert side). The Map option draws one Neutral Unit card per Dwelling and
+  // opens a recruit choice (DIPLOMACY_RECRUIT, resolved in openDiplomacyRecruit).
+  // The Instant skip is surfaced automatically as a pop-up when a hero meets
+  // Neutral Units whose Field Difficulty equals the hero's level — it is never
+  // played from hand, so DIPLOMACY_SKIP_COMBAT is a declarative marker and is
+  // deliberately absent from the playable-effect gate (see startNeutralEncounter
+  // / resolveDiplomacySkipChoice in adventure-reducer.ts).
+  "ability.diplomacy": {
+    id: "ability.diplomacy",
+    name: "Diplomacy",
+    kind: "ability",
+    timing: "instant",
+    abilityClass: "adventure",
+    tags: [
+      "ability",
+      "map",
+      "Map: for every Dwelling you have, draw 1 corresponding Neutral Unit card; you may Recruit one by paying its cost. Instant: skip Combat with Neutral Units on a field whose Difficulty equals your Hero's level — claim the field, gaining no Experience."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)",
+          mapOnly: true,
+          effect: { type: "DIPLOMACY_RECRUIT" }
+        },
+        {
+          label: "Instant: skip a matching-level Neutral fight, claim the field for no Experience",
+          effect: { type: "DIPLOMACY_SKIP_COMBAT" }
+        }
+      ]
+    },
+    assets: abilityAssets("diplomacy", "Diplomacy"),
+    implementationStatus: "implemented",
+    source: abilitySource("diplomacy")
+  },
   "ability.necromancy": {
     id: "ability.necromancy",
     name: "Necromancy",

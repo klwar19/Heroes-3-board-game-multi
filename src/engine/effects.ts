@@ -53,7 +53,10 @@ export const implementedCardEffectTypes = [
   "SUMMON_ELEMENTAL",
   "GRANT_ELEMENTAL_DAMAGE",
   "DOUBLE_FIRST_AID_TENT",
-  "CONVERT_ARMY_UNIT"
+  "CONVERT_ARMY_UNIT",
+  "TACTICS_SWAP",
+  "DIPLOMACY_RECRUIT",
+  "DIPLOMACY_SKIP_COMBAT"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {

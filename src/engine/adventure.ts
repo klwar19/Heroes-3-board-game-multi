@@ -1092,16 +1092,23 @@ function applyTownFlag(state: GameState, playerId: PlayerId, field: MapFieldStat
   flagField(state, playerId, field);
   field.everFlagged = true;
 
-  // Conquest victory: flagging an enemy faction town wins the game. The Grail
-  // Hunt and Dragon Conqueror modes have their own goals, so capturing a town
-  // there only transfers the flag.
-  if (adventureVictoryMode(state) === "conquest" && previousOwnerId && previousOwnerId !== playerId) {
-    declareAdventureWinner(
-      state,
+  // Flagging an enemy faction Town is NOT an instant win and does not seize
+  // their Town Board (rulebook p.76 — "they do not lose access to their Town
+  // Board or its functions"). Instead the conqueror earns a resource-gain
+  // level (the rulebook's "special reward for flagging"), and the former owner
+  // goes on the elimination clock if this took their last Town/Settlement. The
+  // Scenario is won only by being the last faction standing — see
+  // eliminatePlayer — so flagging here never ends the game on its own.
+  if (previousOwnerId && previousOwnerId !== playerId) {
+    state.adventure?.rewardQueue.push({
       playerId,
-      `flagged the enemy town of ${state.players[previousOwnerId]?.name ?? previousOwnerId}`
-    );
+      kind: "visit-steps",
+      steps: [{ type: "RESOURCE_GAIN_LEVEL" }]
+    });
+    refreshEliminationClock(state, previousOwnerId);
   }
+  // The conqueror now holds a Town field, so any clock they were on clears.
+  refreshEliminationClock(state, playerId);
 }
 
 /**
@@ -1168,6 +1175,130 @@ export function declareAdventureWinner(state: GameState, playerId: PlayerId, rea
 /** Human seats in turn order (the neutral seat never counts). */
 export function humanPlayerIds(state: GameState): PlayerId[] {
   return state.turnOrder.filter((id) => id !== NEUTRAL_PLAYER_ID);
+}
+
+/**
+ * One resource-gain "level" for the town-conquest reward. Valuables are the
+ * scarcest track, materials the middle one, gold the most plentiful, so a level
+ * is +5 gold, +2 building materials, or +1 valuables — the player's choice.
+ */
+export const RESOURCE_GAIN_LEVEL_AMOUNTS: Record<ResourceKind, number> = {
+  gold: 5,
+  buildingMaterials: 2,
+  valuables: 1
+};
+
+/** Turns a baseless player survives before Player Elimination (house rule: 2). */
+export const ELIMINATION_GRACE_TURNS = 2;
+
+/**
+ * Whether a player still controls a Town or a Settlement on the map — the test
+ * that staves off Player Elimination (rulebook p.11). A faction Town an enemy
+ * has flagged no longer counts; a Settlement (or a captured Random Town, which
+ * the rulebook says to "treat as a Settlement") counts only while the player
+ * holds its flag. Flagging an enemy Town never changes its `controllerId`
+ * (rulebook p.76), so map control is read from the field flags, not ownership.
+ */
+export function controlsTownOrSettlement(state: GameState, playerId: PlayerId): boolean {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return true;
+  }
+  for (const field of Object.values(adventure.fields)) {
+    if (field.location === "settlement" || field.location === "random_town") {
+      if (field.flagOwnerId === playerId) {
+        return true;
+      }
+      continue;
+    }
+    if (locationDefinitions[field.location]?.category === "town") {
+      if (field.flagOwnerId === playerId) {
+        return true;
+      }
+      // A faction Town nobody has flagged still belongs to its home owner.
+      if (
+        !field.flagOwnerId &&
+        Object.values(state.towns).some(
+          (town) => town.fieldId === field.spaceId && town.controllerId === playerId
+        )
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Re-evaluates a player's elimination clock after a flag changes hands: holding
+ * a base clears the clock, losing the last one starts it at the grace length.
+ * The clock only counts down at the end of the player's own turns (endTurn).
+ */
+export function refreshEliminationClock(state: GameState, playerId: PlayerId): void {
+  if (!state.adventure || playerId === NEUTRAL_PLAYER_ID) {
+    return;
+  }
+  const player = state.players[playerId];
+  if (!player || player.eliminated) {
+    return;
+  }
+
+  if (controlsTownOrSettlement(state, playerId)) {
+    if (player.eliminationCountdown != null) {
+      player.eliminationCountdown = null;
+      appendEvent(state, { type: "PLAYER_ELIMINATION_CLOCK", playerId, turnsLeft: null });
+    }
+    return;
+  }
+
+  if (player.eliminationCountdown == null) {
+    player.eliminationCountdown = ELIMINATION_GRACE_TURNS;
+    appendEvent(state, {
+      type: "PLAYER_ELIMINATION_CLOCK",
+      playerId,
+      turnsLeft: ELIMINATION_GRACE_TURNS
+    });
+  }
+}
+
+/**
+ * Removes a player from the game (they gave up, or the elimination clock ran
+ * out). They keep a `players` entry so the table still shows them as an
+ * observer, but they leave the turn order and their Hero models leave the map
+ * (rulebook p.11). The last faction standing then wins the Scenario in any
+ * victory mode ("If you eliminate all enemy Factions, you immediately win").
+ */
+export function eliminatePlayer(
+  state: GameState,
+  playerId: PlayerId,
+  reason: string,
+  gaveUp: boolean
+): void {
+  const player = state.players[playerId];
+  if (!player || player.eliminated || playerId === NEUTRAL_PLAYER_ID) {
+    return;
+  }
+
+  player.eliminated = true;
+  player.eliminationCountdown = null;
+
+  for (const hero of Object.values(state.heroes)) {
+    if (hero.controllerId === playerId) {
+      hero.spaceId = null;
+      hero.movementPoints = 0;
+    }
+  }
+
+  state.turnOrder = state.turnOrder.filter((id) => id !== playerId);
+
+  appendEvent(state, { type: "PLAYER_ELIMINATED", playerId, reason, gaveUp });
+
+  if (state.adventure && !state.adventure.winnerPlayerId) {
+    const remaining = humanPlayerIds(state).filter((id) => !state.players[id]?.eliminated);
+    if (remaining.length === 1) {
+      declareAdventureWinner(state, remaining[0], "the last faction standing");
+    }
+  }
 }
 
 /**
@@ -1554,6 +1685,7 @@ function stepNeedsInput(step: VisitStep): boolean {
     step.type === "CHOOSE_ONE" ||
     step.type === "PAY_TO" ||
     step.type === "SETTLEMENT_CHOICE" ||
+    step.type === "RESOURCE_GAIN_LEVEL" ||
     step.type === "WITCH_HUT" ||
     step.type === "TRADING_POST" ||
     step.type === "WAR_MACHINE_SHOP" ||
@@ -2743,6 +2875,31 @@ export function unlockedRecruitTiers(state: GameState, playerId: PlayerId): Set<
     }
   }
 
+  return tiers;
+}
+
+/**
+ * Cyra's Diplomacy: the tier of every Dwelling the player controls, *with*
+ * multiplicity across all of their towns (a player holding two towns each with
+ * a bronze Dwelling draws two bronze cards). A Dwelling is a building whose
+ * effect unlocks a recruit tier — bronze, silver or gold in the core set.
+ */
+export function playerDwellingTiers(
+  state: GameState,
+  playerId: PlayerId
+): ("bronze" | "silver" | "gold" | "azure")[] {
+  const tiers: ("bronze" | "silver" | "gold" | "azure")[] = [];
+  for (const town of Object.values(state.towns)) {
+    if (town.controllerId !== playerId) {
+      continue;
+    }
+    for (const buildingId of town.buildings) {
+      const effect = coreBuildingDefinitions[buildingId]?.effect;
+      if (effect?.type === "UNLOCK_RECRUIT_TIER") {
+        tiers.push(effect.tier);
+      }
+    }
+  }
   return tiers;
 }
 
