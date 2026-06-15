@@ -2661,6 +2661,43 @@ export function getLegalReactionsForTrigger(
       }
     }
 
+    // Resistance against an instant Spell buff the OTHER side has played into
+    // this attack (Curse/Weakness/Bloodlust/Precision/Bless/Slayer): the player
+    // whose unit it was cast against may end it, exactly like Resistance counters
+    // an Activation cast — basic ends a spell at or below its power cap, expert
+    // ends any power (spending a crown). Reversing the buff is handled by the
+    // reducer; only the offer is built here.
+    if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
+      const attackItem = state.stack.at(-1);
+      const instants =
+        attackItem?.action.type === "ATTACK_UNIT" || attackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
+          ? (attackItem.modifiers.cancellableSpellInstants ?? [])
+          : [];
+      if (instants.some((entry) => entry.playerId !== player.id)) {
+        const spellPower = attackItem?.modifiers.spellPowerBonus ?? 0;
+        for (const cardId of new Set(player.hand)) {
+          const card = cards[cardId];
+          if (
+            !card ||
+            card.effect.type !== "CANCEL_SPELL" ||
+            card.implementationStatus !== "implemented" ||
+            (card.timing !== "reaction" && card.timing !== "instant")
+          ) {
+            continue;
+          }
+          const cancel = card.effect;
+          if (cancel.maxPower === undefined || spellPower <= cancel.maxPower) {
+            reactions.push(makeReactionAction(card.name, { type: "PLAY_REACTION", playerId: player.id, cardId, mode: "basic" }));
+          }
+          if (cancel.expertIgnoresMaxPower && expertUsesLeft > 0) {
+            reactions.push(
+              makeReactionAction(`${card.name} expert`, { type: "PLAY_REACTION", playerId: player.id, cardId, mode: "expert" })
+            );
+          }
+        }
+      }
+    }
+
     // Hall of Valhalla: once per round, +1 attack on one of your attacks.
     if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
       const attacker = state.combat?.units[triggerEvent.attackerId];

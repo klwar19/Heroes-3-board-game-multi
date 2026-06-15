@@ -784,6 +784,45 @@ function recomputePowerScaledAttackInstants(stackItem: ResolutionStackItem): voi
 }
 
 /**
+ * Resistance ending an instant Spell buff already played into an attack: undo
+ * that one spell's contribution so the attack resolves as if it were never cast.
+ * Pulls its power-scaled attack/defense record back out (subtracting the bonus
+ * it currently contributes), then clears the per-card flags it set — Bless's
+ * ignored die, Precision's ranged-penalty waiver, and Slayer's extra rolls/draw.
+ */
+function reverseCancelledInstantSpell(stackItem: ResolutionStackItem, cardId: CardId, cards: CardLibrary): void {
+  const records = stackItem.modifiers.powerScaledAttackInstants;
+  if (records) {
+    for (let index = records.length - 1; index >= 0; index -= 1) {
+      if (records[index].cardId !== cardId) {
+        continue;
+      }
+      const record = records[index];
+      if (record.stat === "attack") {
+        stackItem.modifiers.attackBonus -= record.appliedAmount;
+      } else {
+        stackItem.modifiers.defenseBonus -= record.appliedAmount;
+      }
+      records.splice(index, 1);
+      break;
+    }
+  }
+
+  const effect = cards[cardId]?.effect;
+  if (effect?.type === "IGNORE_ATTACK_DIE") {
+    stackItem.modifiers.ignoreAttackDie = false;
+  }
+  if (effect?.type === "ADD_COMBAT_STAT" && effect.ignoreRangedPenalty) {
+    stackItem.modifiers.ignoreRangedPenalty = false;
+  }
+  if (effect?.type === "SLAYER_ATTACK") {
+    stackItem.modifiers.slayerRolls = undefined;
+    stackItem.modifiers.slayerRollsByPower = undefined;
+    stackItem.modifiers.slayerDraw = undefined;
+  }
+}
+
+/**
  * Whether a combat unit is the signature unit a hero specialty doubles for.
  * Most specialties name one exact unit (Crusaders, Efreet…); Mutare's
  * signature is the whole Dragons family ("a Dragons unit"), which matches
@@ -5562,6 +5601,40 @@ function applyReactionPlayCore(
     return { windowEnded: true };
   }
 
+  // Resistance against an instant Spell buff the OTHER side played into this
+  // attack (Curse/Weakness/Bloodlust/Precision/Bless/Slayer): reverse the most
+  // recent such spell so the attack proceeds as if it were never cast. The
+  // attack itself is untouched and the window stays open, so each side can keep
+  // responding (cast another buff, resist again) until both pass.
+  if (
+    effect.type === "CANCEL_SPELL" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    const instants = stackItem.modifiers.cancellableSpellInstants ?? [];
+    let index = -1;
+    for (let i = instants.length - 1; i >= 0; i -= 1) {
+      if (instants[i].playerId !== playerId) {
+        index = i;
+        break;
+      }
+    }
+    if (index === -1) {
+      throw new Error("There is no enemy Spell to resist on this attack.");
+    }
+    const cancelled = instants[index];
+    reverseCancelledInstantSpell(stackItem, cancelled.cardId, cards);
+    instants.splice(index, 1);
+    appendEvent(state, {
+      type: "SPELL_CAST_CANCELLED",
+      playerId: cancelled.playerId,
+      spellCardId: cancelled.cardId,
+      cancelledByPlayerId: playerId,
+      cancelledByCardId: play.cardId
+    });
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+    return { windowEnded: false };
+  }
+
   // Magic Mirror: re-point the pending enemy spell to a new target. The card,
   // its Power cost and the spell-limit count were already spent above. Now the
   // controller picks the new target (of the chosen grade or lower) in a
@@ -5761,6 +5834,13 @@ function applyReactionPlayCore(
     if (effect.drawCards) {
       drawCardsForPlayer(state, playerId, effect.drawCards);
     }
+
+    // Spells (Curse/Weakness/Bloodlust/Precision) may be cancelled by the other
+    // side's Resistance; the Attack/Defense statistics and Gnoll artifacts that
+    // share this effect are not Spells, so they are never recorded.
+    if (card.kind === "spell") {
+      (stackItem.modifiers.cancellableSpellInstants ??= []).push({ cardId: card.id, playerId });
+    }
   }
 
   // Shield of the Dwarven Lords: played in the post-roll window. Arm the pending
@@ -5811,6 +5891,7 @@ function applyReactionPlayCore(
       }
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
+    (stackItem.modifiers.cancellableSpellInstants ??= []).push({ cardId: card.id, playerId });
   }
 
   if (
@@ -5841,6 +5922,7 @@ function applyReactionPlayCore(
       if (!play.fromScroll) {
         stackItem.modifiers.slayerRollsByPower = effect.rollsByPower;
       }
+      (stackItem.modifiers.cancellableSpellInstants ??= []).push({ cardId: card.id, playerId });
     }
   }
 

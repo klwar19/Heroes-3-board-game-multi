@@ -642,3 +642,107 @@ describe("Forgetfulness", () => {
     ).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Opponent's Resistance cancels an instant Spell buff played into an attack
+// ---------------------------------------------------------------------------
+
+describe("Resistance vs instant combat Spells", () => {
+  /** p1 griffins (attack 5) attacks `defenderId` (defense 4); p1 plays `buff`. */
+  function attackWithBuff(buff: string, defenderId: string, scripted: number[]): GameState {
+    const state = createInitialGameState("resist-instant-seed");
+    state.players.p1.hand = [buff];
+    state.players.p2.hand = ["ability.resistance"];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const griffins = state.combat!.units.unit_p1_griffins;
+    griffins.activatedThisRound = false;
+    griffins.abilities = [];
+    griffins.attack = 5;
+    griffins.position = 17;
+    const defender = state.combat!.units[defenderId];
+    defender.abilities = [];
+    defender.position = 18;
+    defender.defense = 4;
+    defender.maxHealth = 40;
+    defender.damage = 0;
+    state.combat!.dice.scriptedRolls = scripted;
+    state.combat!.dice.rollCount = 0;
+    let next = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId
+    });
+    next = applyOk(next, reactionFor(next, "p1", buff)!.action);
+    // Hand the window to p2 (p1 has finished its plays).
+    while (next.reactionWindow && next.reactionWindow.priorityPlayerId === "p1") {
+      next = applyOk(next, { type: "PASS_REACTION", playerId: "p1" });
+    }
+    return next;
+  }
+
+  function p2Resistance(state: GameState) {
+    return getLegalActions(state, "p2").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "ability.resistance" &&
+        legal.action.mode === "basic"
+    );
+  }
+
+  it("the attacked side may Resistance a Curse, reversing the -1 defense", () => {
+    // Attack die "0": Curse drops defense 4→3, so 5 vs 3 = 2 damage if it holds.
+    let state = attackWithBuff("spell.curse", "unit_p2_skeletons", [0, 0]);
+    const resist = p2Resistance(state);
+    expect(resist, "Resistance is offered against the enemy Curse").toBeTruthy();
+    state = applyOk(state, resist!.action);
+    state = passAllReactions(state);
+    // Curse reversed: 5 vs the full 4 defense = 1 damage.
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(1);
+    expect(
+      state.eventLog.some((event) => event.type === "SPELL_CAST_CANCELLED" && event.spellCardId === "spell.curse")
+    ).toBe(true);
+  });
+
+  it("the Curse holds for 2 damage when the opponent does not Resistance it", () => {
+    const state = passAllReactions(attackWithBuff("spell.curse", "unit_p2_skeletons", [0, 0]));
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(2);
+  });
+
+  it("Resistance on a Slayer drops the extra rolls and the draw (normal single die)", () => {
+    // Slayer would roll twice (two +1s → +2); resisted, the attack rolls one die.
+    let state = attackWithBuff("spell.slayer", "unit_p2_dread_knights", [1, 1, 1, 1]);
+    const resist = p2Resistance(state);
+    expect(resist, "Resistance is offered against the enemy Slayer").toBeTruthy();
+    state = applyOk(state, resist!.action);
+    state = passAllReactions(state);
+
+    const rolled = state.eventLog.find((event) => event.type === "ATTACK_ROLLED" && !event.isRetaliation);
+    expect(rolled?.type === "ATTACK_ROLLED" ? rolled.rolls.length : -1).toBe(1); // one die, not Slayer's pool
+    expect(
+      state.eventLog.some((event) => event.type === "CARDS_DRAWN" && event.playerId === "p1"),
+      "the cancelled Slayer draws no card"
+    ).toBe(false);
+  });
+
+  it("Resistance is not offered when the attacker played no Spell buff", () => {
+    const state = createInitialGameState("resist-none-seed");
+    state.players.p1.hand = [];
+    state.players.p2.hand = ["ability.resistance"];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.combat!.units.unit_p1_griffins.activatedThisRound = false;
+    state.combat!.units.unit_p1_griffins.abilities = [];
+    state.combat!.units.unit_p1_griffins.position = 17;
+    state.combat!.units.unit_p2_skeletons.position = 18;
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    // A bare attack offers p2 no Resistance (there is no Spell to end).
+    expect(p2Resistance(declared)).toBeUndefined();
+  });
+});
