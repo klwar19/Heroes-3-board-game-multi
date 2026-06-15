@@ -367,6 +367,27 @@ function assertBatchReactionLegal(
     handCounts.set(cardId, (handCounts.get(cardId) ?? 0) + 1);
   }
 
+  // Sorrow batches "+1 Power" discards into the activation-skip window before the
+  // skip reads the pool, so its SKIP_ACTIVATION play is checked against the Power
+  // those discards will have banked — not the empty pool the window starts at.
+  // (The boosts themselves stay validated at the current pool, where the window
+  // offers them.) Computed by briefly projecting the pool, then restoring it.
+  const isActivationSkipWindow = state.reactionWindow.triggerEvent.type === "UNIT_ACTIVATION_STARTED";
+  const batchedPower = action.plays.filter((play) => play.asPowerBoost).length;
+  let legalActionsAtFullPower = legalActions;
+  if (isActivationSkipWindow && batchedPower > 0) {
+    // getLegalActions returns the window's cached reaction list, so recompute the
+    // reactions fresh against the projected pool instead (then restore the pool).
+    const savedPower = state.reactionWindow.spellPowerBonus;
+    state.reactionWindow.spellPowerBonus = (savedPower ?? 0) + batchedPower;
+    try {
+      legalActionsAtFullPower =
+        getLegalReactionsForTrigger(state, state.reactionWindow.triggerEvent, cards)[action.playerId] ?? [];
+    } finally {
+      state.reactionWindow.spellPowerBonus = savedPower;
+    }
+  }
+
   let expertUsesNeeded = 0;
   let spellPlays = 0;
   let powerOnlyPlays = 0;
@@ -381,7 +402,16 @@ function assertBatchReactionLegal(
       ...(play.asPowerBoost ? { asPowerBoost: true } : {})
     };
 
-    if (!legalActions.some((legal) => actionsMatch(legal.action, singleAction))) {
+    // A SKIP_ACTIVATION play (Sorrow) reads the post-batch Power pool; everything
+    // else (including the boosts) is judged at the pool the window has now.
+    const playEffect =
+      !play.asPowerBoost && cards[play.cardId]
+        ? getEffectiveCardEffect(cards[play.cardId]!, play.optionIndex)
+        : null;
+    const legalForPlay =
+      isActivationSkipWindow && playEffect?.type === "SKIP_ACTIVATION" ? legalActionsAtFullPower : legalActions;
+
+    if (!legalForPlay.some((legal) => actionsMatch(legal.action, singleAction))) {
       return {
         code: "ACTION_NOT_LEGAL",
         message: `${cards[play.cardId]?.name ?? play.cardId} is not a legal reaction right now.`
@@ -600,7 +630,8 @@ function rollApplyBothCandidate(combat: CombatState, rerollMinusOnce: boolean): 
   };
   const first = rollOne();
   const second = rollOne();
-  return { rolls: [first, second], roll: first + second };
+  // Both faces are summed into the outcome, so the overlay keeps both lit.
+  return { rolls: [first, second], roll: first + second, sumAllDice: true };
 }
 
 function hasExpertUseAvailable(state: GameState, playerId: PlayerId): boolean {
@@ -753,11 +784,19 @@ function getAmountByPower(amountByPower: Record<number, number> | undefined, fal
  * being frozen at the Power it had when first played.
  */
 function recomputePowerScaledAttackInstants(stackItem: ResolutionStackItem): void {
+  const power = stackItem.modifiers.spellPowerBonus;
+
+  // Slayer: re-derive its roll count from the new total Power so Power paid
+  // AFTER Slayer was played (the caster keeps priority and keeps empowering)
+  // lifts it from 2 → 4 → 6 instead of being frozen at the cast-time Power.
+  if (stackItem.modifiers.slayerRollsByPower) {
+    stackItem.modifiers.slayerRolls = getAmountByPower(stackItem.modifiers.slayerRollsByPower, 2, power);
+  }
+
   const records = stackItem.modifiers.powerScaledAttackInstants;
   if (!records || records.length === 0) {
     return;
   }
-  const power = stackItem.modifiers.spellPowerBonus;
   for (const record of records) {
     const scaled = getAmountByPower(record.amountByPower, record.baseAmount, power);
     const newApplied = (scaled + record.fixedBonus) * record.doubleFactor;
@@ -1203,6 +1242,18 @@ function resolveInfernoSpell(
   const rolls = Array.from({ length: Math.max(1, rollCount) }, () => rollAttackDie(combat));
   const damage = rolls.filter((roll) => roll === 1).length;
 
+  // Show the dice first: the client animates them tumbling and reading out (with
+  // the dice clatter + Inferno's roar), and only then does the burst land and the
+  // damage float. Logged even on a whiff so the player always sees the roll.
+  appendEvent(state, {
+    type: "SPELL_DICE_ROLLED",
+    spellCardId: card.id,
+    playerId,
+    rolls,
+    hits: damage,
+    position
+  });
+
   if (damage <= 0) {
     return;
   }
@@ -1340,6 +1391,7 @@ function applyAttackDamageFromCandidate(
       roll: candidate.roll,
       ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
       ...(skipDieCinematic ? { noDie: true } : {}),
+      ...(candidate.sumAllDice ? { sumAllDice: true } : {}),
       ...(defendRoll !== undefined ? { defendRoll } : {}),
       rollMode,
       attackBonus: reportedAttackBonus,
@@ -1370,6 +1422,7 @@ function applyAttackDamageFromCandidate(
     roll: candidate.roll,
     ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
     ...(skipDieCinematic ? { noDie: true } : {}),
+    ...(candidate.sumAllDice ? { sumAllDice: true } : {}),
     ...(defendRoll !== undefined ? { defendRoll } : {}),
     rollMode,
     attackBonus: reportedAttackBonus,
@@ -4460,7 +4513,18 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   if (stackItem.modifiers.slayerRolls && stackItem.modifiers.slayerRolls > 0) {
     const rolls = Array.from({ length: stackItem.modifiers.slayerRolls }, () => rollAttackDie(combat));
     const bonus = rolls.filter((roll) => roll === 1).length;
-    finishResolvedAttack(state, stackItem, details, { rolls, roll: bonus }, cards);
+    // Slayer's fire flares over the gold target (the FX layer plays it after the
+    // dice read out and the blow lands — see abilityFxPlans.slayer).
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: details.attacker.id,
+      abilityId: "slayer",
+      targetUnitId: details.defender.id,
+      message: `Slayer rolls ${rolls.length} Attack dice against ${details.defender.cardName} (+${bonus}).`
+    });
+    // sumAllDice: every die counts toward the bonus, so the overlay lights them
+    // all (the dice read out before the strike, then the damage lands).
+    finishResolvedAttack(state, stackItem, details, { rolls, roll: bonus, sumAllDice: true }, cards);
     if (stackItem.modifiers.slayerDraw) {
       stackItem.modifiers.slayerDraw = false;
       drawCardsForPlayer(state, details.attacker.controllerId, 1);
@@ -5435,21 +5499,30 @@ function applyReactionPlayCore(
 
   // The printed alternative bottom effect of every Spell card: discard it
   // for +1 Power toward the pending cast (or the spell instant in this
-  // attack window).
+  // attack window). The Sorrow activation-skip window has no stack item to
+  // hold the Power, so it banks it on the reaction window itself instead.
   if (play.asPowerBoost) {
     if (card.kind !== "spell") {
       throw new Error("Only Spell cards can be discarded for +1 Power.");
     }
-    if (!stackItemForBoost) {
+    const windowPool =
+      !stackItemForBoost && state.reactionWindow?.triggerEvent.type === "UNIT_ACTIVATION_STARTED"
+        ? state.reactionWindow
+        : null;
+    if (!stackItemForBoost && !windowPool) {
       throw new Error("There is nothing to empower.");
     }
     const moveError = moveCardFromHandToDiscard(state, playerId, play.cardId);
     if (moveError) {
       throw new Error(moveError.message);
     }
-    stackItemForBoost.modifiers.spellPowerBonus += 1;
-    stackItemForBoost.modifiers.playedCardIds.push(play.cardId);
-    recomputePowerScaledAttackInstants(stackItemForBoost);
+    if (windowPool) {
+      windowPool.spellPowerBonus = (windowPool.spellPowerBonus ?? 0) + 1;
+    } else {
+      stackItemForBoost!.modifiers.spellPowerBonus += 1;
+      stackItemForBoost!.modifiers.playedCardIds.push(play.cardId);
+      recomputePowerScaledAttackInstants(stackItemForBoost!);
+    }
     appendEvent(state, {
       type: "CARD_PLAYED",
       playerId,
@@ -5632,14 +5705,19 @@ function applyReactionPlayCore(
     return { windowEnded: true };
   }
 
-  // Sorrow: skip the activation of the unit that is about to act. The card and
-  // its Power cost were already spent above. The window is the activation-skip
-  // window, so the about-to-activate unit comes from its trigger event.
+  // Sorrow: skip the activation of the unit that is about to act. Played for
+  // free against a bronze unit; the reachable grade rises with the Power paid
+  // into this activation-skip window (0 → bronze, 2 → silver, 4 → gold). The
+  // window carries that Power pool, since it has no stack item to hold it.
   if (effect.type === "SKIP_ACTIVATION") {
     const triggerEvent = state.reactionWindow?.triggerEvent;
+    const windowPower = state.reactionWindow?.spellPowerBonus ?? 0;
+    const reachableGrade = effect.gradeByPower
+      ? gradeAtPower(effect.gradeByPower, windowPower)
+      : (effect.grade ?? null);
     const unit =
       triggerEvent?.type === "UNIT_ACTIVATION_STARTED" ? state.combat?.units[triggerEvent.unitId] : undefined;
-    if (unit && isUnitAlive(unit) && gradeRank(unit.grade) <= gradeRank(effect.grade)) {
+    if (unit && isUnitAlive(unit) && reachableGrade && gradeRank(unit.grade) <= gradeRank(reachableGrade)) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: unit.id,
@@ -5688,6 +5766,20 @@ function applyReactionPlayCore(
     // Bloodlust/Precision/Golden Bow restrict which unit types benefit.
     if (effect.unitTypes && affectedUnit && !effect.unitTypes.includes(affectedUnit.type)) {
       throw new Error(`${card.name} only affects ${effect.unitTypes.join("/")} units.`);
+    }
+
+    // Magic Resistance: the unit the buff/nerf lands on (a Dwarf) rolls to shrug
+    // the whole Spell off — the attacker for an attack change (Bloodlust/Bless's
+    // bonus), the defender for a defense change (Curse). Only Spells roll: the
+    // artifacts that share this effect (Sword of Judgement, the Gnoll relics) are
+    // not Spells. Negated → the card is spent but moves no stat on that unit.
+    if (
+      card.kind === "spell" &&
+      affectedUnit &&
+      negatesCardOnDwarfRoll(state, { type: "unit", unitId: affectedUnit.id }, card.name)
+    ) {
+      stackItem.modifiers.playedCardIds.push(play.cardId);
+      return { windowEnded: false };
     }
 
     // Spell instants scale with the Power played alongside them in this
@@ -5791,6 +5883,16 @@ function applyReactionPlayCore(
     effect.type === "IGNORE_ATTACK_DIE" &&
     (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
+    // Magic Resistance: the blessed unit (a Dwarf) rolls to shrug Bless off.
+    const blessTarget = state.combat?.units[stackItem.action.attackerId];
+    if (
+      card.kind === "spell" &&
+      blessTarget &&
+      negatesCardOnDwarfRoll(state, { type: "unit", unitId: blessTarget.id }, card.name)
+    ) {
+      stackItem.modifiers.playedCardIds.push(play.cardId);
+      return { windowEnded: false };
+    }
     stackItem.modifiers.ignoreAttackDie = true;
     if (effect.attackBonusByPower) {
       const blessBonus = getAmountByPower(
@@ -5825,14 +5927,25 @@ function applyReactionPlayCore(
 
   // Slayer: arm the pending attack to roll the die N times (by Power) and apply
   // every result but a "-1", then draw 1 card. Resolved in resolveAttackStackItem.
+  // The gold defender's Magic Resistance (a Dwarf) may shrug the Spell off first;
+  // when it does, the attack rolls its normal single die and Slayer adds nothing.
+  // The power table is stored so the roll count keeps scaling as more Power is
+  // paid into this attack window after Slayer was played.
   if (
     effect.type === "SLAYER_ATTACK" &&
     (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
-    const power = play.fromScroll ? 0 : stackItem.modifiers.spellPowerBonus;
-    stackItem.modifiers.slayerRolls = getAmountByPower(effect.rollsByPower, 2, power);
-    stackItem.modifiers.slayerDraw = true;
     stackItem.modifiers.playedCardIds.push(play.cardId);
+    const defenderRef: TargetRef = { type: "unit", unitId: stackItem.action.defenderId };
+    if (!negatesCardOnDwarfRoll(state, defenderRef, card.name)) {
+      const power = play.fromScroll ? 0 : stackItem.modifiers.spellPowerBonus;
+      stackItem.modifiers.slayerRolls = getAmountByPower(effect.rollsByPower, 2, power);
+      stackItem.modifiers.slayerDraw = true;
+      // Scroll casts are locked to power 0 and never grow, so they are not recorded.
+      if (!play.fromScroll) {
+        stackItem.modifiers.slayerRollsByPower = effect.rollsByPower;
+      }
+    }
   }
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
@@ -5957,7 +6070,9 @@ function playReaction(
           ? stackItem.action.playerId
           : undefined;
       const empowerable =
-        attackOwner === action.playerId && (stackItem?.modifiers.powerScaledAttackInstants?.length ?? 0) > 0;
+        attackOwner === action.playerId &&
+        ((stackItem?.modifiers.powerScaledAttackInstants?.length ?? 0) > 0 ||
+          stackItem?.modifiers.slayerRollsByPower !== undefined);
       if (!empowerable) {
         throw new Error("Power can only be played into an attack together with a Spell card.");
       }
