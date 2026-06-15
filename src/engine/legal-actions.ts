@@ -4,6 +4,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { sampleBuildings } from "@/data/towns/buildings";
 import {
+  applyRecruitDiscount,
   armyHasMapEffect,
   canHeroReachPlacedTile,
   discountedReinforceCost,
@@ -3567,7 +3568,9 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       // Each unit card exists once: a type already in the army cannot be
       // recruited again — only its Few card may be reinforced to the Pack.
       const owned = player.army.some((armyUnit) => armyUnit.unitDefId === unitDefId);
-      if (!owned && hasRecruitResources(state, playerId, fewSide.cost)) {
+      // Legion artifacts may make an otherwise-unaffordable unit recruitable —
+      // count their one-shot gold discount when offering the action.
+      if (!owned && hasRecruitResources(state, playerId, applyRecruitDiscount(state, playerId, fewSide.cost))) {
         actions.push({
           label: `Recruit few ${unit.name}`,
           action: {
@@ -3581,7 +3584,11 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       if (canReinforce) {
         const target = player.army.find((armyUnit) => armyUnit.unitDefId === unitDefId && armyUnit.side === "few");
         const packSide = unit.pack;
-        const reinforceCost = packSide ? discountedReinforceCost(state, playerId, unitDefId, packSide.cost) : undefined;
+        // Both reinforcement discounts stack on the gold paid here: the
+        // Champions' Stables map discount, then the Legion artifacts' one-shot.
+        const reinforceCost = packSide
+          ? applyRecruitDiscount(state, playerId, discountedReinforceCost(state, playerId, unitDefId, packSide.cost))
+          : undefined;
         if (target && packSide && reinforceCost && hasRecruitResources(state, playerId, reinforceCost)) {
           actions.push({
             label: `Reinforce ${unit.name} to a pack`,

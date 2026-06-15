@@ -816,6 +816,42 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("head_of_legion")
   },
+  "artifact.arms_of_legion": {
+    id: "artifact.arms_of_legion",
+    name: "Arms of Legion",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Reduce the Recruitment or Reinforcement cost of a unit by 5 gold (to a minimum of 0). — OR — Gain 2 building materials."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Next recruit/reinforce costs 5 less gold",
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Arms of Legion",
+              scope: "player",
+              duration: { type: "current-turn" },
+              modifiers: [{ type: "RECRUIT_DISCOUNT", amount: 5 }]
+            }
+          }
+        },
+        {
+          label: "Gain 2 building materials",
+          effect: { type: "GAIN_RESOURCES", gain: { buildingMaterials: 2 } }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "arms_of_legion", "Arms of Legion"),
+    implementationStatus: "implemented",
+    source: artifactSource("arms_of_legion")
+  },
   "artifact.tunic_of_the_cyclops_king": {
     id: "artifact.tunic_of_the_cyclops_king",
     name: "Tunic of the Cyclops King",
@@ -1614,6 +1650,7 @@ export const artifactDeckLegacy: string[] = [
   "artifact.dragon_scale_shield",
   "artifact.endless_bag_of_gold",
   "artifact.endless_purse_of_gold",
+  "artifact.arms_of_legion",
   "artifact.head_of_legion",
   "artifact.ogres_club_of_havoc",
   "artifact.tunic_of_the_cyclops_king",
@@ -1677,6 +1714,7 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.dragon_scale_shield",
   "artifact.endless_bag_of_gold",
   "artifact.endless_purse_of_gold",
+  "artifact.arms_of_legion",
   "artifact.head_of_legion",
   "artifact.ogres_club_of_havoc",
   "artifact.tunic_of_the_cyclops_king",
