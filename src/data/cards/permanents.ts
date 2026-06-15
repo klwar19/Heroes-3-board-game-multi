@@ -86,11 +86,11 @@ export const permanentCards: CardLibrary = {
         removable: false,
         modifiers: [
           {
+            // The Tent on its own heals 1 once per combat round. The expert
+            // "heal 3×" is the First Aid ability card's expert side (gated on
+            // holding it), not a property of the Tent — see ability.first_aid.
             type: "HEAL_ONCE_PER_COMBAT_ROUND",
-            amount: 1,
-            // Expert: spend 1 expert use to heal 3 times this round instead of
-            // the single basic heal (the two are mutually exclusive per round).
-            expertUsesPerRound: 3
+            amount: 1
           }
         ]
       }

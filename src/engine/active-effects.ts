@@ -217,10 +217,19 @@ export function effectiveInitiative(unit: CombatUnitState, activeEffects: Active
     }
     return (
       total +
-      effect.modifiers.reduce(
-        (sum, modifier) => (modifier.type === "INITIATIVE_BONUS" ? sum + modifier.amount : sum),
-        0
-      )
+      effect.modifiers.reduce((sum, modifier) => {
+        // Haste / Slow / Cape of Velocity shift any unit's activation order.
+        if (modifier.type === "INITIATIVE_BONUS") {
+          return sum + modifier.amount;
+        }
+        // Expert Archery's "+1 initiative" lands on the player's Ranged units
+        // only. The effect is player-scoped (effectAppliesToUnit already passed),
+        // so the Ranged gate is the unit's own type — melee units are untouched.
+        if (modifier.type === "RANGED_INITIATIVE_BONUS" && unit.type === "ranged") {
+          return sum + modifier.amount;
+        }
+        return sum;
+      }, 0)
     );
   }, 0);
 

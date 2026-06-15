@@ -141,16 +141,81 @@ describe("Neutral Pegasi 'Mystic Toll' (pay a Power card to cast — or you can'
     );
   }
 
-  it("lets an enemy-of-Pegasi cast a Spell, paying one Power card as the toll", () => {
-    // After the Magic Arrow leaves hand, stat.power is the spare Power card paid.
+  /** Reads the open toll prompt (a COMBAT_HAND_DISCARD of kind "pegasi-toll"). */
+  function tollChoice(state: GameState) {
+    const choice = state.pendingChoice;
+    expect(choice?.type, "a Pegasi toll prompt should be open").toBe("COMBAT_HAND_DISCARD");
+    if (choice?.type !== "COMBAT_HAND_DISCARD") {
+      throw new Error("expected a COMBAT_HAND_DISCARD prompt");
+    }
+    expect(choice.kind).toBe("pegasi-toll");
+    return choice;
+  }
+
+  it("prompts the caster to choose which Power card to pay, THEN casts the Spell", () => {
     const state = combatWithEnemy(["pegasi-power-tax"], ["spell.magic_arrow", "stat.power", "stat.attack"]);
     const cast = findArrowCast(state);
     expect(cast, "the cast is legal because a Power card can be paid").toBeTruthy();
-    const next = passAllReactions(applyOk(state, cast!.action));
+
+    // Casting opens the toll prompt; the Spell is NOT cast yet (still in hand).
+    const parked = applyOk(state, cast!.action);
+    const choice = tollChoice(parked);
+    expect(choice.playerId).toBe("p1");
+    expect(new Set(choice.powerCardIds)).toEqual(new Set(["stat.power"])); // not stat.attack, not the cast spell
+    expect(parked.players.p1.hand).toContain("spell.magic_arrow");
+
+    // Only the Power card is offered to pay — there is NO "random" option.
+    const tollActions = getLegalActions(parked, "p1").filter(
+      (legal) => legal.action.type === "RESOLVE_COMBAT_DISCARD"
+    );
+    expect(
+      tollActions.map((legal) => (legal.action.type === "RESOLVE_COMBAT_DISCARD" ? legal.action.cardId : ""))
+    ).toEqual(["stat.power"]);
+
+    // Pay the toll → the Spell is cast.
+    const next = passAllReactions(
+      applyOk(parked, { type: "RESOLVE_COMBAT_DISCARD", playerId: "p1", choiceId: choice.id, cardId: "stat.power" })
+    );
+    expect(next.pendingChoice).toBeNull();
     expect(next.players.p1.hand).toEqual(["stat.attack"]);
     expect(next.players.p1.discard).toContain("spell.magic_arrow");
     expect(next.players.p1.discard).toContain("stat.power");
     expect(abilityEventIds(next)).toContain("pegasi-power-tax");
+  });
+
+  it("lets the caster pick WHICH Power card to pay", () => {
+    const state = combatWithEnemy(["pegasi-power-tax"], ["spell.magic_arrow", "stat.power", "spell.fireball"]);
+    const parked = applyOk(state, findArrowCast(state)!.action);
+    const choice = tollChoice(parked);
+    expect(new Set(choice.powerCardIds)).toEqual(new Set(["stat.power", "spell.fireball"]));
+
+    // Choose to pay the Fireball — stat.power is kept.
+    const next = passAllReactions(
+      applyOk(parked, { type: "RESOLVE_COMBAT_DISCARD", playerId: "p1", choiceId: choice.id, cardId: "spell.fireball" })
+    );
+    expect(next.players.p1.hand).toEqual(["stat.power"]);
+    expect(next.players.p1.discard).toContain("spell.fireball"); // the chosen toll
+    expect(next.players.p1.discard).toContain("spell.magic_arrow");
+  });
+
+  it("rejects paying a card that is not an offered Power card", () => {
+    const state = combatWithEnemy(["pegasi-power-tax"], ["spell.magic_arrow", "stat.power", "stat.attack"]);
+    const parked = applyOk(state, findArrowCast(state)!.action);
+    const choice = tollChoice(parked);
+    const bad = applyAction(parked, {
+      type: "RESOLVE_COMBAT_DISCARD",
+      playerId: "p1",
+      choiceId: choice.id,
+      cardId: "stat.attack" // not a Power card
+    });
+    expect(bad.errors.length).toBeGreaterThan(0);
+    const badRandom = applyAction(parked, {
+      type: "RESOLVE_COMBAT_DISCARD",
+      playerId: "p1",
+      choiceId: choice.id,
+      cardId: "random" // the toll has no random option
+    });
+    expect(badRandom.errors.length).toBeGreaterThan(0);
   });
 
   it("makes the cast ILLEGAL when there is no spare Power card to pay", () => {
@@ -166,26 +231,17 @@ describe("Neutral Pegasi 'Mystic Toll' (pay a Power card to cast — or you can'
     });
     expect(rejected.errors.length).toBeGreaterThan(0);
 
-    // Control: without the Pegasi, the very same hand can cast freely.
+    // Control: without the Pegasi, the very same hand casts with no prompt.
     const free = combatWithEnemy([], ["spell.magic_arrow", "stat.attack"]);
-    expect(findArrowCast(free), "no Pegasi → the cast is legal").toBeTruthy();
-  });
-
-  it("a second Spell counts as the payable Power card (Spells boost Power)", () => {
-    const state = combatWithEnemy(["pegasi-power-tax"], ["spell.magic_arrow", "spell.fireball"]);
-    const cast = findArrowCast(state);
-    expect(cast, "the other Spell can pay the toll").toBeTruthy();
-    const next = passAllReactions(applyOk(state, cast!.action));
-    expect(next.players.p1.discard).toContain("spell.magic_arrow");
-    expect(next.players.p1.discard).toContain("spell.fireball"); // paid as the toll
-    expect(abilityEventIds(next)).toContain("pegasi-power-tax");
+    const freeCast = findArrowCast(free);
+    expect(freeCast, "no Pegasi → the cast is legal").toBeTruthy();
+    expect(applyOk(free, freeCast!.action).pendingChoice).toBeNull();
   });
 
   it("no Pegasi → casts freely, only the spell itself leaves the hand", () => {
     const state = combatWithEnemy([], ["spell.magic_arrow", "stat.power"]);
-    const cast = findArrowCast(state);
-    expect(cast).toBeTruthy();
-    const next = passAllReactions(applyOk(state, cast!.action));
+    const next = passAllReactions(applyOk(state, findArrowCast(state)!.action));
+    expect(next.pendingChoice).toBeNull();
     expect(next.players.p1.hand).toEqual(["stat.power"]);
     expect(abilityEventIds(next)).not.toContain("pegasi-power-tax");
   });
@@ -195,7 +251,12 @@ describe("Neutral Pegasi 'Mystic Toll' (pay a Power card to cast — or you can'
     const ok = combatWithEnemy(["pegasi-power-tax"], ["stat.power", "stat.attack"], scrolls);
     const cast = findArrowCast(ok, "scroll_1");
     expect(cast, "a Power card in hand pays the scroll cast's toll").toBeTruthy();
-    const next = passAllReactions(applyOk(ok, cast!.action));
+    const parked = applyOk(ok, cast!.action);
+    const choice = tollChoice(parked);
+    expect(new Set(choice.powerCardIds)).toEqual(new Set(["stat.power"]));
+    const next = passAllReactions(
+      applyOk(parked, { type: "RESOLVE_COMBAT_DISCARD", playerId: "p1", choiceId: choice.id, cardId: "stat.power" })
+    );
     expect(next.players.p1.hand).toEqual(["stat.attack"]); // stat.power paid
     expect(next.players.p1.discard).toContain("stat.power");
     expect(abilityEventIds(next)).toContain("pegasi-power-tax");
