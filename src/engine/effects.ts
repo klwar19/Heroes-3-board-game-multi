@@ -69,7 +69,8 @@ export const implementedCardEffectTypes = [
   "DIPLOMACY_RECRUIT",
   "DIPLOMACY_SKIP_COMBAT",
   "ADVANCE_EXPERIENCE",
-  "VISIONS_SCRY"
+  "VISIONS_SCRY",
+  "INTERFERE_SPELL"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {
@@ -202,6 +203,12 @@ export function getSpellDamageAmount(card: CardDefinition, power: number): numbe
 }
 
 export function getEffectAmount(effect: EffectDefinition, mode: CardPlayMode): number {
+  // Interference carries an explicit expert amount (the Defense / spell-damage
+  // reduction it grants), so it reads it the same way the stat cards do.
+  if (effect.type === "INTERFERE_SPELL") {
+    return mode === "expert" ? effect.expertAmount : effect.amount;
+  }
+
   if (
     effect.type !== "ADD_COMBAT_STAT" &&
     effect.type !== "ADD_SPELL_POWER" &&
@@ -608,6 +615,10 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "REDIRECT_SPELL") {
     return `redirect an enemy spell to a new ${card.effect.grade} target`;
+  }
+
+  if (card.effect.type === "INTERFERE_SPELL") {
+    return `react to an enemy damaging spell on your unit: +${card.effect.amount} defense (expert +${card.effect.expertAmount}) for the Combat, which also reduces that spell's damage`;
   }
 
   if (card.effect.type === "SUMMON_ELEMENTAL") {

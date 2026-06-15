@@ -361,6 +361,18 @@ export type ActiveEffectModifier =
        * exactly like the printed `ignore-paralysis` unit ability does.
        */
       type: "PARALYSIS_IMMUNITY";
+    }
+  | {
+      /**
+       * Interference ability: the affected unit reduces the damage it takes
+       * from Spells by this much — a Defense bonus that, unusually, also blunts
+       * Spell damage. Summed into totalSpellDamageReduction alongside the
+       * Golems'/Black Dragons' printed "reduce Spell damage" passives. The same
+       * Interference play also grants a plain DEFENSE_BONUS (vs attacks), so a
+       * unit carrying it gets the bonus against both attacks and spells.
+       */
+      type: "SPELL_DAMAGE_REDUCTION";
+      amount: number;
     };
 
 export type ActiveEffectDefinition = {
@@ -890,6 +902,19 @@ export type EffectDefinition =
       grade: UnitGrade;
     }
   | {
+      /**
+       * Interference: an instant reaction to an enemy damaging Spell that
+       * targets one of your units. Grants that unit +amount Defense for the
+       * rest of the Combat — a Defense bonus that, unusually, also reduces the
+       * incoming Spell's damage (and any later Spell damage to that unit). Basic
+       * +1 / expert +2. Modelled as a unit-scoped effect carrying both a
+       * DEFENSE_BONUS and a SPELL_DAMAGE_REDUCTION modifier.
+       */
+      type: "INTERFERE_SPELL";
+      amount: number;
+      expertAmount: number;
+    }
+  | {
       type: "CREATE_ACTIVE_EFFECT";
       effect: ActiveEffectDefinition;
       expertEffect?: ActiveEffectDefinition;
@@ -1194,6 +1219,26 @@ export type CardOptionDefinition = {
    * holds no cards.
    */
   requiresEmptyDiscard?: boolean;
+  /**
+   * Crown of the Five Seas' sea side ("If this Hero is on a Sea tile …"): the
+   * option is offered only while the playing player's main Hero stands on a Sea
+   * (water-terrain) field.
+   */
+  requiresSeaTile?: boolean;
+  /**
+   * Ring of the Wayfarer's paralysis side ("At start of Combat with Neutral
+   * Units …"): offered only on the opening round of a Combat against Neutral
+   * Units.
+   */
+  requiresNeutralCombatStart?: boolean;
+  /**
+   * Per-option target override for a CHOOSE_ONE card whose options strike
+   * different sides. Ring of the Wayfarer's initiative side buffs a friendly
+   * unit (the card-level `target`) while its paralysis side hits any non-Azure
+   * unit, so that option carries its own `any-unit` target. Falls back to the
+   * card-level `target` when absent.
+   */
+  target?: TargetDefinition;
   effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
 };
 
