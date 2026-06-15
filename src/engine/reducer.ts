@@ -142,10 +142,10 @@ import {
   getLegalReactionsForTrigger,
   getNextUnitToActivate,
   getOffTurnCombatReactions,
-  handCanPayPowerTax,
   isAdjacent,
   isHandLockedInCombat,
   isUnitAlive,
+  payablePowerCardIds,
   rerollSourceAvailableFor,
   spellAbilitiesSuppressed,
   spellRedirectTargets
@@ -3347,8 +3347,12 @@ function openMagiDiscardChoice(
   return true;
 }
 
-/** Resolves the Magi Power Drain choice, then unparks the attack sequence. */
-function resolveMagiDiscard(
+/**
+ * Resolves a COMBAT_HAND_DISCARD. For the Magi Power Drain it discards the chosen
+ * (or random) card and unparks the attack; for the Neutral Pegasi "Mystic Toll"
+ * it discards the chosen Power card and then casts the deferred Spell.
+ */
+function resolveCombatHandDiscard(
   state: GameState,
   action: Extract<GameAction, { type: "RESOLVE_COMBAT_DISCARD" }>,
   cards: CardLibrary
@@ -3364,6 +3368,50 @@ function resolveMagiDiscard(
   const chooser = state.players[action.playerId];
   if (!chooser) {
     throw new Error("Unknown player.");
+  }
+
+  // Neutral Pegasi "Mystic Toll": pay the chosen Power card, then cast the held
+  // Spell. No random option — the caster picks which Power card to pay.
+  if (choice.kind === "pegasi-toll") {
+    if (action.cardId === "random") {
+      throw new Error("The Pegasi toll must be paid with a chosen card that has Power.");
+    }
+    if (!choice.powerCardIds.includes(action.cardId)) {
+      throw new Error("That card cannot pay the Pegasi toll.");
+    }
+    if (!discardNamedCardFromHand(state, action.playerId, action.cardId)) {
+      throw new Error("That card is no longer in hand.");
+    }
+    const toll = choice.tollSpell;
+    appendEvent(state, {
+      type: "PENDING_CHOICE_RESOLVED",
+      choiceId: choice.id,
+      playerId: action.playerId,
+      selectedIndex: choice.powerCardIds.indexOf(action.cardId)
+    });
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: choice.sourceUnitId,
+      abilityId: choice.abilityId,
+      message: `${chooser.name} pays ${cards[action.cardId]?.name ?? action.cardId} to the ${choice.abilityName}.`
+    });
+    state.pendingChoice = null;
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    if (toll) {
+      performSpellCast(
+        state,
+        {
+          type: "CAST_SPELL",
+          playerId: action.playerId,
+          cardId: toll.cardId,
+          target: toll.target,
+          ...(toll.fromScroll ? { fromScroll: toll.fromScroll } : {})
+        },
+        cards
+      );
+    }
+    return;
   }
 
   if (action.cardId === "random") {
@@ -5135,62 +5183,6 @@ function applyEnemySpellHandTax(state: GameState, casterId: PlayerId): void {
 }
 
 /**
- * Discards one Power-bearing card (a Power statistic or any Spell) from a
- * player's hand, chosen at random among their Power cards. Unlike the Magi
- * Power Drain, the Pegasi card has no "or a random card" clause, so with no
- * Power card in hand nothing is discarded (returns null). Resolves immediately
- * — no choice prompt — so a neutral-controlled Pegasi needs no decision.
- */
-function discardPowerCardFromHand(
-  state: GameState,
-  playerId: PlayerId,
-  cards: CardLibrary
-): CardId | null {
-  const player = state.players[playerId];
-  if (!player || player.hand.length === 0) {
-    return null;
-  }
-  const powerIndices = player.hand
-    .map((cardId, index) => (cardCanBoostPower(cards[cardId]) ? index : -1))
-    .filter((index) => index >= 0);
-  if (powerIndices.length === 0) {
-    return null;
-  }
-  const random = createSeededRandom(`${state.seed}#pegasi-tax#${eventSeedNumber(state)}`);
-  const index = powerIndices[random.nextInt(0, powerIndices.length - 1)];
-  const [discarded] = player.hand.splice(index, 1);
-  player.discard.push(discarded);
-  return discarded;
-}
-
-/**
- * Neutral Pegasi "Mystic Toll": pays the toll for a Spell cast by discarding one
- * Power card (a random Power card) from the caster's hand. castSpell only calls
- * this once it has verified the toll can be paid, so a Power card is present.
- */
-function applyEnemySpellPowerTax(state: GameState, casterId: PlayerId, cards: CardLibrary): void {
-  const combat = state.combat;
-  if (!combat) {
-    return;
-  }
-  const pegasi = Object.values(combat.units).find(
-    (unit) => unit.controllerId !== casterId && isUnitAlive(unit) && hasSpellCastPowerTax(unit)
-  );
-  if (!pegasi) {
-    return;
-  }
-  const discarded = discardPowerCardFromHand(state, casterId, cards);
-  if (discarded) {
-    appendEvent(state, {
-      type: "UNIT_ABILITY_TRIGGERED",
-      unitId: pegasi.id,
-      abilityId: "pegasi-power-tax",
-      message: `${pegasi.cardName}'s Mystic Toll: the spellcaster pays a card with Power to cast.`
-    });
-  }
-}
-
-/**
  * Tower Magi (Pack) "[activation] +N power to the first spell you cast this
  * round": the bonus is only available while the Magi is the active unit — i.e.
  * during its own turn — so this reads the boost off the currently-active unit
@@ -5213,14 +5205,88 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
   }
 
   // Neutral Pegasi "Mystic Toll": a living enemy Pegasi gates this cast behind
-  // paying an extra Power card. Verify the toll can be paid before consuming
-  // the spell — with no spare Power card, the Spell cannot be cast at all.
-  const owesPowerToll = combatEnemyImposesPowerTax(state, action.playerId);
-  if (owesPowerToll) {
+  // paying a card with Power. The caster picks which Power card to pay BEFORE
+  // the Spell is cast (a player-choice prompt); with no spare Power card the
+  // Spell cannot be cast at all. The cast is deferred until the toll resolves.
+  if (combatEnemyImposesPowerTax(state, action.playerId)) {
     const caster = state.players[action.playerId];
-    if (!caster || !handCanPayPowerTax(caster.hand, cards, action.cardId, Boolean(action.fromScroll))) {
+    const payable = caster
+      ? payablePowerCardIds(caster.hand, cards, action.cardId, Boolean(action.fromScroll))
+      : [];
+    if (payable.length === 0) {
       throw new Error("An enemy Pegasi blocks this Spell: you must discard a card with Power to cast, and have none to pay.");
     }
+    openPegasiTollChoice(state, action, payable, cards);
+    return;
+  }
+
+  performSpellCast(state, action, cards);
+}
+
+/**
+ * Opens the Neutral Pegasi "Mystic Toll" prompt: the caster chooses which Power
+ * card to discard to pay for the Spell. The Spell cast is held in `tollSpell`
+ * and replayed by resolveCombatHandDiscard once the toll is paid.
+ */
+function openPegasiTollChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CAST_SPELL" }>,
+  payableCardIds: CardId[],
+  cards: CardLibrary
+): void {
+  const combat = state.combat;
+  const pegasi = combat
+    ? Object.values(combat.units).find(
+        (unit) => unit.controllerId !== action.playerId && isUnitAlive(unit) && hasSpellCastPowerTax(unit)
+      )
+    : undefined;
+  if (!pegasi) {
+    // No enemy Pegasi after all (defensive): cast normally, no toll.
+    performSpellCast(state, action, cards);
+    return;
+  }
+
+  const chooser = state.players[action.playerId];
+  const spellName = cards[action.cardId]?.name ?? action.cardId;
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "COMBAT_HAND_DISCARD",
+    playerId: action.playerId,
+    kind: "pegasi-toll",
+    abilityId: "pegasi-power-tax",
+    abilityName: "Mystic Toll",
+    sourceUnitId: pegasi.id,
+    prompt: `${pegasi.cardName}'s Mystic Toll — discard a card with Power to cast ${spellName}.`,
+    powerCardIds: payableCardIds,
+    tollSpell: {
+      cardId: action.cardId,
+      target: action.target,
+      ...(action.fromScroll ? { fromScroll: action.fromScroll } : {})
+    }
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = action.playerId;
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "COMBAT_HAND_DISCARD",
+    playerId: action.playerId,
+    sourceEffectIds: [],
+    message: `${chooser?.name ?? action.playerId} must pay a card with Power to cast ${spellName}.`
+  });
+}
+
+/**
+ * Casts the Spell for real: consume it, apply the Familiar tax, build the stack
+ * item and open the reaction window / resolve. Split from castSpell so the
+ * Neutral Pegasi toll can be paid first and the cast replayed unchanged.
+ */
+function performSpellCast(state: GameState, action: Extract<GameAction, { type: "CAST_SPELL" }>, cards: CardLibrary): void {
+  const card = cards[action.cardId];
+  if (!card || card.kind !== "spell") {
+    throw new Error(`Card ${action.cardId} is not a spell.`);
   }
 
   // A Spell Scroll cast pulls the spell from the scroll (it is not in hand) and
@@ -5236,11 +5302,6 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     }
     // Familiars tax each enemy Spell cast from hand by one extra random card.
     applyEnemySpellHandTax(state, action.playerId);
-  }
-
-  // Neutral Pegasi: pay the toll — discard one Power card to complete the cast.
-  if (owesPowerToll) {
-    applyEnemySpellPowerTax(state, action.playerId, cards);
   }
 
   const caster = state.players[action.playerId];
@@ -9462,7 +9523,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         }
         break;
       case "RESOLVE_COMBAT_DISCARD":
-        resolveMagiDiscard(nextState, action, cards);
+        resolveCombatHandDiscard(nextState, action, cards);
         break;
       case "CHOOSE_ABILITY_TARGET":
         chooseAbilityTarget(nextState, action, cards);

@@ -3941,22 +3941,27 @@ export type PendingChoice =
     }
   | {
       /**
-       * Neutral Magi "Power Drain": after the Magi attack, the defending
-       * player chooses to discard one of their own Power-contributing cards
-       * (a Power statistic or any Spell) or to let a random card be discarded.
-       * Created only when the defender holds at least one Power card; combat
-       * stays parked on its retaliation until this resolves.
+       * A combat hand-discard prompt with two kinds:
+       *  - "magi-power-or-random": Neutral Magi "Power Drain" — after the Magi
+       *    attack the defending player discards a Power-contributing card (a
+       *    Power statistic or any Spell) of their choice, or lets a random card
+       *    be discarded. Combat stays parked on its retaliation until resolved.
+       *  - "pegasi-toll": Neutral Pegasi "Mystic Toll" — the caster must pay a
+       *    Power card of their choice BEFORE a Spell is cast. The cast is held in
+       *    `tollSpell` and replayed once the toll is paid (no random option).
        */
       id: string;
       type: "COMBAT_HAND_DISCARD";
       playerId: PlayerId;
-      kind: "magi-power-or-random";
+      kind: "magi-power-or-random" | "pegasi-toll";
       abilityId: string;
       abilityName: string;
       sourceUnitId: UnitId;
       prompt: string;
       /** Cards in the chooser's hand that can contribute Power. */
       powerCardIds: CardId[];
+      /** "pegasi-toll" only: the Spell cast deferred until the toll is paid. */
+      tollSpell?: { cardId: CardId; target: TargetRef; fromScroll?: string };
     }
   | null;
 
