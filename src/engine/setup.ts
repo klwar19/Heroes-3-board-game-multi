@@ -1,7 +1,14 @@
+import { cardLibrary } from "@/data/cards/library";
+import { abilityDeckBinh } from "@/data/cards/abilities-extra";
+import { artifactDeckBinhMajor, artifactDeckBinhMinor, artifactDeckBinhRelic } from "@/data/cards/artifacts";
+import { spellDeckBinhBasic, spellDeckBinhExpert } from "@/data/cards/spells";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { shuffleCards } from "./decks";
 import { makeCombatUnitFromArmy } from "./adventure";
-import type { CombatUnitState, DeckState, GameState, PlayerState } from "./state";
+import type { CombatUnitState, DeckState, GameRuleset, GameState, PlayerState } from "./state";
+
+/** The combat sandbox plays the BINH house rules (split decks, BINH unit stats). */
+const SIM_RULESET: GameRuleset = "binh";
 
 function makeSharedDeck(id: string, cardIds: string[], seed: string): DeckState {
   return {
@@ -9,6 +16,57 @@ function makeSharedDeck(id: string, cardIds: string[], seed: string): DeckState 
     drawPile: shuffleCards(cardIds, `${seed}#deck#${id}`),
     discardPile: []
   };
+}
+
+/**
+ * The sandbox shared wells, in the BINH split-deck layout (Basic/Expert spells,
+ * Minor/Major/Relic artifacts, Abilities) used by the real BINH game.
+ *
+ * Combat test mode also makes them *complete*: every implemented Spell, Ability
+ * and Artifact is reachable. The curated BINH lists miss a handful of implemented
+ * spells that live only in the legacy list (Inferno, Slayer, Sorrow, Mirth,
+ * Forgetfulness), so any implemented card of these kinds the lists omit is added
+ * to a sensible well (spells → Basic, artifacts → by tier). A tester can then
+ * Search any well — the active player's search is unlimited in the sandbox (see
+ * addDeckSearchActions) — to pull any card into hand and exercise its mechanic.
+ * Not-implemented cards are inert no-ops, so they are excluded.
+ */
+function makeSandboxDecks(seed: string): Record<string, DeckState> {
+  const wells: Record<string, string[]> = {
+    spells: [...spellDeckBinhBasic],
+    "spells-expert": [...spellDeckBinhExpert],
+    abilities: [...abilityDeckBinh],
+    "artifacts-minor": [...artifactDeckBinhMinor],
+    "artifacts-major": [...artifactDeckBinhMajor],
+    "artifacts-relic": [...artifactDeckBinhRelic]
+  };
+
+  const placed = new Set<string>(Object.values(wells).flat());
+  for (const card of Object.values(cardLibrary)) {
+    if (card.implementationStatus !== "implemented" || placed.has(card.id)) {
+      continue;
+    }
+    if (card.kind === "spell") {
+      wells.spells.push(card.id);
+    } else if (card.kind === "ability") {
+      wells.abilities.push(card.id);
+    } else if (card.kind === "artifact") {
+      const tierWell =
+        card.artifactTier === "relic"
+          ? "artifacts-relic"
+          : card.artifactTier === "major"
+            ? "artifacts-major"
+            : "artifacts-minor";
+      wells[tierWell].push(card.id);
+    } else {
+      continue;
+    }
+    placed.add(card.id);
+  }
+
+  return Object.fromEntries(
+    Object.entries(wells).map(([id, cardIds]) => [id, makeSharedDeck(id, cardIds, seed)])
+  );
 }
 
 /**
@@ -27,7 +85,8 @@ function simUnit(
     { id: `army_${unitId}`, unitDefId, side },
     controllerId,
     unitId,
-    position
+    position,
+    SIM_RULESET
   );
 
   if (!unit) {
@@ -117,6 +176,7 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
     id: "local-dev-game",
     seed,
     mode: "combat-sandbox",
+    ruleset: SIM_RULESET,
     round: 1,
     phase: "combat",
     activePlayerId: "p1",
@@ -242,39 +302,11 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
       // ground and ranged movement; flying units pass over them.
       obstacles: [8, 11]
     },
-    // Shared table decks. Search effects reveal from the draw pile and feed
-    // the matching discard pile, exactly like the physical card wells.
-    decks: {
-      spells: makeSharedDeck(
-        "spells",
-        [
-          "spell.magic_arrow",
-          "spell.magic_arrow",
-          "spell.lightning_bolt",
-          "spell.stone_skin",
-          "spell.bloodlust",
-          "spell.cure",
-          "spell.fortune"
-        ],
-        seed
-      ),
-      abilities: makeSharedDeck(
-        "abilities",
-        ["ability.resistance", "ability.archery", "ability.offense", "ability.luck"],
-        seed
-      ),
-      artifacts: makeSharedDeck(
-        "artifacts",
-        [
-          "artifact.centaurs_axe",
-          "artifact.ogres_club_of_havoc",
-          "artifact.titans_gladius",
-          "artifact.buckler_of_the_gnoll_king",
-          "artifact.breastplate_of_petrified_wood"
-        ],
-        seed
-      )
-    },
+    // Shared table decks (BINH split-deck layout), stocked with the complete
+    // implemented catalog so every Spell, Ability and Artifact is reachable via
+    // Search. Search effects reveal from the draw pile and feed the matching
+    // discard pile, exactly like the physical card wells.
+    decks: makeSandboxDecks(seed),
     stack: [],
     reactionWindow: null,
     activeEffects: [],

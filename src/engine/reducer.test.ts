@@ -1349,13 +1349,14 @@ describe("rules engine prototype", () => {
     const transformed = applyOk(state, transformPlay!.action);
     // The covering card's statistics apply; the base `name` stays "Skeletons"
     // so the card under the Cloak is still identifiable, the upgrade shows in
-    // `cardName`. (Sandbox is legacy ruleset: printed HP 2.)
+    // `cardName`. (Sandbox runs BINH house rules, so the Horde of Skeletons
+    // fights with 3 HP instead of the printed 2 — see specialtyTransformHealth.)
     expect(transformed.combat?.units.unit_p2_skeletons).toMatchObject({
       name: "Skeletons",
       cardName: "Horde of Skeletons",
       attack: 3,
       defense: 1,
-      maxHealth: 2,
+      maxHealth: 3,
       initiative: 6
     });
     expect(transformed.combat?.units.unit_p2_skeletons.transforms?.at(-1)).toMatchObject({
