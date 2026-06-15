@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp, Crown, Mountain, Plus, ScrollText, Shield, Spar
 import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ATTACKER_BACKLINE,
   ATTACKER_FRONTLINE,
@@ -660,6 +661,10 @@ const SANDBOX_PICKER_CARDS = Object.values(cardLibrary)
 /**
  * Sandbox-only: drop any card straight into your hand to test its mechanic,
  * instead of Searching a well for it. Dispatches SANDBOX_ADD_CARD.
+ *
+ * The card list renders in a portal to <body> as a fixed overlay, so it can't
+ * be clipped or mispositioned by the command dock's grid/overflow context the
+ * way an in-tree absolute panel was (it appeared off-screen).
  */
 function SandboxCardPicker({
   viewerPlayerId,
@@ -681,73 +686,111 @@ function SandboxCardPicker({
   }, [filter]);
 
   return (
-    <div className="sandboxCardPicker">
+    <>
       <button
         className="commandButton ghost"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen(true)}
         title="Add any card straight to your hand (sandbox test mode)"
         type="button"
       >
         <Plus aria-hidden="true" size={12} /> Add card
       </button>
-      {open ? (
-        <div
-          aria-label="Add a card to your hand"
-          role="dialog"
-          style={{
-            position: "absolute",
-            right: 0,
-            bottom: "100%",
-            zIndex: 50,
-            width: 260,
-            maxHeight: 320,
-            overflowY: "auto",
-            background: "#1b1b22",
-            border: "1px solid #444",
-            borderRadius: 8,
-            padding: 8,
-            boxShadow: "0 6px 24px rgba(0,0,0,0.5)"
-          }}
-        >
-          <input
-            aria-label="Filter cards"
-            autoFocus
-            onChange={(event) => setFilter(event.target.value)}
-            placeholder="Filter cards…"
-            style={{ width: "100%", marginBottom: 6, padding: "4px 6px", boxSizing: "border-box" }}
-            value={filter}
-          />
-          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {matches.map((card) => (
-              <li key={card.id}>
-                <button
-                  onClick={() => onAction({ type: "SANDBOX_ADD_CARD", playerId: viewerPlayerId, cardId: card.id })}
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              onClick={() => setOpen(false)}
+              role="presentation"
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 2000,
+                background: "rgba(0,0,0,0.55)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 16
+              }}
+            >
+              <div
+                aria-label="Add a card to your hand"
+                onClick={(event) => event.stopPropagation()}
+                role="dialog"
+                style={{
+                  width: "min(420px, 92vw)",
+                  maxHeight: "78vh",
+                  display: "flex",
+                  flexDirection: "column",
+                  background: "#1b1b22",
+                  color: "#eee",
+                  border: "1px solid #555",
+                  borderRadius: 10,
+                  padding: 14,
+                  boxShadow: "0 10px 40px rgba(0,0,0,0.6)"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <strong>Add a card to your hand ({matches.length})</strong>
+                  <button
+                    aria-label="Close"
+                    onClick={() => setOpen(false)}
+                    style={{ background: "transparent", border: "none", color: "#bbb", cursor: "pointer", fontSize: 20, lineHeight: 1 }}
+                    type="button"
+                  >
+                    ×
+                  </button>
+                </div>
+                <input
+                  aria-label="Filter cards"
+                  autoFocus
+                  onChange={(event) => setFilter(event.target.value)}
+                  placeholder="Filter cards…"
                   style={{
                     width: "100%",
-                    textAlign: "left",
-                    padding: "4px 6px",
-                    background: "transparent",
-                    border: "none",
-                    color: "inherit",
-                    cursor: "pointer",
-                    display: "flex",
-                    gap: 6,
-                    alignItems: "baseline"
+                    marginBottom: 10,
+                    padding: "6px 8px",
+                    boxSizing: "border-box",
+                    background: "#11131a",
+                    color: "#eee",
+                    border: "1px solid #555",
+                    borderRadius: 6
                   }}
-                  type="button"
-                >
-                  <span style={{ fontSize: 10, opacity: 0.6, minWidth: 70 }}>{card.kind}</span>
-                  <span>{card.name}</span>
-                </button>
-              </li>
-            ))}
-            {matches.length === 0 ? (
-              <li style={{ padding: "4px 6px", opacity: 0.6 }}>No matching cards.</li>
-            ) : null}
-          </ul>
-        </div>
-      ) : null}
-    </div>
+                  value={filter}
+                />
+                <ul style={{ listStyle: "none", margin: 0, padding: 0, overflowY: "auto" }}>
+                  {matches.map((card) => (
+                    <li key={card.id}>
+                      <button
+                        onClick={() => onAction({ type: "SANDBOX_ADD_CARD", playerId: viewerPlayerId, cardId: card.id })}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "6px 8px",
+                          background: "transparent",
+                          border: "none",
+                          borderBottom: "1px solid #2a2d36",
+                          color: "inherit",
+                          cursor: "pointer",
+                          display: "flex",
+                          gap: 8,
+                          alignItems: "baseline"
+                        }}
+                        type="button"
+                      >
+                        <span style={{ fontSize: 10, opacity: 0.55, minWidth: 78, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                          {card.kind}
+                        </span>
+                        <span>{card.name}</span>
+                      </button>
+                    </li>
+                  ))}
+                  {matches.length === 0 ? <li style={{ padding: "6px 8px", opacity: 0.6 }}>No matching cards.</li> : null}
+                </ul>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </>
   );
 }
 
