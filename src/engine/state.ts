@@ -3242,11 +3242,12 @@ export type HeroState = {
   movementPointsMax: number;
   spaceId: MapSpaceId | null;
   /**
-   * Set when the hero steps onto a sea field without Water Walk: their movement
-   * is over for the turn (they cannot take another step), even though their
-   * remaining movement points are kept so a neutral combat on that sea field
-   * can still spend them. Cleared when movement refreshes. Water Walk never
-   * sets it (the hero keeps moving across the sea).
+   * Set when the hero takes a step touching a sea field without Water Walk —
+   * wading in (land→sea), wading out (sea→land), or moving within the sea: their
+   * movement is over for the turn (they cannot take another step), even though
+   * their remaining movement points are kept so a neutral combat on a sea field
+   * can still spend them. Cleared when movement refreshes. Water Walk never sets
+   * it (the hero keeps moving across the sea).
    */
   movementHaltedThisTurn?: boolean;
 };
