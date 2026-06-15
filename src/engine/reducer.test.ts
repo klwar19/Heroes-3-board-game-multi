@@ -1850,13 +1850,14 @@ describe("rules engine prototype", () => {
     const attackerDone = passPriority(attackerBatch);
     expect(attackerDone.reactionWindow?.priorityPlayerId).toBe("p2");
 
-    // Defender answers with both defense instants at once.
+    // Defender answers with both defense instants at once. The Buckler is an
+    // "OR" card; its option 1 is the plain "+1 defense" side.
     const defenderBatch = applyOk(attackerDone, {
       type: "PLAY_REACTIONS",
       playerId: "p2",
       plays: [
         { cardId: "stat.defense", mode: "basic" },
-        { cardId: "artifact.buckler_of_the_gnoll_king", mode: "basic" }
+        { cardId: "artifact.buckler_of_the_gnoll_king", mode: "basic", optionIndex: 1 }
       ]
     });
     expect(defenderBatch.stack.at(-1)?.modifiers.defenseBonus).toBe(2);

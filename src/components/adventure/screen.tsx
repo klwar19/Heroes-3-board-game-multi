@@ -2010,7 +2010,32 @@ export function MarketPanel({
   }
 
   if (!isMarket || !visit || !step) {
-    return null;
+    // No market is open right now. While one of the viewer's heroes (Main or
+    // Secondary) is parked on a Market field, OPEN_MARKET is legal and free —
+    // surface it as a persistent, blinking tab so the market is reachable any
+    // time without re-walking onto the tile.
+    const openAction = legalActions.find(
+      (legal): legal is LegalAction & { action: Extract<GameAction, { type: "OPEN_MARKET" }> } =>
+        legal.action.type === "OPEN_MARKET"
+    );
+    if (!openAction) {
+      return null;
+    }
+
+    const parkedHero = state.heroes[openAction.action.heroId];
+    const marketField = parkedHero?.spaceId ? state.adventure?.fields[parkedHero.spaceId] : undefined;
+    const marketName = marketField ? (locationDefinitions[marketField.location]?.name ?? "Market") : "Market";
+    return (
+      <button
+        className="marketTab"
+        onClick={() => onAction(openAction.action)}
+        title={`Open the ${marketName} — your hero is standing here, trade any time`}
+        type="button"
+      >
+        <span className="marketTabIcon">⚖</span>
+        {marketName}
+      </button>
+    );
   }
 
   const isTradingPost = step.type === "TRADING_POST";

@@ -367,6 +367,25 @@ function enemiesOf(state: GameState, playerId: PlayerId): CombatUnitState[] {
   return livingUnits(state).filter((unit) => unit.controllerId !== playerId);
 }
 
+/**
+ * The living enemy unit(s) of `playerId` with the lowest effective initiative —
+ * the Ballista's and Artillery's legal targets. Empty when no enemy is alive; a
+ * single entry is the forced target, several mean a tie the owner breaks.
+ */
+export function lowestInitiativeEnemies(state: GameState, playerId: PlayerId): CombatUnitState[] {
+  const enemies = enemiesOf(state, playerId);
+  if (enemies.length === 0) {
+    return [];
+  }
+  const lowest = Math.min(...enemies.map((unit) => effectiveInitiative(unit, state.activeEffects)));
+  return enemies.filter((unit) => effectiveInitiative(unit, state.activeEffects) === lowest);
+}
+
+/** Whether `unit` is currently one of `playerId`'s lowest-initiative living enemies. */
+export function isLowestInitiativeEnemy(state: GameState, playerId: PlayerId, unit: CombatUnitState): boolean {
+  return lowestInitiativeEnemies(state, playerId).some((candidate) => candidate.id === unit.id);
+}
+
 /** Catapult first targets: units that have at least one living neighbor. */
 function splashFirstTargets(state: GameState): CombatUnitState[] {
   const units = livingUnits(state);
@@ -450,8 +469,11 @@ export function applyWarMachineDamage(
 }
 
 /**
- * Ballista volley: fire `shots` shots, each at the lowest-initiative living
- * enemy (ties broken deterministically), stopping early if combat ends.
+ * Independent Ballista shots: fire `shots` times, each re-picking the
+ * lowest-initiative living enemy (ties broken deterministically), stopping
+ * early if combat ends. Used by Torosar's "activate all your Ballistas", where
+ * each shot is a separate Ballista choosing its own slowest target — NOT the
+ * Artillery volley (which keeps the same target; see fireShotsAtUnit).
  */
 function fireBallistaShots(
   state: GameState,
@@ -464,22 +486,90 @@ function fireBallistaShots(
     if (state.combat?.outcome) {
       return;
     }
-    const enemies = enemiesOf(state, playerId);
-    if (enemies.length === 0) {
+    const candidates = lowestInitiativeEnemies(state, playerId);
+    if (candidates.length === 0) {
       return;
     }
-    const lowest = Math.min(...enemies.map((unit) => effectiveInitiative(unit, state.activeEffects)));
-    const target = enemies
-      .filter((unit) => effectiveInitiative(unit, state.activeEffects) === lowest)
-      .sort((left, right) => left.id.localeCompare(right.id))[0];
+    const target = [...candidates].sort((left, right) => left.id.localeCompare(right.id))[0];
     applyWarMachineDamage(state, playerId, target.id, amount, undefined, sourceCardId);
   }
 }
 
 /**
+ * Artillery expert volley: hit one chosen target `shots` times for `amount`
+ * each. The target is fixed (no re-picking); a shot that defeats it makes the
+ * rest fizzle, since applyWarMachineDamage no-ops on a dead unit.
+ */
+function fireShotsAtUnit(
+  state: GameState,
+  playerId: PlayerId,
+  unitId: UnitId,
+  amount: number,
+  shots: number
+): void {
+  for (let shot = 0; shot < shots; shot += 1) {
+    if (state.combat?.outcome) {
+      return;
+    }
+    applyWarMachineDamage(state, playerId, unitId, amount);
+  }
+}
+
+const ARTILLERY_ABILITY_ID = "ability.artillery" as CardId;
+
+/** How many shots the Artillery expert side resolves, read from its card. */
+function artilleryVolleyShots(): number {
+  const effect = cardLibrary[ARTILLERY_ABILITY_ID]?.effect;
+  if (effect?.type === "CHOOSE_ONE") {
+    for (const option of effect.options) {
+      if (option.effect.type === "ARTILLERY_BALLISTA_VOLLEY") {
+        return option.effect.shots;
+      }
+    }
+  }
+  return 1;
+}
+
+/**
+ * Whether `playerId` may turn a Ballista's round-start shot into the Artillery
+ * same-target volley: they hold the Artillery ability card and have a free
+ * expert use (crown). Playing it consumes the card — one volley per card.
+ */
+export function playerCanUseArtilleryVolley(state: GameState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  return Boolean(
+    player &&
+      player.hand.includes(ARTILLERY_ABILITY_ID) &&
+      hasExpertUseLeft(state, playerId) &&
+      artilleryVolleyShots() > 1
+  );
+}
+
+/** Pays the Artillery expert cost: spend a crown and play (discard) the card. */
+function spendArtilleryExpert(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+  player.combatStats.expertUsesSpentThisRound += 1;
+  const handIndex = player.hand.indexOf(ARTILLERY_ABILITY_ID);
+  if (handIndex !== -1) {
+    player.hand.splice(handIndex, 1);
+    player.discard.push(ARTILLERY_ABILITY_ID);
+  }
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId: ARTILLERY_ABILITY_ID,
+    timing: cardLibrary[ARTILLERY_ABILITY_ID]?.timing ?? "instant",
+    mode: "expert"
+  });
+}
+
+/**
  * Torosar's "Activate your Ballista(s)": fire `count` extra Ballista shots
  * immediately (each = 1 damage to the lowest-initiative enemy). Ties resolve
- * deterministically, exactly like the expert volley.
+ * deterministically; each shot re-picks, as separate Ballistas would.
  */
 export function activateBallistas(state: GameState, playerId: PlayerId, count: number): void {
   if (count <= 0) {
@@ -587,26 +677,28 @@ export function processWarMachineRound(state: GameState): void {
     const name = warMachineName(state, playerId);
 
     if (roundStart.kind === "damage-lowest-initiative") {
-      const enemies = enemiesOf(state, playerId);
-      if (enemies.length === 0) {
+      const candidates = lowestInitiativeEnemies(state, playerId);
+      if (candidates.length === 0) {
         queue.pending.shift();
         continue;
       }
 
-      // Expert: offer firing several shots for 1 expert use, or the basic shot.
-      if (roundStart.expertShots && roundStart.expertShots > 1 && hasExpertUseLeft(state, playerId)) {
+      // Artillery (expert): a Ballista owner holding the Artillery ability may
+      // play it for one expert use, resolving this shot against the SAME target
+      // 3×. Offered only with both the card and a free crown in hand.
+      if (playerCanUseArtilleryVolley(state, playerId)) {
+        const shots = artilleryVolleyShots();
         openWarMachineOffer(
           state,
           playerId,
-          `${name}: spend 1 expert use to fire ${roundStart.expertShots} times, or fire once?`,
-          `Fire ${roundStart.expertShots}× (expert)`,
+          `${name}: play Artillery (expert) to resolve it against the same target ${shots}×, or fire once?`,
+          `Artillery: hit the same target ${shots}× (expert)`,
           "Fire once"
         );
         return;
       }
 
-      const lowest = Math.min(...enemies.map((unit) => effectiveInitiative(unit, state.activeEffects)));
-      const candidates = enemies.filter((unit) => effectiveInitiative(unit, state.activeEffects) === lowest);
+      // No Artillery: one basic shot at the slowest enemy (the owner breaks a tie).
       if (candidates.length === 1) {
         applyWarMachineDamage(state, playerId, candidates[0].id, roundStart.amount);
         queue.pending.shift();
@@ -671,18 +763,46 @@ export function resolveWarMachineOption(state: GameState, playerId: PlayerId, op
     throw new Error("That war machine has no offer to resolve.");
   }
 
-  // Ballista expert offer: option 0 fires the expert volley (spend 1 expert
-  // use), any other option fires a single basic shot. The Ballista is done.
+  // Ballista offer: option 0 plays Artillery (expert) for the same-target volley
+  // — spend a crown and discard the card — any other option fires one basic
+  // shot. Either may need a tie-break choice before the Ballista is done.
   if (roundStart.kind === "damage-lowest-initiative") {
-    if (optionIndex === 0 && roundStart.expertShots) {
-      const player = state.players[playerId];
-      if (!player || !hasExpertUseLeft(state, playerId)) {
-        throw new Error("No expert uses are available this combat round.");
+    const name = warMachineName(state, playerId);
+    if (optionIndex === 0 && playerCanUseArtilleryVolley(state, playerId)) {
+      const shots = artilleryVolleyShots();
+      spendArtilleryExpert(state, playerId);
+      const candidates = lowestInitiativeEnemies(state, playerId);
+      if (candidates.length > 1) {
+        // A tie: the owner picks the single target the whole volley lands on.
+        queue.volleyShots = shots;
+        openWarMachineTargetChoice(
+          state,
+          playerId,
+          `${name} (Artillery): hit the same target ${shots}× — break the tie.`,
+          candidates.map((unit) => unit.id),
+          roundStart.amount
+        );
+        return;
       }
-      player.combatStats.expertUsesSpentThisRound += 1;
-      fireBallistaShots(state, playerId, roundStart.amount, roundStart.expertShots);
+      if (candidates.length === 1) {
+        fireShotsAtUnit(state, playerId, candidates[0].id, roundStart.amount, shots);
+      }
     } else {
-      fireBallistaShots(state, playerId, roundStart.amount, 1);
+      // Fire once at the slowest enemy; a tie asks the owner to break it.
+      const candidates = lowestInitiativeEnemies(state, playerId);
+      if (candidates.length > 1) {
+        openWarMachineTargetChoice(
+          state,
+          playerId,
+          `${name}: ${roundStart.amount} damage to the enemy unit with the lowest initiative — break the tie.`,
+          candidates.map((unit) => unit.id),
+          roundStart.amount
+        );
+        return;
+      }
+      if (candidates.length === 1) {
+        applyWarMachineDamage(state, playerId, candidates[0].id, roundStart.amount);
+      }
     }
     queue.pending.shift();
     processWarMachineRound(state);
@@ -781,8 +901,12 @@ export function resolveWarMachineTarget(state: GameState, playerId: PlayerId, ta
     return;
   }
 
-  // Second Catapult target, Ballista tie-break or Cannon shot.
-  applyWarMachineDamage(state, playerId, targetUnitId, amount);
+  // Second Catapult target, Cannon shot, or a Ballista tie-break. An Artillery
+  // volley lands all of its shots on the one chosen target (volleyShots); every
+  // other case is a single hit (volleyShots absent → 1).
+  const shots = queue.volleyShots ?? 1;
+  fireShotsAtUnit(state, playerId, targetUnitId, amount, shots);
+  queue.volleyShots = null;
   queue.firstTargetUnitId = null;
   queue.pending.shift();
   processWarMachineRound(state);

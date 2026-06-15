@@ -42,9 +42,10 @@ export const implementedCardEffectTypes = [
   "GAIN_WAR_MACHINE",
   "CHAIN_LIGHTNING",
   "PLACE_PARALYSIS",
-  "DAMAGE_LOWEST_INITIATIVE",
   "BLOCK_ENEMY_ESCAPE",
   "BALLISTA_SPECIALTY",
+  "DAMAGE_LOWEST_INITIATIVE_ENEMY",
+  "ARTILLERY_BALLISTA_VOLLEY",
   "DECK_DIG_KEEP_ONE",
   "CANCEL_LETHAL_ATTACK",
   "REDIRECT_SPELL",
@@ -201,11 +202,7 @@ export function describePermanentEffect(card: CardDefinition): string {
     parts.push(`your ranged units get +${permanent.rangedInitiativeBonus} initiative`);
   }
   if (permanent.roundStart?.kind === "damage-lowest-initiative") {
-    const expert =
-      permanent.roundStart.expertShots && permanent.roundStart.expertShots > 1
-        ? `; expert: spend 1 expert use to fire ${permanent.roundStart.expertShots} times`
-        : "";
-    parts.push(`each combat round: ${permanent.roundStart.amount} damage to the slowest enemy unit${expert}`);
+    parts.push(`each combat round: ${permanent.roundStart.amount} damage to the slowest enemy unit`);
   }
   if (permanent.roundStart?.kind === "pay-to-splash") {
     parts.push(
@@ -284,11 +281,11 @@ export function describeCardEffect(card: CardDefinition): string {
   if (card.effect.type === "ADD_COMBAT_STAT") {
     const doubled = card.effect.doubleForUnitName ? ` (x2 for ${card.effect.doubleForUnitName})` : "";
     const draw = card.effect.drawCards ? `, then draw ${card.effect.drawCards}` : "";
-    const corrosion = card.effect.selfCorrosion
-      ? `, then -${card.effect.selfCorrosion} defense until the end of the Combat`
+    const penalty = card.effect.selfStatPenalty
+      ? `, then -${card.effect.selfStatPenalty.amount} ${card.effect.selfStatPenalty.stat} until the end of the Combat`
       : "";
     const expert = card.effect.expertAmount ? `, expert +${card.effect.expertAmount}` : "";
-    return `+${card.effect.amount} ${card.effect.stat}${expert}${doubled}${draw}${corrosion}`;
+    return `+${card.effect.amount} ${card.effect.stat}${expert}${doubled}${draw}${penalty}`;
   }
 
   if (card.effect.type === "TRIPLE_ATTACK_DIE") {
@@ -478,10 +475,6 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "PLACE_PARALYSIS") {
     return "place a Paralysis token on the selected enemy unit (tier rises with power)";
-  }
-
-  if (card.effect.type === "DAMAGE_LOWEST_INITIATIVE") {
-    return `deal ${card.effect.amount} damage to the enemy unit with the lowest initiative`;
   }
 
   if (card.effect.type === "BLOCK_ENEMY_ESCAPE") {

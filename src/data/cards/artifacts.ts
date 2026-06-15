@@ -565,7 +565,7 @@ export const artifactCards: CardLibrary = {
         {
           label: "+2 attack, then -1 defense until the end of the Combat",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, selfCorrosion: 1 }
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, selfStatPenalty: { stat: "defense", amount: 1 } }
         },
         {
           label: "+1 attack",

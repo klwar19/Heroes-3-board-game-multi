@@ -1,7 +1,7 @@
 import { cardLibrary } from "@/data/cards/library";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
+import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { sampleBuildings } from "@/data/towns/buildings";
 import {
   armyHasMapEffect,
@@ -559,11 +559,19 @@ function getEnemyTargets(
     return [];
   }
 
-  return Object.values(state.combat.units)
+  let units = Object.values(state.combat.units)
     .filter((unit) => unit.controllerId !== playerId)
     .filter(isUnitAlive)
-    .filter((unit) => unitMatchesTarget(unit, target))
-    .map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
+    .filter((unit) => unitMatchesTarget(unit, target));
+
+  // Artillery: only the enemy unit(s) with the lowest effective initiative are
+  // legal targets (a tie offers each, so the controller picks which is hit).
+  if (target.type === "enemy-unit" && target.lowestInitiativeOnly && units.length > 0) {
+    const lowest = Math.min(...units.map((unit) => effectiveInitiative(unit, state.activeEffects)));
+    units = units.filter((unit) => effectiveInitiative(unit, state.activeEffects) === lowest);
+  }
+
+  return units.map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
 }
 
 function getFriendlyTargets(
@@ -588,10 +596,7 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
   // pick a unit: they default to a no-target play. Only effects that actually
   // strike a unit fall back to "enemy-unit".
   const selfTargetedEffect =
-    card?.effect.type === "CREATE_ACTIVE_EFFECT" ||
-    card?.effect.type === "GAIN_MORALE" ||
-    // Artillery resolves its own target (the lowest-initiative enemy).
-    card?.effect.type === "DAMAGE_LOWEST_INITIATIVE";
+    card?.effect.type === "CREATE_ACTIVE_EFFECT" || card?.effect.type === "GAIN_MORALE";
   const targetType =
     card?.target?.type ??
     (card?.effect.type === "HEAL_DAMAGE"
@@ -1061,6 +1066,7 @@ function isOptionEffectPlayable(
     case "AREA_DAMAGE_ALL_ADJACENT":
     case "CREATE_FIRE_SHIELD":
     case "GRANT_ELEMENTAL_DAMAGE":
+    case "DAMAGE_LOWEST_INITIATIVE_ENEMY":
       return context === "combat" && Boolean(state.combat);
     case "BLOCK_ENEMY_ESCAPE":
       // Shackles of War (option 1): only at the start of a player-vs-player
@@ -1142,7 +1148,8 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "ADD_UNIT_MAX_HEALTH" ||
     effect.type === "HEAL_DAMAGE" ||
     effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
-    effect.type === "GRANT_ELEMENTAL_DAMAGE"
+    effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
+    effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY"
   );
 }
 
@@ -3687,6 +3694,18 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       continue;
     }
 
+    const field = adventure.fields[hero.spaceId];
+
+    // A hero parked on a Market may reopen the trade/shop panel any time, for
+    // free — no movement point needed, so it stays available even when a
+    // Secondary Hero simply sits on the tile.
+    if (field && isMarketLocation(field.location)) {
+      actions.push({
+        label: `Open the ${locationDefinitions[field.location]?.name ?? field.location}`,
+        action: { type: "OPEN_MARKET", playerId, heroId: hero.id }
+      });
+    }
+
     if (hero.movementPoints > 0) {
       for (const destination of getHeroMoveDestinations(state, hero)) {
         actions.push({
@@ -3695,13 +3714,17 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
         });
       }
 
-      const field = adventure.fields[hero.spaceId];
       if (field?.grailDiggable) {
         actions.push({
           label: "Dig the Grail (1 movement point)",
           action: { type: "REVISIT_FIELD", playerId, heroId: hero.id }
         });
-      } else if (field && locationDefinitions[field.location]?.category === "revisitable") {
+      } else if (
+        field &&
+        locationDefinitions[field.location]?.category === "revisitable" &&
+        // Markets use the free OPEN_MARKET path above, not the 1-MP revisit.
+        !isMarketLocation(field.location)
+      ) {
         actions.push({
           label: `Revisit ${locationDefinitions[field.location]?.name ?? field.location}`,
           action: { type: "REVISIT_FIELD", playerId, heroId: hero.id }

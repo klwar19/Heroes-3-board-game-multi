@@ -95,7 +95,17 @@ export type ResourceKind = "gold" | "buildingMaterials" | "valuables";
 export type ResourceCost = Partial<Record<ResourceKind, number>>;
 
 export type TargetDefinition =
-  | { type: "enemy-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
+  | {
+      type: "enemy-unit";
+      unitTypes?: UnitType[];
+      damagedOnly?: boolean;
+      /**
+       * Artillery: restrict the legal targets to the enemy unit(s) with the
+       * lowest (effective) initiative. A single slowest enemy is the only legal
+       * target; a tie offers each tied unit so the controller picks which is hit.
+       */
+      lowestInitiativeOnly?: boolean;
+    }
   | { type: "friendly-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
   | { type: "any-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
   /** Summon spells: a chosen empty space on the combat board. */
@@ -355,11 +365,15 @@ export type EffectDefinition =
       /** Sword of Hellfire / Shield of the Damned: the unit also takes damage. */
       selfDamage?: number;
       /**
-       * Greater Gnoll's Flail (+2 attack option): the boosted unit also receives
-       * a Corrosion token of this size (−1 defense, to a minimum of 0) that
-       * lasts until the end of the Combat.
+       * The stronger side of the Gnoll artifacts: the boosted unit also takes a
+       * lasting combat token until the end of the Combat, mirroring the bonus on
+       * the other stat (each floored at 0 — "minimum 0"):
+       *  - Buckler of the Gnoll King: "+2 defense, then -1 attack" → a Weakness
+       *    token on the defending unit.
+       *  - Greater Gnoll's Flail: "+2 attack, then -1 defense" → a Corrosion
+       *    token on the attacking unit.
        */
-      selfCorrosion?: number;
+      selfStatPenalty?: { stat: "attack" | "defense"; amount: number };
       /** Bloodlust/Golden Bow: only these unit types may receive the bonus. */
       unitTypes?: UnitType[];
       /** Precision: the shot also ignores the ranged combat penalty. */
@@ -606,15 +620,6 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Artillery (basic): deal `amount` spell-style effect damage to the enemy
-       * unit with the lowest (effective) Initiative. When several enemies tie
-       * for the lowest the caster picks which one is struck.
-       */
-      type: "DAMAGE_LOWEST_INITIATIVE";
-      amount: number;
-    }
-  | {
-      /**
        * Torosar's Ballista specialty (I activate / IV / VI). `grant` fields one
        * extra Ballista for the combat or the rest of the game round ("this card
        * counts as a Ballista"); `activate` fires one of your Ballistas now (I)
@@ -624,6 +629,29 @@ export type EffectDefinition =
       type: "BALLISTA_SPECIALTY";
       grant?: "combat" | "game-round";
       activate?: "one" | "all";
+    }
+  | {
+      /**
+       * Artillery (basic side): deal `amount` damage to an enemy unit with the
+       * lowest (effective) initiative — the same shot a Ballista makes, played
+       * from hand without one. The card constrains its legal targets to the
+       * slowest enemy/enemies (enemy-unit `lowestInitiativeOnly`), so a tie lets
+       * the controller pick which slowest unit is hit. Deals "effect" damage.
+       */
+      type: "DAMAGE_LOWEST_INITIATIVE_ENEMY";
+      amount: number;
+    }
+  | {
+      /**
+       * Artillery (expert side): a declarative marker, never played through
+       * PLAY_CARD. When the owner's Ballista fires at the start of a combat
+       * round, the owner may play Artillery (spending one expert use) to resolve
+       * that Ballista's shot against the SAME target `shots` times. Wired in
+       * permanents.ts (processWarMachineRound / resolveWarMachineOption); the
+       * engine reads `shots` from here so the card stays the source of truth.
+       */
+      type: "ARTILLERY_BALLISTA_VOLLEY";
+      shots: number;
     }
   | {
       /**
@@ -844,15 +872,15 @@ export type TriggerDefinition = {
 /** War machine triggers offered/resolved at the start of every combat round. */
 export type WarMachineRoundStartDefinition =
   | {
-      /** Ballista: automatic damage to the enemy unit with the lowest initiative. */
+      /**
+       * Ballista: automatic `amount` damage to the enemy unit with the lowest
+       * (effective) initiative at the start of each combat round (the owner
+       * breaks a tie). The "fire 3× against the same target" volley is NOT
+       * intrinsic to the Ballista — it is the Artillery ability's expert side
+       * (see ARTILLERY_BALLISTA_VOLLEY and permanents.ts).
+       */
       kind: "damage-lowest-initiative";
       amount: number;
-      /**
-       * Ballista expert: at the round start, the owner may spend 1 expert use
-       * to fire this many shots instead of the single basic shot. Declining
-       * fires once and the Ballista does nothing more that round.
-       */
-      expertShots?: number;
     }
   | {
       /** Catapult: optionally pay the cost to damage two adjacent targets. */
@@ -1141,6 +1169,17 @@ export type GameAction =
       discardCardIds: CardId[];
     }
   | { type: "REVISIT_FIELD"; playerId: PlayerId; heroId: HeroId }
+  | {
+      /**
+       * Open the Trading Post / War Machine Factory panel for a hero parked on
+       * a market field. Free and repeatable — unlike REVISIT_FIELD it costs no
+       * movement point, so the market stays available while any of the player's
+       * heroes (Main or Secondary) sits on the tile.
+       */
+      type: "OPEN_MARKET";
+      playerId: PlayerId;
+      heroId: HeroId;
+    }
   | { type: "DISCOVER_TILE"; playerId: PlayerId; heroId: HeroId; tileInstanceId: string }
   | {
       /** Place one of the player's face-down Far (II–III) tiles from supply. */
@@ -2759,6 +2798,12 @@ export type CombatState = {
      */
     pending: { playerId: PlayerId; cardId: CardId; granted?: boolean }[];
     firstTargetUnitId?: UnitId | null;
+    /**
+     * Artillery expert: while a Ballista tie-break choice is open for the
+     * same-target volley, how many shots the chosen target takes (cleared once
+     * the volley resolves). Absent/1 for an ordinary single Ballista shot.
+     */
+    volleyShots?: number | null;
   } | null;
   outcome: {
     winnerPlayerId: PlayerId;
