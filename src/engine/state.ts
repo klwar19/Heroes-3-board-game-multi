@@ -667,16 +667,12 @@ export type EffectDefinition =
       /**
        * Sorrow Spell (Instant reaction on UNIT_ACTIVATION_STARTED): when an
        * enemy unit is about to activate, skip its activation. The grade reached
-       * scales with the Power paid (0 → bronze, 2 → silver, 4 → gold). The card
-       * is played for free against a bronze unit; discarding further Spells for
-       * "+1 Power" into the activation-skip window raises the reachable grade
-       * (the reaction window carries that Power pool, since no stack item does).
+       * is set by the Power paid (0 → bronze, 2 → silver, 4 → gold), modelled as
+       * one CHOOSE_ONE option per grade (free for bronze, pay 2/4 power-source
+       * cards for silver/gold — like Resurrection).
        */
       type: "SKIP_ACTIVATION";
-      /** Reachable grade by Power paid (Sorrow: { 0: bronze, 2: silver, 4: gold }). */
-      gradeByPower?: Record<number, UnitGrade>;
-      /** Fixed reachable grade when no Power table is given (legacy single-grade). */
-      grade?: UnitGrade;
+      grade: UnitGrade;
     }
   | {
       /**
@@ -2535,13 +2531,6 @@ export type ReactionWindow = {
   legalReactions: Record<PlayerId, LegalAction[]>;
   passedPlayerIds: PlayerId[];
   closesWhen: "all-pass" | "one-reaction" | "choice-made";
-  /**
-   * Power paid into a window that has no paused stack item to hold it — today
-   * just the Sorrow activation-skip window. Every "+1 Power" discard adds 1 and
-   * SKIP_ACTIVATION reads it to decide the reachable grade. Stack-backed windows
-   * (spell casts, attacks) keep their Power on the stack item instead.
-   */
-  spellPowerBonus?: number;
 };
 
 export type ActiveEffectState = ActiveEffectDefinition & {

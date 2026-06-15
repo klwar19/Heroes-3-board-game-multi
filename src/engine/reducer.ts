@@ -367,27 +367,6 @@ function assertBatchReactionLegal(
     handCounts.set(cardId, (handCounts.get(cardId) ?? 0) + 1);
   }
 
-  // Sorrow batches "+1 Power" discards into the activation-skip window before the
-  // skip reads the pool, so its SKIP_ACTIVATION play is checked against the Power
-  // those discards will have banked — not the empty pool the window starts at.
-  // (The boosts themselves stay validated at the current pool, where the window
-  // offers them.) Computed by briefly projecting the pool, then restoring it.
-  const isActivationSkipWindow = state.reactionWindow.triggerEvent.type === "UNIT_ACTIVATION_STARTED";
-  const batchedPower = action.plays.filter((play) => play.asPowerBoost).length;
-  let legalActionsAtFullPower = legalActions;
-  if (isActivationSkipWindow && batchedPower > 0) {
-    // getLegalActions returns the window's cached reaction list, so recompute the
-    // reactions fresh against the projected pool instead (then restore the pool).
-    const savedPower = state.reactionWindow.spellPowerBonus;
-    state.reactionWindow.spellPowerBonus = (savedPower ?? 0) + batchedPower;
-    try {
-      legalActionsAtFullPower =
-        getLegalReactionsForTrigger(state, state.reactionWindow.triggerEvent, cards)[action.playerId] ?? [];
-    } finally {
-      state.reactionWindow.spellPowerBonus = savedPower;
-    }
-  }
-
   let expertUsesNeeded = 0;
   let spellPlays = 0;
   let powerOnlyPlays = 0;
@@ -402,16 +381,7 @@ function assertBatchReactionLegal(
       ...(play.asPowerBoost ? { asPowerBoost: true } : {})
     };
 
-    // A SKIP_ACTIVATION play (Sorrow) reads the post-batch Power pool; everything
-    // else (including the boosts) is judged at the pool the window has now.
-    const playEffect =
-      !play.asPowerBoost && cards[play.cardId]
-        ? getEffectiveCardEffect(cards[play.cardId]!, play.optionIndex)
-        : null;
-    const legalForPlay =
-      isActivationSkipWindow && playEffect?.type === "SKIP_ACTIVATION" ? legalActionsAtFullPower : legalActions;
-
-    if (!legalForPlay.some((legal) => actionsMatch(legal.action, singleAction))) {
+    if (!legalActions.some((legal) => actionsMatch(legal.action, singleAction))) {
       return {
         code: "ACTION_NOT_LEGAL",
         message: `${cards[play.cardId]?.name ?? play.cardId} is not a legal reaction right now.`
@@ -5438,30 +5408,21 @@ function applyReactionPlayCore(
 
   // The printed alternative bottom effect of every Spell card: discard it
   // for +1 Power toward the pending cast (or the spell instant in this
-  // attack window). The Sorrow activation-skip window has no stack item to
-  // hold the Power, so it banks it on the reaction window itself instead.
+  // attack window).
   if (play.asPowerBoost) {
     if (card.kind !== "spell") {
       throw new Error("Only Spell cards can be discarded for +1 Power.");
     }
-    const windowPool =
-      !stackItemForBoost && state.reactionWindow?.triggerEvent.type === "UNIT_ACTIVATION_STARTED"
-        ? state.reactionWindow
-        : null;
-    if (!stackItemForBoost && !windowPool) {
+    if (!stackItemForBoost) {
       throw new Error("There is nothing to empower.");
     }
     const moveError = moveCardFromHandToDiscard(state, playerId, play.cardId);
     if (moveError) {
       throw new Error(moveError.message);
     }
-    if (windowPool) {
-      windowPool.spellPowerBonus = (windowPool.spellPowerBonus ?? 0) + 1;
-    } else {
-      stackItemForBoost!.modifiers.spellPowerBonus += 1;
-      stackItemForBoost!.modifiers.playedCardIds.push(play.cardId);
-      recomputePowerScaledAttackInstants(stackItemForBoost!);
-    }
+    stackItemForBoost.modifiers.spellPowerBonus += 1;
+    stackItemForBoost.modifiers.playedCardIds.push(play.cardId);
+    recomputePowerScaledAttackInstants(stackItemForBoost);
     appendEvent(state, {
       type: "CARD_PLAYED",
       playerId,
@@ -5644,19 +5605,15 @@ function applyReactionPlayCore(
     return { windowEnded: true };
   }
 
-  // Sorrow: skip the activation of the unit that is about to act. Played for
-  // free against a bronze unit; the reachable grade rises with the Power paid
-  // into this activation-skip window (0 → bronze, 2 → silver, 4 → gold). The
-  // window carries that Power pool, since it has no stack item to hold it.
+  // Sorrow: skip the activation of the unit that is about to act. The chosen
+  // CHOOSE_ONE option carries the grade reached (bronze free, silver/gold paid
+  // via its discard cost, already settled above). The about-to-activate unit
+  // comes from the activation-skip window's trigger event.
   if (effect.type === "SKIP_ACTIVATION") {
     const triggerEvent = state.reactionWindow?.triggerEvent;
-    const windowPower = state.reactionWindow?.spellPowerBonus ?? 0;
-    const reachableGrade = effect.gradeByPower
-      ? gradeAtPower(effect.gradeByPower, windowPower)
-      : (effect.grade ?? null);
     const unit =
       triggerEvent?.type === "UNIT_ACTIVATION_STARTED" ? state.combat?.units[triggerEvent.unitId] : undefined;
-    if (unit && isUnitAlive(unit) && reachableGrade && gradeRank(unit.grade) <= gradeRank(reachableGrade)) {
+    if (unit && isUnitAlive(unit) && effect.grade && gradeRank(unit.grade) <= gradeRank(effect.grade)) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: unit.id,
