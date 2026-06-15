@@ -415,18 +415,14 @@ export function canCrossEdge(
 
   if (locationDefinitions[toField.location]?.category === "blocked") {
     // Blocked fields stop ground movement; Fly / Angel Wings let a hero pass
-    // over them (classifyHeroStep still forbids ending the move there). The
-    // water gate below is skipped for blocked fields — flying over a blocked
-    // sea hex needs only move-through, never Water Walk.
+    // over them (classifyHeroStep still forbids ending the move there).
     return movement.moveThrough;
   }
 
-  // The open sea is impassable on foot: entering a (non-blocked) sea field
-  // needs Water Walk. Only the destination is gated, so a water-walking hero
-  // whose spell has lapsed can still step back onto adjacent land.
-  if (isSeaField(state, to) && !movement.waterWalk) {
-    return false;
-  }
+  // A hero may always step from land onto an adjacent sea field. Without Water
+  // Walk that step is a forced stop (classifyHeroStep returns "stop" and the
+  // mover is halted for the turn); with Water Walk the sea is normal terrain.
+  // Either way the edge itself is crossable, so no sea gate is applied here.
 
   if (fromField.tileInstanceId === toField.tileInstanceId) {
     // Printed yellow lines inside a tile block ground movement between the
@@ -492,11 +488,11 @@ export function isFieldGuarded(field: MapFieldState): boolean {
  */
 export type HeroStepKind = "open" | "stop" | "pass-only" | "block";
 
-export function classifyHeroStep(
+function classifyHeroStepBase(
   state: GameState,
   hero: HeroState,
   spaceId: MapSpaceId,
-  movement: HeroMovementCapabilities = NO_MOVEMENT_CAPABILITIES
+  movement: HeroMovementCapabilities
 ): HeroStepKind {
   const adventure = state.adventure;
   const field = adventure?.fields[spaceId];
@@ -510,12 +506,6 @@ export function classifyHeroStep(
     // Flying (move-through) turns a blocked field into a hex the hero may pass
     // over but never stop on; otherwise it is impassable.
     return movement.moveThrough ? "pass-only" : "block";
-  }
-
-  // A (non-blocked) sea field can only be entered — and therefore stopped on or
-  // visited — while Water Walk is active this turn.
-  if (isSeaField(state, spaceId) && !movement.waterWalk) {
-    return "block";
   }
 
   const occupant = heroAtSpace(state, spaceId, hero.id);
@@ -555,6 +545,23 @@ export function classifyHeroStep(
   return "stop";
 }
 
+export function classifyHeroStep(
+  state: GameState,
+  hero: HeroState,
+  spaceId: MapSpaceId,
+  movement: HeroMovementCapabilities = NO_MOVEMENT_CAPABILITIES
+): HeroStepKind {
+  const base = classifyHeroStepBase(state, hero, spaceId, movement);
+  // Without Water Walk, stepping onto the open sea is a forced stop: a hero may
+  // move onto a sea field but cannot continue past it. (Guards, locations and
+  // enemy heroes there are already "stop"; allied heroes stay "pass-only"; a
+  // blocked sea hex stays block/pass-only.) Water Walk leaves the sea passable.
+  if (base === "open" && !movement.waterWalk && isSeaField(state, spaceId)) {
+    return "stop";
+  }
+  return base;
+}
+
 export type HeroPathTarget = { spaceId: MapSpaceId; path: MapSpaceId[]; cost: number };
 
 /**
@@ -566,7 +573,7 @@ export type HeroPathTarget = { spaceId: MapSpaceId; path: MapSpaceId[]; cost: nu
 export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<MapSpaceId, HeroPathTarget> {
   const results = new Map<MapSpaceId, HeroPathTarget>();
   const adventure = state.adventure;
-  if (!adventure || !hero.spaceId || hero.movementPoints <= 0) {
+  if (!adventure || !hero.spaceId || hero.movementPoints <= 0 || hero.movementHaltedThisTurn) {
     return results;
   }
 
@@ -2900,6 +2907,8 @@ export function refreshRoundTokens(state: GameState): void {
 
   for (const hero of Object.values(state.heroes)) {
     hero.movementPoints = heroMovementMax(state, hero);
+    // Fresh movement clears any sea-halt from waking up on / wading into the sea.
+    hero.movementHaltedThisTurn = false;
   }
 }
 

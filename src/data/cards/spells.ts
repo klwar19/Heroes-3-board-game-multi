@@ -510,12 +510,9 @@ export const spellCards: CardLibrary = {
   },
 
   // ---- Spells beyond the base block ----
-  // Each entry's `implementationStatus` is authoritative (some here are fully
-  // implemented: Resurrection, Magic Mirror, Earthquake, Dimension Door, Fly,
-  // Water Walk; the rest are stubs). Deck membership is separate: Fly (Fortress)
-  // and Water Walk (Cove) and Dimension Door are implemented but are NOT dealt
-  // into the Core/Rampart/Inferno decks below — they reach play only once their
-  // expansion spell content is wired in.
+  // Each entry's `implementationStatus` is authoritative. The fully implemented
+  // ones here (Resurrection, Magic Mirror, Earthquake, Dimension Door, Fly,
+  // Water Walk) are dealt into the spell decks below; the rest are stubs.
   "spell.chain_lightning": notImplementedSpell(
     "chain_lightning",
     "Chain Lightning",
@@ -847,7 +844,11 @@ export const spellCards: CardLibrary = {
   )
 };
 
-/** Single mixed deck (legacy mode), Core+Rampart+Inferno implemented spells. */
+/**
+ * Single mixed deck (legacy mode): the Core+Rampart+Inferno implemented spells,
+ * plus the map-movement Expert spells (Dimension Door, Fly, Water Walk) now that
+ * they are wired into the engine.
+ */
 export const spellDeckLegacy: string[] = [
   "spell.magic_arrow",
   "spell.magic_arrow",
@@ -889,7 +890,10 @@ export const spellDeckLegacy: string[] = [
   "spell.summon_air_elemental",
   "spell.summon_earth_elemental",
   "spell.summon_fire_elemental",
-  "spell.summon_water_elemental"
+  "spell.summon_water_elemental",
+  "spell.dimension_door",
+  "spell.fly",
+  "spell.water_walk"
 ];
 
 /** BINH split decks. */
@@ -939,5 +943,8 @@ export const spellDeckBinhExpert: string[] = [
   "spell.summon_air_elemental",
   "spell.summon_earth_elemental",
   "spell.summon_fire_elemental",
-  "spell.summon_water_elemental"
+  "spell.summon_water_elemental",
+  "spell.dimension_door",
+  "spell.fly",
+  "spell.water_walk"
 ];
