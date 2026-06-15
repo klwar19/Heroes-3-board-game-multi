@@ -33,6 +33,7 @@ export const implementedCardEffectTypes = [
   "DISCOVER_TILE_CARD",
   "CLEAR_RETALIATION",
   "IGNORE_ATTACK_DIE",
+  "IGNORE_ATTACK_DIE_RESULT",
   "CREATE_SPELL_IMMUNITY",
   "CREATE_FIRE_SHIELD",
   "CREATE_INITIATIVE_BUFF",
@@ -415,6 +416,10 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "IGNORE_ATTACK_DIE") {
     return "ignore the Attack die roll (power adds attack)";
+  }
+
+  if (card.effect.type === "IGNORE_ATTACK_DIE_RESULT") {
+    return "after the Attack die roll: ignore the die and any effects it triggered";
   }
 
   if (card.effect.type === "CREATE_SPELL_IMMUNITY") {
