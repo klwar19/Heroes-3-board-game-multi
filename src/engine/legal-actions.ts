@@ -1039,6 +1039,7 @@ function isOptionEffectPlayable(
     case "TELEPORT_HERO_TO_TOWN":
     case "DISCOVER_TILE_CARD":
     case "GAIN_HERO_MOVEMENT":
+    case "DIMENSION_DOOR":
       return context === "map" && Boolean(state.adventure);
     case "DIPLOMACY_RECRUIT":
       // Diplomacy's Map side only does something with at least one Dwelling.

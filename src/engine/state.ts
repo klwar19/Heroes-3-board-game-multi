@@ -234,8 +234,19 @@ export type ActiveEffectModifier =
       ignoreSpellLimit?: boolean;
     }
   | {
-      /** Angel Wings: walk through fields without resolving them this turn. */
+      /**
+       * Angel Wings / Fly: this turn the player's Heroes may move through
+       * blocked fields (passing over them, never stopping on one). Read by the
+       * adventure pathfinding (canCrossEdge / classifyHeroStep).
+       */
       type: "HERO_MOVE_THROUGH";
+    }
+  | {
+      /**
+       * Water Walk: this turn the player's Heroes may enter, cross and stop on
+       * sea (water-terrain) fields. Read by the adventure pathfinding.
+       */
+      type: "HERO_WATER_WALK";
     }
   | {
       /** Logistics (basic): step to an adjacent empty field at end of turn. */
@@ -394,8 +405,21 @@ export type EffectDefinition =
       type: "GAIN_HERO_MOVEMENT";
       amount: number;
       expertAmount?: number;
-      /** Angel Wings: also walk through fields without resolving this turn. */
+      /** Angel Wings / Fly: also move through blocked fields this turn. */
       moveThroughThisTurn?: boolean;
+      /** Water Walk: also cross/stop on sea fields this turn. */
+      waterWalkThisTurn?: boolean;
+    }
+  | {
+      /**
+       * Dimension Door: move the casting player's Hero up to `fields` fields,
+       * ignoring obstacles and the fields in-between, then resolve the
+       * destination normally (a guarded/enemy field starts combat). The Power
+       * paid raises the reach (Power 0/2/4 -> 1/2/3 fields), encoded as the
+       * higher-cost options of the spell's CHOOSE_ONE.
+       */
+      type: "DIMENSION_DOOR";
+      fields: number;
     }
   | {
       /** Helm of Heavenly Enlightenment: an extra expert use this round. */
@@ -3301,7 +3325,8 @@ export type PendingChoice =
         | "combat-knockback"
         | "cover-of-darkness"
         | "diplomacy-skip"
-        | "diplomacy-recruit";
+        | "diplomacy-recruit"
+        | "dimension-door";
       /** combat-reposition: Harpies' optional fly-back after their attack. */
       reposition?: { unitId: UnitId; originPosition: number };
       /**
@@ -3336,6 +3361,12 @@ export type PendingChoice =
       };
       /** eagle-eye: the dug spell waiting on take/discard. */
       eagleEye?: { deckId: DeckId; cardId: CardId };
+      /**
+       * dimension-door: the Hero being teleported and the candidate
+       * destination fields (index-aligned with the options; the final "stay"
+       * option carries no destination).
+       */
+      dimensionDoor?: { heroId: HeroId; destinations: MapSpaceId[] };
       /**
        * diplomacy-skip: the neutral fight Cyra's Diplomacy may skip. Option 0
        * uses the card (claim the field, no XP); option 1 fights normally.
