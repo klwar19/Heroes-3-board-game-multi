@@ -840,6 +840,30 @@ export type EffectDefinition =
        * the "diplomacy-skip" pending choice in adventure-reducer.ts.
        */
       type: "DIPLOMACY_SKIP_COMBAT";
+    }
+  | {
+      /**
+       * Learning ability. Never played from hand: it is offered automatically
+       * when a Hero is about to level up (see the "learning-level-up" reward and
+       * pending choice). Basic advances the Hero's Experience an extra half level
+       * (`amount` steps); the Expert side advances a full level (`expertAmount`
+       * steps), spends an expert use and removes the card from the game.
+       * A "half level" is one Experience step here (2 steps = 1 level).
+       */
+      type: "ADVANCE_EXPERIENCE";
+      amount: number;
+      expertAmount: number;
+    }
+  | {
+      /**
+       * Visions spell (Map): scry one Neutral Unit deck. Draw `cardsByPower[P]`
+       * cards from a chosen tier deck (P is the Power paid by discarding Spells
+       * for +1 each via the option's "power-source" cost), then discard any of
+       * them and return the rest to the top of that deck in the chosen order.
+       * Resolved through the "visions-deck" / "visions-scry" pending choices.
+       */
+      type: "VISIONS_SCRY";
+      cardsByPower: Record<number, number>;
     };
 
 /**
@@ -2945,6 +2969,15 @@ export type AdventureReward =
       playerId: PlayerId;
       kind: "visit-steps";
       steps: VisitStep[];
+    }
+  | {
+      /**
+       * Learning: the Hero just crossed at least one level and the player holds a
+       * Learning ability card. Pumped into a "learning-level-up" choice offering
+       * to advance an extra half/full level (see pumpAdventureQueues).
+       */
+      playerId: PlayerId;
+      kind: "learning-level-up";
     };
 
 export type VisitStep =
@@ -3513,7 +3546,11 @@ export type PendingChoice =
         | "cover-of-darkness"
         | "diplomacy-skip"
         | "diplomacy-recruit"
-        | "dimension-door";
+        | "dimension-door"
+        | "learning-level-up"
+        | "visions-boost"
+        | "visions-deck"
+        | "visions-scry";
       /** combat-reposition: Harpies' optional fly-back after their attack. */
       reposition?: { unitId: UnitId; originPosition: number };
       /**
@@ -3570,6 +3607,36 @@ export type PendingChoice =
       diplomacyRecruit?: {
         draws: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
         recruitable: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
+      };
+      /**
+       * learning-level-up: the Learning play modes offered, index-aligned with
+       * the options. The final "decline" option carries no mode. Resolving a
+       * mode discards (basic) or removes (expert) one Learning card from hand and
+       * advances the Hero's Experience.
+       */
+      learningLevelUp?: { modes: ("basic" | "expert")[] };
+      /**
+       * visions-boost: paying Visions' Power on the map. `spellCardIds` are the
+       * power-source Spells in hand offered to discard for +1 card each (index-
+       * aligned with the leading options; the trailing option scrys now). `boost`
+       * is how many have already been paid, capped by `cardsByPower`.
+       */
+      visionsBoost?: { boost: number; spellCardIds: CardId[]; cardsByPower: Record<number, number> };
+      /**
+       * visions-deck: the Neutral tier decks Visions may scry (index-aligned with
+       * the options) and how many cards the chosen power level draws.
+       */
+      visionsDeck?: { tiers: ("bronze" | "silver" | "gold" | "azure")[]; count: number };
+      /**
+       * visions-scry: the Neutral cards lifted off the chosen tier deck still
+       * awaiting a keep/discard decision (`remaining`), and the cards already
+       * kept (`toReturn`, in pick order — the first kept ends on top). The
+       * identities stay private to the scrying player.
+       */
+      visionsScry?: {
+        tier: "bronze" | "silver" | "gold" | "azure";
+        remaining: CardId[];
+        toReturn: CardId[];
       };
       returnPhase: GamePhase;
     }

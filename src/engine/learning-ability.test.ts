@@ -1,0 +1,212 @@
+import { describe, expect, it } from "vitest";
+import { cardLibrary } from "@/data/cards/library";
+import { abilityDeckLegacy } from "@/data/cards/abilities-extra";
+import {
+  applyAction,
+  createAdventureGameState,
+  gainExperience,
+  getLegalActions,
+  getMainHero,
+  levelOfExperience,
+  pumpAdventureQueues,
+  type GameAction,
+  type GameState
+} from "./index";
+
+// ---------------------------------------------------------------------------
+// Learning ability (level-up hook).
+//
+// "Play when the Hero is about to level up. Advance their Experience Level by an
+// additional half level" (basic) / "...an additional level, then Remove this
+// card" (expert). A half level is one Experience step here (2 steps = 1 level),
+// so basic = +1 and expert = +2 Experience. The offer surfaces automatically
+// whenever a Hero crosses a level while a Learning card is in hand.
+// ---------------------------------------------------------------------------
+
+function makeGame(): GameState {
+  return createAdventureGameState({ seed: "learning-ability", difficulty: "normal", rollFirstPlayer: false });
+}
+
+function apply(state: GameState, action: GameAction): GameState {
+  const result = applyAction(state, action);
+  expect(result.errors, result.errors.map((error) => error.message).join("; ")).toHaveLength(0);
+  return result.state;
+}
+
+/**
+ * Sets the hero to `experience`, gives the player a Learning card (plus any
+ * extras), gains 1 Experience (crossing into the next level) and pumps the
+ * queue, exactly as a real action that grants Experience would. Returns the
+ * state sitting on the Learning offer (or whatever the queue surfaced).
+ */
+function offerLearningAfterLevelUp(experience: number, hand: string[] = ["ability.learning"]): GameState {
+  const state = makeGame();
+  const hero = getMainHero(state, "p1")!;
+  hero.experience = experience;
+  hero.level = levelOfExperience(experience);
+  state.players.p1.hand = [...hand];
+  // gainExperience + pumpAdventureQueues is the exact sequence a real action
+  // (combat reward, learning-stone visit, treasure die) runs after granting XP.
+  gainExperience(state, "p1", 1);
+  pumpAdventureQueues(state);
+  return state;
+}
+
+describe("Learning card definition", () => {
+  it("is implemented and no longer a needs-implementation stub", () => {
+    const card = cardLibrary["ability.learning"];
+    expect(card.implementationStatus).toBe("implemented");
+    expect(card.tags).not.toContain("needs-implementation");
+    expect(card.effect.type).toBe("ADVANCE_EXPERIENCE");
+    if (card.effect.type === "ADVANCE_EXPERIENCE") {
+      // Basic advances a half level (1 step); expert a full level (2 steps).
+      expect(card.effect.amount).toBe(1);
+      expect(card.effect.expertAmount).toBe(2);
+    }
+  });
+
+  it("is part of the shared Ability deck (reachable in play)", () => {
+    expect(abilityDeckLegacy).toContain("ability.learning");
+  });
+});
+
+describe("Learning offer timing", () => {
+  it("opens a learning-level-up choice when the Hero crosses a level holding the card", () => {
+    const state = offerLearningAfterLevelUp(5); // exp 5 (lvl 3) -> 6 (lvl 4)
+    expect(getMainHero(state, "p1")!.level).toBe(4);
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    if (state.pendingChoice?.type === "OPTION_CHOICE") {
+      expect(state.pendingChoice.context).toBe("learning-level-up");
+      expect(state.pendingChoice.playerId).toBe("p1");
+    }
+  });
+
+  it("does NOT offer Learning when the player does not hold the card", () => {
+    const state = offerLearningAfterLevelUp(5, []); // no Learning in hand
+    const isLearningChoice =
+      state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "learning-level-up";
+    expect(isLearningChoice).toBe(false);
+  });
+
+  it("does NOT offer Learning when no level is crossed", () => {
+    const state = makeGame();
+    const hero = getMainHero(state, "p1")!;
+    hero.experience = 4; // level 3
+    hero.level = 3;
+    state.players.p1.hand = ["ability.learning"];
+    gainExperience(state, "p1", 1); // exp 4 -> 5, still level 3 (no level-up)
+    pumpAdventureQueues(state);
+    expect(getMainHero(state, "p1")!.level).toBe(3);
+    const isLearningChoice =
+      state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "learning-level-up";
+    expect(isLearningChoice).toBe(false);
+  });
+
+  it("does NOT offer Learning at the Experience cap", () => {
+    const state = makeGame();
+    const hero = getMainHero(state, "p1")!;
+    hero.experience = 11; // level 6
+    hero.level = 6;
+    state.players.p1.hand = ["ability.learning"];
+    gainExperience(state, "p1", 1); // exp 11 -> 12 (cap), level 7
+    pumpAdventureQueues(state);
+    expect(getMainHero(state, "p1")!.experience).toBe(12);
+    const isLearningChoice =
+      state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "learning-level-up";
+    expect(isLearningChoice).toBe(false);
+  });
+});
+
+describe("Learning resolution", () => {
+  it("basic advances an extra half level (+1 Experience) and discards the card", () => {
+    const state = offerLearningAfterLevelUp(5); // now at exp 6 (lvl 4), offer open
+    const choiceId = state.pendingChoice!.id;
+    // optionIndex 0 is the basic side.
+    const resolved = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId, optionIndex: 0 });
+
+    expect(getMainHero(resolved, "p1")!.experience).toBe(7); // 6 + 1
+    expect(getMainHero(resolved, "p1")!.level).toBe(4);
+    expect(resolved.players.p1.hand).not.toContain("ability.learning");
+    expect(resolved.players.p1.discard).toContain("ability.learning");
+    expect(resolved.players.p1.removed).not.toContain("ability.learning");
+  });
+
+  it("expert advances an extra full level (+2 Experience), removes the card and spends an expert use", () => {
+    const state = offerLearningAfterLevelUp(5); // exp 6 (lvl 4); expertUses now 2
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+    const choice = state.pendingChoice!;
+    if (choice.type !== "OPTION_CHOICE") {
+      throw new Error("expected a learning-level-up option choice");
+    }
+    // modes = [basic, expert], so optionIndex 1 is the expert side.
+    expect(choice.learningLevelUp?.modes).toEqual(["basic", "expert"]);
+    const resolved = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 1 });
+
+    expect(getMainHero(resolved, "p1")!.experience).toBe(8); // 6 + 2
+    expect(getMainHero(resolved, "p1")!.level).toBe(5);
+    // Expert side removes the card from the game (not the discard pile).
+    expect(resolved.players.p1.hand).not.toContain("ability.learning");
+    expect(resolved.players.p1.removed).toContain("ability.learning");
+    expect(resolved.players.p1.discard).not.toContain("ability.learning");
+    expect(resolved.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+    // Crossing into level 5 (an Ability-search level) via Learning runs the full
+    // level-up machinery: a Search of the Ability deck opens afterwards.
+    expect(resolved.pendingChoice?.type).toBe("DECK_SEARCH");
+  });
+
+  it("declining leaves Experience and the Learning card untouched", () => {
+    const state = offerLearningAfterLevelUp(5); // exp 6 (lvl 4)
+    const choice = state.pendingChoice!;
+    if (choice.type !== "OPTION_CHOICE") {
+      throw new Error("expected a learning-level-up option choice");
+    }
+    const declineIndex = choice.options.length - 1; // trailing "Decline"
+    const resolved = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: declineIndex });
+
+    expect(getMainHero(resolved, "p1")!.experience).toBe(6); // unchanged
+    expect(resolved.players.p1.hand).toContain("ability.learning");
+    expect(resolved.players.p1.discard).not.toContain("ability.learning");
+  });
+
+  it("only offers the basic side when no expert use is available", () => {
+    const state = makeGame();
+    const hero = getMainHero(state, "p1")!;
+    hero.experience = 5; // level 3
+    hero.level = 3;
+    state.players.p1.hand = ["ability.learning"];
+    // Cross into level 4 (a specialty level, so no competing Ability search),
+    // then spend every expert use before the Learning offer opens.
+    gainExperience(state, "p1", 1); // exp 5 -> 6, level 4 (expertUses becomes 2)
+    state.players.p1.combatStats.expertUsesSpentThisRound = state.players.p1.limits.expertUses;
+    pumpAdventureQueues(state);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    if (choice?.type === "OPTION_CHOICE") {
+      expect(choice.context).toBe("learning-level-up");
+      expect(choice.learningLevelUp?.modes).toEqual(["basic"]);
+      // Just the basic play and "Decline".
+      expect(choice.options).toHaveLength(2);
+    }
+  });
+});
+
+describe("Learning is never played from hand", () => {
+  it("is not offered as a normal map play and rejects a direct PLAY_CARD", () => {
+    const state = apply(makeGame(), { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    state.players.p1.hand = ["ability.learning"];
+    const plays = getLegalActions(state, "p1").filter(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.learning"
+    );
+    expect(plays).toHaveLength(0);
+
+    const result = applyAction(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "ability.learning",
+      mode: "basic",
+      target: { type: "none" }
+    });
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+});

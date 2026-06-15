@@ -53,6 +53,22 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
     };
   }
 
+  // Visions scry: the Neutral Unit cards lifted off the shared deck are revealed
+  // only to the scrying player; opponents just see that a scry is happening.
+  if (choice.type === "OPTION_CHOICE" && choice.context === "visions-scry" && choice.playerId !== viewerPlayerId) {
+    return {
+      ...cloneSerializable(choice),
+      options: choice.options.map(() => ({ label: "Hidden card" })),
+      visionsScry: choice.visionsScry
+        ? {
+            tier: choice.visionsScry.tier,
+            remaining: choice.visionsScry.remaining.map(() => "hidden"),
+            toReturn: choice.visionsScry.toReturn.map(() => "hidden")
+          }
+        : undefined
+    };
+  }
+
   // Magi Power Drain: the candidate Power cards are the defender's hand, so
   // their identities stay private to the choosing player.
   if (choice.type === "COMBAT_HAND_DISCARD" && choice.playerId !== viewerPlayerId) {

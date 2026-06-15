@@ -1058,6 +1058,17 @@ function isOptionEffectPlayable(
     case "DIPLOMACY_RECRUIT":
       // Diplomacy's Map side only does something with at least one Dwelling.
       return context === "map" && Boolean(state.adventure) && unlockedRecruitTiers(state, playerId).size > 0;
+    case "VISIONS_SCRY":
+      // Visions scrys a Neutral Unit deck — only useful when at least one tier
+      // deck still holds cards.
+      return (
+        context === "map" &&
+        Boolean(state.adventure) &&
+        (["bronze", "silver", "gold", "azure"] as const).some((tier) => {
+          const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+          return Boolean(deck) && deck.drawPile.length + deck.discardPile.length > 0;
+        })
+      );
     case "CREATE_INITIATIVE_BUFF":
     case "CREATE_ATTACK_BUFF":
     case "CREATE_DEFENSE_BUFF":

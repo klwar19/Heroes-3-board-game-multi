@@ -58,7 +58,9 @@ export const implementedCardEffectTypes = [
   "CONVERT_ARMY_UNIT",
   "TACTICS_SWAP",
   "DIPLOMACY_RECRUIT",
-  "DIPLOMACY_SKIP_COMBAT"
+  "DIPLOMACY_SKIP_COMBAT",
+  "ADVANCE_EXPERIENCE",
+  "VISIONS_SCRY"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {
@@ -527,6 +529,17 @@ export function describeCardEffect(card: CardDefinition): string {
     const from = card.effect.fromUnitDefId.split(".").pop()?.replace(/_/g, " ");
     const to = card.effect.toUnitDefId.split(".").pop()?.replace(/_/g, " ");
     return `discard a ${card.effect.fromSide} of ${from} to fetch the ${to} from the ${card.effect.toTier} Neutral deck`;
+  }
+
+  if (card.effect.type === "ADVANCE_EXPERIENCE") {
+    return `when about to level up: advance ${card.effect.amount === 1 ? "a half level" : `${card.effect.amount} Experience`}, expert advance a full level then remove this card`;
+  }
+
+  if (card.effect.type === "VISIONS_SCRY") {
+    const breakpoints = Object.entries(card.effect.cardsByPower)
+      .map(([power, count]) => `${power}:${count}`)
+      .join(", ");
+    return `scry a Neutral Unit deck (cards by power ${breakpoints}); discard any and reorder the rest on top`;
   }
 
   return card.kind;
