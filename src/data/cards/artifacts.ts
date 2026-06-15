@@ -511,18 +511,73 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("quiet_eye_of_the_dragon")
   },
-  "artifact.charm_of_mana": notImplementedArtifact(
-    "charm_of_mana",
-    "Charm of Mana",
-    "minor",
-    "Discard 2 cards, then draw 3 cards. — OR — Draw 2 cards, then discard 1 card."
-  ),
-  "artifact.greater_gnolls_flail": notImplementedArtifact(
-    "greater_gnolls_flail",
-    "Greater Gnoll's Flail",
-    "minor",
-    "+2 attack, then this unit suffers -1 defense until the end of the Combat. — OR — +1 attack."
-  ),
+  // Charm of Mana: pure card cycling. Option 0 pays a 2-card discard cost up
+  // front, then draws 3 (net +1). Option 1 draws 2 first, then opens a
+  // hand-discard choice for 1 card (any hand card — the printed text sets no
+  // restriction).
+  "artifact.charm_of_mana": {
+    id: "artifact.charm_of_mana",
+    name: "Charm of Mana",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "minor",
+    tags: [
+      "artifact",
+      "minor",
+      "Discard 2 cards, then draw 3 cards. — OR — Draw 2 cards, then discard 1 card."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Discard 2 cards, then draw 3",
+          cost: { discardCards: 2 },
+          effect: { type: "DRAW_CARDS", amount: 3 }
+        },
+        {
+          label: "Draw 2 cards, then discard 1",
+          effect: { type: "DRAW_CARDS", amount: 2, thenDiscard: 1 }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "charm_of_mana", "Charm of Mana"),
+    implementationStatus: "implemented",
+    source: artifactSource("charm_of_mana")
+  },
+  // Greater Gnoll's Flail: played while one of your units is attacking. The
+  // big swing adds +2 attack but leaves the unit a Corrosion token (−1 defense
+  // for the rest of the Combat); the safe option is a plain +1 attack.
+  "artifact.greater_gnolls_flail": {
+    id: "artifact.greater_gnolls_flail",
+    name: "Greater Gnoll's Flail",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "minor",
+    tags: [
+      "artifact",
+      "minor",
+      "+2 attack, then this unit suffers -1 defense until the end of the Combat. — OR — +1 attack."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+2 attack, then -1 defense until the end of the Combat",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, selfCorrosion: 1 }
+        },
+        {
+          label: "+1 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "greater_gnolls_flail", "Greater Gnoll's Flail"),
+    implementationStatus: "implemented",
+    source: artifactSource("greater_gnolls_flail")
+  },
   "artifact.shield_of_the_dwarven_lords": notImplementedArtifact(
     "shield_of_the_dwarven_lords",
     "Shield of the Dwarven Lords",
@@ -961,18 +1016,72 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("necklace_of_dragonteeth")
   },
-  "artifact.shackles_of_war": notImplementedArtifact(
-    "shackles_of_war",
-    "Shackles of War",
-    "major",
-    "If played at the start of Combat, the Enemy Hero can neither Retreat nor Surrender. — OR — Draw 2 cards, choose 1 card and discard the other."
-  ),
-  "artifact.mystic_orb_of_mana": notImplementedArtifact(
-    "mystic_orb_of_mana",
-    "Mystic Orb of Mana",
-    "major",
-    "Search (4) your discard pile. — OR — Only if your discard pile is empty: draw 2 cards."
-  ),
+  // Shackles of War: option 0, played at the start of a player-vs-player
+  // combat, locks the enemy hero in — they can neither Retreat nor Surrender
+  // (BLOCK_ENEMY_ESCAPE → a CANNOT_ESCAPE_COMBAT effect on the enemy). Option 1
+  // draws 2 and discards one of the two drawn cards.
+  "artifact.shackles_of_war": {
+    id: "artifact.shackles_of_war",
+    name: "Shackles of War",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "If played at the start of Combat, the Enemy Hero can neither Retreat nor Surrender. — OR — Draw 2 cards, choose 1 card and discard the other."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Lock the enemy hero in: no Retreat or Surrender this combat",
+          combatOnly: true,
+          effect: { type: "BLOCK_ENEMY_ESCAPE" }
+        },
+        {
+          label: "Draw 2 cards, then discard one of them",
+          effect: { type: "DRAW_CARDS", amount: 2, thenDiscard: 1, thenDiscardDrawnOnly: true }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "shackles_of_war", "Shackles of War"),
+    implementationStatus: "implemented",
+    source: artifactSource("shackles_of_war")
+  },
+  // Mystic Orb of Mana: Search (4) the top of your discard pile and take 1 card
+  // (the TAKE_FROM_DISCARD `fromTop` machinery is built for exactly this), or,
+  // only on an empty discard pile, draw 2 cards. The Search option resolves
+  // through the adventure reward queue, so it is a map play.
+  "artifact.mystic_orb_of_mana": {
+    id: "artifact.mystic_orb_of_mana",
+    name: "Mystic Orb of Mana",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Search (4) your discard pile. — OR — Only if your discard pile is empty: draw 2 cards."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Search (4) your discard pile",
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, fromTop: 4 }
+        },
+        {
+          label: "Only if your discard pile is empty: draw 2 cards",
+          requiresEmptyDiscard: true,
+          effect: { type: "DRAW_CARDS", amount: 2 }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "mystic_orb_of_mana", "Mystic Orb of Mana"),
+    implementationStatus: "implemented",
+    source: artifactSource("mystic_orb_of_mana")
+  },
 
   // ---- Relic artifacts ----------------------------------------------------
   "artifact.angel_wings": {

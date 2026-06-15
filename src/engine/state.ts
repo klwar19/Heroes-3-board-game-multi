@@ -161,6 +161,14 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Shackles of War (option 1): while held, the affected player's Hero can
+       * neither Retreat nor Surrender from the current Combat. Player-scoped,
+       * lasts the Combat.
+       */
+      type: "CANNOT_ESCAPE_COMBAT";
+    }
+  | {
+      /**
        * Luck-style rerolls of the adventure dice. "any" also lets the
        * attack-die reroll flow consume this effect (Expert Luck).
        */
@@ -309,7 +317,19 @@ export type EffectDefinition =
       removePolarity: "negative" | "any-removable";
     }
   | { type: "CANCEL_SPELL"; maxPower?: number; expertIgnoresMaxPower?: boolean }
-  | { type: "DRAW_CARDS"; amount: number; expertAmount?: number }
+  | {
+      type: "DRAW_CARDS";
+      amount: number;
+      expertAmount?: number;
+      /**
+       * Charm of Mana / Shackles of War: after drawing, the player discards this
+       * many cards from hand through a follow-up choice ("draw 2, then discard
+       * 1"). When `thenDiscardDrawnOnly` is set the choice is limited to the
+       * cards just drawn ("draw 2, keep 1, discard the other" — Shackles).
+       */
+      thenDiscard?: number;
+      thenDiscardDrawnOnly?: boolean;
+    }
   | {
       /**
        * "OR" cards (mostly artifacts): the player chooses exactly one of the
@@ -333,6 +353,12 @@ export type EffectDefinition =
       drawCards?: number;
       /** Sword of Hellfire / Shield of the Damned: the unit also takes damage. */
       selfDamage?: number;
+      /**
+       * Greater Gnoll's Flail (+2 attack option): the boosted unit also receives
+       * a Corrosion token of this size (−1 defense, to a minimum of 0) that
+       * lasts until the end of the Combat.
+       */
+      selfCorrosion?: number;
       /** Bloodlust/Golden Bow: only these unit types may receive the bonus. */
       unitTypes?: UnitType[];
       /** Precision: the shot also ignores the ranged combat penalty. */
@@ -537,14 +563,32 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Solmyr's Chain Lightning (I: 1/1/0, VI: 2/1/1): the selected unit takes
-       * `damages[0]`; the remaining values are dealt to the units closest to it
-       * (friend or foe), the caster choosing which closest unit takes which on
-       * ties or when more than one nonzero value is left. A value of 0 means
-       * that closest unit is skipped (its damage routed away from an ally).
+       * Solmyr's Chain Lightning (I: 1/1/0, VI: 2/1/1) and the Chain Lightning
+       * Spell: the selected unit takes `damages[0]`; the remaining values are
+       * dealt to the units closest to it (friend or foe), the caster choosing
+       * which closest unit takes which on ties or when more than one nonzero
+       * value is left. A value of 0 means that closest unit is skipped (its
+       * damage routed away from an ally).
+       *
+       * Hero specialties use the fixed `damages`. The Spell scales its
+       * allocation with the Power paid via `damagesByPower` (0 → 1/1/1,
+       * 2 → 2/1/1, 4 → 3/2/1) — the array at the highest threshold the paid
+       * Power reaches is used.
        */
       type: "CHAIN_LIGHTNING";
-      damages: number[];
+      damages?: number[];
+      damagesByPower?: Record<number, number[]>;
+    }
+  | {
+      /**
+       * Blind Spell: place a Paralysis token on the selected enemy unit, gated
+       * by the Power paid (0 → bronze, 1 → silver, 2 → gold). A paralysed unit
+       * skips its next activation (the token is removed instead) and the token
+       * comes off the moment the unit takes any damage. Casting on a unit above
+       * the unlocked grade does nothing — exactly like Anti-Magic's gate.
+       */
+      type: "PLACE_PARALYSIS";
+      gradeByPower: Record<number, UnitGrade>;
     }
   | {
       /**
@@ -672,6 +716,14 @@ export type EffectDefinition =
        * spending a movement point.
        */
       type: "CONTINUE_NEUTRAL_FREE";
+    }
+  | {
+      /**
+       * Shackles of War (option 1): played at the start of a player-vs-player
+       * Combat, the enemy player's Hero can neither Retreat nor Surrender for
+       * the rest of that Combat (a CANNOT_ESCAPE_COMBAT effect on the enemy).
+       */
+      type: "BLOCK_ENEMY_ESCAPE";
     }
   | {
       /**
@@ -854,6 +906,12 @@ export type CardOptionDefinition = {
   combatOnly?: boolean;
   /** This option is the card's expert side: playing it spends a crown. */
   expertOnly?: boolean;
+  /**
+   * Mystic Orb of Mana's second option ("Only if your discard pile is empty:
+   * draw 2 cards"): the option is offered only while the player's discard pile
+   * holds no cards.
+   */
+  requiresEmptyDiscard?: boolean;
   effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
 };
 
@@ -1181,6 +1239,16 @@ export type GameAction =
   | { type: "RETREAT_FROM_COMBAT"; playerId: PlayerId }
   | {
       /**
+       * Player-vs-player combats: at the start of the combat (round 1) a
+       * participating hero may Surrender — the combat ends with that player as
+       * the loser. Blocked while the player is under Shackles of War's
+       * "neither Retreat nor Surrender" effect.
+       */
+      type: "SURRENDER_COMBAT";
+      playerId: PlayerId;
+    }
+  | {
+      /**
        * Close the end-of-combat notice: finalizes an adventure combat
        * (experience, unit flips, the field visit) and returns to the map.
        */
@@ -1340,7 +1408,17 @@ export type GameAction =
       type: "START_ADVENTURE";
       playerId: PlayerId;
     }
-  | { type: "END_TURN"; playerId: PlayerId };
+  | { type: "END_TURN"; playerId: PlayerId }
+  | {
+      /**
+       * Concede the game: the player is removed from the turn order and becomes
+       * an observer (rulebook p.11 elimination). Legal only on the player's own
+       * map turn — never while defending in Combat ("you cannot surrender when
+       * defending your Faction Town", rulebook p.46).
+       */
+      type: "GIVE_UP";
+      playerId: PlayerId;
+    };
 
 export type LegalAction = {
   action: GameAction;
@@ -2046,6 +2124,21 @@ export type GameEvent =
       reason: string;
     }
   | {
+      id: string;
+      type: "PLAYER_ELIMINATED";
+      playerId: PlayerId;
+      reason: string;
+      /** True when the player chose to give up rather than being timed out. */
+      gaveUp: boolean;
+    }
+  | {
+      id: string;
+      type: "PLAYER_ELIMINATION_CLOCK";
+      playerId: PlayerId;
+      /** Turns the player has left before elimination, or null when cleared. */
+      turnsLeft: number | null;
+    }
+  | {
       /**
        * Setup roll for the starting player (official rulebook step 22): every
        * player rolls the Attack die, highest result starts; ties reroll among
@@ -2323,6 +2416,20 @@ export type PlayerState = {
   canMulligan?: boolean;
   /** Second negative morale token: the hand is discarded when the turn ends. */
   discardHandAtTurnEnd?: boolean;
+  /**
+   * Removed from the game (gave up, or spent the grace period with no Town or
+   * Settlement). An eliminated player keeps a `players` entry so the table can
+   * still show them as an observer, but they leave `turnOrder` and take no
+   * turns. Rulebook p.11: "Eliminated players are immediately removed."
+   */
+  eliminated?: boolean;
+  /**
+   * Player Elimination clock (rulebook p.11, house rule: 2 of the player's own
+   * turns instead of 3 full Rounds). Set while the player controls no Town and
+   * no Settlement; counts down at the end of each of their turns and reaching 0
+   * eliminates them. `null`/absent means they hold a base and are safe.
+   */
+  eliminationCountdown?: number | null;
   /** Nomads (army map ability): the end-of-turn adjacent step was offered this turn. */
   nomadStepDoneThisTurn?: boolean;
   /** Rogues (army map ability): the once-per-turn deck peek was used this turn. */
@@ -2835,6 +2942,15 @@ export type VisitStep =
     }
   | { type: "SEARCH_SHARED_DECK"; deckId: DeckId; count: number }
   | { type: "SETTLEMENT_CHOICE" }
+  | {
+      /**
+       * Reward for flagging an enemy Town (rulebook p.76: "Scenarios typically
+       * have special rewards for flagging them"). The conqueror raises one
+       * production track by a single resource-gain level: +5 gold, +2 building
+       * materials, or +1 valuables.
+       */
+      type: "RESOURCE_GAIN_LEVEL";
+    }
   | { type: "MAGIC_SPRING" }
   | { type: "WITCH_HUT" }
   | { type: "SCHOLAR" }
@@ -3328,6 +3444,7 @@ export type PendingChoice =
         | "war-machine"
         | "deck-pick"
         | "discard-pick"
+        | "hand-discard"
         | "eagle-eye"
         | "own-deck-pick"
         | "garrison"
@@ -3375,6 +3492,8 @@ export type PendingChoice =
       };
       /** eagle-eye: the dug spell waiting on take/discard. */
       eagleEye?: { deckId: DeckId; cardId: CardId };
+      /** hand-discard: candidate hand cards (index-aligned with options) and how many still to discard (Charm of Mana / Shackles of War). */
+      handDiscard?: { cardIds: CardId[]; remaining: number; drawnOnly: boolean };
       /**
        * diplomacy-skip: the neutral fight Cyra's Diplomacy may skip. Option 0
        * uses the card (claim the field, no XP); option 1 fights normally.

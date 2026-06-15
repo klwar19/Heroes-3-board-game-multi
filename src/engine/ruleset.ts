@@ -43,7 +43,10 @@ export const VICTORY_MODE_LABELS: Record<VictoryMode, string> = {
 };
 
 export const VICTORY_MODE_DESCRIPTIONS: Record<VictoryMode, string> = {
-  conquest: "Flag an enemy faction Town to win — the classic skirmish goal.",
+  conquest:
+    "Eliminate every rival faction. Flagging an enemy Town is not an instant win: it earns you a resource-gain " +
+    "level (+5 gold, +2 materials, or +1 valuables) and starts their clock — a player with no Town and no " +
+    "Settlement lasts 2 more turns before being removed. A held Settlement keeps them fighting. Last faction standing wins.",
   grail:
     "Win either way: capture the Grail (defeat its Lvl-VII guard, dig it for 1 movement point, then carry it " +
     "home to your town), or beat every enemy hero in combat at least once (only 2 of the 3 in a 4-player game). " +

@@ -1,4 +1,5 @@
 import manifest from "./fx-manifest.json";
+import soundDurations from "../../public/sounds/durations.json";
 
 /**
  * Battle-effect sprite sheets converted from the original Heroes III defs
@@ -151,3 +152,138 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   fear: { affect: [{ key: "fear" }], sound: "effects/fear" },
   "acid-breath": { hit: "acid-breath", hitSound: "effects/acid-breath" }
 };
+
+/**
+ * Heals that are NOT cast as spells and so have no SPELL_CAST_RESOLVED to carry
+ * a sprite + sound — keyed by the source card. The First Aid Tent is the one in
+ * play today: its per-round heal otherwise floated a bare "+N" with no effect.
+ * Spell heals (Cure) are intentionally absent: they animate through their spell
+ * cast, and adding them here would play the cure twice.
+ */
+export const healFxPlans: Record<string, SpellFxPlan> = {
+  // The First Aid Tent mends a stack: the green Cure shimmer + heal chime, the
+  // same cue Heroes III plays when the tent patches a unit up.
+  "war_machine.first_aid_tent": { affect: [{ key: "cure" }], sound: "spells/cure" }
+};
+
+// ---------------------------------------------------------------------------
+// Presentation timing: how long a spell/ability's animation AND sound take, so
+// the damage / death / heal it causes can be held back until both have fully
+// played. The numbers come straight from the converted assets (sprite frame
+// counts, measured MP3 lengths) so they can never drift out of sync with what
+// the player actually sees and hears.
+// ---------------------------------------------------------------------------
+
+const SOUND_MS = soundDurations as Record<string, number>;
+
+/** Playback length of a converted sound in ms (0 when unknown/missing). */
+export function soundDurationMs(key: string | undefined): number {
+  if (!key) {
+    return 0;
+  }
+  return SOUND_MS[key] ?? 0;
+}
+
+/**
+ * A single-frame sheet (e.g. the lightning bolt still) is flashed with a fade
+ * rather than shown for one fps tick — see runSprite in components/table/fx.tsx.
+ */
+export const SINGLE_FRAME_FLASH_MS = 480;
+
+/**
+ * Upper bound on a projectile's flight. runProjectile scales the flight by
+ * distance but caps it here, so using the cap keeps the damage gate safe (it
+ * can only ever wait a touch too long, never resolve before the bolt lands).
+ */
+export const MAX_PROJECTILE_FLIGHT_MS = 560;
+
+/**
+ * Safety bound on the whole gate so a freak overlong clip can never stall the
+ * table. It sits above every real spell/ability cue today — the longest damage
+ * presentation (the Faerie Dragon's Ice Bolt) lands near 2.0s, and the very
+ * longest sound of any kind (Azure Dragon's Fear, a no-damage debuff) is ~3.4s
+ * — so it never trims one in practice.
+ */
+export const MAX_PRESENTATION_MS = 3600;
+
+/** How long a sprite sheet plays on screen, in ms. */
+export function spriteDurationMs(key: string | undefined): number {
+  if (!key) {
+    return 0;
+  }
+  const sheet = getFxSheet(key);
+  if (!sheet) {
+    return 0;
+  }
+  return sheet.frames <= 1 ? SINGLE_FRAME_FLASH_MS : Math.round((sheet.frames / sheet.fps) * 1000);
+}
+
+/**
+ * The four presentation segments a plan can contribute, mirroring exactly how
+ * queueBoardFx / the ability cue builder schedule them (projectile XOR hit,
+ * then affect, then tint). Each segment lasts until BOTH its sprite work and
+ * the sound playing under it have finished.
+ */
+function projectileSegmentMs(plan: SpellFxPlan): number {
+  const flight = MAX_PROJECTILE_FLIGHT_MS;
+  // The cast sound fires as the bolt launches; the hit sprite + hit sound land
+  // when it arrives (after the flight).
+  return Math.max(
+    flight + spriteDurationMs(plan.hit),
+    soundDurationMs(plan.sound),
+    flight + soundDurationMs(plan.hitSound)
+  );
+}
+
+function hitSegmentMs(plan: SpellFxPlan): number {
+  // queueBoardFx plays hitSound ?? sound under a bare hit sprite.
+  return Math.max(spriteDurationMs(plan.hit), soundDurationMs(plan.hitSound ?? plan.sound));
+}
+
+function affectSegmentMs(plan: SpellFxPlan): number {
+  if (!plan.affect || plan.affect.length === 0) {
+    return 0;
+  }
+  const spriteEnd = Math.max(
+    ...plan.affect.map((entry) => (entry.delayMs ?? 0) + spriteDurationMs(entry.key))
+  );
+  // The cast sound plays under the first affect sprite.
+  const soundEnd = (plan.affect[0].delayMs ?? 0) + soundDurationMs(plan.sound);
+  return Math.max(spriteEnd, soundEnd);
+}
+
+/** Bloodlust-style tints have no sprite; the wash holds this long. */
+export const TINT_HOLD_MS = 900;
+
+function tintSegmentMs(plan: SpellFxPlan): number {
+  if (!plan.tint) {
+    return 0;
+  }
+  return Math.max(TINT_HOLD_MS, soundDurationMs(plan.sound));
+}
+
+/**
+ * Total time a spell/ability's board presentation (sprites + the sounds layered
+ * under them) takes, from the moment it begins. The damage number, a slain
+ * unit's fall and any heal are all held until this elapses, so an effect never
+ * resolves on the board before the player has seen and heard it.
+ */
+export function spellPresentationMs(plan: SpellFxPlan | undefined): number {
+  if (!plan) {
+    return 0;
+  }
+  let total = 0;
+  if (plan.projectile) {
+    total += projectileSegmentMs(plan);
+  } else if (plan.hit) {
+    total += hitSegmentMs(plan);
+  }
+  total += affectSegmentMs(plan);
+  total += tintSegmentMs(plan);
+  // A sound-only plan (e.g. Summon Elemental) still has a presentation: the
+  // cast sound. Floor the gate at it so it is never reported as instantaneous.
+  if (total === 0) {
+    total = soundDurationMs(plan.sound);
+  }
+  return Math.min(MAX_PRESENTATION_MS, total);
+}
