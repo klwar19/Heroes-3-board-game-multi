@@ -100,7 +100,12 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "spell.summon_air_elemental": { sound: "spells/air-elemental" },
   "spell.summon_earth_elemental": { sound: "units/earth-elemental-attack" },
   "spell.summon_fire_elemental": { sound: "units/fire-elemental-attack" },
-  "spell.summon_water_elemental": { sound: "units/water-elemental-attack" }
+  "spell.summon_water_elemental": { sound: "units/water-elemental-attack" },
+  // Inferno: the dice (rolled out first under the cast roar, see SPELL_DICE_ROLLED)
+  // settle, then this fire sheet erupts over the chosen space with the fire-storm
+  // impact before the per-unit damage floats. `sound` rides under the dice; the
+  // `hit` burst + `hitSound` land on the space once the roll has read out.
+  "spell.inferno": { hit: "inferno", sound: "spells/inferno", hitSound: "effects/fire-storm" }
 };
 
 /** Played at center stage when a spell is countered. */
@@ -143,6 +148,9 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // Tower Genies' Wish: a sparkle of fortune as a Spell is conjured to hand.
   "genie-spell-draw-few": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
   "genie-spell-draw-pack": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
+  // Slayer Spell: after its dice read out (they ride the attack-die overlay), the
+  // slayer glyph flares over the gold target as the empowered blow lands.
+  slayer: { affect: [{ key: "slayer" }], sound: "spells/slayer" },
   // Future abilities (cards not implemented yet, assets ready):
   poison: { affect: [{ key: "poison" }], sound: "spells/poison" },
   paralyze: { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
