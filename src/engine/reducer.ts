@@ -34,6 +34,7 @@ import {
   openSkeletonReinforceChoice,
   moveHeroAdventure,
   moveHeroPathAdventure,
+  openDimensionDoorChoice,
   openSharedDeckSearch,
   hireSecondaryHero,
   placeCombatUnit,
@@ -6113,6 +6114,25 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         action.playerId
       );
     }
+    if (effect.waterWalkThisTurn) {
+      createActiveEffect(
+        state,
+        {
+          name: card.name,
+          scope: "player",
+          duration: { type: "current-turn" },
+          polarity: "positive",
+          removable: false,
+          modifiers: [{ type: "HERO_WATER_WALK" }]
+        },
+        { type: "card", cardId: card.id, controllerId: action.playerId },
+        action.playerId
+      );
+    }
+  }
+
+  if (effect.type === "DIMENSION_DOOR") {
+    openDimensionDoorChoice(state, action.playerId, effect.fields);
   }
 
   if (effect.type === "GAIN_EXPERT_USE") {

@@ -34,6 +34,7 @@ import {
   getActiveAstrologersCard,
   getAdjacentSpaceIds,
   discountedReinforceCost,
+  getHeroMovementCapabilities,
   getMainHero,
   getTileFootprintSpaceIds,
   getTownOfPlayer,
@@ -43,6 +44,7 @@ import {
   heroAtSpace,
   instantiateTile,
   isFieldGuarded,
+  seaStepHalts,
   makeCombatUnitFromArmy,
   makeCombatUnitFromNeutral,
   materializeTileFields,
@@ -91,7 +93,7 @@ import {
   wisdomGoldDiscount,
   wisdomSearchCount
 } from "./ruleset";
-import { hexDistance, hexNeighbor, hexSpaceId, slotDirection, tileFootprint } from "./hex";
+import { hexDistance, hexNeighbor, hexSpaceId, parseHexSpaceId, slotDirection, tileFootprint } from "./hex";
 import type {
   CombatState,
   GameAction,
@@ -410,29 +412,22 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
 
 export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapSpaceId[] {
   const adventure = state.adventure;
-  if (!adventure || !hero.spaceId || hero.movementPoints <= 0) {
+  if (!adventure || !hero.spaceId || hero.movementPoints <= 0 || hero.movementHaltedThisTurn) {
     return [];
   }
 
+  const movement = getHeroMovementCapabilities(state, hero);
   return getAdjacentSpaceIds(hero.spaceId).filter((spaceId) => {
-    if (!canCrossEdge(state, hero.spaceId as MapSpaceId, spaceId)) {
+    if (!canCrossEdge(state, hero.spaceId as MapSpaceId, spaceId, movement)) {
       return false;
     }
 
-    const occupant = heroAtSpace(state, spaceId, hero.id);
-    if (occupant) {
-      if (occupant.controllerId === hero.controllerId) {
-        return false;
-      }
-
-      // Heroes inside a Sanctuary cannot be attacked.
-      const field = adventure.fields[spaceId];
-      if (field && locationDefinitions[field.location]?.passive?.protectsFromAttack) {
-        return false;
-      }
-    }
-
-    return true;
+    // A single step must end on a field the hero can stop on: "open" empty
+    // fields and "stop" fields (guards, enemy heroes, locations). Blocked fields
+    // crossed by Fly are "pass-only" (you fly over but cannot land), and allied
+    // heroes / sanctuaries are "pass-only" too — none are valid stops.
+    const kind = classifyHeroStep(state, hero, spaceId, movement);
+    return kind === "open" || kind === "stop";
   });
 }
 
@@ -443,7 +438,7 @@ export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapS
  * move without visiting, as the rulebook prescribes.
  */
 function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, passThrough: boolean): void {
-  const adventure = requireAdventure(state);
+  requireAdventure(state);
   const from = hero.spaceId ?? to;
   hero.spaceId = to;
   hero.movementPoints -= 1;
@@ -457,9 +452,37 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
     movementLeft: hero.movementPoints
   });
 
+  haltAfterSeaStep(state, hero, from, to);
+
   if (passThrough) {
     return;
   }
+
+  resolveHeroArrival(state, hero, to);
+}
+
+/**
+ * Any step that touches the open sea — wading in, wading out, or moving within
+ * it — ends a hero's movement for the turn unless they are Water Walking. The
+ * hero keeps their remaining movement points (so a neutral combat on a sea
+ * field can still spend them to continue) but cannot take another step; with
+ * Water Walk they move across the sea freely.
+ */
+function haltAfterSeaStep(state: GameState, hero: HeroState, from: MapSpaceId, to: MapSpaceId): void {
+  if (seaStepHalts(state, from, to, getHeroMovementCapabilities(state, hero))) {
+    hero.movementHaltedThisTurn = true;
+  }
+}
+
+/**
+ * Resolves what the hero finds on the field it has just arrived on — whether it
+ * walked there one step or was teleported by Dimension Door: an enemy hero or
+ * undefeated guards start a combat, an enemy Town/Settlement opens the garrison
+ * decision, the Grail may be delivered home, otherwise the field is visited.
+ * The hero's position is assumed to already be `to`.
+ */
+function resolveHeroArrival(state: GameState, hero: HeroState, to: MapSpaceId): void {
+  const adventure = requireAdventure(state);
 
   const enemyHero = heroAtSpace(state, to, hero.id);
   if (enemyHero && enemyHero.controllerId !== hero.controllerId) {
@@ -594,6 +617,121 @@ export function resolveGarrisonChoice(state: GameState, playerId: PlayerId, opti
   startPlayerCombat(state, attackerHero, null, pending.fieldId, playerId);
 }
 
+// ---------------------------------------------------------------------------
+// Dimension Door (map spell: teleport the hero, ignoring obstacles)
+// ---------------------------------------------------------------------------
+
+/**
+ * Relocates a hero onto `to` without spending movement (the Spell is the cost)
+ * and resolves the destination exactly like a normal arrival — guards or an
+ * enemy hero there start a combat, a location is visited. Used by Dimension
+ * Door's "resolve the last one normally".
+ */
+function dimensionDoorTeleport(state: GameState, hero: HeroState, to: MapSpaceId): void {
+  const from = hero.spaceId ?? to;
+  hero.spaceId = to;
+  appendEvent(state, {
+    type: "HERO_MOVED",
+    playerId: hero.controllerId,
+    heroId: hero.id,
+    from,
+    to,
+    movementLeft: hero.movementPoints
+  });
+  // A teleport that touches the sea halts further movement, like a sea step.
+  haltAfterSeaStep(state, hero, from, to);
+  resolveHeroArrival(state, hero, to);
+}
+
+/**
+ * Dimension Door candidates: every revealed field within `range` hexes of the
+ * hero (straight-line hex distance, ignoring obstacles and the fields
+ * in-between) other than the hero's own field, that the hero could resolve
+ * normally on arrival — an empty field or a "stopping" field (guards, an enemy
+ * hero, a location, or the open sea, which lands the hero and halts them).
+ * Blocked fields and fields holding an allied hero are not valid landings.
+ */
+function dimensionDoorDestinations(state: GameState, hero: HeroState, range: number): MapSpaceId[] {
+  const adventure = state.adventure;
+  const origin = hero.spaceId ? parseHexSpaceId(hero.spaceId) : null;
+  if (!adventure || !origin || range <= 0) {
+    return [];
+  }
+
+  const movement = getHeroMovementCapabilities(state, hero);
+  const destinations: MapSpaceId[] = [];
+  for (const spaceId of Object.keys(adventure.fields)) {
+    if (spaceId === hero.spaceId) {
+      continue;
+    }
+    const coord = parseHexSpaceId(spaceId);
+    if (!coord || hexDistance(origin, coord) > range) {
+      continue;
+    }
+    const kind = classifyHeroStep(state, hero, spaceId, movement);
+    if (kind === "open" || kind === "stop") {
+      destinations.push(spaceId);
+    }
+  }
+  return destinations;
+}
+
+/**
+ * Opens the Dimension Door destination choice after the spell is played. With
+ * no reachable destination the spell fizzles (the card is already spent),
+ * mirroring how Town Portal returns when the player controls no other town.
+ */
+export function openDimensionDoorChoice(state: GameState, playerId: PlayerId, range: number): void {
+  const adventure = state.adventure;
+  const hero = getMainHero(state, playerId);
+  if (!adventure || !hero || !hero.spaceId) {
+    return;
+  }
+
+  const destinations = dimensionDoorDestinations(state, hero, range);
+  if (destinations.length === 0) {
+    return;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Dimension Door: move your hero up to ${range} field${range === 1 ? "" : "s"} to…`,
+    options: [
+      ...destinations.map((spaceId) => ({ label: `Teleport to ${spaceId}` })),
+      { label: "Cancel (stay)" }
+    ],
+    context: "dimension-door",
+    dimensionDoor: { heroId: hero.id, destinations },
+    returnPhase: "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Resolves the Dimension Door destination choice (CHOOSE_OPTION). */
+export function resolveDimensionDoorChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  const pending = choice?.type === "OPTION_CHOICE" ? choice.dimensionDoor : undefined;
+  if (!pending) {
+    throw new Error("There is no Dimension Door to resolve.");
+  }
+
+  state.pendingChoice = null;
+  state.phase = "player-turn";
+  state.priorityPlayerId = null;
+
+  const hero = state.heroes[pending.heroId];
+  // The trailing option is "Cancel (stay)", which carries no destination.
+  const destination = pending.destinations[optionIndex];
+  if (!hero || !destination) {
+    return;
+  }
+
+  dimensionDoorTeleport(state, hero, destination);
+}
+
 /** Whether the walk must pause for player input after a step resolved. */
 function heroStepNeedsInput(state: GameState): boolean {
   const adventure = state.adventure;
@@ -621,6 +759,10 @@ export function moveHeroAdventure(state: GameState, action: Extract<GameAction, 
 
   if (hero.movementPoints <= 0) {
     throw new Error("That hero has no movement points left.");
+  }
+
+  if (hero.movementHaltedThisTurn) {
+    throw new Error("That hero waded into the sea and cannot move further this turn.");
   }
 
   if (!getHeroMoveDestinations(state, hero).includes(action.to)) {
@@ -656,18 +798,24 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
     throw new Error("That hero has no movement points left.");
   }
 
+  if (hero.movementHaltedThisTurn) {
+    throw new Error("That hero waded into the sea and cannot move further this turn.");
+  }
+
   // Validate the whole path before moving: consecutive, crossable, and only
-  // the final field may stop the hero.
+  // the final field may stop the hero. Fly / Water Walk effects active this
+  // turn open extra edges (through blocked fields, onto the sea).
+  const movement = getHeroMovementCapabilities(state, hero);
   let cursor = hero.spaceId;
   for (const [index, step] of action.path.entries()) {
     if (!getAdjacentSpaceIds(cursor).includes(step)) {
       throw new Error("Each path step must be adjacent to the previous field.");
     }
-    if (!canCrossEdge(state, cursor, step)) {
-      throw new Error("The path crosses a sealed tile border or a blocked field.");
+    if (!canCrossEdge(state, cursor, step, movement)) {
+      throw new Error("The path crosses a sealed tile border, a blocked field, or open sea.");
     }
 
-    const kind = classifyHeroStep(state, hero, step);
+    const kind = classifyHeroStep(state, hero, step, movement);
     const isLast = index === action.path.length - 1;
     if (kind === "block") {
       throw new Error("The path crosses an impassable field.");
@@ -675,8 +823,13 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
     if (kind === "stop" && !isLast) {
       throw new Error("A field along the path would stop the hero; walk there first.");
     }
+    // A sea-touching step (without Water Walk) halts the hero, so it can only be
+    // the final step of the walk.
+    if (seaStepHalts(state, cursor, step, movement) && !isLast) {
+      throw new Error("The hero would be halted at the sea; that step must be the last of the walk.");
+    }
     if (kind === "pass-only" && isLast) {
-      throw new Error("The walk cannot end on an allied hero.");
+      throw new Error("The walk cannot end on a field the hero can only pass through.");
     }
     cursor = step;
   }
@@ -688,10 +841,11 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
       break;
     }
 
-    const passThrough = classifyHeroStep(state, hero, step) === "pass-only";
+    const passThrough = classifyHeroStep(state, hero, step, movement) === "pass-only";
     performHeroStep(state, hero, step, passThrough);
 
-    if (heroStepNeedsInput(state)) {
+    // Wading into/out of the sea ends the walk even if points remain.
+    if (hero.movementHaltedThisTurn || heroStepNeedsInput(state)) {
       break;
     }
   }
@@ -3875,6 +4029,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "garrison") {
     resolveGarrisonChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "dimension-door") {
+    resolveDimensionDoorChoice(state, action.playerId, action.optionIndex);
     return;
   }
 
