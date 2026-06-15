@@ -165,6 +165,26 @@ export function gradeRank(grade: CombatUnitState["grade"]): number {
 }
 
 /**
+ * Sorrow's reachable grade at a given Power: the highest grade whose Power
+ * breakpoint the paid Power meets (e.g. { 0: bronze, 2: silver, 4: gold }).
+ * Falls back to a fixed `grade` when the effect carries no Power table.
+ */
+function skipActivationReachableGrade(
+  effect: Extract<ConcreteEffect, { type: "SKIP_ACTIVATION" }>,
+  power: number
+): CombatUnitState["grade"] | null {
+  if (effect.gradeByPower) {
+    const thresholds = Object.keys(effect.gradeByPower)
+      .map(Number)
+      .filter((value) => Number.isFinite(value))
+      .sort((left, right) => left - right);
+    const matched = thresholds.filter((value) => value <= power).at(-1);
+    return matched === undefined ? null : (effect.gradeByPower[matched] ?? null);
+  }
+  return effect.grade ?? null;
+}
+
+/**
  * Orb of Vulnerability (option A): while its combat-wide effect is on the
  * table, every unit's innate spell-related ability is switched off. Read at
  * each such ability's site so a single grant covers both armies for the Combat.
@@ -2663,13 +2683,44 @@ export function getLegalReactionsForTrigger(
       }
     }
 
+    // Sorrow: in the activation-skip window, "+1 Power" is offered only while the
+    // player holds a Sorrow that still needs Power to reach the unit about to act
+    // — there must be enough affordable Power (the window pool plus the Spells
+    // they could discard, reserving one Sorrow to play) AND the grade must not
+    // already be free. This opens the window for a silver/gold target so the
+    // player can ramp Power up, yet never dangles a useless boost on a bronze one
+    // or one they could never afford (a gold unit reached only at Power 4).
+    let activationSkipNeedsPower = false;
+    if (triggerEvent.type === "UNIT_ACTIVATION_STARTED" && triggerEvent.playerId !== player.id) {
+      const skipUnit = state.combat?.units[triggerEvent.unitId];
+      const skipEffects = [...new Set(player.hand)]
+        .map((cardId) => cards[cardId])
+        .filter((card): card is CardDefinition => Boolean(card) && card.kind === "spell")
+        .map((card) => (card.effect.type === "SKIP_ACTIVATION" ? card.effect : null))
+        .filter((effect): effect is Extract<ConcreteEffect, { type: "SKIP_ACTIVATION" }> => Boolean(effect));
+      if (skipUnit && isUnitAlive(skipUnit) && skipEffects.length > 0) {
+        const windowPower = state.reactionWindow?.spellPowerBonus ?? 0;
+        const spellCount = player.hand.filter((cardId) => cards[cardId]?.kind === "spell").length;
+        const maxPower = windowPower + Math.max(0, spellCount - 1);
+        const bestReach = (power: number) =>
+          skipEffects.reduce<number>((best, effect) => {
+            const grade = skipActivationReachableGrade(effect, power);
+            return grade ? Math.max(best, gradeRank(grade)) : best;
+          }, -1);
+        const targetRank = gradeRank(skipUnit.grade);
+        activationSkipNeedsPower = targetRank > bestReach(windowPower) && targetRank <= bestReach(maxPower);
+      }
+    }
+
     // The printed alternative bottom effect: discard any Spell card for
-    // +1 Power — toward your own cast, or paired with an instant spell in an
-    // attack window (the batch validator enforces the pairing).
+    // +1 Power — toward your own cast, paired with an instant spell in an
+    // attack window (the batch validator enforces the pairing), or banked into
+    // the Sorrow activation-skip window above.
     const boostLegal =
-      triggerEvent.type === "SPELL_CAST_STARTED"
+      (triggerEvent.type === "SPELL_CAST_STARTED"
         ? triggerEvent.playerId === player.id
-        : isCombatParticipant(state, player.id);
+        : isCombatParticipant(state, player.id)) &&
+      (triggerEvent.type !== "UNIT_ACTIVATION_STARTED" || activationSkipNeedsPower);
     if (boostLegal) {
       for (const cardId of new Set(player.hand)) {
         const card = cards[cardId];
@@ -2708,7 +2759,9 @@ export function getLegalReactionsForTrigger(
         ? attackStackItem.action.playerId
         : undefined;
     const hasEmpowerablePlayed =
-      attackOwner === player.id && (attackStackItem?.modifiers.powerScaledAttackInstants?.length ?? 0) > 0;
+      attackOwner === player.id &&
+      ((attackStackItem?.modifiers.powerScaledAttackInstants?.length ?? 0) > 0 ||
+        attackStackItem?.modifiers.slayerRollsByPower !== undefined);
     if (!isAttackWindow || hasPairableSpell || hasEmpowerablePlayed) {
       reactions.push(...powerReactions);
     }
@@ -2845,7 +2898,11 @@ export function isEffectLegalForTrigger(
   mode: CardPlayMode
 ): boolean {
   // Sorrow: skip the about-to-activate unit. Offered to the unit's opponent
-  // only, and only while that unit's grade is within the option's reach.
+  // only, and only while that unit's grade is within reach of the Power already
+  // banked in this activation-skip window (bronze is free; +2/+4 Power, paid by
+  // discarding Spells into the window, reach silver/gold). The window-opening
+  // and power-boost offers (see getLegalReactionsForTrigger) make sure the
+  // player can ramp the Power up first.
   if (triggerEvent.type === "UNIT_ACTIVATION_STARTED") {
     if (effect.type !== "SKIP_ACTIVATION") {
       return false;
@@ -2854,7 +2911,9 @@ export function isEffectLegalForTrigger(
       return false;
     }
     const unit = state.combat?.units[triggerEvent.unitId];
-    return Boolean(unit && isUnitAlive(unit) && gradeRank(unit.grade) <= gradeRank(effect.grade));
+    const windowPower = state.reactionWindow?.spellPowerBonus ?? 0;
+    const reachable = skipActivationReachableGrade(effect, windowPower);
+    return Boolean(unit && isUnitAlive(unit) && reachable && gradeRank(unit.grade) <= gradeRank(reachable));
   }
 
   // Card draws are timing-free instants: they fit inside any open window.
