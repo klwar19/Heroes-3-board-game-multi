@@ -114,6 +114,7 @@ export {
   gainExperience,
   getActiveAstrologersCard,
   getAdjacentSpaceIds,
+  getHeroMovementCapabilities,
   getMainHero,
   getReachableHeroPaths,
   getTileFootprintSpaceIds,
@@ -121,10 +122,11 @@ export {
   getUnitSide,
   heroMovementMax,
   isFieldGuarded,
+  isSeaField,
   levelOfExperience,
   seaTileBand
 } from "./adventure";
-export type { HeroPathTarget, HeroStepKind } from "./adventure";
+export type { HeroMovementCapabilities, HeroPathTarget, HeroStepKind } from "./adventure";
 export {
   ATTACKER_BACKLINE,
   ATTACKER_FRONTLINE,
