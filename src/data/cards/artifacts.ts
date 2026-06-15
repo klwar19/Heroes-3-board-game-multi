@@ -22,6 +22,13 @@ const SCANLESS_ARTIFACTS = new Set([
   // Eversmoking Ring of Sulfur has no card scan on the wiki either (the wiki
   // itself shows the deck back for it), so it falls back to the deck back here.
   "eversmoking_ring_of_sulfur",
+  // The four elemental Orbs and the Pendant of Second Sight have no wiki scan
+  // bundled yet — show the deck back rather than a broken image.
+  "orb_of_driving_rain",
+  "orb_of_silt",
+  "orb_of_tempestuous_fire",
+  "orb_of_the_firmament",
+  "pendant_of_second_sight",
   // Newly added Cove/sea artifact whose card scan is not yet committed to
   // public/assets — it falls back to the deck back until the scan lands.
   // (Ring of the Wayfarer's scan is committed, so it is not listed here.)
@@ -1289,6 +1296,222 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("crown_of_the_five_seas")
   },
+  // The four elemental Orbs share one shape, one per School of Magic. Option A
+  // is an ongoing combat play: while it is in play this Combat, the engine
+  // doubles the effective Power of every Spell the owner casts from that School
+  // (SPELL_POWER_DOUBLE, read in getCurrentSpellPower) — "ongoing/this combat"
+  // matches every other ongoing combat artifact (Golden Bow, Orb of
+  // Vulnerability). Option B is the one-shot instant: while casting a spell of
+  // that School, remove the Orb for a flat +5 Power on that cast (the existing
+  // schoolOnly + removeSelf machinery). Like the +Power boosts, the School-less
+  // "any" spells (Magic Arrow) count as matching either side.
+  "artifact.orb_of_driving_rain": {
+    id: "artifact.orb_of_driving_rain",
+    name: "Orb of Driving Rain",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "While in play this Combat, double the Power of your Water Magic spells. — OR — When casting a Water Magic spell, remove this card to gain +5 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: double the Power of your Water Magic spells",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Orb of Driving Rain",
+              scope: "player",
+              duration: { type: "combat" },
+              modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "water" }]
+            }
+          }
+        },
+        {
+          label: "Remove this card: +5 Power to a Water Magic spell",
+          cost: { removeSelf: true },
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 5, schoolOnly: "water" }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "orb_of_driving_rain", "Orb of Driving Rain"),
+    implementationStatus: "implemented",
+    source: artifactSource("orb_of_driving_rain")
+  },
+  "artifact.orb_of_silt": {
+    id: "artifact.orb_of_silt",
+    name: "Orb of Silt",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "While in play this Combat, double the Power of your Earth Magic spells. — OR — When casting an Earth Magic spell, remove this card to gain +5 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: double the Power of your Earth Magic spells",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Orb of Silt",
+              scope: "player",
+              duration: { type: "combat" },
+              modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "earth" }]
+            }
+          }
+        },
+        {
+          label: "Remove this card: +5 Power to an Earth Magic spell",
+          cost: { removeSelf: true },
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 5, schoolOnly: "earth" }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "orb_of_silt", "Orb of Silt"),
+    implementationStatus: "implemented",
+    source: artifactSource("orb_of_silt")
+  },
+  "artifact.orb_of_tempestuous_fire": {
+    id: "artifact.orb_of_tempestuous_fire",
+    name: "Orb of Tempestuous Fire",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "While in play this Combat, double the Power of your Fire Magic spells. — OR — When casting a Fire Magic spell, remove this card to gain +5 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: double the Power of your Fire Magic spells",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Orb of Tempestuous Fire",
+              scope: "player",
+              duration: { type: "combat" },
+              modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "fire" }]
+            }
+          }
+        },
+        {
+          label: "Remove this card: +5 Power to a Fire Magic spell",
+          cost: { removeSelf: true },
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 5, schoolOnly: "fire" }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "orb_of_tempestuous_fire", "Orb of Tempestuous Fire"),
+    implementationStatus: "implemented",
+    source: artifactSource("orb_of_tempestuous_fire")
+  },
+  "artifact.orb_of_the_firmament": {
+    id: "artifact.orb_of_the_firmament",
+    name: "Orb of the Firmament",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "While in play this Combat, double the Power of your Air Magic spells. — OR — When casting an Air Magic spell, remove this card to gain +5 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: double the Power of your Air Magic spells",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Orb of the Firmament",
+              scope: "player",
+              duration: { type: "combat" },
+              modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "air" }]
+            }
+          }
+        },
+        {
+          label: "Remove this card: +5 Power to an Air Magic spell",
+          cost: { removeSelf: true },
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 5, schoolOnly: "air" }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "orb_of_the_firmament", "Orb of the Firmament"),
+    implementationStatus: "implemented",
+    source: artifactSource("orb_of_the_firmament")
+  },
+  // Pendant of Second Sight: both sides are friendly-unit combat plays. Option A
+  // places a combat-long PARALYSIS_IMMUNITY on the chosen unit — every Paralysis
+  // source (the Blind Spell and the medusa-style follow-ups) reads
+  // unitImmuneToParalysis, so the token never lands. Option B is the existing
+  // removeParalysis heal (amount 0): it strips one Paralysis token already on
+  // the unit.
+  "artifact.pendant_of_second_sight": {
+    id: "artifact.pendant_of_second_sight",
+    name: "Pendant of Second Sight",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    target: { type: "friendly-unit" },
+    tags: [
+      "artifact",
+      "major",
+      "Your selected unit cannot gain a Paralysis token during this Combat. — OR — Remove 1 Paralysis token from your selected unit."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: your selected unit cannot gain Paralysis",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Pendant of Second Sight",
+              scope: "unit",
+              duration: { type: "combat" },
+              polarity: "positive",
+              modifiers: [{ type: "PARALYSIS_IMMUNITY" }]
+            }
+          }
+        },
+        {
+          label: "Remove 1 Paralysis token from your selected unit",
+          combatOnly: true,
+          effect: { type: "HEAL_DAMAGE", amount: 0, removeParalysis: true }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "pendant_of_second_sight", "Pendant of Second Sight"),
+    implementationStatus: "implemented",
+    source: artifactSource("pendant_of_second_sight")
+  },
 
   // ---- Relic artifacts ----------------------------------------------------
   "artifact.angel_wings": {
@@ -1620,9 +1843,10 @@ export const artifactCards: CardLibrary = {
   // Combat, switches off every unit's innate spell-related ability — both armies
   // (engine: SUPPRESS_SPELL_ABILITIES negates Dwarf Magic Resistance, all
   // "reduce Spell damage" passives and the Unicorns' aura, printed spell-school
-  // immunity, and the Pegasi enemy-spell Power drain). The card is removed from
-  // the game (cost.removeSelf), not discarded. Anti-Magic is a Spell-granted
-  // effect rather than a unit ability, so it is intentionally NOT negated.
+  // immunity, and the Pegasi enemy-spell Power drain). The card is discarded
+  // normally after use — the printed board-game card has no remove-from-game
+  // clause. Anti-Magic is a Spell-granted effect rather than a unit ability, so
+  // it is intentionally NOT negated.
   "artifact.orb_of_vulnerability": {
     id: "artifact.orb_of_vulnerability",
     name: "Orb of Vulnerability",
@@ -1633,15 +1857,14 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "relic",
-      "During this Combat, negate all units' special abilities related to spells. Remove this card instead of discarding it. — OR — +2 Power."
+      "During this Combat, negate all units' special abilities related to spells. — OR — +2 Power."
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "This Combat: negate all units' spell-related abilities (remove this card)",
+          label: "This Combat: negate all units' spell-related abilities",
           combatOnly: true,
-          cost: { removeSelf: true },
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
             effect: {
@@ -1717,6 +1940,11 @@ export const artifactDeckLegacy: string[] = [
   "artifact.pendant_of_courage",
   "artifact.necklace_of_dragonteeth",
   "artifact.crown_of_the_five_seas",
+  "artifact.orb_of_driving_rain",
+  "artifact.orb_of_silt",
+  "artifact.orb_of_tempestuous_fire",
+  "artifact.orb_of_the_firmament",
+  "artifact.pendant_of_second_sight",
   // relic
   "artifact.angel_wings",
   "artifact.dragon_scale_armor",
@@ -1781,7 +2009,12 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.necklace_of_dragonteeth",
   "artifact.mystic_orb_of_mana",
   "artifact.shackles_of_war",
-  "artifact.crown_of_the_five_seas"
+  "artifact.crown_of_the_five_seas",
+  "artifact.orb_of_driving_rain",
+  "artifact.orb_of_silt",
+  "artifact.orb_of_tempestuous_fire",
+  "artifact.orb_of_the_firmament",
+  "artifact.pendant_of_second_sight"
 ];
 
 /** BINH Relic Artifact deck (adds the BINH-extra relics). */

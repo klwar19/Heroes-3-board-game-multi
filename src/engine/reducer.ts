@@ -120,10 +120,12 @@ import {
   getActiveDefenseBonus,
   getAttackRerollEffects,
   getConditionalDefenseBonus,
+  getSchoolPowerMultiplier,
   makeActiveEffect,
   playerHasSpellTimingFreedom,
   releaseEndedOngoingCards,
-  unitDealsElementalDamage
+  unitDealsElementalDamage,
+  unitImmuneToParalysis
 } from "./active-effects";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
@@ -202,7 +204,6 @@ import {
   hasBindAdjacentEnemies,
   hasDefenseTokenAura,
   hasIgnoreOwnAttackDie,
-  hasIgnoreParalysis,
   hasImmuneToSpecialtyDamage,
   hasRetaliationAgainstDisadvantage,
   hasSpellCastHandTax,
@@ -3155,7 +3156,7 @@ function applyParalysisFollowUps(
     if (roll !== followUp.onRoll) {
       continue;
     }
-    if (hasIgnoreParalysis(defender)) {
+    if (unitImmuneToParalysis(state, defender)) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: defender.id,
@@ -3247,7 +3248,7 @@ function applyRetaliationParalysis(
     }
   }
 
-  if (hasIgnoreParalysis(target)) {
+  if (unitImmuneToParalysis(state, target)) {
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: target.id,
@@ -4401,9 +4402,14 @@ function getCurrentSpellPower(state: GameState, stackItem: ResolutionStackItem, 
     (stackItem.modifiers.schoolPowerBonus ?? 0) +
     (stackItem.modifiers.townCubePowerBonus ?? 0);
 
+  // Elemental Orbs (option A): the matching in-play orb doubles the whole Power
+  // brought to a spell of its School ("double the power used for this spell")
+  // before the enemy reduction is taken off.
+  const doubled = base * getSchoolPowerMultiplier(state, stackItem.action.playerId, card);
+
   // Rampart Pegasi: an enemy Pegasi pack reduces the Power of every Spell this
   // caster resolves (to a minimum of 0).
-  return Math.max(0, base - enemySpellPowerReduction(state, stackItem.action.playerId));
+  return Math.max(0, doubled - enemySpellPowerReduction(state, stackItem.action.playerId));
 }
 
 function shouldRetaliate(
@@ -4880,13 +4886,25 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
 
     // Blind: place a Paralysis token on the selected enemy unit, gated by the
     // Power paid (0 → bronze, 1 → silver, 2 → gold). Above the unlocked grade
-    // the cast does nothing — mirrors Anti-Magic's resolution-time gate.
+    // the cast does nothing — mirrors Anti-Magic's resolution-time gate. A unit
+    // that cannot gain Paralysis (the printed ignore-paralysis ability, or a
+    // Pendant of Second Sight immunity) shrugs the token off all the same.
     if (card?.effect.type === "PLACE_PARALYSIS" && state.combat && stackItem.action.target.type === "unit") {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
-        placeCombatToken(state, target, "paralysis", 0, card.name);
+        if (unitImmuneToParalysis(state, target)) {
+          appendEvent(state, {
+            type: "UNIT_ABILITY_TRIGGERED",
+            unitId: target.id,
+            abilityId: "ignore-paralysis",
+            targetUnitId: target.id,
+            message: `${target.cardName} is immune to Paralysis.`
+          });
+        } else {
+          placeCombatToken(state, target, "paralysis", 0, card.name);
+        }
       }
     }
 
