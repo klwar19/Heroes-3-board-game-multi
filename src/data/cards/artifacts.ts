@@ -1016,12 +1016,39 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("necklace_of_dragonteeth")
   },
-  "artifact.shackles_of_war": notImplementedArtifact(
-    "shackles_of_war",
-    "Shackles of War",
-    "major",
-    "If played at the start of Combat, the Enemy Hero can neither Retreat nor Surrender. — OR — Draw 2 cards, choose 1 card and discard the other."
-  ),
+  // Shackles of War: option 0, played at the start of a player-vs-player
+  // combat, locks the enemy hero in — they can neither Retreat nor Surrender
+  // (BLOCK_ENEMY_ESCAPE → a CANNOT_ESCAPE_COMBAT effect on the enemy). Option 1
+  // draws 2 and discards one of the two drawn cards.
+  "artifact.shackles_of_war": {
+    id: "artifact.shackles_of_war",
+    name: "Shackles of War",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "If played at the start of Combat, the Enemy Hero can neither Retreat nor Surrender. — OR — Draw 2 cards, choose 1 card and discard the other."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Lock the enemy hero in: no Retreat or Surrender this combat",
+          combatOnly: true,
+          effect: { type: "BLOCK_ENEMY_ESCAPE" }
+        },
+        {
+          label: "Draw 2 cards, then discard one of them",
+          effect: { type: "DRAW_CARDS", amount: 2, thenDiscard: 1, thenDiscardDrawnOnly: true }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "shackles_of_war", "Shackles of War"),
+    implementationStatus: "implemented",
+    source: artifactSource("shackles_of_war")
+  },
   // Mystic Orb of Mana: Search (4) the top of your discard pile and take 1 card
   // (the TAKE_FROM_DISCARD `fromTop` machinery is built for exactly this), or,
   // only on an empty discard pile, draw 2 cards. The Search option resolves

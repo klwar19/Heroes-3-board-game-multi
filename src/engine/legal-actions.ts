@@ -29,7 +29,7 @@ import {
   observatoryDiscoverTargets,
   removableHandCards
 } from "./adventure-reducer";
-import { effectiveInitiative, playerHasSpellTimingFreedom } from "./active-effects";
+import { effectiveInitiative, playerCannotEscapeCombat, playerHasSpellTimingFreedom } from "./active-effects";
 import { cardCanBoostPower } from "./effects";
 import {
   BATTLEFIELD_CELL_COUNT,
@@ -1040,6 +1040,10 @@ function isOptionEffectPlayable(
     case "CREATE_FIRE_SHIELD":
     case "GRANT_ELEMENTAL_DAMAGE":
       return context === "combat" && Boolean(state.combat);
+    case "BLOCK_ENEMY_ESCAPE":
+      // Shackles of War (option 1): only at the start of a player-vs-player
+      // combat, where there is an enemy hero who could otherwise escape.
+      return context === "combat" && state.combat?.context.kind === "player" && state.combat.round === 1;
     case "DOUBLE_FIRST_AID_TENT":
       // Gem's First Aid VI only does something with a First Aid Tent in play.
       return (
@@ -3294,6 +3298,34 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
  * The third use, rerolling a Die you have thrown, is offered inside the dice
  * flows (adventure rolls and the combat attack-die reroll) instead.
  */
+/**
+ * Player-vs-player escape: at the start of the combat (round 1, between
+ * activations) a participating hero may Retreat or Surrender — unless Shackles
+ * of War has locked them in. Conceding ends the combat as the loser.
+ */
+function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  const combat = state.combat;
+  if (!combat || combat.context.kind !== "player" || combat.outcome || combat.round !== 1) {
+    return;
+  }
+  if (!isCombatCardWindowOpen(state)) {
+    return;
+  }
+  const heroId =
+    playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
+  if (!heroId || playerCannotEscapeCombat(state, playerId)) {
+    return;
+  }
+  actions.push({
+    label: "Retreat (lose the combat; your hero flees to its last field)",
+    action: { type: "RETREAT_FROM_COMBAT", playerId }
+  });
+  actions.push({
+    label: "Surrender (concede the combat)",
+    action: { type: "SURRENDER_COMBAT", playerId }
+  });
+}
+
 function addMoraleActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   // The stored +1 token, or an overflow token gained past the cap that must be
@@ -3448,6 +3480,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       // be spent for its draw / discard-redraw here; the reroll use is offered
       // by the attack-die reroll choice instead.
       addMoraleActions(actions, state, playerId);
+      addPvpEscapeActions(actions, state, playerId);
     }
     return actions;
   }

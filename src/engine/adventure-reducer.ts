@@ -58,6 +58,7 @@ import {
   type NeutralDraw
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
+import { playerCannotEscapeCombat } from "./active-effects";
 import { createSeededRandom } from "./random";
 import { destroyFortification, intactFortificationPositions, makeArrowTowerUnit, SIEGE_ROW_POSITIONS } from "./siege";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
@@ -2173,8 +2174,14 @@ export function continueNeutralCombat(
 
 export function retreatFromCombat(state: GameState, action: Extract<GameAction, { type: "RETREAT_FROM_COMBAT" }>): void {
   const combat = state.combat;
+  // Player-vs-player: a hero may flee at the start of the combat.
+  if (combat?.context.kind === "player") {
+    escapePvpCombat(state, action.playerId, "retreat");
+    return;
+  }
+
   if (!combat || combat.context.kind !== "neutral") {
-    throw new Error("Only combats against neutral units allow retreating.");
+    throw new Error("Only combats against neutral units or enemy heroes allow retreating.");
   }
 
   if (!combat.awaitingContinue) {
@@ -2198,6 +2205,49 @@ export function retreatFromCombat(state: GameState, action: Extract<GameAction, 
     defeatedPlayerId: action.playerId,
     reason: "retreat"
   });
+}
+
+export function surrenderFromCombat(
+  state: GameState,
+  action: Extract<GameAction, { type: "SURRENDER_COMBAT" }>
+): void {
+  escapePvpCombat(state, action.playerId, "surrender");
+}
+
+/**
+ * Shared player-vs-player escape: at the start of the combat (round 1) a
+ * participating hero may Retreat or Surrender, ending the combat as the loser.
+ * Blocked while the player is under Shackles of War. The standard end-of-combat
+ * automation (acknowledge → finalize) applies the consequences from the
+ * `combat.outcome` reason, exactly like a fought-out loss.
+ */
+function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat" | "surrender"): void {
+  const combat = state.combat;
+  if (!combat || combat.context.kind !== "player") {
+    throw new Error("Only a player-vs-player combat can be left this way.");
+  }
+  if (combat.outcome) {
+    throw new Error("This combat is already over.");
+  }
+  const isParticipant = combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId;
+  if (!isParticipant) {
+    throw new Error("Only a combat participant may retreat or surrender.");
+  }
+  // A garrison defended without a hero present has no hero to escape with.
+  const heroId =
+    playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
+  if (!heroId) {
+    throw new Error("A hero must be present to retreat or surrender.");
+  }
+  if (combat.round !== 1) {
+    throw new Error("Retreat or Surrender is only possible at the start of the combat.");
+  }
+  if (playerCannotEscapeCombat(state, playerId)) {
+    throw new Error("Shackles of War prevents this hero from retreating or surrendering.");
+  }
+  const winnerPlayerId = playerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
+  combat.outcome = { winnerPlayerId, defeatedPlayerId: playerId, reason };
+  appendEvent(state, { type: "COMBAT_ENDED", winnerPlayerId, defeatedPlayerId: playerId, reason });
 }
 
 /**

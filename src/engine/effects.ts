@@ -42,6 +42,7 @@ export const implementedCardEffectTypes = [
   "CHAIN_LIGHTNING",
   "PLACE_PARALYSIS",
   "DAMAGE_LOWEST_INITIATIVE",
+  "BLOCK_ENEMY_ESCAPE",
   "BALLISTA_SPECIALTY",
   "DECK_DIG_KEEP_ONE",
   "CANCEL_LETHAL_ATTACK",
@@ -477,6 +478,10 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "DAMAGE_LOWEST_INITIATIVE") {
     return `deal ${card.effect.amount} damage to the enemy unit with the lowest initiative`;
+  }
+
+  if (card.effect.type === "BLOCK_ENEMY_ESCAPE") {
+    return "the enemy hero can neither Retreat nor Surrender this combat";
   }
 
   if (card.effect.type === "BALLISTA_SPECIALTY") {

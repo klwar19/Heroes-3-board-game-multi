@@ -41,6 +41,7 @@ import {
   rehydrateCityHallChoice,
   resolveVisitStep,
   retreatFromCombat,
+  surrenderFromCombat,
   revisitField,
   roguesScoutDeck,
   setTileRotation,
@@ -5787,6 +5788,27 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
+  // Shackles of War (option 1): the enemy hero can neither Retreat nor
+  // Surrender this Combat — a CANNOT_ESCAPE_COMBAT effect placed on the enemy.
+  if (effect.type === "BLOCK_ENEMY_ESCAPE" && state.combat) {
+    const enemyId = pickEnemyPlayerId(state, action.playerId);
+    if (enemyId) {
+      createActiveEffect(
+        state,
+        {
+          name: card.name,
+          scope: "player",
+          duration: { type: "combat" },
+          polarity: "negative",
+          removable: false,
+          modifiers: [{ type: "CANNOT_ESCAPE_COMBAT" }]
+        },
+        { type: "card", cardId: card.id, controllerId: action.playerId },
+        enemyId
+      );
+    }
+  }
+
   if (effect.type === "SIEGE_DEMOLISH") {
     const siege = state.combat?.siege;
     if (!siege) {
@@ -8008,6 +8030,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "FINISH_COMBAT_PLACEMENT",
   "CONTINUE_NEUTRAL_COMBAT",
   "RETREAT_FROM_COMBAT",
+  "SURRENDER_COMBAT",
   "POPULATION_ACTION",
   "SPELL_BOOK_ACTION",
   "ROGUES_SCOUT_DECK",
@@ -8189,6 +8212,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "RETREAT_FROM_COMBAT":
         retreatFromCombat(nextState, action);
+        break;
+      case "SURRENDER_COMBAT":
+        surrenderFromCombat(nextState, action);
         break;
       case "POPULATION_ACTION":
         populationAction(nextState, action);

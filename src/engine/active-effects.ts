@@ -90,6 +90,18 @@ export function playerSpellCastsIgnoreLimit(state: GameState, playerId: PlayerId
   );
 }
 
+/**
+ * Shackles of War (option 1): while this player holds a CANNOT_ESCAPE_COMBAT
+ * effect, their Hero can neither Retreat nor Surrender from the current Combat.
+ */
+export function playerCannotEscapeCombat(state: GameState, playerId: PlayerId): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effect.controllerId === playerId &&
+      effect.modifiers.some((modifier) => modifier.type === "CANNOT_ESCAPE_COMBAT")
+  );
+}
+
 export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitState): boolean {
   if (effect.scope === "global") {
     return true;
