@@ -428,24 +428,36 @@ describe("neutral guard elementals are distinct from the summon", () => {
     ...neutralUnitIdsByTier.azure
   ];
 
-  it("pools exactly the wiki's neutral guard elementals", () => {
+  it("pools the wiki's neutral guard elementals at their printed tiers", () => {
     expect(neutralUnitIdsByTier.bronze).toEqual(
       expect.arrayContaining(["neutral.air_elementals", "neutral.ice_elementals", "neutral.storm_elementals"])
     );
     expect(neutralUnitIdsByTier.silver).toEqual(
-      expect.arrayContaining(["neutral.fire_elementals", "neutral.energy_elementals", "neutral.magma_elementals"])
+      expect.arrayContaining([
+        "neutral.fire_elementals",
+        "neutral.energy_elementals",
+        "neutral.magma_elementals",
+        "neutral.water_elementals"
+      ])
     );
-    expect(neutralUnitIdsByTier.gold).toContain("neutral.magic_elementals");
+    expect(neutralUnitIdsByTier.gold).toEqual(
+      expect.arrayContaining(["neutral.magic_elementals", "neutral.earth_elementals"])
+    );
   });
 
-  it("keeps the summon-only Earth & Water Elementals out of the guard pool", () => {
-    expect(guardPool).not.toContain("neutral.earth_elementals");
-    expect(guardPool).not.toContain("neutral.water_elementals");
-    // They exist as summon units (Few/Pack) but carry no neutral guard side.
-    expect(coreUnitDefinitions["neutral.earth_elementals"].neutral).toBeUndefined();
-    expect(coreUnitDefinitions["neutral.water_elementals"].neutral).toBeUndefined();
-    expect(coreUnitDefinitions["neutral.earth_elementals"].few).toBeDefined();
-    expect(coreUnitDefinitions["neutral.water_elementals"].pack).toBeDefined();
+  it("Earth & Water Elementals are BOTH summon units (Few/Pack) and neutral guards", () => {
+    // The fan wiki lists a Neutral guard card for each, with stats distinct from
+    // the summon Few/Pack — Earth is gold tier, Water is silver tier.
+    expect(neutralUnitIdsByTier.gold).toContain("neutral.earth_elementals");
+    expect(neutralUnitIdsByTier.silver).toContain("neutral.water_elementals");
+
+    const earth = coreUnitDefinitions["neutral.earth_elementals"];
+    const water = coreUnitDefinitions["neutral.water_elementals"];
+    // Guard side present AND distinct from the summon Few side.
+    expect(earth.neutral).toMatchObject({ attack: 3, defense: 2, health: 5, initiative: 4 });
+    expect(earth.few).toMatchObject({ attack: 2, defense: 2, health: 2, initiative: 5 });
+    expect(water.neutral).toMatchObject({ attack: 2, defense: 1, health: 4, initiative: 5 });
+    expect(water.pack).toMatchObject({ attack: 3, defense: 0, health: 5, initiative: 6 });
   });
 
   it("the neutral guard side differs from the summon Few side (Air)", () => {

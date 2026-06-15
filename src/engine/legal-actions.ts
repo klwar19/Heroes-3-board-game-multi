@@ -59,6 +59,7 @@ import type {
   BuildingId,
   BuildingLibrary,
   CardDefinition,
+  CardId,
   CardPlayCost,
   CardPlayMode,
   CardLibrary,
@@ -83,6 +84,7 @@ import {
   getLethalSaveUnitAbility,
   getUnitAbilityDefinitions,
   hasBindAdjacentEnemies,
+  hasSpellCastPowerTax,
   hasUnitAbilityEffect,
   unitImmuneToSpellSchools
 } from "./unit-abilities";
@@ -824,6 +826,41 @@ export function isHandLockedInCombat(state: GameState, playerId: PlayerId): bool
  *  - Instant spells with an attack trigger (Bloodlust, Stone Skin, Curse…)
  *    are played inside the attack windows instead, never cast directly.
  */
+/**
+ * Neutral Pegasi "Mystic Toll": a living enemy Pegasi forces this player to pay
+ * (discard) one extra Power card whenever they cast a Spell. Combat-only.
+ */
+export function combatEnemyImposesPowerTax(state: GameState, casterId: PlayerId): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+  return Object.values(combat.units).some(
+    (unit) => unit.controllerId !== casterId && isUnitAlive(unit) && hasSpellCastPowerTax(unit)
+  );
+}
+
+/**
+ * Whether `hand` still holds a Power card to pay the Pegasi toll. A hand cast
+ * spends the spell itself first, so it cannot also pay the toll — the toll must
+ * come from a *different* Power card; a Scroll cast leaves the hand intact.
+ */
+export function handCanPayPowerTax(
+  hand: readonly CardId[],
+  cards: CardLibrary,
+  castCardId: CardId,
+  fromScroll: boolean
+): boolean {
+  let remaining: readonly CardId[] = hand;
+  if (!fromScroll) {
+    const index = remaining.indexOf(castCardId);
+    if (index >= 0) {
+      remaining = [...remaining.slice(0, index), ...remaining.slice(index + 1)];
+    }
+  }
+  return remaining.some((cardId) => cardCanBoostPower(cards[cardId]));
+}
+
 function addSpellActions(
   actions: LegalAction[],
   state: GameState,
@@ -838,6 +875,10 @@ function addSpellActions(
   if (!player || player.combatStats.spellsCastThisRound >= spellLimitFor(state, player)) {
     return;
   }
+
+  // Neutral Pegasi: a living enemy Pegasi gates every Spell cast behind paying
+  // an extra Power card — with none to pay, the cast is not offered at all.
+  const powerTaxed = combatEnemyImposesPowerTax(state, playerId);
 
   const combat = state.combat;
   const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
@@ -880,6 +921,11 @@ function addSpellActions(
     // Activation spells need one of your own units active, pre-attack.
     const needsOwnActivation = card.timing === "combat" || card.timing === "action";
     if (needsOwnActivation && !ownActivationOpen) {
+      continue;
+    }
+
+    // Neutral Pegasi toll: cannot cast without a separate Power card to pay.
+    if (powerTaxed && !handCanPayPowerTax(player.hand, cards, cardId, Boolean(fromScroll))) {
       continue;
     }
 

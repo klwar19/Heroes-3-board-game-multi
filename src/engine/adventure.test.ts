@@ -942,6 +942,7 @@ describe("neutral combat", () => {
     const pausedForHuman =
       state.reactionWindow !== null ||
       combat?.awaitingContinue === true ||
+      (combat?.pendingNeutralStep ?? null) !== null ||
       (combat?.activeUnitId !== null &&
         combat?.units[combat.activeUnitId ?? ""]?.controllerId === "p1") ||
       combat?.outcome !== null;
