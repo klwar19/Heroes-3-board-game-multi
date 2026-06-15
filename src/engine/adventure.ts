@@ -2179,6 +2179,74 @@ export function processPendingVisit(state: GameState): void {
         player.hand.push(`stat.${stat}.empowered`);
         break;
       }
+      case "SCHOLAR_EMPOWER_PICK": {
+        // Scholar (expert): offer one swap of a non-empowered Statistic card
+        // (hand or discard) for its Empowered version, dropped on top of the
+        // discard pile. Only types not yet taken this play are offered (so the
+        // gained Empowered cards are all different); duplicate (source, type)
+        // candidates collapse to one option.
+        const player = state.players[visit.playerId];
+        if (!player || step.remaining <= 0) {
+          break;
+        }
+        const seen = new Set<string>();
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        for (const source of ["hand", "discard"] as const) {
+          for (const cardId of player[source]) {
+            const card = cardLibrary[cardId];
+            const stat = card?.statisticType;
+            if (
+              card?.kind !== "statistic" ||
+              !stat ||
+              cardId.endsWith(".empowered") ||
+              step.takenTypes.includes(stat) ||
+              seen.has(`${source}:${stat}`)
+            ) {
+              continue;
+            }
+            seen.add(`${source}:${stat}`);
+            options.push({
+              label: `Empower ${card.name ?? cardId} (from ${source})`,
+              steps: [
+                { type: "SCHOLAR_EMPOWER_GIVE", source, cardId } as VisitStep,
+                ...(step.remaining - 1 > 0
+                  ? [
+                      {
+                        type: "SCHOLAR_EMPOWER_PICK",
+                        remaining: step.remaining - 1,
+                        takenTypes: [...step.takenTypes, stat]
+                      } as VisitStep
+                    ]
+                  : [])
+              ]
+            });
+          }
+        }
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Done", steps: [] });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: "Empower a Statistic card (Scholar expert)",
+          options
+        });
+        break;
+      }
+      case "SCHOLAR_EMPOWER_GIVE": {
+        const player = state.players[visit.playerId];
+        const pile = step.source === "hand" ? player?.hand : player?.discard;
+        const stat = cardLibrary[step.cardId]?.statisticType;
+        const index = pile?.indexOf(step.cardId) ?? -1;
+        if (!player || !pile || !stat || index === -1) {
+          break;
+        }
+        pile.splice(index, 1);
+        player.removed.push(step.cardId);
+        // The Empowered version goes on top of the discard pile (push = top).
+        player.discard.push(`stat.${stat}.empowered`);
+        break;
+      }
       case "BLACK_MARKET": {
         const player = state.players[visit.playerId];
         if (!player) {
