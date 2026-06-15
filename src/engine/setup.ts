@@ -1,4 +1,3 @@
-import { cardLibrary } from "@/data/cards/library";
 import { abilityDeckBinh } from "@/data/cards/abilities-extra";
 import { artifactDeckBinhMajor, artifactDeckBinhMinor, artifactDeckBinhRelic } from "@/data/cards/artifacts";
 import { spellDeckBinhBasic, spellDeckBinhExpert } from "@/data/cards/spells";
@@ -22,50 +21,24 @@ function makeSharedDeck(id: string, cardIds: string[], seed: string): DeckState 
  * The sandbox shared wells, in the BINH split-deck layout (Basic/Expert spells,
  * Minor/Major/Relic artifacts, Abilities) used by the real BINH game.
  *
- * Combat test mode also makes them *complete*: every implemented Spell, Ability
- * and Artifact is reachable. The curated BINH lists miss a handful of implemented
- * spells that live only in the legacy list (Inferno, Slayer, Sorrow, Mirth,
- * Forgetfulness), so any implemented card of these kinds the lists omit is added
- * to a sensible well (spells → Basic, artifacts → by tier). A tester can then
- * Search any well — the active player's search is unlimited in the sandbox (see
- * addDeckSearchActions) — to pull any card into hand and exercise its mechanic.
- * Not-implemented cards are inert no-ops, so they are excluded.
+ * Combat test mode relies on these lists being *complete*: the per-variant deck
+ * coverage test guarantees every implemented Spell, Ability and Artifact sits in
+ * the BINH deck its tier metadata points at, so a tester can Search any well —
+ * the active player's search is unlimited in the sandbox (see addDeckSearchActions)
+ * — to pull any card into hand and exercise its mechanic.
  */
 function makeSandboxDecks(seed: string): Record<string, DeckState> {
-  const wells: Record<string, string[]> = {
-    spells: [...spellDeckBinhBasic],
-    "spells-expert": [...spellDeckBinhExpert],
-    abilities: [...abilityDeckBinh],
-    "artifacts-minor": [...artifactDeckBinhMinor],
-    "artifacts-major": [...artifactDeckBinhMajor],
-    "artifacts-relic": [...artifactDeckBinhRelic]
+  const lists: Record<string, string[]> = {
+    spells: spellDeckBinhBasic,
+    "spells-expert": spellDeckBinhExpert,
+    abilities: abilityDeckBinh,
+    "artifacts-minor": artifactDeckBinhMinor,
+    "artifacts-major": artifactDeckBinhMajor,
+    "artifacts-relic": artifactDeckBinhRelic
   };
 
-  const placed = new Set<string>(Object.values(wells).flat());
-  for (const card of Object.values(cardLibrary)) {
-    if (card.implementationStatus !== "implemented" || placed.has(card.id)) {
-      continue;
-    }
-    if (card.kind === "spell") {
-      wells.spells.push(card.id);
-    } else if (card.kind === "ability") {
-      wells.abilities.push(card.id);
-    } else if (card.kind === "artifact") {
-      const tierWell =
-        card.artifactTier === "relic"
-          ? "artifacts-relic"
-          : card.artifactTier === "major"
-            ? "artifacts-major"
-            : "artifacts-minor";
-      wells[tierWell].push(card.id);
-    } else {
-      continue;
-    }
-    placed.add(card.id);
-  }
-
   return Object.fromEntries(
-    Object.entries(wells).map(([id, cardIds]) => [id, makeSharedDeck(id, cardIds, seed)])
+    Object.entries(lists).map(([id, cardIds]) => [id, makeSharedDeck(id, cardIds, seed)])
   );
 }
 

@@ -55,4 +55,59 @@ describe("deck coverage", () => {
       .sort();
     expect(inert).toEqual([]);
   });
+
+  /**
+   * The legacy and BINH deck lists are hand-maintained in parallel, which let
+   * them drift: BINH was missing five expansion spells while legacy was missing
+   * a pile of BINH artifacts/abilities, and the union-only check above never
+   * noticed. This guards EACH variant individually: every implemented card must
+   * sit in the legacy deck of its kind AND in the BINH deck its own tier
+   * metadata (spellLevel / artifactTier) points at — so the two can never fall
+   * out of sync again, and the per-card tier and the deck it lives in must agree.
+   */
+  it("places every implemented card in the legacy deck and its matching BINH tier deck", () => {
+    const legacy: Record<"spell" | "artifact" | "ability", Set<string>> = {
+      spell: new Set(spellDeckLegacy),
+      artifact: new Set(artifactDeckLegacy),
+      ability: new Set(abilityDeckLegacy)
+    };
+    const binhSpell: Record<string, Set<string>> = {
+      basic: new Set(spellDeckBinhBasic),
+      expert: new Set(spellDeckBinhExpert)
+    };
+    const binhArtifact: Record<string, Set<string>> = {
+      minor: new Set(artifactDeckBinhMinor),
+      major: new Set(artifactDeckBinhMajor),
+      relic: new Set(artifactDeckBinhRelic)
+    };
+    const binhAbility = new Set(abilityDeckBinh);
+
+    const problems: string[] = [];
+    for (const card of Object.values(cardLibrary)) {
+      if (card.implementationStatus !== "implemented" || !DECK_KINDS.has(card.kind)) {
+        continue;
+      }
+      const kind = card.kind as "spell" | "artifact" | "ability";
+      if (!legacy[kind].has(card.id)) {
+        problems.push(`${card.id}: missing from the legacy ${kind} deck`);
+      }
+      if (card.kind === "spell") {
+        if (!card.spellLevel) {
+          problems.push(`${card.id}: spell has no spellLevel to tier it`);
+        } else if (!binhSpell[card.spellLevel].has(card.id)) {
+          problems.push(`${card.id}: missing from the BINH ${card.spellLevel} spell deck`);
+        }
+      } else if (card.kind === "artifact") {
+        if (!card.artifactTier) {
+          problems.push(`${card.id}: artifact has no artifactTier to tier it`);
+        } else if (!binhArtifact[card.artifactTier].has(card.id)) {
+          problems.push(`${card.id}: missing from the BINH ${card.artifactTier} artifact deck`);
+        }
+      } else if (!binhAbility.has(card.id)) {
+        problems.push(`${card.id}: missing from the BINH ability deck`);
+      }
+    }
+
+    expect(problems.sort()).toEqual([]);
+  });
 });

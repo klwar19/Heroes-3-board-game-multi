@@ -67,13 +67,17 @@ describe("combat sandbox card access (test all mechanics)", () => {
     }
   });
 
-  it("includes the implemented spells that live only in the legacy list", () => {
-    // These five are implemented but absent from the curated BINH spell lists;
-    // the sandbox must add them so they stay reachable in BINH mode.
+  it("makes the formerly-missing expansion spells reachable at their BINH tier", () => {
+    // These five used to be absent from the BINH lists; the synced lists now
+    // place them by their spellLevel — Forgetfulness is basic, the rest expert.
     const { decks } = createInitialGameState();
-    const basicSpells = new Set([...decks.spells.drawPile, ...decks.spells.discardPile]);
-    for (const id of ["spell.inferno", "spell.slayer", "spell.sorrow", "spell.mirth", "spell.forgetfulness"]) {
-      expect(basicSpells.has(id), `${id} reachable in the Basic Spells well`).toBe(true);
+    const inWell = (deckId: string, id: string) => {
+      const deck = decks[deckId];
+      return Boolean(deck && [...deck.drawPile, ...deck.discardPile].includes(id));
+    };
+    expect(inWell("spells", "spell.forgetfulness"), "Forgetfulness in the Basic well").toBe(true);
+    for (const id of ["spell.inferno", "spell.slayer", "spell.sorrow", "spell.mirth"]) {
+      expect(inWell("spells-expert", id), `${id} in the Expert well`).toBe(true);
     }
   });
 
