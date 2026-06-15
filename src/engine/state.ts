@@ -1137,6 +1137,26 @@ export type CardOptionDefinition = {
    * holds no cards.
    */
   requiresEmptyDiscard?: boolean;
+  /**
+   * Crown of the Five Seas' sea side ("If this Hero is on a Sea tile …"): the
+   * option is offered only while the playing player's main Hero stands on a Sea
+   * (water-terrain) field.
+   */
+  requiresSeaTile?: boolean;
+  /**
+   * Ring of the Wayfarer's paralysis side ("At start of Combat with Neutral
+   * Units …"): offered only on the opening round of a Combat against Neutral
+   * Units.
+   */
+  requiresNeutralCombatStart?: boolean;
+  /**
+   * Per-option target override for a CHOOSE_ONE card whose options strike
+   * different sides. Ring of the Wayfarer's initiative side buffs a friendly
+   * unit (the card-level `target`) while its paralysis side hits any non-Azure
+   * unit, so that option carries its own `any-unit` target. Falls back to the
+   * card-level `target` when absent.
+   */
+  target?: TargetDefinition;
   effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
 };
 

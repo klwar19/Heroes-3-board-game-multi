@@ -21,7 +21,11 @@ const SCANLESS_ARTIFACTS = new Set([
   "sandals_of_the_saint",
   // Eversmoking Ring of Sulfur has no card scan on the wiki either (the wiki
   // itself shows the deck back for it), so it falls back to the deck back here.
-  "eversmoking_ring_of_sulfur"
+  "eversmoking_ring_of_sulfur",
+  // Newly added Cove/sea artifacts whose card scans are not yet committed to
+  // public/assets — they fall back to the deck back until the scan lands.
+  "crown_of_the_five_seas",
+  "ring_of_the_wayfarer"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
@@ -698,6 +702,53 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("inexhaustible_cart_of_ore")
   },
+  // Ring of the Wayfarer: option 0 is the familiar combat initiative buff (on a
+  // friendly unit, the card-level target). Option 1 is the paralysis side —
+  // played only at the start (round 1) of a Combat against Neutral Units
+  // (engine: requiresNeutralCombatStart + combatOnly), it drops a Paralysis
+  // token on any chosen unit whose grade is at most gold; the PLACE_PARALYSIS
+  // gradeByPower gate ({0: "gold"}) is exactly the printed "except Azure", and
+  // the option carries its own any-unit target so it is not tied to option 0's
+  // friendly-unit target.
+  "artifact.ring_of_the_wayfarer": {
+    id: "artifact.ring_of_the_wayfarer",
+    name: "Ring of the Wayfarer",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "minor",
+    target: { type: "friendly-unit" },
+    tags: [
+      "artifact",
+      "minor",
+      "For this Combat, your selected unit gains +1 initiative. — OR — At the start of a Combat with Neutral Units, place a Paralysis token on any unit except Azure."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+1 initiative for this combat",
+          effect: {
+            type: "CREATE_INITIATIVE_BUFF",
+            name: "Ring of the Wayfarer",
+            amount: 1,
+            duration: { type: "combat" },
+            polarity: "positive",
+            removable: true
+          }
+        },
+        {
+          label: "Start of a Neutral combat: Paralyse any non-Azure unit",
+          combatOnly: true,
+          requiresNeutralCombatStart: true,
+          target: { type: "any-unit" },
+          effect: { type: "PLACE_PARALYSIS", gradeByPower: { 0: "gold" } }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "ring_of_the_wayfarer", "Ring of the Wayfarer"),
+    implementationStatus: "implemented",
+    source: artifactSource("ring_of_the_wayfarer")
+  },
 
   // ---- Major artifacts ----------------------------------------------------
   "artifact.dragon_scale_shield": {
@@ -1202,6 +1253,42 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("mystic_orb_of_mana")
   },
+  // Crown of the Five Seas: option 0 returns a Spell from anywhere in your
+  // discard pile (the standard TAKE_FROM_DISCARD spell pick, a map play). Option
+  // 1 is the sea side — offered only while this player's main Hero stands on a
+  // Sea (water-terrain) field (engine: requiresSeaTile) — and looks at the top 3
+  // cards of the discard pile to take 1 (TAKE_FROM_DISCARD fromTop: 3, no
+  // filter). Both sides resolve through the discard-pick reward queue, so they
+  // are map plays.
+  "artifact.crown_of_the_five_seas": {
+    id: "artifact.crown_of_the_five_seas",
+    name: "Crown of the Five Seas",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Select 1 Spell card from your discard pile and put it back into your hand. — OR — If this Hero is on a Sea tile, look at the top 3 cards of your discard pile and take 1 of them into your hand."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Take 1 Spell card from your discard pile",
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell" }
+        },
+        {
+          label: "On a Sea tile: look at the top 3 of your discard pile, take 1",
+          requiresSeaTile: true,
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, fromTop: 3 }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "crown_of_the_five_seas", "Crown of the Five Seas"),
+    implementationStatus: "implemented",
+    source: artifactSource("crown_of_the_five_seas")
+  },
 
   // ---- Relic artifacts ----------------------------------------------------
   "artifact.angel_wings": {
@@ -1610,6 +1697,7 @@ export const artifactDeckLegacy: string[] = [
   "artifact.equestrians_gloves",
   "artifact.glyph_of_gallantry",
   "artifact.quiet_eye_of_the_dragon",
+  "artifact.ring_of_the_wayfarer",
   // major
   "artifact.dragon_scale_shield",
   "artifact.endless_bag_of_gold",
@@ -1628,6 +1716,7 @@ export const artifactDeckLegacy: string[] = [
   "artifact.shackles_of_war",
   "artifact.pendant_of_courage",
   "artifact.necklace_of_dragonteeth",
+  "artifact.crown_of_the_five_seas",
   // relic
   "artifact.angel_wings",
   "artifact.dragon_scale_armor",
@@ -1669,7 +1758,8 @@ export const artifactDeckBinhMinor: string[] = [
   "artifact.quiet_eye_of_the_dragon",
   "artifact.charm_of_mana",
   "artifact.greater_gnolls_flail",
-  "artifact.shield_of_the_dwarven_lords"
+  "artifact.shield_of_the_dwarven_lords",
+  "artifact.ring_of_the_wayfarer"
 ];
 
 /** BINH Major Artifact deck (adds the BINH-extra majors). */
@@ -1690,7 +1780,8 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.pendant_of_courage",
   "artifact.necklace_of_dragonteeth",
   "artifact.mystic_orb_of_mana",
-  "artifact.shackles_of_war"
+  "artifact.shackles_of_war",
+  "artifact.crown_of_the_five_seas"
 ];
 
 /** BINH Relic Artifact deck (adds the BINH-extra relics). */
