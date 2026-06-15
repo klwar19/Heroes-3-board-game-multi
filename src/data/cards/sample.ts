@@ -781,15 +781,38 @@ export const sampleCards: CardLibrary = {
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
     artifactTier: "minor",
-    tags: ["artifact", "minor", "instant", "defense", "wiki-reference"],
-    trigger: {
-      event: "UNIT_ATTACK_DECLARED",
-      controller: "opponent"
-    },
+    // Printed reference: "+2 defense, then this unit suffers -1 attack until the
+    // end of the Combat (minimum 0). — OR — +1 defense." Engine wires both sides
+    // through the CHOOSE_ONE options below (option 0 = +2/-1, option 1 = +1).
+    tags: [
+      "artifact",
+      "minor",
+      "instant",
+      "defense",
+      "wiki-reference",
+      "+2 defense, then -1 attack until the end of the Combat. — OR — +1 defense."
+    ],
     effect: {
-      type: "ADD_COMBAT_STAT",
-      stat: "defense",
-      amount: 1
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          // The defending unit gains +2 defense for this attack and carries a
+          // -1 attack penalty (floored at 0) for the rest of the Combat.
+          label: "+2 defense, then -1 attack this Combat",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "defense",
+            amount: 2,
+            selfStatPenalty: { stat: "attack", amount: 1 }
+          }
+        },
+        {
+          label: "+1 defense",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1 }
+        }
+      ]
     },
     assets: {
       cardImage: "/assets/artifacts_minor-buckler_of_the_gnoll_king.webp",

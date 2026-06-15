@@ -1,7 +1,7 @@
 import { cardLibrary } from "@/data/cards/library";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
+import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
   addArmyUnit,
@@ -709,6 +709,33 @@ export function revisitField(state: GameState, action: Extract<GameAction, { typ
 
   closeMulliganWindow(state, action.playerId);
   hero.movementPoints -= 1;
+  beginFieldVisit(state, hero.id, hero.spaceId, true);
+}
+
+/**
+ * Opens the Market (Trading Post / War Machine Factory) panel for a hero parked
+ * on a market field. Unlike REVISIT_FIELD this is free and repeatable: as long
+ * as one of the player's heroes (Main or Secondary) stays on the tile, the
+ * player can reopen the market at will. The rulebook's "one non-trade action
+ * per visit" rule still applies inside each opened visit.
+ */
+export function openMarket(state: GameState, action: Extract<GameAction, { type: "OPEN_MARKET" }>): void {
+  const adventure = requireAdventure(state);
+  assertActiveTurn(state, action.playerId);
+  assertHandRefreshed(state, action.playerId);
+  assertNoPendingInput(state);
+
+  const hero = requireHero(state, action.playerId, action.heroId);
+  const field = hero.spaceId ? adventure.fields[hero.spaceId] : undefined;
+  if (!hero.spaceId || !field) {
+    throw new Error("That hero is not on a field.");
+  }
+
+  if (!isMarketLocation(field.location)) {
+    throw new Error("That hero is not standing on a Market.");
+  }
+
+  closeMulliganWindow(state, action.playerId);
   beginFieldVisit(state, hero.id, hero.spaceId, true);
 }
 

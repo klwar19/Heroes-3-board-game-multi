@@ -323,6 +323,15 @@ export type EffectDefinition =
       drawCards?: number;
       /** Sword of Hellfire / Shield of the Damned: the unit also takes damage. */
       selfDamage?: number;
+      /**
+       * Buckler of the Gnoll King (and Greater Gnoll's Flail's stronger side):
+       * the boosted unit also takes a lasting stat penalty until the end of the
+       * Combat — e.g. "+2 defense, then this unit suffers -1 attack this Combat".
+       * Modeled as a unit-scoped active effect; the attack/defense maths floor
+       * the resulting value at 0 ("minimum 0"). Not cleansable (it is the
+       * artifact's intrinsic cost, not a spell debuff).
+       */
+      selfStatPenalty?: { stat: "attack" | "defense"; amount: number };
       /** Bloodlust/Golden Bow: only these unit types may receive the bonus. */
       unitTypes?: UnitType[];
       /** Precision: the shot also ignores the ranged combat penalty. */
@@ -1050,6 +1059,17 @@ export type GameAction =
       discardCardIds: CardId[];
     }
   | { type: "REVISIT_FIELD"; playerId: PlayerId; heroId: HeroId }
+  | {
+      /**
+       * Open the Trading Post / War Machine Factory panel for a hero parked on
+       * a market field. Free and repeatable — unlike REVISIT_FIELD it costs no
+       * movement point, so the market stays available while any of the player's
+       * heroes (Main or Secondary) sits on the tile.
+       */
+      type: "OPEN_MARKET";
+      playerId: PlayerId;
+      heroId: HeroId;
+    }
   | { type: "DISCOVER_TILE"; playerId: PlayerId; heroId: HeroId; tileInstanceId: string }
   | {
       /** Place one of the player's face-down Far (II–III) tiles from supply. */
