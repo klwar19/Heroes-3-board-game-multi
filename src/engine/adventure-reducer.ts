@@ -3258,6 +3258,48 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
+  if (choice.context === "hand-discard") {
+    const pick = choice.handDiscard;
+    const player = state.players[action.playerId];
+    const cardId = pick?.cardIds[action.optionIndex];
+    if (!pick || !player || !cardId) {
+      throw new Error("Pick one of the offered hand cards to discard.");
+    }
+
+    const index = player.hand.lastIndexOf(cardId);
+    if (index !== -1) {
+      player.hand.splice(index, 1);
+      player.discard.push(cardId);
+    }
+
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+
+    // More to discard: reopen. "Drawn-only" keeps shrinking the drawn set;
+    // otherwise any remaining hand card is a candidate.
+    if (pick.remaining > 1) {
+      const nextCandidates = pick.drawnOnly
+        ? pick.cardIds.filter((_, candidateIndex) => candidateIndex !== action.optionIndex)
+        : [...player.hand];
+      if (nextCandidates.length > 0) {
+        state.pendingChoice = {
+          id: `choice_${nextEventNumber(state)}`,
+          type: "OPTION_CHOICE",
+          playerId: action.playerId,
+          prompt: `Discard ${pick.remaining - 1} more card${pick.remaining - 1 === 1 ? "" : "s"}.`,
+          options: nextCandidates.map((id) => ({ label: `Discard ${cardLibrary[id]?.name ?? id}` })),
+          context: "hand-discard",
+          handDiscard: { cardIds: nextCandidates, remaining: pick.remaining - 1, drawnOnly: pick.drawnOnly },
+          returnPhase: choice.returnPhase
+        };
+        state.phase = "choice";
+        state.priorityPlayerId = action.playerId;
+      }
+    }
+    return;
+  }
+
   if (choice.context === "eagle-eye") {
     const dig = choice.eagleEye;
     const player = state.players[action.playerId];

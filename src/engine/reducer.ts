@@ -5524,6 +5524,36 @@ function startChainLightning(
   );
 }
 
+/**
+ * Charm of Mana / Shackles of War: open a "discard M cards from hand" choice.
+ * `candidates` are the cards the player may discard (the whole hand, or only
+ * the cards just drawn). With nothing to discard the choice is skipped.
+ */
+function openHandDiscardChoice(
+  state: GameState,
+  playerId: PlayerId,
+  remaining: number,
+  candidates: CardId[],
+  drawnOnly: boolean,
+  cardName: string
+): void {
+  if (remaining <= 0 || candidates.length === 0) {
+    return;
+  }
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `${cardName}: discard ${remaining} card${remaining === 1 ? "" : "s"}.`,
+    options: candidates.map((cardId) => ({ label: `Discard ${cardLibrary[cardId]?.name ?? cardId}` })),
+    context: "hand-discard",
+    handDiscard: { cardIds: candidates, remaining, drawnOnly },
+    returnPhase: state.combat ? "combat" : "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
 function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CARD" }>, cards: CardLibrary): void {
   const card = cards[action.cardId];
   if (!card) {
@@ -5773,7 +5803,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "DRAW_CARDS") {
+    const handBefore = state.players[action.playerId].hand.length;
     drawCardsForPlayer(state, action.playerId, getEffectAmount(effect, mode));
+    // Charm of Mana / Shackles of War: "draw N, then discard M". The discard is
+    // a follow-up choice; `thenDiscardDrawnOnly` limits it to the drawn cards.
+    if (effect.thenDiscard) {
+      const hand = state.players[action.playerId].hand;
+      const drawn = hand.slice(handBefore);
+      const candidates = effect.thenDiscardDrawnOnly ? drawn : [...hand];
+      openHandDiscardChoice(state, action.playerId, effect.thenDiscard, candidates, Boolean(effect.thenDiscardDrawnOnly), card.name);
+    }
   }
 
   // Offense/Armorer outside combat: the stat fizzles, the draw still happens.
