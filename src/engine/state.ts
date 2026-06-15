@@ -110,6 +110,8 @@ export type TargetDefinition =
   | { type: "any-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
   /** Summon spells: a chosen empty space on the combat board. */
   | { type: "empty-space" }
+  /** Inferno: any space on the combat board (occupied or not). */
+  | { type: "any-space" }
   | { type: "none" };
 
 export type EffectDurationDefinition =
@@ -120,6 +122,17 @@ export type EffectDurationDefinition =
   | { type: "current-turn" }
   /** Torosar's Ballista IV: "until the end of the round" (this game round). */
   | { type: "current-game-round" }
+  /**
+   * Mirth (Power 0): "during this Activation". Lasts until the end of the
+   * activation in progress when the effect is created (bound to the unit that
+   * is active at creation time).
+   */
+  | { type: "current-activation" }
+  /**
+   * Forgetfulness: "during its next activation". Lasts until the end of the
+   * targeted unit's next activation (bound to the effect's target unit).
+   */
+  | { type: "next-activation" }
   | { type: "combat" }
   | { type: "permanent" };
 
@@ -158,6 +171,14 @@ export type ActiveEffectModifier =
     }
   | {
       type: "UNIT_CANNOT_MOVE";
+    }
+  | {
+      /**
+       * Forgetfulness: while held, the unit cannot perform an Attack action
+       * (it may still move). Lasts its next activation (the "next-activation"
+       * duration removes it when that activation ends).
+       */
+      type: "UNIT_CANNOT_ATTACK";
     }
   | {
       /**
@@ -620,6 +641,46 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Sorrow Spell (Instant reaction on UNIT_ACTIVATION_STARTED): when an
+       * enemy unit is about to activate, skip its activation. The grade reached
+       * scales with the Power paid (0 → bronze, 2 → silver, 4 → gold), so each
+       * grade is one option of the card's CHOOSE_ONE (like Resurrection).
+       */
+      type: "SKIP_ACTIVATION";
+      grade: UnitGrade;
+    }
+  | {
+      /**
+       * Slayer Spell (Instant reaction on UNIT_ATTACK_DECLARED, attacker's
+       * side, gold defender only): roll the Attack die `rollsByPower` times and
+       * apply every result except a "-1" (each "+1" adds 1 to the attack), then
+       * draw 1 card. Power 0 → 2 rolls, 2 → 4, 4 → 6.
+       */
+      type: "SLAYER_ATTACK";
+      rollsByPower: Record<number, number>;
+    }
+  | {
+      /**
+       * Inferno Spell (Activation): select a space, roll the Attack die
+       * `rollsByPower` times, and every unit on that space and the orthogonally
+       * adjacent spaces (friend or foe) takes 1 damage for each "+1" rolled.
+       * Power 0 → 1 roll, 1 → 2, 2 → 4.
+       */
+      type: "INFERNO";
+      rollsByPower: Record<number, number>;
+    }
+  | {
+      /**
+       * Forgetfulness Spell (Activation): the selected enemy ranged unit cannot
+       * attack during its next activation. The grade reached scales with the
+       * Power paid (0 → bronze, 1 → silver, 2 → gold). Backed by a
+       * UNIT_CANNOT_ATTACK effect with the "next-activation" duration.
+       */
+      type: "FORGETFULNESS";
+      gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
        * Torosar's Ballista specialty (I activate / IV / VI). `grant` fields one
        * extra Ballista for the combat or the rest of the game round ("this card
        * counts as a Ballista"); `activate` fires one of your Ballistas now (I)
@@ -716,6 +777,12 @@ export type EffectDefinition =
       expertRerolls?: number;
       rerollsByPower?: Record<number, number>;
       duration: EffectDurationDefinition;
+      /**
+       * Mirth: the duration scales with the Power paid rather than the reroll
+       * count (Power 0 → this Activation, 2 → this Combat round, 4 → this
+       * Combat). When set, it overrides `duration` at the matched breakpoint.
+       */
+      durationByPower?: Record<number, EffectDurationDefinition>;
       consumeEffectOnUse: boolean;
     }
   | {
@@ -865,7 +932,7 @@ export type CardPlayCost = {
 };
 
 export type TriggerDefinition = {
-  event: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED";
+  event: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED";
   controller: "self" | "opponent" | "any";
 };
 
@@ -1824,7 +1891,7 @@ export type GameEvent =
       id: string;
       type: "ACTIVE_EFFECT_EXPIRED";
       effectId: string;
-      reason: "combat-round-ended" | "turn-ended" | "combat-ended" | "game-round-ended";
+      reason: "combat-round-ended" | "turn-ended" | "combat-ended" | "game-round-ended" | "activation-ended";
     }
   | {
       id: string;
@@ -2274,6 +2341,14 @@ export type ResolutionStackItem = {
     scrollLocked?: boolean;
     /** Bless: the Attack die is not rolled (counts as 0). */
     ignoreAttackDie?: boolean;
+    /**
+     * Slayer: roll the Attack die this many times against a gold defender and
+     * count the "+1" faces as the die's whole contribution (every "-1" is
+     * ignored). Set by the Slayer reaction; consumed in resolveAttackStackItem.
+     */
+    slayerRolls?: number;
+    /** Slayer: draw 1 card once the modified attack has resolved. */
+    slayerDraw?: boolean;
     /** Precision: this shot ignores the ranged back-row penalty. */
     ignoreRangedPenalty?: boolean;
     /**
@@ -2325,6 +2400,11 @@ export type ActiveEffectState = ActiveEffectDefinition & {
   expiresAtTurnEndPlayerId?: PlayerId;
   /** Game round at whose end the effect expires ("current-game-round"). */
   expiresAtGameRound?: number;
+  /**
+   * Unit whose activation-end expires this effect ("current-activation" binds
+   * to the active unit at creation, "next-activation" to the target unit).
+   */
+  expiresAtActivationEndUnitId?: UnitId;
   usedRollEventIds: string[];
   usedChoiceIds: string[];
   usedCombatRoundNumbers: number[];
@@ -2592,6 +2672,12 @@ export type CombatUnitState = {
    * becomes active (setActiveUnit).
    */
   reactionPauseAcked?: boolean;
+  /**
+   * Set once a Sorrow-style activation-skip reaction window has been offered
+   * for this unit's current activation, so the centralized hook does not
+   * re-open it every action. Reset every time the unit becomes active.
+   */
+  activationSkipOffered?: boolean;
   /** Combat tokens currently on the card (attack/weakness/corrosion/paralysis). */
   tokens?: CombatTokenState[];
   /**

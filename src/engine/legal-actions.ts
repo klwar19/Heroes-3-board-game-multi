@@ -483,12 +483,28 @@ export function rerollSourceAvailableFor(source: AttackRerollSource, currentRoll
   return true;
 }
 
-export function canUnitAttack(combat: CombatState, attacker: CombatUnitState, defender: CombatUnitState): boolean {
+export function canUnitAttack(
+  combat: CombatState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  activeEffects: ActiveEffectState[] = []
+): boolean {
   if (!isUnitAlive(attacker) || !isUnitAlive(defender)) {
     return false;
   }
 
   if (attacker.controllerId === defender.controllerId) {
+    return false;
+  }
+
+  // Forgetfulness: a unit holding UNIT_CANNOT_ATTACK may move but not attack.
+  if (
+    activeEffects.some(
+      (effect) =>
+        effectAppliesToUnit(effect, attacker) &&
+        effect.modifiers.some((modifier) => modifier.type === "UNIT_CANNOT_ATTACK")
+    )
+  ) {
     return false;
   }
 
@@ -532,11 +548,14 @@ export function canUnitMoveAndAttack(
     }
   };
 
-  return canUnitAttack(virtualCombat, movedAttacker, defender);
+  return canUnitAttack(virtualCombat, movedAttacker, defender, state?.activeEffects ?? []);
 }
 
 /** A target definition that resolves to units (not "none" or an empty space). */
-type UnitTargetDefinition = Exclude<TargetDefinition, { type: "none" } | { type: "empty-space" }>;
+type UnitTargetDefinition = Exclude<
+  TargetDefinition,
+  { type: "none" } | { type: "empty-space" } | { type: "any-space" }
+>;
 
 function unitMatchesTarget(unit: CombatUnitState, target: UnitTargetDefinition): boolean {
   if (target.unitTypes && !target.unitTypes.includes(unit.type)) {
@@ -596,7 +615,10 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
   // pick a unit: they default to a no-target play. Only effects that actually
   // strike a unit fall back to "enemy-unit".
   const selfTargetedEffect =
-    card?.effect.type === "CREATE_ACTIVE_EFFECT" || card?.effect.type === "GAIN_MORALE";
+    card?.effect.type === "CREATE_ACTIVE_EFFECT" ||
+    card?.effect.type === "GAIN_MORALE" ||
+    // Mirth: a player-scoped reroll buff picks no unit.
+    card?.effect.type === "CREATE_ATTACK_DIE_REROLL";
   const targetType =
     card?.target?.type ??
     (card?.effect.type === "HEAL_DAMAGE"
@@ -641,8 +663,24 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
     return spaces;
   }
 
+  // Inferno: any space on the board is a legal target — occupied or empty — so
+  // the blast can be centred on a stack of units.
+  if (targetType === "any-space") {
+    if (!state.combat) {
+      return [];
+    }
+    const spaces: TargetRef[] = [];
+    for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+      spaces.push({ type: "space", position });
+    }
+    return spaces;
+  }
+
   const target =
-    card?.target && card.target.type !== "none" && card.target.type !== "empty-space"
+    card?.target &&
+    card.target.type !== "none" &&
+    card.target.type !== "empty-space" &&
+    card.target.type !== "any-space"
       ? card.target
       : ({ type: targetType } as UnitTargetDefinition);
 
@@ -1733,7 +1771,7 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
   // ranged unit that already moved gave up its attack.
   if (!alreadyAttacked) {
     for (const defender of Object.values(combat.units)) {
-      if (!canUnitAttack(combat, activeUnit, defender)) {
+      if (!canUnitAttack(combat, activeUnit, defender, state.activeEffects)) {
         continue;
       }
 
@@ -2295,7 +2333,11 @@ export function getLegalReactionsForTrigger(
     return getLethalSaveReactions(state, triggerEvent, cards);
   }
 
-  if (triggerEvent.type !== "SPELL_CAST_STARTED" && triggerEvent.type !== "UNIT_ATTACK_DECLARED") {
+  if (
+    triggerEvent.type !== "SPELL_CAST_STARTED" &&
+    triggerEvent.type !== "UNIT_ATTACK_DECLARED" &&
+    triggerEvent.type !== "UNIT_ACTIVATION_STARTED"
+  ) {
     return {};
   }
 
@@ -2585,7 +2627,7 @@ export function getLegalReactionsForTrigger(
 function getPermanentFieldExpertAction(
   state: GameState,
   playerId: PlayerId,
-  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" }>,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
   cards: CardLibrary
 ): LegalAction | null {
   if (triggerEvent.type !== "SPELL_CAST_STARTED" || triggerEvent.playerId !== playerId) {
@@ -2620,7 +2662,7 @@ function getPermanentFieldExpertAction(
 
 function variantMatchesTrigger(
   variant: CardPlayVariant,
-  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" }>,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
   playerId: PlayerId
 ): boolean {
   if (!variant.trigger) {
@@ -2698,9 +2740,22 @@ export function isEffectLegalForTrigger(
   state: GameState,
   playerId: PlayerId,
   effect: ConcreteEffect,
-  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" }>,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
   mode: CardPlayMode
 ): boolean {
+  // Sorrow: skip the about-to-activate unit. Offered to the unit's opponent
+  // only, and only while that unit's grade is within the option's reach.
+  if (triggerEvent.type === "UNIT_ACTIVATION_STARTED") {
+    if (effect.type !== "SKIP_ACTIVATION") {
+      return false;
+    }
+    if (triggerEvent.playerId === playerId) {
+      return false;
+    }
+    const unit = state.combat?.units[triggerEvent.unitId];
+    return Boolean(unit && isUnitAlive(unit) && gradeRank(unit.grade) <= gradeRank(effect.grade));
+  }
+
   // Card draws are timing-free instants: they fit inside any open window.
   if (effect.type === "DRAW_CARDS") {
     return true;
@@ -2782,6 +2837,12 @@ export function isEffectLegalForTrigger(
     // attacker's controller plays it, and never on a ranged shot.
     if (effect.type === "IGNORE_ATTACK_DIE") {
       return attacker.controllerId === playerId && attacker.type !== "ranged";
+    }
+
+    // Slayer: only the attacker's controller, and only when striking a gold
+    // unit ("when attacking a golden unit").
+    if (effect.type === "SLAYER_ATTACK") {
+      return attacker.controllerId === playerId && defender.grade === "gold";
     }
 
     // Alamar's Resurrection is never a pre-die attack reaction — it is offered

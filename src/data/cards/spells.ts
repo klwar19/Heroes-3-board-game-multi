@@ -677,30 +677,126 @@ export const spellCards: CardLibrary = {
     implementationStatus: "implemented",
     source: spellSource("blind")
   },
-  "spell.mirth": notImplementedSpell(
-    "mirth",
-    "Mirth",
-    "expert",
-    "water",
-    "combat",
-    "Ongoing: You can reroll each of your Attack dice once. During: Power 0: this Activation; Power 2: this Combat round; Power 4: this Combat."
-  ),
-  "spell.sorrow": notImplementedSpell(
-    "sorrow",
-    "Sorrow",
-    "expert",
-    "earth",
-    "instant",
-    "Instant: When a unit is about to activate, skip this unit's activation: Power 0: bronze; Power 2: bronze or silver; Power 4: bronze, silver, or gold."
-  ),
-  "spell.slayer": notImplementedSpell(
-    "slayer",
-    "Slayer",
-    "expert",
-    "fire",
-    "instant",
-    "Instant: When attacking a gold unit, roll an Attack die several times and apply all the results (except for a '-1'). After resolving this attack, draw 1 card: Power 0: twice; Power 2: 4 times; Power 4: 6 times."
-  ),
+  // Mirth (Expert Water, Activation; Rampart Expansion): a player-scoped reroll
+  // — you may reroll each of your Attack dice once, for a window that grows with
+  // Power (Power 0: this Activation, 2: this Combat round, 4: this Combat). The
+  // reroll count stays one per die; only the duration scales. The "OR Instant:
+  // +1 Power" side is the universal power-source discard, so it needs no option.
+  "spell.mirth": {
+    id: "spell.mirth",
+    name: "Mirth",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["water"],
+    power: 0,
+    tags: [
+      "spell",
+      "expert",
+      "water",
+      "Ongoing: You can reroll each of your Attack dice once. During: Power 0: this Activation; Power 2: this Combat round; Power 4: this Combat. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "CREATE_ATTACK_DIE_REROLL",
+      name: "Mirth",
+      basicRerolls: 1,
+      duration: { type: "current-activation" },
+      durationByPower: {
+        0: { type: "current-activation" },
+        2: { type: "current-combat-round" },
+        4: { type: "combat" }
+      },
+      consumeEffectOnUse: false
+    },
+    assets: {
+      cardImage: "/assets/spells-mirth.webp",
+      imageAlt: "Mirth card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("mirth")
+  },
+  // Sorrow (Expert Earth, Instant; Rampart Expansion): when an enemy unit is
+  // about to activate, skip its activation. The reachable grade rises with the
+  // Power paid (0 → bronze, 2 → silver, 4 → gold), so each grade is one option
+  // whose extra Power is paid by discarding power-source cards (like
+  // Resurrection). Offered in the activation-skip reaction window.
+  "spell.sorrow": {
+    id: "spell.sorrow",
+    name: "Sorrow",
+    kind: "spell",
+    timing: "reaction",
+    phaseLimit: ["reaction", "combat"],
+    spellLevel: "expert",
+    spellSchools: ["earth"],
+    power: 0,
+    tags: [
+      "spell",
+      "expert",
+      "earth",
+      "Instant: When a unit is about to activate, skip this unit's activation: Power 0: bronze; Power 2: bronze or silver; Power 4: bronze, silver, or gold. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Skip a bronze unit's activation",
+          trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "opponent" },
+          effect: { type: "SKIP_ACTIVATION", grade: "bronze" }
+        },
+        {
+          label: "Skip a bronze or silver unit (pay 2 Power)",
+          cost: { discardCards: 2, costCardFilter: "power-source" },
+          trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "opponent" },
+          effect: { type: "SKIP_ACTIVATION", grade: "silver" }
+        },
+        {
+          label: "Skip a bronze, silver, or gold unit (pay 4 Power)",
+          cost: { discardCards: 4, costCardFilter: "power-source" },
+          trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "opponent" },
+          effect: { type: "SKIP_ACTIVATION", grade: "gold" }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "/assets/spells-sorrow.webp",
+      imageAlt: "Sorrow card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("sorrow")
+  },
+  // Slayer (Expert Fire, Instant; Rampart Expansion): reacting to your own unit
+  // attacking a gold unit, roll the Attack die several times and apply every
+  // result but a "-1" (each "+1" adds 1 to the attack), then draw 1 card. The
+  // number of rolls scales with the Power paid alongside it (0 → 2, 2 → 4,
+  // 4 → 6). The "OR Instant: +1 Power" side is the universal discard.
+  "spell.slayer": {
+    id: "spell.slayer",
+    name: "Slayer",
+    kind: "spell",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    spellLevel: "expert",
+    spellSchools: ["fire"],
+    power: 0,
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+    tags: [
+      "spell",
+      "expert",
+      "fire",
+      "Instant: When attacking a gold unit, roll an Attack die several times and apply all the results (except for a '-1'). After resolving this attack, draw 1 card: Power 0: twice; Power 2: 4 times; Power 4: 6 times. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "SLAYER_ATTACK",
+      rollsByPower: { 0: 2, 2: 4, 4: 6 }
+    },
+    assets: {
+      cardImage: "/assets/spells-slayer.webp",
+      imageAlt: "Slayer card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("slayer")
+  },
   // Dimension Door (Expert Air, map): teleport the hero up to X fields away,
   // ignoring obstacles and the fields in-between, then resolve the destination
   // normally (landing on guards or an enemy hero starts a combat). The reach
@@ -863,22 +959,69 @@ export const spellCards: CardLibrary = {
     implementationStatus: "implemented",
     source: spellSource("earthquake")
   },
-  "spell.forgetfulness": notImplementedSpell(
-    "forgetfulness",
-    "Forgetfulness",
-    "basic",
-    "water",
-    "combat",
-    "Ongoing: During its next activation, a ranged unit of your choice cannot attack: Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or gold."
-  ),
-  "spell.inferno": notImplementedSpell(
-    "inferno",
-    "Inferno",
-    "expert",
-    "fire",
-    "combat",
-    "Activation: Select a space. Now roll an Attack die several times. All units on this and the adjacent spaces take 1 damage for every '+1' rolled: Power 0: once; Power 1: twice; Power 2: 4 times."
-  ),
+  // Forgetfulness (Basic Water, Activation; Rampart Expansion): the selected
+  // enemy ranged unit cannot attack during its next activation (it may still
+  // move). The reachable grade rises with the Power paid (0 → bronze, 1 →
+  // silver, 2 → gold). Backed by a UNIT_CANNOT_ATTACK effect that lasts until
+  // the end of that unit's next activation.
+  "spell.forgetfulness": {
+    id: "spell.forgetfulness",
+    name: "Forgetfulness",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "basic",
+    spellSchools: ["water"],
+    power: 0,
+    target: { type: "enemy-unit", unitTypes: ["ranged"] },
+    tags: [
+      "spell",
+      "basic",
+      "water",
+      "Ongoing: During its next activation, a ranged unit of your choice cannot attack: Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or gold."
+    ],
+    effect: {
+      type: "FORGETFULNESS",
+      gradeByPower: { 0: "bronze", 1: "silver", 2: "gold" }
+    },
+    assets: {
+      cardImage: "/assets/spells-forgetfulness.webp",
+      imageAlt: "Forgetfulness card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("forgetfulness")
+  },
+  // Inferno (Expert Fire, Activation; Inferno Expansion): pick a space, roll the
+  // Attack die N times (Power 0 → 1, 1 → 2, 2 → 4) and every unit on that space
+  // and the orthogonally adjacent ones — friend or foe — takes 1 damage for
+  // each "+1" rolled.
+  "spell.inferno": {
+    id: "spell.inferno",
+    name: "Inferno",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["fire"],
+    power: 0,
+    target: { type: "any-space" },
+    tags: [
+      "spell",
+      "expert",
+      "fire",
+      "Activation: Select a space. Now roll an Attack die several times. All units on this and the adjacent spaces take 1 damage for every '+1' rolled: Power 0: once; Power 1: twice; Power 2: 4 times."
+    ],
+    effect: {
+      type: "INFERNO",
+      rollsByPower: { 0: 1, 1: 2, 2: 4 }
+    },
+    assets: {
+      cardImage: "/assets/spells-inferno.webp",
+      imageAlt: "Inferno card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("inferno")
+  },
   "spell.visions": notImplementedSpell(
     "visions",
     "Visions",
@@ -938,7 +1081,14 @@ export const spellDeckLegacy: string[] = [
   "spell.summon_water_elemental",
   "spell.dimension_door",
   "spell.fly",
-  "spell.water_walk"
+  "spell.water_walk",
+  // Rampart Expansion spells.
+  "spell.mirth",
+  "spell.sorrow",
+  "spell.slayer",
+  "spell.forgetfulness",
+  // Inferno Expansion spell.
+  "spell.inferno"
 ];
 
 /** BINH split decks. */
