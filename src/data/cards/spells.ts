@@ -805,13 +805,13 @@ export const spellCards: CardLibrary = {
         },
         {
           label: "Skip a silver unit (pay 2 Power)",
-          cost: { discardCards: 2, costCardFilter: "power-source" },
+          cost: { powerCost: 2, costCardFilter: "power-source" },
           trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "opponent" },
           effect: { type: "SKIP_ACTIVATION", grade: "silver" }
         },
         {
           label: "Skip a gold unit (pay 4 Power)",
-          cost: { discardCards: 4, costCardFilter: "power-source" },
+          cost: { powerCost: 4, costCardFilter: "power-source" },
           trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "opponent" },
           effect: { type: "SKIP_ACTIVATION", grade: "gold" }
         }

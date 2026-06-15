@@ -136,6 +136,24 @@ describe("attack-window power pairing", () => {
     expect(rolled && rolled.type === "ATTACK_ROLLED" ? rolled.attackBonus : null).toBe(3);
   });
 
+  it("credits standing School-of-Magic Power to a spell instant played as a reaction", () => {
+    // Fire Magic in play grants +1 standing Power to Fire spells. Bloodlust
+    // (Fire) played as a reaction should be lifted to Power 1 → +2 attack, the
+    // same standing Power a spell cast on your own turn receives.
+    const state = declareMeleeAttack(["spell.bloodlust"], []);
+    state.players.p1.permanents = ["ability.fire_magic"];
+    const next = applyOk(state, { type: "PLAY_REACTION", playerId: "p1", cardId: "spell.bloodlust", mode: "basic" });
+    const rolled = [...next.eventLog].reverse().find((event) => event.type === "ATTACK_ROLLED");
+    expect(rolled && rolled.type === "ATTACK_ROLLED" ? rolled.attackBonus : null).toBe(2);
+  });
+
+  it("without the School permanent the same reaction Bloodlust is only +1 (standing-power guard)", () => {
+    const state = declareMeleeAttack(["spell.bloodlust"], []);
+    const next = applyOk(state, { type: "PLAY_REACTION", playerId: "p1", cardId: "spell.bloodlust", mode: "basic" });
+    const rolled = [...next.eventLog].reverse().find((event) => event.type === "ATTACK_ROLLED");
+    expect(rolled && rolled.type === "ATTACK_ROLLED" ? rolled.attackBonus : null).toBe(1);
+  });
+
   it("still allows the +1 Power discard toward your own spell cast", () => {
     const state = createInitialGameState("attack-window-seed-2");
     state.players.p1.hand = ["spell.magic_arrow", "spell.bloodlust"];

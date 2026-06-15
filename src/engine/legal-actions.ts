@@ -8,6 +8,7 @@ import {
   armyHasMapEffect,
   canHeroReachPlacedTile,
   discountedReinforceCost,
+  getActiveAstrologersCard,
   getMainHero,
   getSecondaryHero,
   getTownOfPlayer,
@@ -41,7 +42,7 @@ import {
   playerHasSpellTimingFreedom,
   unitIsBerserk
 } from "./active-effects";
-import { cancelSpellAllowsSchoolAndLevel, cardCanBoostPower } from "./effects";
+import { cancelSpellAllowsSchoolAndLevel, cardCanBoostPower, spellPowerValueOfCard } from "./effects";
 import {
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
@@ -87,6 +88,7 @@ import type {
   ResolutionStackItem,
   ResourceCost,
   ResourceKind,
+  SpellSchool,
   TargetDefinition,
   TargetRef,
   TownId,
@@ -95,6 +97,7 @@ import type {
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import {
+  getActivationSpellPowerBoost,
   getLethalSaveUnitAbility,
   getUnitAbilityDefinitions,
   hasBindAdjacentEnemies,
@@ -146,9 +149,46 @@ export function getCardPlayVariants(card: CardDefinition): CardPlayVariant[] {
   ];
 }
 
+/**
+ * The "free" spell Power a player brings to a spell from standing sources this
+ * turn/round — the once-per-turn Astrologers bonus, the once-per-round active
+ * unit (Magi) boost, and a School-of-Magic permanent's basic bonus for the
+ * spell's school. Mirrors what `castSpell` seeds onto a freshly cast spell, so
+ * a spell played as an instant/reaction (Slayer, Sorrow…) or a Power-value cost
+ * (Sorrow's silver/gold) counts the same standing Power a normal cast would.
+ */
+export function standingSpellPower(state: GameState, playerId: PlayerId, card: CardDefinition): number {
+  const player = state.players[playerId];
+  if (!player || card.kind !== "spell") {
+    return 0;
+  }
+  let bonus = 0;
+  if ((player.combatStats.spellsCastThisTurn ?? 0) === 0) {
+    const astrologers = getActiveAstrologersCard(state);
+    if (astrologers?.effect.type === "FIRST_SPELL_POWER_BONUS") {
+      bonus += astrologers.effect.amount;
+    }
+  }
+  if ((player.combatStats.spellsCastThisRound ?? 0) === 0) {
+    const combat = state.combat;
+    const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+    if (activeUnit && activeUnit.controllerId === playerId) {
+      bonus += getActivationSpellPowerBoost(activeUnit);
+    }
+  }
+  const school = getPermanentSchoolBonus(state, playerId, card);
+  if (school) {
+    bonus += school.basicPower;
+  }
+  return bonus;
+}
+
 /** Whether the player can pay an option's card cost from hand right now. */
 function canAffordCardCost(state: GameState, playerId: PlayerId, cardId: string, cost?: CardPlayCost): boolean {
-  if (!cost || (cost.discardCards === undefined && cost.discardCardsUpTo === undefined)) {
+  if (
+    !cost ||
+    (cost.discardCards === undefined && cost.discardCardsUpTo === undefined && cost.powerCost === undefined)
+  ) {
     return true;
   }
 
@@ -170,6 +210,17 @@ function canAffordCardCost(state: GameState, playerId: PlayerId, cardId: string,
       : cost.costCardFilter === "power-source"
         ? rest.filter((id) => cardCanBoostPower(cardLibrary[id]))
         : rest;
+
+  // Power-value cost (Sorrow): the standing spell Power plus the full printed
+  // Power of every eligible power-source card in hand must reach the threshold.
+  if (cost.powerCost !== undefined) {
+    const card = cardLibrary[cardId];
+    const schools = card?.spellSchools ?? [];
+    const standing = card ? standingSpellPower(state, playerId, card) : 0;
+    const fromCards = eligible.reduce((sum, id) => sum + spellPowerValueOfCard(cardLibrary[id], schools), 0);
+    return standing + fromCards >= cost.powerCost;
+  }
+
   const needed = cost.discardCards ?? 0;
   return eligible.length >= needed;
 }
@@ -3212,6 +3263,21 @@ function fueledPowerOnStackItem(stackItem: ResolutionStackItem | undefined): num
   );
 }
 
+/** Whether a spell of `school` (or "any") has already been played into this attack. */
+function attackStackHasSpellOfSchool(stackItem: ResolutionStackItem | undefined, school: SpellSchool): boolean {
+  if (!stackItem) {
+    return false;
+  }
+  return stackItem.modifiers.playedCardIds.some((id) => {
+    const card = cardLibrary[id];
+    if (card?.kind !== "spell") {
+      return false;
+    }
+    const schools = card.spellSchools ?? [];
+    return schools.includes(school) || schools.includes("any");
+  });
+}
+
 function getPendingSpellPower(state: GameState, triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" }>): number {
   const stackItem = getPendingStackItem(state, triggerEvent);
   if (stackItem?.modifiers.scrollLocked) {
@@ -3489,7 +3555,17 @@ export function isEffectLegalForTrigger(
     // Power may be paid into an attack window so a spell instant in the same
     // declaration can consume it (the batch validator enforces the pairing).
     if (effect.type === "ADD_SPELL_POWER") {
-      return !effect.schoolOnly && (attacker.controllerId === playerId || defender.controllerId === playerId);
+      if (!(attacker.controllerId === playerId || defender.controllerId === playerId)) {
+        return false;
+      }
+      // School-restricted Power (Elemental Orbs, Basic-School Magic abilities)
+      // may empower a spell instant here only once a matching-school spell has
+      // been played into this attack — Slayer, Bloodlust and Frenzy are Fire,
+      // so a Fire Orb fuels them. Generic Power needs no school match.
+      if (effect.schoolOnly) {
+        return attackStackHasSpellOfSchool(getPendingStackItem(state, triggerEvent), effect.schoolOnly);
+      }
+      return true;
     }
 
     if (effect.type !== "ADD_COMBAT_STAT") {
