@@ -203,6 +203,28 @@ export function BattlefieldBoard({
     }
   }
 
+  // Teleport Spell: the caster picks an empty space from a combat-teleport
+  // choice. Map each offered position to its CHOOSE_OPTION so the empty cell
+  // lights up and lands the unit when clicked (works in both table views).
+  const teleportActionsByPosition = new Map<number, GameAction>();
+  const teleportChoice = state.pendingChoice;
+  if (
+    combat &&
+    teleportChoice?.type === "OPTION_CHOICE" &&
+    teleportChoice.context === "combat-teleport" &&
+    teleportChoice.playerId === viewerPlayerId &&
+    teleportChoice.teleport
+  ) {
+    teleportChoice.teleport.positions.forEach((position, optionIndex) => {
+      teleportActionsByPosition.set(position, {
+        type: "CHOOSE_OPTION",
+        playerId: viewerPlayerId,
+        choiceId: teleportChoice.id,
+        optionIndex
+      });
+    });
+  }
+
   for (const legal of legalActions) {
     if (legal.action.type === "MOVE_UNIT") {
       moveActionsByDestination.set(legal.action.destination, legal.action);
@@ -247,6 +269,7 @@ export function BattlefieldBoard({
           const attackAction = unit ? attackActionsByDefender.get(unit.id) : undefined;
           const cardAction = unit ? cardActionsByTarget.get(unit.id) : undefined;
           const spaceCardAction = !unit ? spaceCardActionsByPosition.get(index) : undefined;
+          const teleportAction = !unit ? teleportActionsByPosition.get(index) : undefined;
           const abilityAction = unit ? abilityTargetActions.get(unit.id) : undefined;
           const isActive = Boolean(unit && combat?.activeUnitId === unit.id);
           const isFlipping = Boolean(unit && flippedUnitIds?.has(unit.id));
@@ -255,7 +278,7 @@ export function BattlefieldBoard({
             isObstacle ? "obstacle" : ""
           } ${moveAction && !selectedCardAction ? "moveTarget" : ""} ${
             attackAction && !selectedCardAction ? "attackTarget" : ""
-          } ${cardAction || spaceCardAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${dropTarget ? "dropTarget" : ""}`;
+          } ${cardAction || spaceCardAction || teleportAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${dropTarget ? "dropTarget" : ""}`;
           const health = unit ? Math.max(0, unit.maxHealth - shownDamage(unit)) : 0;
 
           const dropProps = dropTarget
@@ -371,18 +394,21 @@ export function BattlefieldBoard({
                 }
               : {};
 
-          const interactiveAction = abilityAction ?? cardAction ?? spaceCardAction ?? (unit ? attackAction : moveAction);
+          const interactiveAction =
+            abilityAction ?? cardAction ?? spaceCardAction ?? teleportAction ?? (unit ? attackAction : moveAction);
 
-          if (interactiveAction && (!selectedCardAction || cardAction || spaceCardAction)) {
+          if (interactiveAction && (!selectedCardAction || cardAction || spaceCardAction || teleportAction)) {
             const label = abilityAction
               ? `Ability target: ${unit?.name}`
               : cardAction
                 ? `Target ${unit?.name}`
                 : spaceCardAction
                   ? `Cast on ${getBattlefieldLabel(index)}`
-                  : unit
-                    ? `Attack ${unit?.name}`
-                    : `Move to ${getBattlefieldLabel(index)}`;
+                  : teleportAction
+                    ? `Teleport to ${getBattlefieldLabel(index)}`
+                    : unit
+                      ? `Attack ${unit?.name}`
+                      : `Move to ${getBattlefieldLabel(index)}`;
             return (
               <button
                 aria-label={label}

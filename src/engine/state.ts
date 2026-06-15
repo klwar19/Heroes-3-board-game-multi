@@ -180,6 +180,19 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Berserk: while held (its next activation), the unit MUST attack the
+       * nearest unit — friend or foe — or move toward it and attack it. The
+       * legal-action layer drops every other action (no free move, defend or
+       * ability) and the neutral AI targets the nearest unit instead of by
+       * tier; `canUnitAttack` lets the berserked unit strike its own allies
+       * (the attacked ally still retaliates). Bound to the unit's next
+       * activation (the "next-activation" duration removes it when that
+       * activation ends).
+       */
+      type: "BERSERK_FORCED_ATTACK";
+    }
+  | {
+      /**
        * Shackles of War (house rule): while held, the affected player's Hero
        * cannot *Surrender* the current Combat. Retreat (and a fought-out loss)
        * is unaffected. Player-scoped, lasts the Combat.
@@ -751,6 +764,33 @@ export type EffectDefinition =
        * UNIT_CANNOT_ATTACK effect with the "next-activation" duration.
        */
       type: "FORGETFULNESS";
+      gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
+       * Berserk Spell (Expert Fire, Activation): the selected unit MUST, during
+       * its next activation, attack the nearest unit or move to the nearest unit
+       * and attack it (friend or foe — the berserked unit may be forced onto its
+       * own allies, who retaliate as normal). The reachable grade rises with the
+       * Power paid (0 → bronze, 2 → silver, 4 → gold), exactly like Blind: casting
+       * on a unit above the unlocked grade does nothing. Backed by a
+       * BERSERK_FORCED_ATTACK effect with the "next-activation" duration.
+       */
+      type: "BERSERK";
+      gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
+       * Teleport Spell (Expert Water, Activation): move one of the caster's units
+       * to any empty space on the combat board, ignoring obstacles, other units
+       * and the distance in-between. The reachable grade of the moved unit rises
+       * with the Power paid (0 → bronze, 1 → silver, 2 → gold), like Anti-Magic /
+       * Blind; casting on a unit above the unlocked grade does nothing. The
+       * destination empty space is picked in a follow-up choice after the cast
+       * (the "combat-teleport" OPTION_CHOICE). The move is a free relocation: it
+       * costs the unit no movement and provokes no Retaliation.
+       */
+      type: "TELEPORT_UNIT";
       gradeByPower: Record<number, UnitGrade>;
     }
   | {
@@ -3889,6 +3929,7 @@ export type PendingChoice =
         | "combat-reposition"
         | "genie-take-spell"
         | "combat-knockback"
+        | "combat-teleport"
         | "cover-of-darkness"
         | "diplomacy-skip"
         | "diplomacy-recruit"
@@ -3912,6 +3953,11 @@ export type PendingChoice =
        * move to. `attackerId` is the Ghost Dragons whose attack triggered it.
        */
       knockback?: { unitId: UnitId; attackerId: UnitId; positions: number[] };
+      /**
+       * combat-teleport: the Teleport Spell moved this unit; the caster picks
+       * which empty space (index-aligned with the options) it lands on.
+       */
+      teleport?: { unitId: UnitId; positions: number[] };
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */

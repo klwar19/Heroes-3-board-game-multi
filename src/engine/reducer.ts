@@ -65,6 +65,7 @@ import {
 import { chooseFaction, setGameOptions, startAdventureFromLobby } from "./adventure-setup";
 import {
   ATTACK_DIE_FACES,
+  BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
   BATTLEFIELD_ROWS,
   getBattlefieldCoordinates,
@@ -1899,6 +1900,9 @@ function concludeAttackerActivation(state: GameState, attacker: CombatUnitState)
   }
 
   attacker.activatedThisRound = true;
+  // Activation-bound effects on the attacker end with its activation (Berserk's
+  // "in its activation" forced attack, any "this Activation" buff).
+  appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, attacker.id), "activation-ended");
   advanceActiveUnit(state);
   state.phase = "combat";
   state.priorityPlayerId = null;
@@ -3676,6 +3680,95 @@ function resolveKnockbackChoice(
 }
 
 /**
+ * Teleport Spell: opens the caster's "choose where the unit lands" empty-space
+ * picker. Every space free of a living unit, an obstacle and a fortification is
+ * a legal destination (distance and intervening obstacles are ignored). With
+ * nowhere to land the cast simply fizzles (no choice opened).
+ */
+function openTeleportChoice(state: GameState, playerId: PlayerId, unit: CombatUnitState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  const positions: number[] = [];
+  for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+    if (!isSpaceBlockedForSummon(combat, position)) {
+      positions.push(position);
+    }
+  }
+  if (positions.length === 0) {
+    return;
+  }
+
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Teleport ${unit.cardName} to an empty space.`,
+    options: positions.map((position) => ({ label: `Teleport to ${getBattlefieldLabel(position)}` })),
+    context: "combat-teleport",
+    teleport: { unitId: unit.id, positions },
+    returnPhase: "combat"
+  };
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId,
+    sourceEffectIds: [],
+    message: `${state.players[playerId]?.name ?? playerId} teleports ${unit.cardName}.`
+  });
+}
+
+/** Resolves the Teleport destination pick: relocate the unit to the chosen space. */
+function resolveTeleportChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "combat-teleport" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.teleport
+  ) {
+    throw new Error("There is no teleport choice to resolve.");
+  }
+
+  const combat = state.combat;
+  const unit = combat?.units[choice.teleport.unitId];
+  const destination = choice.teleport.positions[action.optionIndex];
+  if (!combat || !unit || destination === undefined || isSpaceBlockedForSummon(combat, destination)) {
+    throw new Error("That teleport destination is not available.");
+  }
+
+  const from = unit.position;
+  unit.position = destination;
+  appendEvent(state, {
+    type: "UNIT_MOVED",
+    playerId: unit.controllerId,
+    unitId: unit.id,
+    from,
+    to: destination
+  });
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
+
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  finishCombatIfNeeded(state);
+}
+
+/**
  * Liches' Death Cloud: opens the second-attack target choice (or declares
  * the attack straight away when only one unit qualifies). Returns true when
  * the attack sequence is paused on the choice or the follow-up attack.
@@ -4959,6 +5052,45 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
           stackItem.action.playerId,
           stackItem.action.target
         );
+      }
+    }
+
+    // Berserk: the selected unit must attack the nearest unit on its next
+    // activation. Grade-gated like Blind; above the unlocked grade the cast does
+    // nothing. The forced "attack the nearest" rule lives in the legal-action
+    // layer and the neutral AI (both read the BERSERK_FORCED_ATTACK effect).
+    if (card?.effect.type === "BERSERK" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        createActiveEffect(
+          state,
+          {
+            name: card.name,
+            scope: "unit",
+            duration: { type: "next-activation" },
+            polarity: "negative",
+            removable: true,
+            modifiers: [{ type: "BERSERK_FORCED_ATTACK" }]
+          },
+          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          stackItem.action.playerId,
+          stackItem.action.target
+        );
+      }
+    }
+
+    // Teleport: move the selected unit to a chosen empty space, ignoring
+    // obstacles and distance. Grade-gated like Anti-Magic; above the unlocked
+    // grade the cast does nothing. The destination is picked in a follow-up
+    // (the combat-teleport choice), resolved by resolveTeleportChoice.
+    if (card?.effect.type === "TELEPORT_UNIT" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        openTeleportChoice(state, stackItem.action.playerId, target);
       }
     }
 
@@ -8586,6 +8718,7 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
   // flying units stay active to attack an adjacent enemy or hold.
   if (unit.type === "ranged") {
     unit.activatedThisRound = true;
+    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
     advanceActiveUnit(state);
   }
 
@@ -9093,6 +9226,7 @@ function executeNeutralActivation(
 
   if (intent.kind === "pass") {
     unit.activatedThisRound = true;
+    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
     appendEvent(state, {
       type: "UNIT_ACTIVATION_ENDED",
       playerId: unit.controllerId,
@@ -9107,6 +9241,7 @@ function executeNeutralActivation(
     unit.position = intent.destination;
     unit.movedThisActivation = true;
     unit.activatedThisRound = true;
+    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
     appendEvent(state, {
       type: "UNIT_MOVED",
       playerId: unit.controllerId,
@@ -9658,6 +9793,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           nextState.pendingChoice.context === "combat-knockback"
         ) {
           resolveKnockbackChoice(nextState, action, cards);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "combat-teleport"
+        ) {
+          resolveTeleportChoice(nextState, action);
         } else {
           chooseOption(nextState, action);
         }

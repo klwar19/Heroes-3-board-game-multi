@@ -353,6 +353,22 @@ export function unitCannotAttack(state: GameState, unit: CombatUnitState): boole
 }
 
 /**
+ * Berserk: whether the unit currently holds a BERSERK_FORCED_ATTACK effect. While
+ * it does (its next activation), the unit must attack the nearest unit — the
+ * legal-action layer and the neutral AI read this to force the attack, and
+ * `canUnitAttack` lets the unit strike its own allies. A unit that ignores
+ * ongoing spell effects (Tower Gargoyles/Titans) is not berserked — handled by
+ * effectAppliesToUnit.
+ */
+export function unitIsBerserk(activeEffects: ActiveEffectState[], unit: CombatUnitState): boolean {
+  return activeEffects.some(
+    (effect) =>
+      effectAppliesToUnit(effect, unit) &&
+      effect.modifiers.some((modifier) => modifier.type === "BERSERK_FORCED_ATTACK")
+  );
+}
+
+/**
  * Expires the activation-scoped effects bound to `unitId` (Mirth's
  * "this Activation", Forgetfulness's "its next activation") when that unit's
  * activation ends — including when the activation is skipped.
