@@ -1,0 +1,317 @@
+import { describe, expect, it } from "vitest";
+import {
+  applyAction,
+  createAdventureGameState,
+  createInitialGameState,
+  getLegalActions,
+  getMainHero
+} from "./index";
+import { finalizeAdventureCombat } from "./adventure-reducer";
+import { ATTACK_DIE_FACES } from "./battlefield";
+import type { CombatState, CombatUnitState, GameState, MapFieldState, PlayerId } from "./state";
+
+/**
+ * House rule for leaving a player-vs-player Combat (see CLAUDE.md — every rule
+ * here is engine-enforced and fails this suite if the wiring is removed):
+ *
+ * - Surrender: pay a flat 10 gold to the opponent (only choosable with the full
+ *   toll in hand), keep your WHOLE army in both troop-loss modes, take no morale
+ *   hit, return home, and give the opponent NOTHING toward winning (no XP, no
+ *   Necromancy, no "defeat every enemy hero" credit).
+ * - Retreat / fought-out loss: pay 5 gold to the winner — which may push the
+ *   loser into debt (gold goes negative) — take -1 morale, lose troops per the
+ *   lobby mode, count as a win for the opponent, and fall back home.
+ * - Shackles of War blocks Surrender only; Retreat still works (covered in
+ *   library-cards.test.ts).
+ */
+
+type Mode = "conquest" | "grail";
+
+function makeGame(opts: { victoryMode?: Mode; pvpTroopLoss?: "normal" | "none" } = {}): GameState {
+  // Both seats bear morale (Necropolis ignores it), so the loser's morale hit
+  // is observable whichever side concedes.
+  return createAdventureGameState({
+    seed: "surrender-retreat",
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    victoryMode: opts.victoryMode ?? "conquest",
+    pvpTroopLoss: opts.pvpTroopLoss ?? "normal",
+    players: [
+      { id: "p1", name: "Catherine", factionId: "castle", heroDefId: "catherine" },
+      { id: "p2", name: "Alamar", factionId: "dungeon", heroDefId: "alamar" }
+    ]
+  });
+}
+
+function injectField(state: GameState, spaceId = "99,99"): MapFieldState {
+  const field: MapFieldState = {
+    spaceId,
+    tileInstanceId: "test-tile",
+    slot: 0,
+    location: "empty_field",
+    difficulty: 7,
+    blackCube: false,
+    flagOwnerId: null,
+    everFlagged: false,
+    settlementResource: null
+  };
+  state.adventure!.fields[spaceId] = field;
+  return field;
+}
+
+function unit(
+  over: Partial<CombatUnitState> & { id: string; controllerId: PlayerId; armyUnitId: string }
+): CombatUnitState {
+  return {
+    name: "Pikemen",
+    cardName: "Few Pikemen",
+    variant: "few",
+    grade: "bronze",
+    type: "ground",
+    attack: 1,
+    defense: 1,
+    maxHealth: 2,
+    damage: 0,
+    initiative: 1,
+    position: 0,
+    activatedThisRound: false,
+    movedThisActivation: false,
+    retaliatedThisRound: false,
+    defenseToken: false,
+    abilities: [],
+    unitDefId: "castle.pikemen",
+    assets: { cardImage: "", imageAlt: "" },
+    ...over
+  } as CombatUnitState;
+}
+
+/**
+ * Stages a finished PvP fight: attacker p1 holds the field, defender p2 is the
+ * loser. p1's Pack took damage (would flip to Few on a real loss); one of p2's
+ * two units is destroyed, one survives. p2's hero is parked away from home so
+ * its fall-back is visible. Returns the loser's home town field id.
+ */
+function stageFinishedPvpFight(
+  state: GameState,
+  reason: "surrender" | "retreat" | "all-enemy-units-defeated"
+): { winnerId: PlayerId; loserId: PlayerId; loserHeroId: string; loserHomeFieldId: string | null } {
+  const attacker = getMainHero(state, "p1")!;
+  const defender = getMainHero(state, "p2")!;
+  const field = injectField(state);
+  attacker.spaceId = field.spaceId;
+  defender.spaceId = field.spaceId;
+
+  state.players.p1.army = [{ id: "a1", unitDefId: "castle.pikemen", side: "pack" }];
+  state.players.p2.army = [
+    { id: "b1", unitDefId: "castle.pikemen", side: "few" },
+    { id: "b2", unitDefId: "castle.pikemen", side: "few" }
+  ];
+
+  state.combat = {
+    id: "c1",
+    round: 1,
+    attackerPlayerId: "p1",
+    defenderPlayerId: "p2",
+    activeUnitId: null,
+    context: { kind: "player", attackerHeroId: attacker.id, defenderHeroId: defender.id, fieldId: field.spaceId },
+    setup: null,
+    awaitingContinue: false,
+    outcome: { winnerPlayerId: "p1", defeatedPlayerId: "p2", reason },
+    dice: { faces: [...ATTACK_DIE_FACES], seed: "s", rollCount: 0 },
+    units: {
+      a1: unit({ id: "a1", controllerId: "p1", armyUnitId: "a1", variant: "few", damage: 0 }),
+      b1: unit({ id: "b1", controllerId: "p2", armyUnitId: "b1", damage: 2, maxHealth: 2 }),
+      b2: unit({ id: "b2", controllerId: "p2", armyUnitId: "b2", damage: 0 })
+    }
+  } as CombatState;
+
+  return {
+    winnerId: "p1",
+    loserId: "p2",
+    loserHeroId: defender.id,
+    loserHomeFieldId: state.towns.town_p2.fieldId ?? null
+  };
+}
+
+describe("Surrender (house rule): a paid escape, not a defeat", () => {
+  it("keeps the surrendering player's WHOLE army even in normal troop-loss mode", () => {
+    const state = makeGame({ pvpTroopLoss: "normal" });
+    stageFinishedPvpFight(state, "surrender");
+
+    finalizeAdventureCombat(state);
+
+    // Nothing flips or leaves: the winner's Pack stays a Pack and neither of the
+    // loser's units (one of which "died" on the board) is removed.
+    expect(state.players.p1.army).toEqual([{ id: "a1", unitDefId: "castle.pikemen", side: "pack" }]);
+    expect(state.players.p2.army).toEqual([
+      { id: "b1", unitDefId: "castle.pikemen", side: "few" },
+      { id: "b2", unitDefId: "castle.pikemen", side: "few" }
+    ]);
+  });
+
+  it("pays exactly 10 gold from the surrendering player to the opponent", () => {
+    const state = makeGame();
+    const { winnerId, loserId } = stageFinishedPvpFight(state, "surrender");
+    state.players[winnerId].resources.gold = 10;
+    state.players[loserId].resources.gold = 10;
+
+    finalizeAdventureCombat(state);
+
+    expect(state.players[loserId].resources.gold).toBe(0);
+    expect(state.players[winnerId].resources.gold).toBe(20);
+  });
+
+  it("applies no morale penalty and grants the opponent no experience or Necromancy", () => {
+    const state = makeGame();
+    const { winnerId, loserId } = stageFinishedPvpFight(state, "surrender");
+    state.players[loserId].morale = 0;
+    state.players[winnerId].necromancyWindow = false;
+    const winnerXpBefore = getMainHero(state, winnerId)!.experience;
+
+    finalizeAdventureCombat(state);
+
+    expect(state.players[loserId].morale).toBe(0);
+    expect(getMainHero(state, winnerId)!.experience).toBe(winnerXpBefore);
+    expect(state.players[winnerId].necromancyWindow).toBeFalsy();
+  });
+
+  it("sends the surrendering hero home (to its town)", () => {
+    const state = makeGame();
+    const { loserHeroId, loserHomeFieldId } = stageFinishedPvpFight(state, "surrender");
+
+    finalizeAdventureCombat(state);
+
+    expect(loserHomeFieldId).toBeTruthy();
+    expect(state.heroes[loserHeroId].spaceId).toBe(loserHomeFieldId);
+    expect(state.heroes[loserHeroId].movementPoints).toBe(0);
+  });
+
+  it("does NOT count toward the opponent's defeat-every-hero victory (grail mode)", () => {
+    const state = makeGame({ victoryMode: "grail" });
+    const { winnerId, loserId } = stageFinishedPvpFight(state, "surrender");
+
+    finalizeAdventureCombat(state);
+
+    // No hero-defeat is recorded and, crucially, the game is NOT won — the
+    // contrast test below shows a real loss here WOULD win it.
+    expect(state.adventure?.heroDefeats?.[winnerId] ?? []).not.toContain(loserId);
+    expect(state.adventure?.winnerPlayerId ?? null).toBeNull();
+    expect(state.phase).not.toBe("game-over");
+  });
+});
+
+describe("Retreat / fought-out loss (house rule): a real defeat", () => {
+  it("pays the full 5 gold to the winner and can push the loser into debt (negative gold)", () => {
+    const state = makeGame();
+    const { winnerId, loserId } = stageFinishedPvpFight(state, "retreat");
+    state.players[loserId].resources.gold = 2; // cannot cover the 5-gold toll
+    state.players[winnerId].resources.gold = 10;
+
+    finalizeAdventureCombat(state);
+
+    // The loser pays the whole 5 (into debt); the winner receives the whole 5.
+    expect(state.players[loserId].resources.gold).toBe(-3);
+    expect(state.players[winnerId].resources.gold).toBe(15);
+  });
+
+  it("applies -1 morale to the loser and falls the loser's hero back home", () => {
+    const state = makeGame();
+    const { loserId, loserHeroId, loserHomeFieldId } = stageFinishedPvpFight(state, "retreat");
+    state.players[loserId].morale = 0;
+
+    finalizeAdventureCombat(state);
+
+    expect(state.players[loserId].morale).toBe(-1);
+    expect(state.heroes[loserHeroId].spaceId).toBe(loserHomeFieldId);
+  });
+
+  it("loses casualties for both sides in normal mode, but keeps them in no-unit-loss mode", () => {
+    const lossy = makeGame({ pvpTroopLoss: "normal" });
+    stageFinishedPvpFight(lossy, "retreat");
+    finalizeAdventureCombat(lossy);
+    // Winner's Pack flipped to Few; the loser's destroyed unit left the army.
+    expect(lossy.players.p1.army).toEqual([{ id: "a1", unitDefId: "castle.pikemen", side: "few" }]);
+    expect(lossy.players.p2.army.map((u) => u.id)).toEqual(["b2"]);
+
+    const kept = makeGame({ pvpTroopLoss: "none" });
+    stageFinishedPvpFight(kept, "retreat");
+    finalizeAdventureCombat(kept);
+    expect(kept.players.p1.army).toEqual([{ id: "a1", unitDefId: "castle.pikemen", side: "pack" }]);
+    expect(kept.players.p2.army.map((u) => u.id)).toEqual(["b1", "b2"]);
+  });
+
+  it("counts as a win for the opponent — records a hero-defeat and can win the game (grail mode)", () => {
+    const state = makeGame({ victoryMode: "grail" });
+    const { winnerId, loserId } = stageFinishedPvpFight(state, "retreat");
+
+    finalizeAdventureCombat(state);
+
+    expect(state.adventure?.heroDefeats?.[winnerId] ?? []).toContain(loserId);
+    // 2-player grail: beating the one rival once meets the threshold and wins.
+    expect(state.adventure?.winnerPlayerId).toBe(winnerId);
+    expect(state.phase).toBe("game-over");
+  });
+
+  it("grants the opponent experience and a Necromancy window", () => {
+    const state = makeGame();
+    const { winnerId } = stageFinishedPvpFight(state, "retreat");
+    state.players[winnerId].necromancyWindow = false;
+    const winnerXpBefore = getMainHero(state, winnerId)!.experience;
+
+    finalizeAdventureCombat(state);
+
+    expect(getMainHero(state, winnerId)!.experience).toBeGreaterThan(winnerXpBefore);
+    expect(state.players[winnerId].necromancyWindow).toBe(true);
+  });
+});
+
+describe("Surrender gating: needs the full 10-gold toll, paid to the opponent", () => {
+  // A round-1 player-vs-player combat (the escape window), borrowed from the
+  // battle sim and reframed as p1-vs-p2, mirroring library-cards.test.ts.
+  function pvpState(seed: string): GameState {
+    const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+    state.combat = createInitialGameState(seed).combat;
+    state.combat!.context = {
+      kind: "player",
+      attackerHeroId: "hero_p1",
+      defenderHeroId: "hero_p2",
+      fieldId: state.heroes.hero_p1.spaceId ?? "0,0"
+    };
+    state.phase = "combat";
+    state.activePlayerId = "p1";
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    return state;
+  }
+
+  const offersSurrender = (state: GameState, playerId: PlayerId) =>
+    getLegalActions(state, playerId).some((l) => l.action.type === "SURRENDER_COMBAT");
+  const offersRetreat = (state: GameState, playerId: PlayerId) =>
+    getLegalActions(state, playerId).some((l) => l.action.type === "RETREAT_FROM_COMBAT");
+
+  it("offers Surrender only at >= 10 gold, but always offers Retreat", () => {
+    const state = pvpState("surr-gate");
+
+    state.players.p1.resources.gold = 10;
+    expect(offersSurrender(state, "p1")).toBe(true);
+    expect(offersRetreat(state, "p1")).toBe(true);
+
+    state.players.p1.resources.gold = 9;
+    expect(offersSurrender(state, "p1")).toBe(false);
+    expect(offersRetreat(state, "p1")).toBe(true); // a poorer hero may still flee
+  });
+
+  it("rejects a Surrender action below 10 gold and accepts it at exactly 10", () => {
+    const poor = pvpState("surr-poor");
+    poor.players.p1.resources.gold = 9;
+    const rejected = applyAction(poor, { type: "SURRENDER_COMBAT", playerId: "p1" });
+    expect(rejected.errors.length).toBeGreaterThan(0);
+    expect(rejected.state.combat?.outcome ?? null).toBeNull();
+
+    const rich = pvpState("surr-rich");
+    rich.players.p1.resources.gold = 10;
+    const ok = applyAction(rich, { type: "SURRENDER_COMBAT", playerId: "p1" });
+    expect(ok.errors).toEqual([]);
+    expect(ok.state.combat?.outcome).toMatchObject({ defeatedPlayerId: "p1", reason: "surrender" });
+  });
+});

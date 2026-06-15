@@ -15,6 +15,7 @@ import {
   humanPlayerIds,
   NEUTRAL_DECK_IDS,
   RESOURCE_GAIN_LEVEL_AMOUNTS,
+  SURRENDER_GOLD_COST,
   townHasBuildingEffect,
   unlockedRecruitTiers
 } from "./adventure";
@@ -33,7 +34,7 @@ import {
 import {
   effectAppliesToUnit,
   effectiveInitiative,
-  playerCannotEscapeCombat,
+  playerCannotSurrenderCombat,
   playerHasSpellTimingFreedom
 } from "./active-effects";
 import { cardCanBoostPower } from "./effects";
@@ -494,12 +495,28 @@ export function rerollSourceAvailableFor(source: AttackRerollSource, currentRoll
   return true;
 }
 
-export function canUnitAttack(combat: CombatState, attacker: CombatUnitState, defender: CombatUnitState): boolean {
+export function canUnitAttack(
+  combat: CombatState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  activeEffects: ActiveEffectState[] = []
+): boolean {
   if (!isUnitAlive(attacker) || !isUnitAlive(defender)) {
     return false;
   }
 
   if (attacker.controllerId === defender.controllerId) {
+    return false;
+  }
+
+  // Forgetfulness: a unit holding UNIT_CANNOT_ATTACK may move but not attack.
+  if (
+    activeEffects.some(
+      (effect) =>
+        effectAppliesToUnit(effect, attacker) &&
+        effect.modifiers.some((modifier) => modifier.type === "UNIT_CANNOT_ATTACK")
+    )
+  ) {
     return false;
   }
 
@@ -543,11 +560,14 @@ export function canUnitMoveAndAttack(
     }
   };
 
-  return canUnitAttack(virtualCombat, movedAttacker, defender);
+  return canUnitAttack(virtualCombat, movedAttacker, defender, state?.activeEffects ?? []);
 }
 
 /** A target definition that resolves to units (not "none" or an empty space). */
-type UnitTargetDefinition = Exclude<TargetDefinition, { type: "none" } | { type: "empty-space" }>;
+type UnitTargetDefinition = Exclude<
+  TargetDefinition,
+  { type: "none" } | { type: "empty-space" } | { type: "any-space" }
+>;
 
 function unitMatchesTarget(unit: CombatUnitState, target: UnitTargetDefinition): boolean {
   if (target.unitTypes && !target.unitTypes.includes(unit.type)) {
@@ -607,7 +627,10 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
   // pick a unit: they default to a no-target play. Only effects that actually
   // strike a unit fall back to "enemy-unit".
   const selfTargetedEffect =
-    card?.effect.type === "CREATE_ACTIVE_EFFECT" || card?.effect.type === "GAIN_MORALE";
+    card?.effect.type === "CREATE_ACTIVE_EFFECT" ||
+    card?.effect.type === "GAIN_MORALE" ||
+    // Mirth: a player-scoped reroll buff picks no unit.
+    card?.effect.type === "CREATE_ATTACK_DIE_REROLL";
   const targetType =
     card?.target?.type ??
     (card?.effect.type === "HEAL_DAMAGE"
@@ -652,8 +675,24 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
     return spaces;
   }
 
+  // Inferno: any space on the board is a legal target — occupied or empty — so
+  // the blast can be centred on a stack of units.
+  if (targetType === "any-space") {
+    if (!state.combat) {
+      return [];
+    }
+    const spaces: TargetRef[] = [];
+    for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+      spaces.push({ type: "space", position });
+    }
+    return spaces;
+  }
+
   const target =
-    card?.target && card.target.type !== "none" && card.target.type !== "empty-space"
+    card?.target &&
+    card.target.type !== "none" &&
+    card.target.type !== "empty-space" &&
+    card.target.type !== "any-space"
       ? card.target
       : ({ type: targetType } as UnitTargetDefinition);
 
@@ -1073,6 +1112,17 @@ function isOptionEffectPlayable(
     case "DIPLOMACY_RECRUIT":
       // Diplomacy's Map side only does something with at least one Dwelling.
       return context === "map" && Boolean(state.adventure) && unlockedRecruitTiers(state, playerId).size > 0;
+    case "VISIONS_SCRY":
+      // Visions scrys a Neutral Unit deck — only useful when at least one tier
+      // deck still holds cards.
+      return (
+        context === "map" &&
+        Boolean(state.adventure) &&
+        (["bronze", "silver", "gold", "azure"] as const).some((tier) => {
+          const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+          return Boolean(deck) && deck.drawPile.length + deck.discardPile.length > 0;
+        })
+      );
     case "CREATE_INITIATIVE_BUFF":
     case "CREATE_ATTACK_BUFF":
     case "CREATE_DEFENSE_BUFF":
@@ -1083,9 +1133,9 @@ function isOptionEffectPlayable(
     case "GRANT_ELEMENTAL_DAMAGE":
     case "DAMAGE_LOWEST_INITIATIVE_ENEMY":
       return context === "combat" && Boolean(state.combat);
-    case "BLOCK_ENEMY_ESCAPE":
-      // Shackles of War (option 1): only at the start of a player-vs-player
-      // combat, where there is an enemy hero who could otherwise escape.
+    case "BLOCK_ENEMY_SURRENDER":
+      // Shackles of War (house rule): only at the start of a player-vs-player
+      // combat, where there is an enemy hero who could otherwise surrender.
       return context === "combat" && state.combat?.context.kind === "player" && state.combat.round === 1;
     case "DOUBLE_FIRST_AID_TENT":
       // Gem's First Aid VI only does something with a First Aid Tent in play.
@@ -1748,7 +1798,7 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
   // ranged unit that already moved gave up its attack.
   if (!alreadyAttacked) {
     for (const defender of Object.values(combat.units)) {
-      if (!canUnitAttack(combat, activeUnit, defender)) {
+      if (!canUnitAttack(combat, activeUnit, defender, state.activeEffects)) {
         continue;
       }
 
@@ -2374,7 +2424,11 @@ export function getLegalReactionsForTrigger(
     return getDieCancelReactions(state, triggerEvent.defenderId, cards);
   }
 
-  if (triggerEvent.type !== "SPELL_CAST_STARTED" && triggerEvent.type !== "UNIT_ATTACK_DECLARED") {
+  if (
+    triggerEvent.type !== "SPELL_CAST_STARTED" &&
+    triggerEvent.type !== "UNIT_ATTACK_DECLARED" &&
+    triggerEvent.type !== "UNIT_ACTIVATION_STARTED"
+  ) {
     return {};
   }
 
@@ -2638,14 +2692,24 @@ export function getLegalReactionsForTrigger(
 
     // Attack windows: only spells that modify the attack (buffs/nerfs of
     // attack or defense) may consume Power, so Power plays are offered only
-    // while the player still holds such an instant spell to pair them with.
+    // while the player still holds such an instant spell to pair them with…
     const hasPairableSpell = reactions.some(
       (legal) =>
         legal.action.type === "PLAY_REACTION" &&
         !legal.action.asPowerBoost &&
         cards[legal.action.cardId]?.kind === "spell"
     );
-    if (!isAttackWindow || hasPairableSpell) {
+    // …or while a Power-scaling spell this player already cast into the attack
+    // is still on the stack waiting to grow (the caster keeps priority and may
+    // keep empowering a Bloodlust/Bless after playing it).
+    const attackStackItem = isAttackWindow ? state.stack.at(-1) : undefined;
+    const attackOwner =
+      attackStackItem?.action.type === "ATTACK_UNIT" || attackStackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
+        ? attackStackItem.action.playerId
+        : undefined;
+    const hasEmpowerablePlayed =
+      attackOwner === player.id && (attackStackItem?.modifiers.powerScaledAttackInstants?.length ?? 0) > 0;
+    if (!isAttackWindow || hasPairableSpell || hasEmpowerablePlayed) {
       reactions.push(...powerReactions);
     }
 
@@ -2664,7 +2728,7 @@ export function getLegalReactionsForTrigger(
 function getPermanentFieldExpertAction(
   state: GameState,
   playerId: PlayerId,
-  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" }>,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
   cards: CardLibrary
 ): LegalAction | null {
   if (triggerEvent.type !== "SPELL_CAST_STARTED" || triggerEvent.playerId !== playerId) {
@@ -2699,7 +2763,7 @@ function getPermanentFieldExpertAction(
 
 function variantMatchesTrigger(
   variant: CardPlayVariant,
-  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" }>,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
   playerId: PlayerId
 ): boolean {
   if (!variant.trigger) {
@@ -2777,9 +2841,22 @@ export function isEffectLegalForTrigger(
   state: GameState,
   playerId: PlayerId,
   effect: ConcreteEffect,
-  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" }>,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
   mode: CardPlayMode
 ): boolean {
+  // Sorrow: skip the about-to-activate unit. Offered to the unit's opponent
+  // only, and only while that unit's grade is within the option's reach.
+  if (triggerEvent.type === "UNIT_ACTIVATION_STARTED") {
+    if (effect.type !== "SKIP_ACTIVATION") {
+      return false;
+    }
+    if (triggerEvent.playerId === playerId) {
+      return false;
+    }
+    const unit = state.combat?.units[triggerEvent.unitId];
+    return Boolean(unit && isUnitAlive(unit) && gradeRank(unit.grade) <= gradeRank(effect.grade));
+  }
+
   // Card draws are timing-free instants: they fit inside any open window.
   if (effect.type === "DRAW_CARDS") {
     return true;
@@ -2861,6 +2938,12 @@ export function isEffectLegalForTrigger(
     // attacker's controller plays it, and never on a ranged shot.
     if (effect.type === "IGNORE_ATTACK_DIE") {
       return attacker.controllerId === playerId && attacker.type !== "ranged";
+    }
+
+    // Slayer: only the attacker's controller, and only when striking a gold
+    // unit ("when attacking a golden unit").
+    if (effect.type === "SLAYER_ATTACK") {
+      return attacker.controllerId === playerId && defender.grade === "gold";
     }
 
     // Alamar's Resurrection is never a pre-die attack reaction — it is offered
@@ -3501,9 +3584,14 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
  * flows (adventure rolls and the combat attack-die reroll) instead.
  */
 /**
- * Player-vs-player escape: at the start of the combat (round 1, between
- * activations) a participating hero may Retreat or Surrender — unless Shackles
- * of War has locked them in. Conceding ends the combat as the loser.
+ * Player-vs-player escape (house rule): at the start of the combat (round 1,
+ * between activations) a participating hero may:
+ * - Retreat — lose the combat: pay 5 gold (may go into debt), take -1 morale,
+ *   lose troops per the lobby mode, and fall back home. Always available.
+ * - Surrender — pay a flat 10 gold to the opponent, keep the whole army, take
+ *   no morale hit, return home, and deny the opponent any victory credit.
+ *   Offered only with the full 10 gold in hand and while Shackles of War has
+ *   not locked it.
  */
 function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const combat = state.combat;
@@ -3515,17 +3603,20 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
   }
   const heroId =
     playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
-  if (!heroId || playerCannotEscapeCombat(state, playerId)) {
+  if (!heroId) {
     return;
   }
   actions.push({
-    label: "Retreat (lose the combat; your hero flees to its last field)",
+    label: "Retreat (lose the combat: pay 5 gold, -1 morale, fall back home)",
     action: { type: "RETREAT_FROM_COMBAT", playerId }
   });
-  actions.push({
-    label: "Surrender (concede the combat)",
-    action: { type: "SURRENDER_COMBAT", playerId }
-  });
+  const gold = state.players[playerId]?.resources.gold ?? 0;
+  if (gold >= SURRENDER_GOLD_COST && !playerCannotSurrenderCombat(state, playerId)) {
+    actions.push({
+      label: `Surrender (pay ${SURRENDER_GOLD_COST} gold, keep your whole army, return home)`,
+      action: { type: "SURRENDER_COMBAT", playerId }
+    });
+  }
 }
 
 function addMoraleActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
