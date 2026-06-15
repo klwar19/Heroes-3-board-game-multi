@@ -1364,6 +1364,28 @@ button.battleCell {
   color: #ffb9ad;
 }
 
+.trayPowerMeter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--gold);
+  border-radius: 99px;
+  background: rgb(213 168 79 / 14%);
+  color: var(--gold);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.trayPowerMeter strong {
+  font-size: 13px;
+}
+
+.trayPowerMeter small {
+  color: rgb(243 239 228 / 82%);
+  font-weight: 600;
+}
+
 .trayConfirm,
 .trayPass {
   display: inline-flex;

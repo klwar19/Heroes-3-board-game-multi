@@ -27,7 +27,8 @@ export {
   getAttackRerollEffects,
   makeActiveEffect,
   playerSpellCastsIgnoreLimit,
-  unitDealsElementalDamage
+  unitDealsElementalDamage,
+  unitIsBerserk
 } from "./active-effects";
 export {
   cardCanBoostPower,
@@ -178,12 +179,14 @@ export {
   getLegalMoveDestinations,
   getLegalReactionsForTrigger,
   getNextUnitToActivate,
+  getPendingReactionPower,
   getUnitMoveRange,
   isAdjacent,
   isEffectLegalForTrigger,
   isUnitAlive,
   sortUnitsForActivation
 } from "./legal-actions";
+export type { PendingReactionPower } from "./legal-actions";
 export {
   getPostAttackAbilityDamageEffects,
   getUnitAbilityDefinitions,

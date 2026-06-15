@@ -1196,6 +1196,12 @@ export default function Home() {
               }, 1600);
             }, start);
           }
+          // Sound-only plan (Teleport): no sprite/projectile/tint carries the
+          // cue, so the cast sound is played directly over the target unit.
+          if (!plan.projectile && !plan.hit && !plan.affect?.length && !plan.tint && plan.sound) {
+            const soundKey = plan.sound;
+            window.setTimeout(() => playLibrarySound(soundKey), start);
+          }
           timeline = start + spellPresentationMs(plan);
         };
 
@@ -1379,12 +1385,16 @@ export default function Home() {
               break;
             }
             case "SPELL_CAST_CANCELLED": {
+              // Protection from X carries its own element sprite + sound (keyed by
+              // the cancelling card); a generic counter (Resistance) falls back to
+              // the dispel fizzle.
+              const cancelPlan = spellFxPlans[event.cancelledByCardId];
               cues.push({
                 kind: "sprite",
                 id: `${event.id}-fizzle`,
-                fxKey: cancelFx.key,
+                fxKey: cancelPlan?.affect?.[0]?.key ?? cancelFx.key,
                 at: "center",
-                sound: cancelFx.sound,
+                sound: cancelPlan?.sound ?? cancelFx.sound,
                 delayMs: timeline
               });
               cues.push({
