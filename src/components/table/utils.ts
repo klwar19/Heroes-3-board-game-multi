@@ -131,6 +131,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       }`;
     case "UNIT_LETHAL_HIT":
       return `${unitName(state, event.defenderId)} is about to be destroyed.`;
+    case "ATTACK_DIE_SETTLED":
+      return `Attack die settled on ${formatDieFace(event.roll)}: ${unitName(state, event.defenderId)} may ignore it.`;
     case "PENDING_CHOICE_CREATED":
       return event.message;
     case "ATTACK_REROLLED":

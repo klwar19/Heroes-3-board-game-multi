@@ -143,6 +143,7 @@ import {
   isHandLockedInCombat,
   isUnitAlive,
   rerollSourceAvailableFor,
+  spellAbilitiesSuppressed,
   spellRedirectTargets
 } from "./legal-actions";
 import {
@@ -1005,6 +1006,11 @@ function healUnitDamage(
  * Faerie Dragon's bolt).
  */
 function totalSpellDamageReduction(state: GameState, target: CombatUnitState): number {
+  // Orb of Vulnerability switches off every "reduce Spell damage" passive, so
+  // the magic-resistant creature takes the spell's full damage.
+  if (spellAbilitiesSuppressed(state)) {
+    return 0;
+  }
   let total = getSpellDamageReduction(target);
   const combat = state.combat;
   if (combat) {
@@ -1035,7 +1041,7 @@ function reducedSpellDamage(state: GameState, target: CombatUnitState, amount: n
  * all-school-immune unit from being targeted/splashed; this closes the
  * remaining area-damage paths that bypass that filter.
  */
-function unitIgnoresCardDamage(unit: CombatUnitState, card: CardDefinition | undefined): boolean {
+function unitIgnoresCardDamage(state: GameState, unit: CombatUnitState, card: CardDefinition | undefined): boolean {
   if (!card) {
     return false;
   }
@@ -1043,7 +1049,9 @@ function unitIgnoresCardDamage(unit: CombatUnitState, card: CardDefinition | und
     return hasImmuneToSpecialtyDamage(unit);
   }
   if (card.kind === "spell") {
-    return unitImmuneToSpellSchools(unit, card.spellSchools);
+    // Orb of Vulnerability negates printed spell-school immunity, so the unit
+    // takes the spell like any other.
+    return !spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(unit, card.spellSchools);
   }
   return false;
 }
@@ -1059,6 +1067,11 @@ function unitIgnoresCardDamage(unit: CombatUnitState, card: CardDefinition | und
 function negatesCardOnDwarfRoll(state: GameState, target: TargetRef | undefined, cardName: string): boolean {
   const combat = state.combat;
   if (!combat || !target || target.type !== "unit") {
+    return false;
+  }
+  // Orb of Vulnerability negates the Dwarves' Magic Resistance — no roll, the
+  // card simply takes hold.
+  if (spellAbilitiesSuppressed(state)) {
     return false;
   }
   const unit = combat.units[target.unitId];
@@ -1097,7 +1110,7 @@ function reducedCardDamage(
   card: CardDefinition | undefined,
   amount: number
 ): number {
-  if (unitIgnoresCardDamage(unit, card)) {
+  if (unitIgnoresCardDamage(state, unit, card)) {
     return 0;
   }
   const reduction =
@@ -1131,14 +1144,17 @@ function getAttackDamagePreview(
   dieMultiplier = 1,
   baseAttackOverride?: number,
   damageReduction = 0,
-  ignoreDefense = false
+  ignoreDefense = false,
+  dieCancelled = false
 ): { attackValue: number; defenseValue: number; damage: number; dieAttackBonus: number; dieDefenseBonus: number } {
   // Attack-die-face conditioned modifiers, resolved here so the actual hit and
   // the lethal-save preview always agree: Dread Knights' "Death Blow" adds to
   // the attacker's value on 0/+1, Zombies'/Manticores' resilience adds Defense
-  // for the defender on the attacker's 0/+1.
-  const dieAttackBonus = getAttackBonusOnAttackDie(attacker, roll);
-  const dieDefenseBonus = getDefenseBonusOnAttackDie(defender, roll);
+  // for the defender on the attacker's 0/+1. Shield of the Dwarven Lords ignores
+  // the die "and any additional effects it triggered", so a cancelled die fires
+  // none of these face-conditioned bonuses.
+  const dieAttackBonus = dieCancelled ? 0 : getAttackBonusOnAttackDie(attacker, roll);
+  const dieDefenseBonus = dieCancelled ? 0 : getDefenseBonusOnAttackDie(defender, roll);
   const baseAttack = baseAttackOverride ?? attacker.attack;
   const attackValue = Math.max(0, baseAttack + attackBonus + dieAttackBonus + roll * dieMultiplier);
   // Elemental damage ignores Defense outright; otherwise sum printed Defense,
@@ -1174,7 +1190,8 @@ function applyAttackDamageFromCandidate(
   damageReduction = 0,
   lethalCancel?: { grade: UnitGrade },
   ignoreDefense = false,
-  noDie = false
+  noDie = false,
+  dieCancelled = false
 ): { damage: number; roll: number; cancelled: boolean } {
   if (!state.combat) {
     return { damage: 0, roll: 0, cancelled: false };
@@ -1190,12 +1207,16 @@ function applyAttackDamageFromCandidate(
     dieMultiplier,
     baseAttackOverride,
     damageReduction,
-    ignoreDefense
+    ignoreDefense,
+    dieCancelled
   );
   // Reported bonuses fold in the die-face-conditioned deltas so the event's
   // numbers reconcile with the resolved attack/defense values.
   const reportedAttackBonus = attackBonus + dieAttackBonus;
   const reportedDefenseBonus = defenseBonus + dieDefenseBonus;
+  // A cancelled die (Shield of the Dwarven Lords) is reported like an unrolled
+  // die so the client skips the rolling-dice cinematic.
+  const skipDieCinematic = noDie || dieCancelled;
 
   // Alamar's Resurrection: if this blow would reduce the defender to 0 HP and
   // its grade is within reach, the whole attack is cancelled — no damage, and
@@ -1213,7 +1234,7 @@ function applyAttackDamageFromCandidate(
       rolls: candidate.rolls,
       roll: candidate.roll,
       ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
-      ...(noDie ? { noDie: true } : {}),
+      ...(skipDieCinematic ? { noDie: true } : {}),
       ...(defendRoll !== undefined ? { defendRoll } : {}),
       rollMode,
       attackBonus: reportedAttackBonus,
@@ -1243,7 +1264,7 @@ function applyAttackDamageFromCandidate(
     rolls: candidate.rolls,
     roll: candidate.roll,
     ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
-    ...(noDie ? { noDie: true } : {}),
+    ...(skipDieCinematic ? { noDie: true } : {}),
     ...(defendRoll !== undefined ? { defendRoll } : {}),
     rollMode,
     attackBonus: reportedAttackBonus,
@@ -1965,6 +1986,14 @@ function finishResolvedAttack(
   const defend = resolveDefendBonus(state, stackItem, details);
   const defendBonus = defend?.bonus ?? 0;
 
+  // Shield of the Dwarven Lords: the defender ignored the rolled die. The face
+  // counts as 0 (so it adds nothing to the attack) and the lethal-save preview,
+  // the resolved hit and the die-triggered abilities below all read it the same.
+  const dieCancelled = Boolean(stackItem.modifiers.attackDieCancelled);
+  const resolvedCandidate: AttackRollCandidate = dieCancelled
+    ? { rolls: candidate.rolls, roll: 0 }
+    : candidate;
+
   // Alamar's Resurrection: before a killing normal attack lands, pause once and
   // ask the defender's controller whether to cancel it (only if they can). The
   // rolled die is stashed so the resumed attack uses the same outcome.
@@ -1972,14 +2001,15 @@ function finishResolvedAttack(
     const preview = getAttackDamagePreview(
       details.attacker,
       details.defender,
-      candidate.roll,
+      resolvedCandidate.roll,
       details.attackBonus,
       details.defenseBonus,
       defendBonus,
       details.dieMultiplier,
       details.abilityAttack?.baseAttack,
       details.damageReduction,
-      details.ignoreDefense
+      details.ignoreDefense,
+      dieCancelled
     );
     if (preview.damage > 0 && details.defender.damage + preview.damage >= details.defender.maxHealth) {
       stackItem.modifiers.rolledCandidate = candidate;
@@ -2019,13 +2049,14 @@ function finishResolvedAttack(
     details.defenseBonus,
     defendBonus,
     defend?.roll,
-    candidate,
+    resolvedCandidate,
     details.dieMultiplier,
     details.abilityAttack?.baseAttack,
     details.damageReduction,
     lethalCancel,
     details.ignoreDefense,
-    details.ignoreAttackDie
+    details.ignoreAttackDie,
+    dieCancelled
   );
 
   // Alamar's Resurrection cancelled the whole attack: the attacker still spent
@@ -2053,17 +2084,22 @@ function finishResolvedAttack(
   applyOnAttackTokens(state, details.attacker, details.defender, details.isRetaliation);
   applyOnAttackPoisonCubes(state, details.attacker, details.defender, details.isRetaliation);
   applyDendroidBindFx(state, details.attacker, details.defender, details.isRetaliation);
-  applyOnAttackDieTokens(state, details.attacker, details.defender, attackResult.roll, details.isRetaliation);
-  // Dungeon Minotaurs: draw a card when this unit's Attack die resolves "-1".
-  applyOnAttackDieDraw(state, details.attacker, attackResult.roll);
-  applyPostAttackAbilityDamage(
-    state,
-    details.attacker,
-    details.defender,
-    details.attackKind,
-    attackResult.roll,
-    attackResult.damage
-  );
+  // Shield of the Dwarven Lords ignored the die "and any additional effects it
+  // triggered": skip every die-face-conditioned follow-up — the Azure/Basilisk
+  // paralysis and die tokens, the Minotaurs' draw, and the ranged low-roll bolt.
+  if (!dieCancelled) {
+    applyOnAttackDieTokens(state, details.attacker, details.defender, attackResult.roll, details.isRetaliation);
+    // Dungeon Minotaurs: draw a card when this unit's Attack die resolves "-1".
+    applyOnAttackDieDraw(state, details.attacker, attackResult.roll);
+    applyPostAttackAbilityDamage(
+      state,
+      details.attacker,
+      details.defender,
+      details.attackKind,
+      attackResult.roll,
+      attackResult.damage
+    );
+  }
   applyFireShieldDamage(state, details.attacker, details.defender, details.attackKind);
   // Vampires: drain life back to themselves after their own attack.
   applyOnAttackSelfHeal(state, details.attacker, details.isRetaliation);
@@ -3996,6 +4032,10 @@ function enemySpellPowerReduction(state: GameState, casterPlayerId: PlayerId): n
   if (!combat) {
     return 0;
   }
+  // Orb of Vulnerability switches off the Pegasi's enemy-spell Power drain.
+  if (spellAbilitiesSuppressed(state)) {
+    return 0;
+  }
   let total = 0;
   for (const unit of Object.values(combat.units)) {
     if (unit.controllerId !== casterPlayerId && isUnitAlive(unit)) {
@@ -4092,6 +4132,49 @@ function openRetaliationWindow(
   }
 }
 
+/**
+ * Shield of the Dwarven Lords: once the Attack die has been rolled (and any
+ * rerolls resolved), give the defender one window to ignore it before the hit
+ * lands. The rolled candidate is stashed so the resumed attack reuses it; if no
+ * defender can play a die-cancel reaction the attack finishes straight away.
+ */
+function resolveAttackOrOfferDieCancel(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  details: NonNullable<ReturnType<typeof getAttackStackDetails>>,
+  candidate: AttackRollCandidate,
+  cards: CardLibrary
+): void {
+  if (!stackItem.modifiers.dieCancelOffered && !stackItem.modifiers.attackDieCancelled) {
+    const probe: GameEvent = {
+      id: "die-settled-probe",
+      type: "ATTACK_DIE_SETTLED",
+      attackerId: details.attacker.id,
+      defenderId: details.defender.id,
+      roll: candidate.roll
+    };
+    const reactions = getLegalReactionsForTrigger(state, probe, cards);
+    if (reactionPlayerOrder(state, reactions).length > 0) {
+      stackItem.modifiers.rolledCandidate = candidate;
+      stackItem.modifiers.dieCancelOffered = true;
+      const settled = appendEvent(state, {
+        type: "ATTACK_DIE_SETTLED",
+        attackerId: details.attacker.id,
+        defenderId: details.defender.id,
+        roll: candidate.roll
+      });
+      if (openReactionWindowForTrigger(state, stackItem, settled, cards)) {
+        return;
+      }
+      // No window actually opened (defender lost the option in a race): clear
+      // the resume marker and fall through to resolve normally.
+      stackItem.modifiers.rolledCandidate = undefined;
+    }
+  }
+
+  finishResolvedAttack(state, stackItem, details, candidate, cards);
+}
+
 function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem, cards: CardLibrary): void {
   const combat = state.combat;
   const details = getAttackStackDetails(state, stackItem);
@@ -4126,7 +4209,7 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   // so no separate reroll choice is opened.
   const applyBoth = getRollTwoDiceApplyBoth(details.attacker);
   if (applyBoth) {
-    finishResolvedAttack(state, stackItem, details, rollApplyBothCandidate(combat, applyBoth.rerollMinusOnce), cards);
+    resolveAttackOrOfferDieCancel(state, stackItem, details, rollApplyBothCandidate(combat, applyBoth.rerollMinusOnce), cards);
     return;
   }
 
@@ -4148,7 +4231,7 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     return;
   }
 
-  finishResolvedAttack(state, stackItem, details, candidate, cards);
+  resolveAttackOrOfferDieCancel(state, stackItem, details, candidate, cards);
 }
 
 /**
@@ -4256,7 +4339,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         const rawAmount = getSpellDamageAmount(card, power);
         // Spell/Specialty immunity zeroes the hit; otherwise "reduce spell
         // damage by N" applies to Spell-kind damage only.
-        const amount = unitIgnoresCardDamage(target, card)
+        const amount = unitIgnoresCardDamage(state, target, card)
           ? 0
           : card.effect.damageKind === "spell"
             ? reducedSpellDamage(state, target, rawAmount)
@@ -4485,7 +4568,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
             unit.id !== target.id &&
             isUnitAlive(unit) &&
             isAdjacent(unit.position, target.position) &&
-            !unitImmuneToSpellSchools(unit, card.spellSchools)
+            (spellAbilitiesSuppressed(state) || !unitImmuneToSpellSchools(unit, card.spellSchools))
         );
         if (splashCandidates.length > 0) {
           const choiceId = `choice_${nextEventNumber(state)}`;
@@ -5253,6 +5336,17 @@ function applyReactionPlayCore(
     if (effect.drawCards) {
       drawCardsForPlayer(state, playerId, effect.drawCards);
     }
+  }
+
+  // Shield of the Dwarven Lords: played in the post-roll window. Arm the pending
+  // attack so finishResolvedAttack treats the rolled die as ignored (0) and
+  // fires none of the effects that die face would have triggered.
+  if (
+    effect.type === "IGNORE_ATTACK_DIE_RESULT" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    stackItem.modifiers.attackDieCancelled = true;
+    stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
   // Bless: the pending attack skips its Attack die (and may gain attack).
@@ -7318,7 +7412,7 @@ function choosePendingRoll(
   }
 
   closePendingChoice(state, choice, action.candidateIndex);
-  finishResolvedAttack(state, stackItem, details, candidate, cards);
+  resolveAttackOrOfferDieCancel(state, stackItem, details, candidate, cards);
 }
 
 /**
@@ -7553,7 +7647,7 @@ function autoResolveNeutralReroll(state: GameState, cards: CardLibrary): void {
     return;
   }
   closePendingChoice(state, choice, choice.candidates.length - 1);
-  finishResolvedAttack(state, stackItem, details, candidate, cards);
+  resolveAttackOrOfferDieCancel(state, stackItem, details, candidate, cards);
 }
 
 function autoResolveNeutralAbilityChoice(state: GameState, cards: CardLibrary): boolean {
