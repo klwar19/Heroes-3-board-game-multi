@@ -1,8 +1,16 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DICE_PRESENT_MS, DiceOverlay, NeutralStepOverlay, type DiceCue } from "./overlays";
-import type { GameState, LegalAction } from "@/engine";
+import { DICE_PRESENT_MS, DiceOverlay, NeutralStepOverlay, ReactionTray, type DiceCue } from "./overlays";
+import { CardZoomProvider } from "./zoom";
+import {
+  applyAction,
+  createInitialGameState,
+  getLegalActions,
+  getPlayerView,
+  type GameState,
+  type LegalAction
+} from "@/engine";
 
 afterEach(() => {
   cleanup();
@@ -136,5 +144,74 @@ describe("NeutralStepOverlay — guard-step pacing", () => {
     expect(screen.getByText(/Waiting for/i)).toBeTruthy();
     act(() => vi.advanceTimersByTime(10000));
     expect(onAction).not.toHaveBeenCalled();
+  });
+});
+
+describe("ReactionTray — in-progress selection survives only until the hand changes", () => {
+  /** Sandbox attack window with p1 holding two Attack statistic cards. */
+  function attackWindowState(hand: string[]): GameState {
+    const state = createInitialGameState("tray-selection-seed");
+    state.players.p1.hand = hand;
+    state.players.p2.hand = [];
+    state.combat!.units.unit_p1_griffins.position = 9;
+    state.combat!.units.unit_p2_skeletons.position = 13;
+    const result = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    expect(result.errors).toEqual([]);
+    return result.state;
+  }
+
+  function tray(state: GameState) {
+    return (
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={() => {}}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  function renderTray(state: GameState) {
+    return render(tray(state));
+  }
+
+  it("clears the picked statistic after one is played so the next can be added one-by-one", () => {
+    // p1 holds two Attack statistics; the attacker keeps priority after each
+    // play, so the tray is NOT remounted between plays. Picking one then playing
+    // it must not leave the (now shifted) hand index showing as still picked —
+    // otherwise the second card cannot be added cleanly.
+    const state = attackWindowState(["stat.attack", "stat.attack"]);
+    const { rerender } = renderTray(state);
+
+    const picks = screen.getAllByRole("button", { name: /add to play/i });
+    expect(picks).toHaveLength(2);
+    act(() => {
+      fireEvent.click(picks[0]);
+    });
+    expect(screen.getAllByRole("button").some((button) => button.getAttribute("aria-pressed") === "true")).toBe(true);
+
+    // One Attack statistic is played; p1 still has priority and one card left.
+    const afterPlay = applyAction(state, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "stat.attack",
+      mode: "basic"
+    });
+    expect(afterPlay.errors).toEqual([]);
+    expect(afterPlay.state.reactionWindow?.priorityPlayerId).toBe("p1");
+
+    rerender(tray(afterPlay.state));
+
+    // The leftover Attack statistic is offered, and nothing is stuck "picked".
+    expect(screen.getAllByRole("button", { name: /add to play/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button").some((button) => button.getAttribute("aria-pressed") === "true")).toBe(false);
   });
 });

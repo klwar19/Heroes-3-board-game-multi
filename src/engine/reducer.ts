@@ -108,6 +108,7 @@ import {
 import {
   effectAppliesToUnit,
   effectiveInitiative,
+  expireEffectsForActivationEnd,
   expireEffectsForCombatRoundEnd,
   expireEffectsForTurnEnd,
   getActiveAttackBonus,
@@ -208,6 +209,7 @@ import type {
   AttackRollMode,
   BuildingLibrary,
   CardDefinition,
+  EffectDurationDefinition,
   CardId,
   CardLibrary,
   CardOptionDefinition,
@@ -675,6 +677,19 @@ function gradeAtPower(
   return matched === undefined ? null : (gradeByPower[matched] ?? null);
 }
 
+/** Mirth: the reroll's duration unlocked by the paid Power. */
+function durationAtPower(
+  durationByPower: Record<number, EffectDurationDefinition>,
+  power: number
+): EffectDurationDefinition | null {
+  const thresholds = Object.keys(durationByPower)
+    .map(Number)
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right);
+  const matched = thresholds.filter((value) => value <= power).at(-1);
+  return matched === undefined ? null : (durationByPower[matched] ?? null);
+}
+
 /** Chain Lightning Spell: the damage allocation unlocked by the paid Power. */
 function chainDamagesAtPower(
   damagesByPower: Record<number, number[]>,
@@ -724,6 +739,35 @@ function getAmountByPower(amountByPower: Record<number, number> | undefined, fal
   const matchingPower = powerBreakpoints.filter((value) => value <= power).at(-1) ?? powerBreakpoints[0];
 
   return matchingPower === undefined ? fallback : (amountByPower[matchingPower] ?? fallback);
+}
+
+/**
+ * Re-derive every Power-scaling attack/defense instant recorded on an attack
+ * stack item against the item's current spellPowerBonus, folding the delta into
+ * attackBonus/defenseBonus. Called whenever fresh Power is paid into the attack
+ * window so a Bloodlust/Bless/Precision cast earlier keeps growing instead of
+ * being frozen at the Power it had when first played.
+ */
+function recomputePowerScaledAttackInstants(stackItem: ResolutionStackItem): void {
+  const records = stackItem.modifiers.powerScaledAttackInstants;
+  if (!records || records.length === 0) {
+    return;
+  }
+  const power = stackItem.modifiers.spellPowerBonus;
+  for (const record of records) {
+    const scaled = getAmountByPower(record.amountByPower, record.baseAmount, power);
+    const newApplied = (scaled + record.fixedBonus) * record.doubleFactor;
+    const delta = newApplied - record.appliedAmount;
+    if (delta === 0) {
+      continue;
+    }
+    if (record.stat === "attack") {
+      stackItem.modifiers.attackBonus += delta;
+    } else {
+      stackItem.modifiers.defenseBonus += delta;
+    }
+    record.appliedAmount = newApplied;
+  }
 }
 
 /**
@@ -919,12 +963,20 @@ function createAttackRerollEffectFromCard(
     return;
   }
 
+  // Mirth scales its DURATION with Power (this Activation / Combat round /
+  // Combat) rather than the reroll count; durationByPower overrides the flat
+  // duration at the matched breakpoint.
+  const duration =
+    power !== undefined && card.effect.durationByPower
+      ? (durationAtPower(card.effect.durationByPower, power) ?? card.effect.duration)
+      : card.effect.duration;
+
   createActiveEffect(
     state,
     {
       name: card.effect.name,
       scope: "player",
-      duration: card.effect.duration,
+      duration,
       polarity: "positive",
       removable: false,
       modifiers: [
@@ -1113,6 +1165,55 @@ function reducedCardDamage(
 }
 
 // (finishCombatIfNeeded lives in combat-units.ts.)
+
+/**
+ * Inferno: roll the Attack die `rollCount` times, count the "+1" faces, then
+ * deal that many points of spell damage to every living unit standing on the
+ * targeted space or an orthogonally adjacent one (friend or foe). Spell-damage
+ * reduction and spell immunity apply per unit, just like any other spell hit.
+ */
+function resolveInfernoSpell(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition,
+  position: number,
+  rollCount: number
+): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  const rolls = Array.from({ length: Math.max(1, rollCount) }, () => rollAttackDie(combat));
+  const damage = rolls.filter((roll) => roll === 1).length;
+
+  if (damage <= 0) {
+    return;
+  }
+
+  const blastArea = new Set<number>([position, ...getOrthogonalNeighbors(position)]);
+  // Snapshot the targets first so removals during the loop never shift it.
+  const targets = Object.values(combat.units).filter(
+    (unit) => isUnitAlive(unit) && blastArea.has(unit.position)
+  );
+
+  for (const unit of targets) {
+    const dealt = reducedCardDamage(state, unit, card, damage);
+    if (dealt <= 0) {
+      continue;
+    }
+    unit.damage += dealt;
+    noteUnitDamagedForTokens(state, unit, dealt);
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source: { type: "card", cardId: card.id, controllerId: playerId },
+      target: { type: "unit", unitId: unit.id },
+      amount: dealt,
+      damageKind: "spell"
+    });
+    markUnitRemovedIfNeeded(state, unit);
+  }
+}
 
 function rollAttackCandidate(combat: CombatState, rollMode: AttackRollMode): AttackRollCandidate {
   const { rolls, selectedRoll } = rollAttackDice(combat, rollMode);
@@ -3514,6 +3615,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   if (hasToken(activeUnit, "paralysis")) {
     removeToken(state, activeUnit, "paralysis", "activation-skipped");
     activeUnit.activatedThisRound = true;
+    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, activeUnit.id), "activation-ended");
     appendEvent(state, {
       type: "UNIT_ACTIVATION_ENDED",
       playerId: activeUnit.controllerId,
@@ -3531,6 +3633,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   // opposing side (resolved once, then this guards against re-opening it after
   // the reacting player casts/plays during the pause).
   activeUnit.reactionPauseAcked = false;
+  activeUnit.activationSkipOffered = false;
   // Remember where the unit started this activation (Harpy fly-back) and reset
   // the once-per-activation "[activation]" choice flag (Enchanters/Faeries).
   activeUnit.activationStartPosition = activeUnit.position;
@@ -3554,6 +3657,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
       return;
     }
     activeUnit.activatedThisRound = true;
+    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, activeUnit.id), "activation-ended");
     appendEvent(state, {
       type: "UNIT_ACTIVATION_ENDED",
       playerId: activeUnit.controllerId,
@@ -3638,6 +3742,27 @@ function advanceActiveUnit(state: GameState): void {
   }
 
   setActiveUnit(state, getNextUnitToActivate(state.combat, state.activeEffects)?.id ?? null);
+}
+
+/**
+ * Sorrow: end the active unit's turn before it acts. Mirrors the paralysis
+ * skip — mark it activated, expire its activation-bound effects, log the end,
+ * and advance to the next unit.
+ */
+function skipUnitActivation(state: GameState, unit: CombatUnitState): void {
+  const combat = state.combat;
+  if (!combat || combat.activeUnitId !== unit.id) {
+    return;
+  }
+
+  unit.activatedThisRound = true;
+  appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
+  appendEvent(state, {
+    type: "UNIT_ACTIVATION_ENDED",
+    playerId: unit.controllerId,
+    unitId: unit.id
+  });
+  advanceActiveUnit(state);
 }
 
 /**
@@ -3916,6 +4041,82 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
   }
 }
 
+/** Whether a reaction play resolves to a Sorrow-style activation-skip effect. */
+function reactionIsActivationSkip(
+  cards: CardLibrary,
+  action: Extract<GameAction, { type: "PLAY_REACTION" }>
+): boolean {
+  const card = cards[action.cardId];
+  if (!card) {
+    return false;
+  }
+  return getEffectiveCardEffect(card, action.optionIndex)?.type === "SKIP_ACTIVATION";
+}
+
+/**
+ * Sorrow: before a fresh unit acts, give the opposing side a window to skip its
+ * activation. Centralized like maybeOpenPlayerActivationChoice so it runs once
+ * everything else has settled and never clobbers another window. Opens only
+ * when an enemy actually holds a playable activation-skip reaction, so ordinary
+ * activations are untouched. Each unit is offered the window once per activation.
+ */
+function maybeOpenActivationSkipWindow(state: GameState, cards: CardLibrary): void {
+  const combat = state.combat;
+  if (
+    !combat ||
+    combat.outcome ||
+    combat.setup ||
+    combat.awaitingContinue ||
+    combat.pendingNeutralStep ||
+    state.pendingChoice ||
+    state.reactionWindow ||
+    state.stack.length > 0
+  ) {
+    return;
+  }
+
+  const unitId = combat.activeUnitId;
+  const unit = unitId ? combat.units[unitId] : undefined;
+  if (
+    !unit ||
+    !isUnitAlive(unit) ||
+    unit.activatedThisRound ||
+    unit.activationSkipOffered ||
+    unit.movedThisActivation ||
+    unit.attackedThisActivation
+  ) {
+    return;
+  }
+
+  // Reuse the UNIT_ACTIVATION_STARTED event setActiveUnit already logged for
+  // this unit (the most recent one) as the window's trigger.
+  const triggerEvent = [...state.eventLog]
+    .reverse()
+    .find(
+      (event): event is Extract<GameEvent, { type: "UNIT_ACTIVATION_STARTED" }> =>
+        event.type === "UNIT_ACTIVATION_STARTED" && event.unitId === unit.id
+    );
+  if (!triggerEvent) {
+    return;
+  }
+
+  // Offer the window only when a real activation-skip reaction is available;
+  // mark it offered regardless so we do not recompute it every action.
+  const legalReactions = getLegalReactionsForTrigger(state, triggerEvent, cards);
+  const hasActivationSkip = Object.values(legalReactions).some((actions) =>
+    actions.some(
+      (legal) => legal.action.type === "PLAY_REACTION" && reactionIsActivationSkip(cards, legal.action)
+    )
+  );
+
+  unit.activationSkipOffered = true;
+  if (!hasActivationSkip) {
+    return;
+  }
+
+  openReactionWindowForTrigger(state, null, triggerEvent, cards);
+}
+
 function resetCombatRound(combat: CombatState): void {
   for (const unit of Object.values(combat.units)) {
     unit.activatedThisRound = false;
@@ -3951,7 +4152,7 @@ function refreshReactionWindowLegalReactions(state: GameState, cards: CardLibrar
 
 function openReactionWindowForTrigger(
   state: GameState,
-  stackItem: ResolutionStackItem,
+  stackItem: ResolutionStackItem | null,
   triggerEvent: GameEvent,
   cards: CardLibrary
 ): boolean {
@@ -3963,7 +4164,11 @@ function openReactionWindowForTrigger(
   }
 
   const windowId = `reaction_${triggerEvent.id}`;
-  stackItem.status = "waiting-for-reaction";
+  // The Sorrow activation-skip window has no paused stack item — nothing is
+  // mid-resolution. Every other window pauses the spell/attack being reacted to.
+  if (stackItem) {
+    stackItem.status = "waiting-for-reaction";
+  }
   state.reactionWindow = {
     id: windowId,
     triggerEvent,
@@ -4111,6 +4316,21 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   // so reroll effects have nothing to reroll either.
   if (details.ignoreAttackDie) {
     finishResolvedAttack(state, stackItem, details, { rolls: [0], roll: 0 }, cards);
+    return;
+  }
+
+  // Slayer: against a gold unit, roll the Attack die N times and apply every
+  // result but a "-1" — each "+1" adds 1 to the attack (a "0"/"-1" adds
+  // nothing), so the die's whole contribution is the number of "+1"s. Then
+  // draw 1 card once the attack has resolved. No reroll choice is opened.
+  if (stackItem.modifiers.slayerRolls && stackItem.modifiers.slayerRolls > 0) {
+    const rolls = Array.from({ length: stackItem.modifiers.slayerRolls }, () => rollAttackDie(combat));
+    const bonus = rolls.filter((roll) => roll === 1).length;
+    finishResolvedAttack(state, stackItem, details, { rolls, roll: bonus }, cards);
+    if (stackItem.modifiers.slayerDraw) {
+      stackItem.modifiers.slayerDraw = false;
+      drawCardsForPlayer(state, details.attacker.controllerId, 1);
+    }
     return;
   }
 
@@ -4434,6 +4654,44 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
         placeCombatToken(state, target, "paralysis", 0, card.name);
+      }
+    }
+
+    // Inferno: roll the Attack die N times (by Power) on the chosen space; each
+    // "+1" deals 1 damage to every unit on that space and the orthogonally
+    // adjacent ones — friend or foe alike.
+    if (card?.effect.type === "INFERNO" && state.combat && stackItem.action.target.type === "space") {
+      resolveInfernoSpell(
+        state,
+        stackItem.action.playerId,
+        card,
+        stackItem.action.target.position,
+        getAmountByPower(card.effect.rollsByPower, 1, getCurrentSpellPower(state, stackItem, cards))
+      );
+    }
+
+    // Forgetfulness: the selected enemy ranged unit cannot attack during its
+    // next activation. The reachable grade rises with the Power paid; above it
+    // the cast does nothing (the Anti-Magic/Blind gate).
+    if (card?.effect.type === "FORGETFULNESS" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        createActiveEffect(
+          state,
+          {
+            name: card.name,
+            scope: "unit",
+            duration: { type: "next-activation" },
+            polarity: "negative",
+            removable: true,
+            modifiers: [{ type: "UNIT_CANNOT_ATTACK" }]
+          },
+          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          stackItem.action.playerId,
+          stackItem.action.target
+        );
       }
     }
 
@@ -4972,6 +5230,7 @@ function applyReactionPlayCore(
     }
     stackItemForBoost.modifiers.spellPowerBonus += 1;
     stackItemForBoost.modifiers.playedCardIds.push(play.cardId);
+    recomputePowerScaledAttackInstants(stackItemForBoost);
     appendEvent(state, {
       type: "CARD_PLAYED",
       playerId,
@@ -5154,6 +5413,29 @@ function applyReactionPlayCore(
     return { windowEnded: true };
   }
 
+  // Sorrow: skip the activation of the unit that is about to act. The card and
+  // its Power cost were already spent above. The window is the activation-skip
+  // window, so the about-to-activate unit comes from its trigger event.
+  if (effect.type === "SKIP_ACTIVATION") {
+    const triggerEvent = state.reactionWindow?.triggerEvent;
+    const unit =
+      triggerEvent?.type === "UNIT_ACTIVATION_STARTED" ? state.combat?.units[triggerEvent.unitId] : undefined;
+    if (unit && isUnitAlive(unit) && gradeRank(unit.grade) <= gradeRank(effect.grade)) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unit.id,
+        abilityId: card.id,
+        message: `${card.name} skips ${unit.cardName}'s activation.`
+      });
+      skipUnitActivation(state, unit);
+    }
+    closeReactionWindow(state, "reaction-played");
+    if (!finishCombatIfNeeded(state)) {
+      state.phase = "combat";
+    }
+    return { windowEnded: true };
+  }
+
   // Empower: cast windows feed the pending spell; attack windows build the
   // Power pool a spell instant in the same declaration consumes. The
   // rulebook allows stacking several Empower plays to reach a threshold.
@@ -5163,6 +5445,7 @@ function applyReactionPlayCore(
     }
     stackItem.modifiers.spellPowerBonus += effectAmount;
     stackItem.modifiers.playedCardIds.push(play.cardId);
+    recomputePowerScaledAttackInstants(stackItem);
     if (effect.drawCards) {
       drawCardsForPlayer(state, playerId, effect.drawCards);
     }
@@ -5209,10 +5492,9 @@ function applyReactionPlayCore(
       Boolean(attacker) &&
       Boolean(defender) &&
       effectiveInitiative(defender!, state.activeEffects) > effectiveInitiative(attacker!, state.activeEffects);
-    const appliedAmount =
-      unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName) || defenderIsFaster
-        ? effectAmount * 2
-        : effectAmount;
+    const doubleFactor =
+      unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName) || defenderIsFaster ? 2 : 1;
+    const appliedAmount = effectAmount * doubleFactor;
 
     if (effect.stat === "attack") {
       stackItem.modifiers.attackBonus += appliedAmount;
@@ -5220,6 +5502,24 @@ function applyReactionPlayCore(
       stackItem.modifiers.defenseBonus += appliedAmount;
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
+
+    // A Power-scaling spell instant (Bloodlust, Precision, Curse, Weakness…)
+    // is recorded so Power the caster pays LATER in this same attack window
+    // re-derives its bonus from the new total Power. Scroll spells are locked
+    // to power 0 and never recorded. The non-spell Attack/Defense statistic is
+    // a flat bonus that does not scale, so it is not recorded either.
+    if (effect.amountByPower && card.kind === "spell" && !play.fromScroll) {
+      const fixedBonus = effect.perCostCard ? effect.perCostCard * costCardsPaid : 0;
+      (stackItem.modifiers.powerScaledAttackInstants ??= []).push({
+        cardId: card.id,
+        stat: effect.stat,
+        amountByPower: effect.amountByPower,
+        baseAmount: effect.amount,
+        fixedBonus,
+        doubleFactor,
+        appliedAmount
+      });
+    }
 
     // Precision lifts the ranged penalty for this shot.
     if (effect.ignoreRangedPenalty) {
@@ -5263,11 +5563,24 @@ function applyReactionPlayCore(
   ) {
     stackItem.modifiers.ignoreAttackDie = true;
     if (effect.attackBonusByPower) {
-      stackItem.modifiers.attackBonus += getAmountByPower(
+      const blessBonus = getAmountByPower(
         effect.attackBonusByPower,
         0,
         play.fromScroll ? 0 : stackItem.modifiers.spellPowerBonus
       );
+      stackItem.modifiers.attackBonus += blessBonus;
+      // Bless's Power-scaled attack bonus can also grow with Power paid later.
+      if (!play.fromScroll) {
+        (stackItem.modifiers.powerScaledAttackInstants ??= []).push({
+          cardId: card.id,
+          stat: "attack",
+          amountByPower: effect.attackBonusByPower,
+          baseAmount: 0,
+          fixedBonus: 0,
+          doubleFactor: 1,
+          appliedAmount: blessBonus
+        });
+      }
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
@@ -5277,6 +5590,18 @@ function applyReactionPlayCore(
     (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
     stackItem.modifiers.attackDieMultiplier = (stackItem.modifiers.attackDieMultiplier ?? 1) * 3;
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
+  // Slayer: arm the pending attack to roll the die N times (by Power) and apply
+  // every result but a "-1", then draw 1 card. Resolved in resolveAttackStackItem.
+  if (
+    effect.type === "SLAYER_ATTACK" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    const power = play.fromScroll ? 0 : stackItem.modifiers.spellPowerBonus;
+    stackItem.modifiers.slayerRolls = getAmountByPower(effect.rollsByPower, 2, power);
+    stackItem.modifiers.slayerDraw = true;
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
@@ -5387,14 +5712,25 @@ function playReaction(
   action: Extract<GameAction, { type: "PLAY_REACTION" }>,
   cards: CardLibrary
 ): void {
-  // Power has no standalone effect during an attack — it may only be paid
-  // together with an instant spell in one declaration (PLAY_REACTIONS), the
-  // same rule the batch validator enforces.
+  // Power has no standalone effect during an attack UNLESS a Power-scaling
+  // spell instant has already been played into this window: the caster keeps
+  // priority and may keep empowering it (Bloodlust cast, then a Power card to
+  // lift it further). With nothing on the table to empower, lone Power still
+  // "dissipates" and is rejected — the same rule the batch validator enforces.
   if (state.reactionWindow?.triggerEvent.type === "UNIT_ATTACK_DECLARED") {
     const card = cards[action.cardId];
     const effect = card && !action.asPowerBoost ? getEffectiveCardEffect(card, action.optionIndex) : null;
     if (action.asPowerBoost || effect?.type === "ADD_SPELL_POWER") {
-      throw new Error("Power can only be played into an attack together with a Spell card.");
+      const stackItem = state.stack.at(-1);
+      const attackOwner =
+        stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
+          ? stackItem.action.playerId
+          : undefined;
+      const empowerable =
+        attackOwner === action.playerId && (stackItem?.modifiers.powerScaledAttackInstants?.length ?? 0) > 0;
+      if (!empowerable) {
+        throw new Error("Power can only be played into an attack together with a Spell card.");
+      }
     }
   }
 
@@ -7640,7 +7976,7 @@ function declareAttack(
     if (!isUnitAlive(attacker) || !isUnitAlive(defender)) {
       throw new Error("That unit cannot attack the selected target.");
     }
-  } else if (!canUnitAttack(combat, attacker, defender)) {
+  } else if (!canUnitAttack(combat, attacker, defender, state.activeEffects)) {
     throw new Error("That unit cannot attack the selected target.");
   }
 
@@ -7747,6 +8083,7 @@ function defendUnit(state: GameState, action: Extract<GameAction, { type: "DEFEN
 
   unit.defenseToken = true;
   unit.activatedThisRound = true;
+  appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
 
   appendEvent(state, {
     type: "UNIT_DEFENDED",
@@ -7765,6 +8102,7 @@ function endActivation(state: GameState, action: Extract<GameAction, { type: "EN
   }
 
   unit.activatedThisRound = true;
+  appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
 
   appendEvent(state, {
     type: "UNIT_ACTIVATION_ENDED",
@@ -8792,6 +9130,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           : "The action could not complete its automatic follow-up."
     });
   }
+
+  // Sorrow: once everything else has settled, let the opposing side skip the
+  // about-to-act unit's activation. Runs before the active unit's own
+  // "[activation]" choice so the skip pre-empts it.
+  maybeOpenActivationSkipWindow(nextState, cards);
 
   // Once everything else has settled, surface a player-controlled unit's
   // "[activation]" choice (Enchanters' heal-or-buff, Faerie Dragons' Ice Bolt)
