@@ -1756,9 +1756,10 @@ export const artifactCards: CardLibrary = {
   // Combat, switches off every unit's innate spell-related ability — both armies
   // (engine: SUPPRESS_SPELL_ABILITIES negates Dwarf Magic Resistance, all
   // "reduce Spell damage" passives and the Unicorns' aura, printed spell-school
-  // immunity, and the Pegasi enemy-spell Power drain). The card is removed from
-  // the game (cost.removeSelf), not discarded. Anti-Magic is a Spell-granted
-  // effect rather than a unit ability, so it is intentionally NOT negated.
+  // immunity, and the Pegasi enemy-spell Power drain). The card is discarded
+  // normally after use — the printed board-game card has no remove-from-game
+  // clause. Anti-Magic is a Spell-granted effect rather than a unit ability, so
+  // it is intentionally NOT negated.
   "artifact.orb_of_vulnerability": {
     id: "artifact.orb_of_vulnerability",
     name: "Orb of Vulnerability",
@@ -1769,15 +1770,14 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "relic",
-      "During this Combat, negate all units' special abilities related to spells. Remove this card instead of discarding it. — OR — +2 Power."
+      "During this Combat, negate all units' special abilities related to spells. — OR — +2 Power."
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "This Combat: negate all units' spell-related abilities (remove this card)",
+          label: "This Combat: negate all units' spell-related abilities",
           combatOnly: true,
-          cost: { removeSelf: true },
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
             effect: {
