@@ -152,6 +152,58 @@ export function cardCanBoostPower(card: CardDefinition | undefined): boolean {
 }
 
 /**
+ * The card's ADD_SPELL_POWER effect (top-level or inside an "OR" option) used to
+ * value it as a discarded power source. A cost-free power side is preferred over
+ * one that demands its own extra discard (Titan's Cuirass: +2 plain, not the
+ * +4 that costs another card), so a simple discard is never over-valued.
+ */
+function findAddSpellPowerEffect(
+  card: CardDefinition
+): Extract<EffectDefinition, { type: "ADD_SPELL_POWER" }> | undefined {
+  if (card.effect.type === "ADD_SPELL_POWER") {
+    return card.effect;
+  }
+  if (card.effect.type === "CHOOSE_ONE") {
+    const powerOptions = card.effect.options.filter((option) => option.effect.type === "ADD_SPELL_POWER");
+    const costFree = powerOptions.find((option) => !option.cost);
+    const chosen = costFree ?? powerOptions[0];
+    return chosen?.effect.type === "ADD_SPELL_POWER" ? chosen.effect : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * How much spell Power a card contributes when discarded as a power source for
+ * a spell of `spellSchools` — the unit used by Power-value costs (Sorrow):
+ *  - a Spell counts as 1 (the "+1 Power" on its bottom side),
+ *  - a Power statistic/artifact/ability counts as its printed Power `amount`,
+ *    but a school-restricted source only when the empowered spell's school
+ *    matches (otherwise it contributes nothing — a non-spell has no generic
+ *    "+1 Power" side in this engine).
+ * `perCostCard` scaling is ignored (it needs its own sub-cost); the flat
+ * printed `amount` is used.
+ */
+export function spellPowerValueOfCard(
+  card: CardDefinition | undefined,
+  spellSchools: readonly SpellSchool[]
+): number {
+  if (!card) {
+    return 0;
+  }
+  if (card.kind === "spell") {
+    return 1;
+  }
+  const add = findAddSpellPowerEffect(card);
+  if (!add) {
+    return 0;
+  }
+  if (add.schoolOnly && !(spellSchools.includes(add.schoolOnly) || spellSchools.includes("any"))) {
+    return 0;
+  }
+  return add.amount;
+}
+
+/**
  * Resolves the concrete effect a play applies: for "OR" cards this is the
  * chosen option's effect, otherwise the card's printed effect.
  */

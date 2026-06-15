@@ -137,7 +137,8 @@ import {
   getEffectAmount,
   getEffectDamageAmount,
   getEffectiveCardEffect,
-  getSpellDamageAmount
+  getSpellDamageAmount,
+  spellPowerValueOfCard
 } from "./effects";
 import {
   canUnitAttack,
@@ -158,7 +159,8 @@ import {
   payablePowerCardIds,
   rerollSourceAvailableFor,
   spellAbilitiesSuppressed,
-  spellRedirectTargets
+  spellRedirectTargets,
+  standingSpellPower
 } from "./legal-actions";
 import {
   getActivationAbilities,
@@ -5831,13 +5833,17 @@ function effectSupportsExpertPlay(effect: NonNullable<ReturnType<typeof getEffec
 function payOptionCardCost(
   state: GameState,
   playerId: PlayerId,
-  cardName: string,
+  playedCard: CardDefinition,
   cost: CardPlayCost | undefined,
   costCardIds: CardId[] | undefined,
   cards: CardLibrary
 ): number {
+  const cardName = playedCard.name;
   const paying = costCardIds ?? [];
-  if (!cost || (cost.discardCards === undefined && cost.discardCardsUpTo === undefined)) {
+  if (
+    !cost ||
+    (cost.discardCards === undefined && cost.discardCardsUpTo === undefined && cost.powerCost === undefined)
+  ) {
     if (paying.length > 0) {
       throw new Error(`${cardName} has no card cost to pay.`);
     }
@@ -5872,6 +5878,24 @@ function payOptionCardCost(
       throw new Error("Cost cards must come from your hand.");
     }
     handCounts.set(cardId, left - 1);
+  }
+
+  // Power-value cost (Sorrow): the caster's standing spell Power plus the full
+  // printed Power of each discarded power-source card must reach the threshold,
+  // and every discarded card must be necessary (no wasteful over-payment).
+  if (cost.powerCost !== undefined) {
+    const schools = playedCard.spellSchools ?? [];
+    const standing = standingSpellPower(state, playerId, playedCard);
+    const values = paying.map((cardId) => spellPowerValueOfCard(cards[cardId], schools));
+    const total = standing + values.reduce((sum, value) => sum + value, 0);
+    if (total < cost.powerCost) {
+      throw new Error(`${cardName} needs at least ${cost.powerCost} Power; this pays only ${total}.`);
+    }
+    for (const value of values) {
+      if (total - value >= cost.powerCost) {
+        throw new Error(`${cardName} was paid more Power than it needs — drop a card.`);
+      }
+    }
   }
 
   for (const cardId of paying) {
@@ -6043,11 +6067,35 @@ function applyReactionPlayCore(
 
   const costCardsPaid = play.fromScroll
     ? 0
-    : payOptionCardCost(state, playerId, card.name, option?.cost, play.costCardIds, cards);
+    : payOptionCardCost(state, playerId, card, option?.cost, play.costCardIds, cards);
 
   let effectAmount = getEffectAmount(effect, mode);
   if (mode === "expert") {
     state.players[playerId].combatStats.expertUsesSpentThisRound += 1;
+  }
+
+  // Standing spell Power for a spell played as a reaction by the attacker into
+  // its own attack (Slayer, Bloodlust, Bless, Precision, Frenzy): credit the
+  // once-per-turn Astrologers bonus, the once-per-round active-unit boost, and
+  // a School-of-Magic permanent's bonus for the spell's school — the same Power
+  // castSpell seeds for a spell cast on your turn. Folded into the shared attack
+  // pool once (before noteSpellCast advances the "first spell" counters) so the
+  // instant about to apply below reads it like Power paid alongside it.
+  if (
+    card.kind === "spell" &&
+    !play.fromScroll &&
+    player &&
+    stackItem &&
+    !stackItem.modifiers.standingPowerSeeded &&
+    (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT") &&
+    stackItem.action.playerId === playerId
+  ) {
+    stackItem.modifiers.standingPowerSeeded = true;
+    const standing = standingSpellPower(state, playerId, card);
+    if (standing > 0) {
+      stackItem.modifiers.spellPowerBonus += standing;
+      recomputePowerScaledAttackInstants(stackItem);
+    }
   }
 
   if (card.kind === "spell" && state.combat && player) {
@@ -6214,6 +6262,22 @@ function applyReactionPlayCore(
   // Power pool a spell instant in the same declaration consumes. The
   // rulebook allows stacking several Empower plays to reach a threshold.
   if (effect.type === "ADD_SPELL_POWER" && stackItem) {
+    // School-restricted Power (Orbs, Basic-School Magic) on an attack may only
+    // fuel a spell instant of the matching school already played into it — the
+    // cast-window school gate above covers CAST_SPELL; this covers attacks.
+    if (
+      effect.schoolOnly &&
+      (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT")
+    ) {
+      const matchesSchool = stackItem.modifiers.playedCardIds.some((id) => {
+        const played = cards[id];
+        const schools = played?.spellSchools ?? [];
+        return played?.kind === "spell" && (schools.includes(effect.schoolOnly!) || schools.includes("any"));
+      });
+      if (!matchesSchool) {
+        throw new Error(`${card.name} only empowers ${effect.schoolOnly} spells.`);
+      }
+    }
     if (effect.perCostCard) {
       effectAmount += effect.perCostCard * costCardsPaid;
     }
@@ -7136,7 +7200,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     throw new Error(moveError.message);
   }
 
-  payOptionCardCost(state, action.playerId, card.name, option?.cost, action.costCardIds, cards);
+  payOptionCardCost(state, action.playerId, card, option?.cost, action.costCardIds, cards);
 
   if (mode === "expert") {
     state.players[action.playerId].combatStats.expertUsesSpentThisRound += 1;

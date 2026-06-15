@@ -795,8 +795,10 @@ export type EffectDefinition =
        * Sorrow Spell (Instant reaction on UNIT_ACTIVATION_STARTED): when an
        * enemy unit is about to activate, skip its activation. The grade reached
        * is set by the Power paid (0 → bronze, 2 → silver, 4 → gold), modelled as
-       * one CHOOSE_ONE option per grade (free for bronze, pay 2/4 power-source
-       * cards for silver/gold — like Resurrection).
+       * one CHOOSE_ONE option per grade — bronze free, silver/gold cost a Power
+       * VALUE (`powerCost` 2/4) met by the caster's standing spell Power plus the
+       * printed Power of any discarded power-source cards, so one +4 artifact (or
+       * a +2 statistic) can reach a grade instead of forcing N separate discards.
        */
       type: "SKIP_ACTIVATION";
       grade: UnitGrade;
@@ -1191,6 +1193,18 @@ export type CardPlayCost = {
   discardCards?: number;
   /** Discard any number up to this many (effects may scale per card). */
   discardCardsUpTo?: number;
+  /**
+   * Pay at least this much spell Power (instead of a fixed card count). Met by
+   * the caster's standing spell Power for the played card's school (Power
+   * statistic / School-of-Magic permanent / active-unit boost) PLUS the full
+   * printed Power of each discarded power-source card — a Spell counts as the
+   * "+1 Power" on its bottom side, a Power statistic/artifact/ability counts as
+   * its printed Power (school-restricted Power only when the school matches).
+   * Used by Sorrow's silver/gold skip so a single +4 artifact (or your Power
+   * stat) reaches a grade instead of forcing N separate discards. Requires
+   * `costCardFilter: "power-source"`.
+   */
+  powerCost?: number;
   /**
    * The discarded/removed cards must match this filter. "power-source" cards
    * are anything that can contribute Power: a Power statistic or any Spell
@@ -2757,6 +2771,15 @@ export type ResolutionStackItem = {
      * Power instead of being frozen at the value they had when first played.
      */
     powerScaledAttackInstants?: PowerScaledAttackInstant[];
+    /**
+     * Set once a spell instant played as a reaction into this attack has been
+     * credited the caster's standing spell Power (the once-per-turn Astrologers
+     * bonus, the once-per-round active-unit boost, and a School-of-Magic
+     * permanent's bonus for the spell's school) — the same Power a spell cast on
+     * your own turn receives. Guarded so the bonus is folded into the shared
+     * pool at most once per attack.
+     */
+    standingPowerSeeded?: boolean;
     playedCardIds: CardId[];
   };
 };
