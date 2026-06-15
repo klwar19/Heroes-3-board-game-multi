@@ -1,4 +1,4 @@
-import type { CardDefinition, CardOptionDefinition, CardPlayMode, EffectDefinition } from "./state";
+import type { CardDefinition, CardOptionDefinition, CardPlayMode, EffectDefinition, SpellSchool } from "./state";
 
 export const implementedCardEffectTypes = [
   "DEAL_DAMAGE",
@@ -82,6 +82,42 @@ export function isImplementedCardEffect(effect: EffectDefinition): boolean {
 
 export function getCardOptions(card: CardDefinition): CardOptionDefinition[] {
   return card.effect.type === "CHOOSE_ONE" ? card.effect.options : [];
+}
+
+/**
+ * School/level gate shared by Resistance and Protection-from-X (both CANCEL_SPELL
+ * reactions). Resistance sets neither `schools` nor `maxSpellLevel`, so it always
+ * passes here — its only gate is power, checked separately at each call site.
+ * Protection from Air/Earth/Fire/Water restricts the cancel to its School and, in
+ * basic play, to a Basic spell; its expert play (`expertIgnoresMaxSpellLevel`)
+ * lifts the level cap but keeps the School gate. The power gate is NOT evaluated
+ * here.
+ */
+export function cancelSpellAllowsSchoolAndLevel(
+  effect: Extract<EffectDefinition, { type: "CANCEL_SPELL" }>,
+  spell: { schools: readonly SpellSchool[]; level: "basic" | "expert" | undefined },
+  mode: CardPlayMode
+): boolean {
+  // School gate: the cancelled spell must literally belong to one of the named
+  // Schools. A school-agnostic spell ("any", e.g. Magic Arrow) is never matched.
+  if (effect.schools && effect.schools.length > 0) {
+    if (!spell.schools.some((school) => effect.schools!.includes(school))) {
+      return false;
+    }
+  }
+
+  // Level gate: expert play (expertIgnoresMaxSpellLevel) ignores the cap; the
+  // basic play caps at `maxSpellLevel` (an Expert spell outranks a Basic one).
+  if (mode === "expert" && effect.expertIgnoresMaxSpellLevel) {
+    return true;
+  }
+  if (effect.maxSpellLevel) {
+    const rank = (level: "basic" | "expert" | undefined) => (level === "expert" ? 1 : 0);
+    if (rank(spell.level) > rank(effect.maxSpellLevel)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -338,14 +374,21 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "CREATE_DEFENSE_BUFF") {
+    // Shield / Air Shield only apply their Defense against a matching attacker.
+    const vs =
+      card.effect.vsAttackerType === "ground-or-flying"
+        ? " vs ground/flying attackers"
+        : card.effect.vsAttackerType === "ranged"
+          ? " vs ranged attackers"
+          : "";
     if (card.effect.amountByPower) {
       const breakpoints = Object.entries(card.effect.amountByPower)
         .map(([power, amount]) => `${power}:+${amount}`)
         .join(", ");
-      return `${card.effect.name} defense by power (${breakpoints})`;
+      return `${card.effect.name} defense by power (${breakpoints})${vs}`;
     }
 
-    return `${card.effect.name} +${card.effect.amount ?? 0} defense`;
+    return `${card.effect.name} +${card.effect.amount ?? 0} defense${vs}`;
   }
 
   if (card.effect.type === "CREATE_ATTACK_DIE_REROLL") {

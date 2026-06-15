@@ -222,6 +222,17 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Shield / Air Shield: extra Defense that applies only against an attacker
+       * of a given UNIT TYPE — "ground-or-flying" (Shield) matches any non-ranged
+       * attacker; "ranged" (Air Shield) matches a ranged attacker. Lasts the
+       * Combat and is read in getAttackerTypeDefenseBonus during the attack maths.
+       */
+      type: "DEFENSE_VS_ATTACKER_TYPE";
+      attackerType: "ground-or-flying" | "ranged";
+      amount: number;
+    }
+  | {
+      /**
        * Torosar's Ballista IV/VI: while held, the controller fields one extra
        * Ballista — it fires at every combat-round start and counts toward
        * "activate all your Ballistas". One modifier per granted Ballista.
@@ -391,7 +402,25 @@ export type EffectDefinition =
        */
       removeParalysis?: boolean;
     }
-  | { type: "CANCEL_SPELL"; maxPower?: number; expertIgnoresMaxPower?: boolean }
+  | {
+      type: "CANCEL_SPELL";
+      maxPower?: number;
+      expertIgnoresMaxPower?: boolean;
+      /**
+       * Protection from Air/Earth/Fire/Water: the cancel only applies to a spell
+       * literally belonging to one of these Schools. A school-agnostic spell
+       * ("any", e.g. Magic Arrow) is never "from the School of X Magic", so it is
+       * never matched. Resistance leaves this undefined (it cancels any school).
+       */
+      schools?: SpellSchool[];
+      /**
+       * Protection from X gates on the cancelled spell's printed LEVEL, not its
+       * power: the basic play cancels a Basic spell only; the expert play
+       * (expertIgnoresMaxSpellLevel) cancels a Basic OR Expert spell.
+       */
+      maxSpellLevel?: "basic" | "expert";
+      expertIgnoresMaxSpellLevel?: boolean;
+    }
   | {
       type: "DRAW_CARDS";
       amount: number;
@@ -884,6 +913,12 @@ export type EffectDefinition =
       duration: EffectDurationDefinition;
       polarity?: "positive" | "negative" | "neutral";
       removable?: boolean;
+      /**
+       * Shield / Air Shield: when set, the buff is conditional — its Defense only
+       * applies against an attacker of this UNIT TYPE ("ground-or-flying" =
+       * Shield, "ranged" = Air Shield). Omitted for a plain, always-on +Defense.
+       */
+      vsAttackerType?: "ground-or-flying" | "ranged";
     }
   | {
       type: "CREATE_ATTACK_DIE_REROLL";

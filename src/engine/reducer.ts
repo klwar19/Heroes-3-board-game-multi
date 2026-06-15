@@ -117,6 +117,7 @@ import {
   expireEffectsForTurnEnd,
   getActiveAttackBonus,
   getActiveDefenseBonus,
+  getAttackerTypeDefenseBonus,
   getAttackRerollEffects,
   getConditionalDefenseBonus,
   getSchoolPowerMultiplier,
@@ -129,6 +130,7 @@ import {
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
 import {
+  cancelSpellAllowsSchoolAndLevel,
   cardCanBoostPower,
   getEffectAmount,
   getEffectDamageAmount,
@@ -212,6 +214,7 @@ import {
 } from "./unit-abilities";
 import type {
   ActiveEffectDefinition,
+  ActiveEffectModifier,
   ActiveEffectState,
   AttackRerollSource,
   AttackRollCandidate,
@@ -936,6 +939,11 @@ function createDefenseBuffFromCard(
   }
 
   const amount = getAmountByPower(card.effect.amountByPower, card.effect.amount ?? 0, power);
+  // Shield / Air Shield carry `vsAttackerType`, so their Defense is conditional
+  // (read in getAttackerTypeDefenseBonus); a plain buff emits an always-on bonus.
+  const modifier: ActiveEffectModifier = card.effect.vsAttackerType
+    ? { type: "DEFENSE_VS_ATTACKER_TYPE", attackerType: card.effect.vsAttackerType, amount }
+    : { type: "DEFENSE_BONUS", amount };
   createActiveEffect(
     state,
     {
@@ -944,12 +952,7 @@ function createDefenseBuffFromCard(
       duration: card.effect.duration,
       polarity: card.effect.polarity ?? "positive",
       removable: card.effect.removable ?? true,
-      modifiers: [
-        {
-          type: "DEFENSE_BONUS",
-          amount
-        }
-      ]
+      modifiers: [modifier]
     },
     {
       type: "card",
@@ -1619,7 +1622,10 @@ function getAttackStackDetails(
   });
   // Cyra's Haste VI: +Defense only against an attacker slower than the defender.
   const conditionalDefenseBonus = getConditionalDefenseBonus(state, defender, attacker);
-  const activeDefenseBonus = getActiveDefenseBonus(state, defender) + conditionalDefenseBonus;
+  // Shield / Air Shield: +Defense only against a ground-or-flying / ranged attacker.
+  const attackerTypeDefenseBonus = getAttackerTypeDefenseBonus(state, defender, attacker);
+  const activeDefenseBonus =
+    getActiveDefenseBonus(state, defender) + conditionalDefenseBonus + attackerTypeDefenseBonus;
   const abilityAttack = stackItem.action.type === "ATTACK_UNIT" ? stackItem.action.abilityAttack : undefined;
 
   // Combat tokens: Attack/Weakness tokens shift the attacker, Corrosion the
@@ -5460,7 +5466,9 @@ function effectSupportsExpertPlay(effect: NonNullable<ReturnType<typeof getEffec
   }
 
   if (effect.type === "CANCEL_SPELL") {
-    return Boolean(effect.expertIgnoresMaxPower);
+    // Resistance's expert ignores the power cap; Protection-from-X's expert
+    // ignores the spell-level cap. Either makes the card's expert play real.
+    return Boolean(effect.expertIgnoresMaxPower || effect.expertIgnoresMaxSpellLevel);
   }
 
   return false;
@@ -5651,6 +5659,22 @@ function applyReactionPlayCore(
     throw new Error(`${card.name} cannot end a spell above power ${effect.maxPower}.`);
   }
 
+  // Protection-from-X self-defends its School/level gate at resolution: a
+  // fabricated reaction can never cancel a spell of the wrong School or, in
+  // basic play, an Expert spell (the legal-action layer already filters offers).
+  if (effect.type === "CANCEL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
+    const pendingSpell = cards[stackItem.action.cardId];
+    if (
+      !cancelSpellAllowsSchoolAndLevel(
+        effect,
+        { schools: pendingSpell?.spellSchools ?? [], level: pendingSpell?.spellLevel },
+        mode
+      )
+    ) {
+      throw new Error(`${card.name} cannot end that spell.`);
+    }
+  }
+
   if (play.fromScroll) {
     if (!consumeScrollSpell(state, playerId, play.fromScroll, play.cardId)) {
       throw new Error("That spell is not in the named Spell Scroll.");
@@ -5734,10 +5758,23 @@ function applyReactionPlayCore(
     const instants = stackItem.modifiers.cancellableSpellInstants ?? [];
     let index = -1;
     for (let i = instants.length - 1; i >= 0; i -= 1) {
-      if (instants[i].playerId !== playerId) {
-        index = i;
-        break;
+      if (instants[i].playerId === playerId) {
+        continue;
       }
+      // Protection-from-X only reverses an enemy instant of its own School/level
+      // (Resistance, with no such gate, takes the most recent enemy instant).
+      const instantSpell = cards[instants[i].cardId];
+      if (
+        !cancelSpellAllowsSchoolAndLevel(
+          effect,
+          { schools: instantSpell?.spellSchools ?? [], level: instantSpell?.spellLevel },
+          mode
+        )
+      ) {
+        continue;
+      }
+      index = i;
+      break;
     }
     if (index === -1) {
       throw new Error("There is no enemy Spell to resist on this attack.");

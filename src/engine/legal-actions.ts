@@ -37,7 +37,7 @@ import {
   playerCannotSurrenderCombat,
   playerHasSpellTimingFreedom
 } from "./active-effects";
-import { cardCanBoostPower } from "./effects";
+import { cancelSpellAllowsSchoolAndLevel, cardCanBoostPower } from "./effects";
 import {
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
@@ -2739,7 +2739,8 @@ export function getLegalReactionsForTrigger(
         attackItem?.action.type === "ATTACK_UNIT" || attackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
           ? (attackItem.modifiers.cancellableSpellInstants ?? [])
           : [];
-      if (instants.some((entry) => entry.playerId !== player.id)) {
+      const enemyInstants = instants.filter((entry) => entry.playerId !== player.id);
+      if (enemyInstants.length > 0) {
         const spellPower = attackItem?.modifiers.spellPowerBonus ?? 0;
         for (const cardId of new Set(player.hand)) {
           const card = cards[cardId];
@@ -2752,10 +2753,22 @@ export function getLegalReactionsForTrigger(
             continue;
           }
           const cancel = card.effect;
-          if (cancel.maxPower === undefined || spellPower <= cancel.maxPower) {
+          // Protection-from-X is offered only when an enemy instant of its own
+          // School (and, at basic, Basic level) is on the attack; Resistance, with
+          // no such gate, matches every enemy instant.
+          const matchesAt = (mode: CardPlayMode) =>
+            enemyInstants.some((entry) =>
+              cancelSpellAllowsSchoolAndLevel(
+                cancel,
+                { schools: cards[entry.cardId]?.spellSchools ?? [], level: cards[entry.cardId]?.spellLevel },
+                mode
+              )
+            );
+          // Basic still respects Resistance's power cap (Protection has none).
+          if ((cancel.maxPower === undefined || spellPower <= cancel.maxPower) && matchesAt("basic")) {
             reactions.push(makeReactionAction(card.name, { type: "PLAY_REACTION", playerId: player.id, cardId, mode: "basic" }));
           }
-          if (cancel.expertIgnoresMaxPower && expertUsesLeft > 0) {
+          if ((cancel.expertIgnoresMaxPower || cancel.expertIgnoresMaxSpellLevel) && expertUsesLeft > 0 && matchesAt("expert")) {
             reactions.push(
               makeReactionAction(`${card.name} expert`, { type: "PLAY_REACTION", playerId: player.id, cardId, mode: "expert" })
             );
@@ -2977,7 +2990,9 @@ export function effectHasExpertMode(effect: ConcreteEffect): boolean {
   }
 
   if (effect.type === "CANCEL_SPELL") {
-    return Boolean(effect.expertIgnoresMaxPower);
+    // Resistance's expert ignores the power cap; Protection-from-X's expert
+    // ignores the spell-level cap. Either makes the card's expert play real.
+    return Boolean(effect.expertIgnoresMaxPower || effect.expertIgnoresMaxSpellLevel);
   }
 
   return false;
@@ -3040,6 +3055,21 @@ export function isEffectLegalForTrigger(
 
     if (effect.type === "CANCEL_SPELL") {
       if (triggerEvent.playerId === playerId) {
+        return false;
+      }
+
+      // Protection-from-X: the pending spell must belong to the card's School,
+      // and (basic play) be a Basic spell. Resistance leaves both gates open.
+      const pendingStackItem = getPendingStackItem(state, triggerEvent);
+      const pendingSpell =
+        pendingStackItem?.action.type === "CAST_SPELL" ? cardLibrary[pendingStackItem.action.cardId] : undefined;
+      if (
+        !cancelSpellAllowsSchoolAndLevel(
+          effect,
+          { schools: pendingSpell?.spellSchools ?? [], level: pendingSpell?.spellLevel },
+          mode
+        )
+      ) {
         return false;
       }
 
