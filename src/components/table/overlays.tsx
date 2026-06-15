@@ -565,11 +565,19 @@ export type DiceCue = {
   preDelayMs?: number;
 };
 
-/** Tabletop pacing for the attack die: the cube tumbles, settles, then reads. */
-export const DICE_ROLL_MS = 1400;
-export const DICE_READ_MS = 2050;
+/**
+ * Tabletop pacing for the attack die: the cube is hurled, tumbles and bounces
+ * across the felt, settles with a weighty wobble, then the result reads out. The
+ * roll is deliberately drawn out so the throw lands like a real die coming to
+ * rest rather than a quick CSS flick — the suspense is half the fun.
+ */
+export const DICE_ROLL_MS = 1850;
+export const DICE_READ_MS = 2150;
 /** Total time the attack-die overlay holds the screen (roll + read). */
 export const DICE_PRESENT_MS = DICE_ROLL_MS + DICE_READ_MS;
+
+/** How long each first-player attempt's dice clatter before the faces reveal. */
+export const FIRST_ROLL_TUMBLE_MS = 1300;
 
 /** Cube faces: two +1, two 0, two -1 — matching the physical attack die. */
 const CUBE_FACES: { value: number; transform: string }[] = [
@@ -1185,9 +1193,12 @@ export function FirstPlayerRollOverlay({ cue, onDone }: { cue: FirstPlayerRollCu
     if (phase !== "rolling") {
       return;
     }
-    const settle = window.setTimeout(() => setPhase("revealed"), 1000);
+    // Each contender's die clatters as the ceremony rolls them, settling with
+    // the reveal — the same tabletop throw the combat and map dice use.
+    playDiceRoll(attempt.rolls.length, FIRST_ROLL_TUMBLE_MS - 120);
+    const settle = window.setTimeout(() => setPhase("revealed"), FIRST_ROLL_TUMBLE_MS);
     return () => window.clearTimeout(settle);
-  }, [phase, attemptIndex]);
+  }, [phase, attemptIndex, attempt.rolls.length]);
 
   useEffect(() => {
     if (phase !== "revealed" || isFinalAttempt) {

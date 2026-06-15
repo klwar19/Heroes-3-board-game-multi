@@ -41,6 +41,9 @@ export const implementedCardEffectTypes = [
   "AREA_DAMAGE_ALL_ADJACENT",
   "GAIN_WAR_MACHINE",
   "CHAIN_LIGHTNING",
+  "PLACE_PARALYSIS",
+  "DAMAGE_LOWEST_INITIATIVE",
+  "BLOCK_ENEMY_ESCAPE",
   "BALLISTA_SPECIALTY",
   "DECK_DIG_KEEP_ONE",
   "CANCEL_LETHAL_ATTACK",
@@ -233,7 +236,10 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "DRAW_CARDS") {
     const expert = card.effect.expertAmount ? `, expert draw ${card.effect.expertAmount}` : "";
-    return `draw ${card.effect.amount} card${card.effect.amount === 1 ? "" : "s"}${expert}`;
+    const thenDiscard = card.effect.thenDiscard
+      ? `, then discard ${card.effect.thenDiscard}${card.effect.thenDiscardDrawnOnly ? " of them" : ""}`
+      : "";
+    return `draw ${card.effect.amount} card${card.effect.amount === 1 ? "" : "s"}${expert}${thenDiscard}`;
   }
 
   if (card.effect.type === "DEAL_DAMAGE") {
@@ -278,7 +284,11 @@ export function describeCardEffect(card: CardDefinition): string {
   if (card.effect.type === "ADD_COMBAT_STAT") {
     const doubled = card.effect.doubleForUnitName ? ` (x2 for ${card.effect.doubleForUnitName})` : "";
     const draw = card.effect.drawCards ? `, then draw ${card.effect.drawCards}` : "";
-    return `+${card.effect.amount} ${card.effect.stat}, expert +${card.effect.expertAmount ?? card.effect.amount}${doubled}${draw}`;
+    const corrosion = card.effect.selfCorrosion
+      ? `, then -${card.effect.selfCorrosion} defense until the end of the Combat`
+      : "";
+    const expert = card.effect.expertAmount ? `, expert +${card.effect.expertAmount}` : "";
+    return `+${card.effect.amount} ${card.effect.stat}${expert}${doubled}${draw}${corrosion}`;
   }
 
   if (card.effect.type === "TRIPLE_ATTACK_DIE") {
@@ -458,7 +468,24 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "CHAIN_LIGHTNING") {
-    return `deal ${card.effect.damages.join("/")} damage to the selected unit and the units closest to it`;
+    const allocation = card.effect.damagesByPower
+      ? Object.entries(card.effect.damagesByPower)
+          .map(([power, damages]) => `${power}:${damages.join("/")}`)
+          .join(", ")
+      : (card.effect.damages ?? []).join("/");
+    return `deal ${allocation} damage to the selected unit and the units closest to it`;
+  }
+
+  if (card.effect.type === "PLACE_PARALYSIS") {
+    return "place a Paralysis token on the selected enemy unit (tier rises with power)";
+  }
+
+  if (card.effect.type === "DAMAGE_LOWEST_INITIATIVE") {
+    return `deal ${card.effect.amount} damage to the enemy unit with the lowest initiative`;
+  }
+
+  if (card.effect.type === "BLOCK_ENEMY_ESCAPE") {
+    return "the enemy hero can neither Retreat nor Surrender this combat";
   }
 
   if (card.effect.type === "BALLISTA_SPECIALTY") {

@@ -510,17 +510,40 @@ export const spellCards: CardLibrary = {
   },
 
   // ---- Spells beyond the base block ----
-  // Each entry's `implementationStatus` is authoritative. The fully implemented
-  // ones here (Resurrection, Magic Mirror, Earthquake, Dimension Door, Fly,
-  // Water Walk) are dealt into the spell decks below; the rest are stubs.
-  "spell.chain_lightning": notImplementedSpell(
-    "chain_lightning",
-    "Chain Lightning",
-    "expert",
-    "air",
-    "combat",
-    "Activation: Select a unit and another 2 units closest to it. Allocate damage, starting with the first selected unit: Power 0: 1/1/1 damage; Power 2: 2/1/1 damage; Power 4: 3/2/1 damage."
-  ),
+  // Each entry's `implementationStatus` is authoritative; the implemented ones
+  // are dealt into the decks below where the rules place them, the rest are
+  // library-only stubs.
+  // Chain Lightning: an Activation Air spell that reuses the engine's Chain
+  // Lightning machinery (shared with Solmyr's specialty). The selected enemy
+  // takes the first bolt; the rest fork to the units closest to it (friend or
+  // foe), the caster routing them on ties. The allocation scales with Power.
+  "spell.chain_lightning": {
+    id: "spell.chain_lightning",
+    name: "Chain Lightning",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["air"],
+    power: 0,
+    target: { type: "enemy-unit" },
+    tags: [
+      "spell",
+      "expert",
+      "air",
+      "Activation: Select a unit and another 2 units closest to it. Allocate damage, starting with the first selected unit: Power 0: 1/1/1 damage; Power 2: 2/1/1 damage; Power 4: 3/2/1 damage."
+    ],
+    effect: {
+      type: "CHAIN_LIGHTNING",
+      damagesByPower: { 0: [1, 1, 1], 2: [2, 1, 1], 4: [3, 2, 1] }
+    },
+    assets: {
+      cardImage: "/assets/spells-chain_lightning.webp",
+      imageAlt: "Chain Lightning card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("chain_lightning")
+  },
   // Resurrection is an instant lethal save: it reuses the engine's
   // CANCEL_LETHAL_ATTACK mechanism (shared with Alamar's specialty and the
   // Archangels' ability), offered only in the lethal-save window, gated by the
@@ -624,14 +647,36 @@ export const spellCards: CardLibrary = {
     "combat",
     "Activation: During Combat, move one allied unit to any empty space - ignore any obstacles or effects when moving: Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or gold."
   ),
-  "spell.blind": notImplementedSpell(
-    "blind",
-    "Blind",
-    "basic",
-    "fire",
-    "combat",
-    "Activation: Place a paralysis token on the selected unit: Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or gold."
-  ),
+  // Blind: an Activation Fire spell that drops a Paralysis token on an enemy
+  // unit (it skips its next activation; the token is removed if it takes
+  // damage first). The reachable grade rises with the Power paid.
+  "spell.blind": {
+    id: "spell.blind",
+    name: "Blind",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "basic",
+    spellSchools: ["fire"],
+    power: 0,
+    target: { type: "enemy-unit" },
+    tags: [
+      "spell",
+      "basic",
+      "fire",
+      "Activation: Place a paralysis token on the selected unit: Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or gold."
+    ],
+    effect: {
+      type: "PLACE_PARALYSIS",
+      gradeByPower: { 0: "bronze", 1: "silver", 2: "gold" }
+    },
+    assets: {
+      cardImage: "/assets/spells-blind.webp",
+      imageAlt: "Blind card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("blind")
+  },
   "spell.mirth": notImplementedSpell(
     "mirth",
     "Mirth",
