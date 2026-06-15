@@ -857,16 +857,16 @@ export function combatEnemyImposesPowerTax(state: GameState, casterId: PlayerId)
 }
 
 /**
- * Whether `hand` still holds a Power card to pay the Pegasi toll. A hand cast
- * spends the spell itself first, so it cannot also pay the toll — the toll must
- * come from a *different* Power card; a Scroll cast leaves the hand intact.
+ * The Power cards the player could pay for the Pegasi toll. A hand cast spends
+ * the spell itself first, so it cannot also pay the toll — the toll must come
+ * from a *different* Power card; a Scroll cast leaves the hand intact.
  */
-export function handCanPayPowerTax(
+export function payablePowerCardIds(
   hand: readonly CardId[],
   cards: CardLibrary,
   castCardId: CardId,
   fromScroll: boolean
-): boolean {
+): CardId[] {
   let remaining: readonly CardId[] = hand;
   if (!fromScroll) {
     const index = remaining.indexOf(castCardId);
@@ -874,7 +874,17 @@ export function handCanPayPowerTax(
       remaining = [...remaining.slice(0, index), ...remaining.slice(index + 1)];
     }
   }
-  return remaining.some((cardId) => cardCanBoostPower(cards[cardId]));
+  return remaining.filter((cardId) => cardCanBoostPower(cards[cardId]));
+}
+
+/** Whether the player holds any Power card to pay the Pegasi toll for this cast. */
+export function handCanPayPowerTax(
+  hand: readonly CardId[],
+  cards: CardLibrary,
+  castCardId: CardId,
+  fromScroll: boolean
+): boolean {
+  return payablePowerCardIds(hand, cards, castCardId, fromScroll).length > 0;
 }
 
 function addSpellActions(
@@ -2091,15 +2101,19 @@ export function getLegalActions(
           cardId
         }
       }));
-      actions.push({
-        label: "Let a random card be discarded",
-        action: {
-          type: "RESOLVE_COMBAT_DISCARD",
-          playerId,
-          choiceId: choice.id,
-          cardId: "random"
-        }
-      });
+      // The Magi drain also offers a random discard; the Pegasi toll is a pure
+      // "pay a Power card of your choice" — no random option.
+      if (choice.kind === "magi-power-or-random") {
+        actions.push({
+          label: "Let a random card be discarded",
+          action: {
+            type: "RESOLVE_COMBAT_DISCARD",
+            playerId,
+            choiceId: choice.id,
+            cardId: "random"
+          }
+        });
+      }
       return actions;
     }
 
