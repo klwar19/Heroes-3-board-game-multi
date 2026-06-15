@@ -131,6 +131,7 @@ export {
   isFieldGuarded,
   isSeaField,
   levelOfExperience,
+  recruitDiscountAmount,
   seaStepHalts,
   seaTileBand
 } from "./adventure";

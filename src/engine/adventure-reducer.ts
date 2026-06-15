@@ -12,8 +12,10 @@ import {
   canCrossEdge,
   canHeroReachPlacedTile,
   canPlaceTileAt,
+  applyRecruitDiscount,
   changeMorale,
   classifyHeroStep,
+  consumeRecruitDiscount,
   controlsTownOrSettlement,
   createSecondaryHero,
   declareAdventureWinner,
@@ -3954,13 +3956,23 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
     }
   }
 
-  if (!hasRecruitResources(state, action.playerId, totalCost)) {
+  // Legion artifacts (Legs/Loins/Torso/Arms/Head of Legion): a one-shot gold
+  // discount comes off this Recruitment/Reinforcement, to a minimum of 0. The
+  // pooled discount is spent only when it actually lowered the gold bill — a
+  // recruit that costs no gold leaves the artifact's effect untouched.
+  const discountedTotal = applyRecruitDiscount(state, action.playerId, totalCost);
+  const usedLegionDiscount = (discountedTotal.gold ?? 0) < (totalCost.gold ?? 0);
+
+  if (!hasRecruitResources(state, action.playerId, discountedTotal)) {
     throw new Error("Not enough resources for those units.");
   }
 
-  spendRecruitResources(state, action.playerId, totalCost, "population action");
+  spendRecruitResources(state, action.playerId, discountedTotal, "population action");
   closeMulliganWindow(state, action.playerId);
   player.townTokens.population = false;
+  if (usedLegionDiscount) {
+    consumeRecruitDiscount(state, action.playerId);
+  }
 
   for (const purchase of action.purchases) {
     if (purchase.kind === "recruit") {
