@@ -88,20 +88,24 @@ export function getCardOptions(card: CardDefinition): CardOptionDefinition[] {
  * School/level gate shared by Resistance and Protection-from-X (both CANCEL_SPELL
  * reactions). Resistance sets neither `schools` nor `maxSpellLevel`, so it always
  * passes here — its only gate is power, checked separately at each call site.
- * Protection from Air/Earth/Fire/Water restricts the cancel to its School and, in
- * basic play, to a Basic spell; its expert play (`expertIgnoresMaxSpellLevel`)
- * lifts the level cap but keeps the School gate. The power gate is NOT evaluated
- * here.
+ * Protection from Air/Earth/Fire/Water restricts the cancel to its School (a
+ * school-agnostic spell like Magic Arrow counts as every School) and, in basic
+ * play, to a Basic spell; its expert play (`expertIgnoresMaxSpellLevel`) lifts
+ * the level cap but keeps the School gate. The power gate is NOT evaluated here.
  */
 export function cancelSpellAllowsSchoolAndLevel(
   effect: Extract<EffectDefinition, { type: "CANCEL_SPELL" }>,
   spell: { schools: readonly SpellSchool[]; level: "basic" | "expert" | undefined },
   mode: CardPlayMode
 ): boolean {
-  // School gate: the cancelled spell must literally belong to one of the named
-  // Schools. A school-agnostic spell ("any", e.g. Magic Arrow) is never matched.
+  // School gate: the cancelled spell must belong to one of the named Schools. A
+  // school-agnostic spell ("any", e.g. Magic Arrow) counts as belonging to every
+  // School, so any Protection can end it.
   if (effect.schools && effect.schools.length > 0) {
-    if (!spell.schools.some((school) => effect.schools!.includes(school))) {
+    const matchesSchool = spell.schools.some(
+      (school) => school === "any" || effect.schools!.includes(school)
+    );
+    if (!matchesSchool) {
       return false;
     }
   }

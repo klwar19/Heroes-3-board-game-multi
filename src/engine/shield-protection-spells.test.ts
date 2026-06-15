@@ -16,8 +16,8 @@ import type { CardPlayMode, GameAction, GameState, UnitId, UnitType } from "./st
  *                                for a single School: the instant ends an enemy
  *                                Spell of that School (basic play a Basic Spell,
  *                                expert play a Basic or an Expert Spell). A
- *                                School-agnostic Spell (Magic Arrow) is never
- *                                touched.
+ *                                School-agnostic Spell (Magic Arrow) counts as
+ *                                every School, so any Protection can end it.
  *
  * Sandbox grades/types (createInitialGameState):
  *   p1 marksmen bronze/ranged, griffins bronze/flying, crusaders silver/ground;
@@ -262,16 +262,27 @@ describe("Protection from X spells", () => {
     expect(reactionOffered(onP2, "p2", "spell.protection_from_air", "basic")).toBe(true);
   });
 
-  it("never touches a School-agnostic spell (Magic Arrow is not 'from a School')", () => {
-    const onP2 = castOnVampires("prot-any", "spell.magic_arrow", [
+  it("any Protection ends a School-agnostic spell (Magic Arrow counts as every School)", () => {
+    // Every Protection is offered against Magic Arrow ("any" school).
+    const onP2 = castOnVampires("prot-any-offered", "spell.magic_arrow", [
       "spell.protection_from_air",
       "spell.protection_from_fire",
       "spell.protection_from_earth",
       "spell.protection_from_water"
     ]);
     for (const school of ["air", "fire", "earth", "water"]) {
-      expect(reactionOffered(onP2, "p2", `spell.protection_from_${school}`, "basic")).toBe(false);
+      expect(reactionOffered(onP2, "p2", `spell.protection_from_${school}`, "basic")).toBe(true);
     }
+
+    // ...and playing one actually ends it: Magic Arrow deals 0 to the vampires.
+    const result = passAllReactions(
+      applyOk(onP2, { type: "PLAY_REACTION", playerId: "p2", cardId: "spell.protection_from_water", mode: "basic" })
+    );
+    expect(result.stack).toEqual([]);
+    expect(result.combat!.units.unit_p2_vampires.damage).toBe(0);
+    expect(result.eventLog.find((event) => event.type === "SPELL_CAST_CANCELLED")).toMatchObject({
+      cancelledByCardId: "spell.protection_from_water"
+    });
   });
 
   it("the basic play ends a Basic spell of its School (Slow → no Slow effect)", () => {

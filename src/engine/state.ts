@@ -408,9 +408,9 @@ export type EffectDefinition =
       expertIgnoresMaxPower?: boolean;
       /**
        * Protection from Air/Earth/Fire/Water: the cancel only applies to a spell
-       * literally belonging to one of these Schools. A school-agnostic spell
-       * ("any", e.g. Magic Arrow) is never "from the School of X Magic", so it is
-       * never matched. Resistance leaves this undefined (it cancels any school).
+       * belonging to one of these Schools. A school-agnostic spell ("any", e.g.
+       * Magic Arrow) counts as belonging to every School, so any Protection can
+       * end it. Resistance leaves this undefined (it cancels any school).
        */
       schools?: SpellSchool[];
       /**
