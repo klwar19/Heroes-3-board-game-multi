@@ -3019,7 +3019,11 @@ export function getLegalReactionsForTrigger(
           : [];
       const enemyInstants = instants.filter((entry) => entry.playerId !== player.id);
       if (enemyInstants.length > 0) {
-        const spellPower = attackItem?.modifiers.spellPowerBonus ?? 0;
+        // Resistance's basic power cap is judged against the CASTER's own attack
+        // Power pool, not a shared total, so one side's Power can't push the
+        // other's spell above a cap that should still be cancellable. (In a
+        // two-player attack every enemy instant shares the one opposing caster.)
+        const spellPower = attackItem?.modifiers.attackPowerByPlayer?.[enemyInstants[0]!.playerId] ?? 0;
         for (const cardId of new Set(player.hand)) {
           const card = cards[cardId];
           if (
@@ -3150,10 +3154,12 @@ export function getLegalReactionsForTrigger(
       attackStackItem?.action.type === "ATTACK_UNIT" || attackStackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
         ? attackStackItem.action.playerId
         : undefined;
+    // Either side may keep empowering a Power-scaling spell instant THEY already
+    // cast into this attack (the attacker's Bloodlust/Slayer, the defender's
+    // Curse/Weakness) — each pays into their own Power pool.
     const hasEmpowerablePlayed =
-      attackOwner === player.id &&
-      ((attackStackItem?.modifiers.powerScaledAttackInstants?.length ?? 0) > 0 ||
-        attackStackItem?.modifiers.slayerRollsByPower !== undefined);
+      (attackStackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === player.id) ||
+      (attackOwner === player.id && attackStackItem?.modifiers.slayerRollsByPower !== undefined);
     if (!isAttackWindow || hasPairableSpell || hasEmpowerablePlayed) {
       reactions.push(...powerReactions);
     }
@@ -3338,7 +3344,10 @@ export function getPendingReactionPower(
   }
 
   if (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT") {
-    const fueledPower = fueledPowerOnStackItem(stackItem);
+    // Attack windows pool Power per caster, so the readout reports the Power the
+    // player currently on priority has fuelled into their own spell instant
+    // (the attacker's Bloodlust/Bless/Slayer or the defender's Curse/Weakness).
+    const fueledPower = stackItem.modifiers.attackPowerByPlayer?.[window.priorityPlayerId] ?? 0;
     // An attack only has a Power to report while a Power-scaling spell instant
     // (Bloodlust/Bless/Slayer) sits on it — otherwise a plain attack has none.
     const hasPowerSubject =
