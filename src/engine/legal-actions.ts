@@ -14,6 +14,7 @@ import {
   hasResources as playerHasResources,
   humanPlayerIds,
   NEUTRAL_DECK_IDS,
+  RESOURCE_GAIN_LEVEL_AMOUNTS,
   townHasBuildingEffect,
   unlockedRecruitTiers
 } from "./adventure";
@@ -2888,6 +2889,24 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     return;
   }
 
+  if (step.type === "RESOURCE_GAIN_LEVEL") {
+    actions.push(
+      {
+        label: `Raise Gold income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.gold} (one level)`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 }
+      },
+      {
+        label: `Raise Building Materials income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.buildingMaterials} (one level)`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 1 }
+      },
+      {
+        label: `Raise Valuables income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.valuables} (one level)`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 2 }
+      }
+    );
+    return;
+  }
+
   if (step.type === "WITCH_HUT") {
     // The rulebook reveals the top Ability card before the player decides.
     const top = state.decks.abilities?.drawPile.at(-1);
@@ -3586,6 +3605,22 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     label: "End turn",
     action: { type: "END_TURN", playerId }
   });
+
+  // Concede: only on your own quiet map turn (never mid-Combat — "you cannot
+  // surrender when defending your Faction Town", rulebook p.46).
+  if (
+    !state.combat &&
+    !state.pendingChoice &&
+    !state.reactionWindow &&
+    !adventure.pendingVisit &&
+    !adventure.pendingTileChoice &&
+    !state.players[playerId]?.eliminated
+  ) {
+    actions.push({
+      label: "Give up (become an observer)",
+      action: { type: "GIVE_UP", playerId }
+    });
+  }
 
   return actions;
 }

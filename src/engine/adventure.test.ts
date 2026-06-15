@@ -1376,7 +1376,7 @@ describe("experience and victory", () => {
     expect(state.pendingChoice?.type).toBe("DECK_SEARCH");
   });
 
-  it("wins the game by flagging the enemy town", () => {
+  it("flags the enemy town without an instant win, rewards the conqueror a resource-gain level, and starts the elimination clock", () => {
     let state = refreshP1(makeGame());
     const enemyTownField = state.towns.town_p2.fieldId ?? "";
     const hero = state.heroes.hero_p1;
@@ -1396,6 +1396,8 @@ describe("experience and victory", () => {
     };
     state.adventure!.lastVisitedField.hero_p1 = "h:9:7";
 
+    const goldProductionBefore = state.players.p1.production.gold;
+
     state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: enemyTownField });
 
     // The town owner is asked to garrison (8 gold, units only) and declines.
@@ -1411,7 +1413,22 @@ describe("experience and victory", () => {
       });
     }
 
-    expect(state.adventure?.winnerPlayerId).toBe("p1");
-    expect(state.phase).toBe("game-over");
+    // Flagging an enemy faction Town is NOT an instant win (rulebook p.76).
+    expect(state.adventure?.winnerPlayerId).toBeNull();
+    expect(state.phase).not.toBe("game-over");
+    expect(state.adventure?.fields[enemyTownField].flagOwnerId).toBe("p1");
+
+    // The conqueror is offered the resource-gain-level reward; pick +5 gold.
+    expect(state.adventure?.pendingVisit?.steps[0].type).toBe("RESOURCE_GAIN_LEVEL");
+    expect(state.adventure?.pendingVisit?.playerId).toBe("p1");
+    const rewardLabels = getLegalActions(state, "p1").map((entry) => entry.label);
+    expect(rewardLabels.some((label) => label.includes("Raise Gold income by 5"))).toBe(true);
+    state = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(state.players.p1.production.gold).toBe(goldProductionBefore + 5);
+
+    // p2 lost their only base and is now on the 2-turn elimination clock.
+    expect(state.players.p2.eliminationCountdown).toBe(2);
+    expect(state.players.p2.eliminated).toBeFalsy();
+    expect(state.turnOrder).toContain("p2");
   });
 });

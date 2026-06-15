@@ -281,6 +281,14 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return event.message;
     case "GAME_WON":
       return `${playerName(state, event.playerId)} wins the game: ${event.reason}!`;
+    case "PLAYER_ELIMINATED":
+      return `${playerName(state, event.playerId)} is eliminated — ${event.reason}. They become an observer.`;
+    case "PLAYER_ELIMINATION_CLOCK":
+      return event.turnsLeft === null
+        ? `${playerName(state, event.playerId)} secures a base — no longer facing elimination.`
+        : `${playerName(state, event.playerId)} holds no Town or Settlement — ${event.turnsLeft} turn${
+            event.turnsLeft === 1 ? "" : "s"
+          } left before elimination.`;
     case "TILE_ROTATION_SET":
       return `${playerName(state, event.playerId)} sets ${event.tileDefId} to ${event.rotation * 60}°.`;
     case "ASTROLOGERS_DRAWN":

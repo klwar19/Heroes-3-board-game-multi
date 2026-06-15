@@ -14,10 +14,15 @@ import {
   canPlaceTileAt,
   changeMorale,
   classifyHeroStep,
+  controlsTownOrSettlement,
   createSecondaryHero,
   declareAdventureWinner,
   drawGuardArmy,
   effectiveHandLimit,
+  eliminatePlayer,
+  ELIMINATION_GRACE_TURNS,
+  refreshEliminationClock,
+  RESOURCE_GAIN_LEVEL_AMOUNTS,
   getSecondaryHero,
   humanPlayerIds,
   requiredHeroDefeats,
@@ -89,6 +94,7 @@ import type {
   MapTileState,
   PlayerId,
   ResourceCost,
+  ResourceKind,
   VisitStep
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
@@ -492,8 +498,12 @@ function garrisonDefenderFor(state: GameState, attacker: HeroState, field: MapFi
     return null;
   }
 
+  // Whoever currently holds the field defends it. A flagged (already conquered)
+  // Town is defended by its conqueror, not by the original `controllerId`.
   const ownerId = isTown
-    ? Object.values(state.towns).find((town) => town.fieldId === field.spaceId)?.controllerId ?? field.flagOwnerId
+    ? field.flagOwnerId ??
+      Object.values(state.towns).find((town) => town.fieldId === field.spaceId)?.controllerId ??
+      null
     : field.flagOwnerId;
   if (!ownerId || ownerId === attacker.controllerId || ownerId === NEUTRAL_PLAYER_ID) {
     return null;
@@ -1000,6 +1010,11 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
       visit.steps.shift();
       break;
     }
+    case "RESOURCE_GAIN_LEVEL": {
+      resolveResourceGainLevel(state, action);
+      visit.steps.shift();
+      break;
+    }
     case "WITCH_HUT": {
       resolveWitchHut(state, action);
       visit.steps.shift();
@@ -1115,6 +1130,28 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
   processPendingVisit(state);
 }
 
+/**
+ * Town-conquest reward: the conqueror raises one production track by a single
+ * resource-gain level (+5 gold, +2 building materials, or +1 valuables).
+ */
+function resolveResourceGainLevel(
+  state: GameState,
+  action: Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>
+): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("That conquest reward cannot be resolved.");
+  }
+  const resourceByIndex: ResourceKind[] = ["gold", "buildingMaterials", "valuables"];
+  const resource = action.optionIndex !== undefined ? resourceByIndex[action.optionIndex] : undefined;
+  if (!resource) {
+    throw new Error("Choose which production track to raise by one level.");
+  }
+  const amount = RESOURCE_GAIN_LEVEL_AMOUNTS[resource];
+  player.production[resource] += amount;
+  appendEvent(state, { type: "PRODUCTION_CHANGED", playerId: action.playerId, resource, amount });
+}
+
 function resolveSettlementChoice(
   state: GameState,
   action: Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>,
@@ -1226,6 +1263,13 @@ function applySettlementFlag(
       field.everFlagged = true;
       gainResources(state, playerId, { [resource]: 1 }, "first to flag the settlement");
     }
+  }
+
+  // Settlements prevent Player Elimination (rulebook p.77): taking one clears
+  // the new owner's clock; losing one may start the former owner's.
+  refreshEliminationClock(state, playerId);
+  if (previousOwnerId && previousOwnerId !== playerId) {
+    refreshEliminationClock(state, previousOwnerId);
   }
 }
 
@@ -2438,8 +2482,13 @@ function moveDefeatedHeroHome(state: GameState, hero: HeroState): void {
 
   const playerId = hero.controllerId;
   const town = getTownOfPlayer(state, playerId);
+  // A defeated Hero "has to move to a friendly Town or Settlement" — but not to
+  // their own Town once an enemy has flagged it (rulebook p.76). Settlements
+  // are the fallback retreat point; with neither, the Hero leaves the map.
+  const townField = town?.fieldId ? adventure.fields[town.fieldId] : null;
+  const townUsable = Boolean(townField && (townField.flagOwnerId == null || townField.flagOwnerId === playerId));
   const home =
-    town?.fieldId ??
+    (townUsable ? town?.fieldId : null) ??
     Object.values(adventure.fields).find(
       (field) => field.location === "settlement" && field.flagOwnerId === playerId
     )?.spaceId ??
@@ -2524,7 +2573,10 @@ export function buildStructureAdventure(
 /** Where a hired Secondary Hero appears: the main town, else a settlement. */
 function secondaryHeroSpawnFieldId(state: GameState, playerId: PlayerId): string | null {
   const town = getTownOfPlayer(state, playerId);
-  if (town?.fieldId) {
+  // "Flagging an enemy Town prevents their Secondary Heroes from spawning
+  // there" (rulebook p.76): only spawn at your Town while you still hold it.
+  const townField = town?.fieldId ? state.adventure?.fields[town.fieldId] : null;
+  if (town?.fieldId && (!townField || townField.flagOwnerId == null || townField.flagOwnerId === playerId)) {
     return town.fieldId;
   }
   const settlement = Object.values(state.adventure?.fields ?? {}).find(
@@ -3571,27 +3623,104 @@ export function endTurnAdventure(state: GameState, action: Extract<GameAction, {
     }
   }
 
-  // Ongoing cards last "until the player who played them starts their next
-  // Turn" — they survive the opponents' turns and expire in startPlayerTurn.
+  // Player Elimination clock (rulebook p.11, house rule: 2 of your own turns
+  // instead of 3 full Rounds). A player who controls no Town and no Settlement
+  // counts down here; reaching 0 removes them at the end of this turn. Holding a
+  // base keeps the clock clear. Settlements explicitly prevent elimination.
+  let eliminateEnding: { reason: string } | null = null;
+  if (player && !player.eliminated) {
+    if (controlsTownOrSettlement(state, action.playerId)) {
+      player.eliminationCountdown = null;
+    } else {
+      if (player.eliminationCountdown == null) {
+        player.eliminationCountdown = ELIMINATION_GRACE_TURNS;
+      }
+      player.eliminationCountdown -= 1;
+      appendEvent(state, {
+        type: "PLAYER_ELIMINATION_CLOCK",
+        playerId: action.playerId,
+        turnsLeft: Math.max(0, player.eliminationCountdown)
+      });
+      if (player.eliminationCountdown <= 0) {
+        eliminateEnding = { reason: "spent the grace period with no Town or Settlement" };
+      }
+    }
+  }
+
+  advanceAfterTurn(state, action.playerId, eliminateEnding);
+}
+
+/**
+ * Ends the active player's turn and starts the next living player's. When
+ * `eliminate` is set the ending player is removed first (gave up, or the
+ * elimination clock expired). The next player and the round wrap are read from
+ * the order *before* removal, so only the ending seat drops out and the
+ * rotation stays stable. Ongoing cards last "until the player who played them
+ * starts their next Turn" and expire inside startPlayerTurn.
+ */
+function advanceAfterTurn(
+  state: GameState,
+  endingPlayerId: PlayerId,
+  eliminate: { reason: string } | null,
+  gaveUp = false
+): void {
   const order = state.turnOrder;
-  const currentIndex = order.indexOf(action.playerId);
-  const nextIndex = (currentIndex + 1) % order.length;
+  const currentIndex = order.indexOf(endingPlayerId);
+  const nextIndex = order.length > 0 ? (currentIndex + 1) % order.length : 0;
+  const wrapsRound = nextIndex === 0;
   const nextPlayerId = order[nextIndex];
 
   appendEvent(state, {
     type: "TURN_ENDED",
-    playerId: action.playerId,
-    nextPlayerId
+    playerId: endingPlayerId,
+    nextPlayerId: nextPlayerId ?? endingPlayerId
   });
 
-  if (nextIndex === 0) {
+  if (eliminate) {
+    eliminatePlayer(state, endingPlayerId, eliminate.reason, gaveUp);
+    if (state.phase === "game-over" || state.adventure?.winnerPlayerId) {
+      return;
+    }
+  }
+
+  if (wrapsRound) {
     state.round += 1;
     startAdventureRound(state);
+    if (state.phase === "game-over" || state.adventure?.winnerPlayerId) {
+      return;
+    }
+  }
+
+  // After the possible elimination, `nextPlayerId` still names a living player
+  // (only `endingPlayerId` could have been removed). Guard the degenerate case
+  // where nothing valid remains to advance to.
+  if (!nextPlayerId || !state.turnOrder.includes(nextPlayerId)) {
+    return;
   }
 
   state.activePlayerId = nextPlayerId;
   state.turn.observingPlayerId = nextPlayerId;
   startPlayerTurn(state, nextPlayerId);
+}
+
+/**
+ * GIVE_UP: the player concedes, is removed from the game, and becomes an
+ * observer; the game continues with one fewer player and the last faction
+ * standing wins. Legal only on the player's own quiet map turn — never while a
+ * Combat is open ("you cannot surrender when defending your Faction Town").
+ */
+export function giveUpAdventure(state: GameState, action: Extract<GameAction, { type: "GIVE_UP" }>): void {
+  if (state.mode !== "adventure" || !state.adventure) {
+    throw new Error("Giving up is only possible during an adventure game.");
+  }
+  assertActiveTurn(state, action.playerId);
+  assertNoPendingInput(state);
+  const player = state.players[action.playerId];
+  if (!player || player.eliminated) {
+    throw new Error("That player is not in the game.");
+  }
+
+  advanceAfterTurn(state, action.playerId, { reason: "gave up and became an observer" }, true);
 }
 
 // ---------------------------------------------------------------------------

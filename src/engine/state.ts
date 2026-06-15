@@ -1261,7 +1261,17 @@ export type GameAction =
       type: "START_ADVENTURE";
       playerId: PlayerId;
     }
-  | { type: "END_TURN"; playerId: PlayerId };
+  | { type: "END_TURN"; playerId: PlayerId }
+  | {
+      /**
+       * Concede the game: the player is removed from the turn order and becomes
+       * an observer (rulebook p.11 elimination). Legal only on the player's own
+       * map turn — never while defending in Combat ("you cannot surrender when
+       * defending your Faction Town", rulebook p.46).
+       */
+      type: "GIVE_UP";
+      playerId: PlayerId;
+    };
 
 export type LegalAction = {
   action: GameAction;
@@ -1942,6 +1952,21 @@ export type GameEvent =
       reason: string;
     }
   | {
+      id: string;
+      type: "PLAYER_ELIMINATED";
+      playerId: PlayerId;
+      reason: string;
+      /** True when the player chose to give up rather than being timed out. */
+      gaveUp: boolean;
+    }
+  | {
+      id: string;
+      type: "PLAYER_ELIMINATION_CLOCK";
+      playerId: PlayerId;
+      /** Turns the player has left before elimination, or null when cleared. */
+      turnsLeft: number | null;
+    }
+  | {
       /**
        * Setup roll for the starting player (official rulebook step 22): every
        * player rolls the Attack die, highest result starts; ties reroll among
@@ -2219,6 +2244,20 @@ export type PlayerState = {
   canMulligan?: boolean;
   /** Second negative morale token: the hand is discarded when the turn ends. */
   discardHandAtTurnEnd?: boolean;
+  /**
+   * Removed from the game (gave up, or spent the grace period with no Town or
+   * Settlement). An eliminated player keeps a `players` entry so the table can
+   * still show them as an observer, but they leave `turnOrder` and take no
+   * turns. Rulebook p.11: "Eliminated players are immediately removed."
+   */
+  eliminated?: boolean;
+  /**
+   * Player Elimination clock (rulebook p.11, house rule: 2 of the player's own
+   * turns instead of 3 full Rounds). Set while the player controls no Town and
+   * no Settlement; counts down at the end of each of their turns and reaching 0
+   * eliminates them. `null`/absent means they hold a base and are safe.
+   */
+  eliminationCountdown?: number | null;
   /** Nomads (army map ability): the end-of-turn adjacent step was offered this turn. */
   nomadStepDoneThisTurn?: boolean;
   /** Rogues (army map ability): the once-per-turn deck peek was used this turn. */
@@ -2715,6 +2754,15 @@ export type VisitStep =
     }
   | { type: "SEARCH_SHARED_DECK"; deckId: DeckId; count: number }
   | { type: "SETTLEMENT_CHOICE" }
+  | {
+      /**
+       * Reward for flagging an enemy Town (rulebook p.76: "Scenarios typically
+       * have special rewards for flagging them"). The conqueror raises one
+       * production track by a single resource-gain level: +5 gold, +2 building
+       * materials, or +1 valuables.
+       */
+      type: "RESOURCE_GAIN_LEVEL";
+    }
   | { type: "MAGIC_SPRING" }
   | { type: "WITCH_HUT" }
   | { type: "SCHOLAR" }
