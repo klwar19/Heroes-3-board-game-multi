@@ -1221,6 +1221,206 @@ export const spellCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: spellSource("frenzy")
+  },
+  // Shield (Basic Earth, Tower Expansion): an Ongoing buff cast on a friendly
+  // unit during your activation — until the end of the Combat it gains Defense,
+  // but only against a ground or flying attacker (a ranged unit's shot is
+  // unaffected; that is Air Shield's job). Power 0/1/2 -> +1/+2/+3 Defense. The
+  // conditional bonus is read in getAttackerTypeDefenseBonus during the attack
+  // maths. The "OR Instant: +1 Power" side is the universal power-source discard.
+  "spell.shield": {
+    id: "spell.shield",
+    name: "Shield",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "basic",
+    spellSchools: ["earth"],
+    tags: [
+      "spell",
+      "basic",
+      "earth",
+      "Ongoing: Until the end of the Combat, the selected unit gains, when it is attacked by a ground or flying unit: Power 0: +1 defense; Power 1: +2 defense; Power 2: +3 defense. — OR — Instant: +1 Power."
+    ],
+    power: 0,
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_DEFENSE_BUFF",
+      name: "Shield",
+      amountByPower: { 0: 1, 1: 2, 2: 3 },
+      duration: { type: "combat" },
+      polarity: "positive",
+      removable: true,
+      vsAttackerType: "ground-or-flying"
+    },
+    assets: {
+      cardImage: "/assets/spells-shield.webp",
+      imageAlt: "Shield card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("shield")
+  },
+  // Air Shield (Basic Air): Shield's counterpart — until the end of the Combat
+  // the selected unit gains Defense only against a ranged attacker. Power 0/1/2
+  // -> +1/+2/+3 Defense. Same conditional-defense machinery as Shield, keyed on
+  // the attacker being a ranged unit.
+  "spell.air_shield": {
+    id: "spell.air_shield",
+    name: "Air Shield",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "basic",
+    spellSchools: ["air"],
+    tags: [
+      "spell",
+      "basic",
+      "air",
+      "Ongoing: Until the end of the Combat, the selected unit gains, when it is attacked by a ranged unit: Power 0: +1 defense; Power 1: +2 defense; Power 2: +3 defense. — OR — Instant: +1 Power."
+    ],
+    power: 0,
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_DEFENSE_BUFF",
+      name: "Air Shield",
+      amountByPower: { 0: 1, 1: 2, 2: 3 },
+      duration: { type: "combat" },
+      polarity: "positive",
+      removable: true,
+      vsAttackerType: "ranged"
+    },
+    assets: {
+      cardImage: "/assets/spells-air_shield.webp",
+      imageAlt: "Air Shield card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("air_shield")
+  },
+  // Protection from Air/Earth/Fire/Water (Basic, one per School): Resistance for
+  // a single School. Played as an instant when the opponent casts a Spell of that
+  // School, it ends that Spell (reuses the CANCEL_SPELL machinery — the pending
+  // cast is cancelled, or a matching enemy Spell instant on an attack is
+  // reversed). The card's two printed tiers ("Power 0 / Power 1") are the engine's
+  // basic / expert play: basic ends a Basic Spell of the School; the expert play
+  // (spending a crown, like every other expert play) ends a Basic OR Expert
+  // Spell. A School-agnostic Spell (Magic Arrow) counts as belonging to every
+  // School, so any Protection can end it. The "OR Instant: +1 Power" side is the
+  // universal power-source discard.
+  "spell.protection_from_air": {
+    id: "spell.protection_from_air",
+    name: "Protection from Air",
+    kind: "spell",
+    timing: "reaction",
+    phaseLimit: ["reaction", "combat"],
+    spellLevel: "basic",
+    spellSchools: ["air"],
+    tags: [
+      "spell",
+      "basic",
+      "air",
+      "Instant: Play after a Spell from the School of Air Magic is cast to ignore that spell's effect. Basic: a Basic Spell; Expert: a Basic or an Expert Spell. — OR — Instant: +1 Power."
+    ],
+    power: 0,
+    trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+    effect: {
+      type: "CANCEL_SPELL",
+      schools: ["air"],
+      maxSpellLevel: "basic",
+      expertIgnoresMaxSpellLevel: true
+    },
+    assets: {
+      cardImage: "/assets/spells-protection_from_air.webp",
+      imageAlt: "Protection from Air card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("protection_from_air")
+  },
+  "spell.protection_from_earth": {
+    id: "spell.protection_from_earth",
+    name: "Protection from Earth",
+    kind: "spell",
+    timing: "reaction",
+    phaseLimit: ["reaction", "combat"],
+    spellLevel: "basic",
+    spellSchools: ["earth"],
+    tags: [
+      "spell",
+      "basic",
+      "earth",
+      "Instant: Play after a Spell from the School of Earth Magic is cast to ignore that spell's effect. Basic: a Basic Spell; Expert: a Basic or an Expert Spell. — OR — Instant: +1 Power."
+    ],
+    power: 0,
+    trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+    effect: {
+      type: "CANCEL_SPELL",
+      schools: ["earth"],
+      maxSpellLevel: "basic",
+      expertIgnoresMaxSpellLevel: true
+    },
+    assets: {
+      cardImage: "/assets/spells-protection_from_earth.webp",
+      imageAlt: "Protection from Earth card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("protection_from_earth")
+  },
+  "spell.protection_from_fire": {
+    id: "spell.protection_from_fire",
+    name: "Protection from Fire",
+    kind: "spell",
+    timing: "reaction",
+    phaseLimit: ["reaction", "combat"],
+    spellLevel: "basic",
+    spellSchools: ["fire"],
+    tags: [
+      "spell",
+      "basic",
+      "fire",
+      "Instant: Play after a Spell from the School of Fire Magic is cast to ignore that spell's effect. Basic: a Basic Spell; Expert: a Basic or an Expert Spell. — OR — Instant: +1 Power."
+    ],
+    power: 0,
+    trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+    effect: {
+      type: "CANCEL_SPELL",
+      schools: ["fire"],
+      maxSpellLevel: "basic",
+      expertIgnoresMaxSpellLevel: true
+    },
+    assets: {
+      cardImage: "/assets/spells-protection_from_fire.webp",
+      imageAlt: "Protection from Fire card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("protection_from_fire")
+  },
+  "spell.protection_from_water": {
+    id: "spell.protection_from_water",
+    name: "Protection from Water",
+    kind: "spell",
+    timing: "reaction",
+    phaseLimit: ["reaction", "combat"],
+    spellLevel: "basic",
+    spellSchools: ["water"],
+    tags: [
+      "spell",
+      "basic",
+      "water",
+      "Instant: Play after a Spell from the School of Water Magic is cast to ignore that spell's effect. Basic: a Basic Spell; Expert: a Basic or an Expert Spell. — OR — Instant: +1 Power."
+    ],
+    power: 0,
+    trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+    effect: {
+      type: "CANCEL_SPELL",
+      schools: ["water"],
+      maxSpellLevel: "basic",
+      expertIgnoresMaxSpellLevel: true
+    },
+    assets: {
+      cardImage: "/assets/spells-protection_from_water.webp",
+      imageAlt: "Protection from Water card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("protection_from_water")
   }
 };
 
@@ -1292,7 +1492,14 @@ export const spellDeckLegacy: string[] = [
   "spell.frenzy",
   // Expert combat-movement / control spells.
   "spell.teleport",
-  "spell.berserk"
+  "spell.berserk",
+  // Tower Expansion / Stretch Goal defensive spells (all Basic).
+  "spell.shield",
+  "spell.air_shield",
+  "spell.protection_from_air",
+  "spell.protection_from_earth",
+  "spell.protection_from_fire",
+  "spell.protection_from_water"
 ];
 
 /** BINH split decks. */
@@ -1328,7 +1535,14 @@ export const spellDeckBinhBasic: string[] = [
   "spell.forgetfulness",
   "spell.visions",
   // Dispel — Basic Water.
-  "spell.dispel"
+  "spell.dispel",
+  // Tower Expansion / Stretch Goal defensive spells (all Basic).
+  "spell.shield",
+  "spell.air_shield",
+  "spell.protection_from_air",
+  "spell.protection_from_earth",
+  "spell.protection_from_fire",
+  "spell.protection_from_water"
 ];
 
 export const spellDeckBinhExpert: string[] = [

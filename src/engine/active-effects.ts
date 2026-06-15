@@ -318,6 +318,36 @@ export function getConditionalDefenseBonus(
   }, 0);
 }
 
+/**
+ * Shield / Air Shield: extra Defense the unit gets only against an attacker of a
+ * matching UNIT TYPE. Shield ("ground-or-flying") applies against any non-ranged
+ * attacker; Air Shield ("ranged") applies against a ranged attacker — exactly as
+ * the cards read ("against a ground or flying unit" / "attacked by a ranged
+ * unit"). Returns 0 when no shield matches this attacker.
+ */
+export function getAttackerTypeDefenseBonus(
+  state: GameState,
+  defender: CombatUnitState,
+  attacker: CombatUnitState
+): number {
+  const attackerIsRanged = attacker.type === "ranged";
+  return state.activeEffects.reduce((total, effect) => {
+    if (!effectAppliesToUnit(effect, defender)) {
+      return total;
+    }
+    return (
+      total +
+      effect.modifiers.reduce((sum, modifier) => {
+        if (modifier.type !== "DEFENSE_VS_ATTACKER_TYPE") {
+          return sum;
+        }
+        const matches = modifier.attackerType === "ranged" ? attackerIsRanged : !attackerIsRanged;
+        return matches ? sum + modifier.amount : sum;
+      }, 0)
+    );
+  }, 0);
+}
+
 /** Torosar's temporary Ballistas: number of EXTRA_BALLISTA grants a player holds. */
 export function countExtraBallistas(state: GameState, playerId: PlayerId): number {
   return state.activeEffects.reduce((total, effect) => {

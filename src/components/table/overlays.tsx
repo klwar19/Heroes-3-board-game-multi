@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Check, CircleOff, Crown, Dices, Hourglass, Layers, Sunrise, Swords, Undo2 } from "lucide-react";
+import { Check, CircleOff, Crown, Dices, Hourglass, Layers, Sunrise, Swords, Undo2, Zap } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
@@ -11,7 +11,9 @@ import { playDiceRoll, playLibrarySound } from "@/lib/sound";
 import {
   getEffectAmount,
   getEffectiveCardEffect,
+  getPendingReactionPower,
   getPermanentCardIds,
+  getSpellDamageAmount,
   SURRENDER_GOLD_COST,
   type CardPlayMode,
   type GameAction,
@@ -86,6 +88,51 @@ function selectionPreview(selections: TraySelection[]): string[] {
 
   return [...totals.entries()].map(([key, amount]) =>
     key === "Draw" ? `Draw ${amount}` : ["Attack", "Defense", "Power"].includes(key) ? `+${amount} ${key}` : key
+  );
+}
+
+/**
+ * Live Power readout for the open instant window. Shows the spell/attack's
+ * CURRENT Power (printed base + Power fuelled so far) so the caster can see how
+ * much Power they have committed and the defender can read the final Power
+ * before choosing Resistance (which only cancels Power ≤ 1) or Magic Mirror.
+ * The number is the engine's, recomputed every render, so it climbs in step
+ * with each Power card played. Shown to both the active player and the one
+ * waiting on them.
+ */
+function PendingPowerReadout({ state }: { state: GameState }) {
+  const power = getPendingReactionPower(state);
+  if (!power) {
+    return null;
+  }
+
+  const spell = power.spellCardId ? cardLibrary[power.spellCardId] : undefined;
+  const subject = power.kind === "spell" ? cardName(power.spellCardId ?? "") : "This attack";
+  // Damage spells (Magic Arrow, Lightning Bolt, …) read more clearly with the
+  // damage their CURRENT Power deals beside the number; non-damage spells just
+  // show the Power level. This is the spell's value before the target's own
+  // spell-damage reduction, so it is labelled as the spell's damage, not a
+  // promised final hit.
+  const damage =
+    power.kind === "spell" && spell && spell.effect.type === "DEAL_DAMAGE"
+      ? getSpellDamageAmount(spell, power.totalPower)
+      : null;
+
+  return (
+    <span
+      className="trayPowerMeter"
+      title="Power fuels the spell's effect. Resistance only cancels a spell cast at Power 1 or less; Magic Mirror redirects it at whatever Power you used."
+    >
+      <Zap aria-hidden="true" size={13} />
+      <strong>Power {power.totalPower}</strong>
+      <small>
+        {subject}
+        {damage !== null ? ` · ${damage} damage` : ""}
+        {power.fueledPower > 0
+          ? ` · ${power.basePower} base + ${power.fueledPower} fuelled`
+          : " · no Power added yet"}
+      </small>
+    </span>
   );
 }
 
@@ -168,6 +215,7 @@ export function ReactionTray({
       <div className="reactionStrip waiting" role="status">
         <Hourglass aria-hidden="true" size={15} />
         <span>{triggerText}</span>
+        <PendingPowerReadout state={state} />
         <small>Waiting for {state.players[window.priorityPlayerId]?.name ?? window.priorityPlayerId} to respond…</small>
       </div>
     );
@@ -374,6 +422,7 @@ export function ReactionTray({
         <Undo2 aria-hidden="true" size={15} />
         <strong>Instant window</strong>
         <span>{triggerText}</span>
+        <PendingPowerReadout state={state} />
       </header>
       <div className="trayTiles">
         {tiles.length === 0 && !fieldExpert && buildingBoosts.length === 0 && scrollReactions.length === 0 ? (

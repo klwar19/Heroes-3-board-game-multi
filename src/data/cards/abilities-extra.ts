@@ -282,6 +282,38 @@ export const extraAbilityCards: CardLibrary = {
     implementationStatus: "implemented",
     source: abilitySource("intelligence")
   },
+  // Interference is the spell-defense counterpart to Armorer. It is played as a
+  // reaction to an enemy damaging Spell aimed at one of your units; the bonus
+  // lands on that targeted unit.
+  // engine: INTERFERE_SPELL grants the targeted unit a Combat-long Defense
+  // bonus carrying BOTH a DEFENSE_BONUS modifier (vs attacks) and a
+  // SPELL_DAMAGE_REDUCTION modifier (vs spells) — +1 basic / +2 expert — so the
+  // bonus softens the triggering Spell and any later Spell or attack on that
+  // unit. The "can be applied to damage from spells" line is the real,
+  // engine-enforced point of the card; the gate only opens it against an enemy
+  // Spell that deals Spell damage to one of your units.
+  "ability.interference": {
+    id: "ability.interference",
+    name: "Interference",
+    kind: "ability",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    abilityClass: "magic",
+    trigger: {
+      event: "SPELL_CAST_STARTED",
+      controller: "opponent"
+    },
+    tags: [
+      "ability",
+      "magic",
+      "defense",
+      "Basic: React to an enemy damaging Spell aimed at your unit — that unit gains +1 defense for the Combat, which can also reduce damage from spells. Expert: +2 defense."
+    ],
+    effect: { type: "INTERFERE_SPELL", amount: 1, expertAmount: 2 },
+    assets: abilityAssets("interference", "Interference", true),
+    implementationStatus: "implemented",
+    source: abilitySource("interference")
+  },
   // engine: Diplomacy's two sides map to the printed card — the basic/regular
   // effect is the Map recruit, the expert effect is the Instant skip. This is an
   // Empowered card: per the Empowered mechanic the holder may use EITHER side
@@ -472,6 +504,8 @@ export const abilityDeckLegacy: string[] = [
   "ability.ballistics",
   "ability.artillery",
   "ability.intelligence",
+  "ability.interference",
+  "ability.interference",
   "ability.tactics",
   "ability.diplomacy",
   // Eagle Eye / Scouting and the elemental Magic schools (also in the BINH deck).
