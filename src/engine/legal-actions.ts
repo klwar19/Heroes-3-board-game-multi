@@ -15,6 +15,7 @@ import {
   humanPlayerIds,
   NEUTRAL_DECK_IDS,
   RESOURCE_GAIN_LEVEL_AMOUNTS,
+  SURRENDER_GOLD_COST,
   townHasBuildingEffect,
   unlockedRecruitTiers
 } from "./adventure";
@@ -33,7 +34,7 @@ import {
 import {
   effectAppliesToUnit,
   effectiveInitiative,
-  playerCannotEscapeCombat,
+  playerCannotSurrenderCombat,
   playerHasSpellTimingFreedom
 } from "./active-effects";
 import { cardCanBoostPower } from "./effects";
@@ -163,6 +164,17 @@ function canAffordCardCost(state: GameState, playerId: PlayerId, cardId: string,
 /** Grade ordering shared by spell-immunity and Magic Mirror grade gates. */
 export function gradeRank(grade: CombatUnitState["grade"]): number {
   return grade === "bronze" ? 0 : grade === "silver" ? 1 : grade === "gold" ? 2 : 3;
+}
+
+/**
+ * Orb of Vulnerability (option A): while its combat-wide effect is on the
+ * table, every unit's innate spell-related ability is switched off. Read at
+ * each such ability's site so a single grant covers both armies for the Combat.
+ */
+export function spellAbilitiesSuppressed(state: GameState): boolean {
+  return state.activeEffects.some((effect) =>
+    effect.modifiers.some((modifier) => modifier.type === "SUPPRESS_SPELL_ABILITIES")
+  );
 }
 
 /** Whether a unit currently has spell immunity covering its grade. */
@@ -706,7 +718,11 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
       if (!unit) {
         return true;
       }
-      return !isUnitSpellImmune(state, unit) && !unitImmuneToSpellSchools(unit, card.spellSchools);
+      // Orb of Vulnerability negates a unit's printed spell-school immunity, so
+      // an otherwise-immune unit becomes a legal target. Anti-Magic (a Spell
+      // effect, not a unit ability) still bars targeting.
+      const innateImmune = !spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(unit, card.spellSchools);
+      return !isUnitSpellImmune(state, unit) && !innateImmune;
     });
   }
 
@@ -1163,9 +1179,9 @@ function isOptionEffectPlayable(
     case "GRANT_ELEMENTAL_DAMAGE":
     case "DAMAGE_LOWEST_INITIATIVE_ENEMY":
       return context === "combat" && Boolean(state.combat);
-    case "BLOCK_ENEMY_ESCAPE":
-      // Shackles of War (option 1): only at the start of a player-vs-player
-      // combat, where there is an enemy hero who could otherwise escape.
+    case "BLOCK_ENEMY_SURRENDER":
+      // Shackles of War (house rule): only at the start of a player-vs-player
+      // combat, where there is an enemy hero who could otherwise surrender.
       return context === "combat" && state.combat?.context.kind === "player" && state.combat.round === 1;
     case "DOUBLE_FIRST_AID_TENT":
       // Gem's First Aid VI only does something with a First Aid Tent in play.
@@ -2290,6 +2306,64 @@ export function getLegalActions(
  * controller the grade-matching, affordable Resurrection option(s) — and
  * nothing else. Passing lets the unit die.
  */
+/**
+ * Shield of the Dwarven Lords: after a real Attack die roll, the defending
+ * unit's controller may play it to ignore the die. Offered only to that
+ * controller, only while the die-cancel has not already been armed, and never
+ * when the defender's hand is locked out of the Combat.
+ */
+function getDieCancelReactions(
+  state: GameState,
+  defenderId: UnitId,
+  cards: CardLibrary
+): Record<PlayerId, LegalAction[]> {
+  const combat = state.combat;
+  const defender = combat?.units[defenderId];
+  if (!combat || !defender) {
+    return {};
+  }
+  const playerId = defender.controllerId;
+  const player = state.players[playerId];
+  if (!player || playerId === NEUTRAL_PLAYER_ID || isHandLockedInCombat(state, playerId)) {
+    return {};
+  }
+
+  // Only one die-cancel per attack: if it is already armed, offer nothing more.
+  const pendingAttack = state.stack.find(
+    (item) => item.action.type === "ATTACK_UNIT" || item.action.type === "MOVE_AND_ATTACK_UNIT"
+  );
+  if (pendingAttack?.modifiers.attackDieCancelled) {
+    return {};
+  }
+
+  const reactions: LegalAction[] = [];
+  for (const cardId of new Set(player.hand)) {
+    const card = cards[cardId];
+    if (!card || card.implementationStatus !== "implemented" || card.effect.type !== "CHOOSE_ONE") {
+      continue;
+    }
+    for (const [optionIndex, option] of card.effect.options.entries()) {
+      if (option.effect.type !== "IGNORE_ATTACK_DIE_RESULT") {
+        continue;
+      }
+      if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
+        continue;
+      }
+      reactions.push(
+        makeReactionAction(`${card.name}: ${option.label}`, {
+          type: "PLAY_REACTION",
+          playerId,
+          cardId,
+          mode: "basic",
+          optionIndex
+        })
+      );
+    }
+  }
+
+  return reactions.length > 0 ? { [playerId]: reactions } : {};
+}
+
 function getLethalSaveReactions(
   state: GameState,
   triggerEvent: Extract<GameEvent, { type: "UNIT_LETHAL_HIT" }>,
@@ -2388,6 +2462,12 @@ export function getLegalReactionsForTrigger(
   // Alamar's Resurrection: its own save window when a unit is about to die.
   if (triggerEvent.type === "UNIT_LETHAL_HIT") {
     return getLethalSaveReactions(state, triggerEvent, cards);
+  }
+
+  // Shield of the Dwarven Lords: the defender's post-roll window to ignore the
+  // Attack die and the effects it triggered.
+  if (triggerEvent.type === "ATTACK_DIE_SETTLED") {
+    return getDieCancelReactions(state, triggerEvent.defenderId, cards);
   }
 
   if (
@@ -3550,9 +3630,14 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
  * flows (adventure rolls and the combat attack-die reroll) instead.
  */
 /**
- * Player-vs-player escape: at the start of the combat (round 1, between
- * activations) a participating hero may Retreat or Surrender — unless Shackles
- * of War has locked them in. Conceding ends the combat as the loser.
+ * Player-vs-player escape (house rule): at the start of the combat (round 1,
+ * between activations) a participating hero may:
+ * - Retreat — lose the combat: pay 5 gold (may go into debt), take -1 morale,
+ *   lose troops per the lobby mode, and fall back home. Always available.
+ * - Surrender — pay a flat 10 gold to the opponent, keep the whole army, take
+ *   no morale hit, return home, and deny the opponent any victory credit.
+ *   Offered only with the full 10 gold in hand and while Shackles of War has
+ *   not locked it.
  */
 function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const combat = state.combat;
@@ -3564,17 +3649,20 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
   }
   const heroId =
     playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
-  if (!heroId || playerCannotEscapeCombat(state, playerId)) {
+  if (!heroId) {
     return;
   }
   actions.push({
-    label: "Retreat (lose the combat; your hero flees to its last field)",
+    label: "Retreat (lose the combat: pay 5 gold, -1 morale, fall back home)",
     action: { type: "RETREAT_FROM_COMBAT", playerId }
   });
-  actions.push({
-    label: "Surrender (concede the combat)",
-    action: { type: "SURRENDER_COMBAT", playerId }
-  });
+  const gold = state.players[playerId]?.resources.gold ?? 0;
+  if (gold >= SURRENDER_GOLD_COST && !playerCannotSurrenderCombat(state, playerId)) {
+    actions.push({
+      label: `Surrender (pay ${SURRENDER_GOLD_COST} gold, keep your whole army, return home)`,
+      action: { type: "SURRENDER_COMBAT", playerId }
+    });
+  }
 }
 
 function addMoraleActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {

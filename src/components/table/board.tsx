@@ -2,9 +2,11 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { ChevronDown, ChevronUp, Crown, Mountain, ScrollText, Shield, Sparkles, Swords } from "lucide-react";
+import { ChevronDown, ChevronUp, Crown, Mountain, Plus, ScrollText, Shield, Sparkles, Swords } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
-import { useState } from "react";
+import { cardLibrary } from "@/data/cards/library";
+import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ATTACKER_BACKLINE,
   ATTACKER_FRONTLINE,
@@ -649,6 +651,149 @@ function commandLabel(legal: LegalAction): string {
   }
 }
 
+// Combat test mode: every implemented hand-playable card, for the "Add card"
+// picker. Mirrors SANDBOX_ADDABLE_KINDS in the reducer.
+const SANDBOX_PICKER_KINDS = new Set(["spell", "ability", "artifact", "statistic", "hero-specialty"]);
+const SANDBOX_PICKER_CARDS = Object.values(cardLibrary)
+  .filter((card) => card.implementationStatus === "implemented" && SANDBOX_PICKER_KINDS.has(card.kind))
+  .sort((left, right) => left.kind.localeCompare(right.kind) || left.name.localeCompare(right.name));
+
+/**
+ * Sandbox-only: drop any card straight into your hand to test its mechanic,
+ * instead of Searching a well for it. Dispatches SANDBOX_ADD_CARD.
+ *
+ * The card list renders in a portal to <body> as a fixed overlay, so it can't
+ * be clipped or mispositioned by the command dock's grid/overflow context the
+ * way an in-tree absolute panel was (it appeared off-screen).
+ */
+function SandboxCardPicker({
+  viewerPlayerId,
+  onAction
+}: {
+  viewerPlayerId: PlayerId;
+  onAction: (action: GameAction) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState("");
+  const matches = useMemo(() => {
+    const query = filter.trim().toLowerCase();
+    if (!query) {
+      return SANDBOX_PICKER_CARDS;
+    }
+    return SANDBOX_PICKER_CARDS.filter(
+      (card) => card.name.toLowerCase().includes(query) || card.id.toLowerCase().includes(query)
+    );
+  }, [filter]);
+
+  return (
+    <>
+      <button
+        className="commandButton ghost"
+        onClick={() => setOpen(true)}
+        title="Add any card straight to your hand (sandbox test mode)"
+        type="button"
+      >
+        <Plus aria-hidden="true" size={12} /> Add card
+      </button>
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              onClick={() => setOpen(false)}
+              role="presentation"
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 2000,
+                background: "rgba(0,0,0,0.55)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 16
+              }}
+            >
+              <div
+                aria-label="Add a card to your hand"
+                onClick={(event) => event.stopPropagation()}
+                role="dialog"
+                style={{
+                  width: "min(420px, 92vw)",
+                  maxHeight: "78vh",
+                  display: "flex",
+                  flexDirection: "column",
+                  background: "#1b1b22",
+                  color: "#eee",
+                  border: "1px solid #555",
+                  borderRadius: 10,
+                  padding: 14,
+                  boxShadow: "0 10px 40px rgba(0,0,0,0.6)"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <strong>Add a card to your hand ({matches.length})</strong>
+                  <button
+                    aria-label="Close"
+                    onClick={() => setOpen(false)}
+                    style={{ background: "transparent", border: "none", color: "#bbb", cursor: "pointer", fontSize: 20, lineHeight: 1 }}
+                    type="button"
+                  >
+                    ×
+                  </button>
+                </div>
+                <input
+                  aria-label="Filter cards"
+                  autoFocus
+                  onChange={(event) => setFilter(event.target.value)}
+                  placeholder="Filter cards…"
+                  style={{
+                    width: "100%",
+                    marginBottom: 10,
+                    padding: "6px 8px",
+                    boxSizing: "border-box",
+                    background: "#11131a",
+                    color: "#eee",
+                    border: "1px solid #555",
+                    borderRadius: 6
+                  }}
+                  value={filter}
+                />
+                <ul style={{ listStyle: "none", margin: 0, padding: 0, overflowY: "auto" }}>
+                  {matches.map((card) => (
+                    <li key={card.id}>
+                      <button
+                        onClick={() => onAction({ type: "SANDBOX_ADD_CARD", playerId: viewerPlayerId, cardId: card.id })}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "6px 8px",
+                          background: "transparent",
+                          border: "none",
+                          borderBottom: "1px solid #2a2d36",
+                          color: "inherit",
+                          cursor: "pointer",
+                          display: "flex",
+                          gap: 8,
+                          alignItems: "baseline"
+                        }}
+                        type="button"
+                      >
+                        <span style={{ fontSize: 10, opacity: 0.55, minWidth: 78, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                          {card.kind}
+                        </span>
+                        <span>{card.name}</span>
+                      </button>
+                    </li>
+                  ))}
+                  {matches.length === 0 ? <li style={{ padding: "6px 8px", opacity: 0.6 }}>No matching cards.</li> : null}
+                </ul>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </>
+  );
+}
+
 export function CommandDock({
   state,
   viewerPlayerId,
@@ -728,6 +873,9 @@ export function CommandDock({
           {commandLabel(legal)}
         </button>
       ))}
+      {state.combat?.context.kind === "sandbox" ? (
+        <SandboxCardPicker onAction={onAction} viewerPlayerId={viewerPlayerId} />
+      ) : null}
       <button className="commandButton ghost" onClick={onReset} title="Reset this room" type="button">
         Reset table
       </button>

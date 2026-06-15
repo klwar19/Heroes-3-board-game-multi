@@ -83,8 +83,10 @@ Mirror of the build request. ✅ = implemented **and wired** (engine + UI + test
 - [x] content-tracker.md + README updated
 
 ## Known gaps (tracked in content-tracker.md)
-- Some library cards now have working engine effects but are still kept out of the decks (effect tested in `library-cards.test.ts`, deck inclusion is a separate balance decision): Chain Lightning, Blind, Greater Gnoll's Flail, Mystic Orb of Mana, Charm of Mana, Shackles of War.
-- Shackles of War option 1 also added a real PvP **Retreat/Surrender** (combat round 1, the conceding hero loses). Modeling note: the conceding player loses the combat and consequences reuse the normal PvP loss path; the exact surrender gold cost from the rulebook is not modeled.
-- Still inert / out of the decks (no engine effect yet): Teleport, Mirth, Sorrow, Slayer, Dimension Door, Forgetfulness, Inferno; Tactics, Diplomacy, Pathfinding; Shield of the Dwarven Lords, Orb of Vulnerability (Necromancy, Magic Mirror, Intelligence, Artillery, **Visions** and **Learning** are now implemented and in the decks — Visions scrys a chosen Neutral deck with power paid by discarding Spells, Learning advances Experience an extra half/full level when a Hero is about to level up)
+- Every implemented Artifact, Spell and Ability is now dealt into the shared draw decks — including the previously library-only Chain Lightning, Blind, Greater Gnoll's Flail, Mystic Orb of Mana, Charm of Mana, Shackles of War, Shield of the Dwarven Lords and Orb of Vulnerability, plus the Tower Schools of Magic permanents (BINH ability deck). The invariant is enforced by `deck-coverage.test.ts` (which also fails if a not-implemented card is ever placed in a deck).
+- PvP **Surrender/Retreat** are distinct house rules (round 1; enforced engine-side, `surrender-retreat.test.ts`):
+  - **Surrender** needs the full **10 gold** in hand, pays it to the opponent, keeps your whole army in *both* troop-loss modes, applies no morale hit, sends the hero home, and gives the opponent **nothing** toward winning (no XP, no Necromancy, no hero-defeat victory credit). Blocked by Shackles of War.
+  - **Retreat** (or a fought-out loss) pays **5 gold to the winner and may push the loser into debt** (gold can go negative), takes −1 morale, loses troops per the mode, and counts as a win for the opponent (XP + Necromancy + hero-defeat credit). Shackles of War does **not** block it.
+- Still not implemented (library-only, kept out of the decks): Teleport (spell), Pathfinding (ability).
 - Map-spell Empowerment (Town Portal +MP at power 2/4) resolves at base power for now
 - Siege combat, secondary heroes, war machines beyond the Tent, scenario-specific Obelisk/Grail effects — unchanged from before
