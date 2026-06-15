@@ -13,6 +13,7 @@ import {
   hexDistance,
   isSeaField,
   parseHexSpaceId,
+  seaStepHalts,
   tileLatticeNeighbors,
   type GameAction,
   type GameState
@@ -73,9 +74,16 @@ function setField(state: GameState, spaceId: string, location: string): void {
   delete field.difficulty;
   delete field.resource;
   delete field.amount;
+  delete field.terrain;
   field.blackCube = false;
   field.flagOwnerId = null;
   field.everFlagged = false;
+}
+
+/** Turn a field into an open-sea (water) hex; `setField` clears it back to land. */
+function makeSeaHex(state: GameState, spaceId: string): void {
+  setField(state, spaceId, "empty_field");
+  state.adventure!.fields[spaceId]!.terrain = "water";
 }
 
 function hasModifier(state: GameState, playerId: string, type: string): boolean {
@@ -274,96 +282,81 @@ describe("Angel Wings artifact", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Water Walk spell (map): wires sea-crossing + power-scaled movement
+// Sea movement: coastline crossings halt; sea->sea is normal; Water Walk frees it
 // ---------------------------------------------------------------------------
 
 /**
- * Builds a coastline far from the starting map: a grass tile and a water tile
- * placed as gapless lattice neighbours, both with open outer edges. Returns one
- * land field, an adjacent sea field, and a deeper sea field adjacent to that
- * one (only reachable by continuing across the sea). The hero stands on land.
+ * Lays three consecutive open-sea ring hexes (sea1->sea2->sea3) on the hero's
+ * starting (land) tile, leaving the centre as the dry town. Each sea hex is
+ * adjacent to the next, and sea1 is adjacent to the land centre — a coastline.
  */
-function setupCoast(state: GameState): { land: string; sea: string; seaDeep: string } {
-  const adventure = state.adventure;
-  if (!adventure) {
-    throw new Error("no adventure");
-  }
-  const landCenter = { row: 40, col: 20 };
-  const landTile = instantiateTile(adventure, "F23", landCenter, 0, false); // grass, all edges open
-  const waterCenter = tileLatticeNeighbors(landCenter)[0];
-  const waterTile = instantiateTile(adventure, "W2", waterCenter, 0, false); // water terrain, all edges open
-
-  const landIds = getTileFootprintSpaceIds(landTile);
-  const waterIds = getTileFootprintSpaceIds(waterTile);
-  let land: string | undefined;
-  let sea: string | undefined;
-  for (const candidate of landIds) {
-    const neighbour = waterIds.find((waterId) => getAdjacentSpaceIds(candidate).includes(waterId));
-    if (neighbour) {
-      land = candidate;
-      sea = neighbour;
-      break;
-    }
-  }
-  const seaDeep = sea ? waterIds.find((id) => id !== sea && getAdjacentSpaceIds(sea).includes(id)) : undefined;
-  if (!land || !sea || !seaDeep) {
-    throw new Error("no land/sea adjacency found");
-  }
-
-  setField(state, land, "empty_field");
-  setField(state, sea, "empty_field"); // clean, unguarded sea fields on the water tile
-  setField(state, seaDeep, "empty_field");
+function seaSetup(state: GameState): { land: string; sea1: string; sea2: string; sea3: string } {
+  const footprint = heroTileFootprint(state); // [center, r1..r6]; hero stands on the centre
   const hero = heroP1(state);
-  hero.spaceId = land;
   hero.movementPoints = 3;
-  return { land, sea, seaDeep };
+  hero.movementHaltedThisTurn = false;
+  makeSeaHex(state, footprint[1]);
+  makeSeaHex(state, footprint[2]);
+  makeSeaHex(state, footprint[3]);
+  return { land: footprint[0], sea1: footprint[1], sea2: footprint[2], sea3: footprint[3] };
 }
 
-describe("sea movement without Water Walk", () => {
-  it("lets a land hero step onto the sea, but that halts movement (points kept)", () => {
-    let state = makeGame();
-    const { land, sea } = setupCoast(state);
-    const hero = heroP1(state);
+describe("sea hex identification (per-hex, not per-tile)", () => {
+  it("treats island structures on a sea tile as land and the rest as open sea", () => {
+    const state = makeGame();
+    const tile = instantiateTile(state.adventure!, "W2", { row: 40, col: 20 }, 0, false);
+    const ids = getTileFootprintSpaceIds(tile); // W2: [empty, mystical_garden, mine, buoy, sea_chest, shrine, survivor]
+    expect(isSeaField(state, ids[0])).toBe(true); // empty field -> open sea
+    expect(isSeaField(state, ids[3])).toBe(true); // buoy -> sea feature
+    expect(isSeaField(state, ids[2])).toBe(false); // mine -> island (land)
+  });
 
-    expect(isSeaField(state, sea)).toBe(true);
+  it("a fabricated sea hex and a land hex coexist on the same tile", () => {
+    const state = makeGame();
+    const { land, sea1 } = seaSetup(state);
+    expect(isSeaField(state, sea1)).toBe(true);
     expect(isSeaField(state, land)).toBe(false);
+  });
+});
 
-    // Entering the sea is allowed, but it is a forced stop (you cannot continue).
-    expect(canCrossEdge(state, land, sea)).toBe(true);
-    expect(classifyHeroStep(state, hero, sea)).toBe("stop");
-    expect(getHeroMoveDestinations(state, hero)).toContain(sea);
+describe("sea movement without Water Walk", () => {
+  it("steps onto the sea but then halts (move points kept for combat)", () => {
+    let state = makeGame();
+    const { land, sea1 } = seaSetup(state);
 
-    state = applyOk(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: sea });
-    expect(heroP1(state).spaceId).toBe(sea);
-    // The remaining move points are kept (not zeroed) — but the hero is halted.
-    expect(heroP1(state).movementPoints).toBe(2);
+    // The sea hex is enterable and not a forced stop by itself; crossing the
+    // coastline is what halts the hero.
+    expect(canCrossEdge(state, land, sea1)).toBe(true);
+    expect(classifyHeroStep(state, heroP1(state), sea1)).toBe("open");
+
+    state = applyOk(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: sea1 });
+    expect(heroP1(state).spaceId).toBe(sea1);
+    expect(heroP1(state).movementPoints).toBe(2); // kept, not zeroed
     expect(heroP1(state).movementHaltedThisTurn).toBe(true);
     expect(getHeroMoveDestinations(state, heroP1(state))).toEqual([]);
     expectError(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: land });
   });
 
-  it("keeps the move points available for a neutral combat on the sea field", () => {
+  it("moves freely within the sea (sea->sea does not halt)", () => {
     let state = makeGame();
-    const { sea } = setupCoast(state);
-    state.adventure!.fields[sea].difficulty = 1; // undefended guards on the sea
+    const { sea1, sea2, sea3 } = seaSetup(state);
+    const hero = heroP1(state);
+    hero.spaceId = sea1; // start the turn out on the sea
 
-    state = applyOk(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: sea });
-    expect(state.combat).not.toBeNull();
-    // Movement halted, yet the point is kept so the fight can be continued.
-    expect(heroP1(state).movementHaltedThisTurn).toBe(true);
-    expect(heroP1(state).movementPoints).toBe(2);
+    expect(classifyHeroStep(state, hero, sea2)).toBe("open");
+    state = applyOk(state, { type: "MOVE_HERO_PATH", playerId: "p1", heroId: "hero_p1", path: [sea2, sea3] });
+    expect(heroP1(state).spaceId).toBe(sea3);
+    expect(heroP1(state).movementPoints).toBe(1); // two sea steps, no halt
+    expect(heroP1(state).movementHaltedThisTurn).toBeFalsy();
   });
 
-  it("wading off the sea onto land reaches the shore (no stranding) but also halts", () => {
+  it("wading off the sea onto land reaches the shore (no stranding) but halts", () => {
     const state = makeGame();
-    const { land, sea } = setupCoast(state);
+    const { land, sea1 } = seaSetup(state);
     const hero = heroP1(state);
-    hero.spaceId = sea; // as if the turn began on the sea
-    hero.movementHaltedThisTurn = false;
+    hero.spaceId = sea1; // as if the turn began on the sea
 
-    // Leaving the sea is always possible — you are never stranded — but the
-    // step itself ends the turn's movement (sea→land halts too, without Walk).
-    expect(canCrossEdge(state, sea, land)).toBe(true);
+    expect(canCrossEdge(state, sea1, land)).toBe(true);
     expect(getHeroMoveDestinations(state, hero)).toContain(land);
     const moved = applyAction(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: land });
     expect(moved.errors).toHaveLength(0);
@@ -371,28 +364,34 @@ describe("sea movement without Water Walk", () => {
     expect(moved.state.heroes.hero_p1.movementHaltedThisTurn).toBe(true);
   });
 
-  it("a walk cannot continue past a sea step", () => {
+  it("a walk cannot cross the coastline and keep going", () => {
     const state = makeGame();
-    const { land, sea } = setupCoast(state);
-    const hero = heroP1(state);
-    hero.spaceId = sea; // start on the sea
-    hero.movementHaltedThisTurn = false;
-    const land2 = getAdjacentSpaceIds(land).find(
-      (id) => state.adventure!.fields[id] && id !== sea && !isSeaField(state, id)
-    );
-    expect(land2).toBeDefined();
-    setField(state, land2!, "empty_field");
+    const { land, sea1, sea2 } = seaSetup(state);
+    expect(land).toBe(heroP1(state).spaceId); // hero on the land centre
+    // land -> sea1 halts, so it cannot be a non-final step of a path.
+    expectError(state, { type: "MOVE_HERO_PATH", playerId: "p1", heroId: "hero_p1", path: [sea1, sea2] });
+  });
 
-    // sea -> land would halt, so it cannot be a non-final step of a path.
-    expectError(state, { type: "MOVE_HERO_PATH", playerId: "p1", heroId: "hero_p1", path: [land, land2!] });
+  it("keeps the move points available for a neutral combat on the sea", () => {
+    let state = makeGame();
+    const { sea1 } = seaSetup(state);
+    state.adventure!.fields[sea1].difficulty = 1; // undefended guards on the sea hex
+
+    state = applyOk(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: sea1 });
+    expect(state.combat).not.toBeNull();
+    expect(heroP1(state).movementHaltedThisTurn).toBe(true);
+    expect(heroP1(state).movementPoints).toBe(2); // kept so the fight can continue
   });
 });
 
 describe("Water Walk spell", () => {
-  it("lets the hero keep moving across the sea (no halt)", () => {
+  it("removes the coastline halt — the hero crosses onto and across the sea", () => {
     let state = makeGame();
-    const { sea, seaDeep } = setupCoast(state);
+    const { sea1, sea2 } = seaSetup(state);
     state.players.p1.hand = ["spell.water_walk"];
+
+    // Without the spell, crossing the coastline halts.
+    expect(seaStepHalts(state, heroP1(state).spaceId!, sea1)).toBe(true);
 
     state = applyOk(state, {
       type: "PLAY_CARD",
@@ -404,19 +403,18 @@ describe("Water Walk spell", () => {
     });
     expect(hasModifier(state, "p1", "HERO_WATER_WALK")).toBe(true);
     expect(getHeroMovementCapabilities(state, heroP1(state)).waterWalk).toBe(true);
-    // With Water Walk the sea is normal terrain, not a forced stop.
-    expect(classifyHeroStep(state, heroP1(state), sea, { moveThrough: false, waterWalk: true })).toBe("open");
+    expect(seaStepHalts(state, heroP1(state).spaceId!, sea1, { moveThrough: false, waterWalk: true })).toBe(false);
 
-    // The hero crosses onto the sea AND continues to a second sea field.
-    state = applyOk(state, { type: "MOVE_HERO_PATH", playerId: "p1", heroId: "hero_p1", path: [sea, seaDeep] });
-    expect(heroP1(state).spaceId).toBe(seaDeep);
+    // land -> sea1 -> sea2 in one walk, no halt.
+    state = applyOk(state, { type: "MOVE_HERO_PATH", playerId: "p1", heroId: "hero_p1", path: [sea1, sea2] });
+    expect(heroP1(state).spaceId).toBe(sea2);
     expect(heroP1(state).movementPoints).toBe(1); // 3 - 2 steps
     expect(heroP1(state).movementHaltedThisTurn).toBeFalsy();
   });
 
   it("the Power 2 side also grants +2 movement", () => {
     let state = makeGame();
-    setupCoast(state);
+    seaSetup(state);
     state.players.p1.hand = ["spell.water_walk", "spell.haste", "spell.slow"];
     state = applyOk(state, {
       type: "PLAY_CARD",
