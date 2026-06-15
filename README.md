@@ -19,12 +19,14 @@ Both modes share the rulebook fixes: the second negative morale token resets you
 
 A second lobby selector picks how the game is won:
 
-- **Conquest** (default) — flag an enemy faction Town.
+- **Conquest** (default) — **eliminate every rival faction.** Flagging an enemy Town is *not* an instant win (rulebook p.76: the owner even keeps their Town Board). It earns the conqueror one **resource-gain level** — their choice of **+5 gold, +2 materials, or +1 valuables** income — and, if it was the owner's last base, starts their **elimination clock**: a player who controls **no Town and no Settlement** lasts **2 more of their own turns**, then is removed (a held **Settlement** keeps them fighting — settlements prevent elimination, rulebook p.77). The last faction standing wins.
 - **Grail Hunt** — win either way: **capture the Grail** (defeat its level-VII guard, spend 1 more movement point to *dig* it, then carry it home to your own town), or **beat every enemy hero** in combat at least once (only 2 of the 3 in a 4-player game). A Grail is seeded on a Center tile; the Dragon Utopia is **not** an objective here.
 - **Dragon Hunt** — win either way: **defeat the Dragon Utopia** (azure + rust + crystal + faerie dragons) — no need to hold it afterwards — or **beat every enemy hero** in combat at least once (only 2 of the 3 in a 4-player game). A Dragon Utopia is seeded on a Center tile.
 - **Dragon Conqueror** — defeating the Dragon Utopia **captures** it instead of winning outright. The holder garrisons it and rivals must **besiege** it (Walls, Gate, Arrow Tower) to take it; controlling it at the start of your turn wins.
 
 A Grail or Dragon Utopia that isn't the active objective is just a normal level-VII fight, rewarding 10 gold and a Relic artifact (Search 2, choose 1).
+
+In every mode a player can be eliminated — by spending the grace period (2 turns) with no Town or Settlement, or by choosing **Give up** on their own turn (you cannot concede mid-combat — "you cannot surrender when defending your Faction Town"). An eliminated player leaves the turn order and becomes an **observer**; the game continues with one fewer player, and eliminating every rival wins the scenario outright. Defending a Town/Settlement while your hero is away still works as printed: **pay 8 gold to garrison with units only (no Deck cards)**, with siege Walls/Gate/Arrow Tower only when *your own* Town has a **Citadel** (never when defending a Town you previously conquered).
 
 A third selector, **PvP combat**, chooses what a player-vs-player fight costs: **Lose troops** (the rulebook — destroyed unit cards leave the army and damaged Packs flip to Few) or **Keep troops** (a friendly-fight option — the winner is still decided and the loser still pays gold, loses morale and retreats, but neither army loses any units). Fights against Neutral guards always cost casualties.
 

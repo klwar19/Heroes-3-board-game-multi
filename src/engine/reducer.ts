@@ -26,6 +26,7 @@ import {
   discoverTile,
   finalizeAdventureCombat,
   finishCombatPlacement,
+  giveUpAdventure,
   hallOfValhallaBoost,
   openSiegeDemolishChoice,
   openSkeletonReinforceChoice,
@@ -8304,7 +8305,8 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
   "HALL_OF_VALHALLA_BOOST",
-  "ATTACK_FORTIFICATION"
+  "ATTACK_FORTIFICATION",
+  "GIVE_UP"
 ]);
 
 function isHandlerValidated(state: GameState, action: GameAction): boolean {
@@ -8545,6 +8547,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         } else {
           endTurn(nextState, action);
         }
+        break;
+      case "GIVE_UP":
+        giveUpAdventure(nextState, action);
         break;
     }
   } catch (error) {
