@@ -265,3 +265,65 @@ describe("ReactionTray — in-progress selection survives only until the hand ch
     expect(screen.getAllByRole("button").some((button) => button.getAttribute("aria-pressed") === "true")).toBe(false);
   });
 });
+
+describe("ReactionTray — Power can still be added after Slayer arms the attack", () => {
+  function tray(state: GameState) {
+    return (
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={() => {}}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it("does NOT block a lone +1 Power once Slayer is on the pending attack", () => {
+    const state = createInitialGameState("tray-slayer-seed");
+    state.players.p1.hand = ["spell.slayer", "spell.haste"]; // haste = a Spell to discard for Power
+    state.players.p2.hand = [];
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const griffins = state.combat!.units.unit_p1_griffins;
+    griffins.activatedThisRound = false;
+    griffins.abilities = [];
+    griffins.position = 9;
+    const dread = state.combat!.units.unit_p2_dread_knights; // gold — Slayer's target
+    dread.abilities = [];
+    dread.position = 13;
+
+    const declared = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_dread_knights"
+    });
+    expect(declared.errors).toEqual([]);
+
+    // Play Slayer: the window stays open with p1 still on priority and the attack
+    // now empowerable, so further Power discards are legal.
+    const played = applyAction(declared.state, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "spell.slayer",
+      mode: "basic"
+    });
+    expect(played.errors).toEqual([]);
+    expect(played.state.reactionWindow?.priorityPlayerId).toBe("p1");
+
+    render(tray(played.state));
+
+    // Pick the "Discard Haste for +1 Power" boost on its own.
+    const pick = screen.getByRole("button", { name: /discard for \+1 power/i });
+    act(() => fireEvent.click(pick));
+
+    // The confirm button is enabled and the "Power needs a Spell" warning is gone:
+    // before the fix the tray rejected a lone Power boost even though Slayer had
+    // already armed the attack.
+    const confirm = screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(false);
+    expect(screen.queryByText(/power only counts with a spell/i)).toBeNull();
+  });
+});

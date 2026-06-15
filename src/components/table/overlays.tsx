@@ -316,7 +316,21 @@ export function ReactionTray({
   const hasSpellPlay = selections.some(
     (selection) => !selection.asPowerBoost && cardLibrary[selection.cardId]?.kind === "spell" && !isPowerSelection(selection)
   );
-  const powerNeedsSpell = isAttackWindow && selections.some(isPowerSelection) && !hasSpellPlay;
+  // …but once a power-scaling spell (Bloodlust, Bless, or Slayer) is already on
+  // the pending attack, the caster keeps priority and may keep adding Power to it
+  // on its own — mirrors the engine's hasEmpowerablePlayed. Without this the tray
+  // blocks a lone "+1 Power" the engine would happily accept after Slayer.
+  const attackStackItem = isAttackWindow ? state.stack.at(-1) : undefined;
+  const attackOwner =
+    attackStackItem?.action.type === "ATTACK_UNIT" || attackStackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
+      ? attackStackItem.action.playerId
+      : undefined;
+  const attackAlreadyEmpowerable =
+    attackOwner === viewerPlayerId &&
+    ((attackStackItem?.modifiers.powerScaledAttackInstants?.length ?? 0) > 0 ||
+      attackStackItem?.modifiers.slayerRollsByPower !== undefined);
+  const powerNeedsSpell =
+    isAttackWindow && selections.some(isPowerSelection) && !hasSpellPlay && !attackAlreadyEmpowerable;
 
   const confirmSelection = () => {
     if (selections.length === 0 || paymentInvalid || powerNeedsSpell) {

@@ -493,13 +493,7 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "SKIP_ACTIVATION") {
-    if (card.effect.gradeByPower) {
-      const breakpoints = Object.entries(card.effect.gradeByPower)
-        .map(([power, grade]) => `${power}:${grade}`)
-        .join(", ");
-      return `when a unit is about to activate, skip its activation (reachable grade by power ${breakpoints})`;
-    }
-    return `when a ${card.effect.grade ?? "bronze"}-or-lower unit is about to activate, skip its activation`;
+    return `when a ${card.effect.grade}-or-lower unit is about to activate, skip its activation`;
   }
 
   if (card.effect.type === "SLAYER_ATTACK") {
