@@ -664,12 +664,36 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Xyron's Inferno: pick a space (any unit's space); that unit and every
-       * unit orthogonally adjacent to it — friend or foe — take `amount`
-       * damage. The discard cost is carried on the card option.
+       * Xyron's Inferno: select a space (occupied or empty); every unit on that
+       * space and every unit orthogonally adjacent to it — friend or foe — takes
+       * `amount` damage. The discard cost is carried on the card option.
        */
       type: "AREA_DAMAGE_ALL_ADJACENT";
       amount: number;
+    }
+  | {
+      /**
+       * Area blast that damages up to `adjacentPicks` units adjacent to a centre
+       * (the chosen space, or the chosen unit's space), letting the caster choose
+       * which when more than that are adjacent. `includeCenter` also damages the
+       * unit on the centre space (Meteor Shower hits its target; Frost Ring rings
+       * the centre and spares it). Friend or foe alike are hit. Damage is fixed
+       * (`amount`, hero-specialty options) or power-scaled (`amountByPower`,
+       * Frost Ring's spell cast).
+       */
+      type: "AREA_DAMAGE_PICK_ADJACENT";
+      amount?: number;
+      amountByPower?: Record<number, number>;
+      includeCenter: boolean;
+      adjacentPicks: number;
+    }
+  | {
+      /**
+       * Deemer's Meteor Shower IV: shuffle the player's whole discard pile back
+       * into their deck, then draw `drawCards` card(s).
+       */
+      type: "RESHUFFLE_DISCARD_THEN_DRAW";
+      drawCards: number;
     }
   | {
       /**
@@ -4033,6 +4057,7 @@ export type PendingChoice =
         | "neutral-target"
         | "war-machine"
         | "spell-splash"
+        | "area-pick"
         | "spell-redirect"
         | "enchanter-activation"
         | "faerie-damage"
@@ -4059,6 +4084,14 @@ export type PendingChoice =
        */
       chainReachableUnitIds?: UnitId[];
       chainRemainingDamages?: number[];
+      /**
+       * "area-pick" (Frost Ring / Meteor Shower VI): how many more adjacent units
+       * the caster still has to pick for this blast. Each pick takes `amount`
+       * damage; the choice re-opens until this reaches 0 or the candidates run out.
+       */
+      picksRemaining?: number;
+      /** Card the area-pick damage is sourced from (for damage reduction). */
+      sourceCardId?: CardId;
     }
   | {
       /**

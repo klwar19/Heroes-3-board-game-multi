@@ -136,7 +136,20 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   // settle, then this fire sheet erupts over the chosen space with the fire-storm
   // impact before the per-unit damage floats. `sound` rides under the dice; the
   // `hit` burst + `hitSound` land on the space once the roll has read out.
-  "spell.inferno": { hit: "inferno", sound: "spells/inferno", hitSound: "effects/fire-storm" }
+  "spell.inferno": { hit: "inferno", sound: "spells/inferno", hitSound: "effects/fire-storm" },
+  // Frost Ring: select a space — the ring of frost bursts over that cell (the
+  // space-target path in page.tsx anchors it to the cell, like Inferno) and the
+  // adjacent units' damage floats after. No dice, so the impact sound rides on
+  // the burst itself.
+  "spell.frost_ring": { hit: "frost-ring", sound: "spells/frost-ring", hitSound: "spells/frost-ring" },
+  // Hero-specialty area blasts resolve through a card PLAY (CARD_PLAYED), which
+  // anchors their `affect` sprite at centre stage with the cast sound. Xyron's
+  // Inferno roars with the fire sheet; Deemer's Meteor Shower I/VI rain rock.
+  "specialty.xyron.1": { affect: [{ key: "inferno" }], sound: "spells/inferno" },
+  "specialty.xyron.4": { affect: [{ key: "inferno" }], sound: "spells/inferno" },
+  "specialty.xyron.6": { affect: [{ key: "inferno" }], sound: "spells/inferno" },
+  "specialty.deemer.1": { affect: [{ key: "meteor-shower" }], sound: "spells/meteor-shower" },
+  "specialty.deemer.6": { affect: [{ key: "meteor-shower" }], sound: "spells/meteor-shower" }
 };
 
 /** Played at center stage when a spell is countered. */

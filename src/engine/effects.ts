@@ -41,6 +41,8 @@ export const implementedCardEffectTypes = [
   "ADD_UNIT_MAX_HEALTH",
   "AREA_DAMAGE_ADJACENT",
   "AREA_DAMAGE_ALL_ADJACENT",
+  "AREA_DAMAGE_PICK_ADJACENT",
+  "RESHUFFLE_DISCARD_THEN_DRAW",
   "GAIN_WAR_MACHINE",
   "CHAIN_LIGHTNING",
   "PLACE_PARALYSIS",
@@ -472,6 +474,20 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "AREA_DAMAGE_ALL_ADJACENT") {
     return `${card.effect.amount} damage to a space and every adjacent unit (friend or foe)`;
+  }
+
+  if (card.effect.type === "AREA_DAMAGE_PICK_ADJACENT") {
+    const amount = card.effect.amountByPower
+      ? `by power (${Object.entries(card.effect.amountByPower)
+          .map(([power, value]) => `${power}:${value}`)
+          .join(", ")})`
+      : `${card.effect.amount ?? 0}`;
+    const centre = card.effect.includeCenter ? "the centre unit and " : "";
+    return `${amount} damage to ${centre}up to ${card.effect.adjacentPicks} unit(s) adjacent to the chosen ${card.effect.includeCenter ? "unit" : "space"} (friend or foe; the caster picks when more are adjacent)`;
+  }
+
+  if (card.effect.type === "RESHUFFLE_DISCARD_THEN_DRAW") {
+    return `shuffle your discard pile into your deck, then draw ${card.effect.drawCards}`;
   }
 
   if (card.effect.type === "GAIN_WAR_MACHINE") {
