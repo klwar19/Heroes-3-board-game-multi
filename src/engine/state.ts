@@ -110,6 +110,8 @@ export type TargetDefinition =
   | { type: "any-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
   /** Summon spells: a chosen empty space on the combat board. */
   | { type: "empty-space" }
+  /** Inferno: any space on the combat board (occupied or not). */
+  | { type: "any-space" }
   | { type: "none" };
 
 export type EffectDurationDefinition =
@@ -120,6 +122,17 @@ export type EffectDurationDefinition =
   | { type: "current-turn" }
   /** Torosar's Ballista IV: "until the end of the round" (this game round). */
   | { type: "current-game-round" }
+  /**
+   * Mirth (Power 0): "during this Activation". Lasts until the end of the
+   * activation in progress when the effect is created (bound to the unit that
+   * is active at creation time).
+   */
+  | { type: "current-activation" }
+  /**
+   * Forgetfulness: "during its next activation". Lasts until the end of the
+   * targeted unit's next activation (bound to the effect's target unit).
+   */
+  | { type: "next-activation" }
   | { type: "combat" }
   | { type: "permanent" };
 
@@ -158,6 +171,14 @@ export type ActiveEffectModifier =
     }
   | {
       type: "UNIT_CANNOT_MOVE";
+    }
+  | {
+      /**
+       * Forgetfulness: while held, the unit cannot perform an Attack action
+       * (it may still move). Lasts its next activation (the "next-activation"
+       * duration removes it when that activation ends).
+       */
+      type: "UNIT_CANNOT_ATTACK";
     }
   | {
       /**
@@ -620,6 +641,46 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Sorrow Spell (Instant reaction on UNIT_ACTIVATION_STARTED): when an
+       * enemy unit is about to activate, skip its activation. The grade reached
+       * scales with the Power paid (0 → bronze, 2 → silver, 4 → gold), so each
+       * grade is one option of the card's CHOOSE_ONE (like Resurrection).
+       */
+      type: "SKIP_ACTIVATION";
+      grade: UnitGrade;
+    }
+  | {
+      /**
+       * Slayer Spell (Instant reaction on UNIT_ATTACK_DECLARED, attacker's
+       * side, gold defender only): roll the Attack die `rollsByPower` times and
+       * apply every result except a "-1" (each "+1" adds 1 to the attack), then
+       * draw 1 card. Power 0 → 2 rolls, 2 → 4, 4 → 6.
+       */
+      type: "SLAYER_ATTACK";
+      rollsByPower: Record<number, number>;
+    }
+  | {
+      /**
+       * Inferno Spell (Activation): select a space, roll the Attack die
+       * `rollsByPower` times, and every unit on that space and the orthogonally
+       * adjacent spaces (friend or foe) takes 1 damage for each "+1" rolled.
+       * Power 0 → 1 roll, 1 → 2, 2 → 4.
+       */
+      type: "INFERNO";
+      rollsByPower: Record<number, number>;
+    }
+  | {
+      /**
+       * Forgetfulness Spell (Activation): the selected enemy ranged unit cannot
+       * attack during its next activation. The grade reached scales with the
+       * Power paid (0 → bronze, 1 → silver, 2 → gold). Backed by a
+       * UNIT_CANNOT_ATTACK effect with the "next-activation" duration.
+       */
+      type: "FORGETFULNESS";
+      gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
        * Torosar's Ballista specialty (I activate / IV / VI). `grant` fields one
        * extra Ballista for the combat or the rest of the game round ("this card
        * counts as a Ballista"); `activate` fires one of your Ballistas now (I)
@@ -716,6 +777,12 @@ export type EffectDefinition =
       expertRerolls?: number;
       rerollsByPower?: Record<number, number>;
       duration: EffectDurationDefinition;
+      /**
+       * Mirth: the duration scales with the Power paid rather than the reroll
+       * count (Power 0 → this Activation, 2 → this Combat round, 4 → this
+       * Combat). When set, it overrides `duration` at the matched breakpoint.
+       */
+      durationByPower?: Record<number, EffectDurationDefinition>;
       consumeEffectOnUse: boolean;
     }
   | {
@@ -841,6 +908,30 @@ export type EffectDefinition =
        * the "diplomacy-skip" pending choice in adventure-reducer.ts.
        */
       type: "DIPLOMACY_SKIP_COMBAT";
+    }
+  | {
+      /**
+       * Learning ability. Never played from hand: it is offered automatically
+       * when a Hero is about to level up (see the "learning-level-up" reward and
+       * pending choice). Basic advances the Hero's Experience an extra half level
+       * (`amount` steps); the Expert side advances a full level (`expertAmount`
+       * steps), spends an expert use and removes the card from the game.
+       * A "half level" is one Experience step here (2 steps = 1 level).
+       */
+      type: "ADVANCE_EXPERIENCE";
+      amount: number;
+      expertAmount: number;
+    }
+  | {
+      /**
+       * Visions spell (Map): scry one Neutral Unit deck. Draw `cardsByPower[P]`
+       * cards from a chosen tier deck (P is the Power paid by discarding Spells
+       * for +1 each via the option's "power-source" cost), then discard any of
+       * them and return the rest to the top of that deck in the chosen order.
+       * Resolved through the "visions-deck" / "visions-scry" pending choices.
+       */
+      type: "VISIONS_SCRY";
+      cardsByPower: Record<number, number>;
     };
 
 /**
@@ -866,7 +957,7 @@ export type CardPlayCost = {
 };
 
 export type TriggerDefinition = {
-  event: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED";
+  event: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED";
   controller: "self" | "opponent" | "any";
 };
 
@@ -1827,7 +1918,7 @@ export type GameEvent =
       id: string;
       type: "ACTIVE_EFFECT_EXPIRED";
       effectId: string;
-      reason: "combat-round-ended" | "turn-ended" | "combat-ended" | "game-round-ended";
+      reason: "combat-round-ended" | "turn-ended" | "combat-ended" | "game-round-ended" | "activation-ended";
     }
   | {
       id: string;
@@ -2277,6 +2368,14 @@ export type ResolutionStackItem = {
     scrollLocked?: boolean;
     /** Bless: the Attack die is not rolled (counts as 0). */
     ignoreAttackDie?: boolean;
+    /**
+     * Slayer: roll the Attack die this many times against a gold defender and
+     * count the "+1" faces as the die's whole contribution (every "-1" is
+     * ignored). Set by the Slayer reaction; consumed in resolveAttackStackItem.
+     */
+    slayerRolls?: number;
+    /** Slayer: draw 1 card once the modified attack has resolved. */
+    slayerDraw?: boolean;
     /** Precision: this shot ignores the ranged back-row penalty. */
     ignoreRangedPenalty?: boolean;
     /**
@@ -2303,8 +2402,35 @@ export type ResolutionStackItem = {
      * Only a "+1" grants +1 Defense.
      */
     defendRoll?: number;
+    /**
+     * Attack-window spell instants (Bloodlust, Precision, Bless's bonus,
+     * Curse/Weakness…) whose attack/defense bonus scales with Power. Recorded
+     * so Power played LATER in the same window — the caster keeps priority and
+     * may keep empowering — recomputes their contribution against the new total
+     * Power instead of being frozen at the value they had when first played.
+     */
+    powerScaledAttackInstants?: PowerScaledAttackInstant[];
     playedCardIds: CardId[];
   };
+};
+
+/**
+ * One Power-scaling attack/defense buff played into an attack window, kept so
+ * its applied bonus can be recomputed when more Power lands afterward.
+ */
+export type PowerScaledAttackInstant = {
+  cardId: CardId;
+  stat: "attack" | "defense";
+  /** The card's power→amount table (e.g. Bloodlust { 0:1, 1:2, 2:3 }). */
+  amountByPower: Record<number, number>;
+  /** Fallback amount when no breakpoint matches the current Power. */
+  baseAmount: number;
+  /** Power-independent extra (per-discarded-card bonuses) added on top. */
+  fixedBonus: number;
+  /** Hero-specialty doubling decided once at play time (1 or 2). */
+  doubleFactor: number;
+  /** The bonus currently folded into the stack item (after doubling). */
+  appliedAmount: number;
 };
 
 export type ReactionWindow = {
@@ -2328,6 +2454,11 @@ export type ActiveEffectState = ActiveEffectDefinition & {
   expiresAtTurnEndPlayerId?: PlayerId;
   /** Game round at whose end the effect expires ("current-game-round"). */
   expiresAtGameRound?: number;
+  /**
+   * Unit whose activation-end expires this effect ("current-activation" binds
+   * to the active unit at creation, "next-activation" to the target unit).
+   */
+  expiresAtActivationEndUnitId?: UnitId;
   usedRollEventIds: string[];
   usedChoiceIds: string[];
   usedCombatRoundNumbers: number[];
@@ -2595,6 +2726,12 @@ export type CombatUnitState = {
    * becomes active (setActiveUnit).
    */
   reactionPauseAcked?: boolean;
+  /**
+   * Set once a Sorrow-style activation-skip reaction window has been offered
+   * for this unit's current activation, so the centralized hook does not
+   * re-open it every action. Reset every time the unit becomes active.
+   */
+  activationSkipOffered?: boolean;
   /** Combat tokens currently on the card (attack/weakness/corrosion/paralysis). */
   tokens?: CombatTokenState[];
   /**
@@ -2948,6 +3085,15 @@ export type AdventureReward =
       playerId: PlayerId;
       kind: "visit-steps";
       steps: VisitStep[];
+    }
+  | {
+      /**
+       * Learning: the Hero just crossed at least one level and the player holds a
+       * Learning ability card. Pumped into a "learning-level-up" choice offering
+       * to advance an extra half/full level (see pumpAdventureQueues).
+       */
+      playerId: PlayerId;
+      kind: "learning-level-up";
     };
 
 export type VisitStep =
@@ -3516,7 +3662,11 @@ export type PendingChoice =
         | "cover-of-darkness"
         | "diplomacy-skip"
         | "diplomacy-recruit"
-        | "dimension-door";
+        | "dimension-door"
+        | "learning-level-up"
+        | "visions-boost"
+        | "visions-deck"
+        | "visions-scry";
       /** combat-reposition: Harpies' optional fly-back after their attack. */
       reposition?: { unitId: UnitId; originPosition: number };
       /**
@@ -3573,6 +3723,36 @@ export type PendingChoice =
       diplomacyRecruit?: {
         draws: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
         recruitable: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
+      };
+      /**
+       * learning-level-up: the Learning play modes offered, index-aligned with
+       * the options. The final "decline" option carries no mode. Resolving a
+       * mode discards (basic) or removes (expert) one Learning card from hand and
+       * advances the Hero's Experience.
+       */
+      learningLevelUp?: { modes: ("basic" | "expert")[] };
+      /**
+       * visions-boost: paying Visions' Power on the map. `spellCardIds` are the
+       * power-source Spells in hand offered to discard for +1 card each (index-
+       * aligned with the leading options; the trailing option scrys now). `boost`
+       * is how many have already been paid, capped by `cardsByPower`.
+       */
+      visionsBoost?: { boost: number; spellCardIds: CardId[]; cardsByPower: Record<number, number> };
+      /**
+       * visions-deck: the Neutral tier decks Visions may scry (index-aligned with
+       * the options) and how many cards the chosen power level draws.
+       */
+      visionsDeck?: { tiers: ("bronze" | "silver" | "gold" | "azure")[]; count: number };
+      /**
+       * visions-scry: the Neutral cards lifted off the chosen tier deck still
+       * awaiting a keep/discard decision (`remaining`), and the cards already
+       * kept (`toReturn`, in pick order — the first kept ends on top). The
+       * identities stay private to the scrying player.
+       */
+      visionsScry?: {
+        tier: "bronze" | "silver" | "gold" | "azure";
+        remaining: CardId[];
+        toReturn: CardId[];
       };
       returnPhase: GamePhase;
     }

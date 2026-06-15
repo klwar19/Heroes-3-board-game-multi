@@ -143,7 +143,8 @@ export {
   DEFENDER_FRONTLINE,
   getHeroMoveDestinations,
   isTileAdjacentToSpace,
-  isTileRotationConnected
+  isTileRotationConnected,
+  pumpAdventureQueues
 } from "./adventure-reducer";
 export {
   HEX_DIRECTIONS,
