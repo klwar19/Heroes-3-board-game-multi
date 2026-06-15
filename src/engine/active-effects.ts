@@ -10,7 +10,8 @@ import type {
   GameState,
   PlayerId,
   SourceRef,
-  TargetRef
+  TargetRef,
+  UnitId
 } from "./state";
 
 type AttackContext = {
@@ -60,6 +61,16 @@ export function makeActiveEffect(
     expiresAtCombatRoundEnd: getExpiresAtCombatRoundEnd(state, effect.duration),
     expiresAtTurnEndPlayerId: effect.duration.type === "current-turn" ? controllerId : undefined,
     expiresAtGameRound: effect.duration.type === "current-game-round" ? state.round : undefined,
+    // "current-activation" binds to whichever unit is active now (Mirth, cast
+    // during your unit's turn); "next-activation" binds to the target unit
+    // (Forgetfulness). Either way the effect ends when that unit's activation
+    // ends — see expireEffectsForActivationEnd.
+    expiresAtActivationEndUnitId:
+      effect.duration.type === "current-activation"
+        ? (state.combat?.activeUnitId ?? undefined)
+        : effect.duration.type === "next-activation"
+          ? (target?.type === "unit" ? target.unitId : undefined)
+          : undefined,
     usedRollEventIds: [],
     usedChoiceIds: [],
     usedCombatRoundNumbers: []
@@ -265,6 +276,33 @@ export function getAttackRerollEffects(state: GameState, context: AttackContext)
   });
 }
 
+/**
+ * Forgetfulness: whether the unit currently holds a UNIT_CANNOT_ATTACK effect
+ * (it may still move, but cannot perform an Attack action this activation).
+ */
+export function unitCannotAttack(state: GameState, unit: CombatUnitState): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effectAppliesToUnit(effect, unit) &&
+      effect.modifiers.some((modifier) => modifier.type === "UNIT_CANNOT_ATTACK")
+  );
+}
+
+/**
+ * Expires the activation-scoped effects bound to `unitId` (Mirth's
+ * "this Activation", Forgetfulness's "its next activation") when that unit's
+ * activation ends — including when the activation is skipped.
+ */
+export function expireEffectsForActivationEnd(state: GameState, unitId: UnitId): ActiveEffectState[] {
+  const expired = state.activeEffects.filter((effect) => effect.expiresAtActivationEndUnitId === unitId);
+  if (expired.length > 0) {
+    const expiredIds = new Set(expired.map((effect) => effect.id));
+    state.activeEffects = state.activeEffects.filter((effect) => !expiredIds.has(effect.id));
+  }
+
+  return expired;
+}
+
 export function expireEffectsForCombatRoundEnd(state: GameState, round: number): ActiveEffectState[] {
   const expired = state.activeEffects.filter((effect) => effect.expiresAtCombatRoundEnd === round);
   if (expired.length > 0) {
@@ -304,7 +342,9 @@ export function expireEffectsForCombatEnd(state: GameState): ActiveEffectState[]
     (effect) =>
       effect.duration.type === "combat" ||
       effect.duration.type === "current-combat-round" ||
-      effect.duration.type === "next-combat-round"
+      effect.duration.type === "next-combat-round" ||
+      effect.duration.type === "current-activation" ||
+      effect.duration.type === "next-activation"
   );
   if (expired.length > 0) {
     const expiredIds = new Set(expired.map((effect) => effect.id));
