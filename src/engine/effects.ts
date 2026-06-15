@@ -41,6 +41,8 @@ export const implementedCardEffectTypes = [
   "GAIN_WAR_MACHINE",
   "CHAIN_LIGHTNING",
   "BALLISTA_SPECIALTY",
+  "DAMAGE_LOWEST_INITIATIVE_ENEMY",
+  "ARTILLERY_BALLISTA_VOLLEY",
   "DECK_DIG_KEEP_ONE",
   "CANCEL_LETHAL_ATTACK",
   "REDIRECT_SPELL",
@@ -197,11 +199,7 @@ export function describePermanentEffect(card: CardDefinition): string {
     parts.push(`your ranged units get +${permanent.rangedInitiativeBonus} initiative`);
   }
   if (permanent.roundStart?.kind === "damage-lowest-initiative") {
-    const expert =
-      permanent.roundStart.expertShots && permanent.roundStart.expertShots > 1
-        ? `; expert: spend 1 expert use to fire ${permanent.roundStart.expertShots} times`
-        : "";
-    parts.push(`each combat round: ${permanent.roundStart.amount} damage to the slowest enemy unit${expert}`);
+    parts.push(`each combat round: ${permanent.roundStart.amount} damage to the slowest enemy unit`);
   }
   if (permanent.roundStart?.kind === "pay-to-splash") {
     parts.push(

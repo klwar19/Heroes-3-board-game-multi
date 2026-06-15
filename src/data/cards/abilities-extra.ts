@@ -346,11 +346,47 @@ export const extraAbilityCards: CardLibrary = {
     "Learning",
     "Basic: Play when the Hero is about to level up; advance an additional half level. Expert: advance an additional full level, then Remove this card."
   ),
-  "ability.artillery": notImplementedAbility(
-    "artillery",
-    "Artillery",
-    "Basic: Deal 1 damage to an enemy unit with the lowest initiative. Expert: when using the Ballista card, resolve its effect against the same target 3 times."
-  ),
+  "ability.artillery": {
+    id: "ability.artillery",
+    name: "Artillery",
+    kind: "ability",
+    timing: "instant",
+    phaseLimit: ["combat"],
+    abilityClass: "might",
+    // Basic targets the slowest enemy; a tie offers each tied unit so the
+    // controller picks which is hit. The expert side carries no target — it is
+    // resolved at the Ballista's round start, not played from hand.
+    target: { type: "enemy-unit", lowestInitiativeOnly: true },
+    tags: [
+      "ability",
+      "instant",
+      "war-machine",
+      "wiki-reference",
+      "Basic: Deal 1 damage to an enemy unit with the lowest initiative. Expert: when using the Ballista card, resolve its effect against the same target 3 times."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Deal 1 damage to the enemy unit with the lowest initiative",
+          combatOnly: true,
+          effect: { type: "DAMAGE_LOWEST_INITIATIVE_ENEMY", amount: 1 }
+        },
+        {
+          // Expert: never played from hand (PLAY_CARD throws). When this player's
+          // Ballista fires at the start of a combat round, they may play Artillery
+          // — spending one expert use — to resolve that shot against the SAME
+          // target 3×. The engine reads `shots` from here; see permanents.ts.
+          label: "When your Ballista fires: resolve it against the same target 3×",
+          expertOnly: true,
+          effect: { type: "ARTILLERY_BALLISTA_VOLLEY", shots: 3 }
+        }
+      ]
+    },
+    assets: abilityAssets("artillery", "Artillery"),
+    implementationStatus: "implemented",
+    source: abilitySource("artillery")
+  },
   "ability.ballistics": {
     id: "ability.ballistics",
     name: "Ballistics",
@@ -412,6 +448,7 @@ export const abilityDeckLegacy: string[] = [
   "ability.scholar",
   "ability.first_aid",
   "ability.ballistics",
+  "ability.artillery",
   "ability.intelligence",
   // Necropolis-only (rulebook p.24): other factions may keep a drawn copy
   // but can never play it; searches simply pass it over.

@@ -95,7 +95,17 @@ export type ResourceKind = "gold" | "buildingMaterials" | "valuables";
 export type ResourceCost = Partial<Record<ResourceKind, number>>;
 
 export type TargetDefinition =
-  | { type: "enemy-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
+  | {
+      type: "enemy-unit";
+      unitTypes?: UnitType[];
+      damagedOnly?: boolean;
+      /**
+       * Artillery: restrict the legal targets to the enemy unit(s) with the
+       * lowest (effective) initiative. A single slowest enemy is the only legal
+       * target; a tie offers each tied unit so the controller picks which is hit.
+       */
+      lowestInitiativeOnly?: boolean;
+    }
   | { type: "friendly-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
   | { type: "any-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
   /** Summon spells: a chosen empty space on the combat board. */
@@ -550,6 +560,29 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Artillery (basic side): deal `amount` damage to an enemy unit with the
+       * lowest (effective) initiative — the same shot a Ballista makes, played
+       * from hand without one. The card constrains its legal targets to the
+       * slowest enemy/enemies (enemy-unit `lowestInitiativeOnly`), so a tie lets
+       * the controller pick which slowest unit is hit. Deals "effect" damage.
+       */
+      type: "DAMAGE_LOWEST_INITIATIVE_ENEMY";
+      amount: number;
+    }
+  | {
+      /**
+       * Artillery (expert side): a declarative marker, never played through
+       * PLAY_CARD. When the owner's Ballista fires at the start of a combat
+       * round, the owner may play Artillery (spending one expert use) to resolve
+       * that Ballista's shot against the SAME target `shots` times. Wired in
+       * permanents.ts (processWarMachineRound / resolveWarMachineOption); the
+       * engine reads `shots` from here so the card stays the source of truth.
+       */
+      type: "ARTILLERY_BALLISTA_VOLLEY";
+      shots: number;
+    }
+  | {
+      /**
        * Solmyr's Chain Lightning IV: dig up to `count` cards off the top of your
        * own Might and Magic deck, keep one in hand, and discard the rest.
        */
@@ -759,15 +792,15 @@ export type TriggerDefinition = {
 /** War machine triggers offered/resolved at the start of every combat round. */
 export type WarMachineRoundStartDefinition =
   | {
-      /** Ballista: automatic damage to the enemy unit with the lowest initiative. */
+      /**
+       * Ballista: automatic `amount` damage to the enemy unit with the lowest
+       * (effective) initiative at the start of each combat round (the owner
+       * breaks a tie). The "fire 3× against the same target" volley is NOT
+       * intrinsic to the Ballista — it is the Artillery ability's expert side
+       * (see ARTILLERY_BALLISTA_VOLLEY and permanents.ts).
+       */
       kind: "damage-lowest-initiative";
       amount: number;
-      /**
-       * Ballista expert: at the round start, the owner may spend 1 expert use
-       * to fire this many shots instead of the single basic shot. Declining
-       * fires once and the Ballista does nothing more that round.
-       */
-      expertShots?: number;
     }
   | {
       /** Catapult: optionally pay the cost to damage two adjacent targets. */
@@ -2619,6 +2652,12 @@ export type CombatState = {
      */
     pending: { playerId: PlayerId; cardId: CardId; granted?: boolean }[];
     firstTargetUnitId?: UnitId | null;
+    /**
+     * Artillery expert: while a Ballista tie-break choice is open for the
+     * same-target volley, how many shots the chosen target takes (cleared once
+     * the volley resolves). Absent/1 for an ordinary single Ballista shot.
+     */
+    volleyShots?: number | null;
   } | null;
   outcome: {
     winnerPlayerId: PlayerId;
