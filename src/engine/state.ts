@@ -2300,8 +2300,35 @@ export type ResolutionStackItem = {
      * Only a "+1" grants +1 Defense.
      */
     defendRoll?: number;
+    /**
+     * Attack-window spell instants (Bloodlust, Precision, Bless's bonus,
+     * Curse/Weakness…) whose attack/defense bonus scales with Power. Recorded
+     * so Power played LATER in the same window — the caster keeps priority and
+     * may keep empowering — recomputes their contribution against the new total
+     * Power instead of being frozen at the value they had when first played.
+     */
+    powerScaledAttackInstants?: PowerScaledAttackInstant[];
     playedCardIds: CardId[];
   };
+};
+
+/**
+ * One Power-scaling attack/defense buff played into an attack window, kept so
+ * its applied bonus can be recomputed when more Power lands afterward.
+ */
+export type PowerScaledAttackInstant = {
+  cardId: CardId;
+  stat: "attack" | "defense";
+  /** The card's power→amount table (e.g. Bloodlust { 0:1, 1:2, 2:3 }). */
+  amountByPower: Record<number, number>;
+  /** Fallback amount when no breakpoint matches the current Power. */
+  baseAmount: number;
+  /** Power-independent extra (per-discarded-card bonuses) added on top. */
+  fixedBonus: number;
+  /** Hero-specialty doubling decided once at play time (1 or 2). */
+  doubleFactor: number;
+  /** The bonus currently folded into the stack item (after doubling). */
+  appliedAmount: number;
 };
 
 export type ReactionWindow = {
