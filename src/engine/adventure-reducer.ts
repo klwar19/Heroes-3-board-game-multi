@@ -16,6 +16,7 @@ import {
   classifyHeroStep,
   createSecondaryHero,
   declareAdventureWinner,
+  drawFromNeutralDeck,
   drawGuardArmy,
   effectiveHandLimit,
   getSecondaryHero,
@@ -42,6 +43,7 @@ import {
   materializeTileFields,
   NEUTRAL_DECK_IDS,
   placeNeutralUnits,
+  playerDwellingTiers,
   processPendingVisit,
   queueSkeletonReinforce,
   reinforceArmyUnit,
@@ -59,7 +61,13 @@ import {
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { createSeededRandom } from "./random";
-import { destroyFortification, intactFortificationPositions, makeArrowTowerUnit, SIEGE_ROW_POSITIONS } from "./siege";
+import {
+  destroyFortification,
+  intactFortificationPositions,
+  isArrowTowerUnit,
+  makeArrowTowerUnit,
+  SIEGE_ROW_POSITIONS
+} from "./siege";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { getCombatStartDraws } from "./unit-abilities";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
@@ -1605,6 +1613,26 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
     return;
   }
 
+  // Cyra's Diplomacy (Instant): a hero meeting Neutral Units whose Field
+  // Difficulty equals their level may skip the fight, claim the field and gain
+  // no Experience. Offer the choice while the player holds the card; declining
+  // falls through to the normal Combat Setup.
+  if (hero.level === difficulty && state.players[playerId]?.hand.includes("ability.diplomacy")) {
+    openDiplomacySkipChoice(state, hero, field, difficulty);
+    return;
+  }
+
+  beginNeutralCombatPlacement(state, hero, field, difficulty);
+}
+
+/** Rulebook Combat Setup against guards: the hero places, then guards reveal. */
+function beginNeutralCombatPlacement(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState,
+  difficulty: number
+): void {
+  const playerId = hero.controllerId;
   restoreStartingArmyIfEmpty(state, playerId);
 
   // Rulebook Combat Setup order: the player places up to 5 units first; the
@@ -1635,6 +1663,208 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
     difficulty,
     unitDefIds: []
   });
+}
+
+/** Opens the Diplomacy skip-or-fight pop-up at a matching-level Neutral field. */
+function openDiplomacySkipChoice(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState,
+  difficulty: number
+): void {
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: hero.controllerId,
+    prompt: `Diplomacy: skip the level ${difficulty} Neutral Units and claim this field for no Experience?`,
+    options: [{ label: "Use Diplomacy: skip the fight, claim the field (no XP)" }, { label: "Fight the Neutral Units" }],
+    context: "diplomacy-skip",
+    diplomacySkip: { heroId: hero.id, fieldId: field.spaceId, difficulty },
+    returnPhase: state.phase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = hero.controllerId;
+}
+
+/** Resolves the Diplomacy skip-or-fight choice (CHOOSE_OPTION "diplomacy-skip"). */
+export function resolveDiplomacySkipChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "diplomacy-skip" ||
+    !choice.diplomacySkip ||
+    choice.playerId !== playerId
+  ) {
+    throw new Error("There is no Diplomacy decision to make.");
+  }
+  const skip = choice.diplomacySkip;
+
+  const hero = state.heroes[skip.heroId];
+  const field = state.adventure?.fields[skip.fieldId];
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+
+  if (!hero || !field) {
+    return;
+  }
+
+  // Option 1 ("Fight") just proceeds to the normal guard Combat Setup, keeping
+  // the Diplomacy card in hand.
+  if (optionIndex !== 0) {
+    beginNeutralCombatPlacement(state, hero, field, skip.difficulty);
+    return;
+  }
+
+  // Option 0 ("Use Diplomacy"): spend the card, claim the field as a Quick
+  // Combat would (visit it), and award no Experience.
+  const player = state.players[playerId];
+  if (player) {
+    const index = player.hand.indexOf("ability.diplomacy");
+    if (index !== -1) {
+      player.hand.splice(index, 1);
+      player.discard.push("ability.diplomacy");
+    }
+  }
+
+  appendEvent(state, {
+    type: "DIPLOMACY_COMBAT_SKIPPED",
+    playerId,
+    heroId: hero.id,
+    fieldId: field.spaceId,
+    difficulty: skip.difficulty
+  });
+
+  field.everFlagged = field.everFlagged || false;
+  beginFieldVisit(state, hero.id, field.spaceId, false);
+}
+
+/** Human-readable price of a recruit cost ("3 gold + 1 valuables" / "free"). */
+function recruitCostLabel(cost: ResourceCost): string {
+  return (
+    Object.entries(cost)
+      .filter(([, amount]) => (amount ?? 0) > 0)
+      .map(([resource, amount]) => `${amount} ${resource}`)
+      .join(" + ") || "free"
+  );
+}
+
+/**
+ * Cyra's Diplomacy (Map): draw one Neutral Unit card per Dwelling the player
+ * controls, then open a recruit choice over the affordable draws. Called from
+ * playCard once the Diplomacy card has been discarded. The drawn cards leave
+ * their tier decks now; the recruited one joins the army and the rest return to
+ * their tier's discard pile when the choice resolves.
+ */
+export function openDiplomacyRecruit(state: GameState, playerId: PlayerId): void {
+  const draws: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[] = [];
+  for (const tier of playerDwellingTiers(state, playerId)) {
+    const unitDefId = drawFromNeutralDeck(state, tier);
+    if (unitDefId) {
+      draws.push({ unitDefId, tier });
+    }
+  }
+
+  if (draws.length === 0) {
+    return;
+  }
+
+  appendEvent(state, {
+    type: "DIPLOMACY_NEUTRALS_DRAWN",
+    playerId,
+    unitDefIds: draws.map((draw) => draw.unitDefId)
+  });
+
+  const recruitable = draws.filter((draw) => {
+    const neutral = coreUnitDefinitions[draw.unitDefId]?.neutral;
+    return Boolean(neutral) && hasRecruitResources(state, playerId, neutral?.cost ?? {});
+  });
+
+  // Nothing affordable to recruit: the drawn cards simply return to their decks.
+  if (recruitable.length === 0) {
+    for (const draw of draws) {
+      state.decks[NEUTRAL_DECK_IDS[draw.tier]]?.discardPile.push(draw.unitDefId);
+    }
+    return;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Diplomacy: recruit one of the drawn Neutral Units — ${draws
+      .map((draw) => coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId)
+      .join(", ")}?`,
+    options: [
+      ...recruitable.map((draw) => {
+        const def = coreUnitDefinitions[draw.unitDefId];
+        return {
+          label: `Recruit ${def?.name ?? draw.unitDefId} (${recruitCostLabel(def?.neutral?.cost ?? {})})`
+        };
+      }),
+      { label: "Recruit none" }
+    ],
+    context: "diplomacy-recruit",
+    diplomacyRecruit: { draws, recruitable },
+    returnPhase: state.phase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Resolves the Diplomacy recruit choice (CHOOSE_OPTION "diplomacy-recruit"). */
+export function resolveDiplomacyRecruitChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "diplomacy-recruit" ||
+    !choice.diplomacyRecruit ||
+    choice.playerId !== playerId
+  ) {
+    throw new Error("There is no Diplomacy recruit choice to resolve.");
+  }
+  const recruit = choice.diplomacyRecruit;
+
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+
+  const player = state.players[playerId];
+  const pick = optionIndex < recruit.recruitable.length ? recruit.recruitable[optionIndex] : undefined;
+  let recruitedDefId: string | undefined;
+  let recruitedTier: string | undefined;
+
+  if (pick && player) {
+    const def = coreUnitDefinitions[pick.unitDefId];
+    const cost = def?.neutral?.cost ?? {};
+    if (def?.neutral && hasRecruitResources(state, playerId, cost)) {
+      spendRecruitResources(state, playerId, cost, `recruited ${def.name} with Diplomacy`);
+      addArmyUnit(player, pick.unitDefId, "neutral");
+      appendEvent(state, {
+        type: "UNIT_RECRUITED",
+        playerId,
+        unitDefId: pick.unitDefId,
+        kind: "recruit",
+        cost
+      });
+      recruitedDefId = pick.unitDefId;
+      recruitedTier = pick.tier;
+    }
+  }
+
+  // Every drawn card except the one recruited returns to its tier's discard
+  // pile (so the deck can reshuffle it later). Match on tier too, and consume
+  // only a single copy, so duplicate draws are returned correctly.
+  let consumedRecruit = false;
+  for (const draw of recruit.draws) {
+    if (!consumedRecruit && draw.unitDefId === recruitedDefId && draw.tier === recruitedTier) {
+      consumedRecruit = true;
+      continue;
+    }
+    state.decks[NEUTRAL_DECK_IDS[draw.tier]]?.discardPile.push(draw.unitDefId);
+  }
 }
 
 /**
@@ -1689,20 +1919,13 @@ function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void {
     unitDefIds: draws.map((draw) => draw.unitDefId)
   });
 
+  // The guards are on the board: a Tactics-holding attacker may now rearrange
+  // their line before round 1 (finalizeCombatStart) begins.
   combat.setup = null;
-  state.phase = "combat";
-  state.priorityPlayerId = null;
-
-  appendEvent(state, {
-    type: "COMBAT_ROUND_STARTED",
-    round: combat.round,
-    activeUnitId: null
-  });
-
-  // In-play permanents join the fight and round-start war machines fire.
-  applyPermanentCombatEffects(state);
-  applyCombatStartUnitAbilities(state);
-  startWarMachineRound(state);
+  if (openTacticsSetupWindows(state)) {
+    return;
+  }
+  finalizeCombatStart(state);
 }
 
 /**
@@ -2038,7 +2261,28 @@ function beginPlayerCombatRounds(state: GameState): void {
     return;
   }
 
+  // Placement is locked in. Tactics holders rearrange their lines first; round 1
+  // begins (finalizeCombatStart) only once every Tactics window has resolved.
   combat.setup = null;
+  if (openTacticsSetupWindows(state)) {
+    return;
+  }
+  finalizeCombatStart(state);
+}
+
+/**
+ * Common tail of combat setup (player and neutral alike): round 1 opens,
+ * in-play permanents join and round-start war machines fire. Runs after the
+ * start-of-combat Tactics windows, if any, have all resolved.
+ */
+function finalizeCombatStart(state: GameState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  combat.setup = null;
+  combat.pendingTacticsSwaps = null;
   state.phase = "combat";
   state.priorityPlayerId = null;
 
@@ -2052,6 +2296,177 @@ function beginPlayerCombatRounds(state: GameState): void {
   applyPermanentCombatEffects(state);
   applyCombatStartUnitAbilities(state);
   startWarMachineRound(state);
+}
+
+/** A player's living, swappable (non-Arrow-Tower) units in this combat. */
+function swappableTacticsUnits(combat: CombatState, playerId: PlayerId) {
+  return Object.values(combat.units).filter(
+    (unit) => unit.controllerId === playerId && unit.damage < unit.maxHealth && !isArrowTowerUnit(unit)
+  );
+}
+
+/**
+ * Tactics start-of-combat eligibility: the player must hold a Tactics card and
+ * field at least two units to switch. (A pure garrison defender — no hero in
+ * the combat — is filtered out by the caller, since Tactics is a hero ability.)
+ */
+function eligibleForTacticsSetup(state: GameState, combat: CombatState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  if (!player || !player.hand.includes("ability.tactics")) {
+    return false;
+  }
+  return swappableTacticsUnits(combat, playerId).length >= 2;
+}
+
+/**
+ * Opens the start-of-combat Tactics windows once units are placed/revealed:
+ * the attacker first, then a PvP defender whose hero stands in the combat. Each
+ * eligible holder takes priority in turn to switch any two of their units (or
+ * decline). Returns true when a window is open (round 1 is deferred).
+ */
+function openTacticsSetupWindows(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+
+  const eligible: PlayerId[] = [];
+  if (eligibleForTacticsSetup(state, combat, combat.attackerPlayerId)) {
+    eligible.push(combat.attackerPlayerId);
+  }
+  if (
+    combat.context.kind === "player" &&
+    combat.context.defenderHeroId != null &&
+    eligibleForTacticsSetup(state, combat, combat.defenderPlayerId)
+  ) {
+    eligible.push(combat.defenderPlayerId);
+  }
+
+  if (eligible.length === 0) {
+    return false;
+  }
+
+  combat.pendingTacticsSwaps = eligible;
+  state.phase = "combat-setup";
+  state.priorityPlayerId = eligible[0];
+  return true;
+}
+
+/** Advances past the head of the Tactics setup queue, finalizing when empty. */
+function advanceTacticsSetupQueue(state: GameState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+  const remaining = (combat.pendingTacticsSwaps ?? []).slice(1);
+  if (remaining.length > 0) {
+    combat.pendingTacticsSwaps = remaining;
+    state.phase = "combat-setup";
+    state.priorityPlayerId = remaining[0];
+    return;
+  }
+  finalizeCombatStart(state);
+}
+
+/** Removes one Tactics ability card from a player's hand to its discard pile. */
+function spendTacticsCard(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+  const index = player.hand.indexOf("ability.tactics");
+  if (index !== -1) {
+    player.hand.splice(index, 1);
+    player.discard.push("ability.tactics");
+  }
+}
+
+/**
+ * Tactics swap (SWAP_COMBAT_UNITS). Two contexts share one action:
+ *  - the start-of-combat window (the player heads pendingTacticsSwaps): free,
+ *    spends the Tactics card, then advances the queue; and
+ *  - an expert mid-combat swap on the player's turn before their active unit has
+ *    acted: spends the Tactics card and one expert use, combat continues.
+ * Either way it switches the board positions of two of the player's own units.
+ */
+export function swapCombatUnits(state: GameState, action: Extract<GameAction, { type: "SWAP_COMBAT_UNITS" }>): void {
+  const combat = state.combat;
+  if (!combat) {
+    throw new Error("There is no combat in progress.");
+  }
+  if (action.unitIdA === action.unitIdB) {
+    throw new Error("Tactics switches two different units.");
+  }
+  const unitA = combat.units[action.unitIdA];
+  const unitB = combat.units[action.unitIdB];
+  if (!unitA || !unitB) {
+    throw new Error("Both units must be on the battlefield.");
+  }
+  for (const unit of [unitA, unitB]) {
+    if (unit.controllerId !== action.playerId) {
+      throw new Error("Tactics only switches your own units.");
+    }
+    if (unit.damage >= unit.maxHealth || isArrowTowerUnit(unit)) {
+      throw new Error("That unit cannot be repositioned.");
+    }
+  }
+
+  const player = state.players[action.playerId];
+  if (!player || !player.hand.includes("ability.tactics")) {
+    throw new Error("Tactics is not available to switch units.");
+  }
+
+  const isSetupWindow = combat.pendingTacticsSwaps?.[0] === action.playerId;
+  let mode: "basic" | "expert";
+
+  if (isSetupWindow) {
+    mode = "basic";
+  } else if (state.phase === "combat") {
+    // Expert: your turn, before your active unit has moved or attacked.
+    const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : null;
+    if (!active || active.controllerId !== action.playerId) {
+      throw new Error("Tactics can only be used during combat on your own turn.");
+    }
+    if (active.movedThisActivation || active.attackedThisActivation) {
+      throw new Error("Tactics must be used before your active unit moves or attacks.");
+    }
+    if (expertUsesAvailable(player) <= 0) {
+      throw new Error("No expert uses are available this combat round.");
+    }
+    mode = "expert";
+  } else {
+    throw new Error("There is no Tactics swap available right now.");
+  }
+
+  const positionA = unitA.position;
+  unitA.position = unitB.position;
+  unitB.position = positionA;
+
+  spendTacticsCard(state, action.playerId);
+  if (mode === "expert") {
+    player.combatStats.expertUsesSpentThisRound += 1;
+  }
+
+  appendEvent(state, {
+    type: "COMBAT_UNITS_SWAPPED",
+    playerId: action.playerId,
+    unitIdA: action.unitIdA,
+    unitIdB: action.unitIdB,
+    mode
+  });
+
+  if (isSetupWindow) {
+    advanceTacticsSetupQueue(state);
+  }
+}
+
+/** Declines a start-of-combat Tactics window (FINISH_TACTICS): keep the card. */
+export function finishTactics(state: GameState, action: Extract<GameAction, { type: "FINISH_TACTICS" }>): void {
+  const combat = state.combat;
+  if (!combat || combat.pendingTacticsSwaps?.[0] !== action.playerId) {
+    throw new Error("There is no Tactics swap window to decline.");
+  }
+  advanceTacticsSetupQueue(state);
 }
 
 /**
@@ -3326,6 +3741,16 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "cover-of-darkness") {
     resolveCoverOfDarknessChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "diplomacy-skip") {
+    resolveDiplomacySkipChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "diplomacy-recruit") {
+    resolveDiplomacyRecruitChoice(state, action.playerId, action.optionIndex);
     return;
   }
 

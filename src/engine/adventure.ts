@@ -2746,6 +2746,31 @@ export function unlockedRecruitTiers(state: GameState, playerId: PlayerId): Set<
   return tiers;
 }
 
+/**
+ * Cyra's Diplomacy: the tier of every Dwelling the player controls, *with*
+ * multiplicity across all of their towns (a player holding two towns each with
+ * a bronze Dwelling draws two bronze cards). A Dwelling is a building whose
+ * effect unlocks a recruit tier — bronze, silver or gold in the core set.
+ */
+export function playerDwellingTiers(
+  state: GameState,
+  playerId: PlayerId
+): ("bronze" | "silver" | "gold" | "azure")[] {
+  const tiers: ("bronze" | "silver" | "gold" | "azure")[] = [];
+  for (const town of Object.values(state.towns)) {
+    if (town.controllerId !== playerId) {
+      continue;
+    }
+    for (const buildingId of town.buildings) {
+      const effect = coreBuildingDefinitions[buildingId]?.effect;
+      if (effect?.type === "UNLOCK_RECRUIT_TIER") {
+        tiers.push(effect.tier);
+      }
+    }
+  }
+  return tiers;
+}
+
 let armyCounter = 0;
 
 export function addArmyUnit(
