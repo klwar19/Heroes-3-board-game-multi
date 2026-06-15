@@ -22,10 +22,10 @@ const SCANLESS_ARTIFACTS = new Set([
   // Eversmoking Ring of Sulfur has no card scan on the wiki either (the wiki
   // itself shows the deck back for it), so it falls back to the deck back here.
   "eversmoking_ring_of_sulfur",
-  // Newly added Cove/sea artifacts whose card scans are not yet committed to
-  // public/assets — they fall back to the deck back until the scan lands.
-  "crown_of_the_five_seas",
-  "ring_of_the_wayfarer"
+  // Newly added Cove/sea artifact whose card scan is not yet committed to
+  // public/assets — it falls back to the deck back until the scan lands.
+  // (Ring of the Wayfarer's scan is committed, so it is not listed here.)
+  "crown_of_the_five_seas"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
