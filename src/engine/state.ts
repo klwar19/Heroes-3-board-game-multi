@@ -160,14 +160,12 @@ export type ActiveEffectModifier =
       consumeEffectOnUse: boolean;
     }
   | {
+      // The First Aid Tent always heals exactly this much once per combat round.
+      // The expert "heal 3×" is NOT a property of the Tent: it is the First Aid
+      // ability card's expert side (FIRST_AID_TENT_VOLLEY), gated on holding that
+      // card — mirroring how the Ballista's 3× volley lives on Artillery.
       type: "HEAL_ONCE_PER_COMBAT_ROUND";
       amount: number;
-      /**
-       * First Aid Tent expert: instead of the single basic heal, spend 1
-       * expert use to heal this many times in the round. Activating the expert
-       * and using the basic heal are mutually exclusive within a round.
-       */
-      expertUsesPerRound?: number;
     }
   | {
       type: "UNIT_CANNOT_MOVE";
@@ -513,6 +511,18 @@ export type EffectDefinition =
       shuffleRestIntoDeck?: boolean;
     }
   | {
+      /**
+       * Scholar (expert): remove up to `count` Statistic cards from hand or
+       * discard, gaining each one's Empowered version on top of the discard pile
+       * (distinct Empowered types only — "up to N different"). Opens an
+       * interactive swap via the SCHOLAR_EMPOWER_PICK / SCHOLAR_EMPOWER_GIVE
+       * visit steps (queued as a "visit-steps" reward). The Scholar card itself
+       * is removed by the option's cost.removeSelf, matching "Remove the Scholar".
+       */
+      type: "SCHOLAR_EMPOWER_SWAP";
+      count: number;
+    }
+  | {
       /** Card-driven Search (Breastplate of Brimstone, Crown of Dragontooth). */
       type: "CARD_DECK_SEARCH";
       deck: "spells" | "artifacts" | "abilities";
@@ -737,6 +747,19 @@ export type EffectDefinition =
        */
       type: "ARTILLERY_BALLISTA_VOLLEY";
       shots: number;
+    }
+  | {
+      /**
+       * First Aid's expert side: a declarative marker, never played through
+       * PLAY_CARD. When the owner activates their First Aid Tent's heal, they may
+       * play First Aid (spending one expert use, discarding the card) to resolve
+       * that Tent heal against the SAME target `heals` times this round. Wired in
+       * the Tent heal flow (USE_ACTIVE_EFFECT) — reducer.ts + legal-actions.ts —
+       * so the engine reads `heals` from here and the card stays the source of
+       * truth. Without an active First Aid Tent only the card's basic heal runs.
+       */
+      type: "FIRST_AID_TENT_VOLLEY";
+      heals: number;
     }
   | {
       /**
@@ -3209,6 +3232,24 @@ export type VisitStep =
   | { type: "MAGIC_SPRING" }
   | { type: "WITCH_HUT" }
   | { type: "SCHOLAR" }
+  | {
+      /**
+       * Scholar ability card (expert): offer to remove one non-empowered
+       * Statistic card from hand or discard and gain its Empowered version on
+       * top of the discard pile. Recurses up to `remaining` times; `takenTypes`
+       * lists the Empowered statistic types already taken this play, which may
+       * not be taken again ("up to N different Empowered Statistic cards").
+       */
+      type: "SCHOLAR_EMPOWER_PICK";
+      remaining: number;
+      takenTypes: string[];
+    }
+  | {
+      /** Scholar (expert): remove the chosen Statistic card, bank its Empowered form. */
+      type: "SCHOLAR_EMPOWER_GIVE";
+      source: "hand" | "discard";
+      cardId: string;
+    }
   | {
       /**
        * Choose one: trade resources (repeatable within the visit), sell one

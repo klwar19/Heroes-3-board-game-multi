@@ -530,15 +530,19 @@ function endCombatRound(state: GameState, playerId: PlayerId): GameState {
   return applyOk(state, { type: "END_COMBAT_ROUND", playerId });
 }
 
-describe("First Aid Tent expert", () => {
-  function fatInPlay(): GameState {
-    const state = createInitialGameState("fat-expert-seed");
-    state.players.p1.hand = ["war_machine.first_aid_tent"];
+// The First Aid Tent no longer heals 3× on its own: the same-target volley is
+// the First Aid ability card's expert side. Full coverage (definition, the 3×
+// volley, card consumption, no-crown gate) lives in first-aid-ability.test.ts;
+// here we just guard that the Tent alone never triples and never offers the
+// expert without the card.
+describe("First Aid Tent without the First Aid card", () => {
+  function tentOnly(crowns = 2): GameState {
+    const state = createInitialGameState("fat-tent-only-seed");
+    state.players.p1.hand = ["war_machine.first_aid_tent"]; // no ability.first_aid
     state.players.p2.hand = [];
-    // A tanky wounded friendly so it stays wounded after several heals.
+    state.players.p1.limits.expertUses = crowns;
     state.combat!.units.unit_p1_crusaders.maxHealth = 6;
     state.combat!.units.unit_p1_crusaders.damage = 4;
-    // griffins is the active p1 unit — play the Tent as a permanent.
     return applyOk(state, {
       type: "PLAY_CARD",
       playerId: "p1",
@@ -553,64 +557,40 @@ describe("First Aid Tent expert", () => {
     return effect!.id;
   }
 
-  it("heals 3 times for a single expert use, then offers no more heals that round", () => {
-    let state = fatInPlay();
-    const effectId = healEffectId(state);
-    const heal = (mode?: "expert") =>
-      applyOk(state, {
-        type: "USE_ACTIVE_EFFECT",
-        playerId: "p1",
-        effectId,
-        target: { type: "unit", unitId: "unit_p1_crusaders" },
-        ...(mode ? { mode } : {})
-      });
-
-    state = heal("expert"); // activate expert: spend 1 crown, heal 1
-    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
-    expect(state.combat!.units.unit_p1_crusaders.damage).toBe(3);
-
-    state = heal(); // 2nd heal — no extra crown
-    state = heal(); // 3rd heal
-    expect(state.combat!.units.unit_p1_crusaders.damage).toBe(1);
-    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
-
-    // The unit is still wounded, but the 3 expert heals are spent for the round.
-    const moreHeals = getLegalActions(state, "p1").filter((legal) => legal.action.type === "USE_ACTIVE_EFFECT");
-    expect(moreHeals).toHaveLength(0);
+  it("offers only the basic heal (no expert volley) even with crowns free", () => {
+    const state = tentOnly(2);
+    const offers = getLegalActions(state, "p1").filter((legal) => legal.action.type === "USE_ACTIVE_EFFECT");
+    expect(offers.length).toBeGreaterThan(0); // the basic heal is available
+    const expertOffers = offers.filter(
+      (legal) => legal.action.type === "USE_ACTIVE_EFFECT" && legal.action.mode === "expert"
+    );
+    expect(expertOffers).toHaveLength(0);
   });
 
-  it("blocks the expert once the basic heal was used (and vice versa)", () => {
-    let state = fatInPlay();
+  it("heals exactly once per round (the basic Tent), never 3×, and spends no crown", () => {
+    let state = tentOnly(2);
     const effectId = healEffectId(state);
 
-    // A basic heal first: the expert can no longer be activated this round.
-    state = applyOk(state, {
-      type: "USE_ACTIVE_EFFECT",
-      playerId: "p1",
-      effectId,
-      target: { type: "unit", unitId: "unit_p1_crusaders" }
-    });
-    const offers = getLegalActions(state, "p1").filter((legal) => legal.action.type === "USE_ACTIVE_EFFECT");
-    expect(offers).toHaveLength(0); // basic used up the round; no expert either
-
-    const expertResult = applyAction(state, {
+    // The explicit expert action is rejected without the First Aid card.
+    const rejected = applyAction(state, {
       type: "USE_ACTIVE_EFFECT",
       playerId: "p1",
       effectId,
       target: { type: "unit", unitId: "unit_p1_crusaders" },
       mode: "expert"
     });
-    expect(expertResult.errors.length).toBeGreaterThan(0);
-  });
+    expect(rejected.errors.length).toBeGreaterThan(0);
 
-  it("cannot use the expert with no expert uses left", () => {
-    const state = fatInPlay();
-    state.players.p1.limits.expertUses = 0;
-    healEffectId(state); // the heal effect is present; only the expert is gated
-    const offered = getLegalActions(state, "p1").filter(
-      (legal) => legal.action.type === "USE_ACTIVE_EFFECT" && legal.action.mode === "expert"
-    );
-    expect(offered).toHaveLength(0);
+    state = applyOk(state, {
+      type: "USE_ACTIVE_EFFECT",
+      playerId: "p1",
+      effectId,
+      target: { type: "unit", unitId: "unit_p1_crusaders" }
+    });
+    expect(state.combat!.units.unit_p1_crusaders.damage).toBe(3); // healed exactly 1
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+    const after = getLegalActions(state, "p1").filter((legal) => legal.action.type === "USE_ACTIVE_EFFECT");
+    expect(after).toHaveLength(0); // once per round, no triple
   });
 });
 

@@ -81,10 +81,13 @@ import {
   buyWarMachine,
   countBallistas,
   discardPermanentVoluntarily,
+  firstAidVolleyHeals,
   getPermanentSchoolBonus,
   isLowestInitiativeEnemy,
+  playerCanUseFirstAidVolley,
   putPermanentIntoPlay,
   resolveWarMachineTarget,
+  spendFirstAidExpert,
   startWarMachineRound
 } from "./permanents";
 import { createSeededRandom } from "./random";
@@ -6364,6 +6367,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "ARTILLERY_BALLISTA_VOLLEY") {
     throw new Error("Artillery's expert side resolves when your Ballista fires, not from hand.");
   }
+  // First Aid's expert side is likewise not played from hand: it is offered when
+  // this player activates their First Aid Tent's heal (see permanents.ts).
+  if (effect.type === "FIRST_AID_TENT_VOLLEY") {
+    throw new Error("First Aid's expert side resolves when you use your First Aid Tent, not from hand.");
+  }
 
   const option = getChosenOption(card, action.optionIndex);
   const mode = action.mode ?? "basic";
@@ -6678,6 +6686,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       filter: effect.filter,
       fromTop: effect.fromTop,
       shuffleRestIntoDeck: effect.shuffleRestIntoDeck
+    });
+  }
+
+  // Scholar (expert): open the interactive Empowered-Statistic swap (up to
+  // `count` removals). The Scholar card was already removed by cost.removeSelf.
+  if (effect.type === "SCHOLAR_EMPOWER_SWAP") {
+    state.adventure?.rewardQueue.unshift({
+      playerId: action.playerId,
+      kind: "visit-steps",
+      steps: [{ type: "SCHOLAR_EMPOWER_PICK", remaining: effect.count, takenTypes: [] }]
     });
   }
 
@@ -7105,22 +7123,21 @@ function applyActiveEffectAction(
     throw new Error("That active effect target is not legal.");
   }
 
-  // First Aid Tent: a single basic heal per round, OR an expert activation
-  // (spend 1 expert use) that heals several times this round. Basic and expert
-  // are mutually exclusive within a round.
-  const player = state.players[action.playerId];
-  const expertMax = healModifier.expertUsesPerRound ?? 0;
+  // First Aid Tent: a single basic heal per round, OR an expert activation that
+  // heals several times this round. The expert is the First Aid ability card's
+  // expert side — the player must hold that card with a free expert use; playing
+  // it spends the crown and discards the card. Basic and expert are mutually
+  // exclusive within a round. The volley size (`expertMax`) is read from the
+  // First Aid card, so it stays the source of truth (mirrors Artillery/Ballista).
+  const expertMax = firstAidVolleyHeals();
   const usage = effect.healRound?.round === combat.round ? effect.healRound : undefined;
   const mode = action.mode ?? "basic";
 
   if (mode === "expert") {
-    if (usage || expertMax <= 1) {
-      throw new Error("The First Aid Tent expert cannot be used this combat round.");
+    if (usage || !playerCanUseFirstAidVolley(state, action.playerId)) {
+      throw new Error("First Aid's expert side needs the First Aid card and a free expert use this round.");
     }
-    if (!player || !hasExpertUseAvailable(state, action.playerId)) {
-      throw new Error("No expert uses are available this combat round.");
-    }
-    player.combatStats.expertUsesSpentThisRound += 1;
+    spendFirstAidExpert(state, action.playerId);
     effect.healRound = { round: combat.round, count: 1, expert: true };
   } else if (!usage) {
     effect.healRound = { round: combat.round, count: 1, expert: false };

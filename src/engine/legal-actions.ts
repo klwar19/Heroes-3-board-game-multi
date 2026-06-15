@@ -48,7 +48,14 @@ import {
   isAdjacent,
   isBattlefieldPosition
 } from "./battlefield";
-import { countBallistas, getPermanentCardIds, getPermanentSchoolBonus, warMachinesForSale } from "./permanents";
+import {
+  countBallistas,
+  firstAidVolleyHeals,
+  getPermanentCardIds,
+  getPermanentSchoolBonus,
+  playerCanUseFirstAidVolley,
+  warMachinesForSale
+} from "./permanents";
 import { getDemolishAbility, isArrowTowerUnit, siegeBlockedPositions } from "./siege";
 import { canPlaceTransformOn } from "./unit-transforms";
 import { SHARED_DECK_IDS } from "./decks";
@@ -1148,6 +1155,21 @@ function isOptionEffectPlayable(
         return true;
       });
     }
+    case "SCHOLAR_EMPOWER_SWAP": {
+      // Scholar's expert swap: map-only, and only with a non-empowered Statistic
+      // card in hand or discard to trade in.
+      if (context !== "map" || !state.adventure) {
+        return false;
+      }
+      const player = state.players[playerId];
+      if (!player) {
+        return false;
+      }
+      return [...player.hand, ...player.discard].some((cardId) => {
+        const card = cardLibrary[cardId];
+        return card?.kind === "statistic" && Boolean(card.statisticType) && !cardId.endsWith(".empowered");
+      });
+    }
     case "CARD_DECK_SEARCH":
     case "EAGLE_EYE_DIG":
     case "TELEPORT_HERO_TO_TOWN":
@@ -1570,7 +1592,6 @@ function addActiveEffectActions(actions: LegalAction[], state: GameState, player
     return;
   }
 
-  const player = state.players[playerId];
   for (const effect of state.activeEffects) {
     if (effect.controllerId !== playerId) {
       continue;
@@ -1581,13 +1602,14 @@ function addActiveEffectActions(actions: LegalAction[], state: GameState, player
       continue;
     }
 
-    // First Aid Tent: one basic heal per round, OR — if the card has an expert
-    // and an expert use is free — spend it to heal several times this round.
+    // First Aid Tent: one basic heal per round, OR — if the player holds the
+    // First Aid ability card with a free expert use — spend it (discarding the
+    // card) to heal the same target several times this round. The volley size is
+    // read from that card (firstAidVolleyHeals), mirroring Artillery/Ballista.
     const usage = effect.healRound?.round === combat.round ? effect.healRound : undefined;
-    const expertMax = healModifier.expertUsesPerRound ?? 0;
-    const crowns = player ? expertUsesAvailable(player) : 0;
+    const expertMax = firstAidVolleyHeals();
     const canBasic = !usage;
-    const canExpertActivate = !usage && expertMax > 1 && crowns > 0;
+    const canExpertActivate = !usage && playerCanUseFirstAidVolley(state, playerId);
     const canExpertContinue = Boolean(usage?.expert && usage.count < expertMax);
     if (!canBasic && !canExpertActivate && !canExpertContinue) {
       continue;
