@@ -97,12 +97,17 @@ export type { ScenarioDefinition } from "@/data/map/scenarios";
 export {
   ABILITY_SEARCH_LEVELS,
   ASTROLOGERS_DECK_ID,
+  controlsTownOrSettlement,
+  ELIMINATION_GRACE_TURNS,
+  eliminatePlayer,
   EXPERT_USES_BY_LEVEL,
   HAND_LIMIT_BY_LEVEL,
   MAX_EXPERIENCE,
   NEUTRAL_ARMY_TABLE,
   NEUTRAL_DECK_IDS,
+  refreshEliminationClock,
   RESOURCE_DIE_FACES,
+  RESOURCE_GAIN_LEVEL_AMOUNTS,
   SPECIALTY_LEVELS,
   TILE_BACK_LABELS,
   TRADE_RATES,
@@ -114,6 +119,7 @@ export {
   gainExperience,
   getActiveAstrologersCard,
   getAdjacentSpaceIds,
+  getHeroMovementCapabilities,
   getMainHero,
   getReachableHeroPaths,
   getTileFootprintSpaceIds,
@@ -121,10 +127,12 @@ export {
   getUnitSide,
   heroMovementMax,
   isFieldGuarded,
+  isSeaField,
   levelOfExperience,
+  seaStepHalts,
   seaTileBand
 } from "./adventure";
-export type { HeroPathTarget, HeroStepKind } from "./adventure";
+export type { HeroMovementCapabilities, HeroPathTarget, HeroStepKind } from "./adventure";
 export {
   ATTACKER_BACKLINE,
   ATTACKER_FRONTLINE,

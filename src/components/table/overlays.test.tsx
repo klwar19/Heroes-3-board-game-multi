@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DiceOverlay, NeutralStepOverlay, type DiceCue } from "./overlays";
+import { DICE_PRESENT_MS, DiceOverlay, NeutralStepOverlay, type DiceCue } from "./overlays";
 import type { GameState, LegalAction } from "@/engine";
 
 afterEach(() => {
@@ -39,9 +39,9 @@ describe("DiceOverlay — tabletop pacing & neutral pre-attack pause", () => {
     expect(screen.getByRole("status", { name: /attack roll/i })).toBeTruthy();
 
     // It holds for the full roll-then-read window before dismissing itself.
-    act(() => vi.advanceTimersByTime(3000));
+    act(() => vi.advanceTimersByTime(DICE_PRESENT_MS - 100));
     expect(onDone).not.toHaveBeenCalled();
-    act(() => vi.advanceTimersByTime(600));
+    act(() => vi.advanceTimersByTime(200));
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
@@ -49,7 +49,8 @@ describe("DiceOverlay — tabletop pacing & neutral pre-attack pause", () => {
     vi.useFakeTimers();
     const onDone = vi.fn();
     // A neutral guard slid into range first: hold ~2.6s before the die appears.
-    render(<DiceOverlay cue={diceCue({ preDelayMs: 2640 })} onDone={onDone} />);
+    const preDelayMs = 2640;
+    render(<DiceOverlay cue={diceCue({ preDelayMs })} onDone={onDone} />);
 
     // Nothing renders while the guard's move is read on the board below.
     expect(screen.queryByRole("status", { name: /attack roll/i })).toBeNull();
@@ -62,7 +63,7 @@ describe("DiceOverlay — tabletop pacing & neutral pre-attack pause", () => {
     expect(onDone).not.toHaveBeenCalled();
 
     // The pre-delay shifts the whole roll-then-read window later.
-    act(() => vi.advanceTimersByTime(3500));
+    act(() => vi.advanceTimersByTime(DICE_PRESENT_MS));
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 });

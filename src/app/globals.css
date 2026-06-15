@@ -1703,28 +1703,77 @@ button.battleCell {
   position: relative;
   width: 68px;
   height: 68px;
-  perspective: 360px;
+  /* Deeper perspective so the throw reads with real 3D weight. */
+  perspective: 540px;
   transition: opacity 300ms ease;
 }
 
-/* A soft contact shadow so the settled die reads as resting on the table. */
+/* A burst of light that pops the instant the die settles on its face. */
+.dieScene::before {
+  content: "";
+  position: absolute;
+  inset: -14%;
+  border-radius: 24%;
+  background: radial-gradient(circle at 50% 46%, rgb(236 200 96 / 55%), transparent 62%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.dieScene:has(.dieCube.settled)::before {
+  animation: dieFlash 640ms ease-out;
+}
+
+@keyframes dieFlash {
+  0% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+
+  28% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.42);
+  }
+}
+
+/* A soft contact shadow that thumps in as the die comes to rest on the felt. */
 .dieScene::after {
   content: "";
   position: absolute;
   left: 50%;
-  bottom: -7px;
-  width: 60%;
-  height: 12px;
-  transform: translateX(-50%);
+  bottom: -8px;
+  width: 64%;
+  height: 13px;
+  transform: translateX(-50%) scale(0.4);
   border-radius: 50%;
-  background: radial-gradient(ellipse at center, rgb(0 0 0 / 45%), transparent 70%);
+  background: radial-gradient(ellipse at center, rgb(0 0 0 / 52%), transparent 70%);
   opacity: 0;
-  transition: opacity 360ms ease 240ms;
   pointer-events: none;
 }
 
 .dieScene:has(.dieCube.settled)::after {
-  opacity: 1;
+  animation: dieShadow 560ms cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+}
+
+@keyframes dieShadow {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.4);
+  }
+
+  44% {
+    opacity: 0.9;
+    transform: translateX(-50%) scale(1.16);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
 }
 
 .dieScene.dimmed {
@@ -1736,57 +1785,66 @@ button.battleCell {
   width: 100%;
   height: 100%;
   transform-style: preserve-3d;
-  /* A weightier landing: settles slower with a small overshoot wobble. */
-  transition: transform 760ms cubic-bezier(0.18, 0.94, 0.24, 1.12);
+  /* The die rolls to its face with a heavy, slightly overshooting wobble. */
+  transition: transform 820ms cubic-bezier(0.16, 0.9, 0.22, 1.18);
 }
 
-/* The cube tumbles AND bounces off the felt, slowing as it loses energy. */
+/* Hurled across the felt: fast multi-axis spin with bounces that lose height as
+   the die sheds energy, plus a touch of sideways drift and a catch-light pulse. */
 .dieCube.tumbling {
-  animation: cubeTumble 640ms cubic-bezier(0.33, 0.16, 0.55, 0.85) infinite;
+  animation: cubeTumble 720ms cubic-bezier(0.45, 0.05, 0.4, 1) infinite;
 }
 
 @keyframes cubeTumble {
   0% {
-    transform: translateY(-44%) rotateX(0deg) rotateY(0deg) rotateZ(0deg);
+    transform: translateY(-60%) translateX(-11%) scale(0.93) rotateX(0deg) rotateY(0deg) rotateZ(-13deg);
   }
 
-  18% {
-    transform: translateY(2%) rotateX(116deg) rotateY(72deg) rotateZ(18deg);
+  16% {
+    transform: translateY(7%) translateX(-5%) scale(1.03) rotateX(134deg) rotateY(88deg) rotateZ(17deg);
   }
 
-  38% {
-    transform: translateY(-30%) rotateX(210deg) rotateY(156deg) rotateZ(-14deg);
+  34% {
+    transform: translateY(-35%) translateX(2%) scale(0.97) rotateX(240deg) rotateY(172deg) rotateZ(-13deg);
   }
 
-  58% {
-    transform: translateY(2%) rotateX(310deg) rotateY(248deg) rotateZ(13deg);
+  54% {
+    transform: translateY(6%) translateX(7%) scale(1.04) rotateX(340deg) rotateY(264deg) rotateZ(13deg);
   }
 
-  78% {
-    transform: translateY(-13%) rotateX(412deg) rotateY(330deg) rotateZ(-8deg);
+  74% {
+    transform: translateY(-17%) translateX(3%) scale(0.99) rotateX(452deg) rotateY(346deg) rotateZ(-7deg);
+  }
+
+  90% {
+    transform: translateY(3%) translateX(1%) scale(1.01) rotateX(522deg) rotateY(404deg) rotateZ(5deg);
   }
 
   100% {
-    transform: translateY(0%) rotateX(540deg) rotateY(430deg) rotateZ(0deg);
+    transform: translateY(0%) translateX(0%) scale(1) rotateX(560deg) rotateY(430deg) rotateZ(0deg);
   }
 }
 
-/* A quick squash-and-settle the moment the die comes to rest. */
+/* The whole die gives as it lands — a squash on impact, then a double bounce. */
 .dieScene:has(.dieCube.settled) {
-  animation: dieLand 620ms cubic-bezier(0.2, 0.9, 0.3, 1.1);
+  animation: dieLand 720ms cubic-bezier(0.2, 0.9, 0.3, 1.12);
 }
 
 @keyframes dieLand {
   0% {
-    transform: translateY(-7%) scale(1.05);
+    transform: translateY(-11%) scale(1.06);
   }
 
-  42% {
-    transform: translateY(4%) scaleX(1.09) scaleY(0.9);
+  28% {
+    transform: translateY(5%) scaleX(1.13) scaleY(0.85);
+  }
+
+  50% {
+    transform: translateY(-5%) scaleX(0.94) scaleY(1.07);
   }
 
   72% {
-    transform: translateY(0) scaleX(0.97) scaleY(1.03);
+    transform: translateY(2%) scaleX(1.04) scaleY(0.97);
   }
 
   100% {
@@ -1795,12 +1853,19 @@ button.battleCell {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dieScene:has(.dieCube.settled) {
+  .dieScene:has(.dieCube.settled),
+  .dieScene:has(.dieCube.settled)::before {
     animation: none;
   }
 
+  .dieScene:has(.dieCube.settled)::after {
+    animation: none;
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+
   .dieCube.tumbling {
-    animation-duration: 900ms;
+    animation-duration: 1000ms;
   }
 
   /* Keep the Market tab visible (bright border, no pulsing) for users who

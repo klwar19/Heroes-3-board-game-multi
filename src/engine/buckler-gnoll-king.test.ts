@@ -131,18 +131,10 @@ describe("Buckler of the Gnoll King", () => {
       optionIndex: 0
     });
 
-    // The −1 attack drawback is a lasting, non-cleansable combat effect bound to
-    // the defending unit, created the moment the card is played.
-    const penalty = buckler.activeEffects.find(
-      (effect) => effect.target?.type === "unit" && effect.target.unitId === "unit_p2_vampires"
-    );
-    expect(penalty).toMatchObject({
-      name: "Buckler of the Gnoll King",
-      scope: "unit",
-      duration: { type: "combat" },
-      removable: false,
-      modifiers: [{ type: "ATTACK_BONUS", amount: -1 }]
-    });
+    // The −1 attack drawback is a lasting Weakness token bound to the defending
+    // unit, placed the moment the card is played (−1 attack for the Combat).
+    const weakness = buckler.combat!.units.unit_p2_vampires.tokens?.find((token) => token.kind === "weakness");
+    expect(weakness).toMatchObject({ kind: "weakness", amount: -1, sourceName: "Buckler of the Gnoll King" });
 
     // The incoming hit resolves with the +2 defense applied: Griffins 3 + 0 die
     // vs Vampires 1 + 2 = 3 → 0 damage (the unit survives).
@@ -170,12 +162,10 @@ describe("Buckler of the Gnoll King", () => {
       optionIndex: 1
     });
 
-    // The plain +1 side leaves no lasting attack debuff behind.
-    expect(
-      buckler.activeEffects.some((effect) =>
-        effect.modifiers.some((modifier) => modifier.type === "ATTACK_BONUS")
-      )
-    ).toBe(false);
+    // The plain +1 side leaves no Weakness token (no attack drawback) behind.
+    expect(buckler.combat!.units.unit_p2_vampires.tokens?.some((token) => token.kind === "weakness") ?? false).toBe(
+      false
+    );
 
     // Only +1 defense reaches the incoming hit: Vampires 1 + 1 = 2.
     const resolved = passAllReactions(buckler);

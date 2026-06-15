@@ -95,7 +95,17 @@ export type ResourceKind = "gold" | "buildingMaterials" | "valuables";
 export type ResourceCost = Partial<Record<ResourceKind, number>>;
 
 export type TargetDefinition =
-  | { type: "enemy-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
+  | {
+      type: "enemy-unit";
+      unitTypes?: UnitType[];
+      damagedOnly?: boolean;
+      /**
+       * Artillery: restrict the legal targets to the enemy unit(s) with the
+       * lowest (effective) initiative. A single slowest enemy is the only legal
+       * target; a tie offers each tied unit so the controller picks which is hit.
+       */
+      lowestInitiativeOnly?: boolean;
+    }
   | { type: "friendly-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
   | { type: "any-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
   /** Summon spells: a chosen empty space on the combat board. */
@@ -148,6 +158,14 @@ export type ActiveEffectModifier =
     }
   | {
       type: "UNIT_CANNOT_MOVE";
+    }
+  | {
+      /**
+       * Shackles of War (option 1): while held, the affected player's Hero can
+       * neither Retreat nor Surrender from the current Combat. Player-scoped,
+       * lasts the Combat.
+       */
+      type: "CANNOT_ESCAPE_COMBAT";
     }
   | {
       /**
@@ -234,8 +252,19 @@ export type ActiveEffectModifier =
       ignoreSpellLimit?: boolean;
     }
   | {
-      /** Angel Wings: walk through fields without resolving them this turn. */
+      /**
+       * Angel Wings / Fly: this turn the player's Heroes may move through
+       * blocked fields (passing over them, never stopping on one). Read by the
+       * adventure pathfinding (canCrossEdge / classifyHeroStep).
+       */
       type: "HERO_MOVE_THROUGH";
+    }
+  | {
+      /**
+       * Water Walk: this turn the player's Heroes may enter, cross and stop on
+       * sea (water-terrain) fields. Read by the adventure pathfinding.
+       */
+      type: "HERO_WATER_WALK";
     }
   | {
       /** Logistics (basic): step to an adjacent empty field at end of turn. */
@@ -299,7 +328,19 @@ export type EffectDefinition =
       removePolarity: "negative" | "any-removable";
     }
   | { type: "CANCEL_SPELL"; maxPower?: number; expertIgnoresMaxPower?: boolean }
-  | { type: "DRAW_CARDS"; amount: number; expertAmount?: number }
+  | {
+      type: "DRAW_CARDS";
+      amount: number;
+      expertAmount?: number;
+      /**
+       * Charm of Mana / Shackles of War: after drawing, the player discards this
+       * many cards from hand through a follow-up choice ("draw 2, then discard
+       * 1"). When `thenDiscardDrawnOnly` is set the choice is limited to the
+       * cards just drawn ("draw 2, keep 1, discard the other" — Shackles).
+       */
+      thenDiscard?: number;
+      thenDiscardDrawnOnly?: boolean;
+    }
   | {
       /**
        * "OR" cards (mostly artifacts): the player chooses exactly one of the
@@ -324,12 +365,13 @@ export type EffectDefinition =
       /** Sword of Hellfire / Shield of the Damned: the unit also takes damage. */
       selfDamage?: number;
       /**
-       * Buckler of the Gnoll King (and Greater Gnoll's Flail's stronger side):
-       * the boosted unit also takes a lasting stat penalty until the end of the
-       * Combat — e.g. "+2 defense, then this unit suffers -1 attack this Combat".
-       * Modeled as a unit-scoped active effect; the attack/defense maths floor
-       * the resulting value at 0 ("minimum 0"). Not cleansable (it is the
-       * artifact's intrinsic cost, not a spell debuff).
+       * The stronger side of the Gnoll artifacts: the boosted unit also takes a
+       * lasting combat token until the end of the Combat, mirroring the bonus on
+       * the other stat (each floored at 0 — "minimum 0"):
+       *  - Buckler of the Gnoll King: "+2 defense, then -1 attack" → a Weakness
+       *    token on the defending unit.
+       *  - Greater Gnoll's Flail: "+2 attack, then -1 defense" → a Corrosion
+       *    token on the attacking unit.
        */
       selfStatPenalty?: { stat: "attack" | "defense"; amount: number };
       /** Bloodlust/Golden Bow: only these unit types may receive the bonus. */
@@ -403,8 +445,21 @@ export type EffectDefinition =
       type: "GAIN_HERO_MOVEMENT";
       amount: number;
       expertAmount?: number;
-      /** Angel Wings: also walk through fields without resolving this turn. */
+      /** Angel Wings / Fly: also move through blocked fields this turn. */
       moveThroughThisTurn?: boolean;
+      /** Water Walk: also cross/stop on sea fields this turn. */
+      waterWalkThisTurn?: boolean;
+    }
+  | {
+      /**
+       * Dimension Door: move the casting player's Hero up to `fields` fields,
+       * ignoring obstacles and the fields in-between, then resolve the
+       * destination normally (a guarded/enemy field starts combat). The Power
+       * paid raises the reach (Power 0/2/4 -> 1/2/3 fields), encoded as the
+       * higher-cost options of the spell's CHOOSE_ONE.
+       */
+      type: "DIMENSION_DOOR";
+      fields: number;
     }
   | {
       /** Helm of Heavenly Enlightenment: an extra expert use this round. */
@@ -536,14 +591,32 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Solmyr's Chain Lightning (I: 1/1/0, VI: 2/1/1): the selected unit takes
-       * `damages[0]`; the remaining values are dealt to the units closest to it
-       * (friend or foe), the caster choosing which closest unit takes which on
-       * ties or when more than one nonzero value is left. A value of 0 means
-       * that closest unit is skipped (its damage routed away from an ally).
+       * Solmyr's Chain Lightning (I: 1/1/0, VI: 2/1/1) and the Chain Lightning
+       * Spell: the selected unit takes `damages[0]`; the remaining values are
+       * dealt to the units closest to it (friend or foe), the caster choosing
+       * which closest unit takes which on ties or when more than one nonzero
+       * value is left. A value of 0 means that closest unit is skipped (its
+       * damage routed away from an ally).
+       *
+       * Hero specialties use the fixed `damages`. The Spell scales its
+       * allocation with the Power paid via `damagesByPower` (0 → 1/1/1,
+       * 2 → 2/1/1, 4 → 3/2/1) — the array at the highest threshold the paid
+       * Power reaches is used.
        */
       type: "CHAIN_LIGHTNING";
-      damages: number[];
+      damages?: number[];
+      damagesByPower?: Record<number, number[]>;
+    }
+  | {
+      /**
+       * Blind Spell: place a Paralysis token on the selected enemy unit, gated
+       * by the Power paid (0 → bronze, 1 → silver, 2 → gold). A paralysed unit
+       * skips its next activation (the token is removed instead) and the token
+       * comes off the moment the unit takes any damage. Casting on a unit above
+       * the unlocked grade does nothing — exactly like Anti-Magic's gate.
+       */
+      type: "PLACE_PARALYSIS";
+      gradeByPower: Record<number, UnitGrade>;
     }
   | {
       /**
@@ -556,6 +629,29 @@ export type EffectDefinition =
       type: "BALLISTA_SPECIALTY";
       grant?: "combat" | "game-round";
       activate?: "one" | "all";
+    }
+  | {
+      /**
+       * Artillery (basic side): deal `amount` damage to an enemy unit with the
+       * lowest (effective) initiative — the same shot a Ballista makes, played
+       * from hand without one. The card constrains its legal targets to the
+       * slowest enemy/enemies (enemy-unit `lowestInitiativeOnly`), so a tie lets
+       * the controller pick which slowest unit is hit. Deals "effect" damage.
+       */
+      type: "DAMAGE_LOWEST_INITIATIVE_ENEMY";
+      amount: number;
+    }
+  | {
+      /**
+       * Artillery (expert side): a declarative marker, never played through
+       * PLAY_CARD. When the owner's Ballista fires at the start of a combat
+       * round, the owner may play Artillery (spending one expert use) to resolve
+       * that Ballista's shot against the SAME target `shots` times. Wired in
+       * permanents.ts (processWarMachineRound / resolveWarMachineOption); the
+       * engine reads `shots` from here so the card stays the source of truth.
+       */
+      type: "ARTILLERY_BALLISTA_VOLLEY";
+      shots: number;
     }
   | {
       /**
@@ -648,6 +744,14 @@ export type EffectDefinition =
        * spending a movement point.
        */
       type: "CONTINUE_NEUTRAL_FREE";
+    }
+  | {
+      /**
+       * Shackles of War (option 1): played at the start of a player-vs-player
+       * Combat, the enemy player's Hero can neither Retreat nor Surrender for
+       * the rest of that Combat (a CANNOT_ESCAPE_COMBAT effect on the enemy).
+       */
+      type: "BLOCK_ENEMY_ESCAPE";
     }
   | {
       /**
@@ -768,15 +872,15 @@ export type TriggerDefinition = {
 /** War machine triggers offered/resolved at the start of every combat round. */
 export type WarMachineRoundStartDefinition =
   | {
-      /** Ballista: automatic damage to the enemy unit with the lowest initiative. */
+      /**
+       * Ballista: automatic `amount` damage to the enemy unit with the lowest
+       * (effective) initiative at the start of each combat round (the owner
+       * breaks a tie). The "fire 3× against the same target" volley is NOT
+       * intrinsic to the Ballista — it is the Artillery ability's expert side
+       * (see ARTILLERY_BALLISTA_VOLLEY and permanents.ts).
+       */
       kind: "damage-lowest-initiative";
       amount: number;
-      /**
-       * Ballista expert: at the round start, the owner may spend 1 expert use
-       * to fire this many shots instead of the single basic shot. Declining
-       * fires once and the Ballista does nothing more that round.
-       */
-      expertShots?: number;
     }
   | {
       /** Catapult: optionally pay the cost to damage two adjacent targets. */
@@ -830,6 +934,12 @@ export type CardOptionDefinition = {
   combatOnly?: boolean;
   /** This option is the card's expert side: playing it spends a crown. */
   expertOnly?: boolean;
+  /**
+   * Mystic Orb of Mana's second option ("Only if your discard pile is empty:
+   * draw 2 cards"): the option is offered only while the player's discard pile
+   * holds no cards.
+   */
+  requiresEmptyDiscard?: boolean;
   effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
 };
 
@@ -1168,6 +1278,16 @@ export type GameAction =
   | { type: "RETREAT_FROM_COMBAT"; playerId: PlayerId }
   | {
       /**
+       * Player-vs-player combats: at the start of the combat (round 1) a
+       * participating hero may Surrender — the combat ends with that player as
+       * the loser. Blocked while the player is under Shackles of War's
+       * "neither Retreat nor Surrender" effect.
+       */
+      type: "SURRENDER_COMBAT";
+      playerId: PlayerId;
+    }
+  | {
+      /**
        * Close the end-of-combat notice: finalizes an adventure combat
        * (experience, unit flips, the field visit) and returns to the map.
        */
@@ -1327,7 +1447,17 @@ export type GameAction =
       type: "START_ADVENTURE";
       playerId: PlayerId;
     }
-  | { type: "END_TURN"; playerId: PlayerId };
+  | { type: "END_TURN"; playerId: PlayerId }
+  | {
+      /**
+       * Concede the game: the player is removed from the turn order and becomes
+       * an observer (rulebook p.11 elimination). Legal only on the player's own
+       * map turn — never while defending in Combat ("you cannot surrender when
+       * defending your Faction Town", rulebook p.46).
+       */
+      type: "GIVE_UP";
+      playerId: PlayerId;
+    };
 
 export type LegalAction = {
   action: GameAction;
@@ -2033,6 +2163,21 @@ export type GameEvent =
       reason: string;
     }
   | {
+      id: string;
+      type: "PLAYER_ELIMINATED";
+      playerId: PlayerId;
+      reason: string;
+      /** True when the player chose to give up rather than being timed out. */
+      gaveUp: boolean;
+    }
+  | {
+      id: string;
+      type: "PLAYER_ELIMINATION_CLOCK";
+      playerId: PlayerId;
+      /** Turns the player has left before elimination, or null when cleared. */
+      turnsLeft: number | null;
+    }
+  | {
       /**
        * Setup roll for the starting player (official rulebook step 22): every
        * player rolls the Attack die, highest result starts; ties reroll among
@@ -2310,6 +2455,20 @@ export type PlayerState = {
   canMulligan?: boolean;
   /** Second negative morale token: the hand is discarded when the turn ends. */
   discardHandAtTurnEnd?: boolean;
+  /**
+   * Removed from the game (gave up, or spent the grace period with no Town or
+   * Settlement). An eliminated player keeps a `players` entry so the table can
+   * still show them as an observer, but they leave `turnOrder` and take no
+   * turns. Rulebook p.11: "Eliminated players are immediately removed."
+   */
+  eliminated?: boolean;
+  /**
+   * Player Elimination clock (rulebook p.11, house rule: 2 of the player's own
+   * turns instead of 3 full Rounds). Set while the player controls no Town and
+   * no Settlement; counts down at the end of each of their turns and reaching 0
+   * eliminates them. `null`/absent means they hold a base and are safe.
+   */
+  eliminationCountdown?: number | null;
   /** Nomads (army map ability): the end-of-turn adjacent step was offered this turn. */
   nomadStepDoneThisTurn?: boolean;
   /** Rogues (army map ability): the once-per-turn deck peek was used this turn. */
@@ -2639,6 +2798,12 @@ export type CombatState = {
      */
     pending: { playerId: PlayerId; cardId: CardId; granted?: boolean }[];
     firstTargetUnitId?: UnitId | null;
+    /**
+     * Artillery expert: while a Ballista tie-break choice is open for the
+     * same-target volley, how many shots the chosen target takes (cleared once
+     * the volley resolves). Absent/1 for an ordinary single Ballista shot.
+     */
+    volleyShots?: number | null;
   } | null;
   outcome: {
     winnerPlayerId: PlayerId;
@@ -2816,6 +2981,15 @@ export type VisitStep =
     }
   | { type: "SEARCH_SHARED_DECK"; deckId: DeckId; count: number }
   | { type: "SETTLEMENT_CHOICE" }
+  | {
+      /**
+       * Reward for flagging an enemy Town (rulebook p.76: "Scenarios typically
+       * have special rewards for flagging them"). The conqueror raises one
+       * production track by a single resource-gain level: +5 gold, +2 building
+       * materials, or +1 valuables.
+       */
+      type: "RESOURCE_GAIN_LEVEL";
+    }
   | { type: "MAGIC_SPRING" }
   | { type: "WITCH_HUT" }
   | { type: "SCHOLAR" }
@@ -3237,6 +3411,15 @@ export type HeroState = {
   movementPoints: number;
   movementPointsMax: number;
   spaceId: MapSpaceId | null;
+  /**
+   * Set when the hero takes a step touching a sea field without Water Walk —
+   * wading in (land→sea), wading out (sea→land), or moving within the sea: their
+   * movement is over for the turn (they cannot take another step), even though
+   * their remaining movement points are kept so a neutral combat on a sea field
+   * can still spend them. Cleared when movement refreshes. Water Walk never sets
+   * it (the hero keeps moving across the sea).
+   */
+  movementHaltedThisTurn?: boolean;
 };
 
 export type AttackRollCandidate = {
@@ -3309,6 +3492,7 @@ export type PendingChoice =
         | "war-machine"
         | "deck-pick"
         | "discard-pick"
+        | "hand-discard"
         | "eagle-eye"
         | "own-deck-pick"
         | "garrison"
@@ -3321,7 +3505,8 @@ export type PendingChoice =
         | "combat-knockback"
         | "cover-of-darkness"
         | "diplomacy-skip"
-        | "diplomacy-recruit";
+        | "diplomacy-recruit"
+        | "dimension-door";
       /** combat-reposition: Harpies' optional fly-back after their attack. */
       reposition?: { unitId: UnitId; originPosition: number };
       /**
@@ -3356,6 +3541,14 @@ export type PendingChoice =
       };
       /** eagle-eye: the dug spell waiting on take/discard. */
       eagleEye?: { deckId: DeckId; cardId: CardId };
+      /** hand-discard: candidate hand cards (index-aligned with options) and how many still to discard (Charm of Mana / Shackles of War). */
+      handDiscard?: { cardIds: CardId[]; remaining: number; drawnOnly: boolean };
+      /**
+       * dimension-door: the Hero being teleported and the candidate
+       * destination fields (index-aligned with the options; the final "stay"
+       * option carries no destination).
+       */
+      dimensionDoor?: { heroId: HeroId; destinations: MapSpaceId[] };
       /**
        * diplomacy-skip: the neutral fight Cyra's Diplomacy may skip. Option 0
        * uses the card (claim the field, no XP); option 1 fights normally.
