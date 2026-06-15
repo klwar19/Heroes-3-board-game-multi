@@ -430,13 +430,15 @@ describe("Xyron's Inferno IV/VI", () => {
     state.players.p1.hand = ["specialty.xyron.4", "stat.attack"];
     state.players.p2.hand = [];
     state.combat!.units.unit_p1_crusaders.position = 10;
+    // Xyron's Inferno now selects a SPACE — centre it on the vampires' space.
+    const vampires = state.combat!.units.unit_p2_vampires;
     const blast = applyOk(state, {
       type: "PLAY_CARD",
       playerId: "p1",
       cardId: "specialty.xyron.4",
       mode: "basic",
       optionIndex: 0,
-      target: { type: "unit", unitId: "unit_p2_vampires" },
+      target: { type: "space", position: vampires.position },
       costCardIds: ["stat.attack"]
     });
     expect(blast.combat!.units.unit_p2_vampires.damage).toBe(1);
@@ -455,8 +457,17 @@ describe("Xyron's Inferno IV/VI", () => {
     const state = createInitialGameState("xyron-vi");
     state.players.p1.hand = ["specialty.xyron.6"];
     state.players.p2.hand = [];
-    const play = findPlay(state, "specialty.xyron.6", 0, "unit_p2_vampires");
-    expect(play, "Xyron VI should be playable with no discard").toBeTruthy();
+    // Centre the no-cost blast on the vampires' space (any-space target).
+    const vampires = state.combat!.units.unit_p2_vampires;
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "specialty.xyron.6" &&
+        legal.action.optionIndex === 0 &&
+        legal.action.target?.type === "space" &&
+        legal.action.target.position === vampires.position
+    );
+    expect(play, "Xyron VI should be castable on the vampires' space").toBeTruthy();
     const blast = applyOk(state, play!.action);
     expect(blast.combat!.units.unit_p2_vampires.damage).toBe(1);
     expect(blast.combat!.units.unit_p2_skeletons.damage).toBe(1);

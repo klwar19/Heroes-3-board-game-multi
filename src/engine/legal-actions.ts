@@ -1229,10 +1229,17 @@ function isOptionEffectPlayable(
     case "ADD_UNIT_MAX_HEALTH":
     case "HEAL_DAMAGE":
     case "AREA_DAMAGE_ALL_ADJACENT":
+    case "AREA_DAMAGE_PICK_ADJACENT":
     case "CREATE_FIRE_SHIELD":
     case "GRANT_ELEMENTAL_DAMAGE":
     case "DAMAGE_LOWEST_INITIATIVE_ENEMY":
       return context === "combat" && Boolean(state.combat);
+    case "RESHUFFLE_DISCARD_THEN_DRAW": {
+      // Deemer's Meteor Shower IV deck-cycle: useful whenever there is a card to
+      // shuffle back or draw (map or combat).
+      const player = state.players[playerId];
+      return Boolean(player && player.deck.length + player.discard.length > 0);
+    }
     case "PLACE_PARALYSIS":
       // Ring of the Wayfarer's paralysis side is a combat play; the neutral /
       // opening-round gate lives on its `requiresNeutralCombatStart` flag.
@@ -1324,6 +1331,7 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "ADD_UNIT_MAX_HEALTH" ||
     effect.type === "HEAL_DAMAGE" ||
     effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
+    effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
     effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
     effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" ||
     effect.type === "PLACE_PARALYSIS"
@@ -2273,6 +2281,7 @@ export function getLegalActions(
               ? `${choice.abilityName}: redirect to`
               : choice.kind === "flat-damage" ||
                   choice.kind === "spell-splash" ||
+                  choice.kind === "area-pick" ||
                   choice.kind === "faerie-damage" ||
                   choice.kind === "chain-lightning"
                 ? `${choice.abilityName}: hit`

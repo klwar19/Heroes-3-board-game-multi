@@ -132,8 +132,16 @@ describe("Steel Golem — Specialty damage reduction (Xyron's Inferno)", () => {
     target.abilities = abilities;
     target.maxHealth = 20;
     target.damage = 0;
-    const play = findPlay(state, "specialty.xyron.6", "unit_p2_vampires");
-    expect(play, "Xyron VI should be playable").toBeTruthy();
+    // Xyron's Inferno selects a SPACE (occupied or empty) — centre it on the
+    // vampires' space so they take the blast as the centre unit.
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "specialty.xyron.6" &&
+        legal.action.target?.type === "space" &&
+        legal.action.target.position === target.position
+    );
+    expect(play, "Xyron VI should be castable on the vampires' space").toBeTruthy();
     return applyOk(state, play!.action);
   }
 

@@ -1051,6 +1051,41 @@ export const spellCards: CardLibrary = {
     implementationStatus: "implemented",
     source: spellSource("inferno")
   },
+  // Frost Ring (Expert Water, Activation): select a space (occupied or empty);
+  // the units ADJACENT to it — not the centre — suffer the power-scaled damage,
+  // friend or foe. Up to two are hit; when more than two are adjacent the caster
+  // picks which (the AREA_DAMAGE_PICK_ADJACENT machinery, includeCenter: false).
+  // The "OR Instant: +1 Power" side is the universal power-source discard.
+  "spell.frost_ring": {
+    id: "spell.frost_ring",
+    name: "Frost Ring",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["water"],
+    power: 0,
+    target: { type: "any-space" },
+    tags: [
+      "spell",
+      "expert",
+      "water",
+      "area",
+      "Activation: Select a space. The 2 units adjacent to this space (not the space itself) suffer, friend or foe: Power 0: 1 damage; Power 2: 2 damage; Power 4: 3 damage. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "AREA_DAMAGE_PICK_ADJACENT",
+      amountByPower: { 0: 1, 2: 2, 4: 3 },
+      includeCenter: false,
+      adjacentPicks: 2
+    },
+    assets: {
+      cardImage: "/assets/spells-frost_ring.webp",
+      imageAlt: "Frost Ring card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("frost_ring")
+  },
   "spell.visions": {
     id: "spell.visions",
     name: "Visions",
@@ -1259,7 +1294,8 @@ export const spellDeckLegacy: string[] = [
   // Additional wiki spells.
   "spell.implosion",
   "spell.dispel",
-  "spell.frenzy"
+  "spell.frenzy",
+  "spell.frost_ring"
 ];
 
 /** BINH split decks. */
@@ -1326,5 +1362,7 @@ export const spellDeckBinhExpert: string[] = [
   "spell.inferno",
   // Implosion & Frenzy — Expert (Earth / Fire).
   "spell.implosion",
-  "spell.frenzy"
+  "spell.frenzy",
+  // Frost Ring — Expert Water.
+  "spell.frost_ring"
 ];

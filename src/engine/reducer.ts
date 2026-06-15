@@ -1308,6 +1308,154 @@ function resolveInfernoSpell(
   }
 }
 
+/**
+ * Deals `amount` card-sourced spell damage to a single unit for the area blasts
+ * (Frost Ring, Meteor Shower, Xyron's Inferno). Per-unit spell/Specialty immunity
+ * and damage reduction (reducedCardDamage) apply; the hit is logged and the unit
+ * flipped/removed. The caller checks finishCombatIfNeeded once the blast is done.
+ */
+function dealAreaCardDamage(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition | undefined,
+  unit: CombatUnitState,
+  amount: number
+): void {
+  const dealt = reducedCardDamage(state, unit, card, amount);
+  if (dealt <= 0) {
+    return;
+  }
+  unit.damage += dealt;
+  noteUnitDamagedForTokens(state, unit, dealt);
+  appendEvent(state, {
+    type: "DAMAGE_ASSIGNED",
+    source: card ? { type: "card", cardId: card.id, controllerId: playerId } : { type: "system" },
+    target: { type: "unit", unitId: unit.id },
+    amount: dealt,
+    damageKind: "spell"
+  });
+  markUnitRemovedIfNeeded(state, unit);
+}
+
+/**
+ * Opens the "area-pick" choice: the caster picks one of `candidateUnitIds`,
+ * which takes `amount` damage, then the choice re-opens (picksRemaining - 1)
+ * until the picks are spent or the candidates run out. Used when more units are
+ * adjacent to a blast's centre than the spell/specialty may hit.
+ */
+function openAreaPickChoice(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition | undefined,
+  candidateUnitIds: UnitId[],
+  picksRemaining: number,
+  amount: number
+): void {
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "ABILITY_TARGET_CHOICE",
+    playerId,
+    kind: "area-pick",
+    abilityId: card?.id ?? null,
+    abilityName: card?.name ?? "Area blast",
+    prompt: `${card?.name ?? "Area blast"}: pick ${picksRemaining} more adjacent unit${
+      picksRemaining === 1 ? "" : "s"
+    } to take ${amount} damage (friend or foe).`,
+    sourceUnitId: null,
+    anchorUnitId: null,
+    candidateUnitIds,
+    amount,
+    picksRemaining,
+    sourceCardId: card?.id
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId,
+    sourceEffectIds: [],
+    message: `${card?.name ?? "An area blast"} may scorch ${picksRemaining} of the adjacent units.`
+  });
+}
+
+/**
+ * Hits `picks` of `candidateUnitIds` for `amount` damage each. When that many or
+ * fewer are still alive, all of them are hit at once; otherwise the caster
+ * chooses which via the area-pick choice.
+ */
+function applyAdjacentPicks(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition | undefined,
+  candidateUnitIds: UnitId[],
+  picks: number,
+  amount: number
+): void {
+  const combat = state.combat;
+  if (!combat || picks <= 0) {
+    return;
+  }
+  const alive = candidateUnitIds.filter((id) => isUnitAlive(combat.units[id]));
+  if (alive.length === 0) {
+    return;
+  }
+  if (alive.length <= picks) {
+    for (const id of alive) {
+      dealAreaCardDamage(state, playerId, card, combat.units[id], amount);
+    }
+    return;
+  }
+  openAreaPickChoice(state, playerId, card, alive, picks, amount);
+}
+
+/**
+ * Frost Ring / Meteor Shower I & VI: deal `amount` to up to `adjacentPicks` units
+ * orthogonally adjacent to `centerPosition` (and the unit on the centre space too
+ * when `includeCenter`), friend or foe. A unit that fully ignores this card's
+ * damage is never a pick candidate (its slot is not wasted). When more eligible
+ * units are adjacent than may be hit, the caster picks which.
+ */
+function resolveAreaPickDamage(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition | undefined,
+  centerPosition: number,
+  amount: number,
+  includeCenter: boolean,
+  adjacentPicks: number
+): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  if (includeCenter) {
+    const centre = Object.values(combat.units).find(
+      (unit) => isUnitAlive(unit) && unit.position === centerPosition
+    );
+    if (centre) {
+      dealAreaCardDamage(state, playerId, card, centre, amount);
+    }
+  }
+
+  const neighbours = new Set(getOrthogonalNeighbors(centerPosition));
+  const candidates = Object.values(combat.units).filter(
+    (unit) =>
+      isUnitAlive(unit) && neighbours.has(unit.position) && !unitIgnoresCardDamage(state, unit, card)
+  );
+  applyAdjacentPicks(
+    state,
+    playerId,
+    card,
+    candidates.map((unit) => unit.id),
+    adjacentPicks,
+    amount
+  );
+}
+
 function rollAttackCandidate(combat: CombatState, rollMode: AttackRollMode): AttackRollCandidate {
   const { rolls, selectedRoll } = rollAttackDice(combat, rollMode);
   return {
@@ -4921,6 +5069,32 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       );
     }
 
+    // Frost Ring: select a space; the units adjacent to it (NOT the centre)
+    // suffer the power-scaled damage, friend or foe. Up to two are hit; with more
+    // adjacent units the caster picks which (resolveAreaPickDamage). Targets a
+    // space, so it may be centred on an occupied cell.
+    if (card?.effect.type === "AREA_DAMAGE_PICK_ADJACENT" && state.combat) {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const amount = card.effect.amount ?? getAmountByPower(card.effect.amountByPower ?? {}, 1, power);
+      const center =
+        stackItem.action.target.type === "space"
+          ? stackItem.action.target.position
+          : stackItem.action.target.type === "unit"
+            ? state.combat.units[stackItem.action.target.unitId]?.position
+            : undefined;
+      if (center !== undefined) {
+        resolveAreaPickDamage(
+          state,
+          stackItem.action.playerId,
+          card,
+          center,
+          amount,
+          card.effect.includeCenter,
+          card.effect.adjacentPicks
+        );
+      }
+    }
+
     // Dispel: strip every removable ongoing effect from the selected unit, gated
     // by the Power-reached grade (0 → bronze, 1 → silver, 2 → gold) just like
     // Anti-Magic / Blind. Casting above the unlocked grade does nothing.
@@ -7127,27 +7301,67 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   // Xyron's Inferno: the chosen unit's space and every orthogonally adjacent
   // space — every unit in the blast, friend or foe — takes the flat damage.
-  if (effect.type === "AREA_DAMAGE_ALL_ADJACENT" && target && state.combat) {
-    const center = state.combat.units[target.unitId];
-    if (center) {
+  // Xyron's Inferno: select a space (occupied or empty); every unit on it and on
+  // the orthogonally adjacent spaces — friend or foe — takes the flat damage. The
+  // centre is read from the chosen space (or, for legacy unit targets, that unit's
+  // space). A Dwarf centre that shrugged the Specialty off (negatedByDwarf) is a
+  // no-op, like the other unit-targeted branches.
+  if (effect.type === "AREA_DAMAGE_ALL_ADJACENT" && state.combat && action.target && !negatedByDwarf) {
+    const center =
+      action.target.type === "space"
+        ? action.target.position
+        : action.target.type === "unit"
+          ? state.combat.units[action.target.unitId]?.position
+          : undefined;
+    if (center !== undefined) {
+      const blastArea = new Set<number>([center, ...getOrthogonalNeighbors(center)]);
       const inBlast = Object.values(state.combat.units).filter(
-        (unit) =>
-          isUnitAlive(unit) && (unit.id === center.id || isAdjacent(unit.position, center.position))
+        (unit) => isUnitAlive(unit) && blastArea.has(unit.position)
       );
       for (const unit of inBlast) {
-        const dealt = reducedCardDamage(state, unit, card, effect.amount);
-        unit.damage += dealt;
-        noteUnitDamagedForTokens(state, unit, dealt);
-        appendEvent(state, {
-          type: "DAMAGE_ASSIGNED",
-          source: { type: "card", cardId: card.id, controllerId: action.playerId },
-          target: { type: "unit", unitId: unit.id },
-          amount: dealt,
-          damageKind: "spell"
-        });
-        markUnitRemovedIfNeeded(state, unit);
+        dealAreaCardDamage(state, action.playerId, card, unit, effect.amount);
       }
     }
+  }
+
+  // Deemer's Meteor Shower I (target + 1 adjacent) and VI (target + 2 adjacent):
+  // deal the chosen tier's damage to the target unit and that many units adjacent
+  // to it (friend or foe; the caster picks when more are adjacent). The damage is
+  // fixed by the chosen CHOOSE_ONE option (its power-source discard buys the tier).
+  if (effect.type === "AREA_DAMAGE_PICK_ADJACENT" && state.combat && action.target && !negatedByDwarf) {
+    const amount = effect.amount ?? getAmountByPower(effect.amountByPower ?? {}, 1, card.power ?? 0);
+    const center =
+      action.target.type === "space"
+        ? action.target.position
+        : action.target.type === "unit"
+          ? state.combat.units[action.target.unitId]?.position
+          : undefined;
+    if (center !== undefined) {
+      resolveAreaPickDamage(
+        state,
+        action.playerId,
+        card,
+        center,
+        amount,
+        effect.includeCenter,
+        effect.adjacentPicks
+      );
+    }
+  }
+
+  // Deemer's Meteor Shower IV (one option): shuffle the discard pile back into
+  // the deck, then draw. The "+1 Power" option is the universal power-source
+  // discard, handled by ADD_SPELL_POWER, not here.
+  if (effect.type === "RESHUFFLE_DISCARD_THEN_DRAW") {
+    const player = state.players[action.playerId];
+    if (player && player.discard.length > 0) {
+      player.deck = shuffleCards(
+        [...player.deck, ...player.discard],
+        `${state.seed}#reshuffle-draw#${action.playerId}#${eventSeedNumber(state)}`
+      );
+      player.discard = [];
+    }
+    drawCardsForPlayer(state, action.playerId, effect.drawCards);
   }
 
   // Solmyr's Chain Lightning (I/VI): the selected unit takes the leftmost bolt,
@@ -8283,6 +8497,27 @@ function chooseAbilityTarget(
         markUnitRemovedIfNeeded(state, target);
       }
     }
+    finishCombatIfNeeded(state);
+    return;
+  }
+
+  // Frost Ring / Meteor Shower VI: the picked unit takes the blast's damage,
+  // then the choice re-opens for the next pick (using the same card, amount and
+  // the remaining candidates) until every pick is spent.
+  if (choice.kind === "area-pick") {
+    const blastCard = cards[choice.sourceCardId ?? choice.abilityId ?? ""];
+    const amount = choice.amount ?? 1;
+    const picked = isSkip ? undefined : combat.units[action.targetUnitId];
+    if (picked && isUnitAlive(picked)) {
+      dealAreaCardDamage(state, choice.playerId, blastCard, picked, amount);
+    }
+    if (finishCombatIfNeeded(state)) {
+      return;
+    }
+    const rest = choice.candidateUnitIds.filter(
+      (id) => id !== action.targetUnitId && isUnitAlive(combat.units[id])
+    );
+    applyAdjacentPicks(state, choice.playerId, blastCard, rest, (choice.picksRemaining ?? 1) - 1, amount);
     finishCombatIfNeeded(state);
     return;
   }
