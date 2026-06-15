@@ -156,6 +156,23 @@ describe("Berserk spell", () => {
     expect(unitActions(state, "unit_p2_skeletons", "END_ACTIVATION")).toHaveLength(0);
   });
 
+  it("on an equidistant tie, the owner chooses the target — every nearest unit is offered (friend or foe)", () => {
+    const cast = castAt(berserkScene("berserk-tie"), "spell.berserk", "unit_p2_skeletons", 0);
+    // Put an enemy the SAME distance as the friendly ally: skeletons at 8 (row 2),
+    // vampires (friendly) at 9 (col 1, distance 1), griffins (enemy) at 4 (row 1,
+    // distance 1). Both are nearest and adjacent — the owner picks which to hit.
+    cast.combat!.units.unit_p1_griffins.position = 4;
+    const state = activate(cast, "unit_p2_skeletons");
+
+    const attacks = unitActions(state, "unit_p2_skeletons", "ATTACK_UNIT");
+    const defenders = attacks
+      .map((legal) => (legal.action.type === "ATTACK_UNIT" ? legal.action.defenderId : null))
+      .filter(Boolean);
+    expect(defenders).toContain("unit_p2_vampires"); // the friendly, tied for nearest
+    expect(defenders).toContain("unit_p1_griffins"); // the enemy, tied for nearest
+    expect(defenders).toHaveLength(2); // only the two nearest — no farther unit
+  });
+
   it("a berserked unit strikes its own ally, who retaliates as normal", () => {
     const cast = castAt(berserkScene("berserk-friendly-fire"), "spell.berserk", "unit_p2_skeletons", 0);
     const state = activate(cast, "unit_p2_skeletons");
@@ -280,6 +297,36 @@ describe("Berserk vs the neutral AI", () => {
     // Without Berserk the guard would march on the enemy; berserked, it must hit
     // the nearest unit — its own ally.
     expect(intent).toEqual({ kind: "attack", defenderId: fellow.id });
+  });
+
+  it("a berserked neutral with equidistant attackable targets pauses on a player choice", () => {
+    const state = createInitialGameState("berserk-neutral-tie");
+    state.combat!.obstacles = [];
+    const guard = state.combat!.units.unit_p2_skeletons;
+    const fellow = state.combat!.units.unit_p2_vampires;
+    const enemy = state.combat!.units.unit_p1_crusaders;
+    for (const unit of [guard, fellow, enemy]) {
+      unit.type = "ground";
+      unit.abilities = [];
+      unit.activatedThisRound = false;
+      unit.movedThisActivation = false;
+      unit.attackedThisActivation = false;
+    }
+    guard.controllerId = NEUTRAL_PLAYER_ID;
+    guard.position = 5; // row 1, col 1
+    fellow.controllerId = NEUTRAL_PLAYER_ID;
+    fellow.position = 4; // distance 1
+    enemy.controllerId = "p1";
+    enemy.position = 6; // distance 1 — tied with the fellow
+    state.combat!.units = { [guard.id]: guard, [fellow.id]: fellow, [enemy.id]: enemy };
+    pushBerserk(state, guard.id);
+
+    const intent = planNeutralActivation(state, state.combat!, guard);
+    expect(intent.kind).toBe("choose-target");
+    if (intent.kind === "choose-target") {
+      expect(intent.candidateIds).toContain(fellow.id);
+      expect(intent.candidateIds).toContain(enemy.id);
+    }
   });
 
   it("a berserked neutral that cannot reach the nearest advances on it", () => {
