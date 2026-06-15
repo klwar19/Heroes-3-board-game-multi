@@ -180,6 +180,19 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Berserk: while held (its next activation), the unit MUST attack the
+       * nearest unit — friend or foe — or move toward it and attack it. The
+       * legal-action layer drops every other action (no free move, defend or
+       * ability) and the neutral AI targets the nearest unit instead of by
+       * tier; `canUnitAttack` lets the berserked unit strike its own allies
+       * (the attacked ally still retaliates). Bound to the unit's next
+       * activation (the "next-activation" duration removes it when that
+       * activation ends).
+       */
+      type: "BERSERK_FORCED_ATTACK";
+    }
+  | {
+      /**
        * Shackles of War (house rule): while held, the affected player's Hero
        * cannot *Surrender* the current Combat. Retreat (and a fought-out loss)
        * is unaffected. Player-scoped, lasts the Combat.
@@ -218,6 +231,17 @@ export type ActiveEffectModifier =
        * attacks made by a unit with strictly lower (effective) Initiative.
        */
       type: "DEFENSE_VS_LOWER_INITIATIVE";
+      amount: number;
+    }
+  | {
+      /**
+       * Shield / Air Shield: extra Defense that applies only against an attacker
+       * of a given UNIT TYPE — "ground-or-flying" (Shield) matches any non-ranged
+       * attacker; "ranged" (Air Shield) matches a ranged attacker. Lasts the
+       * Combat and is read in getAttackerTypeDefenseBonus during the attack maths.
+       */
+      type: "DEFENSE_VS_ATTACKER_TYPE";
+      attackerType: "ground-or-flying" | "ranged";
       amount: number;
     }
   | {
@@ -350,6 +374,18 @@ export type ActiveEffectModifier =
        * exactly like the printed `ignore-paralysis` unit ability does.
        */
       type: "PARALYSIS_IMMUNITY";
+    }
+  | {
+      /**
+       * Interference ability: the affected unit reduces the damage it takes
+       * from Spells by this much — a Defense bonus that, unusually, also blunts
+       * Spell damage. Summed into totalSpellDamageReduction alongside the
+       * Golems'/Black Dragons' printed "reduce Spell damage" passives. The same
+       * Interference play also grants a plain DEFENSE_BONUS (vs attacks), so a
+       * unit carrying it gets the bonus against both attacks and spells.
+       */
+      type: "SPELL_DAMAGE_REDUCTION";
+      amount: number;
     };
 
 export type ActiveEffectDefinition = {
@@ -391,7 +427,25 @@ export type EffectDefinition =
        */
       removeParalysis?: boolean;
     }
-  | { type: "CANCEL_SPELL"; maxPower?: number; expertIgnoresMaxPower?: boolean }
+  | {
+      type: "CANCEL_SPELL";
+      maxPower?: number;
+      expertIgnoresMaxPower?: boolean;
+      /**
+       * Protection from Air/Earth/Fire/Water: the cancel only applies to a spell
+       * belonging to one of these Schools. A school-agnostic spell ("any", e.g.
+       * Magic Arrow) counts as belonging to every School, so any Protection can
+       * end it. Resistance leaves this undefined (it cancels any school).
+       */
+      schools?: SpellSchool[];
+      /**
+       * Protection from X gates on the cancelled spell's printed LEVEL, not its
+       * power: the basic play cancels a Basic spell only; the expert play
+       * (expertIgnoresMaxSpellLevel) cancels a Basic OR Expert spell.
+       */
+      maxSpellLevel?: "basic" | "expert";
+      expertIgnoresMaxSpellLevel?: boolean;
+    }
   | {
       type: "DRAW_CARDS";
       amount: number;
@@ -779,6 +833,33 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Berserk Spell (Expert Fire, Activation): the selected unit MUST, during
+       * its next activation, attack the nearest unit or move to the nearest unit
+       * and attack it (friend or foe — the berserked unit may be forced onto its
+       * own allies, who retaliate as normal). The reachable grade rises with the
+       * Power paid (0 → bronze, 2 → silver, 4 → gold), exactly like Blind: casting
+       * on a unit above the unlocked grade does nothing. Backed by a
+       * BERSERK_FORCED_ATTACK effect with the "next-activation" duration.
+       */
+      type: "BERSERK";
+      gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
+       * Teleport Spell (Expert Water, Activation): move one of the caster's units
+       * to any empty space on the combat board, ignoring obstacles, other units
+       * and the distance in-between. The reachable grade of the moved unit rises
+       * with the Power paid (0 → bronze, 1 → silver, 2 → gold), like Anti-Magic /
+       * Blind; casting on a unit above the unlocked grade does nothing. The
+       * destination empty space is picked in a follow-up choice after the cast
+       * (the "combat-teleport" OPTION_CHOICE). The move is a free relocation: it
+       * costs the unit no movement and provokes no Retaliation.
+       */
+      type: "TELEPORT_UNIT";
+      gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
        * Dispel Spell (Basic Water): strip every removable ongoing effect from
        * the selected unit — Haste, Slow, Bless's bonus, Anti-Magic, Forgetfulness,
        * Fire Shield, an enemy's buffs… anything created `removable` and bound to
@@ -885,6 +966,19 @@ export type EffectDefinition =
       grade: UnitGrade;
     }
   | {
+      /**
+       * Interference: an instant reaction to an enemy damaging Spell that
+       * targets one of your units. Grants that unit +amount Defense for the
+       * rest of the Combat — a Defense bonus that, unusually, also reduces the
+       * incoming Spell's damage (and any later Spell damage to that unit). Basic
+       * +1 / expert +2. Modelled as a unit-scoped effect carrying both a
+       * DEFENSE_BONUS and a SPELL_DAMAGE_REDUCTION modifier.
+       */
+      type: "INTERFERE_SPELL";
+      amount: number;
+      expertAmount: number;
+    }
+  | {
       type: "CREATE_ACTIVE_EFFECT";
       effect: ActiveEffectDefinition;
       expertEffect?: ActiveEffectDefinition;
@@ -908,6 +1002,12 @@ export type EffectDefinition =
       duration: EffectDurationDefinition;
       polarity?: "positive" | "negative" | "neutral";
       removable?: boolean;
+      /**
+       * Shield / Air Shield: when set, the buff is conditional — its Defense only
+       * applies against an attacker of this UNIT TYPE ("ground-or-flying" =
+       * Shield, "ranged" = Air Shield). Omitted for a plain, always-on +Defense.
+       */
+      vsAttackerType?: "ground-or-flying" | "ranged";
     }
   | {
       type: "CREATE_ATTACK_DIE_REROLL";
@@ -3933,6 +4033,7 @@ export type PendingChoice =
         | "combat-reposition"
         | "genie-take-spell"
         | "combat-knockback"
+        | "combat-teleport"
         | "cover-of-darkness"
         | "diplomacy-skip"
         | "diplomacy-recruit"
@@ -3956,6 +4057,11 @@ export type PendingChoice =
        * move to. `attackerId` is the Ghost Dragons whose attack triggered it.
        */
       knockback?: { unitId: UnitId; attackerId: UnitId; positions: number[] };
+      /**
+       * combat-teleport: the Teleport Spell moved this unit; the caster picks
+       * which empty space (index-aligned with the options) it lands on.
+       */
+      teleport?: { unitId: UnitId; positions: number[] };
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */

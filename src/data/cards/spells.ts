@@ -11,37 +11,6 @@ function spellSource(slug: string) {
   };
 }
 
-function notImplementedSpell(
-  slug: string,
-  name: string,
-  spellLevel: "basic" | "expert",
-  school: "air" | "earth" | "fire" | "water",
-  timing: "combat" | "instant" | "map",
-  text: string
-): CardLibrary[string] {
-  const card: CardLibrary[string] = {
-    id: `spell.${slug}`,
-    name,
-    kind: "spell",
-    timing,
-    spellLevel,
-    spellSchools: [school],
-    tags: ["spell", spellLevel, school, "needs-implementation", text],
-    power: 0,
-    effect: { type: "DRAW_CARDS", amount: 0 },
-    assets: {
-      cardImage: `/assets/spells-${slug}.webp`,
-      imageAlt: `${name} card`
-    },
-    implementationStatus: "not-implemented",
-    source: spellSource(slug)
-  };
-  if (timing === "combat") {
-    card.phaseLimit = ["combat"];
-  }
-  return card;
-}
-
 export const spellCards: CardLibrary = {
   "spell.haste": {
     id: "spell.haste",
@@ -666,14 +635,75 @@ export const spellCards: CardLibrary = {
     implementationStatus: "implemented",
     source: spellSource("magic_mirror")
   },
-  "spell.teleport": notImplementedSpell(
-    "teleport",
-    "Teleport",
-    "expert",
-    "water",
-    "combat",
-    "Activation: During Combat, move one allied unit to any empty space - ignore any obstacles or effects when moving: Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or gold."
-  ),
+  // Teleport (Expert Water, Activation): move one of your units to any empty
+  // space, ignoring obstacles, other units and the distance in-between. The
+  // reachable grade of the moved unit rises with the Power paid (0 → bronze,
+  // 1 → silver, 2 → gold), the same gate as Anti-Magic / Blind. The destination
+  // empty space is picked in a follow-up choice (engine: TELEPORT_UNIT opens the
+  // combat-teleport choice). The relocation costs no movement and draws no
+  // Retaliation.
+  "spell.teleport": {
+    id: "spell.teleport",
+    name: "Teleport",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["water"],
+    power: 0,
+    target: { type: "friendly-unit" },
+    tags: [
+      "spell",
+      "expert",
+      "water",
+      "Activation: During Combat, move one allied unit to any empty space - ignore any obstacles or effects when moving: Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or gold."
+    ],
+    effect: {
+      type: "TELEPORT_UNIT",
+      gradeByPower: { 0: "bronze", 1: "silver", 2: "gold" }
+    },
+    assets: {
+      cardImage: "/assets/spells-teleport.webp",
+      imageAlt: "Teleport card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("teleport")
+  },
+  // Berserk (Expert Fire, Activation): the selected unit must, on its next
+  // activation, attack the nearest unit or move to the nearest unit and attack
+  // it — friend or foe, so a berserked enemy can be forced onto its own allies
+  // (who retaliate as normal). "Select a unit" targets any unit (an Anti-Magic /
+  // school-immune unit is filtered out by the cast-target layer); the reachable
+  // grade rises with the Power paid (0 → bronze, 2 → silver, 4 → gold), the Blind
+  // gate. Engine: BERSERK places a BERSERK_FORCED_ATTACK effect that the
+  // legal-action layer and neutral AI read to force the attack-the-nearest rule.
+  "spell.berserk": {
+    id: "spell.berserk",
+    name: "Berserk",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["fire"],
+    power: 0,
+    target: { type: "any-unit" },
+    tags: [
+      "spell",
+      "expert",
+      "fire",
+      "Activation: Select a unit. In its activation, this unit must either attack the nearest unit or move to the nearest unit and attack it: Power 0: bronze; Power 2: bronze or silver; Power 4: bronze, silver, or gold. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "BERSERK",
+      gradeByPower: { 0: "bronze", 2: "silver", 4: "gold" }
+    },
+    assets: {
+      cardImage: "/assets/spells-berserk.webp",
+      imageAlt: "Berserk card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("berserk")
+  },
   // Blind: an Activation Fire spell that drops a Paralysis token on an enemy
   // unit (it skips its next activation; the token is removed if it takes
   // damage first). The reachable grade rises with the Power paid.
@@ -1226,6 +1256,206 @@ export const spellCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: spellSource("frenzy")
+  },
+  // Shield (Basic Earth, Tower Expansion): an Ongoing buff cast on a friendly
+  // unit during your activation — until the end of the Combat it gains Defense,
+  // but only against a ground or flying attacker (a ranged unit's shot is
+  // unaffected; that is Air Shield's job). Power 0/1/2 -> +1/+2/+3 Defense. The
+  // conditional bonus is read in getAttackerTypeDefenseBonus during the attack
+  // maths. The "OR Instant: +1 Power" side is the universal power-source discard.
+  "spell.shield": {
+    id: "spell.shield",
+    name: "Shield",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "basic",
+    spellSchools: ["earth"],
+    tags: [
+      "spell",
+      "basic",
+      "earth",
+      "Ongoing: Until the end of the Combat, the selected unit gains, when it is attacked by a ground or flying unit: Power 0: +1 defense; Power 1: +2 defense; Power 2: +3 defense. — OR — Instant: +1 Power."
+    ],
+    power: 0,
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_DEFENSE_BUFF",
+      name: "Shield",
+      amountByPower: { 0: 1, 1: 2, 2: 3 },
+      duration: { type: "combat" },
+      polarity: "positive",
+      removable: true,
+      vsAttackerType: "ground-or-flying"
+    },
+    assets: {
+      cardImage: "/assets/spells-shield.webp",
+      imageAlt: "Shield card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("shield")
+  },
+  // Air Shield (Basic Air): Shield's counterpart — until the end of the Combat
+  // the selected unit gains Defense only against a ranged attacker. Power 0/1/2
+  // -> +1/+2/+3 Defense. Same conditional-defense machinery as Shield, keyed on
+  // the attacker being a ranged unit.
+  "spell.air_shield": {
+    id: "spell.air_shield",
+    name: "Air Shield",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "basic",
+    spellSchools: ["air"],
+    tags: [
+      "spell",
+      "basic",
+      "air",
+      "Ongoing: Until the end of the Combat, the selected unit gains, when it is attacked by a ranged unit: Power 0: +1 defense; Power 1: +2 defense; Power 2: +3 defense. — OR — Instant: +1 Power."
+    ],
+    power: 0,
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_DEFENSE_BUFF",
+      name: "Air Shield",
+      amountByPower: { 0: 1, 1: 2, 2: 3 },
+      duration: { type: "combat" },
+      polarity: "positive",
+      removable: true,
+      vsAttackerType: "ranged"
+    },
+    assets: {
+      cardImage: "/assets/spells-air_shield.webp",
+      imageAlt: "Air Shield card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("air_shield")
+  },
+  // Protection from Air/Earth/Fire/Water (Basic, one per School): Resistance for
+  // a single School. Played as an instant when the opponent casts a Spell of that
+  // School, it ends that Spell (reuses the CANCEL_SPELL machinery — the pending
+  // cast is cancelled, or a matching enemy Spell instant on an attack is
+  // reversed). The card's two printed tiers ("Power 0 / Power 1") are the engine's
+  // basic / expert play: basic ends a Basic Spell of the School; the expert play
+  // (spending a crown, like every other expert play) ends a Basic OR Expert
+  // Spell. A School-agnostic Spell (Magic Arrow) counts as belonging to every
+  // School, so any Protection can end it. The "OR Instant: +1 Power" side is the
+  // universal power-source discard.
+  "spell.protection_from_air": {
+    id: "spell.protection_from_air",
+    name: "Protection from Air",
+    kind: "spell",
+    timing: "reaction",
+    phaseLimit: ["reaction", "combat"],
+    spellLevel: "basic",
+    spellSchools: ["air"],
+    tags: [
+      "spell",
+      "basic",
+      "air",
+      "Instant: Play after a Spell from the School of Air Magic is cast to ignore that spell's effect. Basic: a Basic Spell; Expert: a Basic or an Expert Spell. — OR — Instant: +1 Power."
+    ],
+    power: 0,
+    trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+    effect: {
+      type: "CANCEL_SPELL",
+      schools: ["air"],
+      maxSpellLevel: "basic",
+      expertIgnoresMaxSpellLevel: true
+    },
+    assets: {
+      cardImage: "/assets/spells-protection_from_air.webp",
+      imageAlt: "Protection from Air card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("protection_from_air")
+  },
+  "spell.protection_from_earth": {
+    id: "spell.protection_from_earth",
+    name: "Protection from Earth",
+    kind: "spell",
+    timing: "reaction",
+    phaseLimit: ["reaction", "combat"],
+    spellLevel: "basic",
+    spellSchools: ["earth"],
+    tags: [
+      "spell",
+      "basic",
+      "earth",
+      "Instant: Play after a Spell from the School of Earth Magic is cast to ignore that spell's effect. Basic: a Basic Spell; Expert: a Basic or an Expert Spell. — OR — Instant: +1 Power."
+    ],
+    power: 0,
+    trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+    effect: {
+      type: "CANCEL_SPELL",
+      schools: ["earth"],
+      maxSpellLevel: "basic",
+      expertIgnoresMaxSpellLevel: true
+    },
+    assets: {
+      cardImage: "/assets/spells-protection_from_earth.webp",
+      imageAlt: "Protection from Earth card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("protection_from_earth")
+  },
+  "spell.protection_from_fire": {
+    id: "spell.protection_from_fire",
+    name: "Protection from Fire",
+    kind: "spell",
+    timing: "reaction",
+    phaseLimit: ["reaction", "combat"],
+    spellLevel: "basic",
+    spellSchools: ["fire"],
+    tags: [
+      "spell",
+      "basic",
+      "fire",
+      "Instant: Play after a Spell from the School of Fire Magic is cast to ignore that spell's effect. Basic: a Basic Spell; Expert: a Basic or an Expert Spell. — OR — Instant: +1 Power."
+    ],
+    power: 0,
+    trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+    effect: {
+      type: "CANCEL_SPELL",
+      schools: ["fire"],
+      maxSpellLevel: "basic",
+      expertIgnoresMaxSpellLevel: true
+    },
+    assets: {
+      cardImage: "/assets/spells-protection_from_fire.webp",
+      imageAlt: "Protection from Fire card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("protection_from_fire")
+  },
+  "spell.protection_from_water": {
+    id: "spell.protection_from_water",
+    name: "Protection from Water",
+    kind: "spell",
+    timing: "reaction",
+    phaseLimit: ["reaction", "combat"],
+    spellLevel: "basic",
+    spellSchools: ["water"],
+    tags: [
+      "spell",
+      "basic",
+      "water",
+      "Instant: Play after a Spell from the School of Water Magic is cast to ignore that spell's effect. Basic: a Basic Spell; Expert: a Basic or an Expert Spell. — OR — Instant: +1 Power."
+    ],
+    power: 0,
+    trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+    effect: {
+      type: "CANCEL_SPELL",
+      schools: ["water"],
+      maxSpellLevel: "basic",
+      expertIgnoresMaxSpellLevel: true
+    },
+    assets: {
+      cardImage: "/assets/spells-protection_from_water.webp",
+      imageAlt: "Protection from Water card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("protection_from_water")
   }
 };
 
@@ -1295,7 +1525,18 @@ export const spellDeckLegacy: string[] = [
   "spell.implosion",
   "spell.dispel",
   "spell.frenzy",
-  "spell.frost_ring"
+  // Frost Ring — Expert Water.
+  "spell.frost_ring",
+  // Expert combat-movement / control spells.
+  "spell.teleport",
+  "spell.berserk",
+  // Tower Expansion / Stretch Goal defensive spells (all Basic).
+  "spell.shield",
+  "spell.air_shield",
+  "spell.protection_from_air",
+  "spell.protection_from_earth",
+  "spell.protection_from_fire",
+  "spell.protection_from_water"
 ];
 
 /** BINH split decks. */
@@ -1331,7 +1572,14 @@ export const spellDeckBinhBasic: string[] = [
   "spell.forgetfulness",
   "spell.visions",
   // Dispel — Basic Water.
-  "spell.dispel"
+  "spell.dispel",
+  // Tower Expansion / Stretch Goal defensive spells (all Basic).
+  "spell.shield",
+  "spell.air_shield",
+  "spell.protection_from_air",
+  "spell.protection_from_earth",
+  "spell.protection_from_fire",
+  "spell.protection_from_water"
 ];
 
 export const spellDeckBinhExpert: string[] = [
@@ -1364,5 +1612,8 @@ export const spellDeckBinhExpert: string[] = [
   "spell.implosion",
   "spell.frenzy",
   // Frost Ring — Expert Water.
-  "spell.frost_ring"
+  "spell.frost_ring",
+  // Teleport (Expert Water) & Berserk (Expert Fire).
+  "spell.teleport",
+  "spell.berserk"
 ];

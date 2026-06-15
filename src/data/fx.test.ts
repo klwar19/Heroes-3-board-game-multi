@@ -151,7 +151,17 @@ describe("previously-silent spells are wired (SFX + animation)", () => {
     "spell.mirth": { sprite: "mirth", sound: "spells/mirth" },
     "spell.sorrow": { sprite: "sorrow", sound: "spells/sorrow" },
     "spell.slayer": { sprite: "slayer", sound: "spells/slayer" },
-    "spell.magic_mirror": { sprite: "magic-mirror", sound: "spells/magic-mirror" }
+    "spell.magic_mirror": { sprite: "magic-mirror", sound: "spells/magic-mirror" },
+    // Berserk seizes a unit with the H3 berserk glyph + roar over it.
+    "spell.berserk": { sprite: "berserk", sound: "spells/berserk" },
+    // Tower-expansion / stretch-goal defensive spells: each ships a converted
+    // sprite sheet + measured sound that the plan must keep referencing.
+    "spell.shield": { sprite: "shield", sound: "spells/shield" },
+    "spell.air_shield": { sprite: "air-shield", sound: "spells/air-shield" },
+    "spell.protection_from_air": { sprite: "protect-air", sound: "spells/protect-air" },
+    "spell.protection_from_earth": { sprite: "protect-earth", sound: "spells/protect-earth" },
+    "spell.protection_from_fire": { sprite: "protect-fire", sound: "spells/protect-fire" },
+    "spell.protection_from_water": { sprite: "protect-water", sound: "spells/protect-water" }
   };
 
   it.each(Object.entries(SPRITE_AND_SOUND))("wires %s with a real sprite + sound", (id, expected) => {
@@ -188,6 +198,20 @@ describe("previously-silent spells are wired (SFX + animation)", () => {
     expect(plan, `${id} needs an FX plan`).toBeTruthy();
     expect(plan.sound).toBe(sound);
     expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  // Teleport has no converted sprite sheet (the unit blinking to its new space is
+  // the visual), so it carries only the H3 teleport cast sound. queueBoardFx
+  // plays a sound-only plan directly over the target unit.
+  it("gives Teleport a cast sound with no sprite (the relocation is the visual)", () => {
+    const plan = spellFxPlans["spell.teleport"];
+    expect(plan, "Teleport needs an FX plan").toBeTruthy();
+    expect(plan.sound).toBe("spells/teleport");
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    expect(plan.affect).toBeUndefined();
+    expect(plan.hit).toBeUndefined();
+    expect(plan.projectile).toBeUndefined();
     expect(spellPresentationMs(plan)).toBeGreaterThan(0);
   });
 });

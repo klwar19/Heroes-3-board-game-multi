@@ -66,6 +66,7 @@ import {
 import { chooseFaction, setGameOptions, startAdventureFromLobby } from "./adventure-setup";
 import {
   ATTACK_DIE_FACES,
+  BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
   BATTLEFIELD_ROWS,
   getBattlefieldCoordinates,
@@ -118,6 +119,7 @@ import {
   expireEffectsForTurnEnd,
   getActiveAttackBonus,
   getActiveDefenseBonus,
+  getAttackerTypeDefenseBonus,
   getAttackRerollEffects,
   getConditionalDefenseBonus,
   getSchoolPowerMultiplier,
@@ -130,6 +132,7 @@ import {
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
 import {
+  cancelSpellAllowsSchoolAndLevel,
   cardCanBoostPower,
   getEffectAmount,
   getEffectDamageAmount,
@@ -213,6 +216,7 @@ import {
 } from "./unit-abilities";
 import type {
   ActiveEffectDefinition,
+  ActiveEffectModifier,
   ActiveEffectState,
   AttackRerollSource,
   AttackRollCandidate,
@@ -549,8 +553,30 @@ function makeStackItem(state: GameState, action: GameAction): ResolutionStackIte
   };
 }
 
-function reactionPlayerOrder(state: GameState, legalReactions: Record<PlayerId, LegalAction[]>): PlayerId[] {
-  return state.turnOrder.filter((playerId) => (legalReactions[playerId] ?? []).length > 0);
+function reactionPlayerOrder(
+  state: GameState,
+  legalReactions: Record<PlayerId, LegalAction[]>,
+  triggerEvent?: GameEvent
+): PlayerId[] {
+  const eligible = state.turnOrder.filter((playerId) => (legalReactions[playerId] ?? []).length > 0);
+
+  // The initiator of a cast or attack acts FIRST so they can finish empowering
+  // (paying Power into a spell / attack) before the opponent decides Resistance
+  // or Magic Mirror against the FINAL power — the board-game order. Only the
+  // caster/attacker may add Power, so without this an opponent earlier in turn
+  // order could Resist a power-0 spell before it was ever empowered, and
+  // "cast at the power you used" could never happen. Their playerId is the
+  // initiator for both windows (the retaliating unit's controller for a
+  // retaliation). Other windows (Sorrow activation-skip, lethal saves) keep
+  // plain turn order.
+  const initiator =
+    triggerEvent && (triggerEvent.type === "SPELL_CAST_STARTED" || triggerEvent.type === "UNIT_ATTACK_DECLARED")
+      ? triggerEvent.playerId
+      : null;
+  if (initiator && eligible.includes(initiator)) {
+    return [initiator, ...eligible.filter((playerId) => playerId !== initiator)];
+  }
+  return eligible;
 }
 
 function rollAttackDie(combat: CombatState): number {
@@ -937,6 +963,11 @@ function createDefenseBuffFromCard(
   }
 
   const amount = getAmountByPower(card.effect.amountByPower, card.effect.amount ?? 0, power);
+  // Shield / Air Shield carry `vsAttackerType`, so their Defense is conditional
+  // (read in getAttackerTypeDefenseBonus); a plain buff emits an always-on bonus.
+  const modifier: ActiveEffectModifier = card.effect.vsAttackerType
+    ? { type: "DEFENSE_VS_ATTACKER_TYPE", attackerType: card.effect.vsAttackerType, amount }
+    : { type: "DEFENSE_BONUS", amount };
   createActiveEffect(
     state,
     {
@@ -945,12 +976,7 @@ function createDefenseBuffFromCard(
       duration: card.effect.duration,
       polarity: card.effect.polarity ?? "positive",
       removable: card.effect.removable ?? true,
-      modifiers: [
-        {
-          type: "DEFENSE_BONUS",
-          amount
-        }
-      ]
+      modifiers: [modifier]
     },
     {
       type: "card",
@@ -1133,6 +1159,22 @@ function totalSpellDamageReduction(state: GameState, target: CombatUnitState): n
     return 0;
   }
   let total = getSpellDamageReduction(target);
+
+  // Interference: a unit-scoped Defense bonus that also blunts Spell damage.
+  // Sum every SPELL_DAMAGE_REDUCTION modifier on an effect that applies to the
+  // target (Titans/Gargoyles' ignore-ongoing-effects passives are honoured by
+  // effectAppliesToUnit, exactly as they are for any other ongoing effect).
+  for (const effect of state.activeEffects) {
+    if (!effectAppliesToUnit(effect, target)) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "SPELL_DAMAGE_REDUCTION") {
+        total += modifier.amount;
+      }
+    }
+  }
+
   const combat = state.combat;
   if (combat) {
     // Aura sources (Rampart Unicorns Pack) shield themselves and adjacent
@@ -1768,7 +1810,10 @@ function getAttackStackDetails(
   });
   // Cyra's Haste VI: +Defense only against an attacker slower than the defender.
   const conditionalDefenseBonus = getConditionalDefenseBonus(state, defender, attacker);
-  const activeDefenseBonus = getActiveDefenseBonus(state, defender) + conditionalDefenseBonus;
+  // Shield / Air Shield: +Defense only against a ground-or-flying / ranged attacker.
+  const attackerTypeDefenseBonus = getAttackerTypeDefenseBonus(state, defender, attacker);
+  const activeDefenseBonus =
+    getActiveDefenseBonus(state, defender) + conditionalDefenseBonus + attackerTypeDefenseBonus;
   const abilityAttack = stackItem.action.type === "ATTACK_UNIT" ? stackItem.action.abilityAttack : undefined;
 
   // Combat tokens: Attack/Weakness tokens shift the attacker, Corrosion the
@@ -2048,6 +2093,9 @@ function concludeAttackerActivation(state: GameState, attacker: CombatUnitState)
   }
 
   attacker.activatedThisRound = true;
+  // Activation-bound effects on the attacker end with its activation (Berserk's
+  // "in its activation" forced attack, any "this Activation" buff).
+  appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, attacker.id), "activation-ended");
   advanceActiveUnit(state);
   state.phase = "combat";
   state.priorityPlayerId = null;
@@ -3825,6 +3873,95 @@ function resolveKnockbackChoice(
 }
 
 /**
+ * Teleport Spell: opens the caster's "choose where the unit lands" empty-space
+ * picker. Every space free of a living unit, an obstacle and a fortification is
+ * a legal destination (distance and intervening obstacles are ignored). With
+ * nowhere to land the cast simply fizzles (no choice opened).
+ */
+function openTeleportChoice(state: GameState, playerId: PlayerId, unit: CombatUnitState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  const positions: number[] = [];
+  for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+    if (!isSpaceBlockedForSummon(combat, position)) {
+      positions.push(position);
+    }
+  }
+  if (positions.length === 0) {
+    return;
+  }
+
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Teleport ${unit.cardName} to an empty space.`,
+    options: positions.map((position) => ({ label: `Teleport to ${getBattlefieldLabel(position)}` })),
+    context: "combat-teleport",
+    teleport: { unitId: unit.id, positions },
+    returnPhase: "combat"
+  };
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId,
+    sourceEffectIds: [],
+    message: `${state.players[playerId]?.name ?? playerId} teleports ${unit.cardName}.`
+  });
+}
+
+/** Resolves the Teleport destination pick: relocate the unit to the chosen space. */
+function resolveTeleportChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "combat-teleport" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.teleport
+  ) {
+    throw new Error("There is no teleport choice to resolve.");
+  }
+
+  const combat = state.combat;
+  const unit = combat?.units[choice.teleport.unitId];
+  const destination = choice.teleport.positions[action.optionIndex];
+  if (!combat || !unit || destination === undefined || isSpaceBlockedForSummon(combat, destination)) {
+    throw new Error("That teleport destination is not available.");
+  }
+
+  const from = unit.position;
+  unit.position = destination;
+  appendEvent(state, {
+    type: "UNIT_MOVED",
+    playerId: unit.controllerId,
+    unitId: unit.id,
+    from,
+    to: destination
+  });
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
+
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  finishCombatIfNeeded(state);
+}
+
+/**
  * Liches' Death Cloud: opens the second-attack target choice (or declares
  * the attack straight away when only one unit qualifies). Returns true when
  * the attack sequence is paused on the choice or the follow-up attack.
@@ -4450,7 +4587,7 @@ function refreshReactionWindowLegalReactions(state: GameState, cards: CardLibrar
   }
 
   const legalReactions = getLegalReactionsForTrigger(state, state.reactionWindow.triggerEvent, cards);
-  const allowedPlayerIds = reactionPlayerOrder(state, legalReactions);
+  const allowedPlayerIds = reactionPlayerOrder(state, legalReactions, state.reactionWindow.triggerEvent);
 
   state.reactionWindow.legalReactions = legalReactions;
   state.reactionWindow.allowedPlayerIds = allowedPlayerIds;
@@ -4472,7 +4609,7 @@ function openReactionWindowForTrigger(
   cards: CardLibrary
 ): boolean {
   const legalReactions = getLegalReactionsForTrigger(state, triggerEvent, cards);
-  const allowedPlayerIds = reactionPlayerOrder(state, legalReactions);
+  const allowedPlayerIds = reactionPlayerOrder(state, legalReactions, triggerEvent);
 
   if (allowedPlayerIds.length === 0) {
     return false;
@@ -5137,6 +5274,45 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       }
     }
 
+    // Berserk: the selected unit must attack the nearest unit on its next
+    // activation. Grade-gated like Blind; above the unlocked grade the cast does
+    // nothing. The forced "attack the nearest" rule lives in the legal-action
+    // layer and the neutral AI (both read the BERSERK_FORCED_ATTACK effect).
+    if (card?.effect.type === "BERSERK" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        createActiveEffect(
+          state,
+          {
+            name: card.name,
+            scope: "unit",
+            duration: { type: "next-activation" },
+            polarity: "negative",
+            removable: true,
+            modifiers: [{ type: "BERSERK_FORCED_ATTACK" }]
+          },
+          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          stackItem.action.playerId,
+          stackItem.action.target
+        );
+      }
+    }
+
+    // Teleport: move the selected unit to a chosen empty space, ignoring
+    // obstacles and distance. Grade-gated like Anti-Magic; above the unlocked
+    // grade the cast does nothing. The destination is picked in a follow-up
+    // (the combat-teleport choice), resolved by resolveTeleportChoice.
+    if (card?.effect.type === "TELEPORT_UNIT" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        openTeleportChoice(state, stackItem.action.playerId, target);
+      }
+    }
+
     if (card?.effect.type === "CLEAR_RETALIATION" && state.combat && stackItem.action.target.type === "unit") {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
@@ -5579,7 +5755,7 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   stackItem.triggerEventIds.push(spellStarted.id);
 
   const legalReactions = getLegalReactionsForTrigger(state, spellStarted, cards);
-  if (reactionPlayerOrder(state, legalReactions).length === 0) {
+  if (reactionPlayerOrder(state, legalReactions, spellStarted).length === 0) {
     resolveTopStack(state, cards);
     return;
   }
@@ -5635,7 +5811,14 @@ function effectSupportsExpertPlay(effect: NonNullable<ReturnType<typeof getEffec
   }
 
   if (effect.type === "CANCEL_SPELL") {
-    return Boolean(effect.expertIgnoresMaxPower);
+    // Resistance's expert ignores the power cap; Protection-from-X's expert
+    // ignores the spell-level cap. Either makes the card's expert play real.
+    return Boolean(effect.expertIgnoresMaxPower || effect.expertIgnoresMaxSpellLevel);
+  }
+
+  // Interference's expert side (+2 instead of +1) always exists.
+  if (effect.type === "INTERFERE_SPELL") {
+    return true;
   }
 
   return false;
@@ -5826,6 +6009,22 @@ function applyReactionPlayCore(
     throw new Error(`${card.name} cannot end a spell above power ${effect.maxPower}.`);
   }
 
+  // Protection-from-X self-defends its School/level gate at resolution: a
+  // fabricated reaction can never cancel a spell of the wrong School or, in
+  // basic play, an Expert spell (the legal-action layer already filters offers).
+  if (effect.type === "CANCEL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
+    const pendingSpell = cards[stackItem.action.cardId];
+    if (
+      !cancelSpellAllowsSchoolAndLevel(
+        effect,
+        { schools: pendingSpell?.spellSchools ?? [], level: pendingSpell?.spellLevel },
+        mode
+      )
+    ) {
+      throw new Error(`${card.name} cannot end that spell.`);
+    }
+  }
+
   if (play.fromScroll) {
     if (!consumeScrollSpell(state, playerId, play.fromScroll, play.cardId)) {
       throw new Error("That spell is not in the named Spell Scroll.");
@@ -5909,10 +6108,23 @@ function applyReactionPlayCore(
     const instants = stackItem.modifiers.cancellableSpellInstants ?? [];
     let index = -1;
     for (let i = instants.length - 1; i >= 0; i -= 1) {
-      if (instants[i].playerId !== playerId) {
-        index = i;
-        break;
+      if (instants[i].playerId === playerId) {
+        continue;
       }
+      // Protection-from-X only reverses an enemy instant of its own School/level
+      // (Resistance, with no such gate, takes the most recent enemy instant).
+      const instantSpell = cards[instants[i].cardId];
+      if (
+        !cancelSpellAllowsSchoolAndLevel(
+          effect,
+          { schools: instantSpell?.spellSchools ?? [], level: instantSpell?.spellLevel },
+          mode
+        )
+      ) {
+        continue;
+      }
+      index = i;
+      break;
     }
     if (index === -1) {
       throw new Error("There is no enemy Spell to resist on this attack.");
@@ -6267,6 +6479,40 @@ function applyReactionPlayCore(
       caster.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
     }
 
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
+  // Interference: react to an enemy damaging Spell aimed at one of your units
+  // by granting that unit +1 (expert +2) Defense for the rest of the Combat —
+  // a bonus that also reduces Spell damage (DEFENSE_BONUS for attacks,
+  // SPELL_DAMAGE_REDUCTION for spells). Created here, before the pending Spell
+  // resolves (the reaction window closes first), so it softens the very Spell
+  // that triggered it and every later Spell that hits the same unit.
+  if (effect.type === "INTERFERE_SPELL" && stackItem?.action.type === "CAST_SPELL") {
+    const targetRef = stackItem.action.target;
+    const targetUnit = targetRef.type === "unit" ? state.combat?.units[targetRef.unitId] : undefined;
+    // The legal-reaction gate already restricts this to the reacting player's
+    // own targeted unit; re-checked here so a stale window can never buff an
+    // enemy unit or a dead one.
+    if (targetUnit && targetUnit.controllerId === playerId && isUnitAlive(targetUnit)) {
+      createActiveEffect(
+        state,
+        {
+          name: mode === "expert" ? "Expert Interference" : "Interference",
+          scope: "unit",
+          duration: { type: "combat" },
+          polarity: "positive",
+          removable: true,
+          modifiers: [
+            { type: "DEFENSE_BONUS", amount: effectAmount },
+            { type: "SPELL_DAMAGE_REDUCTION", amount: effectAmount }
+          ]
+        },
+        { type: "card", cardId: card.id, controllerId: playerId },
+        playerId,
+        { type: "unit", unitId: targetUnit.id }
+      );
+    }
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
@@ -8862,6 +9108,7 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
   // flying units stay active to attack an adjacent enemy or hold.
   if (unit.type === "ranged") {
     unit.activatedThisRound = true;
+    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
     advanceActiveUnit(state);
   }
 
@@ -9369,6 +9616,7 @@ function executeNeutralActivation(
 
   if (intent.kind === "pass") {
     unit.activatedThisRound = true;
+    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
     appendEvent(state, {
       type: "UNIT_ACTIVATION_ENDED",
       playerId: unit.controllerId,
@@ -9383,6 +9631,7 @@ function executeNeutralActivation(
     unit.position = intent.destination;
     unit.movedThisActivation = true;
     unit.activatedThisRound = true;
+    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
     appendEvent(state, {
       type: "UNIT_MOVED",
       playerId: unit.controllerId,
@@ -9934,6 +10183,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           nextState.pendingChoice.context === "combat-knockback"
         ) {
           resolveKnockbackChoice(nextState, action, cards);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "combat-teleport"
+        ) {
+          resolveTeleportChoice(nextState, action);
         } else {
           chooseOption(nextState, action);
         }
