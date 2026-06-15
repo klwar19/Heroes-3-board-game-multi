@@ -33,6 +33,7 @@ import {
   openSkeletonReinforceChoice,
   moveHeroAdventure,
   moveHeroPathAdventure,
+  openMarket,
   openSharedDeckSearch,
   hireSecondaryHero,
   placeCombatUnit,
@@ -5184,6 +5185,30 @@ function applyReactionPlayCore(
       markUnitRemovedIfNeeded(state, affectedUnit);
     }
 
+    // Buckler of the Gnoll King: the boosted unit also suffers a lasting stat
+    // penalty until the end of the Combat ("+2 defense, then -1 attack this
+    // Combat"). The attack/defense maths floor the result at 0 ("minimum 0").
+    if (effect.selfStatPenalty && affectedUnit && state.combat) {
+      createActiveEffect(
+        state,
+        {
+          name: card.name,
+          scope: "unit",
+          duration: { type: "combat" },
+          polarity: "negative",
+          removable: false,
+          modifiers: [
+            effect.selfStatPenalty.stat === "attack"
+              ? { type: "ATTACK_BONUS", amount: -effect.selfStatPenalty.amount }
+              : { type: "DEFENSE_BONUS", amount: -effect.selfStatPenalty.amount }
+          ]
+        },
+        { type: "card", cardId: card.id, controllerId: playerId },
+        playerId,
+        { type: "unit", unitId: affectedUnit.id }
+      );
+    }
+
     if (effect.drawCards) {
       drawCardsForPlayer(state, playerId, effect.drawCards);
     }
@@ -8295,6 +8320,7 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
 const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "REFRESH_HAND",
   "REVISIT_FIELD",
+  "OPEN_MARKET",
   "DISCOVER_TILE",
   "PLACE_TILE",
   "SET_TILE_ROTATION",
@@ -8435,6 +8461,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "REVISIT_FIELD":
         revisitField(nextState, action);
+        break;
+      case "OPEN_MARKET":
+        openMarket(nextState, action);
         break;
       case "DISCOVER_TILE":
         discoverTile(nextState, action);

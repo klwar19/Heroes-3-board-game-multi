@@ -1,7 +1,7 @@
 import { cardLibrary } from "@/data/cards/library";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
+import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { sampleBuildings } from "@/data/towns/buildings";
 import {
   armyHasMapEffect,
@@ -3622,6 +3622,18 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       continue;
     }
 
+    const field = adventure.fields[hero.spaceId];
+
+    // A hero parked on a Market may reopen the trade/shop panel any time, for
+    // free — no movement point needed, so it stays available even when a
+    // Secondary Hero simply sits on the tile.
+    if (field && isMarketLocation(field.location)) {
+      actions.push({
+        label: `Open the ${locationDefinitions[field.location]?.name ?? field.location}`,
+        action: { type: "OPEN_MARKET", playerId, heroId: hero.id }
+      });
+    }
+
     if (hero.movementPoints > 0) {
       for (const destination of getHeroMoveDestinations(state, hero)) {
         actions.push({
@@ -3630,13 +3642,17 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
         });
       }
 
-      const field = adventure.fields[hero.spaceId];
       if (field?.grailDiggable) {
         actions.push({
           label: "Dig the Grail (1 movement point)",
           action: { type: "REVISIT_FIELD", playerId, heroId: hero.id }
         });
-      } else if (field && locationDefinitions[field.location]?.category === "revisitable") {
+      } else if (
+        field &&
+        locationDefinitions[field.location]?.category === "revisitable" &&
+        // Markets use the free OPEN_MARKET path above, not the 1-MP revisit.
+        !isMarketLocation(field.location)
+      ) {
         actions.push({
           label: `Revisit ${locationDefinitions[field.location]?.name ?? field.location}`,
           action: { type: "REVISIT_FIELD", playerId, heroId: hero.id }

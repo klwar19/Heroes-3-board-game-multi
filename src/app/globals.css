@@ -1802,6 +1802,14 @@ button.battleCell {
   .dieCube.tumbling {
     animation-duration: 900ms;
   }
+
+  /* Keep the Market tab visible (bright border, no pulsing) for users who
+     opt out of motion. */
+  .marketTab {
+    animation: none;
+    border-color: rgba(255, 227, 150, 1);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5), 0 0 14px 3px rgba(255, 210, 120, 0.6);
+  }
 }
 
 .dieFace {
@@ -4734,6 +4742,52 @@ button.hbSlot:disabled { cursor: default; }
 
 .marketChip:hover {
   background: rgba(220, 175, 95, 0.25);
+}
+
+/* Persistent, hard-to-miss tab shown while a hero is parked on a Market field
+   and no market panel is open. It blinks so the player notices the market is
+   reachable any time, and stops blinking on hover. */
+.marketTab {
+  position: fixed;
+  right: 18px;
+  bottom: 112px;
+  z-index: 62;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 2px solid rgba(220, 175, 95, 0.85);
+  background: linear-gradient(180deg, rgba(60, 45, 24, 0.98), rgba(40, 28, 14, 0.98));
+  color: #ffe9bd;
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5);
+  animation: marketTabBlink 1.25s ease-in-out infinite;
+}
+
+.marketTab:hover {
+  background: rgba(220, 175, 95, 0.3);
+  animation-play-state: paused;
+}
+
+.marketTabIcon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+@keyframes marketTabBlink {
+  0%,
+  100% {
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5), 0 0 0 0 rgba(255, 210, 120, 0);
+    border-color: rgba(220, 175, 95, 0.85);
+  }
+  50% {
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5), 0 0 16px 4px rgba(255, 210, 120, 0.75);
+    border-color: rgba(255, 227, 150, 1);
+  }
 }
 
 .marketTrades,
