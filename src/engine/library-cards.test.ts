@@ -189,43 +189,6 @@ describe("Greater Gnoll's Flail artifact", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Artillery (basic ability): deal 1 damage to the enemy unit with the lowest
-// (effective) Initiative. (The expert Ballista synergy is intentionally not
-// wired — the engine offers only the basic play.)
-// ---------------------------------------------------------------------------
-
-describe("Artillery ability (basic)", () => {
-  it("deals 1 damage to the enemy unit with the lowest initiative", () => {
-    const state = createInitialGameState("artillery-1");
-    state.players.p1.hand = ["ability.artillery"];
-    state.players.p2.hand = [];
-    state.combat!.units.unit_p2_skeletons.initiative = 1; // the slowest enemy
-    state.combat!.units.unit_p2_vampires.initiative = 6;
-    state.combat!.units.unit_p2_dread_knights.initiative = 9;
-    for (const unit of Object.values(state.combat!.units)) {
-      unit.maxHealth = 20;
-    }
-    const play = getLegalActions(state, "p1").find(
-      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.artillery"
-    );
-    expect(play, "Artillery should be playable in combat").toBeTruthy();
-    const result = applyOk(state, play!.action);
-    expect(result.combat!.units.unit_p2_skeletons.damage).toBe(1);
-    expect(result.combat!.units.unit_p2_vampires.damage).toBe(0);
-    expect(result.combat!.units.unit_p2_dread_knights.damage).toBe(0);
-  });
-
-  it("offers only the basic play (no expert Ballista side is wired)", () => {
-    const state = createInitialGameState("artillery-modes");
-    state.players.p1.hand = ["ability.artillery"];
-    const modes = getLegalActions(state, "p1")
-      .filter((legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.artillery")
-      .map((legal) => (legal.action.type === "PLAY_CARD" ? legal.action.mode : undefined));
-    expect(modes).toEqual(["basic"]);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Mystic Orb of Mana (Major artifact, map play):
 //   Option 0: Search (4) — look at the top 4 of your discard pile, take 1.
 //   Option 1: only if your discard pile is empty, draw 2 cards.

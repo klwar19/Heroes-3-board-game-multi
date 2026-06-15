@@ -643,6 +643,17 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
   }
 };
 
+/**
+ * Market fields: a hero standing here may open the trade/shop panel for free,
+ * any number of times, while parked (the panel itself keeps the rulebook's
+ * one-action-per-visit rule). Both share the in-game Market panel UI.
+ */
+export const MARKET_LOCATION_IDS = ["trading_post", "war_machine_factory"] as const;
+
+export function isMarketLocation(locationId: string | undefined): boolean {
+  return locationId !== undefined && (MARKET_LOCATION_IDS as readonly string[]).includes(locationId);
+}
+
 export const TRADE_RATES: { sell: Partial<Record<"gold" | "buildingMaterials" | "valuables", number>>; buy: Partial<Record<"gold" | "buildingMaterials" | "valuables", number>>; label: string }[] = [
   { sell: { gold: 6 }, buy: { valuables: 1 }, label: "6 gold for 1 valuables" },
   { sell: { gold: 2 }, buy: { buildingMaterials: 1 }, label: "2 gold for 1 building materials" },

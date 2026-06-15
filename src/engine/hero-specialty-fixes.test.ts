@@ -614,14 +614,17 @@ describe("First Aid Tent expert", () => {
   });
 });
 
-describe("Ballista expert", () => {
+// The Ballista no longer fires 3× on its own: the same-target volley is the
+// Artillery ability's expert side. Full Artillery coverage lives in
+// artillery.test.ts; here we just guard that the Ballista alone never triples.
+describe("Ballista without Artillery", () => {
   function ballistaRoundStart(crowns: number): GameState {
     const state = createInitialGameState("ballista-expert-seed");
     state.players.p1.hand = [];
     state.players.p2.hand = [];
     state.players.p1.permanents = ["war_machine.ballista"];
     state.players.p1.limits.expertUses = crowns;
-    // One clearly-slowest, tanky enemy so the volley lands on it deterministically.
+    // One clearly-slowest, tanky enemy so the shot lands on it deterministically.
     const target = state.combat!.units.unit_p2_dread_knights;
     target.initiative = 1;
     target.maxHealth = 12;
@@ -629,30 +632,15 @@ describe("Ballista expert", () => {
     return endCombatRound(state, "p1");
   }
 
-  it("offers fire 3× (expert) or fire once at round start when a crown is free", () => {
-    const offered = ballistaRoundStart(2);
-    expect(offered.pendingChoice?.type).toBe("OPTION_CHOICE");
-
-    const fireThrice = getLegalActions(offered, "p1").find((legal) => legal.label.includes("expert"));
-    expect(fireThrice, "the expert volley should be offered").toBeTruthy();
-
-    const fired = applyOk(offered, fireThrice!.action);
-    expect(fired.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
-    expect(fired.combat!.units.unit_p2_dread_knights.damage).toBe(3); // 3 shots × 1
+  it("fires a single basic shot at round start even with crowns free (no Artillery card)", () => {
+    const fired = ballistaRoundStart(2);
+    // No Artillery in hand → no expert offer at all; the Ballista just shoots once.
     expect(fired.pendingChoice ?? null).toBeNull();
-  });
-
-  it("fires once (no crown spent) when the basic option is chosen", () => {
-    const offered = ballistaRoundStart(2);
-    const fireOnce = getLegalActions(offered, "p1").find((legal) => legal.label === "Fire once");
-    expect(fireOnce, "the basic single shot should be offered").toBeTruthy();
-
-    const fired = applyOk(offered, fireOnce!.action);
-    expect(fired.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
     expect(fired.combat!.units.unit_p2_dread_knights.damage).toBe(1);
+    expect(fired.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
   });
 
-  it("just fires once (no offer) when no expert use is available", () => {
+  it("still fires its single shot with no crown available", () => {
     const fired = ballistaRoundStart(0);
     expect(fired.pendingChoice ?? null).toBeNull();
     expect(fired.combat!.units.unit_p2_dread_knights.damage).toBe(1);

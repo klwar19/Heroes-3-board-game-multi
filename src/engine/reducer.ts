@@ -35,6 +35,7 @@ import {
   moveHeroAdventure,
   moveHeroPathAdventure,
   openDimensionDoorChoice,
+  openMarket,
   openSharedDeckSearch,
   hireSecondaryHero,
   placeCombatUnit,
@@ -80,6 +81,7 @@ import {
   countBallistas,
   discardPermanentVoluntarily,
   getPermanentSchoolBonus,
+  isLowestInitiativeEnemy,
   putPermanentIntoPlay,
   resolveWarMachineTarget,
   startWarMachineRound
@@ -5236,10 +5238,16 @@ function applyReactionPlayCore(
       markUnitRemovedIfNeeded(state, affectedUnit);
     }
 
-    // Greater Gnoll's Flail (+2 attack): the boosted unit suffers −1 defense
-    // (a Corrosion token) until the end of the Combat.
-    if (effect.selfCorrosion && affectedUnit && state.combat) {
-      placeCombatToken(state, affectedUnit, "corrosion", effect.selfCorrosion, card.name);
+    // The Gnoll artifacts' stronger side: the boosted unit takes a lasting
+    // token until the end of the Combat — a Weakness token (−attack) for the
+    // Buckler of the Gnoll King, a Corrosion token (−defense) for the Greater
+    // Gnoll's Flail. Both are floored at 0 by the attack/defense maths.
+    if (effect.selfStatPenalty && affectedUnit && state.combat) {
+      if (effect.selfStatPenalty.stat === "attack") {
+        placeCombatToken(state, affectedUnit, "weakness", -effect.selfStatPenalty.amount, card.name);
+      } else {
+        placeCombatToken(state, affectedUnit, "corrosion", effect.selfStatPenalty.amount, card.name);
+      }
     }
 
     if (effect.drawCards) {
@@ -5840,6 +5848,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "DIPLOMACY_SKIP_COMBAT") {
     throw new Error("Diplomacy's skip is offered when your hero meets matching-level Neutral Units.");
   }
+  // Artillery's expert side is not played from hand: it is offered when this
+  // player's Ballista fires at the start of a combat round (see permanents.ts).
+  if (effect.type === "ARTILLERY_BALLISTA_VOLLEY") {
+    throw new Error("Artillery's expert side resolves when your Ballista fires, not from hand.");
+  }
 
   const option = getChosenOption(card, action.optionIndex);
   const mode = action.mode ?? "basic";
@@ -5982,33 +5995,6 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     createAttackRerollEffectFromCard(state, card, action.playerId, mode);
   }
 
-  // Artillery (basic): 1 damage to the enemy unit with the lowest (effective)
-  // Initiative; ties broken deterministically. (The card's expert Ballista
-  // synergy — "resolve the Ballista's effect against the same target 3 times"
-  // — is NOT wired; only the basic side runs.)
-  if (effect.type === "DAMAGE_LOWEST_INITIATIVE" && state.combat) {
-    const enemies = Object.values(state.combat.units).filter(
-      (unit) => unit.controllerId !== action.playerId && isUnitAlive(unit)
-    );
-    if (enemies.length > 0) {
-      const lowest = Math.min(...enemies.map((unit) => effectiveInitiative(unit, state.activeEffects)));
-      const target = enemies
-        .filter((unit) => effectiveInitiative(unit, state.activeEffects) === lowest)
-        .sort((left, right) => left.id.localeCompare(right.id))[0];
-      target.damage += effect.amount;
-      noteUnitDamagedForTokens(state, target, effect.amount);
-      appendEvent(state, {
-        type: "DAMAGE_ASSIGNED",
-        source: { type: "card", cardId: card.id, controllerId: action.playerId },
-        target: { type: "unit", unitId: target.id },
-        amount: effect.amount,
-        damageKind: "effect"
-      });
-      markUnitRemovedIfNeeded(state, target);
-      finishCombatIfNeeded(state);
-    }
-  }
-
   // Shackles of War (option 1): the enemy hero can neither Retreat nor
   // Surrender this Combat — a CANNOT_ESCAPE_COMBAT effect placed on the enemy.
   if (effect.type === "BLOCK_ENEMY_ESCAPE" && state.combat) {
@@ -6043,6 +6029,31 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     } else {
       openSiegeDemolishChoice(state, action.playerId, 1);
     }
+  }
+
+  // Artillery (basic): the slowest enemy takes `amount` "effect" damage — the
+  // same shot a Ballista makes. The card only offered the lowest-initiative
+  // enemy/enemies as targets; re-checked here so removing that filter is caught
+  // (a thrown error rolls the whole play back, card included).
+  if (effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" && state.combat) {
+    const unit = target ? state.combat.units[target.unitId] : undefined;
+    if (!unit || !isUnitAlive(unit) || unit.controllerId === action.playerId) {
+      throw new Error("Artillery must hit a living enemy unit.");
+    }
+    if (!isLowestInitiativeEnemy(state, action.playerId, unit)) {
+      throw new Error("Artillery hits an enemy unit with the lowest initiative.");
+    }
+    unit.damage += effect.amount;
+    noteUnitDamagedForTokens(state, unit, effect.amount);
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source: { type: "card", cardId: card.id, controllerId: action.playerId },
+      target: { type: "unit", unitId: unit.id },
+      amount: effect.amount,
+      damageKind: "effect"
+    });
+    markUnitRemovedIfNeeded(state, unit);
+    finishCombatIfNeeded(state);
   }
 
   if (effect.type === "DRAW_CARDS") {
@@ -8461,6 +8472,7 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
 const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "REFRESH_HAND",
   "REVISIT_FIELD",
+  "OPEN_MARKET",
   "DISCOVER_TILE",
   "PLACE_TILE",
   "SET_TILE_ROTATION",
@@ -8603,6 +8615,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "REVISIT_FIELD":
         revisitField(nextState, action);
+        break;
+      case "OPEN_MARKET":
+        openMarket(nextState, action);
         break;
       case "DISCOVER_TILE":
         discoverTile(nextState, action);
