@@ -1196,6 +1196,12 @@ export default function Home() {
               }, 1600);
             }, start);
           }
+          // Sound-only plan (Teleport): no sprite/projectile/tint carries the
+          // cue, so the cast sound is played directly over the target unit.
+          if (!plan.projectile && !plan.hit && !plan.affect?.length && !plan.tint && plan.sound) {
+            const soundKey = plan.sound;
+            window.setTimeout(() => playLibrarySound(soundKey), start);
+          }
           timeline = start + spellPresentationMs(plan);
         };
 

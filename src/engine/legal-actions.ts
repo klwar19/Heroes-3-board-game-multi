@@ -35,13 +35,15 @@ import {
   effectAppliesToUnit,
   effectiveInitiative,
   playerCannotSurrenderCombat,
-  playerHasSpellTimingFreedom
+  playerHasSpellTimingFreedom,
+  unitIsBerserk
 } from "./active-effects";
 import { cardCanBoostPower } from "./effects";
 import {
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
   BATTLEFIELD_ROWS,
+  getBattlefieldDistance,
   getBattlefieldLabel,
   getOrthogonalNeighbors,
   getReachableDestinations,
@@ -514,7 +516,10 @@ export function canUnitAttack(
     return false;
   }
 
-  if (attacker.controllerId === defender.controllerId) {
+  // Berserk forces a unit onto the nearest unit, friend or foe — so a berserked
+  // attacker may strike its own ally (which still retaliates). Every other unit
+  // can only attack an enemy.
+  if (attacker.controllerId === defender.controllerId && !unitIsBerserk(activeEffects, attacker)) {
     return false;
   }
 
@@ -570,6 +575,28 @@ export function canUnitMoveAndAttack(
   };
 
   return canUnitAttack(virtualCombat, movedAttacker, defender, state?.activeEffects ?? []);
+}
+
+/**
+ * Berserk targeting: the living units (friend or foe, never the unit itself)
+ * tied for the shortest distance from `unit`. A berserked unit must attack one
+ * of these — the controller (or the neutral AI) breaks the tie, the rulebook's
+ * "the player owning the unit decides the direction." Distance is the orthogonal
+ * board distance, the same "closest" measure the neutral AI uses elsewhere.
+ */
+export function getBerserkNearestTargets(combat: CombatState, unit: CombatUnitState): CombatUnitState[] {
+  const others = Object.values(combat.units).filter(
+    (candidate) => candidate.id !== unit.id && isUnitAlive(candidate)
+  );
+  if (others.length === 0) {
+    return [];
+  }
+  const nearest = Math.min(
+    ...others.map((candidate) => getBattlefieldDistance(unit.position, candidate.position))
+  );
+  return others.filter(
+    (candidate) => getBattlefieldDistance(unit.position, candidate.position) === nearest
+  );
 }
 
 /** A target definition that resolves to units (not "none" or an empty space). */
@@ -1861,6 +1888,123 @@ function addFortificationActions(actions: LegalAction[], state: GameState, playe
   }
 }
 
+/** Berserk: move destinations that step strictly closer to a nearest target. */
+function berserkApproachSquares(
+  unit: CombatUnitState,
+  nearest: CombatUnitState[],
+  moveDestinations: number[]
+): number[] {
+  return moveDestinations.filter((space) =>
+    nearest.some(
+      (target) =>
+        getBattlefieldDistance(space, target.position) <
+        getBattlefieldDistance(unit.position, target.position)
+    )
+  );
+}
+
+/**
+ * The forced menu of a berserked unit: it must attack the nearest unit (friend
+ * or foe) or move to the nearest unit and attack it. In priority order —
+ *  1. strike a nearest unit it can already hit (the only options offered);
+ *  2. else move-and-attack / step adjacent to a nearest unit to strike this turn
+ *     (those squares only — the board's move-then-attack flow forces the hit);
+ *  3. else advance on a nearest unit (the squares that close the distance);
+ *  4. else (boxed in, or alone on the board) hold.
+ * Every branch drops Defend, abilities and free movement — that is the spell.
+ */
+function addBerserkUnitActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  activeUnit: CombatUnitState
+): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  const hold: LegalAction = {
+    label: `${activeUnit.name} hold position`,
+    action: { type: "END_ACTIVATION", playerId, unitId: activeUnit.id }
+  };
+
+  // Its forced strike is spent — the activation is over.
+  if (activeUnit.attackedThisActivation) {
+    actions.push(hold);
+    return;
+  }
+
+  const nearest = getBerserkNearestTargets(combat, activeUnit);
+  if (nearest.length === 0) {
+    actions.push(hold);
+    return;
+  }
+
+  // 1. Attack a nearest unit it can reach from here (ranged shots included).
+  let canStrikeNow = false;
+  for (const target of nearest) {
+    if (canUnitAttack(combat, activeUnit, target, state.activeEffects)) {
+      canStrikeNow = true;
+      actions.push({
+        label: `${activeUnit.name} attack ${target.name}`,
+        action: { type: "ATTACK_UNIT", playerId, attackerId: activeUnit.id, defenderId: target.id }
+      });
+    }
+  }
+  if (canStrikeNow) {
+    return;
+  }
+
+  const moveDestinations = getLegalMoveDestinations(combat, activeUnit, state);
+  if (moveDestinations.length === 0) {
+    actions.push(hold);
+    return;
+  }
+
+  // 2. Close in and strike a nearest unit this activation.
+  const strikeSquares = new Set<number>();
+  for (const target of nearest) {
+    for (const space of moveDestinations) {
+      if (isAdjacent(space, target.position) && canUnitMoveAndAttack(combat, activeUnit, space, target, state)) {
+        strikeSquares.add(space);
+        actions.push({
+          label: `${activeUnit.name} move to ${getBattlefieldLabel(space)} and attack ${target.name}`,
+          action: {
+            type: "MOVE_AND_ATTACK_UNIT",
+            playerId,
+            attackerId: activeUnit.id,
+            destination: space,
+            defenderId: target.id
+          }
+        });
+      }
+    }
+  }
+  if (strikeSquares.size > 0) {
+    for (const space of strikeSquares) {
+      actions.push({
+        label: `${activeUnit.name} move to ${getBattlefieldLabel(space)}`,
+        action: { type: "MOVE_UNIT", playerId, unitId: activeUnit.id, destination: space }
+      });
+    }
+    return;
+  }
+
+  // 3. Cannot reach a strike — advance on a nearest unit (closing squares only).
+  const approaches = berserkApproachSquares(activeUnit, nearest, moveDestinations);
+  if (approaches.length === 0) {
+    actions.push(hold);
+    return;
+  }
+  for (const space of approaches) {
+    actions.push({
+      label: `${activeUnit.name} move to ${getBattlefieldLabel(space)}`,
+      action: { type: "MOVE_UNIT", playerId, unitId: activeUnit.id, destination: space }
+    });
+  }
+}
+
 function addUnitActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const combat = state.combat;
   if (combat && (combat.setup || combat.awaitingContinue)) {
@@ -1879,6 +2023,13 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
 
   const activeUnit = combat.units[combat.activeUnitId];
   if (!activeUnit || activeUnit.controllerId !== playerId || activeUnit.activatedThisRound) {
+    return;
+  }
+
+  // Berserk: the unit must attack the nearest unit (friend or foe), or move to
+  // it and attack — no free move, defend, ability or hold while a target stands.
+  if (unitIsBerserk(state.activeEffects, activeUnit)) {
+    addBerserkUnitActions(actions, state, playerId, activeUnit);
     return;
   }
 

@@ -27,7 +27,8 @@ export {
   getAttackRerollEffects,
   makeActiveEffect,
   playerSpellCastsIgnoreLimit,
-  unitDealsElementalDamage
+  unitDealsElementalDamage,
+  unitIsBerserk
 } from "./active-effects";
 export {
   cardCanBoostPower,

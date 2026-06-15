@@ -49,6 +49,8 @@ export const implementedCardEffectTypes = [
   "SLAYER_ATTACK",
   "INFERNO",
   "FORGETFULNESS",
+  "BERSERK",
+  "TELEPORT_UNIT",
   "DISPEL_EFFECTS",
   "IGNORE_DEFENSE",
   "BALLISTA_SPECIALTY",
@@ -521,6 +523,20 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "FORGETFULNESS") {
     return "the selected enemy ranged unit cannot attack during its next activation (tier rises with power)";
+  }
+
+  if (card.effect.type === "BERSERK") {
+    const breakpoints = Object.entries(card.effect.gradeByPower)
+      .map(([power, grade]) => `${power}:${grade}`)
+      .join(", ");
+    return `the selected unit must attack the nearest unit (friend or foe) on its next activation (reachable grade by power ${breakpoints})`;
+  }
+
+  if (card.effect.type === "TELEPORT_UNIT") {
+    const breakpoints = Object.entries(card.effect.gradeByPower)
+      .map(([power, grade]) => `${power}:${grade}`)
+      .join(", ");
+    return `move one of your units to any empty space, ignoring obstacles (reachable grade by power ${breakpoints})`;
   }
 
   if (card.effect.type === "DISPEL_EFFECTS") {
