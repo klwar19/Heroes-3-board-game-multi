@@ -512,6 +512,18 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
+       * Neutral Pegasi: "Whenever an enemy casts a spell, they must discard an
+       * additional card with Power." A GATING COST: while a living enemy Pegasi
+       * is in the combat, the enemy may cast a Spell (from hand OR a Scroll) ONLY
+       * by also discarding a Power-bearing card (a Power statistic or any Spell)
+       * — with no spare Power card to pay, the cast is not legal at all. The
+       * payment is a random Power card, resolved automatically so a
+       * neutral-controlled Pegasi needs no decision.
+       */
+      type: "SPELL_CAST_POWER_TAX";
+    }
+  | {
+      /**
        * Neutral Champions: "Roll 2 Attack dice and apply both outcomes." Both
        * dice are summed into the attack's die result. `rerollMinusOnce` also
        * rerolls each "-1" face exactly once before summing (the neutral card's
@@ -1045,6 +1057,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     mapEffect: { type: "MAP_RESOURCE_ROUND_GAIN", resource: "valuables", amount: 2 },
     implementationStatus: "implemented"
   },
+  "peasant-gold-income": {
+    id: "peasant-gold-income",
+    name: "Taxpayers",
+    text: "While in your army: at the beginning of each Resource round, gain 3 gold.",
+    mapEffect: { type: "MAP_RESOURCE_ROUND_GAIN", resource: "gold", amount: 3 },
+    implementationStatus: "implemented"
+  },
   "nomad-end-turn-step": {
     id: "nomad-end-turn-step",
     name: "Wanderer",
@@ -1405,6 +1424,15 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "REDUCE_ENEMY_SPELL_POWER", amount: 1 },
     implementationStatus: "implemented"
   },
+  // Neutral Pegasi (a different printed ability from the Rampart Pegasi above):
+  // taxes each enemy Spell cast by one extra Power card from the caster's hand.
+  "pegasi-power-tax": {
+    id: "pegasi-power-tax",
+    name: "Mystic Toll",
+    text: "[unit_passive] An enemy may cast a Spell only by also discarding a card with Power; with no Power card to pay, they cannot cast at all.",
+    effect: { type: "SPELL_CAST_POWER_TAX" },
+    implementationStatus: "implemented"
+  },
   // Rampart Dendroids (Pack): enemies beginning their activation next to a
   // Dendroid are rooted in place for that activation (they may still attack).
   "dendroid-bind": {
@@ -1462,6 +1490,17 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Spell Ward",
     text: "[unit_passive] Reduce any damage from spells dealt to this and adjacent friendly unit(s) by 1 (to a minimum of 0).",
     effect: { type: "REDUCE_SPELL_DAMAGE_AURA", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Neutral Unicorn (a different printed ability from the Rampart Unicorns): its
+  // card prints a Retaliation paralysis rather than spell-damage reduction. Reuses
+  // the implemented PARALYZE_ON_RETALIATION effect (automatic, no die — like the
+  // Medusas' Pack/neutral gaze).
+  "unicorn-paralyze-retaliation": {
+    id: "unicorn-paralyze-retaliation",
+    name: "Blinding Horn",
+    text: "[unit_retaliation] After this unit's Retaliation Attack, the target gains Paralysis (it skips its next activation; any damage clears it).",
+    effect: { type: "PARALYZE_ON_RETALIATION" },
     implementationStatus: "implemented"
   },
   // Inferno Efreet (Few): immune to Magic Arrow only (the Pack also resists Fire,

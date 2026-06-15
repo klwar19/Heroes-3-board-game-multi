@@ -138,9 +138,11 @@ import {
   getAttackRollMode,
   getLegalActions,
   getLegalMoveDestinations,
+  combatEnemyImposesPowerTax,
   getLegalReactionsForTrigger,
   getNextUnitToActivate,
   getOffTurnCombatReactions,
+  handCanPayPowerTax,
   isAdjacent,
   isHandLockedInCombat,
   isUnitAlive,
@@ -198,6 +200,7 @@ import {
   hasImmuneToSpecialtyDamage,
   hasRetaliationAgainstDisadvantage,
   hasSpellCastHandTax,
+  hasSpellCastPowerTax,
   hasUnitAbilityEffect,
   unitImmuneToSpellSchools
 } from "./unit-abilities";
@@ -4967,6 +4970,62 @@ function applyEnemySpellHandTax(state: GameState, casterId: PlayerId): void {
 }
 
 /**
+ * Discards one Power-bearing card (a Power statistic or any Spell) from a
+ * player's hand, chosen at random among their Power cards. Unlike the Magi
+ * Power Drain, the Pegasi card has no "or a random card" clause, so with no
+ * Power card in hand nothing is discarded (returns null). Resolves immediately
+ * — no choice prompt — so a neutral-controlled Pegasi needs no decision.
+ */
+function discardPowerCardFromHand(
+  state: GameState,
+  playerId: PlayerId,
+  cards: CardLibrary
+): CardId | null {
+  const player = state.players[playerId];
+  if (!player || player.hand.length === 0) {
+    return null;
+  }
+  const powerIndices = player.hand
+    .map((cardId, index) => (cardCanBoostPower(cards[cardId]) ? index : -1))
+    .filter((index) => index >= 0);
+  if (powerIndices.length === 0) {
+    return null;
+  }
+  const random = createSeededRandom(`${state.seed}#pegasi-tax#${eventSeedNumber(state)}`);
+  const index = powerIndices[random.nextInt(0, powerIndices.length - 1)];
+  const [discarded] = player.hand.splice(index, 1);
+  player.discard.push(discarded);
+  return discarded;
+}
+
+/**
+ * Neutral Pegasi "Mystic Toll": pays the toll for a Spell cast by discarding one
+ * Power card (a random Power card) from the caster's hand. castSpell only calls
+ * this once it has verified the toll can be paid, so a Power card is present.
+ */
+function applyEnemySpellPowerTax(state: GameState, casterId: PlayerId, cards: CardLibrary): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+  const pegasi = Object.values(combat.units).find(
+    (unit) => unit.controllerId !== casterId && isUnitAlive(unit) && hasSpellCastPowerTax(unit)
+  );
+  if (!pegasi) {
+    return;
+  }
+  const discarded = discardPowerCardFromHand(state, casterId, cards);
+  if (discarded) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: pegasi.id,
+      abilityId: "pegasi-power-tax",
+      message: `${pegasi.cardName}'s Mystic Toll: the spellcaster pays a card with Power to cast.`
+    });
+  }
+}
+
+/**
  * Tower Magi (Pack) "[activation] +N power to the first spell you cast this
  * round": the bonus is only available while the Magi is the active unit — i.e.
  * during its own turn — so this reads the boost off the currently-active unit
@@ -4988,6 +5047,17 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     throw new Error(`Card ${action.cardId} is not a spell.`);
   }
 
+  // Neutral Pegasi "Mystic Toll": a living enemy Pegasi gates this cast behind
+  // paying an extra Power card. Verify the toll can be paid before consuming
+  // the spell — with no spare Power card, the Spell cannot be cast at all.
+  const owesPowerToll = combatEnemyImposesPowerTax(state, action.playerId);
+  if (owesPowerToll) {
+    const caster = state.players[action.playerId];
+    if (!caster || !handCanPayPowerTax(caster.hand, cards, action.cardId, Boolean(action.fromScroll))) {
+      throw new Error("An enemy Pegasi blocks this Spell: you must discard a card with Power to cast, and have none to pay.");
+    }
+  }
+
   // A Spell Scroll cast pulls the spell from the scroll (it is not in hand) and
   // removes it from the game; a normal cast moves the card hand → discard.
   if (action.fromScroll) {
@@ -5001,6 +5071,11 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     }
     // Familiars tax each enemy Spell cast from hand by one extra random card.
     applyEnemySpellHandTax(state, action.playerId);
+  }
+
+  // Neutral Pegasi: pay the toll — discard one Power card to complete the cast.
+  if (owesPowerToll) {
+    applyEnemySpellPowerTax(state, action.playerId, cards);
   }
 
   const caster = state.players[action.playerId];

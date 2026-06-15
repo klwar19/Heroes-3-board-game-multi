@@ -157,7 +157,7 @@ function runAttack(state: GameState): GameState {
 describe("every Elemental deals die-proof, fixed damage (real unit data)", () => {
   it("covers every neutral guard AND both summon sides", () => {
     // Sanity on the inventory so a dropped side can't silently shrink coverage:
-    // 7 neutral guards + Air/Earth/Water/Fire summon Few & Pack sides.
+    // 9 neutral guards + Air/Earth/Water/Fire summon Few & Pack sides.
     const ids = new Set(elementalSides.map((entry) => entry.unitId));
     expect(ids).toEqual(
       new Set([
@@ -172,7 +172,7 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
         "neutral.magic_elementals"
       ])
     );
-    expect(elementalSides.length).toBe(15);
+    expect(elementalSides.length).toBe(17);
   });
 
   for (const { unitId, sideKey, printedAttack, abilities } of elementalSides) {
