@@ -24,6 +24,8 @@ import {
   ELIMINATION_GRACE_TURNS,
   refreshEliminationClock,
   RESOURCE_GAIN_LEVEL_AMOUNTS,
+  RETREAT_GOLD_COST,
+  SURRENDER_GOLD_COST,
   getSecondaryHero,
   humanPlayerIds,
   requiredHeroDefeats,
@@ -67,7 +69,7 @@ import {
   type NeutralDraw
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
-import { playerCannotEscapeCombat } from "./active-effects";
+import { playerCannotSurrenderCombat } from "./active-effects";
 import { createSeededRandom } from "./random";
 import {
   destroyFortification,
@@ -2857,9 +2859,10 @@ export function surrenderFromCombat(
 /**
  * Shared player-vs-player escape: at the start of the combat (round 1) a
  * participating hero may Retreat or Surrender, ending the combat as the loser.
- * Blocked while the player is under Shackles of War. The standard end-of-combat
+ * House rule: Retreat is always available; Surrender needs the full 10-gold
+ * toll in hand and is blocked by Shackles of War. The standard end-of-combat
  * automation (acknowledge → finalize) applies the consequences from the
- * `combat.outcome` reason, exactly like a fought-out loss.
+ * `combat.outcome` reason — see `finalizeAdventureCombat`.
  */
 function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat" | "surrender"): void {
   const combat = state.combat;
@@ -2882,8 +2885,16 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
   if (combat.round !== 1) {
     throw new Error("Retreat or Surrender is only possible at the start of the combat.");
   }
-  if (playerCannotEscapeCombat(state, playerId)) {
-    throw new Error("Shackles of War prevents this hero from retreating or surrendering.");
+  if (reason === "surrender") {
+    // Shackles of War (house rule) locks the enemy out of Surrender only.
+    if (playerCannotSurrenderCombat(state, playerId)) {
+      throw new Error("Shackles of War prevents this hero from surrendering.");
+    }
+    // Surrender is a paid escape: you must hold the full toll to choose it
+    // (no debt). A poorer hero must Retreat or fight on.
+    if ((state.players[playerId]?.resources.gold ?? 0) < SURRENDER_GOLD_COST) {
+      throw new Error(`Surrender costs ${SURRENDER_GOLD_COST} gold — Retreat or fight on instead.`);
+    }
   }
   const winnerPlayerId = playerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
   combat.outcome = { winnerPlayerId, defeatedPlayerId: playerId, reason };
@@ -2906,11 +2917,13 @@ export function finalizeAdventureCombat(state: GameState): void {
   const context = combat.context;
   const outcome = combat.outcome;
 
-  // "Keep troops" option: a player-vs-player fight spares both armies. The
-  // winner is still decided below, but no unit card is removed and no Pack is
-  // downgraded — the army cards stay exactly as they entered the fight. Fights
-  // against Neutral guards always cost casualties as normal.
-  const keepTroops = context.kind === "player" && adventurePvpTroopLoss(state) === "none";
+  // No casualties are applied to a player-vs-player fight when either the
+  // lobby's "Keep troops" mode is on, or this was a Surrender (house rule: a
+  // surrendering hero always keeps its whole army, in both modes). No unit card
+  // is removed and no Pack is downgraded — the army cards stay exactly as they
+  // entered the fight. Fights against Neutral guards always cost casualties.
+  const keepTroops =
+    context.kind === "player" && (adventurePvpTroopLoss(state) === "none" || outcome.reason === "surrender");
 
   // Sync army cards with what happened on the board.
   for (const unit of Object.values(combat.units)) {
@@ -3047,43 +3060,58 @@ export function finalizeAdventureCombat(state: GameState): void {
   const loserHero = attackerHero?.controllerId === loserId ? attackerHero : defenderHero;
   const winnerHero = attackerHero?.controllerId === winnerId ? attackerHero : defenderHero;
 
+  // Surrender (house rule) is a paid escape, not a defeat: the loser keeps every
+  // unit (handled by `keepTroops` above), pays a flat toll to the opponent,
+  // takes no morale hit, and the opponent gains NOTHING toward winning — no
+  // experience, no Necromancy window, and no credit toward the "defeat every
+  // enemy hero" victory path. A Retreat or a fought-out loss is a real defeat
+  // with the usual consequences (and its 5-gold toll may push the loser into
+  // debt — gold can go negative).
+  const surrendered = outcome.reason === "surrender";
+
   if (loserHero) {
-    // Winner gains experience by the defeated main hero's level. No experience
-    // when no Main Hero stood on either side: a garrison defense win pays
-    // nothing, and a Secondary Hero never gains experience from its fights.
-    if (winnerHero && winnerHero.kind === "main" && loserHero.kind === "main") {
-      if (loserHero.level > winnerHero.level) {
-        gainExperience(state, winnerId, 2);
-      } else if (loserHero.level === winnerHero.level) {
-        gainExperience(state, winnerId, 1);
+    if (surrendered) {
+      // The 10-gold toll was required to choose Surrender (no debt) and now
+      // transfers to the opponent. The hero falls back home with its full army.
+      spendResources(state, loserId, { gold: SURRENDER_GOLD_COST }, "surrendered the combat");
+      gainResources(state, winnerId, { gold: SURRENDER_GOLD_COST }, "accepted the enemy's surrender");
+      moveDefeatedHeroHome(state, loserHero);
+    } else {
+      // Winner gains experience by the defeated main hero's level. No experience
+      // when no Main Hero stood on either side: a garrison defense win pays
+      // nothing, and a Secondary Hero never gains experience from its fights.
+      if (winnerHero && winnerHero.kind === "main" && loserHero.kind === "main") {
+        if (loserHero.level > winnerHero.level) {
+          gainExperience(state, winnerId, 2);
+        } else if (loserHero.level === winnerHero.level) {
+          gainExperience(state, winnerId, 1);
+        }
       }
-    }
 
-    const loser = state.players[loserId];
-    const payment = Math.min(5, loser?.resources.gold ?? 0);
-    if (payment > 0) {
-      spendResources(state, loserId, { gold: payment }, "defeated by an enemy hero");
-      gainResources(state, winnerId, { gold: payment }, "spoils of victory");
-    }
-    changeMorale(state, loserId, -1);
-    moveDefeatedHeroHome(state, loserHero);
+      // The loser pays the full 5-gold toll to the winner even if it overdraws
+      // their treasury (house rule: gold may go negative — paid down by income).
+      spendResources(state, loserId, { gold: RETREAT_GOLD_COST }, "defeated by an enemy hero");
+      gainResources(state, winnerId, { gold: RETREAT_GOLD_COST }, "spoils of victory");
+      changeMorale(state, loserId, -1);
+      moveDefeatedHeroHome(state, loserHero);
 
-    // Grail Hunt & Dragon Hunt: beating an enemy main hero counts toward the
-    // "defeat every enemy hero at least once" win path (only 2 of the 3 in a
-    // 4-player game).
-    if (
-      victoryModeCountsHeroDefeats(adventureVictoryMode(state)) &&
-      loserHero.kind === "main" &&
-      winnerId !== NEUTRAL_PLAYER_ID &&
-      loserId !== winnerId
-    ) {
-      const defeats = (adventure.heroDefeats ??= {});
-      const beaten = (defeats[winnerId] ??= []);
-      if (!beaten.includes(loserId)) {
-        beaten.push(loserId);
-      }
-      if (beaten.length >= requiredHeroDefeats(humanPlayerIds(state).length)) {
-        declareAdventureWinner(state, winnerId, "defeated the required enemy heroes");
+      // Grail Hunt & Dragon Hunt: beating an enemy main hero counts toward the
+      // "defeat every enemy hero at least once" win path (only 2 of the 3 in a
+      // 4-player game). A Surrender deliberately never reaches this branch.
+      if (
+        victoryModeCountsHeroDefeats(adventureVictoryMode(state)) &&
+        loserHero.kind === "main" &&
+        winnerId !== NEUTRAL_PLAYER_ID &&
+        loserId !== winnerId
+      ) {
+        const defeats = (adventure.heroDefeats ??= {});
+        const beaten = (defeats[winnerId] ??= []);
+        if (!beaten.includes(loserId)) {
+          beaten.push(loserId);
+        }
+        if (beaten.length >= requiredHeroDefeats(humanPlayerIds(state).length)) {
+          declareAdventureWinner(state, winnerId, "defeated the required enemy heroes");
+        }
       }
     }
   }
@@ -3094,8 +3122,9 @@ export function finalizeAdventureCombat(state: GameState): void {
     }
   }
 
-  // Necromancy window opens for the winner of a fought PvP combat too.
-  if (winnerId !== NEUTRAL_PLAYER_ID && state.players[winnerId]) {
+  // Necromancy window opens for the winner of a fought (or retreat) PvP combat —
+  // but never on a Surrender, which is not a combat victory for the opponent.
+  if (!surrendered && winnerId !== NEUTRAL_PLAYER_ID && state.players[winnerId]) {
     state.players[winnerId].necromancyWindow = true;
   }
 

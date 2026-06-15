@@ -161,11 +161,11 @@ export type ActiveEffectModifier =
     }
   | {
       /**
-       * Shackles of War (option 1): while held, the affected player's Hero can
-       * neither Retreat nor Surrender from the current Combat. Player-scoped,
-       * lasts the Combat.
+       * Shackles of War (house rule): while held, the affected player's Hero
+       * cannot *Surrender* the current Combat. Retreat (and a fought-out loss)
+       * is unaffected. Player-scoped, lasts the Combat.
        */
-      type: "CANNOT_ESCAPE_COMBAT";
+      type: "CANNOT_SURRENDER_COMBAT";
     }
   | {
       /**
@@ -747,11 +747,12 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Shackles of War (option 1): played at the start of a player-vs-player
-       * Combat, the enemy player's Hero can neither Retreat nor Surrender for
-       * the rest of that Combat (a CANNOT_ESCAPE_COMBAT effect on the enemy).
+       * Shackles of War (house rule): played at the start of a player-vs-player
+       * Combat, the enemy player's Hero cannot *Surrender* for the rest of that
+       * Combat (a CANNOT_SURRENDER_COMBAT effect on the enemy). Retreat and a
+       * fought-out loss are unaffected.
        */
-      type: "BLOCK_ENEMY_ESCAPE";
+      type: "BLOCK_ENEMY_SURRENDER";
     }
   | {
       /**
@@ -1278,10 +1279,12 @@ export type GameAction =
   | { type: "RETREAT_FROM_COMBAT"; playerId: PlayerId }
   | {
       /**
-       * Player-vs-player combats: at the start of the combat (round 1) a
-       * participating hero may Surrender — the combat ends with that player as
-       * the loser. Blocked while the player is under Shackles of War's
-       * "neither Retreat nor Surrender" effect.
+       * Player-vs-player combats (house rule): at the start of the combat
+       * (round 1) a participating hero may Surrender for a flat 10-gold toll
+       * paid to the opponent — they keep their whole army, take no morale hit,
+       * return home, and the opponent gains nothing toward winning. Offered
+       * only with the full 10 gold in hand, and blocked while the player is
+       * under Shackles of War.
        */
       type: "SURRENDER_COMBAT";
       playerId: PlayerId;

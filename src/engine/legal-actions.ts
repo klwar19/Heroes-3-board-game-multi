@@ -15,6 +15,7 @@ import {
   humanPlayerIds,
   NEUTRAL_DECK_IDS,
   RESOURCE_GAIN_LEVEL_AMOUNTS,
+  SURRENDER_GOLD_COST,
   townHasBuildingEffect,
   unlockedRecruitTiers
 } from "./adventure";
@@ -33,7 +34,7 @@ import {
 import {
   effectAppliesToUnit,
   effectiveInitiative,
-  playerCannotEscapeCombat,
+  playerCannotSurrenderCombat,
   playerHasSpellTimingFreedom
 } from "./active-effects";
 import { cardCanBoostPower } from "./effects";
@@ -1068,9 +1069,9 @@ function isOptionEffectPlayable(
     case "GRANT_ELEMENTAL_DAMAGE":
     case "DAMAGE_LOWEST_INITIATIVE_ENEMY":
       return context === "combat" && Boolean(state.combat);
-    case "BLOCK_ENEMY_ESCAPE":
-      // Shackles of War (option 1): only at the start of a player-vs-player
-      // combat, where there is an enemy hero who could otherwise escape.
+    case "BLOCK_ENEMY_SURRENDER":
+      // Shackles of War (house rule): only at the start of a player-vs-player
+      // combat, where there is an enemy hero who could otherwise surrender.
       return context === "combat" && state.combat?.context.kind === "player" && state.combat.round === 1;
     case "DOUBLE_FIRST_AID_TENT":
       // Gem's First Aid VI only does something with a First Aid Tent in play.
@@ -3422,9 +3423,14 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
  * flows (adventure rolls and the combat attack-die reroll) instead.
  */
 /**
- * Player-vs-player escape: at the start of the combat (round 1, between
- * activations) a participating hero may Retreat or Surrender — unless Shackles
- * of War has locked them in. Conceding ends the combat as the loser.
+ * Player-vs-player escape (house rule): at the start of the combat (round 1,
+ * between activations) a participating hero may:
+ * - Retreat — lose the combat: pay 5 gold (may go into debt), take -1 morale,
+ *   lose troops per the lobby mode, and fall back home. Always available.
+ * - Surrender — pay a flat 10 gold to the opponent, keep the whole army, take
+ *   no morale hit, return home, and deny the opponent any victory credit.
+ *   Offered only with the full 10 gold in hand and while Shackles of War has
+ *   not locked it.
  */
 function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const combat = state.combat;
@@ -3436,17 +3442,20 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
   }
   const heroId =
     playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
-  if (!heroId || playerCannotEscapeCombat(state, playerId)) {
+  if (!heroId) {
     return;
   }
   actions.push({
-    label: "Retreat (lose the combat; your hero flees to its last field)",
+    label: "Retreat (lose the combat: pay 5 gold, -1 morale, fall back home)",
     action: { type: "RETREAT_FROM_COMBAT", playerId }
   });
-  actions.push({
-    label: "Surrender (concede the combat)",
-    action: { type: "SURRENDER_COMBAT", playerId }
-  });
+  const gold = state.players[playerId]?.resources.gold ?? 0;
+  if (gold >= SURRENDER_GOLD_COST && !playerCannotSurrenderCombat(state, playerId)) {
+    actions.push({
+      label: `Surrender (pay ${SURRENDER_GOLD_COST} gold, keep your whole army, return home)`,
+      action: { type: "SURRENDER_COMBAT", playerId }
+    });
+  }
 }
 
 function addMoraleActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {

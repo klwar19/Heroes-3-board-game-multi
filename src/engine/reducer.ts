@@ -5995,9 +5995,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     createAttackRerollEffectFromCard(state, card, action.playerId, mode);
   }
 
-  // Shackles of War (option 1): the enemy hero can neither Retreat nor
-  // Surrender this Combat — a CANNOT_ESCAPE_COMBAT effect placed on the enemy.
-  if (effect.type === "BLOCK_ENEMY_ESCAPE" && state.combat) {
+  // Shackles of War (house rule): the enemy hero cannot Surrender this Combat
+  // — a CANNOT_SURRENDER_COMBAT effect placed on the enemy. Retreat (and a
+  // fought-out loss) still happen normally.
+  if (effect.type === "BLOCK_ENEMY_SURRENDER" && state.combat) {
     const enemyId = pickEnemyPlayerId(state, action.playerId);
     if (enemyId) {
       createActiveEffect(
@@ -6008,7 +6009,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           duration: { type: "combat" },
           polarity: "negative",
           removable: false,
-          modifiers: [{ type: "CANNOT_ESCAPE_COMBAT" }]
+          modifiers: [{ type: "CANNOT_SURRENDER_COMBAT" }]
         },
         { type: "card", cardId: card.id, controllerId: action.playerId },
         enemyId

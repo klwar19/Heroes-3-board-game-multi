@@ -42,7 +42,7 @@ export const implementedCardEffectTypes = [
   "GAIN_WAR_MACHINE",
   "CHAIN_LIGHTNING",
   "PLACE_PARALYSIS",
-  "BLOCK_ENEMY_ESCAPE",
+  "BLOCK_ENEMY_SURRENDER",
   "BALLISTA_SPECIALTY",
   "DAMAGE_LOWEST_INITIATIVE_ENEMY",
   "ARTILLERY_BALLISTA_VOLLEY",
@@ -477,8 +477,8 @@ export function describeCardEffect(card: CardDefinition): string {
     return "place a Paralysis token on the selected enemy unit (tier rises with power)";
   }
 
-  if (card.effect.type === "BLOCK_ENEMY_ESCAPE") {
-    return "the enemy hero can neither Retreat nor Surrender this combat";
+  if (card.effect.type === "BLOCK_ENEMY_SURRENDER") {
+    return "the enemy hero cannot Surrender this combat (Retreat still allowed)";
   }
 
   if (card.effect.type === "BALLISTA_SPECIALTY") {
