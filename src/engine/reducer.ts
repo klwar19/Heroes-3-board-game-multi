@@ -143,6 +143,7 @@ import {
 import {
   getActivationAbilities,
   getActivationDamageSpellAbility,
+  getActivationSpellPowerBoost,
   getAfterRetaliationAttackAbility,
   getAttackBonusOnAttackDie,
   getAttackBonusVsDefenderName,
@@ -153,8 +154,11 @@ import {
   getDefenseBonusOnAttackDie,
   getDefenseBonusWhenRetaliated,
   getDoubleAttackAbility,
+  getCardNegateOnDie,
+  getDeckDiscardTakeSpell,
   getEnchanterActivationAbility,
   getEnemyDiscardAbility,
+  getEnemySpellPowerReduction,
   getFlatDamageFollowUps,
   getForcedAttackerDie,
   getIgnoreTargetCardDefenseAbility,
@@ -163,6 +167,7 @@ import {
   getLineAttackAbility,
   getOnAttackDieDraw,
   getOnAttackDieTokens,
+  getOnAttackPoisonCubes,
   getOnAttackSelfHeal,
   getParalysisFollowUps,
   getPostAttackAbilityDamageEffects,
@@ -179,6 +184,7 @@ import {
   getTriggeredAttackDieBonusAbilities,
   getUnitAbilityDefinitions,
   getUnitAttackRerollSources,
+  hasBindAdjacentEnemies,
   hasDefenseTokenAura,
   hasIgnoreOwnAttackDie,
   hasIgnoreParalysis,
@@ -216,6 +222,7 @@ import type {
   ResourceKind,
   ResolutionStackItem,
   RulesError,
+  TargetRef,
   UnitGrade,
   UnitId
 } from "./state";
@@ -1010,6 +1017,39 @@ function unitIgnoresCardDamage(unit: CombatUnitState, card: CardDefinition | und
     return unitImmuneToSpellSchools(unit, card.spellSchools);
   }
   return false;
+}
+
+/**
+ * Rampart Dwarves "Magic Resistance": when a Spell or Specialty card targets a
+ * single Dwarf unit, it rolls one Attack die; on the printed face ("+1") the
+ * card has no effect on it. The roll happens whether the card is friendly or
+ * hostile. Returns true when the card is negated (the caller skips the effect).
+ * Rolls at most once, and only when the target is a living Dwarf carrying the
+ * ability — otherwise it is a no-op that never touches the dice.
+ */
+function negatesCardOnDwarfRoll(state: GameState, target: TargetRef | undefined, cardName: string): boolean {
+  const combat = state.combat;
+  if (!combat || !target || target.type !== "unit") {
+    return false;
+  }
+  const unit = combat.units[target.unitId];
+  const negate = unit ? getCardNegateOnDie(unit) : null;
+  if (!unit || !isUnitAlive(unit) || !negate) {
+    return false;
+  }
+
+  const roll = rollAttackDie(combat);
+  const negated = roll === negate.onRoll;
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: unit.id,
+    abilityId: negate.abilityId,
+    targetUnitId: unit.id,
+    message: negated
+      ? `${unit.cardName} rolls ${roll} and shrugs off ${cardName} (${negate.abilityName}).`
+      : `${unit.cardName} rolls ${roll} for ${negate.abilityName}; ${cardName} takes hold.`
+  });
+  return negated;
 }
 
 /**
@@ -1982,6 +2022,8 @@ function finishResolvedAttack(
   }
 
   applyOnAttackTokens(state, details.attacker, details.defender, details.isRetaliation);
+  applyOnAttackPoisonCubes(state, details.attacker, details.defender, details.isRetaliation);
+  applyDendroidBindFx(state, details.attacker, details.defender, details.isRetaliation);
   applyOnAttackDieTokens(state, details.attacker, details.defender, attackResult.roll, details.isRetaliation);
   // Dungeon Minotaurs: draw a card when this unit's Attack die resolves "-1".
   applyOnAttackDieDraw(state, details.attacker, attackResult.roll);
@@ -2110,6 +2152,12 @@ function finishResolvedAttack(
     return;
   }
 
+  // Tower Genies (Pack): after their attack, dig Spells out of the controller's
+  // deck. Pauses the parked retaliation when several Spells offer a choice.
+  if (openGenieSpellDraw(state, details.attacker, details.isRetaliation)) {
+    return;
+  }
+
   // Ghost Dragons (neutral): roll for the knock-back last — moving the target
   // out of reach is what denies its Retaliation Attack, so it must resolve
   // before the parked retaliation. Pauses when the defender has a real choice
@@ -2150,6 +2198,97 @@ function applyOnAttackTokens(
       message: `${attacker.cardName} marks ${defender.cardName} with a ${ability.name}.`
     });
   }
+}
+
+/**
+ * Fortress Wyverns' poison: after the Wyvern's own attack (never a retaliation)
+ * the still-living target gains the printed faction cubes. They ride the target
+ * and bleed it 1 each time it activates (see `applyPoisonCubesAtActivation`).
+ * Cubes from repeated Wyvern hits accumulate.
+ */
+function applyOnAttackPoisonCubes(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  isRetaliation: boolean
+): void {
+  if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
+    return;
+  }
+
+  const poison = getOnAttackPoisonCubes(attacker);
+  if (!poison) {
+    return;
+  }
+
+  defender.poisonCubes = (defender.poisonCubes ?? 0) + poison.count;
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: poison.abilityId,
+    targetUnitId: defender.id,
+    message: `${attacker.cardName} plants ${poison.count} poison cube${poison.count === 1 ? "" : "s"} on ${defender.cardName}.`
+  });
+}
+
+/**
+ * Fortress Wyverns' poison tick: at the beginning of the poisoned unit's
+ * activation one cube is removed and the unit takes 1 damage. Returns true when
+ * the tick removed the unit (so the caller ends its activation). No-op when the
+ * unit carries no cubes.
+ */
+function applyPoisonCubesAtActivation(state: GameState, unit: CombatUnitState): boolean {
+  const cubes = unit.poisonCubes ?? 0;
+  if (cubes <= 0 || !isUnitAlive(unit)) {
+    return false;
+  }
+
+  unit.poisonCubes = cubes - 1;
+  const assigned = Math.min(1, Math.max(0, unit.maxHealth - unit.damage));
+  unit.damage += 1;
+  noteUnitDamagedForTokens(state, unit, 1);
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: unit.id,
+    abilityId: "wyvern-poison-cube",
+    targetUnitId: unit.id,
+    message: `Poison bleeds ${unit.cardName} for 1 damage (${unit.poisonCubes} cube${unit.poisonCubes === 1 ? "" : "s"} left).`
+  });
+  if (assigned > 0) {
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source: { type: "system" },
+      target: { type: "unit", unitId: unit.id },
+      amount: assigned,
+      damageKind: "effect"
+    });
+  }
+  markUnitRemovedIfNeeded(state, unit);
+  return !isUnitAlive(unit);
+}
+
+/**
+ * Rampart Dendroids' Bind: the root mechanic is a passive aura enforced in
+ * movement legality, but its visual/sound plays as the Dendroid attacks — roots
+ * lash out at the struck target. Cosmetic only: emits the ability event the FX
+ * layer keys off (never on a retaliation).
+ */
+function applyDendroidBindFx(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  isRetaliation: boolean
+): void {
+  if (isRetaliation || !state.combat || !hasBindAdjacentEnemies(attacker) || !isUnitAlive(defender)) {
+    return;
+  }
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: "dendroid-bind",
+    targetUnitId: defender.id,
+    message: `${attacker.cardName}'s roots ensnare ${defender.cardName}.`
+  });
 }
 
 /**
@@ -3377,6 +3516,23 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
     playerId: activeUnit.controllerId
   });
 
+  // Fortress Wyverns' poison: a faction cube is removed for 1 damage at the
+  // beginning of the unit's activation. A lethal cube ends the activation right
+  // away (and may end the combat) — advance to the next unit.
+  if (applyPoisonCubesAtActivation(state, activeUnit)) {
+    if (finishCombatIfNeeded(state)) {
+      return;
+    }
+    activeUnit.activatedThisRound = true;
+    appendEvent(state, {
+      type: "UNIT_ACTIVATION_ENDED",
+      playerId: activeUnit.controllerId,
+      unitId: activeUnit.id
+    });
+    setActiveUnit(state, getNextUnitToActivate(state.combat, state.activeEffects)?.id ?? null);
+    return;
+  }
+
   // Auto-resolving "[activation]" abilities fire as the unit's turn opens:
   // Wraith/Troll regeneration, Ghost Dragon morale drain and the Wraith-pack
   // enemy hand discard. A paralysed unit (handled above) never reaches here.
@@ -3442,31 +3598,6 @@ function applyActivationStartAbilities(state: GameState, unit: CombatUnitState):
         message: `${unit.name} drains a card from the enemy's hand.`
       });
       continue;
-    }
-
-    if (ability.kind === "boost-first-spell-power") {
-      // Tower Magi (Pack): the controller's first spell this combat round gains
-      // +N power. A player-scope effect consumed on that cast (see CAST_SPELL),
-      // lapsing at the round's end if unused.
-      createActiveEffect(
-        state,
-        {
-          name: ability.abilityName,
-          scope: "player",
-          duration: { type: "current-combat-round" },
-          polarity: "positive",
-          removable: false,
-          modifiers: [{ type: "SPELL_POWER_FIRST_CAST", amount: ability.amount }]
-        },
-        { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
-        unit.controllerId
-      );
-      appendEvent(state, {
-        type: "UNIT_ABILITY_TRIGGERED",
-        unitId: unit.id,
-        abilityId: ability.abilityId,
-        message: `${unit.name} will add +${ability.amount} power to ${unit.controllerId}'s first spell this round.`
-      });
     }
   }
 }
@@ -3826,7 +3957,26 @@ function openReactionWindowForTrigger(
   return true;
 }
 
-function getCurrentSpellPower(stackItem: ResolutionStackItem, cards: CardLibrary): number {
+/**
+ * Rampart Pegasi (Pack) "Magic Damper": every living enemy Pegasi shaves Power
+ * off the Spells the caster casts. Summed across all opposing auras; the caller
+ * floors the resulting Power at 0.
+ */
+function enemySpellPowerReduction(state: GameState, casterPlayerId: PlayerId): number {
+  const combat = state.combat;
+  if (!combat) {
+    return 0;
+  }
+  let total = 0;
+  for (const unit of Object.values(combat.units)) {
+    if (unit.controllerId !== casterPlayerId && isUnitAlive(unit)) {
+      total += getEnemySpellPowerReduction(unit);
+    }
+  }
+  return total;
+}
+
+function getCurrentSpellPower(state: GameState, stackItem: ResolutionStackItem, cards: CardLibrary): number {
   // (School of Magic permanents add schoolPowerBonus below, beside the
   // once-per-cast Power-card bonus.)
   if (stackItem.action.type !== "CAST_SPELL") {
@@ -3840,12 +3990,15 @@ function getCurrentSpellPower(stackItem: ResolutionStackItem, cards: CardLibrary
   }
 
   const card = cards[stackItem.action.cardId];
-  return (
+  const base =
     (card?.power ?? 0) +
     stackItem.modifiers.spellPowerBonus +
     (stackItem.modifiers.schoolPowerBonus ?? 0) +
-    (stackItem.modifiers.townCubePowerBonus ?? 0)
-  );
+    (stackItem.modifiers.townCubePowerBonus ?? 0);
+
+  // Rampart Pegasi: an enemy Pegasi pack reduces the Power of every Spell this
+  // caster resolves (to a minimum of 0).
+  return Math.max(0, base - enemySpellPowerReduction(state, stackItem.action.playerId));
 }
 
 function shouldRetaliate(
@@ -4040,14 +4193,37 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     // Snapshot for the ongoing rule: effects created below mark this card as
     // staying in play until they end.
     const effectCountBeforeCast = state.activeEffects.length;
+
+    // Rampart Dwarves "Magic Resistance": a spell aimed at a Dwarf rolls a die
+    // to shrug it off. On the matching face the spell still resolves (and is
+    // discarded) but applies none of its effects to the Dwarf.
+    if (negatesCardOnDwarfRoll(state, stackItem.action.target, card?.name ?? "the spell")) {
+      appendEvent(state, {
+        type: "SPELL_CAST_RESOLVED",
+        playerId: stackItem.action.playerId,
+        spellCardId: stackItem.action.cardId,
+        target: stackItem.action.target,
+        power: getCurrentSpellPower(state, stackItem, cards)
+      });
+      finalizeSpellCardDestination(state, stackItem, effectCountBeforeCast);
+      stackItem.status = "resolved";
+      state.stack.pop();
+      if (finishCombatIfNeeded(state)) {
+        return;
+      }
+      state.phase = "combat";
+      state.priorityPlayerId = null;
+      return;
+    }
+
     if (card?.effect.type === "EARTHQUAKE" && state.combat?.siege) {
-      resolveEarthquakeSpell(state, stackItem.action.playerId, getCurrentSpellPower(stackItem, cards));
+      resolveEarthquakeSpell(state, stackItem.action.playerId, getCurrentSpellPower(state, stackItem, cards));
     }
 
     if (card?.effect.type === "DEAL_DAMAGE" && state.combat && stackItem.action.target.type === "unit") {
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target) {
-        const power = getCurrentSpellPower(stackItem, cards);
+        const power = getCurrentSpellPower(state, stackItem, cards);
         const rawAmount = getSpellDamageAmount(card, power);
         // Spell/Specialty immunity zeroes the hit; otherwise "reduce spell
         // damage by N" applies to Spell-kind damage only.
@@ -4076,7 +4252,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     if (card?.effect.type === "HEAL_DAMAGE" && state.combat && stackItem.action.target.type === "unit") {
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target) {
-        const power = getCurrentSpellPower(stackItem, cards);
+        const power = getCurrentSpellPower(state, stackItem, cards);
         const amount = getSpellDamageAmount(card, power);
         healUnitDamage(
           state,
@@ -4092,7 +4268,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     }
 
     if (card?.effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS" && state.combat && stackItem.action.target.type === "unit") {
-      const power = getCurrentSpellPower(stackItem, cards);
+      const power = getCurrentSpellPower(state, stackItem, cards);
       const amount = getSpellDamageAmount(card, power);
       const source = {
         type: "card" as const,
@@ -4120,7 +4296,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         card,
         card.effect,
         stackItem.action.playerId,
-        getCurrentSpellPower(stackItem, cards),
+        getCurrentSpellPower(state, stackItem, cards),
         stackItem.action.target
       );
     }
@@ -4130,7 +4306,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         state,
         card,
         stackItem.action.playerId,
-        getCurrentSpellPower(stackItem, cards),
+        getCurrentSpellPower(state, stackItem, cards),
         stackItem.action.target
       );
     }
@@ -4141,7 +4317,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         card,
         stackItem.action.playerId,
         "basic",
-        getCurrentSpellPower(stackItem, cards)
+        getCurrentSpellPower(state, stackItem, cards)
       );
     }
 
@@ -4150,7 +4326,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     }
 
     if (card?.effect.type === "CREATE_INITIATIVE_BUFF" && state.combat && stackItem.action.target.type === "unit") {
-      const power = getCurrentSpellPower(stackItem, cards);
+      const power = getCurrentSpellPower(state, stackItem, cards);
       const targetUnit = state.combat.units[stackItem.action.target.unitId];
       const amount = doubleAmountForUnitName(
         getAmountByPower(card.effect.amountByPower, card.effect.amount ?? 0, power),
@@ -4174,7 +4350,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     }
 
     if (card?.effect.type === "CREATE_SPELL_IMMUNITY" && state.combat && stackItem.action.target.type === "unit") {
-      const power = getCurrentSpellPower(stackItem, cards);
+      const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
@@ -4201,13 +4377,13 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         card,
         card.effect,
         stackItem.action.playerId,
-        getCurrentSpellPower(stackItem, cards),
+        getCurrentSpellPower(state, stackItem, cards),
         stackItem.action.target
       );
     }
 
     if (card?.effect.type === "CLEAR_RETALIATION" && state.combat && stackItem.action.target.type === "unit") {
-      const power = getCurrentSpellPower(stackItem, cards);
+      const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade) && target.retaliatedThisRound) {
@@ -4230,7 +4406,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
 
     if (card?.effect.type === "AREA_DAMAGE_ADJACENT" && state.combat && stackItem.action.target.type === "unit") {
       const target = state.combat.units[stackItem.action.target.unitId];
-      const power = getCurrentSpellPower(stackItem, cards);
+      const power = getCurrentSpellPower(state, stackItem, cards);
       const amount = getAmountByPower(card.effect.amountByPower, 1, power);
       if (target) {
         // The primary target's own spell-damage reduction applies here; the
@@ -4287,7 +4463,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
 
     if (card?.effect.type === "SUMMON_ELEMENTAL" && state.combat && stackItem.action.target.type === "space") {
       // Power 4 summons a Pack, Power 2 a Few; Power 0 has no effect.
-      const power = getCurrentSpellPower(stackItem, cards);
+      const power = getCurrentSpellPower(state, stackItem, cards);
       const side: "few" | "pack" | null = power >= 4 ? "pack" : power >= 2 ? "few" : null;
       const position = stackItem.action.target.position;
       if (side) {
@@ -4308,7 +4484,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       playerId: stackItem.action.playerId,
       spellCardId: stackItem.action.cardId,
       target: stackItem.action.target,
-      power: getCurrentSpellPower(stackItem, cards)
+      power: getCurrentSpellPower(state, stackItem, cards)
     });
 
     finalizeSpellCardDestination(state, stackItem, effectCountBeforeCast);
@@ -4478,24 +4654,19 @@ function applyEnemySpellHandTax(state: GameState, casterId: PlayerId): void {
 }
 
 /**
- * Tower Magi (Pack): the total "+power to your first spell this round" a player
- * holds from active effects (a non-consuming sum — the cast flow only applies it
- * on the round's first spell and the current-combat-round effect lapses on its
- * own).
+ * Tower Magi (Pack) "[activation] +N power to the first spell you cast this
+ * round": the bonus is only available while the Magi is the active unit — i.e.
+ * during its own turn — so this reads the boost off the currently-active unit
+ * when it belongs to the caster. 0 at any other time (off-turn, another unit
+ * active, no combat).
  */
-function firstSpellPowerBonusFor(state: GameState, playerId: PlayerId): number {
-  let bonus = 0;
-  for (const effect of state.activeEffects) {
-    if (effect.controllerId !== playerId) {
-      continue;
-    }
-    for (const modifier of effect.modifiers) {
-      if (modifier.type === "SPELL_POWER_FIRST_CAST") {
-        bonus += modifier.amount;
-      }
-    }
+function activeUnitSpellPowerBoostFor(state: GameState, playerId: PlayerId): number {
+  const combat = state.combat;
+  const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+  if (!activeUnit || activeUnit.controllerId !== playerId) {
+    return 0;
   }
-  return bonus;
+  return getActivationSpellPowerBoost(activeUnit);
 }
 
 function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_SPELL" }>, cards: CardLibrary): void {
@@ -4538,12 +4709,11 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
       stackItem.modifiers.spellPowerBonus += astrologersCard.effect.amount;
     }
 
-    // Tower Magi (Pack) "[activation] +N power to the first spell this round":
-    // apply the granted bonus to the round's first cast (the effect lapses at
-    // round end and the gate keeps it to a single cast, so it is not removed
-    // here — a Magi that re-activates next round grants it again).
+    // Tower Magi (Pack) "[activation] +N power to the first spell you cast this
+    // round": only while the Magi itself is the active unit (its own turn), and
+    // only for the round's first spell.
     if (isFirstSpellThisRound) {
-      const magiPower = firstSpellPowerBonusFor(state, action.playerId);
+      const magiPower = activeUnitSpellPowerBoostFor(state, action.playerId);
       if (magiPower > 0) {
         stackItem.modifiers.spellPowerBonus += magiPower;
       }
@@ -4810,7 +4980,7 @@ function applyReactionPlayCore(
     stackItem?.action.type === "CAST_SPELL" &&
     !(mode === "expert" && effect.expertIgnoresMaxPower) &&
     effect.maxPower !== undefined &&
-    getCurrentSpellPower(stackItem, cards) > effect.maxPower
+    getCurrentSpellPower(state, stackItem, cards) > effect.maxPower
   ) {
     throw new Error(`${card.name} cannot end a spell above power ${effect.maxPower}.`);
   }
@@ -5640,7 +5810,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   const effectCountBeforePlay = state.activeEffects.length;
   const playedToDiscard = !option?.cost?.removeSelf;
 
-  const target = action.target?.type === "unit" ? action.target : undefined;
+  // Rampart Dwarves "Magic Resistance": a Specialty card aimed at a Dwarf rolls
+  // a die; on the matching face the card has no effect on it. Dropping the
+  // target makes every unit-targeted branch below a no-op, while the card still
+  // resolves and goes to the discard pile as usual.
+  const negatedByDwarf =
+    card.kind === "hero-specialty" && negatesCardOnDwarfRoll(state, action.target, card.name);
+  const target = negatedByDwarf ? undefined : action.target?.type === "unit" ? action.target : undefined;
 
   if (effect.type === "HEAL_DAMAGE" && target) {
     healUnitDamage(
@@ -6458,6 +6634,204 @@ function placeSummonedUnit(
  * reinforced unit also persists in the army after the combat. The summoned
  * unit is treated as already activated this round (it acts from the next).
  */
+/**
+ * Tower Genies' "Wish": discard up to `count` cards off the top of the
+ * controller's deck. The deck reshuffles its discard pile to complete the count
+ * if it runs out mid-dig (per the rules). Returns the cards dug this way; the
+ * caller routes them to the hand/discard.
+ */
+function discardFromDeckTop(state: GameState, playerId: PlayerId, count: number): CardId[] {
+  const player = state.players[playerId];
+  if (!player) {
+    return [];
+  }
+  const dug: CardId[] = [];
+  for (let index = 0; index < count; index += 1) {
+    if (player.deck.length === 0 && player.discard.length > 0) {
+      player.deck = shuffleCards(
+        player.discard,
+        `${state.seed}#genie-reshuffle#${playerId}#${eventSeedNumber(state)}#${index}`
+      );
+      player.discard = [];
+    }
+    const card = player.deck.pop();
+    if (!card) {
+      break;
+    }
+    dug.push(card);
+  }
+  return dug;
+}
+
+/**
+ * Resolves a Genies "Wish": dig cards off the deck, then take a Spell among
+ * them to hand. With at most one Spell it auto-resolves (the lone Spell, if
+ * any, goes to hand; everything else to discard); with several Spells the
+ * controller chooses which to take. Returns true when a choice paused combat.
+ */
+function runGenieDeckDraw(
+  state: GameState,
+  unit: CombatUnitState,
+  ability: { abilityId: string; abilityName: string; count: number },
+  mode: "other-action" | "on-attack"
+): boolean {
+  const player = state.players[unit.controllerId];
+  if (!player) {
+    return false;
+  }
+
+  const dug = discardFromDeckTop(state, unit.controllerId, ability.count);
+  const spells = dug.filter((cardId) => cardLibrary[cardId]?.kind === "spell");
+
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: unit.id,
+    abilityId: ability.abilityId,
+    message: `${unit.cardName} discards ${dug.length} card${dug.length === 1 ? "" : "s"} from the deck for ${ability.abilityName}.`
+  });
+
+  // No choice to make: take the single Spell (if any) to hand, the rest to
+  // discard. A neutral seat with no deck simply dug nothing.
+  if (spells.length <= 1) {
+    const taken = spells[0];
+    for (const cardId of dug) {
+      if (cardId === taken) {
+        player.hand.push(cardId);
+      } else {
+        player.discard.push(cardId);
+      }
+    }
+    if (taken) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unit.id,
+        abilityId: ability.abilityId,
+        message: `${player.name} takes ${cardLibrary[taken]?.name ?? taken} to hand.`
+      });
+    }
+    return false;
+  }
+
+  // Several Spells dug up: the non-Spells go to discard now; the controller
+  // chooses which Spell to keep (the rest go to discard on resolution).
+  for (const cardId of dug) {
+    if (cardLibrary[cardId]?.kind !== "spell") {
+      player.discard.push(cardId);
+    }
+  }
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: unit.controllerId,
+    prompt: `${ability.abilityName}: take one Spell to your hand; the rest go to your discard pile.`,
+    options: spells.map((cardId) => ({ label: `Take ${cardLibrary[cardId]?.name ?? cardId}` })),
+    context: "genie-take-spell",
+    genieTakeSpell: { spellCardIds: spells, unitId: unit.id, mode, abilityId: ability.abilityId },
+    returnPhase: "combat"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = unit.controllerId;
+  return true;
+}
+
+/** Tower Genies (Pack): the after-attack "Wish". Returns true when it paused combat. */
+function openGenieSpellDraw(state: GameState, attacker: CombatUnitState, isRetaliation: boolean): boolean {
+  if (isRetaliation || !state.combat) {
+    return false;
+  }
+  const ability = getDeckDiscardTakeSpell(attacker, "on-attack");
+  if (!ability) {
+    return false;
+  }
+  return runGenieDeckDraw(state, attacker, ability, "on-attack");
+}
+
+/** Tower Genies (Few): the "Wish" used as an other action (instead of moving/attacking). */
+function applyGenieDeckDraw(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_GENIE_DECK_DRAW" }>
+): void {
+  const combat = state.combat;
+  const unit = combat?.units[action.unitId];
+  const ability = unit ? getDeckDiscardTakeSpell(unit, "other-action") : null;
+  if (
+    !combat ||
+    !unit ||
+    unit.controllerId !== action.playerId ||
+    combat.activeUnitId !== unit.id ||
+    unit.activatedThisRound ||
+    unit.movedThisActivation ||
+    unit.attackedThisActivation ||
+    !ability
+  ) {
+    throw new Error("That unit's Wish cannot be used now.");
+  }
+
+  // The Wish is the unit's whole activation.
+  const paused = runGenieDeckDraw(state, unit, ability, "other-action");
+  unit.activatedThisRound = true;
+  if (paused) {
+    // The spell-pick choice resolver advances to the next unit afterwards.
+    return;
+  }
+  advanceActiveUnit(state);
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+}
+
+/**
+ * Resolves the Genies "Wish" spell-pick: the chosen Spell goes to hand, the
+ * rest to the discard pile, then combat continues — the Few's activation ends,
+ * the Pack's parked attack sequence resumes.
+ */
+function resolveGenieTakeSpell(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "genie-take-spell" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.genieTakeSpell
+  ) {
+    throw new Error("There is no Wish choice to resolve.");
+  }
+
+  const pick = choice.genieTakeSpell;
+  const player = state.players[action.playerId];
+  const chosen = pick.spellCardIds[action.optionIndex];
+  if (!player || !chosen) {
+    throw new Error("Pick one of the dug Spells.");
+  }
+
+  player.hand.push(chosen);
+  player.discard.push(...pick.spellCardIds.filter((_, index) => index !== action.optionIndex));
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: pick.unitId,
+    abilityId: pick.abilityId,
+    message: `${player.name} takes ${cardLibrary[chosen]?.name ?? chosen} to hand.`
+  });
+
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+
+  if (pick.mode === "other-action") {
+    // The Few's whole activation was the Wish — hand off to the next unit.
+    if (state.combat) {
+      advanceActiveUnit(state);
+    }
+  } else {
+    // The Pack's Wish rode its attack — resume the parked retaliation/sequence.
+    resumeAttackSequence(state, cardLibrary);
+    finishCombatIfNeeded(state);
+  }
+}
+
 function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUMMON_DEMONS" }>): void {
   const combat = state.combat;
   const unit = combat?.units[action.unitId];
@@ -7997,6 +8371,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "SUMMON_DEMONS":
         summonDemons(nextState, action);
         break;
+      case "USE_GENIE_DECK_DRAW":
+        applyGenieDeckDraw(nextState, action);
+        break;
       case "USE_ACTIVE_EFFECT":
         applyActiveEffectAction(nextState, action);
         break;
@@ -8155,14 +8532,20 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         spendMorale(nextState, action);
         break;
       case "CHOOSE_OPTION":
-        // Harpy fly-back and Ghost Dragon knock-back live in the combat reducer
-        // (they move a unit mid/post-attack); every other option choice is
+        // The combat-only option choices (Harpy fly-back, Genies' Wish spell
+        // pick, Ghost Dragon knock-back) live in the combat reducer; every other
+        // option choice is
         // handled by the adventure reducer.
         if (
           nextState.pendingChoice?.type === "OPTION_CHOICE" &&
           nextState.pendingChoice.context === "combat-reposition"
         ) {
           resolveCombatReposition(nextState, action);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "genie-take-spell"
+        ) {
+          resolveGenieTakeSpell(nextState, action);
         } else if (
           nextState.pendingChoice?.type === "OPTION_CHOICE" &&
           nextState.pendingChoice.context === "combat-knockback"

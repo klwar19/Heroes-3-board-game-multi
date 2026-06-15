@@ -262,16 +262,6 @@ export type ActiveEffectModifier =
        */
       type: "DRAW_ON_SPELL_CAST";
       amount: number;
-    }
-  | {
-      /**
-       * Tower Magi (Pack) "[activation] Add +N power to the first spell you cast
-       * this round": a player-scope, current-combat-round effect granting this
-       * much extra power to the controller's first Spell of the round. Consumed
-       * when that spell is cast; otherwise it lapses at the round's end.
-       */
-      type: "SPELL_POWER_FIRST_CAST";
-      amount: number;
     };
 
 export type ActiveEffectDefinition = {
@@ -979,6 +969,16 @@ export type GameAction =
       position?: number;
       /** Reinforce: the friendly Few of Demons to flip up to a Pack. */
       targetUnitId?: UnitId;
+    }
+  | {
+      /**
+       * Tower Genies (Few) "Wish" other action: instead of moving/attacking,
+       * discard cards from the top of your deck and take a Spell discarded this
+       * way to your hand.
+       */
+      type: "USE_GENIE_DECK_DRAW";
+      playerId: PlayerId;
+      unitId: UnitId;
     }
   | { type: "USE_ACTIVE_EFFECT"; playerId: PlayerId; effectId: string; target: TargetRef; mode?: CardPlayMode }
   | { type: "DEFEND_UNIT"; playerId: PlayerId; unitId: UnitId }
@@ -2415,6 +2415,12 @@ export type CombatUnitState = {
   reactionPauseAcked?: boolean;
   /** Combat tokens currently on the card (attack/weakness/corrosion/paralysis). */
   tokens?: CombatTokenState[];
+  /**
+   * Fortress Wyverns' poison: faction cubes riding this unit. At the beginning
+   * of each of its activations one cube is removed to inflict 1 damage, until
+   * none remain. Repeated Wyvern hits stack more cubes here.
+   */
+  poisonCubes?: number;
   abilities: string[];
   /**
    * Specialty cards covering the unit card (Sandro's Cloak), bottom-up; the
@@ -3291,12 +3297,19 @@ export type PendingChoice =
         | "skeleton-reinforce"
         | "rogues-scout"
         | "combat-reposition"
+        | "genie-take-spell"
         | "combat-knockback"
         | "cover-of-darkness"
         | "diplomacy-skip"
         | "diplomacy-recruit";
       /** combat-reposition: Harpies' optional fly-back after their attack. */
       reposition?: { unitId: UnitId; originPosition: number };
+      /**
+       * genie-take-spell: the Spells dug out of the Genies' controller's deck
+       * (index-aligned with `options`); the chosen one goes to hand, the rest to
+       * discard. `mode` decides how combat resumes afterwards.
+       */
+      genieTakeSpell?: { spellCardIds: CardId[]; unitId: UnitId; mode: "other-action" | "on-attack"; abilityId: string };
       /**
        * combat-knockback: the Ghost Dragons shoved `unitId` after their attack;
        * the defender picks which empty space (index-aligned with the options) to

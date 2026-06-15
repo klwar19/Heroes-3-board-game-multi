@@ -1,6 +1,7 @@
+import { cardLibrary } from "@/data/cards/library";
 import { isAdjacent } from "./battlefield";
 import { appendEvent, nextEventNumber } from "./events";
-import { hasUnitAbilityEffect } from "./unit-abilities";
+import { hasIgnoreOngoingEffects, hasIgnoreOngoingSpellEffects, hasUnitAbilityEffect } from "./unit-abilities";
 import type {
   ActiveEffectDefinition,
   ActiveEffectState,
@@ -90,7 +91,25 @@ export function playerSpellCastsIgnoreLimit(state: GameState, playerId: PlayerId
   );
 }
 
+/**
+ * Whether an ongoing effect was created by a Spell card. Tower Gargoyles ignore
+ * only those; Tower Titans ignore every ongoing effect whatever its source.
+ */
+function effectIsFromSpell(effect: ActiveEffectState): boolean {
+  return effect.source.type === "card" && cardLibrary[effect.source.cardId]?.kind === "spell";
+}
+
 export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitState): boolean {
+  // Tower Titans ignore every ongoing effect on themselves (friendly or
+  // hostile); Tower Gargoyles ignore the ones a Spell created. Checked first so
+  // an immune unit reads its printed statistics as if the effect were not there.
+  if (hasIgnoreOngoingEffects(unit)) {
+    return false;
+  }
+  if (hasIgnoreOngoingSpellEffects(unit) && effectIsFromSpell(effect)) {
+    return false;
+  }
+
   if (effect.scope === "global") {
     return true;
   }
