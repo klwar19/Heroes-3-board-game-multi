@@ -251,8 +251,16 @@ describe("Slayer", () => {
     state = applyOk(state, slayer!.action);
     state = passAllReactions(state);
 
-    // Two scripted "+1" faces → die contributes +2: 3 attack + 2 - 2 defense = 3.
-    // (A normal single die would add only roll[0]=+1, dealing 2.)
+    // The attack rolls ONLY the Slayer dice (two here) — there is no separate
+    // original single die. Two "+1" faces → die contributes +2.
+    const rolled = state.eventLog.find(
+      (event) => event.type === "ATTACK_ROLLED" && !event.isRetaliation
+    );
+    expect(rolled?.type === "ATTACK_ROLLED" ? rolled.rolls : []).toEqual([1, 1]);
+    expect(rolled?.type === "ATTACK_ROLLED" ? rolled.roll : -99).toBe(2);
+
+    // 3 attack + 2 (two "+1"s) - 2 defense = 3 damage. (A normal single die
+    // would add only roll[0]=+1, dealing 2.)
     expect(state.combat!.units.unit_p2_dread_knights.damage).toBe(3);
     expect(
       state.eventLog.some((event) => event.type === "CARDS_DRAWN" && event.playerId === "p1" && event.count === 1)
