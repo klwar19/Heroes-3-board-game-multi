@@ -68,10 +68,11 @@ const TOKEN_GLYPHS: Record<CombatTokenState["kind"], { symbol: string; describe:
   }
 };
 
-/** Token chips drawn on a unit card (attack/weakness/corrosion/paralysis). */
+/** Token chips drawn on a unit card (attack/weakness/corrosion/paralysis, poison cubes). */
 function TokenChips({ unit }: { unit: CombatUnitState }) {
   const tokens = getUnitTokens(unit);
-  if (tokens.length === 0) {
+  const poisonCubes = unit.poisonCubes ?? 0;
+  if (tokens.length === 0 && poisonCubes <= 0) {
     return null;
   }
 
@@ -85,6 +86,14 @@ function TokenChips({ unit }: { unit: CombatUnitState }) {
           </b>
         );
       })}
+      {poisonCubes > 0 ? (
+        <b
+          className="tokenChip poison"
+          title={`Poison: ${poisonCubes} faction cube${poisonCubes === 1 ? "" : "s"} — 1 damage at the start of each of this unit's activations`}
+        >
+          {poisonCubes}🟢
+        </b>
+      ) : null}
     </span>
   );
 }
@@ -604,6 +613,7 @@ const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "SWAP_COMBAT_UNITS",
   "FINISH_TACTICS",
   "SUMMON_DEMONS",
+  "USE_GENIE_DECK_DRAW",
   "COMPLETE_SIMULTANEOUS_TURN",
   "CONTINUE_NEUTRAL_COMBAT",
   "RETREAT_FROM_COMBAT",

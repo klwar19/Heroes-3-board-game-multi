@@ -3,7 +3,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
 import { applyAction, createInitialGameState, getLegalActions, makeActiveEffect } from "./index";
 import {
-  getActivationAbilities,
+  getActivationSpellPowerBoost,
   getOnAttackDieDraw,
   getSpellDamageReduction,
   getSpellDamageReductionAura,
@@ -326,15 +326,16 @@ describe("faction Familiars 'Mana Leech' spell tax", () => {
 // Magi (Pack) — +1 power to the controller's first spell of the combat round.
 // ---------------------------------------------------------------------------
 
-describe("Magi 'Mage's Insight' first-spell power", () => {
-  it("its activation ability is exposed as a first-spell power boost", () => {
-    const abilities = getActivationAbilities(unitWith(["magi-power-boost"]));
-    expect(abilities).toEqual([
-      expect.objectContaining({ kind: "boost-first-spell-power", amount: 1 })
-    ]);
+describe("Magi 'Mage's Insight' first-spell power (only on the Magi's turn)", () => {
+  it("getActivationSpellPowerBoost reports the unit's boost", () => {
+    expect(getActivationSpellPowerBoost(unitWith(["magi-power-boost"]))).toBe(1);
+    expect(getActivationSpellPowerBoost(unitWith([]))).toBe(0);
   });
 
-  /** Cast a hand Magic Arrow (base power 0 → 1 damage; +1 power → 2). */
+  /**
+   * Cast a hand Magic Arrow (base power 0 → 1 damage; +1 power → 2). The Magi
+   * is the active unit `unit_p1_griffins` unless `setup` says otherwise.
+   */
   function castArrow(setup: (state: GameState) => void): GameState {
     const state = createInitialGameState("magi-power-seed");
     state.players.p1.hand = ["spell.magic_arrow"];
@@ -357,37 +358,31 @@ describe("Magi 'Mage's Insight' first-spell power", () => {
     return passAllReactions(applyOk(state, cast!.action));
   }
 
-  function grantMagiBoost(state: GameState): void {
-    const effect = makeActiveEffect(
-      state,
-      {
-        name: "Mage's Insight",
-        scope: "player",
-        duration: { type: "current-combat-round" },
-        polarity: "positive",
-        removable: false,
-        modifiers: [{ type: "SPELL_POWER_FIRST_CAST", amount: 1 }]
-      },
-      { type: "unit", unitId: "unit_p1_griffins", controllerId: "p1" },
-      "p1"
-    );
-    state.activeEffects.push(effect);
-  }
-
-  it("base cast with no boost deals 1 (power 0)", () => {
+  it("an ordinary active unit casting deals 1 (no boost)", () => {
     const next = castArrow(() => {});
     expect(next.combat!.units.unit_p2_vampires.damage).toBe(1);
   });
 
-  it("the round's first spell gains +1 power with the Magi boost (deals 2)", () => {
-    const next = castArrow((state) => grantMagiBoost(state));
+  it("when the Magi is the active unit, its first spell gains +1 power (deals 2)", () => {
+    const next = castArrow((state) => {
+      state.combat!.units.unit_p1_griffins.abilities = ["magi-power-boost"];
+    });
     expect(next.combat!.units.unit_p2_vampires.damage).toBe(2);
   });
 
-  it("the boost only applies to the FIRST spell of the round", () => {
+  it("no boost when the Magi is on the board but NOT the active unit (not its turn)", () => {
     const next = castArrow((state) => {
-      grantMagiBoost(state);
-      // Raise the per-round spell limit so a cast is legal, then pretend one
+      // The Magi sits idle; a different friendly unit is the one acting.
+      state.combat!.units.unit_p1_crusaders.abilities = ["magi-power-boost"];
+      state.combat!.units.unit_p1_griffins.abilities = [];
+    });
+    expect(next.combat!.units.unit_p2_vampires.damage).toBe(1);
+  });
+
+  it("no boost on a later spell even on the Magi's turn (only the round's first)", () => {
+    const next = castArrow((state) => {
+      state.combat!.units.unit_p1_griffins.abilities = ["magi-power-boost"];
+      // Raise the per-round spell limit so the cast is legal, then pretend one
       // spell was already cast this round — the "first spell" gate must close.
       state.activeEffects.push(
         makeActiveEffect(
@@ -404,6 +399,6 @@ describe("Magi 'Mage's Insight' first-spell power", () => {
       );
       state.players.p1.combatStats.spellsCastThisRound = 1;
     });
-    expect(next.combat!.units.unit_p2_vampires.damage).toBe(1); // gate closed → no boost
+    expect(next.combat!.units.unit_p2_vampires.damage).toBe(1);
   });
 });

@@ -62,6 +62,22 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
     };
   }
 
+  // Genies' Wish: the Spells dug out of the controller's own deck stay private
+  // to them — opponents only learn how many Spells were offered.
+  if (
+    choice.type === "OPTION_CHOICE" &&
+    choice.context === "genie-take-spell" &&
+    choice.playerId !== viewerPlayerId
+  ) {
+    return {
+      ...cloneSerializable(choice),
+      options: choice.options.map(() => ({ label: "Hidden Spell" })),
+      genieTakeSpell: choice.genieTakeSpell
+        ? { ...choice.genieTakeSpell, spellCardIds: choice.genieTakeSpell.spellCardIds.map(() => "hidden") }
+        : undefined
+    };
+  }
+
   // Rogues' scout: the peeked top card stays private to the scouting player.
   if (
     choice.type === "OPTION_CHOICE" &&
