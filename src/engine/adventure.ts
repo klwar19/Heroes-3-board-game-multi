@@ -1970,6 +1970,10 @@ export function processPendingVisit(state: GameState): void {
         if (movedHero && adventure.fields[step.spaceId]) {
           const from = movedHero.spaceId ?? step.spaceId;
           movedHero.spaceId = step.spaceId;
+          // Town Portal Power 2/4: arriving grants the hero +1/+2 movement.
+          if (step.movementBonus) {
+            movedHero.movementPoints += step.movementBonus;
+          }
           appendEvent(state, {
             type: "HERO_MOVED",
             playerId: movedHero.controllerId,
@@ -2177,6 +2181,74 @@ export function processPendingVisit(state: GameState): void {
         player.hand.splice(index, 1);
         player.removed.push(step.cardId);
         player.hand.push(`stat.${stat}.empowered`);
+        break;
+      }
+      case "SCHOLAR_EMPOWER_PICK": {
+        // Scholar (expert): offer one swap of a non-empowered Statistic card
+        // (hand or discard) for its Empowered version, dropped on top of the
+        // discard pile. Only types not yet taken this play are offered (so the
+        // gained Empowered cards are all different); duplicate (source, type)
+        // candidates collapse to one option.
+        const player = state.players[visit.playerId];
+        if (!player || step.remaining <= 0) {
+          break;
+        }
+        const seen = new Set<string>();
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        for (const source of ["hand", "discard"] as const) {
+          for (const cardId of player[source]) {
+            const card = cardLibrary[cardId];
+            const stat = card?.statisticType;
+            if (
+              card?.kind !== "statistic" ||
+              !stat ||
+              cardId.endsWith(".empowered") ||
+              step.takenTypes.includes(stat) ||
+              seen.has(`${source}:${stat}`)
+            ) {
+              continue;
+            }
+            seen.add(`${source}:${stat}`);
+            options.push({
+              label: `Empower ${card.name ?? cardId} (from ${source})`,
+              steps: [
+                { type: "SCHOLAR_EMPOWER_GIVE", source, cardId } as VisitStep,
+                ...(step.remaining - 1 > 0
+                  ? [
+                      {
+                        type: "SCHOLAR_EMPOWER_PICK",
+                        remaining: step.remaining - 1,
+                        takenTypes: [...step.takenTypes, stat]
+                      } as VisitStep
+                    ]
+                  : [])
+              ]
+            });
+          }
+        }
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Done", steps: [] });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: "Empower a Statistic card (Scholar expert)",
+          options
+        });
+        break;
+      }
+      case "SCHOLAR_EMPOWER_GIVE": {
+        const player = state.players[visit.playerId];
+        const pile = step.source === "hand" ? player?.hand : player?.discard;
+        const stat = cardLibrary[step.cardId]?.statisticType;
+        const index = pile?.indexOf(step.cardId) ?? -1;
+        if (!player || !pile || !stat || index === -1) {
+          break;
+        }
+        pile.splice(index, 1);
+        player.removed.push(step.cardId);
+        // The Empowered version goes on top of the discard pile (push = top).
+        player.discard.push(`stat.${stat}.empowered`);
         break;
       }
       case "BLACK_MARKET": {
@@ -2439,15 +2511,26 @@ function getLuckRerollEffect(
   dice: "treasure" | "resource"
 ): ActiveEffectState | null {
   return (
-    state.activeEffects.find(
-      (effect) =>
-        effect.controllerId === playerId &&
-        !effect.usedChoiceIds.includes(`luck:${dice}`) &&
-        effect.modifiers.some(
-          (modifier) =>
-            modifier.type === "ADVENTURE_DIE_REROLL" && (modifier.dice === dice || modifier.dice === "any")
-        )
-    ) ?? null
+    state.activeEffects.find((effect) => {
+      if (effect.controllerId !== playerId) {
+        return false;
+      }
+      const modifier = effect.modifiers.find(
+        (candidate) =>
+          candidate.type === "ADVENTURE_DIE_REROLL" && (candidate.dice === dice || candidate.dice === "any")
+      );
+      if (!modifier || modifier.type !== "ADVENTURE_DIE_REROLL") {
+        return false;
+      }
+      // Fortune: a shared budget of N rerolls across this effect's dice, spent
+      // one at a time (tracked as "reroll:" entries in usedChoiceIds).
+      if (modifier.rerolls !== undefined) {
+        const used = effect.usedChoiceIds.filter((id) => id.startsWith("reroll:")).length;
+        return used < modifier.rerolls;
+      }
+      // Luck: one reroll per die type, tracked separately.
+      return !effect.usedChoiceIds.includes(`luck:${dice}`);
+    }) ?? null
   );
 }
 
@@ -2457,6 +2540,9 @@ function consumeLuckReroll(state: GameState, effectId: string, dice: "treasure" 
     return;
   }
 
+  const budgetModifier = effect.modifiers.find(
+    (modifier) => modifier.type === "ADVENTURE_DIE_REROLL" && modifier.rerolls !== undefined
+  );
   const isAnyDie = effect.modifiers.some(
     (modifier) => modifier.type === "ADVENTURE_DIE_REROLL" && modifier.dice === "any"
   );
@@ -2467,6 +2553,17 @@ function consumeLuckReroll(state: GameState, effectId: string, dice: "treasure" 
     playerId: effect.controllerId,
     target: { type: "none" }
   });
+
+  // Fortune: spend one reroll from the shared budget; drop the effect once the
+  // budget is exhausted.
+  if (budgetModifier?.type === "ADVENTURE_DIE_REROLL" && budgetModifier.rerolls !== undefined) {
+    effect.usedChoiceIds.push(`reroll:${effect.usedChoiceIds.length}`);
+    const used = effect.usedChoiceIds.filter((id) => id.startsWith("reroll:")).length;
+    if (used >= budgetModifier.rerolls) {
+      state.activeEffects = state.activeEffects.filter((candidate) => candidate.id !== effectId);
+    }
+    return;
+  }
 
   // Expert Luck is one reroll of any die: spend the whole card. Basic Luck
   // tracks the treasure and resource rerolls separately.
@@ -2545,7 +2642,7 @@ function rollResourceDice(state: GameState, visit: PendingVisit, count: number):
 
   if (luck) {
     options.push({
-      label: `Luck: reroll the Resource ${count > 1 ? "dice" : "die"}`,
+      label: `${luck.name}: reroll the Resource ${count > 1 ? "dice" : "die"}`,
       steps: [
         { type: "CONSUME_LUCK", effectId: luck.id, dice: "resource" } as VisitStep,
         { type: "ROLL_RESOURCE_DICE", count } as VisitStep
@@ -2614,7 +2711,7 @@ function rollTreasureDice(state: GameState, visit: PendingVisit, count: number):
 
   if (luck) {
     options.push({
-      label: `Luck: reroll the Treasure ${count > 1 ? "dice" : "die"}`,
+      label: `${luck.name}: reroll the Treasure ${count > 1 ? "dice" : "die"}`,
       steps: [
         { type: "CONSUME_LUCK", effectId: luck.id, dice: "treasure" } as VisitStep,
         { type: "ROLL_TREASURE_DICE", count } as VisitStep
@@ -3192,6 +3289,18 @@ export function startAdventureRound(state: GameState): void {
     for (const ability of getArmyMapAbilities(state, playerId)) {
       if (ability.effect.type === "MAP_RESOURCE_ROUND_GAIN") {
         gainResources(state, playerId, { [ability.effect.resource]: ability.effect.amount }, ability.abilityName);
+      }
+    }
+
+    // Income artifacts in play (Eversmoking Ring of Sulfur, Inexhaustible Cart
+    // of Ore): gain the printed resource each Resources round while the
+    // permanent stays in play. Read inline — permanents.ts imports this module,
+    // so it cannot be imported back here.
+    const incomePermanentIds = player.permanents ?? (player.permanent ? [player.permanent] : []);
+    for (const permanentId of incomePermanentIds) {
+      const incomeGain = cardLibrary[permanentId]?.permanentEffect?.resourceRoundGain;
+      if (incomeGain) {
+        gainResources(state, playerId, { [incomeGain.resource]: incomeGain.amount }, cardLibrary[permanentId]?.name ?? "income artifact");
       }
     }
 

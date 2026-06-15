@@ -9,7 +9,8 @@ import {
   getLegalActions,
   getPlayerView,
   type GameState,
-  type LegalAction
+  type LegalAction,
+  type PlayerId
 } from "@/engine";
 
 afterEach(() => {
@@ -263,5 +264,112 @@ describe("ReactionTray — in-progress selection survives only until the hand ch
     // The leftover Attack statistic is offered, and nothing is stuck "picked".
     expect(screen.getAllByRole("button", { name: /add to play/i })).toHaveLength(1);
     expect(screen.getAllByRole("button").some((button) => button.getAttribute("aria-pressed") === "true")).toBe(false);
+  });
+});
+
+describe("ReactionTray — Power can still be added after Slayer arms the attack", () => {
+  function tray(state: GameState) {
+    return (
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={() => {}}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  function trayFor(state: GameState, viewer: PlayerId) {
+    return (
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, viewer)}
+          onAction={() => {}}
+          state={state}
+          view={getPlayerView(state, viewer)}
+          viewerPlayerId={viewer}
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it("offers the attacked side its Resistance against the attacker's Curse", () => {
+    const state = createInitialGameState("tray-resist-seed");
+    state.players.p1.hand = ["spell.curse"];
+    state.players.p2.hand = ["ability.resistance"];
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const griffins = state.combat!.units.unit_p1_griffins;
+    griffins.activatedThisRound = false;
+    griffins.abilities = [];
+    griffins.position = 9;
+    state.combat!.units.unit_p2_skeletons.position = 13;
+
+    const declared = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    expect(declared.errors).toEqual([]);
+    // p1 casts Curse; p1 has no more cards, so priority moves to p2.
+    let next = applyAction(declared.state, { type: "PLAY_REACTION", playerId: "p1", cardId: "spell.curse", mode: "basic" });
+    expect(next.errors).toEqual([]);
+    while (next.state.reactionWindow && next.state.reactionWindow.priorityPlayerId === "p1") {
+      next = applyAction(next.state, { type: "PASS_REACTION", playerId: "p1" });
+    }
+    expect(next.state.reactionWindow?.priorityPlayerId).toBe("p2");
+
+    render(trayFor(next.state, "p2"));
+    // p2 sees its Resistance card offered to end the Curse on this attack.
+    expect(screen.getByText("Resistance")).toBeTruthy();
+  });
+
+  it("does NOT block a lone +1 Power once Slayer is on the pending attack", () => {
+    const state = createInitialGameState("tray-slayer-seed");
+    state.players.p1.hand = ["spell.slayer", "spell.haste"]; // haste = a Spell to discard for Power
+    state.players.p2.hand = [];
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const griffins = state.combat!.units.unit_p1_griffins;
+    griffins.activatedThisRound = false;
+    griffins.abilities = [];
+    griffins.position = 9;
+    const dread = state.combat!.units.unit_p2_dread_knights; // gold — Slayer's target
+    dread.abilities = [];
+    dread.position = 13;
+
+    const declared = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_dread_knights"
+    });
+    expect(declared.errors).toEqual([]);
+
+    // Play Slayer: the window stays open with p1 still on priority and the attack
+    // now empowerable, so further Power discards are legal.
+    const played = applyAction(declared.state, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "spell.slayer",
+      mode: "basic"
+    });
+    expect(played.errors).toEqual([]);
+    expect(played.state.reactionWindow?.priorityPlayerId).toBe("p1");
+
+    render(tray(played.state));
+
+    // Pick the "Discard Haste for +1 Power" boost on its own.
+    const pick = screen.getByRole("button", { name: /discard for \+1 power/i });
+    act(() => fireEvent.click(pick));
+
+    // The confirm button is enabled and the "Power needs a Spell" warning is gone:
+    // before the fix the tray rejected a lone Power boost even though Slayer had
+    // already armed the attack.
+    const confirm = screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(false);
+    expect(screen.queryByText(/power only counts with a spell/i)).toBeNull();
   });
 });

@@ -1007,10 +1007,12 @@ describe("rules engine prototype", () => {
     });
 
     expect(pending.phase).toBe("choice");
+    // Power 0 (no Power cards) is a single reroll — the card no longer bakes in
+    // +1 Power, which used to open with two rerolls here.
     expect(pending.pendingChoice).toMatchObject({
       type: "ATTACK_DIE_REROLL",
       playerId: "p1",
-      remainingRerolls: 2,
+      remainingRerolls: 1,
       candidates: [{ roll: 0 }]
     });
     expect(pending.combat?.units.unit_p2_vampires.damage).toBe(0);
@@ -1021,7 +1023,7 @@ describe("rules engine prototype", () => {
       choiceId: pending.pendingChoice?.id ?? ""
     });
     expect(rerolled.pendingChoice).toMatchObject({
-      remainingRerolls: 1,
+      remainingRerolls: 0,
       candidates: [{ roll: 0 }, { roll: 1 }]
     });
 
@@ -1288,14 +1290,18 @@ describe("rules engine prototype", () => {
     expect(resolved.activeEffects.map((effect) => effect.name)).toContain("Fortune");
   });
 
-  it("lets Cure heal damage and remove represented negative unit effects", () => {
+  it("Cure heals by Power and removes negative effects and the Paralysis token", () => {
     const state = createInitialGameState();
     if (!state.combat) {
       throw new Error("Expected combat setup.");
     }
     state.players.p1.hand = ["spell.cure"];
     state.players.p2.hand = [];
-    state.combat.units.unit_p1_griffins.damage = 3;
+    const griffins = state.combat.units.unit_p1_griffins;
+    griffins.damage = 3;
+    // A Paralysis token (as left by an enemy Blind/Medusa) on the target unit…
+    griffins.tokens = [{ id: "tok_paralysis", kind: "paralysis", amount: 0, sourceName: "Blind" }];
+    // …plus a represented negative effect (Curse).
     state.activeEffects.push({
       id: "effect_curse",
       name: "Curse",
@@ -1321,11 +1327,15 @@ describe("rules engine prototype", () => {
       target: { type: "unit", unitId: "unit_p1_griffins" }
     });
 
-    expect(result.combat?.units.unit_p1_griffins.damage).toBe(1);
-    expect(result.activeEffects).toEqual([]);
+    // Power 0 (no Power cards) heals exactly 1 — the card no longer bakes in a
+    // +1 Power that used to heal 2 at base.
+    expect(result.combat?.units.unit_p1_griffins.damage).toBe(2);
     expect(findEvent(result, "DAMAGE_HEALED")).toMatchObject({
-      amount: 2
+      amount: 1
     });
+    // Both the negative effect AND the Paralysis token are removed.
+    expect(result.activeEffects).toEqual([]);
+    expect(result.combat?.units.unit_p1_griffins.tokens ?? []).toHaveLength(0);
     expect(findEvent(result, "ACTIVE_EFFECTS_REMOVED")).toMatchObject({
       effectIds: ["effect_curse"]
     });

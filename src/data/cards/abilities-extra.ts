@@ -282,14 +282,19 @@ export const extraAbilityCards: CardLibrary = {
     implementationStatus: "implemented",
     source: abilitySource("intelligence")
   },
-  // engine: Diplomacy has two regular uses (per the fan wiki — neither is the
-  // expert side). The Map option draws one Neutral Unit card per Dwelling and
-  // opens a recruit choice (DIPLOMACY_RECRUIT, resolved in openDiplomacyRecruit).
-  // The Instant skip is surfaced automatically as a pop-up when a hero meets
-  // Neutral Units whose Field Difficulty equals the hero's level — it is never
-  // played from hand, so DIPLOMACY_SKIP_COMBAT is a declarative marker and is
-  // deliberately absent from the playable-effect gate (see startNeutralEncounter
-  // / resolveDiplomacySkipChoice in adventure-reducer.ts).
+  // engine: Diplomacy's two sides map to the printed card — the basic/regular
+  // effect is the Map recruit, the expert effect is the Instant skip. This is an
+  // Empowered card: per the Empowered mechanic the holder may use EITHER side
+  // without spending an expert use (crown), so the skip is offered free at any
+  // hero level (a level-1 hero has 0 crowns yet can still skip). The Map option
+  // draws one Neutral Unit card per Dwelling and opens a recruit choice
+  // (DIPLOMACY_RECRUIT, resolved in openDiplomacyRecruit). The Instant skip is
+  // surfaced automatically as a pop-up when a hero meets Neutral Units whose
+  // Field Difficulty equals the hero's level — it claims the field and resolves
+  // its effect for no Experience, spending no crown. It is never played from
+  // hand, so DIPLOMACY_SKIP_COMBAT is a declarative marker, deliberately absent
+  // from the playable-effect gate (see startNeutralEncounter /
+  // resolveDiplomacySkipChoice in adventure-reducer.ts).
   "ability.diplomacy": {
     id: "ability.diplomacy",
     name: "Diplomacy",
@@ -299,18 +304,19 @@ export const extraAbilityCards: CardLibrary = {
     tags: [
       "ability",
       "map",
-      "Map: for every Dwelling you have, draw 1 corresponding Neutral Unit card; you may Recruit one by paying its cost. Instant: skip Combat with Neutral Units on a field whose Difficulty equals your Hero's level — claim the field, gaining no Experience."
+      "empowered",
+      "Regular (basic): for every Dwelling you have, draw 1 corresponding Neutral Unit card; you may Recruit one by paying its cost. Expert: skip Combat with Neutral Units on a field whose Difficulty equals your Hero's level — claim the field and resolve its effect, gaining no Experience. Empowered: use either side without spending a crown."
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)",
+          label: "Regular: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)",
           mapOnly: true,
           effect: { type: "DIPLOMACY_RECRUIT" }
         },
         {
-          label: "Instant: skip a matching-level Neutral fight, claim the field for no Experience",
+          label: "Expert: skip a matching-level Neutral fight, claim the field and resolve its effect (no Experience)",
           effect: { type: "DIPLOMACY_SKIP_COMBAT" }
         }
       ]

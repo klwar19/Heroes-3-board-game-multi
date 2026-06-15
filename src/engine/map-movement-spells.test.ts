@@ -8,6 +8,7 @@ import {
   getAdjacentSpaceIds,
   getHeroMovementCapabilities,
   getHeroMoveDestinations,
+  getLegalActions,
   getReachableHeroPaths,
   getTileFootprintSpaceIds,
   hexDistance,
@@ -573,6 +574,258 @@ describe("Dimension Door spell", () => {
 
     expect(heroP1(state).spaceId).toBe(target);
     expect(state.combat).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Town Portal spell (map): teleport to a controlled town/settlement, with a
+// Power-scaled movement bonus on arrival and the "occupied town" restriction.
+// ---------------------------------------------------------------------------
+
+describe("Town Portal spell", () => {
+  /** A settlement field on the hero's tile, flagged for p1, away from the hero. */
+  function flagSettlement(state: GameState, spaceId: string): void {
+    setField(state, spaceId, "settlement");
+    state.adventure!.fields[spaceId]!.flagOwnerId = "p1";
+  }
+
+  function townPortalOptions(state: GameState): { label: string }[] {
+    const step = state.adventure?.pendingVisit?.steps[0];
+    if (!step || step.type !== "CHOOSE_ONE") {
+      throw new Error("no Town Portal destination choice open");
+    }
+    return step.options;
+  }
+
+  it("Power 0 teleports to a controlled settlement with no movement bonus", () => {
+    let state = withHand(makeGame(), ["spell.town_portal"]);
+    const hero = heroP1(state);
+    hero.movementPoints = 2;
+    const dest = heroTileFootprint(state)[4];
+    flagSettlement(state, dest);
+
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.town_portal",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "none" }
+    });
+
+    const destIndex = townPortalOptions(state).findIndex((option) => option.label.includes(dest));
+    expect(destIndex).toBeGreaterThanOrEqual(0);
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: destIndex });
+
+    expect(heroP1(state).spaceId).toBe(dest);
+    expect(heroP1(state).movementPoints).toBe(2); // unchanged on the Power 0 side
+  });
+
+  it("the Power 2 side teleports AND grants +1 movement (paid with power-source cards)", () => {
+    let state = withHand(makeGame(), ["spell.town_portal", "spell.haste", "spell.slow"]);
+    const hero = heroP1(state);
+    hero.movementPoints = 1;
+    const dest = heroTileFootprint(state)[4];
+    flagSettlement(state, dest);
+
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.town_portal",
+      mode: "basic",
+      optionIndex: 1,
+      target: { type: "none" },
+      costCardIds: ["spell.haste", "spell.slow"]
+    });
+
+    const destIndex = townPortalOptions(state).findIndex((option) => option.label.includes(dest));
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: destIndex });
+
+    expect(heroP1(state).spaceId).toBe(dest);
+    expect(heroP1(state).movementPoints).toBe(2); // 1 kept + 1 from the Power 2 side
+  });
+
+  it("withholds a destination already holding another hero when this hero can't move out", () => {
+    let state = withHand(makeGame(), ["spell.town_portal"]);
+    const hero = heroP1(state);
+    hero.movementPoints = 0; // no movement to step back out after arriving
+    const footprint = heroTileFootprint(state);
+    const occupied = footprint[3];
+    const free = footprint[4];
+    flagSettlement(state, occupied);
+    flagSettlement(state, free);
+    // Park another hero on the occupied settlement.
+    const otherHero = Object.values(state.heroes).find((entry) => entry.id !== hero.id);
+    if (!otherHero) {
+      throw new Error("expected a second hero in the default 2-player setup");
+    }
+    otherHero.spaceId = occupied;
+
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.town_portal",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "none" }
+    });
+
+    const labels = townPortalOptions(state).map((option) => option.label);
+    expect(labels.some((label) => label.includes(free))).toBe(true); // free settlement offered
+    expect(labels.some((label) => label.includes(occupied))).toBe(false); // occupied one withheld
+  });
+
+  it("offers the hero-occupied destination when the Power bonus lets the hero move out", () => {
+    let state = withHand(makeGame(), ["spell.town_portal", "spell.haste", "spell.slow"]);
+    const hero = heroP1(state);
+    hero.movementPoints = 0;
+    const occupied = heroTileFootprint(state)[3];
+    flagSettlement(state, occupied);
+    const otherHero = Object.values(state.heroes).find((entry) => entry.id !== hero.id);
+    if (!otherHero) {
+      throw new Error("expected a second hero in the default 2-player setup");
+    }
+    otherHero.spaceId = occupied;
+
+    // Power 2 grants +1 movement on arrival, so the hero could step out: the
+    // occupied settlement becomes a legal destination again.
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.town_portal",
+      mode: "basic",
+      optionIndex: 1,
+      target: { type: "none" },
+      costCardIds: ["spell.haste", "spell.slow"]
+    });
+
+    const labels = townPortalOptions(state).map((option) => option.label);
+    expect(labels.some((label) => label.includes(occupied))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fortune spell (map): rerolls the Treasure/Resource dice (the combat Attack-die
+// reroll scales with Hero Power and is covered in reducer.test.ts).
+// ---------------------------------------------------------------------------
+
+describe("Fortune spell (map)", () => {
+  function fortuneEffect(state: GameState) {
+    return state.activeEffects.find((effect) => effect.name === "Fortune");
+  }
+
+  function adventureRerollBudget(state: GameState): number | undefined {
+    const modifier = fortuneEffect(state)?.modifiers.find((m) => m.type === "ADVENTURE_DIE_REROLL");
+    return modifier?.type === "ADVENTURE_DIE_REROLL" ? modifier.rerolls : undefined;
+  }
+
+  it("is offered on the adventure map (a Spell that is not a Map effect, yet useful there)", () => {
+    const state = withHand(makeGame(), ["spell.fortune"]);
+    const offered = getLegalActions(state, "p1").some(
+      (entry) => entry.action.type === "PLAY_CARD" && entry.action.cardId === "spell.fortune"
+    );
+    expect(offered).toBe(true);
+  });
+
+  it("Power 0 (no power-source cards to spend) grants a single shared Treasure/Resource reroll", () => {
+    let state = withHand(makeGame(), ["spell.fortune"]);
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.fortune",
+      mode: "basic",
+      target: { type: "none" }
+    });
+    // Nothing left in hand to boost with, so the effect is created at Power 0.
+    expect(state.pendingChoice).toBeNull();
+    const fortune = fortuneEffect(state);
+    expect(fortune).toBeTruthy();
+    const adventureModifiers = fortune!.modifiers.filter((m) => m.type === "ADVENTURE_DIE_REROLL");
+    expect(adventureModifiers).toHaveLength(2); // treasure + resource share one budget
+    expect(adventureRerollBudget(state)).toBe(1);
+  });
+
+  it("scales the map reroll budget by discarding power-source cards (Power 0/1/2 -> 1/2/3)", () => {
+    let state = withHand(makeGame(), ["spell.fortune", "spell.haste", "spell.slow"]);
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.fortune",
+      mode: "basic",
+      target: { type: "none" }
+    });
+    // The boost opens: discard a power-source card for +1 reroll, or play now.
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("fortune-boost");
+    // Discard the first card (option 0) -> Power 1.
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: 0
+    });
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("fortune-boost");
+    // Discard the second card (option 0, the only one left) -> Power 2 (max) -> effect created.
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: 0
+    });
+    expect(state.pendingChoice).toBeNull();
+    expect(adventureRerollBudget(state)).toBe(3);
+    expect(state.players.p1.hand).not.toContain("spell.haste");
+    expect(state.players.p1.hand).not.toContain("spell.slow");
+  });
+
+  it("declining the boost plays Fortune now at the current Power", () => {
+    let state = withHand(makeGame(), ["spell.fortune", "spell.haste"]);
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.fortune",
+      mode: "basic",
+      target: { type: "none" }
+    });
+    const choice = state.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("fortune-boost");
+    // The trailing option is "Play now" — decline the boost, keep Haste.
+    const playNowIndex = choice?.type === "OPTION_CHOICE" ? choice.options.length - 1 : 0;
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice!.id,
+      optionIndex: playNowIndex
+    });
+    expect(adventureRerollBudget(state)).toBe(1); // Power 0
+    expect(state.players.p1.hand).toContain("spell.haste"); // not spent
+  });
+
+  it("offers and spends a Fortune reroll when a Resource die is rolled, then is used up", () => {
+    let state = withHand(makeGame(), ["spell.fortune"]);
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.fortune",
+      mode: "basic",
+      target: { type: "none" }
+    });
+    expect(adventureRerollBudget(state)).toBe(1);
+
+    // Step onto an unguarded Resources field, which rolls a Resource die.
+    const dest = heroTileFootprint(state)[1];
+    setField(state, dest, "resource_symbol");
+    state = applyOk(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: dest });
+
+    const step = state.adventure?.pendingVisit?.steps[0];
+    if (!step || step.type !== "CHOOSE_ONE") {
+      throw new Error("expected a resource-die choice with a Fortune reroll option");
+    }
+    const rerollIndex = step.options.findIndex((option) => option.label.includes("Fortune"));
+    expect(rerollIndex).toBeGreaterThanOrEqual(0);
+
+    // Spend the reroll: the single-reroll budget is now exhausted and the effect ends.
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: rerollIndex });
+    expect(fortuneEffect(state)).toBeUndefined();
   });
 });
 
