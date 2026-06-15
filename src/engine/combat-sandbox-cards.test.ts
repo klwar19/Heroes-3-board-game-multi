@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cardLibrary } from "@/data/cards/library";
-import { createInitialGameState, getLegalActions, getRuleset, SHARED_DECK_IDS } from "./index";
+import { applyAction, createInitialGameState, getLegalActions, getRuleset, SHARED_DECK_IDS } from "./index";
 import type { SharedDeckId } from "./index";
 
 /**
@@ -103,5 +103,45 @@ describe("combat sandbox card access (test all mechanics)", () => {
       }
       expect(searchable.has(deckId), `${deckId} well is searchable`).toBe(true);
     }
+  });
+});
+
+describe("combat sandbox — add any card straight to hand (test mode)", () => {
+  it("drops the chosen card into the player's hand and logs it", () => {
+    const state = createInitialGameState();
+    const before = state.players.p1.hand.length;
+
+    const result = applyAction(state, { type: "SANDBOX_ADD_CARD", playerId: "p1", cardId: "spell.magic_arrow" });
+
+    expect(result.errors).toEqual([]);
+    expect(result.state.players.p1.hand.length).toBe(before + 1);
+    expect(result.state.players.p1.hand).toContain("spell.magic_arrow");
+    expect(result.state.eventLog.some((event) => event.type === "SANDBOX_CARD_ADDED")).toBe(true);
+  });
+
+  it("can add an artifact and an ability too (not just spells)", () => {
+    let state = createInitialGameState();
+    state = applyAction(state, { type: "SANDBOX_ADD_CARD", playerId: "p2", cardId: "artifact.centaurs_axe" }).state;
+    state = applyAction(state, { type: "SANDBOX_ADD_CARD", playerId: "p2", cardId: "ability.offense" }).state;
+    expect(state.players.p2.hand).toEqual(expect.arrayContaining(["artifact.centaurs_axe", "ability.offense"]));
+  });
+
+  it("rejects an unknown card and never touches the hand", () => {
+    const state = createInitialGameState();
+    const before = [...state.players.p1.hand];
+
+    const result = applyAction(state, { type: "SANDBOX_ADD_CARD", playerId: "p1", cardId: "spell.not_a_real_card" });
+
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.state.players.p1.hand).toEqual(before);
+  });
+
+  it("is rejected outside the combat sandbox", () => {
+    const state = createInitialGameState();
+    state.combat = null; // no sandbox combat in progress
+
+    const result = applyAction(state, { type: "SANDBOX_ADD_CARD", playerId: "p1", cardId: "spell.magic_arrow" });
+
+    expect(result.errors.length).toBeGreaterThan(0);
   });
 });

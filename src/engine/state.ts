@@ -1263,6 +1263,12 @@ export type GameAction =
     }
   | { type: "SEARCH_DECK"; playerId: PlayerId; deckId: DeckId; count: number }
   | { type: "RESOLVE_DECK_SEARCH"; playerId: PlayerId; choiceId: string; pick: DeckSearchPick }
+  /**
+   * Combat test mode only: drop any card straight into a player's hand so a
+   * tester can exercise its mechanic without searching for it. Rejected outside
+   * the combat sandbox; see sandboxAddCard.
+   */
+  | { type: "SANDBOX_ADD_CARD"; playerId: PlayerId; cardId: CardId }
   | { type: "MOVE_HERO"; playerId: PlayerId; heroId: HeroId; to: MapSpaceId }
   | {
       /**
@@ -1865,6 +1871,13 @@ export type GameEvent =
       count: number;
       requested: number;
       reshuffledDiscard: boolean;
+    }
+  | {
+      id: string;
+      type: "SANDBOX_CARD_ADDED";
+      playerId: PlayerId;
+      cardId: CardId;
+      message: string;
     }
   | {
       id: string;

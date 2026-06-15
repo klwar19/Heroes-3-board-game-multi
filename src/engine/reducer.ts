@@ -8363,6 +8363,53 @@ function completeSimultaneousTurn(
   state.phase = "simultaneous-turns";
 }
 
+/** Hand-card kinds the sandbox card picker may drop into a player's hand. */
+const SANDBOX_ADDABLE_KINDS = new Set<CardDefinition["kind"]>([
+  "spell",
+  "ability",
+  "artifact",
+  "statistic",
+  "hero-specialty"
+]);
+
+/**
+ * Combat test mode only: add any playable card straight into a player's hand so
+ * a tester can exercise its mechanic. Handler-validated (it never appears in
+ * getLegalActions), so it guards itself: sandbox combat only, a real player, and
+ * a known card of a hand-playable kind.
+ */
+function sandboxAddCard(
+  state: GameState,
+  action: Extract<GameAction, { type: "SANDBOX_ADD_CARD" }>,
+  cards: CardLibrary
+): void {
+  if (state.combat?.context.kind !== "sandbox") {
+    throw new Error("Cards can only be added by hand in the combat sandbox.");
+  }
+
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error(`Unknown player ${action.playerId}.`);
+  }
+
+  const card = cards[action.cardId];
+  if (!card) {
+    throw new Error(`Unknown card ${action.cardId}.`);
+  }
+
+  if (!SANDBOX_ADDABLE_KINDS.has(card.kind)) {
+    throw new Error(`${card.name} (${card.kind}) is not a hand-playable card.`);
+  }
+
+  player.hand.push(action.cardId);
+  appendEvent(state, {
+    type: "SANDBOX_CARD_ADDED",
+    playerId: action.playerId,
+    cardId: action.cardId,
+    message: `${player.name} adds ${card.name} to hand (sandbox).`
+  });
+}
+
 function searchDeck(state: GameState, action: Extract<GameAction, { type: "SEARCH_DECK" }>): void {
   const deck = state.decks[action.deckId];
   if (!deck || !isSharedDeckId(action.deckId)) {
@@ -8928,6 +8975,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "PLACE_COMBAT_UNIT",
   "UNPLACE_COMBAT_UNIT",
   "SWAP_COMBAT_UNITS",
+  "SANDBOX_ADD_CARD",
   "FINISH_TACTICS",
   "FINISH_COMBAT_PLACEMENT",
   "CONTINUE_NEUTRAL_COMBAT",
@@ -9042,6 +9090,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "SEARCH_DECK":
         searchDeck(nextState, action);
+        break;
+      case "SANDBOX_ADD_CARD":
+        sandboxAddCard(nextState, action, cards);
         break;
       case "RESOLVE_DECK_SEARCH":
         resolveDeckSearch(nextState, action, cards);

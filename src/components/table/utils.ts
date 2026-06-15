@@ -347,6 +347,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         .join(" & ")}.`;
     case "SCROLL_SPELL_SOLD":
       return `${playerName(state, event.playerId)} sells ${cardName(event.cardId)} from a Spell Scroll for ${event.gold} gold.`;
+    case "SANDBOX_CARD_ADDED":
+      return event.message;
   }
 }
 
