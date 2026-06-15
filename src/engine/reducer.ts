@@ -8,6 +8,7 @@ import {
   getActiveAstrologersCard,
   getMainHero,
   getUnitSide,
+  isSeaField,
   makeCombatUnitFromArmy,
   NEUTRAL_DECK_IDS,
   queueNecromancyReinforce
@@ -1135,6 +1136,22 @@ function totalSpellDamageReduction(state: GameState, target: CombatUnitState): n
     return 0;
   }
   let total = getSpellDamageReduction(target);
+
+  // Interference: a unit-scoped Defense bonus that also blunts Spell damage.
+  // Sum every SPELL_DAMAGE_REDUCTION modifier on an effect that applies to the
+  // target (Titans/Gargoyles' ignore-ongoing-effects passives are honoured by
+  // effectAppliesToUnit, exactly as they are for any other ongoing effect).
+  for (const effect of state.activeEffects) {
+    if (!effectAppliesToUnit(effect, target)) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "SPELL_DAMAGE_REDUCTION") {
+        total += modifier.amount;
+      }
+    }
+  }
+
   const combat = state.combat;
   if (combat) {
     // Aura sources (Rampart Unicorns Pack) shield themselves and adjacent
@@ -5471,6 +5488,11 @@ function effectSupportsExpertPlay(effect: NonNullable<ReturnType<typeof getEffec
     return Boolean(effect.expertIgnoresMaxPower || effect.expertIgnoresMaxSpellLevel);
   }
 
+  // Interference's expert side (+2 instead of +1) always exists.
+  if (effect.type === "INTERFERE_SPELL") {
+    return true;
+  }
+
   return false;
 }
 
@@ -6132,6 +6154,40 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
+  // Interference: react to an enemy damaging Spell aimed at one of your units
+  // by granting that unit +1 (expert +2) Defense for the rest of the Combat —
+  // a bonus that also reduces Spell damage (DEFENSE_BONUS for attacks,
+  // SPELL_DAMAGE_REDUCTION for spells). Created here, before the pending Spell
+  // resolves (the reaction window closes first), so it softens the very Spell
+  // that triggered it and every later Spell that hits the same unit.
+  if (effect.type === "INTERFERE_SPELL" && stackItem?.action.type === "CAST_SPELL") {
+    const targetRef = stackItem.action.target;
+    const targetUnit = targetRef.type === "unit" ? state.combat?.units[targetRef.unitId] : undefined;
+    // The legal-reaction gate already restricts this to the reacting player's
+    // own targeted unit; re-checked here so a stale window can never buff an
+    // enemy unit or a dead one.
+    if (targetUnit && targetUnit.controllerId === playerId && isUnitAlive(targetUnit)) {
+      createActiveEffect(
+        state,
+        {
+          name: mode === "expert" ? "Expert Interference" : "Interference",
+          scope: "unit",
+          duration: { type: "combat" },
+          polarity: "positive",
+          removable: true,
+          modifiers: [
+            { type: "DEFENSE_BONUS", amount: effectAmount },
+            { type: "SPELL_DAMAGE_REDUCTION", amount: effectAmount }
+          ]
+        },
+        { type: "card", cardId: card.id, controllerId: playerId },
+        playerId,
+        { type: "unit", unitId: targetUnit.id }
+      );
+    }
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
   // Alamar's Resurrection: arm the pending attack so it is cancelled at
   // resolution if it would destroy the defending unit. It guards against
   // normal attacks only — never spells or specialty damage. The discard cost
@@ -6714,6 +6770,21 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (option?.mapOnly && state.combat) {
     throw new Error(`${option.label} cannot be used during combat.`);
   }
+  // Crown of the Five Seas' sea side: only while this player's main Hero stands
+  // on a Sea (water-terrain) field.
+  if (option?.requiresSeaTile) {
+    const hero = getMainHero(state, action.playerId);
+    if (!hero?.spaceId || !isSeaField(state, hero.spaceId)) {
+      throw new Error(`${option.label} requires your Hero to be on a Sea tile.`);
+    }
+  }
+  // Ring of the Wayfarer's paralysis side: only at the opening round of a
+  // Combat against Neutral Units.
+  if (option?.requiresNeutralCombatStart) {
+    if (!state.combat || state.combat.context.kind !== "neutral" || state.combat.round !== 1) {
+      throw new Error(`${option.label} is played at the start of a Combat with Neutral Units.`);
+    }
+  }
   if (mode === "expert" && !hasExpertUseAvailable(state, action.playerId)) {
     throw new Error("No expert uses are available this combat round.");
   }
@@ -6842,6 +6913,19 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "CREATE_DEFENSE_BUFF" && target) {
     createDefenseBuffFromCard(state, card, action.playerId, card.power ?? 0, target);
+  }
+
+  // Ring of the Wayfarer's paralysis side: place a Paralysis token on the
+  // chosen unit, gated by the grade the paid Power unlocks (Power 0 -> gold, so
+  // an Azure unit — above the gate — is left untouched, matching "except
+  // Azure"). The Blind Spell shares the PLACE_PARALYSIS effect but resolves via
+  // the spell stack, so this branch only fires for directly-played cards.
+  if (effect.type === "PLACE_PARALYSIS" && state.combat && target) {
+    const maxGrade = gradeAtPower(effect.gradeByPower, card.power ?? 0);
+    const unit = state.combat.units[target.unitId];
+    if (unit && maxGrade && gradeRank(unit.grade) <= gradeRank(maxGrade)) {
+      placeCombatToken(state, unit, "paralysis", 0, card.name);
+    }
   }
 
   // Rashka's Demoniac specialty (IV/VI): a Fire Shield on the chosen unit —

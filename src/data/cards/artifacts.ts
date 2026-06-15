@@ -28,7 +28,11 @@ const SCANLESS_ARTIFACTS = new Set([
   "orb_of_silt",
   "orb_of_tempestuous_fire",
   "orb_of_the_firmament",
-  "pendant_of_second_sight"
+  "pendant_of_second_sight",
+  // Newly added Cove/sea artifact whose card scan is not yet committed to
+  // public/assets — it falls back to the deck back until the scan lands.
+  // (Ring of the Wayfarer's scan is committed, so it is not listed here.)
+  "crown_of_the_five_seas"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
@@ -705,6 +709,53 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("inexhaustible_cart_of_ore")
   },
+  // Ring of the Wayfarer: option 0 is the familiar combat initiative buff (on a
+  // friendly unit, the card-level target). Option 1 is the paralysis side —
+  // played only at the start (round 1) of a Combat against Neutral Units
+  // (engine: requiresNeutralCombatStart + combatOnly), it drops a Paralysis
+  // token on any chosen unit whose grade is at most gold; the PLACE_PARALYSIS
+  // gradeByPower gate ({0: "gold"}) is exactly the printed "except Azure", and
+  // the option carries its own any-unit target so it is not tied to option 0's
+  // friendly-unit target.
+  "artifact.ring_of_the_wayfarer": {
+    id: "artifact.ring_of_the_wayfarer",
+    name: "Ring of the Wayfarer",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "minor",
+    target: { type: "friendly-unit" },
+    tags: [
+      "artifact",
+      "minor",
+      "For this Combat, your selected unit gains +1 initiative. — OR — At the start of a Combat with Neutral Units, place a Paralysis token on any unit except Azure."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+1 initiative for this combat",
+          effect: {
+            type: "CREATE_INITIATIVE_BUFF",
+            name: "Ring of the Wayfarer",
+            amount: 1,
+            duration: { type: "combat" },
+            polarity: "positive",
+            removable: true
+          }
+        },
+        {
+          label: "Start of a Neutral combat: Paralyse any non-Azure unit",
+          combatOnly: true,
+          requiresNeutralCombatStart: true,
+          target: { type: "any-unit" },
+          effect: { type: "PLACE_PARALYSIS", gradeByPower: { 0: "gold" } }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "ring_of_the_wayfarer", "Ring of the Wayfarer"),
+    implementationStatus: "implemented",
+    source: artifactSource("ring_of_the_wayfarer")
+  },
 
   // ---- Major artifacts ----------------------------------------------------
   "artifact.dragon_scale_shield": {
@@ -822,6 +873,42 @@ export const artifactCards: CardLibrary = {
     assets: artifactAssets("major", "head_of_legion", "Head of Legion"),
     implementationStatus: "implemented",
     source: artifactSource("head_of_legion")
+  },
+  "artifact.arms_of_legion": {
+    id: "artifact.arms_of_legion",
+    name: "Arms of Legion",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Reduce the Recruitment or Reinforcement cost of a unit by 5 gold (to a minimum of 0). — OR — Gain 2 building materials."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Next recruit/reinforce costs 5 less gold",
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Arms of Legion",
+              scope: "player",
+              duration: { type: "current-turn" },
+              modifiers: [{ type: "RECRUIT_DISCOUNT", amount: 5 }]
+            }
+          }
+        },
+        {
+          label: "Gain 2 building materials",
+          effect: { type: "GAIN_RESOURCES", gain: { buildingMaterials: 2 } }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "arms_of_legion", "Arms of Legion"),
+    implementationStatus: "implemented",
+    source: artifactSource("arms_of_legion")
   },
   "artifact.tunic_of_the_cyclops_king": {
     id: "artifact.tunic_of_the_cyclops_king",
@@ -1208,6 +1295,42 @@ export const artifactCards: CardLibrary = {
     assets: artifactAssets("major", "mystic_orb_of_mana", "Mystic Orb of Mana"),
     implementationStatus: "implemented",
     source: artifactSource("mystic_orb_of_mana")
+  },
+  // Crown of the Five Seas: option 0 returns a Spell from anywhere in your
+  // discard pile (the standard TAKE_FROM_DISCARD spell pick, a map play). Option
+  // 1 is the sea side — offered only while this player's main Hero stands on a
+  // Sea (water-terrain) field (engine: requiresSeaTile) — and looks at the top 3
+  // cards of the discard pile to take 1 (TAKE_FROM_DISCARD fromTop: 3, no
+  // filter). Both sides resolve through the discard-pick reward queue, so they
+  // are map plays.
+  "artifact.crown_of_the_five_seas": {
+    id: "artifact.crown_of_the_five_seas",
+    name: "Crown of the Five Seas",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Select 1 Spell card from your discard pile and put it back into your hand. — OR — If this Hero is on a Sea tile, look at the top 3 cards of your discard pile and take 1 of them into your hand."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Take 1 Spell card from your discard pile",
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell" }
+        },
+        {
+          label: "On a Sea tile: look at the top 3 of your discard pile, take 1",
+          requiresSeaTile: true,
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, fromTop: 3 }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "crown_of_the_five_seas", "Crown of the Five Seas"),
+    implementationStatus: "implemented",
+    source: artifactSource("crown_of_the_five_seas")
   },
   // The four elemental Orbs share one shape, one per School of Magic. Option A
   // is an ongoing combat play: while it is in play this Combat, the engine
@@ -1833,10 +1956,12 @@ export const artifactDeckLegacy: string[] = [
   "artifact.equestrians_gloves",
   "artifact.glyph_of_gallantry",
   "artifact.quiet_eye_of_the_dragon",
+  "artifact.ring_of_the_wayfarer",
   // major
   "artifact.dragon_scale_shield",
   "artifact.endless_bag_of_gold",
   "artifact.endless_purse_of_gold",
+  "artifact.arms_of_legion",
   "artifact.head_of_legion",
   "artifact.ogres_club_of_havoc",
   "artifact.tunic_of_the_cyclops_king",
@@ -1851,6 +1976,7 @@ export const artifactDeckLegacy: string[] = [
   "artifact.shackles_of_war",
   "artifact.pendant_of_courage",
   "artifact.necklace_of_dragonteeth",
+  "artifact.crown_of_the_five_seas",
   "artifact.orb_of_driving_rain",
   "artifact.orb_of_silt",
   "artifact.orb_of_tempestuous_fire",
@@ -1897,7 +2023,8 @@ export const artifactDeckBinhMinor: string[] = [
   "artifact.quiet_eye_of_the_dragon",
   "artifact.charm_of_mana",
   "artifact.greater_gnolls_flail",
-  "artifact.shield_of_the_dwarven_lords"
+  "artifact.shield_of_the_dwarven_lords",
+  "artifact.ring_of_the_wayfarer"
 ];
 
 /** BINH Major Artifact deck (adds the BINH-extra majors). */
@@ -1905,6 +2032,7 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.dragon_scale_shield",
   "artifact.endless_bag_of_gold",
   "artifact.endless_purse_of_gold",
+  "artifact.arms_of_legion",
   "artifact.head_of_legion",
   "artifact.ogres_club_of_havoc",
   "artifact.tunic_of_the_cyclops_king",
@@ -1919,6 +2047,7 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.necklace_of_dragonteeth",
   "artifact.mystic_orb_of_mana",
   "artifact.shackles_of_war",
+  "artifact.crown_of_the_five_seas",
   "artifact.orb_of_driving_rain",
   "artifact.orb_of_silt",
   "artifact.orb_of_tempestuous_fire",
