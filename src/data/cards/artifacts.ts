@@ -995,12 +995,39 @@ export const artifactCards: CardLibrary = {
     "major",
     "If played at the start of Combat, the Enemy Hero can neither Retreat nor Surrender. — OR — Draw 2 cards, choose 1 card and discard the other."
   ),
-  "artifact.mystic_orb_of_mana": notImplementedArtifact(
-    "mystic_orb_of_mana",
-    "Mystic Orb of Mana",
-    "major",
-    "Search (4) your discard pile. — OR — Only if your discard pile is empty: draw 2 cards."
-  ),
+  // Mystic Orb of Mana: Search (4) the top of your discard pile and take 1 card
+  // (the TAKE_FROM_DISCARD `fromTop` machinery is built for exactly this), or,
+  // only on an empty discard pile, draw 2 cards. The Search option resolves
+  // through the adventure reward queue, so it is a map play.
+  "artifact.mystic_orb_of_mana": {
+    id: "artifact.mystic_orb_of_mana",
+    name: "Mystic Orb of Mana",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Search (4) your discard pile. — OR — Only if your discard pile is empty: draw 2 cards."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Search (4) your discard pile",
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, fromTop: 4 }
+        },
+        {
+          label: "Only if your discard pile is empty: draw 2 cards",
+          requiresEmptyDiscard: true,
+          effect: { type: "DRAW_CARDS", amount: 2 }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "mystic_orb_of_mana", "Mystic Orb of Mana"),
+    implementationStatus: "implemented",
+    source: artifactSource("mystic_orb_of_mana")
+  },
 
   // ---- Relic artifacts ----------------------------------------------------
   "artifact.angel_wings": {

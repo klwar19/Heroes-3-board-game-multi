@@ -570,7 +570,10 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
   // pick a unit: they default to a no-target play. Only effects that actually
   // strike a unit fall back to "enemy-unit".
   const selfTargetedEffect =
-    card?.effect.type === "CREATE_ACTIVE_EFFECT" || card?.effect.type === "GAIN_MORALE";
+    card?.effect.type === "CREATE_ACTIVE_EFFECT" ||
+    card?.effect.type === "GAIN_MORALE" ||
+    // Artillery resolves its own target (the lowest-initiative enemy).
+    card?.effect.type === "DAMAGE_LOWEST_INITIATIVE";
   const targetType =
     card?.target?.type ??
     (card?.effect.type === "HEAL_DAMAGE"
@@ -1153,6 +1156,10 @@ function addOptionPlays(
       continue;
     }
     if (option.combatOnly && context !== "combat") {
+      continue;
+    }
+    // Mystic Orb of Mana's "draw 2" option is offered only on an empty discard.
+    if (option.requiresEmptyDiscard && (state.players[playerId]?.discard.length ?? 0) > 0) {
       continue;
     }
     if (!isOptionEffectPlayable(state, playerId, option.effect, context)) {
