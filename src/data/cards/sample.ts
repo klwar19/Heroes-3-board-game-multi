@@ -548,6 +548,10 @@ export const sampleCards: CardLibrary = {
           }
         ]
       },
+      // engine: both modifiers run. RANGED_ATTACK_BONUS (+1 vs non-adjacent) is
+      // applied in getActiveAttackBonus; RANGED_INITIATIVE_BONUS (+1) is summed
+      // in effectiveInitiative for the player's Ranged units only. The effect is
+      // player-scoped and lasts until the end of the next combat round.
       expertEffect: {
         name: "Expert Archery",
         scope: "player",

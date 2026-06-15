@@ -160,14 +160,12 @@ export type ActiveEffectModifier =
       consumeEffectOnUse: boolean;
     }
   | {
+      // The First Aid Tent always heals exactly this much once per combat round.
+      // The expert "heal 3×" is NOT a property of the Tent: it is the First Aid
+      // ability card's expert side (FIRST_AID_TENT_VOLLEY), gated on holding that
+      // card — mirroring how the Ballista's 3× volley lives on Artillery.
       type: "HEAL_ONCE_PER_COMBAT_ROUND";
       amount: number;
-      /**
-       * First Aid Tent expert: instead of the single basic heal, spend 1
-       * expert use to heal this many times in the round. Activating the expert
-       * and using the basic heal are mutually exclusive within a round.
-       */
-      expertUsesPerRound?: number;
     }
   | {
       type: "UNIT_CANNOT_MOVE";
@@ -330,6 +328,28 @@ export type ActiveEffectModifier =
        * (Anti-Magic is a Spell-granted effect, not a unit ability, so it stays.)
        */
       type: "SUPPRESS_SPELL_ABILITIES";
+    }
+  | {
+      /**
+       * Elemental Orbs (Orb of Driving Rain / Silt / Tempestuous Fire / the
+       * Firmament), option A: while the owner holds this combat-scoped effect,
+       * the effective Power of every Spell they cast from the matching School
+       * (and the school-agnostic "any" spells, exactly as the +Power boosts
+       * treat them) is doubled before any enemy Power reduction. Two orbs of the
+       * same school would compound (×4), but the printed set ships one of each.
+       */
+      type: "SPELL_POWER_DOUBLE";
+      school: SpellSchool;
+    }
+  | {
+      /**
+       * Pendant of Second Sight, option A: the selected unit "cannot gain a
+       * Paralysis token during this Combat". A unit-scoped, combat-duration
+       * immunity that blocks every Paralysis source — the Blind Spell
+       * (PLACE_PARALYSIS) and the medusa-style attack/retaliation follow-ups —
+       * exactly like the printed `ignore-paralysis` unit ability does.
+       */
+      type: "PARALYSIS_IMMUNITY";
     };
 
 export type ActiveEffectDefinition = {
@@ -524,6 +544,18 @@ export type EffectDefinition =
       shuffleRestIntoDeck?: boolean;
     }
   | {
+      /**
+       * Scholar (expert): remove up to `count` Statistic cards from hand or
+       * discard, gaining each one's Empowered version on top of the discard pile
+       * (distinct Empowered types only — "up to N different"). Opens an
+       * interactive swap via the SCHOLAR_EMPOWER_PICK / SCHOLAR_EMPOWER_GIVE
+       * visit steps (queued as a "visit-steps" reward). The Scholar card itself
+       * is removed by the option's cost.removeSelf, matching "Remove the Scholar".
+       */
+      type: "SCHOLAR_EMPOWER_SWAP";
+      count: number;
+    }
+  | {
       /** Card-driven Search (Breastplate of Brimstone, Crown of Dragontooth). */
       type: "CARD_DECK_SEARCH";
       deck: "spells" | "artifacts" | "abilities";
@@ -684,16 +716,12 @@ export type EffectDefinition =
       /**
        * Sorrow Spell (Instant reaction on UNIT_ACTIVATION_STARTED): when an
        * enemy unit is about to activate, skip its activation. The grade reached
-       * scales with the Power paid (0 → bronze, 2 → silver, 4 → gold). The card
-       * is played for free against a bronze unit; discarding further Spells for
-       * "+1 Power" into the activation-skip window raises the reachable grade
-       * (the reaction window carries that Power pool, since no stack item does).
+       * is set by the Power paid (0 → bronze, 2 → silver, 4 → gold), modelled as
+       * one CHOOSE_ONE option per grade (free for bronze, pay 2/4 power-source
+       * cards for silver/gold — like Resurrection).
        */
       type: "SKIP_ACTIVATION";
-      /** Reachable grade by Power paid (Sorrow: { 0: bronze, 2: silver, 4: gold }). */
-      gradeByPower?: Record<number, UnitGrade>;
-      /** Fixed reachable grade when no Power table is given (legacy single-grade). */
-      grade?: UnitGrade;
+      grade: UnitGrade;
     }
   | {
       /**
@@ -787,6 +815,19 @@ export type EffectDefinition =
        */
       type: "ARTILLERY_BALLISTA_VOLLEY";
       shots: number;
+    }
+  | {
+      /**
+       * First Aid's expert side: a declarative marker, never played through
+       * PLAY_CARD. When the owner activates their First Aid Tent's heal, they may
+       * play First Aid (spending one expert use, discarding the card) to resolve
+       * that Tent heal against the SAME target `heals` times this round. Wired in
+       * the Tent heal flow (USE_ACTIVE_EFFECT) — reducer.ts + legal-actions.ts —
+       * so the engine reads `heals` from here and the card stays the source of
+       * truth. Without an active First Aid Tent only the card's basic heal runs.
+       */
+      type: "FIRST_AID_TENT_VOLLEY";
+      heals: number;
     }
   | {
       /**
@@ -1118,6 +1159,26 @@ export type CardOptionDefinition = {
    * holds no cards.
    */
   requiresEmptyDiscard?: boolean;
+  /**
+   * Crown of the Five Seas' sea side ("If this Hero is on a Sea tile …"): the
+   * option is offered only while the playing player's main Hero stands on a Sea
+   * (water-terrain) field.
+   */
+  requiresSeaTile?: boolean;
+  /**
+   * Ring of the Wayfarer's paralysis side ("At start of Combat with Neutral
+   * Units …"): offered only on the opening round of a Combat against Neutral
+   * Units.
+   */
+  requiresNeutralCombatStart?: boolean;
+  /**
+   * Per-option target override for a CHOOSE_ONE card whose options strike
+   * different sides. Ring of the Wayfarer's initiative side buffs a friendly
+   * unit (the card-level `target`) while its paralysis side hits any non-Azure
+   * unit, so that option carries its own `any-unit` target. Falls back to the
+   * card-level `target` when absent.
+   */
+  target?: TargetDefinition;
   effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
 };
 
@@ -2521,6 +2582,15 @@ export type ResolutionStackItem = {
     /** Precision: this shot ignores the ranged back-row penalty. */
     ignoreRangedPenalty?: boolean;
     /**
+     * Spell instants played into this attack that the OTHER side may still
+     * cancel with Resistance (Curse/Weakness/Bloodlust/Precision/Bless/Slayer).
+     * Each entry is the casting player; the spell's effect on the attack is
+     * reversed if cancelled, exactly like Resistance ending an Activation cast.
+     * Non-spell boosts (the Attack/Defense statistics) are never listed — they
+     * are not Spells and cannot be Resisted.
+     */
+    cancellableSpellInstants?: { cardId: CardId; playerId: PlayerId }[];
+    /**
      * Knowledge / Mysticism was played on this cast. The recall resolves
      * after the spell does: instants come back at once, ongoing spells only
      * when the effect they created ends.
@@ -2594,13 +2664,6 @@ export type ReactionWindow = {
   legalReactions: Record<PlayerId, LegalAction[]>;
   passedPlayerIds: PlayerId[];
   closesWhen: "all-pass" | "one-reaction" | "choice-made";
-  /**
-   * Power paid into a window that has no paused stack item to hold it — today
-   * just the Sorrow activation-skip window. Every "+1 Power" discard adds 1 and
-   * SKIP_ACTIVATION reads it to decide the reachable grade. Stack-backed windows
-   * (spell casts, attacks) keep their Power on the stack item instead.
-   */
-  spellPowerBonus?: number;
 };
 
 export type ActiveEffectState = ActiveEffectDefinition & {
@@ -3309,6 +3372,24 @@ export type VisitStep =
   | { type: "MAGIC_SPRING" }
   | { type: "WITCH_HUT" }
   | { type: "SCHOLAR" }
+  | {
+      /**
+       * Scholar ability card (expert): offer to remove one non-empowered
+       * Statistic card from hand or discard and gain its Empowered version on
+       * top of the discard pile. Recurses up to `remaining` times; `takenTypes`
+       * lists the Empowered statistic types already taken this play, which may
+       * not be taken again ("up to N different Empowered Statistic cards").
+       */
+      type: "SCHOLAR_EMPOWER_PICK";
+      remaining: number;
+      takenTypes: string[];
+    }
+  | {
+      /** Scholar (expert): remove the chosen Statistic card, bank its Empowered form. */
+      type: "SCHOLAR_EMPOWER_GIVE";
+      source: "hand" | "discard";
+      cardId: string;
+    }
   | {
       /**
        * Choose one: trade resources (repeatable within the visit), sell one
