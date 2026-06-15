@@ -19,10 +19,9 @@ const SCANLESS_ARTIFACTS = new Set([
   "celestial_necklace_of_bliss",
   "lions_shield_of_courage",
   "sandals_of_the_saint",
-  // Newly added wiki artifacts without a card scan yet: show the deck back.
-  "eversmoking_ring_of_sulfur",
-  "inexhaustible_cart_of_ore",
-  "endless_purse_of_gold"
+  // Eversmoking Ring of Sulfur has no card scan on the wiki either (the wiki
+  // itself shows the deck back for it), so it falls back to the deck back here.
+  "eversmoking_ring_of_sulfur"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
