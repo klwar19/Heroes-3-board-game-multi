@@ -110,8 +110,9 @@ describe("permanent cards", () => {
     state.players.p1.hand = [];
     state.players.p2.hand = [];
     state.players.p1.permanents = ["war_machine.ballista"];
-    // No expert uses available: the Ballista just fires its single basic shot
-    // (with a crown free it would instead offer the expert volley).
+    // The Ballista always fires a single basic shot at the slowest enemy. (The
+    // 3× same-target volley is the Artillery ability's expert side, not the
+    // Ballista's — so crowns alone never change this.)
     state.players.p1.limits.expertUses = 0;
 
     const units = state.combat!.units;

@@ -27,12 +27,14 @@ import {
   finalizeAdventureCombat,
   finishCombatPlacement,
   finishTactics,
+  giveUpAdventure,
   hallOfValhallaBoost,
   openDiplomacyRecruit,
   openSiegeDemolishChoice,
   openSkeletonReinforceChoice,
   moveHeroAdventure,
   moveHeroPathAdventure,
+  openDimensionDoorChoice,
   openMarket,
   openSharedDeckSearch,
   hireSecondaryHero,
@@ -45,6 +47,7 @@ import {
   rehydrateCityHallChoice,
   resolveVisitStep,
   retreatFromCombat,
+  surrenderFromCombat,
   revisitField,
   roguesScoutDeck,
   setTileRotation,
@@ -78,6 +81,7 @@ import {
   countBallistas,
   discardPermanentVoluntarily,
   getPermanentSchoolBonus,
+  isLowestInitiativeEnemy,
   putPermanentIntoPlay,
   resolveWarMachineTarget,
   startWarMachineRound
@@ -668,6 +672,30 @@ function gradeAtPower(
     .sort((left, right) => left - right);
   const matched = thresholds.filter((value) => value <= power).at(-1);
   return matched === undefined ? null : (gradeByPower[matched] ?? null);
+}
+
+/** Chain Lightning Spell: the damage allocation unlocked by the paid Power. */
+function chainDamagesAtPower(
+  damagesByPower: Record<number, number[]>,
+  power: number
+): number[] | null {
+  const thresholds = Object.keys(damagesByPower)
+    .map(Number)
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right);
+  const matched = thresholds.filter((value) => value <= power).at(-1);
+  return matched === undefined ? null : (damagesByPower[matched] ?? null);
+}
+
+/** Resolves a CHAIN_LIGHTNING effect's allocation array for the paid Power. */
+function chainLightningDamages(
+  effect: Extract<EffectDefinition, { type: "CHAIN_LIGHTNING" }>,
+  power: number
+): number[] {
+  if (effect.damagesByPower) {
+    return chainDamagesAtPower(effect.damagesByPower, power) ?? effect.damages ?? [];
+  }
+  return effect.damages ?? [];
 }
 
 /**
@@ -4383,6 +4411,31 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       );
     }
 
+    // Chain Lightning Spell: hit the selected unit, then fork to the units
+    // closest to it. The allocation (1/1/1, 2/1/1, 3/2/1) scales with Power.
+    if (card?.effect.type === "CHAIN_LIGHTNING" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      startChainLightning(
+        state,
+        stackItem.action.playerId,
+        card,
+        stackItem.action.target.unitId,
+        chainLightningDamages(card.effect, power)
+      );
+    }
+
+    // Blind: place a Paralysis token on the selected enemy unit, gated by the
+    // Power paid (0 → bronze, 1 → silver, 2 → gold). Above the unlocked grade
+    // the cast does nothing — mirrors Anti-Magic's resolution-time gate.
+    if (card?.effect.type === "PLACE_PARALYSIS" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        placeCombatToken(state, target, "paralysis", 0, card.name);
+      }
+    }
+
     if (card?.effect.type === "CLEAR_RETALIATION" && state.combat && stackItem.action.target.type === "unit") {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
@@ -5185,28 +5238,16 @@ function applyReactionPlayCore(
       markUnitRemovedIfNeeded(state, affectedUnit);
     }
 
-    // Buckler of the Gnoll King: the boosted unit also suffers a lasting stat
-    // penalty until the end of the Combat ("+2 defense, then -1 attack this
-    // Combat"). The attack/defense maths floor the result at 0 ("minimum 0").
+    // The Gnoll artifacts' stronger side: the boosted unit takes a lasting
+    // token until the end of the Combat — a Weakness token (−attack) for the
+    // Buckler of the Gnoll King, a Corrosion token (−defense) for the Greater
+    // Gnoll's Flail. Both are floored at 0 by the attack/defense maths.
     if (effect.selfStatPenalty && affectedUnit && state.combat) {
-      createActiveEffect(
-        state,
-        {
-          name: card.name,
-          scope: "unit",
-          duration: { type: "combat" },
-          polarity: "negative",
-          removable: false,
-          modifiers: [
-            effect.selfStatPenalty.stat === "attack"
-              ? { type: "ATTACK_BONUS", amount: -effect.selfStatPenalty.amount }
-              : { type: "DEFENSE_BONUS", amount: -effect.selfStatPenalty.amount }
-          ]
-        },
-        { type: "card", cardId: card.id, controllerId: playerId },
-        playerId,
-        { type: "unit", unitId: affectedUnit.id }
-      );
+      if (effect.selfStatPenalty.stat === "attack") {
+        placeCombatToken(state, affectedUnit, "weakness", -effect.selfStatPenalty.amount, card.name);
+      } else {
+        placeCombatToken(state, affectedUnit, "corrosion", effect.selfStatPenalty.amount, card.name);
+      }
     }
 
     if (effect.drawCards) {
@@ -5697,6 +5738,36 @@ function startChainLightning(
   );
 }
 
+/**
+ * Charm of Mana / Shackles of War: open a "discard M cards from hand" choice.
+ * `candidates` are the cards the player may discard (the whole hand, or only
+ * the cards just drawn). With nothing to discard the choice is skipped.
+ */
+function openHandDiscardChoice(
+  state: GameState,
+  playerId: PlayerId,
+  remaining: number,
+  candidates: CardId[],
+  drawnOnly: boolean,
+  cardName: string
+): void {
+  if (remaining <= 0 || candidates.length === 0) {
+    return;
+  }
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `${cardName}: discard ${remaining} card${remaining === 1 ? "" : "s"}.`,
+    options: candidates.map((cardId) => ({ label: `Discard ${cardLibrary[cardId]?.name ?? cardId}` })),
+    context: "hand-discard",
+    handDiscard: { cardIds: candidates, remaining, drawnOnly },
+    returnPhase: state.combat ? "combat" : "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
 function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CARD" }>, cards: CardLibrary): void {
   const card = cards[action.cardId];
   if (!card) {
@@ -5776,6 +5847,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
   if (effect.type === "DIPLOMACY_SKIP_COMBAT") {
     throw new Error("Diplomacy's skip is offered when your hero meets matching-level Neutral Units.");
+  }
+  // Artillery's expert side is not played from hand: it is offered when this
+  // player's Ballista fires at the start of a combat round (see permanents.ts).
+  if (effect.type === "ARTILLERY_BALLISTA_VOLLEY") {
+    throw new Error("Artillery's expert side resolves when your Ballista fires, not from hand.");
   }
 
   const option = getChosenOption(card, action.optionIndex);
@@ -5919,6 +5995,27 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     createAttackRerollEffectFromCard(state, card, action.playerId, mode);
   }
 
+  // Shackles of War (option 1): the enemy hero can neither Retreat nor
+  // Surrender this Combat — a CANNOT_ESCAPE_COMBAT effect placed on the enemy.
+  if (effect.type === "BLOCK_ENEMY_ESCAPE" && state.combat) {
+    const enemyId = pickEnemyPlayerId(state, action.playerId);
+    if (enemyId) {
+      createActiveEffect(
+        state,
+        {
+          name: card.name,
+          scope: "player",
+          duration: { type: "combat" },
+          polarity: "negative",
+          removable: false,
+          modifiers: [{ type: "CANNOT_ESCAPE_COMBAT" }]
+        },
+        { type: "card", cardId: card.id, controllerId: action.playerId },
+        enemyId
+      );
+    }
+  }
+
   if (effect.type === "SIEGE_DEMOLISH") {
     const siege = state.combat?.siege;
     if (!siege) {
@@ -5934,8 +6031,42 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
+  // Artillery (basic): the slowest enemy takes `amount` "effect" damage — the
+  // same shot a Ballista makes. The card only offered the lowest-initiative
+  // enemy/enemies as targets; re-checked here so removing that filter is caught
+  // (a thrown error rolls the whole play back, card included).
+  if (effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" && state.combat) {
+    const unit = target ? state.combat.units[target.unitId] : undefined;
+    if (!unit || !isUnitAlive(unit) || unit.controllerId === action.playerId) {
+      throw new Error("Artillery must hit a living enemy unit.");
+    }
+    if (!isLowestInitiativeEnemy(state, action.playerId, unit)) {
+      throw new Error("Artillery hits an enemy unit with the lowest initiative.");
+    }
+    unit.damage += effect.amount;
+    noteUnitDamagedForTokens(state, unit, effect.amount);
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source: { type: "card", cardId: card.id, controllerId: action.playerId },
+      target: { type: "unit", unitId: unit.id },
+      amount: effect.amount,
+      damageKind: "effect"
+    });
+    markUnitRemovedIfNeeded(state, unit);
+    finishCombatIfNeeded(state);
+  }
+
   if (effect.type === "DRAW_CARDS") {
+    const handBefore = state.players[action.playerId].hand.length;
     drawCardsForPlayer(state, action.playerId, getEffectAmount(effect, mode));
+    // Charm of Mana / Shackles of War: "draw N, then discard M". The discard is
+    // a follow-up choice; `thenDiscardDrawnOnly` limits it to the drawn cards.
+    if (effect.thenDiscard) {
+      const hand = state.players[action.playerId].hand;
+      const drawn = hand.slice(handBefore);
+      const candidates = effect.thenDiscardDrawnOnly ? drawn : [...hand];
+      openHandDiscardChoice(state, action.playerId, effect.thenDiscard, candidates, Boolean(effect.thenDiscardDrawnOnly), card.name);
+    }
   }
 
   // Offense/Armorer outside combat: the stat fizzles, the draw still happens.
@@ -5990,6 +6121,25 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         action.playerId
       );
     }
+    if (effect.waterWalkThisTurn) {
+      createActiveEffect(
+        state,
+        {
+          name: card.name,
+          scope: "player",
+          duration: { type: "current-turn" },
+          polarity: "positive",
+          removable: false,
+          modifiers: [{ type: "HERO_WATER_WALK" }]
+        },
+        { type: "card", cardId: card.id, controllerId: action.playerId },
+        action.playerId
+      );
+    }
+  }
+
+  if (effect.type === "DIMENSION_DOOR") {
+    openDimensionDoorChoice(state, action.playerId, effect.fields);
   }
 
   if (effect.type === "GAIN_EXPERT_USE") {
@@ -6125,8 +6275,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   // Solmyr's Chain Lightning (I/VI): the selected unit takes the leftmost bolt,
   // then the chain forks to the units closest to it (the caster allocating).
+  // Specialty cards carry a fixed `damages`; a power-scaled `damagesByPower`
+  // (the Spell, never reached here) would use the card's printed power.
   if (effect.type === "CHAIN_LIGHTNING" && target && state.combat) {
-    startChainLightning(state, action.playerId, card, target.unitId, effect.damages);
+    startChainLightning(state, action.playerId, card, target.unitId, chainLightningDamages(effect, card.power ?? 0));
   }
 
   // Torosar's Ballista specialty: field an extra Ballista (this combat or the
@@ -8334,6 +8486,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "FINISH_COMBAT_PLACEMENT",
   "CONTINUE_NEUTRAL_COMBAT",
   "RETREAT_FROM_COMBAT",
+  "SURRENDER_COMBAT",
   "POPULATION_ACTION",
   "SPELL_BOOK_ACTION",
   "ROGUES_SCOUT_DECK",
@@ -8349,7 +8502,8 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
   "HALL_OF_VALHALLA_BOOST",
-  "ATTACK_FORTIFICATION"
+  "ATTACK_FORTIFICATION",
+  "GIVE_UP"
 ]);
 
 function isHandlerValidated(state: GameState, action: GameAction): boolean {
@@ -8528,6 +8682,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "RETREAT_FROM_COMBAT":
         retreatFromCombat(nextState, action);
         break;
+      case "SURRENDER_COMBAT":
+        surrenderFromCombat(nextState, action);
+        break;
       case "POPULATION_ACTION":
         populationAction(nextState, action);
         break;
@@ -8599,6 +8756,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         } else {
           endTurn(nextState, action);
         }
+        break;
+      case "GIVE_UP":
+        giveUpAdventure(nextState, action);
         break;
     }
   } catch (error) {

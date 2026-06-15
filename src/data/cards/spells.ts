@@ -509,15 +509,41 @@ export const spellCards: CardLibrary = {
     source: spellSource("summon_water_elemental")
   },
 
-  // ---- Not yet implemented spells (library entries only, not in decks) ----
-  "spell.chain_lightning": notImplementedSpell(
-    "chain_lightning",
-    "Chain Lightning",
-    "expert",
-    "air",
-    "combat",
-    "Activation: Select a unit and another 2 units closest to it. Allocate damage, starting with the first selected unit: Power 0: 1/1/1 damage; Power 2: 2/1/1 damage; Power 4: 3/2/1 damage."
-  ),
+  // ---- Spells beyond the base block ----
+  // Each entry's `implementationStatus` is authoritative; the implemented ones
+  // are dealt into the decks below where the rules place them, the rest are
+  // library-only stubs.
+  // Chain Lightning: an Activation Air spell that reuses the engine's Chain
+  // Lightning machinery (shared with Solmyr's specialty). The selected enemy
+  // takes the first bolt; the rest fork to the units closest to it (friend or
+  // foe), the caster routing them on ties. The allocation scales with Power.
+  "spell.chain_lightning": {
+    id: "spell.chain_lightning",
+    name: "Chain Lightning",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["air"],
+    power: 0,
+    target: { type: "enemy-unit" },
+    tags: [
+      "spell",
+      "expert",
+      "air",
+      "Activation: Select a unit and another 2 units closest to it. Allocate damage, starting with the first selected unit: Power 0: 1/1/1 damage; Power 2: 2/1/1 damage; Power 4: 3/2/1 damage."
+    ],
+    effect: {
+      type: "CHAIN_LIGHTNING",
+      damagesByPower: { 0: [1, 1, 1], 2: [2, 1, 1], 4: [3, 2, 1] }
+    },
+    assets: {
+      cardImage: "/assets/spells-chain_lightning.webp",
+      imageAlt: "Chain Lightning card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("chain_lightning")
+  },
   // Resurrection is an instant lethal save: it reuses the engine's
   // CANCEL_LETHAL_ATTACK mechanism (shared with Alamar's specialty and the
   // Archangels' ability), offered only in the lethal-save window, gated by the
@@ -621,14 +647,36 @@ export const spellCards: CardLibrary = {
     "combat",
     "Activation: During Combat, move one allied unit to any empty space - ignore any obstacles or effects when moving: Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or gold."
   ),
-  "spell.blind": notImplementedSpell(
-    "blind",
-    "Blind",
-    "basic",
-    "fire",
-    "combat",
-    "Activation: Place a paralysis token on the selected unit: Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or gold."
-  ),
+  // Blind: an Activation Fire spell that drops a Paralysis token on an enemy
+  // unit (it skips its next activation; the token is removed if it takes
+  // damage first). The reachable grade rises with the Power paid.
+  "spell.blind": {
+    id: "spell.blind",
+    name: "Blind",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "basic",
+    spellSchools: ["fire"],
+    power: 0,
+    target: { type: "enemy-unit" },
+    tags: [
+      "spell",
+      "basic",
+      "fire",
+      "Activation: Place a paralysis token on the selected unit: Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or gold."
+    ],
+    effect: {
+      type: "PLACE_PARALYSIS",
+      gradeByPower: { 0: "bronze", 1: "silver", 2: "gold" }
+    },
+    assets: {
+      cardImage: "/assets/spells-blind.webp",
+      imageAlt: "Blind card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("blind")
+  },
   "spell.mirth": notImplementedSpell(
     "mirth",
     "Mirth",
@@ -653,14 +701,145 @@ export const spellCards: CardLibrary = {
     "instant",
     "Instant: When attacking a gold unit, roll an Attack die several times and apply all the results (except for a '-1'). After resolving this attack, draw 1 card: Power 0: twice; Power 2: 4 times; Power 4: 6 times."
   ),
-  "spell.dimension_door": notImplementedSpell(
-    "dimension_door",
-    "Dimension Door",
-    "expert",
-    "air",
-    "map",
-    "Map effect: Move a Hero up to X fields. Ignore any obstacles and fields in-between and resolve the last one normally: Power 0: 1; Power 2: 2; Power 4: 3."
-  ),
+  // Dimension Door (Expert Air, map): teleport the hero up to X fields away,
+  // ignoring obstacles and the fields in-between, then resolve the destination
+  // normally (landing on guards or an enemy hero starts a combat). The reach
+  // scales with Power, paid by discarding power-source cards (Power 0/2/4 ->
+  // 1/2/3 fields). The destination is chosen from a pop-up after casting.
+  "spell.dimension_door": {
+    id: "spell.dimension_door",
+    name: "Dimension Door",
+    kind: "spell",
+    timing: "map",
+    spellLevel: "expert",
+    spellSchools: ["air"],
+    power: 0,
+    tags: [
+      "spell",
+      "expert",
+      "air",
+      "Map effect: Move your Hero up to X fields. Ignore any obstacles and fields in-between and resolve the last one normally: Power 0: 1; Power 2: 2; Power 4: 3."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        { label: "Move up to 1 field", mapOnly: true, effect: { type: "DIMENSION_DOOR", fields: 1 } },
+        {
+          label: "Move up to 2 fields (pay 2 Power)",
+          mapOnly: true,
+          cost: { discardCards: 2, costCardFilter: "power-source" },
+          effect: { type: "DIMENSION_DOOR", fields: 2 }
+        },
+        {
+          label: "Move up to 3 fields (pay 4 Power)",
+          mapOnly: true,
+          cost: { discardCards: 4, costCardFilter: "power-source" },
+          effect: { type: "DIMENSION_DOOR", fields: 3 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "/assets/spells-dimension_door.webp",
+      imageAlt: "Dimension Door card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("dimension_door")
+  },
+  // Fly (Expert Air, map; Fortress Expansion): this turn the hero may move
+  // through blocked fields (passing over, never stopping there) and gains
+  // Power-scaled movement. The "OR Instant: +1 Power" side is the universal
+  // rule that any Spell can be discarded as a power source, so it needs no
+  // dedicated option here. Reuses GAIN_HERO_MOVEMENT + moveThroughThisTurn,
+  // the same engine path as the Angel Wings artifact.
+  "spell.fly": {
+    id: "spell.fly",
+    name: "Fly",
+    kind: "spell",
+    timing: "map",
+    spellLevel: "expert",
+    spellSchools: ["air"],
+    power: 0,
+    tags: [
+      "spell",
+      "expert",
+      "air",
+      "Ongoing (map): During this turn, your Hero can move through blocked fields (but cannot end their movement there) and: Power 0: no additional effect; Power 2: +1 movement; Power 4: +2 movement. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Move through blocked fields this turn",
+          mapOnly: true,
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 0, moveThroughThisTurn: true }
+        },
+        {
+          label: "Move through blocked fields and +1 movement (pay 2 Power)",
+          mapOnly: true,
+          cost: { discardCards: 2, costCardFilter: "power-source" },
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1, moveThroughThisTurn: true }
+        },
+        {
+          label: "Move through blocked fields and +2 movement (pay 4 Power)",
+          mapOnly: true,
+          cost: { discardCards: 4, costCardFilter: "power-source" },
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 2, moveThroughThisTurn: true }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "/assets/spells-fly.webp",
+      imageAlt: "Fly card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("fly")
+  },
+  // Water Walk (Expert Water, map; Cove Expansion): this turn the hero may
+  // enter, cross and stop on sea fields, and gains Power-scaled movement. As
+  // with Fly, "OR Instant: +1 Power" is the universal power-source discard.
+  "spell.water_walk": {
+    id: "spell.water_walk",
+    name: "Water Walk",
+    kind: "spell",
+    timing: "map",
+    spellLevel: "expert",
+    spellSchools: ["water"],
+    power: 0,
+    tags: [
+      "spell",
+      "expert",
+      "water",
+      "Map effect: Choose one of your Heroes. This turn they can cross and stop on sea fields and gain: Power 0: +0 movement; Power 1: +1 movement; Power 2: +2 movement. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Walk on the sea this turn",
+          mapOnly: true,
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 0, waterWalkThisTurn: true }
+        },
+        {
+          label: "Walk on the sea this turn and +1 movement (pay 1 Power)",
+          mapOnly: true,
+          cost: { discardCards: 1, costCardFilter: "power-source" },
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1, waterWalkThisTurn: true }
+        },
+        {
+          label: "Walk on the sea this turn and +2 movement (pay 2 Power)",
+          mapOnly: true,
+          cost: { discardCards: 2, costCardFilter: "power-source" },
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 2, waterWalkThisTurn: true }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "/assets/spells-water_walk.webp",
+      imageAlt: "Water Walk card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("water_walk")
+  },
   "spell.earthquake": {
     id: "spell.earthquake",
     name: "Earthquake",
@@ -710,7 +889,11 @@ export const spellCards: CardLibrary = {
   )
 };
 
-/** Single mixed deck (legacy mode), Core+Rampart+Inferno implemented spells. */
+/**
+ * Single mixed deck (legacy mode): the Core+Rampart+Inferno implemented spells,
+ * plus the map-movement Expert spells (Dimension Door, Fly, Water Walk) now that
+ * they are wired into the engine.
+ */
 export const spellDeckLegacy: string[] = [
   "spell.magic_arrow",
   "spell.magic_arrow",
@@ -752,7 +935,10 @@ export const spellDeckLegacy: string[] = [
   "spell.summon_air_elemental",
   "spell.summon_earth_elemental",
   "spell.summon_fire_elemental",
-  "spell.summon_water_elemental"
+  "spell.summon_water_elemental",
+  "spell.dimension_door",
+  "spell.fly",
+  "spell.water_walk"
 ];
 
 /** BINH split decks. */
@@ -802,5 +988,8 @@ export const spellDeckBinhExpert: string[] = [
   "spell.summon_air_elemental",
   "spell.summon_earth_elemental",
   "spell.summon_fire_elemental",
-  "spell.summon_water_elemental"
+  "spell.summon_water_elemental",
+  "spell.dimension_door",
+  "spell.fly",
+  "spell.water_walk"
 ];

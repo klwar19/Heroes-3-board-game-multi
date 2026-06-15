@@ -139,9 +139,12 @@ export const permanentCards: CardLibrary = {
     tags: ["war-machine", "permanent", "damage", "wiki-reference"],
     permanent: true,
     permanentEffect: {
-      // Expert: at the round start, spend 1 expert use to fire 3 times instead
-      // of the single basic shot (declining fires once, then nothing more).
-      roundStart: { kind: "damage-lowest-initiative", amount: 1, expertShots: 3 }
+      // At the start of every combat round the Ballista deals 1 damage to the
+      // enemy unit with the lowest initiative (the owner breaks a tie). Firing 3×
+      // against the same target is NOT a Ballista power — it is the Artillery
+      // ability's expert side (ability.artillery), resolved here when its owner
+      // holds the card and spends an expert use. See permanents.ts.
+      roundStart: { kind: "damage-lowest-initiative", amount: 1 }
     },
     warMachineCosts: { factory: { gold: 7 }, tradingPost: { gold: 10 } },
     effect: { type: "ENTER_PLAY" },

@@ -14,6 +14,7 @@ import {
   hasResources as playerHasResources,
   humanPlayerIds,
   NEUTRAL_DECK_IDS,
+  RESOURCE_GAIN_LEVEL_AMOUNTS,
   townHasBuildingEffect,
   unlockedRecruitTiers
 } from "./adventure";
@@ -29,7 +30,12 @@ import {
   observatoryDiscoverTargets,
   removableHandCards
 } from "./adventure-reducer";
-import { effectAppliesToUnit, effectiveInitiative, playerHasSpellTimingFreedom } from "./active-effects";
+import {
+  effectAppliesToUnit,
+  effectiveInitiative,
+  playerCannotEscapeCombat,
+  playerHasSpellTimingFreedom
+} from "./active-effects";
 import { cardCanBoostPower } from "./effects";
 import {
   BATTLEFIELD_CELL_COUNT,
@@ -553,11 +559,19 @@ function getEnemyTargets(
     return [];
   }
 
-  return Object.values(state.combat.units)
+  let units = Object.values(state.combat.units)
     .filter((unit) => unit.controllerId !== playerId)
     .filter(isUnitAlive)
-    .filter((unit) => unitMatchesTarget(unit, target))
-    .map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
+    .filter((unit) => unitMatchesTarget(unit, target));
+
+  // Artillery: only the enemy unit(s) with the lowest effective initiative are
+  // legal targets (a tie offers each, so the controller picks which is hit).
+  if (target.type === "enemy-unit" && target.lowestInitiativeOnly && units.length > 0) {
+    const lowest = Math.min(...units.map((unit) => effectiveInitiative(unit, state.activeEffects)));
+    units = units.filter((unit) => effectiveInitiative(unit, state.activeEffects) === lowest);
+  }
+
+  return units.map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
 }
 
 function getFriendlyTargets(
@@ -1039,6 +1053,7 @@ function isOptionEffectPlayable(
     case "TELEPORT_HERO_TO_TOWN":
     case "DISCOVER_TILE_CARD":
     case "GAIN_HERO_MOVEMENT":
+    case "DIMENSION_DOOR":
       return context === "map" && Boolean(state.adventure);
     case "DIPLOMACY_RECRUIT":
       // Diplomacy's Map side only does something with at least one Dwelling.
@@ -1051,7 +1066,12 @@ function isOptionEffectPlayable(
     case "AREA_DAMAGE_ALL_ADJACENT":
     case "CREATE_FIRE_SHIELD":
     case "GRANT_ELEMENTAL_DAMAGE":
+    case "DAMAGE_LOWEST_INITIATIVE_ENEMY":
       return context === "combat" && Boolean(state.combat);
+    case "BLOCK_ENEMY_ESCAPE":
+      // Shackles of War (option 1): only at the start of a player-vs-player
+      // combat, where there is an enemy hero who could otherwise escape.
+      return context === "combat" && state.combat?.context.kind === "player" && state.combat.round === 1;
     case "DOUBLE_FIRST_AID_TENT":
       // Gem's First Aid VI only does something with a First Aid Tent in play.
       return (
@@ -1128,7 +1148,8 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "ADD_UNIT_MAX_HEALTH" ||
     effect.type === "HEAL_DAMAGE" ||
     effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
-    effect.type === "GRANT_ELEMENTAL_DAMAGE"
+    effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
+    effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY"
   );
 }
 
@@ -1168,6 +1189,10 @@ function addOptionPlays(
       continue;
     }
     if (option.combatOnly && context !== "combat") {
+      continue;
+    }
+    // Mystic Orb of Mana's "draw 2" option is offered only on an empty discard.
+    if (option.requiresEmptyDiscard && (state.players[playerId]?.discard.length ?? 0) > 0) {
       continue;
     }
     if (!isOptionEffectPlayable(state, playerId, option.effect, context)) {
@@ -2891,6 +2916,24 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     return;
   }
 
+  if (step.type === "RESOURCE_GAIN_LEVEL") {
+    actions.push(
+      {
+        label: `Raise Gold income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.gold} (one level)`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 }
+      },
+      {
+        label: `Raise Building Materials income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.buildingMaterials} (one level)`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 1 }
+      },
+      {
+        label: `Raise Valuables income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.valuables} (one level)`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 2 }
+      }
+    );
+    return;
+  }
+
   if (step.type === "WITCH_HUT") {
     // The rulebook reveals the top Ability card before the player decides.
     const top = state.decks.abilities?.drawPile.at(-1);
@@ -3378,6 +3421,34 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
  * The third use, rerolling a Die you have thrown, is offered inside the dice
  * flows (adventure rolls and the combat attack-die reroll) instead.
  */
+/**
+ * Player-vs-player escape: at the start of the combat (round 1, between
+ * activations) a participating hero may Retreat or Surrender — unless Shackles
+ * of War has locked them in. Conceding ends the combat as the loser.
+ */
+function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  const combat = state.combat;
+  if (!combat || combat.context.kind !== "player" || combat.outcome || combat.round !== 1) {
+    return;
+  }
+  if (!isCombatCardWindowOpen(state)) {
+    return;
+  }
+  const heroId =
+    playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
+  if (!heroId || playerCannotEscapeCombat(state, playerId)) {
+    return;
+  }
+  actions.push({
+    label: "Retreat (lose the combat; your hero flees to its last field)",
+    action: { type: "RETREAT_FROM_COMBAT", playerId }
+  });
+  actions.push({
+    label: "Surrender (concede the combat)",
+    action: { type: "SURRENDER_COMBAT", playerId }
+  });
+}
+
 function addMoraleActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   // The stored +1 token, or an overflow token gained past the cap that must be
@@ -3542,6 +3613,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       // be spent for its draw / discard-redraw here; the reroll use is offered
       // by the attack-die reroll choice instead.
       addMoraleActions(actions, state, playerId);
+      addPvpEscapeActions(actions, state, playerId);
     }
     return actions;
   }
@@ -3674,6 +3746,22 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     label: "End turn",
     action: { type: "END_TURN", playerId }
   });
+
+  // Concede: only on your own quiet map turn (never mid-Combat — "you cannot
+  // surrender when defending your Faction Town", rulebook p.46).
+  if (
+    !state.combat &&
+    !state.pendingChoice &&
+    !state.reactionWindow &&
+    !adventure.pendingVisit &&
+    !adventure.pendingTileChoice &&
+    !state.players[playerId]?.eliminated
+  ) {
+    actions.push({
+      label: "Give up (become an observer)",
+      action: { type: "GIVE_UP", playerId }
+    });
+  }
 
   return actions;
 }
