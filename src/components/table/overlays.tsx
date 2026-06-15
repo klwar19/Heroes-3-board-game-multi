@@ -128,6 +128,20 @@ export function ReactionTray({
     [legalActions]
   );
 
+  // The attack/cast window keeps priority with one player across several plays
+  // (so a caster can empower a spell in steps), so this component is NOT
+  // remounted between those plays. Selections are keyed on hand index, so a
+  // card leaving the hand would shift every index and corrupt the next pick —
+  // reset the in-progress selection whenever the hand actually changes. This is
+  // the React "adjust state when a prop changes" pattern (reset during render),
+  // which avoids a cascading-render effect.
+  const handSignature = (view.players[viewerPlayerId]?.hand ?? []).join("|");
+  const [lastHandSignature, setLastHandSignature] = useState(handSignature);
+  if (lastHandSignature !== handSignature) {
+    setLastHandSignature(handSignature);
+    setSelections([]);
+  }
+
   // School of Magic in play: discard it from the field for the expert bonus.
   const fieldExpert = legalActions.find((legal) => legal.action.type === "USE_PERMANENT_EXPERT");
   const schoolPermanentId =
