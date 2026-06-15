@@ -599,6 +599,10 @@ const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "END_ACTIVATION",
   "END_COMBAT_ROUND",
   "USE_UNIT_ABILITY",
+  // Tactics: the start-of-combat swap window and the expert mid-combat swap both
+  // surface as command buttons (their legal-action labels name the two units).
+  "SWAP_COMBAT_UNITS",
+  "FINISH_TACTICS",
   "SUMMON_DEMONS",
   "COMPLETE_SIMULTANEOUS_TURN",
   "CONTINUE_NEUTRAL_COMBAT",

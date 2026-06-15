@@ -1028,6 +1028,9 @@ function isOptionEffectPlayable(
     case "DISCOVER_TILE_CARD":
     case "GAIN_HERO_MOVEMENT":
       return context === "map" && Boolean(state.adventure);
+    case "DIPLOMACY_RECRUIT":
+      // Diplomacy's Map side only does something with at least one Dwelling.
+      return context === "map" && Boolean(state.adventure) && unlockedRecruitTiers(state, playerId).size > 0;
     case "CREATE_INITIATIVE_BUFF":
     case "CREATE_ATTACK_BUFF":
     case "CREATE_DEFENSE_BUFF":
@@ -3080,6 +3083,65 @@ function addCombatSetupActions(actions: LegalAction[], state: GameState, playerI
   }
 }
 
+/** A player's living, swappable (non-Arrow-Tower) units, left-to-right. */
+function tacticsSwappableUnits(combat: CombatState, playerId: PlayerId): CombatUnitState[] {
+  return Object.values(combat.units)
+    .filter((unit) => unit.controllerId === playerId && isUnitAlive(unit) && !isArrowTowerUnit(unit))
+    .sort((left, right) => left.position - right.position);
+}
+
+/** Start-of-combat Tactics window: every two-unit switch, plus "keep". */
+function addTacticsSetupActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  const combat = state.combat;
+  if (!combat || combat.pendingTacticsSwaps?.[0] !== playerId) {
+    return;
+  }
+
+  const units = tacticsSwappableUnits(combat, playerId);
+  for (let i = 0; i < units.length; i += 1) {
+    for (let j = i + 1; j < units.length; j += 1) {
+      actions.push({
+        label: `Tactics: switch ${units[i].cardName} (${getBattlefieldLabel(units[i].position)}) and ${units[j].cardName} (${getBattlefieldLabel(units[j].position)})`,
+        action: { type: "SWAP_COMBAT_UNITS", playerId, unitIdA: units[i].id, unitIdB: units[j].id }
+      });
+    }
+  }
+
+  actions.push({
+    label: "Tactics: keep your current positions",
+    action: { type: "FINISH_TACTICS", playerId }
+  });
+}
+
+/**
+ * Expert Tactics mid-combat: on the holder's turn, before their active unit has
+ * moved or attacked, spend one expert use to switch any two of their units.
+ */
+function addTacticsCombatActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  const combat = state.combat;
+  if (!combat || state.phase !== "combat" || state.pendingChoice || state.reactionWindow || state.stack.length > 0) {
+    return;
+  }
+  const player = state.players[playerId];
+  if (!player || !player.hand.includes("ability.tactics") || expertUsesAvailable(player) <= 0) {
+    return;
+  }
+  const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : null;
+  if (!active || active.controllerId !== playerId || active.movedThisActivation || active.attackedThisActivation) {
+    return;
+  }
+
+  const units = tacticsSwappableUnits(combat, playerId);
+  for (let i = 0; i < units.length; i += 1) {
+    for (let j = i + 1; j < units.length; j += 1) {
+      actions.push({
+        label: `Tactics (expert): switch ${units[i].cardName} (${getBattlefieldLabel(units[i].position)}) and ${units[j].cardName} (${getBattlefieldLabel(units[j].position)})`,
+        action: { type: "SWAP_COMBAT_UNITS", playerId, unitIdA: units[i].id, unitIdB: units[j].id }
+      });
+    }
+  }
+}
+
 function addTownActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   const town = getTownOfPlayer(state, playerId);
@@ -3369,6 +3431,15 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
+  // Start-of-combat Tactics window: the head of the queue switches two of their
+  // units or declines, before round 1 begins.
+  if (state.combat?.pendingTacticsSwaps && state.combat.pendingTacticsSwaps.length > 0) {
+    if (state.combat.pendingTacticsSwaps[0] === playerId) {
+      addTacticsSetupActions(actions, state, playerId);
+    }
+    return actions;
+  }
+
   // Combat setup placement.
   if (state.combat?.setup) {
     addCombatSetupActions(actions, state, playerId);
@@ -3433,6 +3504,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   if (state.combat && state.phase === "combat") {
     addActiveEffectActions(actions, state, playerId);
     addUnitActions(actions, state, playerId);
+    addTacticsCombatActions(actions, state, playerId);
     addSpellActions(actions, state, playerId, cards);
     addPlayableCardActions(actions, state, playerId, cards);
     if (isCombatParticipant(state, playerId)) {
