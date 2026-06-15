@@ -335,7 +335,7 @@ describe("Deemer's Meteor Shower", () => {
     expect(damage(result, "unit_p2_dread_knights")).toBe(0); // the spared neighbour
   });
 
-  it("IV shuffles the discard pile into the deck, then draws a card", () => {
+  it("IV shuffles the PRIOR discard into the deck first, then discards itself and draws", () => {
     const state = meteorState(["specialty.deemer.4"]);
     state.players.p1.discard = ["stat.attack", "stat.defense"];
     state.players.p1.deck = [];
@@ -347,12 +347,16 @@ describe("Deemer's Meteor Shower", () => {
       optionIndex: 0,
       target: { type: "none" }
     });
-    // The discard (now also holding the played specialty) was shuffled into the
-    // deck, then 1 card was drawn: discard empties, the three cards live in
-    // deck+hand, and exactly one is in hand.
-    expect(result.players.p1.discard).toEqual([]);
+    // Shuffle runs FIRST on the prior discard (attack/defense → the empty deck);
+    // the Meteor Shower IV card is discarded AFTER, so it stays in the discard and
+    // is never swept back into the deck (nor drawable this play).
+    expect(result.players.p1.discard).toEqual(["specialty.deemer.4"]);
+    expect(result.players.p1.deck).not.toContain("specialty.deemer.4");
+    expect(result.players.p1.hand).not.toContain("specialty.deemer.4");
+    // The two prior-discard cards split between deck (1) and the drawn hand (1).
     expect(result.players.p1.hand).toHaveLength(1);
-    expect(result.players.p1.deck).toHaveLength(2);
+    expect(["stat.attack", "stat.defense"]).toContain(result.players.p1.hand[0]);
+    expect(result.players.p1.deck).toHaveLength(1);
     expect(
       result.eventLog.some((event) => event.type === "CARDS_DRAWN" && event.playerId === "p1" && event.count === 1)
     ).toBe(true);

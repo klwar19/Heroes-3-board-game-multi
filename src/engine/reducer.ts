@@ -7350,18 +7350,30 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   // Deemer's Meteor Shower IV (one option): shuffle the discard pile back into
-  // the deck, then draw. The "+1 Power" option is the universal power-source
-  // discard, handled by ADD_SPELL_POWER, not here.
+  // the deck FIRST, then draw — and the Meteor Shower IV card itself is discarded
+  // AFTER the shuffle. It was moved to the discard before this effect ran, so it
+  // is held aside and left in the discard rather than swept back into the deck
+  // (and so it can never be the card drawn). The "+1 Power" option is the
+  // universal power-source discard, handled by ADD_SPELL_POWER, not here.
   if (effect.type === "RESHUFFLE_DISCARD_THEN_DRAW") {
     const player = state.players[action.playerId];
-    if (player && player.discard.length > 0) {
-      player.deck = shuffleCards(
-        [...player.deck, ...player.discard],
-        `${state.seed}#reshuffle-draw#${action.playerId}#${eventSeedNumber(state)}`
-      );
-      player.discard = [];
+    if (player) {
+      const playedIndex = player.discard.lastIndexOf(action.cardId);
+      const playedCard = playedIndex >= 0 ? [player.discard[playedIndex]] : [];
+      const toShuffle =
+        playedIndex >= 0
+          ? [...player.discard.slice(0, playedIndex), ...player.discard.slice(playedIndex + 1)]
+          : [...player.discard];
+      if (toShuffle.length > 0) {
+        player.deck = shuffleCards(
+          [...player.deck, ...toShuffle],
+          `${state.seed}#reshuffle-draw#${action.playerId}#${eventSeedNumber(state)}`
+        );
+      }
+      // The played card stays in the discard (discarded after the shuffle).
+      player.discard = playedCard;
+      drawCardsForPlayer(state, action.playerId, effect.drawCards);
     }
-    drawCardsForPlayer(state, action.playerId, effect.drawCards);
   }
 
   // Solmyr's Chain Lightning (I/VI): the selected unit takes the leftmost bolt,
