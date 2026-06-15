@@ -39,6 +39,7 @@ import {
   heroAtSpace,
   instantiateTile,
   isFieldGuarded,
+  isSeaField,
   makeCombatUnitFromArmy,
   makeCombatUnitFromNeutral,
   materializeTileFields,
@@ -404,7 +405,7 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
 
 export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapSpaceId[] {
   const adventure = state.adventure;
-  if (!adventure || !hero.spaceId || hero.movementPoints <= 0) {
+  if (!adventure || !hero.spaceId || hero.movementPoints <= 0 || hero.movementHaltedThisTurn) {
     return [];
   }
 
@@ -444,11 +445,25 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
     movementLeft: hero.movementPoints
   });
 
+  haltAfterSeaEntry(state, hero, to);
+
   if (passThrough) {
     return;
   }
 
   resolveHeroArrival(state, hero, to);
+}
+
+/**
+ * Wading into the open sea ends a hero's movement for the turn unless they are
+ * Water Walking: they keep their remaining movement points (so a neutral combat
+ * on that sea field can still spend them to continue) but cannot take another
+ * step. Stepping onto land never halts, so a hero can always leave the shore.
+ */
+function haltAfterSeaEntry(state: GameState, hero: HeroState, to: MapSpaceId): void {
+  if (isSeaField(state, to) && !getHeroMovementCapabilities(state, hero).waterWalk) {
+    hero.movementHaltedThisTurn = true;
+  }
 }
 
 /**
@@ -611,6 +626,8 @@ function dimensionDoorTeleport(state: GameState, hero: HeroState, to: MapSpaceId
     to,
     movementLeft: hero.movementPoints
   });
+  // Landing on the open sea halts further movement just like walking onto it.
+  haltAfterSeaEntry(state, hero, to);
   resolveHeroArrival(state, hero, to);
 }
 
@@ -619,8 +636,8 @@ function dimensionDoorTeleport(state: GameState, hero: HeroState, to: MapSpaceId
  * hero (straight-line hex distance, ignoring obstacles and the fields
  * in-between) other than the hero's own field, that the hero could resolve
  * normally on arrival — an empty field or a "stopping" field (guards, an enemy
- * hero, a location). Blocked fields, the open sea (unless water-walking) and
- * fields holding an allied hero are not valid landings.
+ * hero, a location, or the open sea, which lands the hero and halts them).
+ * Blocked fields and fields holding an allied hero are not valid landings.
  */
 function dimensionDoorDestinations(state: GameState, hero: HeroState, range: number): MapSpaceId[] {
   const adventure = state.adventure;
@@ -732,6 +749,10 @@ export function moveHeroAdventure(state: GameState, action: Extract<GameAction, 
     throw new Error("That hero has no movement points left.");
   }
 
+  if (hero.movementHaltedThisTurn) {
+    throw new Error("That hero waded into the sea and cannot move further this turn.");
+  }
+
   if (!getHeroMoveDestinations(state, hero).includes(action.to)) {
     throw new Error("Heroes can only move to adjacent, passable fields.");
   }
@@ -763,6 +784,10 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
 
   if (hero.movementPoints <= 0) {
     throw new Error("That hero has no movement points left.");
+  }
+
+  if (hero.movementHaltedThisTurn) {
+    throw new Error("That hero waded into the sea and cannot move further this turn.");
   }
 
   // Validate the whole path before moving: consecutive, crossable, and only
