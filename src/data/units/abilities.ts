@@ -517,8 +517,8 @@ export type UnitAbilityEffectDefinition =
        * is in the combat, the enemy may cast a Spell (from hand OR a Scroll) ONLY
        * by also discarding a Power-bearing card (a Power statistic or any Spell)
        * — with no spare Power card to pay, the cast is not legal at all. The
-       * payment is a random Power card, resolved automatically so a
-       * neutral-controlled Pegasi needs no decision.
+       * caster chooses which Power card to pay through a prompt (COMBAT_HAND_DISCARD,
+       * kind "pegasi-toll") and the Spell is cast once the toll is paid.
        */
       type: "SPELL_CAST_POWER_TAX";
     }
