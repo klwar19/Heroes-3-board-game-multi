@@ -79,6 +79,7 @@ import type {
   GameState,
   LegalAction,
   PlayerId,
+  ResolutionStackItem,
   ResourceCost,
   ResourceKind,
   TargetDefinition,
@@ -2952,11 +2953,100 @@ function getPendingStackItem(state: GameState, triggerEvent: GameEvent) {
   return state.stack.find((item) => item.triggerEventIds.includes(triggerEvent.id));
 }
 
+/**
+ * Power added to a stack item SINCE it was created — Power statistics, the
+ * "+1 Power" Spell discard, the School of Magic bonus and a spent Brimstone
+ * town cube — excluding the spell's printed base power. Scroll casts are locked
+ * to 0, so nothing counts (mirrors getCurrentSpellPower in the reducer). This is
+ * the single source of truth shared by the Resistance offer gate and the UI
+ * power readout, so both always agree with the power the spell finally resolves
+ * at.
+ */
+function fueledPowerOnStackItem(stackItem: ResolutionStackItem | undefined): number {
+  if (!stackItem || stackItem.modifiers.scrollLocked) {
+    return 0;
+  }
+  return (
+    stackItem.modifiers.spellPowerBonus +
+    (stackItem.modifiers.schoolPowerBonus ?? 0) +
+    (stackItem.modifiers.townCubePowerBonus ?? 0)
+  );
+}
+
 function getPendingSpellPower(state: GameState, triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" }>): number {
   const stackItem = getPendingStackItem(state, triggerEvent);
-  return (
-    triggerEvent.power + (stackItem?.modifiers.spellPowerBonus ?? 0) + (stackItem?.modifiers.schoolPowerBonus ?? 0)
-  );
+  if (stackItem?.modifiers.scrollLocked) {
+    return 0;
+  }
+  return triggerEvent.power + fueledPowerOnStackItem(stackItem);
+}
+
+/**
+ * The current Power of whatever an open reaction window is reacting to — a spell
+ * cast or a declared attack carrying a Power-scaling spell instant. Returns the
+ * printed base, the Power fueled on top (Power cards / +1-Power discards /
+ * School of Magic / town cube), and their sum. The UI shows this live so a
+ * caster can SEE how much Power they have committed, and the defender can SEE
+ * the final Power before deciding Resistance (capped at Power 1) or Magic
+ * Mirror. Returns null when nothing power-relevant is pending.
+ */
+export type PendingReactionPower = {
+  kind: "spell" | "attack";
+  /** The spell being empowered (null for a bare attack window). */
+  spellCardId: CardId | null;
+  /** Printed power of the spell (0 for an attack). */
+  basePower: number;
+  /** Power added since the cast/declaration. */
+  fueledPower: number;
+  /** basePower + fueledPower — the power level it currently resolves at. */
+  totalPower: number;
+};
+
+export function getPendingReactionPower(
+  state: GameState,
+  cards: CardLibrary = cardLibrary
+): PendingReactionPower | null {
+  const window = state.reactionWindow;
+  if (!window) {
+    return null;
+  }
+  const trigger = window.triggerEvent;
+  if (trigger.type !== "SPELL_CAST_STARTED" && trigger.type !== "UNIT_ATTACK_DECLARED") {
+    return null;
+  }
+
+  const stackItem = getPendingStackItem(state, trigger) ?? state.stack.at(-1);
+  if (!stackItem) {
+    return null;
+  }
+
+  if (stackItem.action.type === "CAST_SPELL") {
+    const basePower = stackItem.modifiers.scrollLocked ? 0 : cards[stackItem.action.cardId]?.power ?? 0;
+    const fueledPower = fueledPowerOnStackItem(stackItem);
+    return {
+      kind: "spell",
+      spellCardId: stackItem.action.cardId,
+      basePower,
+      fueledPower,
+      totalPower: basePower + fueledPower
+    };
+  }
+
+  if (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT") {
+    const fueledPower = fueledPowerOnStackItem(stackItem);
+    // An attack only has a Power to report while a Power-scaling spell instant
+    // (Bloodlust/Bless/Slayer) sits on it — otherwise a plain attack has none.
+    const hasPowerSubject =
+      fueledPower > 0 ||
+      (stackItem.modifiers.powerScaledAttackInstants?.length ?? 0) > 0 ||
+      stackItem.modifiers.slayerRollsByPower !== undefined;
+    if (!hasPowerSubject) {
+      return null;
+    }
+    return { kind: "attack", spellCardId: null, basePower: 0, fueledPower, totalPower: fueledPower };
+  }
+
+  return null;
 }
 
 export function effectHasExpertMode(effect: ConcreteEffect): boolean {

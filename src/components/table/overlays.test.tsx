@@ -373,3 +373,65 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
     expect(screen.queryByText(/power only counts with a spell/i)).toBeNull();
   });
 });
+
+describe("ReactionTray — live Power readout", () => {
+  function trayFor(state: GameState, viewer: PlayerId) {
+    return (
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, viewer)}
+          onAction={() => {}}
+          state={state}
+          view={getPlayerView(state, viewer)}
+          viewerPlayerId={viewer}
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  /** p1 casts Magic Arrow at p2's skeletons, holding spare Power to empower. */
+  function castWindow(): GameState {
+    const state = createInitialGameState("tray-power-seed");
+    state.players.p1.hand = ["spell.magic_arrow", "stat.power", "stat.power"];
+    state.players.p2.hand = ["spell.magic_mirror"];
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    state.combat!.units.unit_p1_marksmen.activatedThisRound = false;
+    const cast = applyAction(state, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.magic_arrow",
+      target: { type: "unit", unitId: "unit_p2_skeletons" }
+    });
+    expect(cast.errors).toEqual([]);
+    return cast.state;
+  }
+
+  it("shows the caster the spell's current Power, climbing as Power is paid", () => {
+    const state = castWindow();
+    // p1 (caster) holds priority first; the readout opens at Power 0.
+    render(trayFor(state, "p1"));
+    expect(screen.getByText("Power 0")).toBeTruthy();
+    expect(screen.getByText(/no Power added yet/)).toBeTruthy();
+    cleanup();
+
+    const empowered = applyAction(state, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "stat.power",
+      mode: "basic"
+    });
+    expect(empowered.errors).toEqual([]);
+    render(trayFor(empowered.state, "p1"));
+    // Magic Arrow at Power 1 reads "Power 1" and "2 damage", with the fuel split.
+    expect(screen.getByText("Power 1")).toBeTruthy();
+    expect(screen.getByText(/2 damage · 0 base \+ 1 fuelled/)).toBeTruthy();
+  });
+
+  it("shows the waiting opponent the same live Power so they can judge Resistance vs Magic Mirror", () => {
+    const state = castWindow();
+    // p2 is not on priority (the caster is), so it sees the waiting strip — which
+    // still carries the Power readout.
+    render(trayFor(state, "p2"));
+    expect(screen.getByText("Power 0")).toBeTruthy();
+  });
+});
