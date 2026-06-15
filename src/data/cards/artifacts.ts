@@ -18,7 +18,15 @@ const SCANLESS_ARTIFACTS = new Set([
   "skull_helmet",
   "celestial_necklace_of_bliss",
   "lions_shield_of_courage",
-  "sandals_of_the_saint"
+  "sandals_of_the_saint",
+  // Newly imported artifacts that have no wiki scan bundled yet — show the deck
+  // back rather than a broken image.
+  "endless_purse_of_gold",
+  "orb_of_driving_rain",
+  "orb_of_silt",
+  "orb_of_tempestuous_fire",
+  "orb_of_the_firmament",
+  "pendant_of_second_sight"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
@@ -1095,6 +1103,253 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("mystic_orb_of_mana")
   },
+  "artifact.endless_purse_of_gold": {
+    id: "artifact.endless_purse_of_gold",
+    name: "Endless Purse of Gold",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Gain 3 gold. — OR — Remove this card and discard 2 cards from your hand, then gain 8 gold."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Gain 3 gold",
+          effect: { type: "GAIN_RESOURCES", gain: { gold: 3 } }
+        },
+        {
+          // removeSelf takes the Purse out of the game; the discardCards cost
+          // makes the player pay exactly two other hand cards before the payout.
+          label: "Remove this card and discard 2 cards: gain 8 gold",
+          cost: { removeSelf: true, discardCards: 2 },
+          effect: { type: "GAIN_RESOURCES", gain: { gold: 8 } }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "endless_purse_of_gold", "Endless Purse of Gold"),
+    implementationStatus: "implemented",
+    source: artifactSource("endless_purse_of_gold")
+  },
+  // The four elemental Orbs share one shape, one per School of Magic. Option A
+  // is an ongoing combat play: while it is in play this Combat, the engine
+  // doubles the effective Power of every Spell the owner casts from that School
+  // (SPELL_POWER_DOUBLE, read in getCurrentSpellPower) — "ongoing/this combat"
+  // matches every other ongoing combat artifact (Golden Bow, Orb of
+  // Vulnerability). Option B is the one-shot instant: while casting a spell of
+  // that School, remove the Orb for a flat +5 Power on that cast (the existing
+  // schoolOnly + removeSelf machinery). Like the +Power boosts, the School-less
+  // "any" spells (Magic Arrow) count as matching either side.
+  "artifact.orb_of_driving_rain": {
+    id: "artifact.orb_of_driving_rain",
+    name: "Orb of Driving Rain",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "While in play this Combat, double the Power of your Water Magic spells. — OR — When casting a Water Magic spell, remove this card to gain +5 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: double the Power of your Water Magic spells",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Orb of Driving Rain",
+              scope: "player",
+              duration: { type: "combat" },
+              modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "water" }]
+            }
+          }
+        },
+        {
+          label: "Remove this card: +5 Power to a Water Magic spell",
+          cost: { removeSelf: true },
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 5, schoolOnly: "water" }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "orb_of_driving_rain", "Orb of Driving Rain"),
+    implementationStatus: "implemented",
+    source: artifactSource("orb_of_driving_rain")
+  },
+  "artifact.orb_of_silt": {
+    id: "artifact.orb_of_silt",
+    name: "Orb of Silt",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "While in play this Combat, double the Power of your Earth Magic spells. — OR — When casting an Earth Magic spell, remove this card to gain +5 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: double the Power of your Earth Magic spells",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Orb of Silt",
+              scope: "player",
+              duration: { type: "combat" },
+              modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "earth" }]
+            }
+          }
+        },
+        {
+          label: "Remove this card: +5 Power to an Earth Magic spell",
+          cost: { removeSelf: true },
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 5, schoolOnly: "earth" }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "orb_of_silt", "Orb of Silt"),
+    implementationStatus: "implemented",
+    source: artifactSource("orb_of_silt")
+  },
+  "artifact.orb_of_tempestuous_fire": {
+    id: "artifact.orb_of_tempestuous_fire",
+    name: "Orb of Tempestuous Fire",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "While in play this Combat, double the Power of your Fire Magic spells. — OR — When casting a Fire Magic spell, remove this card to gain +5 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: double the Power of your Fire Magic spells",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Orb of Tempestuous Fire",
+              scope: "player",
+              duration: { type: "combat" },
+              modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "fire" }]
+            }
+          }
+        },
+        {
+          label: "Remove this card: +5 Power to a Fire Magic spell",
+          cost: { removeSelf: true },
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 5, schoolOnly: "fire" }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "orb_of_tempestuous_fire", "Orb of Tempestuous Fire"),
+    implementationStatus: "implemented",
+    source: artifactSource("orb_of_tempestuous_fire")
+  },
+  "artifact.orb_of_the_firmament": {
+    id: "artifact.orb_of_the_firmament",
+    name: "Orb of the Firmament",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "While in play this Combat, double the Power of your Air Magic spells. — OR — When casting an Air Magic spell, remove this card to gain +5 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: double the Power of your Air Magic spells",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Orb of the Firmament",
+              scope: "player",
+              duration: { type: "combat" },
+              modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "air" }]
+            }
+          }
+        },
+        {
+          label: "Remove this card: +5 Power to an Air Magic spell",
+          cost: { removeSelf: true },
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 5, schoolOnly: "air" }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "orb_of_the_firmament", "Orb of the Firmament"),
+    implementationStatus: "implemented",
+    source: artifactSource("orb_of_the_firmament")
+  },
+  // Pendant of Second Sight: both sides are friendly-unit combat plays. Option A
+  // places a combat-long PARALYSIS_IMMUNITY on the chosen unit — every Paralysis
+  // source (the Blind Spell and the medusa-style follow-ups) reads
+  // unitImmuneToParalysis, so the token never lands. Option B is the existing
+  // removeParalysis heal (amount 0): it strips one Paralysis token already on
+  // the unit.
+  "artifact.pendant_of_second_sight": {
+    id: "artifact.pendant_of_second_sight",
+    name: "Pendant of Second Sight",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    target: { type: "friendly-unit" },
+    tags: [
+      "artifact",
+      "major",
+      "Your selected unit cannot gain a Paralysis token during this Combat. — OR — Remove 1 Paralysis token from your selected unit."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: your selected unit cannot gain Paralysis",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Pendant of Second Sight",
+              scope: "unit",
+              duration: { type: "combat" },
+              polarity: "positive",
+              modifiers: [{ type: "PARALYSIS_IMMUNITY" }]
+            }
+          }
+        },
+        {
+          label: "Remove 1 Paralysis token from your selected unit",
+          combatOnly: true,
+          effect: { type: "HEAL_DAMAGE", amount: 0, removeParalysis: true }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "pendant_of_second_sight", "Pendant of Second Sight"),
+    implementationStatus: "implemented",
+    source: artifactSource("pendant_of_second_sight")
+  },
 
   // ---- Relic artifacts ----------------------------------------------------
   "artifact.angel_wings": {
@@ -1518,6 +1773,12 @@ export const artifactDeckLegacy: string[] = [
   "artifact.shackles_of_war",
   "artifact.pendant_of_courage",
   "artifact.necklace_of_dragonteeth",
+  "artifact.endless_purse_of_gold",
+  "artifact.orb_of_driving_rain",
+  "artifact.orb_of_silt",
+  "artifact.orb_of_tempestuous_fire",
+  "artifact.orb_of_the_firmament",
+  "artifact.pendant_of_second_sight",
   // relic
   "artifact.angel_wings",
   "artifact.dragon_scale_armor",
@@ -1577,7 +1838,13 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.pendant_of_courage",
   "artifact.necklace_of_dragonteeth",
   "artifact.mystic_orb_of_mana",
-  "artifact.shackles_of_war"
+  "artifact.shackles_of_war",
+  "artifact.endless_purse_of_gold",
+  "artifact.orb_of_driving_rain",
+  "artifact.orb_of_silt",
+  "artifact.orb_of_tempestuous_fire",
+  "artifact.orb_of_the_firmament",
+  "artifact.pendant_of_second_sight"
 ];
 
 /** BINH Relic Artifact deck (adds the BINH-extra relics). */
