@@ -14,10 +14,16 @@ import {
   canPlaceTileAt,
   changeMorale,
   classifyHeroStep,
+  controlsTownOrSettlement,
   createSecondaryHero,
   declareAdventureWinner,
+  drawFromNeutralDeck,
   drawGuardArmy,
   effectiveHandLimit,
+  eliminatePlayer,
+  ELIMINATION_GRACE_TURNS,
+  refreshEliminationClock,
+  RESOURCE_GAIN_LEVEL_AMOUNTS,
   getSecondaryHero,
   humanPlayerIds,
   requiredHeroDefeats,
@@ -42,6 +48,7 @@ import {
   materializeTileFields,
   NEUTRAL_DECK_IDS,
   placeNeutralUnits,
+  playerDwellingTiers,
   processPendingVisit,
   queueSkeletonReinforce,
   reinforceArmyUnit,
@@ -60,7 +67,13 @@ import {
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { playerCannotEscapeCombat } from "./active-effects";
 import { createSeededRandom } from "./random";
-import { destroyFortification, intactFortificationPositions, makeArrowTowerUnit, SIEGE_ROW_POSITIONS } from "./siege";
+import {
+  destroyFortification,
+  intactFortificationPositions,
+  isArrowTowerUnit,
+  makeArrowTowerUnit,
+  SIEGE_ROW_POSITIONS
+} from "./siege";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { getCombatStartDraws } from "./unit-abilities";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
@@ -90,6 +103,7 @@ import type {
   MapTileState,
   PlayerId,
   ResourceCost,
+  ResourceKind,
   VisitStep
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
@@ -493,8 +507,12 @@ function garrisonDefenderFor(state: GameState, attacker: HeroState, field: MapFi
     return null;
   }
 
+  // Whoever currently holds the field defends it. A flagged (already conquered)
+  // Town is defended by its conqueror, not by the original `controllerId`.
   const ownerId = isTown
-    ? Object.values(state.towns).find((town) => town.fieldId === field.spaceId)?.controllerId ?? field.flagOwnerId
+    ? field.flagOwnerId ??
+      Object.values(state.towns).find((town) => town.fieldId === field.spaceId)?.controllerId ??
+      null
     : field.flagOwnerId;
   if (!ownerId || ownerId === attacker.controllerId || ownerId === NEUTRAL_PLAYER_ID) {
     return null;
@@ -1001,6 +1019,11 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
       visit.steps.shift();
       break;
     }
+    case "RESOURCE_GAIN_LEVEL": {
+      resolveResourceGainLevel(state, action);
+      visit.steps.shift();
+      break;
+    }
     case "WITCH_HUT": {
       resolveWitchHut(state, action);
       visit.steps.shift();
@@ -1116,6 +1139,28 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
   processPendingVisit(state);
 }
 
+/**
+ * Town-conquest reward: the conqueror raises one production track by a single
+ * resource-gain level (+5 gold, +2 building materials, or +1 valuables).
+ */
+function resolveResourceGainLevel(
+  state: GameState,
+  action: Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>
+): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("That conquest reward cannot be resolved.");
+  }
+  const resourceByIndex: ResourceKind[] = ["gold", "buildingMaterials", "valuables"];
+  const resource = action.optionIndex !== undefined ? resourceByIndex[action.optionIndex] : undefined;
+  if (!resource) {
+    throw new Error("Choose which production track to raise by one level.");
+  }
+  const amount = RESOURCE_GAIN_LEVEL_AMOUNTS[resource];
+  player.production[resource] += amount;
+  appendEvent(state, { type: "PRODUCTION_CHANGED", playerId: action.playerId, resource, amount });
+}
+
 function resolveSettlementChoice(
   state: GameState,
   action: Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>,
@@ -1227,6 +1272,13 @@ function applySettlementFlag(
       field.everFlagged = true;
       gainResources(state, playerId, { [resource]: 1 }, "first to flag the settlement");
     }
+  }
+
+  // Settlements prevent Player Elimination (rulebook p.77): taking one clears
+  // the new owner's clock; losing one may start the former owner's.
+  refreshEliminationClock(state, playerId);
+  if (previousOwnerId && previousOwnerId !== playerId) {
+    refreshEliminationClock(state, previousOwnerId);
   }
 }
 
@@ -1606,6 +1658,26 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
     return;
   }
 
+  // Cyra's Diplomacy (Instant): a hero meeting Neutral Units whose Field
+  // Difficulty equals their level may skip the fight, claim the field and gain
+  // no Experience. Offer the choice while the player holds the card; declining
+  // falls through to the normal Combat Setup.
+  if (hero.level === difficulty && state.players[playerId]?.hand.includes("ability.diplomacy")) {
+    openDiplomacySkipChoice(state, hero, field, difficulty);
+    return;
+  }
+
+  beginNeutralCombatPlacement(state, hero, field, difficulty);
+}
+
+/** Rulebook Combat Setup against guards: the hero places, then guards reveal. */
+function beginNeutralCombatPlacement(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState,
+  difficulty: number
+): void {
+  const playerId = hero.controllerId;
   restoreStartingArmyIfEmpty(state, playerId);
 
   // Rulebook Combat Setup order: the player places up to 5 units first; the
@@ -1636,6 +1708,208 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
     difficulty,
     unitDefIds: []
   });
+}
+
+/** Opens the Diplomacy skip-or-fight pop-up at a matching-level Neutral field. */
+function openDiplomacySkipChoice(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState,
+  difficulty: number
+): void {
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: hero.controllerId,
+    prompt: `Diplomacy: skip the level ${difficulty} Neutral Units and claim this field for no Experience?`,
+    options: [{ label: "Use Diplomacy: skip the fight, claim the field (no XP)" }, { label: "Fight the Neutral Units" }],
+    context: "diplomacy-skip",
+    diplomacySkip: { heroId: hero.id, fieldId: field.spaceId, difficulty },
+    returnPhase: state.phase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = hero.controllerId;
+}
+
+/** Resolves the Diplomacy skip-or-fight choice (CHOOSE_OPTION "diplomacy-skip"). */
+export function resolveDiplomacySkipChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "diplomacy-skip" ||
+    !choice.diplomacySkip ||
+    choice.playerId !== playerId
+  ) {
+    throw new Error("There is no Diplomacy decision to make.");
+  }
+  const skip = choice.diplomacySkip;
+
+  const hero = state.heroes[skip.heroId];
+  const field = state.adventure?.fields[skip.fieldId];
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+
+  if (!hero || !field) {
+    return;
+  }
+
+  // Option 1 ("Fight") just proceeds to the normal guard Combat Setup, keeping
+  // the Diplomacy card in hand.
+  if (optionIndex !== 0) {
+    beginNeutralCombatPlacement(state, hero, field, skip.difficulty);
+    return;
+  }
+
+  // Option 0 ("Use Diplomacy"): spend the card, claim the field as a Quick
+  // Combat would (visit it), and award no Experience.
+  const player = state.players[playerId];
+  if (player) {
+    const index = player.hand.indexOf("ability.diplomacy");
+    if (index !== -1) {
+      player.hand.splice(index, 1);
+      player.discard.push("ability.diplomacy");
+    }
+  }
+
+  appendEvent(state, {
+    type: "DIPLOMACY_COMBAT_SKIPPED",
+    playerId,
+    heroId: hero.id,
+    fieldId: field.spaceId,
+    difficulty: skip.difficulty
+  });
+
+  field.everFlagged = field.everFlagged || false;
+  beginFieldVisit(state, hero.id, field.spaceId, false);
+}
+
+/** Human-readable price of a recruit cost ("3 gold + 1 valuables" / "free"). */
+function recruitCostLabel(cost: ResourceCost): string {
+  return (
+    Object.entries(cost)
+      .filter(([, amount]) => (amount ?? 0) > 0)
+      .map(([resource, amount]) => `${amount} ${resource}`)
+      .join(" + ") || "free"
+  );
+}
+
+/**
+ * Cyra's Diplomacy (Map): draw one Neutral Unit card per Dwelling the player
+ * controls, then open a recruit choice over the affordable draws. Called from
+ * playCard once the Diplomacy card has been discarded. The drawn cards leave
+ * their tier decks now; the recruited one joins the army and the rest return to
+ * their tier's discard pile when the choice resolves.
+ */
+export function openDiplomacyRecruit(state: GameState, playerId: PlayerId): void {
+  const draws: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[] = [];
+  for (const tier of playerDwellingTiers(state, playerId)) {
+    const unitDefId = drawFromNeutralDeck(state, tier);
+    if (unitDefId) {
+      draws.push({ unitDefId, tier });
+    }
+  }
+
+  if (draws.length === 0) {
+    return;
+  }
+
+  appendEvent(state, {
+    type: "DIPLOMACY_NEUTRALS_DRAWN",
+    playerId,
+    unitDefIds: draws.map((draw) => draw.unitDefId)
+  });
+
+  const recruitable = draws.filter((draw) => {
+    const neutral = coreUnitDefinitions[draw.unitDefId]?.neutral;
+    return Boolean(neutral) && hasRecruitResources(state, playerId, neutral?.cost ?? {});
+  });
+
+  // Nothing affordable to recruit: the drawn cards simply return to their decks.
+  if (recruitable.length === 0) {
+    for (const draw of draws) {
+      state.decks[NEUTRAL_DECK_IDS[draw.tier]]?.discardPile.push(draw.unitDefId);
+    }
+    return;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Diplomacy: recruit one of the drawn Neutral Units — ${draws
+      .map((draw) => coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId)
+      .join(", ")}?`,
+    options: [
+      ...recruitable.map((draw) => {
+        const def = coreUnitDefinitions[draw.unitDefId];
+        return {
+          label: `Recruit ${def?.name ?? draw.unitDefId} (${recruitCostLabel(def?.neutral?.cost ?? {})})`
+        };
+      }),
+      { label: "Recruit none" }
+    ],
+    context: "diplomacy-recruit",
+    diplomacyRecruit: { draws, recruitable },
+    returnPhase: state.phase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Resolves the Diplomacy recruit choice (CHOOSE_OPTION "diplomacy-recruit"). */
+export function resolveDiplomacyRecruitChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "diplomacy-recruit" ||
+    !choice.diplomacyRecruit ||
+    choice.playerId !== playerId
+  ) {
+    throw new Error("There is no Diplomacy recruit choice to resolve.");
+  }
+  const recruit = choice.diplomacyRecruit;
+
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+
+  const player = state.players[playerId];
+  const pick = optionIndex < recruit.recruitable.length ? recruit.recruitable[optionIndex] : undefined;
+  let recruitedDefId: string | undefined;
+  let recruitedTier: string | undefined;
+
+  if (pick && player) {
+    const def = coreUnitDefinitions[pick.unitDefId];
+    const cost = def?.neutral?.cost ?? {};
+    if (def?.neutral && hasRecruitResources(state, playerId, cost)) {
+      spendRecruitResources(state, playerId, cost, `recruited ${def.name} with Diplomacy`);
+      addArmyUnit(player, pick.unitDefId, "neutral");
+      appendEvent(state, {
+        type: "UNIT_RECRUITED",
+        playerId,
+        unitDefId: pick.unitDefId,
+        kind: "recruit",
+        cost
+      });
+      recruitedDefId = pick.unitDefId;
+      recruitedTier = pick.tier;
+    }
+  }
+
+  // Every drawn card except the one recruited returns to its tier's discard
+  // pile (so the deck can reshuffle it later). Match on tier too, and consume
+  // only a single copy, so duplicate draws are returned correctly.
+  let consumedRecruit = false;
+  for (const draw of recruit.draws) {
+    if (!consumedRecruit && draw.unitDefId === recruitedDefId && draw.tier === recruitedTier) {
+      consumedRecruit = true;
+      continue;
+    }
+    state.decks[NEUTRAL_DECK_IDS[draw.tier]]?.discardPile.push(draw.unitDefId);
+  }
 }
 
 /**
@@ -1690,20 +1964,13 @@ function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void {
     unitDefIds: draws.map((draw) => draw.unitDefId)
   });
 
+  // The guards are on the board: a Tactics-holding attacker may now rearrange
+  // their line before round 1 (finalizeCombatStart) begins.
   combat.setup = null;
-  state.phase = "combat";
-  state.priorityPlayerId = null;
-
-  appendEvent(state, {
-    type: "COMBAT_ROUND_STARTED",
-    round: combat.round,
-    activeUnitId: null
-  });
-
-  // In-play permanents join the fight and round-start war machines fire.
-  applyPermanentCombatEffects(state);
-  applyCombatStartUnitAbilities(state);
-  startWarMachineRound(state);
+  if (openTacticsSetupWindows(state)) {
+    return;
+  }
+  finalizeCombatStart(state);
 }
 
 /**
@@ -2039,7 +2306,28 @@ function beginPlayerCombatRounds(state: GameState): void {
     return;
   }
 
+  // Placement is locked in. Tactics holders rearrange their lines first; round 1
+  // begins (finalizeCombatStart) only once every Tactics window has resolved.
   combat.setup = null;
+  if (openTacticsSetupWindows(state)) {
+    return;
+  }
+  finalizeCombatStart(state);
+}
+
+/**
+ * Common tail of combat setup (player and neutral alike): round 1 opens,
+ * in-play permanents join and round-start war machines fire. Runs after the
+ * start-of-combat Tactics windows, if any, have all resolved.
+ */
+function finalizeCombatStart(state: GameState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  combat.setup = null;
+  combat.pendingTacticsSwaps = null;
   state.phase = "combat";
   state.priorityPlayerId = null;
 
@@ -2053,6 +2341,177 @@ function beginPlayerCombatRounds(state: GameState): void {
   applyPermanentCombatEffects(state);
   applyCombatStartUnitAbilities(state);
   startWarMachineRound(state);
+}
+
+/** A player's living, swappable (non-Arrow-Tower) units in this combat. */
+function swappableTacticsUnits(combat: CombatState, playerId: PlayerId) {
+  return Object.values(combat.units).filter(
+    (unit) => unit.controllerId === playerId && unit.damage < unit.maxHealth && !isArrowTowerUnit(unit)
+  );
+}
+
+/**
+ * Tactics start-of-combat eligibility: the player must hold a Tactics card and
+ * field at least two units to switch. (A pure garrison defender — no hero in
+ * the combat — is filtered out by the caller, since Tactics is a hero ability.)
+ */
+function eligibleForTacticsSetup(state: GameState, combat: CombatState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  if (!player || !player.hand.includes("ability.tactics")) {
+    return false;
+  }
+  return swappableTacticsUnits(combat, playerId).length >= 2;
+}
+
+/**
+ * Opens the start-of-combat Tactics windows once units are placed/revealed:
+ * the attacker first, then a PvP defender whose hero stands in the combat. Each
+ * eligible holder takes priority in turn to switch any two of their units (or
+ * decline). Returns true when a window is open (round 1 is deferred).
+ */
+function openTacticsSetupWindows(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+
+  const eligible: PlayerId[] = [];
+  if (eligibleForTacticsSetup(state, combat, combat.attackerPlayerId)) {
+    eligible.push(combat.attackerPlayerId);
+  }
+  if (
+    combat.context.kind === "player" &&
+    combat.context.defenderHeroId != null &&
+    eligibleForTacticsSetup(state, combat, combat.defenderPlayerId)
+  ) {
+    eligible.push(combat.defenderPlayerId);
+  }
+
+  if (eligible.length === 0) {
+    return false;
+  }
+
+  combat.pendingTacticsSwaps = eligible;
+  state.phase = "combat-setup";
+  state.priorityPlayerId = eligible[0];
+  return true;
+}
+
+/** Advances past the head of the Tactics setup queue, finalizing when empty. */
+function advanceTacticsSetupQueue(state: GameState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+  const remaining = (combat.pendingTacticsSwaps ?? []).slice(1);
+  if (remaining.length > 0) {
+    combat.pendingTacticsSwaps = remaining;
+    state.phase = "combat-setup";
+    state.priorityPlayerId = remaining[0];
+    return;
+  }
+  finalizeCombatStart(state);
+}
+
+/** Removes one Tactics ability card from a player's hand to its discard pile. */
+function spendTacticsCard(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+  const index = player.hand.indexOf("ability.tactics");
+  if (index !== -1) {
+    player.hand.splice(index, 1);
+    player.discard.push("ability.tactics");
+  }
+}
+
+/**
+ * Tactics swap (SWAP_COMBAT_UNITS). Two contexts share one action:
+ *  - the start-of-combat window (the player heads pendingTacticsSwaps): free,
+ *    spends the Tactics card, then advances the queue; and
+ *  - an expert mid-combat swap on the player's turn before their active unit has
+ *    acted: spends the Tactics card and one expert use, combat continues.
+ * Either way it switches the board positions of two of the player's own units.
+ */
+export function swapCombatUnits(state: GameState, action: Extract<GameAction, { type: "SWAP_COMBAT_UNITS" }>): void {
+  const combat = state.combat;
+  if (!combat) {
+    throw new Error("There is no combat in progress.");
+  }
+  if (action.unitIdA === action.unitIdB) {
+    throw new Error("Tactics switches two different units.");
+  }
+  const unitA = combat.units[action.unitIdA];
+  const unitB = combat.units[action.unitIdB];
+  if (!unitA || !unitB) {
+    throw new Error("Both units must be on the battlefield.");
+  }
+  for (const unit of [unitA, unitB]) {
+    if (unit.controllerId !== action.playerId) {
+      throw new Error("Tactics only switches your own units.");
+    }
+    if (unit.damage >= unit.maxHealth || isArrowTowerUnit(unit)) {
+      throw new Error("That unit cannot be repositioned.");
+    }
+  }
+
+  const player = state.players[action.playerId];
+  if (!player || !player.hand.includes("ability.tactics")) {
+    throw new Error("Tactics is not available to switch units.");
+  }
+
+  const isSetupWindow = combat.pendingTacticsSwaps?.[0] === action.playerId;
+  let mode: "basic" | "expert";
+
+  if (isSetupWindow) {
+    mode = "basic";
+  } else if (state.phase === "combat") {
+    // Expert: your turn, before your active unit has moved or attacked.
+    const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : null;
+    if (!active || active.controllerId !== action.playerId) {
+      throw new Error("Tactics can only be used during combat on your own turn.");
+    }
+    if (active.movedThisActivation || active.attackedThisActivation) {
+      throw new Error("Tactics must be used before your active unit moves or attacks.");
+    }
+    if (expertUsesAvailable(player) <= 0) {
+      throw new Error("No expert uses are available this combat round.");
+    }
+    mode = "expert";
+  } else {
+    throw new Error("There is no Tactics swap available right now.");
+  }
+
+  const positionA = unitA.position;
+  unitA.position = unitB.position;
+  unitB.position = positionA;
+
+  spendTacticsCard(state, action.playerId);
+  if (mode === "expert") {
+    player.combatStats.expertUsesSpentThisRound += 1;
+  }
+
+  appendEvent(state, {
+    type: "COMBAT_UNITS_SWAPPED",
+    playerId: action.playerId,
+    unitIdA: action.unitIdA,
+    unitIdB: action.unitIdB,
+    mode
+  });
+
+  if (isSetupWindow) {
+    advanceTacticsSetupQueue(state);
+  }
+}
+
+/** Declines a start-of-combat Tactics window (FINISH_TACTICS): keep the card. */
+export function finishTactics(state: GameState, action: Extract<GameAction, { type: "FINISH_TACTICS" }>): void {
+  const combat = state.combat;
+  if (!combat || combat.pendingTacticsSwaps?.[0] !== action.playerId) {
+    throw new Error("There is no Tactics swap window to decline.");
+  }
+  advanceTacticsSetupQueue(state);
 }
 
 /**
@@ -2488,8 +2947,13 @@ function moveDefeatedHeroHome(state: GameState, hero: HeroState): void {
 
   const playerId = hero.controllerId;
   const town = getTownOfPlayer(state, playerId);
+  // A defeated Hero "has to move to a friendly Town or Settlement" — but not to
+  // their own Town once an enemy has flagged it (rulebook p.76). Settlements
+  // are the fallback retreat point; with neither, the Hero leaves the map.
+  const townField = town?.fieldId ? adventure.fields[town.fieldId] : null;
+  const townUsable = Boolean(townField && (townField.flagOwnerId == null || townField.flagOwnerId === playerId));
   const home =
-    town?.fieldId ??
+    (townUsable ? town?.fieldId : null) ??
     Object.values(adventure.fields).find(
       (field) => field.location === "settlement" && field.flagOwnerId === playerId
     )?.spaceId ??
@@ -2574,7 +3038,10 @@ export function buildStructureAdventure(
 /** Where a hired Secondary Hero appears: the main town, else a settlement. */
 function secondaryHeroSpawnFieldId(state: GameState, playerId: PlayerId): string | null {
   const town = getTownOfPlayer(state, playerId);
-  if (town?.fieldId) {
+  // "Flagging an enemy Town prevents their Secondary Heroes from spawning
+  // there" (rulebook p.76): only spawn at your Town while you still hold it.
+  const townField = town?.fieldId ? state.adventure?.fields[town.fieldId] : null;
+  if (town?.fieldId && (!townField || townField.flagOwnerId == null || townField.flagOwnerId === playerId)) {
     return town.fieldId;
   }
   const settlement = Object.values(state.adventure?.fields ?? {}).find(
@@ -3421,6 +3888,16 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
+  if (choice.context === "diplomacy-skip") {
+    resolveDiplomacySkipChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "diplomacy-recruit") {
+    resolveDiplomacyRecruitChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
   if (choice.context === "skeleton-reinforce") {
     resolveSkeletonReinforceChoice(state, action.playerId, action.optionIndex);
     return;
@@ -3663,27 +4140,104 @@ export function endTurnAdventure(state: GameState, action: Extract<GameAction, {
     }
   }
 
-  // Ongoing cards last "until the player who played them starts their next
-  // Turn" — they survive the opponents' turns and expire in startPlayerTurn.
+  // Player Elimination clock (rulebook p.11, house rule: 2 of your own turns
+  // instead of 3 full Rounds). A player who controls no Town and no Settlement
+  // counts down here; reaching 0 removes them at the end of this turn. Holding a
+  // base keeps the clock clear. Settlements explicitly prevent elimination.
+  let eliminateEnding: { reason: string } | null = null;
+  if (player && !player.eliminated) {
+    if (controlsTownOrSettlement(state, action.playerId)) {
+      player.eliminationCountdown = null;
+    } else {
+      if (player.eliminationCountdown == null) {
+        player.eliminationCountdown = ELIMINATION_GRACE_TURNS;
+      }
+      player.eliminationCountdown -= 1;
+      appendEvent(state, {
+        type: "PLAYER_ELIMINATION_CLOCK",
+        playerId: action.playerId,
+        turnsLeft: Math.max(0, player.eliminationCountdown)
+      });
+      if (player.eliminationCountdown <= 0) {
+        eliminateEnding = { reason: "spent the grace period with no Town or Settlement" };
+      }
+    }
+  }
+
+  advanceAfterTurn(state, action.playerId, eliminateEnding);
+}
+
+/**
+ * Ends the active player's turn and starts the next living player's. When
+ * `eliminate` is set the ending player is removed first (gave up, or the
+ * elimination clock expired). The next player and the round wrap are read from
+ * the order *before* removal, so only the ending seat drops out and the
+ * rotation stays stable. Ongoing cards last "until the player who played them
+ * starts their next Turn" and expire inside startPlayerTurn.
+ */
+function advanceAfterTurn(
+  state: GameState,
+  endingPlayerId: PlayerId,
+  eliminate: { reason: string } | null,
+  gaveUp = false
+): void {
   const order = state.turnOrder;
-  const currentIndex = order.indexOf(action.playerId);
-  const nextIndex = (currentIndex + 1) % order.length;
+  const currentIndex = order.indexOf(endingPlayerId);
+  const nextIndex = order.length > 0 ? (currentIndex + 1) % order.length : 0;
+  const wrapsRound = nextIndex === 0;
   const nextPlayerId = order[nextIndex];
 
   appendEvent(state, {
     type: "TURN_ENDED",
-    playerId: action.playerId,
-    nextPlayerId
+    playerId: endingPlayerId,
+    nextPlayerId: nextPlayerId ?? endingPlayerId
   });
 
-  if (nextIndex === 0) {
+  if (eliminate) {
+    eliminatePlayer(state, endingPlayerId, eliminate.reason, gaveUp);
+    if (state.phase === "game-over" || state.adventure?.winnerPlayerId) {
+      return;
+    }
+  }
+
+  if (wrapsRound) {
     state.round += 1;
     startAdventureRound(state);
+    if (state.phase === "game-over" || state.adventure?.winnerPlayerId) {
+      return;
+    }
+  }
+
+  // After the possible elimination, `nextPlayerId` still names a living player
+  // (only `endingPlayerId` could have been removed). Guard the degenerate case
+  // where nothing valid remains to advance to.
+  if (!nextPlayerId || !state.turnOrder.includes(nextPlayerId)) {
+    return;
   }
 
   state.activePlayerId = nextPlayerId;
   state.turn.observingPlayerId = nextPlayerId;
   startPlayerTurn(state, nextPlayerId);
+}
+
+/**
+ * GIVE_UP: the player concedes, is removed from the game, and becomes an
+ * observer; the game continues with one fewer player and the last faction
+ * standing wins. Legal only on the player's own quiet map turn — never while a
+ * Combat is open ("you cannot surrender when defending your Faction Town").
+ */
+export function giveUpAdventure(state: GameState, action: Extract<GameAction, { type: "GIVE_UP" }>): void {
+  if (state.mode !== "adventure" || !state.adventure) {
+    throw new Error("Giving up is only possible during an adventure game.");
+  }
+  assertActiveTurn(state, action.playerId);
+  assertNoPendingInput(state);
+  const player = state.players[action.playerId];
+  if (!player || player.eliminated) {
+    throw new Error("That player is not in the game.");
+  }
+
+  advanceAfterTurn(state, action.playerId, { reason: "gave up and became an observer" }, true);
 }
 
 // ---------------------------------------------------------------------------

@@ -1043,6 +1043,7 @@ export function AdventureHud({
   onAction: (action: GameAction) => void;
 }) {
   const { zoomContent } = useCardZoom();
+  const [confirmGiveUp, setConfirmGiveUp] = useState(false);
   const player = state.players[viewerPlayerId];
   const hero = Object.values(state.heroes).find(
     (candidate) => candidate.controllerId === viewerPlayerId && candidate.kind === "main"
@@ -1053,6 +1054,7 @@ export function AdventureHud({
   const astrologersCard = getActiveAstrologersCard(state);
 
   const endTurn = legalActions.find((legal) => legal.action.type === "END_TURN");
+  const giveUp = legalActions.find((legal) => legal.action.type === "GIVE_UP");
   const winner = state.adventure?.winnerPlayerId;
 
   const firstRoll = state.adventure?.firstPlayerRoll;
@@ -1191,6 +1193,29 @@ export function AdventureHud({
           <button className="commandButton" onClick={() => onAction(endTurn.action)} type="button">
             End turn
           </button>
+        ) : null}
+        {giveUp ? (
+          confirmGiveUp ? (
+            <>
+              <button
+                className="commandButton"
+                onClick={() => {
+                  setConfirmGiveUp(false);
+                  onAction(giveUp.action);
+                }}
+                type="button"
+              >
+                Confirm: become observer
+              </button>
+              <button className="commandButton" onClick={() => setConfirmGiveUp(false)} type="button">
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button className="commandButton" onClick={() => setConfirmGiveUp(true)} type="button">
+              Give up
+            </button>
+          )
         ) : null}
       </div>
     </div>
@@ -3249,6 +3274,8 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   NEUTRAL_DRAW_SWAPPED: { icon: "🔄", cue: "swap" },
   GAME_OPTIONS_CHANGED: { icon: "⚙️", cue: "options" },
   GAME_WON: { icon: "👑", cue: "victory" },
+  PLAYER_ELIMINATED: { icon: "💀", cue: "defeat" },
+  PLAYER_ELIMINATION_CLOCK: { icon: "⏳", cue: "warning" },
   FIRST_PLAYER_ROLLED: { icon: "🎲", cue: "dice" },
   TOWN_BUILDING_USED: { icon: "🏛", cue: "build" },
   SIEGE_FORTIFICATIONS_PLACED: { icon: "🏰", cue: "build" },

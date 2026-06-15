@@ -759,6 +759,35 @@ export type EffectDefinition =
       toUnitDefId: string;
       toTier: "bronze" | "silver" | "gold" | "azure";
       unique?: boolean;
+    }
+  | {
+      /**
+       * Mutare / Cassiopeia's Tactics ability. A declarative marker only:
+       * Tactics is never resolved through PLAY_CARD. The regular swap is offered
+       * in the start-of-combat Tactics window, and the expert swap on the
+       * holder's turn before their active unit moves; both run through the
+       * SWAP_COMBAT_UNITS action and discard the card (expert also spends one
+       * expert use). See swapCombatUnits in adventure-reducer.ts.
+       */
+      type: "TACTICS_SWAP";
+    }
+  | {
+      /**
+       * Cyra's Diplomacy, Map side: draw 1 Neutral Unit card per Dwelling the
+       * player controls, then open a recruit choice over the draws (pay the
+       * chosen unit's Recruitment cost; the rest return to their tier decks).
+       * Resolved in openDiplomacyRecruit.
+       */
+      type: "DIPLOMACY_RECRUIT";
+    }
+  | {
+      /**
+       * Cyra's Diplomacy, Instant side. A declarative marker: the skip is
+       * offered automatically as a pop-up when a hero meets Neutral Units whose
+       * Field Difficulty equals the hero's level (never played from hand). See
+       * the "diplomacy-skip" pending choice in adventure-reducer.ts.
+       */
+      type: "DIPLOMACY_SKIP_COMBAT";
     };
 
 /**
@@ -1008,6 +1037,16 @@ export type GameAction =
       /** Reinforce: the friendly Few of Demons to flip up to a Pack. */
       targetUnitId?: UnitId;
     }
+  | {
+      /**
+       * Tower Genies (Few) "Wish" other action: instead of moving/attacking,
+       * discard cards from the top of your deck and take a Spell discarded this
+       * way to your hand.
+       */
+      type: "USE_GENIE_DECK_DRAW";
+      playerId: PlayerId;
+      unitId: UnitId;
+    }
   | { type: "USE_ACTIVE_EFFECT"; playerId: PlayerId; effectId: string; target: TargetRef; mode?: CardPlayMode }
   | { type: "DEFEND_UNIT"; playerId: PlayerId; unitId: UnitId }
   | { type: "END_ACTIVATION"; playerId: PlayerId; unitId: UnitId }
@@ -1154,6 +1193,23 @@ export type GameAction =
   | { type: "PLACE_COMBAT_UNIT"; playerId: PlayerId; armyUnitId: string; position: number }
   | { type: "UNPLACE_COMBAT_UNIT"; playerId: PlayerId; armyUnitId: string }
   | { type: "FINISH_COMBAT_PLACEMENT"; playerId: PlayerId }
+  | {
+      /**
+       * Tactics ability: switch the positions of two of your own units, either
+       * in the start-of-combat Tactics window (free) or on your turn before your
+       * active unit moves (expert, spends one expert use). Both spend the Tactics
+       * card. Validated in swapCombatUnits.
+       */
+      type: "SWAP_COMBAT_UNITS";
+      playerId: PlayerId;
+      unitIdA: UnitId;
+      unitIdB: UnitId;
+    }
+  | {
+      /** Decline a start-of-combat Tactics swap window without swapping. */
+      type: "FINISH_TACTICS";
+      playerId: PlayerId;
+    }
   | { type: "CONTINUE_NEUTRAL_COMBAT"; playerId: PlayerId }
   | { type: "CONTINUE_NEUTRAL_STEP"; playerId: PlayerId }
   | { type: "RETREAT_FROM_COMBAT"; playerId: PlayerId }
@@ -1328,7 +1384,17 @@ export type GameAction =
       type: "START_ADVENTURE";
       playerId: PlayerId;
     }
-  | { type: "END_TURN"; playerId: PlayerId };
+  | { type: "END_TURN"; playerId: PlayerId }
+  | {
+      /**
+       * Concede the game: the player is removed from the turn order and becomes
+       * an observer (rulebook p.11 elimination). Legal only on the player's own
+       * map turn — never while defending in Combat ("you cannot surrender when
+       * defending your Faction Town", rulebook p.46).
+       */
+      type: "GIVE_UP";
+      playerId: PlayerId;
+    };
 
 export type LegalAction = {
   action: GameAction;
@@ -1943,6 +2009,31 @@ export type GameEvent =
       playerId: PlayerId;
     }
   | {
+      /** Tactics: two of a player's units switched battlefield positions. */
+      id: string;
+      type: "COMBAT_UNITS_SWAPPED";
+      playerId: PlayerId;
+      unitIdA: UnitId;
+      unitIdB: UnitId;
+      mode: "basic" | "expert";
+    }
+  | {
+      /** Diplomacy (Map): the Neutral Unit cards drawn, one per Dwelling. */
+      id: string;
+      type: "DIPLOMACY_NEUTRALS_DRAWN";
+      playerId: PlayerId;
+      unitDefIds: string[];
+    }
+  | {
+      /** Diplomacy (Instant): a matching-level Neutral fight skipped for no XP. */
+      id: string;
+      type: "DIPLOMACY_COMBAT_SKIPPED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      fieldId: MapSpaceId;
+      difficulty: number;
+    }
+  | {
       id: string;
       type: "UNIT_RECRUITED";
       playerId: PlayerId;
@@ -2007,6 +2098,21 @@ export type GameEvent =
       type: "GAME_WON";
       playerId: PlayerId;
       reason: string;
+    }
+  | {
+      id: string;
+      type: "PLAYER_ELIMINATED";
+      playerId: PlayerId;
+      reason: string;
+      /** True when the player chose to give up rather than being timed out. */
+      gaveUp: boolean;
+    }
+  | {
+      id: string;
+      type: "PLAYER_ELIMINATION_CLOCK";
+      playerId: PlayerId;
+      /** Turns the player has left before elimination, or null when cleared. */
+      turnsLeft: number | null;
     }
   | {
       /**
@@ -2286,6 +2392,20 @@ export type PlayerState = {
   canMulligan?: boolean;
   /** Second negative morale token: the hand is discarded when the turn ends. */
   discardHandAtTurnEnd?: boolean;
+  /**
+   * Removed from the game (gave up, or spent the grace period with no Town or
+   * Settlement). An eliminated player keeps a `players` entry so the table can
+   * still show them as an observer, but they leave `turnOrder` and take no
+   * turns. Rulebook p.11: "Eliminated players are immediately removed."
+   */
+  eliminated?: boolean;
+  /**
+   * Player Elimination clock (rulebook p.11, house rule: 2 of the player's own
+   * turns instead of 3 full Rounds). Set while the player controls no Town and
+   * no Settlement; counts down at the end of each of their turns and reaching 0
+   * eliminates them. `null`/absent means they hold a base and are safe.
+   */
+  eliminationCountdown?: number | null;
   /** Nomads (army map ability): the end-of-turn adjacent step was offered this turn. */
   nomadStepDoneThisTurn?: boolean;
   /** Rogues (army map ability): the once-per-turn deck peek was used this turn. */
@@ -2411,6 +2531,12 @@ export type CombatUnitState = {
   reactionPauseAcked?: boolean;
   /** Combat tokens currently on the card (attack/weakness/corrosion/paralysis). */
   tokens?: CombatTokenState[];
+  /**
+   * Fortress Wyverns' poison: faction cubes riding this unit. At the beginning
+   * of each of its activations one cube is removed to inflict 1 damage, until
+   * none remain. Repeated Wyvern hits stack more cubes here.
+   */
+  poisonCubes?: number;
   abilities: string[];
   /**
    * Specialty cards covering the unit card (Sandro's Cloak), bottom-up; the
@@ -2629,6 +2755,16 @@ export type CombatState = {
    */
   pendingCoverOfDarkness?: PlayerId[];
   /**
+   * Tactics ability: participants still entitled to a start-of-combat unit
+   * swap, attacker first then a hero-present PvP defender. Set once all units
+   * are placed/revealed for each player who holds a playable Tactics card and
+   * fields at least two living units. The head holds priority (phase stays
+   * "combat-setup", setup is already null); SWAP_COMBAT_UNITS performs one swap
+   * (spending the card) and FINISH_TACTICS declines, each popping the queue.
+   * Combat round 1 begins (finalizeCombatStart) only once the queue drains.
+   */
+  pendingTacticsSwaps?: PlayerId[] | null;
+  /**
    * Controllers who have had at least one unit removed from the board this
    * combat (Pit Lords' "Summon Demons" triggers off a friendly removal).
    */
@@ -2776,6 +2912,15 @@ export type VisitStep =
     }
   | { type: "SEARCH_SHARED_DECK"; deckId: DeckId; count: number }
   | { type: "SETTLEMENT_CHOICE" }
+  | {
+      /**
+       * Reward for flagging an enemy Town (rulebook p.76: "Scenarios typically
+       * have special rewards for flagging them"). The conqueror raises one
+       * production track by a single resource-gain level: +5 gold, +2 building
+       * materials, or +1 valuables.
+       */
+      type: "RESOURCE_GAIN_LEVEL";
+    }
   | { type: "MAGIC_SPRING" }
   | { type: "WITCH_HUT" }
   | { type: "SCHOLAR" }
@@ -3278,10 +3423,19 @@ export type PendingChoice =
         | "skeleton-reinforce"
         | "rogues-scout"
         | "combat-reposition"
+        | "genie-take-spell"
         | "combat-knockback"
-        | "cover-of-darkness";
+        | "cover-of-darkness"
+        | "diplomacy-skip"
+        | "diplomacy-recruit";
       /** combat-reposition: Harpies' optional fly-back after their attack. */
       reposition?: { unitId: UnitId; originPosition: number };
+      /**
+       * genie-take-spell: the Spells dug out of the Genies' controller's deck
+       * (index-aligned with `options`); the chosen one goes to hand, the rest to
+       * discard. `mode` decides how combat resumes afterwards.
+       */
+      genieTakeSpell?: { spellCardIds: CardId[]; unitId: UnitId; mode: "other-action" | "on-attack"; abilityId: string };
       /**
        * combat-knockback: the Ghost Dragons shoved `unitId` after their attack;
        * the defender picks which empty space (index-aligned with the options) to
@@ -3310,6 +3464,21 @@ export type PendingChoice =
       eagleEye?: { deckId: DeckId; cardId: CardId };
       /** hand-discard: candidate hand cards (index-aligned with options) and how many still to discard (Charm of Mana / Shackles of War). */
       handDiscard?: { cardIds: CardId[]; remaining: number; drawnOnly: boolean };
+      /**
+       * diplomacy-skip: the neutral fight Cyra's Diplomacy may skip. Option 0
+       * uses the card (claim the field, no XP); option 1 fights normally.
+       */
+      diplomacySkip?: { heroId: HeroId; fieldId: MapSpaceId; difficulty: number };
+      /**
+       * diplomacy-recruit: the Neutral Unit cards drawn (one per Dwelling) and
+       * the affordable subset offered as recruit options, in option order. The
+       * final option always declines; every undrawn-but-recruited card and all
+       * declined draws return to their tier deck's discard pile.
+       */
+      diplomacyRecruit?: {
+        draws: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
+        recruitable: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
+      };
       returnPhase: GamePhase;
     }
   | {
