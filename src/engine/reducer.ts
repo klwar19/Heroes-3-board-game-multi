@@ -77,6 +77,7 @@ import {
   countBallistas,
   discardPermanentVoluntarily,
   getPermanentSchoolBonus,
+  isLowestInitiativeEnemy,
   putPermanentIntoPlay,
   resolveWarMachineTarget,
   startWarMachineRound
@@ -5752,6 +5753,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "DIPLOMACY_SKIP_COMBAT") {
     throw new Error("Diplomacy's skip is offered when your hero meets matching-level Neutral Units.");
   }
+  // Artillery's expert side is not played from hand: it is offered when this
+  // player's Ballista fires at the start of a combat round (see permanents.ts).
+  if (effect.type === "ARTILLERY_BALLISTA_VOLLEY") {
+    throw new Error("Artillery's expert side resolves when your Ballista fires, not from hand.");
+  }
 
   const option = getChosenOption(card, action.optionIndex);
   const mode = action.mode ?? "basic";
@@ -5907,6 +5913,31 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     } else {
       openSiegeDemolishChoice(state, action.playerId, 1);
     }
+  }
+
+  // Artillery (basic): the slowest enemy takes `amount` "effect" damage — the
+  // same shot a Ballista makes. The card only offered the lowest-initiative
+  // enemy/enemies as targets; re-checked here so removing that filter is caught
+  // (a thrown error rolls the whole play back, card included).
+  if (effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" && state.combat) {
+    const unit = target ? state.combat.units[target.unitId] : undefined;
+    if (!unit || !isUnitAlive(unit) || unit.controllerId === action.playerId) {
+      throw new Error("Artillery must hit a living enemy unit.");
+    }
+    if (!isLowestInitiativeEnemy(state, action.playerId, unit)) {
+      throw new Error("Artillery hits an enemy unit with the lowest initiative.");
+    }
+    unit.damage += effect.amount;
+    noteUnitDamagedForTokens(state, unit, effect.amount);
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source: { type: "card", cardId: card.id, controllerId: action.playerId },
+      target: { type: "unit", unitId: unit.id },
+      amount: effect.amount,
+      damageKind: "effect"
+    });
+    markUnitRemovedIfNeeded(state, unit);
+    finishCombatIfNeeded(state);
   }
 
   if (effect.type === "DRAW_CARDS") {

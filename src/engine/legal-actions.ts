@@ -553,11 +553,19 @@ function getEnemyTargets(
     return [];
   }
 
-  return Object.values(state.combat.units)
+  let units = Object.values(state.combat.units)
     .filter((unit) => unit.controllerId !== playerId)
     .filter(isUnitAlive)
-    .filter((unit) => unitMatchesTarget(unit, target))
-    .map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
+    .filter((unit) => unitMatchesTarget(unit, target));
+
+  // Artillery: only the enemy unit(s) with the lowest effective initiative are
+  // legal targets (a tie offers each, so the controller picks which is hit).
+  if (target.type === "enemy-unit" && target.lowestInitiativeOnly && units.length > 0) {
+    const lowest = Math.min(...units.map((unit) => effectiveInitiative(unit, state.activeEffects)));
+    units = units.filter((unit) => effectiveInitiative(unit, state.activeEffects) === lowest);
+  }
+
+  return units.map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
 }
 
 function getFriendlyTargets(
@@ -1051,6 +1059,7 @@ function isOptionEffectPlayable(
     case "AREA_DAMAGE_ALL_ADJACENT":
     case "CREATE_FIRE_SHIELD":
     case "GRANT_ELEMENTAL_DAMAGE":
+    case "DAMAGE_LOWEST_INITIATIVE_ENEMY":
       return context === "combat" && Boolean(state.combat);
     case "DOUBLE_FIRST_AID_TENT":
       // Gem's First Aid VI only does something with a First Aid Tent in play.
@@ -1128,7 +1137,8 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "ADD_UNIT_MAX_HEALTH" ||
     effect.type === "HEAL_DAMAGE" ||
     effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
-    effect.type === "GRANT_ELEMENTAL_DAMAGE"
+    effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
+    effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY"
   );
 }
 
