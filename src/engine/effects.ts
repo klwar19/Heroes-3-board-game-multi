@@ -220,6 +220,11 @@ export function describePermanentEffect(card: CardDefinition): string {
   if (permanent.roundStart?.kind === "expert-shot") {
     parts.push(`each combat round: may spend 1 expert use for ${permanent.roundStart.amount} damage to an enemy unit`);
   }
+  if (permanent.resourceRoundGain) {
+    parts.push(
+      `gain ${permanent.resourceRoundGain.amount} ${permanent.resourceRoundGain.resource} at the start of each Resources round`
+    );
+  }
   if (permanent.permanentLimitOverride) {
     parts.push(`you may keep up to ${permanent.permanentLimitOverride} permanent cards in play, including this one`);
   }
@@ -231,12 +236,15 @@ export function describePermanentEffect(card: CardDefinition): string {
 }
 
 export function describeCardEffect(card: CardDefinition): string {
-  if (card.permanent) {
-    return `Permanent — ${describePermanentEffect(card)}`;
-  }
-
+  // "OR" cards list both option labels — checked before the permanent case so a
+  // hybrid permanent/instant artifact (income rings/carts) shows its enter-play
+  // income side AND its remove-for-resources side, not just the permanent one.
   if (card.effect.type === "CHOOSE_ONE") {
     return card.effect.options.map((option) => option.label).join(" OR ");
+  }
+
+  if (card.permanent) {
+    return `Permanent — ${describePermanentEffect(card)}`;
   }
 
   if (card.effect.type === "DRAW_CARDS") {

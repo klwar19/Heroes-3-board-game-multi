@@ -1064,8 +1064,11 @@ function addPlayableCardActions(
 
     // Permanents are played like activation cards: during one of your own
     // unit's activations, before it attacks. They enter play instead of
-    // resolving (replacing the previous permanent).
-    if (card.permanent) {
+    // resolving (replacing the previous permanent — the one-permanent limit
+    // applies in combat too). A hybrid permanent/instant artifact (income
+    // rings and carts) instead exposes its sides through the CHOOSE_ONE option
+    // machinery below, so it is not short-circuited here.
+    if (card.permanent && card.effect.type !== "CHOOSE_ONE") {
       if (ownActivationOpen) {
         actions.push({
           label: `Put ${card.name} into play`,
@@ -1167,6 +1170,11 @@ function isOptionEffectPlayable(
     case "RANDOM_ENEMY_DISCARD":
     case "GAIN_EXPERT_USE":
     case "CREATE_ACTIVE_EFFECT":
+      return true;
+    case "ENTER_PLAY":
+      // The permanent-income side of a hybrid artifact (Eversmoking Ring of
+      // Sulfur, Inexhaustible Cart of Ore): putting the card into play is
+      // always a valid choice in either context.
       return true;
     case "TAKE_FROM_DISCARD": {
       if (context !== "map" || !state.adventure) {
@@ -1508,8 +1516,11 @@ function addTurnCardActions(
     }
 
     // Permanents may also enter play on the owner's map turn (they are
-    // played the same way as map cards).
-    if (card.permanent) {
+    // played the same way as map cards). A plain permanent offers a single
+    // enter-play action; a hybrid permanent/instant artifact (income rings and
+    // carts) exposes its enter-play side AND its one-shot instant side through
+    // the CHOOSE_ONE option machinery below instead.
+    if (card.permanent && card.effect.type !== "CHOOSE_ONE") {
       actions.push({
         label: `Put ${card.name} into play`,
         action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }

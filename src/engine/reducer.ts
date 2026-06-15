@@ -6556,15 +6556,24 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   // Permanents enter play instead of resolving an effect; any permanent
-  // already in play goes to the discard pile.
-  if (card.permanent) {
+  // already in play goes to the discard pile (the printed one-permanent limit,
+  // enforced in combat as well — playing another permanent discards this one,
+  // and vice versa). A plain permanent (war machine, School of Magic) always
+  // enters play. A hybrid artifact whose CHOOSE_ONE offers an enter-play side
+  // (ENTER_PLAY) alongside a one-shot instant (income rings/carts) enters play
+  // only when that side is chosen; its instant side falls through below.
+  const entersPlayAsPermanent =
+    Boolean(card.permanent) &&
+    (card.effect.type !== "CHOOSE_ONE" || getChosenOption(card, action.optionIndex)?.effect.type === "ENTER_PLAY");
+  if (entersPlayAsPermanent) {
     putPermanentIntoPlay(state, action.playerId, action.cardId);
     appendEvent(state, {
       type: "CARD_PLAYED",
       playerId: action.playerId,
       cardId: action.cardId,
       timing: card.timing,
-      mode: "basic"
+      mode: "basic",
+      optionLabel: getChosenOption(card, action.optionIndex)?.label
     });
     if (state.phase === "combat" || state.combat) {
       state.phase = "combat";
