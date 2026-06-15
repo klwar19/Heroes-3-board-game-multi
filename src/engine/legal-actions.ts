@@ -7,12 +7,14 @@ import {
   armyHasMapEffect,
   canHeroReachPlacedTile,
   discountedReinforceCost,
+  getMainHero,
   getSecondaryHero,
   getTownOfPlayer,
   getUnitSide,
   hasRecruitResources,
   hasResources as playerHasResources,
   humanPlayerIds,
+  isSeaField,
   NEUTRAL_DECK_IDS,
   RESOURCE_GAIN_LEVEL_AMOUNTS,
   SURRENDER_GOLD_COST,
@@ -630,7 +632,17 @@ function getFriendlyTargets(
     .map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
 }
 
-function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string, cards: CardLibrary): TargetRef[] {
+function getTargetsForCard(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: string,
+  cards: CardLibrary,
+  /**
+   * Per-option target override (Ring of the Wayfarer): when a CHOOSE_ONE option
+   * carries its own `target`, it is used instead of the card-level one.
+   */
+  overrideTarget?: TargetDefinition
+): TargetRef[] {
   const card = cards[cardId];
   // Self-resolving effects (Leadership's morale token, active effects) never
   // pick a unit: they default to a no-target play. Only effects that actually
@@ -640,8 +652,9 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
     card?.effect.type === "GAIN_MORALE" ||
     // Mirth: a player-scoped reroll buff picks no unit.
     card?.effect.type === "CREATE_ATTACK_DIE_REROLL";
+  const cardTarget = overrideTarget ?? card?.target;
   const targetType =
-    card?.target?.type ??
+    cardTarget?.type ??
     (card?.effect.type === "HEAL_DAMAGE"
       ? "friendly-unit"
       : selfTargetedEffect
@@ -698,11 +711,11 @@ function getTargetsForCard(state: GameState, playerId: PlayerId, cardId: string,
   }
 
   const target =
-    card?.target &&
-    card.target.type !== "none" &&
-    card.target.type !== "empty-space" &&
-    card.target.type !== "any-space"
-      ? card.target
+    cardTarget &&
+    cardTarget.type !== "none" &&
+    cardTarget.type !== "empty-space" &&
+    cardTarget.type !== "any-space"
+      ? cardTarget
       : ({ type: targetType } as UnitTargetDefinition);
 
   const targets =
@@ -1219,6 +1232,10 @@ function isOptionEffectPlayable(
     case "GRANT_ELEMENTAL_DAMAGE":
     case "DAMAGE_LOWEST_INITIATIVE_ENEMY":
       return context === "combat" && Boolean(state.combat);
+    case "PLACE_PARALYSIS":
+      // Ring of the Wayfarer's paralysis side is a combat play; the neutral /
+      // opening-round gate lives on its `requiresNeutralCombatStart` flag.
+      return context === "combat" && Boolean(state.combat);
     case "BLOCK_ENEMY_SURRENDER":
       // Shackles of War (house rule): only at the start of a player-vs-player
       // combat, where there is an enemy hero who could otherwise surrender.
@@ -1300,8 +1317,22 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "HEAL_DAMAGE" ||
     effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
     effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
-    effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY"
+    effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" ||
+    effect.type === "PLACE_PARALYSIS"
   );
+}
+
+/** Highest grade unlocked by the paid power (mirrors the reducer's gate). */
+function gradeAtPower(
+  gradeByPower: Record<number, CombatUnitState["grade"]>,
+  power: number
+): CombatUnitState["grade"] | null {
+  const thresholds = Object.keys(gradeByPower)
+    .map(Number)
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right);
+  const matched = thresholds.filter((value) => value <= power).at(-1);
+  return matched === undefined ? null : (gradeByPower[matched] ?? null);
 }
 
 /**
@@ -1346,6 +1377,21 @@ function addOptionPlays(
     if (option.requiresEmptyDiscard && (state.players[playerId]?.discard.length ?? 0) > 0) {
       continue;
     }
+    // Crown of the Five Seas' sea side: only while this player's main Hero is on
+    // a Sea (water-terrain) field.
+    if (option.requiresSeaTile) {
+      const hero = getMainHero(state, playerId);
+      if (!hero?.spaceId || !isSeaField(state, hero.spaceId)) {
+        continue;
+      }
+    }
+    // Ring of the Wayfarer's paralysis side: only at the start (opening round)
+    // of a Combat against Neutral Units.
+    if (option.requiresNeutralCombatStart) {
+      if (!state.combat || state.combat.context.kind !== "neutral" || state.combat.round !== 1) {
+        continue;
+      }
+    }
     if (!isOptionEffectPlayable(state, playerId, option.effect, context)) {
       continue;
     }
@@ -1362,7 +1408,7 @@ function addOptionPlays(
         : ["basic"];
 
     let targets = optionNeedsUnitTarget(option.effect)
-      ? getTargetsForCard(state, playerId, cardId, cards)
+      ? getTargetsForCard(state, playerId, cardId, cards, option.target)
       : [{ type: "none" } as TargetRef];
 
     // Some options only land on a named unit (Moandor's elemental grant reads
@@ -1373,6 +1419,25 @@ function addOptionPlays(
       targets = targets.filter(
         (candidate) => candidate.type === "unit" && state.combat?.units[candidate.unitId]?.name === restrictName
       );
+    }
+
+    // Ring of the Wayfarer's paralysis side reads "any unit except Azure": its
+    // gradeByPower gate unlocks gold at Power 0, so units above that grade
+    // (Azure) are never legal targets — keep the offered list in step with the
+    // resolution gate rather than offering a no-op.
+    if (option.effect.type === "PLACE_PARALYSIS") {
+      const gradeByPower = option.effect.gradeByPower;
+      targets = targets.filter((candidate) => {
+        if (candidate.type !== "unit") {
+          return true;
+        }
+        const unit = state.combat?.units[candidate.unitId];
+        if (!unit) {
+          return false;
+        }
+        const maxGrade = gradeAtPower(gradeByPower, card.power ?? 0);
+        return maxGrade !== null && gradeRank(unit.grade) <= gradeRank(maxGrade);
+      });
     }
     if (targets.length === 0) {
       continue;

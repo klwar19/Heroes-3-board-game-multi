@@ -8,6 +8,7 @@ import {
   getActiveAstrologersCard,
   getMainHero,
   getUnitSide,
+  isSeaField,
   makeCombatUnitFromArmy,
   NEUTRAL_DECK_IDS,
   queueNecromancyReinforce
@@ -6659,6 +6660,21 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (option?.mapOnly && state.combat) {
     throw new Error(`${option.label} cannot be used during combat.`);
   }
+  // Crown of the Five Seas' sea side: only while this player's main Hero stands
+  // on a Sea (water-terrain) field.
+  if (option?.requiresSeaTile) {
+    const hero = getMainHero(state, action.playerId);
+    if (!hero?.spaceId || !isSeaField(state, hero.spaceId)) {
+      throw new Error(`${option.label} requires your Hero to be on a Sea tile.`);
+    }
+  }
+  // Ring of the Wayfarer's paralysis side: only at the opening round of a
+  // Combat against Neutral Units.
+  if (option?.requiresNeutralCombatStart) {
+    if (!state.combat || state.combat.context.kind !== "neutral" || state.combat.round !== 1) {
+      throw new Error(`${option.label} is played at the start of a Combat with Neutral Units.`);
+    }
+  }
   if (mode === "expert" && !hasExpertUseAvailable(state, action.playerId)) {
     throw new Error("No expert uses are available this combat round.");
   }
@@ -6787,6 +6803,19 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "CREATE_DEFENSE_BUFF" && target) {
     createDefenseBuffFromCard(state, card, action.playerId, card.power ?? 0, target);
+  }
+
+  // Ring of the Wayfarer's paralysis side: place a Paralysis token on the
+  // chosen unit, gated by the grade the paid Power unlocks (Power 0 -> gold, so
+  // an Azure unit — above the gate — is left untouched, matching "except
+  // Azure"). The Blind Spell shares the PLACE_PARALYSIS effect but resolves via
+  // the spell stack, so this branch only fires for directly-played cards.
+  if (effect.type === "PLACE_PARALYSIS" && state.combat && target) {
+    const maxGrade = gradeAtPower(effect.gradeByPower, card.power ?? 0);
+    const unit = state.combat.units[target.unitId];
+    if (unit && maxGrade && gradeRank(unit.grade) <= gradeRank(maxGrade)) {
+      placeCombatToken(state, unit, "paralysis", 0, card.name);
+    }
   }
 
   // Rashka's Demoniac specialty (IV/VI): a Fire Shield on the chosen unit —
