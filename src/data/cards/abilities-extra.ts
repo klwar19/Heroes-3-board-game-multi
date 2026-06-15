@@ -346,11 +346,28 @@ export const extraAbilityCards: CardLibrary = {
     "Learning",
     "Basic: Play when the Hero is about to level up; advance an additional half level. Expert: advance an additional full level, then Remove this card."
   ),
-  "ability.artillery": notImplementedAbility(
-    "artillery",
-    "Artillery",
-    "Basic: Deal 1 damage to an enemy unit with the lowest initiative. Expert: when using the Ballista card, resolve its effect against the same target 3 times."
-  ),
+  // Artillery: the basic side deals 1 damage to the lowest-initiative enemy and
+  // is fully wired. The expert side ("resolve the Ballista's effect against the
+  // same target 3 times") needs a Ballista-round hook and is NOT implemented —
+  // the engine offers only the basic play (DAMAGE_LOWEST_INITIATIVE has no
+  // expert variant, so effectSupportsExpertOption returns false).
+  "ability.artillery": {
+    id: "ability.artillery",
+    name: "Artillery",
+    kind: "ability",
+    timing: "instant",
+    phaseLimit: ["combat"],
+    abilityClass: "might",
+    tags: [
+      "ability",
+      "combat",
+      "Basic: Deal 1 damage to an enemy unit with the lowest initiative. Expert (NOT wired): when using the Ballista card, resolve its effect against the same target 3 times."
+    ],
+    effect: { type: "DAMAGE_LOWEST_INITIATIVE", amount: 1 },
+    assets: abilityAssets("artillery", "Artillery"),
+    implementationStatus: "implemented",
+    source: abilitySource("artillery")
+  },
   "ability.ballistics": {
     id: "ability.ballistics",
     name: "Ballistics",
