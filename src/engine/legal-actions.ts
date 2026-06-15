@@ -60,6 +60,7 @@ import type {
   BuildingId,
   BuildingLibrary,
   CardDefinition,
+  CardId,
   CardPlayCost,
   CardPlayMode,
   CardLibrary,
@@ -84,6 +85,7 @@ import {
   getLethalSaveUnitAbility,
   getUnitAbilityDefinitions,
   hasBindAdjacentEnemies,
+  hasSpellCastPowerTax,
   hasUnitAbilityEffect,
   unitImmuneToSpellSchools
 } from "./unit-abilities";
@@ -162,6 +164,26 @@ function canAffordCardCost(state: GameState, playerId: PlayerId, cardId: string,
 /** Grade ordering shared by spell-immunity and Magic Mirror grade gates. */
 export function gradeRank(grade: CombatUnitState["grade"]): number {
   return grade === "bronze" ? 0 : grade === "silver" ? 1 : grade === "gold" ? 2 : 3;
+}
+
+/**
+ * Sorrow's reachable grade at a given Power: the highest grade whose Power
+ * breakpoint the paid Power meets (e.g. { 0: bronze, 2: silver, 4: gold }).
+ * Falls back to a fixed `grade` when the effect carries no Power table.
+ */
+function skipActivationReachableGrade(
+  effect: Extract<ConcreteEffect, { type: "SKIP_ACTIVATION" }>,
+  power: number
+): CombatUnitState["grade"] | null {
+  if (effect.gradeByPower) {
+    const thresholds = Object.keys(effect.gradeByPower)
+      .map(Number)
+      .filter((value) => Number.isFinite(value))
+      .sort((left, right) => left - right);
+    const matched = thresholds.filter((value) => value <= power).at(-1);
+    return matched === undefined ? null : (effect.gradeByPower[matched] ?? null);
+  }
+  return effect.grade ?? null;
 }
 
 /**
@@ -840,6 +862,51 @@ export function isHandLockedInCombat(state: GameState, playerId: PlayerId): bool
  *  - Instant spells with an attack trigger (Bloodlust, Stone Skin, Curse…)
  *    are played inside the attack windows instead, never cast directly.
  */
+/**
+ * Neutral Pegasi "Mystic Toll": a living enemy Pegasi forces this player to pay
+ * (discard) one extra Power card whenever they cast a Spell. Combat-only.
+ */
+export function combatEnemyImposesPowerTax(state: GameState, casterId: PlayerId): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+  return Object.values(combat.units).some(
+    (unit) => unit.controllerId !== casterId && isUnitAlive(unit) && hasSpellCastPowerTax(unit)
+  );
+}
+
+/**
+ * The Power cards the player could pay for the Pegasi toll. A hand cast spends
+ * the spell itself first, so it cannot also pay the toll — the toll must come
+ * from a *different* Power card; a Scroll cast leaves the hand intact.
+ */
+export function payablePowerCardIds(
+  hand: readonly CardId[],
+  cards: CardLibrary,
+  castCardId: CardId,
+  fromScroll: boolean
+): CardId[] {
+  let remaining: readonly CardId[] = hand;
+  if (!fromScroll) {
+    const index = remaining.indexOf(castCardId);
+    if (index >= 0) {
+      remaining = [...remaining.slice(0, index), ...remaining.slice(index + 1)];
+    }
+  }
+  return remaining.filter((cardId) => cardCanBoostPower(cards[cardId]));
+}
+
+/** Whether the player holds any Power card to pay the Pegasi toll for this cast. */
+export function handCanPayPowerTax(
+  hand: readonly CardId[],
+  cards: CardLibrary,
+  castCardId: CardId,
+  fromScroll: boolean
+): boolean {
+  return payablePowerCardIds(hand, cards, castCardId, fromScroll).length > 0;
+}
+
 function addSpellActions(
   actions: LegalAction[],
   state: GameState,
@@ -854,6 +921,10 @@ function addSpellActions(
   if (!player || player.combatStats.spellsCastThisRound >= spellLimitFor(state, player)) {
     return;
   }
+
+  // Neutral Pegasi: a living enemy Pegasi gates every Spell cast behind paying
+  // an extra Power card — with none to pay, the cast is not offered at all.
+  const powerTaxed = combatEnemyImposesPowerTax(state, playerId);
 
   const combat = state.combat;
   const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
@@ -896,6 +967,11 @@ function addSpellActions(
     // Activation spells need one of your own units active, pre-attack.
     const needsOwnActivation = card.timing === "combat" || card.timing === "action";
     if (needsOwnActivation && !ownActivationOpen) {
+      continue;
+    }
+
+    // Neutral Pegasi toll: cannot cast without a separate Power card to pay.
+    if (powerTaxed && !handCanPayPowerTax(player.hand, cards, cardId, Boolean(fromScroll))) {
       continue;
     }
 
@@ -2057,15 +2133,19 @@ export function getLegalActions(
           cardId
         }
       }));
-      actions.push({
-        label: "Let a random card be discarded",
-        action: {
-          type: "RESOLVE_COMBAT_DISCARD",
-          playerId,
-          choiceId: choice.id,
-          cardId: "random"
-        }
-      });
+      // The Magi drain also offers a random discard; the Pegasi toll is a pure
+      // "pay a Power card of your choice" — no random option.
+      if (choice.kind === "magi-power-or-random") {
+        actions.push({
+          label: "Let a random card be discarded",
+          action: {
+            type: "RESOLVE_COMBAT_DISCARD",
+            playerId,
+            choiceId: choice.id,
+            cardId: "random"
+          }
+        });
+      }
       return actions;
     }
 
@@ -2675,13 +2755,44 @@ export function getLegalReactionsForTrigger(
       }
     }
 
+    // Sorrow: in the activation-skip window, "+1 Power" is offered only while the
+    // player holds a Sorrow that still needs Power to reach the unit about to act
+    // — there must be enough affordable Power (the window pool plus the Spells
+    // they could discard, reserving one Sorrow to play) AND the grade must not
+    // already be free. This opens the window for a silver/gold target so the
+    // player can ramp Power up, yet never dangles a useless boost on a bronze one
+    // or one they could never afford (a gold unit reached only at Power 4).
+    let activationSkipNeedsPower = false;
+    if (triggerEvent.type === "UNIT_ACTIVATION_STARTED" && triggerEvent.playerId !== player.id) {
+      const skipUnit = state.combat?.units[triggerEvent.unitId];
+      const skipEffects = [...new Set(player.hand)]
+        .map((cardId) => cards[cardId])
+        .filter((card): card is CardDefinition => Boolean(card) && card.kind === "spell")
+        .map((card) => (card.effect.type === "SKIP_ACTIVATION" ? card.effect : null))
+        .filter((effect): effect is Extract<ConcreteEffect, { type: "SKIP_ACTIVATION" }> => Boolean(effect));
+      if (skipUnit && isUnitAlive(skipUnit) && skipEffects.length > 0) {
+        const windowPower = state.reactionWindow?.spellPowerBonus ?? 0;
+        const spellCount = player.hand.filter((cardId) => cards[cardId]?.kind === "spell").length;
+        const maxPower = windowPower + Math.max(0, spellCount - 1);
+        const bestReach = (power: number) =>
+          skipEffects.reduce<number>((best, effect) => {
+            const grade = skipActivationReachableGrade(effect, power);
+            return grade ? Math.max(best, gradeRank(grade)) : best;
+          }, -1);
+        const targetRank = gradeRank(skipUnit.grade);
+        activationSkipNeedsPower = targetRank > bestReach(windowPower) && targetRank <= bestReach(maxPower);
+      }
+    }
+
     // The printed alternative bottom effect: discard any Spell card for
-    // +1 Power — toward your own cast, or paired with an instant spell in an
-    // attack window (the batch validator enforces the pairing).
+    // +1 Power — toward your own cast, paired with an instant spell in an
+    // attack window (the batch validator enforces the pairing), or banked into
+    // the Sorrow activation-skip window above.
     const boostLegal =
-      triggerEvent.type === "SPELL_CAST_STARTED"
+      (triggerEvent.type === "SPELL_CAST_STARTED"
         ? triggerEvent.playerId === player.id
-        : isCombatParticipant(state, player.id);
+        : isCombatParticipant(state, player.id)) &&
+      (triggerEvent.type !== "UNIT_ACTIVATION_STARTED" || activationSkipNeedsPower);
     if (boostLegal) {
       for (const cardId of new Set(player.hand)) {
         const card = cards[cardId];
@@ -2720,7 +2831,9 @@ export function getLegalReactionsForTrigger(
         ? attackStackItem.action.playerId
         : undefined;
     const hasEmpowerablePlayed =
-      attackOwner === player.id && (attackStackItem?.modifiers.powerScaledAttackInstants?.length ?? 0) > 0;
+      attackOwner === player.id &&
+      ((attackStackItem?.modifiers.powerScaledAttackInstants?.length ?? 0) > 0 ||
+        attackStackItem?.modifiers.slayerRollsByPower !== undefined);
     if (!isAttackWindow || hasPairableSpell || hasEmpowerablePlayed) {
       reactions.push(...powerReactions);
     }
@@ -2857,7 +2970,11 @@ export function isEffectLegalForTrigger(
   mode: CardPlayMode
 ): boolean {
   // Sorrow: skip the about-to-activate unit. Offered to the unit's opponent
-  // only, and only while that unit's grade is within the option's reach.
+  // only, and only while that unit's grade is within reach of the Power already
+  // banked in this activation-skip window (bronze is free; +2/+4 Power, paid by
+  // discarding Spells into the window, reach silver/gold). The window-opening
+  // and power-boost offers (see getLegalReactionsForTrigger) make sure the
+  // player can ramp the Power up first.
   if (triggerEvent.type === "UNIT_ACTIVATION_STARTED") {
     if (effect.type !== "SKIP_ACTIVATION") {
       return false;
@@ -2866,7 +2983,9 @@ export function isEffectLegalForTrigger(
       return false;
     }
     const unit = state.combat?.units[triggerEvent.unitId];
-    return Boolean(unit && isUnitAlive(unit) && gradeRank(unit.grade) <= gradeRank(effect.grade));
+    const windowPower = state.reactionWindow?.spellPowerBonus ?? 0;
+    const reachable = skipActivationReachableGrade(effect, windowPower);
+    return Boolean(unit && isUnitAlive(unit) && reachable && gradeRank(unit.grade) <= gradeRank(reachable));
   }
 
   // Card draws are timing-free instants: they fit inside any open window.
@@ -2956,6 +3075,13 @@ export function isEffectLegalForTrigger(
     // unit ("when attacking a golden unit").
     if (effect.type === "SLAYER_ATTACK") {
       return attacker.controllerId === playerId && defender.grade === "gold";
+    }
+
+    // Frenzy: only the attacker's controller, and only when the chosen option's
+    // grade reaches the defender (the option's discard cost paid the Power).
+    // Offering only the grade-reaching options keeps a wasted pierce off the menu.
+    if (effect.type === "IGNORE_DEFENSE") {
+      return attacker.controllerId === playerId && gradeRank(defender.grade) <= gradeRank(effect.grade);
     }
 
     // Alamar's Resurrection is never a pre-die attack reaction — it is offered

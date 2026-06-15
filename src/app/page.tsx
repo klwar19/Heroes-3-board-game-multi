@@ -118,6 +118,7 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   "CARDS_DRAWN",
   "CARD_PLAYED",
   "SPELL_CAST_STARTED",
+  "SPELL_DICE_ROLLED",
   "SPELL_CAST_RESOLVED",
   "SPELL_CAST_CANCELLED",
   "DAMAGE_ASSIGNED",
@@ -353,6 +354,40 @@ function makeDiceCue(
     defenseBonus: event.defenseBonus,
     damage: event.damage,
     isRetaliation: event.isRetaliation,
+    // Slayer (and the Champions' "apply both") sum every die — keep them all lit.
+    ...(event.sumAllDice ? { sumAllDice: true } : {}),
+    ...(preDelayMs > 0 ? { preDelayMs } : {})
+  };
+}
+
+/**
+ * The dice a Spell rolls to size its own effect (Inferno): shown in the same
+ * attack-die overlay, but headed with the spell's name and a "N hits" read-out
+ * instead of an attacker-vs-defender breakdown. Every die counts, so none dim.
+ */
+function makeSpellDiceCue(
+  event: Extract<GameEvent, { type: "SPELL_DICE_ROLLED" }>,
+  preDelayMs = 0
+): DiceCue {
+  const card = cardLibrary[event.spellCardId];
+  return {
+    id: event.id,
+    rolls: event.rolls,
+    roll: event.hits,
+    dieMultiplier: 1,
+    rollMode: "normal",
+    attackerName: "",
+    defenderName: "",
+    attackValue: 0,
+    defenseValue: 0,
+    attackBonus: 0,
+    defenseBonus: 0,
+    damage: 0,
+    isRetaliation: false,
+    sumAllDice: true,
+    spellMode: true,
+    title: card?.name ?? "Spell",
+    caption: event.hits > 0 ? `${event.hits} hit${event.hits === 1 ? "" : "s"} → ${event.hits} damage each` : "No effect",
     ...(preDelayMs > 0 ? { preDelayMs } : {})
   };
 }
@@ -945,6 +980,10 @@ export default function Home() {
       }
       if (freshFx.length > 0 || fresh.length > 0) {
         const cues: FxCue[] = [];
+        // Spell rolls (Inferno) feed the attack-die overlay; collected as the loop
+        // sequences them so they show after the spell card flies and before its
+        // burst lands, then flushed into the overlay queue once the batch is built.
+        const spellDiceCues: DiceCue[] = [];
         const viewerId = viewerRef.current;
         const inCombat = Boolean(nextState.combat);
         // Nothing combat-side shows until the dice have rolled and read: when an
@@ -1261,6 +1300,25 @@ export default function Home() {
               timeline += FLIGHT_MS + HOLD_CENTER_MS;
               break;
             }
+            case "SPELL_DICE_ROLLED": {
+              // Roll the dice out first — the cube clatter under the spell's own
+              // roar — then push the burst and the damage past the read-out, so
+              // the player sees what was rolled before any unit is touched. The
+              // dice overlay waits out the current beat (the spell card's flight).
+              const startAt = timeline;
+              spellDiceCues.push(makeSpellDiceCue(event, startAt));
+              const dicePlan = spellFxPlans[event.spellCardId];
+              if (dicePlan?.sound) {
+                const soundKey = dicePlan.sound;
+                window.setTimeout(() => playLibrarySound(soundKey), startAt);
+              }
+              timeline = startAt + DICE_PRESENT_MS;
+              if (inCombat) {
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
+              }
+              break;
+            }
             case "SPELL_CAST_RESOLVED": {
               const plan = spellFxPlans[event.spellCardId];
               if (!plan) {
@@ -1269,22 +1327,24 @@ export default function Home() {
               if (event.target.type === "unit") {
                 queueBoardFx(plan, event.id, `hand:${event.playerId}`, event.target.unitId);
               } else if (event.target.type === "space") {
-                // An area spell on a chosen space (Inferno) bursts its hit sprite
-                // on that cell with the cast sound; Summon Elemental has only a
-                // sound. Advancing the timeline by the presentation keeps the
-                // damage it deals queued strictly behind the sprite.
                 const at = timeline;
                 if (plan.hit) {
+                  // Inferno bursts on the chosen space (no unit to anchor on): the
+                  // fire sheet flares over the cell, then its per-unit damage
+                  // floaters fire after it. The dice + cast roar already played
+                  // under SPELL_DICE_ROLLED, so only the impact sound rides here.
                   cues.push({
                     kind: "sprite",
-                    id: `${event.id}-hit`,
+                    id: `${event.id}-burst`,
                     fxKey: plan.hit,
                     at: `cell:${event.target.position}`,
-                    sound: plan.hitSound ?? plan.sound,
+                    sound: plan.hitSound,
                     delayMs: at
                   });
-                  timeline = at + spellPresentationMs(plan);
+                  timeline += spellPresentationMs(plan);
                 } else if (plan.sound) {
+                  // Summon Elemental resolves on an empty space — no unit to
+                  // anchor board FX on, so play the cast sound on the timeline.
                   const soundKey = plan.sound;
                   window.setTimeout(() => playLibrarySound(soundKey), at);
                 }
@@ -1462,6 +1522,19 @@ export default function Home() {
             default:
               break;
           }
+        }
+
+        // Show any spell rolls (Inferno) collected above in the attack-die
+        // overlay, each waiting out the beat the loop scheduled it at (the spell
+        // card's flight) before its cube tumbles.
+        if (spellDiceCues.length > 0) {
+          setDice((current) => {
+            const queue = [...current.queue, ...spellDiceCues];
+            if (!current.current && queue.length > 0) {
+              return { current: queue[0], queue: queue.slice(1) };
+            }
+            return { ...current, queue };
+          });
         }
 
         // Reveal frozen health. Every struck/healed unit shows its old health

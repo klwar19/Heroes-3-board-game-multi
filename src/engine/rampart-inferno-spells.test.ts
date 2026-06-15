@@ -42,7 +42,9 @@ function reactionFor(state: GameState, playerId: PlayerId, cardId: string, optio
     (legal) =>
       legal.action.type === "PLAY_REACTION" &&
       legal.action.cardId === cardId &&
-      legal.action.optionIndex === optionIndex
+      legal.action.optionIndex === optionIndex &&
+      // The card's effect play, never its "discard for +1 Power" alternative.
+      !legal.action.asPowerBoost
   );
 }
 
@@ -156,15 +158,24 @@ describe("Sorrow", () => {
     return applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
   }
 
-  it("opens an activation-skip window for the opponent and skips the bronze unit", () => {
+  /** The "discard this Spell for +1 Power" reaction for a specific card. */
+  function powerBoostWith(state: GameState, cardId: string) {
+    return getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" && legal.action.cardId === cardId && legal.action.asPowerBoost === true
+    );
+  }
+
+  it("plays for FREE against a bronze unit (Power 0) and skips it", () => {
     let state = aboutToActivate("unit_p2_skeletons", ["spell.sorrow"]);
 
     expect(state.combat!.activeUnitId).toBe("unit_p2_skeletons");
     expect(state.reactionWindow, "an activation-skip window should open").toBeTruthy();
     expect(state.reactionWindow!.priorityPlayerId).toBe("p1");
 
-    const bronze = reactionFor(state, "p1", "spell.sorrow", 0);
-    expect(bronze, "the bronze (free) skip should be offered").toBeTruthy();
+    // Single power-scaled effect now — no option index, and no Power needed for bronze.
+    const bronze = reactionFor(state, "p1", "spell.sorrow");
+    expect(bronze, "the free bronze skip should be offered at Power 0").toBeTruthy();
     state = applyOk(state, bronze!.action);
 
     const skeletons = state.combat!.units.unit_p2_skeletons;
@@ -174,32 +185,57 @@ describe("Sorrow", () => {
     expect(state.combat!.activeUnitId).not.toBe("unit_p2_skeletons");
   });
 
-  it("a bronze Sorrow cannot reach a gold unit, so no window opens", () => {
+  it("a Power-0 Sorrow cannot reach a silver unit until +2 Power is banked", () => {
+    let state = aboutToActivate("unit_p2_vampires", ["spell.sorrow", "spell.haste", "spell.haste"]);
+    expect(state.reactionWindow, "the window opens because +2 Power is affordable").toBeTruthy();
+
+    // At Power 0 the silver unit is out of reach: the skip itself is not offered,
+    // only the "+1 Power" discards that ramp toward it.
+    expect(reactionFor(state, "p1", "spell.sorrow"), "silver is locked at Power 0").toBeUndefined();
+    expect(powerBoostWith(state, "spell.haste"), "Power discards are offered").toBeTruthy();
+
+    // Bank +1, then +1 more — one card at a time (not a single chunk).
+    state = applyOk(state, powerBoostWith(state, "spell.haste")!.action);
+    expect(reactionFor(state, "p1", "spell.sorrow"), "still locked at Power 1").toBeUndefined();
+    state = applyOk(state, powerBoostWith(state, "spell.haste")!.action);
+
+    const silver = reactionFor(state, "p1", "spell.sorrow");
+    expect(silver, "the silver skip unlocks once Power 2 is banked").toBeTruthy();
+    state = applyOk(state, silver!.action);
+    expect(state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
+  });
+
+  it("a Power-0 Sorrow cannot reach a gold unit it cannot afford, so no window opens", () => {
     const state = aboutToActivate("unit_p2_dread_knights", ["spell.sorrow"]);
     expect(state.combat!.activeUnitId).toBe("unit_p2_dread_knights");
-    // No affordable skip reaction exists, so the window never opens and the
-    // gold unit keeps its activation.
+    // Only one Spell in hand — no Power to discard, so gold is unreachable, the
+    // window never opens and the gold unit keeps its activation.
     expect(state.reactionWindow).toBeNull();
     expect(state.combat!.units.unit_p2_dread_knights.activatedThisRound).toBe(false);
   });
 
-  it("paying 4 Power reaches a gold unit and skips it", () => {
+  it("batches the skip with its +Power discards in one declaration (gold)", () => {
     let state = aboutToActivate("unit_p2_dread_knights", [
       "spell.sorrow",
-      "stat.power",
-      "stat.power",
-      "stat.power",
-      "stat.power"
+      "spell.haste",
+      "spell.haste",
+      "spell.haste",
+      "spell.haste"
     ]);
-    expect(state.reactionWindow, "the paid gold skip opens the window").toBeTruthy();
+    expect(state.reactionWindow, "the gold skip is affordable, so the window opens").toBeTruthy();
 
-    const gold = reactionFor(state, "p1", "spell.sorrow", 2);
-    expect(gold, "the gold (pay 4) skip should be offered").toBeTruthy();
+    // Power is paid first inside the batch, so the skip reads Power 4 and reaches gold.
     state = applyOk(state, {
-      ...gold!.action,
-      costCardIds: ["stat.power", "stat.power", "stat.power", "stat.power"]
-    } as GameAction);
-
+      type: "PLAY_REACTIONS",
+      playerId: "p1",
+      plays: [
+        { cardId: "spell.haste", asPowerBoost: true },
+        { cardId: "spell.haste", asPowerBoost: true },
+        { cardId: "spell.haste", asPowerBoost: true },
+        { cardId: "spell.haste", asPowerBoost: true },
+        { cardId: "spell.sorrow" }
+      ]
+    });
     expect(state.combat!.units.unit_p2_dread_knights.activatedThisRound).toBe(true);
   });
 
@@ -277,6 +313,161 @@ describe("Slayer", () => {
     });
     expect(reactionFor(state, "p1", "spell.slayer")).toBeUndefined();
   });
+
+  it("scales the roll count with Power added AFTER it is played (not one chunk)", () => {
+    let state = slayerSetup("unit_p2_dread_knights", ["spell.slayer", "spell.haste", "spell.haste"]);
+    state.combat!.dice.scriptedRolls = [1, 1, 1, 1, 0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    state = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_dread_knights"
+    });
+    state = applyOk(state, reactionFor(state, "p1", "spell.slayer")!.action);
+
+    // The Slayer instant stays empowerable: +1 Power discards are offered after it.
+    const boost = (current: GameState) =>
+      getLegalActions(current, "p1").find(
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" &&
+          legal.action.asPowerBoost === true &&
+          legal.action.cardId === "spell.haste"
+      );
+    expect(boost(state), "Power can still be added after Slayer is played").toBeTruthy();
+    state = applyOk(state, boost(state)!.action);
+    state = applyOk(state, boost(state)!.action);
+    state = passAllReactions(state);
+
+    // Power 0 → 2 rolls; the two +1 Power discards lift it to Power 2 → 4 rolls.
+    const rolled = state.eventLog.find((event) => event.type === "ATTACK_ROLLED" && !event.isRetaliation);
+    expect(rolled?.type === "ATTACK_ROLLED" ? rolled.rolls.length : -1).toBe(4);
+    expect(rolled?.type === "ATTACK_ROLLED" ? rolled.sumAllDice : undefined).toBe(true);
+  });
+
+  it("a gold unit's Magic Resistance shrugs Slayer off (normal die, no extra rolls, no draw)", () => {
+    let state = slayerSetup("unit_p2_dread_knights", ["spell.slayer"]);
+    state.combat!.units.unit_p2_dread_knights.abilities = ["dwarf-magic-resistance"];
+    // Resistance rolls first: a "+1" negates the Spell; then the attack rolls its
+    // single normal die ("0" here), so the gold unit takes just 3 atk − 2 def = 1.
+    state.combat!.dice.scriptedRolls = [1, 0];
+    state.combat!.dice.rollCount = 0;
+    state = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_dread_knights"
+    });
+    state = applyOk(state, reactionFor(state, "p1", "spell.slayer")!.action);
+    state = passAllReactions(state);
+
+    expect(
+      state.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "dwarf-magic-resistance"
+      ),
+      "the gold Dwarf should roll its Magic Resistance against Slayer"
+    ).toBe(true);
+    const rolled = state.eventLog.find((event) => event.type === "ATTACK_ROLLED" && !event.isRetaliation);
+    expect(rolled?.type === "ATTACK_ROLLED" ? rolled.rolls : []).toEqual([0]); // a single normal die, not Slayer's pool
+    expect(state.combat!.units.unit_p2_dread_knights.damage).toBe(1);
+    expect(
+      state.eventLog.some((event) => event.type === "CARDS_DRAWN" && event.playerId === "p1"),
+      "the negated Slayer draws no card"
+    ).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Magic Resistance vs the instant attack/defense Spells (Curse, Bless, …)
+// ---------------------------------------------------------------------------
+
+describe("Instant attack/defense Spells vs Magic Resistance", () => {
+  /** p1 griffins (attack 4) attacks a Dwarf p2 skeletons (defense 4). */
+  function curseAttack(resistRoll: number): GameState {
+    const state = createInitialGameState("curse-resist");
+    state.players.p1.hand = ["spell.curse"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const griffins = state.combat!.units.unit_p1_griffins;
+    griffins.activatedThisRound = false;
+    griffins.abilities = [];
+    griffins.attack = 4;
+    griffins.position = 17;
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    skeletons.abilities = ["dwarf-magic-resistance"];
+    skeletons.position = 18;
+    skeletons.defense = 4;
+    skeletons.maxHealth = 20;
+    skeletons.damage = 0;
+    // First die = the Dwarf's resistance roll; second = the attack die (always "0").
+    state.combat!.dice.scriptedRolls = [resistRoll, 0];
+    state.combat!.dice.rollCount = 0;
+    let next = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    next = applyOk(next, reactionFor(next, "p1", "spell.curse")!.action);
+    return passAllReactions(next);
+  }
+
+  it("a Dwarf shrugs Curse off on a '+1' — its defense is not lowered", () => {
+    const resisted = curseAttack(1);
+    expect(
+      resisted.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "dwarf-magic-resistance"
+      )
+    ).toBe(true);
+    // Curse negated → 4 attack vs the full 4 defense → no damage.
+    expect(resisted.combat!.units.unit_p2_skeletons.damage).toBe(0);
+  });
+
+  it("Curse lands when the Dwarf does not roll the resist face", () => {
+    const cursed = curseAttack(0);
+    // Curse applied → defense 4 − 1 = 3, so 4 attack lands 1 damage.
+    expect(cursed.combat!.units.unit_p2_skeletons.damage).toBe(1);
+  });
+
+  it("a Dwarf shrugs Bless off too (the Attack die is still rolled, not ignored)", () => {
+    const state = createInitialGameState("bless-resist");
+    state.players.p1.hand = ["spell.bless"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const griffins = state.combat!.units.unit_p1_griffins;
+    griffins.activatedThisRound = false;
+    griffins.abilities = ["dwarf-magic-resistance"]; // a Dwarf casting Bless on itself
+    griffins.attack = 5;
+    griffins.position = 17;
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    skeletons.abilities = [];
+    skeletons.position = 18;
+    skeletons.defense = 4;
+    skeletons.maxHealth = 20;
+    skeletons.damage = 0;
+    // Resistance "+1" negates Bless; the attack then rolls a real "-1" die. Were
+    // Bless not negated it would ignore the die (treat it as 0) for 1 damage.
+    state.combat!.dice.scriptedRolls = [1, -1];
+    state.combat!.dice.rollCount = 0;
+    let next = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    next = applyOk(next, reactionFor(next, "p1", "spell.bless")!.action);
+    next = passAllReactions(next);
+
+    expect(
+      next.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "dwarf-magic-resistance"
+      )
+    ).toBe(true);
+    // Bless negated → the "-1" die applies: 5 − 1 = 4 attack vs 4 defense = 0 damage.
+    expect(next.combat!.units.unit_p2_skeletons.damage).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -343,6 +534,27 @@ describe("Inferno", () => {
     const state = castInferno(0, [-1, 0, 0, 0]);
     expect(state.combat!.units.unit_p2_skeletons.damage).toBe(0);
     expect(state.combat!.units.unit_p1_marksmen.damage).toBe(0);
+  });
+
+  it("logs the dice roll BEFORE the damage so the table can show the dice first", () => {
+    const state = castInferno(2, [1, 1, 1, 0]);
+    const diceIndex = state.eventLog.findIndex((event) => event.type === "SPELL_DICE_ROLLED");
+    const firstDamageIndex = state.eventLog.findIndex((event) => event.type === "DAMAGE_ASSIGNED");
+    expect(diceIndex, "Inferno logs a SPELL_DICE_ROLLED event").toBeGreaterThanOrEqual(0);
+    expect(diceIndex, "the dice are logged before any damage lands").toBeLessThan(firstDamageIndex);
+
+    const diceEvent = state.eventLog[diceIndex];
+    expect(diceEvent.type === "SPELL_DICE_ROLLED" ? diceEvent.spellCardId : "").toBe("spell.inferno");
+    expect(diceEvent.type === "SPELL_DICE_ROLLED" ? diceEvent.rolls : []).toEqual([1, 1, 1, 0]);
+    expect(diceEvent.type === "SPELL_DICE_ROLLED" ? diceEvent.hits : -1).toBe(3); // three "+1"s
+    expect(diceEvent.type === "SPELL_DICE_ROLLED" ? diceEvent.position : -1).toBe(9);
+  });
+
+  it("still shows the dice on a complete whiff (no '+1' rolled)", () => {
+    const state = castInferno(0, [-1, 0, 0, 0]);
+    const diceEvent = state.eventLog.find((event) => event.type === "SPELL_DICE_ROLLED");
+    expect(diceEvent, "a whiff is still rolled out for the player to see").toBeTruthy();
+    expect(diceEvent?.type === "SPELL_DICE_ROLLED" ? diceEvent.hits : -1).toBe(0);
   });
 });
 
