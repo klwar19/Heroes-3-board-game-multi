@@ -2458,6 +2458,15 @@ export type ResolutionStackItem = {
     /** Precision: this shot ignores the ranged back-row penalty. */
     ignoreRangedPenalty?: boolean;
     /**
+     * Spell instants played into this attack that the OTHER side may still
+     * cancel with Resistance (Curse/Weakness/Bloodlust/Precision/Bless/Slayer).
+     * Each entry is the casting player; the spell's effect on the attack is
+     * reversed if cancelled, exactly like Resistance ending an Activation cast.
+     * Non-spell boosts (the Attack/Defense statistics) are never listed — they
+     * are not Spells and cannot be Resisted.
+     */
+    cancellableSpellInstants?: { cardId: CardId; playerId: PlayerId }[];
+    /**
      * Knowledge / Mysticism was played on this cast. The recall resolves
      * after the spell does: instants come back at once, ongoing spells only
      * when the effect they created ends.
