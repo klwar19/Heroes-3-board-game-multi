@@ -324,6 +324,28 @@ export type ActiveEffectModifier =
        * (Anti-Magic is a Spell-granted effect, not a unit ability, so it stays.)
        */
       type: "SUPPRESS_SPELL_ABILITIES";
+    }
+  | {
+      /**
+       * Elemental Orbs (Orb of Driving Rain / Silt / Tempestuous Fire / the
+       * Firmament), option A: while the owner holds this combat-scoped effect,
+       * the effective Power of every Spell they cast from the matching School
+       * (and the school-agnostic "any" spells, exactly as the +Power boosts
+       * treat them) is doubled before any enemy Power reduction. Two orbs of the
+       * same school would compound (×4), but the printed set ships one of each.
+       */
+      type: "SPELL_POWER_DOUBLE";
+      school: SpellSchool;
+    }
+  | {
+      /**
+       * Pendant of Second Sight, option A: the selected unit "cannot gain a
+       * Paralysis token during this Combat". A unit-scoped, combat-duration
+       * immunity that blocks every Paralysis source — the Blind Spell
+       * (PLACE_PARALYSIS) and the medusa-style attack/retaliation follow-ups —
+       * exactly like the printed `ignore-paralysis` unit ability does.
+       */
+      type: "PARALYSIS_IMMUNITY";
     };
 
 export type ActiveEffectDefinition = {
