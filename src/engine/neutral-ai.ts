@@ -184,7 +184,7 @@ export function planNeutralActivation(
     return { kind: "pass" };
   }
 
-  if (canUnitAttack(combat, unit, target)) {
+  if (canUnitAttack(combat, unit, target, state.activeEffects)) {
     return { kind: "attack", defenderId: target.id };
   }
 

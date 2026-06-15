@@ -43,7 +43,11 @@ export const implementedCardEffectTypes = [
   "GAIN_WAR_MACHINE",
   "CHAIN_LIGHTNING",
   "PLACE_PARALYSIS",
-  "BLOCK_ENEMY_ESCAPE",
+  "BLOCK_ENEMY_SURRENDER",
+  "SKIP_ACTIVATION",
+  "SLAYER_ATTACK",
+  "INFERNO",
+  "FORGETFULNESS",
   "BALLISTA_SPECIALTY",
   "DAMAGE_LOWEST_INITIATIVE_ENEMY",
   "ARTILLERY_BALLISTA_VOLLEY",
@@ -59,7 +63,9 @@ export const implementedCardEffectTypes = [
   "CONVERT_ARMY_UNIT",
   "TACTICS_SWAP",
   "DIPLOMACY_RECRUIT",
-  "DIPLOMACY_SKIP_COMBAT"
+  "DIPLOMACY_SKIP_COMBAT",
+  "ADVANCE_EXPERIENCE",
+  "VISIONS_SCRY"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {
@@ -482,8 +488,30 @@ export function describeCardEffect(card: CardDefinition): string {
     return "place a Paralysis token on the selected enemy unit (tier rises with power)";
   }
 
-  if (card.effect.type === "BLOCK_ENEMY_ESCAPE") {
-    return "the enemy hero can neither Retreat nor Surrender this combat";
+  if (card.effect.type === "BLOCK_ENEMY_SURRENDER") {
+    return "the enemy hero cannot Surrender this combat (Retreat still allowed)";
+  }
+
+  if (card.effect.type === "SKIP_ACTIVATION") {
+    return `when a ${card.effect.grade}-or-lower unit is about to activate, skip its activation`;
+  }
+
+  if (card.effect.type === "SLAYER_ATTACK") {
+    const breakpoints = Object.entries(card.effect.rollsByPower)
+      .map(([power, rolls]) => `${power}:${rolls}`)
+      .join(", ");
+    return `attacking a gold unit: roll the Attack die N times (by power ${breakpoints}), apply every result but a -1, then draw 1 card`;
+  }
+
+  if (card.effect.type === "INFERNO") {
+    const breakpoints = Object.entries(card.effect.rollsByPower)
+      .map(([power, rolls]) => `${power}:${rolls}`)
+      .join(", ");
+    return `roll the Attack die N times (by power ${breakpoints}); every unit on the chosen space and the adjacent ones takes 1 damage per +1`;
+  }
+
+  if (card.effect.type === "FORGETFULNESS") {
+    return "the selected enemy ranged unit cannot attack during its next activation (tier rises with power)";
   }
 
   if (card.effect.type === "BALLISTA_SPECIALTY") {
@@ -532,6 +560,17 @@ export function describeCardEffect(card: CardDefinition): string {
     const from = card.effect.fromUnitDefId.split(".").pop()?.replace(/_/g, " ");
     const to = card.effect.toUnitDefId.split(".").pop()?.replace(/_/g, " ");
     return `discard a ${card.effect.fromSide} of ${from} to fetch the ${to} from the ${card.effect.toTier} Neutral deck`;
+  }
+
+  if (card.effect.type === "ADVANCE_EXPERIENCE") {
+    return `when about to level up: advance ${card.effect.amount === 1 ? "a half level" : `${card.effect.amount} Experience`}, expert advance a full level then remove this card`;
+  }
+
+  if (card.effect.type === "VISIONS_SCRY") {
+    const breakpoints = Object.entries(card.effect.cardsByPower)
+      .map(([power, count]) => `${power}:${count}`)
+      .join(", ");
+    return `scry a Neutral Unit deck (cards by power ${breakpoints}); discard any and reorder the rest on top`;
   }
 
   return card.kind;

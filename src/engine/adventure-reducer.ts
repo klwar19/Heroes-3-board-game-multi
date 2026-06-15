@@ -24,6 +24,8 @@ import {
   ELIMINATION_GRACE_TURNS,
   refreshEliminationClock,
   RESOURCE_GAIN_LEVEL_AMOUNTS,
+  RETREAT_GOLD_COST,
+  SURRENDER_GOLD_COST,
   getSecondaryHero,
   humanPlayerIds,
   requiredHeroDefeats,
@@ -48,6 +50,7 @@ import {
   makeCombatUnitFromArmy,
   makeCombatUnitFromNeutral,
   materializeTileFields,
+  MAX_EXPERIENCE,
   NEUTRAL_DECK_IDS,
   placeNeutralUnits,
   playerDwellingTiers,
@@ -67,7 +70,8 @@ import {
   type NeutralDraw
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
-import { playerCannotEscapeCombat } from "./active-effects";
+import { playerCannotSurrenderCombat } from "./active-effects";
+import { cardCanBoostPower } from "./effects";
 import { createSeededRandom } from "./random";
 import {
   destroyFortification,
@@ -95,6 +99,7 @@ import {
 } from "./ruleset";
 import { hexDistance, hexNeighbor, hexSpaceId, parseHexSpaceId, slotDirection, tileFootprint } from "./hex";
 import type {
+  CardId,
   CombatState,
   GameAction,
   GameState,
@@ -2093,6 +2098,407 @@ export function resolveDiplomacyRecruitChoice(state: GameState, playerId: Player
   }
 }
 
+// ---------------------------------------------------------------------------
+// Learning ability (level-up hook)
+// ---------------------------------------------------------------------------
+
+/**
+ * Learning: the Hero just crossed a level and the player holds a Learning card.
+ * Offer to advance an extra half level (basic) or a full level (expert — which
+ * spends an expert use and removes the card from the game). Returns true if a
+ * choice was opened so the queue pump waits on it; false (e.g. the card left the
+ * hand, or the Experience is already capped) lets the pump move on.
+ */
+function openLearningLevelUpChoice(state: GameState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  const hero = getMainHero(state, playerId);
+  const card = cardLibrary["ability.learning"];
+  if (
+    !player ||
+    !hero ||
+    hero.experience >= MAX_EXPERIENCE ||
+    !player.hand.includes("ability.learning") ||
+    card?.effect.type !== "ADVANCE_EXPERIENCE"
+  ) {
+    return false;
+  }
+
+  const effect = card.effect;
+  // The Expert side spends an expert use, exactly like every other expert play,
+  // so it is only offered when one is available.
+  const modes: ("basic" | "expert")[] = ["basic"];
+  if (expertUsesAvailable(player) > 0) {
+    modes.push("expert");
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: "Your Hero is about to level up — play Learning to advance further?",
+    options: [
+      ...modes.map((mode) => ({
+        label:
+          mode === "basic"
+            ? `Play Learning — advance a half level (+${effect.amount} Experience)`
+            : `Play Learning (expert) — advance a full level (+${effect.expertAmount} Experience), then remove it`
+      })),
+      { label: "Decline" }
+    ],
+    context: "learning-level-up",
+    learningLevelUp: { modes },
+    returnPhase: "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  return true;
+}
+
+/** Resolves the Learning offer (CHOOSE_OPTION context "learning-level-up"). */
+export function resolveLearningLevelUpChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "learning-level-up" ||
+    !choice.learningLevelUp ||
+    choice.playerId !== playerId
+  ) {
+    throw new Error("There is no Learning decision to resolve.");
+  }
+
+  const modes = choice.learningLevelUp.modes;
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+
+  const mode = modes[optionIndex];
+  const player = state.players[playerId];
+  const card = cardLibrary["ability.learning"];
+  const handIndex = player?.hand.indexOf("ability.learning") ?? -1;
+
+  // The trailing option (or anything out of range) declines; if the card or an
+  // expert use slipped away since the offer opened, decline rather than misfire.
+  const canPlay =
+    (mode === "basic" || mode === "expert") &&
+    player &&
+    handIndex !== -1 &&
+    card?.effect.type === "ADVANCE_EXPERIENCE" &&
+    (mode === "basic" || expertUsesAvailable(player) > 0);
+
+  if (!canPlay || !player || card?.effect.type !== "ADVANCE_EXPERIENCE") {
+    pumpAdventureQueues(state);
+    return;
+  }
+
+  // Spend the card: Expert removes it from the game and burns an expert use,
+  // basic sends it to the discard pile.
+  player.hand.splice(handIndex, 1);
+  if (mode === "expert") {
+    player.removed.push("ability.learning");
+    player.combatStats.expertUsesSpentThisRound += 1;
+  } else {
+    player.discard.push("ability.learning");
+  }
+
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId: "ability.learning",
+    timing: card.timing,
+    mode
+  });
+
+  // The bonus Experience runs through gainExperience, so advancing into another
+  // level resolves its searches/specialties (and may even re-offer Learning when
+  // the player holds a second copy).
+  gainExperience(state, playerId, mode === "expert" ? card.effect.expertAmount : card.effect.amount);
+
+  pumpAdventureQueues(state);
+}
+
+// ---------------------------------------------------------------------------
+// Visions spell (Neutral-deck scry)
+// ---------------------------------------------------------------------------
+
+type NeutralTier = "bronze" | "silver" | "gold" | "azure";
+
+const NEUTRAL_TIERS: readonly NeutralTier[] = ["bronze", "silver", "gold", "azure"];
+
+/** Cards Visions scrys at a given Power level (clamped to a defined breakpoint). */
+function visionsCardCount(cardsByPower: Record<number, number>, power: number): number {
+  return cardsByPower[power] ?? cardsByPower[0] ?? 1;
+}
+
+/**
+ * Visions (Map): begin the scry. Power is paid the board-game way — discard
+ * Spells (their "+1 Power" side) for +1 card each, up to the spell's top
+ * breakpoint — so the boost is offered interactively before a deck is chosen.
+ * Called from playCard once Visions itself is discarded.
+ */
+export function openVisionsScry(state: GameState, playerId: PlayerId, cardsByPower: Record<number, number>): void {
+  openVisionsBoostStep(state, playerId, cardsByPower, 0);
+}
+
+/**
+ * Offers one Power boost: discard a Spell for +1 card, or scry now. Re-opens
+ * with `boost + 1` after each paid Spell until the top breakpoint is reached or
+ * no power-source Spell remains in hand, then proceeds to the deck choice.
+ */
+function openVisionsBoostStep(
+  state: GameState,
+  playerId: PlayerId,
+  cardsByPower: Record<number, number>,
+  boost: number
+): void {
+  const player = state.players[playerId];
+  const maxPower = Math.max(...Object.keys(cardsByPower).map(Number));
+  // Power-source cards are Spells (and Power statistics) still in hand.
+  const spellCardIds =
+    boost < maxPower ? (player?.hand.filter((cardId) => cardCanBoostPower(cardLibrary[cardId])) ?? []) : [];
+
+  if (spellCardIds.length === 0) {
+    proceedToVisionsDeck(state, playerId, visionsCardCount(cardsByPower, boost));
+    return;
+  }
+
+  const nextCount = visionsCardCount(cardsByPower, boost + 1);
+  const nowCount = visionsCardCount(cardsByPower, boost);
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Visions: discard a Spell for +1 card (scry ${nextCount}), or scry now (${nowCount})?`,
+    options: [
+      ...spellCardIds.map((cardId) => ({
+        label: `Discard ${cardLibrary[cardId]?.name ?? cardId} → scry ${nextCount}`
+      })),
+      { label: `Scry now — ${nowCount} card${nowCount === 1 ? "" : "s"}` }
+    ],
+    context: "visions-boost",
+    visionsBoost: { boost, spellCardIds: [...spellCardIds], cardsByPower },
+    returnPhase: "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Resolves a Visions Power boost (CHOOSE_OPTION context "visions-boost"). */
+export function resolveVisionsBoostChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "visions-boost" ||
+    !choice.visionsBoost ||
+    choice.playerId !== playerId
+  ) {
+    throw new Error("There is no Visions Power decision to resolve.");
+  }
+  const { boost, spellCardIds, cardsByPower } = choice.visionsBoost;
+  const player = state.players[playerId];
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+
+  const paySpell = spellCardIds[optionIndex];
+  const handIndex = player ? player.hand.indexOf(paySpell ?? "") : -1;
+  // The trailing option (or a Spell that left the hand) scrys at the current Power.
+  if (!player || optionIndex >= spellCardIds.length || !paySpell || handIndex === -1) {
+    proceedToVisionsDeck(state, playerId, visionsCardCount(cardsByPower, boost));
+    if (!state.pendingChoice) {
+      pumpAdventureQueues(state);
+    }
+    return;
+  }
+
+  // Spend the Spell for +1 Power (one more card), then offer the next boost.
+  player.hand.splice(handIndex, 1);
+  player.discard.push(paySpell);
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId: paySpell,
+    timing: cardLibrary[paySpell]?.timing ?? "instant",
+    mode: "basic",
+    optionLabel: "+1 Power (Visions)"
+  });
+  openVisionsBoostStep(state, playerId, cardsByPower, boost + 1);
+  if (!state.pendingChoice) {
+    pumpAdventureQueues(state);
+  }
+}
+
+/**
+ * Chooses which Neutral Unit deck to scry: auto-picks the only tier with cards,
+ * otherwise opens the tier choice. Draws `count` cards from the chosen tier.
+ */
+function proceedToVisionsDeck(state: GameState, playerId: PlayerId, count: number): void {
+  const tiers = NEUTRAL_TIERS.filter((tier) => {
+    const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+    return deck && deck.drawPile.length + deck.discardPile.length > 0;
+  });
+
+  if (count <= 0 || tiers.length === 0) {
+    return;
+  }
+
+  if (tiers.length === 1) {
+    beginVisionsScryOnTier(state, playerId, tiers[0], count);
+    return;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Visions: scry which Neutral Unit deck? (draw ${count})`,
+    options: tiers.map((tier) => {
+      const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+      const total = (deck?.drawPile.length ?? 0) + (deck?.discardPile.length ?? 0);
+      return { label: `${tier.charAt(0).toUpperCase()}${tier.slice(1)} deck (${total} cards)` };
+    }),
+    context: "visions-deck",
+    visionsDeck: { tiers: [...tiers], count },
+    returnPhase: "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Draws up to `count` cards off a tier deck and opens the keep/discard scry. */
+function beginVisionsScryOnTier(state: GameState, playerId: PlayerId, tier: NeutralTier, count: number): void {
+  const revealed: CardId[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const drawn = drawFromNeutralDeck(state, tier);
+    if (!drawn) {
+      break;
+    }
+    revealed.push(drawn);
+  }
+
+  if (revealed.length === 0) {
+    return;
+  }
+
+  openVisionsScryStep(state, playerId, tier, revealed, []);
+}
+
+/**
+ * Opens (or re-opens) the scry decision over the cards still in hand: each step
+ * the player either puts one card back on top of the deck or discards it, until
+ * none are left. Kept cards accumulate in `toReturn` in pick order; the first
+ * card kept ends up on top of the deck (drawn next).
+ */
+function openVisionsScryStep(
+  state: GameState,
+  playerId: PlayerId,
+  tier: NeutralTier,
+  remaining: CardId[],
+  toReturn: CardId[]
+): void {
+  if (remaining.length === 0) {
+    finishVisionsScry(state, tier, toReturn);
+    return;
+  }
+
+  const name = (cardId: CardId) => coreUnitDefinitions[cardId]?.name ?? cardId;
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt:
+      remaining.length === 1
+        ? `Visions: keep ${name(remaining[0])} on top of the ${tier} deck, or discard it?`
+        : `Visions: put a card back on top of the ${tier} deck (first kept is drawn next) or discard it.`,
+    options: [
+      ...remaining.map((cardId) => ({ label: `Put ${name(cardId)} back on top` })),
+      ...remaining.map((cardId) => ({ label: `Discard ${name(cardId)}` }))
+    ],
+    context: "visions-scry",
+    visionsScry: { tier, remaining: [...remaining], toReturn: [...toReturn] },
+    returnPhase: "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Returns the kept cards to the top of the tier deck (first kept on top). */
+function finishVisionsScry(state: GameState, tier: NeutralTier, toReturn: CardId[]): void {
+  const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+  if (deck) {
+    // drawPile is popped from the end, so the last item is the top. Push the
+    // kept cards in reverse pick order so the first one kept ends up on top.
+    for (let index = toReturn.length - 1; index >= 0; index -= 1) {
+      deck.drawPile.push(toReturn[index]);
+    }
+  }
+  state.pendingChoice = null;
+  state.phase = "player-turn";
+  state.priorityPlayerId = null;
+  pumpAdventureQueues(state);
+}
+
+/** Resolves the Visions tier choice (CHOOSE_OPTION context "visions-deck"). */
+export function resolveVisionsDeckChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "visions-deck" ||
+    !choice.visionsDeck ||
+    choice.playerId !== playerId
+  ) {
+    throw new Error("There is no Visions deck choice to resolve.");
+  }
+  const { tiers, count } = choice.visionsDeck;
+  const tier = tiers[optionIndex];
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+
+  if (!tier) {
+    pumpAdventureQueues(state);
+    return;
+  }
+  beginVisionsScryOnTier(state, playerId, tier, count);
+  if (!state.pendingChoice) {
+    pumpAdventureQueues(state);
+  }
+}
+
+/** Resolves one keep/discard step of the scry (CHOOSE_OPTION "visions-scry"). */
+export function resolveVisionsScryChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "visions-scry" ||
+    !choice.visionsScry ||
+    choice.playerId !== playerId
+  ) {
+    throw new Error("There is no Visions scry to resolve.");
+  }
+
+  const { tier, remaining, toReturn } = choice.visionsScry;
+  const keepCount = remaining.length;
+  // Options are [keep r0, keep r1, …, discard r0, discard r1, …].
+  const isKeep = optionIndex < keepCount;
+  const cardIndex = isKeep ? optionIndex : optionIndex - keepCount;
+  const cardId = remaining[cardIndex];
+  if (!cardId) {
+    throw new Error("Pick one of the revealed cards.");
+  }
+
+  const nextRemaining = remaining.filter((_, index) => index !== cardIndex);
+  if (isKeep) {
+    openVisionsScryStep(state, playerId, tier, nextRemaining, [...toReturn, cardId]);
+  } else {
+    state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(cardId);
+    openVisionsScryStep(state, playerId, tier, nextRemaining, toReturn);
+  }
+}
+
 /**
  * Draws and reveals the guard army once the player's placement is locked in:
  * checks the Field Difficulty Level Table, then places the cards by the
@@ -2857,9 +3263,10 @@ export function surrenderFromCombat(
 /**
  * Shared player-vs-player escape: at the start of the combat (round 1) a
  * participating hero may Retreat or Surrender, ending the combat as the loser.
- * Blocked while the player is under Shackles of War. The standard end-of-combat
+ * House rule: Retreat is always available; Surrender needs the full 10-gold
+ * toll in hand and is blocked by Shackles of War. The standard end-of-combat
  * automation (acknowledge → finalize) applies the consequences from the
- * `combat.outcome` reason, exactly like a fought-out loss.
+ * `combat.outcome` reason — see `finalizeAdventureCombat`.
  */
 function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat" | "surrender"): void {
   const combat = state.combat;
@@ -2882,8 +3289,16 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
   if (combat.round !== 1) {
     throw new Error("Retreat or Surrender is only possible at the start of the combat.");
   }
-  if (playerCannotEscapeCombat(state, playerId)) {
-    throw new Error("Shackles of War prevents this hero from retreating or surrendering.");
+  if (reason === "surrender") {
+    // Shackles of War (house rule) locks the enemy out of Surrender only.
+    if (playerCannotSurrenderCombat(state, playerId)) {
+      throw new Error("Shackles of War prevents this hero from surrendering.");
+    }
+    // Surrender is a paid escape: you must hold the full toll to choose it
+    // (no debt). A poorer hero must Retreat or fight on.
+    if ((state.players[playerId]?.resources.gold ?? 0) < SURRENDER_GOLD_COST) {
+      throw new Error(`Surrender costs ${SURRENDER_GOLD_COST} gold — Retreat or fight on instead.`);
+    }
   }
   const winnerPlayerId = playerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
   combat.outcome = { winnerPlayerId, defeatedPlayerId: playerId, reason };
@@ -2906,11 +3321,13 @@ export function finalizeAdventureCombat(state: GameState): void {
   const context = combat.context;
   const outcome = combat.outcome;
 
-  // "Keep troops" option: a player-vs-player fight spares both armies. The
-  // winner is still decided below, but no unit card is removed and no Pack is
-  // downgraded — the army cards stay exactly as they entered the fight. Fights
-  // against Neutral guards always cost casualties as normal.
-  const keepTroops = context.kind === "player" && adventurePvpTroopLoss(state) === "none";
+  // No casualties are applied to a player-vs-player fight when either the
+  // lobby's "Keep troops" mode is on, or this was a Surrender (house rule: a
+  // surrendering hero always keeps its whole army, in both modes). No unit card
+  // is removed and no Pack is downgraded — the army cards stay exactly as they
+  // entered the fight. Fights against Neutral guards always cost casualties.
+  const keepTroops =
+    context.kind === "player" && (adventurePvpTroopLoss(state) === "none" || outcome.reason === "surrender");
 
   // Sync army cards with what happened on the board.
   for (const unit of Object.values(combat.units)) {
@@ -3047,43 +3464,58 @@ export function finalizeAdventureCombat(state: GameState): void {
   const loserHero = attackerHero?.controllerId === loserId ? attackerHero : defenderHero;
   const winnerHero = attackerHero?.controllerId === winnerId ? attackerHero : defenderHero;
 
+  // Surrender (house rule) is a paid escape, not a defeat: the loser keeps every
+  // unit (handled by `keepTroops` above), pays a flat toll to the opponent,
+  // takes no morale hit, and the opponent gains NOTHING toward winning — no
+  // experience, no Necromancy window, and no credit toward the "defeat every
+  // enemy hero" victory path. A Retreat or a fought-out loss is a real defeat
+  // with the usual consequences (and its 5-gold toll may push the loser into
+  // debt — gold can go negative).
+  const surrendered = outcome.reason === "surrender";
+
   if (loserHero) {
-    // Winner gains experience by the defeated main hero's level. No experience
-    // when no Main Hero stood on either side: a garrison defense win pays
-    // nothing, and a Secondary Hero never gains experience from its fights.
-    if (winnerHero && winnerHero.kind === "main" && loserHero.kind === "main") {
-      if (loserHero.level > winnerHero.level) {
-        gainExperience(state, winnerId, 2);
-      } else if (loserHero.level === winnerHero.level) {
-        gainExperience(state, winnerId, 1);
+    if (surrendered) {
+      // The 10-gold toll was required to choose Surrender (no debt) and now
+      // transfers to the opponent. The hero falls back home with its full army.
+      spendResources(state, loserId, { gold: SURRENDER_GOLD_COST }, "surrendered the combat");
+      gainResources(state, winnerId, { gold: SURRENDER_GOLD_COST }, "accepted the enemy's surrender");
+      moveDefeatedHeroHome(state, loserHero);
+    } else {
+      // Winner gains experience by the defeated main hero's level. No experience
+      // when no Main Hero stood on either side: a garrison defense win pays
+      // nothing, and a Secondary Hero never gains experience from its fights.
+      if (winnerHero && winnerHero.kind === "main" && loserHero.kind === "main") {
+        if (loserHero.level > winnerHero.level) {
+          gainExperience(state, winnerId, 2);
+        } else if (loserHero.level === winnerHero.level) {
+          gainExperience(state, winnerId, 1);
+        }
       }
-    }
 
-    const loser = state.players[loserId];
-    const payment = Math.min(5, loser?.resources.gold ?? 0);
-    if (payment > 0) {
-      spendResources(state, loserId, { gold: payment }, "defeated by an enemy hero");
-      gainResources(state, winnerId, { gold: payment }, "spoils of victory");
-    }
-    changeMorale(state, loserId, -1);
-    moveDefeatedHeroHome(state, loserHero);
+      // The loser pays the full 5-gold toll to the winner even if it overdraws
+      // their treasury (house rule: gold may go negative — paid down by income).
+      spendResources(state, loserId, { gold: RETREAT_GOLD_COST }, "defeated by an enemy hero");
+      gainResources(state, winnerId, { gold: RETREAT_GOLD_COST }, "spoils of victory");
+      changeMorale(state, loserId, -1);
+      moveDefeatedHeroHome(state, loserHero);
 
-    // Grail Hunt & Dragon Hunt: beating an enemy main hero counts toward the
-    // "defeat every enemy hero at least once" win path (only 2 of the 3 in a
-    // 4-player game).
-    if (
-      victoryModeCountsHeroDefeats(adventureVictoryMode(state)) &&
-      loserHero.kind === "main" &&
-      winnerId !== NEUTRAL_PLAYER_ID &&
-      loserId !== winnerId
-    ) {
-      const defeats = (adventure.heroDefeats ??= {});
-      const beaten = (defeats[winnerId] ??= []);
-      if (!beaten.includes(loserId)) {
-        beaten.push(loserId);
-      }
-      if (beaten.length >= requiredHeroDefeats(humanPlayerIds(state).length)) {
-        declareAdventureWinner(state, winnerId, "defeated the required enemy heroes");
+      // Grail Hunt & Dragon Hunt: beating an enemy main hero counts toward the
+      // "defeat every enemy hero at least once" win path (only 2 of the 3 in a
+      // 4-player game). A Surrender deliberately never reaches this branch.
+      if (
+        victoryModeCountsHeroDefeats(adventureVictoryMode(state)) &&
+        loserHero.kind === "main" &&
+        winnerId !== NEUTRAL_PLAYER_ID &&
+        loserId !== winnerId
+      ) {
+        const defeats = (adventure.heroDefeats ??= {});
+        const beaten = (defeats[winnerId] ??= []);
+        if (!beaten.includes(loserId)) {
+          beaten.push(loserId);
+        }
+        if (beaten.length >= requiredHeroDefeats(humanPlayerIds(state).length)) {
+          declareAdventureWinner(state, winnerId, "defeated the required enemy heroes");
+        }
       }
     }
   }
@@ -3094,8 +3526,9 @@ export function finalizeAdventureCombat(state: GameState): void {
     }
   }
 
-  // Necromancy window opens for the winner of a fought PvP combat too.
-  if (winnerId !== NEUTRAL_PLAYER_ID && state.players[winnerId]) {
+  // Necromancy window opens for the winner of a fought (or retreat) PvP combat —
+  // but never on a Surrender, which is not a combat victory for the opponent.
+  if (!surrendered && winnerId !== NEUTRAL_PLAYER_ID && state.players[winnerId]) {
     state.players[winnerId].necromancyWindow = true;
   }
 
@@ -4084,6 +4517,26 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
+  if (choice.context === "learning-level-up") {
+    resolveLearningLevelUpChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "visions-boost") {
+    resolveVisionsBoostChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "visions-deck") {
+    resolveVisionsDeckChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "visions-scry") {
+    resolveVisionsScryChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
   if (choice.context === "skeleton-reinforce") {
     resolveSkeletonReinforceChoice(state, action.playerId, action.optionIndex);
     return;
@@ -4689,6 +5142,14 @@ export function pumpAdventureQueues(state: GameState): void {
       state.phase = "choice";
       state.priorityPlayerId = reward.playerId;
       return;
+    }
+
+    if (reward.kind === "learning-level-up") {
+      adventure.rewardQueue.shift();
+      if (openLearningLevelUpChoice(state, reward.playerId)) {
+        return;
+      }
+      continue;
     }
   }
 }
