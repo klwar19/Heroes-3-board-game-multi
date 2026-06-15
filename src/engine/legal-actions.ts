@@ -1309,6 +1309,13 @@ function isOptionEffectPlayable(
 
 /** Whether the option's effect needs a unit on the battlefield as target. */
 function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
+  // A unit-scoped active effect (Pendant of Second Sight's Paralysis immunity)
+  // is placed on a chosen unit; player/global-scoped ones (Golden Bow, the
+  // Orbs) pick no unit.
+  if (effect.type === "CREATE_ACTIVE_EFFECT") {
+    return effect.effect.scope === "unit";
+  }
+
   return (
     effect.type === "CREATE_INITIATIVE_BUFF" ||
     effect.type === "CREATE_ATTACK_BUFF" ||
