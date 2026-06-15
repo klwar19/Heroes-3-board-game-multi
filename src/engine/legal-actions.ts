@@ -1460,6 +1460,7 @@ function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDef
     effect.effect.modifiers.some(
       (modifier) =>
         modifier.type === "ADVENTURE_DIE_REROLL" ||
+        modifier.type === "ADVENTURE_DIE_SET" ||
         modifier.type === "SEARCH_COUNT_OVERRIDE" ||
         modifier.type === "SEARCH_REPEAT_ONCE" ||
         modifier.type === "SPELL_SCHOOL_FETCH" ||
