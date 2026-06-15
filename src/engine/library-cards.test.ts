@@ -293,3 +293,66 @@ describe("Mystic Orb of Mana artifact", () => {
     expect(result.players.p1.hand.length).toBe(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Charm of Mana (Minor artifact, map play):
+//   Option 0: discard 2 cards, then draw 3 (net +1).
+//   Option 1: draw 2 cards, then discard 1 (a follow-up hand-discard choice).
+// ---------------------------------------------------------------------------
+
+describe("Charm of Mana artifact", () => {
+  function charmState(seed: string): GameState {
+    const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+    state.activePlayerId = "p1";
+    return state;
+  }
+
+  it("Option 0 discards 2 cards as a cost, then draws 3", () => {
+    const state = charmState("charm-cycle");
+    state.players.p1.hand = ["artifact.charm_of_mana", "stat.attack", "stat.defense"];
+    state.players.p1.discard = [];
+    state.players.p1.deck = ["spell.haste", "spell.bless", "stat.power", "spell.cure"];
+    const legal = getLegalActions(state, "p1").find(
+      (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "artifact.charm_of_mana" && l.action.optionIndex === 0
+    );
+    expect(legal, "discard-2-draw-3 option should be offered").toBeTruthy();
+    const action = legal!.action;
+    if (action.type !== "PLAY_CARD") {
+      throw new Error("expected a PLAY_CARD action");
+    }
+    const result = applyOk(state, { ...action, costCardIds: ["stat.attack", "stat.defense"] });
+    // Hand: [charm, attack, defense] → play removes charm, cost discards 2,
+    // then draws 3 → exactly the 3 drawn cards remain.
+    expect(result.players.p1.hand.length).toBe(3);
+    // The Charm and the two cost cards are now in the discard pile.
+    expect(result.players.p1.discard).toContain("artifact.charm_of_mana");
+    expect(result.players.p1.discard).toContain("stat.attack");
+    expect(result.players.p1.discard).toContain("stat.defense");
+    expect(result.pendingChoice).toBeNull();
+  });
+
+  it("Option 1 draws 2, then opens a hand-discard choice for 1 card", () => {
+    const state = charmState("charm-draw-discard");
+    state.players.p1.hand = ["artifact.charm_of_mana"];
+    state.players.p1.discard = [];
+    state.players.p1.deck = ["spell.haste", "spell.bless"];
+    const legal = getLegalActions(state, "p1").find(
+      (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "artifact.charm_of_mana" && l.action.optionIndex === 1
+    );
+    expect(legal, "draw-2-discard-1 option should be offered").toBeTruthy();
+    const drew = applyOk(state, legal!.action);
+    // Drew 2 (Bless + Haste), now a hand-discard choice waits.
+    expect(drew.players.p1.hand.length).toBe(2);
+    expect(drew.pendingChoice?.type).toBe("OPTION_CHOICE");
+    expect(drew.pendingChoice && "context" in drew.pendingChoice ? drew.pendingChoice.context : null).toBe(
+      "hand-discard"
+    );
+
+    const choiceId = drew.pendingChoice!.id;
+    const done = applyOk(drew, { type: "CHOOSE_OPTION", playerId: "p1", choiceId, optionIndex: 0 });
+    // One of the two drawn cards was discarded; one remains in hand.
+    expect(done.players.p1.hand.length).toBe(1);
+    expect(done.players.p1.discard.length).toBe(2); // the Charm + the discarded card
+    expect(done.pendingChoice).toBeNull();
+  });
+});

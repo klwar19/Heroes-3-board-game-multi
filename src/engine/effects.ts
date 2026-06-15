@@ -231,7 +231,10 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "DRAW_CARDS") {
     const expert = card.effect.expertAmount ? `, expert draw ${card.effect.expertAmount}` : "";
-    return `draw ${card.effect.amount} card${card.effect.amount === 1 ? "" : "s"}${expert}`;
+    const thenDiscard = card.effect.thenDiscard
+      ? `, then discard ${card.effect.thenDiscard}${card.effect.thenDiscardDrawnOnly ? " of them" : ""}`
+      : "";
+    return `draw ${card.effect.amount} card${card.effect.amount === 1 ? "" : "s"}${expert}${thenDiscard}`;
   }
 
   if (card.effect.type === "DEAL_DAMAGE") {

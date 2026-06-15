@@ -299,7 +299,19 @@ export type EffectDefinition =
       removePolarity: "negative" | "any-removable";
     }
   | { type: "CANCEL_SPELL"; maxPower?: number; expertIgnoresMaxPower?: boolean }
-  | { type: "DRAW_CARDS"; amount: number; expertAmount?: number }
+  | {
+      type: "DRAW_CARDS";
+      amount: number;
+      expertAmount?: number;
+      /**
+       * Charm of Mana / Shackles of War: after drawing, the player discards this
+       * many cards from hand through a follow-up choice ("draw 2, then discard
+       * 1"). When `thenDiscardDrawnOnly` is set the choice is limited to the
+       * cards just drawn ("draw 2, keep 1, discard the other" — Shackles).
+       */
+      thenDiscard?: number;
+      thenDiscardDrawnOnly?: boolean;
+    }
   | {
       /**
        * "OR" cards (mostly artifacts): the player chooses exactly one of the
@@ -3231,6 +3243,7 @@ export type PendingChoice =
         | "war-machine"
         | "deck-pick"
         | "discard-pick"
+        | "hand-discard"
         | "eagle-eye"
         | "own-deck-pick"
         | "garrison"
@@ -3269,6 +3282,8 @@ export type PendingChoice =
       };
       /** eagle-eye: the dug spell waiting on take/discard. */
       eagleEye?: { deckId: DeckId; cardId: CardId };
+      /** hand-discard: candidate hand cards (index-aligned with options) and how many still to discard (Charm of Mana / Shackles of War). */
+      handDiscard?: { cardIds: CardId[]; remaining: number; drawnOnly: boolean };
       returnPhase: GamePhase;
     }
   | {

@@ -511,12 +511,39 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("quiet_eye_of_the_dragon")
   },
-  "artifact.charm_of_mana": notImplementedArtifact(
-    "charm_of_mana",
-    "Charm of Mana",
-    "minor",
-    "Discard 2 cards, then draw 3 cards. — OR — Draw 2 cards, then discard 1 card."
-  ),
+  // Charm of Mana: pure card cycling. Option 0 pays a 2-card discard cost up
+  // front, then draws 3 (net +1). Option 1 draws 2 first, then opens a
+  // hand-discard choice for 1 card (any hand card — the printed text sets no
+  // restriction).
+  "artifact.charm_of_mana": {
+    id: "artifact.charm_of_mana",
+    name: "Charm of Mana",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "minor",
+    tags: [
+      "artifact",
+      "minor",
+      "Discard 2 cards, then draw 3 cards. — OR — Draw 2 cards, then discard 1 card."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Discard 2 cards, then draw 3",
+          cost: { discardCards: 2 },
+          effect: { type: "DRAW_CARDS", amount: 3 }
+        },
+        {
+          label: "Draw 2 cards, then discard 1",
+          effect: { type: "DRAW_CARDS", amount: 2, thenDiscard: 1 }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "charm_of_mana", "Charm of Mana"),
+    implementationStatus: "implemented",
+    source: artifactSource("charm_of_mana")
+  },
   // Greater Gnoll's Flail: played while one of your units is attacking. The
   // big swing adds +2 attack but leaves the unit a Corrosion token (−1 defense
   // for the rest of the Combat); the safe option is a plain +1 attack.
