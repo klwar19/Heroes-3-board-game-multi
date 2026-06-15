@@ -1032,6 +1032,21 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
       effects
     });
   }
+
+  // Learning ability: the Hero is "about to level up" (it just crossed at least
+  // one level) and the player still holds a Learning card — offer to advance an
+  // extra half/full level. Deferred to the reward queue so it surfaces after the
+  // natural level-up benefits settle (and after any combat that granted the XP
+  // fully ends — pumpAdventureQueues waits for combat to clear). Skipped at the
+  // Experience cap, where advancing further would do nothing.
+  if (
+    hero.level > previousLevel &&
+    hero.experience < MAX_EXPERIENCE &&
+    state.adventure &&
+    player.hand.includes("ability.learning")
+  ) {
+    state.adventure.rewardQueue.push({ playerId, kind: "learning-level-up" });
+  }
 }
 
 // ---------------------------------------------------------------------------

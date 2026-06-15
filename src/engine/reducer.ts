@@ -30,6 +30,7 @@ import {
   giveUpAdventure,
   hallOfValhallaBoost,
   openDiplomacyRecruit,
+  openVisionsScry,
   openSiegeDemolishChoice,
   openSkeletonReinforceChoice,
   moveHeroAdventure,
@@ -5848,6 +5849,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "DIPLOMACY_SKIP_COMBAT") {
     throw new Error("Diplomacy's skip is offered when your hero meets matching-level Neutral Units.");
   }
+  // Learning is never played from hand: the engine offers it when the Hero is
+  // about to level up (see the "learning-level-up" pending choice).
+  if (effect.type === "ADVANCE_EXPERIENCE") {
+    throw new Error("Learning is played when your Hero is about to level up, not from hand.");
+  }
   // Artillery's expert side is not played from hand: it is offered when this
   // player's Ballista fires at the start of a combat round (see permanents.ts).
   if (effect.type === "ARTILLERY_BALLISTA_VOLLEY") {
@@ -6149,6 +6155,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "DIPLOMACY_RECRUIT") {
     openDiplomacyRecruit(state, action.playerId);
+  }
+
+  // Visions (Map): begin the scry. The Power (how many cards) is paid by
+  // discarding Spells for +1 each — offered interactively — then a Neutral deck
+  // is chosen and scryed.
+  if (effect.type === "VISIONS_SCRY") {
+    openVisionsScry(state, action.playerId, effect.cardsByPower);
   }
 
   if (effect.type === "TAKE_FROM_DISCARD") {

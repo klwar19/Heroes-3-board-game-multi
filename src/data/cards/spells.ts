@@ -879,14 +879,37 @@ export const spellCards: CardLibrary = {
     "combat",
     "Activation: Select a space. Now roll an Attack die several times. All units on this and the adjacent spaces take 1 damage for every '+1' rolled: Power 0: once; Power 1: twice; Power 2: 4 times."
   ),
-  "spell.visions": notImplementedSpell(
-    "visions",
-    "Visions",
-    "basic",
-    "fire",
-    "instant",
-    "Instant: Draw cards from any Neutral Unit deck. You can discard any of them and return the remaining cards in any order: Power 0: 1 card; Power 1: 2 cards; Power 2: 3 cards."
-  )
+  "spell.visions": {
+    id: "spell.visions",
+    name: "Visions",
+    kind: "spell",
+    // Played on the adventure map (it scrys the shared Neutral Unit decks); the
+    // engine only offers Spells on the map when their timing is "map".
+    timing: "map",
+    spellLevel: "basic",
+    spellSchools: ["fire"],
+    tags: [
+      "spell",
+      "basic",
+      "fire",
+      "map",
+      "Instant: Draw cards from any Neutral Unit deck. You can discard any of them and return the remaining cards in any order: Power 0: 1 card; Power 1: 2 cards; Power 2: 3 cards."
+    ],
+    power: 0,
+    // Scry a Neutral Unit deck. There is no Hero Power statistic on the map, so
+    // Power is paid the board-game way during the cast — discard other Spells
+    // (their printed "+1 Power" side) for +1 card each, up to Power 2. The engine
+    // offers that boost interactively (the "visions-boost" choice), so 0/1/2
+    // discards scry 1/2/3 cards. Discarding Visions itself for +1 Power to a
+    // *different* cast is the generic combat power-boost reaction, not this card.
+    effect: { type: "VISIONS_SCRY", cardsByPower: { 0: 1, 1: 2, 2: 3 } },
+    assets: {
+      cardImage: "/assets/spells-visions.webp",
+      imageAlt: "Visions card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("visions")
+  }
 };
 
 /**
@@ -938,7 +961,8 @@ export const spellDeckLegacy: string[] = [
   "spell.summon_water_elemental",
   "spell.dimension_door",
   "spell.fly",
-  "spell.water_walk"
+  "spell.water_walk",
+  "spell.visions"
 ];
 
 /** BINH split decks. */
@@ -969,7 +993,8 @@ export const spellDeckBinhBasic: string[] = [
   "spell.precision",
   "spell.fortune",
   "spell.fortune",
-  "spell.earthquake"
+  "spell.earthquake",
+  "spell.visions"
 ];
 
 export const spellDeckBinhExpert: string[] = [

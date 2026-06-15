@@ -341,11 +341,26 @@ export const extraAbilityCards: CardLibrary = {
     "Pathfinding",
     "Basic (Map): This turn your Hero can move through fields with Neutral Units and enemy Heroes; ending there starts Combat. Expert: move over yellow borders and blocked fields."
   ),
-  "ability.learning": notImplementedAbility(
-    "learning",
-    "Learning",
-    "Basic: Play when the Hero is about to level up; advance an additional half level. Expert: advance an additional full level, then Remove this card."
-  ),
+  "ability.learning": {
+    id: "ability.learning",
+    name: "Learning",
+    kind: "ability",
+    timing: "instant",
+    abilityClass: "adventure",
+    tags: [
+      "ability",
+      "level-up",
+      "Basic: Play when the Hero is about to level up; advance an additional half level. Expert: advance an additional full level, then Remove this card."
+    ],
+    // Never played from hand: the engine offers it (a "learning-level-up" pending
+    // choice) whenever the Hero crosses a level while this card is in hand. A
+    // half level is 1 Experience step (2 steps = 1 level), so basic = +1 and the
+    // Expert side = +2 Experience, spends an expert use, and removes the card.
+    effect: { type: "ADVANCE_EXPERIENCE", amount: 1, expertAmount: 2 },
+    assets: abilityAssets("learning", "Learning"),
+    implementationStatus: "implemented",
+    source: abilitySource("learning")
+  },
   "ability.artillery": {
     id: "ability.artillery",
     name: "Artillery",
@@ -446,6 +461,7 @@ export const abilityDeckLegacy: string[] = [
   "ability.logistics",
   "ability.logistics",
   "ability.scholar",
+  "ability.learning",
   "ability.first_aid",
   "ability.ballistics",
   "ability.artillery",
