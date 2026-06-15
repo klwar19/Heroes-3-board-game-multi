@@ -256,6 +256,26 @@ describe("Frenzy spell", () => {
     ).toBeTruthy();
   });
 
+  it("reaches the silver pierce with one +2 Power artifact (Power value, not card count)", () => {
+    const state = attackState("frenzy-value", "silver");
+    // One +2 Power artifact pays the whole 2-Power silver pierce on its own,
+    // where the old "discard 2 cards" rule demanded two separate cards.
+    state.players.p1.hand = ["spell.frenzy", "artifact.necklace_of_dragonteeth"];
+    const attacked = declareAttack(state);
+    const reaction = frenzyReaction(attacked, 1);
+    expect(reaction, "the silver pierce is affordable from one +2 artifact").toBeTruthy();
+    const frenzied = applyOk(attacked, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "spell.frenzy",
+      optionIndex: 1,
+      mode: "basic",
+      costCardIds: ["artifact.necklace_of_dragonteeth"]
+    });
+    const result = passAllReactions(frenzied);
+    expect(result.combat!.units.unit_p2_skeletons.damage).toBe(6);
+  });
+
   it("the gold option (pay 4 Power) ignores a gold defender's defense", () => {
     const attacked = declareAttack(attackState("frenzy-gold", "gold"));
     const reaction = frenzyReaction(attacked, 2);

@@ -2772,14 +2772,22 @@ export type ResolutionStackItem = {
      */
     powerScaledAttackInstants?: PowerScaledAttackInstant[];
     /**
-     * Set once a spell instant played as a reaction into this attack has been
-     * credited the caster's standing spell Power (the once-per-turn Astrologers
-     * bonus, the once-per-round active-unit boost, and a School-of-Magic
-     * permanent's bonus for the spell's school) — the same Power a spell cast on
-     * your own turn receives. Guarded so the bonus is folded into the shared
-     * pool at most once per attack.
+     * Per-player Power pool for an attack window. Each side's spell instants
+     * (the attacker's Bloodlust/Bless/Precision/Slayer, the defender's
+     * Curse/Weakness) scale only with the Power THAT side paid — Power cards,
+     * +1 discards and standing bonuses are kept per caster so one player's Power
+     * never inflates the other's spell. (Spell casts on your own turn use the
+     * single `spellPowerBonus`; only the shared attack window needs splitting.)
      */
-    standingPowerSeeded?: boolean;
+    attackPowerByPlayer?: Record<PlayerId, number>;
+    /**
+     * Players whose Power-scaling spell instant in this attack has already been
+     * credited their standing spell Power (the once-per-turn Astrologers bonus,
+     * the once-per-round active-unit boost, and a School-of-Magic permanent's
+     * bonus for the spell's school) — the same Power a spell cast on your own
+     * turn receives. Tracked per player so each side is credited once.
+     */
+    standingPowerSeededFor?: PlayerId[];
     playedCardIds: CardId[];
   };
 };
@@ -2790,6 +2798,8 @@ export type ResolutionStackItem = {
  */
 export type PowerScaledAttackInstant = {
   cardId: CardId;
+  /** The caster — its bonus re-derives from this player's attack Power pool. */
+  playerId: PlayerId;
   stat: "attack" | "defense";
   /** The card's power→amount table (e.g. Bloodlust { 0:1, 1:2, 2:3 }). */
   amountByPower: Record<number, number>;

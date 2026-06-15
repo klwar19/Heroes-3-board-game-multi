@@ -780,21 +780,66 @@ function getAmountByPower(amountByPower: Record<number, number> | undefined, fal
   return matchingPower === undefined ? fallback : (amountByPower[matchingPower] ?? fallback);
 }
 
+/** Whether a stack item is a pending attack (its Power pool is split per side). */
+function isAttackStackItem(stackItem: ResolutionStackItem | undefined): boolean {
+  return stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT";
+}
+
+/** The Power one player has paid into an attack window (statistics, +1s, standing). */
+function attackPowerFor(stackItem: ResolutionStackItem, playerId: PlayerId): number {
+  return stackItem.modifiers.attackPowerByPlayer?.[playerId] ?? 0;
+}
+
+/** Add Power to one player's attack-window pool (per caster, never shared). */
+function addAttackPower(stackItem: ResolutionStackItem, playerId: PlayerId, amount: number): void {
+  const pool = (stackItem.modifiers.attackPowerByPlayer ??= {});
+  pool[playerId] = (pool[playerId] ?? 0) + amount;
+}
+
+/**
+ * Whether a spell instant's effect draws from the attack-window Power pool —
+ * the Power-scaling buffs/debuffs (Bloodlust, Curse, Weakness, Precision, the
+ * scaled Bless bonus and Slayer's roll count). Frenzy (IGNORE_DEFENSE) and a
+ * plain Bless do not, so they are never credited standing Power into the pool.
+ */
+function effectScalesWithAttackPool(effect: ReturnType<typeof getEffectiveCardEffect>): boolean {
+  if (!effect) {
+    return false;
+  }
+  if (effect.type === "SLAYER_ATTACK") {
+    return true;
+  }
+  if (effect.type === "ADD_COMBAT_STAT") {
+    return Boolean(effect.amountByPower);
+  }
+  if (effect.type === "IGNORE_ATTACK_DIE") {
+    return Boolean(effect.attackBonusByPower);
+  }
+  return false;
+}
+
 /**
  * Re-derive every Power-scaling attack/defense instant recorded on an attack
- * stack item against the item's current spellPowerBonus, folding the delta into
- * attackBonus/defenseBonus. Called whenever fresh Power is paid into the attack
- * window so a Bloodlust/Bless/Precision cast earlier keeps growing instead of
- * being frozen at the Power it had when first played.
+ * stack item against its CASTER's attack-window Power pool, folding the delta
+ * into attackBonus/defenseBonus. Called whenever fresh Power is paid into the
+ * attack window so a Bloodlust/Bless/Precision/Curse/Weakness cast earlier keeps
+ * growing instead of being frozen at the Power it had when first played.
  */
 function recomputePowerScaledAttackInstants(stackItem: ResolutionStackItem): void {
-  const power = stackItem.modifiers.spellPowerBonus;
+  const attackerId =
+    stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
+      ? stackItem.action.playerId
+      : undefined;
 
-  // Slayer: re-derive its roll count from the new total Power so Power paid
-  // AFTER Slayer was played (the caster keeps priority and keeps empowering)
-  // lifts it from 2 → 4 → 6 instead of being frozen at the cast-time Power.
-  if (stackItem.modifiers.slayerRollsByPower) {
-    stackItem.modifiers.slayerRolls = getAmountByPower(stackItem.modifiers.slayerRollsByPower, 2, power);
+  // Slayer (always the attacker's): re-derive its roll count from the attacker's
+  // Power so Power paid AFTER Slayer was played (the caster keeps priority and
+  // keeps empowering) lifts it from 2 → 4 → 6 instead of freezing at cast time.
+  if (stackItem.modifiers.slayerRollsByPower && attackerId) {
+    stackItem.modifiers.slayerRolls = getAmountByPower(
+      stackItem.modifiers.slayerRollsByPower,
+      2,
+      attackPowerFor(stackItem, attackerId)
+    );
   }
 
   const records = stackItem.modifiers.powerScaledAttackInstants;
@@ -802,7 +847,7 @@ function recomputePowerScaledAttackInstants(stackItem: ResolutionStackItem): voi
     return;
   }
   for (const record of records) {
-    const scaled = getAmountByPower(record.amountByPower, record.baseAmount, power);
+    const scaled = getAmountByPower(record.amountByPower, record.baseAmount, attackPowerFor(stackItem, record.playerId));
     const newApplied = (scaled + record.fixedBonus) * record.doubleFactor;
     const delta = newApplied - record.appliedAmount;
     if (delta === 0) {
@@ -5962,7 +6007,13 @@ function applyReactionPlayCore(
     if (moveError) {
       throw new Error(moveError.message);
     }
-    stackItemForBoost.modifiers.spellPowerBonus += 1;
+    // Attack windows pool Power per caster; a spell cast on your own turn uses
+    // the single spellPowerBonus.
+    if (isAttackStackItem(stackItemForBoost)) {
+      addAttackPower(stackItemForBoost, playerId, 1);
+    } else {
+      stackItemForBoost.modifiers.spellPowerBonus += 1;
+    }
     stackItemForBoost.modifiers.playedCardIds.push(play.cardId);
     recomputePowerScaledAttackInstants(stackItemForBoost);
     appendEvent(state, {
@@ -6074,26 +6125,27 @@ function applyReactionPlayCore(
     state.players[playerId].combatStats.expertUsesSpentThisRound += 1;
   }
 
-  // Standing spell Power for a spell played as a reaction by the attacker into
-  // its own attack (Slayer, Bloodlust, Bless, Precision, Frenzy): credit the
-  // once-per-turn Astrologers bonus, the once-per-round active-unit boost, and
-  // a School-of-Magic permanent's bonus for the spell's school — the same Power
-  // castSpell seeds for a spell cast on your turn. Folded into the shared attack
-  // pool once (before noteSpellCast advances the "first spell" counters) so the
-  // instant about to apply below reads it like Power paid alongside it.
+  // Standing spell Power for a Power-scaling spell instant played as a reaction
+  // into an attack — by EITHER side (the attacker's Bloodlust/Bless/Precision/
+  // Slayer, the defender's Curse/Weakness): credit the once-per-turn Astrologers
+  // bonus, the once-per-round active-unit boost, and a School-of-Magic permanent's
+  // bonus for the spell's school — the same Power castSpell seeds for a spell cast
+  // on your turn. Added to THAT caster's pool once (before noteSpellCast advances
+  // the "first spell" counters) so the instant about to apply reads it like Power
+  // paid alongside it; non-pool spells (Frenzy) are never credited it here.
   if (
     card.kind === "spell" &&
     !play.fromScroll &&
     player &&
     stackItem &&
-    !stackItem.modifiers.standingPowerSeeded &&
-    (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT") &&
-    stackItem.action.playerId === playerId
+    isAttackStackItem(stackItem) &&
+    effectScalesWithAttackPool(effect) &&
+    !(stackItem.modifiers.standingPowerSeededFor ?? []).includes(playerId)
   ) {
-    stackItem.modifiers.standingPowerSeeded = true;
+    (stackItem.modifiers.standingPowerSeededFor ??= []).push(playerId);
     const standing = standingSpellPower(state, playerId, card);
     if (standing > 0) {
-      stackItem.modifiers.spellPowerBonus += standing;
+      addAttackPower(stackItem, playerId, standing);
       recomputePowerScaledAttackInstants(stackItem);
     }
   }
@@ -6281,7 +6333,13 @@ function applyReactionPlayCore(
     if (effect.perCostCard) {
       effectAmount += effect.perCostCard * costCardsPaid;
     }
-    stackItem.modifiers.spellPowerBonus += effectAmount;
+    // Attack windows pool Power per caster; a spell cast on your own turn uses
+    // the single spellPowerBonus.
+    if (isAttackStackItem(stackItem)) {
+      addAttackPower(stackItem, playerId, effectAmount);
+    } else {
+      stackItem.modifiers.spellPowerBonus += effectAmount;
+    }
     stackItem.modifiers.playedCardIds.push(play.cardId);
     recomputePowerScaledAttackInstants(stackItem);
     if (effect.drawCards) {
@@ -6327,7 +6385,7 @@ function applyReactionPlayCore(
     // window; cost-paid plays (Sword of Judgement) scale per discarded card.
     // A scroll spell ignores the window's Power pool — it is locked to power 0.
     if (effect.amountByPower && card.kind === "spell") {
-      const power = play.fromScroll ? 0 : stackItem.modifiers.spellPowerBonus;
+      const power = play.fromScroll ? 0 : attackPowerFor(stackItem, playerId);
       effectAmount = getAmountByPower(effect.amountByPower, effect.amount, power);
     }
     if (effect.perCostCard) {
@@ -6364,6 +6422,7 @@ function applyReactionPlayCore(
       const fixedBonus = effect.perCostCard ? effect.perCostCard * costCardsPaid : 0;
       (stackItem.modifiers.powerScaledAttackInstants ??= []).push({
         cardId: card.id,
+        playerId,
         stat: effect.stat,
         amountByPower: effect.amountByPower,
         baseAmount: effect.amount,
@@ -6446,13 +6505,14 @@ function applyReactionPlayCore(
       const blessBonus = getAmountByPower(
         effect.attackBonusByPower,
         0,
-        play.fromScroll ? 0 : stackItem.modifiers.spellPowerBonus
+        play.fromScroll ? 0 : attackPowerFor(stackItem, playerId)
       );
       stackItem.modifiers.attackBonus += blessBonus;
       // Bless's Power-scaled attack bonus can also grow with Power paid later.
       if (!play.fromScroll) {
         (stackItem.modifiers.powerScaledAttackInstants ??= []).push({
           cardId: card.id,
+          playerId,
           stat: "attack",
           amountByPower: effect.attackBonusByPower,
           baseAmount: 0,
@@ -6467,9 +6527,10 @@ function applyReactionPlayCore(
   }
 
   // Frenzy: the pending attack ignores the attacked unit's Defense (counts as 0).
-  // Gated by the defender's grade — the chosen option's discard cost already paid
-  // the Power, so the option carries a fixed reachable `grade`. Casting an option
-  // whose grade the defender exceeds spends the card but pierces nothing.
+  // Gated by the defender's grade — the chosen option's `powerCost` (paid from
+  // standing Power + the Power value of discarded power-source cards) reaches a
+  // fixed grade. Casting an option whose grade the defender exceeds spends the
+  // card but pierces nothing.
   if (
     effect.type === "IGNORE_DEFENSE" &&
     (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
@@ -6502,7 +6563,7 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
     const defenderRef: TargetRef = { type: "unit", unitId: stackItem.action.defenderId };
     if (!negatesCardOnDwarfRoll(state, defenderRef, card.name)) {
-      const power = play.fromScroll ? 0 : stackItem.modifiers.spellPowerBonus;
+      const power = play.fromScroll ? 0 : attackPowerFor(stackItem, playerId);
       stackItem.modifiers.slayerRolls = getAmountByPower(effect.rollsByPower, 2, power);
       stackItem.modifiers.slayerDraw = true;
       // Scroll casts are locked to power 0 and never grow, so they are not recorded.
@@ -6668,10 +6729,12 @@ function playReaction(
         stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
           ? stackItem.action.playerId
           : undefined;
+      // This player may keep empowering a Power-scaling spell instant THEY cast
+      // into the attack — the attacker's Bloodlust/Slayer, or the defender's
+      // Curse/Weakness. Lone Power with nothing of yours to feed still dissipates.
       const empowerable =
-        attackOwner === action.playerId &&
-        ((stackItem?.modifiers.powerScaledAttackInstants?.length ?? 0) > 0 ||
-          stackItem?.modifiers.slayerRollsByPower !== undefined);
+        (stackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === action.playerId) ||
+        (attackOwner === action.playerId && stackItem?.modifiers.slayerRollsByPower !== undefined);
       if (!empowerable) {
         throw new Error("Power can only be played into an attack together with a Spell card.");
       }

@@ -1238,13 +1238,13 @@ export const spellCards: CardLibrary = {
         },
         {
           label: "Ignore a bronze or silver unit's defense (pay 2 Power)",
-          cost: { discardCards: 2, costCardFilter: "power-source" },
+          cost: { powerCost: 2, costCardFilter: "power-source" },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
           effect: { type: "IGNORE_DEFENSE", grade: "silver" }
         },
         {
           label: "Ignore a bronze, silver, or gold unit's defense (pay 4 Power)",
-          cost: { discardCards: 4, costCardFilter: "power-source" },
+          cost: { powerCost: 4, costCardFilter: "power-source" },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
           effect: { type: "IGNORE_DEFENSE", grade: "gold" }
         }
