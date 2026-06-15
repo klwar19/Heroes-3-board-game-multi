@@ -1109,6 +1109,12 @@ export type PermanentEffectDefinition = {
   /** Trigger resolved at the start of every combat round. */
   roundStart?: WarMachineRoundStartDefinition;
   /**
+   * Income artifacts (Eversmoking Ring of Sulfur, Inexhaustible Cart of Ore):
+   * while the card is in play, the owner gains `amount` of `resource` at the
+   * start of every Resources round (the odd rounds after the first).
+   */
+  resourceRoundGain?: { resource: ResourceKind; amount: number };
+  /**
    * Pandora's Box "You can have up to 3 permanent cards played at a time,
    * including this one": while in play, the owner's permanent limit becomes
    * this number instead of the printed one.
