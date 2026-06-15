@@ -193,6 +193,12 @@ export type ActiveEffectModifier =
        */
       type: "ADVENTURE_DIE_REROLL";
       dice: "treasure" | "resource" | "any";
+      /**
+       * Fortune: a shared budget of N rerolls across this effect's adventure
+       * dice (Power 0/1/2 -> 1/2/3), spent one at a time. When omitted (Luck),
+       * the once-per-die-type model applies instead.
+       */
+      rerolls?: number;
     }
   | {
       /**
@@ -357,6 +363,11 @@ export type EffectDefinition =
       amount?: number;
       amountByPower?: Record<number, number>;
       removePolarity: "negative" | "any-removable";
+      /**
+       * Cure: "Remove any effect or paralysis from the selected unit" — also
+       * clears the target's Paralysis token (a heal of 0 still clears it).
+       */
+      removeParalysis?: boolean;
     }
   | { type: "CANCEL_SPELL"; maxPower?: number; expertIgnoresMaxPower?: boolean }
   | {
@@ -552,6 +563,12 @@ export type EffectDefinition =
   | {
       /** Town Portal: move the hero to a controlled town or settlement. */
       type: "TELEPORT_HERO_TO_TOWN";
+      /**
+       * Power 2/4: arriving also grants the hero +1/+2 movement. Encoded as the
+       * higher-cost options of the spell's CHOOSE_ONE (paid with power-source
+       * cards), like Fly / Dimension Door.
+       */
+      movementBonus?: number;
     }
   | {
       /** Speculum: discover a face-down tile adjacent to the hero's tile. */
@@ -677,11 +694,16 @@ export type EffectDefinition =
       /**
        * Sorrow Spell (Instant reaction on UNIT_ACTIVATION_STARTED): when an
        * enemy unit is about to activate, skip its activation. The grade reached
-       * scales with the Power paid (0 → bronze, 2 → silver, 4 → gold), so each
-       * grade is one option of the card's CHOOSE_ONE (like Resurrection).
+       * scales with the Power paid (0 → bronze, 2 → silver, 4 → gold). The card
+       * is played for free against a bronze unit; discarding further Spells for
+       * "+1 Power" into the activation-skip window raises the reachable grade
+       * (the reaction window carries that Power pool, since no stack item does).
        */
       type: "SKIP_ACTIVATION";
-      grade: UnitGrade;
+      /** Reachable grade by Power paid (Sorrow: { 0: bronze, 2: silver, 4: gold }). */
+      gradeByPower?: Record<number, UnitGrade>;
+      /** Fixed reachable grade when no Power table is given (legacy single-grade). */
+      grade?: UnitGrade;
     }
   | {
       /**
@@ -712,6 +734,34 @@ export type EffectDefinition =
        */
       type: "FORGETFULNESS";
       gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
+       * Dispel Spell (Basic Water): strip every removable ongoing effect from
+       * the selected unit — Haste, Slow, Bless's bonus, Anti-Magic, Forgetfulness,
+       * Fire Shield, an enemy's buffs… anything created `removable` and bound to
+       * that unit. The reachable grade rises with the Power paid (0 → bronze,
+       * 1 → silver, 2 → gold), exactly like Anti-Magic / Blind: casting on a unit
+       * above the unlocked grade does nothing.
+       *
+       * The printed card also "removes effects from the space the unit occupies";
+       * the engine models no space-bound (obstacle) effects, so only the unit's
+       * own effects are removed — the complete behaviour for what is modelled.
+       */
+      type: "DISPEL_EFFECTS";
+      gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
+       * Frenzy Spell (Expert Fire, Instant on the attacker's side): the pending
+       * attack ignores the attacked unit's Defense entirely — its Defense counts
+       * as 0, the Shield/Defend roll included — reusing the same `ignoreDefense`
+       * path as Elemental damage. Gated by the defender's grade (Power 0 → bronze,
+       * 2 → silver, 4 → gold); the Power is paid as the chosen option's discard
+       * cost, the cost-gated grade pattern shared with Resurrection / Magic Mirror.
+       */
+      type: "IGNORE_DEFENSE";
+      grade: UnitGrade;
     }
   | {
       /**
@@ -823,6 +873,12 @@ export type EffectDefinition =
       basicRerolls: number;
       expertRerolls?: number;
       rerollsByPower?: Record<number, number>;
+      /**
+       * Fortune: the effect ALSO rerolls the adventure-map Treasure and Resource
+       * dice (a shared ADVENTURE_DIE_REROLL budget equal to the reroll count), so
+       * the same card works in combat (Attack die) and on the map.
+       */
+      adventureDice?: boolean;
       duration: EffectDurationDefinition;
       /**
        * Mirth: the duration scales with the Power paid rather than the reroll
@@ -1690,6 +1746,12 @@ export type GameEvent =
        * never uses it). The client skips the rolling-dice cinematic for these.
        */
       noDie?: boolean;
+      /**
+       * Every die in `rolls` counts toward `roll` (summed/counted) rather than
+       * one being selected — Slayer and the Champions' "apply both" roll. The
+       * dice overlay keeps every die lit instead of dimming the "unused" faces.
+       */
+      sumAllDice?: boolean;
       rollMode: AttackRollMode;
       attackBonus: number;
       defenseBonus: number;
@@ -1703,6 +1765,22 @@ export type GameEvent =
       defenseValue: number;
       damage: number;
       isRetaliation: boolean;
+    }
+  | {
+      /**
+       * A Spell rolled the Attack die one or more times to size its own effect
+       * (Inferno's area blast). Logged BEFORE the damage it produces so the
+       * client can show the dice tumbling and read out, then the burst and the
+       * damage land. `hits` is the number of "+1" faces (the damage each unit in
+       * range takes); `position` anchors the dice overlay on the targeted space.
+       */
+      id: string;
+      type: "SPELL_DICE_ROLLED";
+      spellCardId: CardId;
+      playerId: PlayerId;
+      rolls: number[];
+      hits: number;
+      position?: number;
     }
   | {
       id: string;
@@ -2440,12 +2518,21 @@ export type ResolutionStackItem = {
     scrollLocked?: boolean;
     /** Bless: the Attack die is not rolled (counts as 0). */
     ignoreAttackDie?: boolean;
+    /** Frenzy: this attack ignores the defender's Defense (counts as 0). */
+    ignoreDefense?: boolean;
     /**
      * Slayer: roll the Attack die this many times against a gold defender and
      * count the "+1" faces as the die's whole contribution (every "-1" is
      * ignored). Set by the Slayer reaction; consumed in resolveAttackStackItem.
      */
     slayerRolls?: number;
+    /**
+     * Slayer's power→rolls table, kept so the roll count re-derives when more
+     * Power lands in the attack window after Slayer was played (the caster keeps
+     * priority and may keep empowering it) instead of being frozen at the Power
+     * it had when first cast — the same recompute the attack/defense instants get.
+     */
+    slayerRollsByPower?: Record<number, number>;
     /** Slayer: draw 1 card once the modified attack has resolved. */
     slayerDraw?: boolean;
     /** Precision: this shot ignores the ranged back-row penalty. */
@@ -2524,6 +2611,13 @@ export type ReactionWindow = {
   legalReactions: Record<PlayerId, LegalAction[]>;
   passedPlayerIds: PlayerId[];
   closesWhen: "all-pass" | "one-reaction" | "choice-made";
+  /**
+   * Power paid into a window that has no paused stack item to hold it — today
+   * just the Sorrow activation-skip window. Every "+1 Power" discard adds 1 and
+   * SKIP_ACTIVATION reads it to decide the reachable grade. Stack-backed windows
+   * (spell casts, attacks) keep their Power on the stack item instead.
+   */
+  spellPowerBonus?: number;
 };
 
 export type ActiveEffectState = ActiveEffectDefinition & {
@@ -3302,6 +3396,8 @@ export type VisitStep =
       spaceId: MapSpaceId;
       /** Whether arriving resolves the field like a normal visit. */
       visit?: boolean;
+      /** Town Portal Power 2/4: movement granted to the hero on arrival. */
+      movementBonus?: number;
     }
   | {
       /** Scholar basic / Rib Cage / Crown of Dragontooth: discard-pile pick. */
@@ -3682,6 +3778,13 @@ export type HeroState = {
 export type AttackRollCandidate = {
   rolls: number[];
   roll: number;
+  /**
+   * Every die rolled contributes to `roll` (the faces are summed/counted) rather
+   * than one selected face — Slayer (count the "+1"s) and the Neutral Champions'
+   * "apply both" roll. The dice overlay then shows all dice lit, never dimming
+   * the "unused" ones the way it does for an advantage/disadvantage keep-one roll.
+   */
+  sumAllDice?: boolean;
 };
 
 export type AttackRerollSource = {
@@ -3765,6 +3868,7 @@ export type PendingChoice =
         | "diplomacy-recruit"
         | "dimension-door"
         | "learning-level-up"
+        | "fortune-boost"
         | "visions-boost"
         | "visions-deck"
         | "visions-scry";
@@ -3840,6 +3944,14 @@ export type PendingChoice =
        */
       visionsBoost?: { boost: number; spellCardIds: CardId[]; cardsByPower: Record<number, number> };
       /**
+       * fortune-boost: paying Fortune's Power on the map. `spellCardIds` are the
+       * power-source cards in hand offered to discard for +1 reroll each (index-
+       * aligned with the leading options; the trailing option plays now).
+       * `boost` is how many have been paid; `cardId` is the Fortune card whose
+       * rerollsByPower maps the boost to the final reroll budget.
+       */
+      fortuneBoost?: { boost: number; spellCardIds: CardId[]; cardId: CardId };
+      /**
        * visions-deck: the Neutral tier decks Visions may scry (index-aligned with
        * the options) and how many cards the chosen power level draws.
        */
@@ -3904,22 +4016,27 @@ export type PendingChoice =
     }
   | {
       /**
-       * Neutral Magi "Power Drain": after the Magi attack, the defending
-       * player chooses to discard one of their own Power-contributing cards
-       * (a Power statistic or any Spell) or to let a random card be discarded.
-       * Created only when the defender holds at least one Power card; combat
-       * stays parked on its retaliation until this resolves.
+       * A combat hand-discard prompt with two kinds:
+       *  - "magi-power-or-random": Neutral Magi "Power Drain" — after the Magi
+       *    attack the defending player discards a Power-contributing card (a
+       *    Power statistic or any Spell) of their choice, or lets a random card
+       *    be discarded. Combat stays parked on its retaliation until resolved.
+       *  - "pegasi-toll": Neutral Pegasi "Mystic Toll" — the caster must pay a
+       *    Power card of their choice BEFORE a Spell is cast. The cast is held in
+       *    `tollSpell` and replayed once the toll is paid (no random option).
        */
       id: string;
       type: "COMBAT_HAND_DISCARD";
       playerId: PlayerId;
-      kind: "magi-power-or-random";
+      kind: "magi-power-or-random" | "pegasi-toll";
       abilityId: string;
       abilityName: string;
       sourceUnitId: UnitId;
       prompt: string;
       /** Cards in the chooser's hand that can contribute Power. */
       powerCardIds: CardId[];
+      /** "pegasi-toll" only: the Spell cast deferred until the toll is paid. */
+      tollSpell?: { cardId: CardId; target: TargetRef; fromScroll?: string };
     }
   | null;
 

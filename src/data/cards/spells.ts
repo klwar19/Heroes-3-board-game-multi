@@ -382,6 +382,14 @@ export const spellCards: CardLibrary = {
     implementationStatus: "implemented",
     source: spellSource("prayer")
   },
+  // Town Portal (Expert Earth, map): teleport the Hero to a controlled Town or
+  // Settlement. The Power paid raises the movement the Hero keeps on arrival
+  // (Power 0/2/4 -> +0/+1/+2), encoded as the higher-cost options paid by
+  // discarding power-source cards — the same map-power model as Fly / Dimension
+  // Door. A destination town already holding another Hero is offered only when
+  // the teleporting Hero could still move out of it this turn (engine: see
+  // queueTownPortalChoice). The "OR Instant: +1 Power" side is the universal
+  // power-source discard, so it needs no dedicated option.
   "spell.town_portal": {
     id: "spell.town_portal",
     name: "Town Portal",
@@ -393,11 +401,30 @@ export const spellCards: CardLibrary = {
       "spell",
       "expert",
       "earth",
-      "Map effect: Move your Hero to a selected Town or Settlement in your control, and: Power 0: no additional effect; Power 2: +1 movement; Power 4: +2 movement."
+      "Map effect: Move your Hero to a selected Town or Settlement in your control, and: Power 0: no additional effect; Power 2: +1 movement; Power 4: +2 movement. — OR — Instant: +1 Power."
     ],
     power: 0,
     effect: {
-      type: "TELEPORT_HERO_TO_TOWN"
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Teleport to a town or settlement",
+          mapOnly: true,
+          effect: { type: "TELEPORT_HERO_TO_TOWN" }
+        },
+        {
+          label: "Teleport and +1 movement (pay 2 Power)",
+          mapOnly: true,
+          cost: { discardCards: 2, costCardFilter: "power-source" },
+          effect: { type: "TELEPORT_HERO_TO_TOWN", movementBonus: 1 }
+        },
+        {
+          label: "Teleport and +2 movement (pay 4 Power)",
+          mapOnly: true,
+          cost: { discardCards: 4, costCardFilter: "power-source" },
+          effect: { type: "TELEPORT_HERO_TO_TOWN", movementBonus: 2 }
+        }
+      ]
     },
     assets: {
       cardImage: "/assets/spells-town_portal.webp",
@@ -717,10 +744,12 @@ export const spellCards: CardLibrary = {
     source: spellSource("mirth")
   },
   // Sorrow (Expert Earth, Instant; Rampart Expansion): when an enemy unit is
-  // about to activate, skip its activation. The reachable grade rises with the
-  // Power paid (0 → bronze, 2 → silver, 4 → gold), so each grade is one option
-  // whose extra Power is paid by discarding power-source cards (like
-  // Resurrection). Offered in the activation-skip reaction window.
+  // about to activate, skip its activation. Played for FREE against a bronze
+  // unit (Power 0); the reachable grade rises with the Power paid into the
+  // activation-skip window — discard further Spells for "+1 Power" each to reach
+  // silver (Power 2) or gold (Power 4). The window banks that Power (it has no
+  // stack item), and SKIP_ACTIVATION reads it via `gradeByPower`. The universal
+  // "OR Instant: +1 Power" side is the generic power-source discard.
   "spell.sorrow": {
     id: "spell.sorrow",
     name: "Sorrow",
@@ -730,6 +759,7 @@ export const spellCards: CardLibrary = {
     spellLevel: "expert",
     spellSchools: ["earth"],
     power: 0,
+    trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "opponent" },
     tags: [
       "spell",
       "expert",
@@ -737,26 +767,8 @@ export const spellCards: CardLibrary = {
       "Instant: When a unit is about to activate, skip this unit's activation: Power 0: bronze; Power 2: bronze or silver; Power 4: bronze, silver, or gold. — OR — Instant: +1 Power."
     ],
     effect: {
-      type: "CHOOSE_ONE",
-      options: [
-        {
-          label: "Skip a bronze unit's activation",
-          trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "opponent" },
-          effect: { type: "SKIP_ACTIVATION", grade: "bronze" }
-        },
-        {
-          label: "Skip a bronze or silver unit (pay 2 Power)",
-          cost: { discardCards: 2, costCardFilter: "power-source" },
-          trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "opponent" },
-          effect: { type: "SKIP_ACTIVATION", grade: "silver" }
-        },
-        {
-          label: "Skip a bronze, silver, or gold unit (pay 4 Power)",
-          cost: { discardCards: 4, costCardFilter: "power-source" },
-          trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "opponent" },
-          effect: { type: "SKIP_ACTIVATION", grade: "gold" }
-        }
-      ]
+      type: "SKIP_ACTIVATION",
+      gradeByPower: { 0: "bronze", 2: "silver", 4: "gold" }
     },
     assets: {
       cardImage: "/assets/spells-sorrow.webp",
@@ -1052,6 +1064,116 @@ export const spellCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: spellSource("visions")
+  },
+  // Implosion (Expert Earth, Activation): the heaviest single-target nuke — the
+  // selected enemy takes flat spell damage that climbs with the Power paid
+  // (Power 1 → 2, 3 → 4, 5 → 6). Power 0 has no printed tier, so the engine deals
+  // 0 there (the explicit `0: 0` floors getAmountByPower, which would otherwise
+  // round up to the lowest listed tier). Reuses the DEAL_DAMAGE path (spell
+  // damage → spell immunity and damage-reduction abilities apply, like any bolt).
+  "spell.implosion": {
+    id: "spell.implosion",
+    name: "Implosion",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["earth"],
+    power: 0,
+    target: { type: "enemy-unit" },
+    tags: [
+      "spell",
+      "expert",
+      "earth",
+      "Activation: The selected unit suffers: Power 1: 2 damage; Power 3: 4 damage; Power 5: 6 damage. — OR — Instant: +1 Power."
+    ],
+    effect: { type: "DEAL_DAMAGE", amountByPower: { 0: 0, 1: 2, 3: 4, 5: 6 }, damageKind: "spell" },
+    assets: {
+      cardImage: "/assets/spells-implosion.webp",
+      imageAlt: "Implosion card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("implosion")
+  },
+  // Dispel (Basic Water): strip every removable ongoing effect off a unit (friend
+  // or foe). Modelled as a combat cast that targets a unit; the reachable grade
+  // rises with the Power paid (0 → bronze, 1 → silver, 2 → gold), exactly like
+  // Anti-Magic / Blind. The printed card also clears effects from the space the
+  // unit stands on; the engine models no space-bound (obstacle) effects, so only
+  // the unit's own effects are removed — see DISPEL_EFFECTS.
+  "spell.dispel": {
+    id: "spell.dispel",
+    name: "Dispel",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "basic",
+    spellSchools: ["water"],
+    power: 0,
+    target: { type: "any-unit" },
+    tags: [
+      "spell",
+      "basic",
+      "water",
+      "Instant: Remove all ongoing effects from a unit. Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or gold. — OR — Instant: +1 Power."
+    ],
+    effect: { type: "DISPEL_EFFECTS", gradeByPower: { 0: "bronze", 1: "silver", 2: "gold" } },
+    assets: {
+      cardImage: "/assets/spells-dispel.webp",
+      imageAlt: "Dispel card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("dispel")
+  },
+  // Frenzy (Expert Fire, Instant on your attack): the attack ignores the attacked
+  // unit's Defense entirely. Cost-gated by the defender's grade (Power 0 → bronze,
+  // 2 → silver, 4 → gold) — the same CHOOSE_ONE-with-discard pattern as
+  // Resurrection. Each option triggers on your own unit's declared attack and
+  // arms the engine's ignoreDefense path (shared with Elemental damage). The
+  // universal "OR Instant: +1 Power" side is the generic power-source discard.
+  "spell.frenzy": {
+    id: "spell.frenzy",
+    name: "Frenzy",
+    kind: "spell",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    spellLevel: "expert",
+    spellSchools: ["fire"],
+    power: 0,
+    tags: [
+      "spell",
+      "expert",
+      "fire",
+      "Instant: This unit ignores the defense of the attacked unit. Power 0: bronze; Power 2: bronze or silver; Power 4: bronze, silver, or gold. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Ignore a bronze unit's defense",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "IGNORE_DEFENSE", grade: "bronze" }
+        },
+        {
+          label: "Ignore a bronze or silver unit's defense (pay 2 Power)",
+          cost: { discardCards: 2, costCardFilter: "power-source" },
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "IGNORE_DEFENSE", grade: "silver" }
+        },
+        {
+          label: "Ignore a bronze, silver, or gold unit's defense (pay 4 Power)",
+          cost: { discardCards: 4, costCardFilter: "power-source" },
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "IGNORE_DEFENSE", grade: "gold" }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "/assets/spells-frenzy.webp",
+      imageAlt: "Frenzy card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("frenzy")
   }
 };
 
@@ -1116,7 +1238,11 @@ export const spellDeckLegacy: string[] = [
   "spell.forgetfulness",
   // Inferno Expansion spell.
   "spell.inferno",
-  "spell.visions"
+  "spell.visions",
+  // Additional wiki spells.
+  "spell.implosion",
+  "spell.dispel",
+  "spell.frenzy"
 ];
 
 /** BINH split decks. */
@@ -1150,7 +1276,9 @@ export const spellDeckBinhBasic: string[] = [
   "spell.blind",
   "spell.earthquake",
   "spell.forgetfulness",
-  "spell.visions"
+  "spell.visions",
+  // Dispel — Basic Water.
+  "spell.dispel"
 ];
 
 export const spellDeckBinhExpert: string[] = [
@@ -1178,5 +1306,8 @@ export const spellDeckBinhExpert: string[] = [
   "spell.mirth",
   "spell.sorrow",
   "spell.slayer",
-  "spell.inferno"
+  "spell.inferno",
+  // Implosion & Frenzy — Expert (Earth / Fire).
+  "spell.implosion",
+  "spell.frenzy"
 ];

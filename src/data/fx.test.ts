@@ -133,3 +133,61 @@ describe("healFxPlans", () => {
     expect(healFxPlans["spell.cure"]).toBeUndefined();
   });
 });
+
+describe("previously-silent spells are wired (SFX + animation)", () => {
+  // Each of these shipped with a converted sprite sheet and/or a measured sound
+  // that no plan ever referenced, so the card resolved silently with no effect
+  // on screen. These assertions fail if a plan — or its sound/sprite — is
+  // dropped again, so the wiring cannot quietly regress to decorative.
+  const SPRITE_AND_SOUND: Record<string, { sprite?: string; hit?: string; sound: string }> = {
+    "spell.chain_lightning": { sprite: "lightning-bolt", sound: "spells/chain-lightning" },
+    "spell.inferno": { hit: "inferno", sound: "spells/inferno" },
+    "spell.blind": { sprite: "paralyze", sound: "spells/blind" },
+    "spell.weakness": { sprite: "weakness", sound: "spells/weakness" },
+    "spell.anti_magic": { sprite: "anti-magic", sound: "spells/anti-magic" },
+    "spell.fire_shield": { sprite: "fire-shield", sound: "spells/fire-shield" },
+    "spell.counterstrike": { sprite: "counterstrike", sound: "spells/counterstrike" },
+    "spell.forgetfulness": { sprite: "forgetfulness", sound: "spells/forgetfulness" },
+    "spell.mirth": { sprite: "mirth", sound: "spells/mirth" },
+    "spell.sorrow": { sprite: "sorrow", sound: "spells/sorrow" },
+    "spell.slayer": { sprite: "slayer", sound: "spells/slayer" },
+    "spell.magic_mirror": { sprite: "magic-mirror", sound: "spells/magic-mirror" }
+  };
+
+  it.each(Object.entries(SPRITE_AND_SOUND))("wires %s with a real sprite + sound", (id, expected) => {
+    const plan = spellFxPlans[id];
+    expect(plan, `${id} needs an FX plan`).toBeTruthy();
+    // The sound is a real converted clip (non-zero measured duration on disk).
+    expect(plan.sound).toBe(expected.sound);
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    // The sprite/hit sheet exists in the manifest (non-zero on-screen time).
+    if (expected.hit) {
+      expect(plan.hit).toBe(expected.hit);
+      expect(spriteDurationMs(plan.hit)).toBeGreaterThan(0);
+    }
+    if (expected.sprite) {
+      expect(plan.affect?.[0]?.key).toBe(expected.sprite);
+      expect(spriteDurationMs(plan.affect?.[0]?.key)).toBeGreaterThan(0);
+    }
+    // The presentation gate is real, so the damage/effect waits for the cue.
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  // Map spells resolve off the adventure map with no battle board, so they only
+  // carry a cast sound (page.tsx plays it off the CARD_PLAYED cue).
+  const MAP_SPELL_SOUNDS: Record<string, string> = {
+    "spell.town_portal": "spells/teleport",
+    "spell.dimension_door": "spells/teleport",
+    "spell.fly": "spells/fly",
+    "spell.water_walk": "spells/water-walk",
+    "spell.visions": "spells/visions"
+  };
+
+  it.each(Object.entries(MAP_SPELL_SOUNDS))("gives the map spell %s a cast sound", (id, sound) => {
+    const plan = spellFxPlans[id];
+    expect(plan, `${id} needs an FX plan`).toBeTruthy();
+    expect(plan.sound).toBe(sound);
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+});

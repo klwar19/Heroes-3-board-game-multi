@@ -49,6 +49,8 @@ export const implementedCardEffectTypes = [
   "SLAYER_ATTACK",
   "INFERNO",
   "FORGETFULNESS",
+  "DISPEL_EFFECTS",
+  "IGNORE_DEFENSE",
   "BALLISTA_SPECIALTY",
   "DAMAGE_LOWEST_INITIATIVE_ENEMY",
   "ARTILLERY_BALLISTA_VOLLEY",
@@ -492,7 +494,13 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "SKIP_ACTIVATION") {
-    return `when a ${card.effect.grade}-or-lower unit is about to activate, skip its activation`;
+    if (card.effect.gradeByPower) {
+      const breakpoints = Object.entries(card.effect.gradeByPower)
+        .map(([power, grade]) => `${power}:${grade}`)
+        .join(", ");
+      return `when a unit is about to activate, skip its activation (reachable grade by power ${breakpoints})`;
+    }
+    return `when a ${card.effect.grade ?? "bronze"}-or-lower unit is about to activate, skip its activation`;
   }
 
   if (card.effect.type === "SLAYER_ATTACK") {
@@ -511,6 +519,17 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "FORGETFULNESS") {
     return "the selected enemy ranged unit cannot attack during its next activation (tier rises with power)";
+  }
+
+  if (card.effect.type === "DISPEL_EFFECTS") {
+    const breakpoints = Object.entries(card.effect.gradeByPower)
+      .map(([power, grade]) => `${power}:${grade}`)
+      .join(", ");
+    return `remove every removable ongoing effect from the selected unit (reachable grade by power ${breakpoints})`;
+  }
+
+  if (card.effect.type === "IGNORE_DEFENSE") {
+    return `this attack ignores the ${card.effect.grade} defender's Defense (it counts as 0)`;
   }
 
   if (card.effect.type === "BALLISTA_SPECIALTY") {

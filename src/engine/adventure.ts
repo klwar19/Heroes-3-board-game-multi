@@ -1970,6 +1970,10 @@ export function processPendingVisit(state: GameState): void {
         if (movedHero && adventure.fields[step.spaceId]) {
           const from = movedHero.spaceId ?? step.spaceId;
           movedHero.spaceId = step.spaceId;
+          // Town Portal Power 2/4: arriving grants the hero +1/+2 movement.
+          if (step.movementBonus) {
+            movedHero.movementPoints += step.movementBonus;
+          }
           appendEvent(state, {
             type: "HERO_MOVED",
             playerId: movedHero.controllerId,
@@ -2507,15 +2511,26 @@ function getLuckRerollEffect(
   dice: "treasure" | "resource"
 ): ActiveEffectState | null {
   return (
-    state.activeEffects.find(
-      (effect) =>
-        effect.controllerId === playerId &&
-        !effect.usedChoiceIds.includes(`luck:${dice}`) &&
-        effect.modifiers.some(
-          (modifier) =>
-            modifier.type === "ADVENTURE_DIE_REROLL" && (modifier.dice === dice || modifier.dice === "any")
-        )
-    ) ?? null
+    state.activeEffects.find((effect) => {
+      if (effect.controllerId !== playerId) {
+        return false;
+      }
+      const modifier = effect.modifiers.find(
+        (candidate) =>
+          candidate.type === "ADVENTURE_DIE_REROLL" && (candidate.dice === dice || candidate.dice === "any")
+      );
+      if (!modifier || modifier.type !== "ADVENTURE_DIE_REROLL") {
+        return false;
+      }
+      // Fortune: a shared budget of N rerolls across this effect's dice, spent
+      // one at a time (tracked as "reroll:" entries in usedChoiceIds).
+      if (modifier.rerolls !== undefined) {
+        const used = effect.usedChoiceIds.filter((id) => id.startsWith("reroll:")).length;
+        return used < modifier.rerolls;
+      }
+      // Luck: one reroll per die type, tracked separately.
+      return !effect.usedChoiceIds.includes(`luck:${dice}`);
+    }) ?? null
   );
 }
 
@@ -2525,6 +2540,9 @@ function consumeLuckReroll(state: GameState, effectId: string, dice: "treasure" 
     return;
   }
 
+  const budgetModifier = effect.modifiers.find(
+    (modifier) => modifier.type === "ADVENTURE_DIE_REROLL" && modifier.rerolls !== undefined
+  );
   const isAnyDie = effect.modifiers.some(
     (modifier) => modifier.type === "ADVENTURE_DIE_REROLL" && modifier.dice === "any"
   );
@@ -2535,6 +2553,17 @@ function consumeLuckReroll(state: GameState, effectId: string, dice: "treasure" 
     playerId: effect.controllerId,
     target: { type: "none" }
   });
+
+  // Fortune: spend one reroll from the shared budget; drop the effect once the
+  // budget is exhausted.
+  if (budgetModifier?.type === "ADVENTURE_DIE_REROLL" && budgetModifier.rerolls !== undefined) {
+    effect.usedChoiceIds.push(`reroll:${effect.usedChoiceIds.length}`);
+    const used = effect.usedChoiceIds.filter((id) => id.startsWith("reroll:")).length;
+    if (used >= budgetModifier.rerolls) {
+      state.activeEffects = state.activeEffects.filter((candidate) => candidate.id !== effectId);
+    }
+    return;
+  }
 
   // Expert Luck is one reroll of any die: spend the whole card. Basic Luck
   // tracks the treasure and resource rerolls separately.
@@ -2613,7 +2642,7 @@ function rollResourceDice(state: GameState, visit: PendingVisit, count: number):
 
   if (luck) {
     options.push({
-      label: `Luck: reroll the Resource ${count > 1 ? "dice" : "die"}`,
+      label: `${luck.name}: reroll the Resource ${count > 1 ? "dice" : "die"}`,
       steps: [
         { type: "CONSUME_LUCK", effectId: luck.id, dice: "resource" } as VisitStep,
         { type: "ROLL_RESOURCE_DICE", count } as VisitStep
@@ -2682,7 +2711,7 @@ function rollTreasureDice(state: GameState, visit: PendingVisit, count: number):
 
   if (luck) {
     options.push({
-      label: `Luck: reroll the Treasure ${count > 1 ? "dice" : "die"}`,
+      label: `${luck.name}: reroll the Treasure ${count > 1 ? "dice" : "die"}`,
       steps: [
         { type: "CONSUME_LUCK", effectId: luck.id, dice: "treasure" } as VisitStep,
         { type: "ROLL_TREASURE_DICE", count } as VisitStep

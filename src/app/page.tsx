@@ -118,6 +118,7 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   "CARDS_DRAWN",
   "CARD_PLAYED",
   "SPELL_CAST_STARTED",
+  "SPELL_DICE_ROLLED",
   "SPELL_CAST_RESOLVED",
   "SPELL_CAST_CANCELLED",
   "DAMAGE_ASSIGNED",
@@ -353,6 +354,40 @@ function makeDiceCue(
     defenseBonus: event.defenseBonus,
     damage: event.damage,
     isRetaliation: event.isRetaliation,
+    // Slayer (and the Champions' "apply both") sum every die — keep them all lit.
+    ...(event.sumAllDice ? { sumAllDice: true } : {}),
+    ...(preDelayMs > 0 ? { preDelayMs } : {})
+  };
+}
+
+/**
+ * The dice a Spell rolls to size its own effect (Inferno): shown in the same
+ * attack-die overlay, but headed with the spell's name and a "N hits" read-out
+ * instead of an attacker-vs-defender breakdown. Every die counts, so none dim.
+ */
+function makeSpellDiceCue(
+  event: Extract<GameEvent, { type: "SPELL_DICE_ROLLED" }>,
+  preDelayMs = 0
+): DiceCue {
+  const card = cardLibrary[event.spellCardId];
+  return {
+    id: event.id,
+    rolls: event.rolls,
+    roll: event.hits,
+    dieMultiplier: 1,
+    rollMode: "normal",
+    attackerName: "",
+    defenderName: "",
+    attackValue: 0,
+    defenseValue: 0,
+    attackBonus: 0,
+    defenseBonus: 0,
+    damage: 0,
+    isRetaliation: false,
+    sumAllDice: true,
+    spellMode: true,
+    title: card?.name ?? "Spell",
+    caption: event.hits > 0 ? `${event.hits} hit${event.hits === 1 ? "" : "s"} → ${event.hits} damage each` : "No effect",
     ...(preDelayMs > 0 ? { preDelayMs } : {})
   };
 }
@@ -945,6 +980,10 @@ export default function Home() {
       }
       if (freshFx.length > 0 || fresh.length > 0) {
         const cues: FxCue[] = [];
+        // Spell rolls (Inferno) feed the attack-die overlay; collected as the loop
+        // sequences them so they show after the spell card flies and before its
+        // burst lands, then flushed into the overlay queue once the batch is built.
+        const spellDiceCues: DiceCue[] = [];
         const viewerId = viewerRef.current;
         const inCombat = Boolean(nextState.combat);
         // Nothing combat-side shows until the dice have rolled and read: when an
@@ -1204,6 +1243,7 @@ export default function Home() {
               if (!seatVisible(event.playerId)) {
                 break;
               }
+              const start = timeline;
               cues.push({
                 kind: "flight",
                 id: `${event.id}-play`,
@@ -1211,9 +1251,36 @@ export default function Home() {
                 to: `discard:${event.playerId}`,
                 cardId: event.cardId,
                 holdMs: HOLD_CENTER_MS,
-                delayMs: timeline
+                delayMs: start
               });
               timeline += FLIGHT_MS + HOLD_CENTER_MS + FLIGHT_OUT_MS;
+              // A Spell that resolves through a card play (rather than a spell
+              // cast) carries its cue here: map spells (Town Portal, Fly,
+              // Visions…) and combat trigger/reaction instants (Weakness,
+              // Slayer, Sorrow, Magic Mirror, Prayer…). A played card has no
+              // board target, so its sprite bursts at centre stage over the
+              // card. A Spell discarded for its "+1 Power" side toward another
+              // cast is not itself resolving, so it is skipped (it still gets
+              // the card-flight foley).
+              const isPowerBoost = event.optionLabel?.startsWith("+1 Power") ?? false;
+              const playedPlan = isPowerBoost ? undefined : spellFxPlans[event.cardId];
+              if (playedPlan) {
+                const at = start + FLIGHT_MS;
+                const affectKey = playedPlan.affect?.[0]?.key;
+                if (affectKey) {
+                  cues.push({
+                    kind: "sprite",
+                    id: `${event.id}-played-fx`,
+                    fxKey: affectKey,
+                    at: "center",
+                    sound: playedPlan.sound,
+                    delayMs: at
+                  });
+                } else if (playedPlan.sound) {
+                  const soundKey = playedPlan.sound;
+                  window.setTimeout(() => playLibrarySound(soundKey), at);
+                }
+              }
               break;
             }
             case "SPELL_CAST_STARTED": {
@@ -1233,16 +1300,73 @@ export default function Home() {
               timeline += FLIGHT_MS + HOLD_CENTER_MS;
               break;
             }
+            case "SPELL_DICE_ROLLED": {
+              // Roll the dice out first — the cube clatter under the spell's own
+              // roar — then push the burst and the damage past the read-out, so
+              // the player sees what was rolled before any unit is touched. The
+              // dice overlay waits out the current beat (the spell card's flight).
+              const startAt = timeline;
+              spellDiceCues.push(makeSpellDiceCue(event, startAt));
+              const dicePlan = spellFxPlans[event.spellCardId];
+              if (dicePlan?.sound) {
+                const soundKey = dicePlan.sound;
+                window.setTimeout(() => playLibrarySound(soundKey), startAt);
+              }
+              timeline = startAt + DICE_PRESENT_MS;
+              if (inCombat) {
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
+              }
+              break;
+            }
             case "SPELL_CAST_RESOLVED": {
               const plan = spellFxPlans[event.spellCardId];
-              if (plan && event.target.type === "unit") {
+              if (!plan) {
+                break;
+              }
+              if (event.target.type === "unit") {
                 queueBoardFx(plan, event.id, `hand:${event.playerId}`, event.target.unitId);
-              } else if (plan?.sound && event.target.type === "space") {
-                // Summon Elemental resolves on an empty space — no unit to
-                // anchor board FX on, so play the cast sound on the timeline.
-                const soundKey = plan.sound;
+              } else if (event.target.type === "space") {
                 const at = timeline;
-                window.setTimeout(() => playLibrarySound(soundKey), at);
+                if (plan.hit) {
+                  // Inferno bursts on the chosen space (no unit to anchor on): the
+                  // fire sheet flares over the cell, then its per-unit damage
+                  // floaters fire after it. The dice + cast roar already played
+                  // under SPELL_DICE_ROLLED, so only the impact sound rides here.
+                  cues.push({
+                    kind: "sprite",
+                    id: `${event.id}-burst`,
+                    fxKey: plan.hit,
+                    at: `cell:${event.target.position}`,
+                    sound: plan.hitSound,
+                    delayMs: at
+                  });
+                  timeline += spellPresentationMs(plan);
+                } else if (plan.sound) {
+                  // Summon Elemental resolves on an empty space — no unit to
+                  // anchor board FX on, so play the cast sound on the timeline.
+                  const soundKey = plan.sound;
+                  window.setTimeout(() => playLibrarySound(soundKey), at);
+                }
+              } else if (plan.affect || plan.sound) {
+                // A player-scoped spell with no single target unit (Mirth):
+                // there is nothing on the board to anchor on, so its sprite
+                // bursts at centre stage with the cast sound.
+                const at = timeline;
+                const affectKey = plan.affect?.[0]?.key;
+                if (affectKey) {
+                  cues.push({
+                    kind: "sprite",
+                    id: `${event.id}-fx`,
+                    fxKey: affectKey,
+                    at: "center",
+                    sound: plan.sound,
+                    delayMs: at
+                  });
+                } else if (plan.sound) {
+                  const soundKey = plan.sound;
+                  window.setTimeout(() => playLibrarySound(soundKey), at);
+                }
               }
               break;
             }
@@ -1398,6 +1522,19 @@ export default function Home() {
             default:
               break;
           }
+        }
+
+        // Show any spell rolls (Inferno) collected above in the attack-die
+        // overlay, each waiting out the beat the loop scheduled it at (the spell
+        // card's flight) before its cube tumbles.
+        if (spellDiceCues.length > 0) {
+          setDice((current) => {
+            const queue = [...current.queue, ...spellDiceCues];
+            if (!current.current && queue.length > 0) {
+              return { current: queue[0], queue: queue.slice(1) };
+            }
+            return { ...current, queue };
+          });
         }
 
         // Reveal frozen health. Every struck/healed unit shows its old health
