@@ -48,7 +48,14 @@ import {
   isAdjacent,
   isBattlefieldPosition
 } from "./battlefield";
-import { countBallistas, getPermanentCardIds, getPermanentSchoolBonus, warMachinesForSale } from "./permanents";
+import {
+  countBallistas,
+  firstAidVolleyHeals,
+  getPermanentCardIds,
+  getPermanentSchoolBonus,
+  playerCanUseFirstAidVolley,
+  warMachinesForSale
+} from "./permanents";
 import { getDemolishAbility, isArrowTowerUnit, siegeBlockedPositions } from "./siege";
 import { canPlaceTransformOn } from "./unit-transforms";
 import { SHARED_DECK_IDS } from "./decks";
@@ -857,16 +864,16 @@ export function combatEnemyImposesPowerTax(state: GameState, casterId: PlayerId)
 }
 
 /**
- * Whether `hand` still holds a Power card to pay the Pegasi toll. A hand cast
- * spends the spell itself first, so it cannot also pay the toll — the toll must
- * come from a *different* Power card; a Scroll cast leaves the hand intact.
+ * The Power cards the player could pay for the Pegasi toll. A hand cast spends
+ * the spell itself first, so it cannot also pay the toll — the toll must come
+ * from a *different* Power card; a Scroll cast leaves the hand intact.
  */
-export function handCanPayPowerTax(
+export function payablePowerCardIds(
   hand: readonly CardId[],
   cards: CardLibrary,
   castCardId: CardId,
   fromScroll: boolean
-): boolean {
+): CardId[] {
   let remaining: readonly CardId[] = hand;
   if (!fromScroll) {
     const index = remaining.indexOf(castCardId);
@@ -874,7 +881,17 @@ export function handCanPayPowerTax(
       remaining = [...remaining.slice(0, index), ...remaining.slice(index + 1)];
     }
   }
-  return remaining.some((cardId) => cardCanBoostPower(cards[cardId]));
+  return remaining.filter((cardId) => cardCanBoostPower(cards[cardId]));
+}
+
+/** Whether the player holds any Power card to pay the Pegasi toll for this cast. */
+export function handCanPayPowerTax(
+  hand: readonly CardId[],
+  cards: CardLibrary,
+  castCardId: CardId,
+  fromScroll: boolean
+): boolean {
+  return payablePowerCardIds(hand, cards, castCardId, fromScroll).length > 0;
 }
 
 function addSpellActions(
@@ -1027,8 +1044,11 @@ function addPlayableCardActions(
 
     // Permanents are played like activation cards: during one of your own
     // unit's activations, before it attacks. They enter play instead of
-    // resolving (replacing the previous permanent).
-    if (card.permanent) {
+    // resolving (replacing the previous permanent — the one-permanent limit
+    // applies in combat too). A hybrid permanent/instant artifact (income
+    // rings and carts) instead exposes its sides through the CHOOSE_ONE option
+    // machinery below, so it is not short-circuited here.
+    if (card.permanent && card.effect.type !== "CHOOSE_ONE") {
       if (ownActivationOpen) {
         actions.push({
           label: `Put ${card.name} into play`,
@@ -1131,6 +1151,11 @@ function isOptionEffectPlayable(
     case "GAIN_EXPERT_USE":
     case "CREATE_ACTIVE_EFFECT":
       return true;
+    case "ENTER_PLAY":
+      // The permanent-income side of a hybrid artifact (Eversmoking Ring of
+      // Sulfur, Inexhaustible Cart of Ore): putting the card into play is
+      // always a valid choice in either context.
+      return true;
     case "TAKE_FROM_DISCARD": {
       if (context !== "map" || !state.adventure) {
         return false;
@@ -1146,6 +1171,21 @@ function isOptionEffectPlayable(
           return kind !== "artifact";
         }
         return true;
+      });
+    }
+    case "SCHOLAR_EMPOWER_SWAP": {
+      // Scholar's expert swap: map-only, and only with a non-empowered Statistic
+      // card in hand or discard to trade in.
+      if (context !== "map" || !state.adventure) {
+        return false;
+      }
+      const player = state.players[playerId];
+      if (!player) {
+        return false;
+      }
+      return [...player.hand, ...player.discard].some((cardId) => {
+        const card = cardLibrary[cardId];
+        return card?.kind === "statistic" && Boolean(card.statisticType) && !cardId.endsWith(".empowered");
       });
     }
     case "CARD_DECK_SEARCH":
@@ -1411,6 +1451,12 @@ function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDef
     return true;
   }
 
+  // Fortune: its Attack-die reroll effect also rerolls the map Treasure/Resource
+  // dice (the adventureDice flag), so it is useful on the adventure map.
+  if (effect.type === "CREATE_ATTACK_DIE_REROLL" && effect.adventureDice) {
+    return true;
+  }
+
   return (
     effect.type === "CREATE_ACTIVE_EFFECT" &&
     effect.effect.modifiers.some(
@@ -1450,8 +1496,11 @@ function addTurnCardActions(
     }
 
     // Permanents may also enter play on the owner's map turn (they are
-    // played the same way as map cards).
-    if (card.permanent) {
+    // played the same way as map cards). A plain permanent offers a single
+    // enter-play action; a hybrid permanent/instant artifact (income rings and
+    // carts) exposes its enter-play side AND its one-shot instant side through
+    // the CHOOSE_ONE option machinery below instead.
+    if (card.permanent && card.effect.type !== "CHOOSE_ONE") {
       actions.push({
         label: `Put ${card.name} into play`,
         action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
@@ -1466,9 +1515,15 @@ function addTurnCardActions(
       continue;
     }
 
-    // Spells only reach the map when printed as Map effects (Town Portal).
+    // Spells reach the map only when printed as Map effects (Town Portal) or
+    // when their effect is otherwise useful there (Fortune's adventure-die
+    // rerolls — same gate isMapPlayableEffect applies to non-spell cards).
     if (card.kind === "spell" && card.timing !== "map") {
-      continue;
+      const mapUsable =
+        card.effect.type !== "CHOOSE_ONE" && isMapPlayableEffect(state, playerId, card, card.effect);
+      if (!mapUsable) {
+        continue;
+      }
     }
 
     if (card.timing !== "instant" && card.timing !== "ongoing" && card.timing !== "map") {
@@ -1570,7 +1625,6 @@ function addActiveEffectActions(actions: LegalAction[], state: GameState, player
     return;
   }
 
-  const player = state.players[playerId];
   for (const effect of state.activeEffects) {
     if (effect.controllerId !== playerId) {
       continue;
@@ -1581,13 +1635,14 @@ function addActiveEffectActions(actions: LegalAction[], state: GameState, player
       continue;
     }
 
-    // First Aid Tent: one basic heal per round, OR — if the card has an expert
-    // and an expert use is free — spend it to heal several times this round.
+    // First Aid Tent: one basic heal per round, OR — if the player holds the
+    // First Aid ability card with a free expert use — spend it (discarding the
+    // card) to heal the same target several times this round. The volley size is
+    // read from that card (firstAidVolleyHeals), mirroring Artillery/Ballista.
     const usage = effect.healRound?.round === combat.round ? effect.healRound : undefined;
-    const expertMax = healModifier.expertUsesPerRound ?? 0;
-    const crowns = player ? expertUsesAvailable(player) : 0;
+    const expertMax = firstAidVolleyHeals();
     const canBasic = !usage;
-    const canExpertActivate = !usage && expertMax > 1 && crowns > 0;
+    const canExpertActivate = !usage && playerCanUseFirstAidVolley(state, playerId);
     const canExpertContinue = Boolean(usage?.expert && usage.count < expertMax);
     if (!canBasic && !canExpertActivate && !canExpertContinue) {
       continue;
@@ -2091,15 +2146,19 @@ export function getLegalActions(
           cardId
         }
       }));
-      actions.push({
-        label: "Let a random card be discarded",
-        action: {
-          type: "RESOLVE_COMBAT_DISCARD",
-          playerId,
-          choiceId: choice.id,
-          cardId: "random"
-        }
-      });
+      // The Magi drain also offers a random discard; the Pegasi toll is a pure
+      // "pay a Power card of your choice" — no random option.
+      if (choice.kind === "magi-power-or-random") {
+        actions.push({
+          label: "Let a random card be discarded",
+          action: {
+            type: "RESOLVE_COMBAT_DISCARD",
+            playerId,
+            choiceId: choice.id,
+            cardId: "random"
+          }
+        });
+      }
       return actions;
     }
 
@@ -3036,6 +3095,13 @@ export function isEffectLegalForTrigger(
     // unit ("when attacking a golden unit").
     if (effect.type === "SLAYER_ATTACK") {
       return attacker.controllerId === playerId && defender.grade === "gold";
+    }
+
+    // Frenzy: only the attacker's controller, and only when the chosen option's
+    // grade reaches the defender (the option's discard cost paid the Power).
+    // Offering only the grade-reaching options keeps a wasted pierce off the menu.
+    if (effect.type === "IGNORE_DEFENSE") {
+      return attacker.controllerId === playerId && gradeRank(defender.grade) <= gradeRank(effect.grade);
     }
 
     // Alamar's Resurrection is never a pre-die attack reaction — it is offered

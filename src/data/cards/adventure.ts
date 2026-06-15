@@ -507,6 +507,15 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: abilitySource("wisdom")
   },
+  // engine: First Aid is a CHOOSE_ONE mirroring Artillery. The basic side removes
+  // 1 damage from one of your units (HEAL_DAMAGE, played from hand in combat). The
+  // expert side — "When using the First Aid Tent, resolve its effect against the
+  // same target 3 times" — is NEVER played from hand (PLAY_CARD throws). It is
+  // offered when the owner activates their First Aid Tent heal
+  // (USE_ACTIVE_EFFECT mode:"expert"): that spends one expert use, discards this
+  // card, and heals the same target `heals` times this round. Without an active
+  // First Aid Tent only the basic side resolves. The engine reads `heals` from
+  // the expert option (firstAidVolleyHeals in permanents.ts).
   "ability.first_aid": {
     id: "ability.first_aid",
     name: "First Aid",
@@ -514,11 +523,31 @@ export const adventureCards: CardLibrary = {
     timing: "instant",
     phaseLimit: ["combat"],
     abilityClass: "combat",
-    tags: ["ability", "instant", "heal", "wiki-reference"],
+    tags: [
+      "ability",
+      "instant",
+      "heal",
+      "wiki-reference",
+      "Basic: Remove 1 damage from one of your units. Expert: when using the First Aid Tent, resolve its effect against the same target 3 times."
+    ],
     target: { type: "friendly-unit", damagedOnly: true },
     effect: {
-      type: "HEAL_DAMAGE",
-      amount: 1
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Remove 1 damage from one of your units",
+          combatOnly: true,
+          effect: { type: "HEAL_DAMAGE", amount: 1 }
+        },
+        {
+          // Expert: never played from hand. Offered when this player's First Aid
+          // Tent heals — spends one expert use and discards the card — resolving
+          // the Tent heal against the SAME target 3× (see permanents.ts).
+          label: "When using your First Aid Tent: resolve its heal against the same target 3×",
+          expertOnly: true,
+          effect: { type: "FIRST_AID_TENT_VOLLEY", heals: 3 }
+        }
+      ]
     },
     assets: {
       cardImage: "/assets/abilities-first_aid.webp",
@@ -527,21 +556,45 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: abilitySource("first_aid")
   },
+  // engine: Scholar is a CHOOSE_ONE, both sides map-only. Basic: take 1 card
+  // from your discard pile into hand (TAKE_FROM_DISCARD, resolved through the
+  // discard-pick reward). Expert: "Remove up to 2 Statistic cards from your hand
+  // or discard pile, take up to 2 different Empowered Statistic cards on top of
+  // your discard pile, then Remove the Scholar." The expert spends one expert
+  // use and removes this card (cost.removeSelf). The swap is interactive
+  // (SCHOLAR_EMPOWER_PICK / SCHOLAR_EMPOWER_GIVE visit steps in adventure.ts):
+  // each removed Statistic is replaced by its OWN-type Empowered version
+  // (distinct types only). It does NOT model removing one type to gain a
+  // different Empowered type — a conscious simplification of the printed text.
+  // Empowered Statistic cards live in src/data/cards/sample.ts.
   "ability.scholar": {
     id: "ability.scholar",
     name: "Scholar",
     kind: "ability",
     timing: "instant",
     abilityClass: "adventure",
-    // Printed basic: "Choose 1 card from your discard pile and add it to your
-    // hand." The expert Empowered-Statistic swap needs the Empowered cards
-    // (Inferno expansion) and stays unimplemented.
     tags: [
       "ability",
       "map",
-      "Basic: Choose 1 card from your discard pile and add it to your hand. (Expert Empowered-Statistic swap not implemented.)"
+      "Basic: Choose 1 card from your discard pile and add it to your hand. Expert: Remove up to 2 Statistic cards from your hand or discard pile; take up to 2 different Empowered Statistic cards on top of your discard pile; Remove this card."
     ],
-    effect: { type: "TAKE_FROM_DISCARD", count: 1 },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Choose 1 card from your discard pile and add it to your hand",
+          mapOnly: true,
+          effect: { type: "TAKE_FROM_DISCARD", count: 1 }
+        },
+        {
+          label: "Swap up to 2 Statistic cards for their Empowered versions (on top of your discard); Remove this card",
+          mapOnly: true,
+          expertOnly: true,
+          cost: { removeSelf: true },
+          effect: { type: "SCHOLAR_EMPOWER_SWAP", count: 2 }
+        }
+      ]
+    },
     assets: {
       cardImage: "/assets/abilities-scholar.webp",
       imageAlt: "Scholar ability card"

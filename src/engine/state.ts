@@ -160,14 +160,12 @@ export type ActiveEffectModifier =
       consumeEffectOnUse: boolean;
     }
   | {
+      // The First Aid Tent always heals exactly this much once per combat round.
+      // The expert "heal 3×" is NOT a property of the Tent: it is the First Aid
+      // ability card's expert side (FIRST_AID_TENT_VOLLEY), gated on holding that
+      // card — mirroring how the Ballista's 3× volley lives on Artillery.
       type: "HEAL_ONCE_PER_COMBAT_ROUND";
       amount: number;
-      /**
-       * First Aid Tent expert: instead of the single basic heal, spend 1
-       * expert use to heal this many times in the round. Activating the expert
-       * and using the basic heal are mutually exclusive within a round.
-       */
-      expertUsesPerRound?: number;
     }
   | {
       type: "UNIT_CANNOT_MOVE";
@@ -195,6 +193,12 @@ export type ActiveEffectModifier =
        */
       type: "ADVENTURE_DIE_REROLL";
       dice: "treasure" | "resource" | "any";
+      /**
+       * Fortune: a shared budget of N rerolls across this effect's adventure
+       * dice (Power 0/1/2 -> 1/2/3), spent one at a time. When omitted (Luck),
+       * the once-per-die-type model applies instead.
+       */
+      rerolls?: number;
     }
   | {
       /**
@@ -359,6 +363,11 @@ export type EffectDefinition =
       amount?: number;
       amountByPower?: Record<number, number>;
       removePolarity: "negative" | "any-removable";
+      /**
+       * Cure: "Remove any effect or paralysis from the selected unit" — also
+       * clears the target's Paralysis token (a heal of 0 still clears it).
+       */
+      removeParalysis?: boolean;
     }
   | { type: "CANCEL_SPELL"; maxPower?: number; expertIgnoresMaxPower?: boolean }
   | {
@@ -513,6 +522,18 @@ export type EffectDefinition =
       shuffleRestIntoDeck?: boolean;
     }
   | {
+      /**
+       * Scholar (expert): remove up to `count` Statistic cards from hand or
+       * discard, gaining each one's Empowered version on top of the discard pile
+       * (distinct Empowered types only — "up to N different"). Opens an
+       * interactive swap via the SCHOLAR_EMPOWER_PICK / SCHOLAR_EMPOWER_GIVE
+       * visit steps (queued as a "visit-steps" reward). The Scholar card itself
+       * is removed by the option's cost.removeSelf, matching "Remove the Scholar".
+       */
+      type: "SCHOLAR_EMPOWER_SWAP";
+      count: number;
+    }
+  | {
       /** Card-driven Search (Breastplate of Brimstone, Crown of Dragontooth). */
       type: "CARD_DECK_SEARCH";
       deck: "spells" | "artifacts" | "abilities";
@@ -542,6 +563,12 @@ export type EffectDefinition =
   | {
       /** Town Portal: move the hero to a controlled town or settlement. */
       type: "TELEPORT_HERO_TO_TOWN";
+      /**
+       * Power 2/4: arriving also grants the hero +1/+2 movement. Encoded as the
+       * higher-cost options of the spell's CHOOSE_ONE (paid with power-source
+       * cards), like Fly / Dimension Door.
+       */
+      movementBonus?: number;
     }
   | {
       /** Speculum: discover a face-down tile adjacent to the hero's tile. */
@@ -706,6 +733,34 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Dispel Spell (Basic Water): strip every removable ongoing effect from
+       * the selected unit — Haste, Slow, Bless's bonus, Anti-Magic, Forgetfulness,
+       * Fire Shield, an enemy's buffs… anything created `removable` and bound to
+       * that unit. The reachable grade rises with the Power paid (0 → bronze,
+       * 1 → silver, 2 → gold), exactly like Anti-Magic / Blind: casting on a unit
+       * above the unlocked grade does nothing.
+       *
+       * The printed card also "removes effects from the space the unit occupies";
+       * the engine models no space-bound (obstacle) effects, so only the unit's
+       * own effects are removed — the complete behaviour for what is modelled.
+       */
+      type: "DISPEL_EFFECTS";
+      gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
+       * Frenzy Spell (Expert Fire, Instant on the attacker's side): the pending
+       * attack ignores the attacked unit's Defense entirely — its Defense counts
+       * as 0, the Shield/Defend roll included — reusing the same `ignoreDefense`
+       * path as Elemental damage. Gated by the defender's grade (Power 0 → bronze,
+       * 2 → silver, 4 → gold); the Power is paid as the chosen option's discard
+       * cost, the cost-gated grade pattern shared with Resurrection / Magic Mirror.
+       */
+      type: "IGNORE_DEFENSE";
+      grade: UnitGrade;
+    }
+  | {
+      /**
        * Torosar's Ballista specialty (I activate / IV / VI). `grant` fields one
        * extra Ballista for the combat or the rest of the game round ("this card
        * counts as a Ballista"); `activate` fires one of your Ballistas now (I)
@@ -738,6 +793,19 @@ export type EffectDefinition =
        */
       type: "ARTILLERY_BALLISTA_VOLLEY";
       shots: number;
+    }
+  | {
+      /**
+       * First Aid's expert side: a declarative marker, never played through
+       * PLAY_CARD. When the owner activates their First Aid Tent's heal, they may
+       * play First Aid (spending one expert use, discarding the card) to resolve
+       * that Tent heal against the SAME target `heals` times this round. Wired in
+       * the Tent heal flow (USE_ACTIVE_EFFECT) — reducer.ts + legal-actions.ts —
+       * so the engine reads `heals` from here and the card stays the source of
+       * truth. Without an active First Aid Tent only the card's basic heal runs.
+       */
+      type: "FIRST_AID_TENT_VOLLEY";
+      heals: number;
     }
   | {
       /**
@@ -801,6 +869,12 @@ export type EffectDefinition =
       basicRerolls: number;
       expertRerolls?: number;
       rerollsByPower?: Record<number, number>;
+      /**
+       * Fortune: the effect ALSO rerolls the adventure-map Treasure and Resource
+       * dice (a shared ADVENTURE_DIE_REROLL budget equal to the reroll count), so
+       * the same card works in combat (Attack die) and on the map.
+       */
+      adventureDice?: boolean;
       duration: EffectDurationDefinition;
       /**
        * Mirth: the duration scales with the Power paid rather than the reroll
@@ -1030,6 +1104,12 @@ export type PermanentEffectDefinition = {
   rangedInitiativeBonus?: number;
   /** Trigger resolved at the start of every combat round. */
   roundStart?: WarMachineRoundStartDefinition;
+  /**
+   * Income artifacts (Eversmoking Ring of Sulfur, Inexhaustible Cart of Ore):
+   * while the card is in play, the owner gains `amount` of `resource` at the
+   * start of every Resources round (the odd rounds after the first).
+   */
+  resourceRoundGain?: { resource: ResourceKind; amount: number };
   /**
    * Pandora's Box "You can have up to 3 permanent cards played at a time,
    * including this one": while in play, the owner's permanent limit becomes
@@ -2440,6 +2520,8 @@ export type ResolutionStackItem = {
     scrollLocked?: boolean;
     /** Bless: the Attack die is not rolled (counts as 0). */
     ignoreAttackDie?: boolean;
+    /** Frenzy: this attack ignores the defender's Defense (counts as 0). */
+    ignoreDefense?: boolean;
     /**
      * Slayer: roll the Attack die this many times against a gold defender and
      * count the "+1" faces as the die's whole contribution (every "-1" is
@@ -3250,6 +3332,24 @@ export type VisitStep =
   | { type: "SCHOLAR" }
   | {
       /**
+       * Scholar ability card (expert): offer to remove one non-empowered
+       * Statistic card from hand or discard and gain its Empowered version on
+       * top of the discard pile. Recurses up to `remaining` times; `takenTypes`
+       * lists the Empowered statistic types already taken this play, which may
+       * not be taken again ("up to N different Empowered Statistic cards").
+       */
+      type: "SCHOLAR_EMPOWER_PICK";
+      remaining: number;
+      takenTypes: string[];
+    }
+  | {
+      /** Scholar (expert): remove the chosen Statistic card, bank its Empowered form. */
+      type: "SCHOLAR_EMPOWER_GIVE";
+      source: "hand" | "discard";
+      cardId: string;
+    }
+  | {
+      /**
        * Choose one: trade resources (repeatable within the visit), sell one
        * hand card for 1 gold, or buy a war machine at the higher price.
        * `traded` locks the visit to resource trading once a trade happened.
@@ -3300,6 +3400,8 @@ export type VisitStep =
       spaceId: MapSpaceId;
       /** Whether arriving resolves the field like a normal visit. */
       visit?: boolean;
+      /** Town Portal Power 2/4: movement granted to the hero on arrival. */
+      movementBonus?: number;
     }
   | {
       /** Scholar basic / Rib Cage / Crown of Dragontooth: discard-pile pick. */
@@ -3770,6 +3872,7 @@ export type PendingChoice =
         | "diplomacy-recruit"
         | "dimension-door"
         | "learning-level-up"
+        | "fortune-boost"
         | "visions-boost"
         | "visions-deck"
         | "visions-scry";
@@ -3845,6 +3948,14 @@ export type PendingChoice =
        */
       visionsBoost?: { boost: number; spellCardIds: CardId[]; cardsByPower: Record<number, number> };
       /**
+       * fortune-boost: paying Fortune's Power on the map. `spellCardIds` are the
+       * power-source cards in hand offered to discard for +1 reroll each (index-
+       * aligned with the leading options; the trailing option plays now).
+       * `boost` is how many have been paid; `cardId` is the Fortune card whose
+       * rerollsByPower maps the boost to the final reroll budget.
+       */
+      fortuneBoost?: { boost: number; spellCardIds: CardId[]; cardId: CardId };
+      /**
        * visions-deck: the Neutral tier decks Visions may scry (index-aligned with
        * the options) and how many cards the chosen power level draws.
        */
@@ -3909,22 +4020,27 @@ export type PendingChoice =
     }
   | {
       /**
-       * Neutral Magi "Power Drain": after the Magi attack, the defending
-       * player chooses to discard one of their own Power-contributing cards
-       * (a Power statistic or any Spell) or to let a random card be discarded.
-       * Created only when the defender holds at least one Power card; combat
-       * stays parked on its retaliation until this resolves.
+       * A combat hand-discard prompt with two kinds:
+       *  - "magi-power-or-random": Neutral Magi "Power Drain" — after the Magi
+       *    attack the defending player discards a Power-contributing card (a
+       *    Power statistic or any Spell) of their choice, or lets a random card
+       *    be discarded. Combat stays parked on its retaliation until resolved.
+       *  - "pegasi-toll": Neutral Pegasi "Mystic Toll" — the caster must pay a
+       *    Power card of their choice BEFORE a Spell is cast. The cast is held in
+       *    `tollSpell` and replayed once the toll is paid (no random option).
        */
       id: string;
       type: "COMBAT_HAND_DISCARD";
       playerId: PlayerId;
-      kind: "magi-power-or-random";
+      kind: "magi-power-or-random" | "pegasi-toll";
       abilityId: string;
       abilityName: string;
       sourceUnitId: UnitId;
       prompt: string;
       /** Cards in the chooser's hand that can contribute Power. */
       powerCardIds: CardId[];
+      /** "pegasi-toll" only: the Spell cast deferred until the toll is paid. */
+      tollSpell?: { cardId: CardId; target: TargetRef; fromScroll?: string };
     }
   | null;
 
