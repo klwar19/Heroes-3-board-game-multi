@@ -96,17 +96,21 @@ describe("rules engine prototype", () => {
     expect(unitGrades).toEqual(new Set(["bronze", "silver", "gold"]));
   });
 
-  it("sets up the level 5 battle simulator: 6-card hands with specialty, statistics, artifact and spell", () => {
+  it("sets up the level 5 battle simulator with the new test spells in p1's hand", () => {
     const state = createInitialGameState();
 
     expect(state.heroes.hero_p1).toMatchObject({ heroDefId: "catherine", level: 5 });
     expect(state.heroes.hero_p2).toMatchObject({ heroDefId: "sandro", level: 5 });
     expect(state.players.p1.limits).toEqual({ hand: 6, expertUses: 2 });
-    expect(state.players.p1.hand).toHaveLength(6);
     expect(state.players.p1.hand).toContain("specialty.catherine.1");
     expect(state.players.p1.hand).toContain("stat.attack");
     expect(state.players.p1.hand).toContain("artifact.centaurs_axe");
     expect(state.players.p1.hand).toContain("spell.bloodlust");
+    // Inferno, Slayer and Sorrow are seeded into p1's hand so they can be tested
+    // directly in the simulator.
+    expect(state.players.p1.hand).toContain("spell.inferno");
+    expect(state.players.p1.hand).toContain("spell.slayer");
+    expect(state.players.p1.hand).toContain("spell.sorrow");
     expect(state.players.p2.hand).toHaveLength(6);
     expect(state.players.p2.hand).toContain("specialty.sandro.1");
     expect(state.players.p2.hand).toContain("spell.magic_arrow");
@@ -137,6 +141,10 @@ describe("rules engine prototype", () => {
 
   it("casts activation spells only during your own unit's activation, once per combat round", () => {
     let state = createInitialGameState();
+    // Isolate activation-spell timing: drop p1's Sorrow so its activation-skip
+    // reaction window does not open as p2's units come up (Sorrow is covered in
+    // rampart-inferno-spells.test.ts).
+    state.players.p1.hand = state.players.p1.hand.filter((cardId) => cardId !== "spell.sorrow");
     expect(state.combat?.activeUnitId).toBe("unit_p1_griffins");
     expect(state.activePlayerId).toBe("p1");
 
