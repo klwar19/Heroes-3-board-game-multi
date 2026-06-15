@@ -667,11 +667,16 @@ export type EffectDefinition =
       /**
        * Sorrow Spell (Instant reaction on UNIT_ACTIVATION_STARTED): when an
        * enemy unit is about to activate, skip its activation. The grade reached
-       * scales with the Power paid (0 → bronze, 2 → silver, 4 → gold), so each
-       * grade is one option of the card's CHOOSE_ONE (like Resurrection).
+       * scales with the Power paid (0 → bronze, 2 → silver, 4 → gold). The card
+       * is played for free against a bronze unit; discarding further Spells for
+       * "+1 Power" into the activation-skip window raises the reachable grade
+       * (the reaction window carries that Power pool, since no stack item does).
        */
       type: "SKIP_ACTIVATION";
-      grade: UnitGrade;
+      /** Reachable grade by Power paid (Sorrow: { 0: bronze, 2: silver, 4: gold }). */
+      gradeByPower?: Record<number, UnitGrade>;
+      /** Fixed reachable grade when no Power table is given (legacy single-grade). */
+      grade?: UnitGrade;
     }
   | {
       /**
@@ -1661,6 +1666,12 @@ export type GameEvent =
        * never uses it). The client skips the rolling-dice cinematic for these.
        */
       noDie?: boolean;
+      /**
+       * Every die in `rolls` counts toward `roll` (summed/counted) rather than
+       * one being selected — Slayer and the Champions' "apply both" roll. The
+       * dice overlay keeps every die lit instead of dimming the "unused" faces.
+       */
+      sumAllDice?: boolean;
       rollMode: AttackRollMode;
       attackBonus: number;
       defenseBonus: number;
@@ -1674,6 +1685,22 @@ export type GameEvent =
       defenseValue: number;
       damage: number;
       isRetaliation: boolean;
+    }
+  | {
+      /**
+       * A Spell rolled the Attack die one or more times to size its own effect
+       * (Inferno's area blast). Logged BEFORE the damage it produces so the
+       * client can show the dice tumbling and read out, then the burst and the
+       * damage land. `hits` is the number of "+1" faces (the damage each unit in
+       * range takes); `position` anchors the dice overlay on the targeted space.
+       */
+      id: string;
+      type: "SPELL_DICE_ROLLED";
+      spellCardId: CardId;
+      playerId: PlayerId;
+      rolls: number[];
+      hits: number;
+      position?: number;
     }
   | {
       id: string;
@@ -2410,6 +2437,13 @@ export type ResolutionStackItem = {
      * ignored). Set by the Slayer reaction; consumed in resolveAttackStackItem.
      */
     slayerRolls?: number;
+    /**
+     * Slayer's power→rolls table, kept so the roll count re-derives when more
+     * Power lands in the attack window after Slayer was played (the caster keeps
+     * priority and may keep empowering it) instead of being frozen at the Power
+     * it had when first cast — the same recompute the attack/defense instants get.
+     */
+    slayerRollsByPower?: Record<number, number>;
     /** Slayer: draw 1 card once the modified attack has resolved. */
     slayerDraw?: boolean;
     /** Precision: this shot ignores the ranged back-row penalty. */
@@ -2488,6 +2522,13 @@ export type ReactionWindow = {
   legalReactions: Record<PlayerId, LegalAction[]>;
   passedPlayerIds: PlayerId[];
   closesWhen: "all-pass" | "one-reaction" | "choice-made";
+  /**
+   * Power paid into a window that has no paused stack item to hold it — today
+   * just the Sorrow activation-skip window. Every "+1 Power" discard adds 1 and
+   * SKIP_ACTIVATION reads it to decide the reachable grade. Stack-backed windows
+   * (spell casts, attacks) keep their Power on the stack item instead.
+   */
+  spellPowerBonus?: number;
 };
 
 export type ActiveEffectState = ActiveEffectDefinition & {
@@ -3628,6 +3669,13 @@ export type HeroState = {
 export type AttackRollCandidate = {
   rolls: number[];
   roll: number;
+  /**
+   * Every die rolled contributes to `roll` (the faces are summed/counted) rather
+   * than one selected face — Slayer (count the "+1"s) and the Neutral Champions'
+   * "apply both" roll. The dice overlay then shows all dice lit, never dimming
+   * the "unused" ones the way it does for an advantage/disadvantage keep-one roll.
+   */
+  sumAllDice?: boolean;
 };
 
 export type AttackRerollSource = {

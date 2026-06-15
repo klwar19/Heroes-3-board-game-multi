@@ -129,6 +129,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
           ? ` Defend roll ${formatDieFace(event.defendRoll)} (${event.defendRoll === 1 ? "+1 Defense" : "no bonus"}).`
           : ""
       }`;
+    case "SPELL_DICE_ROLLED":
+      return `${cardName(event.spellCardId)} rolls ${event.rolls.map(formatDieFace).join("/")}: ${event.hits} hit${event.hits === 1 ? "" : "s"}.`;
     case "UNIT_LETHAL_HIT":
       return `${unitName(state, event.defenderId)} is about to be destroyed.`;
     case "ATTACK_DIE_SETTLED":

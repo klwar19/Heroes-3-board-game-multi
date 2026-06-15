@@ -76,6 +76,56 @@ describe("DiceOverlay — tabletop pacing & neutral pre-attack pause", () => {
   });
 });
 
+describe("DiceOverlay — summed (Slayer/Inferno) and spell-roll modes", () => {
+  it("keeps every die lit when all dice count (Slayer / apply-both)", () => {
+    vi.useFakeTimers();
+    // Two "+1"s summed to roll 2: a keep-one roll would dim both (neither equals
+    // the sum), but a summed roll lights them all.
+    const { container } = render(
+      <DiceOverlay cue={diceCue({ rolls: [1, 1], roll: 2, sumAllDice: true })} onDone={vi.fn()} />
+    );
+    act(() => vi.advanceTimersByTime(2000)); // past the tumble, now settled
+    expect(container.querySelectorAll(".dieScene").length).toBe(2);
+    expect(container.querySelectorAll(".dieScene.dimmed").length).toBe(0);
+  });
+
+  it("still dims the unused face on an advantage keep-one roll (control)", () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <DiceOverlay cue={diceCue({ rolls: [1, 0], roll: 1, rollMode: "advantage" })} onDone={vi.fn()} />
+    );
+    act(() => vi.advanceTimersByTime(2000));
+    expect(container.querySelectorAll(".dieScene.dimmed").length).toBe(1);
+  });
+
+  it("shows the spell name and hit read-out in spell-roll mode (Inferno)", () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <DiceOverlay
+        cue={diceCue({
+          spellMode: true,
+          title: "Inferno",
+          rolls: [1, 1, 1, 0],
+          roll: 3,
+          sumAllDice: true,
+          caption: "3 hits → 3 damage each"
+        })}
+        onDone={vi.fn()}
+      />
+    );
+    // Headed by the spell, not "Attack! … → …".
+    expect(screen.getByRole("status", { name: /inferno roll/i })).toBeTruthy();
+    act(() => vi.advanceTimersByTime(2000));
+    expect(screen.getByText("Inferno")).toBeTruthy();
+    expect(screen.getByText(/3 hits/)).toBeTruthy();
+    // No attacker-vs-defender combat breakdown in spell mode.
+    expect(container.querySelector(".versus")).toBeNull();
+    expect(container.querySelector(".formula")).toBeNull();
+    // Every die stays lit.
+    expect(container.querySelectorAll(".dieScene.dimmed").length).toBe(0);
+  });
+});
+
 /** Minimal state carrying a pre-activation guard pause for the overlay. */
 function pauseState(intentTargetName?: string): GameState {
   return {
