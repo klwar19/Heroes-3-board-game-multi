@@ -151,6 +151,14 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Shackles of War (option 1): while held, the affected player's Hero can
+       * neither Retreat nor Surrender from the current Combat. Player-scoped,
+       * lasts the Combat.
+       */
+      type: "CANNOT_ESCAPE_COMBAT";
+    }
+  | {
+      /**
        * Luck-style rerolls of the adventure dice. "any" also lets the
        * attack-die reroll flow consume this effect (Expert Luck).
        */
@@ -687,6 +695,14 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Shackles of War (option 1): played at the start of a player-vs-player
+       * Combat, the enemy player's Hero can neither Retreat nor Surrender for
+       * the rest of that Combat (a CANNOT_ESCAPE_COMBAT effect on the enemy).
+       */
+      type: "BLOCK_ENEMY_ESCAPE";
+    }
+  | {
+      /**
        * Earthquake: siege only. Power 0 removes 1 Wall/Gate of the caster's
        * choice, Power 1 removes 2, Power 2 deals 1 damage to every unit
        * adjacent to a fortification and removes them all.
@@ -1141,6 +1157,16 @@ export type GameAction =
   | { type: "CONTINUE_NEUTRAL_COMBAT"; playerId: PlayerId }
   | { type: "CONTINUE_NEUTRAL_STEP"; playerId: PlayerId }
   | { type: "RETREAT_FROM_COMBAT"; playerId: PlayerId }
+  | {
+      /**
+       * Player-vs-player combats: at the start of the combat (round 1) a
+       * participating hero may Surrender — the combat ends with that player as
+       * the loser. Blocked while the player is under Shackles of War's
+       * "neither Retreat nor Surrender" effect.
+       */
+      type: "SURRENDER_COMBAT";
+      playerId: PlayerId;
+    }
   | {
       /**
        * Close the end-of-combat notice: finalizes an adventure combat

@@ -356,3 +356,99 @@ describe("Charm of Mana artifact", () => {
     expect(done.pendingChoice).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Shackles of War (Major artifact) + the player-vs-player escape it blocks:
+//   Option 0 (start of PvP combat): the enemy hero can neither Retreat nor
+//   Surrender. Option 1: draw 2, keep 1, discard the other.
+// ---------------------------------------------------------------------------
+
+describe("Shackles of War + PvP retreat/surrender", () => {
+  function pvpState(seed: string): GameState {
+    // PvP combats only happen in adventure mode; borrow the sim's fully-formed
+    // battlefield into an adventure game and reframe it as player-vs-player.
+    const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+    state.combat = createInitialGameState(seed).combat;
+    state.combat!.context = {
+      kind: "player",
+      attackerHeroId: "hero_p1",
+      defenderHeroId: "hero_p2",
+      fieldId: state.heroes.hero_p1.spaceId ?? "0,0"
+    };
+    state.phase = "combat";
+    state.activePlayerId = "p1";
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    return state;
+  }
+
+  function escapeOptions(state: GameState, playerId: "p1" | "p2") {
+    const actions = getLegalActions(state, playerId);
+    return {
+      retreat: actions.some((l) => l.action.type === "RETREAT_FROM_COMBAT"),
+      surrender: actions.some((l) => l.action.type === "SURRENDER_COMBAT")
+    };
+  }
+
+  it("a hero may Retreat or Surrender at the start of a player-vs-player combat", () => {
+    const state = pvpState("pvp-escape");
+    expect(escapeOptions(state, "p1")).toEqual({ retreat: true, surrender: true });
+    // Retreat ends the combat with the retreating player as the loser.
+    const retreated = applyOk(state, { type: "RETREAT_FROM_COMBAT", playerId: "p1" });
+    expect(retreated.combat?.outcome).toMatchObject({
+      winnerPlayerId: "p2",
+      defeatedPlayerId: "p1",
+      reason: "retreat"
+    });
+    // Surrender works the same way (fresh state).
+    const surrendered = applyOk(pvpState("pvp-surrender"), { type: "SURRENDER_COMBAT", playerId: "p2" });
+    expect(surrendered.combat?.outcome).toMatchObject({
+      winnerPlayerId: "p1",
+      defeatedPlayerId: "p2",
+      reason: "surrender"
+    });
+  });
+
+  it("Option 0 stops the enemy hero retreating or surrendering — and the engine rejects the attempt", () => {
+    const state = pvpState("pvp-shackles");
+    state.players.p2.hand = ["artifact.shackles_of_war"];
+    const play = getLegalActions(state, "p2").find(
+      (l) =>
+        l.action.type === "PLAY_CARD" &&
+        l.action.cardId === "artifact.shackles_of_war" &&
+        l.action.optionIndex === 0
+    );
+    expect(play, "Shackles option 0 should be playable at the start of PvP combat").toBeTruthy();
+    const locked = applyOk(state, play!.action);
+    // p1 (the enemy) can no longer escape…
+    expect(escapeOptions(locked, "p1")).toEqual({ retreat: false, surrender: false });
+    // …and a direct attempt is rejected.
+    const rejected = applyAction(locked, { type: "RETREAT_FROM_COMBAT", playerId: "p1" });
+    expect(rejected.errors.length).toBeGreaterThan(0);
+    // p2 (who played it) is unaffected.
+    expect(escapeOptions(locked, "p2")).toEqual({ retreat: true, surrender: true });
+  });
+
+  it("Option 1 draws 2 and discards one of the two drawn cards", () => {
+    const state = pvpState("pvp-shackles-draw");
+    state.players.p1.hand = ["artifact.shackles_of_war"];
+    state.players.p1.deck = ["spell.haste", "spell.bless", "stat.power"];
+    state.players.p1.discard = [];
+    const play = getLegalActions(state, "p1").find(
+      (l) =>
+        l.action.type === "PLAY_CARD" &&
+        l.action.cardId === "artifact.shackles_of_war" &&
+        l.action.optionIndex === 1
+    );
+    expect(play, "draw-2-keep-1 option should be offered").toBeTruthy();
+    const drew = applyOk(state, play!.action);
+    expect(drew.players.p1.hand.length).toBe(2); // drew 2
+    const choice = drew.pendingChoice!;
+    expect(choice.type === "OPTION_CHOICE" ? choice.context : null).toBe("hand-discard");
+    // Only the two just-drawn cards are candidates (drawn-only).
+    expect(choice.type === "OPTION_CHOICE" ? choice.options.length : 0).toBe(2);
+    const done = applyOk(drew, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
+    expect(done.players.p1.hand.length).toBe(1);
+    expect(done.pendingChoice).toBeNull();
+  });
+});
