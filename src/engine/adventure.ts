@@ -1267,6 +1267,17 @@ export function adventurePvpTroopLoss(state: GameState): "normal" | "none" {
 }
 
 /**
+ * House-rule gold tolls for leaving a player-vs-player Combat.
+ * - Surrender: a flat toll paid to the opponent. A hero may only choose to
+ *   Surrender with the full amount in hand (no debt); in exchange they keep
+ *   their whole army and the opponent gains nothing toward winning.
+ * - Retreat / fought-out loss: the loser pays this to the winner and may be
+ *   pushed into debt (gold can go negative) if they cannot cover it.
+ */
+export const SURRENDER_GOLD_COST = 10;
+export const RETREAT_GOLD_COST = 5;
+
+/**
  * Whether the "defeat every enemy hero" path can win this game. Shared by the
  * Grail Hunt and Dragon Hunt modes — both let a player win by military
  * dominance even if they never reach the objective creature bank.

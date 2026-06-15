@@ -372,7 +372,7 @@ describe("Shackles of War + PvP retreat/surrender", () => {
     });
   });
 
-  it("Option 0 stops the enemy hero retreating or surrendering — and the engine rejects the attempt", () => {
+  it("Option 0 stops the enemy hero Surrendering but NOT Retreating (house rule) — and a surrender attempt is rejected", () => {
     const state = pvpState("pvp-shackles");
     state.players.p2.hand = ["artifact.shackles_of_war"];
     const play = getLegalActions(state, "p2").find(
@@ -383,11 +383,14 @@ describe("Shackles of War + PvP retreat/surrender", () => {
     );
     expect(play, "Shackles option 0 should be playable at the start of PvP combat").toBeTruthy();
     const locked = applyOk(state, play!.action);
-    // p1 (the enemy) can no longer escape…
-    expect(escapeOptions(locked, "p1")).toEqual({ retreat: false, surrender: false });
-    // …and a direct attempt is rejected.
-    const rejected = applyAction(locked, { type: "RETREAT_FROM_COMBAT", playerId: "p1" });
-    expect(rejected.errors.length).toBeGreaterThan(0);
+    // p1 (the enemy) can no longer Surrender, but may still Retreat (house rule).
+    expect(escapeOptions(locked, "p1")).toEqual({ retreat: true, surrender: false });
+    // A direct Surrender attempt is rejected…
+    const surrenderRejected = applyAction(locked, { type: "SURRENDER_COMBAT", playerId: "p1" });
+    expect(surrenderRejected.errors.length).toBeGreaterThan(0);
+    // …while Retreat still goes through, ending the combat with p1 as the loser.
+    const retreated = applyOk(locked, { type: "RETREAT_FROM_COMBAT", playerId: "p1" });
+    expect(retreated.combat?.outcome).toMatchObject({ defeatedPlayerId: "p1", reason: "retreat" });
     // p2 (who played it) is unaffected.
     expect(escapeOptions(locked, "p2")).toEqual({ retreat: true, surrender: true });
   });
