@@ -1,0 +1,319 @@
+import { describe, expect, it } from "vitest";
+import { applyAction, createAdventureGameState, getLegalActions } from "./index";
+import { beginFieldVisit, getMainHero, getTownOfPlayer } from "./adventure";
+import { resolveVisitStep } from "./adventure-reducer";
+import { artifactDeckBinhMajor, artifactDeckLegacy } from "@/data/cards/artifacts";
+import { cardLibrary } from "@/data/cards/library";
+import type { GameAction, GameState, VisitStep } from "./state";
+
+// ---------------------------------------------------------------------------
+// Three Major wiki artifacts that manipulate dice / recruit Neutral Units:
+//   - Cards of Prophecy (Tower):    Reroll any die — OR — Set a Resource or
+//                                   Treasure die to the side of your choice.
+//   - Diplomat's Ring (Stronghold): Reroll any die or any roll — OR — Dwelling
+//                                   Neutral recruit.
+//   - Ambassador's Sash (Rampart):  Dwelling Neutral recruit — OR — Reroll a die.
+//
+// "Reroll" reuses the Expert-Luck reroll model (a one-shot ATTACK_DIE_REROLL +
+// ADVENTURE_DIE_REROLL "any" effect). "Set a die" is a new ADVENTURE_DIE_SET
+// modifier offered in rollResourceDice/rollTreasureDice. The Dwelling recruit
+// reuses Cyra's Diplomacy DIPLOMACY_RECRUIT.
+// ---------------------------------------------------------------------------
+
+function applyOk(state: GameState, action: GameAction): GameState {
+  const result = applyAction(state, action);
+  expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+  return result.state;
+}
+
+/** A map turn with p1 active and no leftover morale token (keeps die rolls clean). */
+function mapState(seed: string): GameState {
+  const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+  state.activePlayerId = "p1";
+  state.players.p1.morale = 0;
+  return state;
+}
+
+const SPACE = "50,50";
+
+/** Drops a single visitable field under p1's hero so a visit can be driven. */
+function injectField(state: GameState, location: string): void {
+  state.adventure!.fields[SPACE] = {
+    spaceId: SPACE,
+    tileInstanceId: "prophecy-tile",
+    slot: 0,
+    location,
+    difficulty: undefined,
+    blackCube: false,
+    flagOwnerId: null,
+    everFlagged: false,
+    settlementResource: null
+  };
+  getMainHero(state, "p1")!.spaceId = SPACE;
+}
+
+function findPlay(state: GameState, cardId: string, optionIndex: number): GameAction | undefined {
+  for (const entry of getLegalActions(state, "p1")) {
+    const action = entry.action;
+    if (action.type === "PLAY_CARD" && action.cardId === cardId && action.optionIndex === optionIndex) {
+      return action;
+    }
+  }
+  return undefined;
+}
+
+function visitChoice(state: GameState): Extract<VisitStep, { type: "CHOOSE_ONE" }> {
+  const step = state.adventure!.pendingVisit?.steps[0];
+  if (step?.type !== "CHOOSE_ONE") {
+    throw new Error(`Expected a CHOOSE_ONE visit step, got ${step?.type ?? "none"}`);
+  }
+  return step;
+}
+
+function resolveByLabel(state: GameState, match: (label: string) => boolean): void {
+  const step = visitChoice(state);
+  const optionIndex = step.options.findIndex((option) => match(option.label));
+  if (optionIndex < 0) {
+    throw new Error(`No option matched among: ${step.options.map((option) => option.label).join(" | ")}`);
+  }
+  resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex });
+}
+
+function countRolls(state: GameState, dice: "resource" | "treasure"): number {
+  return state.eventLog.filter((event) => event.type === "ADVENTURE_DICE_ROLLED" && event.dice === dice).length;
+}
+
+function hasDieSetEffect(state: GameState): boolean {
+  return state.activeEffects.some((effect) => effect.modifiers.some((modifier) => modifier.type === "ADVENTURE_DIE_SET"));
+}
+
+// ===========================================================================
+// Card definitions
+// ===========================================================================
+
+describe("Prophecy / Diplomacy artifacts — definitions", () => {
+  it("Cards of Prophecy: Major CHOOSE_ONE with a reroll instant and a map set-die", () => {
+    const card = cardLibrary["artifact.cards_of_prophecy"];
+    expect(card.implementationStatus).toBe("implemented");
+    expect(card.artifactTier).toBe("major");
+    expect(card.effect.type).toBe("CHOOSE_ONE");
+    if (card.effect.type !== "CHOOSE_ONE") return;
+
+    const [reroll, setDie] = card.effect.options;
+    // Reroll side: a one-shot effect covering BOTH the combat Attack die and a
+    // map adventure die — playable anywhere (no map/combat restriction).
+    expect(reroll.mapOnly).toBeUndefined();
+    expect(reroll.combatOnly).toBeUndefined();
+    expect(reroll.effect.type).toBe("CREATE_ACTIVE_EFFECT");
+    if (reroll.effect.type === "CREATE_ACTIVE_EFFECT") {
+      const mods = reroll.effect.effect.modifiers.map((modifier) => modifier.type);
+      expect(mods).toContain("ATTACK_DIE_REROLL");
+      expect(mods).toContain("ADVENTURE_DIE_REROLL");
+    }
+    // Set-die side: a map-only ADVENTURE_DIE_SET effect.
+    expect(setDie.mapOnly).toBe(true);
+    expect(setDie.effect.type).toBe("CREATE_ACTIVE_EFFECT");
+    if (setDie.effect.type === "CREATE_ACTIVE_EFFECT") {
+      const setMod = setDie.effect.effect.modifiers.find((modifier) => modifier.type === "ADVENTURE_DIE_SET");
+      expect(setMod?.type === "ADVENTURE_DIE_SET" && setMod.dice).toBe("any");
+    }
+  });
+
+  it("Diplomat's Ring: reroll instant (option 0) + map Dwelling recruit (option 1)", () => {
+    const card = cardLibrary["artifact.diplomats_ring"];
+    expect(card.implementationStatus).toBe("implemented");
+    expect(card.artifactTier).toBe("major");
+    if (card.effect.type !== "CHOOSE_ONE") throw new Error("expected CHOOSE_ONE");
+    expect(card.effect.options[0].effect.type).toBe("CREATE_ACTIVE_EFFECT");
+    expect(card.effect.options[1].effect.type).toBe("DIPLOMACY_RECRUIT");
+    expect(card.effect.options[1].mapOnly).toBe(true);
+  });
+
+  it("Ambassador's Sash: map Dwelling recruit (option 0) + reroll instant (option 1)", () => {
+    const card = cardLibrary["artifact.ambassadors_sash"];
+    expect(card.implementationStatus).toBe("implemented");
+    expect(card.artifactTier).toBe("major");
+    if (card.effect.type !== "CHOOSE_ONE") throw new Error("expected CHOOSE_ONE");
+    expect(card.effect.options[0].effect.type).toBe("DIPLOMACY_RECRUIT");
+    expect(card.effect.options[0].mapOnly).toBe(true);
+    expect(card.effect.options[1].effect.type).toBe("CREATE_ACTIVE_EFFECT");
+  });
+
+  it("all three are decked in the legacy and BINH Major artifact decks", () => {
+    for (const id of ["artifact.cards_of_prophecy", "artifact.diplomats_ring", "artifact.ambassadors_sash"]) {
+      expect(artifactDeckLegacy).toContain(id);
+      expect(artifactDeckBinhMajor).toContain(id);
+    }
+  });
+});
+
+// ===========================================================================
+// Reroll-any-die (functional, adventure map)
+// ===========================================================================
+
+describe("Reroll-any-die option (map adventure die)", () => {
+  function playRerollThenVisit(cardId: string, optionIndex: number, location: string): GameState {
+    let state = mapState(`reroll-${cardId}`);
+    state.players.p1.hand = [cardId];
+    const play = findPlay(state, cardId, optionIndex);
+    expect(play, `${cardId} reroll option ${optionIndex} should be offered on the map`).toBeTruthy();
+    state = applyOk(state, play!);
+    injectField(state, location);
+    beginFieldVisit(state, getMainHero(state, "p1")!.id, SPACE, false);
+    return state;
+  }
+
+  it("Cards of Prophecy reroll lets you reroll the Resource die, then is spent", () => {
+    const state = playRerollThenVisit("artifact.cards_of_prophecy", 0, "resource_symbol");
+    expect(state.activeEffects.some((effect) => effect.name === "Cards of Prophecy")).toBe(true);
+
+    const before = countRolls(state, "resource");
+    resolveByLabel(state, (label) => /reroll the Resource/i.test(label));
+
+    // A second Resource roll happened, and the one-shot reroll effect is gone.
+    expect(countRolls(state, "resource")).toBe(before + 1);
+    expect(state.activeEffects.some((effect) => effect.name === "Cards of Prophecy")).toBe(false);
+    expect(state.adventure!.pendingVisit).toBeNull();
+  });
+
+  it("Ambassador's Sash reroll (option 1) works on the Treasure die", () => {
+    const state = playRerollThenVisit("artifact.ambassadors_sash", 1, "treasure_symbol");
+    const before = countRolls(state, "treasure");
+    resolveByLabel(state, (label) => /reroll the Treasure/i.test(label));
+    expect(countRolls(state, "treasure")).toBe(before + 1);
+    expect(state.activeEffects.some((effect) => effect.name === "Ambassador's Sash")).toBe(false);
+  });
+
+  it("Diplomat's Ring reroll (option 0) is offered at the Resource die", () => {
+    const state = playRerollThenVisit("artifact.diplomats_ring", 0, "resource_symbol");
+    expect(visitChoice(state).options.some((option) => /reroll the Resource/i.test(option.label))).toBe(true);
+  });
+
+  it("without the artifact, a single Resource die auto-resolves with no reroll choice", () => {
+    const state = mapState("reroll-none");
+    injectField(state, "resource_symbol");
+    beginFieldVisit(state, getMainHero(state, "p1")!.id, SPACE, false);
+    // No reroll/set effect: the single die resolves immediately, no pending visit.
+    expect(state.adventure!.pendingVisit).toBeNull();
+  });
+});
+
+// ===========================================================================
+// Cards of Prophecy — Set a Resource / Treasure die (functional)
+// ===========================================================================
+
+describe("Cards of Prophecy — set a Resource/Treasure die", () => {
+  function playSetThenVisit(seed: string, location: string): GameState {
+    let state = mapState(seed);
+    state.players.p1.hand = ["artifact.cards_of_prophecy"];
+    const play = findPlay(state, "artifact.cards_of_prophecy", 1);
+    expect(play, "the set-die map option should be offered").toBeTruthy();
+    state = applyOk(state, play!);
+    expect(hasDieSetEffect(state)).toBe(true);
+    injectField(state, location);
+    beginFieldVisit(state, getMainHero(state, "p1")!.id, SPACE, false);
+    return state;
+  }
+
+  it("sets the Resource die to a chosen face (6 gold), ignoring the roll, and is spent", () => {
+    const state = playSetThenVisit("set-resource", "resource_symbol");
+    const step = visitChoice(state);
+    // Every Resource-die face is offered as a "set" option.
+    expect(step.options.some((option) => /set the Resource die to 6 gold/i.test(option.label))).toBe(true);
+    expect(step.options.some((option) => /set the Resource die to 2 valuables/i.test(option.label))).toBe(true);
+    expect(step.options.some((option) => /set the Resource die to 4 materials/i.test(option.label))).toBe(true);
+
+    const goldBefore = state.players.p1.resources.gold;
+    resolveByLabel(state, (label) => /set the Resource die to 6 gold/i.test(label));
+
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 6);
+    expect(hasDieSetEffect(state)).toBe(false); // single use, spent
+    expect(state.adventure!.pendingVisit).toBeNull();
+  });
+
+  it("offers every distinct Treasure-die face and spends the effect when one is set", () => {
+    const state = playSetThenVisit("set-treasure", "treasure_symbol");
+    const labels = visitChoice(state).options.map((option) => option.label);
+    expect(labels.some((label) => /set the Treasure die to Gain 1 experience/i.test(label))).toBe(true);
+    expect(labels.some((label) => /set the Treasure die to Search \(2\) the Artifact deck/i.test(label))).toBe(true);
+    expect(labels.some((label) => /set the Treasure die to Roll 1 Resource die/i.test(label))).toBe(true);
+    expect(labels.some((label) => /set the Treasure die to Roll 2 Resource dice/i.test(label))).toBe(true);
+
+    // Set it to "Roll 1 Resource die": the effect is spent first, then a normal
+    // Resource die is rolled (which can no longer be set — single use).
+    resolveByLabel(state, (label) => /set the Treasure die to Roll 1 Resource die/i.test(label));
+    expect(hasDieSetEffect(state)).toBe(false);
+  });
+
+  it("setting one die does not let the chained Resource roll be set again (single use)", () => {
+    // Set the Treasure die to "Roll 1 Resource die": the chained Resource roll
+    // must auto-resolve (the die-set effect was already spent), so the visit
+    // finishes without offering another "set the Resource die" choice.
+    const state = playSetThenVisit("set-chain", "treasure_symbol");
+    resolveByLabel(state, (label) => /set the Treasure die to Roll 1 Resource die/i.test(label));
+    expect(hasDieSetEffect(state)).toBe(false);
+    expect(state.adventure!.pendingVisit).toBeNull();
+  });
+});
+
+// ===========================================================================
+// Diplomat's Ring / Ambassador's Sash — Dwelling Neutral recruit (map)
+// ===========================================================================
+
+describe("Diplomat's Ring / Ambassador's Sash — Dwelling recruit", () => {
+  function withDwelling(seed: string, cardId: string): GameState {
+    const state = mapState(seed);
+    const player = state.players.p1;
+    player.resources.gold = 50;
+    player.resources.buildingMaterials = 50;
+    player.resources.valuables = 50;
+    player.hand = [cardId];
+    getTownOfPlayer(state, "p1")!.buildings.push("castle.dwelling_bronze");
+    return state;
+  }
+
+  it("Diplomat's Ring (option 1) draws Neutrals per Dwelling and recruits the chosen unit", () => {
+    let state = withDwelling("ring-recruit", "artifact.diplomats_ring");
+    const armyBefore = state.players.p1.army.length;
+    const goldBefore = state.players.p1.resources.gold;
+
+    const play = findPlay(state, "artifact.diplomats_ring", 1);
+    expect(play, "the Dwelling recruit option should be offered with a Dwelling").toBeTruthy();
+    state = applyOk(state, play!);
+
+    expect(state.players.p1.hand).not.toContain("artifact.diplomats_ring");
+    expect(state.eventLog.some((event) => event.type === "DIPLOMACY_NEUTRALS_DRAWN")).toBe(true);
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("diplomacy-recruit");
+
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (state.pendingChoice as { id: string }).id,
+      optionIndex: 0
+    });
+
+    expect(state.players.p1.army.length).toBe(armyBefore + 1);
+    expect(state.players.p1.army.at(-1)!.side).toBe("neutral");
+    expect(state.players.p1.resources.gold).toBeLessThan(goldBefore);
+  });
+
+  it("Ambassador's Sash exposes the same recruit on option 0", () => {
+    let state = withDwelling("sash-recruit", "artifact.ambassadors_sash");
+    const play = findPlay(state, "artifact.ambassadors_sash", 0);
+    expect(play).toBeTruthy();
+    state = applyOk(state, play!);
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("diplomacy-recruit");
+  });
+
+  it("the recruit option is gated out without a Dwelling, but the reroll side stays", () => {
+    const state = mapState("ring-no-dwelling");
+    state.players.p1.hand = ["artifact.diplomats_ring"];
+    const town = getTownOfPlayer(state, "p1")!;
+    town.buildings = town.buildings.filter(
+      (id) => id !== "castle.dwelling_bronze" && id !== "castle.dwelling_silver" && id !== "castle.dwelling_gold"
+    );
+
+    expect(findPlay(state, "artifact.diplomats_ring", 1)).toBeUndefined(); // recruit gated out
+    expect(findPlay(state, "artifact.diplomats_ring", 0)).toBeTruthy(); // reroll still offered
+  });
+});

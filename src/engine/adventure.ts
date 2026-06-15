@@ -1895,6 +1895,9 @@ export function processPendingVisit(state: GameState): void {
       case "CONSUME_LUCK":
         consumeLuckReroll(state, step.effectId, step.dice);
         break;
+      case "CONSUME_DIE_SET":
+        consumeDieSet(state, step.effectId);
+        break;
       case "CONSUME_MORALE": {
         const player = state.players[visit.playerId];
         if (player && player.morale > 0) {
@@ -2508,6 +2511,67 @@ function consumeLuckReroll(state: GameState, effectId: string, dice: "treasure" 
 }
 
 /**
+ * Cards of Prophecy ("Set a Resource die or Treasure die on the side of your
+ * choice"): finds an unused die-set effect that covers this die kind. Like the
+ * single-use "any" Luck reroll, one effect grants exactly one set, so any
+ * matching effect that still exists is available.
+ */
+function getDieSetEffect(state: GameState, playerId: PlayerId, dice: "treasure" | "resource"): ActiveEffectState | null {
+  return (
+    state.activeEffects.find(
+      (effect) =>
+        effect.controllerId === playerId &&
+        effect.modifiers.some(
+          (modifier) => modifier.type === "ADVENTURE_DIE_SET" && (modifier.dice === dice || modifier.dice === "any")
+        )
+    ) ?? null
+  );
+}
+
+/** Spends a die-set effect: it is a single use, so the whole effect is removed. */
+function consumeDieSet(state: GameState, effectId: string): void {
+  const effect = state.activeEffects.find((candidate) => candidate.id === effectId);
+  if (!effect) {
+    return;
+  }
+  appendEvent(state, {
+    type: "ACTIVE_EFFECT_USED",
+    effectId: effect.id,
+    playerId: effect.controllerId,
+    target: { type: "none" }
+  });
+  state.activeEffects = state.activeEffects.filter((candidate) => candidate.id !== effectId);
+}
+
+/**
+ * "Set a Resource die on the side of your choice": one option per distinct
+ * Resource-die face. Choosing it spends the die-set effect, then gains exactly
+ * that face's resources — overriding whatever was rolled.
+ */
+function setResourceDieOptions(setEffect: ActiveEffectState): { label: string; steps: VisitStep[] }[] {
+  return RESOURCE_DIE_FACES.map((face) => ({
+    label: `${setEffect.name}: set the Resource die to ${resourceDieLabel(face)}`,
+    steps: [
+      { type: "CONSUME_DIE_SET", effectId: setEffect.id } as VisitStep,
+      { type: "GAIN_RESOURCES", [face.resource]: face.amount } as VisitStep
+    ]
+  }));
+}
+
+/**
+ * "Set a Treasure die on the side of your choice": one option per distinct
+ * Treasure-die face (the deduped face list, since Experience and the Artifact
+ * Search each appear twice on the physical die). Choosing it spends the die-set
+ * effect, then resolves that face — overriding whatever was rolled.
+ */
+function setTreasureDieOptions(setEffect: ActiveEffectState): { label: string; steps: VisitStep[] }[] {
+  return [...new Set(TREASURE_DIE_FACES)].map((face) => ({
+    label: `${setEffect.name}: set the Treasure die to ${treasureFaceLabel(face)}`,
+    steps: [{ type: "CONSUME_DIE_SET", effectId: setEffect.id } as VisitStep, ...treasureFaceSteps(face)]
+  }));
+}
+
+/**
  * Optional rerolls of an adventure die beyond Luck: the positive morale token
  * ("Reroll any Die you have thrown") and the Swift Weasel Astrologers card
  * (one free Treasure/Resource reroll per turn).
@@ -2561,8 +2625,9 @@ function rollResourceDice(state: GameState, visit: PendingVisit, count: number):
 
   const luck = getLuckRerollEffect(state, visit.playerId, "resource");
   const extraOptions = extraDieRerollOptions(state, visit, "resource", count);
+  const setEffect = getDieSetEffect(state, visit.playerId, "resource");
 
-  if (rolls.length === 1 && !luck && extraOptions.length === 0) {
+  if (rolls.length === 1 && !luck && extraOptions.length === 0 && !setEffect) {
     gainResources(state, visit.playerId, { [rolls[0].resource]: rolls[0].amount }, "resource die");
     return;
   }
@@ -2582,6 +2647,11 @@ function rollResourceDice(state: GameState, visit: PendingVisit, count: number):
     });
   }
   options.push(...extraOptions);
+  // Cards of Prophecy: ignore the roll and set the Resource die to a face of
+  // your choice (the whole die-set effect is spent on the chosen option).
+  if (setEffect) {
+    options.push(...setResourceDieOptions(setEffect));
+  }
 
   visit.steps.unshift({
     type: "CHOOSE_ONE",
@@ -2630,8 +2700,9 @@ function rollTreasureDice(state: GameState, visit: PendingVisit, count: number):
 
   const luck = getLuckRerollEffect(state, visit.playerId, "treasure");
   const extraOptions = extraDieRerollOptions(state, visit, "treasure", count);
+  const setEffect = getDieSetEffect(state, visit.playerId, "treasure");
 
-  if (rolls.length === 1 && !luck && extraOptions.length === 0) {
+  if (rolls.length === 1 && !luck && extraOptions.length === 0 && !setEffect) {
     visit.steps.unshift(...treasureFaceSteps(rolls[0]));
     return;
   }
@@ -2651,6 +2722,11 @@ function rollTreasureDice(state: GameState, visit: PendingVisit, count: number):
     });
   }
   options.push(...extraOptions);
+  // Cards of Prophecy: ignore the roll and set the Treasure die to a face of
+  // your choice (the whole die-set effect is spent on the chosen option).
+  if (setEffect) {
+    options.push(...setTreasureDieOptions(setEffect));
+  }
 
   visit.steps.unshift({
     type: "CHOOSE_ONE",
