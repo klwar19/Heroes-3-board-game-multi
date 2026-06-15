@@ -24,6 +24,15 @@ export type TileFieldDefinition = {
   amount?: number;
   /** Faction styling for towns and settlements. */
   faction?: string;
+  /**
+   * Per-hex terrain override. Sea tiles mix water and land hexes (open ocean
+   * plus island structures), so a hex's terrain is not always the tile's: an
+   * island field on a water tile is `"land"`, and (rarely) a water field on a
+   * land tile is `"water"`. When omitted the hex inherits the tile terrain
+   * (water tile -> water hex, anything else -> land hex). Read by `isSeaField`
+   * to gate sea movement.
+   */
+  terrain?: "land" | "water";
 };
 
 export type TileDefinition = {

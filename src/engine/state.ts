@@ -2848,6 +2848,13 @@ export type MapFieldState = {
   resource?: ResourceKind;
   amount?: number;
   faction?: string;
+  /**
+   * Set to "water" on sea hexes (open ocean and sea features on water tiles).
+   * Absent means a land hex. Resolved from the tile field's terrain override or
+   * the tile terrain when the tile is materialized; read by `isSeaField` to gate
+   * sea movement (crossing the coastline halts a hero without Water Walk).
+   */
+  terrain?: "water";
   /** Visitable fields get a black cube after the visit and then count as empty. */
   blackCube: boolean;
   flagOwnerId: PlayerId | null;

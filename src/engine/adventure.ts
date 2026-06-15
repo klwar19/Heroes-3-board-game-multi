@@ -280,6 +280,15 @@ export function instantiateTile(
   return tile;
 }
 
+/**
+ * Locations that are always dry land, so on a sea tile they form an island hex
+ * rather than open ocean. A tile field may still override its terrain
+ * explicitly; this only decides the default for water-tile hexes. (Verify the
+ * exact per-hex water/land split against the printed tile art before release —
+ * a few generic buildings on a sea tile could sit on islands too.)
+ */
+const SEA_TILE_LAND_LOCATIONS = new Set<string>(["town", "random_town", "settlement", "mine", "stables"]);
+
 /** Creates the 7 field states for a revealed tile. */
 export function materializeTileFields(adventure: AdventureState, tile: MapTileState): void {
   const def = allTileDefinitions[tile.tileDefId];
@@ -312,6 +321,15 @@ export function materializeTileFields(adventure: AdventureState, tile: MapTileSt
     }
     if (fieldDef.faction) {
       field.faction = fieldDef.faction;
+    }
+    // Resolve per-hex terrain. An explicit field override wins; otherwise a hex
+    // on a water tile is open sea — except the structures that can only sit on
+    // dry ground (a town/mine/settlement/stable is an island, i.e. land).
+    const isWater = fieldDef.terrain
+      ? fieldDef.terrain === "water"
+      : def.terrain === "water" && !SEA_TILE_LAND_LOCATIONS.has(fieldDef.location);
+    if (isWater) {
+      field.terrain = "water";
     }
     adventure.fields[spaceId] = field;
   }
@@ -375,27 +393,22 @@ export function getHeroMovementCapabilities(state: GameState, hero: HeroState): 
 }
 
 /**
- * Whether a field sits on a sea tile (water terrain). A hero on foot may not
- * enter the open sea — only Water Walk (or, for a blocked sea field, Fly) lets
- * them cross onto it.
+ * Whether a specific hex is open sea (water terrain). This is per-hex, not
+ * per-tile: a sea tile mixes water hexes (ocean and sea features) with land
+ * hexes (island structures), so the field's resolved `terrain` is consulted,
+ * not the tile's overall terrain.
  */
 export function isSeaField(state: GameState, spaceId: MapSpaceId): boolean {
-  const field = state.adventure?.fields[spaceId];
-  if (!field) {
-    return false;
-  }
-  const tile = state.adventure?.tiles[field.tileInstanceId];
-  const def = tile ? allTileDefinitions[tile.tileDefId] : undefined;
-  return def?.terrain === "water";
+  return state.adventure?.fields[spaceId]?.terrain === "water";
 }
 
 /**
  * Whether taking a single step from `from` to `to` ends the hero's movement for
- * the turn. Without Water Walk, any step that touches the open sea — wading in
- * (land→sea), wading out (sea→land), or moving within it (sea→sea) — is a
- * one-and-done step: the hero keeps their remaining movement points (a neutral
- * combat may still spend them) but cannot take another step. Water Walk lets the
- * hero move across the sea freely.
+ * the turn. Without Water Walk, only a step that crosses the coastline — land to
+ * sea (embarking) or sea to land (disembarking) — halts the hero: they keep
+ * their remaining movement points (a neutral combat may still spend them) but
+ * cannot take another step. Moving within the sea (sea→sea) or on land
+ * (land→land) is normal, and Water Walk removes the coastline halt entirely.
  */
 export function seaStepHalts(
   state: GameState,
@@ -403,7 +416,7 @@ export function seaStepHalts(
   to: MapSpaceId,
   movement: HeroMovementCapabilities = NO_MOVEMENT_CAPABILITIES
 ): boolean {
-  return !movement.waterWalk && (isSeaField(state, from) || isSeaField(state, to));
+  return !movement.waterWalk && isSeaField(state, from) !== isSeaField(state, to);
 }
 
 /**
@@ -506,11 +519,11 @@ export function isFieldGuarded(field: MapFieldState): boolean {
  */
 export type HeroStepKind = "open" | "stop" | "pass-only" | "block";
 
-function classifyHeroStepBase(
+export function classifyHeroStep(
   state: GameState,
   hero: HeroState,
   spaceId: MapSpaceId,
-  movement: HeroMovementCapabilities
+  movement: HeroMovementCapabilities = NO_MOVEMENT_CAPABILITIES
 ): HeroStepKind {
   const adventure = state.adventure;
   const field = adventure?.fields[spaceId];
@@ -561,23 +574,6 @@ function classifyHeroStepBase(
   }
 
   return "stop";
-}
-
-export function classifyHeroStep(
-  state: GameState,
-  hero: HeroState,
-  spaceId: MapSpaceId,
-  movement: HeroMovementCapabilities = NO_MOVEMENT_CAPABILITIES
-): HeroStepKind {
-  const base = classifyHeroStepBase(state, hero, spaceId, movement);
-  // Without Water Walk, stepping onto the open sea is a forced stop: a hero may
-  // move onto a sea field but cannot continue past it. (Guards, locations and
-  // enemy heroes there are already "stop"; allied heroes stay "pass-only"; a
-  // blocked sea hex stays block/pass-only.) Water Walk leaves the sea passable.
-  if (base === "open" && !movement.waterWalk && isSeaField(state, spaceId)) {
-    return "stop";
-  }
-  return base;
 }
 
 export type HeroPathTarget = { spaceId: MapSpaceId; path: MapSpaceId[]; cost: number };
