@@ -376,8 +376,18 @@ export const sampleCards: CardLibrary = {
     spellLevel: "basic",
     spellSchools: ["water"],
     tags: ["spell", "heal", "effect-removal", "wiki-reference"],
-    power: 1,
+    // Power comes from the Hero's Power statistic / Power cards like every other
+    // spell (base 0). The card used to carry power: 1, which silently healed 2
+    // and removed effects at Power 0 — one breakpoint too strong.
+    power: 0,
     target: { type: "friendly-unit" },
+    // engine: heal damage by Power (0→1, 1→2, 2→3) AND remove the friendly
+    // target's negative ongoing effects + its Paralysis token. The printed
+    // "Remove any effect" also permits dropping a positive effect, but on your
+    // own unit you would only ever clear debuffs/paralysis — so the engine
+    // removes those and keeps positives, matching the wiki note that removing
+    // an effect is optional (a positive effect "does not have to be removed").
+    // The "OR +1 Power" side is the universal power-source discard.
     effect: {
       type: "HEAL_DAMAGE_AND_REMOVE_EFFECTS",
       amountByPower: {
@@ -385,7 +395,8 @@ export const sampleCards: CardLibrary = {
         1: 2,
         2: 3
       },
-      removePolarity: "negative"
+      removePolarity: "negative",
+      removeParalysis: true
     },
     assets: {
       cardImage: "/assets/spells-cure.webp",
@@ -402,13 +413,32 @@ export const sampleCards: CardLibrary = {
     id: "spell.fortune",
     name: "Fortune",
     kind: "spell",
-    timing: "combat",
-    phaseLimit: ["combat"],
+    // Instant (per the wiki): played before a die roll. Cast in Combat for the
+    // Attack die, or played on the adventure map for the Treasure/Resource dice.
+    // No phaseLimit, so it reaches both contexts; the combat and map play gates
+    // decide where it is actually legal.
+    timing: "instant",
     spellLevel: "basic",
     spellSchools: ["air"],
-    tags: ["spell", "reroll", "attack-die", "wiki-reference"],
-    power: 1,
+    tags: [
+      "spell",
+      "basic",
+      "air",
+      "reroll",
+      "Instant: Reroll one Treasure, Resource, or Attack die, then resolve the result of your choice: Power 0: once; Power 1: twice; Power 2: 3 times. — OR — Instant: +1 Power.",
+      "wiki-reference"
+    ],
+    // Base 0 like every other spell. The card used to carry power: 1, which
+    // silently granted one extra reroll at every Power level (a "number" bug).
+    power: 0,
     target: { type: "none" },
+    // engine: a player-scoped reroll effect lasting the turn. In Combat the
+    // Attack die may be rerolled up to N times, N scaling with the Hero's Power
+    // (0/1/2 -> 1/2/3) the usual way. `adventureDice` adds a shared
+    // Treasure/Resource reroll budget of the same N for map play, where Power is
+    // paid by discarding power-source cards (the map has no Power statistic).
+    // "Resolve the result of your choice" = the reroll keeps whichever result
+    // the player prefers. The "OR +1 Power" side is the universal discard.
     effect: {
       type: "CREATE_ATTACK_DIE_REROLL",
       name: "Fortune",
@@ -418,6 +448,7 @@ export const sampleCards: CardLibrary = {
         1: 2,
         2: 3
       },
+      adventureDice: true,
       duration: { type: "current-turn" },
       consumeEffectOnUse: true
     },
@@ -429,7 +460,7 @@ export const sampleCards: CardLibrary = {
     source: {
       product: "Heroes of Might and Magic III: The Board Game",
       credit: wikiCredit,
-      url: "https://homm3bg.wiki/spells/fortune/"
+      url: "https://en.homm3bg.wiki/spells/fortune/"
     }
   },
   "spell.fireball": {

@@ -382,6 +382,14 @@ export const spellCards: CardLibrary = {
     implementationStatus: "implemented",
     source: spellSource("prayer")
   },
+  // Town Portal (Expert Earth, map): teleport the Hero to a controlled Town or
+  // Settlement. The Power paid raises the movement the Hero keeps on arrival
+  // (Power 0/2/4 -> +0/+1/+2), encoded as the higher-cost options paid by
+  // discarding power-source cards — the same map-power model as Fly / Dimension
+  // Door. A destination town already holding another Hero is offered only when
+  // the teleporting Hero could still move out of it this turn (engine: see
+  // queueTownPortalChoice). The "OR Instant: +1 Power" side is the universal
+  // power-source discard, so it needs no dedicated option.
   "spell.town_portal": {
     id: "spell.town_portal",
     name: "Town Portal",
@@ -393,11 +401,30 @@ export const spellCards: CardLibrary = {
       "spell",
       "expert",
       "earth",
-      "Map effect: Move your Hero to a selected Town or Settlement in your control, and: Power 0: no additional effect; Power 2: +1 movement; Power 4: +2 movement."
+      "Map effect: Move your Hero to a selected Town or Settlement in your control, and: Power 0: no additional effect; Power 2: +1 movement; Power 4: +2 movement. — OR — Instant: +1 Power."
     ],
     power: 0,
     effect: {
-      type: "TELEPORT_HERO_TO_TOWN"
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Teleport to a town or settlement",
+          mapOnly: true,
+          effect: { type: "TELEPORT_HERO_TO_TOWN" }
+        },
+        {
+          label: "Teleport and +1 movement (pay 2 Power)",
+          mapOnly: true,
+          cost: { discardCards: 2, costCardFilter: "power-source" },
+          effect: { type: "TELEPORT_HERO_TO_TOWN", movementBonus: 1 }
+        },
+        {
+          label: "Teleport and +2 movement (pay 4 Power)",
+          mapOnly: true,
+          cost: { discardCards: 4, costCardFilter: "power-source" },
+          effect: { type: "TELEPORT_HERO_TO_TOWN", movementBonus: 2 }
+        }
+      ]
     },
     assets: {
       cardImage: "/assets/spells-town_portal.webp",

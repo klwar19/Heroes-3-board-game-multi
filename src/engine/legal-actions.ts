@@ -1365,6 +1365,12 @@ function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDef
     return true;
   }
 
+  // Fortune: its Attack-die reroll effect also rerolls the map Treasure/Resource
+  // dice (the adventureDice flag), so it is useful on the adventure map.
+  if (effect.type === "CREATE_ATTACK_DIE_REROLL" && effect.adventureDice) {
+    return true;
+  }
+
   return (
     effect.type === "CREATE_ACTIVE_EFFECT" &&
     effect.effect.modifiers.some(
@@ -1420,9 +1426,15 @@ function addTurnCardActions(
       continue;
     }
 
-    // Spells only reach the map when printed as Map effects (Town Portal).
+    // Spells reach the map only when printed as Map effects (Town Portal) or
+    // when their effect is otherwise useful there (Fortune's adventure-die
+    // rerolls — same gate isMapPlayableEffect applies to non-spell cards).
     if (card.kind === "spell" && card.timing !== "map") {
-      continue;
+      const mapUsable =
+        card.effect.type !== "CHOOSE_ONE" && isMapPlayableEffect(state, playerId, card, card.effect);
+      if (!mapUsable) {
+        continue;
+      }
     }
 
     if (card.timing !== "instant" && card.timing !== "ongoing" && card.timing !== "map") {

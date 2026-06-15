@@ -79,18 +79,18 @@ and a missing anchor consumes the cue silently, so nothing can desync.
 ## Converted catalog
 
 **Wired to current cards:** magic-arrow (projectiles 0-4 + hit),
-lightning-bolt + lightning-crackle, fireball, stone-skin, cure, fortune,
-bloodlust (tint).
+lightning-bolt + lightning-crackle (Lightning Bolt and Chain Lightning),
+fireball, stone-skin, cure, fortune, bloodlust (tint), bless, prayer, haste,
+slow, precision, curse, anti-magic, blind (paralyze sheet), counterstrike,
+fire-shield, forgetfulness, inferno, magic-mirror, mirth, slayer, sorrow,
+weakness, dispel (spell-cancel fizzle), resurrection (ability cue). Map spells
+(Town Portal, Dimension Door, Fly, Water Walk, Visions) carry a cast sound only
+— they resolve off the battle board, so page.tsx plays it off `CARD_PLAYED`.
 
-**Ready for future cards (plans already declared):** bless, prayer, haste,
-slow, precision, curse, dispel.
-
-**Converted, plan needed when the card exists:** air-shield, anti-magic,
-armageddon, berserk, blind, counterstrike, death-ripple, death-stare,
-destroy-undead, disrupting-ray (+projectile), forgetfulness, frenzy,
-fire-shield, frost-ring, hypnotize, ice-bolt (projectiles + hit), implosion,
-inferno, magic-mirror, meteor-shower, mirth, misfortune, protect-air/-earth/
--fire/-water, resurrection, shield, slayer, sorrow, weakness.
+**Converted, plan needed when the card exists:** air-shield, armageddon,
+berserk, death-ripple, death-stare, destroy-undead, disrupting-ray
+(+projectile), frenzy, frost-ring, hypnotize, ice-bolt (projectiles + hit),
+implosion, meteor-shower, misfortune, protect-air/-earth/-fire/-water, shield.
 
 **Monster ability effects:** age, bind, death-cloud, disease, paralyze,
 poison, fear, acid-breath, plus `sp03_`/`sp06_`-`sp09_`/`sp12_`/`sp13_`

@@ -38,6 +38,7 @@ import {
   openDimensionDoorChoice,
   openMarket,
   openSharedDeckSearch,
+  openFortuneBoostStep,
   hireSecondaryHero,
   placeCombatUnit,
   swapCombatUnits,
@@ -972,6 +973,23 @@ function createAttackRerollEffectFromCard(
       ? (durationAtPower(card.effect.durationByPower, power) ?? card.effect.duration)
       : card.effect.duration;
 
+  const modifiers: ActiveEffectDefinition["modifiers"] = [
+    {
+      type: "ATTACK_DIE_REROLL",
+      maxUsesPerRoll,
+      consumeEffectOnUse: card.effect.consumeEffectOnUse
+    }
+  ];
+  // Fortune also rerolls the adventure-map Treasure and Resource dice, sharing
+  // a single budget equal to the reroll count (Power 0/1/2 -> 1/2/3). Both die
+  // types draw from the same `rerolls` budget on the effect.
+  if (card.effect.adventureDice) {
+    modifiers.push(
+      { type: "ADVENTURE_DIE_REROLL", dice: "treasure", rerolls: maxUsesPerRoll },
+      { type: "ADVENTURE_DIE_REROLL", dice: "resource", rerolls: maxUsesPerRoll }
+    );
+  }
+
   createActiveEffect(
     state,
     {
@@ -980,13 +998,7 @@ function createAttackRerollEffectFromCard(
       duration,
       polarity: "positive",
       removable: false,
-      modifiers: [
-        {
-          type: "ATTACK_DIE_REROLL",
-          maxUsesPerRoll,
-          consumeEffectOnUse: card.effect.consumeEffectOnUse
-        }
-      ]
+      modifiers
     },
     {
       type: "card",
@@ -4610,6 +4622,15 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       };
       healUnitDamage(state, source, stackItem.action.target, amount);
       removeEffectsFromTarget(state, source, stackItem.action.target, card.effect.removePolarity);
+      // Cure: "Remove any effect or paralysis …" — the chosen unit also loses
+      // its Paralysis token (the effect removes the token, not just ongoing
+      // effects). A heal of 0 still clears it.
+      if (card.effect.removeParalysis) {
+        const unit = state.combat.units[stackItem.action.target.unitId];
+        if (unit && hasToken(unit, "paralysis")) {
+          removeToken(state, unit, "paralysis", "dispelled");
+        }
+      }
     }
 
     if (card?.effect.type === "CREATE_ACTIVE_EFFECT") {
@@ -6388,6 +6409,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     };
     healUnitDamage(state, source, target, getEffectDamageAmount(effect, card.power ?? 0));
     removeEffectsFromTarget(state, source, target, effect.removePolarity);
+    // Cure: "Remove any effect or paralysis …" — also clears the Paralysis token.
+    if (effect.removeParalysis && state.combat) {
+      const unit = state.combat.units[target.unitId];
+      if (unit && hasToken(unit, "paralysis")) {
+        removeToken(state, unit, "paralysis", "dispelled");
+      }
+    }
   }
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
@@ -6428,7 +6456,15 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "CREATE_ATTACK_DIE_REROLL") {
-    createAttackRerollEffectFromCard(state, card, action.playerId, mode);
+    if (effect.adventureDice && !state.combat) {
+      // Fortune on the adventure map: there is no Hero Power statistic, so the
+      // reroll count is paid the board-game way — discard power-source cards for
+      // +1 reroll each (Power 0/1/2 -> 1/2/3). The boost choice does that, then
+      // creates the Treasure/Resource reroll effect at the chosen Power.
+      openFortuneBoostStep(state, action.playerId, card, 0);
+    } else {
+      createAttackRerollEffectFromCard(state, card, action.playerId, mode);
+    }
   }
 
   // Shackles of War (house rule): the enemy hero cannot Surrender this Combat
@@ -6648,7 +6684,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "TELEPORT_HERO_TO_TOWN") {
-    queueTownPortalChoice(state, action.playerId);
+    queueTownPortalChoice(state, action.playerId, effect.movementBonus ?? 0);
   }
 
   if (effect.type === "DISCOVER_TILE_CARD") {
@@ -6965,21 +7001,40 @@ function resolveEagleEyeDig(state: GameState, playerId: PlayerId, mode: CardPlay
 }
 
 /** Town Portal: choose a controlled town or flagged settlement to move to. */
-function queueTownPortalChoice(state: GameState, playerId: PlayerId): void {
+function queueTownPortalChoice(state: GameState, playerId: PlayerId, movementBonus: number): void {
   const adventure = state.adventure;
   const hero = getMainHero(state, playerId);
   if (!adventure || !hero) {
     return;
   }
 
+  // Rulebook restriction: "If the selected town already has a hero in it, and
+  // the teleporting hero would not be able to move out of the city during this
+  // turn, they can not teleport to the town." The Power-scaled movement bonus
+  // counts toward being able to leave, so it is added to the projection.
+  const projectedMovement = hero.movementPoints + movementBonus;
+  const fieldHasOtherHero = (spaceId: string) =>
+    Object.values(state.heroes).some((other) => other.id !== hero.id && other.spaceId === spaceId);
+  const destinationAllowed = (spaceId: string) => !fieldHasOtherHero(spaceId) || projectedMovement > 0;
+
   const destinations: { label: string; spaceId: string }[] = [];
   for (const town of Object.values(state.towns)) {
-    if (town.controllerId === playerId && town.fieldId && town.fieldId !== hero.spaceId) {
+    if (
+      town.controllerId === playerId &&
+      town.fieldId &&
+      town.fieldId !== hero.spaceId &&
+      destinationAllowed(town.fieldId)
+    ) {
       destinations.push({ label: `Town (${town.factionId ?? town.id})`, spaceId: town.fieldId });
     }
   }
   for (const field of Object.values(adventure.fields)) {
-    if (field.location === "settlement" && field.flagOwnerId === playerId && field.spaceId !== hero.spaceId) {
+    if (
+      field.location === "settlement" &&
+      field.flagOwnerId === playerId &&
+      field.spaceId !== hero.spaceId &&
+      destinationAllowed(field.spaceId)
+    ) {
       destinations.push({ label: `Settlement at ${field.spaceId}`, spaceId: field.spaceId });
     }
   }
@@ -6998,7 +7053,9 @@ function queueTownPortalChoice(state: GameState, playerId: PlayerId): void {
         options: [
           ...destinations.map((destination) => ({
             label: destination.label,
-            steps: [{ type: "TELEPORT_HERO" as const, heroId: hero.id, spaceId: destination.spaceId }]
+            steps: [
+              { type: "TELEPORT_HERO" as const, heroId: hero.id, spaceId: destination.spaceId, movementBonus }
+            ]
           })),
           { label: "Cancel (stay)", steps: [] }
         ]

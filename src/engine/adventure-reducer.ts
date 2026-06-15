@@ -70,7 +70,7 @@ import {
   type NeutralDraw
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
-import { playerCannotSurrenderCombat } from "./active-effects";
+import { makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
 import { cardCanBoostPower } from "./effects";
 import { createSeededRandom } from "./random";
 import {
@@ -99,6 +99,7 @@ import {
 } from "./ruleset";
 import { hexDistance, hexNeighbor, hexSpaceId, parseHexSpaceId, slotDirection, tileFootprint } from "./hex";
 import type {
+  CardDefinition,
   CardId,
   CombatState,
   GameAction,
@@ -2228,6 +2229,180 @@ const NEUTRAL_TIERS: readonly NeutralTier[] = ["bronze", "silver", "gold", "azur
 /** Cards Visions scrys at a given Power level (clamped to a defined breakpoint). */
 function visionsCardCount(cardsByPower: Record<number, number>, power: number): number {
   return cardsByPower[power] ?? cardsByPower[0] ?? 1;
+}
+
+// ---------------------------------------------------------------------------
+// Fortune (Map): the spell rerolls a Treasure/Resource die. On the map there is
+// no Hero Power statistic, so the reroll count is paid the board-game way —
+// discard a power-source card for +1 reroll, up to the spell's top breakpoint —
+// offered interactively before the reroll effect is created. In Combat the
+// Attack-die reroll scales with the Hero's Power the normal way (the spell's
+// CREATE_ATTACK_DIE_REROLL stack path), so this boost is map-only.
+// ---------------------------------------------------------------------------
+
+/** Fortune's reroll count at a given Power (clamped to a defined breakpoint). */
+function fortuneRerollCount(card: CardDefinition, power: number): number {
+  if (card.effect.type !== "CREATE_ATTACK_DIE_REROLL") {
+    return 0;
+  }
+  const byPower = card.effect.rerollsByPower;
+  if (!byPower) {
+    return card.effect.basicRerolls;
+  }
+  const breakpoints = Object.keys(byPower)
+    .map(Number)
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right);
+  const match = breakpoints.filter((value) => value <= power).at(-1) ?? breakpoints[0];
+  return match === undefined ? card.effect.basicRerolls : (byPower[match] ?? card.effect.basicRerolls);
+}
+
+/** The highest Power breakpoint Fortune can reach (Power 2 -> 3 rerolls). */
+function fortuneMaxPower(card: CardDefinition): number {
+  if (card.effect.type !== "CREATE_ATTACK_DIE_REROLL" || !card.effect.rerollsByPower) {
+    return 0;
+  }
+  return Math.max(...Object.keys(card.effect.rerollsByPower).map(Number));
+}
+
+/**
+ * Creates Fortune's player-scoped reroll effect at the chosen Power: an
+ * Attack-die reroll plus a shared Treasure/Resource budget of the same size,
+ * lasting the turn.
+ */
+function createFortuneRerollEffect(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition,
+  power: number
+): void {
+  if (card.effect.type !== "CREATE_ATTACK_DIE_REROLL") {
+    return;
+  }
+  const rerolls = fortuneRerollCount(card, power);
+  if (rerolls <= 0) {
+    return;
+  }
+  const effect = makeActiveEffect(
+    state,
+    {
+      name: card.effect.name,
+      scope: "player",
+      duration: card.effect.duration,
+      polarity: "positive",
+      removable: false,
+      modifiers: [
+        { type: "ATTACK_DIE_REROLL", maxUsesPerRoll: rerolls, consumeEffectOnUse: card.effect.consumeEffectOnUse },
+        { type: "ADVENTURE_DIE_REROLL", dice: "treasure", rerolls },
+        { type: "ADVENTURE_DIE_REROLL", dice: "resource", rerolls }
+      ]
+    },
+    { type: "card", cardId: card.id, controllerId: playerId },
+    playerId
+  );
+  state.activeEffects.push(effect);
+  appendEvent(state, {
+    type: "ACTIVE_EFFECT_CREATED",
+    effectId: effect.id,
+    controllerId: effect.controllerId,
+    name: effect.name,
+    duration: effect.duration
+  });
+}
+
+/**
+ * Offers one Fortune Power boost on the map: discard a power-source card for +1
+ * reroll, or play now. Re-opens with `boost + 1` after each paid card until the
+ * top breakpoint is reached or no power-source card remains, then creates the
+ * reroll effect at the reached Power.
+ */
+export function openFortuneBoostStep(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition,
+  boost: number
+): void {
+  if (card.effect.type !== "CREATE_ATTACK_DIE_REROLL") {
+    return;
+  }
+  const maxPower = fortuneMaxPower(card);
+  const player = state.players[playerId];
+  const spellCardIds =
+    boost < maxPower ? (player?.hand.filter((cardId) => cardCanBoostPower(cardLibrary[cardId])) ?? []) : [];
+
+  if (spellCardIds.length === 0) {
+    createFortuneRerollEffect(state, playerId, card, boost);
+    return;
+  }
+
+  const nextRerolls = fortuneRerollCount(card, boost + 1);
+  const nowRerolls = fortuneRerollCount(card, boost);
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Fortune: discard a card for +1 reroll (reroll ${nextRerolls}×), or play now (reroll ${nowRerolls}×)?`,
+    options: [
+      ...spellCardIds.map((cardId) => ({
+        label: `Discard ${cardLibrary[cardId]?.name ?? cardId} → reroll ${nextRerolls}×`
+      })),
+      { label: `Play now — reroll ${nowRerolls}×` }
+    ],
+    context: "fortune-boost",
+    fortuneBoost: { boost, spellCardIds: [...spellCardIds], cardId: card.id },
+    returnPhase: "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Resolves a Fortune Power boost (CHOOSE_OPTION context "fortune-boost"). */
+export function resolveFortuneBoostChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "fortune-boost" ||
+    !choice.fortuneBoost ||
+    choice.playerId !== playerId
+  ) {
+    throw new Error("There is no Fortune Power decision to resolve.");
+  }
+  const { boost, spellCardIds, cardId } = choice.fortuneBoost;
+  const card = cardLibrary[cardId];
+  const player = state.players[playerId];
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+
+  const paySpell = spellCardIds[optionIndex];
+  const handIndex = player ? player.hand.indexOf(paySpell ?? "") : -1;
+  // The trailing option (or a card that left the hand) creates the effect now.
+  if (!player || !card || optionIndex >= spellCardIds.length || !paySpell || handIndex === -1) {
+    if (card) {
+      createFortuneRerollEffect(state, playerId, card, boost);
+    }
+    if (!state.pendingChoice) {
+      pumpAdventureQueues(state);
+    }
+    return;
+  }
+
+  // Spend the card for +1 reroll, then offer the next boost.
+  player.hand.splice(handIndex, 1);
+  player.discard.push(paySpell);
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId: paySpell,
+    timing: cardLibrary[paySpell]?.timing ?? "instant",
+    mode: "basic",
+    optionLabel: "+1 Power (Fortune)"
+  });
+  openFortuneBoostStep(state, playerId, card, boost + 1);
+  if (!state.pendingChoice) {
+    pumpAdventureQueues(state);
+  }
 }
 
 /**
@@ -4519,6 +4694,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "learning-level-up") {
     resolveLearningLevelUpChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "fortune-boost") {
+    resolveFortuneBoostChoice(state, action.playerId, action.optionIndex);
     return;
   }
 
