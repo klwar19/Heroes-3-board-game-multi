@@ -1,12 +1,70 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BattlefieldBoard } from "./board";
+import { BattlefieldBoard, battlefieldCellPlacement } from "./board";
 import { CardZoomProvider } from "./zoom";
 import { createInitialGameState, type GameAction, type LegalAction } from "@/engine";
 import type { CardBoardAction } from "./utils";
 
 afterEach(cleanup);
+
+/**
+ * The battlefield is drawn horizontally: the engine's 4-wide × 5-tall logical
+ * grid is transposed so the armies face off left↔right. These tests pin both
+ * the mapping (`battlefieldCellPlacement`) and the fact that it is actually
+ * wired onto every rendered cell — remove either and they fail.
+ */
+describe("battlefieldCellPlacement — horizontal transpose", () => {
+  it("lays each engine row out as a column, attacker on the left, defender on the right", () => {
+    // Attacker back-line (engine row 4, positions 16-19) is the left-most column.
+    expect(battlefieldCellPlacement(16)).toEqual({ gridColumn: 1, gridRow: 1 });
+    expect(battlefieldCellPlacement(19)).toEqual({ gridColumn: 1, gridRow: 4 });
+    // Attacker front-line (engine row 3) sits one column in.
+    expect(battlefieldCellPlacement(12)).toEqual({ gridColumn: 2, gridRow: 1 });
+    // The crossing (engine row 2) is the middle column.
+    expect(battlefieldCellPlacement(8)).toEqual({ gridColumn: 3, gridRow: 1 });
+    // Defender front-line (engine row 1) and back-line (engine row 0) on the right.
+    expect(battlefieldCellPlacement(4)).toEqual({ gridColumn: 4, gridRow: 1 });
+    expect(battlefieldCellPlacement(0)).toEqual({ gridColumn: 5, gridRow: 1 });
+    expect(battlefieldCellPlacement(3)).toEqual({ gridColumn: 5, gridRow: 4 });
+  });
+
+  it("keeps each four-cell lane together in one column", () => {
+    // Engine row 0 (positions 0-3) becomes a single column spanning rows 1-4.
+    expect([0, 1, 2, 3].map(battlefieldCellPlacement)).toEqual([
+      { gridColumn: 5, gridRow: 1 },
+      { gridColumn: 5, gridRow: 2 },
+      { gridColumn: 5, gridRow: 3 },
+      { gridColumn: 5, gridRow: 4 }
+    ]);
+  });
+});
+
+describe("BattlefieldBoard — horizontal cell placement", () => {
+  it("places every cell on the transposed grid via inline grid-column / grid-row", () => {
+    const state = createInitialGameState("board-horizontal");
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    for (let position = 0; position < 20; position += 1) {
+      const cell = document.querySelector<HTMLElement>(`[data-fx-cell="${position}"]`);
+      expect(cell, `cell ${position} should render`).toBeTruthy();
+      const { gridColumn, gridRow } = battlefieldCellPlacement(position);
+      expect(cell!.style.gridColumn, `cell ${position} column`).toBe(String(gridColumn));
+      expect(cell!.style.gridRow, `cell ${position} row`).toBe(String(gridRow));
+    }
+  });
+});
 
 /**
  * Regression test for the space-target cast fix: an area spell that selects a
