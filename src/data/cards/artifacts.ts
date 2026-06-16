@@ -36,7 +36,8 @@ const SCANLESS_ARTIFACTS = new Set([
   // The Cove sea artifacts below have no card scan on the wiki either (it shows
   // the deck back for them), so they fall back to the deck back here too.
   "trident_of_dominion",
-  "shield_of_naval_glory"
+  "shield_of_naval_glory",
+  "royal_armor_of_nix"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
@@ -1792,6 +1793,37 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("shield_of_naval_glory")
   },
+  // Royal Armor of Nix (Cove): a flat +2 Power as you cast a spell, OR — only
+  // while this Hero stands on a Sea tile — Search (2) the Spell deck (a map
+  // play, the requiresSeaTile gate). Major like the original-game artifact and
+  // the other Cove sea artifacts; no wiki scan, so it shows the deck back.
+  "artifact.royal_armor_of_nix": {
+    id: "artifact.royal_armor_of_nix",
+    name: "Royal Armor of Nix",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: ["artifact", "major", "+2 Power. — OR — If this Hero is on a Sea tile, Search (2) the Spell deck."],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+2 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2 }
+        },
+        {
+          label: "On a Sea tile: Search (2) the Spell deck",
+          mapOnly: true,
+          requiresSeaTile: true,
+          effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 2 }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "royal_armor_of_nix", "Royal Armor of Nix"),
+    implementationStatus: "implemented",
+    source: artifactSource("royal_armor_of_nix")
+  },
 
   // ---- Relic artifacts ----------------------------------------------------
   "artifact.angel_wings": {
@@ -2233,6 +2265,7 @@ export const artifactDeckLegacy: string[] = [
   "artifact.targ_of_the_rampaging_ogre",
   "artifact.trident_of_dominion",
   "artifact.shield_of_naval_glory",
+  "artifact.royal_armor_of_nix",
   // relic
   "artifact.angel_wings",
   "artifact.dragon_scale_armor",
@@ -2310,7 +2343,8 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.surcoat_of_counterpoise",
   "artifact.targ_of_the_rampaging_ogre",
   "artifact.trident_of_dominion",
-  "artifact.shield_of_naval_glory"
+  "artifact.shield_of_naval_glory",
+  "artifact.royal_armor_of_nix"
 ];
 
 /** BINH Relic Artifact deck (adds the BINH-extra relics). */
