@@ -1674,6 +1674,67 @@ export const spellCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: spellSource("sacrifice")
+  },
+  // Misfortune (Basic Fire, Instant; Fortress Expansion): the defensive mirror of
+  // Bless. The DEFENDER plays it when an enemy unit declares an attack on one of
+  // their units, negating that attacker's Attack die result — the die counts as 0
+  // and none of the effects that die face would have triggered fire (Death Blow,
+  // the Minotaurs' draw, paralysis, the ranged low-roll bolt). It reuses the
+  // engine's IGNORE_ATTACK_DIE_RESULT machinery (shared with Shield of the Dwarven
+  // Lords), but in the pre-roll attack-declared window rather than Shield's
+  // post-roll one, matching the card's "play immediately when the selected enemy
+  // unit is attacking". Grade-gated on the ATTACKING unit by the Power paid
+  // (0 → bronze, 1 → silver, 2 → gold), modelled as one CHOOSE_ONE option per
+  // grade (free / pay 1 / pay 2 power-source cards) exactly like Magic Mirror; the
+  // legal-action layer offers only the option whose grade matches the attacker,
+  // and only when affordable, so the tray shows a single "negate this attack"
+  // choice with its cost picker. engine: only the Attack-die negation is wired;
+  // the printed "or an additional attack from any card" alternative is NOT
+  // implemented. The universal "OR Instant: +1 Power" side is the generic
+  // power-source discard.
+  "spell.misfortune": {
+    id: "spell.misfortune",
+    name: "Misfortune",
+    kind: "spell",
+    timing: "reaction",
+    phaseLimit: ["reaction", "combat"],
+    spellLevel: "basic",
+    spellSchools: ["fire"],
+    power: 0,
+    tags: [
+      "spell",
+      "basic",
+      "fire",
+      "Instant: Play immediately when the selected enemy unit is attacking. Negate an Attack die result: Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or golden. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Negate a bronze attacker's Attack die",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+          effect: { type: "IGNORE_ATTACK_DIE_RESULT", grade: "bronze" }
+        },
+        {
+          label: "Negate a silver attacker's Attack die (pay 1 Power)",
+          cost: { discardCards: 1, costCardFilter: "power-source" },
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+          effect: { type: "IGNORE_ATTACK_DIE_RESULT", grade: "silver" }
+        },
+        {
+          label: "Negate a gold attacker's Attack die (pay 2 Power)",
+          cost: { discardCards: 2, costCardFilter: "power-source" },
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+          effect: { type: "IGNORE_ATTACK_DIE_RESULT", grade: "gold" }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "/assets/spells-misfortune.webp",
+      imageAlt: "Misfortune card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("misfortune")
   }
 };
 
@@ -1762,7 +1823,9 @@ export const spellDeckLegacy: string[] = [
   "spell.protection_from_water",
   // Disrupting Ray (Basic Air) & Sacrifice (Expert Fire).
   "spell.disrupting_ray",
-  "spell.sacrifice"
+  "spell.sacrifice",
+  // Misfortune (Basic Fire) — negate an enemy attacker's Attack die.
+  "spell.misfortune"
 ];
 
 /** BINH split decks. */
@@ -1810,7 +1873,9 @@ export const spellDeckBinhBasic: string[] = [
   "spell.protection_from_fire",
   "spell.protection_from_water",
   // Disrupting Ray — Basic Air.
-  "spell.disrupting_ray"
+  "spell.disrupting_ray",
+  // Misfortune — Basic Fire.
+  "spell.misfortune"
 ];
 
 export const spellDeckBinhExpert: string[] = [

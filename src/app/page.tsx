@@ -1823,7 +1823,17 @@ export default function Home() {
     setSyncStatus("submitting");
     try {
       const payload = await connection.submitAction(action);
-      setErrors(payload.result.errors.map((error) => error.message));
+      // A successful action can still carry a player-facing notice: e.g. a Clone
+      // cast that could not reach the chosen unit's grade is refunded (card +
+      // Power returned) rather than wasted, and says so. Surface those alongside
+      // any rules errors so the player sees why nothing changed.
+      const refundNotices = payload.result.events
+        .filter(
+          (event): event is Extract<GameEvent, { type: "SPELL_CAST_REFUNDED" }> =>
+            event.type === "SPELL_CAST_REFUNDED"
+        )
+        .map((event) => event.reason);
+      setErrors([...payload.result.errors.map((error) => error.message), ...refundNotices]);
       ingestSnapshot(payload.snapshot);
       setSyncStatus(`synced v${payload.snapshot.version}`);
 

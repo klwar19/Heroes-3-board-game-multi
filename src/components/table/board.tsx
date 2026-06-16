@@ -360,14 +360,14 @@ export function BattlefieldBoard({
           }
 
           const tint = unit ? tintedUnits?.get(unit.id) : undefined;
-          // Clone Spell: a Clone Token shows the cloned unit's own art cropped
-          // into a round, player-coloured token (the physical Clone Token), so it
-          // reads at a glance as a copy rather than the real stack.
+          // Clone Spell: a Clone is shown as the cloned unit's own card washed
+          // blue (a ghostly "clone" tint) with a Clone badge, so it reads at a
+          // glance as a magical copy rather than the real stack.
           const isClone = Boolean(unit?.cloneOfUnitId);
           const content = unit ? (
             <article
               className={`boardCard ${unit.controllerId} ${isFlipping ? "flipping" : ""} ${tint ? `fxTint-${tint}` : ""} ${
-                isClone ? "cloneToken" : ""
+                isClone ? "cloneCard" : ""
               }`}
             >
               {unit.assets?.cardImage ? (
