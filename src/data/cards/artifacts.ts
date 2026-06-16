@@ -46,7 +46,11 @@ const SCANLESS_ARTIFACTS = new Set([
   // Diplomat's Ring: the wiki shows the deck back for this card too (no scan),
   // so it falls back to the deck back here. Its companion Ambassador's Sash
   // does have a scan.
-  "diplomats_ring"
+  "diplomats_ring",
+  // Newly added expansion minors with no card scan committed to public/assets
+  // yet — they fall back to the deck back until their scans land.
+  "helm_of_the_alabaster_unicorn",
+  "bowstring_of_the_unicorns_mane"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
@@ -835,6 +839,94 @@ export const artifactCards: CardLibrary = {
     assets: artifactAssets("minor", "blackshard_of_the_dead_knight", "Blackshard of the Dead Knight"),
     implementationStatus: "implemented",
     source: artifactSource("blackshard_of_the_dead_knight")
+  },
+  // Helm of the Alabaster Unicorn (Tower expansion). Option A returns a Spell
+  // from YOUR discard pile to your hand (the standard TAKE_FROM_DISCARD spell
+  // pick, a map play, exactly like Crown of the Five Seas' Spell side). Option B
+  // ("Cast a spell from the top of the spell deck discard pile and Remove this
+  // card") is NOT played from hand as a PLAY_CARD: like a Spell Scroll cast it is
+  // surfaced by the legal-action layer as a `fromSpellDeck` CAST_SPELL of the top
+  // card of the shared Spell-deck discard pile (engine: addSpellActions), cast in
+  // combat at your normal Power through the ordinary spell pipeline (reaction
+  // windows, power boosts, the spell-per-round limit all apply). The spell card
+  // stays in that discard pile; the Helm is removed from the game by the cast. The
+  // CAST_FROM_SPELL_DISCARD effect is only a marker — it flags the option as
+  // implemented and tells the offer layer to surface the cast, and is never
+  // resolved from playCard.
+  "artifact.helm_of_the_alabaster_unicorn": {
+    id: "artifact.helm_of_the_alabaster_unicorn",
+    name: "Helm of the Alabaster Unicorn",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "minor",
+    tags: [
+      "artifact",
+      "minor",
+      "Return 1 Spell of your choice from your discard pile to your hand. — OR — Cast a spell from the top of the spell deck discard pile and Remove this card."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Return 1 Spell from your discard pile to your hand",
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell" }
+        },
+        {
+          label: "Cast the top spell of the Spell-deck discard pile, then remove this card",
+          combatOnly: true,
+          effect: { type: "CAST_FROM_SPELL_DISCARD" }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "helm_of_the_alabaster_unicorn", "Helm of the Alabaster Unicorn"),
+    implementationStatus: "implemented",
+    source: artifactSource("helm_of_the_alabaster_unicorn")
+  },
+  // Bowstring of the Unicorn's Mane (Stronghold expansion). Option A ("Play this
+  // card before a unit activates. Activate one of your ranged units that has not
+  // been activated this round") is a combat instant: the chosen friendly ranged
+  // unit (its option target — ranged, not yet activated) is made the active unit
+  // and takes a full out-of-order activation now (engine: ACTIVATE_RANGED_UNIT ->
+  // setActiveUnit). House-rule narrowing: offered only on your own turn, when one
+  // of your units is the fresh active unit (combat instants are played by the
+  // active player), and never on the current active unit itself. No unit acts
+  // twice — the interrupted fresh unit simply resumes its place in initiative
+  // order afterward. Option B ("Use this after a ranged unit's Attack die roll.
+  // Ignore 1 Attack die") is the Shield-of-the-Dwarven-Lords post-roll defender
+  // reaction (IGNORE_ATTACK_DIE_RESULT) gated to a ranged attacker
+  // (requiresRangedAttacker): offered in the ATTACK_DIE_SETTLED window only when
+  // the attacking unit is a ranged unit.
+  "artifact.bowstring_of_the_unicorns_mane": {
+    id: "artifact.bowstring_of_the_unicorns_mane",
+    name: "Bowstring of the Unicorn's Mane",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "minor",
+    tags: [
+      "artifact",
+      "minor",
+      "Play this card before a unit activates. Activate one of your ranged units that has not been activated this round. — OR — Use this after a ranged unit's Attack die roll. Ignore 1 Attack die."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Activate one of your ranged units that has not been activated this round",
+          combatOnly: true,
+          target: { type: "friendly-unit", unitTypes: ["ranged"], notActivatedThisRound: true },
+          effect: { type: "ACTIVATE_RANGED_UNIT" }
+        },
+        {
+          label: "After a ranged unit's Attack die roll: ignore the Attack die",
+          requiresRangedAttacker: true,
+          effect: { type: "IGNORE_ATTACK_DIE_RESULT" }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "bowstring_of_the_unicorns_mane", "Bowstring of the Unicorn's Mane"),
+    implementationStatus: "implemented",
+    source: artifactSource("bowstring_of_the_unicorns_mane")
   },
 
   // ---- Major artifacts ----------------------------------------------------
@@ -2514,6 +2606,8 @@ export const artifactDeckLegacy: string[] = [
   "artifact.ring_of_the_wayfarer",
   "artifact.scales_of_the_greater_basilisk",
   "artifact.blackshard_of_the_dead_knight",
+  "artifact.helm_of_the_alabaster_unicorn",
+  "artifact.bowstring_of_the_unicorns_mane",
   // major
   "artifact.dragon_scale_shield",
   "artifact.endless_bag_of_gold",
@@ -2594,7 +2688,9 @@ export const artifactDeckBinhMinor: string[] = [
   "artifact.shield_of_the_dwarven_lords",
   "artifact.ring_of_the_wayfarer",
   "artifact.scales_of_the_greater_basilisk",
-  "artifact.blackshard_of_the_dead_knight"
+  "artifact.blackshard_of_the_dead_knight",
+  "artifact.helm_of_the_alabaster_unicorn",
+  "artifact.bowstring_of_the_unicorns_mane"
 ];
 
 /** BINH Major Artifact deck (adds the BINH-extra majors). */

@@ -35,6 +35,8 @@ export const implementedCardEffectTypes = [
   "CLEAR_RETALIATION",
   "IGNORE_ATTACK_DIE",
   "IGNORE_ATTACK_DIE_RESULT",
+  "ACTIVATE_RANGED_UNIT",
+  "CAST_FROM_SPELL_DISCARD",
   "CREATE_SPELL_IMMUNITY",
   "CREATE_FIRE_SHIELD",
   "CREATE_INITIATIVE_BUFF",
@@ -548,6 +550,14 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "IGNORE_ATTACK_DIE_RESULT") {
     return "after the Attack die roll: ignore the die and any effects it triggered";
+  }
+
+  if (card.effect.type === "ACTIVATE_RANGED_UNIT") {
+    return "activate one of your ranged units that has not been activated this round";
+  }
+
+  if (card.effect.type === "CAST_FROM_SPELL_DISCARD") {
+    return "cast the top spell of the Spell-deck discard pile, then remove this card";
   }
 
   if (card.effect.type === "CREATE_SPELL_IMMUNITY") {
