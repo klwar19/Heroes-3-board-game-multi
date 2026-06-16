@@ -892,11 +892,19 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Magic Mirror: an instant reaction to an enemy Spell cast that targets
-       * one of your units. Choose a new target for that Spell — any unit of the
-       * paid grade (Power 0 → bronze, 1 → silver, 2 → gold), set as one option
-       * per grade. The Spell then resolves against the chosen unit instead. The
-       * new target is picked in a follow-up choice after the card is played.
+       * Magic Mirror: an instant reaction when one of your units is about to be
+       * targeted OR damaged by an enemy Spell. Choose a new target — any unit of
+       * the paid grade (Power 0 → bronze, 1 → silver, 2 → gold), one option per
+       * grade — picked in a follow-up choice after the card is played. Three
+       * cases the engine handles (see getMagicMirrorReactions / chooseAbilityTarget):
+       *  - a single-target cast aimed at your unit (Magic Arrow, Implosion…):
+       *    the Spell re-points and resolves against the chosen unit;
+       *  - an area cast that would damage your unit (Fireball's splash, Inferno's
+       *    blast) even though its primary target is an enemy unit or a bare space:
+       *    the blast recenters on the chosen unit (Inferno → that unit's space);
+       *  - an instant combat debuff layered onto an attack (Curse on your
+       *    defender, Weakness on your attacker): it is lifted off your unit and
+       *    lands on the chosen unit as a lasting token, then the attack continues.
        */
       type: "REDIRECT_SPELL";
       grade: UnitGrade;
@@ -4119,6 +4127,21 @@ export type PendingChoice =
        */
       chainReachableUnitIds?: UnitId[];
       chainRemainingDamages?: number[];
+      /**
+       * Magic Mirror reflecting an instant combat debuff played onto an attack
+       * (Curse on your defender, Weakness on your attacker). The debuff was
+       * already lifted off your unit; once the new target is chosen it lands on
+       * that unit as a lasting combat token (corrosion for −defense, weakness
+       * for −attack), then the attack's reaction window reopens. Absent for a
+       * normal cast redirect, which re-points the pending Spell instead.
+       */
+      redirectInstant?: {
+        stat: "attack" | "defense";
+        /** Signed stat delta the token carries (e.g. −2 for a Power-1 Curse). */
+        amount: number;
+        sourceCardId: CardId;
+        sourceName: string;
+      };
     }
   | {
       /**

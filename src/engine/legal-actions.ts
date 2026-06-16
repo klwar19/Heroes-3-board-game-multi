@@ -82,6 +82,7 @@ import type {
   GameState,
   LegalAction,
   PlayerId,
+  PlayerState,
   ResolutionStackItem,
   ResourceCost,
   ResourceKind,
@@ -211,7 +212,7 @@ export function isUnitSpellImmune(state: GameState, unit: CombatUnitState): bool
  */
 export function spellRedirectTargets(
   state: GameState,
-  currentTargetUnitId: UnitId,
+  currentTargetUnitId: UnitId | null,
   maxGrade: CombatUnitState["grade"]
 ): CombatUnitState[] {
   const combat = state.combat;
@@ -220,11 +221,108 @@ export function spellRedirectTargets(
   }
   return Object.values(combat.units).filter(
     (unit) =>
+      // `currentTargetUnitId` is null for a space-targeted blast (Inferno), where
+      // there is no single "current" unit to exclude — every legal unit qualifies.
       unit.id !== currentTargetUnitId &&
       isUnitAlive(unit) &&
       gradeRank(unit.grade) <= gradeRank(maxGrade) &&
       !isUnitSpellImmune(state, unit)
   );
+}
+
+/**
+ * The units an in-flight area Spell would (or could) damage — the set Magic
+ * Mirror reads to decide whether one of your units "is about to be damaged".
+ * Computed from the pending cast on the stack, BEFORE the dice are rolled:
+ *  - Inferno (space target): every unit on the centre space and its orthogonal
+ *    neighbours (all are hit on a "+1").
+ *  - Fireball (unit target, AREA_DAMAGE_ADJACENT): the primary target plus every
+ *    unit adjacent to it — the caster picks one of those adjacents as the splash,
+ *    so any of them is a potential victim while the cast is pending.
+ * Single-target casts have no splash and return [] (their primary is handled by
+ * pendingSpellTargetForPlayer). Chain Lightning's forks are routed at resolution
+ * and are intentionally not predicted here.
+ */
+export function spellPotentialBlastUnitIds(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  cards: CardLibrary = cardLibrary
+): UnitId[] {
+  const combat = state.combat;
+  if (!combat || stackItem.action.type !== "CAST_SPELL") {
+    return [];
+  }
+  const effect = cards[stackItem.action.cardId]?.effect;
+  if (!effect) {
+    return [];
+  }
+
+  if (effect.type === "INFERNO" && stackItem.action.target.type === "space") {
+    const centre = stackItem.action.target.position;
+    const blast = new Set<number>([centre, ...getOrthogonalNeighbors(centre)]);
+    return Object.values(combat.units)
+      .filter((unit) => isUnitAlive(unit) && blast.has(unit.position))
+      .map((unit) => unit.id);
+  }
+
+  if (effect.type === "AREA_DAMAGE_ADJACENT" && stackItem.action.target.type === "unit") {
+    const primary = combat.units[stackItem.action.target.unitId];
+    if (!primary) {
+      return [];
+    }
+    return Object.values(combat.units)
+      .filter(
+        (unit) => isUnitAlive(unit) && (unit.id === primary.id || isAdjacent(unit.position, primary.position))
+      )
+      .map((unit) => unit.id);
+  }
+
+  return [];
+}
+
+/**
+ * An enemy instant combat Spell layered onto the pending attack that lands on a
+ * unit `playerId` controls — the case Magic Mirror reflects in an attack window.
+ * Only stat instants qualify: Curse (−defense, lands on the defender) and
+ * Weakness (−attack, lands on the attacker). Bloodlust/Bless/Precision buff the
+ * caster's OWN unit, so their affected unit is never yours; Bless/Slayer are not
+ * even ADD_COMBAT_STAT (no single stat to bounce). Returns the most recent match
+ * (the one Resistance would also take first), with its index for splicing.
+ */
+export function reflectableAttackInstantForPlayer(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  playerId: PlayerId,
+  cards: CardLibrary = cardLibrary
+): { index: number; cardId: CardId; stat: "attack" | "defense"; affectedUnitId: UnitId } | null {
+  if (stackItem.action.type !== "ATTACK_UNIT" && stackItem.action.type !== "MOVE_AND_ATTACK_UNIT") {
+    return null;
+  }
+  const combat = state.combat;
+  if (!combat) {
+    return null;
+  }
+  const attacker = combat.units[stackItem.action.attackerId];
+  const defender = combat.units[stackItem.action.defenderId];
+  const instants = stackItem.modifiers.cancellableSpellInstants ?? [];
+
+  for (let index = instants.length - 1; index >= 0; index -= 1) {
+    const entry = instants[index];
+    // Only an enemy's Spell can be reflected — never your own buff.
+    if (entry.playerId === playerId) {
+      continue;
+    }
+    const effect = cards[entry.cardId]?.effect;
+    if (!effect || effect.type !== "ADD_COMBAT_STAT") {
+      continue;
+    }
+    const affected = effect.stat === "attack" ? attacker : defender;
+    if (!affected || affected.controllerId !== playerId || !isUnitAlive(affected)) {
+      continue;
+    }
+    return { index, cardId: entry.cardId, stat: effect.stat, affectedUnitId: affected.id };
+  }
+  return null;
 }
 
 /**
@@ -2587,6 +2685,111 @@ function getLethalSaveReactions(
   return reactions.length > 0 ? { [playerId]: reactions } : {};
 }
 
+/**
+ * The unit Magic Mirror would lift the Spell OFF of for `playerId`, or null when
+ * the card cannot fire for them in this window. This is the "your unit is about
+ * to be targeted or damaged" gate, and the unit it returns is excluded from the
+ * new-target candidates (you cannot redirect a Spell onto the very unit it was
+ * already going to hit). null with eligibility still true means a space-centred
+ * blast (Inferno) where no single unit is the anchor — every legal unit qualifies.
+ */
+function magicMirrorRedirectContext(
+  state: GameState,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
+  playerId: PlayerId,
+  cards: CardLibrary
+): { excludeUnitId: UnitId | null } | null {
+  if (triggerEvent.type === "SPELL_CAST_STARTED") {
+    // Magic Mirror answers an ENEMY Spell only — never the caster's own.
+    if (triggerEvent.playerId === playerId) {
+      return null;
+    }
+    // (a) a single-target cast aimed straight at one of your units.
+    const primary = pendingSpellTargetForPlayer(state, triggerEvent, playerId);
+    if (primary) {
+      return { excludeUnitId: primary.id };
+    }
+    // (b) an area cast whose blast would catch one of your units even though its
+    // primary target is an enemy unit or a bare space.
+    const stackItem = getPendingStackItem(state, triggerEvent);
+    if (stackItem?.action.type === "CAST_SPELL") {
+      const hitsMine = spellPotentialBlastUnitIds(state, stackItem, cards).some(
+        (unitId) => state.combat?.units[unitId]?.controllerId === playerId
+      );
+      if (hitsMine) {
+        const target = stackItem.action.target;
+        return { excludeUnitId: target.type === "unit" ? target.unitId : null };
+      }
+    }
+    return null;
+  }
+
+  // (c) an enemy instant combat debuff layered onto the pending attack.
+  if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
+    const stackItem = state.stack.at(-1);
+    const instant = stackItem ? reflectableAttackInstantForPlayer(state, stackItem, playerId, cards) : null;
+    return instant ? { excludeUnitId: instant.affectedUnitId } : null;
+  }
+
+  return null;
+}
+
+/**
+ * Builds the Magic Mirror offers for one player: one PLAY_REACTION per grade
+ * tier they can both afford and find a legal new target for. Shared by every
+ * window the card can fire in (cast-on-your-unit, area-damage-on-your-unit,
+ * attack-instant-on-your-unit) so the offer, the spell-limit gate and the cost
+ * picker all behave identically regardless of what is being reflected.
+ */
+function getMagicMirrorReactions(
+  state: GameState,
+  player: PlayerState,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
+  spellLimitLeft: number,
+  cards: CardLibrary
+): LegalAction[] {
+  if (spellLimitLeft <= 0) {
+    return [];
+  }
+  const context = magicMirrorRedirectContext(state, triggerEvent, player.id, cards);
+  if (!context) {
+    return [];
+  }
+
+  const offers: LegalAction[] = [];
+  for (const cardId of new Set(player.hand)) {
+    const card = cards[cardId];
+    if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
+      continue;
+    }
+    if (card.timing !== "reaction" && card.timing !== "instant") {
+      continue;
+    }
+    for (const variant of getCardPlayVariants(card)) {
+      if (variant.effect.type !== "REDIRECT_SPELL") {
+        continue;
+      }
+      if (!canAffordCardCost(state, player.id, cardId, variant.cost)) {
+        continue;
+      }
+      if (spellRedirectTargets(state, context.excludeUnitId, variant.effect.grade).length === 0) {
+        continue;
+      }
+      const variantName = variant.optionLabel ? `${card.name}: ${variant.optionLabel}` : card.name;
+      offers.push(
+        makeReactionAction(variantName, {
+          type: "PLAY_REACTION",
+          playerId: player.id,
+          cardId,
+          mode: "basic",
+          ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
+        })
+      );
+    }
+  }
+  return offers;
+}
+
 export function getLegalReactionsForTrigger(
   state: GameState,
   triggerEvent: GameEvent,
@@ -2667,27 +2870,12 @@ export function getLegalReactionsForTrigger(
           }
         };
 
-        // Magic Mirror: offered (one option per grade) only when the pending
-        // enemy Spell currently targets one of this player's units and at least
-        // one legal new target of that grade exists. The new target is chosen
-        // in a follow-up choice once the card is played, so no target rides on
-        // the reaction action itself.
+        // Magic Mirror is offered through its own dedicated pass
+        // (getMagicMirrorReactions), which covers all three windows it can fire
+        // in — a single-target cast on your unit, an area cast that would damage
+        // your unit, and an instant debuff layered onto an attack. Skip its
+        // REDIRECT_SPELL options here so they are never double-offered.
         if (variant.effect.type === "REDIRECT_SPELL") {
-          const targetUnit =
-            triggerEvent.type === "SPELL_CAST_STARTED"
-              ? pendingSpellTargetForPlayer(state, triggerEvent, player.id)
-              : null;
-          if (targetUnit && spellRedirectTargets(state, targetUnit.id, variant.effect.grade).length > 0) {
-            reactions.push(
-              makeReactionAction(variantName, {
-                type: "PLAY_REACTION",
-                playerId: player.id,
-                cardId,
-                mode: "basic",
-                ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
-              })
-            );
-          }
           continue;
         }
 
@@ -2726,6 +2914,13 @@ export function getLegalReactionsForTrigger(
           );
         }
       }
+    }
+
+    // Magic Mirror: its own pass, covering all three windows it fires in. Kept
+    // out of the variant loop above (whose trigger gate is tied to the cast
+    // window) so an attack-instant or area-damage reflection is offered too.
+    for (const offer of getMagicMirrorReactions(state, player, triggerEvent, spellLimitLeft, cards)) {
+      reactions.push(offer);
     }
 
     // Spell Scroll spells played as reactions: basic side only, power-locked

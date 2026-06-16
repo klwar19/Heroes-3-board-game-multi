@@ -155,6 +155,7 @@ import {
   isHandLockedInCombat,
   isUnitAlive,
   payablePowerCardIds,
+  reflectableAttackInstantForPlayer,
   rerollSourceAvailableFor,
   spellAbilitiesSuppressed,
   spellRedirectTargets
@@ -851,6 +852,30 @@ function reverseCancelledInstantSpell(stackItem: ResolutionStackItem, cardId: Ca
     stackItem.modifiers.slayerRollsByPower = undefined;
     stackItem.modifiers.slayerDraw = undefined;
   }
+}
+
+/**
+ * The signed stat penalty an instant ADD_COMBAT_STAT Spell currently contributes
+ * to an attack — what Magic Mirror carries onto its new target as a token. Read
+ * from the power-scaled record (so Power paid into the attack window is honoured)
+ * but WITHOUT the original target's hero-specialty doubling, since the malus is
+ * moving to a different unit. A Scroll cast (locked to Power 0, never recorded)
+ * falls back to the card's printed base amount.
+ */
+function attackInstantSignedAmount(stackItem: ResolutionStackItem, cardId: CardId, cards: CardLibrary): number {
+  const records = stackItem.modifiers.powerScaledAttackInstants ?? [];
+  // Match reverseCancelledInstantSpell, which pulls the LAST record for the card.
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const record = records[index];
+    if (record.cardId === cardId) {
+      return (
+        getAmountByPower(record.amountByPower, record.baseAmount, stackItem.modifiers.spellPowerBonus) +
+        record.fixedBonus
+      );
+    }
+  }
+  const effect = cards[cardId]?.effect;
+  return effect?.type === "ADD_COMBAT_STAT" ? effect.amount : 0;
 }
 
 /**
@@ -4404,6 +4429,28 @@ function openReactionWindowForTrigger(
 }
 
 /**
+ * After Magic Mirror reflects an instant off a still-pending attack, reopen that
+ * attack's reaction window (found via the parked stack item's UNIT_ATTACK_DECLARED
+ * trigger) so both sides may keep responding — the attack itself never resolved.
+ * With no one left able to react, resolve the attack instead.
+ */
+function resumeAttackWindowAfterRedirect(
+  state: GameState,
+  stackItem: ResolutionStackItem | undefined,
+  cards: CardLibrary
+): void {
+  if (!stackItem || (stackItem.action.type !== "ATTACK_UNIT" && stackItem.action.type !== "MOVE_AND_ATTACK_UNIT")) {
+    return;
+  }
+  const triggerEvent = stackItem.triggerEventIds
+    .map((eventId) => state.eventLog.find((event) => event.id === eventId))
+    .find((event): event is Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }> => event?.type === "UNIT_ATTACK_DECLARED");
+  if (!triggerEvent || !openReactionWindowForTrigger(state, stackItem, triggerEvent, cards)) {
+    resolveTopStack(state, cards);
+  }
+}
+
+/**
  * Rampart Pegasi (Pack) "Magic Damper": every living enemy Pegasi shaves Power
  * off the Spells the caster casts. Summed across all opposing auras; the caller
  * floors the resulting Power at 0.
@@ -5844,8 +5891,13 @@ function applyReactionPlayCore(
   // closes and the spell resolves against the chosen unit once it is picked.
   if (effect.type === "REDIRECT_SPELL" && stackItem?.action.type === "CAST_SPELL") {
     const currentTarget = stackItem.action.target;
-    const candidates =
-      currentTarget.type === "unit" ? spellRedirectTargets(state, currentTarget.unitId, effect.grade) : [];
+    // A space-centred blast (Inferno) has no single "current" unit to exclude —
+    // pass null so every legal unit qualifies as the new centre.
+    const candidates = spellRedirectTargets(
+      state,
+      currentTarget.type === "unit" ? currentTarget.unitId : null,
+      effect.grade
+    );
     if (candidates.length === 0) {
       throw new Error("There is no legal new target for that spell.");
     }
@@ -5872,6 +5924,62 @@ function applyReactionPlayCore(
       playerId,
       sourceEffectIds: [],
       message: `${card.name}: choose where to bounce ${castCard?.name ?? "the spell"}.`
+    });
+
+    closeReactionWindow(state, "reaction-played");
+    state.phase = "choice";
+    state.priorityPlayerId = playerId;
+    return { windowEnded: true };
+  }
+
+  // Magic Mirror reflecting an instant combat debuff layered onto an attack
+  // (Curse on your defender, Weakness on your attacker). Lift that one Spell off
+  // your unit exactly as Resistance would, capture its power-scaled penalty, then
+  // open the new-target choice; the malus lands on the chosen unit as a lasting
+  // token and the attack's reaction window resumes (see chooseAbilityTarget).
+  if (
+    effect.type === "REDIRECT_SPELL" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    const found = reflectableAttackInstantForPlayer(state, stackItem, playerId, cards);
+    const affected = found ? state.combat?.units[found.affectedUnitId] : undefined;
+    const candidates = found ? spellRedirectTargets(state, found.affectedUnitId, effect.grade) : [];
+    if (!found || !affected || candidates.length === 0) {
+      throw new Error("There is no enemy Spell on this attack for Magic Mirror to reflect.");
+    }
+
+    const instantCard = cards[found.cardId];
+    const signedAmount = attackInstantSignedAmount(stackItem, found.cardId, cards);
+    reverseCancelledInstantSpell(stackItem, found.cardId, cards);
+    stackItem.modifiers.cancellableSpellInstants?.splice(found.index, 1);
+
+    const choiceId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "ABILITY_TARGET_CHOICE",
+      playerId,
+      kind: "spell-redirect",
+      abilityId: card.id,
+      abilityName: card.name,
+      prompt: `${card.name}: choose a new target for ${instantCard?.name ?? "the spell"} (${effect.grade} or lower).`,
+      sourceUnitId: null,
+      anchorUnitId: found.affectedUnitId,
+      candidateUnitIds: candidates.map((unit) => unit.id),
+      optional: false,
+      redirectInstant: {
+        stat: found.stat,
+        amount: signedAmount,
+        sourceCardId: found.cardId,
+        sourceName: instantCard?.name ?? "Spell"
+      }
+    };
+    appendEvent(state, {
+      type: "PENDING_CHOICE_CREATED",
+      choiceId,
+      choiceType: "ABILITY_TARGET_CHOICE",
+      playerId,
+      sourceEffectIds: [],
+      message: `${card.name}: choose where to bounce ${instantCard?.name ?? "the spell"}.`
     });
 
     closeReactionWindow(state, "reaction-played");
@@ -8401,15 +8509,50 @@ function chooseAbilityTarget(
     return;
   }
 
-  // Magic Mirror: the new target is chosen — re-point the pending spell (which
-  // waited on the stack while this choice was open) and resolve it against the
-  // chosen unit. A Fireball-style spell recomputes its splash around the new
-  // primary target on resolution.
+  // Magic Mirror: the new target is chosen.
   if (choice.kind === "spell-redirect") {
     const top = state.stack.at(-1);
+    const chosen = combat.units[action.targetUnitId];
+
+    // (a) Reflecting an instant combat debuff off your attacked unit: the malus
+    // was already lifted from your unit when the card was played; now it lands
+    // on the chosen unit as a lasting token, then the attack's window resumes.
+    if (choice.redirectInstant) {
+      if (chosen && isUnitAlive(chosen)) {
+        const { stat, amount, sourceName } = choice.redirectInstant;
+        if (stat === "defense") {
+          // Curse: −defense → a Corrosion token (positive magnitude, floored at 0).
+          placeCombatToken(state, chosen, "corrosion", Math.abs(amount), sourceName);
+        } else if (amount < 0) {
+          // Weakness: −attack → a Weakness token (signed; the milder is kept).
+          placeCombatToken(state, chosen, "weakness", amount, sourceName);
+        } else {
+          placeCombatToken(state, chosen, "attack", amount, sourceName);
+        }
+      }
+      appendEvent(state, {
+        type: "SPELL_REDIRECTED",
+        playerId: action.playerId,
+        spellCardId: choice.redirectInstant.sourceCardId,
+        byCardId: choice.abilityId ?? "",
+        fromTarget: { type: "unit", unitId: choice.anchorUnitId ?? action.targetUnitId },
+        toTarget: { type: "unit", unitId: action.targetUnitId }
+      });
+      resumeAttackWindowAfterRedirect(state, top, cards);
+      return;
+    }
+
+    // (b) Re-pointing a pending cast (which waited on the stack while this choice
+    // was open) and resolving it against the chosen target. A space-centred blast
+    // (Inferno) recenters on the chosen unit's space; everything else re-points
+    // straight at the unit. A Fireball-style splash recomputes around the new
+    // primary on resolution.
     if (top?.action.type === "CAST_SPELL") {
       const fromTarget = top.action.target;
-      top.action.target = { type: "unit", unitId: action.targetUnitId };
+      top.action.target =
+        fromTarget.type === "space" && chosen
+          ? { type: "space", position: chosen.position }
+          : { type: "unit", unitId: action.targetUnitId };
       appendEvent(state, {
         type: "SPELL_REDIRECTED",
         playerId: action.playerId,
