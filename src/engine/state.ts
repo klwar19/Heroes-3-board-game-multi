@@ -894,6 +894,25 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Clone Spell (Expert Water, Cove Expansion): place a 1-Health copy of one
+       * of the caster's units on an empty space orthogonally adjacent to it. The
+       * Clone copies everything printed on the original's card (statistics, type,
+       * printed abilities) but NONE of the ongoing effects/tokens layered on the
+       * original, and it starts with maxHealth 1. It is destroyed the instant it
+       * takes ANY damage, the instant it is attacked (even for 0 damage), and the
+       * instant its original leaves the Combat Board (see CombatUnitState.cloneOfUnitId
+       * and combat-units.removeLinkedClones). The reachable grade of the cloned
+       * unit rises with the Power paid (1 → bronze, 3 → silver, 5 → gold), the
+       * Implosion tier ladder; below Power 1 nothing is cloned. The destination
+       * empty space is picked in a follow-up choice after the cast (the
+       * "combat-clone" OPTION_CHOICE). The "OR Instant: +1 Power" side is the
+       * universal power-source discard, so it needs no dedicated option.
+       */
+      type: "CLONE_UNIT";
+      gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
        * Dispel Spell (Basic Water): strip every removable ongoing effect from
        * the selected unit — Haste, Slow, Bless's bonus, Anti-Magic, Forgetfulness,
        * Fire Shield, an enemy's buffs… anything created `removable` and bound to
@@ -3254,6 +3273,15 @@ export type CombatUnitState = {
    * only turn on a summoned unit when nothing else is left.
    */
   summoned?: boolean;
+  /**
+   * Clone Spell: when set, this unit is a 1-Health Clone Token copying the unit
+   * with this id. A Clone copies everything printed on the original's card but
+   * none of the ongoing effects/tokens on it, and is destroyed by any damage, by
+   * being attacked (even for 0 damage), or when its original is removed from the
+   * Combat Board. Clones never flip (Pack→Few), never Rebirth, leave no army
+   * bookkeeping, and never count as one of your units leaving for Pit Lords.
+   */
+  cloneOfUnitId?: UnitId;
   assets?: {
     cardImage?: string;
     imageAlt?: string;
@@ -4191,6 +4219,7 @@ export type PendingChoice =
         | "genie-take-spell"
         | "combat-knockback"
         | "combat-teleport"
+        | "combat-clone"
         | "cover-of-darkness"
         | "diplomacy-skip"
         | "diplomacy-recruit"
@@ -4219,6 +4248,12 @@ export type PendingChoice =
        * which empty space (index-aligned with the options) it lands on.
        */
       teleport?: { unitId: UnitId; positions: number[] };
+      /**
+       * combat-clone: the Clone Spell is placing a copy of `originalUnitId`; the
+       * caster picks which empty space adjacent to it (index-aligned with the
+       * options) the Clone Token lands on.
+       */
+      clone?: { originalUnitId: UnitId; positions: number[] };
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */

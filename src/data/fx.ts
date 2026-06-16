@@ -109,6 +109,11 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   // (its card-glide) is the visual. The cast carries the H3 teleport sound on the
   // chosen unit; queueBoardFx plays a sound-only plan over the target.
   "spell.teleport": { sound: "spells/teleport" },
+  // Clone has no converted sprite sheet — the new Clone Token appearing on the
+  // board (its entrance pop) is the visual. The H3 clone cast cue plays on the
+  // cloned unit at SPELL_CAST_RESOLVED (a unit target); the follow-up choice then
+  // drops the token. queueBoardFx plays this sound-only plan over the target.
+  "spell.clone": { sound: "spells/clone" },
   // Combat buffs / debuffs / reactions: each has its converted sheet and sound.
   // The ones cast on a chosen unit (Weakness, Anti-Magic, Fire Shield,
   // Counterstrike, Forgetfulness) shimmer over that unit; the player-scoped or
