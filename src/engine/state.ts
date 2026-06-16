@@ -215,6 +215,18 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Cards of Prophecy ("Set a Resource die or Treasure die on the side of
+       * your choice"): instead of taking the rolled face of an adventure die,
+       * the controller may set that die to any of its faces. "any" covers both
+       * the Resource and the Treasure die. A single use — the whole effect is
+       * spent the moment a die is set (mirrors the single-use "any" Luck
+       * reroll), so the choice is offered once per played card.
+       */
+      type: "ADVENTURE_DIE_SET";
+      dice: "treasure" | "resource" | "any";
+    }
+  | {
+      /**
        * Ammo Cart: the affected ranged units ignore every ranged-attack
        * penalty (adjacent shots and opposite-back-row shots roll normally).
        */
@@ -3594,6 +3606,14 @@ export type VisitStep =
       type: "CONSUME_LUCK";
       effectId: string;
       dice: "treasure" | "resource";
+    }
+  | {
+      /**
+       * Cards of Prophecy: spend the die-set effect before applying the chosen
+       * face of a Resource/Treasure die (the whole effect is removed — one use).
+       */
+      type: "CONSUME_DIE_SET";
+      effectId: string;
     }
   | {
       /** Spends the positive morale token (reroll-any-die morale action). */
