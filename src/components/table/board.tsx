@@ -68,6 +68,32 @@ export function isBoardFlipped(state: GameState, viewerPlayerId: PlayerId): bool
   return viewerPlayerId === combat.defenderPlayerId;
 }
 
+/**
+ * Horizontal battlefield view. The engine models combat on a logical grid that
+ * is {@link BATTLEFIELD_COLUMNS} wide and {@link BATTLEFIELD_ROWS} tall
+ * (position 0-19, `row = position / 4`, `column = position % 4`), but Heroes 3
+ * battles face off LEFT↔RIGHT, so the board is drawn transposed: each engine
+ * ROW (defender back · defender front · crossing · attacker front · attacker
+ * back) becomes a vertical COLUMN of the field, and each engine COLUMN becomes
+ * a horizontal ROW. The attacker's rows land in the left columns and the
+ * defender's in the right ones; the seat-relative 180° flip
+ * (`.boardFelt.flipped`) then turns the whole field so each player's own army
+ * sits on their left.
+ *
+ * Returns 1-indexed `gridColumn` / `gridRow`, ready to drop into a CSS grid.
+ * The engine coordinates are never touched — this is purely on-screen layout.
+ */
+export function battlefieldCellPlacement(position: number): { gridColumn: number; gridRow: number } {
+  const engineRow = Math.floor(position / BATTLEFIELD_COLUMNS);
+  const engineColumn = position % BATTLEFIELD_COLUMNS;
+  return {
+    // High engine rows are the attacker's back/front lines — keep them on the
+    // left, so the field reads attacker → crossing → defender, left to right.
+    gridColumn: BATTLEFIELD_ROWS - engineRow,
+    gridRow: engineColumn + 1
+  };
+}
+
 const TOKEN_GLYPHS: Record<CombatTokenState["kind"], { symbol: string; describe: (token: CombatTokenState) => string }> = {
   attack: {
     symbol: "⚔",
@@ -327,15 +353,29 @@ function RepositionPreview({
   movingImage?: string;
   swapBackImage?: string;
 }) {
-  const cols = BATTLEFIELD_COLUMNS;
-  const rows = BATTLEFIELD_ROWS;
-  const center = (position: number) => ({ x: (position % cols) + 0.5, y: Math.floor(position / cols) + 0.5 });
-  const ghostStyle = (position: number): React.CSSProperties => ({
-    left: `${((position % cols) / cols) * 100}%`,
-    top: `${(Math.floor(position / cols) / rows) * 100}%`,
-    width: `${100 / cols}%`,
-    height: `${100 / rows}%`
-  });
+  // The field renders horizontally (engine rows → visual columns); this overlay
+  // is a child of `.battlefield`, so it shares that transposed map and the
+  // board's flip rotation. Visual grid: BATTLEFIELD_ROWS columns wide,
+  // BATTLEFIELD_COLUMNS rows tall.
+  const cols = BATTLEFIELD_ROWS;
+  const rows = BATTLEFIELD_COLUMNS;
+  const visualCell = (position: number) => {
+    const { gridColumn, gridRow } = battlefieldCellPlacement(position);
+    return { col: gridColumn - 1, row: gridRow - 1 };
+  };
+  const center = (position: number) => {
+    const { col, row } = visualCell(position);
+    return { x: col + 0.5, y: row + 0.5 };
+  };
+  const ghostStyle = (position: number): React.CSSProperties => {
+    const { col, row } = visualCell(position);
+    return {
+      left: `${(col / cols) * 100}%`,
+      top: `${(row / rows) * 100}%`,
+      width: `${100 / cols}%`,
+      height: `${100 / rows}%`
+    };
+  };
   const from = center(sourcePosition);
   const to = center(destinationPosition);
   return (
@@ -682,6 +722,17 @@ export function BattlefieldBoard({
         </div>
       ) : null}
       <div className="battlefield">
+        {/* Terrain art. The painted board is portrait (grass → crossing → dirt,
+            top to bottom); rotating it 90° lays that gradient out horizontally
+            so it lines up with the transposed cells. It sits behind the cells
+            and rotates with the board's seat flip. */}
+        <img
+          alt=""
+          aria-hidden="true"
+          className="battlefieldTerrain"
+          referrerPolicy="no-referrer"
+          src={assetUrl("/assets/board/battlefield-4x5-grass-dirt.png")}
+        />
         {Array.from({ length: BATTLEFIELD_CELL_COUNT }, (_, index) => {
           const unit = unitsByPosition.get(index);
           const terrain = getBattlefieldTerrain(index);
@@ -724,6 +775,10 @@ export function BattlefieldBoard({
           } ${isSwapTarget ? "swapTarget" : ""} ${isSwapSelected ? "swapSelected" : ""} ${
             isRepositionSource ? "repositionSource" : ""
           } ${isFlashing ? "fxRepositionFlash" : ""}`;
+          // Place the cell on the transposed horizontal grid (see
+          // `battlefieldCellPlacement`). DOM order stays in engine order so
+          // `data-fx-cell` lookups and tests are unaffected.
+          const cellStyle = battlefieldCellPlacement(index);
           const health = unit ? Math.max(0, unit.maxHealth - shownDamage(unit)) : 0;
           // Hovering a candidate cell drives the ghost + arrow toward it.
           const repositionHoverProps = isRepositionCandidate
@@ -773,6 +828,7 @@ export function BattlefieldBoard({
                   data-fx-cell={index}
                   key={index}
                   onClick={() => onAction(fortAction.action)}
+                  style={cellStyle}
                   title={`${fortAction.label} — automatically successful, no die, no cards`}
                   type="button"
                 >
@@ -781,7 +837,14 @@ export function BattlefieldBoard({
               );
             }
             return (
-              <div aria-label={label} className={`${className} fortification`} data-fx-cell={index} key={index} title={label}>
+              <div
+                aria-label={label}
+                className={`${className} fortification`}
+                data-fx-cell={index}
+                key={index}
+                style={cellStyle}
+                title={label}
+              >
                 {content}
               </div>
             );
@@ -794,6 +857,7 @@ export function BattlefieldBoard({
                 className={className}
                 data-fx-cell={index}
                 key={index}
+                style={cellStyle}
                 title="Combat Obstacle — ground and ranged units must go around; flying units pass over"
               >
                 <span className="obstacleMark">
@@ -908,6 +972,7 @@ export function BattlefieldBoard({
                   }
                 }}
                 onMouseLeave={isSwapTarget ? () => setHoverDestination((current) => (current === index ? null : current)) : undefined}
+                style={cellStyle}
                 title={swapLabel}
                 type="button"
               >
@@ -941,6 +1006,7 @@ export function BattlefieldBoard({
                       : current
                   )
                 }
+                style={cellStyle}
                 title={stepLabel}
                 type="button"
               >
@@ -995,6 +1061,7 @@ export function BattlefieldBoard({
                 }}
                 onMouseEnter={unit ? () => onInspect(unit.id) : undefined}
                 {...repositionHoverProps}
+                style={cellStyle}
                 title={label}
                 type="button"
               >
@@ -1016,6 +1083,7 @@ export function BattlefieldBoard({
                 title={`Inspect ${unit.name}`}
                 type="button"
                 {...dragProps}
+                style={cellStyle}
               >
                 {content}
               </button>
@@ -1029,6 +1097,7 @@ export function BattlefieldBoard({
               data-fx-cell={index}
               key={index}
               {...dropProps}
+              style={cellStyle}
             >
               {content}
             </div>
