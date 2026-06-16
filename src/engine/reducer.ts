@@ -7674,6 +7674,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         action.playerId
       );
     }
+    // Shield of Naval Glory (Sea side): the +1 movement comes with a card draw.
+    if (effect.drawCards) {
+      drawCardsForPlayer(state, action.playerId, effect.drawCards);
+    }
   }
 
   if (effect.type === "DIMENSION_DOOR") {
