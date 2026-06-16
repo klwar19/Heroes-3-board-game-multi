@@ -3381,11 +3381,12 @@ export function getLegalReactionsForTrigger(
         ? attackStackItem.action.playerId
         : undefined;
     // Either side may keep empowering a Power-scaling spell instant THEY already
-    // cast into this attack (the attacker's Bloodlust/Slayer, the defender's
-    // Curse/Weakness) — each pays into their own Power pool.
+    // cast into this attack (the attacker's Bloodlust/Slayer/Frenzy, the
+    // defender's Curse/Weakness) — each pays into their own Power pool.
     const hasEmpowerablePlayed =
       (attackStackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === player.id) ||
-      (attackOwner === player.id && attackStackItem?.modifiers.slayerRollsByPower !== undefined);
+      (attackOwner === player.id && attackStackItem?.modifiers.slayerRollsByPower !== undefined) ||
+      attackStackItem?.modifiers.ignoreDefenseCasterId === player.id;
     if (!isAttackWindow || hasPairableSpell || hasEmpowerablePlayed) {
       reactions.push(...powerReactions);
     }
@@ -3777,11 +3778,20 @@ export function isEffectLegalForTrigger(
       return attacker.controllerId === playerId && defender.grade === "gold";
     }
 
-    // Frenzy: only the attacker's controller, and only when the chosen option's
-    // grade reaches the defender (the option's discard cost paid the Power).
-    // Offering only the grade-reaching options keeps a wasted pierce off the menu.
+    // Frenzy: only the attacker's controller. The Power-scaled form (gradeByPower)
+    // is offered whenever you attack — the pierced grade is decided at resolution
+    // from the Power you pool in (power 0 already pierces bronze, like Bloodlust
+    // is always offered). The legacy fixed-grade form is offered only when its
+    // grade reaches the defender, keeping a wasted pierce off the menu.
     if (effect.type === "IGNORE_DEFENSE") {
-      return attacker.controllerId === playerId && gradeRank(defender.grade) <= gradeRank(effect.grade);
+      if (effect.gradeByPower) {
+        return attacker.controllerId === playerId;
+      }
+      return (
+        attacker.controllerId === playerId &&
+        effect.grade !== undefined &&
+        gradeRank(defender.grade) <= gradeRank(effect.grade)
+      );
     }
 
     // Alamar's Resurrection is never a pre-die attack reaction — it is offered
