@@ -9025,19 +9025,28 @@ function chooseAbilityTarget(
 
     // (a) Reflecting an instant combat debuff off your attacked unit: the malus
     // was already lifted from your unit when the card was played; now it lands
-    // on the chosen unit as a lasting token, then the attack's window resumes.
+    // on the chosen unit, then the attack's window resumes. Like the instant it
+    // was, it is NOT a combat-long token — it is bound to the CURRENT activation
+    // ("current-activation" binds to the attacker now resolving), so it covers
+    // this attack and its retaliation and is gone once that activation ends. It
+    // is spell-sourced, so Dispel can strip it and a Gargoyle/Titan ignores it.
     if (choice.redirectInstant) {
       if (chosen && isUnitAlive(chosen)) {
-        const { stat, amount, sourceName } = choice.redirectInstant;
-        if (stat === "defense") {
-          // Curse: −defense → a Corrosion token (positive magnitude, floored at 0).
-          placeCombatToken(state, chosen, "corrosion", Math.abs(amount), sourceName);
-        } else if (amount < 0) {
-          // Weakness: −attack → a Weakness token (signed; the milder is kept).
-          placeCombatToken(state, chosen, "weakness", amount, sourceName);
-        } else {
-          placeCombatToken(state, chosen, "attack", amount, sourceName);
-        }
+        const { stat, amount, sourceName, sourceCardId } = choice.redirectInstant;
+        createActiveEffect(
+          state,
+          {
+            name: sourceName,
+            scope: "unit",
+            duration: { type: "current-activation" },
+            polarity: "negative",
+            removable: true,
+            modifiers: [{ type: stat === "attack" ? "ATTACK_BONUS" : "DEFENSE_BONUS", amount }]
+          },
+          { type: "card", cardId: sourceCardId, controllerId: action.playerId },
+          action.playerId,
+          { type: "unit", unitId: chosen.id }
+        );
       }
       appendEvent(state, {
         type: "SPELL_REDIRECTED",

@@ -599,10 +599,11 @@ export const spellCards: CardLibrary = {
   //    reflectable; nor are Chain Lightning's resolution-time forks;
   //  - an instant combat debuff layered onto an attack (Curse on your defender,
   //    Weakness on your attacker) — it is lifted off your unit and lands on the
-  //    chosen unit as a lasting token, then the attack's window resumes. Enemy
-  //    self-buffs (Bloodlust/Bless/Precision target the caster's OWN unit) never
-  //    fire it. Casting Magic Mirror counts as your Spell for the combat round
-  //    (Expert Knowledge / Intelligence raise or waive that limit).
+  //    chosen unit for THIS attack and its retaliation only (a current-activation
+  //    stat effect, not a combat-long token), then expires. Enemy self-buffs
+  //    (Bloodlust/Bless/Precision target the caster's OWN unit) never fire it.
+  //    Casting Magic Mirror counts as your Spell for the combat round (Expert
+  //    Knowledge / Intelligence raise or waive that limit).
   "spell.magic_mirror": {
     id: "spell.magic_mirror",
     name: "Magic Mirror",
