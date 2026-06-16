@@ -116,11 +116,23 @@ function TokenChips({ unit }: { unit: CombatUnitState }) {
   );
 }
 
-const BATTLEFIELD_TOKEN_VIEW: Record<BattlefieldTokenState["kind"], { glyph: string; label: string }> = {
-  force_field: { glyph: "🛡️", label: "Force Field" },
-  fire_wall: { glyph: "🔥", label: "Fire Wall" },
-  quicksand: { glyph: "🌀", label: "Quicksand" },
-  land_mine: { glyph: "💣", label: "Land Mine" }
+/**
+ * How each battlefield token draws on the board: each maps to a converted Heroes
+ * III .def sprite sheet (see fx-manifest), with `glyph` as a last-ditch emoji if
+ * the sheet is missing. Force Field is the blue energy barrier (C15SPE);
+ * Quicksand the sandy bubbling pit (C17SPE) — these two were swapped in the
+ * original conversion and are corrected here. Quicksand / Land Mine show this
+ * art only to their controller; the opponent sees a face-down token back (the
+ * armed/decoy state is secret).
+ */
+const BATTLEFIELD_TOKEN_VIEW: Record<
+  BattlefieldTokenState["kind"],
+  { sprite: string; glyph: string; label: string }
+> = {
+  force_field: { sprite: "force-field", glyph: "🛡️", label: "Force Field" },
+  fire_wall: { sprite: "fire-wall-e", glyph: "🔥", label: "Fire Wall" },
+  quicksand: { sprite: "quicksand", glyph: "🌀", label: "Quicksand" },
+  land_mine: { sprite: "land-mine-a", glyph: "💣", label: "Land Mine" }
 };
 
 /**
@@ -178,11 +190,11 @@ function TokenSprite({ fxKey }: { fxKey: string }) {
 
 /**
  * Spell token sitting on a board space (Force Field / Fire Wall / Quicksand /
- * Land Mine). Quicksand and Land Mine are face down: their controller sees
- * armed/decoy, the opponent only a face-down marker (player-view strips the
- * `armed` flag, leaving it undefined here) — and a sprung trap is removed by
- * the engine, so it never lingers on the board. The Force Field shows its
- * shimmering obstacle art (the converted H3 sprite) rather than a flat glyph.
+ * Land Mine). Force Field and Fire Wall are visible obstacles, drawn with their
+ * animated H3 sprite. Quicksand and Land Mine are face-down traps: their
+ * controller sees the real art + armed/decoy, the opponent only a face-down
+ * token back (player-view strips the `armed` flag, leaving it undefined here).
+ * A sprung trap is removed by the engine, so it never lingers on the board.
  */
 function BattlefieldTokenMark({
   token,
@@ -198,9 +210,7 @@ function BattlefieldTokenMark({
   // The opponent's hidden trap: player-view stripped the armed flag.
   const faceDown = isTrap && token.armed === undefined;
   const owner = state.players[token.controllerId]?.name ?? token.controllerId;
-  // The Force Field renders as its animated obstacle sprite; the others keep
-  // their emoji marker.
-  const forceFieldSheet = token.kind === "force_field" ? getFxSheet("force-field-b") : undefined;
+  const spriteSheet = getFxSheet(view.sprite);
 
   let detail = "";
   if (token.kind === "fire_wall") {
@@ -208,7 +218,7 @@ function BattlefieldTokenMark({
   } else if (token.kind === "force_field") {
     detail = token.expiresAtCombatRoundEnd === undefined ? "combat" : `r${token.expiresAtCombatRoundEnd}`;
   } else if (faceDown) {
-    detail = "?";
+    detail = "";
   } else {
     detail = token.armed ? "armed" : "decoy";
   }
@@ -222,6 +232,19 @@ function BattlefieldTokenMark({
           ? `${view.label} (${owner}) — a face-down trap; you cannot see whether it is armed`
           : `${view.label} (${owner}) — your token: ${token.armed ? "armed" : "decoy"}`;
 
+  let art: React.ReactNode;
+  if (faceDown) {
+    art = (
+      <span className="battlefieldTokenBack" aria-hidden="true">
+        ?
+      </span>
+    );
+  } else if (spriteSheet) {
+    art = <TokenSprite fxKey={view.sprite} />;
+  } else {
+    art = <b aria-hidden="true">{view.glyph}</b>;
+  }
+
   return (
     <span
       aria-label={describe}
@@ -230,7 +253,7 @@ function BattlefieldTokenMark({
       }`}
       title={describe}
     >
-      {forceFieldSheet ? <TokenSprite fxKey="force-field-b" /> : <b aria-hidden="true">{faceDown ? "🎴" : view.glyph}</b>}
+      {art}
       {detail ? <small>{detail}</small> : null}
     </span>
   );

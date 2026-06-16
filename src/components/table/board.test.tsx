@@ -77,27 +77,61 @@ describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
     return { onAction };
   }
 
-  it("draws a Fire Wall marker with its damage on the token's space", () => {
+  // Each visible obstacle / the caster's own trap draws its converted H3 sprite,
+  // not the old emoji. The Force Field is the blue energy barrier (C15SPE) and
+  // Quicksand the sandy pit (C17SPE) — they were swapped in the first conversion,
+  // so the Force Field must NOT resolve to the quicksand asset, and vice-versa.
+  function spriteOnCell(position: number): HTMLElement | null {
+    return document.querySelector<HTMLElement>(`[data-fx-cell="${position}"] .battlefieldToken .battlefieldTokenSprite`);
+  }
+
+  it("draws a Fire Wall with its flame sprite and its damage", () => {
     const state = createInitialGameState("board-fire-wall");
     state.combat!.battlefieldTokens = [{ id: "t1", kind: "fire_wall", position: 10, controllerId: "p1", damage: 2 }];
     renderBoard(state);
-    const cell = document.querySelector('[data-fx-cell="10"]');
-    const mark = cell!.querySelector(".battlefieldToken.fire_wall");
+    const mark = document.querySelector('[data-fx-cell="10"] .battlefieldToken.fire_wall');
     expect(mark, "a Fire Wall marker should render on space 10").toBeTruthy();
     expect(mark!.textContent).toContain("2");
+    expect(spriteOnCell(10)!.style.backgroundImage).toContain("fire-wall");
+    expect(mark!.textContent ?? "").not.toContain("🔥");
   });
 
-  it("shows the opponent a face-down marker, but shows the caster its armed/decoy face", () => {
+  it("renders the Force Field as the blue-barrier sprite (not the sandy quicksand art)", () => {
+    const state = createInitialGameState("board-force-field");
+    state.combat!.battlefieldTokens = [{ id: "t1", kind: "force_field", position: 10, controllerId: "p1" }];
+    renderBoard(state);
+    const mark = document.querySelector('[data-fx-cell="10"] .battlefieldToken.force_field');
+    expect(mark, "a Force Field marker should render on space 10").toBeTruthy();
+    const bg = spriteOnCell(10)!.style.backgroundImage;
+    expect(bg).toContain("force-field");
+    expect(bg).not.toContain("quicksand");
+    expect(mark!.textContent ?? "").not.toContain("🛡");
+  });
+
+  it("renders the caster's Quicksand as the sandy sprite (not the blue force-field art)", () => {
+    const state = createInitialGameState("board-quicksand");
+    state.combat!.battlefieldTokens = [{ id: "t1", kind: "quicksand", position: 10, controllerId: "p1", armed: true }];
+    renderBoard(state);
+    const mark = document.querySelector('[data-fx-cell="10"] .battlefieldToken.quicksand');
+    expect(mark, "a Quicksand marker should render on space 10").toBeTruthy();
+    const bg = spriteOnCell(10)!.style.backgroundImage;
+    expect(bg).toContain("quicksand");
+    expect(bg).not.toContain("force-field");
+    expect(mark!.textContent ?? "").not.toContain("🌀");
+  });
+
+  it("shows the opponent only a face-down token back, the caster the real Land Mine sprite", () => {
     const hiddenState = createInitialGameState("board-hidden-trap");
     // armed === undefined mirrors what getPlayerView leaves for an enemy trap.
     hiddenState.combat!.battlefieldTokens = [{ id: "t1", kind: "land_mine", position: 10, controllerId: "p2" }];
     renderBoard(hiddenState);
     const hidden = document.querySelector('[data-fx-cell="10"] .battlefieldToken');
     expect(hidden!.className).toContain("faceDown");
+    expect(hidden!.querySelector(".battlefieldTokenBack"), "a face-down back hides the trap").toBeTruthy();
+    expect(hidden!.querySelector(".battlefieldTokenSprite"), "no sprite leaks the trap to the opponent").toBeNull();
 
     cleanup();
 
-    // The caster's own trap shows its armed/decoy face (armed is defined for them).
     const ownState = createInitialGameState("board-own-trap");
     ownState.combat!.battlefieldTokens = [
       { id: "t1", kind: "land_mine", position: 10, controllerId: "p1", armed: true, damage: 2 }
@@ -106,19 +140,7 @@ describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
     const own = document.querySelector('[data-fx-cell="10"] .battlefieldToken');
     expect(own!.className).not.toContain("faceDown");
     expect(own!.textContent ?? "").toContain("armed");
-  });
-
-  it("renders the Force Field as its obstacle sprite art, not a flat shield glyph", () => {
-    const state = createInitialGameState("board-force-field");
-    state.combat!.battlefieldTokens = [{ id: "t1", kind: "force_field", position: 10, controllerId: "p1" }];
-    renderBoard(state);
-    const mark = document.querySelector('[data-fx-cell="10"] .battlefieldToken.force_field');
-    expect(mark, "a Force Field marker should render on space 10").toBeTruthy();
-    const sprite = mark!.querySelector<HTMLElement>(".battlefieldTokenSprite");
-    expect(sprite, "the Force Field should render its converted sprite art").toBeTruthy();
-    expect(sprite!.style.backgroundImage).toContain("force-field");
-    // It must not fall back to the old shield emoji.
-    expect(mark!.textContent ?? "").not.toContain("🛡");
+    expect(spriteOnCell(10)!.style.backgroundImage).toContain("land-mine");
   });
 
   it("runs the placement picker: empty cells place a token and a Stop button ends it", () => {

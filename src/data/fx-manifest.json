@@ -302,7 +302,7 @@
     "fps": 15,
     "anchor": "center",
     "sourceDef": "C15SPE0",
-    "looksLike": "blue spectral flame column",
+    "looksLike": "Force Field barrier variant (C15SPE) \u2014 not wired; force-field uses C15SPE3",
     "trim": {
       "x": 10,
       "y": 25,
@@ -323,7 +323,7 @@
     "fps": 15,
     "anchor": "center",
     "sourceDef": "C15SPE1",
-    "looksLike": "blue spectral flame column",
+    "looksLike": "Force Field barrier variant (C15SPE) \u2014 not wired; force-field uses C15SPE3",
     "trim": {
       "x": 8,
       "y": 23,
@@ -344,7 +344,7 @@
     "fps": 15,
     "anchor": "center",
     "sourceDef": "C15SPE10",
-    "looksLike": "blue spectral flame column",
+    "looksLike": "Force Field barrier variant (C15SPE) \u2014 not wired; force-field uses C15SPE3",
     "trim": {
       "x": 15,
       "y": 38,
@@ -365,7 +365,7 @@
     "fps": 15,
     "anchor": "center",
     "sourceDef": "C15SPE11",
-    "looksLike": "blue spectral flame column",
+    "looksLike": "Force Field barrier variant (C15SPE) \u2014 not wired; force-field uses C15SPE3",
     "trim": {
       "x": 16,
       "y": 41,
@@ -386,33 +386,12 @@
     "fps": 15,
     "anchor": "center",
     "sourceDef": "C15SPE2",
-    "looksLike": "blue spectral flame column",
+    "looksLike": "Force Field barrier variant (C15SPE) \u2014 not wired; force-field uses C15SPE3",
     "trim": {
       "x": 9,
       "y": 23,
       "canvasWidth": 61,
       "canvasHeight": 136
-    }
-  },
-  "c15spe3": {
-    "src": "/assets/fx/c15spe3.webp",
-    "label": "C15SPE3",
-    "group": "unidentified",
-    "role": "affect",
-    "frames": 15,
-    "cols": 15,
-    "rows": 1,
-    "frameWidth": 43,
-    "frameHeight": 138,
-    "fps": 15,
-    "anchor": "center",
-    "sourceDef": "C15SPE3",
-    "looksLike": "blue spectral flame column",
-    "trim": {
-      "x": 15,
-      "y": 38,
-      "canvasWidth": 60,
-      "canvasHeight": 178
     }
   },
   "c15spe4": {
@@ -428,7 +407,7 @@
     "fps": 15,
     "anchor": "center",
     "sourceDef": "C15SPE4",
-    "looksLike": "blue spectral flame column",
+    "looksLike": "Force Field barrier variant (C15SPE) \u2014 not wired; force-field uses C15SPE3",
     "trim": {
       "x": 2,
       "y": 2,
@@ -449,7 +428,7 @@
     "fps": 15,
     "anchor": "center",
     "sourceDef": "C15SPE5",
-    "looksLike": "blue spectral flame column",
+    "looksLike": "Force Field barrier variant (C15SPE) \u2014 not wired; force-field uses C15SPE3",
     "trim": {
       "x": 2,
       "y": 2,
@@ -470,7 +449,7 @@
     "fps": 15,
     "anchor": "center",
     "sourceDef": "C15SPE6",
-    "looksLike": "blue spectral flame column",
+    "looksLike": "Force Field barrier variant (C15SPE) \u2014 not wired; force-field uses C15SPE3",
     "trim": {
       "x": 4,
       "y": 5,
@@ -491,7 +470,7 @@
     "fps": 15,
     "anchor": "center",
     "sourceDef": "C15SPE7",
-    "looksLike": "blue spectral flame column",
+    "looksLike": "Force Field barrier variant (C15SPE) \u2014 not wired; force-field uses C15SPE3",
     "trim": {
       "x": 2,
       "y": 3,
@@ -512,7 +491,7 @@
     "fps": 15,
     "anchor": "center",
     "sourceDef": "C15SPE8",
-    "looksLike": "blue spectral flame column",
+    "looksLike": "Force Field barrier variant (C15SPE) \u2014 not wired; force-field uses C15SPE3",
     "trim": {
       "x": 3,
       "y": 6,
@@ -533,7 +512,7 @@
     "fps": 15,
     "anchor": "center",
     "sourceDef": "C15SPE9",
-    "looksLike": "blue spectral flame column",
+    "looksLike": "Force Field barrier variant (C15SPE) \u2014 not wired; force-field uses C15SPE3",
     "trim": {
       "x": 18,
       "y": 40,
@@ -1117,64 +1096,24 @@
       "C13SPF0"
     ]
   },
-  "force-field-a": {
-    "src": "/assets/fx/force-field-a.webp",
-    "label": "Force Field (piece)",
+  "force-field": {
+    "src": "/assets/fx/force-field.webp",
+    "label": "Force Field",
     "group": "obstacle",
     "role": "affect",
-    "frames": 3,
-    "cols": 3,
+    "frames": 15,
+    "cols": 15,
     "rows": 1,
     "frameWidth": 43,
-    "frameHeight": 37,
+    "frameHeight": 138,
     "fps": 15,
     "anchor": "center",
-    "sourceDef": "C17SPE0",
+    "sourceDef": "C15SPE3",
     "trim": {
-      "x": 2,
-      "y": 2,
-      "canvasWidth": 47,
-      "canvasHeight": 41
-    }
-  },
-  "force-field-b": {
-    "src": "/assets/fx/force-field-b.webp",
-    "label": "Force Field (piece)",
-    "group": "obstacle",
-    "role": "affect",
-    "frames": 8,
-    "cols": 8,
-    "rows": 1,
-    "frameWidth": 43,
-    "frameHeight": 37,
-    "fps": 15,
-    "anchor": "center",
-    "sourceDef": "C17SPE1",
-    "trim": {
-      "x": 2,
-      "y": 2,
-      "canvasWidth": 47,
-      "canvasHeight": 41
-    }
-  },
-  "force-field-c": {
-    "src": "/assets/fx/force-field-c.webp",
-    "label": "Force Field (piece)",
-    "group": "obstacle",
-    "role": "affect",
-    "frames": 3,
-    "cols": 3,
-    "rows": 1,
-    "frameWidth": 43,
-    "frameHeight": 37,
-    "fps": 15,
-    "anchor": "center",
-    "sourceDef": "C17SPE2",
-    "trim": {
-      "x": 2,
-      "y": 2,
-      "canvasWidth": 47,
-      "canvasHeight": 41
+      "x": 15,
+      "y": 38,
+      "canvasWidth": 60,
+      "canvasHeight": 178
     }
   },
   "forgetfulness": {
@@ -2005,6 +1944,26 @@
       "y": 1,
       "canvasWidth": 100,
       "canvasHeight": 100
+    }
+  },
+  "quicksand": {
+    "src": "/assets/fx/quicksand.webp",
+    "label": "Quicksand",
+    "group": "obstacle",
+    "role": "affect",
+    "frames": 8,
+    "cols": 8,
+    "rows": 1,
+    "frameWidth": 43,
+    "frameHeight": 37,
+    "fps": 15,
+    "anchor": "center",
+    "sourceDef": "C17SPE1",
+    "trim": {
+      "x": 2,
+      "y": 2,
+      "canvasWidth": 47,
+      "canvasHeight": 41
     }
   },
   "resurrection": {
