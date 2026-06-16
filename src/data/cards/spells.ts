@@ -598,8 +598,11 @@ export const spellCards: CardLibrary = {
   //    Meteor Shower, Solmyr's Chain Lightning) is not a Spell cast and is NOT
   //    reflectable; nor are Chain Lightning's resolution-time forks;
   //  - an instant combat debuff layered onto an attack (Curse on your defender,
-  //    Weakness on your attacker) — it is lifted off your unit and lands on the
-  //    chosen unit as a lasting token, then the attack's window resumes. Enemy
+  //    Weakness on your attacker) — it is lifted off your unit and re-pointed at
+  //    the chosen unit for THIS attack and its retaliation only. It stays an
+  //    instant (a one-shot stat delta on the attack, never an ongoing effect or
+  //    token), so nothing can Dispel or ignore it — only spell-immunity stops it,
+  //    enforced by excluding spell-immune units as redirect targets. Enemy
   //    self-buffs (Bloodlust/Bless/Precision target the caster's OWN unit) never
   //    fire it. Casting Magic Mirror counts as your Spell for the combat round
   //    (Expert Knowledge / Intelligence raise or waive that limit).
@@ -1495,6 +1498,76 @@ export const spellCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: spellSource("protection_from_water")
+  },
+  // Disrupting Ray (Basic Air, Ongoing): until the end of the Combat the
+  // selected enemy unit cannot use its special ability. Grade-gated like Blind
+  // (0 → bronze, 1 → silver, 2 → gold). Engine: a combat-scoped
+  // UNIT_ABILITY_SUPPRESSED effect makes getUnitAbilityDefinitions return [] for
+  // the unit, so every ability it has now OR gains later is switched off until
+  // the Combat ends. As a single-target unit cast it is reflectable by Magic
+  // Mirror onto a new target (handled by the shared cast-redirect path). The
+  // "OR Instant: +1 Power" side is the universal power-source discard.
+  "spell.disrupting_ray": {
+    id: "spell.disrupting_ray",
+    name: "Disrupting Ray",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "basic",
+    spellSchools: ["air"],
+    power: 0,
+    target: { type: "enemy-unit" },
+    tags: [
+      "spell",
+      "basic",
+      "air",
+      "Ongoing: Until the end of the Combat, the selected unit cannot use their special ability: Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or golden. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "DISRUPTING_RAY",
+      gradeByPower: { 0: "bronze", 1: "silver", 2: "gold" }
+    },
+    assets: {
+      cardImage: "/assets/spells-disrupting_ray.webp",
+      imageAlt: "Disrupting Ray card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("disrupting_ray")
+  },
+  // Sacrifice (Expert Fire, Activation): choose 1 of your damaged units and
+  // transfer its wounds onto another of your units, which perishes. Engine: the
+  // cast targets the heal unit (grade-gated 0/2/4 → bronze/silver/gold; targets
+  // only a damaged friendly unit, since there must be damage to move); a
+  // follow-up choice picks the sacrifice, then min(heal's damage, sacrifice's
+  // remaining HP) is moved — the heal unit loses that much damage and the
+  // sacrifice takes it, perishing (a Pack flips to Few) when it reaches its
+  // remaining HP. The "OR Instant: +1 Power" side is the universal discard.
+  "spell.sacrifice": {
+    id: "spell.sacrifice",
+    name: "Sacrifice",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["fire"],
+    power: 0,
+    target: { type: "friendly-unit", damagedOnly: true },
+    tags: [
+      "spell",
+      "expert",
+      "fire",
+      "Activation: Choose 1 of your units. You can transfer up to as much damage from this unit to another one in your army, as much is needed for the other unit to perish: Power 0: bronze; Power 2: bronze or silver; Power 4: bronze, silver, or golden. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "SACRIFICE_TRANSFER",
+      gradeByPower: { 0: "bronze", 2: "silver", 4: "gold" }
+    },
+    assets: {
+      cardImage: "/assets/spells-sacrifice.webp",
+      imageAlt: "Sacrifice card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("sacrifice")
   }
 };
 
@@ -1577,7 +1650,10 @@ export const spellDeckLegacy: string[] = [
   "spell.protection_from_air",
   "spell.protection_from_earth",
   "spell.protection_from_fire",
-  "spell.protection_from_water"
+  "spell.protection_from_water",
+  // Disrupting Ray (Basic Air) & Sacrifice (Expert Fire).
+  "spell.disrupting_ray",
+  "spell.sacrifice"
 ];
 
 /** BINH split decks. */
@@ -1620,7 +1696,9 @@ export const spellDeckBinhBasic: string[] = [
   "spell.protection_from_air",
   "spell.protection_from_earth",
   "spell.protection_from_fire",
-  "spell.protection_from_water"
+  "spell.protection_from_water",
+  // Disrupting Ray — Basic Air.
+  "spell.disrupting_ray"
 ];
 
 export const spellDeckBinhExpert: string[] = [
@@ -1658,5 +1736,7 @@ export const spellDeckBinhExpert: string[] = [
   "spell.teleport",
   "spell.berserk",
   // Clone — Expert Water (Cove Expansion).
-  "spell.clone"
+  "spell.clone",
+  // Sacrifice — Expert Fire.
+  "spell.sacrifice"
 ];

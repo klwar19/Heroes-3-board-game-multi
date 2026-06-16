@@ -94,7 +94,7 @@ import {
   startWarMachineRound
 } from "./permanents";
 import { createSeededRandom } from "./random";
-import { estatesGold, getRuleset, spellLimitFor } from "./ruleset";
+import { activeSchoolFetches, estatesGold, getRuleset, spellLimitFor } from "./ruleset";
 import {
   destroyFortification,
   getDemolishAbility,
@@ -126,6 +126,7 @@ import {
   makeActiveEffect,
   playerHasSpellTimingFreedom,
   releaseEndedOngoingCards,
+  syncAbilitySuppression,
   unitDealsElementalDamage,
   unitImmuneToParalysis
 } from "./active-effects";
@@ -157,6 +158,7 @@ import {
   isHandLockedInCombat,
   isUnitAlive,
   payablePowerCardIds,
+  playerHasAttackInstantOfSchool,
   reflectableAttackInstantForPlayer,
   rerollSourceAvailableFor,
   spellAbilitiesSuppressed,
@@ -1934,12 +1936,26 @@ function getAttackStackDetails(
   const tokenAttack = tokenAttackBonus(attacker);
   const tokenDefense = tokenDefenseDelta(defender);
 
+  // Magic Mirror bounced an instant Curse/Weakness onto a unit: a one-shot stat
+  // delta that applies to this exact attack (and its retaliation, carried on the
+  // attackSequence) — read straight off the stack item like the instant it is.
+  const redirectedInstants = stackItem.modifiers.redirectedInstants ?? [];
+  const redirectedAttackDelta = redirectedInstants.reduce(
+    (sum, entry) => (entry.stat === "attack" && entry.unitId === attacker.id ? sum + entry.amount : sum),
+    0
+  );
+  const redirectedDefenseDelta = redirectedInstants.reduce(
+    (sum, entry) => (entry.stat === "defense" && entry.unitId === defender.id ? sum + entry.amount : sum),
+    0
+  );
+
   // Attack-card "ability lowers the target's defense" sources, applied after
   // corrosion, never on retaliations or printed follow-up attacks: Behemoths'
   // flat crush, and the Manticore "ignore the target's printed Defense" (which
   // subtracts the defender's printed Defense value). Both are floored together
   // so the effective Defense never drops below 0.
-  const defenseBonusBeforeAbility = stackItem.modifiers.defenseBonus + activeDefenseBonus + tokenDefense;
+  const defenseBonusBeforeAbility =
+    stackItem.modifiers.defenseBonus + activeDefenseBonus + tokenDefense + redirectedDefenseDelta;
   const defenseReductionSource =
     !isRetaliation && !abilityAttack ? getAttackDefenseReductionAbility(attacker) : null;
   const ignoreCardDefenseSource =
@@ -1983,7 +1999,7 @@ function getAttackStackDetails(
   // contributions to 0 while leaving every negative one (and the printed
   // attack) intact.
   const dealsElemental = unitDealsElementalDamage(state, attacker);
-  const cardAttackBonus = stackItem.modifiers.attackBonus + activeAttackBonus;
+  const cardAttackBonus = stackItem.modifiers.attackBonus + activeAttackBonus + redirectedAttackDelta;
   const effectiveCardAttackBonus = dealsElemental ? Math.min(0, cardAttackBonus) : cardAttackBonus;
   const effectiveTokenAttack = dealsElemental ? Math.min(0, tokenAttack) : tokenAttack;
 
@@ -2660,7 +2676,12 @@ function finishResolvedAttack(
       defenderId: details.defender.id,
       attackKind: details.attackKind,
       retaliationPending: shouldRetaliate(details.attacker, details.defender, details.attackKind),
-      afterRetaliationAbilityAttack: getAfterRetaliationAttack(details.attacker, details.defender)
+      afterRetaliationAbilityAttack: getAfterRetaliationAttack(details.attacker, details.defender),
+      // A Magic-Mirror-bounced Curse/Weakness on this attack carries to the
+      // retaliation so it strikes the new target there too, then is gone.
+      ...(stackItem.modifiers.redirectedInstants
+        ? { redirectedInstants: stackItem.modifiers.redirectedInstants }
+        : {})
     };
   }
 
@@ -4965,6 +4986,13 @@ function openRetaliationWindow(
     defenderId: attacker.id
   };
   const stackItem = makeStackItem(state, retaliationAction);
+  // A Magic-Mirror-bounced Curse/Weakness from the original attack applies to its
+  // retaliation too (e.g. the bounced Curse lowers the now-defending attacker's
+  // Defense as your unit strikes back). One-shot, gone when this stack item pops.
+  const redirectedInstants = state.combat.attackSequence?.redirectedInstants;
+  if (redirectedInstants && redirectedInstants.length > 0) {
+    stackItem.modifiers.redirectedInstants = redirectedInstants;
+  }
   state.stack.push(stackItem);
 
   const attackKind = getAttackKind(defender, attacker);
@@ -5554,6 +5582,82 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
         openCloneChoice(state, stackItem.action.playerId, target);
+      }
+    }
+
+    // Disrupting Ray: until the end of the Combat the selected enemy unit cannot
+    // use its special ability. Grade-gated like Blind (0 → bronze, 1 → silver,
+    // 2 → gold); above the unlocked grade the cast does nothing. Backed by a
+    // combat-scoped UNIT_ABILITY_SUPPRESSED effect. The target read here is the
+    // pending cast's target, so a Magic-Mirror redirect lands the suppression on
+    // the bounced unit instead.
+    if (card?.effect.type === "DISRUPTING_RAY" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        createActiveEffect(
+          state,
+          {
+            name: card.name,
+            scope: "unit",
+            duration: { type: "combat" },
+            polarity: "negative",
+            removable: true,
+            modifiers: [{ type: "UNIT_ABILITY_SUPPRESSED" }]
+          },
+          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          stackItem.action.playerId,
+          stackItem.action.target
+        );
+      }
+    }
+
+    // Sacrifice: transfer the chosen (damaged, grade-gated) unit's wounds onto
+    // another of your units, which perishes. The heal target is the cast target;
+    // the sacrifice is picked in a follow-up ABILITY_TARGET_CHOICE. Grade-gated
+    // (0/2/4 → bronze/silver/gold) on the HEAL target; above the unlocked grade,
+    // or with nothing to transfer / no other unit to spend, the cast does nothing.
+    if (card?.effect.type === "SACRIFICE_TRANSFER" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const healTarget = state.combat.units[stackItem.action.target.unitId];
+      const eligible =
+        Boolean(healTarget) &&
+        maxGrade !== null &&
+        gradeRank(healTarget!.grade) <= gradeRank(maxGrade) &&
+        healTarget!.damage > 0;
+      const candidates = eligible
+        ? Object.values(state.combat.units).filter(
+            (unit) =>
+              unit.id !== healTarget!.id &&
+              unit.controllerId === stackItem.action.playerId &&
+              isUnitAlive(unit)
+          )
+        : [];
+      if (healTarget && candidates.length > 0) {
+        const choiceId = `choice_${nextEventNumber(state)}`;
+        state.pendingChoice = {
+          id: choiceId,
+          type: "ABILITY_TARGET_CHOICE",
+          playerId: stackItem.action.playerId,
+          kind: "sacrifice-transfer",
+          abilityId: card.id,
+          abilityName: card.name,
+          prompt: `${card.name}: choose another of your units to sacrifice — it absorbs ${healTarget.cardName}'s wounds and may perish.`,
+          sourceUnitId: healTarget.id,
+          anchorUnitId: healTarget.id,
+          candidateUnitIds: candidates.map((unit) => unit.id),
+          optional: false
+        };
+        appendEvent(state, {
+          type: "PENDING_CHOICE_CREATED",
+          choiceId,
+          choiceType: "ABILITY_TARGET_CHOICE",
+          playerId: stackItem.action.playerId,
+          sourceEffectIds: [],
+          message: `${card.name}: choose a unit to sacrifice.`
+        });
       }
     }
 
@@ -6527,8 +6631,7 @@ function applyReactionPlayCore(
       redirectInstant: {
         stat: found.stat,
         amount: signedAmount,
-        sourceCardId: found.cardId,
-        sourceName: instantCard?.name ?? "Spell"
+        sourceCardId: found.cardId
       }
     };
     appendEvent(state, {
@@ -6726,6 +6829,13 @@ function applyReactionPlayCore(
       drawCardsForPlayer(state, playerId, effect.drawCards);
     }
 
+    // Blackshard of the Dead Knight: the option discarded 1 card; draw 1 only
+    // when that paid card was a Spell. The cost cards were already moved to the
+    // discard pile by payOptionCardCost above, so inspect the paid ids.
+    if (effect.drawIfCostCardSpell && (play.costCardIds ?? []).some((id) => cards[id]?.kind === "spell")) {
+      drawCardsForPlayer(state, playerId, 1);
+    }
+
     // Spells (Curse/Weakness/Bloodlust/Precision) may be cancelled by the other
     // side's Resistance; the Attack/Defense statistics and Gnoll artifacts that
     // share this effect are not Spells, so they are never recorded.
@@ -6918,6 +7028,19 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
+  // Targ of the Rampaging Ogre (top side): "instead of discarding, put this card
+  // back into your hand." The card was moved to the discard pile above; now that
+  // its effect has applied, pull it back to hand. The cost cards it discarded
+  // stay discarded. Never combines with a removeSelf option or a scroll play.
+  if (option?.returnSelfToHand && !play.fromScroll && !option.cost?.removeSelf) {
+    const owner = state.players[playerId];
+    const discardIndex = owner?.discard.lastIndexOf(play.cardId) ?? -1;
+    if (owner && discardIndex !== -1) {
+      owner.discard.splice(discardIndex, 1);
+      owner.hand.push(play.cardId);
+    }
+  }
+
   return { windowEnded: false };
 }
 
@@ -6949,6 +7072,78 @@ function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, ca
   const keepPriority = allowedPlayerIds.includes(playerId) ? playerId : allowedPlayerIds[0];
   state.reactionWindow.priorityPlayerId = keepPriority;
   state.priorityPlayerId = keepPriority;
+}
+
+/** Basic X Magic's expert side: +3 Power for a matching-school spell. */
+const SCHOOL_FETCH_EXPERT_POWER = 3;
+
+/**
+ * Basic X Magic (the in-play spell-fetch permanent): spend an expert use to add
+ * +3 Power to a matching-school spell you are casting now — a normal cast (into
+ * the cast's School power) or an instant played into an attack (into your own
+ * attack-window Power pool, re-derived like any other paid Power). The fetch
+ * permanent stays in play; nothing is discarded. Once per stack per player.
+ */
+function applySchoolFetchExpert(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_SCHOOL_FETCH_EXPERT" }>
+): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+  if (!activeSchoolFetches(state, action.playerId).includes(action.school as "air" | "earth" | "fire" | "water")) {
+    throw new Error("No Basic Magic of that school is in play.");
+  }
+
+  const stackItem = state.stack.at(-1);
+  if (!stackItem) {
+    throw new Error("The +3 expert needs one of your spells being cast.");
+  }
+
+  const usedBy = (stackItem.modifiers.schoolFetchExpertUsedBy ??= []);
+  if (usedBy.includes(action.playerId)) {
+    throw new Error("The Basic Magic +3 expert is already applied here.");
+  }
+
+  const expertUsesLeft =
+    player.limits.expertUses +
+    (player.combatStats.expertUseBonusThisRound ?? 0) -
+    player.combatStats.expertUsesSpentThisRound;
+  if (expertUsesLeft <= 0) {
+    throw new Error("No expert uses are available this combat round.");
+  }
+
+  if (stackItem.action.type === "CAST_SPELL") {
+    const castSchools = cardLibrary[stackItem.action.cardId]?.spellSchools ?? [];
+    const matchesCast = castSchools.includes(action.school) || castSchools.includes("any");
+    if (stackItem.action.playerId !== action.playerId || !matchesCast) {
+      throw new Error("That cast does not match the Basic Magic school.");
+    }
+    if (stackItem.modifiers.scrollLocked) {
+      throw new Error("A Spell Scroll cast is locked to Power 0.");
+    }
+    stackItem.modifiers.schoolPowerBonus = (stackItem.modifiers.schoolPowerBonus ?? 0) + SCHOOL_FETCH_EXPERT_POWER;
+  } else if (isAttackStackItem(stackItem)) {
+    if (!playerHasAttackInstantOfSchool(stackItem, action.playerId, action.school)) {
+      throw new Error("You have no matching-school spell instant on this attack to empower.");
+    }
+    addAttackPower(stackItem, action.playerId, SCHOOL_FETCH_EXPERT_POWER);
+    recomputePowerScaledAttackInstants(stackItem);
+  } else {
+    throw new Error("The +3 expert needs one of your spells.");
+  }
+
+  usedBy.push(action.playerId);
+  player.combatStats.expertUsesSpentThisRound += 1;
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId: action.playerId,
+    cardId: `ability.basic_${action.school}_magic` as CardId,
+    timing: "instant",
+    mode: "expert",
+    effectAmount: SCHOOL_FETCH_EXPERT_POWER
+  });
 }
 
 /**
@@ -7809,6 +8004,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         { type: "card", cardId: card.id, controllerId: action.playerId },
         action.playerId
       );
+    }
+    // Shield of Naval Glory (Sea side): the +1 movement comes with a card draw.
+    if (effect.drawCards) {
+      drawCardsForPlayer(state, action.playerId, effect.drawCards);
     }
   }
 
@@ -9229,20 +9428,17 @@ function chooseAbilityTarget(
 
     // (a) Reflecting an instant combat debuff off your attacked unit: the malus
     // was already lifted from your unit when the card was played; now it lands
-    // on the chosen unit as a lasting token, then the attack's window resumes.
+    // on the chosen unit, then the attack's window resumes. It stays an INSTANT —
+    // a one-shot stat delta the attack maths read for this attack and (carried
+    // through attackSequence) its retaliation, then it vanishes with the stack.
+    // It is NOT an ongoing effect or a token, so nothing can Dispel or ignore it;
+    // only spell-immunity stops it, already enforced by the redirect's target
+    // filter (you cannot bounce it onto a spell-immune unit).
+    if (choice.redirectInstant && top && chosen && isUnitAlive(chosen)) {
+      const { stat, amount } = choice.redirectInstant;
+      (top.modifiers.redirectedInstants ??= []).push({ unitId: chosen.id, stat, amount });
+    }
     if (choice.redirectInstant) {
-      if (chosen && isUnitAlive(chosen)) {
-        const { stat, amount, sourceName } = choice.redirectInstant;
-        if (stat === "defense") {
-          // Curse: −defense → a Corrosion token (positive magnitude, floored at 0).
-          placeCombatToken(state, chosen, "corrosion", Math.abs(amount), sourceName);
-        } else if (amount < 0) {
-          // Weakness: −attack → a Weakness token (signed; the milder is kept).
-          placeCombatToken(state, chosen, "weakness", amount, sourceName);
-        } else {
-          placeCombatToken(state, chosen, "attack", amount, sourceName);
-        }
-      }
       appendEvent(state, {
         type: "SPELL_REDIRECTED",
         playerId: action.playerId,
@@ -9292,6 +9488,34 @@ function chooseAbilityTarget(
     if (choice.anchorUnitId) {
       advanceChainLightning(state, action.playerId, chainCard, choice.anchorUnitId, reachable, remaining.slice(1));
     }
+    return;
+  }
+
+  // Sacrifice: move the heal target's damage onto the chosen sacrifice unit —
+  // up to the sacrifice's remaining HP ("as much as is needed for it to
+  // perish"). The heal target loses that much damage; the sacrifice takes it
+  // and perishes (a Pack flips to Few) when it reaches its remaining HP.
+  if (choice.kind === "sacrifice-transfer") {
+    const healTarget = choice.sourceUnitId ? combat.units[choice.sourceUnitId] : undefined;
+    const sacrifice = combat.units[action.targetUnitId];
+    if (healTarget && sacrifice && isUnitAlive(healTarget) && isUnitAlive(sacrifice)) {
+      const source = { type: "card" as const, cardId: choice.abilityId ?? "", controllerId: action.playerId };
+      const transfer = Math.min(healTarget.damage, sacrifice.maxHealth - sacrifice.damage);
+      if (transfer > 0) {
+        healUnitDamage(state, source, { type: "unit", unitId: healTarget.id }, transfer);
+        sacrifice.damage += transfer;
+        noteUnitDamagedForTokens(state, sacrifice, transfer);
+        appendEvent(state, {
+          type: "DAMAGE_ASSIGNED",
+          source,
+          target: { type: "unit", unitId: sacrifice.id },
+          amount: transfer,
+          damageKind: "effect"
+        });
+        markUnitRemovedIfNeeded(state, sacrifice);
+      }
+    }
+    finishCombatIfNeeded(state);
     return;
   }
 
@@ -10419,6 +10643,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "START_ADVENTURE",
   "BUY_WAR_MACHINE",
   "USE_PERMANENT_EXPERT",
+  "USE_SCHOOL_FETCH_EXPERT",
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
   "HALL_OF_VALHALLA_BOOST",
@@ -10574,6 +10799,10 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         // The discarded permanent disappears from the open window's options.
         refreshReactionWindowLegalReactions(nextState, cards);
         break;
+      case "USE_SCHOOL_FETCH_EXPERT":
+        applySchoolFetchExpert(nextState, action);
+        refreshReactionWindowLegalReactions(nextState, cards);
+        break;
       case "DISCARD_PERMANENT":
         discardPermanentVoluntarily(nextState, action);
         break;
@@ -10700,6 +10929,13 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       message: error instanceof Error ? error.message : "The action could not be applied."
     });
   }
+
+  // Disrupting Ray: refresh every unit's ability-suppression flag from the live
+  // UNIT_ABILITY_SUPPRESSED effects, so the ability chokepoint
+  // (getUnitAbilityDefinitions) sees the current state however the effect was
+  // just added (a cast) or removed (Dispel, combat/round end) — before any
+  // automation or future action reads the unit's abilities.
+  syncAbilitySuppression(nextState);
 
   try {
     runAdventureAutomations(nextState, cards);
