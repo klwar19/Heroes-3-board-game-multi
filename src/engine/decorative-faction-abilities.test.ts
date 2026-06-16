@@ -384,6 +384,8 @@ describe("Magi 'Mage's Insight' first-spell power (only on the Magi's turn)", ()
       state.combat!.units.unit_p1_griffins.abilities = ["magi-power-boost"];
       // Raise the per-round spell limit so the cast is legal, then pretend one
       // spell was already cast this round — the "first spell" gate must close.
+      // The gate tracks first-spell consumption with anySpellCastThisRound (so a
+      // limit-free Helm cast also closes it), which a real prior cast sets.
       state.activeEffects.push(
         makeActiveEffect(
           state,
@@ -398,6 +400,7 @@ describe("Magi 'Mage's Insight' first-spell power (only on the Magi's turn)", ()
         )
       );
       state.players.p1.combatStats.spellsCastThisRound = 1;
+      state.players.p1.combatStats.anySpellCastThisRound = true;
     });
     expect(next.combat!.units.unit_p2_vampires.damage).toBe(1);
   });

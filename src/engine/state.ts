@@ -3208,6 +3208,14 @@ export type PlayerState = {
     expertUseBonusThisRound?: number;
     /** Spells cast since the current adventure turn started (Astrologers hooks). */
     spellsCastThisTurn?: number;
+    /**
+     * Whether ANY spell has been cast this combat round, free casts included.
+     * Drives the "first spell this round" Power bonus (Tower Magi Pack) so it is
+     * granted to whichever spell is cast first — the limit-free Helm of the
+     * Alabaster Unicorn cast counts here even though it does not bump
+     * spellsCastThisRound. Reset with the per-round spell counter.
+     */
+    anySpellCastThisRound?: boolean;
   };
   /** Round the Blacksmith action was last used ("once per your turn"). */
   blacksmithUsedRound?: number;

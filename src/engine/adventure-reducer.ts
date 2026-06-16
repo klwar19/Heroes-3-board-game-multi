@@ -1796,6 +1796,7 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       player.combatStats.spellsCastThisRound = 0;
       player.combatStats.spellLimitBonusThisRound = 0;
       player.combatStats.expertUsesSpentThisRound = 0;
+      player.combatStats.anySpellCastThisRound = false;
     }
   }
 
