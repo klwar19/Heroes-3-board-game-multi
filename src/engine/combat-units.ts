@@ -6,7 +6,7 @@ import { isArrowTowerUnit } from "./siege";
 import { getSelfRebirthAbility } from "./unit-abilities";
 import { applyUnitCurrentSide, topTransform } from "./unit-transforms";
 import { NEUTRAL_PLAYER_ID } from "./state";
-import type { ActiveEffectState, CombatState, CombatUnitState, GameState, PlayerId } from "./state";
+import type { ActiveEffectState, CombatState, CombatUnitState, GameState, PlayerId, UnitId } from "./state";
 
 /**
  * Finalizes lethal damage on a combat unit, peeling the physical stack top
@@ -17,6 +17,24 @@ import type { ActiveEffectState, CombatState, CombatUnitState, GameState, Player
  * ability damage and war machine shots.
  */
 export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState): void {
+  // Clone Spell: a Clone Token is a 1-Health copy. It never flips (Pack→Few),
+  // never Rebirths, and leaves no army bookkeeping behind (it is not a recruited
+  // unit) — any lethal damage simply removes it, and removing it also clears any
+  // Clone chained off it. It also does NOT count as one of your units leaving the
+  // board for the Pit Lords' "Summon Demons" trigger.
+  if (unit.cloneOfUnitId) {
+    if (unit.damage < unit.maxHealth) {
+      return;
+    }
+    appendEvent(state, {
+      type: "UNIT_REMOVED",
+      unitId: unit.id,
+      playerId: unit.controllerId
+    });
+    removeLinkedClones(state, unit.id);
+    return;
+  }
+
   // Specialty cards covering the unit are defeated one by one, each leaving
   // the excess damage on whatever it reveals.
   while (unit.damage >= unit.maxHealth && topTransform(unit)) {
@@ -100,6 +118,11 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     playerId: unit.controllerId
   });
 
+  // Clone Spell: "A Clone is removed from the Combat Board if its original unit
+  // is removed from the Combat Board." Any Clone Token copying this unit goes
+  // with it (and any Clone chained off that one).
+  removeLinkedClones(state, unit.id);
+
   // Pit Lords' "Summon Demons" triggers off any of your units leaving the
   // board: remember which controllers have lost a unit this combat.
   if (state.combat) {
@@ -118,6 +141,30 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
   // A shot-down Arrow Tower also leaves the siege bookkeeping.
   if (state.combat?.siege?.arrowTowerUnitId === unit.id) {
     state.combat.siege.arrowTowerUnitId = null;
+  }
+}
+
+/**
+ * Clone Spell: remove every Clone Token whose original (`removedUnitId`) has just
+ * left the Combat Board, cascading to any Clone chained off a removed Clone. Each
+ * is taken straight to 0 Health and announced removed — Clones never flip or
+ * Rebirth, so there is no peeling to do.
+ */
+function removeLinkedClones(state: GameState, removedUnitId: UnitId): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+  for (const clone of Object.values(combat.units)) {
+    if (clone.cloneOfUnitId === removedUnitId && clone.damage < clone.maxHealth) {
+      clone.damage = clone.maxHealth;
+      appendEvent(state, {
+        type: "UNIT_REMOVED",
+        unitId: clone.id,
+        playerId: clone.controllerId
+      });
+      removeLinkedClones(state, clone.id);
+    }
   }
 }
 

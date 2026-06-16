@@ -927,7 +927,7 @@ function getTargetsForCard(
       ? cardTarget
       : ({ type: targetType } as UnitTargetDefinition);
 
-  const targets =
+  let targets =
     target.type === "friendly-unit"
       ? getFriendlyTargets(state, playerId, target)
       : target.type === "any-unit"
@@ -939,7 +939,7 @@ function getTargetsForCard(
   // Spell up to its grade; an Elemental's printed immunity blocks only Magic
   // Arrow and its own school (see unitImmuneToSpellSchools).
   if (card?.kind === "spell") {
-    return targets.filter((candidate) => {
+    targets = targets.filter((candidate) => {
       if (candidate.type !== "unit") {
         return true;
       }
@@ -952,6 +952,40 @@ function getTargetsForCard(
       // effect, not a unit ability) still bars targeting.
       const innateImmune = !spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(unit, card.spellSchools);
       return !isUnitSpellImmune(state, unit) && !innateImmune;
+    });
+  }
+
+  // Clone: only offer on a friendly unit that has a printed side to copy AND at
+  // least one empty space orthogonally adjacent to it for the Clone Token —
+  // otherwise the cast would be a no-op. The grade gate is NOT applied here: the
+  // cast can be empowered after it is declared, so the reachable grade is decided
+  // at resolution against the Power actually paid (like Berserk / Teleport).
+  if (card?.effect.type === "CLONE_UNIT" && state.combat) {
+    const combat = state.combat;
+    const blocked = new Set<number>();
+    for (const unit of Object.values(combat.units)) {
+      if (isUnitAlive(unit)) {
+        blocked.add(unit.position);
+      }
+    }
+    for (const position of combat.obstacles ?? []) {
+      blocked.add(position);
+    }
+    for (const position of combat.siege?.walls ?? []) {
+      blocked.add(position);
+    }
+    if (combat.siege?.gatePosition != null) {
+      blocked.add(combat.siege.gatePosition);
+    }
+    targets = targets.filter((candidate) => {
+      if (candidate.type !== "unit") {
+        return true;
+      }
+      const unit = combat.units[candidate.unitId];
+      if (!unit || !unit.unitDefId) {
+        return false;
+      }
+      return getOrthogonalNeighbors(unit.position).some((position) => !blocked.has(position));
     });
   }
 

@@ -682,6 +682,46 @@ export const spellCards: CardLibrary = {
     implementationStatus: "implemented",
     source: spellSource("teleport")
   },
+  // Clone (Expert Water, Cove Expansion): place a 1-Health copy of one of your
+  // units on an adjacent empty space. The Clone copies everything PRINTED on the
+  // original's card (statistics, type, printed abilities) but NONE of the ongoing
+  // effects or tokens layered on the original. It is destroyed the instant it
+  // takes any damage, the instant it is attacked (even for 0 damage), and the
+  // instant its original leaves the board (engine: CLONE_UNIT → openCloneChoice /
+  // placeCloneUnit, the attack-hook in applyAttackDamageFromCandidate, and
+  // removeLinkedClones in combat-units). The reachable grade of the cloned unit
+  // rises with the Power paid (1 → bronze, 3 → silver, 5 → gold), the Implosion
+  // tier ladder; below Power 1 nothing is cloned. The adjacent empty space is
+  // picked in a follow-up choice. The "OR Instant: +1 Power" side is the
+  // universal power-source discard, so it needs no dedicated option.
+  "spell.clone": {
+    id: "spell.clone",
+    name: "Clone",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["water"],
+    power: 0,
+    target: { type: "friendly-unit" },
+    tags: [
+      "spell",
+      "expert",
+      "water",
+      "clone",
+      "Activation: Place a copy of one of your units on an adjacent empty space. The Clone copies the unit's printed card but has only 1 Health and is destroyed by any damage, by being attacked, or if the original leaves the board: Power 1: bronze; Power 3: bronze or silver; Power 5: bronze, silver, or gold. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "CLONE_UNIT",
+      gradeByPower: { 1: "bronze", 3: "silver", 5: "gold" }
+    },
+    assets: {
+      cardImage: "/assets/spells-clone.svg",
+      imageAlt: "Clone card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("clone")
+  },
   // Berserk (Expert Fire, Activation): the selected unit must, on its next
   // activation, attack the nearest unit or move to the nearest unit and attack
   // it — friend or foe, so a berserked enemy can be forced onto its own allies
@@ -1529,6 +1569,8 @@ export const spellDeckLegacy: string[] = [
   // Expert combat-movement / control spells.
   "spell.teleport",
   "spell.berserk",
+  // Clone — Expert Water (Cove Expansion).
+  "spell.clone",
   // Tower Expansion / Stretch Goal defensive spells (all Basic).
   "spell.shield",
   "spell.air_shield",
@@ -1614,5 +1656,7 @@ export const spellDeckBinhExpert: string[] = [
   "spell.frost_ring",
   // Teleport (Expert Water) & Berserk (Expert Fire).
   "spell.teleport",
-  "spell.berserk"
+  "spell.berserk",
+  // Clone — Expert Water (Cove Expansion).
+  "spell.clone"
 ];
