@@ -169,6 +169,34 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   // adjacent units' damage floats after. No dice, so the impact sound rides on
   // the burst itself.
   "spell.frost_ring": { hit: "frost-ring", sound: "spells/frost-ring", hitSound: "spells/frost-ring" },
+  // Implosion: the converted implosion sheet caves in over the struck enemy with
+  // the H3 cast roar; the damage number is held behind it (it had been resolving
+  // silently). Anchored on the target unit by the SPELL_CAST_RESOLVED path.
+  "spell.implosion": { affect: [{ key: "implosion" }], sound: "spells/implosion" },
+  // Disrupting Ray: the ray shimmers over the enemy whose ability it shuts off,
+  // matching the debuff idiom (Anti-Magic / Forgetfulness). Cast on a unit.
+  "spell.disrupting_ray": { affect: [{ key: "disrupting-ray" }], sound: "spells/disrupting-ray" },
+  // Frenzy: an Instant on your own attack (no board target of its own), so its
+  // glyph flares at centre stage over the played card with the cast cue — the
+  // same CARD_PLAYED path as Weakness / Slayer.
+  "spell.frenzy": { affect: [{ key: "frenzy" }], sound: "spells/frenzy" },
+  // Sacrifice: a unit perishes to mend another — the perishing/heal is the
+  // visual, so only the H3 sacrifice cast cue is wired (no converted sprite),
+  // played over the healed unit. queueBoardFx plays this sound-only plan there.
+  "spell.sacrifice": { sound: "spells/sacrifice" },
+  // Earthquake: a siege-only blast with no single unit to anchor on, so it
+  // carries just the H3 earthquake rumble (Walls coming down animate off
+  // FORTIFICATION_DESTROYED). Plays at centre stage off SPELL_CAST_RESOLVED.
+  "spell.earthquake": { sound: "spells/earthquake" },
+  // Remove Obstacle: an Instant cast that opens the obstacle-removal choice; the
+  // H3 remove-obstacle cue plays as it is cast, and each cleared marker chimes
+  // again off COMBAT_OBSTACLE_REMOVED (Walls/Gate off FORTIFICATION_DESTROYED).
+  "spell.remove_obstacle": { sound: "spells/remove-obstacle" },
+  // View Air / View Earth: map-board economy spells (gain resources / capture a
+  // Mine) with no battle board, so they carry only the H3 view cast cue, played
+  // off the CARD_PLAYED cue like the other map spells.
+  "spell.view_air": { sound: "spells/view" },
+  "spell.view_earth": { sound: "spells/view" },
   // Hero-specialty area blasts resolve through a card PLAY (CARD_PLAYED), which
   // anchors their `affect` sprite at centre stage with the cast sound. Xyron's
   // Inferno roars with the fire sheet; Deemer's Meteor Shower I/VI rain rock.
@@ -184,6 +212,13 @@ export const cancelFx = { key: "dispel", sound: "spells/dispel" };
 
 /** Unit abilities that have a matching original effect. */
 export const abilityFxPlans: Record<string, SpellFxPlan> = {
+  // Fire Shield's burn: when an adjacent attacker strikes a shielded unit, the
+  // engine fires a "fire-shield" ability event on the attacker (the unit that
+  // takes the burn). The fire sheet flares over it with the dedicated
+  // fire-shield-hit impact — distinct from the cast shimmer (spells/fire-shield)
+  // that plays when the shield is first placed. Shared by the Fire Shield spell
+  // and Rashka's Demoniac specialty (both raise the same FIRE_SHIELD effect).
+  "fire-shield": { affect: [{ key: "fire-shield" }], sound: "effects/fire-shield-hit" },
   "magog-fireball-splash": { hit: "fireball", hitSound: "spells/fireball-hit" },
   "lich-death-cloud": { hit: "death-cloud", hitSound: "spells/death-cloud" },
   // Faerie Dragons' activation damage-spell flies as an Ice Bolt from the

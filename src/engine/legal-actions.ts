@@ -901,7 +901,9 @@ function getTargetsForCard(
     card?.effect.type === "CREATE_ACTIVE_EFFECT" ||
     card?.effect.type === "GAIN_MORALE" ||
     // Mirth: a player-scoped reroll buff picks no unit.
-    card?.effect.type === "CREATE_ATTACK_DIE_REROLL";
+    card?.effect.type === "CREATE_ATTACK_DIE_REROLL" ||
+    // Remove Obstacle picks no unit — it opens a board-obstacle choice instead.
+    card?.effect.type === "REMOVE_OBSTACLE";
   const cardTarget = overrideTarget ?? card?.target;
   const targetType =
     cardTarget?.type ??
@@ -1329,6 +1331,19 @@ function addSpellActions(
     if (card.effect.type === "EARTHQUAKE") {
       const siege = combat?.siege;
       if (!siege || (siege.walls.length === 0 && siege.gatePosition === null)) {
+        continue;
+      }
+    }
+
+    // Remove Obstacle needs at least one obstacle to lift: an obstacle marker, a
+    // battlefield token (Force Field / Fire Wall / Quicksand / Land Mine), or a
+    // standing siege Wall or Gate.
+    if (card.effect.type === "REMOVE_OBSTACLE") {
+      const siege = combat?.siege;
+      const hasObstacleMarker = (combat?.obstacles ?? []).length > 0;
+      const hasToken = (combat?.battlefieldTokens ?? []).length > 0;
+      const hasFortification = Boolean(siege && (siege.walls.length > 0 || siege.gatePosition !== null));
+      if (!hasObstacleMarker && !hasToken && !hasFortification) {
         continue;
       }
     }

@@ -236,6 +236,141 @@ export function resolveSiegeDemolishChoice(state: GameState, playerId: PlayerId,
   }
 }
 
+/** Column letter (A–D) for a battlefield position, for choice prompts. */
+function columnLetter(position: number): string {
+  return String.fromCharCode(65 + (position % 4));
+}
+
+/**
+ * Every obstacle the Remove Obstacle spell may lift off the board right now: the
+ * random obstacle markers, any battlefield token (Force Field, Fire Wall,
+ * Quicksand, Land Mine), and any standing siege Wall or Gate. Units are never
+ * obstacles here (they only block movement), so they are excluded — matching the
+ * card's note that only obstacles (Walls, the Gate, markers and effect tokens)
+ * can be removed.
+ */
+function removableObstacleItems(
+  combat: CombatState
+): { position: number; kind: "obstacle" | "wall" | "gate" | "token"; tokenId?: string }[] {
+  const items: { position: number; kind: "obstacle" | "wall" | "gate" | "token"; tokenId?: string }[] = [];
+  for (const position of combat.obstacles ?? []) {
+    items.push({ position, kind: "obstacle" });
+  }
+  for (const token of combat.battlefieldTokens ?? []) {
+    items.push({ position: token.position, kind: "token", tokenId: token.id });
+  }
+  const siege = combat.siege;
+  if (siege) {
+    for (const position of siege.walls) {
+      items.push({ position, kind: "wall" });
+    }
+    if (siege.gatePosition !== null) {
+      items.push({ position: siege.gatePosition, kind: "gate" });
+    }
+  }
+  return items;
+}
+
+/** Display name for a battlefield token kind, for the Remove Obstacle prompt. */
+const BATTLEFIELD_TOKEN_LABELS: Record<string, string> = {
+  force_field: "Force Field",
+  fire_wall: "Fire Wall",
+  quicksand: "Quicksand",
+  land_mine: "Land Mine"
+};
+
+/**
+ * Remove Obstacle: the caster removes obstacles one at a time, up to the Power
+ * paid (0/1/2 -> 1/2/3). A no-op when nothing removable stands (the legal-action
+ * layer already withholds the cast in that case, so this only guards re-entry).
+ */
+export function openRemoveObstacleChoice(state: GameState, playerId: PlayerId, count: number): void {
+  const combat = state.combat;
+  if (!combat || count <= 0) {
+    return;
+  }
+
+  const items = removableObstacleItems(combat);
+  if (items.length === 0) {
+    return;
+  }
+
+  const labelFor = (item: { position: number; kind: "obstacle" | "wall" | "gate" | "token"; tokenId?: string }): string => {
+    const where = `column ${columnLetter(item.position)}, row ${Math.floor(item.position / 4) + 1}`;
+    if (item.kind === "gate") {
+      return `Remove the Gate (column ${columnLetter(item.position)})`;
+    }
+    if (item.kind === "wall") {
+      return `Remove the Wall at column ${columnLetter(item.position)}`;
+    }
+    if (item.kind === "token") {
+      const token = combat.battlefieldTokens?.find((candidate) => candidate.id === item.tokenId);
+      const name = token ? (BATTLEFIELD_TOKEN_LABELS[token.kind] ?? "obstacle") : "obstacle";
+      return `Remove the ${name} at ${where}`;
+    }
+    return `Remove the obstacle at ${where}`;
+  };
+
+  const remaining = Math.min(count, items.length);
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Choose an obstacle to remove${remaining > 1 ? ` (${remaining} left)` : ""}`,
+    options: items.map((item) => ({ label: labelFor(item) })),
+    context: "remove-obstacle",
+    removeObstacle: { items, remaining },
+    returnPhase: "combat"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Resolves one Remove Obstacle pick, chaining while removals remain. */
+export function resolveRemoveObstacleChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (choice?.type !== "OPTION_CHOICE" || choice.context !== "remove-obstacle" || !choice.removeObstacle) {
+    throw new Error("There is no obstacle choice to resolve.");
+  }
+
+  const combat = state.combat;
+  const item = choice.removeObstacle.items[optionIndex];
+  if (!combat || !item) {
+    throw new Error("Pick one of the standing obstacles.");
+  }
+
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+
+  if (item.kind === "obstacle") {
+    combat.obstacles = (combat.obstacles ?? []).filter((position) => position !== item.position);
+    appendEvent(state, {
+      type: "COMBAT_OBSTACLE_REMOVED",
+      playerId,
+      position: item.position
+    });
+  } else if (item.kind === "token") {
+    // Lift the Force Field / Fire Wall / Quicksand / Land Mine token off the
+    // board; the crumble cue plays on its cell like an obstacle marker.
+    combat.battlefieldTokens = (combat.battlefieldTokens ?? []).filter((token) => token.id !== item.tokenId);
+    appendEvent(state, {
+      type: "COMBAT_OBSTACLE_REMOVED",
+      playerId,
+      position: item.position
+    });
+  } else {
+    // Walls and the Gate go down through the shared fortification path (events,
+    // Arrow-Tower collapse check), exactly like Earthquake / Ballistics.
+    destroyFortification(state, null, item.kind, item.position);
+  }
+
+  const remaining = choice.removeObstacle.remaining - 1;
+  if (remaining > 0 && combat && removableObstacleItems(combat).length > 0) {
+    openRemoveObstacleChoice(state, playerId, remaining);
+  }
+}
+
 /**
  * Neutral Skeletons: a mid-combat pop-up offering the attacker's Necropolis
  * hero a free Few→Pack flip of any one of their bronze units. Skippable; a
@@ -4819,6 +4954,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "siege-demolish") {
     resolveSiegeDemolishChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "remove-obstacle") {
+    resolveRemoveObstacleChoice(state, action.playerId, action.optionIndex);
     return;
   }
 

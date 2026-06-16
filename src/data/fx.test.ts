@@ -249,3 +249,61 @@ describe("area spells & specialties carry their correct SFX + animation", () => 
     expect(spellPresentationMs(plan)).toBeGreaterThan(0);
   });
 });
+
+describe("more spells wired with SFX + animation (no silent resolves)", () => {
+  // Damage / debuff spells that animate over a board target with their converted
+  // sprite sheet + measured sound. These had no FX plan and resolved silently.
+  const SPRITE_SPELLS: Record<string, { sprite: string; sound: string }> = {
+    "spell.implosion": { sprite: "implosion", sound: "spells/implosion" },
+    "spell.disrupting_ray": { sprite: "disrupting-ray", sound: "spells/disrupting-ray" },
+    "spell.frenzy": { sprite: "frenzy", sound: "spells/frenzy" }
+  };
+
+  it.each(Object.entries(SPRITE_SPELLS))("wires %s with a real sprite + sound", (id, expected) => {
+    const plan = spellFxPlans[id];
+    expect(plan, `${id} needs an FX plan`).toBeTruthy();
+    expect(plan.affect?.[0]?.key).toBe(expected.sprite);
+    expect(spriteDurationMs(plan.affect?.[0]?.key)).toBeGreaterThan(0);
+    expect(plan.sound).toBe(expected.sound);
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  // Spells with no dedicated sprite (the board result is the visual) carry just
+  // their measured cast sound — but a real, non-zero one with a real gate.
+  const SOUND_ONLY_SPELLS: Record<string, string> = {
+    "spell.earthquake": "spells/earthquake",
+    "spell.sacrifice": "spells/sacrifice",
+    "spell.remove_obstacle": "spells/remove-obstacle",
+    "spell.view_air": "spells/view",
+    "spell.view_earth": "spells/view"
+  };
+
+  it.each(Object.entries(SOUND_ONLY_SPELLS))("gives %s a real cast sound and gate", (id, sound) => {
+    const plan = spellFxPlans[id];
+    expect(plan, `${id} needs an FX plan`).toBeTruthy();
+    expect(plan.sound).toBe(sound);
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    expect(plan.affect).toBeUndefined();
+    expect(plan.hit).toBeUndefined();
+    expect(plan.projectile).toBeUndefined();
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  it("burns the attacker with the Fire Shield ability cue (distinct from the cast shimmer)", () => {
+    // The spell's cast plays spells/fire-shield over the buffed unit; the BURN
+    // (an adjacent attacker takes the shield's damage) fires a "fire-shield"
+    // ability event the table animates with the dedicated fire-shield-hit impact.
+    const cast = spellFxPlans["spell.fire_shield"];
+    expect(cast.affect?.[0]?.key).toBe("fire-shield");
+    expect(cast.sound).toBe("spells/fire-shield");
+
+    const burn = abilityFxPlans["fire-shield"];
+    expect(burn, "the Fire Shield burn needs an ability FX plan").toBeTruthy();
+    expect(burn.affect?.[0]?.key).toBe("fire-shield");
+    expect(spriteDurationMs(burn.affect?.[0]?.key)).toBeGreaterThan(0);
+    expect(burn.sound).toBe("effects/fire-shield-hit");
+    expect(soundDurationMs(burn.sound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(burn)).toBeGreaterThan(0);
+  });
+});
