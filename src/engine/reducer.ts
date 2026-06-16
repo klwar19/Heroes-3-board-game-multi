@@ -5059,6 +5059,33 @@ function shouldRetaliate(
   );
 }
 
+/**
+ * Open the reaction windows for a freshly declared attack (or retaliation).
+ * Misfortune is "played immediately when the enemy unit is attacking, before
+ * other cards", so a dedicated pre-buff window offering ONLY the defender's
+ * Misfortune is tried first (misfortunePhase). If the defender holds no playable
+ * Misfortune, the normal attack-declared buff window opens instead; the attack
+ * resolves straight away when nobody can react at all. Once Misfortune is played
+ * or declined the same window object continues as the normal buff window (see
+ * the NEGATE_ATTACK handler and the misfortune-phase handling in passReaction).
+ */
+function openDeclaredAttackWindow(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  attackDeclared: GameEvent,
+  cards: CardLibrary
+): void {
+  stackItem.modifiers.misfortunePhase = true;
+  if (openReactionWindowForTrigger(state, stackItem, attackDeclared, cards)) {
+    return;
+  }
+  // No Misfortune to offer: fall through to the ordinary attack-declared window.
+  stackItem.modifiers.misfortunePhase = false;
+  if (!openReactionWindowForTrigger(state, stackItem, attackDeclared, cards)) {
+    resolveTopStack(state, cards);
+  }
+}
+
 function openRetaliationWindow(
   state: GameState,
   attacker: CombatUnitState,
@@ -5108,9 +5135,7 @@ function openRetaliationWindow(
   });
   stackItem.triggerEventIds.push(attackDeclared.id);
 
-  if (!openReactionWindowForTrigger(state, stackItem, attackDeclared, cards)) {
-    resolveTopStack(state, cards);
-  }
+  openDeclaredAttackWindow(state, stackItem, attackDeclared, cards);
 }
 
 /**
@@ -6232,6 +6257,39 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   openReactionWindowForTrigger(state, stackItem, spellStarted, cards);
 }
 
+/**
+ * If the open window is Misfortune's pre-buff phase and it just emptied (the
+ * defender declined Misfortune), hand the SAME window object over to the normal
+ * attack-declared buff window: clear the phase, recompute the full offers, reset
+ * passes and restore the normal (attacker-first) priority. Returns true when it
+ * took over, so the caller does not resolve the attack. A no-op (returns false)
+ * for any other window, or when nobody can react in the normal window either.
+ */
+function transitionFromMisfortunePhase(state: GameState, cards: CardLibrary): boolean {
+  const window = state.reactionWindow;
+  const top = state.stack.at(-1);
+  if (
+    !window ||
+    !top ||
+    (top.action.type !== "ATTACK_UNIT" && top.action.type !== "MOVE_AND_ATTACK_UNIT") ||
+    !top.modifiers.misfortunePhase
+  ) {
+    return false;
+  }
+
+  top.modifiers.misfortunePhase = false;
+  window.passedPlayerIds = [];
+  refreshReactionWindowLegalReactions(state, cards);
+  if (window.allowedPlayerIds.length === 0) {
+    // Nobody can react in the ordinary window either — let the attack resolve.
+    return false;
+  }
+  // Normal order: the attacker (initiator) leads the buff exchange again.
+  window.priorityPlayerId = window.allowedPlayerIds[0];
+  state.priorityPlayerId = window.allowedPlayerIds[0];
+  return true;
+}
+
 function passReaction(state: GameState, action: Extract<GameAction, { type: "PASS_REACTION" }>, cards: CardLibrary): void {
   if (!state.reactionWindow) {
     throw new Error("No reaction window is open.");
@@ -6253,6 +6311,11 @@ function passReaction(state: GameState, action: Extract<GameAction, { type: "PAS
   );
 
   if (remainingPlayers.length === 0) {
+    // The defender declined Misfortune in its pre-buff window: hand off to the
+    // normal attack-declared buff window instead of resolving the attack.
+    if (transitionFromMisfortunePhase(state, cards)) {
+      return;
+    }
     closeReactionWindow(state, "all-pass");
     resolveTopStack(state, cards);
     return;
@@ -6973,6 +7036,23 @@ function applyReactionPlayCore(
     (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
     stackItem.modifiers.attackDieCancelled = true;
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
+  // Misfortune: played in its own pre-buff window. Lock the pending attack — the
+  // attacker can no longer increase their attack from any source for this attack
+  // (the legal-action layer refuses every attack-buff to them) and the Attack die
+  // is cancelled (face 0, no die-triggered effects). Clearing the misfortune
+  // phase hands the window over to the normal buff exchange, now with the
+  // attacker's buffs locked out. Counts as the defender's Spell (noteSpellCast
+  // already ran above).
+  if (
+    effect.type === "NEGATE_ATTACK" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    stackItem.modifiers.negateAttackBuffs = true;
+    stackItem.modifiers.attackDieCancelled = true;
+    stackItem.modifiers.misfortunePhase = false;
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
@@ -9865,9 +9945,7 @@ function declareAttack(
   });
   stackItem.triggerEventIds.push(attackDeclared.id);
 
-  if (!openReactionWindowForTrigger(state, stackItem, attackDeclared, cards)) {
-    resolveTopStack(state, cards);
-  }
+  openDeclaredAttackWindow(state, stackItem, attackDeclared, cards);
 }
 
 function attackUnit(

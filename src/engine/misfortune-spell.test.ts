@@ -1,21 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import { applyAction, createInitialGameState } from "./index";
 import { soundDurationMs, spellFxPlans, spellPresentationMs, spriteDurationMs } from "@/data/fx";
-import type { GameAction, GameState, UnitId } from "./state";
+import type { GameAction, GameState, PlayerId, UnitId } from "./state";
 
 /**
  * Engine tests for Misfortune (Basic Fire, Instant; Fortress Expansion). Every
  * rule is engine-enforced; each test fails if the wiring is removed.
  *
- *  - The DEFENDER plays it when an enemy unit declares an attack on one of their
- *    units, negating that attacker's Attack die result — the die counts as 0 and
- *    the effects that face would have triggered do not fire (the same engine path
- *    as Shield of the Dwarven Lords' die-cancel), but in the PRE-roll
- *    attack-declared window rather than Shield's post-roll one.
- *  - Grade-gated on the ATTACKING unit by the Power paid (0 → bronze, 1 → silver,
- *    2 → gold): only the option whose grade matches the attacker is offered, and
- *    only when the Power cost is affordable.
- *  - Never offered to the attacker; counts as the defender's Spell for the round.
+ *  - "Played immediately when the enemy unit is attacking, BEFORE other cards":
+ *    it has its own pre-buff window (only the defender's Misfortune is offered),
+ *    opened ahead of the normal attack-declared buff window — so the attacker
+ *    cannot buff before it.
+ *  - Playing it NEGATES the attack: the attacker can no longer increase their
+ *    attack from any source for this attack (Bloodlust/Precision/Bless/Slayer,
+ *    Hall of Valhalla / Cage boosts) AND the Attack die is cancelled.
+ *  - Grade-gated on the ATTACKING unit by the Power paid (0/1/2 → bronze/silver/
+ *    gold); only the matching, affordable option is offered, never to the
+ *    attacker, and it counts as the defender's Spell for the round.
  *
  * Sandbox grades/types (createInitialGameState):
  *   p1 marksmen bronze/ranged, griffins bronze/flying, crusaders silver/ground;
@@ -50,25 +51,27 @@ function settle(state: GameState): GameState {
   return current;
 }
 
-/** Passes priority until `playerId` holds it (or the window closes). */
-function passUntil(state: GameState, playerId: "p1" | "p2"): GameState {
-  let current = state;
-  let safety = 60;
-  while (current.reactionWindow && current.reactionWindow.priorityPlayerId !== playerId && safety-- > 0) {
-    current = applyOk(current, { type: "PASS_REACTION", playerId: current.reactionWindow.priorityPlayerId });
-  }
-  return current;
-}
-
-/** Whether Misfortune's option `optionIndex` is a legal reaction for `playerId` now. */
-function misfortuneOffered(state: GameState, playerId: "p1" | "p2", optionIndex: number): boolean {
-  return getLegalActions(state, playerId).some(
+/** Whether Misfortune's option `optionIndex` is offered to `playerId` in the window. */
+function misfortuneOffered(state: GameState, playerId: PlayerId, optionIndex: number): boolean {
+  return (state.reactionWindow?.legalReactions[playerId] ?? []).some(
     (legal) =>
       legal.action.type === "PLAY_REACTION" &&
       legal.action.cardId === "spell.misfortune" &&
-      legal.action.optionIndex === optionIndex &&
-      !legal.action.asPowerBoost
+      legal.action.optionIndex === optionIndex
   );
+}
+
+/** Whether `cardId` is offered to `playerId` in the window (priority-independent). */
+function windowOffers(state: GameState, playerId: PlayerId, cardId: string): boolean {
+  return (state.reactionWindow?.legalReactions[playerId] ?? []).some(
+    (legal) =>
+      legal.action.type === "PLAY_REACTION" && legal.action.cardId === cardId && !legal.action.asPowerBoost
+  );
+}
+
+function isMisfortunePreWindow(state: GameState): boolean {
+  const top = state.stack.at(-1);
+  return Boolean(state.reactionWindow && top && top.modifiers.misfortunePhase);
 }
 
 type AttackOpts = {
@@ -83,8 +86,9 @@ type AttackOpts = {
 
 /**
  * p2's `attacker` melees p1's crusaders (the defender, adjacent). Returns the
- * state right after the attack is declared — with the UNIT_ATTACK_DECLARED window
- * open when either side holds a reaction, or already resolved when neither does.
+ * state right after the attack is declared — the Misfortune pre-buff window when
+ * the defender holds a playable Misfortune, the normal window otherwise, or the
+ * resolved attack when nobody can react.
  */
 function declareEnemyAttack(seed: string, opts: AttackOpts): GameState {
   const state = createInitialGameState(seed);
@@ -121,12 +125,23 @@ function crusadersDamage(state: GameState): number {
   return state.combat!.units.unit_p1_crusaders.damage;
 }
 
+function playMisfortune(state: GameState, optionIndex: number, costCardIds?: string[]): GameState {
+  return applyOk(state, {
+    type: "PLAY_REACTION",
+    playerId: "p1",
+    cardId: "spell.misfortune",
+    mode: "basic",
+    optionIndex,
+    ...(costCardIds ? { costCardIds } : {})
+  });
+}
+
 // ===========================================================================
 // Card definition & presentation
 // ===========================================================================
 
 describe("Misfortune — card definition & FX", () => {
-  it("is an implemented Basic Fire instant whose three grade options negate an Attack die", async () => {
+  it("is an implemented Basic Fire instant whose three grade options NEGATE the attack", async () => {
     const { cardLibrary } = await import("@/data/cards/library");
     const card = cardLibrary["spell.misfortune"];
     expect(card).toBeTruthy();
@@ -136,13 +151,13 @@ describe("Misfortune — card definition & FX", () => {
     expect(card.effect.type).toBe("CHOOSE_ONE");
 
     const options = card.effect.type === "CHOOSE_ONE" ? card.effect.options : [];
-    // One IGNORE_ATTACK_DIE_RESULT option per grade, in ascending Power order.
-    expect(
-      options.map((option) => (option.effect.type === "IGNORE_ATTACK_DIE_RESULT" ? option.effect.grade : null))
-    ).toEqual(["bronze", "silver", "gold"]);
-    // The silver/gold options cost 1 / 2 power-source cards; bronze is free.
+    expect(options.map((option) => (option.effect.type === "NEGATE_ATTACK" ? option.effect.grade : null))).toEqual([
+      "bronze",
+      "silver",
+      "gold"
+    ]);
+    // bronze free, silver pays 1, gold pays 2 power-source cards.
     expect(options.map((option) => option.cost?.discardCards ?? 0)).toEqual([0, 1, 2]);
-    // Each fires on an ENEMY unit's declared attack.
     for (const option of options) {
       expect(option.trigger).toMatchObject({ event: "UNIT_ATTACK_DECLARED", controller: "opponent" });
     }
@@ -166,81 +181,75 @@ describe("Misfortune — card definition & FX", () => {
 });
 
 // ===========================================================================
-// Offered to the defender, gated by the attacker's grade and the Power paid
+// Pre-buff window: played before the attacker can buff, gated by attacker grade
 // ===========================================================================
 
-describe("Misfortune — offered to the defender, gated by the attacker's grade", () => {
-  it("offers the free (bronze) option against a bronze attacker, and no higher tier", () => {
-    const atP1 = passUntil(
-      declareEnemyAttack("misfortune-bronze", { attacker: "unit_p2_skeletons", p1Hand: ["spell.misfortune"] }),
-      "p1"
-    );
-    expect(atP1.reactionWindow?.triggerEvent.type).toBe("UNIT_ATTACK_DECLARED");
-    expect(misfortuneOffered(atP1, "p1", 0)).toBe(true); // bronze, free
-    expect(misfortuneOffered(atP1, "p1", 1)).toBe(false); // silver option never matches a bronze attacker
-    expect(misfortuneOffered(atP1, "p1", 2)).toBe(false); // gold option never matches a bronze attacker
+describe("Misfortune — its own window, before the attacker buffs", () => {
+  it("opens a defender-only pre-buff window the instant the attack is declared", () => {
+    // p2 (the attacker) holds Bloodlust; p1 (the defender) holds Misfortune.
+    const declared = declareEnemyAttack("misfortune-prewindow", {
+      attacker: "unit_p2_skeletons",
+      p1Hand: ["spell.misfortune"],
+      p2Hand: ["spell.bloodlust"]
+    });
+    // The window opened is Misfortune's pre-buff phase, with the defender on priority.
+    expect(isMisfortunePreWindow(declared)).toBe(true);
+    expect(declared.reactionWindow?.priorityPlayerId).toBe("p1");
+    // The defender is offered Misfortune (bronze attacker → free option)...
+    expect(misfortuneOffered(declared, "p1", 0)).toBe(true);
+    // ...and the attacker is offered NOTHING yet — it cannot buff before Misfortune.
+    expect(windowOffers(declared, "p2", "spell.bloodlust")).toBe(false);
   });
 
-  it("against a silver attacker, offers only the silver option, and only when 1 Power can be paid", () => {
-    // No power-source card → the silver option is unaffordable → not offered.
-    const broke = passUntil(
-      declareEnemyAttack("misfortune-silver-broke", { attacker: "unit_p2_vampires", p1Hand: ["spell.misfortune"] }),
-      "p1"
-    );
-    expect(misfortuneOffered(broke, "p1", 1)).toBe(false);
-    expect(misfortuneOffered(broke, "p1", 0)).toBe(false);
+  it("offers only the grade option matching the attacker, and only when payable", () => {
+    // Bronze attacker → free bronze option only.
+    const bronze = declareEnemyAttack("misfortune-bronze", {
+      attacker: "unit_p2_skeletons",
+      p1Hand: ["spell.misfortune"]
+    });
+    expect(misfortuneOffered(bronze, "p1", 0)).toBe(true);
+    expect(misfortuneOffered(bronze, "p1", 1)).toBe(false);
+    expect(misfortuneOffered(bronze, "p1", 2)).toBe(false);
 
-    // With a Power-source card to discard, the silver option (pay 1) is offered.
-    const funded = passUntil(
-      declareEnemyAttack("misfortune-silver", {
-        attacker: "unit_p2_vampires",
-        p1Hand: ["spell.misfortune", "stat.power"]
-      }),
-      "p1"
-    );
-    expect(misfortuneOffered(funded, "p1", 1)).toBe(true);
-    expect(misfortuneOffered(funded, "p1", 0)).toBe(false); // bronze option never matches a silver attacker
-    expect(misfortuneOffered(funded, "p1", 2)).toBe(false); // gold option never matches a silver attacker
+    // Silver attacker with no Power → unaffordable → not offered at all.
+    const silverBroke = declareEnemyAttack("misfortune-silver-broke", {
+      attacker: "unit_p2_vampires",
+      p1Hand: ["spell.misfortune"]
+    });
+    expect(misfortuneOffered(silverBroke, "p1", 1)).toBe(false);
+    // The pre-window never even opened (no playable Misfortune) — the attack
+    // resolved straight through.
+    expect(isMisfortunePreWindow(silverBroke)).toBe(false);
+
+    // Silver attacker with 1 Power → the silver option (pay 1) is offered.
+    const silver = declareEnemyAttack("misfortune-silver", {
+      attacker: "unit_p2_vampires",
+      p1Hand: ["spell.misfortune", "stat.power"]
+    });
+    expect(misfortuneOffered(silver, "p1", 1)).toBe(true);
+    expect(misfortuneOffered(silver, "p1", 0)).toBe(false);
+    expect(misfortuneOffered(silver, "p1", 2)).toBe(false);
+
+    // Gold attacker needs 2 Power; one short → nothing offered.
+    const goldShort = declareEnemyAttack("misfortune-gold-short", {
+      attacker: "unit_p2_dread_knights",
+      p1Hand: ["spell.misfortune", "stat.power"]
+    });
+    expect(misfortuneOffered(goldShort, "p1", 2)).toBe(false);
+    const gold = declareEnemyAttack("misfortune-gold", {
+      attacker: "unit_p2_dread_knights",
+      p1Hand: ["spell.misfortune", "stat.power", "stat.power"]
+    });
+    expect(misfortuneOffered(gold, "p1", 2)).toBe(true);
   });
 
-  it("against a gold attacker, offers only the gold option when 2 Power can be paid (one short → none)", () => {
-    const funded = passUntil(
-      declareEnemyAttack("misfortune-gold", {
-        attacker: "unit_p2_dread_knights",
-        p1Hand: ["spell.misfortune", "stat.power", "stat.power"]
-      }),
-      "p1"
-    );
-    expect(misfortuneOffered(funded, "p1", 2)).toBe(true);
-    expect(misfortuneOffered(funded, "p1", 1)).toBe(false);
-    expect(misfortuneOffered(funded, "p1", 0)).toBe(false);
-
-    // One Power short → the gold option is unaffordable, so nothing is offered.
-    const short = passUntil(
-      declareEnemyAttack("misfortune-gold-short", {
-        attacker: "unit_p2_dread_knights",
-        p1Hand: ["spell.misfortune", "stat.power"]
-      }),
-      "p1"
-    );
-    expect(misfortuneOffered(short, "p1", 2)).toBe(false);
-  });
-
-  it("is never offered to the attacker — only the attacked unit's controller negates the die", () => {
-    // p2 (the attacker) holds Misfortune AND Bloodlust; the window opens with p2
-    // on priority for Bloodlust (an attacker's buff). Misfortune must NOT be
-    // offered to p2 — it is the DEFENDER's reaction, gated to the attack's
-    // opponent — even though p2 is on priority with reactions computed.
+  it("is never offered to the attacker (only the attacked unit's controller)", () => {
+    // p2 (the attacker) holds Misfortune; it must never be offered to them.
     const declared = declareEnemyAttack("misfortune-attacker", {
       attacker: "unit_p2_skeletons",
-      p1Hand: [],
-      p2Hand: ["spell.misfortune", "spell.bloodlust"]
+      p1Hand: ["spell.misfortune"],
+      p2Hand: ["spell.misfortune"]
     });
-    expect(declared.reactionWindow?.priorityPlayerId).toBe("p2");
-    const bloodlustOffered = getLegalActions(declared, "p2").some(
-      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.bloodlust"
-    );
-    expect(bloodlustOffered, "Bloodlust should be offered to the attacker").toBe(true);
     expect(misfortuneOffered(declared, "p2", 0)).toBe(false);
     expect(misfortuneOffered(declared, "p2", 1)).toBe(false);
     expect(misfortuneOffered(declared, "p2", 2)).toBe(false);
@@ -248,13 +257,49 @@ describe("Misfortune — offered to the defender, gated by the attacker's grade"
 });
 
 // ===========================================================================
-// Negating the die — the resolved hit loses the attacker's die bonus
+// Negating the attack: the attacker cannot buff, and the die is cancelled
 // ===========================================================================
 
-describe("Misfortune — negates the attacker's Attack die", () => {
-  it("drops a '+1' die from a bronze attacker's hit (free), and counts as the defender's Spell", () => {
-    // Control: skeletons (bronze) attack for 6 with a +1 die, crusaders defense 1
-    // → 6 + 1 − 1 = 6 damage.
+describe("Misfortune — negates the attack from any source", () => {
+  it("locks the attacker out of buffing from any source once played, but the defender may still act", () => {
+    // p2 attacks with Bloodlust (ADD_COMBAT_STAT) and Bless (IGNORE_ATTACK_DIE) —
+    // two different attack-buff sources. p1 holds Misfortune + a Defense statistic
+    // (a non-Spell, so it keeps the window open after Misfortune has used p1's one
+    // Spell for the round).
+    const declared = declareEnemyAttack("misfortune-lockout", {
+      attacker: "unit_p2_skeletons",
+      p1Hand: ["spell.misfortune", "stat.defense"],
+      p2Hand: ["spell.bloodlust", "spell.bless"]
+    });
+    const after = playMisfortune(declared, 0);
+
+    // The normal buff window is open; every attack-increasing source is refused
+    // to the locked attacker...
+    expect(after.reactionWindow).toBeTruthy();
+    expect(windowOffers(after, "p2", "spell.bloodlust")).toBe(false);
+    expect(windowOffers(after, "p2", "spell.bless")).toBe(false);
+    // ...while the defender may still act on their own unit.
+    expect(windowOffers(after, "p1", "stat.defense")).toBe(true);
+  });
+
+  it("if the defender DECLINES Misfortune, the attacker may buff normally", () => {
+    // Same hands, but p1 passes the pre-window instead of playing Misfortune.
+    const declared = declareEnemyAttack("misfortune-declined", {
+      attacker: "unit_p2_skeletons",
+      p1Hand: ["spell.misfortune"],
+      p2Hand: ["spell.bloodlust"]
+    });
+    expect(isMisfortunePreWindow(declared)).toBe(true);
+    const passed = applyOk(declared, { type: "PASS_REACTION", playerId: "p1" });
+    // The normal attack-declared window took over (attacker-first), and Bloodlust
+    // is now offered to the attacker — Misfortune only locks when it is played.
+    expect(isMisfortunePreWindow(passed)).toBe(false);
+    expect(passed.reactionWindow?.priorityPlayerId).toBe("p2");
+    expect(windowOffers(passed, "p2", "spell.bloodlust")).toBe(true);
+  });
+
+  it("drops the attacker's '+1' die from the resolved hit, and counts as the defender's Spell", () => {
+    // Control: skeletons (bronze) attack 6 with a +1 die, crusaders defense 1 → 6.
     const control = settle(
       declareEnemyAttack("misfortune-control", {
         attacker: "unit_p2_skeletons",
@@ -265,84 +310,36 @@ describe("Misfortune — negates the attacker's Attack die", () => {
     );
     expect(crusadersDamage(control)).toBe(6);
 
-    // p1 plays Misfortune (free, bronze attacker) → die negated → 6 + 0 − 1 = 5.
-    const atP1 = passUntil(
-      declareEnemyAttack("misfortune-negate", {
-        attacker: "unit_p2_skeletons",
-        attackerAttack: 6,
-        defenderDefense: 1,
-        rolls: [1, 0, 0, 0, 0, 0],
-        p1Hand: ["spell.misfortune"]
-      }),
-      "p1"
-    );
-    expect(misfortuneOffered(atP1, "p1", 0)).toBe(true);
+    // p1 plays Misfortune (free, bronze) → die negated → 6 + 0 − 1 = 5.
     const after = settle(
-      applyOk(atP1, {
-        type: "PLAY_REACTION",
-        playerId: "p1",
-        cardId: "spell.misfortune",
-        mode: "basic",
-        optionIndex: 0
-      })
+      playMisfortune(
+        declareEnemyAttack("misfortune-negate", {
+          attacker: "unit_p2_skeletons",
+          attackerAttack: 6,
+          defenderDefense: 1,
+          rolls: [1, 0, 0, 0, 0, 0],
+          p1Hand: ["spell.misfortune"]
+        }),
+        0
+      )
     );
     expect(crusadersDamage(after)).toBe(5);
-    // The Spell is spent and counts as p1's one Spell this combat round.
     expect(after.players.p1.discard).toContain("spell.misfortune");
     expect(after.players.p1.combatStats.spellsCastThisRound).toBe(1);
   });
 
-  it("negates a silver attacker's die when 1 Power is paid (the Power card is spent)", () => {
-    const atP1 = passUntil(
-      declareEnemyAttack("misfortune-silver-negate", {
-        attacker: "unit_p2_vampires",
-        attackerAttack: 6,
-        defenderDefense: 1,
-        rolls: [1, 0, 0, 0, 0, 0],
-        p1Hand: ["spell.misfortune", "stat.power"]
-      }),
-      "p1"
-    );
-    expect(misfortuneOffered(atP1, "p1", 1)).toBe(true);
-    const after = settle(
-      applyOk(atP1, {
-        type: "PLAY_REACTION",
-        playerId: "p1",
-        cardId: "spell.misfortune",
-        mode: "basic",
-        optionIndex: 1,
-        costCardIds: ["stat.power"]
-      })
-    );
-    expect(crusadersDamage(after)).toBe(5); // die negated
-    expect(after.players.p1.discard).toContain("spell.misfortune");
-    expect(after.players.p1.discard).toContain("stat.power"); // the Power paid for silver
-  });
-
-  it("is a PRE-roll reaction: it never opens a post-roll die-settled window", () => {
-    // p1 holds Misfortune but declines in the attack-declared window. No
-    // ATTACK_DIE_SETTLED window may open to re-offer it (graded die-negations are
-    // pre-roll only — that post-roll window is Shield of the Dwarven Lords' alone).
-    let state = declareEnemyAttack("misfortune-no-postroll", {
-      attacker: "unit_p2_skeletons",
+  it("negates a silver attacker's attack when 1 Power is paid (the Power card is spent)", () => {
+    const declared = declareEnemyAttack("misfortune-silver-negate", {
+      attacker: "unit_p2_vampires",
       attackerAttack: 6,
       defenderDefense: 1,
       rolls: [1, 0, 0, 0, 0, 0],
-      p1Hand: ["spell.misfortune"]
+      p1Hand: ["spell.misfortune", "stat.power"]
     });
-    expect(state.reactionWindow?.triggerEvent.type).toBe("UNIT_ATTACK_DECLARED");
-
-    let sawDieSettled = false;
-    let safety = 30;
-    while (state.reactionWindow && safety-- > 0) {
-      if (state.reactionWindow.triggerEvent.type === "ATTACK_DIE_SETTLED") {
-        sawDieSettled = true;
-      }
-      state = applyOk(state, { type: "PASS_REACTION", playerId: state.reactionWindow.priorityPlayerId });
-    }
-    expect(sawDieSettled).toBe(false);
-    // Misfortune was never played and the +1 die landed in full: 6 + 1 − 1 = 6.
-    expect(state.players.p1.hand).toContain("spell.misfortune");
-    expect(crusadersDamage(state)).toBe(6);
+    expect(misfortuneOffered(declared, "p1", 1)).toBe(true);
+    const after = settle(playMisfortune(declared, 1, ["stat.power"]));
+    expect(crusadersDamage(after)).toBe(5); // +1 die negated
+    expect(after.players.p1.discard).toContain("spell.misfortune");
+    expect(after.players.p1.discard).toContain("stat.power");
   });
 });
