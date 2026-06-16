@@ -94,7 +94,7 @@ import {
   startWarMachineRound
 } from "./permanents";
 import { createSeededRandom } from "./random";
-import { estatesGold, getRuleset, spellLimitFor } from "./ruleset";
+import { activeSchoolFetches, estatesGold, getRuleset, spellLimitFor } from "./ruleset";
 import {
   destroyFortification,
   getDemolishAbility,
@@ -157,6 +157,7 @@ import {
   isHandLockedInCombat,
   isUnitAlive,
   payablePowerCardIds,
+  playerHasAttackInstantOfSchool,
   reflectableAttackInstantForPlayer,
   rerollSourceAvailableFor,
   spellAbilitiesSuppressed,
@@ -6834,6 +6835,78 @@ function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, ca
   state.priorityPlayerId = keepPriority;
 }
 
+/** Basic X Magic's expert side: +3 Power for a matching-school spell. */
+const SCHOOL_FETCH_EXPERT_POWER = 3;
+
+/**
+ * Basic X Magic (the in-play spell-fetch permanent): spend an expert use to add
+ * +3 Power to a matching-school spell you are casting now — a normal cast (into
+ * the cast's School power) or an instant played into an attack (into your own
+ * attack-window Power pool, re-derived like any other paid Power). The fetch
+ * permanent stays in play; nothing is discarded. Once per stack per player.
+ */
+function applySchoolFetchExpert(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_SCHOOL_FETCH_EXPERT" }>
+): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+  if (!activeSchoolFetches(state, action.playerId).includes(action.school as "air" | "earth" | "fire" | "water")) {
+    throw new Error("No Basic Magic of that school is in play.");
+  }
+
+  const stackItem = state.stack.at(-1);
+  if (!stackItem) {
+    throw new Error("The +3 expert needs one of your spells being cast.");
+  }
+
+  const usedBy = (stackItem.modifiers.schoolFetchExpertUsedBy ??= []);
+  if (usedBy.includes(action.playerId)) {
+    throw new Error("The Basic Magic +3 expert is already applied here.");
+  }
+
+  const expertUsesLeft =
+    player.limits.expertUses +
+    (player.combatStats.expertUseBonusThisRound ?? 0) -
+    player.combatStats.expertUsesSpentThisRound;
+  if (expertUsesLeft <= 0) {
+    throw new Error("No expert uses are available this combat round.");
+  }
+
+  if (stackItem.action.type === "CAST_SPELL") {
+    const castSchools = cardLibrary[stackItem.action.cardId]?.spellSchools ?? [];
+    const matchesCast = castSchools.includes(action.school) || castSchools.includes("any");
+    if (stackItem.action.playerId !== action.playerId || !matchesCast) {
+      throw new Error("That cast does not match the Basic Magic school.");
+    }
+    if (stackItem.modifiers.scrollLocked) {
+      throw new Error("A Spell Scroll cast is locked to Power 0.");
+    }
+    stackItem.modifiers.schoolPowerBonus = (stackItem.modifiers.schoolPowerBonus ?? 0) + SCHOOL_FETCH_EXPERT_POWER;
+  } else if (isAttackStackItem(stackItem)) {
+    if (!playerHasAttackInstantOfSchool(stackItem, action.playerId, action.school)) {
+      throw new Error("You have no matching-school spell instant on this attack to empower.");
+    }
+    addAttackPower(stackItem, action.playerId, SCHOOL_FETCH_EXPERT_POWER);
+    recomputePowerScaledAttackInstants(stackItem);
+  } else {
+    throw new Error("The +3 expert needs one of your spells.");
+  }
+
+  usedBy.push(action.playerId);
+  player.combatStats.expertUsesSpentThisRound += 1;
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId: action.playerId,
+    cardId: `ability.basic_${action.school}_magic` as CardId,
+    timing: "instant",
+    mode: "expert",
+    effectAmount: SCHOOL_FETCH_EXPERT_POWER
+  });
+}
+
 /**
  * Closes the end-of-combat notice for an adventure combat: the next
  * automation pass runs finalizeAdventureCombat (XP, unit flips, the visit).
@@ -10263,6 +10336,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "START_ADVENTURE",
   "BUY_WAR_MACHINE",
   "USE_PERMANENT_EXPERT",
+  "USE_SCHOOL_FETCH_EXPERT",
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
   "HALL_OF_VALHALLA_BOOST",
@@ -10416,6 +10490,10 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "USE_PERMANENT_EXPERT":
         applyPermanentExpert(nextState, action);
         // The discarded permanent disappears from the open window's options.
+        refreshReactionWindowLegalReactions(nextState, cards);
+        break;
+      case "USE_SCHOOL_FETCH_EXPERT":
+        applySchoolFetchExpert(nextState, action);
         refreshReactionWindowLegalReactions(nextState, cards);
         break;
       case "DISCARD_PERMANENT":

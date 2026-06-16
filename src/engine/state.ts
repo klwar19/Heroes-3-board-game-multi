@@ -1642,6 +1642,18 @@ export type GameAction =
     }
   | {
       /**
+       * Basic X Magic (the in-play spell-fetch permanent): spend an expert use
+       * for +3 Power on a matching-school spell — a normal cast (into
+       * schoolPowerBonus) or an instant played into an attack (into the caster's
+       * attack-window Power pool). Unlike the card School-of-Magic expert it
+       * discards nothing; the fetch permanent stays in play.
+       */
+      type: "USE_SCHOOL_FETCH_EXPERT";
+      playerId: PlayerId;
+      school: SpellSchool;
+    }
+  | {
+      /**
        * Voluntarily put one of your in-play permanents into the discard pile
        * ("The player may decide to put an active permanent card into their
        * discard pile. This stops the card effect immediately.").
@@ -2802,6 +2814,8 @@ export type ResolutionStackItem = {
      */
     ignoreDefenseGradeByPower?: Record<number, CombatUnitState["grade"]>;
     ignoreDefenseCasterId?: PlayerId;
+    /** Players who already spent their Basic X Magic +3 expert on this stack. */
+    schoolFetchExpertUsedBy?: PlayerId[];
     playedCardIds: CardId[];
   };
 };
