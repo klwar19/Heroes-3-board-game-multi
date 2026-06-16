@@ -21,6 +21,7 @@ import {
   isUnitAlive,
   playerSpellCastsIgnoreLimit,
   sortUnitsForActivation,
+  type BattlefieldTokenState,
   type CombatTokenState,
   type CombatUnitState,
   type GameAction,
@@ -96,6 +97,72 @@ function TokenChips({ unit }: { unit: CombatUnitState }) {
           {poisonCubes}🟢
         </b>
       ) : null}
+    </span>
+  );
+}
+
+const BATTLEFIELD_TOKEN_VIEW: Record<BattlefieldTokenState["kind"], { glyph: string; label: string }> = {
+  force_field: { glyph: "🛡️", label: "Force Field" },
+  fire_wall: { glyph: "🔥", label: "Fire Wall" },
+  quicksand: { glyph: "🌀", label: "Quicksand" },
+  land_mine: { glyph: "💣", label: "Land Mine" }
+};
+
+/**
+ * Spell token sitting on a board space (Force Field / Fire Wall / Quicksand /
+ * Land Mine). Quicksand and Land Mine are face down: their controller sees
+ * armed/decoy, the opponent only a face-down marker until a unit springs it
+ * (player-view strips the `armed` flag, leaving it undefined here).
+ */
+function BattlefieldTokenMark({
+  token,
+  viewerPlayerId,
+  state
+}: {
+  token: BattlefieldTokenState;
+  viewerPlayerId: PlayerId;
+  state: GameState;
+}) {
+  const view = BATTLEFIELD_TOKEN_VIEW[token.kind];
+  const isTrap = token.kind === "quicksand" || token.kind === "land_mine";
+  // The opponent's hidden trap: player-view stripped the armed flag.
+  const faceDown = isTrap && !token.revealed && token.armed === undefined;
+  const owner = state.players[token.controllerId]?.name ?? token.controllerId;
+
+  let detail = "";
+  if (token.kind === "fire_wall") {
+    detail = `${token.damage ?? 0}`;
+  } else if (token.kind === "force_field") {
+    detail = token.expiresAtCombatRoundEnd === undefined ? "combat" : `r${token.expiresAtCombatRoundEnd}`;
+  } else if (faceDown) {
+    detail = "?";
+  } else if (token.revealed) {
+    detail = token.armed ? "!" : "✗";
+  } else {
+    detail = token.armed ? "armed" : "decoy";
+  }
+
+  const describe =
+    token.kind === "fire_wall"
+      ? `Fire Wall (${owner}) — ${token.damage ?? 0} damage to a unit stopping here or a ground/ranged unit passing through`
+      : token.kind === "force_field"
+        ? `Force Field (${owner}) — an obstacle; blocks non-flying movement${token.expiresAtCombatRoundEnd === undefined ? " for this combat" : ` until the end of combat round ${token.expiresAtCombatRoundEnd}`}`
+        : faceDown
+          ? `${view.label} (${owner}) — a face-down trap; you cannot see whether it is armed`
+          : token.revealed
+            ? `${view.label} (${owner}) — revealed ${token.armed ? "armed" : "decoy"}`
+            : `${view.label} (${owner}) — your token: ${token.armed ? "armed" : "decoy"}`;
+
+  return (
+    <span
+      aria-label={describe}
+      className={`battlefieldToken ${token.kind} ${faceDown ? "faceDown" : ""} ${token.revealed ? "revealed" : ""} ${
+        token.controllerId === viewerPlayerId ? "own" : "enemy"
+      }`}
+      title={describe}
+    >
+      <b aria-hidden="true">{faceDown ? "🎴" : view.glyph}</b>
+      {detail ? <small>{detail}</small> : null}
     </span>
   );
 }
@@ -225,6 +292,44 @@ export function BattlefieldBoard({
     });
   }
 
+  // Spell tokens on the board (Force Field / Fire Wall / Quicksand / Land Mine).
+  const battlefieldTokensByPosition = new Map<number, BattlefieldTokenState>();
+  for (const token of combat?.battlefieldTokens ?? []) {
+    battlefieldTokensByPosition.set(token.position, token);
+  }
+
+  // Quicksand / Land Mine placement: the caster drops the rest of the set one
+  // space at a time. Each offered empty space lights up like a cast target; the
+  // trailing "stop placing" option (no position) is surfaced as a banner button.
+  const placeTokenActionsByPosition = new Map<number, GameAction>();
+  let stopPlacingTokensAction: GameAction | null = null;
+  let placeTokensPrompt: string | null = null;
+  const placeChoice = state.pendingChoice;
+  if (
+    combat &&
+    placeChoice?.type === "OPTION_CHOICE" &&
+    placeChoice.context === "place-battlefield-tokens" &&
+    placeChoice.playerId === viewerPlayerId &&
+    placeChoice.placeTokens
+  ) {
+    placeChoice.placeTokens.positions.forEach((position, optionIndex) => {
+      placeTokenActionsByPosition.set(position, {
+        type: "CHOOSE_OPTION",
+        playerId: viewerPlayerId,
+        choiceId: placeChoice.id,
+        optionIndex
+      });
+    });
+    // The "stop placing" option is the last one, after every space option.
+    stopPlacingTokensAction = {
+      type: "CHOOSE_OPTION",
+      playerId: viewerPlayerId,
+      choiceId: placeChoice.id,
+      optionIndex: placeChoice.placeTokens.positions.length
+    };
+    placeTokensPrompt = placeChoice.prompt;
+  }
+
   for (const legal of legalActions) {
     if (legal.action.type === "MOVE_UNIT") {
       moveActionsByDestination.set(legal.action.destination, legal.action);
@@ -263,6 +368,18 @@ export function BattlefieldBoard({
 
   return (
     <div className={`boardFelt ${flipped ? "flipped" : ""}`} aria-label="Combat board">
+      {stopPlacingTokensAction ? (
+        <div className="placeTokensBanner" role="status">
+          <span>{placeTokensPrompt ?? "Place a token on an empty space, or stop."}</span>
+          <button
+            className="commandButton"
+            onClick={() => stopPlacingTokensAction && onAction(stopPlacingTokensAction)}
+            type="button"
+          >
+            Stop placing tokens
+          </button>
+        </div>
+      ) : null}
       <div className="battlefield">
         {Array.from({ length: BATTLEFIELD_CELL_COUNT }, (_, index) => {
           const unit = unitsByPosition.get(index);
@@ -278,6 +395,9 @@ export function BattlefieldBoard({
           const spaceCardAction = spaceCardActionsByPosition.get(index);
           // Teleport moves a unit to an EMPTY destination space.
           const teleportAction = !unit ? teleportActionsByPosition.get(index) : undefined;
+          // Quicksand / Land Mine placement targets an EMPTY space.
+          const placeTokenAction = !unit ? placeTokenActionsByPosition.get(index) : undefined;
+          const battlefieldToken = battlefieldTokensByPosition.get(index);
           const abilityAction = unit ? abilityTargetActions.get(unit.id) : undefined;
           const isActive = Boolean(unit && combat?.activeUnitId === unit.id);
           const isFlipping = Boolean(unit && flippedUnitIds?.has(unit.id));
@@ -286,7 +406,7 @@ export function BattlefieldBoard({
             isObstacle ? "obstacle" : ""
           } ${moveAction && !selectedCardAction ? "moveTarget" : ""} ${
             attackAction && !selectedCardAction ? "attackTarget" : ""
-          } ${cardAction || spaceCardAction || teleportAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${dropTarget ? "dropTarget" : ""}`;
+          } ${cardAction || spaceCardAction || teleportAction || placeTokenAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${dropTarget ? "dropTarget" : ""}`;
           const health = unit ? Math.max(0, unit.maxHealth - shownDamage(unit)) : 0;
 
           const dropProps = dropTarget
@@ -360,6 +480,9 @@ export function BattlefieldBoard({
           }
 
           const tint = unit ? tintedUnits?.get(unit.id) : undefined;
+          const tokenMark = battlefieldToken ? (
+            <BattlefieldTokenMark state={state} token={battlefieldToken} viewerPlayerId={viewerPlayerId} />
+          ) : null;
           // Clone Spell: a Clone is shown as the cloned unit's own card washed
           // blue (a ghostly "clone" tint) with a Clone badge, so it reads at a
           // glance as a magical copy rather than the real stack.
@@ -389,6 +512,7 @@ export function BattlefieldBoard({
                 </span>
               </div>
               <TokenChips unit={unit} />
+              {tokenMark}
               {isActive ? <span className="activeRing" aria-hidden="true" /> : null}
               {isFlipping ? <span className="flipBadge">Flipped to Few</span> : null}
               {isClone ? (
@@ -398,7 +522,7 @@ export function BattlefieldBoard({
               ) : null}
             </article>
           ) : (
-            <span className="emptyBoardMark" aria-hidden="true" />
+            tokenMark ?? <span className="emptyBoardMark" aria-hidden="true" />
           );
 
           // During deployment your placed units stay draggable to new spaces.
@@ -416,9 +540,9 @@ export function BattlefieldBoard({
               : {};
 
           const interactiveAction =
-            abilityAction ?? cardAction ?? spaceCardAction ?? teleportAction ?? (unit ? attackAction : moveAction);
+            abilityAction ?? cardAction ?? spaceCardAction ?? teleportAction ?? placeTokenAction ?? (unit ? attackAction : moveAction);
 
-          if (interactiveAction && (!selectedCardAction || cardAction || spaceCardAction || teleportAction)) {
+          if (interactiveAction && (!selectedCardAction || cardAction || spaceCardAction || teleportAction || placeTokenAction)) {
             const label = abilityAction
               ? `Ability target: ${unit?.name}`
               : cardAction
@@ -427,9 +551,11 @@ export function BattlefieldBoard({
                   ? `Cast on ${getBattlefieldLabel(index)}${unit ? ` (over ${unit.name})` : ""}`
                   : teleportAction
                     ? `Teleport to ${getBattlefieldLabel(index)}`
-                    : unit
-                      ? `Attack ${unit?.name}`
-                      : `Move to ${getBattlefieldLabel(index)}`;
+                    : placeTokenAction
+                      ? `Place token on ${getBattlefieldLabel(index)}`
+                      : unit
+                        ? `Attack ${unit?.name}`
+                        : `Move to ${getBattlefieldLabel(index)}`;
             return (
               <button
                 aria-label={label}
