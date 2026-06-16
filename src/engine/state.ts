@@ -4678,12 +4678,13 @@ export type PendingChoice =
       siegeDemolish?: { positions: number[]; remaining: number };
       /**
        * remove-obstacle: the obstacles still standing (index-aligned with the
-       * options), each tagged so resolution knows whether to clear an obstacle
-       * marker or bring down a siege Wall / Gate. `remaining` caps how many more
-       * the caster may remove.
+       * options), each tagged so resolution knows what to clear — an obstacle
+       * marker, a siege Wall / Gate, or a battlefield token (Force Field, Fire
+       * Wall, Quicksand, Land Mine, carrying its `tokenId`). `remaining` caps how
+       * many more the caster may remove.
        */
       removeObstacle?: {
-        items: { position: number; kind: "obstacle" | "wall" | "gate" }[];
+        items: { position: number; kind: "obstacle" | "wall" | "gate" | "token"; tokenId?: string }[];
         remaining: number;
       };
       /** skeleton-reinforce: the bronze Few army units that may be flipped free. */

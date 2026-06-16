@@ -783,7 +783,7 @@ export function describeCardEffect(card: CardDefinition): string {
     const breakpoints = Object.entries(card.effect.countByPower)
       .map(([power, count]) => `${power}:${count}`)
       .join(", ");
-    return `remove obstacle markers, Walls or the Gate from the Combat board (count by power ${breakpoints})`;
+    return `remove obstacles from the Combat board — markers, Force Field / Fire Wall / Quicksand / Land Mine tokens, Walls or the Gate (count by power ${breakpoints})`;
   }
 
   return card.kind;

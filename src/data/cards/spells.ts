@@ -1889,10 +1889,11 @@ export const spellCards: CardLibrary = {
   },
   // Remove Obstacle (Basic Water, Instant): clear obstacles off the Combat
   // board. The Power paid sets how many you take down (0/1/2 -> 1/2/3), chosen
-  // one at a time. Removable = the random obstacle markers and any standing
-  // siege Wall or Gate; units are never removed (they only block movement),
-  // matching the wiki note. Engine: REMOVE_OBSTACLE -> openRemoveObstacleChoice;
-  // each pick clears a marker (COMBAT_OBSTACLE_REMOVED) or fells a Wall/Gate
+  // one at a time. Removable = the random obstacle markers, any battlefield
+  // token (Force Field, Fire Wall, Quicksand, Land Mine) and any standing siege
+  // Wall or Gate; units are never removed (they only block movement), matching
+  // the wiki note. Engine: REMOVE_OBSTACLE -> openRemoveObstacleChoice; each pick
+  // clears a marker/token (COMBAT_OBSTACLE_REMOVED) or fells a Wall/Gate
   // (destroyFortification, the same path as Earthquake). The legal-action layer
   // only offers the cast when something removable stands. The "OR Instant: +1
   // Power" side is the universal power-source discard, so it needs no option.
@@ -1911,7 +1912,7 @@ export const spellCards: CardLibrary = {
       "spell",
       "basic",
       "water",
-      "Instant: Remove obstacles (except units) from the Combat board — obstacle markers, Walls or the Gate: Power 0: 1; Power 1: 2; Power 2: 3. — OR — Instant: +1 Power."
+      "Instant: Remove obstacles (except units) from the Combat board — obstacle markers, Force Field / Fire Wall / Quicksand / Land Mine tokens, Walls or the Gate: Power 0: 1; Power 1: 2; Power 2: 3. — OR — Instant: +1 Power."
     ],
     effect: {
       type: "REMOVE_OBSTACLE",

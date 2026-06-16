@@ -1326,12 +1326,15 @@ function addSpellActions(
       }
     }
 
-    // Remove Obstacle needs at least one obstacle marker, Wall or Gate to lift.
+    // Remove Obstacle needs at least one obstacle to lift: an obstacle marker, a
+    // battlefield token (Force Field / Fire Wall / Quicksand / Land Mine), or a
+    // standing siege Wall or Gate.
     if (card.effect.type === "REMOVE_OBSTACLE") {
       const siege = combat?.siege;
       const hasObstacleMarker = (combat?.obstacles ?? []).length > 0;
+      const hasToken = (combat?.battlefieldTokens ?? []).length > 0;
       const hasFortification = Boolean(siege && (siege.walls.length > 0 || siege.gatePosition !== null));
-      if (!hasObstacleMarker && !hasFortification) {
+      if (!hasObstacleMarker && !hasToken && !hasFortification) {
         continue;
       }
     }

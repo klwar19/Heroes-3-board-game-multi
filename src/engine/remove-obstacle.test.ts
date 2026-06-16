@@ -133,6 +133,30 @@ describe("Remove Obstacle spell", () => {
     expect(felled).toBe(true);
   });
 
+  it("removes battlefield tokens too (Force Field, Fire Wall, Quicksand, Land Mine)", () => {
+    const state = createInitialGameState("remove-obstacle-tokens");
+    state.combat!.obstacles = [];
+    state.combat!.siege = null;
+    state.combat!.battlefieldTokens = [
+      { id: "bft_ff", kind: "force_field", position: 2, controllerId: "p2" },
+      { id: "bft_fw", kind: "fire_wall", position: 3, controllerId: "p2", damage: 1 },
+      { id: "bft_qs", kind: "quicksand", position: 4, controllerId: "p2", armed: true },
+      { id: "bft_lm", kind: "land_mine", position: 7, controllerId: "p2", armed: true, damage: 2 }
+    ];
+
+    // Castable when only tokens stand.
+    state.players.p1.hand = ["spell.remove_obstacle"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    expect(findRemoveObstacleCast(state, "p1"), "tokens alone make Remove Obstacle castable").toBeTruthy();
+
+    // Power 2 removes 3 of the 4 tokens, of the caster's choice.
+    const result = castRemoveObstacleAt(state, 2);
+    expect(result.combat!.battlefieldTokens!.length).toBe(1);
+    expect(result.eventLog.filter((event) => event.type === "COMBAT_OBSTACLE_REMOVED").length).toBe(3);
+  });
+
   it("offers obstacle markers AND fortifications together, gated by Power", () => {
     const state = createInitialGameState("remove-obstacle-mixed");
     state.combat!.obstacles = [8, 11];
