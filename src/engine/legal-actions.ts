@@ -7,6 +7,7 @@ import {
   applyRecruitDiscount,
   armyHasMapEffect,
   canHeroReachPlacedTile,
+  capturableEnemyMinesWithin,
   discountedReinforceCost,
   getActiveAstrologersCard,
   getMainHero,
@@ -1424,6 +1425,14 @@ function isOptionEffectPlayable(
     case "GAIN_HERO_MOVEMENT":
     case "DIMENSION_DOOR":
       return context === "map" && Boolean(state.adventure);
+    case "VIEW_EARTH":
+      // View Earth captures an enemy-owned Mine in reach — offered only when at
+      // least one such Mine sits within this option's range of the caster's Hero.
+      return (
+        context === "map" &&
+        Boolean(state.adventure) &&
+        capturableEnemyMinesWithin(state, playerId, effect.withinFields).length > 0
+      );
     case "DIPLOMACY_RECRUIT":
       // Diplomacy's Map side only does something with at least one Dwelling.
       return context === "map" && Boolean(state.adventure) && unlockedRecruitTiers(state, playerId).size > 0;
