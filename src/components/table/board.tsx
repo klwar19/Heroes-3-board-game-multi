@@ -5,7 +5,8 @@
 import { ChevronDown, ChevronUp, Crown, Mountain, Plus, ScrollText, Shield, Sparkles, Swords } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
-import { useEffect, useMemo, useState } from "react";
+import { getFxSheet } from "@/data/fx";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ATTACKER_BACKLINE,
@@ -18,7 +19,9 @@ import {
   getBattlefieldLabel,
   getBattlefieldTerrain,
   getUnitAbilityDefinitions,
+  getUnitMoveRange,
   getUnitTokens,
+  isAdjacent,
   isArrowTowerUnit,
   isUnitAlive,
   playerSpellCastsIgnoreLimit,
@@ -115,18 +118,85 @@ function TokenChips({ unit }: { unit: CombatUnitState }) {
   );
 }
 
-const BATTLEFIELD_TOKEN_VIEW: Record<BattlefieldTokenState["kind"], { glyph: string; label: string }> = {
-  force_field: { glyph: "🛡️", label: "Force Field" },
-  fire_wall: { glyph: "🔥", label: "Fire Wall" },
-  quicksand: { glyph: "🌀", label: "Quicksand" },
-  land_mine: { glyph: "💣", label: "Land Mine" }
+/**
+ * How each battlefield token draws on the board: each maps to a converted Heroes
+ * III .def sprite sheet (see fx-manifest), with `glyph` as a last-ditch emoji if
+ * the sheet is missing. Force Field is the blue energy barrier (C15SPE);
+ * Quicksand the sandy bubbling pit (C17SPE) — these two were swapped in the
+ * original conversion and are corrected here. Quicksand / Land Mine show this
+ * art only to their controller; the opponent sees a face-down token back (the
+ * armed/decoy state is secret).
+ */
+const BATTLEFIELD_TOKEN_VIEW: Record<
+  BattlefieldTokenState["kind"],
+  { sprite: string; glyph: string; label: string }
+> = {
+  force_field: { sprite: "force-field", glyph: "🛡️", label: "Force Field" },
+  fire_wall: { sprite: "fire-wall-e", glyph: "🔥", label: "Fire Wall" },
+  quicksand: { sprite: "quicksand", glyph: "🌀", label: "Quicksand" },
+  land_mine: { sprite: "land-mine-a", glyph: "💣", label: "Land Mine" }
 };
 
 /**
+ * On-board sprite art for a battlefield obstacle, drawn from a converted Heroes
+ * III .def sheet (see fx-manifest). The element is sized to one frame's aspect
+ * ratio and loops through the sheet's frames by scrubbing `background-position`
+ * via requestAnimationFrame — no React re-renders, so it is cheap and never
+ * fights the test renderer. Falls back to nothing when the sheet is missing
+ * (the caller then shows its emoji), and to a static first frame off-DOM.
+ */
+function TokenSprite({ fxKey }: { fxKey: string }) {
+  const sheet = getFxSheet(fxKey);
+  const ref = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || !sheet || sheet.frames <= 1 || sheet.rows !== 1) {
+      return;
+    }
+    if (typeof requestAnimationFrame !== "function") {
+      return;
+    }
+    const denominator = sheet.cols > 1 ? sheet.cols - 1 : 1;
+    const start = typeof performance !== "undefined" ? performance.now() : Date.now();
+    let raf = 0;
+    const step = (now: number) => {
+      const elapsed = now - start;
+      const frame = Math.floor((elapsed / 1000) * sheet.fps) % sheet.frames;
+      element.style.backgroundPositionX = `${(frame / denominator) * 100}%`;
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [sheet]);
+
+  if (!sheet) {
+    return null;
+  }
+  return (
+    <span
+      ref={ref}
+      aria-hidden="true"
+      className="battlefieldTokenSprite"
+      style={{
+        backgroundImage: `url(${assetUrl(sheet.src)})`,
+        backgroundRepeat: "no-repeat",
+        backgroundSize: `${sheet.cols * 100}% ${sheet.rows * 100}%`,
+        backgroundPositionX: "0%",
+        backgroundPositionY: "center",
+        aspectRatio: `${sheet.frameWidth} / ${sheet.frameHeight}`
+      }}
+    />
+  );
+}
+
+/**
  * Spell token sitting on a board space (Force Field / Fire Wall / Quicksand /
- * Land Mine). Quicksand and Land Mine are face down: their controller sees
- * armed/decoy, the opponent only a face-down marker until a unit springs it
- * (player-view strips the `armed` flag, leaving it undefined here).
+ * Land Mine). Force Field and Fire Wall are visible obstacles, drawn with their
+ * animated H3 sprite. Quicksand and Land Mine are face-down traps: their
+ * controller sees the real art + armed/decoy, the opponent only a face-down
+ * token back (player-view strips the `armed` flag, leaving it undefined here).
+ * A sprung trap is removed by the engine, so it never lingers on the board.
  */
 function BattlefieldTokenMark({
   token,
@@ -140,8 +210,9 @@ function BattlefieldTokenMark({
   const view = BATTLEFIELD_TOKEN_VIEW[token.kind];
   const isTrap = token.kind === "quicksand" || token.kind === "land_mine";
   // The opponent's hidden trap: player-view stripped the armed flag.
-  const faceDown = isTrap && !token.revealed && token.armed === undefined;
+  const faceDown = isTrap && token.armed === undefined;
   const owner = state.players[token.controllerId]?.name ?? token.controllerId;
+  const spriteSheet = getFxSheet(view.sprite);
 
   let detail = "";
   if (token.kind === "fire_wall") {
@@ -149,9 +220,7 @@ function BattlefieldTokenMark({
   } else if (token.kind === "force_field") {
     detail = token.expiresAtCombatRoundEnd === undefined ? "combat" : `r${token.expiresAtCombatRoundEnd}`;
   } else if (faceDown) {
-    detail = "?";
-  } else if (token.revealed) {
-    detail = token.armed ? "!" : "✗";
+    detail = "";
   } else {
     detail = token.armed ? "armed" : "decoy";
   }
@@ -163,19 +232,30 @@ function BattlefieldTokenMark({
         ? `Force Field (${owner}) — an obstacle; blocks non-flying movement${token.expiresAtCombatRoundEnd === undefined ? " for this combat" : ` until the end of combat round ${token.expiresAtCombatRoundEnd}`}`
         : faceDown
           ? `${view.label} (${owner}) — a face-down trap; you cannot see whether it is armed`
-          : token.revealed
-            ? `${view.label} (${owner}) — revealed ${token.armed ? "armed" : "decoy"}`
-            : `${view.label} (${owner}) — your token: ${token.armed ? "armed" : "decoy"}`;
+          : `${view.label} (${owner}) — your token: ${token.armed ? "armed" : "decoy"}`;
+
+  let art: React.ReactNode;
+  if (faceDown) {
+    art = (
+      <span className="battlefieldTokenBack" aria-hidden="true">
+        ?
+      </span>
+    );
+  } else if (spriteSheet) {
+    art = <TokenSprite fxKey={view.sprite} />;
+  } else {
+    art = <b aria-hidden="true">{view.glyph}</b>;
+  }
 
   return (
     <span
       aria-label={describe}
-      className={`battlefieldToken ${token.kind} ${faceDown ? "faceDown" : ""} ${token.revealed ? "revealed" : ""} ${
+      className={`battlefieldToken ${token.kind} ${faceDown ? "faceDown" : ""} ${
         token.controllerId === viewerPlayerId ? "own" : "enemy"
       }`}
       title={describe}
     >
-      <b aria-hidden="true">{faceDown ? "🎴" : view.glyph}</b>
+      {art}
       {detail ? <small>{detail}</small> : null}
     </span>
   );
@@ -335,6 +415,13 @@ export function BattlefieldBoard({
   const [swapSelection, setSwapSelection] = useState<string | null>(null);
   const [hoverDestination, setHoverDestination] = useState<number | null>(null);
   const [flashCells, setFlashCells] = useState<readonly number[]>([]);
+  // Route-planner state: when the player chooses to hand-pick a move route
+  // (to brave or dodge a Fire Wall) this holds the active unit and the waypoints
+  // chosen so far. A plan left over from a different unit is ignored at render
+  // time (the `routePlan.unitId === activeMover.id` guard below), so no reset
+  // effect is needed.
+  const [routePlan, setRoutePlan] = useState<{ unitId: string; path: number[] } | null>(null);
+  const activeUnitId = combat?.activeUnitId ?? null;
   useEffect(() => {
     if (flashCells.length === 0) {
       return;
@@ -512,6 +599,47 @@ export function BattlefieldBoard({
         )
       : undefined;
 
+  // Route planner. When the active unit is the viewer's, can move, and a Fire
+  // Wall stands on the board, the player may hand-pick the move route (to brave a
+  // shortcut through the flames or detour around them) instead of the engine's
+  // auto safe path. Valid waypoints reuse the legal move-destination set, so each
+  // is a reachable, non-blocked cell (a Fire Wall cell qualifies; a Force Field
+  // does not). Flyers ignore routes (they never enter the spaces they cross).
+  const activeMover =
+    combat && activeUnitId && moveActionsByDestination.size > 0 ? combat.units[activeUnitId] : undefined;
+  const routePlanningAvailable =
+    !!activeMover &&
+    activeMover.controllerId === viewerPlayerId &&
+    activeMover.type !== "flying" &&
+    !selectedCardAction &&
+    (combat?.battlefieldTokens ?? []).some((token) => token.kind === "fire_wall");
+  const planning = Boolean(routePlanningAvailable && routePlan && activeMover && routePlan.unitId === activeMover.id);
+  const plannedPath = planning && routePlan ? routePlan.path : [];
+  const moveRange = activeMover ? getUnitMoveRange(activeMover) : 0;
+  const routeEnd = plannedPath.length > 0 ? plannedPath[plannedPath.length - 1] : activeMover?.position ?? -1;
+  const isRouteNextStep = (cell: number): boolean =>
+    planning &&
+    plannedPath.length < moveRange &&
+    moveActionsByDestination.has(cell) &&
+    !plannedPath.includes(cell) &&
+    isAdjacent(routeEnd, cell);
+  const plannedFireWallDamage = (combat?.battlefieldTokens ?? [])
+    .filter((token) => token.kind === "fire_wall" && plannedPath.includes(token.position))
+    .reduce((sum, token) => sum + (token.damage ?? 0), 0);
+  const walkRoute = () => {
+    if (!activeMover || plannedPath.length === 0) {
+      return;
+    }
+    onAction({
+      type: "MOVE_UNIT",
+      playerId: viewerPlayerId,
+      unitId: activeMover.id,
+      destination: plannedPath[plannedPath.length - 1],
+      path: plannedPath
+    });
+    setRoutePlan(null);
+  };
+
   return (
     <div className={`boardFelt ${flipped ? "flipped" : ""}`} aria-label="Combat board">
       {stopPlacingTokensAction ? (
@@ -524,6 +652,33 @@ export function BattlefieldBoard({
           >
             Stop placing tokens
           </button>
+        </div>
+      ) : null}
+      {routePlanningAvailable ? (
+        <div className="routePlanBanner" role="group" aria-label="Move route planner">
+          {!planning ? (
+            <button
+              className="commandButton"
+              onClick={() => activeMover && setRoutePlan({ unitId: activeMover.id, path: [] })}
+              type="button"
+              title="A Fire Wall is on the field — hand-pick this unit's route to brave or dodge it."
+            >
+              Plan route 🔥
+            </button>
+          ) : (
+            <>
+              <span>
+                Route: {plannedPath.length} step{plannedPath.length === 1 ? "" : "s"}
+                {plannedFireWallDamage > 0 ? ` · 🔥 ${plannedFireWallDamage} damage` : " · clear"} — click cells to extend, click a step to trim.
+              </span>
+              <button className="commandButton" disabled={plannedPath.length === 0} onClick={walkRoute} type="button">
+                Walk route
+              </button>
+              <button className="commandButton" onClick={() => setRoutePlan(null)} type="button">
+                Cancel
+              </button>
+            </>
+          )}
         </div>
       ) : null}
       <div className="battlefield">
@@ -562,7 +717,7 @@ export function BattlefieldBoard({
           const isFlashing = flashCells.includes(index);
           const className = `battleCell ${terrain} ${unit?.controllerId ?? ""} ${isActive ? "active" : ""} ${
             isObstacle ? "obstacle" : ""
-          } ${moveAction && !selectedCardAction ? "moveTarget" : ""} ${
+          } ${moveAction && !selectedCardAction && !planning ? "moveTarget" : ""} ${
             attackAction && !selectedCardAction ? "attackTarget" : ""
           } ${cardAction || spaceCardAction || teleportAction || placeTokenAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${dropTarget ? "dropTarget" : ""} ${
             isSwapSource ? "swapSource" : ""
@@ -761,8 +916,51 @@ export function BattlefieldBoard({
             );
           }
 
+          // Route-planning clicks take precedence: a next-step cell extends the
+          // chosen route; clicking a cell already on the route trims it back to
+          // there (clicking the last waypoint removes it). The normal one-click
+          // auto-move is suppressed while a route is being planned.
+          const routeStepIndex = planning ? plannedPath.indexOf(index) : -1;
+          const onRoute = routeStepIndex >= 0;
+          const nextStep = isRouteNextStep(index);
+          if (planning && (onRoute || nextStep)) {
+            const stepLabel = onRoute
+              ? `Trim route at ${getBattlefieldLabel(index)}`
+              : `Extend route to ${getBattlefieldLabel(index)}`;
+            return (
+              <button
+                aria-label={stepLabel}
+                className={`${className} routeCell ${onRoute ? "routeStep" : "routeNext"}`}
+                data-fx-cell={index}
+                data-fx-unit={unit?.id}
+                key={index}
+                onClick={() =>
+                  setRoutePlan((current) =>
+                    current
+                      ? { ...current, path: onRoute ? current.path.slice(0, routeStepIndex) : [...current.path, index] }
+                      : current
+                  )
+                }
+                title={stepLabel}
+                type="button"
+              >
+                {content}
+                {onRoute ? (
+                  <span className="routeBadge" aria-hidden="true">
+                    {routeStepIndex + 1}
+                  </span>
+                ) : null}
+              </button>
+            );
+          }
+
           const interactiveAction =
-            abilityAction ?? cardAction ?? spaceCardAction ?? teleportAction ?? placeTokenAction ?? (unit ? attackAction : moveAction);
+            abilityAction ??
+            cardAction ??
+            spaceCardAction ??
+            teleportAction ??
+            placeTokenAction ??
+            (unit ? attackAction : planning ? undefined : moveAction);
 
           if (interactiveAction && (!selectedCardAction || cardAction || spaceCardAction || teleportAction || placeTokenAction)) {
             const label = abilityAction

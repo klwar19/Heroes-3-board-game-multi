@@ -1339,12 +1339,15 @@ export const spellCards: CardLibrary = {
     implementationStatus: "implemented",
     source: spellSource("implosion")
   },
-  // Dispel (Basic Water): strip every removable ongoing effect off a unit (friend
-  // or foe). Modelled as a combat cast that targets a unit; the reachable grade
-  // rises with the Power paid (0 → bronze, 1 → silver, 2 → gold), exactly like
-  // Anti-Magic / Blind. The printed card also clears effects from the space the
-  // unit stands on; the engine models no space-bound (obstacle) effects, so only
-  // the unit's own effects are removed — see DISPEL_EFFECTS.
+  // Dispel (Basic Water): "Remove all ongoing effects from a space or a unit and
+  // the space it occupies." Targets either a unit (friend or foe) or a board
+  // space holding an obstacle/trap token. On a unit it strips that unit's
+  // removable ongoing effects AND clears any obstacle (Fire Wall / Force Field /
+  // sprung-able trap) on the space it stands on; on a bare space it clears that
+  // space's obstacle tokens. The reachable UNIT grade rises with the Power paid
+  // (0 → bronze, 1 → silver, 2 → gold), like Anti-Magic / Blind; obstacle tokens
+  // carry no grade, so a space-targeted Dispel removes them at any Power. See
+  // DISPEL_EFFECTS in the reducer.
   "spell.dispel": {
     id: "spell.dispel",
     name: "Dispel",
@@ -1354,12 +1357,12 @@ export const spellCards: CardLibrary = {
     spellLevel: "basic",
     spellSchools: ["water"],
     power: 0,
-    target: { type: "any-unit" },
+    target: { type: "unit-or-obstacle" },
     tags: [
       "spell",
       "basic",
       "water",
-      "Instant: Remove all ongoing effects from a unit. Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or gold. — OR — Instant: +1 Power."
+      "Instant: Remove all ongoing effects from a space, or a unit and the space it occupies. Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or gold. — OR — Instant: +1 Power."
     ],
     effect: { type: "DISPEL_EFFECTS", gradeByPower: { 0: "bronze", 1: "silver", 2: "gold" } },
     assets: {

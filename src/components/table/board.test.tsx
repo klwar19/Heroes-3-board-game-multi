@@ -77,34 +77,70 @@ describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
     return { onAction };
   }
 
-  it("draws a Fire Wall marker with its damage on the token's space", () => {
+  // Each visible obstacle / the caster's own trap draws its converted H3 sprite,
+  // not the old emoji. The Force Field is the blue energy barrier (C15SPE) and
+  // Quicksand the sandy pit (C17SPE) — they were swapped in the first conversion,
+  // so the Force Field must NOT resolve to the quicksand asset, and vice-versa.
+  function spriteOnCell(position: number): HTMLElement | null {
+    return document.querySelector<HTMLElement>(`[data-fx-cell="${position}"] .battlefieldToken .battlefieldTokenSprite`);
+  }
+
+  it("draws a Fire Wall with its flame sprite and its damage", () => {
     const state = createInitialGameState("board-fire-wall");
     state.combat!.battlefieldTokens = [{ id: "t1", kind: "fire_wall", position: 10, controllerId: "p1", damage: 2 }];
     renderBoard(state);
-    const cell = document.querySelector('[data-fx-cell="10"]');
-    const mark = cell!.querySelector(".battlefieldToken.fire_wall");
+    const mark = document.querySelector('[data-fx-cell="10"] .battlefieldToken.fire_wall');
     expect(mark, "a Fire Wall marker should render on space 10").toBeTruthy();
     expect(mark!.textContent).toContain("2");
+    expect(spriteOnCell(10)!.style.backgroundImage).toContain("fire-wall");
+    expect(mark!.textContent ?? "").not.toContain("🔥");
   });
 
-  it("shows the opponent only a face-down marker, but a revealed armed trap to all", () => {
+  it("renders the Force Field as the blue-barrier sprite (not the sandy quicksand art)", () => {
+    const state = createInitialGameState("board-force-field");
+    state.combat!.battlefieldTokens = [{ id: "t1", kind: "force_field", position: 10, controllerId: "p1" }];
+    renderBoard(state);
+    const mark = document.querySelector('[data-fx-cell="10"] .battlefieldToken.force_field');
+    expect(mark, "a Force Field marker should render on space 10").toBeTruthy();
+    const bg = spriteOnCell(10)!.style.backgroundImage;
+    expect(bg).toContain("force-field");
+    expect(bg).not.toContain("quicksand");
+    expect(mark!.textContent ?? "").not.toContain("🛡");
+  });
+
+  it("renders the caster's Quicksand as the sandy sprite (not the blue force-field art)", () => {
+    const state = createInitialGameState("board-quicksand");
+    state.combat!.battlefieldTokens = [{ id: "t1", kind: "quicksand", position: 10, controllerId: "p1", armed: true }];
+    renderBoard(state);
+    const mark = document.querySelector('[data-fx-cell="10"] .battlefieldToken.quicksand');
+    expect(mark, "a Quicksand marker should render on space 10").toBeTruthy();
+    const bg = spriteOnCell(10)!.style.backgroundImage;
+    expect(bg).toContain("quicksand");
+    expect(bg).not.toContain("force-field");
+    expect(mark!.textContent ?? "").not.toContain("🌀");
+  });
+
+  it("shows the opponent only a face-down token back, the caster the real Land Mine sprite", () => {
     const hiddenState = createInitialGameState("board-hidden-trap");
     // armed === undefined mirrors what getPlayerView leaves for an enemy trap.
     hiddenState.combat!.battlefieldTokens = [{ id: "t1", kind: "land_mine", position: 10, controllerId: "p2" }];
     renderBoard(hiddenState);
     const hidden = document.querySelector('[data-fx-cell="10"] .battlefieldToken');
     expect(hidden!.className).toContain("faceDown");
+    expect(hidden!.querySelector(".battlefieldTokenBack"), "a face-down back hides the trap").toBeTruthy();
+    expect(hidden!.querySelector(".battlefieldTokenSprite"), "no sprite leaks the trap to the opponent").toBeNull();
 
     cleanup();
 
-    const revealedState = createInitialGameState("board-revealed-trap");
-    revealedState.combat!.battlefieldTokens = [
-      { id: "t1", kind: "land_mine", position: 10, controllerId: "p2", armed: true, revealed: true, damage: 2 }
+    const ownState = createInitialGameState("board-own-trap");
+    ownState.combat!.battlefieldTokens = [
+      { id: "t1", kind: "land_mine", position: 10, controllerId: "p1", armed: true, damage: 2 }
     ];
-    renderBoard(revealedState);
-    const revealed = document.querySelector('[data-fx-cell="10"] .battlefieldToken');
-    expect(revealed!.className).not.toContain("faceDown");
-    expect(revealed!.className).toContain("revealed");
+    renderBoard(ownState);
+    const own = document.querySelector('[data-fx-cell="10"] .battlefieldToken');
+    expect(own!.className).not.toContain("faceDown");
+    expect(own!.textContent ?? "").toContain("armed");
+    expect(spriteOnCell(10)!.style.backgroundImage).toContain("land-mine");
   });
 
   it("runs the placement picker: empty cells place a token and a Stop button ends it", () => {
@@ -135,5 +171,90 @@ describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
     expect(stop, "a Stop placing button should render").toBeTruthy();
     fireEvent.click(stop!);
     expect(onAction).toHaveBeenCalledWith({ type: "CHOOSE_OPTION", playerId: "p1", choiceId: "choice_place", optionIndex: 1 });
+  });
+});
+
+describe("BattlefieldBoard — move route planner (Fire Wall on the field)", () => {
+  function byText(re: RegExp): HTMLButtonElement | undefined {
+    return Array.from(document.querySelectorAll("button")).find((b) => re.test(b.textContent ?? "")) as
+      | HTMLButtonElement
+      | undefined;
+  }
+
+  it("lets the player hand-pick a route and walks it as MOVE_UNIT with an explicit path", () => {
+    const state = createInitialGameState("board-route");
+    state.combat!.obstacles = [];
+    state.combat!.activeUnitId = "unit_p1_crusaders";
+    const mover = state.combat!.units.unit_p1_crusaders;
+    mover.position = 0;
+    mover.activatedThisRound = false;
+    mover.movedThisActivation = false;
+    // A Fire Wall on the field is what surfaces the planner.
+    state.combat!.battlefieldTokens = [{ id: "fw", kind: "fire_wall", position: 1, controllerId: "p2", damage: 3 }];
+    // The active unit's legal moves (the board builds its destination set from these).
+    const legalActions: LegalAction[] = [1, 2, 4].map((destination) => ({
+      label: `Move to ${destination}`,
+      action: { type: "MOVE_UNIT", playerId: "p1", unitId: "unit_p1_crusaders", destination }
+    }));
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={legalActions}
+          selectedCardAction={null}
+          onAction={onAction}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    // The planner is offered because a Fire Wall stands on the board.
+    const planBtn = byText(/plan route/i);
+    expect(planBtn, "a Plan route button should appear").toBeTruthy();
+    fireEvent.click(planBtn!);
+
+    // Cell 1 (the Fire Wall, adjacent to the unit) is now a route step — pick it.
+    const cell1 = document.querySelector<HTMLButtonElement>('button[data-fx-cell="1"]');
+    expect(cell1!.getAttribute("aria-label")).toMatch(/route/i);
+    fireEvent.click(cell1!);
+
+    // Walking the chosen route emits MOVE_UNIT carrying the explicit path.
+    const walkBtn = byText(/walk route/i);
+    expect(walkBtn, "a Walk route button should appear once a step is chosen").toBeTruthy();
+    fireEvent.click(walkBtn!);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_crusaders",
+      destination: 1,
+      path: [1]
+    });
+  });
+
+  it("does not offer the planner when no Fire Wall is on the board", () => {
+    const state = createInitialGameState("board-noroute");
+    state.combat!.obstacles = [];
+    state.combat!.activeUnitId = "unit_p1_crusaders";
+    state.combat!.units.unit_p1_crusaders.position = 0;
+    state.combat!.units.unit_p1_crusaders.activatedThisRound = false;
+    state.combat!.battlefieldTokens = [];
+    const legalActions: LegalAction[] = [
+      { label: "Move to 1", action: { type: "MOVE_UNIT", playerId: "p1", unitId: "unit_p1_crusaders", destination: 1 } }
+    ];
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={legalActions}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    expect(byText(/plan route/i), "no planner without a Fire Wall").toBeUndefined();
   });
 });

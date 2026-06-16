@@ -188,13 +188,14 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
 
   // Face-down traps (Quicksand / Land Mine) keep their position and kind public
   // — the token sits on the board — but whether each is armed or a decoy stays
-  // hidden from everyone but its controller until a unit reveals it.
+  // hidden from everyone but its controller. A trap is removed the instant a
+  // unit springs it (see walkMoveThroughTokens), so only the caster ever learns
+  // which of the face-down tokens still on the board are real.
   const combat = base.combat
     ? {
         ...base.combat,
         battlefieldTokens: base.combat.battlefieldTokens?.map((token) =>
           token.controllerId !== viewerPlayerId &&
-          !token.revealed &&
           (token.kind === "quicksand" || token.kind === "land_mine")
             ? { ...token, armed: undefined }
             : token
