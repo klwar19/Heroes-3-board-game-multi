@@ -321,6 +321,13 @@ function normalizeActionForMatch(action: GameAction): GameAction {
     };
   }
 
+  if (action.type === "MOVE_UNIT") {
+    // The optional `path` is the player's chosen route, validated by moveUnit
+    // itself (isLegalExplicitMovePath), not by the legality match — so match on
+    // the destination only.
+    return { type: "MOVE_UNIT", playerId: action.playerId, unitId: action.unitId, destination: action.destination };
+  }
+
   return action;
 }
 
@@ -10811,6 +10818,41 @@ function walkMoveThroughTokens(
   return { finalPosition, haltedByQuicksand: false };
 }
 
+/**
+ * Validates a player-chosen movement route for a NON-flying unit: the ordered
+ * spaces it ENTERS (start exclusive, `destination` last). It must be an
+ * orthogonal step-by-step walk, no longer than the unit's movement, that ends
+ * on `destination`, never revisits a space, and never enters a blocked space
+ * (another unit, an obstacle, a Force Field). Fire Walls / traps are NOT blocked
+ * — a route may deliberately cross them (and take the hit), which is the whole
+ * point of letting the player pick the path.
+ */
+function isLegalExplicitMovePath(
+  combat: CombatState,
+  unit: CombatUnitState,
+  start: number,
+  path: number[],
+  destination: number
+): boolean {
+  if (path.length === 0 || path.length > getUnitMoveRange(unit)) {
+    return false;
+  }
+  if (path[path.length - 1] !== destination) {
+    return false;
+  }
+  const blocked = getBlockedSpaces(combat, unit);
+  const seen = new Set<number>([start]);
+  let previous = start;
+  for (const cell of path) {
+    if (!isBattlefieldPosition(cell) || !isAdjacent(previous, cell) || blocked.has(cell) || seen.has(cell)) {
+      return false;
+    }
+    seen.add(cell);
+    previous = cell;
+  }
+  return true;
+}
+
 function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UNIT" }>): void {
   const combat = state.combat;
   const unit = combat?.units[action.unitId];
@@ -10825,11 +10867,19 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
   let finalPosition = destination;
   let haltedByQuicksand = false;
 
-  // With battlefield tokens in play, the move is walked space-by-space so Fire
-  // Walls, Land Mines and Quicksand can bite along the way. With none on the
-  // board this is skipped entirely, so ordinary movement is unchanged.
-  if ((combat.battlefieldTokens ?? []).length > 0) {
-    const enteredSpaces =
+  // The spaces the unit ENTERS. A player may dictate the exact route (action.path)
+  // — e.g. to brave a Fire Wall on a shortcut, or detour around one — otherwise
+  // the engine auto-routes (shortest, then least-hazard). Flyers never enter the
+  // spaces they pass over, so a route is meaningless for them (ignored). With no
+  // tokens and no chosen path, the walk is skipped and movement is unchanged.
+  let enteredSpaces: number[] | null = null;
+  if (action.path && unit.type !== "flying") {
+    if (!isLegalExplicitMovePath(combat, unit, from, action.path, destination)) {
+      throw new Error("That movement path is not legal.");
+    }
+    enteredSpaces = action.path;
+  } else if ((combat.battlefieldTokens ?? []).length > 0) {
+    enteredSpaces =
       unit.type === "flying"
         ? [destination]
         : (planMovePath(
@@ -10839,6 +10889,9 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
             getBlockedSpaces(combat, unit),
             getKnownHazardSpaces(combat, unit)
           ) ?? [destination]);
+  }
+
+  if (enteredSpaces) {
     const walked = walkMoveThroughTokens(state, unit, enteredSpaces);
     finalPosition = walked.finalPosition;
     haltedByQuicksand = walked.haltedByQuicksand;
