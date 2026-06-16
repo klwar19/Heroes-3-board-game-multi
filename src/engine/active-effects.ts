@@ -422,16 +422,24 @@ export function unitSpecialAbilitySuppressed(
  * the authoritative activeEffects — however the effect was just added (a
  * Disrupting Ray cast) or removed (Dispel, combat/round end). Keeping the flag
  * off the unit by default leaves it absent on snapshots that never suppress.
+ *
+ * Two passes: clear every flag first, then recompute. With all flags cleared,
+ * the suppression test below reads each unit's RAW abilities, so a Tower
+ * Titan's "ignore every ongoing effect" / a Gargoyle's "ignore ongoing spell
+ * effects" passive (honoured inside effectAppliesToUnit) is always visible when
+ * we decide whether the suppression even applies — those units shrug Disrupting
+ * Ray off and are never flagged, with no dependency on the previous flag value.
  */
 export function syncAbilitySuppression(state: GameState): void {
   if (!state.combat) {
     return;
   }
   for (const unit of Object.values(state.combat.units)) {
+    delete unit.abilitiesSuppressed;
+  }
+  for (const unit of Object.values(state.combat.units)) {
     if (unitSpecialAbilitySuppressed(state.activeEffects, unit)) {
       unit.abilitiesSuppressed = true;
-    } else if (unit.abilitiesSuppressed) {
-      delete unit.abilitiesSuppressed;
     }
   }
 }
