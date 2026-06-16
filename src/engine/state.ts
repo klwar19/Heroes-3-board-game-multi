@@ -1309,6 +1309,17 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Remove Obstacle (Basic Water): remove obstacles of the caster's choice
+       * from the Combat board — the random obstacle markers and any standing
+       * siege Wall or Gate (never units). Power 0/1/2 -> remove 1/2/3 of them,
+       * picked one at a time (the "remove-obstacle" choice). The "OR Instant:
+       * +1 Power" side is the universal power-source discard.
+       */
+      type: "REMOVE_OBSTACLE";
+      countByPower: Record<number, number>;
+    }
+  | {
+      /**
        * Ballistics: siege only — destroy 1 Wall or the Gate (basic), or the
        * Arrow Tower (expert side).
        */
@@ -2387,6 +2398,17 @@ export type GameEvent =
       type: "BATTLEFIELD_TOKEN_EXPIRED";
       tokenId: string;
       kind: BattlefieldTokenKind;
+      position: number;
+    }
+  | {
+      /**
+       * Remove Obstacle lifted one of the board's obstacle markers off `position`
+       * (Walls and the Gate report through FORTIFICATION_DESTROYED instead). The
+       * marker simply clears; the UI plays the crumble cue on that cell.
+       */
+      id: string;
+      type: "COMBAT_OBSTACLE_REMOVED";
+      playerId: PlayerId;
       position: number;
     }
   | {
@@ -4578,6 +4600,7 @@ export type PendingChoice =
         | "garrison"
         | "siege-gate"
         | "siege-demolish"
+        | "remove-obstacle"
         | "skeleton-reinforce"
         | "rogues-scout"
         | "combat-reposition"
@@ -4653,6 +4676,16 @@ export type PendingChoice =
       rogueScout?: { deckId: DeckId; cardId: CardId };
       /** siege-demolish: intact fortification positions and removals left. */
       siegeDemolish?: { positions: number[]; remaining: number };
+      /**
+       * remove-obstacle: the obstacles still standing (index-aligned with the
+       * options), each tagged so resolution knows whether to clear an obstacle
+       * marker or bring down a siege Wall / Gate. `remaining` caps how many more
+       * the caster may remove.
+       */
+      removeObstacle?: {
+        items: { position: number; kind: "obstacle" | "wall" | "gate" }[];
+        remaining: number;
+      };
       /** skeleton-reinforce: the bronze Few army units that may be flipped free. */
       skeletonReinforce?: { armyUnitIds: string[] };
       /** discard-pick: the candidate cards (index-aligned with options). */

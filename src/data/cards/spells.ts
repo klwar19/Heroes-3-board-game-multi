@@ -1886,6 +1886,43 @@ export const spellCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: spellSource("misfortune")
+  },
+  // Remove Obstacle (Basic Water, Instant): clear obstacles off the Combat
+  // board. The Power paid sets how many you take down (0/1/2 -> 1/2/3), chosen
+  // one at a time. Removable = the random obstacle markers and any standing
+  // siege Wall or Gate; units are never removed (they only block movement),
+  // matching the wiki note. Engine: REMOVE_OBSTACLE -> openRemoveObstacleChoice;
+  // each pick clears a marker (COMBAT_OBSTACLE_REMOVED) or fells a Wall/Gate
+  // (destroyFortification, the same path as Earthquake). The legal-action layer
+  // only offers the cast when something removable stands. The "OR Instant: +1
+  // Power" side is the universal power-source discard, so it needs no option.
+  "spell.remove_obstacle": {
+    id: "spell.remove_obstacle",
+    name: "Remove Obstacle",
+    kind: "spell",
+    // Instant (per the wiki), cast during Combat with no unit target — the same
+    // timing model as Earthquake (its siege sibling). No own-activation gate.
+    timing: "instant",
+    phaseLimit: ["combat"],
+    spellLevel: "basic",
+    spellSchools: ["water"],
+    power: 0,
+    tags: [
+      "spell",
+      "basic",
+      "water",
+      "Instant: Remove obstacles (except units) from the Combat board — obstacle markers, Walls or the Gate: Power 0: 1; Power 1: 2; Power 2: 3. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "REMOVE_OBSTACLE",
+      countByPower: { 0: 1, 1: 2, 2: 3 }
+    },
+    assets: {
+      cardImage: "/assets/spells-remove_obstacle.webp",
+      imageAlt: "Remove Obstacle card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("remove_obstacle")
   }
 };
 
@@ -1982,7 +2019,9 @@ export const spellDeckLegacy: string[] = [
   "spell.quicksand",
   "spell.land_mine",
   // Misfortune — Basic Fire.
-  "spell.misfortune"
+  "spell.misfortune",
+  // Remove Obstacle — Basic Water.
+  "spell.remove_obstacle"
 ];
 
 /** BINH split decks. */
@@ -2036,7 +2075,9 @@ export const spellDeckBinhBasic: string[] = [
   "spell.quicksand",
   "spell.fire_wall",
   // Misfortune — Basic Fire.
-  "spell.misfortune"
+  "spell.misfortune",
+  // Remove Obstacle — Basic Water.
+  "spell.remove_obstacle"
 ];
 
 export const spellDeckBinhExpert: string[] = [

@@ -135,7 +135,11 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   "UNIT_REMOVED",
   // Battlefield-obstacle spells: token placement and the bites/halts they cause.
   "BATTLEFIELD_TOKEN_PLACED",
-  "BATTLEFIELD_TOKEN_TRIGGERED"
+  "BATTLEFIELD_TOKEN_TRIGGERED",
+  // Remove Obstacle / Earthquake / siege: obstacle markers and fortifications
+  // clearing off the board carry their own crumble cue.
+  "COMBAT_OBSTACLE_REMOVED",
+  "FORTIFICATION_DESTROYED"
 ]);
 
 const OBSERVER_SEAT = "observer";
@@ -1582,6 +1586,50 @@ export default function Home() {
               if (inCombat) {
                 combatFxActive = true;
                 combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 600);
+              }
+              break;
+            }
+            case "COMBAT_OBSTACLE_REMOVED": {
+              // Remove Obstacle lifted an obstacle marker: the H3 crumble cue
+              // plays on that cell as the marker clears off the board.
+              const at = timeline;
+              window.setTimeout(() => playLibrarySound("spells/remove-obstacle"), at);
+              cues.push({
+                kind: "floater",
+                id: `${event.id}-removed`,
+                at: `cell:${event.position}`,
+                text: "Removed",
+                tone: "info",
+                delayMs: at + 120
+              });
+              timeline += 600;
+              if (inCombat) {
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 400);
+              }
+              break;
+            }
+            case "FORTIFICATION_DESTROYED": {
+              // A Wall, the Gate or the Arrow Tower comes down (Earthquake,
+              // Remove Obstacle, Ballistics, a Cyclops). The siege-wall impact
+              // cue cracks it; the Tower's own removal cry still plays on its
+              // UNIT_REMOVED. Previously these fell silently.
+              const at = timeline;
+              window.setTimeout(() => playLibrarySound("effects/siege-wall-hit"), at);
+              if (event.position !== undefined) {
+                cues.push({
+                  kind: "floater",
+                  id: `${event.id}-fall`,
+                  at: `cell:${event.position}`,
+                  text: event.kind === "gate" ? "Gate down" : "Wall down",
+                  tone: "info",
+                  delayMs: at + 120
+                });
+              }
+              timeline += 600;
+              if (inCombat) {
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 400);
               }
               break;
             }
