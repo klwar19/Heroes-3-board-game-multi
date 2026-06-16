@@ -61,9 +61,9 @@ const SCANLESS_ARTIFACTS = new Set([
   "plate_of_the_dying_light",
   // New-mechanic batch (wiki import): their card scans are not committed to
   // public/assets yet, so they fall back to the deck back until the scans land.
+  // (Spirit of Oppression's scan is committed, so it is not listed here.)
   "thunder_helmet",
-  "shamans_puppet",
-  "spirit_of_oppression"
+  "shamans_puppet"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
