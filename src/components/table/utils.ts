@@ -8,10 +8,52 @@ import {
   type GameAction,
   type GameEvent,
   type GameState,
+  type LegalAction,
+  type PlayerId,
   type ResourceCost,
   type ResourceKind,
   type TargetRef
 } from "@/engine";
+
+type SwapAction = Extract<GameAction, { type: "SWAP_COMBAT_UNITS" }>;
+
+/** All Tactics swap actions offered this snapshot (start-of-combat or expert). */
+export function getTacticsSwapActions(legalActions: LegalAction[]): SwapAction[] {
+  return legalActions
+    .map((legal) => legal.action)
+    .filter((action): action is SwapAction => action.type === "SWAP_COMBAT_UNITS");
+}
+
+/** Whether the viewer is in their start-of-combat Tactics window right now. */
+export function tacticsSetupActiveFor(state: GameState, viewerPlayerId: PlayerId): boolean {
+  return state.combat?.pendingTacticsSwaps?.[0] === viewerPlayerId;
+}
+
+/** Unit ids that can be the FIRST pick of a swap (they appear in some pair). */
+export function swapSelectableUnitIds(swaps: SwapAction[]): Set<string> {
+  const ids = new Set<string>();
+  for (const swap of swaps) {
+    ids.add(swap.unitIdA);
+    ids.add(swap.unitIdB);
+  }
+  return ids;
+}
+
+/**
+ * Given a chosen first unit, the partner unit id -> the swap action that pairs
+ * them. Each pair is unordered, so a unit's partners come from either side.
+ */
+export function swapPartnerActions(swaps: SwapAction[], selectedUnitId: string): Map<string, SwapAction> {
+  const partners = new Map<string, SwapAction>();
+  for (const swap of swaps) {
+    if (swap.unitIdA === selectedUnitId) {
+      partners.set(swap.unitIdB, swap);
+    } else if (swap.unitIdB === selectedUnitId) {
+      partners.set(swap.unitIdA, swap);
+    }
+  }
+  return partners;
+}
 
 /** Whether a hand card may pay a play's discard cost under the given filter. */
 export function costCardEligible(cardId: string, filter?: "spell" | "power-source"): boolean {
@@ -145,6 +187,23 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${unitName(state, event.attackerId)} retaliates against ${unitName(state, event.defenderId)}.`;
     case "UNIT_MOVED":
       return `${unitName(state, event.unitId)} moves ${getBattlefieldLabel(event.from)} -> ${getBattlefieldLabel(event.to)}.`;
+    case "BATTLEFIELD_TOKEN_PLACED": {
+      const names: Record<typeof event.kind, string> = {
+        force_field: "Force Field",
+        fire_wall: "Fire Wall",
+        quicksand: "Quicksand",
+        land_mine: "Land Mine"
+      };
+      return `${playerName(state, event.playerId)} places ${names[event.kind]} at ${getBattlefieldLabel(event.position)}.`;
+    }
+    case "BATTLEFIELD_TOKEN_REVEALED":
+      return `${unitName(state, event.unitId)} reveals a ${event.kind === "quicksand" ? "Quicksand" : "Land Mine"} at ${getBattlefieldLabel(event.position)} (${event.armed ? "armed" : "empty"}).`;
+    case "BATTLEFIELD_TOKEN_TRIGGERED":
+      return event.outcome === "stop"
+        ? `${unitName(state, event.unitId)} is caught in Quicksand at ${getBattlefieldLabel(event.position)} — its activation ends.`
+        : `${unitName(state, event.unitId)} takes ${event.amount ?? 0} from ${event.kind === "fire_wall" ? "a Fire Wall" : "a Land Mine"} at ${getBattlefieldLabel(event.position)}.`;
+    case "BATTLEFIELD_TOKEN_EXPIRED":
+      return `The ${event.kind === "force_field" ? "Force Field" : "spell token"} at ${getBattlefieldLabel(event.position)} fades.`;
     case "UNIT_DEFENDED":
       return `${unitName(state, event.unitId)} takes defense.`;
     case "UNIT_ACTIVATION_ENDED":
@@ -192,6 +251,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} gains a Secondary Hero at ${event.fieldId}.`;
     case "SPELL_CAST_CANCELLED":
       return `${playerName(state, event.cancelledByPlayerId)} ends ${cardName(event.spellCardId)} with ${cardName(event.cancelledByCardId)}.`;
+    case "SPELL_CAST_REFUNDED":
+      return event.reason;
     case "SPELL_REDIRECTED":
       return `${playerName(state, event.playerId)} redirects ${cardName(event.spellCardId)} to ${targetName(state, event.toTarget)} with ${cardName(event.byCardId)}.`;
     case "DAMAGE_ASSIGNED":
@@ -252,6 +313,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} reaches level ${event.level}${event.effects.length ? `: ${event.effects.join(", ")}` : ""}.`;
     case "MORALE_CHANGED":
       return `${playerName(state, event.playerId)} morale ${event.amount > 0 ? "+" : ""}${event.amount} (now ${event.total}).`;
+    case "FIELD_MORALE_IGNORED":
+      return `${playerName(state, event.playerId)} uses Crest of Valor to ignore the negative morale from the field.`;
     case "NEUTRAL_COMBAT_STARTED":
       return `${playerName(state, event.playerId)} engages the level ${event.difficulty} guards — deploy your units first.`;
     case "NEUTRAL_ARMY_REVEALED":

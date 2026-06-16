@@ -32,6 +32,8 @@ import {
   humanPlayerIds,
   requiredHeroDefeats,
   tryDeliverGrail,
+  applyMineFlag,
+  capturableEnemyMinesWithin,
   gainExperience,
   gainResources,
   gainTownCube,
@@ -738,6 +740,81 @@ export function resolveDimensionDoorChoice(state: GameState, playerId: PlayerId,
   }
 
   dimensionDoorTeleport(state, hero, destination);
+}
+
+/** Friendly Mine label for the View Earth option list. */
+function resourceMineLabel(resource: ResourceKind | undefined): string {
+  if (resource === "buildingMaterials") {
+    return "Building Materials";
+  }
+  if (resource === "valuables") {
+    return "Valuables";
+  }
+  return "Gold";
+}
+
+/**
+ * Opens the View Earth Mine choice after the spell is played. The candidate
+ * enemy Mines in reach are gathered by the same helper the legal-action gate
+ * used, so the offer and the capture stay in lockstep. With none in reach the
+ * spell fizzles (the card is already spent), mirroring Dimension Door / Town
+ * Portal returning when there is no legal target.
+ */
+export function openViewEarthChoice(state: GameState, playerId: PlayerId, range: number): void {
+  const adventure = state.adventure;
+  const hero = getMainHero(state, playerId);
+  if (!adventure || !hero || !hero.spaceId) {
+    return;
+  }
+
+  const mineSpaceIds = capturableEnemyMinesWithin(state, playerId, range);
+  if (mineSpaceIds.length === 0) {
+    return;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `View Earth: capture an enemy Mine within ${range} field${range === 1 ? "" : "s"}…`,
+    options: [
+      ...mineSpaceIds.map((spaceId) => ({
+        label: `Capture the ${resourceMineLabel(adventure.fields[spaceId]?.resource)} Mine at ${spaceId}`
+      })),
+      { label: "Cancel (no capture)" }
+    ],
+    context: "view-earth",
+    viewEarth: { heroId: hero.id, mineSpaceIds },
+    returnPhase: "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Resolves the View Earth Mine choice (CHOOSE_OPTION context "view-earth"). */
+export function resolveViewEarthChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (!choice || choice.type !== "OPTION_CHOICE" || !choice.viewEarth) {
+    throw new Error("There is no View Earth to resolve.");
+  }
+  const pending = choice.viewEarth;
+
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+
+  // The trailing "Cancel" option carries no Mine.
+  const mineSpaceId = pending.mineSpaceIds[optionIndex];
+  if (!state.adventure || !mineSpaceId) {
+    return;
+  }
+
+  const field = state.adventure.fields[mineSpaceId];
+  // Re-verify the Mine is still an enemy's at resolution (state cannot change
+  // mid-choice today, but this keeps the capture honest if that ever changes).
+  if (field && field.location === "mine" && field.flagOwnerId && field.flagOwnerId !== playerId) {
+    applyMineFlag(state, playerId, field);
+  }
 }
 
 /** Whether the walk must pause for player input after a step resolved. */
@@ -4682,6 +4759,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "dimension-door") {
     resolveDimensionDoorChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "view-earth") {
+    resolveViewEarthChoice(state, action.playerId, action.optionIndex);
     return;
   }
 

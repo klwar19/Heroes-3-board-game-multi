@@ -123,6 +123,27 @@ export function playerCannotSurrenderCombat(state: GameState, playerId: PlayerId
 }
 
 /**
+ * Crest of Valor (option B): when a Field the player visits would hand them a
+ * negative Morale token, spend one held IGNORE_FIELD_NEGATIVE_MORALE shield to
+ * ignore it. Removes exactly one matching player-scoped effect and returns true
+ * when one was spent (so the caller skips the Morale loss); returns false when
+ * the player holds no shield (the Morale loss applies normally). Single use —
+ * each shield negates one field Morale loss.
+ */
+export function consumeIgnoreFieldNegativeMorale(state: GameState, playerId: PlayerId): boolean {
+  const index = state.activeEffects.findIndex(
+    (effect) =>
+      effect.controllerId === playerId &&
+      effect.modifiers.some((modifier) => modifier.type === "IGNORE_FIELD_NEGATIVE_MORALE")
+  );
+  if (index < 0) {
+    return false;
+  }
+  state.activeEffects.splice(index, 1);
+  return true;
+}
+
+/**
  * Elemental Orbs (Driving Rain / Silt / Tempestuous Fire / the Firmament),
  * option A: the multiplier applied to the effective Power of a Spell `playerId`
  * is casting. Every in-play SPELL_POWER_DOUBLE effect whose school matches the
@@ -181,6 +202,43 @@ export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitS
   }
 
   return effect.target?.type === "unit" && effect.target.unitId === unit.id;
+}
+
+/**
+ * Recanter's Cloak: the combined spell-casting restriction in force right now,
+ * folded across every SPELL_CAST_RESTRICTION effect on the table (both options
+ * are global, so they bind both heroes). `lockAll` wins outright; otherwise
+ * `minPower` is the strictest (largest) floor any active restriction imposes.
+ * Read at the spell-resolution chokepoint and the cast-offer gate.
+ */
+export function getSpellCastRestriction(state: GameState): { lockAll: boolean; minPower: number } {
+  let lockAll = false;
+  let minPower = 0;
+  for (const effect of state.activeEffects) {
+    for (const modifier of effect.modifiers) {
+      if (modifier.type !== "SPELL_CAST_RESTRICTION") {
+        continue;
+      }
+      if (modifier.lockAll) {
+        lockAll = true;
+      }
+      if (modifier.minPower !== undefined) {
+        minPower = Math.max(minPower, modifier.minPower);
+      }
+    }
+  }
+  return { lockAll, minPower };
+}
+
+/**
+ * Whether a Spell that resolves at `finalPower` is wiped out by a Recanter's
+ * Cloak restriction — either a total lock, or a Power below the minimum (so a
+ * Power-0 cast does nothing). The spell still resolves and is discarded; it
+ * simply applies none of its effects, exactly like a shrugged-off Dwarf roll.
+ */
+export function spellNullifiedByRestriction(state: GameState, finalPower: number): boolean {
+  const restriction = getSpellCastRestriction(state);
+  return restriction.lockAll || finalPower < restriction.minPower;
 }
 
 /**
@@ -321,6 +379,13 @@ export function effectiveInitiative(unit: CombatUnitState, activeEffects: Active
         // only. The effect is player-scoped (effectAppliesToUnit already passed),
         // so the Ranged gate is the unit's own type — melee units are untouched.
         if (modifier.type === "RANGED_INITIATIVE_BONUS" && unit.type === "ranged") {
+          return sum + modifier.amount;
+        }
+        // Necklace of Swiftness's "+1 initiative to all your ground units": the
+        // player-scoped effect already matched the controller, so the gate here
+        // is the unit's own type — only GROUND units gain it (ranged and flying
+        // units are untouched).
+        if (modifier.type === "GROUND_INITIATIVE_BONUS" && unit.type === "ground") {
           return sum + modifier.amount;
         }
         return sum;

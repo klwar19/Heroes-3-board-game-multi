@@ -5,12 +5,14 @@
 import { ChevronDown, ChevronUp, Crown, Mountain, Plus, ScrollText, Shield, Sparkles, Swords } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ATTACKER_BACKLINE,
   ATTACKER_FRONTLINE,
   BATTLEFIELD_CELL_COUNT,
+  BATTLEFIELD_COLUMNS,
+  BATTLEFIELD_ROWS,
   DEFENDER_BACKLINE,
   DEFENDER_FRONTLINE,
   getBattlefieldLabel,
@@ -21,6 +23,7 @@ import {
   isUnitAlive,
   playerSpellCastsIgnoreLimit,
   sortUnitsForActivation,
+  type BattlefieldTokenState,
   type CombatTokenState,
   type CombatUnitState,
   type GameAction,
@@ -29,7 +32,19 @@ import {
   type PlayerId
 } from "@/engine";
 import { ARMY_UNIT_DRAG_TYPE } from "@/components/adventure/screen";
-import { actionKey, formatEvent, isBoardTargetCardAction, sameCardSelection, setUnitDragImage, unitName, type CardBoardAction } from "./utils";
+import {
+  actionKey,
+  formatEvent,
+  getTacticsSwapActions,
+  isBoardTargetCardAction,
+  sameCardSelection,
+  setUnitDragImage,
+  swapPartnerActions,
+  swapSelectableUnitIds,
+  tacticsSetupActiveFor,
+  unitName,
+  type CardBoardAction
+} from "./utils";
 import { useCardZoom } from "./zoom";
 
 /**
@@ -100,6 +115,72 @@ function TokenChips({ unit }: { unit: CombatUnitState }) {
   );
 }
 
+const BATTLEFIELD_TOKEN_VIEW: Record<BattlefieldTokenState["kind"], { glyph: string; label: string }> = {
+  force_field: { glyph: "🛡️", label: "Force Field" },
+  fire_wall: { glyph: "🔥", label: "Fire Wall" },
+  quicksand: { glyph: "🌀", label: "Quicksand" },
+  land_mine: { glyph: "💣", label: "Land Mine" }
+};
+
+/**
+ * Spell token sitting on a board space (Force Field / Fire Wall / Quicksand /
+ * Land Mine). Quicksand and Land Mine are face down: their controller sees
+ * armed/decoy, the opponent only a face-down marker until a unit springs it
+ * (player-view strips the `armed` flag, leaving it undefined here).
+ */
+function BattlefieldTokenMark({
+  token,
+  viewerPlayerId,
+  state
+}: {
+  token: BattlefieldTokenState;
+  viewerPlayerId: PlayerId;
+  state: GameState;
+}) {
+  const view = BATTLEFIELD_TOKEN_VIEW[token.kind];
+  const isTrap = token.kind === "quicksand" || token.kind === "land_mine";
+  // The opponent's hidden trap: player-view stripped the armed flag.
+  const faceDown = isTrap && !token.revealed && token.armed === undefined;
+  const owner = state.players[token.controllerId]?.name ?? token.controllerId;
+
+  let detail = "";
+  if (token.kind === "fire_wall") {
+    detail = `${token.damage ?? 0}`;
+  } else if (token.kind === "force_field") {
+    detail = token.expiresAtCombatRoundEnd === undefined ? "combat" : `r${token.expiresAtCombatRoundEnd}`;
+  } else if (faceDown) {
+    detail = "?";
+  } else if (token.revealed) {
+    detail = token.armed ? "!" : "✗";
+  } else {
+    detail = token.armed ? "armed" : "decoy";
+  }
+
+  const describe =
+    token.kind === "fire_wall"
+      ? `Fire Wall (${owner}) — ${token.damage ?? 0} damage to a unit stopping here or a ground/ranged unit passing through`
+      : token.kind === "force_field"
+        ? `Force Field (${owner}) — an obstacle; blocks non-flying movement${token.expiresAtCombatRoundEnd === undefined ? " for this combat" : ` until the end of combat round ${token.expiresAtCombatRoundEnd}`}`
+        : faceDown
+          ? `${view.label} (${owner}) — a face-down trap; you cannot see whether it is armed`
+          : token.revealed
+            ? `${view.label} (${owner}) — revealed ${token.armed ? "armed" : "decoy"}`
+            : `${view.label} (${owner}) — your token: ${token.armed ? "armed" : "decoy"}`;
+
+  return (
+    <span
+      aria-label={describe}
+      className={`battlefieldToken ${token.kind} ${faceDown ? "faceDown" : ""} ${token.revealed ? "revealed" : ""} ${
+        token.controllerId === viewerPlayerId ? "own" : "enemy"
+      }`}
+      title={describe}
+    >
+      <b aria-hidden="true">{faceDown ? "🎴" : view.glyph}</b>
+      {detail ? <small>{detail}</small> : null}
+    </span>
+  );
+}
+
 /** The Arrow Tower card beside the board during sieges. */
 function ArrowTowerCard({
   state,
@@ -146,6 +227,76 @@ function ArrowTowerCard({
   );
 }
 
+/**
+ * Ghost + arrow preview of a pending reposition — a Tactics swap or a Necklace
+ * of Swiftness one-space move. Rendered inside the rotating `.battlefield`, so
+ * its cell coordinates match the cards. Decorative only: `pointer-events` are
+ * off so the cells beneath stay clickable. For a swap the arrow is two-headed
+ * and a second ghost shows the partner returning to the source cell.
+ */
+function RepositionPreview({
+  kind,
+  sourcePosition,
+  destinationPosition,
+  movingImage,
+  swapBackImage
+}: {
+  kind: "move" | "swap";
+  sourcePosition: number;
+  destinationPosition: number;
+  movingImage?: string;
+  swapBackImage?: string;
+}) {
+  const cols = BATTLEFIELD_COLUMNS;
+  const rows = BATTLEFIELD_ROWS;
+  const center = (position: number) => ({ x: (position % cols) + 0.5, y: Math.floor(position / cols) + 0.5 });
+  const ghostStyle = (position: number): React.CSSProperties => ({
+    left: `${((position % cols) / cols) * 100}%`,
+    top: `${(Math.floor(position / cols) / rows) * 100}%`,
+    width: `${100 / cols}%`,
+    height: `${100 / rows}%`
+  });
+  const from = center(sourcePosition);
+  const to = center(destinationPosition);
+  return (
+    <div className="repositionOverlay" aria-hidden="true">
+      <svg className="repositionArrowSvg" viewBox={`0 0 ${cols} ${rows}`} preserveAspectRatio="none">
+        <defs>
+          <marker
+            id="repositionArrowHead"
+            markerUnits="userSpaceOnUse"
+            markerWidth="0.6"
+            markerHeight="0.6"
+            refX="0.45"
+            refY="0.3"
+            orient="auto"
+          >
+            <path d="M0,0 L0.6,0.3 L0,0.6 Z" fill="currentColor" />
+          </marker>
+        </defs>
+        <line
+          x1={from.x}
+          y1={from.y}
+          x2={to.x}
+          y2={to.y}
+          markerEnd="url(#repositionArrowHead)"
+          markerStart={kind === "swap" ? "url(#repositionArrowHead)" : undefined}
+        />
+      </svg>
+      {movingImage ? (
+        <div className="repositionGhost" style={ghostStyle(destinationPosition)}>
+          <img alt="" referrerPolicy="no-referrer" src={assetUrl(movingImage)} />
+        </div>
+      ) : null}
+      {kind === "swap" && swapBackImage ? (
+        <div className="repositionGhost" style={ghostStyle(sourcePosition)}>
+          <img alt="" referrerPolicy="no-referrer" src={assetUrl(swapBackImage)} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function BattlefieldBoard({
   state,
   viewerPlayerId,
@@ -177,6 +328,20 @@ export function BattlefieldBoard({
 }) {
   const combat = state.combat;
   const flipped = isBoardFlipped(state, viewerPlayerId);
+  // Repositioning UI state (Tactics swap / Necklace of Swiftness move):
+  //  - swapSelection: the first unit picked for a Tactics swap (click-to-select).
+  //  - hoverDestination: the candidate cell under the cursor, for the ghost+arrow.
+  //  - flashCells: cells to flash briefly the moment a reposition is confirmed.
+  const [swapSelection, setSwapSelection] = useState<string | null>(null);
+  const [hoverDestination, setHoverDestination] = useState<number | null>(null);
+  const [flashCells, setFlashCells] = useState<readonly number[]>([]);
+  useEffect(() => {
+    if (flashCells.length === 0) {
+      return;
+    }
+    const timer = setTimeout(() => setFlashCells([]), 750);
+    return () => clearTimeout(timer);
+  }, [flashCells]);
   // Health to render for a unit: a deferred value during an attack animation,
   // otherwise its true damage. A unit reads as alive while its shown damage is
   // below its max, so a killing blow keeps the card on the board until impact.
@@ -203,19 +368,20 @@ export function BattlefieldBoard({
     }
   }
 
-  // Teleport Spell: the caster picks an empty space from a combat-teleport
-  // choice. Map each offered position to its CHOOSE_OPTION so the empty cell
-  // lights up and lands the unit when clicked (works in both table views).
+  // Empty-space destination pickers: the Teleport Spell (combat-teleport) and
+  // Necklace of Swiftness's one-space move (combat-step) both ask the controller
+  // to pick an empty space. Map each offered position to its CHOOSE_OPTION so the
+  // empty cell lights up and lands the unit when clicked (works in both views).
   const teleportActionsByPosition = new Map<number, GameAction>();
   const teleportChoice = state.pendingChoice;
-  if (
-    combat &&
-    teleportChoice?.type === "OPTION_CHOICE" &&
-    teleportChoice.context === "combat-teleport" &&
-    teleportChoice.playerId === viewerPlayerId &&
-    teleportChoice.teleport
-  ) {
-    teleportChoice.teleport.positions.forEach((position, optionIndex) => {
+  if (combat && teleportChoice?.type === "OPTION_CHOICE" && teleportChoice.playerId === viewerPlayerId) {
+    const destinationPositions =
+      teleportChoice.context === "combat-teleport"
+        ? teleportChoice.teleport?.positions
+        : teleportChoice.context === "combat-step"
+          ? teleportChoice.step?.positions
+          : undefined;
+    destinationPositions?.forEach((position, optionIndex) => {
       teleportActionsByPosition.set(position, {
         type: "CHOOSE_OPTION",
         playerId: viewerPlayerId,
@@ -223,6 +389,44 @@ export function BattlefieldBoard({
         optionIndex
       });
     });
+  }
+
+  // Spell tokens on the board (Force Field / Fire Wall / Quicksand / Land Mine).
+  const battlefieldTokensByPosition = new Map<number, BattlefieldTokenState>();
+  for (const token of combat?.battlefieldTokens ?? []) {
+    battlefieldTokensByPosition.set(token.position, token);
+  }
+
+  // Quicksand / Land Mine placement: the caster drops the rest of the set one
+  // space at a time. Each offered empty space lights up like a cast target; the
+  // trailing "stop placing" option (no position) is surfaced as a banner button.
+  const placeTokenActionsByPosition = new Map<number, GameAction>();
+  let stopPlacingTokensAction: GameAction | null = null;
+  let placeTokensPrompt: string | null = null;
+  const placeChoice = state.pendingChoice;
+  if (
+    combat &&
+    placeChoice?.type === "OPTION_CHOICE" &&
+    placeChoice.context === "place-battlefield-tokens" &&
+    placeChoice.playerId === viewerPlayerId &&
+    placeChoice.placeTokens
+  ) {
+    placeChoice.placeTokens.positions.forEach((position, optionIndex) => {
+      placeTokenActionsByPosition.set(position, {
+        type: "CHOOSE_OPTION",
+        playerId: viewerPlayerId,
+        choiceId: placeChoice.id,
+        optionIndex
+      });
+    });
+    // The "stop placing" option is the last one, after every space option.
+    stopPlacingTokensAction = {
+      type: "CHOOSE_OPTION",
+      playerId: viewerPlayerId,
+      choiceId: placeChoice.id,
+      optionIndex: placeChoice.placeTokens.positions.length
+    };
+    placeTokensPrompt = placeChoice.prompt;
   }
 
   for (const legal of legalActions) {
@@ -261,8 +465,67 @@ export function BattlefieldBoard({
       : new Set([...DEFENDER_FRONTLINE, ...DEFENDER_BACKLINE])
     : new Set<number>();
 
+  // Tactics start-of-combat swap: a click-to-select board interaction. Only the
+  // dedicated setup window is handled on the board (it has no other actions, so
+  // it can never clash with normal play); the rare expert mid-combat swap keeps
+  // its command buttons. The pairwise swap buttons are suppressed in CommandDock
+  // during this window so the board is the single, clear control.
+  const tacticsSetup = Boolean(combat) && tacticsSetupActiveFor(state, viewerPlayerId);
+  const swapActions = tacticsSetup ? getTacticsSwapActions(legalActions) : [];
+  const swapSelectable = swapSelectableUnitIds(swapActions);
+  const activeSwapSelection = swapSelection && swapSelectable.has(swapSelection) ? swapSelection : null;
+  const swapPartners = activeSwapSelection
+    ? swapPartnerActions(swapActions, activeSwapSelection)
+    : new Map<string, GameAction>();
+
+  // The unit being repositioned and the cells it may go to, for the ghost+arrow
+  // overlay. Either an open one-space move (combat-step choice) or a Tactics swap
+  // with the first unit picked.
+  const stepChoice = state.pendingChoice;
+  const moveContext =
+    combat &&
+    stepChoice?.type === "OPTION_CHOICE" &&
+    stepChoice.context === "combat-step" &&
+    stepChoice.step &&
+    stepChoice.playerId === viewerPlayerId
+      ? { unitId: stepChoice.step.unitId, candidates: stepChoice.step.positions }
+      : null;
+  const repositionKind: "move" | "swap" | null = moveContext ? "move" : activeSwapSelection ? "swap" : null;
+  const repositionSourceUnitId = moveContext ? moveContext.unitId : activeSwapSelection;
+  const repositionSourcePosition =
+    repositionSourceUnitId && combat ? combat.units[repositionSourceUnitId]?.position ?? null : null;
+  const repositionCandidates = moveContext
+    ? moveContext.candidates
+    : activeSwapSelection && combat
+      ? [...swapPartners.keys()]
+          .map((unitId) => combat.units[unitId]?.position)
+          .filter((position): position is number => position !== undefined)
+      : [];
+  const repositionGhostImage =
+    repositionSourceUnitId && combat ? combat.units[repositionSourceUnitId]?.assets?.cardImage : undefined;
+  // A swap also moves the hovered partner back onto the source cell — its art is
+  // the second ghost in that exchange.
+  const hoveredSwapPartnerUnit =
+    repositionKind === "swap" && combat && hoverDestination !== null
+      ? Object.values(combat.units).find(
+          (candidate) => candidate.position === hoverDestination && swapPartners.has(candidate.id)
+        )
+      : undefined;
+
   return (
     <div className={`boardFelt ${flipped ? "flipped" : ""}`} aria-label="Combat board">
+      {stopPlacingTokensAction ? (
+        <div className="placeTokensBanner" role="status">
+          <span>{placeTokensPrompt ?? "Place a token on an empty space, or stop."}</span>
+          <button
+            className="commandButton"
+            onClick={() => stopPlacingTokensAction && onAction(stopPlacingTokensAction)}
+            type="button"
+          >
+            Stop placing tokens
+          </button>
+        </div>
+      ) : null}
       <div className="battlefield">
         {Array.from({ length: BATTLEFIELD_CELL_COUNT }, (_, index) => {
           const unit = unitsByPosition.get(index);
@@ -278,16 +541,42 @@ export function BattlefieldBoard({
           const spaceCardAction = spaceCardActionsByPosition.get(index);
           // Teleport moves a unit to an EMPTY destination space.
           const teleportAction = !unit ? teleportActionsByPosition.get(index) : undefined;
+          // Quicksand / Land Mine placement targets an EMPTY space.
+          const placeTokenAction = !unit ? placeTokenActionsByPosition.get(index) : undefined;
+          const battlefieldToken = battlefieldTokensByPosition.get(index);
           const abilityAction = unit ? abilityTargetActions.get(unit.id) : undefined;
           const isActive = Boolean(unit && combat?.activeUnitId === unit.id);
           const isFlipping = Boolean(unit && flippedUnitIds?.has(unit.id));
           const dropTarget = placing && ownRows.has(index) && !unit && !isObstacle;
+          // Tactics swap roles for this cell's unit (only during the setup window).
+          const isSwapSelected = Boolean(unit && activeSwapSelection === unit.id);
+          const isSwapTarget = Boolean(unit && swapPartners.has(unit.id));
+          const isSwapSource = Boolean(
+            unit && tacticsSetup && swapSelectable.has(unit.id) && !isSwapSelected && !isSwapTarget
+          );
+          // The unit currently being moved one space (combat-step) — its origin.
+          const isRepositionSource = Boolean(unit && repositionKind === "move" && repositionSourceUnitId === unit.id);
+          // A candidate cell of the open reposition (empty move destinations, or
+          // swap-partner cells), used to drive the ghost+arrow hover.
+          const isRepositionCandidate = repositionKind !== null && repositionCandidates.includes(index);
+          const isFlashing = flashCells.includes(index);
           const className = `battleCell ${terrain} ${unit?.controllerId ?? ""} ${isActive ? "active" : ""} ${
             isObstacle ? "obstacle" : ""
           } ${moveAction && !selectedCardAction ? "moveTarget" : ""} ${
             attackAction && !selectedCardAction ? "attackTarget" : ""
-          } ${cardAction || spaceCardAction || teleportAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${dropTarget ? "dropTarget" : ""}`;
+          } ${cardAction || spaceCardAction || teleportAction || placeTokenAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${dropTarget ? "dropTarget" : ""} ${
+            isSwapSource ? "swapSource" : ""
+          } ${isSwapTarget ? "swapTarget" : ""} ${isSwapSelected ? "swapSelected" : ""} ${
+            isRepositionSource ? "repositionSource" : ""
+          } ${isFlashing ? "fxRepositionFlash" : ""}`;
           const health = unit ? Math.max(0, unit.maxHealth - shownDamage(unit)) : 0;
+          // Hovering a candidate cell drives the ghost + arrow toward it.
+          const repositionHoverProps = isRepositionCandidate
+            ? {
+                onMouseEnter: () => setHoverDestination(index),
+                onMouseLeave: () => setHoverDestination((current) => (current === index ? null : current))
+              }
+            : {};
 
           const dropProps = dropTarget
             ? {
@@ -360,14 +649,17 @@ export function BattlefieldBoard({
           }
 
           const tint = unit ? tintedUnits?.get(unit.id) : undefined;
-          // Clone Spell: a Clone Token shows the cloned unit's own art cropped
-          // into a round, player-coloured token (the physical Clone Token), so it
-          // reads at a glance as a copy rather than the real stack.
+          const tokenMark = battlefieldToken ? (
+            <BattlefieldTokenMark state={state} token={battlefieldToken} viewerPlayerId={viewerPlayerId} />
+          ) : null;
+          // Clone Spell: a Clone is shown as the cloned unit's own card washed
+          // blue (a ghostly "clone" tint) with a Clone badge, so it reads at a
+          // glance as a magical copy rather than the real stack.
           const isClone = Boolean(unit?.cloneOfUnitId);
           const content = unit ? (
             <article
               className={`boardCard ${unit.controllerId} ${isFlipping ? "flipping" : ""} ${tint ? `fxTint-${tint}` : ""} ${
-                isClone ? "cloneToken" : ""
+                isClone ? "cloneCard" : ""
               }`}
             >
               {unit.assets?.cardImage ? (
@@ -389,6 +681,7 @@ export function BattlefieldBoard({
                 </span>
               </div>
               <TokenChips unit={unit} />
+              {tokenMark}
               {isActive ? <span className="activeRing" aria-hidden="true" /> : null}
               {isFlipping ? <span className="flipBadge">Flipped to Few</span> : null}
               {isClone ? (
@@ -398,7 +691,7 @@ export function BattlefieldBoard({
               ) : null}
             </article>
           ) : (
-            <span className="emptyBoardMark" aria-hidden="true" />
+            tokenMark ?? <span className="emptyBoardMark" aria-hidden="true" />
           );
 
           // During deployment your placed units stay draggable to new spaces.
@@ -415,10 +708,63 @@ export function BattlefieldBoard({
                 }
               : {};
 
-          const interactiveAction =
-            abilityAction ?? cardAction ?? spaceCardAction ?? teleportAction ?? (unit ? attackAction : moveAction);
+          // Tactics swap (start-of-combat window): click a unit to select it,
+          // then click an ally to switch them. Clicking the selected unit again
+          // clears the pick. Takes precedence over plain inspect during setup.
+          if (unit && (isSwapSource || isSwapTarget || isSwapSelected)) {
+            const swapClick = () => {
+              if (isSwapSelected) {
+                setSwapSelection(null);
+                setHoverDestination(null);
+                return;
+              }
+              if (isSwapTarget) {
+                const action = swapPartners.get(unit.id);
+                if (action) {
+                  setFlashCells(
+                    repositionSourcePosition !== null ? [repositionSourcePosition, index] : [index]
+                  );
+                  setSwapSelection(null);
+                  setHoverDestination(null);
+                  onAction(action);
+                }
+                return;
+              }
+              setSwapSelection(unit.id);
+              setHoverDestination(null);
+            };
+            const swapLabel = isSwapSelected
+              ? `Deselect ${unit.name}`
+              : isSwapTarget
+                ? `Switch ${combat?.units[activeSwapSelection ?? ""]?.name ?? "unit"} with ${unit.name}`
+                : `Select ${unit.name} to switch`;
+            return (
+              <button
+                aria-label={swapLabel}
+                className={className}
+                data-fx-cell={index}
+                data-fx-unit={unit.id}
+                key={index}
+                onClick={swapClick}
+                onMouseEnter={() => {
+                  onInspect(unit.id);
+                  if (isSwapTarget) {
+                    setHoverDestination(index);
+                  }
+                }}
+                onMouseLeave={isSwapTarget ? () => setHoverDestination((current) => (current === index ? null : current)) : undefined}
+                title={swapLabel}
+                type="button"
+              >
+                {content}
+              </button>
+            );
+          }
 
-          if (interactiveAction && (!selectedCardAction || cardAction || spaceCardAction || teleportAction)) {
+          const interactiveAction =
+            abilityAction ?? cardAction ?? spaceCardAction ?? teleportAction ?? placeTokenAction ?? (unit ? attackAction : moveAction);
+
+          if (interactiveAction && (!selectedCardAction || cardAction || spaceCardAction || teleportAction || placeTokenAction)) {
             const label = abilityAction
               ? `Ability target: ${unit?.name}`
               : cardAction
@@ -426,10 +772,14 @@ export function BattlefieldBoard({
                 : spaceCardAction
                   ? `Cast on ${getBattlefieldLabel(index)}${unit ? ` (over ${unit.name})` : ""}`
                   : teleportAction
-                    ? `Teleport to ${getBattlefieldLabel(index)}`
-                    : unit
-                      ? `Attack ${unit?.name}`
-                      : `Move to ${getBattlefieldLabel(index)}`;
+                    ? repositionKind === "move"
+                      ? `Move to ${getBattlefieldLabel(index)}`
+                      : `Teleport to ${getBattlefieldLabel(index)}`
+                    : placeTokenAction
+                      ? `Place token on ${getBattlefieldLabel(index)}`
+                      : unit
+                        ? `Attack ${unit?.name}`
+                        : `Move to ${getBattlefieldLabel(index)}`;
             return (
               <button
                 aria-label={label}
@@ -437,8 +787,16 @@ export function BattlefieldBoard({
                 data-fx-cell={index}
                 data-fx-unit={unit?.id}
                 key={index}
-                onClick={() => onAction(interactiveAction)}
+                onClick={() => {
+                  // A unit arriving on an empty space flashes the destination.
+                  if (teleportAction) {
+                    setFlashCells([index]);
+                    setHoverDestination(null);
+                  }
+                  onAction(interactiveAction);
+                }}
                 onMouseEnter={unit ? () => onInspect(unit.id) : undefined}
+                {...repositionHoverProps}
                 title={label}
                 type="button"
               >
@@ -478,6 +836,15 @@ export function BattlefieldBoard({
             </div>
           );
         })}
+        {repositionKind && repositionSourcePosition !== null && hoverDestination !== null ? (
+          <RepositionPreview
+            destinationPosition={hoverDestination}
+            kind={repositionKind}
+            movingImage={repositionGhostImage}
+            sourcePosition={repositionSourcePosition}
+            swapBackImage={hoveredSwapPartnerUnit?.assets?.cardImage}
+          />
+        ) : null}
       </div>
       {arrowTower && isUnitAlive(arrowTower) ? (
         <ArrowTowerCard
@@ -854,7 +1221,16 @@ export function CommandDock({
   onAction: (action: GameAction) => void;
   onReset: () => void;
 }) {
-  const commands = legalActions.filter((legal) => COMMAND_ACTION_TYPES.has(legal.action.type));
+  // During the start-of-combat Tactics window the swap is driven on the board
+  // (click a unit, then an ally) — drop the pairwise swap buttons so the board
+  // is the single, clear control. "Keep positions" (FINISH_TACTICS) stays. The
+  // rare expert mid-combat swap is not a setup window, so it keeps its buttons.
+  const inTacticsSetup = tacticsSetupActiveFor(state, viewerPlayerId);
+  const commands = legalActions.filter(
+    (legal) =>
+      COMMAND_ACTION_TYPES.has(legal.action.type) &&
+      !(inTacticsSetup && legal.action.type === "SWAP_COMBAT_UNITS")
+  );
   const activeUnitId = state.combat?.activeUnitId;
   const activeUnit = activeUnitId ? state.combat?.units[activeUnitId] : undefined;
   const outcome = state.combat?.outcome;

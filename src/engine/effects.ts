@@ -31,12 +31,14 @@ export const implementedCardEffectTypes = [
   "EAGLE_EYE_DIG",
   "TELEPORT_HERO_TO_TOWN",
   "DIMENSION_DOOR",
+  "VIEW_EARTH",
   "DISCOVER_TILE_CARD",
   "CLEAR_RETALIATION",
   "IGNORE_ATTACK_DIE",
   "IGNORE_ATTACK_DIE_RESULT",
   "ACTIVATE_RANGED_UNIT",
   "CAST_FROM_SPELL_DISCARD",
+  "NEGATE_ATTACK",
   "CREATE_SPELL_IMMUNITY",
   "CREATE_FIRE_SHIELD",
   "CREATE_INITIATIVE_BUFF",
@@ -55,6 +57,7 @@ export const implementedCardEffectTypes = [
   "FORGETFULNESS",
   "BERSERK",
   "TELEPORT_UNIT",
+  "MOVE_UNIT_ADJACENT",
   "CLONE_UNIT",
   "DISPEL_EFFECTS",
   "IGNORE_DEFENSE",
@@ -79,7 +82,11 @@ export const implementedCardEffectTypes = [
   "VISIONS_SCRY",
   "INTERFERE_SPELL",
   "DISRUPTING_RAY",
-  "SACRIFICE_TRANSFER"
+  "SACRIFICE_TRANSFER",
+  "PLACE_FORCE_FIELD",
+  "PLACE_FIRE_WALL",
+  "PLACE_HIDDEN_TOKENS",
+  "REMOVE_ACTIVE_EFFECT"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {
@@ -265,9 +272,11 @@ export function getSpellDamageAmount(card: CardDefinition, power: number): numbe
 
 export function getEffectAmount(effect: EffectDefinition, mode: CardPlayMode): number {
   // Interference carries an explicit expert amount (the Defense / spell-damage
-  // reduction it grants), so it reads it the same way the stat cards do.
+  // reduction it grants), so it reads it the same way the stat cards do. An
+  // artifact without an expert side (Plate of the Dying Light) falls back to the
+  // basic amount — its expert play is never offered, so this is only defensive.
   if (effect.type === "INTERFERE_SPELL") {
-    return mode === "expert" ? effect.expertAmount : effect.amount;
+    return mode === "expert" ? (effect.expertAmount ?? effect.amount) : effect.amount;
   }
 
   if (

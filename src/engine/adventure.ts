@@ -8,7 +8,12 @@ import { hasInternalBorder } from "@/data/map/borders";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import type { LocationInteraction, TileDefinition } from "@/data/map/types";
-import { expireEffectsForGameRoundEnd, expireEffectsForTurnEnd, releaseEndedOngoingCards } from "./active-effects";
+import {
+  consumeIgnoreFieldNegativeMorale,
+  expireEffectsForGameRoundEnd,
+  expireEffectsForTurnEnd,
+  releaseEndedOngoingCards
+} from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { applyUnitSideRules } from "./ruleset";
@@ -1181,7 +1186,7 @@ function flagField(state: GameState, playerId: PlayerId, field: MapFieldState): 
   });
 }
 
-function applyMineFlag(state: GameState, playerId: PlayerId, field: MapFieldState): void {
+export function applyMineFlag(state: GameState, playerId: PlayerId, field: MapFieldState): void {
   const previousOwnerId = field.flagOwnerId;
   const resource = field.resource ?? "gold";
   const amount = field.amount ?? 0;
@@ -1212,6 +1217,44 @@ function applyMineFlag(state: GameState, playerId: PlayerId, field: MapFieldStat
     field.everFlagged = true;
     gainResources(state, playerId, { [resource]: amount }, `first to flag the ${resource} mine`);
   }
+}
+
+/**
+ * Enemy-owned Mine fields within `range` straight-line hexes of the player's
+ * main Hero — the candidates the View Earth spell may capture. A Mine counts
+ * only when another player's Faction cube is on it (an unflagged or own Mine is
+ * skipped). Sorted by space id so every client builds the same option list.
+ * Shared by the legal-action gate and the spell's resolver so the offer and the
+ * capture can never disagree.
+ */
+export function capturableEnemyMinesWithin(
+  state: GameState,
+  playerId: PlayerId,
+  range: number
+): MapSpaceId[] {
+  const adventure = state.adventure;
+  const hero = getMainHero(state, playerId);
+  const origin = hero?.spaceId ? parseHexSpaceId(hero.spaceId) : null;
+  if (!adventure || !origin || range <= 0) {
+    return [];
+  }
+
+  const mines: MapSpaceId[] = [];
+  for (const field of Object.values(adventure.fields)) {
+    if (field.location !== "mine") {
+      continue;
+    }
+    // "Choose enemy Mine": only Mines flagged by another player can be taken.
+    if (!field.flagOwnerId || field.flagOwnerId === playerId) {
+      continue;
+    }
+    const coord = parseHexSpaceId(field.spaceId);
+    if (!coord || hexDistance(origin, coord) > range) {
+      continue;
+    }
+    mines.push(field.spaceId);
+  }
+  return mines.sort();
 }
 
 function applyTownFlag(state: GameState, playerId: PlayerId, field: MapFieldState): void {
@@ -1884,7 +1927,18 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "GAIN_MORALE":
-        changeMorale(state, visit.playerId, step.amount);
+        // Crest of Valor (map side): a held shield negates one negative-morale
+        // token handed out by a Field. Positive morale and combat-loss morale
+        // are untouched — only a Field's own negative token is ignored here.
+        if (step.amount < 0 && consumeIgnoreFieldNegativeMorale(state, visit.playerId)) {
+          appendEvent(state, {
+            type: "FIELD_MORALE_IGNORED",
+            playerId: visit.playerId,
+            fieldId: visit.fieldId
+          });
+        } else {
+          changeMorale(state, visit.playerId, step.amount);
+        }
         break;
       case "ROLL_RESOURCE_DICE":
         rollResourceDice(state, visit, step.count);
