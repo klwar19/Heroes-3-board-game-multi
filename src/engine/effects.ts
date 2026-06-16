@@ -53,6 +53,7 @@ export const implementedCardEffectTypes = [
   "FORGETFULNESS",
   "BERSERK",
   "TELEPORT_UNIT",
+  "CLONE_UNIT",
   "DISPEL_EFFECTS",
   "IGNORE_DEFENSE",
   "BALLISTA_SPECIALTY",
@@ -666,6 +667,13 @@ export function describeCardEffect(card: CardDefinition): string {
       .map(([power, grade]) => `${power}:${grade}`)
       .join(", ");
     return `remove every removable ongoing effect from the selected unit (reachable grade by power ${breakpoints})`;
+  }
+
+  if (card.effect.type === "CLONE_UNIT") {
+    const breakpoints = Object.entries(card.effect.gradeByPower)
+      .map(([power, grade]) => `${power}:${grade}`)
+      .join(", ");
+    return `place a 1-Health copy of one of your units on an adjacent empty space — destroyed by any damage, by being attacked, or if its original leaves (reachable grade by power ${breakpoints})`;
   }
 
   if (card.effect.type === "IGNORE_DEFENSE") {
