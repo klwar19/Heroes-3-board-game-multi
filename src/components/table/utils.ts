@@ -8,10 +8,52 @@ import {
   type GameAction,
   type GameEvent,
   type GameState,
+  type LegalAction,
+  type PlayerId,
   type ResourceCost,
   type ResourceKind,
   type TargetRef
 } from "@/engine";
+
+type SwapAction = Extract<GameAction, { type: "SWAP_COMBAT_UNITS" }>;
+
+/** All Tactics swap actions offered this snapshot (start-of-combat or expert). */
+export function getTacticsSwapActions(legalActions: LegalAction[]): SwapAction[] {
+  return legalActions
+    .map((legal) => legal.action)
+    .filter((action): action is SwapAction => action.type === "SWAP_COMBAT_UNITS");
+}
+
+/** Whether the viewer is in their start-of-combat Tactics window right now. */
+export function tacticsSetupActiveFor(state: GameState, viewerPlayerId: PlayerId): boolean {
+  return state.combat?.pendingTacticsSwaps?.[0] === viewerPlayerId;
+}
+
+/** Unit ids that can be the FIRST pick of a swap (they appear in some pair). */
+export function swapSelectableUnitIds(swaps: SwapAction[]): Set<string> {
+  const ids = new Set<string>();
+  for (const swap of swaps) {
+    ids.add(swap.unitIdA);
+    ids.add(swap.unitIdB);
+  }
+  return ids;
+}
+
+/**
+ * Given a chosen first unit, the partner unit id -> the swap action that pairs
+ * them. Each pair is unordered, so a unit's partners come from either side.
+ */
+export function swapPartnerActions(swaps: SwapAction[], selectedUnitId: string): Map<string, SwapAction> {
+  const partners = new Map<string, SwapAction>();
+  for (const swap of swaps) {
+    if (swap.unitIdA === selectedUnitId) {
+      partners.set(swap.unitIdB, swap);
+    } else if (swap.unitIdB === selectedUnitId) {
+      partners.set(swap.unitIdA, swap);
+    }
+  }
+  return partners;
+}
 
 /** Whether a hand card may pay a play's discard cost under the given filter. */
 export function costCardEligible(cardId: string, filter?: "spell" | "power-source"): boolean {

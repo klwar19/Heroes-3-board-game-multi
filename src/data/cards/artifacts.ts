@@ -42,10 +42,9 @@ const SCANLESS_ARTIFACTS = new Set([
   // so it falls back to the deck back here. Its companion Ambassador's Sash
   // does have a scan.
   "diplomats_ring",
-  // Crest of Valor (Fortress) and Necklace of Swiftness (Stretch Goals 2024):
-  // no card scan committed to public/assets yet, so they fall back to the deck
-  // back until the scans land.
-  "crest_of_valor",
+  // Crest of Valor (Fortress) has its wiki card scan committed; Necklace of
+  // Swiftness (Stretch Goals 2024) has no scan yet, so only it falls back to the
+  // deck back until its scan lands.
   "necklace_of_swiftness"
 ]);
 

@@ -690,6 +690,126 @@ button.battleCell {
   outline-offset: -3px;
 }
 
+/* --- Repositioning: Tactics swap & Necklace of Swiftness one-space move ----- */
+
+/* First pick: your swappable units glow, inviting a click to select. */
+.battleCell.swapSource::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 2px dashed rgb(120 200 235 / 82%);
+  border-radius: 6px;
+  box-shadow: inset 0 0 16px rgb(120 200 235 / 22%);
+  pointer-events: none;
+}
+
+/* The unit you picked to move/swap — a steady bright ring around its origin. */
+.battleCell.swapSelected::before,
+.battleCell.repositionSource::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border: 3px solid rgb(255 227 155 / 95%);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 18px rgb(255 224 122 / 32%),
+    0 0 18px rgb(255 224 122 / 55%);
+  pointer-events: none;
+}
+
+/* Where it can go — pulsing destination / swap-partner cells. */
+.battleCell.swapTarget::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 2px solid rgb(120 200 235 / 95%);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 18px rgb(120 200 235 / 32%),
+    0 0 18px rgb(120 200 235 / 48%);
+  pointer-events: none;
+  animation: pulseTarget 1.2s ease-in-out infinite;
+}
+
+.battleCell.swapSource:hover,
+.battleCell.swapTarget:hover,
+.battleCell.swapSelected:hover {
+  outline: 3px solid rgb(255 227 155 / 58%);
+  outline-offset: -3px;
+}
+
+/* Confirm flash: a quick bright pop on the cell a unit lands in. */
+.battleCell.fxRepositionFlash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  background: radial-gradient(circle, rgb(255 244 200 / 72%), rgb(255 224 122 / 0%) 70%);
+  pointer-events: none;
+  z-index: 4;
+  animation: repositionFlash 0.72s ease-out forwards;
+}
+
+@keyframes repositionFlash {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+
+  35% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.22);
+  }
+}
+
+/* Ghost + arrow preview overlay (a child of .battlefield, so it rotates with
+   the board and its cell coordinates line up with the cards). */
+.repositionOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.repositionArrowSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: rgb(255 224 122 / 95%);
+  overflow: visible;
+}
+
+.repositionArrowSvg line {
+  stroke: rgb(255 224 122 / 92%);
+  stroke-width: 0.11;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 2px rgb(0 0 0 / 65%));
+}
+
+.repositionGhost {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.repositionGhost img {
+  width: 72%;
+  aspect-ratio: 5 / 7;
+  object-fit: cover;
+  border-radius: 6px;
+  opacity: 0.55;
+  border: 2px solid rgb(255 244 200 / 80%);
+  box-shadow: 0 0 14px rgb(255 224 122 / 55%);
+  animation: pulseTarget 1.2s ease-in-out infinite;
+}
+
 .emptyBoardMark {
   width: 1px;
   height: 1px;
