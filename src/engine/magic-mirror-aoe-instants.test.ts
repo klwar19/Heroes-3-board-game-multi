@@ -259,6 +259,34 @@ describe("Magic Mirror reflects an instant combat debuff off your unit", () => {
     expect(debuffEffectOn(state, "unit_p2_skeletons", "DEFENSE_BONUS")).toBeUndefined();
   });
 
+  it("bounces the debuff as a pure instant — never an ongoing effect or token", () => {
+    // Keep the window open after the mirror (p2 still holds a Bloodlust) so the
+    // still-pending attack can be inspected before it resolves.
+    let state = p2AttacksGriffins(["spell.magic_mirror"], ["spell.curse", "spell.bloodlust"]);
+    state.players.p2.combatStats.spellLimitBonusThisRound = 3;
+    state = applyOk(state, reactionFor(state, "p2", "spell.curse")!.action);
+    state = applyOk(state, { type: "PASS_REACTION", playerId: "p2" });
+    state = applyOk(state, reactionFor(state, "p1", "spell.magic_mirror", 0)!.action);
+    state = chooseRedirect(state, "p1", "unit_p2_skeletons");
+
+    // The attack is still pending. The bounced Curse is NEITHER an ongoing active
+    // effect NOR a combat token on the skeletons — so Dispel (which clears only
+    // activeEffects) and a Gargoyle/Titan (which ignore only ongoing effects)
+    // have nothing to act on. Only spell-immunity could stop it, and that is
+    // enforced earlier by excluding spell-immune units as redirect targets.
+    expect(
+      state.activeEffects.some((effect) => effect.target?.type === "unit" && effect.target.unitId === "unit_p2_skeletons")
+    ).toBe(false);
+    expect(hasNoCombatTokens(state, "unit_p2_skeletons")).toBe(true);
+
+    // It rides on the pending attack as a one-shot instant instead, and is gone
+    // once that attack (stack item) resolves.
+    const pending = state.stack.at(-1);
+    expect(pending?.modifiers.redirectedInstants).toEqual([
+      { unitId: "unit_p2_skeletons", stat: "defense", amount: -1 }
+    ]);
+  });
+
   it("lifts Weakness off your attacker when you are the one attacking", () => {
     // p1's griffins attack p2's skeletons; p2 (the defender) answers with Weakness
     // on the griffins. p1 reflects it.
