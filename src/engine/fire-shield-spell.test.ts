@@ -149,6 +149,24 @@ describe("Fire Shield spell — burning the attacker", () => {
 
     // …and the table cue: a "fire-shield" ability event anchored on the attacker.
     expect(fireShieldBurnEvents(result, "unit_p1_crusaders").length).toBe(1);
+
+    // The cue MUST be logged before the burn's damage — the contract the table
+    // relies on to play the flare (SFX + animation) before the damage lands.
+    const cueIndex = result.eventLog.findIndex(
+      (event) =>
+        event.type === "UNIT_ABILITY_TRIGGERED" &&
+        event.abilityId === "fire-shield" &&
+        event.targetUnitId === "unit_p1_crusaders"
+    );
+    const burnIndex = result.eventLog.findIndex(
+      (event) =>
+        event.type === "DAMAGE_ASSIGNED" &&
+        event.target.type === "unit" &&
+        event.target.unitId === "unit_p1_crusaders" &&
+        event.damageKind === "effect"
+    );
+    expect(cueIndex).toBeGreaterThanOrEqual(0);
+    expect(burnIndex).toBeGreaterThan(cueIndex);
   });
 
   it("does NOT burn a non-adjacent ranged attacker (an adjacent unit only)", () => {

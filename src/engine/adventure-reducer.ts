@@ -243,16 +243,21 @@ function columnLetter(position: number): string {
 
 /**
  * Every obstacle the Remove Obstacle spell may lift off the board right now: the
- * random obstacle markers and any standing siege Wall or Gate. Units are never
+ * random obstacle markers, any battlefield token (Force Field, Fire Wall,
+ * Quicksand, Land Mine), and any standing siege Wall or Gate. Units are never
  * obstacles here (they only block movement), so they are excluded — matching the
- * card's note that only Walls, the Gate and obstacle markers can be removed.
+ * card's note that only obstacles (Walls, the Gate, markers and effect tokens)
+ * can be removed.
  */
 function removableObstacleItems(
   combat: CombatState
-): { position: number; kind: "obstacle" | "wall" | "gate" }[] {
-  const items: { position: number; kind: "obstacle" | "wall" | "gate" }[] = [];
+): { position: number; kind: "obstacle" | "wall" | "gate" | "token"; tokenId?: string }[] {
+  const items: { position: number; kind: "obstacle" | "wall" | "gate" | "token"; tokenId?: string }[] = [];
   for (const position of combat.obstacles ?? []) {
     items.push({ position, kind: "obstacle" });
+  }
+  for (const token of combat.battlefieldTokens ?? []) {
+    items.push({ position: token.position, kind: "token", tokenId: token.id });
   }
   const siege = combat.siege;
   if (siege) {
@@ -265,6 +270,14 @@ function removableObstacleItems(
   }
   return items;
 }
+
+/** Display name for a battlefield token kind, for the Remove Obstacle prompt. */
+const BATTLEFIELD_TOKEN_LABELS: Record<string, string> = {
+  force_field: "Force Field",
+  fire_wall: "Fire Wall",
+  quicksand: "Quicksand",
+  land_mine: "Land Mine"
+};
 
 /**
  * Remove Obstacle: the caster removes obstacles one at a time, up to the Power
@@ -282,20 +295,29 @@ export function openRemoveObstacleChoice(state: GameState, playerId: PlayerId, c
     return;
   }
 
+  const labelFor = (item: { position: number; kind: "obstacle" | "wall" | "gate" | "token"; tokenId?: string }): string => {
+    const where = `column ${columnLetter(item.position)}, row ${Math.floor(item.position / 4) + 1}`;
+    if (item.kind === "gate") {
+      return `Remove the Gate (column ${columnLetter(item.position)})`;
+    }
+    if (item.kind === "wall") {
+      return `Remove the Wall at column ${columnLetter(item.position)}`;
+    }
+    if (item.kind === "token") {
+      const token = combat.battlefieldTokens?.find((candidate) => candidate.id === item.tokenId);
+      const name = token ? (BATTLEFIELD_TOKEN_LABELS[token.kind] ?? "obstacle") : "obstacle";
+      return `Remove the ${name} at ${where}`;
+    }
+    return `Remove the obstacle at ${where}`;
+  };
+
   const remaining = Math.min(count, items.length);
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
     prompt: `Choose an obstacle to remove${remaining > 1 ? ` (${remaining} left)` : ""}`,
-    options: items.map((item) => ({
-      label:
-        item.kind === "gate"
-          ? `Remove the Gate (column ${columnLetter(item.position)})`
-          : item.kind === "wall"
-            ? `Remove the Wall at column ${columnLetter(item.position)}`
-            : `Remove the obstacle at column ${columnLetter(item.position)}, row ${Math.floor(item.position / 4) + 1}`
-    })),
+    options: items.map((item) => ({ label: labelFor(item) })),
     context: "remove-obstacle",
     removeObstacle: { items, remaining },
     returnPhase: "combat"
@@ -323,6 +345,15 @@ export function resolveRemoveObstacleChoice(state: GameState, playerId: PlayerId
 
   if (item.kind === "obstacle") {
     combat.obstacles = (combat.obstacles ?? []).filter((position) => position !== item.position);
+    appendEvent(state, {
+      type: "COMBAT_OBSTACLE_REMOVED",
+      playerId,
+      position: item.position
+    });
+  } else if (item.kind === "token") {
+    // Lift the Force Field / Fire Wall / Quicksand / Land Mine token off the
+    // board; the crumble cue plays on its cell like an obstacle marker.
+    combat.battlefieldTokens = (combat.battlefieldTokens ?? []).filter((token) => token.id !== item.tokenId);
     appendEvent(state, {
       type: "COMBAT_OBSTACLE_REMOVED",
       playerId,
