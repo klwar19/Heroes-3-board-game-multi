@@ -460,11 +460,27 @@ export function getCombatObstacles(combat: CombatState): number[] {
 }
 
 /**
+ * Spaces holding a Force Field token: these count as Combat Obstacles (they
+ * block non-flying movement and nobody may stop on them) while they stand. The
+ * other battlefield tokens (Fire Wall / Quicksand / Land Mine) deliberately do
+ * NOT block — units enter them so the wall can burn or the trap can spring.
+ */
+export function getForceFieldPositions(combat: CombatState): number[] {
+  return (combat.battlefieldTokens ?? [])
+    .filter((token) => token.kind === "force_field")
+    .map((token) => token.position);
+}
+
+/**
  * Every unit card and obstacle token on the board is a Combat Obstacle.
  * They block movement paths for non-flying units and nobody can stop on them.
  */
-function getBlockedSpaces(combat: CombatState, movingUnit?: CombatUnitState): Set<number> {
+export function getBlockedSpaces(combat: CombatState, movingUnit?: CombatUnitState): Set<number> {
   const blocked = new Set<number>(getCombatObstacles(combat));
+
+  for (const position of getForceFieldPositions(combat)) {
+    blocked.add(position);
+  }
 
   for (const unit of Object.values(combat.units)) {
     if (isUnitAlive(unit) && unit.id !== movingUnit?.id) {
@@ -896,6 +912,11 @@ function getTargetsForCard(
     }
     for (const position of combat.obstacles ?? []) {
       blocked.add(position);
+    }
+    // A space already holding any spell token (Force Field / Fire Wall /
+    // Quicksand / Land Mine) is not "empty" for placing another one or summoning.
+    for (const token of combat.battlefieldTokens ?? []) {
+      blocked.add(token.position);
     }
     for (const position of combat.siege?.walls ?? []) {
       blocked.add(position);
