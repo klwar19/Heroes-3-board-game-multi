@@ -37,7 +37,11 @@ const SCANLESS_ARTIFACTS = new Set([
   // the deck back for them), so they fall back to the deck back here too.
   "trident_of_dominion",
   "shield_of_naval_glory",
-  "royal_armor_of_nix"
+  "royal_armor_of_nix",
+  // Diplomat's Ring: the wiki shows the deck back for this card too (no scan),
+  // so it falls back to the deck back here. Its companion Ambassador's Sash
+  // does have a scan.
+  "diplomats_ring"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
@@ -1824,6 +1828,161 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("royal_armor_of_nix")
   },
+  // Cards of Prophecy (Tower expansion). Option 0 is the universal "reroll any
+  // die" instant, modelled on Expert Luck: a current-turn, player-scoped effect
+  // granting ONE reroll — of the combat Attack die (ATTACK_DIE_REROLL, consumed
+  // on use) OR a map Treasure/Resource die (ADVENTURE_DIE_REROLL "any", also
+  // single-use). Option 1 is a map play that lets you ignore the next Resource
+  // or Treasure die you roll and set it to a face of your choice
+  // (ADVENTURE_DIE_SET — offered in rollResourceDice/rollTreasureDice and spent
+  // on the chosen face).
+  "artifact.cards_of_prophecy": {
+    id: "artifact.cards_of_prophecy",
+    name: "Cards of Prophecy",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Reroll any die. — OR — Set a Resource die or Treasure die on the side of your choice."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Reroll any die",
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Cards of Prophecy",
+              scope: "player",
+              duration: { type: "current-turn" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [
+                { type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: true },
+                { type: "ADVENTURE_DIE_REROLL", dice: "any" }
+              ]
+            }
+          }
+        },
+        {
+          label: "Set a Resource or Treasure die to the side of your choice",
+          mapOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Cards of Prophecy",
+              scope: "player",
+              duration: { type: "current-turn" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [{ type: "ADVENTURE_DIE_SET", dice: "any" }]
+            }
+          }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "cards_of_prophecy", "Cards of Prophecy"),
+    implementationStatus: "implemented",
+    source: artifactSource("cards_of_prophecy")
+  },
+  // Diplomat's Ring (Stronghold expansion). Option 0 is the universal "reroll
+  // any die" instant ("or any roll" reads the same in this engine — see Cards
+  // of Prophecy for the Expert-Luck reroll model). Option 1 is the Diplomacy
+  // map recruit (DIPLOMACY_RECRUIT — draw one Neutral Unit card per Dwelling,
+  // recruit one by paying its cost), the same effect Cyra's Diplomacy and
+  // Ambassador's Sash use.
+  "artifact.diplomats_ring": {
+    id: "artifact.diplomats_ring",
+    name: "Diplomat's Ring",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Reroll any die or any roll. — OR — For every Dwelling you have, draw 1 corresponding Neutral Unit card. You can Recruit one of these units."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Reroll any die or any roll",
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Diplomat's Ring",
+              scope: "player",
+              duration: { type: "current-turn" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [
+                { type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: true },
+                { type: "ADVENTURE_DIE_REROLL", dice: "any" }
+              ]
+            }
+          }
+        },
+        {
+          label: "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)",
+          mapOnly: true,
+          effect: { type: "DIPLOMACY_RECRUIT" }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "diplomats_ring", "Diplomat's Ring"),
+    implementationStatus: "implemented",
+    source: artifactSource("diplomats_ring")
+  },
+  // Ambassador's Sash (Rampart expansion) — Diplomat's Ring's companion (the
+  // wiki cross-links them). Option 0 is the Diplomacy map recruit
+  // (DIPLOMACY_RECRUIT, shared with Cyra's Diplomacy and Diplomat's Ring).
+  // Option 1 is the universal "reroll a die" instant (the Expert-Luck reroll
+  // model — see Cards of Prophecy).
+  "artifact.ambassadors_sash": {
+    id: "artifact.ambassadors_sash",
+    name: "Ambassador's Sash",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "For every Dwelling you have, draw 1 corresponding Neutral Unit card. You can Recruit one of these units. — OR — Reroll a die."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)",
+          mapOnly: true,
+          effect: { type: "DIPLOMACY_RECRUIT" }
+        },
+        {
+          label: "Reroll a die",
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Ambassador's Sash",
+              scope: "player",
+              duration: { type: "current-turn" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [
+                { type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: true },
+                { type: "ADVENTURE_DIE_REROLL", dice: "any" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "ambassadors_sash", "Ambassador's Sash"),
+    implementationStatus: "implemented",
+    source: artifactSource("ambassadors_sash")
+  },
 
   // ---- Relic artifacts ----------------------------------------------------
   "artifact.angel_wings": {
@@ -2266,6 +2425,9 @@ export const artifactDeckLegacy: string[] = [
   "artifact.trident_of_dominion",
   "artifact.shield_of_naval_glory",
   "artifact.royal_armor_of_nix",
+  "artifact.cards_of_prophecy",
+  "artifact.diplomats_ring",
+  "artifact.ambassadors_sash",
   // relic
   "artifact.angel_wings",
   "artifact.dragon_scale_armor",
@@ -2344,7 +2506,10 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.targ_of_the_rampaging_ogre",
   "artifact.trident_of_dominion",
   "artifact.shield_of_naval_glory",
-  "artifact.royal_armor_of_nix"
+  "artifact.royal_armor_of_nix",
+  "artifact.cards_of_prophecy",
+  "artifact.diplomats_ring",
+  "artifact.ambassadors_sash"
 ];
 
 /** BINH Relic Artifact deck (adds the BINH-extra relics). */
