@@ -32,7 +32,11 @@ const SCANLESS_ARTIFACTS = new Set([
   // Newly added Cove/sea artifact whose card scan is not yet committed to
   // public/assets — it falls back to the deck back until the scan lands.
   // (Ring of the Wayfarer's scan is committed, so it is not listed here.)
-  "crown_of_the_five_seas"
+  "crown_of_the_five_seas",
+  // The Cove sea artifacts below have no card scan on the wiki either (it shows
+  // the deck back for them), so they fall back to the deck back here too.
+  "trident_of_dominion",
+  "shield_of_naval_glory"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
@@ -1724,6 +1728,70 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("targ_of_the_rampaging_ogre")
   },
+  // Trident of Dominion (Cove): a plain +2 attack on your attacker, OR — only
+  // while this Hero stands on a Sea tile — a 2-card draw (the requiresSeaTile
+  // gate shared with Crown of the Five Seas). The naval side is a map play.
+  "artifact.trident_of_dominion": {
+    id: "artifact.trident_of_dominion",
+    name: "Trident of Dominion",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: ["artifact", "major", "+2 attack. — OR — If this Hero is on a Sea tile, draw 2 cards."],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+2 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+        },
+        {
+          label: "On a Sea tile: draw 2 cards",
+          mapOnly: true,
+          requiresSeaTile: true,
+          effect: { type: "DRAW_CARDS", amount: 2 }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "trident_of_dominion", "Trident of Dominion"),
+    implementationStatus: "implemented",
+    source: artifactSource("trident_of_dominion")
+  },
+  // Shield of Naval Glory (Cove): a plain +2 defense reaction, OR — only while
+  // this Hero stands on a Sea tile — +1 Hero movement and draw 1 card (the new
+  // GAIN_HERO_MOVEMENT.drawCards rider). The naval side is a map play.
+  "artifact.shield_of_naval_glory": {
+    id: "artifact.shield_of_naval_glory",
+    name: "Shield of Naval Glory",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "+2 defense. — OR — If this Hero is on a Sea tile, they gain +1 movement and draw 1 card."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+2 defense",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2 }
+        },
+        {
+          label: "On a Sea tile: +1 movement and draw 1 card",
+          mapOnly: true,
+          requiresSeaTile: true,
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1, drawCards: 1 }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "shield_of_naval_glory", "Shield of Naval Glory"),
+    implementationStatus: "implemented",
+    source: artifactSource("shield_of_naval_glory")
+  },
 
   // ---- Relic artifacts ----------------------------------------------------
   "artifact.angel_wings": {
@@ -2163,6 +2231,8 @@ export const artifactDeckLegacy: string[] = [
   "artifact.sword_of_hellfire",
   "artifact.surcoat_of_counterpoise",
   "artifact.targ_of_the_rampaging_ogre",
+  "artifact.trident_of_dominion",
+  "artifact.shield_of_naval_glory",
   // relic
   "artifact.angel_wings",
   "artifact.dragon_scale_armor",
@@ -2238,7 +2308,9 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.pendant_of_second_sight",
   "artifact.sword_of_hellfire",
   "artifact.surcoat_of_counterpoise",
-  "artifact.targ_of_the_rampaging_ogre"
+  "artifact.targ_of_the_rampaging_ogre",
+  "artifact.trident_of_dominion",
+  "artifact.shield_of_naval_glory"
 ];
 
 /** BINH Relic Artifact deck (adds the BINH-extra relics). */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
+import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions, getMainHero } from "./index";
 import type { CardPlayMode, GameAction, GameEvent, GameState, UnitId } from "./state";
 
 /**
@@ -175,6 +175,19 @@ function declareGriffinsAttack(state: GameState): GameState {
     attackerId: "unit_p1_griffins",
     defenderId: "unit_p2_vampires"
   });
+}
+
+/** Puts p1's main Hero on (or off) a Sea (water-terrain) field. */
+function setHeroSeaTile(state: GameState, onSea: boolean): void {
+  const hero = getMainHero(state, "p1");
+  if (!hero?.spaceId || !state.adventure?.fields[hero.spaceId]) {
+    throw new Error("Expected the main hero to stand on a known field.");
+  }
+  if (onSea) {
+    state.adventure.fields[hero.spaceId].terrain = "water";
+  } else {
+    delete state.adventure.fields[hero.spaceId].terrain;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -447,5 +460,84 @@ describe("Targ of the Rampaging Ogre", () => {
     const play = reactionAction(declared, "p2", TARG, 0);
     const underpaid = applyAction(declared, { ...play!, costCardIds: ["stat.attack"] });
     expect(underpaid.errors.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Trident of Dominion (Cove sea artifact)
+// ---------------------------------------------------------------------------
+
+const TRIDENT = "artifact.trident_of_dominion";
+
+describe("Trident of Dominion", () => {
+  it("option 0 adds +2 attack to your attacking unit", () => {
+    const state = duel("trident-attack");
+    state.players.p1.hand = [TRIDENT];
+    const declared = passUntil(declareGriffinsAttack(state), "p1");
+    const play = reactionAction(declared, "p1", TRIDENT, 0);
+    expect(play, "Trident's +2 attack side should be a legal attacker reaction").toBeTruthy();
+    expect(lastHitBy(passAllReactions(applyOk(declared, play!)), "unit_p1_griffins")?.attackValue).toBe(5);
+  });
+
+  it("the Sea side draws 2 cards only while the Hero stands on a Sea tile", () => {
+    const offSea = createAdventureGameState({ seed: "trident-offsea", difficulty: "normal", rollFirstPlayer: false });
+    offSea.activePlayerId = "p1";
+    offSea.players.p1.hand = [TRIDENT];
+    setHeroSeaTile(offSea, false);
+    expect(findPlay(offSea, TRIDENT, 1), "the Sea side must be hidden off a Sea tile").toBeFalsy();
+
+    const onSea = createAdventureGameState({ seed: "trident-onsea", difficulty: "normal", rollFirstPlayer: false });
+    onSea.activePlayerId = "p1";
+    onSea.players.p1.hand = [TRIDENT];
+    onSea.players.p1.deck = ["stat.attack", "stat.defense", "stat.power"];
+    setHeroSeaTile(onSea, true);
+
+    const play = findPlay(onSea, TRIDENT, 1);
+    expect(play, "the Sea side should appear on a Sea tile").toBeTruthy();
+    const after = applyOk(onSea, play!.action);
+    // Two cards drawn off the top of the deck into hand.
+    expect(after.players.p1.hand).toEqual(expect.arrayContaining(["stat.power", "stat.defense"]));
+    expect(after.players.p1.deck).toEqual(["stat.attack"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Shield of Naval Glory (Cove sea artifact)
+// ---------------------------------------------------------------------------
+
+const NAVAL = "artifact.shield_of_naval_glory";
+
+describe("Shield of Naval Glory", () => {
+  it("option 0 grants +2 defense to the attacked unit", () => {
+    const state = duel("naval-defense");
+    state.players.p2.hand = [NAVAL];
+    const declared = passUntil(declareGriffinsAttack(state), "p2");
+    const play = reactionAction(declared, "p2", NAVAL, 0);
+    expect(play, "Shield of Naval Glory's +2 defense side should be a legal defender reaction").toBeTruthy();
+    const resolved = passAllReactions(applyOk(declared, play!));
+    expect(lastHitBy(resolved, "unit_p1_griffins")).toMatchObject({ defenseBonus: 2, defenseValue: 3 });
+  });
+
+  it("the Sea side grants +1 Hero movement and draws 1 card, only on a Sea tile", () => {
+    const offSea = createAdventureGameState({ seed: "naval-offsea", difficulty: "normal", rollFirstPlayer: false });
+    offSea.activePlayerId = "p1";
+    offSea.players.p1.hand = [NAVAL];
+    setHeroSeaTile(offSea, false);
+    expect(findPlay(offSea, NAVAL, 1), "the Sea side must be hidden off a Sea tile").toBeFalsy();
+
+    const onSea = createAdventureGameState({ seed: "naval-onsea", difficulty: "normal", rollFirstPlayer: false });
+    onSea.activePlayerId = "p1";
+    onSea.players.p1.hand = [NAVAL];
+    onSea.players.p1.deck = ["stat.power"];
+    setHeroSeaTile(onSea, true);
+    const movementBefore = getMainHero(onSea, "p1")!.movementPoints;
+
+    const play = findPlay(onSea, NAVAL, 1);
+    expect(play, "the Sea side should appear on a Sea tile").toBeTruthy();
+    const after = applyOk(onSea, play!.action);
+
+    expect(getMainHero(after, "p1")!.movementPoints).toBe(movementBefore + 1);
+    expect(after.players.p1.hand).toContain("stat.power");
+    expect(after.players.p1.deck).toHaveLength(0);
   });
 });

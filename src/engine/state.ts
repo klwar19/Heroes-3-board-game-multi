@@ -573,6 +573,8 @@ export type EffectDefinition =
       moveThroughThisTurn?: boolean;
       /** Water Walk: also cross/stop on sea fields this turn. */
       waterWalkThisTurn?: boolean;
+      /** Shield of Naval Glory (Sea side): also draw this many cards. */
+      drawCards?: number;
     }
   | {
       /**
