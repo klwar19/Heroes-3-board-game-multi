@@ -598,8 +598,11 @@ export const spellCards: CardLibrary = {
   //    Meteor Shower, Solmyr's Chain Lightning) is not a Spell cast and is NOT
   //    reflectable; nor are Chain Lightning's resolution-time forks;
   //  - an instant combat debuff layered onto an attack (Curse on your defender,
-  //    Weakness on your attacker) — it is lifted off your unit and lands on the
-  //    chosen unit as a lasting token, then the attack's window resumes. Enemy
+  //    Weakness on your attacker) — it is lifted off your unit and re-pointed at
+  //    the chosen unit for THIS attack and its retaliation only. It stays an
+  //    instant (a one-shot stat delta on the attack, never an ongoing effect or
+  //    token), so nothing can Dispel or ignore it — only spell-immunity stops it,
+  //    enforced by excluding spell-immune units as redirect targets. Enemy
   //    self-buffs (Bloodlust/Bless/Precision target the caster's OWN unit) never
   //    fire it. Casting Magic Mirror counts as your Spell for the combat round
   //    (Expert Knowledge / Intelligence raise or waive that limit).

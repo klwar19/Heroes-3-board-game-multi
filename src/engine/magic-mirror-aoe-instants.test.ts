@@ -62,8 +62,25 @@ function lastMainAttackRoll(state: GameState, attackerId: UnitId) {
     .find((event) => event.type === "ATTACK_ROLLED" && event.attackerId === attackerId && !event.isRetaliation);
 }
 
-function tokenOn(state: GameState, unitId: UnitId, kind: "corrosion" | "weakness") {
-  return state.combat!.units[unitId].tokens?.find((token) => token.kind === kind);
+function retaliationRoll(state: GameState, attackerId: UnitId) {
+  return [...state.eventLog]
+    .reverse()
+    .find((event) => event.type === "ATTACK_ROLLED" && event.attackerId === attackerId && event.isRetaliation);
+}
+
+/** A live negative stat effect (the bounced debuff) sitting on a unit, if any. */
+function debuffEffectOn(state: GameState, unitId: UnitId, modifier: "ATTACK_BONUS" | "DEFENSE_BONUS") {
+  return state.activeEffects.find(
+    (effect) =>
+      effect.target?.type === "unit" &&
+      effect.target.unitId === unitId &&
+      effect.modifiers.some((mod) => mod.type === modifier && mod.amount < 0)
+  );
+}
+
+/** The bounced debuff must never linger as a combat-long token. */
+function hasNoCombatTokens(state: GameState, unitId: UnitId): boolean {
+  return (state.combat!.units[unitId].tokens ?? []).length === 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +97,7 @@ describe("Magic Mirror reflects an instant combat debuff off your unit", () => {
     state.combat!.activeUnitId = "unit_p2_skeletons";
     state.combat!.units.unit_p2_skeletons.activatedThisRound = false;
     state.combat!.units.unit_p2_skeletons.position = 13;
+    state.combat!.units.unit_p2_skeletons.maxHealth = 40; // survive the retaliation
     state.combat!.units.unit_p1_griffins.position = 9; // adjacent to 13
     state.combat!.units.unit_p1_griffins.maxHealth = 40; // survive so the roll logs cleanly
     state.combat!.dice.scriptedRolls = [0, 0, 0, 0, 0, 0];
@@ -92,7 +110,7 @@ describe("Magic Mirror reflects an instant combat debuff off your unit", () => {
     });
   }
 
-  it("lifts Curse off the defender and drops it on the chosen unit as a Corrosion token", () => {
+  it("lifts Curse off the defender, applies it to the chosen unit for the attack+retaliation, then expires", () => {
     // Baseline: with no Magic Mirror, p2's Curse sticks — the attack resolves with
     // the griffins' Defense lowered by 1.
     let baseline = p2AttacksGriffins([], ["spell.curse"]);
@@ -126,20 +144,26 @@ describe("Magic Mirror reflects an instant combat debuff off your unit", () => {
     // The Curse no longer touches the griffins' Defense on the attack…
     const roll = lastMainAttackRoll(state, "unit_p2_skeletons");
     expect(roll && roll.type === "ATTACK_ROLLED" ? roll.defenseBonus : null).toBe(0);
-    // …and the skeletons now carry the −1 Defense as a lasting Corrosion token.
-    expect(tokenOn(state, "unit_p2_skeletons", "corrosion")).toMatchObject({ amount: 1, sourceName: "Curse" });
-    expect(state.combat!.units.unit_p1_griffins.tokens ?? []).toHaveLength(0);
+    // …it landed on the skeletons for the retaliation: the griffins' counter-attack
+    // strikes the skeletons at −1 Defense.
+    const counter = retaliationRoll(state, "unit_p1_griffins");
+    expect(counter && counter.type === "ATTACK_ROLLED" ? counter.defenderId : null).toBe("unit_p2_skeletons");
+    expect(counter && counter.type === "ATTACK_ROLLED" ? counter.defenseBonus : null).toBe(-1);
+    // …and once the attack (and its retaliation) is over, the debuff is GONE — it
+    // never becomes a combat-long token.
+    expect(debuffEffectOn(state, "unit_p2_skeletons", "DEFENSE_BONUS")).toBeUndefined();
+    expect(hasNoCombatTokens(state, "unit_p2_skeletons")).toBe(true);
     expect(state.eventLog.some((event) => event.type === "SPELL_REDIRECTED")).toBe(true);
     // Casting Magic Mirror spends p1's one Spell for the round.
     expect(state.players.p1.combatStats.spellsCastThisRound).toBe(1);
     expect(state.players.p1.discard).toContain("spell.magic_mirror");
   });
 
-  it("scales the bounced token with the Power paid into the Curse (per-caster pool)", () => {
-    // Curse is −1/−2/−3 Defense at Power 0/1/2; the bounced Corrosion token must
-    // carry the SAME magnitude the Curse had on the attack, re-derived from the
-    // caster's attack-Power pool at the moment it is reflected.
-    const corrosionForPower = (powerCards: number): number => {
+  it("scales the bounced debuff with the Power paid into the Curse (per-caster pool)", () => {
+    // Curse is −1/−2/−3 Defense at Power 0/1/2; the bounced debuff must carry the
+    // SAME magnitude the Curse had, re-derived from the caster's attack-Power pool
+    // — read off the griffins' retaliation, which strikes the now-cursed skeletons.
+    const retaliationDefenseBonusForPower = (powerCards: number): number => {
       let state = p2AttacksGriffins(
         ["spell.magic_mirror"],
         ["spell.curse", ...Array.from({ length: powerCards }, () => "stat.power")]
@@ -155,12 +179,13 @@ describe("Magic Mirror reflects an instant combat debuff off your unit", () => {
       state = applyOk(state, reactionFor(state, "p1", "spell.magic_mirror", 0)!.action);
       state = chooseRedirect(state, "p1", "unit_p2_skeletons");
       state = passUntilSettled(state);
-      return tokenOn(state, "unit_p2_skeletons", "corrosion")?.amount ?? 0;
+      const counter = retaliationRoll(state, "unit_p1_griffins");
+      return counter && counter.type === "ATTACK_ROLLED" ? counter.defenseBonus : 0;
     };
 
-    expect(corrosionForPower(0)).toBe(1); // Power 0 → −1 Defense
-    expect(corrosionForPower(1)).toBe(2); // Power 1 → −2 Defense
-    expect(corrosionForPower(2)).toBe(3); // Power 2 → −3 Defense
+    expect(retaliationDefenseBonusForPower(0)).toBe(-1); // Power 0 → −1 Defense
+    expect(retaliationDefenseBonusForPower(1)).toBe(-2); // Power 1 → −2 Defense
+    expect(retaliationDefenseBonusForPower(2)).toBe(-3); // Power 2 → −3 Defense
   });
 
   it("does NOT offer Magic Mirror against an enemy self-buff (Bloodlust on the attacker)", () => {
@@ -223,12 +248,43 @@ describe("Magic Mirror reflects an instant combat debuff off your unit", () => {
     state = applyOk(state, bloodlust!.action);
     state = passUntilSettled(state);
 
-    // Final attack: griffins un-cursed (Defense intact), skeletons carry the
-    // bounced Corrosion, and the attacker's own Bloodlust still landed (+1).
+    // Final attack: griffins un-cursed (Defense intact) and the attacker's own
+    // Bloodlust still landed (+1).
     const roll = lastMainAttackRoll(state, "unit_p2_skeletons");
     expect(roll && roll.type === "ATTACK_ROLLED" ? roll.defenseBonus : null).toBe(0);
     expect(roll && roll.type === "ATTACK_ROLLED" ? roll.attackBonus : null).toBe(1);
-    expect(tokenOn(state, "unit_p2_skeletons", "corrosion")).toMatchObject({ amount: 1 });
+    // The bounced Curse hit the skeletons for the griffins' retaliation, then expired.
+    const counter = retaliationRoll(state, "unit_p1_griffins");
+    expect(counter && counter.type === "ATTACK_ROLLED" ? counter.defenseBonus : null).toBe(-1);
+    expect(debuffEffectOn(state, "unit_p2_skeletons", "DEFENSE_BONUS")).toBeUndefined();
+  });
+
+  it("bounces the debuff as a pure instant — never an ongoing effect or token", () => {
+    // Keep the window open after the mirror (p2 still holds a Bloodlust) so the
+    // still-pending attack can be inspected before it resolves.
+    let state = p2AttacksGriffins(["spell.magic_mirror"], ["spell.curse", "spell.bloodlust"]);
+    state.players.p2.combatStats.spellLimitBonusThisRound = 3;
+    state = applyOk(state, reactionFor(state, "p2", "spell.curse")!.action);
+    state = applyOk(state, { type: "PASS_REACTION", playerId: "p2" });
+    state = applyOk(state, reactionFor(state, "p1", "spell.magic_mirror", 0)!.action);
+    state = chooseRedirect(state, "p1", "unit_p2_skeletons");
+
+    // The attack is still pending. The bounced Curse is NEITHER an ongoing active
+    // effect NOR a combat token on the skeletons — so Dispel (which clears only
+    // activeEffects) and a Gargoyle/Titan (which ignore only ongoing effects)
+    // have nothing to act on. Only spell-immunity could stop it, and that is
+    // enforced earlier by excluding spell-immune units as redirect targets.
+    expect(
+      state.activeEffects.some((effect) => effect.target?.type === "unit" && effect.target.unitId === "unit_p2_skeletons")
+    ).toBe(false);
+    expect(hasNoCombatTokens(state, "unit_p2_skeletons")).toBe(true);
+
+    // It rides on the pending attack as a one-shot instant instead, and is gone
+    // once that attack (stack item) resolves.
+    const pending = state.stack.at(-1);
+    expect(pending?.modifiers.redirectedInstants).toEqual([
+      { unitId: "unit_p2_skeletons", stat: "defense", amount: -1 }
+    ]);
   });
 
   it("lifts Weakness off your attacker when you are the one attacking", () => {
@@ -259,7 +315,8 @@ describe("Magic Mirror reflects an instant combat debuff off your unit", () => {
     const baseRoll = lastMainAttackRoll(baseline, "unit_p1_griffins");
     expect(baseRoll && baseRoll.type === "ATTACK_ROLLED" ? baseRoll.attackBonus : null).toBe(-1);
 
-    // Reflected: p1 bounces the Weakness onto the skeletons as a Weakness token.
+    // Reflected: p1 bounces the Weakness onto the skeletons. It lifts off the
+    // griffins (attack intact) and weakens the skeletons' RETALIATION instead.
     let state = p1Attacks(["spell.magic_mirror"], ["spell.weakness"]);
     state = applyOk(state, reactionFor(state, "p2", "spell.weakness")!.action);
     const mirror = reactionFor(state, "p1", "spell.magic_mirror", 0);
@@ -270,10 +327,15 @@ describe("Magic Mirror reflects an instant combat debuff off your unit", () => {
 
     const roll = lastMainAttackRoll(state, "unit_p1_griffins");
     expect(roll && roll.type === "ATTACK_ROLLED" ? roll.attackBonus : null).toBe(0);
-    expect(tokenOn(state, "unit_p2_skeletons", "weakness")).toMatchObject({ amount: -1, sourceName: "Weakness" });
+    // The skeletons retaliate at −1 attack (the bounced Weakness), then it expires.
+    const counter = retaliationRoll(state, "unit_p2_skeletons");
+    expect(counter && counter.type === "ATTACK_ROLLED" ? counter.defenderId : null).toBe("unit_p1_griffins");
+    expect(counter && counter.type === "ATTACK_ROLLED" ? counter.attackBonus : null).toBe(-1);
+    expect(debuffEffectOn(state, "unit_p2_skeletons", "ATTACK_BONUS")).toBeUndefined();
+    expect(hasNoCombatTokens(state, "unit_p2_skeletons")).toBe(true);
 
     // Power scales the bounced Weakness too: a Power-1 Weakness is −2 attack, so
-    // the Weakness token carries −2.
+    // the skeletons' retaliation is at −2.
     let scaled = p1Attacks(["spell.magic_mirror"], ["spell.weakness", "stat.power"]);
     scaled = applyOk(scaled, reactionFor(scaled, "p2", "spell.weakness")!.action);
     const wkPower = getLegalActions(scaled, "p2").find(
@@ -284,7 +346,8 @@ describe("Magic Mirror reflects an instant combat debuff off your unit", () => {
     scaled = applyOk(scaled, reactionFor(scaled, "p1", "spell.magic_mirror", 0)!.action);
     scaled = chooseRedirect(scaled, "p1", "unit_p2_skeletons");
     scaled = passUntilSettled(scaled);
-    expect(tokenOn(scaled, "unit_p2_skeletons", "weakness")).toMatchObject({ amount: -2 });
+    const scaledCounter = retaliationRoll(scaled, "unit_p2_skeletons");
+    expect(scaledCounter && scaledCounter.type === "ATTACK_ROLLED" ? scaledCounter.attackBonus : null).toBe(-2);
   });
 });
 

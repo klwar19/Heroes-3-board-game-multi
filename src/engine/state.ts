@@ -1680,6 +1680,18 @@ export type GameAction =
     }
   | {
       /**
+       * Basic X Magic (the in-play spell-fetch permanent): spend an expert use
+       * for +3 Power on a matching-school spell — a normal cast (into
+       * schoolPowerBonus) or an instant played into an attack (into the caster's
+       * attack-window Power pool). Unlike the card School-of-Magic expert it
+       * discards nothing; the fetch permanent stays in play.
+       */
+      type: "USE_SCHOOL_FETCH_EXPERT";
+      playerId: PlayerId;
+      school: SpellSchool;
+    }
+  | {
+      /**
        * Voluntarily put one of your in-play permanents into the discard pile
        * ("The player may decide to put an active permanent card into their
        * discard pile. This stops the card effect immediately.").
@@ -2781,6 +2793,15 @@ export type ResolutionStackItem = {
      */
     cancellableSpellInstants?: { cardId: CardId; playerId: PlayerId }[];
     /**
+     * Magic Mirror bounced an instant combat debuff (Curse/Weakness) onto a new
+     * unit. These are NOT ongoing effects or tokens — they are the instant
+     * itself, re-pointed: a one-shot stat delta that the attack maths apply to
+     * the named unit for THIS attack and (copied across) its retaliation, then
+     * vanish with the stack item. So nothing can Dispel or ignore them — only
+     * spell-immunity stops them, enforced by the redirect's target filter.
+     */
+    redirectedInstants?: { unitId: UnitId; stat: "attack" | "defense"; amount: number }[];
+    /**
      * Knowledge / Mysticism was played on this cast. The recall resolves
      * after the spell does: instants come back at once, ongoing spells only
      * when the effect they created ends.
@@ -2840,6 +2861,8 @@ export type ResolutionStackItem = {
      */
     ignoreDefenseGradeByPower?: Record<number, CombatUnitState["grade"]>;
     ignoreDefenseCasterId?: PlayerId;
+    /** Players who already spent their Basic X Magic +3 expert on this stack. */
+    schoolFetchExpertUsedBy?: PlayerId[];
     playedCardIds: CardId[];
   };
 };
@@ -3282,6 +3305,12 @@ export type AttackSequenceState = {
   attackKind: "melee" | "ranged";
   /** Whether the original target still owes its retaliation attack. */
   retaliationPending: boolean;
+  /**
+   * Magic Mirror bounced an instant debuff (Curse/Weakness) onto a unit during
+   * this attack: carried here so the same one-shot stat delta also applies to
+   * the retaliation, then vanishes (it is never an ongoing effect or token).
+   */
+  redirectedInstants?: { unitId: UnitId; stat: "attack" | "defense"; amount: number }[];
   /**
    * BINH Cerberi: remaining printed follow-up attacks (one full attack per
    * adjacent enemy), resolved one at a time before the retaliation.
@@ -4286,17 +4315,17 @@ export type PendingChoice =
       /**
        * Magic Mirror reflecting an instant combat debuff played onto an attack
        * (Curse on your defender, Weakness on your attacker). The debuff was
-       * already lifted off your unit; once the new target is chosen it lands on
-       * that unit as a lasting combat token (corrosion for −defense, weakness
-       * for −attack), then the attack's reaction window reopens. Absent for a
-       * normal cast redirect, which re-points the pending Spell instead.
+       * already lifted off your unit; once the new target is chosen it is pushed
+       * onto the pending attack as a one-shot `redirectedInstants` stat delta
+       * (−defense for Curse, −attack for Weakness) covering this attack and its
+       * retaliation only — an instant, never an ongoing effect or token. Absent
+       * for a normal cast redirect, which re-points the pending Spell instead.
        */
       redirectInstant?: {
         stat: "attack" | "defense";
-        /** Signed stat delta the token carries (e.g. −2 for a Power-1 Curse). */
+        /** Signed stat delta the instant carries (e.g. −2 for a Power-1 Curse). */
         amount: number;
         sourceCardId: CardId;
-        sourceName: string;
       };
       /**
        * "area-pick" (Frost Ring / Meteor Shower VI): how many more adjacent units
