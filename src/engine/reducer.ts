@@ -4123,20 +4123,21 @@ function resolveTeleportChoice(
 /**
  * Clone Spell: opens the destination pick — the empty spaces orthogonally
  * adjacent to the cloned unit. Mirrors openTeleportChoice but is restricted to
- * the original's neighbours ("an adjacent empty space"). Does nothing when the
- * original is hemmed in with no empty neighbour.
+ * the original's neighbours ("an adjacent empty space"). Returns false (opening
+ * nothing) when the original is hemmed in with no empty neighbour, so the caller
+ * can refund the cast rather than waste it.
  */
-function openCloneChoice(state: GameState, playerId: PlayerId, original: CombatUnitState): void {
+function openCloneChoice(state: GameState, playerId: PlayerId, original: CombatUnitState): boolean {
   const combat = state.combat;
   if (!combat) {
-    return;
+    return false;
   }
 
   const positions = getOrthogonalNeighbors(original.position).filter(
     (position) => !isSpaceBlockedForSummon(combat, position)
   );
   if (positions.length === 0) {
-    return;
+    return false;
   }
 
   const choiceId = `choice_${nextEventNumber(state)}`;
@@ -4158,6 +4159,85 @@ function openCloneChoice(state: GameState, playerId: PlayerId, original: CombatU
     sourceEffectIds: [],
     message: `${state.players[playerId]?.name ?? playerId} clones ${original.cardName}.`
   });
+  return true;
+}
+
+/** The least Power that a `gradeByPower` ladder needs to reach `grade`. */
+function powerRequiredForGrade(
+  gradeByPower: Record<number, CombatUnitState["grade"]>,
+  grade: CombatUnitState["grade"]
+): number | null {
+  const match = Object.entries(gradeByPower)
+    .map(([power, atGrade]) => ({ power: Number(power), atGrade }))
+    .filter((entry) => Number.isFinite(entry.power) && gradeRank(entry.atGrade) >= gradeRank(grade))
+    .sort((left, right) => left.power - right.power)[0];
+  return match ? match.power : null;
+}
+
+/**
+ * Clone could not land at the Power paid (the chosen unit's grade was out of
+ * reach, or — defensively — no adjacent empty space remained). Rather than
+ * silently waste the cast, refund it: the Clone card and every Power-source card
+ * spent on it return to the caster's hand, the cast stops counting against the
+ * one-Spell-per-round limit, and a notice tells the player nothing was lost.
+ * The caster is returned to the battle screen. Mirrors no card/Power leaving
+ * play, so re-casting (after paying enough Power) is always possible.
+ */
+function refundInsufficientCloneCast(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  target: CombatUnitState,
+  reason: string
+): void {
+  if (stackItem.action.type !== "CAST_SPELL") {
+    return;
+  }
+  const playerId = stackItem.action.playerId;
+  const player = state.players[playerId];
+
+  // Return the Power-source cards played into this cast (the "+1 Power" discards
+  // and Power statistics) to the caster's hand. A scroll cast pays no such cards.
+  if (player && !stackItem.modifiers.scrollLocked) {
+    for (const cardId of stackItem.modifiers.playedCardIds) {
+      const discardIndex = player.discard.lastIndexOf(cardId);
+      if (discardIndex !== -1) {
+        player.discard.splice(discardIndex, 1);
+        player.hand.push(cardId);
+      }
+    }
+  }
+
+  // Return the Clone card itself (a scroll cast removed the spell from the game,
+  // so there is no card to return — only the Power, handled above).
+  if (player && !stackItem.modifiers.scrollLocked) {
+    const discardIndex = player.discard.lastIndexOf(stackItem.action.cardId);
+    if (discardIndex !== -1) {
+      player.discard.splice(discardIndex, 1);
+      player.hand.push(stackItem.action.cardId);
+    }
+  }
+
+  // The refunded cast no longer counts as a Spell this round/turn, so it neither
+  // burns the one-Spell limit nor the "first spell" Power bonuses.
+  if (player) {
+    player.combatStats.spellsCastThisRound = Math.max(0, player.combatStats.spellsCastThisRound - 1);
+    player.combatStats.spellsCastThisTurn = Math.max(0, (player.combatStats.spellsCastThisTurn ?? 0) - 1);
+  }
+
+  appendEvent(state, {
+    type: "SPELL_CAST_REFUNDED",
+    playerId,
+    spellCardId: stackItem.action.cardId,
+    reason
+  });
+
+  stackItem.status = "cancelled";
+  state.stack.pop();
+  state.pendingChoice = null;
+  if (!finishCombatIfNeeded(state)) {
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+  }
 }
 
 /** Resolves the Clone destination pick: drop the 1-Health Clone Token there. */
@@ -5590,15 +5670,38 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
 
     // Clone: place a 1-Health copy of the selected allied unit on an adjacent
     // empty space. Grade-gated by the Power paid (1 → bronze, 3 → silver,
-    // 5 → gold); below Power 1, or on a unit above the unlocked grade, the cast
-    // does nothing. The destination is picked in a follow-up (the combat-clone
-    // OPTION_CHOICE), resolved by resolveCloneChoice.
+    // 5 → gold). If the Power paid does not reach the chosen unit's grade (e.g.
+    // a silver unit needs Power 3 but only 2 was paid), the cast is REFUNDED
+    // rather than wasted — the Clone card and the Power spent on it return to
+    // hand, a notice explains, and the caster goes back to the battle screen
+    // (nothing lost). On success the destination is picked in a follow-up (the
+    // combat-clone OPTION_CHOICE), resolved by resolveCloneChoice.
     if (card?.effect.type === "CLONE_UNIT" && state.combat && stackItem.action.target.type === "unit") {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
-        openCloneChoice(state, stackItem.action.playerId, target);
+        // Grade reached: if the unit somehow has no adjacent empty space left,
+        // refund too (nothing was placed) rather than swallow the cast.
+        if (!openCloneChoice(state, stackItem.action.playerId, target)) {
+          refundInsufficientCloneCast(
+            state,
+            stackItem,
+            target,
+            `${target.cardName} has no adjacent empty space to place a Clone — the spell was returned to your hand.`
+          );
+          return;
+        }
+      } else if (target) {
+        const required = powerRequiredForGrade(card.effect.gradeByPower, target.grade);
+        const need = required === null ? "more" : `Power ${required}`;
+        refundInsufficientCloneCast(
+          state,
+          stackItem,
+          target,
+          `Not enough Power to Clone ${target.cardName} (a ${target.grade} unit needs ${need}, you paid Power ${power}) — the spell was returned to your hand.`
+        );
+        return;
       }
     }
 

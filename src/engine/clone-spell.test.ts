@@ -235,10 +235,12 @@ describe("Clone spell — placing the copy", () => {
     expect(clone.abilities).toEqual(original.abilities);
   });
 
-  it("the Clone Token shows the cloned unit's own art (cropped into the board token)", () => {
+  it("the Clone carries the cloned unit's own card art (shown washed blue as a clone, not a token pic)", () => {
     const scene = cloneScene("clone-art");
     const original = scene.combat!.units.unit_p1_griffins;
     const { state, cloneId } = cloneAndPlace(scene, "unit_p1_griffins", 1);
+    // The Clone copies the original's printed card art; the board renders that
+    // art tinted blue (the `.cloneCard` treatment), never a separate token pic.
     expect(state.combat!.units[cloneId].assets?.cardImage).toBe(original.assets?.cardImage);
   });
 
@@ -310,6 +312,88 @@ describe("Clone spell — grade gate by Power", () => {
     const goldPowered = cloneScene("clone-gold-powered");
     goldPowered.combat!.units.unit_p1_crusaders.grade = "gold";
     expect(cloneChoice(castCloneOn(goldPowered, "unit_p1_crusaders", 5)), "Power 5 reaches gold").toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Insufficient Power refunds the cast (notify + return to battle, nothing lost)
+// ---------------------------------------------------------------------------
+
+describe("Clone spell — too little Power refunds the cast", () => {
+  it("returns the Clone card to hand, un-counts the Spell, and notifies when Power is short for the grade", () => {
+    // crusaders is silver (needs Power 3); pay only Power 2 — one short.
+    const resolved = castCloneOn(cloneScene("clone-refund-silver"), "unit_p1_crusaders", 2);
+
+    // Nothing was cloned and no destination choice opened.
+    expect(cloneChoice(resolved)).toBeNull();
+    expect(findClone(resolved)).toBeUndefined();
+
+    // The Clone card is back in hand (refunded), not stranded in the discard.
+    expect(resolved.players.p1.hand).toContain("spell.clone");
+    expect(resolved.players.p1.discard).not.toContain("spell.clone");
+
+    // It no longer counts against the one-Spell-per-combat-round limit.
+    expect(resolved.players.p1.combatStats.spellsCastThisRound).toBe(0);
+
+    // The player is returned to the battle screen — no pending choice hanging.
+    expect(resolved.pendingChoice).toBeNull();
+    expect(resolved.phase).toBe("combat");
+
+    // A notice was emitted so the player knows nothing was lost.
+    const refund = resolved.eventLog.find((event) => event.type === "SPELL_CAST_REFUNDED");
+    expect(refund, "a SPELL_CAST_REFUNDED notice should be emitted").toBeTruthy();
+    expect(refund && refund.type === "SPELL_CAST_REFUNDED" ? refund.spellCardId : null).toBe("spell.clone");
+  });
+
+  it("also refunds at Power 0 (below the bronze tier) rather than wasting the card", () => {
+    const resolved = castCloneOn(cloneScene("clone-refund-p0"), "unit_p1_griffins", 0);
+    expect(findClone(resolved)).toBeUndefined();
+    expect(resolved.players.p1.hand).toContain("spell.clone");
+    expect(resolved.players.p1.combatStats.spellsCastThisRound).toBe(0);
+    expect(resolved.eventLog.some((event) => event.type === "SPELL_CAST_REFUNDED")).toBe(true);
+  });
+
+  it("refunds the Power-source cards spent empowering the failed cast", () => {
+    // Pay Power by actually playing a Power statistic in the empower window, then
+    // fall short of the silver crusaders' Power-3 tier (only Power 2 paid). The
+    // played Power card must come back to hand with the Clone — nothing lost.
+    const scene = cloneScene("clone-refund-power-cards");
+    const cast = findCloneCast(scene, "unit_p1_crusaders");
+    expect(cast, "Clone should be castable on the silver crusaders").toBeTruthy();
+    let state = applyOk(scene, cast!.action);
+
+    // Empower window: play two Power statistics (+2 Power), one short of silver.
+    let safety = 10;
+    while (safety-- > 0) {
+      const power = getLegalActions(state, "p1").find(
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" &&
+          legal.action.cardId === "stat.power" &&
+          !legal.action.asPowerBoost
+      );
+      const paid = state.stack[0]?.modifiers.spellPowerBonus ?? 0;
+      if (!power || paid >= 2) {
+        break;
+      }
+      state = applyOk(state, power!.action);
+    }
+    expect(state.stack[0]?.modifiers.spellPowerBonus, "two Power paid").toBe(2);
+
+    const resolved = passAllReactions(state);
+    // The Clone failed (silver out of reach at Power 2) and refunded everything:
+    // the Clone card AND both Power statistics are back in hand.
+    expect(findClone(resolved)).toBeUndefined();
+    expect(resolved.players.p1.hand).toContain("spell.clone");
+    expect(resolved.players.p1.hand.filter((id) => id === "stat.power").length).toBe(5);
+    expect(resolved.players.p1.discard).not.toContain("spell.clone");
+    expect(resolved.players.p1.discard).not.toContain("stat.power");
+    expect(resolved.eventLog.some((event) => event.type === "SPELL_CAST_REFUNDED")).toBe(true);
+  });
+
+  it("does NOT refund a cast that reaches the grade — the Clone lands and the card is spent", () => {
+    const { state } = cloneAndPlace(cloneScene("clone-no-refund"), "unit_p1_crusaders", 3); // silver at Power 3
+    expect(state.players.p1.hand).not.toContain("spell.clone");
+    expect(state.eventLog.some((event) => event.type === "SPELL_CAST_REFUNDED")).toBe(false);
   });
 });
 

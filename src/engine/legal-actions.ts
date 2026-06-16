@@ -2872,7 +2872,11 @@ function getDieCancelReactions(
       continue;
     }
     for (const [optionIndex, option] of card.effect.options.entries()) {
-      if (option.effect.type !== "IGNORE_ATTACK_DIE_RESULT") {
+      // Only the ungraded die-cancel (Shield of the Dwarven Lords) belongs in
+      // this post-roll window. A grade-gated negation (Misfortune) is played in
+      // the pre-roll attack-declared window, where the attacker's grade is
+      // checked — offering it here too would double-offer it and skip that gate.
+      if (option.effect.type !== "IGNORE_ATTACK_DIE_RESULT" || option.effect.grade !== undefined) {
         continue;
       }
       if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
@@ -3919,6 +3923,22 @@ export function isEffectLegalForTrigger(
     // attacker's controller plays it, and never on a ranged shot.
     if (effect.type === "IGNORE_ATTACK_DIE") {
       return attacker.controllerId === playerId && attacker.type !== "ranged";
+    }
+
+    // Misfortune: "Play immediately when the selected enemy unit is attacking" —
+    // the DEFENDER negates the attacker's upcoming Attack die result. Offered to
+    // the attacked unit's controller only, and only the grade option that matches
+    // the attacking unit (Power 0/1/2 → bronze/silver/gold), so the tray shows a
+    // single "negate this attack" choice with its cost picker (like Sorrow).
+    // Affordability is judged separately by canAffordCardCost, so a grade you
+    // cannot pay never opens. Shield of the Dwarven Lords' ungraded form has no
+    // `grade` and is offered only in the post-roll window, never here.
+    if (effect.type === "IGNORE_ATTACK_DIE_RESULT") {
+      return (
+        effect.grade !== undefined &&
+        defender.controllerId === playerId &&
+        gradeRank(attacker.grade) === gradeRank(effect.grade)
+      );
     }
 
     // Slayer: only the attacker's controller, and only when striking a gold

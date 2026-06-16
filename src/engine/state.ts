@@ -735,15 +735,24 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Shield of the Dwarven Lords (option A): a defender's reaction played
-       * AFTER the Attack die is rolled. It ignores the rolled die (the face
-       * contributes 0 to the attack) and every additional effect that die face
-       * triggered — Dread Knights' Death Blow, the Minotaurs' draw, the
-       * Thunderbird/Wyvern follow-up bolt, the Azure/Basilisk paralysis, the
-       * Zombie/Manticore die-defense bonus. Only offered in the dedicated
-       * post-roll window (ATTACK_DIE_SETTLED), never as a free combat instant.
+       * Negate an attacker's Attack die result (the face contributes 0 to the
+       * attack) and every additional effect that face triggered — Dread Knights'
+       * Death Blow, the Minotaurs' draw, the Thunderbird/Wyvern follow-up bolt,
+       * the Azure/Basilisk paralysis, the Zombie/Manticore die-defense bonus.
+       *
+       * Two cards use this, in two different windows:
+       *  - Shield of the Dwarven Lords (option A, `grade` omitted): a defender's
+       *    reaction played AFTER the die is rolled, in the dedicated post-roll
+       *    window (ATTACK_DIE_SETTLED). Works against any attacker.
+       *  - Misfortune (Basic Fire, `grade` set): the defender plays it in the
+       *    pre-roll attack-declared window, negating the upcoming die. Grade-gated
+       *    on the ATTACKING unit (Power 0/1/2 → bronze/silver/gold), so only the
+       *    option whose grade matches the attacker is offered (see
+       *    isEffectLegalForTrigger). Graded options are NOT offered in the
+       *    post-roll window — that window is Shield's alone.
        */
       type: "IGNORE_ATTACK_DIE_RESULT";
+      grade?: UnitGrade;
     }
   | {
       /** Anti-Magic: spell immunity for a unit (tier rises with Power). */
@@ -2247,6 +2256,20 @@ export type GameEvent =
       spellCardId: CardId;
       cancelledByPlayerId: PlayerId;
       cancelledByCardId: CardId;
+    }
+  | {
+      /**
+       * A cast could not take effect at the Power paid (Clone on a unit whose
+       * grade the Power did not reach) and was refunded instead of wasted: the
+       * Spell card and any Power spent on it return to the caster's hand and the
+       * cast no longer counts against the one-Spell-per-round limit. Surfaced to
+       * the player so they know nothing was lost. `reason` is a human message.
+       */
+      id: string;
+      type: "SPELL_CAST_REFUNDED";
+      playerId: PlayerId;
+      spellCardId: CardId;
+      reason: string;
     }
   | {
       /** Magic Mirror: a pending Spell was re-pointed to a new target. */

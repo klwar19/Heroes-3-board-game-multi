@@ -3608,32 +3608,24 @@ button.hbSlot:disabled { cursor: default; }
   100% { opacity: 0; }
 }
 
-/* ---- Clone Token (Clone Spell) ------------------------------------------- */
-/* A 1-Health copy is shown as a round, player-coloured token cropped from the
-   cloned unit's own art — the physical Clone Token (blue for p1, red for p2) —
-   so it reads at a glance as a copy rather than the real stack. The card art is
-   cropped to a circle with object-fit: cover (never squashed). The appear
-   animation fades only (no transform), so it never fights the p1 board rotation. */
-.boardCard.cloneToken {
+/* ---- Clone (Clone Spell) ------------------------------------------------- */
+/* A 1-Health copy is shown as the cloned unit's OWN card washed a ghostly blue
+   (the H3 "clone" look) with a Clone badge — blue for either player — so it
+   reads at a glance as a magical copy rather than the real stack. No round token
+   crop: the full card art shows through the blue cast. The appear animation
+   fades only (no transform), so it never fights the p1 board rotation. */
+.boardCard.cloneCard {
   animation: cloneAppear 0.45s ease;
+  box-shadow:
+    0 10px 12px rgb(0 0 0 / 40%),
+    0 0 0 2px rgb(120 190 235 / 95%),
+    0 0 13px 1px rgb(70 140 210 / 75%);
 }
 
-.boardCard.cloneToken .boardCardImage {
-  width: 90%;
-  height: auto;
-  aspect-ratio: 1 / 1;
-  margin: 5% auto 0;
-  border-radius: 50%;
-  object-fit: cover;
-  filter: saturate(0.9) brightness(1.04);
-}
-
-.boardCard.p1.cloneToken .boardCardImage {
-  box-shadow: 0 0 0 3px rgb(85 127 153 / 95%), 0 0 9px rgb(0 0 0 / 55%);
-}
-
-.boardCard.p2.cloneToken .boardCardImage {
-  box-shadow: 0 0 0 3px rgb(166 83 72 / 95%), 0 0 9px rgb(0 0 0 / 55%);
+/* The blue "clone" wash over the cloned unit's own art (kept recognisable):
+   desaturate, then colourise toward blue and lift the brightness a touch. */
+.boardCard.cloneCard .boardCardImage {
+  filter: grayscale(0.35) sepia(0.55) hue-rotate(168deg) saturate(1.75) brightness(1.02);
 }
 
 @keyframes cloneAppear {
