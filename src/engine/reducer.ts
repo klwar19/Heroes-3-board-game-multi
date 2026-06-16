@@ -1923,12 +1923,26 @@ function getAttackStackDetails(
   const tokenAttack = tokenAttackBonus(attacker);
   const tokenDefense = tokenDefenseDelta(defender);
 
+  // Magic Mirror bounced an instant Curse/Weakness onto a unit: a one-shot stat
+  // delta that applies to this exact attack (and its retaliation, carried on the
+  // attackSequence) — read straight off the stack item like the instant it is.
+  const redirectedInstants = stackItem.modifiers.redirectedInstants ?? [];
+  const redirectedAttackDelta = redirectedInstants.reduce(
+    (sum, entry) => (entry.stat === "attack" && entry.unitId === attacker.id ? sum + entry.amount : sum),
+    0
+  );
+  const redirectedDefenseDelta = redirectedInstants.reduce(
+    (sum, entry) => (entry.stat === "defense" && entry.unitId === defender.id ? sum + entry.amount : sum),
+    0
+  );
+
   // Attack-card "ability lowers the target's defense" sources, applied after
   // corrosion, never on retaliations or printed follow-up attacks: Behemoths'
   // flat crush, and the Manticore "ignore the target's printed Defense" (which
   // subtracts the defender's printed Defense value). Both are floored together
   // so the effective Defense never drops below 0.
-  const defenseBonusBeforeAbility = stackItem.modifiers.defenseBonus + activeDefenseBonus + tokenDefense;
+  const defenseBonusBeforeAbility =
+    stackItem.modifiers.defenseBonus + activeDefenseBonus + tokenDefense + redirectedDefenseDelta;
   const defenseReductionSource =
     !isRetaliation && !abilityAttack ? getAttackDefenseReductionAbility(attacker) : null;
   const ignoreCardDefenseSource =
@@ -1972,7 +1986,7 @@ function getAttackStackDetails(
   // contributions to 0 while leaving every negative one (and the printed
   // attack) intact.
   const dealsElemental = unitDealsElementalDamage(state, attacker);
-  const cardAttackBonus = stackItem.modifiers.attackBonus + activeAttackBonus;
+  const cardAttackBonus = stackItem.modifiers.attackBonus + activeAttackBonus + redirectedAttackDelta;
   const effectiveCardAttackBonus = dealsElemental ? Math.min(0, cardAttackBonus) : cardAttackBonus;
   const effectiveTokenAttack = dealsElemental ? Math.min(0, tokenAttack) : tokenAttack;
 
@@ -2643,7 +2657,12 @@ function finishResolvedAttack(
       defenderId: details.defender.id,
       attackKind: details.attackKind,
       retaliationPending: shouldRetaliate(details.attacker, details.defender, details.attackKind),
-      afterRetaliationAbilityAttack: getAfterRetaliationAttack(details.attacker, details.defender)
+      afterRetaliationAbilityAttack: getAfterRetaliationAttack(details.attacker, details.defender),
+      // A Magic-Mirror-bounced Curse/Weakness on this attack carries to the
+      // retaliation so it strikes the new target there too, then is gone.
+      ...(stackItem.modifiers.redirectedInstants
+        ? { redirectedInstants: stackItem.modifiers.redirectedInstants }
+        : {})
     };
   }
 
@@ -4862,6 +4881,13 @@ function openRetaliationWindow(
     defenderId: attacker.id
   };
   const stackItem = makeStackItem(state, retaliationAction);
+  // A Magic-Mirror-bounced Curse/Weakness from the original attack applies to its
+  // retaliation too (e.g. the bounced Curse lowers the now-defending attacker's
+  // Defense as your unit strikes back). One-shot, gone when this stack item pops.
+  const redirectedInstants = state.combat.attackSequence?.redirectedInstants;
+  if (redirectedInstants && redirectedInstants.length > 0) {
+    stackItem.modifiers.redirectedInstants = redirectedInstants;
+  }
   state.stack.push(stackItem);
 
   const attackKind = getAttackKind(defender, attacker);
@@ -6410,8 +6436,7 @@ function applyReactionPlayCore(
       redirectInstant: {
         stat: found.stat,
         amount: signedAmount,
-        sourceCardId: found.cardId,
-        sourceName: instantCard?.name ?? "Spell"
+        sourceCardId: found.cardId
       }
     };
     appendEvent(state, {
@@ -9064,29 +9089,17 @@ function chooseAbilityTarget(
 
     // (a) Reflecting an instant combat debuff off your attacked unit: the malus
     // was already lifted from your unit when the card was played; now it lands
-    // on the chosen unit, then the attack's window resumes. Like the instant it
-    // was, it is NOT a combat-long token — it is bound to the CURRENT activation
-    // ("current-activation" binds to the attacker now resolving), so it covers
-    // this attack and its retaliation and is gone once that activation ends. It
-    // is spell-sourced, so Dispel can strip it and a Gargoyle/Titan ignores it.
+    // on the chosen unit, then the attack's window resumes. It stays an INSTANT —
+    // a one-shot stat delta the attack maths read for this attack and (carried
+    // through attackSequence) its retaliation, then it vanishes with the stack.
+    // It is NOT an ongoing effect or a token, so nothing can Dispel or ignore it;
+    // only spell-immunity stops it, already enforced by the redirect's target
+    // filter (you cannot bounce it onto a spell-immune unit).
+    if (choice.redirectInstant && top && chosen && isUnitAlive(chosen)) {
+      const { stat, amount } = choice.redirectInstant;
+      (top.modifiers.redirectedInstants ??= []).push({ unitId: chosen.id, stat, amount });
+    }
     if (choice.redirectInstant) {
-      if (chosen && isUnitAlive(chosen)) {
-        const { stat, amount, sourceName, sourceCardId } = choice.redirectInstant;
-        createActiveEffect(
-          state,
-          {
-            name: sourceName,
-            scope: "unit",
-            duration: { type: "current-activation" },
-            polarity: "negative",
-            removable: true,
-            modifiers: [{ type: stat === "attack" ? "ATTACK_BONUS" : "DEFENSE_BONUS", amount }]
-          },
-          { type: "card", cardId: sourceCardId, controllerId: action.playerId },
-          action.playerId,
-          { type: "unit", unitId: chosen.id }
-        );
-      }
       appendEvent(state, {
         type: "SPELL_REDIRECTED",
         playerId: action.playerId,
