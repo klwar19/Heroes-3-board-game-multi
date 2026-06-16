@@ -47,10 +47,9 @@ const SCANLESS_ARTIFACTS = new Set([
   // so it falls back to the deck back here. Its companion Ambassador's Sash
   // does have a scan.
   "diplomats_ring",
-  // Ability-interference batch — no card scans committed to public/assets yet,
-  // so they fall back to the deck back until the scans land.
-  "recanters_cloak",
-  "boots_of_polarity",
+  // Plate of the Dying Light has no card scan on the wiki yet, so it falls back
+  // to the deck back until the scan lands. (Recanter's Cloak and Boots of
+  // Polarity have their wiki scans committed, so they are not listed here.)
   "plate_of_the_dying_light"
 ]);
 
