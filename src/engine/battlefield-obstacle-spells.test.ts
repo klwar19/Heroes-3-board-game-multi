@@ -383,6 +383,51 @@ describe("Land Mine spell", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Dispel — "Remove all ongoing effects from a space, or a unit and the space it
+// occupies." A space-targeted Dispel lifts an obstacle (Fire Wall / Force Field)
+// off that space; a unit-targeted Dispel also clears the space the unit stands on.
+// ---------------------------------------------------------------------------
+
+describe("Dispel clears battlefield obstacles", () => {
+  function castDispelOnSpace(seed: string, token: Omit<BattlefieldTokenState, "id">): GameState {
+    const state = createInitialGameState(seed);
+    state.players.p1.hand = ["spell.dispel", "stat.power", "stat.power", "stat.power"];
+    state.players.p2.hand = [];
+    state.players.p1.permanents = [];
+    state.activePlayerId = "p1";
+    state.combat!.obstacles = [];
+    state.combat!.activeUnitId = "unit_p1_crusaders";
+    state.combat!.units.unit_p1_crusaders.activatedThisRound = false;
+    injectToken(state, token);
+    const cast = findSpaceCast(state, "p1", "spell.dispel", token.position);
+    expect(cast, `Dispel should be castable on the ${token.kind} space`).toBeTruthy();
+    return passAllReactions(applyOk(state, cast!.action));
+  }
+
+  it("a space-targeted Dispel removes a Fire Wall on that space", () => {
+    const after = castDispelOnSpace("dispel-firewall", { kind: "fire_wall", position: 9, controllerId: "p2", damage: 3 });
+    expect((after.combat!.battlefieldTokens ?? []).some((token) => token.position === 9)).toBe(false);
+  });
+
+  it("a space-targeted Dispel removes a Force Field on that space", () => {
+    const after = castDispelOnSpace("dispel-forcefield", { kind: "force_field", position: 9, controllerId: "p2" });
+    expect((after.combat!.battlefieldTokens ?? []).some((token) => token.position === 9)).toBe(false);
+  });
+
+  it("does not offer a Dispel space-target on a bare space with no token", () => {
+    const state = createInitialGameState("dispel-empty");
+    state.players.p1.hand = ["spell.dispel", "stat.power"];
+    state.players.p1.permanents = [];
+    state.activePlayerId = "p1";
+    state.combat!.obstacles = [];
+    state.combat!.activeUnitId = "unit_p1_crusaders";
+    state.combat!.units.unit_p1_crusaders.activatedThisRound = false;
+    // Space 9 holds no token, so Dispel offers no space-cast there.
+    expect(findSpaceCast(state, "p1", "spell.dispel", 9)).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Move-and-attack (the atomic Berserk approach) walks through tokens too — a
 // berserked unit charging the nearest foe is bitten / halted on the way in.
 // (Normal units move and attack as two separate actions, so their approach is

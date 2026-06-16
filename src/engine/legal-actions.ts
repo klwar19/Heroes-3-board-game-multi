@@ -809,10 +809,10 @@ export function getBerserkNearestTargets(combat: CombatState, unit: CombatUnitSt
   );
 }
 
-/** A target definition that resolves to units (not "none" or an empty space). */
+/** A target definition that resolves to units (not "none", a space, or an obstacle). */
 type UnitTargetDefinition = Exclude<
   TargetDefinition,
-  { type: "none" } | { type: "empty-space" } | { type: "any-space" }
+  { type: "none" } | { type: "empty-space" } | { type: "any-space" } | { type: "unit-or-obstacle" }
 >;
 
 function unitMatchesTarget(unit: CombatUnitState, target: UnitTargetDefinition): boolean {
@@ -956,13 +956,17 @@ function getTargetsForCard(
     return spaces;
   }
 
+  // Dispel targets any unit OR an obstacle space: its unit half behaves like
+  // "any-unit"; the obstacle spaces are appended after the unit filtering below.
+  const unitTargetType = targetType === "unit-or-obstacle" ? "any-unit" : targetType;
   const target =
     cardTarget &&
     cardTarget.type !== "none" &&
     cardTarget.type !== "empty-space" &&
-    cardTarget.type !== "any-space"
+    cardTarget.type !== "any-space" &&
+    cardTarget.type !== "unit-or-obstacle"
       ? cardTarget
-      : ({ type: targetType } as UnitTargetDefinition);
+      : ({ type: unitTargetType } as UnitTargetDefinition);
 
   let targets =
     target.type === "friendly-unit"
@@ -994,6 +998,18 @@ function getTargetsForCard(
       const artifactImmune = unitImmuneToSpellSchoolsByEffect(state, unit, card.spellSchools);
       return !isUnitSpellImmune(state, unit) && !innateImmune && !artifactImmune;
     });
+  }
+
+  // Dispel also targets a board space holding an obstacle/trap token ("Remove all
+  // ongoing effects from a space"). Offer each occupied token space once.
+  if (targetType === "unit-or-obstacle" && state.combat) {
+    const tokenSpaces = new Set<number>();
+    for (const token of state.combat.battlefieldTokens ?? []) {
+      tokenSpaces.add(token.position);
+    }
+    for (const position of tokenSpaces) {
+      targets.push({ type: "space", position });
+    }
   }
 
   // Clone: only offer on a friendly unit that has a printed side to copy AND at

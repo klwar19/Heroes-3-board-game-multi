@@ -121,6 +121,12 @@ export type TargetDefinition =
   | { type: "empty-space" }
   /** Inferno: any space on the combat board (occupied or not). */
   | { type: "any-space" }
+  /**
+   * Dispel: any unit, OR a board space holding a removable obstacle/trap token
+   * (Force Field / Fire Wall / Quicksand / Land Mine). On a unit it also clears
+   * the space the unit occupies.
+   */
+  | { type: "unit-or-obstacle" }
   | { type: "none" };
 
 export type EffectDurationDefinition =
