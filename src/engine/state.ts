@@ -410,6 +410,34 @@ export type ActiveEffectModifier =
        * a Tower Titan/Gargoyle that ignores ongoing effects is not suppressed.
        */
       type: "UNIT_ABILITY_SUPPRESSED";
+    }
+  | {
+      /**
+       * Orb of Inhibition (option A): for the rest of the Combat every Spell and
+       * Hero-Specialty CARD deals 0 damage — checked at the single card-damage
+       * chokepoint (reducedCardDamage), so direct, area, Xyron and Chain Lightning
+       * hits are all nullified for both armies. Unit-ability damage (the Faerie
+       * bolt, retaliation) is NOT a card and is untouched; the Orb's option B
+       * handles abilities separately. Global and side-agnostic, so one grant
+       * covers everyone.
+       */
+      type: "NULLIFY_CARD_DAMAGE";
+    }
+  | {
+      /**
+       * Pendant of Negativity (option B): an ongoing, unit-scoped immunity to
+       * Spells of the named School(s) cast on this unit — "ignore the effect of a
+       * spell from the School of Air Magic cast on this unit". Like the printed
+       * Elemental immunity it bars targeting and any area splash; a school-agnostic
+       * spell ("any", e.g. Magic Arrow) counts as belonging to every School, so an
+       * air immunity also turns Magic Arrow aside (mirroring this Pendant's own
+       * cancel side and Protection from Air). Read through effectAppliesToUnit, so
+       * a Tower Titan/Gargoyle that ignores ongoing effects is not protected by it.
+       * NOT negated by Orb of Vulnerability (an artifact effect, not a unit
+       * ability — exactly like Anti-Magic).
+       */
+      type: "SPELL_SCHOOL_IMMUNE";
+      schools: SpellSchool[];
     };
 
 export type ActiveEffectDefinition = {
