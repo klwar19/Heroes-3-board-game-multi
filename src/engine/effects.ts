@@ -31,6 +31,7 @@ export const implementedCardEffectTypes = [
   "EAGLE_EYE_DIG",
   "TELEPORT_HERO_TO_TOWN",
   "DIMENSION_DOOR",
+  "VIEW_EARTH",
   "DISCOVER_TILE_CARD",
   "CLEAR_RETALIATION",
   "IGNORE_ATTACK_DIE",

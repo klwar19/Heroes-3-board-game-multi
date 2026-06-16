@@ -37,6 +37,7 @@ import {
   moveHeroAdventure,
   moveHeroPathAdventure,
   openDimensionDoorChoice,
+  openViewEarthChoice,
   openMarket,
   openSharedDeckSearch,
   openFortuneBoostStep,
@@ -8030,6 +8031,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "DIMENSION_DOOR") {
     openDimensionDoorChoice(state, action.playerId, effect.fields);
+  }
+
+  // View Earth (Map): open the choice of which enemy Mine in reach to capture.
+  if (effect.type === "VIEW_EARTH") {
+    openViewEarthChoice(state, action.playerId, effect.withinFields);
   }
 
   if (effect.type === "GAIN_EXPERT_USE") {
