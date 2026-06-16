@@ -37,6 +37,7 @@ import {
   moveHeroAdventure,
   moveHeroPathAdventure,
   openDimensionDoorChoice,
+  openViewEarthChoice,
   openMarket,
   openSharedDeckSearch,
   openFortuneBoostStep,
@@ -113,8 +114,10 @@ import {
   tokenDefenseDelta
 } from "./tokens";
 import {
+  cardDamageNullified,
   effectAppliesToUnit,
   effectiveInitiative,
+  unitImmuneToSpellSchoolsByEffect,
   expireEffectsForActivationEnd,
   expireEffectsForCombatRoundEnd,
   expireEffectsForTurnEnd,
@@ -127,6 +130,7 @@ import {
   makeActiveEffect,
   playerHasSpellTimingFreedom,
   releaseEndedOngoingCards,
+  spellNullifiedByRestriction,
   syncAbilitySuppression,
   unitDealsElementalDamage,
   unitImmuneToParalysis
@@ -1233,6 +1237,38 @@ function removeEffectsFromTarget(
   });
 }
 
+/**
+ * Boots of Polarity (option B): strip exactly ONE removable ongoing effect from
+ * the chosen unit — the most recently applied one (the last pushed). Returns
+ * whether anything was removed. Honours `removable === false` (permanent
+ * effects stay), and only touches unit-scoped effects (the global relic locks
+ * are not unit-targeted). Narrower than Cure/Dispel, which clear several.
+ */
+function removeOneEffectFromTarget(
+  state: GameState,
+  source: ActiveEffectState["source"],
+  target: { type: "unit"; unitId: UnitId }
+): boolean {
+  for (let index = state.activeEffects.length - 1; index >= 0; index -= 1) {
+    const effect = state.activeEffects[index];
+    if (
+      effect.target?.type === "unit" &&
+      effect.target.unitId === target.unitId &&
+      effect.removable !== false
+    ) {
+      state.activeEffects.splice(index, 1);
+      appendEvent(state, {
+        type: "ACTIVE_EFFECTS_REMOVED",
+        source,
+        target,
+        effectIds: [effect.id]
+      });
+      return true;
+    }
+  }
+  return false;
+}
+
 function healUnitDamage(
   state: GameState,
   source: ActiveEffectState["source"],
@@ -1317,10 +1353,23 @@ function unitIgnoresCardDamage(state: GameState, unit: CombatUnitState, card: Ca
   if (!card) {
     return false;
   }
+  // Orb of Inhibition (option A): for the rest of the Combat every Spell and
+  // Hero-Specialty CARD deals 0 damage to every unit. Checked at this shared
+  // card-damage predicate so the direct, area, Xyron and Chain Lightning paths
+  // (all of which gate on this function) are covered for both armies at once.
+  if (cardDamageNullified(state) && (card.kind === "spell" || card.kind === "hero-specialty")) {
+    return true;
+  }
   if (card.kind === "hero-specialty") {
     return hasImmuneToSpecialtyDamage(unit);
   }
   if (card.kind === "spell") {
+    // Pendant of Negativity (option B): an artifact-granted school immunity also
+    // turns the spell aside. Unlike printed immunity it is NOT lifted by Orb of
+    // Vulnerability (an artifact effect, like Anti-Magic).
+    if (unitImmuneToSpellSchoolsByEffect(state, unit, card.spellSchools)) {
+      return true;
+    }
     // Orb of Vulnerability negates printed spell-school immunity, so the unit
     // takes the spell like any other.
     return !spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(unit, card.spellSchools);
@@ -1364,6 +1413,35 @@ function negatesCardOnDwarfRoll(state: GameState, target: TargetRef | undefined,
       : `${unit.cardName} rolls ${roll} for ${negate.abilityName}; ${cardName} takes hold.`
   });
   return negated;
+}
+
+/**
+ * Boots of Polarity: roll `count` Attack dice against a pending Spell and keep
+ * the best ("choose one"). The cancel succeeds when at least one kept die shows
+ * the success face (the "+1", value 1). Logged as a SPELL_DICE_ROLLED so the
+ * client shows the dice tumbling on the spell; `hits` is the number of success
+ * faces. Returns whether the spell is ignored.
+ */
+function rollSpellCancelDice(
+  state: GameState,
+  diceRoll: { count: number; successFace: number },
+  pendingSpellCardId: CardId,
+  rollerId: PlayerId
+): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+  const rolls = Array.from({ length: Math.max(1, diceRoll.count) }, () => rollAttackDie(combat));
+  const hits = rolls.filter((value) => value === diceRoll.successFace).length;
+  appendEvent(state, {
+    type: "SPELL_DICE_ROLLED",
+    spellCardId: pendingSpellCardId,
+    playerId: rollerId,
+    rolls,
+    hits
+  });
+  return hits > 0;
 }
 
 /**
@@ -1788,6 +1866,17 @@ function applyAttackDamageFromCandidate(
 
   noteUnitDamagedForTokens(state, defender, damage);
   markUnitRemovedIfNeeded(state, defender);
+
+  // Clone Spell: "If the Clone takes at least 1 damage from any source, OR is
+  // attacked (even if that attack inflicts 0 damage), destroy the Clone." Any
+  // damage already removed it above (a Clone has 1 Health); this covers the
+  // 0-damage case — it is destroyed for having been attacked, so it never lives
+  // to retaliate. (Spells/abilities that deal 0 damage are NOT attacks and do
+  // not trigger this — only an attack does.)
+  if (defender.cloneOfUnitId && isUnitAlive(defender)) {
+    defender.damage = defender.maxHealth;
+    markUnitRemovedIfNeeded(state, defender);
+  }
   return { damage, roll: candidate.roll, cancelled: false };
 }
 
@@ -2503,8 +2592,14 @@ function finishResolvedAttack(
 
   // Alamar's Resurrection: before a killing normal attack lands, pause once and
   // ask the defender's controller whether to cancel it (only if they can). The
-  // rolled die is stashed so the resumed attack uses the same outcome.
-  if (!stackItem.modifiers.lethalSaveOffered && playerHasLethalSave(state, details.defender.id, cards)) {
+  // rolled die is stashed so the resumed attack uses the same outcome. A Clone is
+  // destroyed by any damage by rule and cannot be rescued, so it is never offered
+  // a lethal save (the post-damage hook then removes it for being attacked).
+  if (
+    !details.defender.cloneOfUnitId &&
+    !stackItem.modifiers.lethalSaveOffered &&
+    playerHasLethalSave(state, details.defender.id, cards)
+  ) {
     const preview = getAttackDamagePreview(
       details.attacker,
       details.defender,
@@ -4315,6 +4410,92 @@ function resolvePlaceTokensChoice(state: GameState, action: Extract<GameAction, 
 }
 
 /**
+ * Clone Spell: opens the destination pick — the empty spaces orthogonally
+ * adjacent to the cloned unit. Mirrors openTeleportChoice but is restricted to
+ * the original's neighbours ("an adjacent empty space"). Does nothing when the
+ * original is hemmed in with no empty neighbour.
+ */
+function openCloneChoice(state: GameState, playerId: PlayerId, original: CombatUnitState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  const positions = getOrthogonalNeighbors(original.position).filter(
+    (position) => !isSpaceBlockedForSummon(combat, position)
+  );
+  if (positions.length === 0) {
+    return;
+  }
+
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Place the Clone of ${original.cardName} on an adjacent empty space.`,
+    options: positions.map((position) => ({ label: `Clone to ${getBattlefieldLabel(position)}` })),
+    context: "combat-clone",
+    clone: { originalUnitId: original.id, positions },
+    returnPhase: "combat"
+  };
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId,
+    sourceEffectIds: [],
+    message: `${state.players[playerId]?.name ?? playerId} clones ${original.cardName}.`
+  });
+}
+
+/** Resolves the Clone destination pick: drop the 1-Health Clone Token there. */
+function resolveCloneChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "combat-clone" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.clone
+  ) {
+    throw new Error("There is no clone choice to resolve.");
+  }
+
+  const combat = state.combat;
+  const original = combat?.units[choice.clone.originalUnitId];
+  const destination = choice.clone.positions[action.optionIndex];
+  if (!combat || !original || destination === undefined || isSpaceBlockedForSummon(combat, destination)) {
+    throw new Error("That clone destination is not available.");
+  }
+
+  const clone = placeCloneUnit(state, action.playerId, original, destination);
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
+  if (clone) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: clone.id,
+      abilityId: "spell.clone",
+      message: `${original.cardName} is cloned at ${getBattlefieldLabel(destination)} (1 Health).`
+    });
+  }
+
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  finishCombatIfNeeded(state);
+}
+
+/**
  * Liches' Death Cloud: opens the second-attack target choice (or declares
  * the attack straight away when only one unit qualifies). Returns true when
  * the attack sequence is paused on the choice or the follow-up attack.
@@ -5363,6 +5544,31 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       return;
     }
 
+    // Recanter's Cloak: a global spell-cast restriction wipes this cast out —
+    // a total lock (option B) or a Power below the floor (option A's "no spells
+    // with Power 0", so an unboosted cast does nothing). The spell still
+    // resolves and is discarded, applying none of its effects, exactly like a
+    // shrugged-off Dwarf roll above. Re-reads the final Power so a Power card
+    // played into the cast window lifts an option-A cast over the floor.
+    if (spellNullifiedByRestriction(state, getCurrentSpellPower(state, stackItem, cards))) {
+      appendEvent(state, {
+        type: "SPELL_CAST_RESOLVED",
+        playerId: stackItem.action.playerId,
+        spellCardId: stackItem.action.cardId,
+        target: stackItem.action.target,
+        power: getCurrentSpellPower(state, stackItem, cards)
+      });
+      finalizeSpellCardDestination(state, stackItem, effectCountBeforeCast);
+      stackItem.status = "resolved";
+      state.stack.pop();
+      if (finishCombatIfNeeded(state)) {
+        return;
+      }
+      state.phase = "combat";
+      state.priorityPlayerId = null;
+      return;
+    }
+
     if (card?.effect.type === "EARTHQUAKE" && state.combat?.siege) {
       resolveEarthquakeSpell(state, stackItem.action.playerId, getCurrentSpellPower(state, stackItem, cards));
     }
@@ -5372,8 +5578,9 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       if (target) {
         const power = getCurrentSpellPower(state, stackItem, cards);
         const rawAmount = getSpellDamageAmount(card, power);
-        // Spell/Specialty immunity zeroes the hit; otherwise "reduce spell
-        // damage by N" applies to Spell-kind damage only.
+        // Spell/Specialty immunity (Orb of Inhibition's global nullify and the
+        // Pendant's school immunity included) zeroes the hit; otherwise "reduce
+        // spell damage by N" applies to Spell-kind damage only.
         const amount = unitIgnoresCardDamage(state, target, card)
           ? 0
           : card.effect.damageKind === "spell"
@@ -5695,6 +5902,20 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       }
     }
 
+    // Clone: place a 1-Health copy of the selected allied unit on an adjacent
+    // empty space. Grade-gated by the Power paid (1 → bronze, 3 → silver,
+    // 5 → gold); below Power 1, or on a unit above the unlocked grade, the cast
+    // does nothing. The destination is picked in a follow-up (the combat-clone
+    // OPTION_CHOICE), resolved by resolveCloneChoice.
+    if (card?.effect.type === "CLONE_UNIT" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        openCloneChoice(state, stackItem.action.playerId, target);
+      }
+    }
+
     // Disrupting Ray: until the end of the Combat the selected enemy unit cannot
     // use its special ability. Grade-gated like Blind (0 → bronze, 1 → silver,
     // 2 → gold); above the unlocked grade the cast does nothing. Backed by a
@@ -5820,6 +6041,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
             unit.id !== target.id &&
             isUnitAlive(unit) &&
             isAdjacent(unit.position, target.position) &&
+            !unitImmuneToSpellSchoolsByEffect(state, unit, card.spellSchools) &&
             (spellAbilitiesSuppressed(state) || !unitImmuneToSpellSchools(unit, card.spellSchools))
         );
         if (splashCandidates.length > 0) {
@@ -6316,9 +6538,10 @@ function effectSupportsExpertPlay(effect: NonNullable<ReturnType<typeof getEffec
     return Boolean(effect.expertIgnoresMaxPower || effect.expertIgnoresMaxSpellLevel);
   }
 
-  // Interference's expert side (+2 instead of +1) always exists.
+  // Interference's expert side (+2 instead of +1) exists; Plate of the Dying
+  // Light reuses INTERFERE_SPELL with no expert side (no expertAmount).
   if (effect.type === "INTERFERE_SPELL") {
-    return true;
+    return effect.expertAmount !== undefined;
   }
 
   return false;
@@ -6625,6 +6848,13 @@ function applyReactionPlayCore(
   });
 
   if (effect.type === "CANCEL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
+    // Boots of Polarity: a chance-based cancel. Roll its Attack dice; on a
+    // failed roll the card is already spent (moved to discard above) but the
+    // spell resolves — return without ending the window so the cast continues
+    // to resolution and other reactions may still answer it.
+    if (effect.diceRoll && !rollSpellCancelDice(state, effect.diceRoll, stackItem.action.cardId, playerId)) {
+      return { windowEnded: false };
+    }
     // Resistance-style plays always end the spell once they apply: the stack
     // item is cancelled and the reaction window closes immediately.
     stackItem.status = "cancelled";
@@ -7150,7 +7380,9 @@ function applyReactionPlayCore(
       createActiveEffect(
         state,
         {
-          name: mode === "expert" ? "Expert Interference" : "Interference",
+          // Interference → "Interference"/"Expert Interference"; Plate of the
+          // Dying Light reuses this effect and names it after the artifact.
+          name: mode === "expert" ? `Expert ${card.name}` : card.name,
           scope: "unit",
           duration: { type: "combat" },
           polarity: "positive",
@@ -7957,6 +8189,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     createActiveEffectFromCard(state, card, effect, action.playerId, mode, target);
   }
 
+  if (effect.type === "REMOVE_ACTIVE_EFFECT" && target) {
+    removeOneEffectFromTarget(
+      state,
+      { type: "card", cardId: card.id, controllerId: action.playerId },
+      target
+    );
+  }
+
   if (effect.type === "CREATE_ATTACK_BUFF" && target) {
     createAttackBuffFromCard(state, card, effect, action.playerId, card.power ?? 0, target);
   }
@@ -8165,6 +8405,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "DIMENSION_DOOR") {
     openDimensionDoorChoice(state, action.playerId, effect.fields);
+  }
+
+  // View Earth (Map): open the choice of which enemy Mine in reach to capture.
+  if (effect.type === "VIEW_EARTH") {
+    openViewEarthChoice(state, action.playerId, effect.withinFields);
   }
 
   if (effect.type === "GAIN_EXPERT_USE") {
@@ -8920,6 +9165,54 @@ function placeSummonedUnit(
   summoned.summoned = true;
   combat.units[summoned.id] = summoned;
   return summoned;
+}
+
+/**
+ * Clone Spell: place a 1-Health Clone Token copying `original` onto an empty
+ * space. The Clone is rebuilt from the original's PRINTED side (its unitDefId +
+ * variant via makeCombatUnitFromArmy), so it copies the printed statistics, type
+ * and printed abilities but none of the ongoing effects, tokens or specialty
+ * transforms layered on the original — exactly "everything printed on its card,
+ * excluding any other effects played on the original". Its maxHealth is forced to
+ * 1, it carries no army card (it is a token, removed when the combat ends), and it
+ * is linked to its original by cloneOfUnitId so it dies with it. Returns the new
+ * Clone, or null when the space is unusable or the original has no printed side.
+ */
+function placeCloneUnit(
+  state: GameState,
+  playerId: PlayerId,
+  original: CombatUnitState,
+  position: number
+): CombatUnitState | null {
+  const combat = state.combat;
+  if (!combat || isSpaceBlockedForSummon(combat, position) || !original.unitDefId) {
+    return null;
+  }
+
+  const clone = makeCombatUnitFromArmy(
+    { id: `clonetoken_${nextEventNumber(state)}`, unitDefId: original.unitDefId, side: original.variant },
+    playerId,
+    `unit_${playerId}_clone_${nextEventNumber(state)}`,
+    position,
+    getRuleset(state)
+  );
+  if (!clone) {
+    return null;
+  }
+
+  // A 1-Health token of the printed unit. It acts on its own initiative this
+  // round (not pre-activated) and is gradeless to the neutral AI like a summon.
+  clone.maxHealth = 1;
+  clone.damage = 0;
+  clone.activatedThisRound = false;
+  clone.summoned = true;
+  clone.cloneOfUnitId = original.id;
+  clone.cardName = `Clone of ${original.cardName}`;
+  // It is a Clone Token, not a real army card: drop the army linkage so it is
+  // never mistaken for a recruited unit (and is discarded when the combat ends).
+  delete clone.armyUnitId;
+  combat.units[clone.id] = clone;
+  return clone;
 }
 
 /**
@@ -11256,6 +11549,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           nextState.pendingChoice.context === "place-battlefield-tokens"
         ) {
           resolvePlaceTokensChoice(nextState, action);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "combat-clone"
+        ) {
+          resolveCloneChoice(nextState, action);
         } else {
           chooseOption(nextState, action);
         }

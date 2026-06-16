@@ -16,6 +16,7 @@ import type {
   GameState,
   PlayerId,
   SourceRef,
+  SpellSchool,
   TargetRef,
   UnitId
 } from "./state";
@@ -183,6 +184,43 @@ export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitS
 }
 
 /**
+ * Recanter's Cloak: the combined spell-casting restriction in force right now,
+ * folded across every SPELL_CAST_RESTRICTION effect on the table (both options
+ * are global, so they bind both heroes). `lockAll` wins outright; otherwise
+ * `minPower` is the strictest (largest) floor any active restriction imposes.
+ * Read at the spell-resolution chokepoint and the cast-offer gate.
+ */
+export function getSpellCastRestriction(state: GameState): { lockAll: boolean; minPower: number } {
+  let lockAll = false;
+  let minPower = 0;
+  for (const effect of state.activeEffects) {
+    for (const modifier of effect.modifiers) {
+      if (modifier.type !== "SPELL_CAST_RESTRICTION") {
+        continue;
+      }
+      if (modifier.lockAll) {
+        lockAll = true;
+      }
+      if (modifier.minPower !== undefined) {
+        minPower = Math.max(minPower, modifier.minPower);
+      }
+    }
+  }
+  return { lockAll, minPower };
+}
+
+/**
+ * Whether a Spell that resolves at `finalPower` is wiped out by a Recanter's
+ * Cloak restriction — either a total lock, or a Power below the minimum (so a
+ * Power-0 cast does nothing). The spell still resolves and is discarded; it
+ * simply applies none of its effects, exactly like a shrugged-off Dwarf roll.
+ */
+export function spellNullifiedByRestriction(state: GameState, finalPower: number): boolean {
+  const restriction = getSpellCastRestriction(state);
+  return restriction.lockAll || finalPower < restriction.minPower;
+}
+
+/**
  * Whether a unit deals "elemental damage" right now — either its printed trait
  * (the Elemental units) or a granted effect (Moandor's Liches VI specialty).
  * Elemental damage cannot be raised by attack cards or Attack tokens; debuffs
@@ -215,6 +253,45 @@ export function unitImmuneToParalysis(state: GameState, unit: CombatUnitState): 
     (effect) =>
       effect.modifiers.some((modifier) => modifier.type === "PARALYSIS_IMMUNITY") &&
       effectAppliesToUnit(effect, unit)
+  );
+}
+
+/**
+ * Orb of Inhibition (option A): whether a global NULLIFY_CARD_DAMAGE effect is on
+ * the table right now. While it is, every Spell/Hero-Specialty CARD deals 0
+ * damage (read at reducedCardDamage). Side-agnostic, so a single grant nullifies
+ * card damage for both armies for the rest of the Combat.
+ */
+export function cardDamageNullified(state: GameState): boolean {
+  return state.activeEffects.some((effect) =>
+    effect.modifiers.some((modifier) => modifier.type === "NULLIFY_CARD_DAMAGE")
+  );
+}
+
+/**
+ * Pendant of Negativity (option B): whether `unit` currently holds a
+ * SPELL_SCHOOL_IMMUNE effect covering a Spell of `spellSchools`. A school-agnostic
+ * spell ("any", e.g. Magic Arrow) counts as belonging to every School, so an air
+ * immunity also turns it aside — matching the Pendant's own cancel side and the
+ * Protection-from-X spells. Read through effectAppliesToUnit, so a Tower
+ * Titan/Gargoyle that ignores the ongoing effect is not protected by it.
+ */
+export function unitImmuneToSpellSchoolsByEffect(
+  state: GameState,
+  unit: CombatUnitState,
+  spellSchools: readonly SpellSchool[] | undefined
+): boolean {
+  if (!spellSchools || spellSchools.length === 0) {
+    return false;
+  }
+  return state.activeEffects.some(
+    (effect) =>
+      effectAppliesToUnit(effect, unit) &&
+      effect.modifiers.some(
+        (modifier) =>
+          modifier.type === "SPELL_SCHOOL_IMMUNE" &&
+          spellSchools.some((school) => school === "any" || modifier.schools.includes(school))
+      )
   );
 }
 

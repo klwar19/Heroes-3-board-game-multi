@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 700" width="500" height="700" role="img" aria-label="Clone — Expert Water spell card">
+  <defs>
+    <linearGradient id="cloneFrame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d2c3b"/>
+      <stop offset="1" stop-color="#0d1620"/>
+    </linearGradient>
+    <linearGradient id="cloneWater" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f5f86"/>
+      <stop offset="0.55" stop-color="#1b3f5e"/>
+      <stop offset="1" stop-color="#102a40"/>
+    </linearGradient>
+    <linearGradient id="cloneBanner" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b6f99"/>
+      <stop offset="1" stop-color="#244c6c"/>
+    </linearGradient>
+    <radialGradient id="cloneGlow" cx="0.5" cy="0.42" r="0.6">
+      <stop offset="0" stop-color="#8fd0ff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#8fd0ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Frame -->
+  <rect x="0" y="0" width="500" height="700" rx="26" fill="url(#cloneFrame)"/>
+  <rect x="14" y="14" width="472" height="672" rx="20" fill="none" stroke="#6fa6cc" stroke-opacity="0.55" stroke-width="2"/>
+
+  <!-- Title banner -->
+  <rect x="34" y="34" width="432" height="76" rx="14" fill="url(#cloneBanner)" stroke="#9cc6e6" stroke-opacity="0.5" stroke-width="1.5"/>
+  <text x="250" y="86" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="44" font-weight="700" fill="#eaf5ff" letter-spacing="2">CLONE</text>
+
+  <!-- Art panel -->
+  <rect x="34" y="126" width="432" height="300" rx="16" fill="url(#cloneWater)" stroke="#6fa6cc" stroke-opacity="0.45" stroke-width="2"/>
+  <ellipse cx="250" cy="276" rx="180" ry="150" fill="url(#cloneGlow)"/>
+
+  <!-- "Copy" motif: a solid figure and its translucent duplicate -->
+  <g transform="translate(214 196)">
+    <!-- ghost duplicate behind -->
+    <g opacity="0.45" transform="translate(70 18) scale(0.96)">
+      <circle cx="40" cy="36" r="30" fill="#bfe2ff"/>
+      <path d="M2 170 C2 104 18 78 40 78 C62 78 78 104 78 170 Z" fill="#bfe2ff"/>
+    </g>
+    <!-- solid figure in front -->
+    <g>
+      <circle cx="40" cy="36" r="32" fill="#eaf6ff" stroke="#2f5f86" stroke-width="3"/>
+      <path d="M0 176 C0 106 16 78 40 78 C64 78 80 106 80 176 Z" fill="#eaf6ff" stroke="#2f5f86" stroke-width="3"/>
+    </g>
+    <!-- duplication arrow -->
+    <path d="M96 96 q34 -10 60 0" fill="none" stroke="#cfe9ff" stroke-width="4" stroke-linecap="round"/>
+    <path d="M150 86 l12 10 -12 10" fill="none" stroke="#cfe9ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- School / level chips -->
+  <g font-family="Georgia, serif" font-size="20" font-weight="700">
+    <rect x="34" y="442" width="150" height="38" rx="19" fill="#13354c" stroke="#6fa6cc" stroke-opacity="0.6" stroke-width="1.5"/>
+    <text x="109" y="468" text-anchor="middle" fill="#bfe2ff">WATER</text>
+    <rect x="196" y="442" width="150" height="38" rx="19" fill="#13354c" stroke="#6fa6cc" stroke-opacity="0.6" stroke-width="1.5"/>
+    <text x="271" y="468" text-anchor="middle" fill="#bfe2ff">EXPERT</text>
+    <rect x="358" y="442" width="108" height="38" rx="19" fill="#3a2a13" stroke="#caa15f" stroke-opacity="0.6" stroke-width="1.5"/>
+    <text x="412" y="468" text-anchor="middle" fill="#f0d6a2">+1 PWR</text>
+  </g>
+
+  <!-- Rules text -->
+  <g font-family="Georgia, 'Times New Roman', serif" font-size="20.5" fill="#e7f1fb">
+    <text x="38" y="516"><tspan font-weight="700" fill="#bfe2ff">Activation.</tspan> Place a copy of one of</text>
+    <text x="38" y="544">your units on an adjacent empty space.</text>
+    <text x="38" y="572">The Clone copies the unit's printed card</text>
+    <text x="38" y="600">but has only 1 Health, and is destroyed</text>
+    <text x="38" y="628">by any damage, by being attacked, or if</text>
+    <text x="38" y="656">the original leaves the board.</text>
+  </g>
+
+  <!-- Power ladder -->
+  <text x="38" y="684" font-family="Georgia, serif" font-size="17" fill="#9fc4dd">Power 1: bronze · Power 3: silver · Power 5: gold</text>
+</svg>

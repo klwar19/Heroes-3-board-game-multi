@@ -685,6 +685,46 @@ export const spellCards: CardLibrary = {
     implementationStatus: "implemented",
     source: spellSource("teleport")
   },
+  // Clone (Expert Water, Cove Expansion): place a 1-Health copy of one of your
+  // units on an adjacent empty space. The Clone copies everything PRINTED on the
+  // original's card (statistics, type, printed abilities) but NONE of the ongoing
+  // effects or tokens layered on the original. It is destroyed the instant it
+  // takes any damage, the instant it is attacked (even for 0 damage), and the
+  // instant its original leaves the board (engine: CLONE_UNIT → openCloneChoice /
+  // placeCloneUnit, the attack-hook in applyAttackDamageFromCandidate, and
+  // removeLinkedClones in combat-units). The reachable grade of the cloned unit
+  // rises with the Power paid (1 → bronze, 3 → silver, 5 → gold), the Implosion
+  // tier ladder; below Power 1 nothing is cloned. The adjacent empty space is
+  // picked in a follow-up choice. The "OR Instant: +1 Power" side is the
+  // universal power-source discard, so it needs no dedicated option.
+  "spell.clone": {
+    id: "spell.clone",
+    name: "Clone",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["water"],
+    power: 0,
+    target: { type: "friendly-unit" },
+    tags: [
+      "spell",
+      "expert",
+      "water",
+      "clone",
+      "Activation: Place a copy of one of your units on an adjacent empty space. The Clone copies the unit's printed card but has only 1 Health and is destroyed by any damage, by being attacked, or if the original leaves the board: Power 1: bronze; Power 3: bronze or silver; Power 5: bronze, silver, or gold. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "CLONE_UNIT",
+      gradeByPower: { 1: "bronze", 3: "silver", 5: "gold" }
+    },
+    assets: {
+      cardImage: "/assets/spells-clone.svg",
+      imageAlt: "Clone card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("clone")
+  },
   // Berserk (Expert Fire, Activation): the selected unit must, on its next
   // activation, attack the nearest unit or move to the nearest unit and attack
   // it — friend or foe, so a berserked enemy can be forced onto its own allies
@@ -1162,6 +1202,112 @@ export const spellCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: spellSource("visions")
+  },
+  // View Air (Basic Air, Map; Tower Expansion): a pure economy spell — pick a
+  // resource tier and gain it. There is no Hero Power statistic on the map, so
+  // the higher tiers are paid the board-game way (discard power-source cards via
+  // each option's cost): Power 0 -> 3 gold (free), Power 1 -> 2 Building
+  // Materials (discard 1 Spell/Power), Power 2 -> 1 Valuables (discard 2). The
+  // universal "OR Instant: +1 Power" side is the generic power-source discard
+  // (any Spell), so it needs no dedicated option. Reuses the already-wired
+  // GAIN_RESOURCES map effect; no new engine code beyond this definition.
+  "spell.view_air": {
+    id: "spell.view_air",
+    name: "View Air",
+    kind: "spell",
+    timing: "map",
+    spellLevel: "basic",
+    spellSchools: ["air"],
+    power: 0,
+    tags: [
+      "spell",
+      "basic",
+      "air",
+      "map",
+      "Map effect: Gain — Power 0: 3 gold; Power 1: 2 Building Materials; Power 2: 1 Valuables. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Gain 3 gold",
+          mapOnly: true,
+          effect: { type: "GAIN_RESOURCES", gain: { gold: 3 } }
+        },
+        {
+          label: "Gain 2 Building Materials (pay 1 Power)",
+          mapOnly: true,
+          cost: { discardCards: 1, costCardFilter: "power-source" },
+          effect: { type: "GAIN_RESOURCES", gain: { buildingMaterials: 2 } }
+        },
+        {
+          label: "Gain 1 Valuables (pay 2 Power)",
+          mapOnly: true,
+          cost: { discardCards: 2, costCardFilter: "power-source" },
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 } }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "/assets/spells-view_air.webp",
+      imageAlt: "View Air card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("view_air")
+  },
+  // View Earth (Basic Earth, Map; Fortress Expansion): "Choose enemy Mine within
+  // X fields. Replace the owner's cube with yours." Played on the adventure map
+  // (the wiki shows the Instant icon, but the effect acts on map Mines, so like
+  // Visions it is a Map-timed cast). The reach scales with the Power paid (Power
+  // 0/1/2 -> within 1/2/3 fields), paid by discarding power-source cards via each
+  // option's cost. The chosen Mine's Faction cube and ongoing production transfer
+  // to the caster (no first-flag income — the Mine was already flagged). The
+  // universal "OR Instant: +1 Power" side is the generic power-source discard, so
+  // it needs no dedicated option. Resolved via the "view-earth" pending choice
+  // (VIEW_EARTH effect -> openViewEarthChoice -> applyMineFlag).
+  "spell.view_earth": {
+    id: "spell.view_earth",
+    name: "View Earth",
+    kind: "spell",
+    timing: "map",
+    spellLevel: "basic",
+    spellSchools: ["earth"],
+    power: 0,
+    tags: [
+      "spell",
+      "basic",
+      "earth",
+      "map",
+      "Map effect: Choose an enemy Mine within X fields and replace the owner's cube with yours: Power 0: 1; Power 1: 2; Power 2: 3. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Capture an enemy Mine within 1 field",
+          mapOnly: true,
+          effect: { type: "VIEW_EARTH", withinFields: 1 }
+        },
+        {
+          label: "Capture an enemy Mine within 2 fields (pay 1 Power)",
+          mapOnly: true,
+          cost: { discardCards: 1, costCardFilter: "power-source" },
+          effect: { type: "VIEW_EARTH", withinFields: 2 }
+        },
+        {
+          label: "Capture an enemy Mine within 3 fields (pay 2 Power)",
+          mapOnly: true,
+          cost: { discardCards: 2, costCardFilter: "power-source" },
+          effect: { type: "VIEW_EARTH", withinFields: 3 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "/assets/spells-view_earth.webp",
+      imageAlt: "View Earth card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("view_earth")
   },
   // Implosion (Expert Earth, Activation): the heaviest single-target nuke — the
   // selected enemy takes flat spell damage that climbs with the Power paid
@@ -1743,6 +1889,9 @@ export const spellDeckLegacy: string[] = [
   // Inferno Expansion spell.
   "spell.inferno",
   "spell.visions",
+  // View Air (Basic Air) & View Earth (Basic Earth) — map utility spells.
+  "spell.view_air",
+  "spell.view_earth",
   // Additional wiki spells.
   "spell.implosion",
   "spell.dispel",
@@ -1752,6 +1901,8 @@ export const spellDeckLegacy: string[] = [
   // Expert combat-movement / control spells.
   "spell.teleport",
   "spell.berserk",
+  // Clone — Expert Water (Cove Expansion).
+  "spell.clone",
   // Tower Expansion / Stretch Goal defensive spells (all Basic).
   "spell.shield",
   "spell.air_shield",
@@ -1802,6 +1953,9 @@ export const spellDeckBinhBasic: string[] = [
   "spell.earthquake",
   "spell.forgetfulness",
   "spell.visions",
+  // View Air (Basic Air) & View Earth (Basic Earth) — map utility spells.
+  "spell.view_air",
+  "spell.view_earth",
   // Dispel — Basic Water.
   "spell.dispel",
   // Tower Expansion / Stretch Goal defensive spells (all Basic).
@@ -1853,6 +2007,8 @@ export const spellDeckBinhExpert: string[] = [
   // Teleport (Expert Water) & Berserk (Expert Fire).
   "spell.teleport",
   "spell.berserk",
+  // Clone — Expert Water (Cove Expansion).
+  "spell.clone",
   // Sacrifice — Expert Fire.
   "spell.sacrifice",
   // Land Mine — Expert Fire.

@@ -483,8 +483,16 @@ export function BattlefieldBoard({
           const tokenMark = battlefieldToken ? (
             <BattlefieldTokenMark state={state} token={battlefieldToken} viewerPlayerId={viewerPlayerId} />
           ) : null;
+          // Clone Spell: a Clone Token shows the cloned unit's own art cropped
+          // into a round, player-coloured token (the physical Clone Token), so it
+          // reads at a glance as a copy rather than the real stack.
+          const isClone = Boolean(unit?.cloneOfUnitId);
           const content = unit ? (
-            <article className={`boardCard ${unit.controllerId} ${isFlipping ? "flipping" : ""} ${tint ? `fxTint-${tint}` : ""}`}>
+            <article
+              className={`boardCard ${unit.controllerId} ${isFlipping ? "flipping" : ""} ${tint ? `fxTint-${tint}` : ""} ${
+                isClone ? "cloneToken" : ""
+              }`}
+            >
               {unit.assets?.cardImage ? (
                 <img
                   alt={unit.assets?.imageAlt ?? unit.cardName}
@@ -507,6 +515,11 @@ export function BattlefieldBoard({
               {tokenMark}
               {isActive ? <span className="activeRing" aria-hidden="true" /> : null}
               {isFlipping ? <span className="flipBadge">Flipped to Few</span> : null}
+              {isClone ? (
+                <span className="cloneBadge" title="Clone Token — a 1-Health copy; destroyed by any damage, by being attacked, or if its original leaves.">
+                  Clone
+                </span>
+              ) : null}
             </article>
           ) : (
             tokenMark ?? <span className="emptyBoardMark" aria-hidden="true" />
