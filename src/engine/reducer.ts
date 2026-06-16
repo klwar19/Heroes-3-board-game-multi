@@ -321,6 +321,13 @@ function normalizeActionForMatch(action: GameAction): GameAction {
     };
   }
 
+  if (action.type === "MOVE_UNIT") {
+    // The optional `path` is the player's chosen route, validated by moveUnit
+    // itself (isLegalExplicitMovePath), not by the legality match — so match on
+    // the destination only.
+    return { type: "MOVE_UNIT", playerId: action.playerId, unitId: action.unitId, destination: action.destination };
+  }
+
   return action;
 }
 
@@ -6041,20 +6048,24 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       }
     }
 
-    // Dispel: strip every removable ongoing effect from the selected unit, gated
-    // by the Power-reached grade (0 → bronze, 1 → silver, 2 → gold) just like
-    // Anti-Magic / Blind. Casting above the unlocked grade does nothing.
-    if (card?.effect.type === "DISPEL_EFFECTS" && state.combat && stackItem.action.target.type === "unit") {
-      const power = getCurrentSpellPower(state, stackItem, cards);
-      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
-      const target = state.combat.units[stackItem.action.target.unitId];
-      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
-        removeEffectsFromTarget(
-          state,
-          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
-          stackItem.action.target,
-          "any-removable"
-        );
+    // Dispel: "Remove all ongoing effects from a space, or a unit and the space
+    // it occupies." On a UNIT it strips that unit's removable effects (gated by
+    // the Power-reached grade 0/1/2 → bronze/silver/gold, like Anti-Magic/Blind)
+    // and then clears any obstacle on the space it stands on. On a SPACE it
+    // clears that space's obstacle/trap tokens — tokens carry no grade, so this
+    // works at any Power.
+    if (card?.effect.type === "DISPEL_EFFECTS" && state.combat) {
+      const dispelSource = { type: "card" as const, cardId: card.id, controllerId: stackItem.action.playerId };
+      if (stackItem.action.target.type === "unit") {
+        const power = getCurrentSpellPower(state, stackItem, cards);
+        const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+        const target = state.combat.units[stackItem.action.target.unitId];
+        if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+          removeEffectsFromTarget(state, dispelSource, stackItem.action.target, "any-removable");
+          clearBattlefieldTokensAt(state, state.combat, target.position);
+        }
+      } else if (stackItem.action.target.type === "space") {
+        clearBattlefieldTokensAt(state, state.combat, stackItem.action.target.position);
       }
     }
 
@@ -10638,20 +10649,31 @@ function getKnownHazardSpaces(combat: CombatState, unit: CombatUnitState): Set<n
   return hazards;
 }
 
-/** Reveals a face-down trap (Quicksand / Land Mine) to everyone the first time a unit enters it. */
-function revealBattlefieldToken(state: GameState, token: BattlefieldTokenState, unit: CombatUnitState): void {
-  if (token.revealed) {
-    return;
+/** Takes a sprung face-down trap (Quicksand / Land Mine) off the board. */
+function removeBattlefieldToken(combat: CombatState, tokenId: string): void {
+  combat.battlefieldTokens = (combat.battlefieldTokens ?? []).filter((token) => token.id !== tokenId);
+}
+
+/**
+ * Dispel / "Remove all ongoing effects from a space": lifts every battlefield
+ * token (Force Field, Fire Wall, Quicksand, Land Mine) off `position` and
+ * announces each, so the board clears and the log notes it. Returns the count.
+ */
+function clearBattlefieldTokensAt(state: GameState, combat: CombatState, position: number): number {
+  const here = (combat.battlefieldTokens ?? []).filter((token) => token.position === position);
+  if (here.length === 0) {
+    return 0;
   }
-  token.revealed = true;
-  appendEvent(state, {
-    type: "BATTLEFIELD_TOKEN_REVEALED",
-    tokenId: token.id,
-    kind: token.kind,
-    position: token.position,
-    armed: token.armed === true,
-    unitId: unit.id
-  });
+  combat.battlefieldTokens = (combat.battlefieldTokens ?? []).filter((token) => token.position !== position);
+  for (const token of here) {
+    appendEvent(state, {
+      type: "BATTLEFIELD_TOKEN_EXPIRED",
+      tokenId: token.id,
+      kind: token.kind,
+      position: token.position
+    });
+  }
+  return here.length;
 }
 
 /** Deals a Fire Wall / Land Mine token's flat damage to a unit moving over it. */
@@ -10692,10 +10714,13 @@ function dealBattlefieldTokenDamage(
  * its landing space, since flyers never enter the spaces they pass over),
  * springing each battlefield token. Returns where the unit comes to rest and
  * whether a Quicksand halted it (which also ends its activation). Faithful to
- * the rulebook: an entered face-down trap is revealed; an armed Land Mine deals
- * its damage and the unit moves on; an armed Quicksand ends movement at once; a
- * Fire Wall burns any unit stopping on it and any ground/ranged unit passing
- * through. Stops early the moment a token kills the mover.
+ * the rulebook: a Land Mine and a Quicksand are face-down traps that spring ONCE
+ * and are then taken off the board (so the opponent never learns which of the
+ * remaining face-down tokens are real) — an armed Land Mine deals its damage and
+ * the unit moves on, an armed Quicksand ends movement at once, a decoy of either
+ * does nothing. A Fire Wall is a lasting Effect Obstacle: it is NOT consumed —
+ * it burns any unit stopping on it and any ground/ranged unit passing through,
+ * for the whole Combat. Stops early the moment a token kills the mover.
  */
 function walkMoveThroughTokens(
   state: GameState,
@@ -10730,46 +10755,102 @@ function walkMoveThroughTokens(
       }
     }
 
-    // Land Mine: reveal on entry; an armed one deals its damage, then the unit
-    // continues its move/activation if it survives.
+    // Land Mine: a sprung trap is removed at once. An armed one deals its damage
+    // (then the unit continues if it survives); a decoy does nothing. Either way
+    // the token is taken off the board, so its armed/decoy identity never leaks.
     for (const token of tokens) {
       if (token.kind !== "land_mine") {
         continue;
       }
-      revealBattlefieldToken(state, token, unit);
-      if (token.armed) {
+      if (token.armed === true) {
         dealBattlefieldTokenDamage(state, token, unit, token.damage ?? 0);
+        removeBattlefieldToken(combat, token.id);
         if (!isUnitAlive(unit)) {
           return { finalPosition, haltedByQuicksand: false };
         }
+      } else {
+        appendEvent(state, {
+          type: "BATTLEFIELD_TOKEN_TRIGGERED",
+          tokenId: token.id,
+          kind: "land_mine",
+          position,
+          unitId: unit.id,
+          outcome: "decoy"
+        });
+        removeBattlefieldToken(combat, token.id);
       }
     }
 
-    // Quicksand: reveal on entry; an armed one ends movement AND activation here.
+    // Quicksand: a sprung trap is removed at once. An armed one ends movement AND
+    // activation here; a decoy does nothing. Both are taken off the board.
     let armedQuicksand: BattlefieldTokenState | undefined;
     for (const token of tokens) {
       if (token.kind !== "quicksand") {
         continue;
       }
-      revealBattlefieldToken(state, token, unit);
-      if (token.armed) {
-        armedQuicksand = armedQuicksand ?? token;
+      if (token.armed === true && !armedQuicksand) {
+        armedQuicksand = token;
+        appendEvent(state, {
+          type: "BATTLEFIELD_TOKEN_TRIGGERED",
+          tokenId: token.id,
+          kind: "quicksand",
+          position,
+          unitId: unit.id,
+          outcome: "stop"
+        });
+      } else if (token.armed !== true) {
+        appendEvent(state, {
+          type: "BATTLEFIELD_TOKEN_TRIGGERED",
+          tokenId: token.id,
+          kind: "quicksand",
+          position,
+          unitId: unit.id,
+          outcome: "decoy"
+        });
       }
+      removeBattlefieldToken(combat, token.id);
     }
     if (armedQuicksand) {
-      appendEvent(state, {
-        type: "BATTLEFIELD_TOKEN_TRIGGERED",
-        tokenId: armedQuicksand.id,
-        kind: "quicksand",
-        position,
-        unitId: unit.id,
-        outcome: "stop"
-      });
       return { finalPosition: position, haltedByQuicksand: true };
     }
   }
 
   return { finalPosition, haltedByQuicksand: false };
+}
+
+/**
+ * Validates a player-chosen movement route for a NON-flying unit: the ordered
+ * spaces it ENTERS (start exclusive, `destination` last). It must be an
+ * orthogonal step-by-step walk, no longer than the unit's movement, that ends
+ * on `destination`, never revisits a space, and never enters a blocked space
+ * (another unit, an obstacle, a Force Field). Fire Walls / traps are NOT blocked
+ * — a route may deliberately cross them (and take the hit), which is the whole
+ * point of letting the player pick the path.
+ */
+function isLegalExplicitMovePath(
+  combat: CombatState,
+  unit: CombatUnitState,
+  start: number,
+  path: number[],
+  destination: number
+): boolean {
+  if (path.length === 0 || path.length > getUnitMoveRange(unit)) {
+    return false;
+  }
+  if (path[path.length - 1] !== destination) {
+    return false;
+  }
+  const blocked = getBlockedSpaces(combat, unit);
+  const seen = new Set<number>([start]);
+  let previous = start;
+  for (const cell of path) {
+    if (!isBattlefieldPosition(cell) || !isAdjacent(previous, cell) || blocked.has(cell) || seen.has(cell)) {
+      return false;
+    }
+    seen.add(cell);
+    previous = cell;
+  }
+  return true;
 }
 
 function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UNIT" }>): void {
@@ -10786,11 +10867,19 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
   let finalPosition = destination;
   let haltedByQuicksand = false;
 
-  // With battlefield tokens in play, the move is walked space-by-space so Fire
-  // Walls, Land Mines and Quicksand can bite along the way. With none on the
-  // board this is skipped entirely, so ordinary movement is unchanged.
-  if ((combat.battlefieldTokens ?? []).length > 0) {
-    const enteredSpaces =
+  // The spaces the unit ENTERS. A player may dictate the exact route (action.path)
+  // — e.g. to brave a Fire Wall on a shortcut, or detour around one — otherwise
+  // the engine auto-routes (shortest, then least-hazard). Flyers never enter the
+  // spaces they pass over, so a route is meaningless for them (ignored). With no
+  // tokens and no chosen path, the walk is skipped and movement is unchanged.
+  let enteredSpaces: number[] | null = null;
+  if (action.path && unit.type !== "flying") {
+    if (!isLegalExplicitMovePath(combat, unit, from, action.path, destination)) {
+      throw new Error("That movement path is not legal.");
+    }
+    enteredSpaces = action.path;
+  } else if ((combat.battlefieldTokens ?? []).length > 0) {
+    enteredSpaces =
       unit.type === "flying"
         ? [destination]
         : (planMovePath(
@@ -10800,6 +10889,9 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
             getBlockedSpaces(combat, unit),
             getKnownHazardSpaces(combat, unit)
           ) ?? [destination]);
+  }
+
+  if (enteredSpaces) {
     const walked = walkMoveThroughTokens(state, unit, enteredSpaces);
     finalPosition = walked.finalPosition;
     haltedByQuicksand = walked.haltedByQuicksand;
