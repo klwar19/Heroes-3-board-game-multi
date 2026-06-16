@@ -33,6 +33,14 @@ function isAdjacent(leftPosition: number, rightPosition: number): boolean {
 }
 
 export function getUnitAbilityDefinitions(unit: CombatUnitState): UnitAbilityDefinition[] {
+  // Disrupting Ray: a suppressed unit "cannot use their special ability". This
+  // is the single chokepoint every ability read flows through, so returning []
+  // here switches off ALL of the unit's abilities — whatever it has now or
+  // gains later — for as long as the suppression lasts. The flag is kept in
+  // sync with the UNIT_ABILITY_SUPPRESSED active effect by syncAbilitySuppression.
+  if (unit.abilitiesSuppressed) {
+    return [];
+  }
   return unit.abilities.map((abilityId) => unitAbilities[abilityId]).filter(Boolean);
 }
 

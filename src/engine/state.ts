@@ -386,6 +386,18 @@ export type ActiveEffectModifier =
        */
       type: "SPELL_DAMAGE_REDUCTION";
       amount: number;
+    }
+  | {
+      /**
+       * Disrupting Ray: while held, the unit "cannot use their special ability".
+       * getUnitAbilityDefinitions returns [] for a unit carrying this modifier,
+       * so every ability read — attack follow-ups, passives, activation
+       * abilities, printed immunities — sees nothing, for whatever abilities the
+       * unit has now OR gains later, until the suppression ends. Combat-scoped
+       * and removable (Dispel/Cure lift it). Read through effectAppliesToUnit, so
+       * a Tower Titan/Gargoyle that ignores ongoing effects is not suppressed.
+       */
+      type: "UNIT_ABILITY_SUPPRESSED";
     };
 
 export type ActiveEffectDefinition = {
@@ -1193,6 +1205,32 @@ export type EffectDefinition =
        */
       type: "VISIONS_SCRY";
       cardsByPower: Record<number, number>;
+    }
+  | {
+      /**
+       * Disrupting Ray Spell (Basic Air, Ongoing): until the end of the Combat
+       * the selected enemy unit cannot use its special ability. The reachable
+       * grade rises with the Power paid (0 → bronze, 1 → silver, 2 → gold) — the
+       * Anti-Magic/Blind gate; above it the cast does nothing. Backed by a
+       * combat-scoped UNIT_ABILITY_SUPPRESSED effect. As a single-target unit
+       * cast it can be deflected by Magic Mirror onto a new target.
+       */
+      type: "DISRUPTING_RAY";
+      gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
+       * Sacrifice Spell (Expert Fire, Activation): choose 1 of your damaged units
+       * (the heal target, grade-gated by the Power paid — 0/2/4 → bronze/silver/
+       * gold) and transfer its damage onto another of your units (the sacrifice,
+       * picked in a follow-up ABILITY_TARGET_CHOICE). The amount moved is
+       * min(heal target's damage, the sacrifice's remaining HP) — "up to as much
+       * as is needed for the other unit to perish": the heal target loses that
+       * much damage, the sacrifice takes it and perishes (a Pack flips to Few)
+       * when it reaches its remaining HP.
+       */
+      type: "SACRIFICE_TRANSFER";
+      gradeByPower: Record<number, UnitGrade>;
     };
 
 /**
@@ -3136,6 +3174,13 @@ export type CombatUnitState = {
   poisonCubes?: number;
   abilities: string[];
   /**
+   * Disrupting Ray: derived flag recomputed after every action from the unit's
+   * UNIT_ABILITY_SUPPRESSED active effects (syncAbilitySuppression). While set,
+   * getUnitAbilityDefinitions returns [] so the unit cannot use ANY special
+   * ability — current or future — until the suppression ends.
+   */
+  abilitiesSuppressed?: boolean;
+  /**
    * Specialty cards covering the unit card (Sandro's Cloak), bottom-up; the
    * top entry's statistics are the unit's current statistics. Printed
    * abilities stay inactive while a transform is on top.
@@ -4214,7 +4259,8 @@ export type PendingChoice =
         | "spell-redirect"
         | "enchanter-activation"
         | "faerie-damage"
-        | "chain-lightning";
+        | "chain-lightning"
+        | "sacrifice-transfer";
       abilityId: string | null;
       abilityName: string;
       prompt: string;
