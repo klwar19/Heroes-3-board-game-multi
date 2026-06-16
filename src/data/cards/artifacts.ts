@@ -756,6 +756,72 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("ring_of_the_wayfarer")
   },
+  // Scales of the Greater Basilisk (Fortress): both sides are the familiar
+  // +Power combat instant played as you cast a spell — a flat +3, or a smaller
+  // +1 that also draws a card (the Tunic of the Cyclops King shape).
+  "artifact.scales_of_the_greater_basilisk": {
+    id: "artifact.scales_of_the_greater_basilisk",
+    name: "Scales of the Greater Basilisk",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "minor",
+    tags: ["artifact", "minor", "+3 Power. — OR — +1 Power, then draw a card."],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+3 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 3 }
+        },
+        {
+          label: "+1 Power, then draw a card",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 1, drawCards: 1 }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "scales_of_the_greater_basilisk", "Scales of the Greater Basilisk"),
+    implementationStatus: "implemented",
+    source: artifactSource("scales_of_the_greater_basilisk")
+  },
+  // Blackshard of the Dead Knight (Necropolis/Fortress): the big side adds +2
+  // attack but discards a card from hand; if that discarded card was a Spell,
+  // it draws a replacement (engine: ADD_COMBAT_STAT drawIfCostCardSpell, read
+  // from the option's discard cost). The safe side is a plain +1 attack.
+  "artifact.blackshard_of_the_dead_knight": {
+    id: "artifact.blackshard_of_the_dead_knight",
+    name: "Blackshard of the Dead Knight",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "minor",
+    tags: [
+      "artifact",
+      "minor",
+      "+2 attack and discard 1 card. If the discarded card was a Spell, draw 1 card. — OR — +1 attack."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+2 attack, discard 1 card (draw 1 if it was a Spell)",
+          cost: { discardCards: 1 },
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, drawIfCostCardSpell: true }
+        },
+        {
+          label: "+1 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "blackshard_of_the_dead_knight", "Blackshard of the Dead Knight"),
+    implementationStatus: "implemented",
+    source: artifactSource("blackshard_of_the_dead_knight")
+  },
 
   // ---- Major artifacts ----------------------------------------------------
   "artifact.dragon_scale_shield": {
@@ -1548,6 +1614,116 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("pendant_of_second_sight")
   },
+  // Sword of Hellfire (Fortress): the attacking-unit twin of Shield of the
+  // Damned — a bigger attack bonus paid for in the attacker's own blood
+  // (ADD_COMBAT_STAT attack + selfDamage). Because the attack bonus lands on
+  // your own attacker (UNIT_ATTACK_DECLARED self), it never touches an enemy
+  // unit, exactly as the printed "cannot be used on an enemy unit" demands.
+  "artifact.sword_of_hellfire": {
+    id: "artifact.sword_of_hellfire",
+    name: "Sword of Hellfire",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "+3 attack, then this unit suffers 1 damage. Cannot be used on an enemy unit. — OR — +4 attack, then this unit suffers 2 damage. Cannot be used on an enemy unit."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+3 attack, the unit suffers 1 damage",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 3, selfDamage: 1 }
+        },
+        {
+          label: "+4 attack, the unit suffers 2 damage",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 4, selfDamage: 2 }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "sword_of_hellfire", "Sword of Hellfire"),
+    implementationStatus: "implemented",
+    source: artifactSource("sword_of_hellfire")
+  },
+  // Surcoat of Counterpoise (Tower): option A is a low-power spell counter —
+  // played as the enemy casts, it ends that Spell only if it was cast with 1
+  // Power or less (engine: CANCEL_SPELL maxPower 1, re-checked against the
+  // spell's final Power at resolution, exactly like Resistance). Option B is a
+  // map play: remove the Surcoat and Search (1) the Artifact deck.
+  "artifact.surcoat_of_counterpoise": {
+    id: "artifact.surcoat_of_counterpoise",
+    name: "Surcoat of Counterpoise",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Play immediately after an enemy casts a Spell. If it was cast with 1 Power or less, ignore the Spell's effect. — OR — Remove this card, then Search (1) the Artifact deck."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Ignore an enemy Spell cast with 1 Power or less",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "CANCEL_SPELL", maxPower: 1 }
+        },
+        {
+          label: "Remove this card: Search (1) the Artifact deck",
+          mapOnly: true,
+          cost: { removeSelf: true },
+          effect: { type: "CARD_DECK_SEARCH", deck: "artifacts", count: 1 }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "surcoat_of_counterpoise", "Surcoat of Counterpoise"),
+    implementationStatus: "implemented",
+    source: artifactSource("surcoat_of_counterpoise")
+  },
+  // Targ of the Rampaging Ogre (Fortress): the top side is a reusable defense
+  // reaction — discard 2 cards for +2 defense, then the Targ returns to hand
+  // instead of going to the discard pile (engine: option.returnSelfToHand), so
+  // it can be played again later (paying 2 cards each time). The bottom side is
+  // the ordinary +1 defense reaction that discards the card as usual.
+  "artifact.targ_of_the_rampaging_ogre": {
+    id: "artifact.targ_of_the_rampaging_ogre",
+    name: "Targ of the Rampaging Ogre",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Discard 2 cards to gain +2 defense. Then, instead of discarding, put this card back into your hand. — OR — +1 defense."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Discard 2 cards: +2 defense, then return this card to your hand",
+          cost: { discardCards: 2 },
+          returnSelfToHand: true,
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2 }
+        },
+        {
+          label: "+1 defense",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1 }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "targ_of_the_rampaging_ogre", "Targ of the Rampaging Ogre"),
+    implementationStatus: "implemented",
+    source: artifactSource("targ_of_the_rampaging_ogre")
+  },
 
   // ---- Relic artifacts ----------------------------------------------------
   "artifact.angel_wings": {
@@ -1957,6 +2133,8 @@ export const artifactDeckLegacy: string[] = [
   "artifact.glyph_of_gallantry",
   "artifact.quiet_eye_of_the_dragon",
   "artifact.ring_of_the_wayfarer",
+  "artifact.scales_of_the_greater_basilisk",
+  "artifact.blackshard_of_the_dead_knight",
   // major
   "artifact.dragon_scale_shield",
   "artifact.endless_bag_of_gold",
@@ -1982,6 +2160,9 @@ export const artifactDeckLegacy: string[] = [
   "artifact.orb_of_tempestuous_fire",
   "artifact.orb_of_the_firmament",
   "artifact.pendant_of_second_sight",
+  "artifact.sword_of_hellfire",
+  "artifact.surcoat_of_counterpoise",
+  "artifact.targ_of_the_rampaging_ogre",
   // relic
   "artifact.angel_wings",
   "artifact.dragon_scale_armor",
@@ -2024,7 +2205,9 @@ export const artifactDeckBinhMinor: string[] = [
   "artifact.charm_of_mana",
   "artifact.greater_gnolls_flail",
   "artifact.shield_of_the_dwarven_lords",
-  "artifact.ring_of_the_wayfarer"
+  "artifact.ring_of_the_wayfarer",
+  "artifact.scales_of_the_greater_basilisk",
+  "artifact.blackshard_of_the_dead_knight"
 ];
 
 /** BINH Major Artifact deck (adds the BINH-extra majors). */
@@ -2052,7 +2235,10 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.orb_of_silt",
   "artifact.orb_of_tempestuous_fire",
   "artifact.orb_of_the_firmament",
-  "artifact.pendant_of_second_sight"
+  "artifact.pendant_of_second_sight",
+  "artifact.sword_of_hellfire",
+  "artifact.surcoat_of_counterpoise",
+  "artifact.targ_of_the_rampaging_ogre"
 ];
 
 /** BINH Relic Artifact deck (adds the BINH-extra relics). */

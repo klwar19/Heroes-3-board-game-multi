@@ -6577,6 +6577,13 @@ function applyReactionPlayCore(
       drawCardsForPlayer(state, playerId, effect.drawCards);
     }
 
+    // Blackshard of the Dead Knight: the option discarded 1 card; draw 1 only
+    // when that paid card was a Spell. The cost cards were already moved to the
+    // discard pile by payOptionCardCost above, so inspect the paid ids.
+    if (effect.drawIfCostCardSpell && (play.costCardIds ?? []).some((id) => cards[id]?.kind === "spell")) {
+      drawCardsForPlayer(state, playerId, 1);
+    }
+
     // Spells (Curse/Weakness/Bloodlust/Precision) may be cancelled by the other
     // side's Resistance; the Attack/Defense statistics and Gnoll artifacts that
     // share this effect are not Spells, so they are never recorded.
@@ -6762,6 +6769,19 @@ function applyReactionPlayCore(
   ) {
     stackItem.modifiers.cancelLethal = { unitId: stackItem.action.defenderId, grade: effect.grade };
     stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
+  // Targ of the Rampaging Ogre (top side): "instead of discarding, put this card
+  // back into your hand." The card was moved to the discard pile above; now that
+  // its effect has applied, pull it back to hand. The cost cards it discarded
+  // stay discarded. Never combines with a removeSelf option or a scroll play.
+  if (option?.returnSelfToHand && !play.fromScroll && !option.cost?.removeSelf) {
+    const owner = state.players[playerId];
+    const discardIndex = owner?.discard.lastIndexOf(play.cardId) ?? -1;
+    if (owner && discardIndex !== -1) {
+      owner.discard.splice(discardIndex, 1);
+      owner.hand.push(play.cardId);
+    }
   }
 
   return { windowEnded: false };
