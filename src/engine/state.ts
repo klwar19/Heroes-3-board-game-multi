@@ -4235,13 +4235,14 @@ export type PendingChoice =
        * Magic Mirror reflecting an instant combat debuff played onto an attack
        * (Curse on your defender, Weakness on your attacker). The debuff was
        * already lifted off your unit; once the new target is chosen it lands on
-       * that unit as a lasting combat token (corrosion for −defense, weakness
-       * for −attack), then the attack's reaction window reopens. Absent for a
-       * normal cast redirect, which re-points the pending Spell instead.
+       * that unit as a "current-activation" stat effect (−defense for Curse,
+       * −attack for Weakness) — covering this attack and its retaliation only,
+       * then expiring, exactly as the instant would. Absent for a normal cast
+       * redirect, which re-points the pending Spell instead.
        */
       redirectInstant?: {
         stat: "attack" | "defense";
-        /** Signed stat delta the token carries (e.g. −2 for a Power-1 Curse). */
+        /** Signed stat delta the effect carries (e.g. −2 for a Power-1 Curse). */
         amount: number;
         sourceCardId: CardId;
         sourceName: string;
