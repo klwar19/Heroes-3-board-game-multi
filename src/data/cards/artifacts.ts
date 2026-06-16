@@ -32,7 +32,16 @@ const SCANLESS_ARTIFACTS = new Set([
   // Newly added Cove/sea artifact whose card scan is not yet committed to
   // public/assets — it falls back to the deck back until the scan lands.
   // (Ring of the Wayfarer's scan is committed, so it is not listed here.)
-  "crown_of_the_five_seas"
+  "crown_of_the_five_seas",
+  // The Cove sea artifacts below have no card scan on the wiki either (it shows
+  // the deck back for them), so they fall back to the deck back here too.
+  "trident_of_dominion",
+  "shield_of_naval_glory",
+  "royal_armor_of_nix",
+  // Diplomat's Ring: the wiki shows the deck back for this card too (no scan),
+  // so it falls back to the deck back here. Its companion Ambassador's Sash
+  // does have a scan.
+  "diplomats_ring"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
@@ -755,6 +764,72 @@ export const artifactCards: CardLibrary = {
     assets: artifactAssets("minor", "ring_of_the_wayfarer", "Ring of the Wayfarer"),
     implementationStatus: "implemented",
     source: artifactSource("ring_of_the_wayfarer")
+  },
+  // Scales of the Greater Basilisk (Fortress): both sides are the familiar
+  // +Power combat instant played as you cast a spell — a flat +3, or a smaller
+  // +1 that also draws a card (the Tunic of the Cyclops King shape).
+  "artifact.scales_of_the_greater_basilisk": {
+    id: "artifact.scales_of_the_greater_basilisk",
+    name: "Scales of the Greater Basilisk",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "minor",
+    tags: ["artifact", "minor", "+3 Power. — OR — +1 Power, then draw a card."],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+3 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 3 }
+        },
+        {
+          label: "+1 Power, then draw a card",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 1, drawCards: 1 }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "scales_of_the_greater_basilisk", "Scales of the Greater Basilisk"),
+    implementationStatus: "implemented",
+    source: artifactSource("scales_of_the_greater_basilisk")
+  },
+  // Blackshard of the Dead Knight (Necropolis/Fortress): the big side adds +2
+  // attack but discards a card from hand; if that discarded card was a Spell,
+  // it draws a replacement (engine: ADD_COMBAT_STAT drawIfCostCardSpell, read
+  // from the option's discard cost). The safe side is a plain +1 attack.
+  "artifact.blackshard_of_the_dead_knight": {
+    id: "artifact.blackshard_of_the_dead_knight",
+    name: "Blackshard of the Dead Knight",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "minor",
+    tags: [
+      "artifact",
+      "minor",
+      "+2 attack and discard 1 card. If the discarded card was a Spell, draw 1 card. — OR — +1 attack."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+2 attack, discard 1 card (draw 1 if it was a Spell)",
+          cost: { discardCards: 1 },
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, drawIfCostCardSpell: true }
+        },
+        {
+          label: "+1 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "blackshard_of_the_dead_knight", "Blackshard of the Dead Knight"),
+    implementationStatus: "implemented",
+    source: artifactSource("blackshard_of_the_dead_knight")
   },
 
   // ---- Major artifacts ----------------------------------------------------
@@ -1548,6 +1623,366 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("pendant_of_second_sight")
   },
+  // Sword of Hellfire (Fortress): the attacking-unit twin of Shield of the
+  // Damned — a bigger attack bonus paid for in the attacker's own blood
+  // (ADD_COMBAT_STAT attack + selfDamage). Because the attack bonus lands on
+  // your own attacker (UNIT_ATTACK_DECLARED self), it never touches an enemy
+  // unit, exactly as the printed "cannot be used on an enemy unit" demands.
+  "artifact.sword_of_hellfire": {
+    id: "artifact.sword_of_hellfire",
+    name: "Sword of Hellfire",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "+3 attack, then this unit suffers 1 damage. Cannot be used on an enemy unit. — OR — +4 attack, then this unit suffers 2 damage. Cannot be used on an enemy unit."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+3 attack, the unit suffers 1 damage",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 3, selfDamage: 1 }
+        },
+        {
+          label: "+4 attack, the unit suffers 2 damage",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 4, selfDamage: 2 }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "sword_of_hellfire", "Sword of Hellfire"),
+    implementationStatus: "implemented",
+    source: artifactSource("sword_of_hellfire")
+  },
+  // Surcoat of Counterpoise (Tower): option A is a low-power spell counter —
+  // played as the enemy casts, it ends that Spell only if it was cast with 1
+  // Power or less (engine: CANCEL_SPELL maxPower 1, re-checked against the
+  // spell's final Power at resolution, exactly like Resistance). Option B is a
+  // map play: remove the Surcoat and Search (1) the Artifact deck.
+  "artifact.surcoat_of_counterpoise": {
+    id: "artifact.surcoat_of_counterpoise",
+    name: "Surcoat of Counterpoise",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Play immediately after an enemy casts a Spell. If it was cast with 1 Power or less, ignore the Spell's effect. — OR — Remove this card, then Search (1) the Artifact deck."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Ignore an enemy Spell cast with 1 Power or less",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "CANCEL_SPELL", maxPower: 1 }
+        },
+        {
+          label: "Remove this card: Search (1) the Artifact deck",
+          mapOnly: true,
+          cost: { removeSelf: true },
+          effect: { type: "CARD_DECK_SEARCH", deck: "artifacts", count: 1 }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "surcoat_of_counterpoise", "Surcoat of Counterpoise"),
+    implementationStatus: "implemented",
+    source: artifactSource("surcoat_of_counterpoise")
+  },
+  // Targ of the Rampaging Ogre (Fortress): the top side is a reusable defense
+  // reaction — discard 2 cards for +2 defense, then the Targ returns to hand
+  // instead of going to the discard pile (engine: option.returnSelfToHand), so
+  // it can be played again later (paying 2 cards each time). The bottom side is
+  // the ordinary +1 defense reaction that discards the card as usual.
+  "artifact.targ_of_the_rampaging_ogre": {
+    id: "artifact.targ_of_the_rampaging_ogre",
+    name: "Targ of the Rampaging Ogre",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Discard 2 cards to gain +2 defense. Then, instead of discarding, put this card back into your hand. — OR — +1 defense."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Discard 2 cards: +2 defense, then return this card to your hand",
+          cost: { discardCards: 2 },
+          returnSelfToHand: true,
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2 }
+        },
+        {
+          label: "+1 defense",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1 }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "targ_of_the_rampaging_ogre", "Targ of the Rampaging Ogre"),
+    implementationStatus: "implemented",
+    source: artifactSource("targ_of_the_rampaging_ogre")
+  },
+  // Trident of Dominion (Cove): a plain +2 attack on your attacker, OR — only
+  // while this Hero stands on a Sea tile — a 2-card draw (the requiresSeaTile
+  // gate shared with Crown of the Five Seas). The naval side is a map play.
+  "artifact.trident_of_dominion": {
+    id: "artifact.trident_of_dominion",
+    name: "Trident of Dominion",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: ["artifact", "major", "+2 attack. — OR — If this Hero is on a Sea tile, draw 2 cards."],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+2 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+        },
+        {
+          label: "On a Sea tile: draw 2 cards",
+          mapOnly: true,
+          requiresSeaTile: true,
+          effect: { type: "DRAW_CARDS", amount: 2 }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "trident_of_dominion", "Trident of Dominion"),
+    implementationStatus: "implemented",
+    source: artifactSource("trident_of_dominion")
+  },
+  // Shield of Naval Glory (Cove): a plain +2 defense reaction, OR — only while
+  // this Hero stands on a Sea tile — +1 Hero movement and draw 1 card (the new
+  // GAIN_HERO_MOVEMENT.drawCards rider). The naval side is a map play.
+  "artifact.shield_of_naval_glory": {
+    id: "artifact.shield_of_naval_glory",
+    name: "Shield of Naval Glory",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "+2 defense. — OR — If this Hero is on a Sea tile, they gain +1 movement and draw 1 card."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+2 defense",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2 }
+        },
+        {
+          label: "On a Sea tile: +1 movement and draw 1 card",
+          mapOnly: true,
+          requiresSeaTile: true,
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1, drawCards: 1 }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "shield_of_naval_glory", "Shield of Naval Glory"),
+    implementationStatus: "implemented",
+    source: artifactSource("shield_of_naval_glory")
+  },
+  // Royal Armor of Nix (Cove): a flat +2 Power as you cast a spell, OR — only
+  // while this Hero stands on a Sea tile — Search (2) the Spell deck (a map
+  // play, the requiresSeaTile gate). Major like the original-game artifact and
+  // the other Cove sea artifacts; no wiki scan, so it shows the deck back.
+  "artifact.royal_armor_of_nix": {
+    id: "artifact.royal_armor_of_nix",
+    name: "Royal Armor of Nix",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: ["artifact", "major", "+2 Power. — OR — If this Hero is on a Sea tile, Search (2) the Spell deck."],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+2 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2 }
+        },
+        {
+          label: "On a Sea tile: Search (2) the Spell deck",
+          mapOnly: true,
+          requiresSeaTile: true,
+          effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 2 }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "royal_armor_of_nix", "Royal Armor of Nix"),
+    implementationStatus: "implemented",
+    source: artifactSource("royal_armor_of_nix")
+  },
+  // Cards of Prophecy (Tower expansion). Option 0 is the universal "reroll any
+  // die" instant, modelled on Expert Luck: a current-turn, player-scoped effect
+  // granting ONE reroll — of the combat Attack die (ATTACK_DIE_REROLL, consumed
+  // on use) OR a map Treasure/Resource die (ADVENTURE_DIE_REROLL "any", also
+  // single-use). Option 1 is a map play that lets you ignore the next Resource
+  // or Treasure die you roll and set it to a face of your choice
+  // (ADVENTURE_DIE_SET — offered in rollResourceDice/rollTreasureDice and spent
+  // on the chosen face).
+  "artifact.cards_of_prophecy": {
+    id: "artifact.cards_of_prophecy",
+    name: "Cards of Prophecy",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Reroll any die. — OR — Set a Resource die or Treasure die on the side of your choice."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Reroll any die",
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Cards of Prophecy",
+              scope: "player",
+              duration: { type: "current-turn" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [
+                { type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: true },
+                { type: "ADVENTURE_DIE_REROLL", dice: "any" }
+              ]
+            }
+          }
+        },
+        {
+          label: "Set a Resource or Treasure die to the side of your choice",
+          mapOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Cards of Prophecy",
+              scope: "player",
+              duration: { type: "current-turn" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [{ type: "ADVENTURE_DIE_SET", dice: "any" }]
+            }
+          }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "cards_of_prophecy", "Cards of Prophecy"),
+    implementationStatus: "implemented",
+    source: artifactSource("cards_of_prophecy")
+  },
+  // Diplomat's Ring (Stronghold expansion). Option 0 is the universal "reroll
+  // any die" instant ("or any roll" reads the same in this engine — see Cards
+  // of Prophecy for the Expert-Luck reroll model). Option 1 is the Diplomacy
+  // map recruit (DIPLOMACY_RECRUIT — draw one Neutral Unit card per Dwelling,
+  // recruit one by paying its cost), the same effect Cyra's Diplomacy and
+  // Ambassador's Sash use.
+  "artifact.diplomats_ring": {
+    id: "artifact.diplomats_ring",
+    name: "Diplomat's Ring",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Reroll any die or any roll. — OR — For every Dwelling you have, draw 1 corresponding Neutral Unit card. You can Recruit one of these units."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Reroll any die or any roll",
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Diplomat's Ring",
+              scope: "player",
+              duration: { type: "current-turn" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [
+                { type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: true },
+                { type: "ADVENTURE_DIE_REROLL", dice: "any" }
+              ]
+            }
+          }
+        },
+        {
+          label: "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)",
+          mapOnly: true,
+          effect: { type: "DIPLOMACY_RECRUIT" }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "diplomats_ring", "Diplomat's Ring"),
+    implementationStatus: "implemented",
+    source: artifactSource("diplomats_ring")
+  },
+  // Ambassador's Sash (Rampart expansion) — Diplomat's Ring's companion (the
+  // wiki cross-links them). Option 0 is the Diplomacy map recruit
+  // (DIPLOMACY_RECRUIT, shared with Cyra's Diplomacy and Diplomat's Ring).
+  // Option 1 is the universal "reroll a die" instant (the Expert-Luck reroll
+  // model — see Cards of Prophecy).
+  "artifact.ambassadors_sash": {
+    id: "artifact.ambassadors_sash",
+    name: "Ambassador's Sash",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "For every Dwelling you have, draw 1 corresponding Neutral Unit card. You can Recruit one of these units. — OR — Reroll a die."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)",
+          mapOnly: true,
+          effect: { type: "DIPLOMACY_RECRUIT" }
+        },
+        {
+          label: "Reroll a die",
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Ambassador's Sash",
+              scope: "player",
+              duration: { type: "current-turn" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [
+                { type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: true },
+                { type: "ADVENTURE_DIE_REROLL", dice: "any" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "ambassadors_sash", "Ambassador's Sash"),
+    implementationStatus: "implemented",
+    source: artifactSource("ambassadors_sash")
+  },
 
   // ---- Relic artifacts ----------------------------------------------------
   "artifact.angel_wings": {
@@ -1957,6 +2392,8 @@ export const artifactDeckLegacy: string[] = [
   "artifact.glyph_of_gallantry",
   "artifact.quiet_eye_of_the_dragon",
   "artifact.ring_of_the_wayfarer",
+  "artifact.scales_of_the_greater_basilisk",
+  "artifact.blackshard_of_the_dead_knight",
   // major
   "artifact.dragon_scale_shield",
   "artifact.endless_bag_of_gold",
@@ -1982,6 +2419,15 @@ export const artifactDeckLegacy: string[] = [
   "artifact.orb_of_tempestuous_fire",
   "artifact.orb_of_the_firmament",
   "artifact.pendant_of_second_sight",
+  "artifact.sword_of_hellfire",
+  "artifact.surcoat_of_counterpoise",
+  "artifact.targ_of_the_rampaging_ogre",
+  "artifact.trident_of_dominion",
+  "artifact.shield_of_naval_glory",
+  "artifact.royal_armor_of_nix",
+  "artifact.cards_of_prophecy",
+  "artifact.diplomats_ring",
+  "artifact.ambassadors_sash",
   // relic
   "artifact.angel_wings",
   "artifact.dragon_scale_armor",
@@ -2024,7 +2470,9 @@ export const artifactDeckBinhMinor: string[] = [
   "artifact.charm_of_mana",
   "artifact.greater_gnolls_flail",
   "artifact.shield_of_the_dwarven_lords",
-  "artifact.ring_of_the_wayfarer"
+  "artifact.ring_of_the_wayfarer",
+  "artifact.scales_of_the_greater_basilisk",
+  "artifact.blackshard_of_the_dead_knight"
 ];
 
 /** BINH Major Artifact deck (adds the BINH-extra majors). */
@@ -2052,7 +2500,16 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.orb_of_silt",
   "artifact.orb_of_tempestuous_fire",
   "artifact.orb_of_the_firmament",
-  "artifact.pendant_of_second_sight"
+  "artifact.pendant_of_second_sight",
+  "artifact.sword_of_hellfire",
+  "artifact.surcoat_of_counterpoise",
+  "artifact.targ_of_the_rampaging_ogre",
+  "artifact.trident_of_dominion",
+  "artifact.shield_of_naval_glory",
+  "artifact.royal_armor_of_nix",
+  "artifact.cards_of_prophecy",
+  "artifact.diplomats_ring",
+  "artifact.ambassadors_sash"
 ];
 
 /** BINH Relic Artifact deck (adds the BINH-extra relics). */
