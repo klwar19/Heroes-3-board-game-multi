@@ -50,7 +50,15 @@ const SCANLESS_ARTIFACTS = new Set([
   // Newly added expansion minors with no card scan committed to public/assets
   // yet — they fall back to the deck back until their scans land. (Helm of the
   // Alabaster Unicorn's scan is committed, so it is not listed here.)
-  "bowstring_of_the_unicorns_mane"
+  "bowstring_of_the_unicorns_mane",
+  // Crest of Valor (Fortress) has its wiki card scan committed; Necklace of
+  // Swiftness (Stretch Goals 2024) has no scan yet, so only it falls back to the
+  // deck back until its scan lands.
+  "necklace_of_swiftness",
+  // Plate of the Dying Light has no card scan on the wiki yet, so it falls back
+  // to the deck back until the scan lands. (Recanter's Cloak and Boots of
+  // Polarity have their wiki scans committed, so they are not listed here.)
+  "plate_of_the_dying_light"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
@@ -848,11 +856,10 @@ export const artifactCards: CardLibrary = {
   // surfaced by the legal-action layer as a `fromSpellDeck` CAST_SPELL of the top
   // card of the shared Spell-deck discard pile (engine: addSpellActions), cast in
   // combat at your normal Power through the ordinary spell pipeline (reaction
-  // windows, power boosts, the spell-per-round limit all apply). The spell card
-  // stays in that discard pile; the Helm is removed from the game by the cast. The
-  // CAST_FROM_SPELL_DISCARD effect is only a marker — it flags the option as
-  // implemented and tells the offer layer to surface the cast, and is never
-  // resolved from playCard.
+  // windows, power boosts). It does NOT count toward the spell-per-round limit.
+  // The spell card stays in that discard pile; the Helm is removed from the game
+  // by the cast. CAST_FROM_SPELL_DISCARD is only a marker that flags the option as
+  // implemented and tells the offer layer to surface the cast.
   "artifact.helm_of_the_alabaster_unicorn": {
     id: "artifact.helm_of_the_alabaster_unicorn",
     name: "Helm of the Alabaster Unicorn",
@@ -889,14 +896,15 @@ export const artifactCards: CardLibrary = {
   // Because its trigger controller is "any", BOTH sides may play it — including
   // before an ENEMY unit activates, to fire one of your own ranged units first.
   // The chosen friendly ranged unit (its option target — ranged, not yet
-  // activated, not the unit about to act) is made the active unit and takes a
-  // full out-of-order activation now (ACTIVATE_RANGED_UNIT -> setActiveUnit); the
+  // activated, not the unit about to act) becomes the active unit and takes a full
+  // out-of-order activation now (ACTIVATE_RANGED_UNIT -> setActiveUnit); the
   // interrupted unit was not consumed, so it resumes its place in initiative order
-  // afterward and no unit acts twice. Option B ("Use this after a ranged unit's
-  // Attack die roll. Ignore 1 Attack die") is the Shield-of-the-Dwarven-Lords
-  // post-roll defender reaction (IGNORE_ATTACK_DIE_RESULT) gated to a ranged
-  // attacker (requiresRangedAttacker): offered in the ATTACK_DIE_SETTLED window
-  // only when the attacking unit is a ranged unit.
+  // and no unit acts twice. Using it does not re-prompt on the chosen unit
+  // immediately — remaining interrupts surface at the next activation frame.
+  // Option B ("Use this after a ranged unit's Attack die roll. Ignore 1 Attack
+  // die") is the Shield-of-the-Dwarven-Lords post-roll defender reaction
+  // (IGNORE_ATTACK_DIE_RESULT) gated to a ranged attacker (requiresRangedAttacker):
+  // offered in the ATTACK_DIE_SETTLED window only when the attacker is ranged.
   "artifact.bowstring_of_the_unicorns_mane": {
     id: "artifact.bowstring_of_the_unicorns_mane",
     name: "Bowstring of the Unicorn's Mane",
@@ -928,6 +936,102 @@ export const artifactCards: CardLibrary = {
     assets: artifactAssets("minor", "bowstring_of_the_unicorns_mane", "Bowstring of the Unicorn's Mane"),
     implementationStatus: "implemented",
     source: artifactSource("bowstring_of_the_unicorns_mane")
+  },
+  // Crest of Valor (Fortress): option 0 is the plain "gain a positive morale
+  // token" instant (the GAIN_MORALE shared with Glyph of Gallantry / Leadership),
+  // playable in either context. Option 1 is the map side — it sets up a
+  // player-scoped, current-turn shield (engine: IGNORE_FIELD_NEGATIVE_MORALE)
+  // that the next Field which would hand this player a negative Morale token (the
+  // Grave's GAIN_MORALE -1 visit-step) spends instead of lowering Morale. Played
+  // proactively before the visit; combat-loss Morale is never touched.
+  "artifact.crest_of_valor": {
+    id: "artifact.crest_of_valor",
+    name: "Crest of Valor",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "minor",
+    tags: [
+      "artifact",
+      "minor",
+      "Gain a positive morale token. — OR — Ignore the negative morale effect from a field."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Gain a positive morale token",
+          effect: { type: "GAIN_MORALE", amount: 1 }
+        },
+        {
+          label: "Ignore the next negative morale from a field this turn",
+          mapOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Crest of Valor",
+              scope: "player",
+              duration: { type: "current-turn" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [{ type: "IGNORE_FIELD_NEGATIVE_MORALE" }]
+            }
+          }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "crest_of_valor", "Crest of Valor"),
+    implementationStatus: "implemented",
+    source: artifactSource("crest_of_valor")
+  },
+  // Necklace of Swiftness (Stretch Goals 2024): option 0 is the ongoing combat
+  // side — a player-scoped, combat-duration effect that raises the Initiative of
+  // all the owner's GROUND units by 1 (engine: GROUND_INITIATIVE_BONUS, read in
+  // effectiveInitiative; ranged and flying units are untouched). Option 1 is the
+  // activation side — relocate one of your own units to an empty orthogonally-
+  // adjacent space (MOVE_UNIT_ADJACENT; the destination is picked in the
+  // "combat-step" follow-up). Both sides are combat-only.
+  "artifact.necklace_of_swiftness": {
+    id: "artifact.necklace_of_swiftness",
+    name: "Necklace of Swiftness",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "minor",
+    target: { type: "friendly-unit" },
+    tags: [
+      "artifact",
+      "minor",
+      "During this Combat, the initiative of all your ground units is increased by 1. — OR — Move one of your units 1 space."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: +1 initiative to all your ground units",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Necklace of Swiftness",
+              scope: "player",
+              duration: { type: "combat" },
+              polarity: "positive",
+              removable: true,
+              modifiers: [{ type: "GROUND_INITIATIVE_BONUS", amount: 1 }]
+            }
+          }
+        },
+        {
+          label: "Move one of your units 1 space",
+          combatOnly: true,
+          target: { type: "friendly-unit" },
+          effect: { type: "MOVE_UNIT_ADJACENT" }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "necklace_of_swiftness", "Necklace of Swiftness"),
+    implementationStatus: "implemented",
+    source: artifactSource("necklace_of_swiftness")
   },
 
   // ---- Major artifacts ----------------------------------------------------
@@ -2569,6 +2673,149 @@ export const artifactCards: CardLibrary = {
     assets: artifactAssets("relic", "orb_of_inhibition", "Orb of Inhibition"),
     implementationStatus: "implemented",
     source: artifactSource("orb_of_inhibition")
+  },
+  // ---- Ability-interference batch (wiki import) ---------------------------
+  // Three relics/majors whose whole point is interfering with the enemy's
+  // magic. Each side below names exactly what the engine runs.
+  //
+  // Recanter's Cloak (Major): a global combat-scoped spell-cast restriction
+  // that binds BOTH heroes (the wearer included).
+  //   • Option A — SPELL_CAST_RESTRICTION{minPower:1}: a Spell that RESOLVES at
+  //     Power 0 applies none of its effects, so every cast must be boosted to
+  //     Power 1+ to do anything. Enforced at the spell-resolution chokepoint
+  //     (resolveTopStack), re-reading the spell's final Power. Scope: the
+  //     standard CAST_SPELL channel (turn casts + scroll casts that resolve
+  //     through the stack). Attack-window instant spells, which resolve inline
+  //     and not through that chokepoint, are not power-floored by option A.
+  //   • Option B — SPELL_CAST_RESTRICTION{lockAll}: no Spell may be cast at all,
+  //     comprehensively — turn casts, reaction/instant casts and scroll casts
+  //     are all un-offered (and any stacked cast still fizzles). The card is
+  //     removed after Combat.
+  "artifact.recanters_cloak": {
+    id: "artifact.recanters_cloak",
+    name: "Recanter's Cloak",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "During this Combat, no Hero can use spells with Power 0. — OR — During this Combat, no Hero can use Spells. Remove this card after Combat."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: no Hero can use a spell with Power 0 (every cast must reach Power 1+)",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Recanter's Cloak",
+              scope: "global",
+              duration: { type: "combat" },
+              modifiers: [{ type: "SPELL_CAST_RESTRICTION", minPower: 1 }]
+            }
+          }
+        },
+        {
+          label: "This Combat: no Hero can use Spells (remove this card)",
+          combatOnly: true,
+          cost: { removeSelf: true },
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Recanter's Cloak",
+              scope: "global",
+              duration: { type: "combat" },
+              modifiers: [{ type: "SPELL_CAST_RESTRICTION", lockAll: true }]
+            }
+          }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "recanters_cloak", "Recanter's Cloak"),
+    implementationStatus: "implemented",
+    source: artifactSource("recanters_cloak")
+  },
+  // Boots of Polarity (Relic): option A is a chance-based spell counter — react
+  // to an enemy cast, roll 2 Attack dice and keep the best; on a "+1" face the
+  // Spell is ignored (CANCEL_SPELL with a diceRoll gate). A failed roll still
+  // spends the card but lets the Spell resolve. Option B is a single-effect
+  // dispel: REMOVE_ACTIVE_EFFECT strips one removable ongoing effect from a
+  // chosen unit (the most recently applied one).
+  "artifact.boots_of_polarity": {
+    id: "artifact.boots_of_polarity",
+    name: "Boots of Polarity",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "relic",
+    tags: [
+      "artifact",
+      "relic",
+      "Play after an enemy casts a spell. Roll 2 Attack dice and choose one. On a +1, ignore the spell's effect. — OR — Remove 1 ongoing effect from a unit."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Roll 2 Attack dice; on a +1, ignore the enemy spell",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "CANCEL_SPELL", diceRoll: { count: 2, successFace: 1 } }
+        },
+        {
+          label: "Remove 1 ongoing effect from a unit",
+          combatOnly: true,
+          target: { type: "any-unit" },
+          effect: { type: "REMOVE_ACTIVE_EFFECT" }
+        }
+      ]
+    },
+    assets: artifactAssets("relic", "boots_of_polarity", "Boots of Polarity"),
+    implementationStatus: "implemented",
+    source: artifactSource("boots_of_polarity")
+  },
+  // Plate of the Dying Light (Relic): the Interference mechanic as a relic — a
+  // Defense bonus that, unusually, also reduces Spell damage. Reuses
+  // INTERFERE_SPELL, so it is offered (like Interference) as a reaction to an
+  // enemy single-target damaging Spell aimed at one of your units, and grants
+  // that unit a Combat-long DEFENSE_BONUS (vs attacks) AND a
+  // SPELL_DAMAGE_REDUCTION (vs spells) — so it blunts the triggering Spell and
+  // any later Spell or attack on that unit. Option A grants +1 (kept/discarded);
+  // option B grants +4 and removes the card.
+  "artifact.plate_of_the_dying_light": {
+    id: "artifact.plate_of_the_dying_light",
+    name: "Plate of the Dying Light",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "relic",
+    tags: [
+      "artifact",
+      "relic",
+      "+1 defense, which can also reduce damage from spells. — OR — +4 defense, which can also reduce damage from spells. Then remove this card."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+1 defense for the Combat, which also reduces spell damage",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "INTERFERE_SPELL", amount: 1 }
+        },
+        {
+          label: "+4 defense for the Combat, which also reduces spell damage (remove this card)",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          cost: { removeSelf: true },
+          effect: { type: "INTERFERE_SPELL", amount: 4 }
+        }
+      ]
+    },
+    assets: artifactAssets("relic", "plate_of_the_dying_light", "Plate of the Dying Light"),
+    implementationStatus: "implemented",
+    source: artifactSource("plate_of_the_dying_light")
   }
 };
 
@@ -2609,6 +2856,8 @@ export const artifactDeckLegacy: string[] = [
   "artifact.blackshard_of_the_dead_knight",
   "artifact.helm_of_the_alabaster_unicorn",
   "artifact.bowstring_of_the_unicorns_mane",
+  "artifact.crest_of_valor",
+  "artifact.necklace_of_swiftness",
   // major
   "artifact.dragon_scale_shield",
   "artifact.endless_bag_of_gold",
@@ -2644,6 +2893,7 @@ export const artifactDeckLegacy: string[] = [
   "artifact.cards_of_prophecy",
   "artifact.diplomats_ring",
   "artifact.ambassadors_sash",
+  "artifact.recanters_cloak",
   // relic
   "artifact.angel_wings",
   "artifact.dragon_scale_armor",
@@ -2658,7 +2908,9 @@ export const artifactDeckLegacy: string[] = [
   "artifact.helm_of_heavenly_enlightenment",
   "artifact.celestial_necklace_of_bliss",
   "artifact.lions_shield_of_courage",
-  "artifact.sandals_of_the_saint"
+  "artifact.sandals_of_the_saint",
+  "artifact.boots_of_polarity",
+  "artifact.plate_of_the_dying_light"
 ];
 
 /** BINH Minor Artifact deck (adds the BINH-extra minors). */
@@ -2691,7 +2943,9 @@ export const artifactDeckBinhMinor: string[] = [
   "artifact.scales_of_the_greater_basilisk",
   "artifact.blackshard_of_the_dead_knight",
   "artifact.helm_of_the_alabaster_unicorn",
-  "artifact.bowstring_of_the_unicorns_mane"
+  "artifact.bowstring_of_the_unicorns_mane",
+  "artifact.crest_of_valor",
+  "artifact.necklace_of_swiftness"
 ];
 
 /** BINH Major Artifact deck (adds the BINH-extra majors). */
@@ -2729,7 +2983,8 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.royal_armor_of_nix",
   "artifact.cards_of_prophecy",
   "artifact.diplomats_ring",
-  "artifact.ambassadors_sash"
+  "artifact.ambassadors_sash",
+  "artifact.recanters_cloak"
 ];
 
 /** BINH Relic Artifact deck (adds the BINH-extra relics). */
@@ -2747,5 +3002,7 @@ export const artifactDeckBinhRelic: string[] = [
   "artifact.lions_shield_of_courage",
   "artifact.sandals_of_the_saint",
   "artifact.orb_of_vulnerability",
-  "artifact.orb_of_inhibition"
+  "artifact.orb_of_inhibition",
+  "artifact.boots_of_polarity",
+  "artifact.plate_of_the_dying_light"
 ];
