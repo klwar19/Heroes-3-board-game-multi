@@ -886,7 +886,13 @@ export type EffectDefinition =
        * cost, the cost-gated grade pattern shared with Resurrection / Magic Mirror.
        */
       type: "IGNORE_DEFENSE";
-      grade: UnitGrade;
+      /** Fixed pierced grade (legacy/cost-gated form). */
+      grade?: UnitGrade;
+      /**
+       * Power→grade table (Frenzy): the pierced grade scales with the Power the
+       * caster pools into the attack window, re-derived at resolution like Slayer.
+       */
+      gradeByPower?: Record<number, UnitGrade>;
     }
   | {
       /**
@@ -2789,13 +2795,13 @@ export type ResolutionStackItem = {
      */
     attackPowerByPlayer?: Record<PlayerId, number>;
     /**
-     * Players whose Power-scaling spell instant in this attack has already been
-     * credited their standing spell Power (the once-per-turn Astrologers bonus,
-     * the once-per-round active-unit boost, and a School-of-Magic permanent's
-     * bonus for the spell's school) — the same Power a spell cast on your own
-     * turn receives. Tracked per player so each side is credited once.
+     * Frenzy's Power→grade table and its caster, kept on the attack so the
+     * pierced grade (bronze→silver→gold) is re-derived from the caster's final
+     * attack-window Power at resolution — Power paid after Frenzy keeps lifting
+     * it, exactly like Slayer's roll count.
      */
-    standingPowerSeededFor?: PlayerId[];
+    ignoreDefenseGradeByPower?: Record<number, CombatUnitState["grade"]>;
+    ignoreDefenseCasterId?: PlayerId;
     playedCardIds: CardId[];
   };
 };
