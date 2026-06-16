@@ -247,6 +247,32 @@ describe("Helm of the Alabaster Unicorn — cast the Spell-deck discard top (opt
     expect(after.combat!.units.unit_p2_skeletons.damage).toBe(2);
   });
 
+  it("the Tower Magi Pack +1 Power lands on only the first spell — never both the free Helm cast and a later one", () => {
+    const state = helmCastState("helm-magi");
+    state.players.p1.hand = [HELM, "spell.magic_arrow"];
+    // The active unit carries the Magi Pack "+1 Power to your first spell this round".
+    state.combat!.units.unit_p1_griffins.abilities = ["magi-power-boost"];
+
+    // Cast 1 — the free Helm cast is the round's first spell, so it gets the +1
+    // (Magic Arrow at Power 1 = 2 damage).
+    let after = passAllReactions(applyOk(state, helmCast(state)!.action));
+    expect(after.combat!.units.unit_p2_skeletons.damage).toBe(2);
+
+    // Cast 2 — a normal Magic Arrow from hand is no longer the first spell (the
+    // Helm cast consumed the bonus), so it gets NO +1: +1 more damage, not +2.
+    const normalCast = getLegalActions(after, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" &&
+        !legal.action.fromSpellDeck &&
+        legal.action.target.type === "unit" &&
+        legal.action.target.unitId === "unit_p2_skeletons"
+    );
+    expect(normalCast, "the normal cast is still allowed — the Helm did not use the limit").toBeTruthy();
+    after = passAllReactions(applyOk(after, normalCast!.action));
+    expect(after.combat!.units.unit_p2_skeletons.damage).toBe(3);
+  });
+
   it("is not offered when the Spell-deck discard pile is empty", () => {
     const state = helmCastState("helm-empty");
     state.decks.spells.discardPile = [];
@@ -354,6 +380,46 @@ describe("Bowstring of the Unicorn's Mane — activate a ranged unit (option A)"
     expect(bowstringReaction(state, "p1", "unit_p2_skeletons")).toBeFalsy();
     // Griffins are a ground unit (and already activated) — never offered.
     expect(bowstringReaction(state, "p1", "unit_p1_griffins")).toBeFalsy();
+  });
+
+  it("does not re-prompt on the unit it just activated — the remaining interrupt waits for the next frame", () => {
+    // p1 holds TWO Bowstrings and has two fresh ranged units; the enemy is about
+    // to act. Top initiative on the enemy so the queue is deterministic.
+    const state = createInitialGameState("bowstring-next-frame");
+    state.players.p1.hand = [BOWSTRING, BOWSTRING];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.combat!.units.unit_p1_marksmen.type = "ranged";
+    state.combat!.units.unit_p1_marksmen.initiative = 2;
+    state.combat!.units.unit_p1_crusaders.type = "ranged";
+    state.combat!.units.unit_p1_crusaders.initiative = 3;
+    state.combat!.units.unit_p2_skeletons.initiative = 99;
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.activatedThisRound = !["unit_p1_griffins", "unit_p2_skeletons", "unit_p1_marksmen", "unit_p1_crusaders"].includes(
+        unit.id
+      );
+    }
+    let s = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    expect(s.combat!.activeUnitId).toBe("unit_p2_skeletons");
+    expect(s.reactionWindow).toBeTruthy();
+
+    // Use Bowstring #1 to activate the Marksmen.
+    s = applyOk(s, bowstringReaction(s, "p1", "unit_p1_marksmen")!.action);
+    expect(s.combat!.activeUnitId).toBe("unit_p1_marksmen");
+    // It does NOT immediately re-pop a window on the Marksmen, even though a
+    // second Bowstring and a second ranged unit remain.
+    expect(s.reactionWindow, "no interrupt re-prompt right after the use").toBeNull();
+    expect(bowstringReaction(s, "p1"), "the Bowstring is not offered again this instant").toBeFalsy();
+
+    // The Marksmen take their out-of-order turn; only at the NEXT activation frame
+    // does the remaining Bowstring surface again (now for the Crusaders).
+    s = applyOk(s, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_marksmen" });
+    expect(s.reactionWindow, "a fresh window opens at the next frame").toBeTruthy();
+    expect(
+      bowstringReaction(s, "p1", "unit_p1_crusaders"),
+      "the remaining Bowstring is offered at the next frame"
+    ).toBeTruthy();
   });
 
   it("shares the pre-activation window with other interrupts (Sorrow) — both are offered at once", () => {

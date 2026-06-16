@@ -1006,6 +1006,10 @@ function noteSpellCast(state: GameState, player: PlayerState, countsTowardLimit 
     player.combatStats.spellsCastThisRound += 1;
   }
   player.combatStats.spellsCastThisTurn = (player.combatStats.spellsCastThisTurn ?? 0) + 1;
+  // The "first spell this round" Power gate (Tower Magi Pack) closes on the first
+  // cast through ANY path — hand cast, reaction, or a free Helm cast — so the
+  // bonus lands on whichever spell is genuinely cast first, exactly once.
+  player.combatStats.anySpellCastThisRound = true;
 
   let draws = 0;
   for (const effect of state.activeEffects) {
@@ -6104,8 +6108,12 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
 
   const caster = state.players[action.playerId];
   const isFirstSpellThisTurn = (caster.combatStats.spellsCastThisTurn ?? 0) === 0;
-  const isFirstSpellThisRound = (caster.combatStats.spellsCastThisRound ?? 0) === 0;
-  // A Helm of the Alabaster Unicorn cast does not count toward the spell limit.
+  // "First spell this round" counts every cast, free Helm casts included, so the
+  // Tower Magi Pack Power bonus lands on whichever spell is cast first — never on
+  // both a free Helm cast and a later normal cast.
+  const isFirstSpellThisRound = !caster.combatStats.anySpellCastThisRound;
+  // A Helm of the Alabaster Unicorn cast does not count toward the spell limit
+  // (noteSpellCast still closes the first-spell-this-round gate for it).
   noteSpellCast(state, caster, !action.fromSpellDeck);
 
   const stackItem = makeStackItem(state, action);
@@ -6755,6 +6763,12 @@ function applyReactionPlayCore(
         message: `${card.name} activates ${chosen.cardName} out of order.`
       });
       setActiveUnit(state, chosen.id);
+      // Do not immediately re-open the pre-activation window on the unit we just
+      // chose ("not repeatedly right after the current use"): mark it offered so
+      // the chosen unit takes its turn now. Any remaining interrupt — another
+      // Bowstring, a Sorrow — surfaces at the NEXT genuine activation frame, once
+      // this unit has acted and the next unit comes up.
+      chosen.preActivationWindowOffered = true;
     }
     closeReactionWindow(state, "reaction-played");
     if (!finishCombatIfNeeded(state)) {
@@ -9968,6 +9982,7 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     player.combatStats.spellsCastThisRound = 0;
     player.combatStats.spellLimitBonusThisRound = 0;
     player.combatStats.expertUsesSpentThisRound = 0;
+    player.combatStats.anySpellCastThisRound = false;
   }
 
   appendEvent(state, {
