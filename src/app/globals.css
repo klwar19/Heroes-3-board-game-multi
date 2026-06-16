@@ -3736,7 +3736,8 @@ button.hbSlot:disabled { cursor: default; }
   opacity: 0.9;
 }
 
-/* Animated obstacle art (Force Field): one frame's box, scrubbed by JS. */
+/* Animated obstacle art (Force Field / Fire Wall / Land Mine): one frame's box,
+   scrubbed frame-by-frame by JS (see TokenSprite). */
 .battlefieldTokenSprite {
   display: block;
   height: 84%;
@@ -3744,17 +3745,22 @@ button.hbSlot:disabled { cursor: default; }
   max-width: 96%;
   background-position: 0% center;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
-  animation: forceFieldShimmer 2.4s ease-in-out infinite;
 }
 
-@keyframes forceFieldShimmer {
-  0%,
-  100% {
-    opacity: 0.82;
-  }
-  50% {
-    opacity: 1;
-  }
+/* A face-down enemy trap: a featureless token back hiding its armed/decoy state. */
+.battlefieldTokenBack {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60%;
+  height: 60%;
+  border-radius: 50%;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #e9dcc0;
+  background: radial-gradient(circle at 35% 30%, #5a4a36, #2a2014 78%);
+  border: 1.5px solid #8d7a55;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6), inset 0 1px 2px rgba(255, 240, 200, 0.25);
 }
 
 /* A unit standing on a token: shrink the marker into a corner badge. */
