@@ -1196,6 +1196,12 @@ export default function Home() {
               }, 1600);
             }, start);
           }
+          // Sound-only plan (Teleport): no sprite/projectile/tint carries the
+          // cue, so the cast sound is played directly over the target unit.
+          if (!plan.projectile && !plan.hit && !plan.affect?.length && !plan.tint && plan.sound) {
+            const soundKey = plan.sound;
+            window.setTimeout(() => playLibrarySound(soundKey), start);
+          }
           timeline = start + spellPresentationMs(plan);
         };
 
@@ -1329,10 +1335,11 @@ export default function Home() {
               } else if (event.target.type === "space") {
                 const at = timeline;
                 if (plan.hit) {
-                  // Inferno bursts on the chosen space (no unit to anchor on): the
-                  // fire sheet flares over the cell, then its per-unit damage
-                  // floaters fire after it. The dice + cast roar already played
-                  // under SPELL_DICE_ROLLED, so only the impact sound rides here.
+                  // Inferno / Frost Ring burst on the chosen space (no unit to
+                  // anchor on): the sheet flares over the cell, then its per-unit
+                  // damage floaters fire after it. Inferno's roar already played
+                  // under SPELL_DICE_ROLLED; a dice-less blast (Frost Ring) rides
+                  // its impact sound on the burst here.
                   cues.push({
                     kind: "sprite",
                     id: `${event.id}-burst`,
@@ -1342,6 +1349,13 @@ export default function Home() {
                     delayMs: at
                   });
                   timeline += spellPresentationMs(plan);
+                  // Hold the combat presentation past the burst so a dice-less
+                  // space blast (Frost Ring) does not snap the board forward
+                  // before its ring has played (Inferno's dice already did this).
+                  if (inCombat) {
+                    combatFxActive = true;
+                    combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
+                  }
                 } else if (plan.sound) {
                   // Summon Elemental resolves on an empty space — no unit to
                   // anchor board FX on, so play the cast sound on the timeline.

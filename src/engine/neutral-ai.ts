@@ -1,8 +1,10 @@
+import { unitIsBerserk } from "./active-effects";
 import { getBattlefieldDistance } from "./battlefield";
 import {
   canUnitAttack,
   canUnitMoveAndAttack,
   canUnitMoveTo,
+  getBerserkNearestTargets,
   getLegalMoveDestinations,
   getPathDistances,
   isAdjacent,
@@ -214,6 +216,13 @@ export function planNeutralActivation(
     return { kind: "pass" };
   }
 
+  // Berserk overrides the rulebook's tier priority: the unit must attack the
+  // NEAREST unit (friend or foe), or move to the nearest and attack it. The
+  // attacker is berserked, so canUnitAttack lets it strike its own allies.
+  if (unitIsBerserk(state.activeEffects, unit)) {
+    return planBerserkActivation(state, combat, unit, forcedTargetId);
+  }
+
   // The player resolved a target tie: commit to that exact unit if it still
   // stands — strike it directly or close the last step into it.
   if (forcedTargetId) {
@@ -246,6 +255,44 @@ export function planNeutralActivation(
     return { kind: "pass" };
   }
   return approachTarget(state, combat, unit, target);
+}
+
+/**
+ * A berserked neutral's activation: it must attack the nearest unit (friend or
+ * foe), or move to the nearest and attack it. Mirrors the rulebook's tie rule —
+ * several equally near, attackable targets pause on a player choice; otherwise
+ * it strikes/closes on the nearest, and only advances (or passes) when it can
+ * reach none.
+ */
+function planBerserkActivation(
+  state: GameState,
+  combat: CombatState,
+  unit: CombatUnitState,
+  forcedTargetId?: UnitId
+): NeutralIntent {
+  const nearest = getBerserkNearestTargets(combat, unit);
+  if (nearest.length === 0) {
+    return { kind: "pass" };
+  }
+
+  // Commit to a resolved tie if that unit is still one of the nearest.
+  if (forcedTargetId) {
+    const forced = nearest.find((candidate) => candidate.id === forcedTargetId);
+    if (forced) {
+      return attackOrReach(state, combat, unit, forced) ?? approachTarget(state, combat, unit, forced);
+    }
+  }
+
+  const attackable = nearest.filter((target) => attackOrReach(state, combat, unit, target) !== null);
+  if (attackable.length > 0) {
+    if (!forcedTargetId && attackable.length > 1) {
+      return { kind: "choose-target", candidateIds: attackable.map((candidate) => candidate.id) };
+    }
+    return attackOrReach(state, combat, unit, attackable[0]) ?? approachTarget(state, combat, unit, attackable[0]);
+  }
+
+  // Cannot reach a strike this activation — close on a nearest unit (or pass).
+  return approachTarget(state, combat, unit, nearest[0]);
 }
 
 /**

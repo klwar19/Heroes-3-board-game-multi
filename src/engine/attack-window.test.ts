@@ -9,6 +9,21 @@ function applyOk(state: GameState, action: GameAction): GameState {
   return result.state;
 }
 
+function passAll(state: GameState): GameState {
+  let current = state;
+  let safety = 40;
+  while (current.reactionWindow && safety > 0) {
+    safety -= 1;
+    current = applyOk(current, { type: "PASS_REACTION", playerId: current.reactionWindow.priorityPlayerId });
+  }
+  return current;
+}
+
+function lastAttackBonus(state: GameState): number | null {
+  const rolled = [...state.eventLog].reverse().find((event) => event.type === "ATTACK_ROLLED");
+  return rolled && rolled.type === "ATTACK_ROLLED" ? rolled.attackBonus : null;
+}
+
 /** Sandbox with the griffins adjacent to the skeletons, attack declared. */
 function declareMeleeAttack(p1Hand: string[], p2Hand: string[]): GameState {
   const state = createInitialGameState("attack-window-seed");
@@ -134,6 +149,78 @@ describe("attack-window power pairing", () => {
 
     const rolled = [...next.eventLog].reverse().find((event) => event.type === "ATTACK_ROLLED");
     expect(rolled && rolled.type === "ATTACK_ROLLED" ? rolled.attackBonus : null).toBe(3);
+  });
+
+  it("credits standing School-of-Magic Power to a spell instant played as a reaction", () => {
+    // Fire Magic in play grants +1 standing Power to Fire spells. Bloodlust
+    // (Fire) played as a reaction should be lifted to Power 1 → +2 attack, the
+    // same standing Power a spell cast on your own turn receives.
+    const state = declareMeleeAttack(["spell.bloodlust"], []);
+    state.players.p1.permanents = ["ability.fire_magic"];
+    const next = applyOk(state, { type: "PLAY_REACTION", playerId: "p1", cardId: "spell.bloodlust", mode: "basic" });
+    const rolled = [...next.eventLog].reverse().find((event) => event.type === "ATTACK_ROLLED");
+    expect(rolled && rolled.type === "ATTACK_ROLLED" ? rolled.attackBonus : null).toBe(2);
+  });
+
+  it("without the School permanent the same reaction Bloodlust is only +1 (standing-power guard)", () => {
+    const state = declareMeleeAttack(["spell.bloodlust"], []);
+    const next = applyOk(state, { type: "PLAY_REACTION", playerId: "p1", cardId: "spell.bloodlust", mode: "basic" });
+    const rolled = [...next.eventLog].reverse().find((event) => event.type === "ATTACK_ROLLED");
+    expect(rolled && rolled.type === "ATTACK_ROLLED" ? rolled.attackBonus : null).toBe(1);
+  });
+
+  it("keeps each side's attack-window Power separate (a defender debuff is not inflated by the attacker's Power)", () => {
+    // p1 lifts Bloodlust to +2 with a Power statistic; p2 then plays Weakness
+    // with no Power of its own. Per-caster pools mean Weakness stays at its base
+    // -1 (a shared pool would wrongly read p1's Power and make it -2).
+    const state = declareMeleeAttack(["spell.bloodlust", "stat.power"], ["spell.weakness"]);
+    let s = applyOk(state, { type: "PLAY_REACTION", playerId: "p1", cardId: "spell.bloodlust", mode: "basic" });
+    // p1 spends its last card (the Power statistic), so priority passes to p2.
+    s = applyOk(s, { type: "PLAY_REACTION", playerId: "p1", cardId: "stat.power", mode: "basic" });
+    s = applyOk(s, { type: "PLAY_REACTION", playerId: "p2", cardId: "spell.weakness", mode: "basic" });
+    s = passAll(s);
+    // Bloodlust +2 (p1 paid 1 Power) and Weakness -1 (p2 paid none) → net +1.
+    expect(lastAttackBonus(s)).toBe(1);
+  });
+
+  it("credits standing School-of-Magic Power to a defender's debuff too", () => {
+    // Water Magic in play grants the defender +1 standing Power to Weakness
+    // (Water), lifting it to Power 1 → -2 attack on the attacker (vs -1 without).
+    const state = declareMeleeAttack([], ["spell.weakness"]);
+    state.players.p2.permanents = ["ability.water_magic"];
+    const griffins = state.combat!.units.unit_p1_griffins;
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    griffins.abilities = [];
+    skeletons.abilities = [];
+    griffins.attack = 8;
+    skeletons.defense = 2;
+    skeletons.maxHealth = 40;
+    skeletons.damage = 0;
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    // p1 holds nothing, so priority is the defender's. Weakness at Power 1 → -2.
+    let s = applyOk(state, { type: "PLAY_REACTION", playerId: "p2", cardId: "spell.weakness", mode: "basic" });
+    s = passAll(s);
+    // 8 attack − 2 (Weakness, standing-empowered) − 2 defense + 0 die = 4.
+    expect(s.combat!.units.unit_p2_skeletons.damage).toBe(4);
+  });
+
+  it("a defender's Weakness without standing Power is only −1 (standing-power guard)", () => {
+    const state = declareMeleeAttack([], ["spell.weakness"]);
+    const griffins = state.combat!.units.unit_p1_griffins;
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    griffins.abilities = [];
+    skeletons.abilities = [];
+    griffins.attack = 8;
+    skeletons.defense = 2;
+    skeletons.maxHealth = 40;
+    skeletons.damage = 0;
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    let s = applyOk(state, { type: "PLAY_REACTION", playerId: "p2", cardId: "spell.weakness", mode: "basic" });
+    s = passAll(s);
+    // 8 attack − 1 (Weakness, no standing) − 2 defense + 0 die = 5.
+    expect(s.combat!.units.unit_p2_skeletons.damage).toBe(5);
   });
 
   it("still allows the +1 Power discard toward your own spell cast", () => {

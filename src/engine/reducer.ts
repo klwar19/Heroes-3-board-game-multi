@@ -66,6 +66,7 @@ import {
 import { chooseFaction, setGameOptions, startAdventureFromLobby } from "./adventure-setup";
 import {
   ATTACK_DIE_FACES,
+  BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
   BATTLEFIELD_ROWS,
   getBattlefieldCoordinates,
@@ -136,7 +137,8 @@ import {
   getEffectAmount,
   getEffectDamageAmount,
   getEffectiveCardEffect,
-  getSpellDamageAmount
+  getSpellDamageAmount,
+  spellPowerValueOfCard
 } from "./effects";
 import {
   canUnitAttack,
@@ -158,7 +160,8 @@ import {
   reflectableAttackInstantForPlayer,
   rerollSourceAvailableFor,
   spellAbilitiesSuppressed,
-  spellRedirectTargets
+  spellRedirectTargets,
+  standingSpellPower
 } from "./legal-actions";
 import {
   getActivationAbilities,
@@ -778,21 +781,66 @@ function getAmountByPower(amountByPower: Record<number, number> | undefined, fal
   return matchingPower === undefined ? fallback : (amountByPower[matchingPower] ?? fallback);
 }
 
+/** Whether a stack item is a pending attack (its Power pool is split per side). */
+function isAttackStackItem(stackItem: ResolutionStackItem | undefined): boolean {
+  return stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT";
+}
+
+/** The Power one player has paid into an attack window (statistics, +1s, standing). */
+function attackPowerFor(stackItem: ResolutionStackItem, playerId: PlayerId): number {
+  return stackItem.modifiers.attackPowerByPlayer?.[playerId] ?? 0;
+}
+
+/** Add Power to one player's attack-window pool (per caster, never shared). */
+function addAttackPower(stackItem: ResolutionStackItem, playerId: PlayerId, amount: number): void {
+  const pool = (stackItem.modifiers.attackPowerByPlayer ??= {});
+  pool[playerId] = (pool[playerId] ?? 0) + amount;
+}
+
+/**
+ * Whether a spell instant's effect draws from the attack-window Power pool —
+ * the Power-scaling buffs/debuffs (Bloodlust, Curse, Weakness, Precision, the
+ * scaled Bless bonus and Slayer's roll count). Frenzy (IGNORE_DEFENSE) and a
+ * plain Bless do not, so they are never credited standing Power into the pool.
+ */
+function effectScalesWithAttackPool(effect: ReturnType<typeof getEffectiveCardEffect>): boolean {
+  if (!effect) {
+    return false;
+  }
+  if (effect.type === "SLAYER_ATTACK") {
+    return true;
+  }
+  if (effect.type === "ADD_COMBAT_STAT") {
+    return Boolean(effect.amountByPower);
+  }
+  if (effect.type === "IGNORE_ATTACK_DIE") {
+    return Boolean(effect.attackBonusByPower);
+  }
+  return false;
+}
+
 /**
  * Re-derive every Power-scaling attack/defense instant recorded on an attack
- * stack item against the item's current spellPowerBonus, folding the delta into
- * attackBonus/defenseBonus. Called whenever fresh Power is paid into the attack
- * window so a Bloodlust/Bless/Precision cast earlier keeps growing instead of
- * being frozen at the Power it had when first played.
+ * stack item against its CASTER's attack-window Power pool, folding the delta
+ * into attackBonus/defenseBonus. Called whenever fresh Power is paid into the
+ * attack window so a Bloodlust/Bless/Precision/Curse/Weakness cast earlier keeps
+ * growing instead of being frozen at the Power it had when first played.
  */
 function recomputePowerScaledAttackInstants(stackItem: ResolutionStackItem): void {
-  const power = stackItem.modifiers.spellPowerBonus;
+  const attackerId =
+    stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
+      ? stackItem.action.playerId
+      : undefined;
 
-  // Slayer: re-derive its roll count from the new total Power so Power paid
-  // AFTER Slayer was played (the caster keeps priority and keeps empowering)
-  // lifts it from 2 → 4 → 6 instead of being frozen at the cast-time Power.
-  if (stackItem.modifiers.slayerRollsByPower) {
-    stackItem.modifiers.slayerRolls = getAmountByPower(stackItem.modifiers.slayerRollsByPower, 2, power);
+  // Slayer (always the attacker's): re-derive its roll count from the attacker's
+  // Power so Power paid AFTER Slayer was played (the caster keeps priority and
+  // keeps empowering) lifts it from 2 → 4 → 6 instead of freezing at cast time.
+  if (stackItem.modifiers.slayerRollsByPower && attackerId) {
+    stackItem.modifiers.slayerRolls = getAmountByPower(
+      stackItem.modifiers.slayerRollsByPower,
+      2,
+      attackPowerFor(stackItem, attackerId)
+    );
   }
 
   const records = stackItem.modifiers.powerScaledAttackInstants;
@@ -800,7 +848,7 @@ function recomputePowerScaledAttackInstants(stackItem: ResolutionStackItem): voi
     return;
   }
   for (const record of records) {
-    const scaled = getAmountByPower(record.amountByPower, record.baseAmount, power);
+    const scaled = getAmountByPower(record.amountByPower, record.baseAmount, attackPowerFor(stackItem, record.playerId));
     const newApplied = (scaled + record.fixedBonus) * record.doubleFactor;
     const delta = newApplied - record.appliedAmount;
     if (delta === 0) {
@@ -868,8 +916,11 @@ function attackInstantSignedAmount(stackItem: ResolutionStackItem, cardId: CardI
   for (let index = records.length - 1; index >= 0; index -= 1) {
     const record = records[index];
     if (record.cardId === cardId) {
+      // Re-derive against the CASTER's attack-Power pool (the same source
+      // recomputePowerScaledAttackInstants scales by), without the original
+      // target's hero-specialty doubling — the malus is moving to a new unit.
       return (
-        getAmountByPower(record.amountByPower, record.baseAmount, stackItem.modifiers.spellPowerBonus) +
+        getAmountByPower(record.amountByPower, record.baseAmount, attackPowerFor(stackItem, record.playerId)) +
         record.fixedBonus
       );
     }
@@ -1372,6 +1423,154 @@ function resolveInfernoSpell(
     });
     markUnitRemovedIfNeeded(state, unit);
   }
+}
+
+/**
+ * Deals `amount` card-sourced spell damage to a single unit for the area blasts
+ * (Frost Ring, Meteor Shower, Xyron's Inferno). Per-unit spell/Specialty immunity
+ * and damage reduction (reducedCardDamage) apply; the hit is logged and the unit
+ * flipped/removed. The caller checks finishCombatIfNeeded once the blast is done.
+ */
+function dealAreaCardDamage(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition | undefined,
+  unit: CombatUnitState,
+  amount: number
+): void {
+  const dealt = reducedCardDamage(state, unit, card, amount);
+  if (dealt <= 0) {
+    return;
+  }
+  unit.damage += dealt;
+  noteUnitDamagedForTokens(state, unit, dealt);
+  appendEvent(state, {
+    type: "DAMAGE_ASSIGNED",
+    source: card ? { type: "card", cardId: card.id, controllerId: playerId } : { type: "system" },
+    target: { type: "unit", unitId: unit.id },
+    amount: dealt,
+    damageKind: "spell"
+  });
+  markUnitRemovedIfNeeded(state, unit);
+}
+
+/**
+ * Opens the "area-pick" choice: the caster picks one of `candidateUnitIds`,
+ * which takes `amount` damage, then the choice re-opens (picksRemaining - 1)
+ * until the picks are spent or the candidates run out. Used when more units are
+ * adjacent to a blast's centre than the spell/specialty may hit.
+ */
+function openAreaPickChoice(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition | undefined,
+  candidateUnitIds: UnitId[],
+  picksRemaining: number,
+  amount: number
+): void {
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "ABILITY_TARGET_CHOICE",
+    playerId,
+    kind: "area-pick",
+    abilityId: card?.id ?? null,
+    abilityName: card?.name ?? "Area blast",
+    prompt: `${card?.name ?? "Area blast"}: pick ${picksRemaining} more adjacent unit${
+      picksRemaining === 1 ? "" : "s"
+    } to take ${amount} damage (friend or foe).`,
+    sourceUnitId: null,
+    anchorUnitId: null,
+    candidateUnitIds,
+    amount,
+    picksRemaining,
+    sourceCardId: card?.id
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId,
+    sourceEffectIds: [],
+    message: `${card?.name ?? "An area blast"} may scorch ${picksRemaining} of the adjacent units.`
+  });
+}
+
+/**
+ * Hits `picks` of `candidateUnitIds` for `amount` damage each. When that many or
+ * fewer are still alive, all of them are hit at once; otherwise the caster
+ * chooses which via the area-pick choice.
+ */
+function applyAdjacentPicks(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition | undefined,
+  candidateUnitIds: UnitId[],
+  picks: number,
+  amount: number
+): void {
+  const combat = state.combat;
+  if (!combat || picks <= 0) {
+    return;
+  }
+  const alive = candidateUnitIds.filter((id) => isUnitAlive(combat.units[id]));
+  if (alive.length === 0) {
+    return;
+  }
+  if (alive.length <= picks) {
+    for (const id of alive) {
+      dealAreaCardDamage(state, playerId, card, combat.units[id], amount);
+    }
+    return;
+  }
+  openAreaPickChoice(state, playerId, card, alive, picks, amount);
+}
+
+/**
+ * Frost Ring / Meteor Shower I & VI: deal `amount` to up to `adjacentPicks` units
+ * orthogonally adjacent to `centerPosition` (and the unit on the centre space too
+ * when `includeCenter`), friend or foe. A unit that fully ignores this card's
+ * damage is never a pick candidate (its slot is not wasted). When more eligible
+ * units are adjacent than may be hit, the caster picks which.
+ */
+function resolveAreaPickDamage(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition | undefined,
+  centerPosition: number,
+  amount: number,
+  includeCenter: boolean,
+  adjacentPicks: number
+): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  if (includeCenter) {
+    const centre = Object.values(combat.units).find(
+      (unit) => isUnitAlive(unit) && unit.position === centerPosition
+    );
+    if (centre) {
+      dealAreaCardDamage(state, playerId, card, centre, amount);
+    }
+  }
+
+  const neighbours = new Set(getOrthogonalNeighbors(centerPosition));
+  const candidates = Object.values(combat.units).filter(
+    (unit) =>
+      isUnitAlive(unit) && neighbours.has(unit.position) && !unitIgnoresCardDamage(state, unit, card)
+  );
+  applyAdjacentPicks(
+    state,
+    playerId,
+    card,
+    candidates.map((unit) => unit.id),
+    adjacentPicks,
+    amount
+  );
 }
 
 function rollAttackCandidate(combat: CombatState, rollMode: AttackRollMode): AttackRollCandidate {
@@ -1969,6 +2168,9 @@ function concludeAttackerActivation(state: GameState, attacker: CombatUnitState)
   }
 
   attacker.activatedThisRound = true;
+  // Activation-bound effects on the attacker end with its activation (Berserk's
+  // "in its activation" forced attack, any "this Activation" buff).
+  appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, attacker.id), "activation-ended");
   advanceActiveUnit(state);
   state.phase = "combat";
   state.priorityPlayerId = null;
@@ -3746,6 +3948,95 @@ function resolveKnockbackChoice(
 }
 
 /**
+ * Teleport Spell: opens the caster's "choose where the unit lands" empty-space
+ * picker. Every space free of a living unit, an obstacle and a fortification is
+ * a legal destination (distance and intervening obstacles are ignored). With
+ * nowhere to land the cast simply fizzles (no choice opened).
+ */
+function openTeleportChoice(state: GameState, playerId: PlayerId, unit: CombatUnitState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  const positions: number[] = [];
+  for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+    if (!isSpaceBlockedForSummon(combat, position)) {
+      positions.push(position);
+    }
+  }
+  if (positions.length === 0) {
+    return;
+  }
+
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Teleport ${unit.cardName} to an empty space.`,
+    options: positions.map((position) => ({ label: `Teleport to ${getBattlefieldLabel(position)}` })),
+    context: "combat-teleport",
+    teleport: { unitId: unit.id, positions },
+    returnPhase: "combat"
+  };
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId,
+    sourceEffectIds: [],
+    message: `${state.players[playerId]?.name ?? playerId} teleports ${unit.cardName}.`
+  });
+}
+
+/** Resolves the Teleport destination pick: relocate the unit to the chosen space. */
+function resolveTeleportChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "combat-teleport" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.teleport
+  ) {
+    throw new Error("There is no teleport choice to resolve.");
+  }
+
+  const combat = state.combat;
+  const unit = combat?.units[choice.teleport.unitId];
+  const destination = choice.teleport.positions[action.optionIndex];
+  if (!combat || !unit || destination === undefined || isSpaceBlockedForSummon(combat, destination)) {
+    throw new Error("That teleport destination is not available.");
+  }
+
+  const from = unit.position;
+  unit.position = destination;
+  appendEvent(state, {
+    type: "UNIT_MOVED",
+    playerId: unit.controllerId,
+    unitId: unit.id,
+    from,
+    to: destination
+  });
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
+
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  finishCombatIfNeeded(state);
+}
+
+/**
  * Liches' Death Cloud: opens the second-attack target choice (or declares
  * the attack straight away when only one unit qualifies). Returns true when
  * the attack sequence is paused on the choice or the follow-up attack.
@@ -5012,6 +5303,32 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       );
     }
 
+    // Frost Ring: select a space; the units adjacent to it (NOT the centre)
+    // suffer the power-scaled damage, friend or foe. Up to two are hit; with more
+    // adjacent units the caster picks which (resolveAreaPickDamage). Targets a
+    // space, so it may be centred on an occupied cell.
+    if (card?.effect.type === "AREA_DAMAGE_PICK_ADJACENT" && state.combat) {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const amount = card.effect.amount ?? getAmountByPower(card.effect.amountByPower ?? {}, 1, power);
+      const center =
+        stackItem.action.target.type === "space"
+          ? stackItem.action.target.position
+          : stackItem.action.target.type === "unit"
+            ? state.combat.units[stackItem.action.target.unitId]?.position
+            : undefined;
+      if (center !== undefined) {
+        resolveAreaPickDamage(
+          state,
+          stackItem.action.playerId,
+          card,
+          center,
+          amount,
+          card.effect.includeCenter,
+          card.effect.adjacentPicks
+        );
+      }
+    }
+
     // Dispel: strip every removable ongoing effect from the selected unit, gated
     // by the Power-reached grade (0 → bronze, 1 → silver, 2 → gold) just like
     // Anti-Magic / Blind. Casting above the unlocked grade does nothing.
@@ -5051,6 +5368,45 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
           stackItem.action.playerId,
           stackItem.action.target
         );
+      }
+    }
+
+    // Berserk: the selected unit must attack the nearest unit on its next
+    // activation. Grade-gated like Blind; above the unlocked grade the cast does
+    // nothing. The forced "attack the nearest" rule lives in the legal-action
+    // layer and the neutral AI (both read the BERSERK_FORCED_ATTACK effect).
+    if (card?.effect.type === "BERSERK" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        createActiveEffect(
+          state,
+          {
+            name: card.name,
+            scope: "unit",
+            duration: { type: "next-activation" },
+            polarity: "negative",
+            removable: true,
+            modifiers: [{ type: "BERSERK_FORCED_ATTACK" }]
+          },
+          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          stackItem.action.playerId,
+          stackItem.action.target
+        );
+      }
+    }
+
+    // Teleport: move the selected unit to a chosen empty space, ignoring
+    // obstacles and distance. Grade-gated like Anti-Magic; above the unlocked
+    // grade the cast does nothing. The destination is picked in a follow-up
+    // (the combat-teleport choice), resolved by resolveTeleportChoice.
+    if (card?.effect.type === "TELEPORT_UNIT" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        openTeleportChoice(state, stackItem.action.playerId, target);
       }
     }
 
@@ -5572,13 +5928,17 @@ function effectSupportsExpertPlay(effect: NonNullable<ReturnType<typeof getEffec
 function payOptionCardCost(
   state: GameState,
   playerId: PlayerId,
-  cardName: string,
+  playedCard: CardDefinition,
   cost: CardPlayCost | undefined,
   costCardIds: CardId[] | undefined,
   cards: CardLibrary
 ): number {
+  const cardName = playedCard.name;
   const paying = costCardIds ?? [];
-  if (!cost || (cost.discardCards === undefined && cost.discardCardsUpTo === undefined)) {
+  if (
+    !cost ||
+    (cost.discardCards === undefined && cost.discardCardsUpTo === undefined && cost.powerCost === undefined)
+  ) {
     if (paying.length > 0) {
       throw new Error(`${cardName} has no card cost to pay.`);
     }
@@ -5613,6 +5973,24 @@ function payOptionCardCost(
       throw new Error("Cost cards must come from your hand.");
     }
     handCounts.set(cardId, left - 1);
+  }
+
+  // Power-value cost (Sorrow): the caster's standing spell Power plus the full
+  // printed Power of each discarded power-source card must reach the threshold,
+  // and every discarded card must be necessary (no wasteful over-payment).
+  if (cost.powerCost !== undefined) {
+    const schools = playedCard.spellSchools ?? [];
+    const standing = standingSpellPower(state, playerId, playedCard);
+    const values = paying.map((cardId) => spellPowerValueOfCard(cards[cardId], schools));
+    const total = standing + values.reduce((sum, value) => sum + value, 0);
+    if (total < cost.powerCost) {
+      throw new Error(`${cardName} needs at least ${cost.powerCost} Power; this pays only ${total}.`);
+    }
+    for (const value of values) {
+      if (total - value >= cost.powerCost) {
+        throw new Error(`${cardName} was paid more Power than it needs — drop a card.`);
+      }
+    }
   }
 
   for (const cardId of paying) {
@@ -5679,7 +6057,13 @@ function applyReactionPlayCore(
     if (moveError) {
       throw new Error(moveError.message);
     }
-    stackItemForBoost.modifiers.spellPowerBonus += 1;
+    // Attack windows pool Power per caster; a spell cast on your own turn uses
+    // the single spellPowerBonus.
+    if (isAttackStackItem(stackItemForBoost)) {
+      addAttackPower(stackItemForBoost, playerId, 1);
+    } else {
+      stackItemForBoost.modifiers.spellPowerBonus += 1;
+    }
     stackItemForBoost.modifiers.playedCardIds.push(play.cardId);
     recomputePowerScaledAttackInstants(stackItemForBoost);
     appendEvent(state, {
@@ -5784,11 +6168,36 @@ function applyReactionPlayCore(
 
   const costCardsPaid = play.fromScroll
     ? 0
-    : payOptionCardCost(state, playerId, card.name, option?.cost, play.costCardIds, cards);
+    : payOptionCardCost(state, playerId, card, option?.cost, play.costCardIds, cards);
 
   let effectAmount = getEffectAmount(effect, mode);
   if (mode === "expert") {
     state.players[playerId].combatStats.expertUsesSpentThisRound += 1;
+  }
+
+  // Standing spell Power for a Power-scaling spell instant played as a reaction
+  // into an attack — by EITHER side (the attacker's Bloodlust/Bless/Precision/
+  // Slayer, the defender's Curse/Weakness): credit the once-per-turn Astrologers
+  // bonus, the once-per-round active-unit boost, and a School-of-Magic permanent's
+  // bonus for the spell's school — the same Power castSpell seeds for a spell cast
+  // on your turn. Added to THAT caster's pool once (before noteSpellCast advances
+  // the "first spell" counters) so the instant about to apply reads it like Power
+  // paid alongside it; non-pool spells (Frenzy) are never credited it here.
+  if (
+    card.kind === "spell" &&
+    !play.fromScroll &&
+    player &&
+    stackItem &&
+    isAttackStackItem(stackItem) &&
+    effectScalesWithAttackPool(effect) &&
+    !(stackItem.modifiers.standingPowerSeededFor ?? []).includes(playerId)
+  ) {
+    (stackItem.modifiers.standingPowerSeededFor ??= []).push(playerId);
+    const standing = standingSpellPower(state, playerId, card);
+    if (standing > 0) {
+      addAttackPower(stackItem, playerId, standing);
+      recomputePowerScaledAttackInstants(stackItem);
+    }
   }
 
   if (card.kind === "spell" && state.combat && player) {
@@ -6016,10 +6425,32 @@ function applyReactionPlayCore(
   // Power pool a spell instant in the same declaration consumes. The
   // rulebook allows stacking several Empower plays to reach a threshold.
   if (effect.type === "ADD_SPELL_POWER" && stackItem) {
+    // School-restricted Power (Orbs, Basic-School Magic) on an attack may only
+    // fuel a spell instant of the matching school already played into it — the
+    // cast-window school gate above covers CAST_SPELL; this covers attacks.
+    if (
+      effect.schoolOnly &&
+      (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT")
+    ) {
+      const matchesSchool = stackItem.modifiers.playedCardIds.some((id) => {
+        const played = cards[id];
+        const schools = played?.spellSchools ?? [];
+        return played?.kind === "spell" && (schools.includes(effect.schoolOnly!) || schools.includes("any"));
+      });
+      if (!matchesSchool) {
+        throw new Error(`${card.name} only empowers ${effect.schoolOnly} spells.`);
+      }
+    }
     if (effect.perCostCard) {
       effectAmount += effect.perCostCard * costCardsPaid;
     }
-    stackItem.modifiers.spellPowerBonus += effectAmount;
+    // Attack windows pool Power per caster; a spell cast on your own turn uses
+    // the single spellPowerBonus.
+    if (isAttackStackItem(stackItem)) {
+      addAttackPower(stackItem, playerId, effectAmount);
+    } else {
+      stackItem.modifiers.spellPowerBonus += effectAmount;
+    }
     stackItem.modifiers.playedCardIds.push(play.cardId);
     recomputePowerScaledAttackInstants(stackItem);
     if (effect.drawCards) {
@@ -6065,7 +6496,7 @@ function applyReactionPlayCore(
     // window; cost-paid plays (Sword of Judgement) scale per discarded card.
     // A scroll spell ignores the window's Power pool — it is locked to power 0.
     if (effect.amountByPower && card.kind === "spell") {
-      const power = play.fromScroll ? 0 : stackItem.modifiers.spellPowerBonus;
+      const power = play.fromScroll ? 0 : attackPowerFor(stackItem, playerId);
       effectAmount = getAmountByPower(effect.amountByPower, effect.amount, power);
     }
     if (effect.perCostCard) {
@@ -6102,6 +6533,7 @@ function applyReactionPlayCore(
       const fixedBonus = effect.perCostCard ? effect.perCostCard * costCardsPaid : 0;
       (stackItem.modifiers.powerScaledAttackInstants ??= []).push({
         cardId: card.id,
+        playerId,
         stat: effect.stat,
         amountByPower: effect.amountByPower,
         baseAmount: effect.amount,
@@ -6184,13 +6616,14 @@ function applyReactionPlayCore(
       const blessBonus = getAmountByPower(
         effect.attackBonusByPower,
         0,
-        play.fromScroll ? 0 : stackItem.modifiers.spellPowerBonus
+        play.fromScroll ? 0 : attackPowerFor(stackItem, playerId)
       );
       stackItem.modifiers.attackBonus += blessBonus;
       // Bless's Power-scaled attack bonus can also grow with Power paid later.
       if (!play.fromScroll) {
         (stackItem.modifiers.powerScaledAttackInstants ??= []).push({
           cardId: card.id,
+          playerId,
           stat: "attack",
           amountByPower: effect.attackBonusByPower,
           baseAmount: 0,
@@ -6205,9 +6638,10 @@ function applyReactionPlayCore(
   }
 
   // Frenzy: the pending attack ignores the attacked unit's Defense (counts as 0).
-  // Gated by the defender's grade — the chosen option's discard cost already paid
-  // the Power, so the option carries a fixed reachable `grade`. Casting an option
-  // whose grade the defender exceeds spends the card but pierces nothing.
+  // Gated by the defender's grade — the chosen option's `powerCost` (paid from
+  // standing Power + the Power value of discarded power-source cards) reaches a
+  // fixed grade. Casting an option whose grade the defender exceeds spends the
+  // card but pierces nothing.
   if (
     effect.type === "IGNORE_DEFENSE" &&
     (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
@@ -6240,7 +6674,7 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
     const defenderRef: TargetRef = { type: "unit", unitId: stackItem.action.defenderId };
     if (!negatesCardOnDwarfRoll(state, defenderRef, card.name)) {
-      const power = play.fromScroll ? 0 : stackItem.modifiers.spellPowerBonus;
+      const power = play.fromScroll ? 0 : attackPowerFor(stackItem, playerId);
       stackItem.modifiers.slayerRolls = getAmountByPower(effect.rollsByPower, 2, power);
       stackItem.modifiers.slayerDraw = true;
       // Scroll casts are locked to power 0 and never grow, so they are not recorded.
@@ -6406,10 +6840,12 @@ function playReaction(
         stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
           ? stackItem.action.playerId
           : undefined;
+      // This player may keep empowering a Power-scaling spell instant THEY cast
+      // into the attack — the attacker's Bloodlust/Slayer, or the defender's
+      // Curse/Weakness. Lone Power with nothing of yours to feed still dissipates.
       const empowerable =
-        attackOwner === action.playerId &&
-        ((stackItem?.modifiers.powerScaledAttackInstants?.length ?? 0) > 0 ||
-          stackItem?.modifiers.slayerRollsByPower !== undefined);
+        (stackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === action.playerId) ||
+        (attackOwner === action.playerId && stackItem?.modifiers.slayerRollsByPower !== undefined);
       if (!empowerable) {
         throw new Error("Power can only be played into an attack together with a Spell card.");
       }
@@ -6938,7 +7374,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     throw new Error(moveError.message);
   }
 
-  payOptionCardCost(state, action.playerId, card.name, option?.cost, action.costCardIds, cards);
+  payOptionCardCost(state, action.playerId, card, option?.cost, action.costCardIds, cards);
 
   if (mode === "expert") {
     state.players[action.playerId].combatStats.expertUsesSpentThisRound += 1;
@@ -7349,26 +7785,78 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   // Xyron's Inferno: the chosen unit's space and every orthogonally adjacent
   // space — every unit in the blast, friend or foe — takes the flat damage.
-  if (effect.type === "AREA_DAMAGE_ALL_ADJACENT" && target && state.combat) {
-    const center = state.combat.units[target.unitId];
-    if (center) {
+  // Xyron's Inferno: select a space (occupied or empty); every unit on it and on
+  // the orthogonally adjacent spaces — friend or foe — takes the flat damage. The
+  // centre is read from the chosen space (or, for legacy unit targets, that unit's
+  // space). A Dwarf centre that shrugged the Specialty off (negatedByDwarf) is a
+  // no-op, like the other unit-targeted branches.
+  if (effect.type === "AREA_DAMAGE_ALL_ADJACENT" && state.combat && action.target && !negatedByDwarf) {
+    const center =
+      action.target.type === "space"
+        ? action.target.position
+        : action.target.type === "unit"
+          ? state.combat.units[action.target.unitId]?.position
+          : undefined;
+    if (center !== undefined) {
+      const blastArea = new Set<number>([center, ...getOrthogonalNeighbors(center)]);
       const inBlast = Object.values(state.combat.units).filter(
-        (unit) =>
-          isUnitAlive(unit) && (unit.id === center.id || isAdjacent(unit.position, center.position))
+        (unit) => isUnitAlive(unit) && blastArea.has(unit.position)
       );
       for (const unit of inBlast) {
-        const dealt = reducedCardDamage(state, unit, card, effect.amount);
-        unit.damage += dealt;
-        noteUnitDamagedForTokens(state, unit, dealt);
-        appendEvent(state, {
-          type: "DAMAGE_ASSIGNED",
-          source: { type: "card", cardId: card.id, controllerId: action.playerId },
-          target: { type: "unit", unitId: unit.id },
-          amount: dealt,
-          damageKind: "spell"
-        });
-        markUnitRemovedIfNeeded(state, unit);
+        dealAreaCardDamage(state, action.playerId, card, unit, effect.amount);
       }
+    }
+  }
+
+  // Deemer's Meteor Shower I (target + 1 adjacent) and VI (target + 2 adjacent):
+  // deal the chosen tier's damage to the target unit and that many units adjacent
+  // to it (friend or foe; the caster picks when more are adjacent). The damage is
+  // fixed by the chosen CHOOSE_ONE option (its power-source discard buys the tier).
+  if (effect.type === "AREA_DAMAGE_PICK_ADJACENT" && state.combat && action.target && !negatedByDwarf) {
+    const amount = effect.amount ?? getAmountByPower(effect.amountByPower ?? {}, 1, card.power ?? 0);
+    const center =
+      action.target.type === "space"
+        ? action.target.position
+        : action.target.type === "unit"
+          ? state.combat.units[action.target.unitId]?.position
+          : undefined;
+    if (center !== undefined) {
+      resolveAreaPickDamage(
+        state,
+        action.playerId,
+        card,
+        center,
+        amount,
+        effect.includeCenter,
+        effect.adjacentPicks
+      );
+    }
+  }
+
+  // Deemer's Meteor Shower IV (one option): shuffle the discard pile back into
+  // the deck FIRST, then draw — and the Meteor Shower IV card itself is discarded
+  // AFTER the shuffle. It was moved to the discard before this effect ran, so it
+  // is held aside and left in the discard rather than swept back into the deck
+  // (and so it can never be the card drawn). The "+1 Power" option is the
+  // universal power-source discard, handled by ADD_SPELL_POWER, not here.
+  if (effect.type === "RESHUFFLE_DISCARD_THEN_DRAW") {
+    const player = state.players[action.playerId];
+    if (player) {
+      const playedIndex = player.discard.lastIndexOf(action.cardId);
+      const playedCard = playedIndex >= 0 ? [player.discard[playedIndex]] : [];
+      const toShuffle =
+        playedIndex >= 0
+          ? [...player.discard.slice(0, playedIndex), ...player.discard.slice(playedIndex + 1)]
+          : [...player.discard];
+      if (toShuffle.length > 0) {
+        player.deck = shuffleCards(
+          [...player.deck, ...toShuffle],
+          `${state.seed}#reshuffle-draw#${action.playerId}#${eventSeedNumber(state)}`
+        );
+      }
+      // The played card stays in the discard (discarded after the shuffle).
+      player.discard = playedCard;
+      drawCardsForPlayer(state, action.playerId, effect.drawCards);
     }
   }
 
@@ -8509,6 +8997,27 @@ function chooseAbilityTarget(
     return;
   }
 
+  // Frost Ring / Meteor Shower VI: the picked unit takes the blast's damage,
+  // then the choice re-opens for the next pick (using the same card, amount and
+  // the remaining candidates) until every pick is spent.
+  if (choice.kind === "area-pick") {
+    const blastCard = cards[choice.sourceCardId ?? choice.abilityId ?? ""];
+    const amount = choice.amount ?? 1;
+    const picked = isSkip ? undefined : combat.units[action.targetUnitId];
+    if (picked && isUnitAlive(picked)) {
+      dealAreaCardDamage(state, choice.playerId, blastCard, picked, amount);
+    }
+    if (finishCombatIfNeeded(state)) {
+      return;
+    }
+    const rest = choice.candidateUnitIds.filter(
+      (id) => id !== action.targetUnitId && isUnitAlive(combat.units[id])
+    );
+    applyAdjacentPicks(state, choice.playerId, blastCard, rest, (choice.picksRemaining ?? 1) - 1, amount);
+    finishCombatIfNeeded(state);
+    return;
+  }
+
   // Magic Mirror: the new target is chosen.
   if (choice.kind === "spell-redirect") {
     const top = state.stack.at(-1);
@@ -8872,6 +9381,7 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
   // flying units stay active to attack an adjacent enemy or hold.
   if (unit.type === "ranged") {
     unit.activatedThisRound = true;
+    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
     advanceActiveUnit(state);
   }
 
@@ -9379,6 +9889,7 @@ function executeNeutralActivation(
 
   if (intent.kind === "pass") {
     unit.activatedThisRound = true;
+    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
     appendEvent(state, {
       type: "UNIT_ACTIVATION_ENDED",
       playerId: unit.controllerId,
@@ -9393,6 +9904,7 @@ function executeNeutralActivation(
     unit.position = intent.destination;
     unit.movedThisActivation = true;
     unit.activatedThisRound = true;
+    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
     appendEvent(state, {
       type: "UNIT_MOVED",
       playerId: unit.controllerId,
@@ -9944,6 +10456,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           nextState.pendingChoice.context === "combat-knockback"
         ) {
           resolveKnockbackChoice(nextState, action, cards);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "combat-teleport"
+        ) {
+          resolveTeleportChoice(nextState, action);
         } else {
           chooseOption(nextState, action);
         }

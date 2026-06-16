@@ -11,37 +11,6 @@ function spellSource(slug: string) {
   };
 }
 
-function notImplementedSpell(
-  slug: string,
-  name: string,
-  spellLevel: "basic" | "expert",
-  school: "air" | "earth" | "fire" | "water",
-  timing: "combat" | "instant" | "map",
-  text: string
-): CardLibrary[string] {
-  const card: CardLibrary[string] = {
-    id: `spell.${slug}`,
-    name,
-    kind: "spell",
-    timing,
-    spellLevel,
-    spellSchools: [school],
-    tags: ["spell", spellLevel, school, "needs-implementation", text],
-    power: 0,
-    effect: { type: "DRAW_CARDS", amount: 0 },
-    assets: {
-      cardImage: `/assets/spells-${slug}.webp`,
-      imageAlt: `${name} card`
-    },
-    implementationStatus: "not-implemented",
-    source: spellSource(slug)
-  };
-  if (timing === "combat") {
-    card.phaseLimit = ["combat"];
-  }
-  return card;
-}
-
 export const spellCards: CardLibrary = {
   "spell.haste": {
     id: "spell.haste",
@@ -678,14 +647,75 @@ export const spellCards: CardLibrary = {
     implementationStatus: "implemented",
     source: spellSource("magic_mirror")
   },
-  "spell.teleport": notImplementedSpell(
-    "teleport",
-    "Teleport",
-    "expert",
-    "water",
-    "combat",
-    "Activation: During Combat, move one allied unit to any empty space - ignore any obstacles or effects when moving: Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or gold."
-  ),
+  // Teleport (Expert Water, Activation): move one of your units to any empty
+  // space, ignoring obstacles, other units and the distance in-between. The
+  // reachable grade of the moved unit rises with the Power paid (0 → bronze,
+  // 1 → silver, 2 → gold), the same gate as Anti-Magic / Blind. The destination
+  // empty space is picked in a follow-up choice (engine: TELEPORT_UNIT opens the
+  // combat-teleport choice). The relocation costs no movement and draws no
+  // Retaliation.
+  "spell.teleport": {
+    id: "spell.teleport",
+    name: "Teleport",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["water"],
+    power: 0,
+    target: { type: "friendly-unit" },
+    tags: [
+      "spell",
+      "expert",
+      "water",
+      "Activation: During Combat, move one allied unit to any empty space - ignore any obstacles or effects when moving: Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or gold."
+    ],
+    effect: {
+      type: "TELEPORT_UNIT",
+      gradeByPower: { 0: "bronze", 1: "silver", 2: "gold" }
+    },
+    assets: {
+      cardImage: "/assets/spells-teleport.webp",
+      imageAlt: "Teleport card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("teleport")
+  },
+  // Berserk (Expert Fire, Activation): the selected unit must, on its next
+  // activation, attack the nearest unit or move to the nearest unit and attack
+  // it — friend or foe, so a berserked enemy can be forced onto its own allies
+  // (who retaliate as normal). "Select a unit" targets any unit (an Anti-Magic /
+  // school-immune unit is filtered out by the cast-target layer); the reachable
+  // grade rises with the Power paid (0 → bronze, 2 → silver, 4 → gold), the Blind
+  // gate. Engine: BERSERK places a BERSERK_FORCED_ATTACK effect that the
+  // legal-action layer and neutral AI read to force the attack-the-nearest rule.
+  "spell.berserk": {
+    id: "spell.berserk",
+    name: "Berserk",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["fire"],
+    power: 0,
+    target: { type: "any-unit" },
+    tags: [
+      "spell",
+      "expert",
+      "fire",
+      "Activation: Select a unit. In its activation, this unit must either attack the nearest unit or move to the nearest unit and attack it: Power 0: bronze; Power 2: bronze or silver; Power 4: bronze, silver, or gold. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "BERSERK",
+      gradeByPower: { 0: "bronze", 2: "silver", 4: "gold" }
+    },
+    assets: {
+      cardImage: "/assets/spells-berserk.webp",
+      imageAlt: "Berserk card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("berserk")
+  },
   // Blind: an Activation Fire spell that drops a Paralysis token on an enemy
   // unit (it skips its next activation; the token is removed if it takes
   // damage first). The reachable grade rises with the Power paid.
@@ -787,13 +817,13 @@ export const spellCards: CardLibrary = {
         },
         {
           label: "Skip a silver unit (pay 2 Power)",
-          cost: { discardCards: 2, costCardFilter: "power-source" },
+          cost: { powerCost: 2, costCardFilter: "power-source" },
           trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "opponent" },
           effect: { type: "SKIP_ACTIVATION", grade: "silver" }
         },
         {
           label: "Skip a gold unit (pay 4 Power)",
-          cost: { discardCards: 4, costCardFilter: "power-source" },
+          cost: { powerCost: 4, costCardFilter: "power-source" },
           trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "opponent" },
           effect: { type: "SKIP_ACTIVATION", grade: "gold" }
         }
@@ -1063,6 +1093,41 @@ export const spellCards: CardLibrary = {
     implementationStatus: "implemented",
     source: spellSource("inferno")
   },
+  // Frost Ring (Expert Water, Activation): select a space (occupied or empty);
+  // the units ADJACENT to it — not the centre — suffer the power-scaled damage,
+  // friend or foe. Up to two are hit; when more than two are adjacent the caster
+  // picks which (the AREA_DAMAGE_PICK_ADJACENT machinery, includeCenter: false).
+  // The "OR Instant: +1 Power" side is the universal power-source discard.
+  "spell.frost_ring": {
+    id: "spell.frost_ring",
+    name: "Frost Ring",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["water"],
+    power: 0,
+    target: { type: "any-space" },
+    tags: [
+      "spell",
+      "expert",
+      "water",
+      "area",
+      "Activation: Select a space. The 2 units adjacent to this space (not the space itself) suffer, friend or foe: Power 0: 1 damage; Power 2: 2 damage; Power 4: 3 damage. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "AREA_DAMAGE_PICK_ADJACENT",
+      amountByPower: { 0: 1, 2: 2, 4: 3 },
+      includeCenter: false,
+      adjacentPicks: 2
+    },
+    assets: {
+      cardImage: "/assets/spells-frost_ring.webp",
+      imageAlt: "Frost Ring card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("frost_ring")
+  },
   "spell.visions": {
     id: "spell.visions",
     name: "Visions",
@@ -1185,13 +1250,13 @@ export const spellCards: CardLibrary = {
         },
         {
           label: "Ignore a bronze or silver unit's defense (pay 2 Power)",
-          cost: { discardCards: 2, costCardFilter: "power-source" },
+          cost: { powerCost: 2, costCardFilter: "power-source" },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
           effect: { type: "IGNORE_DEFENSE", grade: "silver" }
         },
         {
           label: "Ignore a bronze, silver, or gold unit's defense (pay 4 Power)",
-          cost: { discardCards: 4, costCardFilter: "power-source" },
+          cost: { powerCost: 4, costCardFilter: "power-source" },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
           effect: { type: "IGNORE_DEFENSE", grade: "gold" }
         }
@@ -1472,6 +1537,11 @@ export const spellDeckLegacy: string[] = [
   "spell.implosion",
   "spell.dispel",
   "spell.frenzy",
+  // Frost Ring — Expert Water.
+  "spell.frost_ring",
+  // Expert combat-movement / control spells.
+  "spell.teleport",
+  "spell.berserk",
   // Tower Expansion / Stretch Goal defensive spells (all Basic).
   "spell.shield",
   "spell.air_shield",
@@ -1552,5 +1622,10 @@ export const spellDeckBinhExpert: string[] = [
   "spell.inferno",
   // Implosion & Frenzy — Expert (Earth / Fire).
   "spell.implosion",
-  "spell.frenzy"
+  "spell.frenzy",
+  // Frost Ring — Expert Water.
+  "spell.frost_ring",
+  // Teleport (Expert Water) & Berserk (Expert Fire).
+  "spell.teleport",
+  "spell.berserk"
 ];

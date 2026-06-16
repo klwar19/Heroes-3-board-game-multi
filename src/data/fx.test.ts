@@ -152,6 +152,8 @@ describe("previously-silent spells are wired (SFX + animation)", () => {
     "spell.sorrow": { sprite: "sorrow", sound: "spells/sorrow" },
     "spell.slayer": { sprite: "slayer", sound: "spells/slayer" },
     "spell.magic_mirror": { sprite: "magic-mirror", sound: "spells/magic-mirror" },
+    // Berserk seizes a unit with the H3 berserk glyph + roar over it.
+    "spell.berserk": { sprite: "berserk", sound: "spells/berserk" },
     // Tower-expansion / stretch-goal defensive spells: each ships a converted
     // sprite sheet + measured sound that the plan must keep referencing.
     "spell.shield": { sprite: "shield", sound: "spells/shield" },
@@ -194,6 +196,54 @@ describe("previously-silent spells are wired (SFX + animation)", () => {
   it.each(Object.entries(MAP_SPELL_SOUNDS))("gives the map spell %s a cast sound", (id, sound) => {
     const plan = spellFxPlans[id];
     expect(plan, `${id} needs an FX plan`).toBeTruthy();
+    expect(plan.sound).toBe(sound);
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  // Teleport has no converted sprite sheet (the unit blinking to its new space is
+  // the visual), so it carries only the H3 teleport cast sound. queueBoardFx
+  // plays a sound-only plan directly over the target unit.
+  it("gives Teleport a cast sound with no sprite (the relocation is the visual)", () => {
+    const plan = spellFxPlans["spell.teleport"];
+    expect(plan, "Teleport needs an FX plan").toBeTruthy();
+    expect(plan.sound).toBe("spells/teleport");
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    expect(plan.affect).toBeUndefined();
+    expect(plan.hit).toBeUndefined();
+    expect(plan.projectile).toBeUndefined();
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+});
+
+describe("area spells & specialties carry their correct SFX + animation", () => {
+  it("Frost Ring rings its space with the frost-ring sprite and sound", () => {
+    const plan = spellFxPlans["spell.frost_ring"];
+    expect(plan, "Frost Ring needs an FX plan").toBeTruthy();
+    // Space-target burst: the cell sprite is plan.hit, its impact sound plan.hitSound.
+    expect(plan.hit).toBe("frost-ring");
+    expect(spriteDurationMs(plan.hit)).toBeGreaterThan(0);
+    expect(plan.hitSound).toBe("spells/frost-ring");
+    expect(soundDurationMs(plan.hitSound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  // The hero-specialty area blasts resolve through a card play (CARD_PLAYED),
+  // which plays their `affect` sprite + cast `sound`. These fail if a plan, its
+  // sprite or its sound is dropped, so the SFX cannot silently regress.
+  const SPECIALTY_FX: [string, string, string][] = [
+    ["specialty.deemer.1", "meteor-shower", "spells/meteor-shower"],
+    ["specialty.deemer.6", "meteor-shower", "spells/meteor-shower"],
+    ["specialty.xyron.1", "inferno", "spells/inferno"],
+    ["specialty.xyron.4", "inferno", "spells/inferno"],
+    ["specialty.xyron.6", "inferno", "spells/inferno"]
+  ];
+
+  it.each(SPECIALTY_FX)("wires %s with its sprite + cast sound", (id, sprite, sound) => {
+    const plan = spellFxPlans[id];
+    expect(plan, `${id} needs an FX plan`).toBeTruthy();
+    expect(plan.affect?.[0]?.key).toBe(sprite);
+    expect(spriteDurationMs(plan.affect?.[0]?.key)).toBeGreaterThan(0);
     expect(plan.sound).toBe(sound);
     expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
     expect(spellPresentationMs(plan)).toBeGreaterThan(0);

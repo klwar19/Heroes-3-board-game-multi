@@ -236,12 +236,14 @@ describe("Xyron's Inferno I", () => {
     // A friendly unit next to the enemy centre takes the blast too.
     state.combat!.units.unit_p1_crusaders.position = 10;
 
+    // Xyron's Inferno selects a SPACE (occupied or empty) — centre it on the
+    // vampires' space so they take the blast as the centre unit.
     const blast = applyOk(state, {
       type: "PLAY_CARD",
       playerId: "p1",
       cardId: "specialty.xyron.1",
       optionIndex: 0,
-      target: { type: "unit", unitId: "unit_p2_vampires" },
+      target: { type: "space", position: state.combat!.units.unit_p2_vampires.position },
       costCardIds: ["stat.attack", "stat.defense"]
     });
 

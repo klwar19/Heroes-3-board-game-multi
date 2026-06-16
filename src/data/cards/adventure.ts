@@ -345,6 +345,57 @@ function resurrectionSpecialty(
   };
 }
 
+/**
+ * Deemer's Meteor Shower I (target + 1 adjacent) and VI (target + 2 adjacent):
+ * "Select a unit and N unit(s) adjacent to it. Deal X to all selected units,
+ * friend or foe." The three Power tiers (0/2/4 → 1/2/3 damage) are the
+ * board-game's standard cost-gated options: deal 1 for free, or pay 2 / 4
+ * power-source cards for 2 / 3 — the same idiom as Resurrection/Frenzy. The
+ * engine hits the centre unit and that many adjacent units, letting the caster
+ * pick which when more are adjacent (AREA_DAMAGE_PICK_ADJACENT).
+ */
+function meteorShowerSpecialty(level: 1 | 6, adjacentPicks: number): CardLibrary[string] {
+  const adjacentText = adjacentPicks === 1 ? "1 unit adjacent to it" : `${adjacentPicks} units adjacent to it`;
+  const tier = (amount: 1 | 2 | 3, payPower: 0 | 2 | 4) => ({
+    label:
+      payPower === 0
+        ? `Deal ${amount} damage to the unit and ${adjacentText}`
+        : `Deal ${amount} damage (pay ${payPower} Power)`,
+    ...(payPower > 0 ? { cost: { discardCards: payPower, costCardFilter: "power-source" as const } } : {}),
+    effect: {
+      type: "AREA_DAMAGE_PICK_ADJACENT" as const,
+      amount,
+      includeCenter: true,
+      adjacentPicks
+    }
+  });
+  return {
+    id: `specialty.deemer.${level}`,
+    name: `Meteor Shower ${level === 1 ? "I" : "VI"}`,
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "deemer",
+      "meteor-shower",
+      `Activation: Select a unit and ${adjacentText}. Deal to all selected units (friend or foe): Power 0: 1 damage; Power 2: 2 damage; Power 4: 3 damage.`
+    ],
+    target: { type: "any-unit" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [tier(1, 0), tier(2, 2), tier(3, 4)]
+    },
+    assets: {
+      cardImage: specialtyCardImage("deemer", level),
+      imageAlt: `Meteor Shower level ${level === 1 ? "I" : "VI"} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource("deemer")
+  };
+}
+
 function towerRoman(level: 1 | 4 | 6): "I" | "IV" | "VI" {
   return level === 1 ? "I" : level === 4 ? "IV" : "VI";
 }
@@ -1039,7 +1090,9 @@ export const adventureCards: CardLibrary = {
       "inferno",
       "Discard 2 cards, then select a space: every unit on that space and the spaces adjacent to it (friend or foe) takes 1 damage."
     ],
-    target: { type: "any-unit" },
+    // "Select a space" — occupied or empty — so the blast can be centred on a
+    // stack of units or on an empty cell to catch a ring of them.
+    target: { type: "any-space" },
     // Single printed line, so a one-option "OR" carries the discard-2 price and
     // the area damage; the cost picker pays it and the target picks the centre.
     effect: {
@@ -1073,7 +1126,7 @@ export const adventureCards: CardLibrary = {
       "inferno",
       "Discard 1 card, then select a space: every unit on that space and the spaces adjacent to it (friend or foe) takes 1 damage."
     ],
-    target: { type: "any-unit" },
+    target: { type: "any-space" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
@@ -1105,7 +1158,7 @@ export const adventureCards: CardLibrary = {
       "inferno",
       "Select a space: every unit on that space and the spaces adjacent to it (friend or foe) takes 1 damage."
     ],
-    target: { type: "any-unit" },
+    target: { type: "any-space" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
@@ -1348,6 +1401,46 @@ export const adventureCards: CardLibrary = {
   "specialty.alamar.1": resurrectionSpecialty(1, { bronze: 1, silver: 2, gold: 4 }),
   "specialty.alamar.4": resurrectionSpecialty(4, { bronze: 0, silver: 1, gold: 3 }),
   "specialty.alamar.6": resurrectionSpecialty(6, { bronze: 0, silver: 0, gold: 2 }),
+  // Deemer (Dungeon Warlock): the Meteor Shower specialist. I hits a unit and 1
+  // neighbour; VI a unit and 2 neighbours (the caster picks which when more are
+  // adjacent); IV cycles the deck or feeds +1 Power to a spell.
+  "specialty.deemer.1": meteorShowerSpecialty(1, 1),
+  "specialty.deemer.4": {
+    id: "specialty.deemer.4",
+    name: "Meteor Shower IV",
+    kind: "hero-specialty",
+    // Instant: the deck-cycle is played on your turn (map or combat); the "+1
+    // Power" side is a reaction to your own spell cast, like Rib Cage.
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "deemer",
+      "meteor-shower",
+      "Instant: Shuffle your discard pile back into your deck, then draw 1 card. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Shuffle your discard pile into your deck, then draw 1 card",
+          effect: { type: "RESHUFFLE_DISCARD_THEN_DRAW", drawCards: 1 }
+        },
+        {
+          label: "+1 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 1 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("deemer", 4),
+      imageAlt: "Meteor Shower level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("deemer")
+  },
+  "specialty.deemer.6": meteorShowerSpecialty(6, 2),
   // Fortress (Beastmasters): unit specialists, like Catherine/Shiva. Bron =
   // Basilisks; Wystan = Lizardmen. I = +1 attack/defence; IV = +1 HP for the
   // combat; VI = +2 initiative for the combat — all doubled on the signature unit.

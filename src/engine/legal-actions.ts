@@ -8,6 +8,7 @@ import {
   armyHasMapEffect,
   canHeroReachPlacedTile,
   discountedReinforceCost,
+  getActiveAstrologersCard,
   getMainHero,
   getSecondaryHero,
   getTownOfPlayer,
@@ -38,13 +39,15 @@ import {
   effectAppliesToUnit,
   effectiveInitiative,
   playerCannotSurrenderCombat,
-  playerHasSpellTimingFreedom
+  playerHasSpellTimingFreedom,
+  unitIsBerserk
 } from "./active-effects";
-import { cancelSpellAllowsSchoolAndLevel, cardCanBoostPower } from "./effects";
+import { cancelSpellAllowsSchoolAndLevel, cardCanBoostPower, spellPowerValueOfCard } from "./effects";
 import {
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
   BATTLEFIELD_ROWS,
+  getBattlefieldDistance,
   getBattlefieldLabel,
   getOrthogonalNeighbors,
   getReachableDestinations,
@@ -86,6 +89,7 @@ import type {
   ResolutionStackItem,
   ResourceCost,
   ResourceKind,
+  SpellSchool,
   TargetDefinition,
   TargetRef,
   TownId,
@@ -94,6 +98,7 @@ import type {
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import {
+  getActivationSpellPowerBoost,
   getLethalSaveUnitAbility,
   getUnitAbilityDefinitions,
   hasBindAdjacentEnemies,
@@ -145,9 +150,46 @@ export function getCardPlayVariants(card: CardDefinition): CardPlayVariant[] {
   ];
 }
 
+/**
+ * The "free" spell Power a player brings to a spell from standing sources this
+ * turn/round — the once-per-turn Astrologers bonus, the once-per-round active
+ * unit (Magi) boost, and a School-of-Magic permanent's basic bonus for the
+ * spell's school. Mirrors what `castSpell` seeds onto a freshly cast spell, so
+ * a spell played as an instant/reaction (Slayer, Sorrow…) or a Power-value cost
+ * (Sorrow's silver/gold) counts the same standing Power a normal cast would.
+ */
+export function standingSpellPower(state: GameState, playerId: PlayerId, card: CardDefinition): number {
+  const player = state.players[playerId];
+  if (!player || card.kind !== "spell") {
+    return 0;
+  }
+  let bonus = 0;
+  if ((player.combatStats.spellsCastThisTurn ?? 0) === 0) {
+    const astrologers = getActiveAstrologersCard(state);
+    if (astrologers?.effect.type === "FIRST_SPELL_POWER_BONUS") {
+      bonus += astrologers.effect.amount;
+    }
+  }
+  if ((player.combatStats.spellsCastThisRound ?? 0) === 0) {
+    const combat = state.combat;
+    const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+    if (activeUnit && activeUnit.controllerId === playerId) {
+      bonus += getActivationSpellPowerBoost(activeUnit);
+    }
+  }
+  const school = getPermanentSchoolBonus(state, playerId, card);
+  if (school) {
+    bonus += school.basicPower;
+  }
+  return bonus;
+}
+
 /** Whether the player can pay an option's card cost from hand right now. */
 function canAffordCardCost(state: GameState, playerId: PlayerId, cardId: string, cost?: CardPlayCost): boolean {
-  if (!cost || (cost.discardCards === undefined && cost.discardCardsUpTo === undefined)) {
+  if (
+    !cost ||
+    (cost.discardCards === undefined && cost.discardCardsUpTo === undefined && cost.powerCost === undefined)
+  ) {
     return true;
   }
 
@@ -169,6 +211,17 @@ function canAffordCardCost(state: GameState, playerId: PlayerId, cardId: string,
       : cost.costCardFilter === "power-source"
         ? rest.filter((id) => cardCanBoostPower(cardLibrary[id]))
         : rest;
+
+  // Power-value cost (Sorrow): the standing spell Power plus the full printed
+  // Power of every eligible power-source card in hand must reach the threshold.
+  if (cost.powerCost !== undefined) {
+    const card = cardLibrary[cardId];
+    const schools = card?.spellSchools ?? [];
+    const standing = card ? standingSpellPower(state, playerId, card) : 0;
+    const fromCards = eligible.reduce((sum, id) => sum + spellPowerValueOfCard(cardLibrary[id], schools), 0);
+    return standing + fromCards >= cost.powerCost;
+  }
+
   const needed = cost.discardCards ?? 0;
   return eligible.length >= needed;
 }
@@ -616,7 +669,10 @@ export function canUnitAttack(
     return false;
   }
 
-  if (attacker.controllerId === defender.controllerId) {
+  // Berserk forces a unit onto the nearest unit, friend or foe — so a berserked
+  // attacker may strike its own ally (which still retaliates). Every other unit
+  // can only attack an enemy.
+  if (attacker.controllerId === defender.controllerId && !unitIsBerserk(activeEffects, attacker)) {
     return false;
   }
 
@@ -672,6 +728,28 @@ export function canUnitMoveAndAttack(
   };
 
   return canUnitAttack(virtualCombat, movedAttacker, defender, state?.activeEffects ?? []);
+}
+
+/**
+ * Berserk targeting: the living units (friend or foe, never the unit itself)
+ * tied for the shortest distance from `unit`. A berserked unit must attack one
+ * of these — the controller (or the neutral AI) breaks the tie, the rulebook's
+ * "the player owning the unit decides the direction." Distance is the orthogonal
+ * board distance, the same "closest" measure the neutral AI uses elsewhere.
+ */
+export function getBerserkNearestTargets(combat: CombatState, unit: CombatUnitState): CombatUnitState[] {
+  const others = Object.values(combat.units).filter(
+    (candidate) => candidate.id !== unit.id && isUnitAlive(candidate)
+  );
+  if (others.length === 0) {
+    return [];
+  }
+  const nearest = Math.min(
+    ...others.map((candidate) => getBattlefieldDistance(unit.position, candidate.position))
+  );
+  return others.filter(
+    (candidate) => getBattlefieldDistance(unit.position, candidate.position) === nearest
+  );
 }
 
 /** A target definition that resolves to units (not "none" or an empty space). */
@@ -1328,10 +1406,17 @@ function isOptionEffectPlayable(
     case "ADD_UNIT_MAX_HEALTH":
     case "HEAL_DAMAGE":
     case "AREA_DAMAGE_ALL_ADJACENT":
+    case "AREA_DAMAGE_PICK_ADJACENT":
     case "CREATE_FIRE_SHIELD":
     case "GRANT_ELEMENTAL_DAMAGE":
     case "DAMAGE_LOWEST_INITIATIVE_ENEMY":
       return context === "combat" && Boolean(state.combat);
+    case "RESHUFFLE_DISCARD_THEN_DRAW": {
+      // Deemer's Meteor Shower IV deck-cycle: useful whenever there is a card to
+      // shuffle back or draw (map or combat).
+      const player = state.players[playerId];
+      return Boolean(player && player.deck.length + player.discard.length > 0);
+    }
     case "PLACE_PARALYSIS":
       // Ring of the Wayfarer's paralysis side is a combat play; the neutral /
       // opening-round gate lives on its `requiresNeutralCombatStart` flag.
@@ -1423,6 +1508,7 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "ADD_UNIT_MAX_HEALTH" ||
     effect.type === "HEAL_DAMAGE" ||
     effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
+    effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
     effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
     effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" ||
     effect.type === "PLACE_PARALYSIS"
@@ -2026,6 +2112,123 @@ function addFortificationActions(actions: LegalAction[], state: GameState, playe
   }
 }
 
+/** Berserk: move destinations that step strictly closer to a nearest target. */
+function berserkApproachSquares(
+  unit: CombatUnitState,
+  nearest: CombatUnitState[],
+  moveDestinations: number[]
+): number[] {
+  return moveDestinations.filter((space) =>
+    nearest.some(
+      (target) =>
+        getBattlefieldDistance(space, target.position) <
+        getBattlefieldDistance(unit.position, target.position)
+    )
+  );
+}
+
+/**
+ * The forced menu of a berserked unit: it must attack the nearest unit (friend
+ * or foe) or move to the nearest unit and attack it. In priority order —
+ *  1. strike a nearest unit it can already hit (the only options offered);
+ *  2. else move-and-attack / step adjacent to a nearest unit to strike this turn
+ *     (those squares only — the board's move-then-attack flow forces the hit);
+ *  3. else advance on a nearest unit (the squares that close the distance);
+ *  4. else (boxed in, or alone on the board) hold.
+ * Every branch drops Defend, abilities and free movement — that is the spell.
+ */
+function addBerserkUnitActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  activeUnit: CombatUnitState
+): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  const hold: LegalAction = {
+    label: `${activeUnit.name} hold position`,
+    action: { type: "END_ACTIVATION", playerId, unitId: activeUnit.id }
+  };
+
+  // Its forced strike is spent — the activation is over.
+  if (activeUnit.attackedThisActivation) {
+    actions.push(hold);
+    return;
+  }
+
+  const nearest = getBerserkNearestTargets(combat, activeUnit);
+  if (nearest.length === 0) {
+    actions.push(hold);
+    return;
+  }
+
+  // 1. Attack a nearest unit it can reach from here (ranged shots included).
+  let canStrikeNow = false;
+  for (const target of nearest) {
+    if (canUnitAttack(combat, activeUnit, target, state.activeEffects)) {
+      canStrikeNow = true;
+      actions.push({
+        label: `${activeUnit.name} attack ${target.name}`,
+        action: { type: "ATTACK_UNIT", playerId, attackerId: activeUnit.id, defenderId: target.id }
+      });
+    }
+  }
+  if (canStrikeNow) {
+    return;
+  }
+
+  const moveDestinations = getLegalMoveDestinations(combat, activeUnit, state);
+  if (moveDestinations.length === 0) {
+    actions.push(hold);
+    return;
+  }
+
+  // 2. Close in and strike a nearest unit this activation.
+  const strikeSquares = new Set<number>();
+  for (const target of nearest) {
+    for (const space of moveDestinations) {
+      if (isAdjacent(space, target.position) && canUnitMoveAndAttack(combat, activeUnit, space, target, state)) {
+        strikeSquares.add(space);
+        actions.push({
+          label: `${activeUnit.name} move to ${getBattlefieldLabel(space)} and attack ${target.name}`,
+          action: {
+            type: "MOVE_AND_ATTACK_UNIT",
+            playerId,
+            attackerId: activeUnit.id,
+            destination: space,
+            defenderId: target.id
+          }
+        });
+      }
+    }
+  }
+  if (strikeSquares.size > 0) {
+    for (const space of strikeSquares) {
+      actions.push({
+        label: `${activeUnit.name} move to ${getBattlefieldLabel(space)}`,
+        action: { type: "MOVE_UNIT", playerId, unitId: activeUnit.id, destination: space }
+      });
+    }
+    return;
+  }
+
+  // 3. Cannot reach a strike — advance on a nearest unit (closing squares only).
+  const approaches = berserkApproachSquares(activeUnit, nearest, moveDestinations);
+  if (approaches.length === 0) {
+    actions.push(hold);
+    return;
+  }
+  for (const space of approaches) {
+    actions.push({
+      label: `${activeUnit.name} move to ${getBattlefieldLabel(space)}`,
+      action: { type: "MOVE_UNIT", playerId, unitId: activeUnit.id, destination: space }
+    });
+  }
+}
+
 function addUnitActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const combat = state.combat;
   if (combat && (combat.setup || combat.awaitingContinue)) {
@@ -2044,6 +2247,13 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
 
   const activeUnit = combat.units[combat.activeUnitId];
   if (!activeUnit || activeUnit.controllerId !== playerId || activeUnit.activatedThisRound) {
+    return;
+  }
+
+  // Berserk: the unit must attack the nearest unit (friend or foe), or move to
+  // it and attack — no free move, defend, ability or hold while a target stands.
+  if (unitIsBerserk(state.activeEffects, activeUnit)) {
+    addBerserkUnitActions(actions, state, playerId, activeUnit);
     return;
   }
 
@@ -2372,6 +2582,7 @@ export function getLegalActions(
               ? `${choice.abilityName}: redirect to`
               : choice.kind === "flat-damage" ||
                   choice.kind === "spell-splash" ||
+                  choice.kind === "area-pick" ||
                   choice.kind === "faerie-damage" ||
                   choice.kind === "chain-lightning"
                 ? `${choice.abilityName}: hit`
@@ -3003,7 +3214,11 @@ export function getLegalReactionsForTrigger(
           : [];
       const enemyInstants = instants.filter((entry) => entry.playerId !== player.id);
       if (enemyInstants.length > 0) {
-        const spellPower = attackItem?.modifiers.spellPowerBonus ?? 0;
+        // Resistance's basic power cap is judged against the CASTER's own attack
+        // Power pool, not a shared total, so one side's Power can't push the
+        // other's spell above a cap that should still be cancellable. (In a
+        // two-player attack every enemy instant shares the one opposing caster.)
+        const spellPower = attackItem?.modifiers.attackPowerByPlayer?.[enemyInstants[0]!.playerId] ?? 0;
         for (const cardId of new Set(player.hand)) {
           const card = cards[cardId];
           if (
@@ -3134,10 +3349,12 @@ export function getLegalReactionsForTrigger(
       attackStackItem?.action.type === "ATTACK_UNIT" || attackStackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
         ? attackStackItem.action.playerId
         : undefined;
+    // Either side may keep empowering a Power-scaling spell instant THEY already
+    // cast into this attack (the attacker's Bloodlust/Slayer, the defender's
+    // Curse/Weakness) — each pays into their own Power pool.
     const hasEmpowerablePlayed =
-      attackOwner === player.id &&
-      ((attackStackItem?.modifiers.powerScaledAttackInstants?.length ?? 0) > 0 ||
-        attackStackItem?.modifiers.slayerRollsByPower !== undefined);
+      (attackStackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === player.id) ||
+      (attackOwner === player.id && attackStackItem?.modifiers.slayerRollsByPower !== undefined);
     if (!isAttackWindow || hasPairableSpell || hasEmpowerablePlayed) {
       reactions.push(...powerReactions);
     }
@@ -3247,6 +3464,21 @@ function fueledPowerOnStackItem(stackItem: ResolutionStackItem | undefined): num
   );
 }
 
+/** Whether a spell of `school` (or "any") has already been played into this attack. */
+function attackStackHasSpellOfSchool(stackItem: ResolutionStackItem | undefined, school: SpellSchool): boolean {
+  if (!stackItem) {
+    return false;
+  }
+  return stackItem.modifiers.playedCardIds.some((id) => {
+    const card = cardLibrary[id];
+    if (card?.kind !== "spell") {
+      return false;
+    }
+    const schools = card.spellSchools ?? [];
+    return schools.includes(school) || schools.includes("any");
+  });
+}
+
 function getPendingSpellPower(state: GameState, triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" }>): number {
   const stackItem = getPendingStackItem(state, triggerEvent);
   if (stackItem?.modifiers.scrollLocked) {
@@ -3307,7 +3539,10 @@ export function getPendingReactionPower(
   }
 
   if (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT") {
-    const fueledPower = fueledPowerOnStackItem(stackItem);
+    // Attack windows pool Power per caster, so the readout reports the Power the
+    // player currently on priority has fuelled into their own spell instant
+    // (the attacker's Bloodlust/Bless/Slayer or the defender's Curse/Weakness).
+    const fueledPower = stackItem.modifiers.attackPowerByPlayer?.[window.priorityPlayerId] ?? 0;
     // An attack only has a Power to report while a Power-scaling spell instant
     // (Bloodlust/Bless/Slayer) sits on it — otherwise a plain attack has none.
     const hasPowerSubject =
@@ -3524,7 +3759,17 @@ export function isEffectLegalForTrigger(
     // Power may be paid into an attack window so a spell instant in the same
     // declaration can consume it (the batch validator enforces the pairing).
     if (effect.type === "ADD_SPELL_POWER") {
-      return !effect.schoolOnly && (attacker.controllerId === playerId || defender.controllerId === playerId);
+      if (!(attacker.controllerId === playerId || defender.controllerId === playerId)) {
+        return false;
+      }
+      // School-restricted Power (Elemental Orbs, Basic-School Magic abilities)
+      // may empower a spell instant here only once a matching-school spell has
+      // been played into this attack — Slayer, Bloodlust and Frenzy are Fire,
+      // so a Fire Orb fuels them. Generic Power needs no school match.
+      if (effect.schoolOnly) {
+        return attackStackHasSpellOfSchool(getPendingStackItem(state, triggerEvent), effect.schoolOnly);
+      }
+      return true;
     }
 
     if (effect.type !== "ADD_COMBAT_STAT") {
