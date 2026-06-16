@@ -735,23 +735,28 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Negate an attacker's Attack die result (the face contributes 0 to the
-       * attack) and every additional effect that face triggered — Dread Knights'
-       * Death Blow, the Minotaurs' draw, the Thunderbird/Wyvern follow-up bolt,
-       * the Azure/Basilisk paralysis, the Zombie/Manticore die-defense bonus.
-       *
-       * Two cards use this, in two different windows:
-       *  - Shield of the Dwarven Lords (option A, `grade` omitted): a defender's
-       *    reaction played AFTER the die is rolled, in the dedicated post-roll
-       *    window (ATTACK_DIE_SETTLED). Works against any attacker.
-       *  - Misfortune (Basic Fire, `grade` set): the defender plays it in the
-       *    pre-roll attack-declared window, negating the upcoming die. Grade-gated
-       *    on the ATTACKING unit (Power 0/1/2 → bronze/silver/gold), so only the
-       *    option whose grade matches the attacker is offered (see
-       *    isEffectLegalForTrigger). Graded options are NOT offered in the
-       *    post-roll window — that window is Shield's alone.
+       * Shield of the Dwarven Lords (option A): a defender's reaction played
+       * AFTER the Attack die is rolled. It ignores the rolled die (the face
+       * contributes 0 to the attack) and every additional effect that die face
+       * triggered — Dread Knights' Death Blow, the Minotaurs' draw, the
+       * Thunderbird/Wyvern follow-up bolt, the Azure/Basilisk paralysis, the
+       * Zombie/Manticore die-defense bonus. Only offered in the dedicated
+       * post-roll window (ATTACK_DIE_SETTLED), never as a free combat instant.
        */
       type: "IGNORE_ATTACK_DIE_RESULT";
+    }
+  | {
+      /**
+       * Misfortune (Basic Fire): the defender plays it the instant an enemy unit
+       * declares an attack — in a dedicated window BEFORE the attacker can buff —
+       * to negate that attack's Attack die result AND lock the attacker out of
+       * increasing the attack from any source for this attack (cards, town/cube
+       * boosts, the die). Grade-gated on the ATTACKING unit (Power 0/1/2 →
+       * bronze/silver/gold). Engine: sets the attack's `negateAttackBuffs` +
+       * `attackDieCancelled` modifiers; the legal-action layer then refuses every
+       * attack-increasing reaction to the attacker for the rest of the attack.
+       */
+      type: "NEGATE_ATTACK";
       grade?: UnitGrade;
     }
   | {
@@ -2941,6 +2946,22 @@ export type ResolutionStackItem = {
      * as 0 and no die-triggered ability fires.
      */
     attackDieCancelled?: boolean;
+    /**
+     * Misfortune: while true, this attack opened the dedicated pre-buff window
+     * where only the defender's Misfortune may be played (before any other card,
+     * per the card's timing). Cleared the instant Misfortune is played or the
+     * defender declines, at which point the normal attack-declared buff window
+     * takes over.
+     */
+    misfortunePhase?: boolean;
+    /**
+     * Misfortune resolved on this attack: the attacker can no longer increase
+     * their attack from any source for this attack. The legal-action layer
+     * refuses every attack-increasing reaction to the attacker (Bloodlust,
+     * Precision, Bless, Slayer, Hall of Valhalla / Cage attack boosts), and the
+     * Attack die is cancelled alongside (`attackDieCancelled`).
+     */
+    negateAttackBuffs?: boolean;
     /**
      * A defending defender's Defense roll for this attack, rolled once and
      * reused across the lethal-save window so the same outcome decides the hit.

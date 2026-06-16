@@ -1676,22 +1676,20 @@ export const spellCards: CardLibrary = {
     source: spellSource("sacrifice")
   },
   // Misfortune (Basic Fire, Instant; Fortress Expansion): the defensive mirror of
-  // Bless. The DEFENDER plays it when an enemy unit declares an attack on one of
-  // their units, negating that attacker's Attack die result — the die counts as 0
-  // and none of the effects that die face would have triggered fire (Death Blow,
-  // the Minotaurs' draw, paralysis, the ranged low-roll bolt). It reuses the
-  // engine's IGNORE_ATTACK_DIE_RESULT machinery (shared with Shield of the Dwarven
-  // Lords), but in the pre-roll attack-declared window rather than Shield's
-  // post-roll one, matching the card's "play immediately when the selected enemy
-  // unit is attacking". Grade-gated on the ATTACKING unit by the Power paid
-  // (0 → bronze, 1 → silver, 2 → gold), modelled as one CHOOSE_ONE option per
-  // grade (free / pay 1 / pay 2 power-source cards) exactly like Magic Mirror; the
-  // legal-action layer offers only the option whose grade matches the attacker,
-  // and only when affordable, so the tray shows a single "negate this attack"
-  // choice with its cost picker. engine: only the Attack-die negation is wired;
-  // the printed "or an additional attack from any card" alternative is NOT
-  // implemented. The universal "OR Instant: +1 Power" side is the generic
-  // power-source discard.
+  // Bless. "Played immediately when the enemy unit is attacking, BEFORE other
+  // cards" — so it has its own pre-buff window (engine: misfortunePhase, opened
+  // ahead of the normal attack-declared window). Playing it NEGATES that attack:
+  // the attacker can no longer increase their attack from ANY source for this
+  // attack (Bloodlust/Precision/Bless/Slayer, Hall of Valhalla / Cage attack
+  // boosts — all refused by the legal-action layer once negateAttackBuffs is set)
+  // AND the Attack die is cancelled (face 0, no die-triggered effects, via
+  // attackDieCancelled). It cannot undo a buff already on the unit — only future
+  // increases — which the pre-window guarantees by firing before any buff. Grade-
+  // gated on the ATTACKING unit by the Power paid (0 → bronze, 1 → silver,
+  // 2 → gold), modelled as one CHOOSE_ONE option per grade (free / pay 1 / pay 2
+  // power-source cards) like Magic Mirror; only the option whose grade matches the
+  // attacker is offered, and only when affordable. The universal "OR Instant:
+  // +1 Power" side is the generic power-source discard.
   "spell.misfortune": {
     id: "spell.misfortune",
     name: "Misfortune",
@@ -1705,27 +1703,27 @@ export const spellCards: CardLibrary = {
       "spell",
       "basic",
       "fire",
-      "Instant: Play immediately when the selected enemy unit is attacking. Negate an Attack die result: Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or golden. — OR — Instant: +1 Power."
+      "Instant: Play immediately when the selected enemy unit is attacking, before any other card. That unit cannot increase its attack from any source for this attack (and its Attack die is negated): Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or golden. — OR — Instant: +1 Power."
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Negate a bronze attacker's Attack die",
+          label: "Negate a bronze unit's attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "IGNORE_ATTACK_DIE_RESULT", grade: "bronze" }
+          effect: { type: "NEGATE_ATTACK", grade: "bronze" }
         },
         {
-          label: "Negate a silver attacker's Attack die (pay 1 Power)",
+          label: "Negate a silver unit's attack (pay 1 Power)",
           cost: { discardCards: 1, costCardFilter: "power-source" },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "IGNORE_ATTACK_DIE_RESULT", grade: "silver" }
+          effect: { type: "NEGATE_ATTACK", grade: "silver" }
         },
         {
-          label: "Negate a gold attacker's Attack die (pay 2 Power)",
+          label: "Negate a gold unit's attack (pay 2 Power)",
           cost: { discardCards: 2, costCardFilter: "power-source" },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "IGNORE_ATTACK_DIE_RESULT", grade: "gold" }
+          effect: { type: "NEGATE_ATTACK", grade: "gold" }
         }
       ]
     },

@@ -2872,14 +2872,77 @@ function getDieCancelReactions(
       continue;
     }
     for (const [optionIndex, option] of card.effect.options.entries()) {
-      // Only the ungraded die-cancel (Shield of the Dwarven Lords) belongs in
-      // this post-roll window. A grade-gated negation (Misfortune) is played in
-      // the pre-roll attack-declared window, where the attacker's grade is
-      // checked — offering it here too would double-offer it and skip that gate.
-      if (option.effect.type !== "IGNORE_ATTACK_DIE_RESULT" || option.effect.grade !== undefined) {
+      if (option.effect.type !== "IGNORE_ATTACK_DIE_RESULT") {
         continue;
       }
       if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
+        continue;
+      }
+      reactions.push(
+        makeReactionAction(`${card.name}: ${option.label}`, {
+          type: "PLAY_REACTION",
+          playerId,
+          cardId,
+          mode: "basic",
+          optionIndex
+        })
+      );
+    }
+  }
+
+  return reactions.length > 0 ? { [playerId]: reactions } : {};
+}
+
+/**
+ * Misfortune's dedicated pre-buff window: the instant an enemy unit declares an
+ * attack, the attacked unit's controller may play Misfortune — before any other
+ * card — to negate that attack's die and lock the attacker out of buffing it.
+ * Only the option whose grade matches the attacking unit is offered, and only
+ * when affordable and within the one-Spell-per-combat-round limit. Returns the
+ * defender's offers (or nothing, so the pre-window simply does not open and the
+ * normal buff window takes over).
+ */
+function getMisfortunePreWindowReactions(
+  state: GameState,
+  triggerEvent: Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }>,
+  cards: CardLibrary
+): Record<PlayerId, LegalAction[]> {
+  const combat = state.combat;
+  const attacker = combat?.units[triggerEvent.attackerId];
+  const defender = combat?.units[triggerEvent.defenderId];
+  if (!combat || !attacker || !defender) {
+    return {};
+  }
+  const playerId = defender.controllerId;
+  const player = state.players[playerId];
+  if (!player || playerId === NEUTRAL_PLAYER_ID || isHandLockedInCombat(state, playerId)) {
+    return {};
+  }
+  // Misfortune is a Spell, so it respects the one-Spell-per-round limit.
+  if (spellLimitFor(state, player) - player.combatStats.spellsCastThisRound <= 0) {
+    return {};
+  }
+
+  const reactions: LegalAction[] = [];
+  for (const cardId of new Set(player.hand)) {
+    const card = cards[cardId];
+    if (
+      !card ||
+      card.kind !== "spell" ||
+      card.implementationStatus !== "implemented" ||
+      card.effect.type !== "CHOOSE_ONE"
+    ) {
+      continue;
+    }
+    for (const [optionIndex, option] of card.effect.options.entries()) {
+      // Only the option whose grade matches the attacking unit (Power 0/1/2 →
+      // bronze/silver/gold) is offered, and only when its Power cost is payable.
+      if (
+        option.effect.type !== "NEGATE_ATTACK" ||
+        option.effect.grade === undefined ||
+        gradeRank(attacker.grade) !== gradeRank(option.effect.grade) ||
+        !canAffordCardCost(state, playerId, cardId, option.cost)
+      ) {
         continue;
       }
       reactions.push(
@@ -3119,6 +3182,15 @@ export function getLegalReactionsForTrigger(
   const result: Record<PlayerId, LegalAction[]> = {};
   const isAttackWindow = triggerEvent.type === "UNIT_ATTACK_DECLARED";
 
+  // Misfortune pre-buff window: the instant an enemy unit declares an attack, the
+  // attacked unit's controller may play Misfortune BEFORE any other card. While
+  // that phase is open, ONLY Misfortune is offered (to the defender) — no buffs,
+  // no debuffs — matching "play immediately when the enemy is attacking, before
+  // other cards are played".
+  if (isAttackWindow && state.stack.at(-1)?.modifiers.misfortunePhase) {
+    return getMisfortunePreWindowReactions(state, triggerEvent, cards);
+  }
+
   for (const player of Object.values(state.players)) {
     // Garrison defense: "You cannot use your Deck during this Combat, as
     // your Main Hero is not present" — no card plays for that defender.
@@ -3354,9 +3426,11 @@ export function getLegalReactionsForTrigger(
     }
 
     // Hall of Valhalla: once per round, +1 attack on one of your attacks.
+    // Misfortune-locked attacks cannot be buffed, so it is not offered then.
     if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
       const attacker = state.combat?.units[triggerEvent.attackerId];
-      if (attacker && attacker.controllerId === player.id) {
+      const attackLocked = Boolean(state.stack.at(-1)?.modifiers.negateAttackBuffs);
+      if (attacker && attacker.controllerId === player.id && !attackLocked) {
         const town = Object.values(state.towns).find((candidate) => candidate.controllerId === player.id);
         for (const buildingId of town?.buildings ?? []) {
           const building = coreBuildingDefinitions[buildingId];
@@ -3386,7 +3460,10 @@ export function getLegalReactionsForTrigger(
         if (building?.effect?.type !== "COMBAT_CUBES" || building.effect.spend !== "attack-or-defense" || cubes <= 0) {
           continue;
         }
-        if (attacker && attacker.controllerId === player.id) {
+        // A Misfortune-locked attack cannot be buffed: the attacker's +attack
+        // option is withheld, but the defender's +defense option stands.
+        const attackLocked = Boolean(state.stack.at(-1)?.modifiers.negateAttackBuffs);
+        if (attacker && attacker.controllerId === player.id && !attackLocked) {
           reactions.push({
             label: `${building.name}: remove 1 cube for +1 attack (${cubes} stored)`,
             action: { type: "SPEND_TOWN_CUBE", playerId: player.id, buildingId, boost: "attack" }
@@ -3919,32 +3996,24 @@ export function isEffectLegalForTrigger(
       });
     }
 
+    // Misfortune locked this attack: refuse every attack-INCREASING reaction to
+    // the attacker (its die is cancelled and its attack cannot be buffed from any
+    // source). The defender's debuffs and the attacker's defense-ignore (Frenzy)
+    // are untouched — only increases to the attacker's attack are negated.
+    const attackBuffsNegated = Boolean(
+      attacker.controllerId === playerId && state.stack.at(-1)?.modifiers.negateAttackBuffs
+    );
+
     // Bless: "the selected ground or flying unit" ignores the die — only the
     // attacker's controller plays it, and never on a ranged shot.
     if (effect.type === "IGNORE_ATTACK_DIE") {
-      return attacker.controllerId === playerId && attacker.type !== "ranged";
-    }
-
-    // Misfortune: "Play immediately when the selected enemy unit is attacking" —
-    // the DEFENDER negates the attacker's upcoming Attack die result. Offered to
-    // the attacked unit's controller only, and only the grade option that matches
-    // the attacking unit (Power 0/1/2 → bronze/silver/gold), so the tray shows a
-    // single "negate this attack" choice with its cost picker (like Sorrow).
-    // Affordability is judged separately by canAffordCardCost, so a grade you
-    // cannot pay never opens. Shield of the Dwarven Lords' ungraded form has no
-    // `grade` and is offered only in the post-roll window, never here.
-    if (effect.type === "IGNORE_ATTACK_DIE_RESULT") {
-      return (
-        effect.grade !== undefined &&
-        defender.controllerId === playerId &&
-        gradeRank(attacker.grade) === gradeRank(effect.grade)
-      );
+      return !attackBuffsNegated && attacker.controllerId === playerId && attacker.type !== "ranged";
     }
 
     // Slayer: only the attacker's controller, and only when striking a gold
-    // unit ("when attacking a golden unit").
+    // unit ("when attacking a golden unit"). Misfortune locks it out too.
     if (effect.type === "SLAYER_ATTACK") {
-      return attacker.controllerId === playerId && defender.grade === "gold";
+      return !attackBuffsNegated && attacker.controllerId === playerId && defender.grade === "gold";
     }
 
     // Frenzy: only the attacker's controller. The Power-scaled form (gradeByPower)
@@ -3983,6 +4052,14 @@ export function isEffectLegalForTrigger(
     }
 
     if (effect.type !== "ADD_COMBAT_STAT") {
+      return false;
+    }
+
+    // Misfortune: a positive attack bonus on the attacker (Bloodlust, Precision)
+    // is refused once their attack is locked. A negative attack (Weakness, the
+    // defender's debuff) and any defense change (Curse) are NOT attack increases,
+    // so they are untouched.
+    if (attackBuffsNegated && effect.stat === "attack" && effect.amount >= 0) {
       return false;
     }
 
