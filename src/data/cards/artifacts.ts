@@ -58,7 +58,12 @@ const SCANLESS_ARTIFACTS = new Set([
   // Plate of the Dying Light has no card scan on the wiki yet, so it falls back
   // to the deck back until the scan lands. (Recanter's Cloak and Boots of
   // Polarity have their wiki scans committed, so they are not listed here.)
-  "plate_of_the_dying_light"
+  "plate_of_the_dying_light",
+  // New-mechanic batch (wiki import): their card scans are not committed to
+  // public/assets yet, so they fall back to the deck back until the scans land.
+  "thunder_helmet",
+  "shamans_puppet",
+  "spirit_of_oppression"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
@@ -2816,6 +2821,163 @@ export const artifactCards: CardLibrary = {
     assets: artifactAssets("relic", "plate_of_the_dying_light", "Plate of the Dying Light"),
     implementationStatus: "implemented",
     source: artifactSource("plate_of_the_dying_light")
+  },
+  // ---- Wiki import: new-mechanic batch ------------------------------------
+  // Three artifacts pulled from the fan wiki, each naming exactly what runs.
+  //
+  // Thunder Helmet (Relic). Option A is the Rib Cage / Crown of Dragontooth
+  // recover-a-Spell effect (TAKE_FROM_DISCARD, Spell-only, 1 card — no shuffle).
+  // Option B creates a player-scoped, combat-long DRAW_ON_SPELL_CAST effect (the
+  // same modifier as Zydar's Sorcery VI), so the owner draws 1 card after every
+  // Spell they cast for the rest of the Combat, and removes the card from the game
+  // (cost.removeSelf). The printed "Remove this card after the Combat" is modelled
+  // as an immediate removal: the draw-on-cast effect lives in activeEffects until
+  // the Combat ends whatever the card's location, so the timing is immaterial.
+  "artifact.thunder_helmet": {
+    id: "artifact.thunder_helmet",
+    name: "Thunder Helmet",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "relic",
+    tags: [
+      "artifact",
+      "relic",
+      "Select 1 Spell card from your discard pile and put it back into your hand. — OR — For this Combat, whenever you play a Spell card, draw 1 card from your M&M deck. Then remove this card."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Take 1 Spell from your discard pile into your hand",
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell" }
+        },
+        {
+          label: "This Combat: draw 1 card after every Spell you cast (remove this card)",
+          combatOnly: true,
+          cost: { removeSelf: true },
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Thunder Helmet",
+              scope: "player",
+              duration: { type: "combat" },
+              polarity: "positive",
+              modifiers: [{ type: "DRAW_ON_SPELL_CAST", amount: 1 }]
+            }
+          }
+        }
+      ]
+    },
+    assets: artifactAssets("relic", "thunder_helmet", "Thunder Helmet"),
+    implementationStatus: "implemented",
+    source: artifactSource("thunder_helmet")
+  },
+  // Shaman's Puppet (Minor). Option A places a unit-scoped, next-activation
+  // ATTACK_ROLL_DISADVANTAGE effect on a chosen enemy unit: for every attack that
+  // unit makes during its activation, getAttackRollMode makes it roll two Attack
+  // dice and resolve the LOWER result. Played on your turn against an enemy unit,
+  // it weakens that unit's next activation — the Forgetfulness debuff's timing.
+  // Option B is the Cure cleanse (HEAL_DAMAGE_AND_REMOVE_EFFECTS, heal 0) on one of
+  // your own units: it strips the unit's negative ongoing effects and its Paralysis
+  // token. The printed "any effect" is modelled exactly as the Cure spell models
+  // the same wording — on your own unit you only ever clear debuffs/paralysis, so a
+  // positive effect is never force-removed.
+  "artifact.shamans_puppet": {
+    id: "artifact.shamans_puppet",
+    name: "Shaman's Puppet",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "minor",
+    target: { type: "any-unit" },
+    tags: [
+      "artifact",
+      "minor",
+      "Choose an enemy unit. Until the end of its activation, for its every attack it rolls 2 Attack dice and resolves the lower result. — OR — Remove any effect or Paralysis from your selected unit."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Enemy unit rolls the lower of 2 Attack dice until its activation ends",
+          combatOnly: true,
+          target: { type: "enemy-unit" },
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Shaman's Puppet",
+              scope: "unit",
+              duration: { type: "next-activation" },
+              polarity: "negative",
+              removable: true,
+              modifiers: [{ type: "ATTACK_ROLL_DISADVANTAGE" }]
+            }
+          }
+        },
+        {
+          label: "Remove any effect or Paralysis from your selected unit",
+          combatOnly: true,
+          target: { type: "friendly-unit" },
+          effect: {
+            type: "HEAL_DAMAGE_AND_REMOVE_EFFECTS",
+            amount: 0,
+            removePolarity: "negative",
+            removeParalysis: true
+          }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "shamans_puppet", "Shaman's Puppet"),
+    implementationStatus: "implemented",
+    source: artifactSource("shamans_puppet")
+  },
+  // Spirit of Oppression (Minor). Option A creates a global, combat-scoped
+  // NO_ATTACK_DIE_REROLL effect. The positive morale token is itself just an
+  // Attack-die reroll source in this engine, so the single buildRerollSources
+  // chokepoint stops offering EVERY reroll — the morale token, Luck/Fortune/Mirth
+  // and unit-ability rerolls — to both players for the rest of the Combat,
+  // covering the printed "neither player can use the positive morale token or
+  // reroll Attack dice". Option B is the universal "+1 Power" empower instant
+  // (ADD_SPELL_POWER) played while you cast a Spell.
+  "artifact.spirit_of_oppression": {
+    id: "artifact.spirit_of_oppression",
+    name: "Spirit of Oppression",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "minor",
+    tags: [
+      "artifact",
+      "minor",
+      "During this Combat, neither player can use the positive morale token or reroll Attack dice. — OR — +1 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: neither player may use the positive morale token or reroll Attack dice",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Spirit of Oppression",
+              scope: "global",
+              duration: { type: "combat" },
+              modifiers: [{ type: "NO_ATTACK_DIE_REROLL" }]
+            }
+          }
+        },
+        {
+          label: "+1 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 1 }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "spirit_of_oppression", "Spirit of Oppression"),
+    implementationStatus: "implemented",
+    source: artifactSource("spirit_of_oppression")
   }
 };
 
@@ -2858,6 +3020,8 @@ export const artifactDeckLegacy: string[] = [
   "artifact.bowstring_of_the_unicorns_mane",
   "artifact.crest_of_valor",
   "artifact.necklace_of_swiftness",
+  "artifact.shamans_puppet",
+  "artifact.spirit_of_oppression",
   // major
   "artifact.dragon_scale_shield",
   "artifact.endless_bag_of_gold",
@@ -2910,7 +3074,8 @@ export const artifactDeckLegacy: string[] = [
   "artifact.lions_shield_of_courage",
   "artifact.sandals_of_the_saint",
   "artifact.boots_of_polarity",
-  "artifact.plate_of_the_dying_light"
+  "artifact.plate_of_the_dying_light",
+  "artifact.thunder_helmet"
 ];
 
 /** BINH Minor Artifact deck (adds the BINH-extra minors). */
@@ -2945,7 +3110,9 @@ export const artifactDeckBinhMinor: string[] = [
   "artifact.helm_of_the_alabaster_unicorn",
   "artifact.bowstring_of_the_unicorns_mane",
   "artifact.crest_of_valor",
-  "artifact.necklace_of_swiftness"
+  "artifact.necklace_of_swiftness",
+  "artifact.shamans_puppet",
+  "artifact.spirit_of_oppression"
 ];
 
 /** BINH Major Artifact deck (adds the BINH-extra majors). */
@@ -3004,5 +3171,6 @@ export const artifactDeckBinhRelic: string[] = [
   "artifact.orb_of_vulnerability",
   "artifact.orb_of_inhibition",
   "artifact.boots_of_polarity",
-  "artifact.plate_of_the_dying_light"
+  "artifact.plate_of_the_dying_light",
+  "artifact.thunder_helmet"
 ];

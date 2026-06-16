@@ -490,6 +490,31 @@ export type ActiveEffectModifier =
       type: "SPELL_CAST_RESTRICTION";
       lockAll?: boolean;
       minPower?: number;
+    }
+  | {
+      /**
+       * Shaman's Puppet (option A): the affected unit rolls its Attack die with
+       * "disadvantage" — it rolls two Attack dice and resolves the LOWER result
+       * for every attack it makes — until the end of its activation. Read in
+       * getAttackRollMode (the single roll-mode chokepoint), so it applies to the
+       * unit's main attacks and move-and-attacks alike. Unit-scoped and removable;
+       * a Tower Titan/Gargoyle that ignores ongoing effects shrugs it off through
+       * effectAppliesToUnit, exactly like every other unit debuff.
+       */
+      type: "ATTACK_ROLL_DISADVANTAGE";
+    }
+  | {
+      /**
+       * Spirit of Oppression (option A): a global, combat-scoped lockout of every
+       * Attack-die reroll for BOTH players — the printed "neither player can use
+       * the positive morale token or reroll Attack dice". The positive morale
+       * token is itself just an Attack-die reroll source in this engine
+       * (buildRerollSources), so a single switch at that chokepoint covers both
+       * clauses: while any NO_ATTACK_DIE_REROLL effect is on the table, no reroll
+       * source (unit ability, Luck/Fortune/Mirth effect, or the morale token) is
+       * offered to anyone. Side-agnostic (scope "global").
+       */
+      type: "NO_ATTACK_DIE_REROLL";
     };
 
 export type ActiveEffectDefinition = {

@@ -521,6 +521,34 @@ export function unitSpecialAbilitySuppressed(
 }
 
 /**
+ * Shaman's Puppet (option A): whether `unit` currently holds an
+ * ATTACK_ROLL_DISADVANTAGE effect, forcing it to roll two Attack dice and keep
+ * the lower for every attack until its activation ends. Read through
+ * effectAppliesToUnit, so a Tower Titan/Gargoyle that ignores the ongoing
+ * effect is unaffected, exactly like every other unit debuff.
+ */
+export function unitAttackRollDisadvantaged(state: GameState, unit: CombatUnitState): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effectAppliesToUnit(effect, unit) &&
+      effect.modifiers.some((modifier) => modifier.type === "ATTACK_ROLL_DISADVANTAGE")
+  );
+}
+
+/**
+ * Spirit of Oppression (option A): whether a global NO_ATTACK_DIE_REROLL effect
+ * is on the table right now. While it is, no Attack-die reroll source is offered
+ * to either player (see buildRerollSources) — neither the positive morale token
+ * nor any Luck/Fortune/Mirth/unit-ability reroll. Side-agnostic, so a single
+ * grant locks rerolls for both armies for the rest of the Combat.
+ */
+export function attackRerollsBlocked(state: GameState): boolean {
+  return state.activeEffects.some((effect) =>
+    effect.modifiers.some((modifier) => modifier.type === "NO_ATTACK_DIE_REROLL")
+  );
+}
+
+/**
  * Refreshes every combat unit's `abilitiesSuppressed` derived flag from the
  * live UNIT_ABILITY_SUPPRESSED effects. Run after every action so the flag the
  * ability chokepoint (getUnitAbilityDefinitions) reads is always in sync with

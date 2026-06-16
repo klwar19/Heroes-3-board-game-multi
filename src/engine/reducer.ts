@@ -114,9 +114,11 @@ import {
   tokenDefenseDelta
 } from "./tokens";
 import {
+  attackRerollsBlocked,
   cardDamageNullified,
   effectAppliesToUnit,
   effectiveInitiative,
+  unitAttackRollDisadvantaged,
   unitImmuneToSpellSchoolsByEffect,
   expireEffectsForActivationEnd,
   expireEffectsForCombatRoundEnd,
@@ -2018,6 +2020,12 @@ function getAttackStackDetails(
     rollMode = "normal";
   }
 
+  // Shaman's Puppet (option A) forces the attacker to roll two dice and keep the
+  // lower. That is not a ranged penalty, so the Precision/Golden Bow waiver above
+  // must never lift it — re-assert disadvantage here for a puppeted attacker.
+  if (unitAttackRollDisadvantaged(state, attacker)) {
+    rollMode = "disadvantage";
+  }
 
   const activeAttackBonus = getActiveAttackBonus(state, {
     attacker,
@@ -2155,6 +2163,15 @@ function buildRerollSources(
   /** Whether the attacker moved this attack — gates Champions' "Charge" reroll. */
   moved = false
 ): AttackRerollSource[] {
+  // Spirit of Oppression (option A): a global combat-scoped lockout removes every
+  // Attack-die reroll source for BOTH players — unit abilities, Luck/Fortune/Mirth
+  // effects and the positive morale token alike — so no reroll is ever offered
+  // while it is in play ("neither player can use the positive morale token or
+  // reroll Attack dice").
+  if (attackRerollsBlocked(state)) {
+    return [];
+  }
+
   const abilitySources: AttackRerollSource[] = getUnitAttackRerollSources(attacker, moved).map((source) => ({
     name: source.name,
     remaining: source.rerolls,
