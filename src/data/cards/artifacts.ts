@@ -41,7 +41,12 @@ const SCANLESS_ARTIFACTS = new Set([
   // Diplomat's Ring: the wiki shows the deck back for this card too (no scan),
   // so it falls back to the deck back here. Its companion Ambassador's Sash
   // does have a scan.
-  "diplomats_ring"
+  "diplomats_ring",
+  // Crest of Valor (Fortress) and Necklace of Swiftness (Stretch Goals 2024):
+  // no card scan committed to public/assets yet, so they fall back to the deck
+  // back until the scans land.
+  "crest_of_valor",
+  "necklace_of_swiftness"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
@@ -830,6 +835,102 @@ export const artifactCards: CardLibrary = {
     assets: artifactAssets("minor", "blackshard_of_the_dead_knight", "Blackshard of the Dead Knight"),
     implementationStatus: "implemented",
     source: artifactSource("blackshard_of_the_dead_knight")
+  },
+  // Crest of Valor (Fortress): option 0 is the plain "gain a positive morale
+  // token" instant (the GAIN_MORALE shared with Glyph of Gallantry / Leadership),
+  // playable in either context. Option 1 is the map side — it sets up a
+  // player-scoped, current-turn shield (engine: IGNORE_FIELD_NEGATIVE_MORALE)
+  // that the next Field which would hand this player a negative Morale token (the
+  // Grave's GAIN_MORALE -1 visit-step) spends instead of lowering Morale. Played
+  // proactively before the visit; combat-loss Morale is never touched.
+  "artifact.crest_of_valor": {
+    id: "artifact.crest_of_valor",
+    name: "Crest of Valor",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "minor",
+    tags: [
+      "artifact",
+      "minor",
+      "Gain a positive morale token. — OR — Ignore the negative morale effect from a field."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Gain a positive morale token",
+          effect: { type: "GAIN_MORALE", amount: 1 }
+        },
+        {
+          label: "Ignore the next negative morale from a field this turn",
+          mapOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Crest of Valor",
+              scope: "player",
+              duration: { type: "current-turn" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [{ type: "IGNORE_FIELD_NEGATIVE_MORALE" }]
+            }
+          }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "crest_of_valor", "Crest of Valor"),
+    implementationStatus: "implemented",
+    source: artifactSource("crest_of_valor")
+  },
+  // Necklace of Swiftness (Stretch Goals 2024): option 0 is the ongoing combat
+  // side — a player-scoped, combat-duration effect that raises the Initiative of
+  // all the owner's GROUND units by 1 (engine: GROUND_INITIATIVE_BONUS, read in
+  // effectiveInitiative; ranged and flying units are untouched). Option 1 is the
+  // activation side — relocate one of your own units to an empty orthogonally-
+  // adjacent space (MOVE_UNIT_ADJACENT; the destination is picked in the
+  // "combat-step" follow-up). Both sides are combat-only.
+  "artifact.necklace_of_swiftness": {
+    id: "artifact.necklace_of_swiftness",
+    name: "Necklace of Swiftness",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "minor",
+    target: { type: "friendly-unit" },
+    tags: [
+      "artifact",
+      "minor",
+      "During this Combat, the initiative of all your ground units is increased by 1. — OR — Move one of your units 1 space."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: +1 initiative to all your ground units",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Necklace of Swiftness",
+              scope: "player",
+              duration: { type: "combat" },
+              polarity: "positive",
+              removable: true,
+              modifiers: [{ type: "GROUND_INITIATIVE_BONUS", amount: 1 }]
+            }
+          }
+        },
+        {
+          label: "Move one of your units 1 space",
+          combatOnly: true,
+          target: { type: "friendly-unit" },
+          effect: { type: "MOVE_UNIT_ADJACENT" }
+        }
+      ]
+    },
+    assets: artifactAssets("minor", "necklace_of_swiftness", "Necklace of Swiftness"),
+    implementationStatus: "implemented",
+    source: artifactSource("necklace_of_swiftness")
   },
 
   // ---- Major artifacts ----------------------------------------------------
@@ -2394,6 +2495,8 @@ export const artifactDeckLegacy: string[] = [
   "artifact.ring_of_the_wayfarer",
   "artifact.scales_of_the_greater_basilisk",
   "artifact.blackshard_of_the_dead_knight",
+  "artifact.crest_of_valor",
+  "artifact.necklace_of_swiftness",
   // major
   "artifact.dragon_scale_shield",
   "artifact.endless_bag_of_gold",
@@ -2472,7 +2575,9 @@ export const artifactDeckBinhMinor: string[] = [
   "artifact.shield_of_the_dwarven_lords",
   "artifact.ring_of_the_wayfarer",
   "artifact.scales_of_the_greater_basilisk",
-  "artifact.blackshard_of_the_dead_knight"
+  "artifact.blackshard_of_the_dead_knight",
+  "artifact.crest_of_valor",
+  "artifact.necklace_of_swiftness"
 ];
 
 /** BINH Major Artifact deck (adds the BINH-extra majors). */

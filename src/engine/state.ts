@@ -155,6 +155,17 @@ export type ActiveEffectModifier =
       amount: number;
     }
   | {
+      /**
+       * Necklace of Swiftness (option A): "During this Combat, the initiative of
+       * all your ground units is increased by 1." A player-scoped, combat-duration
+       * effect; the bonus lands on the controller's GROUND units only (flying and
+       * ranged units are untouched), mirroring how RANGED_INITIATIVE_BONUS gates
+       * on the unit's own type. Read in effectiveInitiative.
+       */
+      type: "GROUND_INITIATIVE_BONUS";
+      amount: number;
+    }
+  | {
       type: "ATTACK_DIE_REROLL";
       maxUsesPerRoll: number;
       consumeEffectOnUse: boolean;
@@ -287,6 +298,17 @@ export type ActiveEffectModifier =
   | {
       /** Pendant of Courage: repeat the next Search action once. */
       type: "SEARCH_REPEAT_ONCE";
+    }
+  | {
+      /**
+       * Crest of Valor (option B, map): "Ignore negative morale effect from a
+       * field." A player-scoped, current-turn shield spent the next time a Field
+       * the player visits would hand them a negative Morale token — the
+       * GAIN_MORALE visit-step checks for and consumes this effect (single use)
+       * instead of lowering Morale. Combat-loss Morale is unaffected: only the
+       * field visit-step reads it.
+       */
+      type: "IGNORE_FIELD_NEGATIVE_MORALE";
     }
   | {
       /**
@@ -891,6 +913,19 @@ export type EffectDefinition =
        */
       type: "TELEPORT_UNIT";
       gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
+       * Necklace of Swiftness (option B): "Move one of your units 1 space." A
+       * combat play that relocates one of the controller's units to an empty
+       * orthogonally-adjacent space. The destination is picked in a follow-up
+       * "combat-step" OPTION_CHOICE (openUnitStepChoice / resolveUnitStepChoice).
+       * A unit can never land on an occupied space, an obstacle, a Wall or the
+       * Gate (isSpaceBlockedForSummon); because the hop is a single step it never
+       * passes *over* anything, so flying is irrelevant. The move is free: it
+       * costs the unit no activation and provokes no Retaliation.
+       */
+      type: "MOVE_UNIT_ADJACENT";
     }
   | {
       /**
@@ -2540,6 +2575,13 @@ export type GameEvent =
       playerId: PlayerId;
       amount: number;
       total: number;
+    }
+  | {
+      /** Crest of Valor: a Field's negative-morale token was ignored. */
+      id: string;
+      type: "FIELD_MORALE_IGNORED";
+      playerId: PlayerId;
+      fieldId: MapSpaceId;
     }
   | {
       id: string;
@@ -4220,6 +4262,7 @@ export type PendingChoice =
         | "combat-knockback"
         | "combat-teleport"
         | "combat-clone"
+        | "combat-step"
         | "cover-of-darkness"
         | "diplomacy-skip"
         | "diplomacy-recruit"
@@ -4254,6 +4297,12 @@ export type PendingChoice =
        * options) the Clone Token lands on.
        */
       clone?: { originalUnitId: UnitId; positions: number[] };
+      /**
+       * combat-step: Necklace of Swiftness moved this unit one space; the
+       * controller picks which empty orthogonally-adjacent space (index-aligned
+       * with the options) it steps to.
+       */
+      step?: { unitId: UnitId; positions: number[] };
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */

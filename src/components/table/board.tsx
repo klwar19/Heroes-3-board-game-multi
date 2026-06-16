@@ -203,19 +203,20 @@ export function BattlefieldBoard({
     }
   }
 
-  // Teleport Spell: the caster picks an empty space from a combat-teleport
-  // choice. Map each offered position to its CHOOSE_OPTION so the empty cell
-  // lights up and lands the unit when clicked (works in both table views).
+  // Empty-space destination pickers: the Teleport Spell (combat-teleport) and
+  // Necklace of Swiftness's one-space move (combat-step) both ask the controller
+  // to pick an empty space. Map each offered position to its CHOOSE_OPTION so the
+  // empty cell lights up and lands the unit when clicked (works in both views).
   const teleportActionsByPosition = new Map<number, GameAction>();
   const teleportChoice = state.pendingChoice;
-  if (
-    combat &&
-    teleportChoice?.type === "OPTION_CHOICE" &&
-    teleportChoice.context === "combat-teleport" &&
-    teleportChoice.playerId === viewerPlayerId &&
-    teleportChoice.teleport
-  ) {
-    teleportChoice.teleport.positions.forEach((position, optionIndex) => {
+  if (combat && teleportChoice?.type === "OPTION_CHOICE" && teleportChoice.playerId === viewerPlayerId) {
+    const destinationPositions =
+      teleportChoice.context === "combat-teleport"
+        ? teleportChoice.teleport?.positions
+        : teleportChoice.context === "combat-step"
+          ? teleportChoice.step?.positions
+          : undefined;
+    destinationPositions?.forEach((position, optionIndex) => {
       teleportActionsByPosition.set(position, {
         type: "CHOOSE_OPTION",
         playerId: viewerPlayerId,
