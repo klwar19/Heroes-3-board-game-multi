@@ -48,8 +48,8 @@ const SCANLESS_ARTIFACTS = new Set([
   // does have a scan.
   "diplomats_ring",
   // Newly added expansion minors with no card scan committed to public/assets
-  // yet — they fall back to the deck back until their scans land.
-  "helm_of_the_alabaster_unicorn",
+  // yet — they fall back to the deck back until their scans land. (Helm of the
+  // Alabaster Unicorn's scan is committed, so it is not listed here.)
   "bowstring_of_the_unicorns_mane"
 ]);
 
@@ -884,18 +884,19 @@ export const artifactCards: CardLibrary = {
   },
   // Bowstring of the Unicorn's Mane (Stronghold expansion). Option A ("Play this
   // card before a unit activates. Activate one of your ranged units that has not
-  // been activated this round") is a combat instant: the chosen friendly ranged
-  // unit (its option target — ranged, not yet activated) is made the active unit
-  // and takes a full out-of-order activation now (engine: ACTIVATE_RANGED_UNIT ->
-  // setActiveUnit). House-rule narrowing: offered only on your own turn, when one
-  // of your units is the fresh active unit (combat instants are played by the
-  // active player), and never on the current active unit itself. No unit acts
-  // twice — the interrupted fresh unit simply resumes its place in initiative
-  // order afterward. Option B ("Use this after a ranged unit's Attack die roll.
-  // Ignore 1 Attack die") is the Shield-of-the-Dwarven-Lords post-roll defender
-  // reaction (IGNORE_ATTACK_DIE_RESULT) gated to a ranged attacker
-  // (requiresRangedAttacker): offered in the ATTACK_DIE_SETTLED window only when
-  // the attacking unit is a ranged unit.
+  // been activated this round") is a pre-activation reaction, offered in the same
+  // UNIT_ACTIVATION_STARTED window Sorrow uses (engine: maybeOpenPreActivationWindow).
+  // Because its trigger controller is "any", BOTH sides may play it — including
+  // before an ENEMY unit activates, to fire one of your own ranged units first.
+  // The chosen friendly ranged unit (its option target — ranged, not yet
+  // activated, not the unit about to act) is made the active unit and takes a
+  // full out-of-order activation now (ACTIVATE_RANGED_UNIT -> setActiveUnit); the
+  // interrupted unit was not consumed, so it resumes its place in initiative order
+  // afterward and no unit acts twice. Option B ("Use this after a ranged unit's
+  // Attack die roll. Ignore 1 Attack die") is the Shield-of-the-Dwarven-Lords
+  // post-roll defender reaction (IGNORE_ATTACK_DIE_RESULT) gated to a ranged
+  // attacker (requiresRangedAttacker): offered in the ATTACK_DIE_SETTLED window
+  // only when the attacking unit is a ranged unit.
   "artifact.bowstring_of_the_unicorns_mane": {
     id: "artifact.bowstring_of_the_unicorns_mane",
     name: "Bowstring of the Unicorn's Mane",
@@ -913,7 +914,7 @@ export const artifactCards: CardLibrary = {
       options: [
         {
           label: "Activate one of your ranged units that has not been activated this round",
-          combatOnly: true,
+          trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "any" },
           target: { type: "friendly-unit", unitTypes: ["ranged"], notActivatedThisRound: true },
           effect: { type: "ACTIVATE_RANGED_UNIT" }
         },

@@ -1664,6 +1664,12 @@ export type GameAction =
       mode?: CardPlayMode;
       optionIndex?: number;
       costCardIds?: CardId[];
+      /**
+       * Bowstring of the Unicorn's Mane (option A): the friendly ranged unit to
+       * activate out of order in the pre-activation window. Reactions that pick a
+       * unit carry it here (most reactions target the window's trigger implicitly).
+       */
+      target?: TargetRef;
       /** Discard this Spell card for its alternative "+1 Power" effect. */
       asPowerBoost?: boolean;
       /**
@@ -3310,11 +3316,12 @@ export type CombatUnitState = {
    */
   reactionPauseAcked?: boolean;
   /**
-   * Set once a Sorrow-style activation-skip reaction window has been offered
-   * for this unit's current activation, so the centralized hook does not
-   * re-open it every action. Reset every time the unit becomes active.
+   * Set once the pre-activation interrupt window has been offered for this unit's
+   * current activation — the window Sorrow (skip) and Bowstring of the Unicorn's
+   * Mane (activate one of your ranged units) share — so the centralized hook does
+   * not re-open it every action. Reset every time the unit becomes active.
    */
-  activationSkipOffered?: boolean;
+  preActivationWindowOffered?: boolean;
   /** Combat tokens currently on the card (attack/weakness/corrosion/paralysis). */
   tokens?: CombatTokenState[];
   /**

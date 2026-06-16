@@ -297,6 +297,7 @@ function normalizeActionForMatch(action: GameAction): GameAction {
       cardId: action.cardId,
       mode: action.mode ?? "basic",
       ...(action.optionIndex !== undefined ? { optionIndex: action.optionIndex } : {}),
+      ...(action.target ? { target: action.target } : {}),
       ...(action.asPowerBoost ? { asPowerBoost: true } : {}),
       ...(action.fromScroll ? { fromScroll: action.fromScroll } : {})
     };
@@ -996,8 +997,14 @@ function doubleAmountForUnitName(amount: number, unit: CombatUnitState | undefin
  * one-Spell-per-round accounting) and fires any ongoing "after casting a Spell,
  * draw N cards" effects (Zydar's Sorcery VI).
  */
-function noteSpellCast(state: GameState, player: PlayerState): void {
-  player.combatStats.spellsCastThisRound += 1;
+function noteSpellCast(state: GameState, player: PlayerState, countsTowardLimit = true): void {
+  // Helm of the Alabaster Unicorn's Spell-deck cast is a free bonus cast: it does
+  // not consume the one-Spell-per-combat-round limit (spellsCastThisRound), so a
+  // later normal Spell is still allowed. It still counts as a Spell cast this turn
+  // and fires "on Spell cast" draw effects.
+  if (countsTowardLimit) {
+    player.combatStats.spellsCastThisRound += 1;
+  }
   player.combatStats.spellsCastThisTurn = (player.combatStats.spellsCastThisTurn ?? 0) + 1;
 
   let draws = 0;
@@ -4330,7 +4337,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   // opposing side (resolved once, then this guards against re-opening it after
   // the reacting player casts/plays during the pause).
   activeUnit.reactionPauseAcked = false;
-  activeUnit.activationSkipOffered = false;
+  activeUnit.preActivationWindowOffered = false;
   // Remember where the unit started this activation (Harpy fly-back) and reset
   // the once-per-activation "[activation]" choice flag (Enchanters/Faeries).
   activeUnit.activationStartPosition = activeUnit.position;
@@ -4739,7 +4746,13 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
 }
 
 /** Whether a reaction play resolves to a Sorrow-style activation-skip effect. */
-function reactionIsActivationSkip(
+/**
+ * Whether a reaction is a pre-activation interrupt — one that resolves in the
+ * UNIT_ACTIVATION_STARTED window before the about-to-act unit moves: Sorrow's
+ * activation skip, or Bowstring of the Unicorn's Mane activating one of your
+ * ranged units out of order. Used to decide whether to open that window.
+ */
+function reactionIsPreActivationInterrupt(
   cards: CardLibrary,
   action: Extract<GameAction, { type: "PLAY_REACTION" }>
 ): boolean {
@@ -4747,17 +4760,22 @@ function reactionIsActivationSkip(
   if (!card) {
     return false;
   }
-  return getEffectiveCardEffect(card, action.optionIndex)?.type === "SKIP_ACTIVATION";
+  const effectType = getEffectiveCardEffect(card, action.optionIndex)?.type;
+  return effectType === "SKIP_ACTIVATION" || effectType === "ACTIVATE_RANGED_UNIT";
 }
 
 /**
- * Sorrow: before a fresh unit acts, give the opposing side a window to skip its
- * activation. Centralized like maybeOpenPlayerActivationChoice so it runs once
- * everything else has settled and never clobbers another window. Opens only
- * when an enemy actually holds a playable activation-skip reaction, so ordinary
- * activations are untouched. Each unit is offered the window once per activation.
+ * Pre-activation interrupt window: before a fresh unit acts, open the window
+ * Sorrow (skip the about-to-act unit) and Bowstring of the Unicorn's Mane
+ * (activate one of your ranged units out of order) share. Centralized like
+ * maybeOpenPlayerActivationChoice so it runs once everything else has settled and
+ * never clobbers another window. It opens only when at least one such interrupt
+ * is actually playable, and is offered once per activation (preActivationWindowOffered,
+ * reset when the unit becomes active) — so multiple interrupt cards across both
+ * players are handled by the ordinary reaction-window priority/passing, and a
+ * resumed or newly-active unit gets a fresh window without ever looping.
  */
-function maybeOpenActivationSkipWindow(state: GameState, cards: CardLibrary): void {
+function maybeOpenPreActivationWindow(state: GameState, cards: CardLibrary): void {
   const combat = state.combat;
   if (
     !combat ||
@@ -4778,7 +4796,7 @@ function maybeOpenActivationSkipWindow(state: GameState, cards: CardLibrary): vo
     !unit ||
     !isUnitAlive(unit) ||
     unit.activatedThisRound ||
-    unit.activationSkipOffered ||
+    unit.preActivationWindowOffered ||
     unit.movedThisActivation ||
     unit.attackedThisActivation
   ) {
@@ -4797,17 +4815,17 @@ function maybeOpenActivationSkipWindow(state: GameState, cards: CardLibrary): vo
     return;
   }
 
-  // Offer the window only when a real activation-skip reaction is available;
+  // Offer the window only when a real pre-activation interrupt is available;
   // mark it offered regardless so we do not recompute it every action.
   const legalReactions = getLegalReactionsForTrigger(state, triggerEvent, cards);
-  const hasActivationSkip = Object.values(legalReactions).some((actions) =>
+  const hasInterrupt = Object.values(legalReactions).some((actions) =>
     actions.some(
-      (legal) => legal.action.type === "PLAY_REACTION" && reactionIsActivationSkip(cards, legal.action)
+      (legal) => legal.action.type === "PLAY_REACTION" && reactionIsPreActivationInterrupt(cards, legal.action)
     )
   );
 
-  unit.activationSkipOffered = true;
-  if (!hasActivationSkip) {
+  unit.preActivationWindowOffered = true;
+  if (!hasInterrupt) {
     return;
   }
 
@@ -6087,7 +6105,8 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   const caster = state.players[action.playerId];
   const isFirstSpellThisTurn = (caster.combatStats.spellsCastThisTurn ?? 0) === 0;
   const isFirstSpellThisRound = (caster.combatStats.spellsCastThisRound ?? 0) === 0;
-  noteSpellCast(state, caster);
+  // A Helm of the Alabaster Unicorn cast does not count toward the spell limit.
+  noteSpellCast(state, caster, !action.fromSpellDeck);
 
   const stackItem = makeStackItem(state, action);
 
@@ -6318,6 +6337,8 @@ function applyReactionPlayCore(
     asPowerBoost?: boolean;
     /** Spell Scroll reaction: power-locked to 0, consumed from the scroll. */
     fromScroll?: string;
+    /** Bowstring of the Unicorn's Mane: the friendly ranged unit to activate. */
+    target?: TargetRef;
   },
   cards: CardLibrary
 ): { windowEnded: boolean } {
@@ -6703,6 +6724,37 @@ function applyReactionPlayCore(
         message: `${card.name} skips ${unit.cardName}'s activation.`
       });
       skipUnitActivation(state, unit);
+    }
+    closeReactionWindow(state, "reaction-played");
+    if (!finishCombatIfNeeded(state)) {
+      state.phase = "combat";
+    }
+    return { windowEnded: true };
+  }
+
+  // Bowstring of the Unicorn's Mane (option A): activate one of your ranged units
+  // that has not acted this round, out of order. Played in the pre-activation
+  // window before some unit (possibly the enemy's) acts; the chosen ranged unit
+  // (play.target) becomes the active unit and takes its full turn now. The unit
+  // that was about to act was not consumed, so it resumes in initiative order.
+  if (effect.type === "ACTIVATE_RANGED_UNIT") {
+    const targetRef = play.target;
+    const chosen = targetRef?.type === "unit" ? state.combat?.units[targetRef.unitId] : undefined;
+    if (
+      chosen &&
+      isUnitAlive(chosen) &&
+      chosen.controllerId === playerId &&
+      chosen.type === "ranged" &&
+      !chosen.activatedThisRound &&
+      chosen.id !== state.combat?.activeUnitId
+    ) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: chosen.id,
+        abilityId: card.id,
+        message: `${card.name} activates ${chosen.cardName} out of order.`
+      });
+      setActiveUnit(state, chosen.id);
     }
     closeReactionWindow(state, "reaction-played");
     if (!finishCombatIfNeeded(state)) {
@@ -8179,24 +8231,6 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     const unit = state.combat.units[target.unitId];
     if (unit && unit.controllerId === action.playerId) {
       unit.maxHealth += doubleAmountForUnitName(effect.amount, unit, effect.doubleForUnitName);
-    }
-  }
-
-  // Bowstring of the Unicorn's Mane (option A): the chosen friendly ranged unit
-  // that has not been activated this round becomes the active unit and takes a
-  // full out-of-order activation now. The interrupted fresh active unit was not
-  // consumed, so it resumes its place in initiative order once this one ends.
-  if (effect.type === "ACTIVATE_RANGED_UNIT" && target && state.combat) {
-    const unit = state.combat.units[target.unitId];
-    if (
-      unit &&
-      isUnitAlive(unit) &&
-      unit.controllerId === action.playerId &&
-      unit.type === "ranged" &&
-      !unit.activatedThisRound &&
-      unit.id !== state.combat.activeUnitId
-    ) {
-      setActiveUnit(state, unit.id);
     }
   }
 
@@ -11011,10 +11045,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
     });
   }
 
-  // Sorrow: once everything else has settled, let the opposing side skip the
-  // about-to-act unit's activation. Runs before the active unit's own
-  // "[activation]" choice so the skip pre-empts it.
-  maybeOpenActivationSkipWindow(nextState, cards);
+  // Pre-activation interrupts (Sorrow's skip, Bowstring of the Unicorn's Mane's
+  // out-of-order ranged activation): once everything else has settled, open the
+  // shared window before the about-to-act unit moves. Runs before the active
+  // unit's own "[activation]" choice so an interrupt pre-empts it.
+  maybeOpenPreActivationWindow(nextState, cards);
 
   // Once everything else has settled, surface a player-controlled unit's
   // "[activation]" choice (Enchanters' heal-or-buff, Faerie Dragons' Ice Bolt)
