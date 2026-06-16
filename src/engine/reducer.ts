@@ -126,6 +126,7 @@ import {
   makeActiveEffect,
   playerHasSpellTimingFreedom,
   releaseEndedOngoingCards,
+  syncAbilitySuppression,
   unitDealsElementalDamage,
   unitImmuneToParalysis
 } from "./active-effects";
@@ -5440,6 +5441,82 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       }
     }
 
+    // Disrupting Ray: until the end of the Combat the selected enemy unit cannot
+    // use its special ability. Grade-gated like Blind (0 → bronze, 1 → silver,
+    // 2 → gold); above the unlocked grade the cast does nothing. Backed by a
+    // combat-scoped UNIT_ABILITY_SUPPRESSED effect. The target read here is the
+    // pending cast's target, so a Magic-Mirror redirect lands the suppression on
+    // the bounced unit instead.
+    if (card?.effect.type === "DISRUPTING_RAY" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        createActiveEffect(
+          state,
+          {
+            name: card.name,
+            scope: "unit",
+            duration: { type: "combat" },
+            polarity: "negative",
+            removable: true,
+            modifiers: [{ type: "UNIT_ABILITY_SUPPRESSED" }]
+          },
+          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          stackItem.action.playerId,
+          stackItem.action.target
+        );
+      }
+    }
+
+    // Sacrifice: transfer the chosen (damaged, grade-gated) unit's wounds onto
+    // another of your units, which perishes. The heal target is the cast target;
+    // the sacrifice is picked in a follow-up ABILITY_TARGET_CHOICE. Grade-gated
+    // (0/2/4 → bronze/silver/gold) on the HEAL target; above the unlocked grade,
+    // or with nothing to transfer / no other unit to spend, the cast does nothing.
+    if (card?.effect.type === "SACRIFICE_TRANSFER" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const healTarget = state.combat.units[stackItem.action.target.unitId];
+      const eligible =
+        Boolean(healTarget) &&
+        maxGrade !== null &&
+        gradeRank(healTarget!.grade) <= gradeRank(maxGrade) &&
+        healTarget!.damage > 0;
+      const candidates = eligible
+        ? Object.values(state.combat.units).filter(
+            (unit) =>
+              unit.id !== healTarget!.id &&
+              unit.controllerId === stackItem.action.playerId &&
+              isUnitAlive(unit)
+          )
+        : [];
+      if (healTarget && candidates.length > 0) {
+        const choiceId = `choice_${nextEventNumber(state)}`;
+        state.pendingChoice = {
+          id: choiceId,
+          type: "ABILITY_TARGET_CHOICE",
+          playerId: stackItem.action.playerId,
+          kind: "sacrifice-transfer",
+          abilityId: card.id,
+          abilityName: card.name,
+          prompt: `${card.name}: choose another of your units to sacrifice — it absorbs ${healTarget.cardName}'s wounds and may perish.`,
+          sourceUnitId: healTarget.id,
+          anchorUnitId: healTarget.id,
+          candidateUnitIds: candidates.map((unit) => unit.id),
+          optional: false
+        };
+        appendEvent(state, {
+          type: "PENDING_CHOICE_CREATED",
+          choiceId,
+          choiceType: "ABILITY_TARGET_CHOICE",
+          playerId: stackItem.action.playerId,
+          sourceEffectIds: [],
+          message: `${card.name}: choose a unit to sacrifice.`
+        });
+      }
+    }
+
     if (card?.effect.type === "CLEAR_RETALIATION" && state.combat && stackItem.action.target.type === "unit") {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
@@ -9130,6 +9207,34 @@ function chooseAbilityTarget(
     return;
   }
 
+  // Sacrifice: move the heal target's damage onto the chosen sacrifice unit —
+  // up to the sacrifice's remaining HP ("as much as is needed for it to
+  // perish"). The heal target loses that much damage; the sacrifice takes it
+  // and perishes (a Pack flips to Few) when it reaches its remaining HP.
+  if (choice.kind === "sacrifice-transfer") {
+    const healTarget = choice.sourceUnitId ? combat.units[choice.sourceUnitId] : undefined;
+    const sacrifice = combat.units[action.targetUnitId];
+    if (healTarget && sacrifice && isUnitAlive(healTarget) && isUnitAlive(sacrifice)) {
+      const source = { type: "card" as const, cardId: choice.abilityId ?? "", controllerId: action.playerId };
+      const transfer = Math.min(healTarget.damage, sacrifice.maxHealth - sacrifice.damage);
+      if (transfer > 0) {
+        healUnitDamage(state, source, { type: "unit", unitId: healTarget.id }, transfer);
+        sacrifice.damage += transfer;
+        noteUnitDamagedForTokens(state, sacrifice, transfer);
+        appendEvent(state, {
+          type: "DAMAGE_ASSIGNED",
+          source,
+          target: { type: "unit", unitId: sacrifice.id },
+          amount: transfer,
+          damageKind: "effect"
+        });
+        markUnitRemovedIfNeeded(state, sacrifice);
+      }
+    }
+    finishCombatIfNeeded(state);
+    return;
+  }
+
   const source = choice.sourceUnitId ? combat.units[choice.sourceUnitId] : undefined;
   if (!source) {
     return;
@@ -10530,6 +10635,13 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       message: error instanceof Error ? error.message : "The action could not be applied."
     });
   }
+
+  // Disrupting Ray: refresh every unit's ability-suppression flag from the live
+  // UNIT_ABILITY_SUPPRESSED effects, so the ability chokepoint
+  // (getUnitAbilityDefinitions) sees the current state however the effect was
+  // just added (a cast) or removed (Dispel, combat/round end) — before any
+  // automation or future action reads the unit's abilities.
+  syncAbilitySuppression(nextState);
 
   try {
     runAdventureAutomations(nextState, cards);

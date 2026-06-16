@@ -74,7 +74,9 @@ export const implementedCardEffectTypes = [
   "DIPLOMACY_SKIP_COMBAT",
   "ADVANCE_EXPERIENCE",
   "VISIONS_SCRY",
-  "INTERFERE_SPELL"
+  "INTERFERE_SPELL",
+  "DISRUPTING_RAY",
+  "SACRIFICE_TRANSFER"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {
@@ -733,6 +735,20 @@ export function describeCardEffect(card: CardDefinition): string {
       .map(([power, count]) => `${power}:${count}`)
       .join(", ");
     return `scry a Neutral Unit deck (cards by power ${breakpoints}); discard any and reorder the rest on top`;
+  }
+
+  if (card.effect.type === "DISRUPTING_RAY") {
+    const breakpoints = Object.entries(card.effect.gradeByPower)
+      .map(([power, grade]) => `${power}:${grade}`)
+      .join(", ");
+    return `until the end of the Combat, the selected unit cannot use its special ability (reachable grade by power ${breakpoints})`;
+  }
+
+  if (card.effect.type === "SACRIFICE_TRANSFER") {
+    const breakpoints = Object.entries(card.effect.gradeByPower)
+      .map(([power, grade]) => `${power}:${grade}`)
+      .join(", ");
+    return `transfer one of your units' damage onto another of your units, which perishes (reachable grade by power ${breakpoints})`;
   }
 
   return card.kind;
