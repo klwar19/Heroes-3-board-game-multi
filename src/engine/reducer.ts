@@ -1783,6 +1783,17 @@ function applyAttackDamageFromCandidate(
 
   noteUnitDamagedForTokens(state, defender, damage);
   markUnitRemovedIfNeeded(state, defender);
+
+  // Clone Spell: "If the Clone takes at least 1 damage from any source, OR is
+  // attacked (even if that attack inflicts 0 damage), destroy the Clone." Any
+  // damage already removed it above (a Clone has 1 Health); this covers the
+  // 0-damage case — it is destroyed for having been attacked, so it never lives
+  // to retaliate. (Spells/abilities that deal 0 damage are NOT attacks and do
+  // not trigger this — only an attack does.)
+  if (defender.cloneOfUnitId && isUnitAlive(defender)) {
+    defender.damage = defender.maxHealth;
+    markUnitRemovedIfNeeded(state, defender);
+  }
   return { damage, roll: candidate.roll, cancelled: false };
 }
 
@@ -2498,8 +2509,14 @@ function finishResolvedAttack(
 
   // Alamar's Resurrection: before a killing normal attack lands, pause once and
   // ask the defender's controller whether to cancel it (only if they can). The
-  // rolled die is stashed so the resumed attack uses the same outcome.
-  if (!stackItem.modifiers.lethalSaveOffered && playerHasLethalSave(state, details.defender.id, cards)) {
+  // rolled die is stashed so the resumed attack uses the same outcome. A Clone is
+  // destroyed by any damage by rule and cannot be rescued, so it is never offered
+  // a lethal save (the post-damage hook then removes it for being attacked).
+  if (
+    !details.defender.cloneOfUnitId &&
+    !stackItem.modifiers.lethalSaveOffered &&
+    playerHasLethalSave(state, details.defender.id, cards)
+  ) {
     const preview = getAttackDamagePreview(
       details.attacker,
       details.defender,
@@ -4088,6 +4105,92 @@ function resolveTeleportChoice(
 }
 
 /**
+ * Clone Spell: opens the destination pick — the empty spaces orthogonally
+ * adjacent to the cloned unit. Mirrors openTeleportChoice but is restricted to
+ * the original's neighbours ("an adjacent empty space"). Does nothing when the
+ * original is hemmed in with no empty neighbour.
+ */
+function openCloneChoice(state: GameState, playerId: PlayerId, original: CombatUnitState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  const positions = getOrthogonalNeighbors(original.position).filter(
+    (position) => !isSpaceBlockedForSummon(combat, position)
+  );
+  if (positions.length === 0) {
+    return;
+  }
+
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Place the Clone of ${original.cardName} on an adjacent empty space.`,
+    options: positions.map((position) => ({ label: `Clone to ${getBattlefieldLabel(position)}` })),
+    context: "combat-clone",
+    clone: { originalUnitId: original.id, positions },
+    returnPhase: "combat"
+  };
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId,
+    sourceEffectIds: [],
+    message: `${state.players[playerId]?.name ?? playerId} clones ${original.cardName}.`
+  });
+}
+
+/** Resolves the Clone destination pick: drop the 1-Health Clone Token there. */
+function resolveCloneChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "combat-clone" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.clone
+  ) {
+    throw new Error("There is no clone choice to resolve.");
+  }
+
+  const combat = state.combat;
+  const original = combat?.units[choice.clone.originalUnitId];
+  const destination = choice.clone.positions[action.optionIndex];
+  if (!combat || !original || destination === undefined || isSpaceBlockedForSummon(combat, destination)) {
+    throw new Error("That clone destination is not available.");
+  }
+
+  const clone = placeCloneUnit(state, action.playerId, original, destination);
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
+  if (clone) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: clone.id,
+      abilityId: "spell.clone",
+      message: `${original.cardName} is cloned at ${getBattlefieldLabel(destination)} (1 Health).`
+    });
+  }
+
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  finishCombatIfNeeded(state);
+}
+
+/**
  * Liches' Death Cloud: opens the second-attack target choice (or declares
  * the attack straight away when only one unit qualifies). Returns true when
  * the attack sequence is paused on the choice or the follow-up attack.
@@ -5465,6 +5568,20 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
         openTeleportChoice(state, stackItem.action.playerId, target);
+      }
+    }
+
+    // Clone: place a 1-Health copy of the selected allied unit on an adjacent
+    // empty space. Grade-gated by the Power paid (1 → bronze, 3 → silver,
+    // 5 → gold); below Power 1, or on a unit above the unlocked grade, the cast
+    // does nothing. The destination is picked in a follow-up (the combat-clone
+    // OPTION_CHOICE), resolved by resolveCloneChoice.
+    if (card?.effect.type === "CLONE_UNIT" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        openCloneChoice(state, stackItem.action.playerId, target);
       }
     }
 
@@ -8649,6 +8766,54 @@ function placeSummonedUnit(
 }
 
 /**
+ * Clone Spell: place a 1-Health Clone Token copying `original` onto an empty
+ * space. The Clone is rebuilt from the original's PRINTED side (its unitDefId +
+ * variant via makeCombatUnitFromArmy), so it copies the printed statistics, type
+ * and printed abilities but none of the ongoing effects, tokens or specialty
+ * transforms layered on the original — exactly "everything printed on its card,
+ * excluding any other effects played on the original". Its maxHealth is forced to
+ * 1, it carries no army card (it is a token, removed when the combat ends), and it
+ * is linked to its original by cloneOfUnitId so it dies with it. Returns the new
+ * Clone, or null when the space is unusable or the original has no printed side.
+ */
+function placeCloneUnit(
+  state: GameState,
+  playerId: PlayerId,
+  original: CombatUnitState,
+  position: number
+): CombatUnitState | null {
+  const combat = state.combat;
+  if (!combat || isSpaceBlockedForSummon(combat, position) || !original.unitDefId) {
+    return null;
+  }
+
+  const clone = makeCombatUnitFromArmy(
+    { id: `clonetoken_${nextEventNumber(state)}`, unitDefId: original.unitDefId, side: original.variant },
+    playerId,
+    `unit_${playerId}_clone_${nextEventNumber(state)}`,
+    position,
+    getRuleset(state)
+  );
+  if (!clone) {
+    return null;
+  }
+
+  // A 1-Health token of the printed unit. It acts on its own initiative this
+  // round (not pre-activated) and is gradeless to the neutral AI like a summon.
+  clone.maxHealth = 1;
+  clone.damage = 0;
+  clone.activatedThisRound = false;
+  clone.summoned = true;
+  clone.cloneOfUnitId = original.id;
+  clone.cardName = `Clone of ${original.cardName}`;
+  // It is a Clone Token, not a real army card: drop the army linkage so it is
+  // never mistaken for a recruited unit (and is discarded when the combat ends).
+  delete clone.armyUnitId;
+  combat.units[clone.id] = clone;
+  return clone;
+}
+
+/**
  * Pit Lords' "Summon Demons" other action: instead of moving or attacking, the
  * active Pit Lords either summon a Few of Demons onto an empty adjacent space
  * or reinforce a friendly Few of Demons up to a Pack — once per combat, only
@@ -10729,6 +10894,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           nextState.pendingChoice.context === "combat-teleport"
         ) {
           resolveTeleportChoice(nextState, action);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "combat-clone"
+        ) {
+          resolveCloneChoice(nextState, action);
         } else {
           chooseOption(nextState, action);
         }
