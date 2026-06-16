@@ -70,6 +70,7 @@ export const implementedCardEffectTypes = [
   "REDIRECT_SPELL",
   "CONTINUE_NEUTRAL_FREE",
   "EARTHQUAKE",
+  "REMOVE_OBSTACLE",
   "SIEGE_DEMOLISH",
   "SUMMON_ELEMENTAL",
   "GRANT_ELEMENTAL_DAMAGE",
@@ -776,6 +777,13 @@ export function describeCardEffect(card: CardDefinition): string {
       .map(([power, grade]) => `${power}:${grade}`)
       .join(", ");
     return `transfer one of your units' damage onto another of your units, which perishes (reachable grade by power ${breakpoints})`;
+  }
+
+  if (card.effect.type === "REMOVE_OBSTACLE") {
+    const breakpoints = Object.entries(card.effect.countByPower)
+      .map(([power, count]) => `${power}:${count}`)
+      .join(", ");
+    return `remove obstacles from the Combat board — markers, Force Field / Fire Wall / Quicksand / Land Mine tokens, Walls or the Gate (count by power ${breakpoints})`;
   }
 
   return card.kind;

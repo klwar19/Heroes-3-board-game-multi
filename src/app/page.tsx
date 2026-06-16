@@ -135,7 +135,11 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   "UNIT_REMOVED",
   // Battlefield-obstacle spells: token placement and the bites/halts they cause.
   "BATTLEFIELD_TOKEN_PLACED",
-  "BATTLEFIELD_TOKEN_TRIGGERED"
+  "BATTLEFIELD_TOKEN_TRIGGERED",
+  // Remove Obstacle / Earthquake / siege: obstacle markers and fortifications
+  // clearing off the board carry their own crumble cue.
+  "COMBAT_OBSTACLE_REMOVED",
+  "FORTIFICATION_DESTROYED"
 ]);
 
 const OBSERVER_SEAT = "observer";
@@ -1011,6 +1015,12 @@ export default function Home() {
         // unitId -> total spell/ability damage seen this batch, so repeated hits
         // freeze back to the health from before the first one.
         const spellDamageSeen = new Map<string, number>();
+        // attacker unitId -> when its Fire Shield burn resolves (after the burn's
+        // sprite + sound finish). Set when the "fire-shield" ability cue is
+        // queued and consumed once by that burn's DAMAGE_ASSIGNED, so the burn
+        // number/health land after the animation and never on the unrelated
+        // retaliation strike beat the attacker may also carry.
+        const fireShieldBurnAt = new Map<string, number>();
         // True once any spell/ability has queued damage, a heal or a death in
         // combat — holds the victory notice and the next guard's prompt until the
         // effect (and the death it caused) has played out, exactly like a strike.
@@ -1416,11 +1426,19 @@ export default function Home() {
             case "DAMAGE_ASSIGNED": {
               if (event.target.type === "unit" && event.amount > 0) {
                 const targetId = event.target.unitId;
+                // Fire Shield burn: its cue queued a reveal beat for this attacker
+                // (after the flare). Consume it once so the burn number/health
+                // land after the animation, and the attacker's later retaliation
+                // strike still pins to its own beat below.
+                const burnAt = fireShieldBurnAt.get(targetId);
                 // Attack damage lands on its strike beat; spell/ability damage
                 // lands only once its sprite + sound have finished (the timeline
                 // was just advanced past them by queueBoardFx / the ability cue).
-                const attackBeat = impactByTarget.get(targetId);
-                const at = attackBeat ?? timeline;
+                const attackBeat = burnAt === undefined ? impactByTarget.get(targetId) : undefined;
+                const at = burnAt ?? attackBeat ?? timeline;
+                if (burnAt !== undefined) {
+                  fireShieldBurnAt.delete(targetId);
+                }
                 playUnitSound(unitVoice(targetId), "hurt", at);
                 cues.push({
                   kind: "floater",
@@ -1437,9 +1455,18 @@ export default function Home() {
                 if (attackBeat === undefined && inCombat) {
                   const defender = nextState.combat?.units[targetId];
                   if (defender && defender.position >= 0) {
-                    const seen = (spellDamageSeen.get(targetId) ?? 0) + event.amount;
-                    spellDamageSeen.set(targetId, seen);
-                    freezeDamage.set(targetId, Math.max(0, defender.damage - seen));
+                    if (burnAt !== undefined) {
+                      // Fire Shield burn: back the burn out of whatever is already
+                      // frozen (a pending retaliation the pre-pass froze) so the
+                      // attacker's health drop waits for the flare, while its
+                      // retaliation still reveals on its own strike beat.
+                      const base = freezeDamage.get(targetId) ?? defender.damage;
+                      freezeDamage.set(targetId, Math.max(0, base - event.amount));
+                    } else {
+                      const seen = (spellDamageSeen.get(targetId) ?? 0) + event.amount;
+                      spellDamageSeen.set(targetId, seen);
+                      freezeDamage.set(targetId, Math.max(0, defender.damage - seen));
+                    }
                   }
                   const revealAt = at + DAMAGE_REVEAL_DELAY_MS;
                   spellRevealAt.set(targetId, Math.max(spellRevealAt.get(targetId) ?? 0, revealAt));
@@ -1492,6 +1519,30 @@ export default function Home() {
                 break;
               }
               const targetUnitId = event.targetUnitId ?? event.unitId;
+              if (event.abilityId === "fire-shield") {
+                // The burn answers the melee attack that just struck the shielded
+                // unit (event.unitId). Play the fire flare on the attacker
+                // (targetUnitId) right after that strike lands — on the strike's
+                // beat, NOT the main timeline — so the SFX + animation always run
+                // before the burn number/health, which is held back to match.
+                const strikeBeat = impactByTarget.get(event.unitId);
+                const start = (strikeBeat ?? timeline) + DAMAGE_REVEAL_DELAY_MS;
+                plan.affect?.forEach((entry, index) => {
+                  cues.push({
+                    kind: "sprite",
+                    id: `${event.id}-fireshield-${index}`,
+                    fxKey: entry.key,
+                    at: `unit:${targetUnitId}`,
+                    sound: index === 0 ? plan.sound : undefined,
+                    delayMs: start + (entry.delayMs ?? 0)
+                  });
+                });
+                const burnAt = start + spellPresentationMs(plan);
+                fireShieldBurnAt.set(targetUnitId, burnAt);
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, burnAt + DAMAGE_REVEAL_DELAY_MS + 1200);
+                break;
+              }
               // A bolt only flies when there's a separate target to fly to;
               // a self-anchored ability drops its projectile and just bursts in
               // place. Either way queueBoardFx advances the timeline by the
@@ -1582,6 +1633,50 @@ export default function Home() {
               if (inCombat) {
                 combatFxActive = true;
                 combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 600);
+              }
+              break;
+            }
+            case "COMBAT_OBSTACLE_REMOVED": {
+              // Remove Obstacle lifted an obstacle marker: the H3 crumble cue
+              // plays on that cell as the marker clears off the board.
+              const at = timeline;
+              window.setTimeout(() => playLibrarySound("spells/remove-obstacle"), at);
+              cues.push({
+                kind: "floater",
+                id: `${event.id}-removed`,
+                at: `cell:${event.position}`,
+                text: "Removed",
+                tone: "info",
+                delayMs: at + 120
+              });
+              timeline += 600;
+              if (inCombat) {
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 400);
+              }
+              break;
+            }
+            case "FORTIFICATION_DESTROYED": {
+              // A Wall, the Gate or the Arrow Tower comes down (Earthquake,
+              // Remove Obstacle, Ballistics, a Cyclops). The siege-wall impact
+              // cue cracks it; the Tower's own removal cry still plays on its
+              // UNIT_REMOVED. Previously these fell silently.
+              const at = timeline;
+              window.setTimeout(() => playLibrarySound("effects/siege-wall-hit"), at);
+              if (event.position !== undefined) {
+                cues.push({
+                  kind: "floater",
+                  id: `${event.id}-fall`,
+                  at: `cell:${event.position}`,
+                  text: event.kind === "gate" ? "Gate down" : "Wall down",
+                  tone: "info",
+                  delayMs: at + 120
+                });
+              }
+              timeline += 600;
+              if (inCombat) {
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 400);
               }
               break;
             }
