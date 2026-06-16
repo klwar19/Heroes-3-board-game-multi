@@ -184,6 +184,43 @@ export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitS
 }
 
 /**
+ * Recanter's Cloak: the combined spell-casting restriction in force right now,
+ * folded across every SPELL_CAST_RESTRICTION effect on the table (both options
+ * are global, so they bind both heroes). `lockAll` wins outright; otherwise
+ * `minPower` is the strictest (largest) floor any active restriction imposes.
+ * Read at the spell-resolution chokepoint and the cast-offer gate.
+ */
+export function getSpellCastRestriction(state: GameState): { lockAll: boolean; minPower: number } {
+  let lockAll = false;
+  let minPower = 0;
+  for (const effect of state.activeEffects) {
+    for (const modifier of effect.modifiers) {
+      if (modifier.type !== "SPELL_CAST_RESTRICTION") {
+        continue;
+      }
+      if (modifier.lockAll) {
+        lockAll = true;
+      }
+      if (modifier.minPower !== undefined) {
+        minPower = Math.max(minPower, modifier.minPower);
+      }
+    }
+  }
+  return { lockAll, minPower };
+}
+
+/**
+ * Whether a Spell that resolves at `finalPower` is wiped out by a Recanter's
+ * Cloak restriction — either a total lock, or a Power below the minimum (so a
+ * Power-0 cast does nothing). The spell still resolves and is discarded; it
+ * simply applies none of its effects, exactly like a shrugged-off Dwarf roll.
+ */
+export function spellNullifiedByRestriction(state: GameState, finalPower: number): boolean {
+  const restriction = getSpellCastRestriction(state);
+  return restriction.lockAll || finalPower < restriction.minPower;
+}
+
+/**
  * Whether a unit deals "elemental damage" right now — either its printed trait
  * (the Elemental units) or a granted effect (Moandor's Liches VI specialty).
  * Elemental damage cannot be raised by attack cards or Attack tokens; debuffs

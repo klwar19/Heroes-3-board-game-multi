@@ -128,6 +128,7 @@ import {
   makeActiveEffect,
   playerHasSpellTimingFreedom,
   releaseEndedOngoingCards,
+  spellNullifiedByRestriction,
   syncAbilitySuppression,
   unitDealsElementalDamage,
   unitImmuneToParalysis
@@ -1230,6 +1231,38 @@ function removeEffectsFromTarget(
   });
 }
 
+/**
+ * Boots of Polarity (option B): strip exactly ONE removable ongoing effect from
+ * the chosen unit — the most recently applied one (the last pushed). Returns
+ * whether anything was removed. Honours `removable === false` (permanent
+ * effects stay), and only touches unit-scoped effects (the global relic locks
+ * are not unit-targeted). Narrower than Cure/Dispel, which clear several.
+ */
+function removeOneEffectFromTarget(
+  state: GameState,
+  source: ActiveEffectState["source"],
+  target: { type: "unit"; unitId: UnitId }
+): boolean {
+  for (let index = state.activeEffects.length - 1; index >= 0; index -= 1) {
+    const effect = state.activeEffects[index];
+    if (
+      effect.target?.type === "unit" &&
+      effect.target.unitId === target.unitId &&
+      effect.removable !== false
+    ) {
+      state.activeEffects.splice(index, 1);
+      appendEvent(state, {
+        type: "ACTIVE_EFFECTS_REMOVED",
+        source,
+        target,
+        effectIds: [effect.id]
+      });
+      return true;
+    }
+  }
+  return false;
+}
+
 function healUnitDamage(
   state: GameState,
   source: ActiveEffectState["source"],
@@ -1374,6 +1407,35 @@ function negatesCardOnDwarfRoll(state: GameState, target: TargetRef | undefined,
       : `${unit.cardName} rolls ${roll} for ${negate.abilityName}; ${cardName} takes hold.`
   });
   return negated;
+}
+
+/**
+ * Boots of Polarity: roll `count` Attack dice against a pending Spell and keep
+ * the best ("choose one"). The cancel succeeds when at least one kept die shows
+ * the success face (the "+1", value 1). Logged as a SPELL_DICE_ROLLED so the
+ * client shows the dice tumbling on the spell; `hits` is the number of success
+ * faces. Returns whether the spell is ignored.
+ */
+function rollSpellCancelDice(
+  state: GameState,
+  diceRoll: { count: number; successFace: number },
+  pendingSpellCardId: CardId,
+  rollerId: PlayerId
+): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+  const rolls = Array.from({ length: Math.max(1, diceRoll.count) }, () => rollAttackDie(combat));
+  const hits = rolls.filter((value) => value === diceRoll.successFace).length;
+  appendEvent(state, {
+    type: "SPELL_DICE_ROLLED",
+    spellCardId: pendingSpellCardId,
+    playerId: rollerId,
+    rolls,
+    hits
+  });
+  return hits > 0;
 }
 
 /**
@@ -5254,6 +5316,31 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       return;
     }
 
+    // Recanter's Cloak: a global spell-cast restriction wipes this cast out —
+    // a total lock (option B) or a Power below the floor (option A's "no spells
+    // with Power 0", so an unboosted cast does nothing). The spell still
+    // resolves and is discarded, applying none of its effects, exactly like a
+    // shrugged-off Dwarf roll above. Re-reads the final Power so a Power card
+    // played into the cast window lifts an option-A cast over the floor.
+    if (spellNullifiedByRestriction(state, getCurrentSpellPower(state, stackItem, cards))) {
+      appendEvent(state, {
+        type: "SPELL_CAST_RESOLVED",
+        playerId: stackItem.action.playerId,
+        spellCardId: stackItem.action.cardId,
+        target: stackItem.action.target,
+        power: getCurrentSpellPower(state, stackItem, cards)
+      });
+      finalizeSpellCardDestination(state, stackItem, effectCountBeforeCast);
+      stackItem.status = "resolved";
+      state.stack.pop();
+      if (finishCombatIfNeeded(state)) {
+        return;
+      }
+      state.phase = "combat";
+      state.priorityPlayerId = null;
+      return;
+    }
+
     if (card?.effect.type === "EARTHQUAKE" && state.combat?.siege) {
       resolveEarthquakeSpell(state, stackItem.action.playerId, getCurrentSpellPower(state, stackItem, cards));
     }
@@ -6181,9 +6268,10 @@ function effectSupportsExpertPlay(effect: NonNullable<ReturnType<typeof getEffec
     return Boolean(effect.expertIgnoresMaxPower || effect.expertIgnoresMaxSpellLevel);
   }
 
-  // Interference's expert side (+2 instead of +1) always exists.
+  // Interference's expert side (+2 instead of +1) exists; Plate of the Dying
+  // Light reuses INTERFERE_SPELL with no expert side (no expertAmount).
   if (effect.type === "INTERFERE_SPELL") {
-    return true;
+    return effect.expertAmount !== undefined;
   }
 
   return false;
@@ -6490,6 +6578,13 @@ function applyReactionPlayCore(
   });
 
   if (effect.type === "CANCEL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
+    // Boots of Polarity: a chance-based cancel. Roll its Attack dice; on a
+    // failed roll the card is already spent (moved to discard above) but the
+    // spell resolves — return without ending the window so the cast continues
+    // to resolution and other reactions may still answer it.
+    if (effect.diceRoll && !rollSpellCancelDice(state, effect.diceRoll, stackItem.action.cardId, playerId)) {
+      return { windowEnded: false };
+    }
     // Resistance-style plays always end the spell once they apply: the stack
     // item is cancelled and the reaction window closes immediately.
     stackItem.status = "cancelled";
@@ -7015,7 +7110,9 @@ function applyReactionPlayCore(
       createActiveEffect(
         state,
         {
-          name: mode === "expert" ? "Expert Interference" : "Interference",
+          // Interference → "Interference"/"Expert Interference"; Plate of the
+          // Dying Light reuses this effect and names it after the artifact.
+          name: mode === "expert" ? `Expert ${card.name}` : card.name,
           scope: "unit",
           duration: { type: "combat" },
           polarity: "positive",
@@ -7820,6 +7917,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
     createActiveEffectFromCard(state, card, effect, action.playerId, mode, target);
+  }
+
+  if (effect.type === "REMOVE_ACTIVE_EFFECT" && target) {
+    removeOneEffectFromTarget(
+      state,
+      { type: "card", cardId: card.id, controllerId: action.playerId },
+      target
+    );
   }
 
   if (effect.type === "CREATE_ATTACK_BUFF" && target) {

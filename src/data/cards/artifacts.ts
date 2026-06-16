@@ -46,7 +46,12 @@ const SCANLESS_ARTIFACTS = new Set([
   // Diplomat's Ring: the wiki shows the deck back for this card too (no scan),
   // so it falls back to the deck back here. Its companion Ambassador's Sash
   // does have a scan.
-  "diplomats_ring"
+  "diplomats_ring",
+  // Ability-interference batch — no card scans committed to public/assets yet,
+  // so they fall back to the deck back until the scans land.
+  "recanters_cloak",
+  "boots_of_polarity",
+  "plate_of_the_dying_light"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
@@ -2476,6 +2481,149 @@ export const artifactCards: CardLibrary = {
     assets: artifactAssets("relic", "orb_of_inhibition", "Orb of Inhibition"),
     implementationStatus: "implemented",
     source: artifactSource("orb_of_inhibition")
+  },
+  // ---- Ability-interference batch (wiki import) ---------------------------
+  // Three relics/majors whose whole point is interfering with the enemy's
+  // magic. Each side below names exactly what the engine runs.
+  //
+  // Recanter's Cloak (Major): a global combat-scoped spell-cast restriction
+  // that binds BOTH heroes (the wearer included).
+  //   • Option A — SPELL_CAST_RESTRICTION{minPower:1}: a Spell that RESOLVES at
+  //     Power 0 applies none of its effects, so every cast must be boosted to
+  //     Power 1+ to do anything. Enforced at the spell-resolution chokepoint
+  //     (resolveTopStack), re-reading the spell's final Power. Scope: the
+  //     standard CAST_SPELL channel (turn casts + scroll casts that resolve
+  //     through the stack). Attack-window instant spells, which resolve inline
+  //     and not through that chokepoint, are not power-floored by option A.
+  //   • Option B — SPELL_CAST_RESTRICTION{lockAll}: no Spell may be cast at all,
+  //     comprehensively — turn casts, reaction/instant casts and scroll casts
+  //     are all un-offered (and any stacked cast still fizzles). The card is
+  //     removed after Combat.
+  "artifact.recanters_cloak": {
+    id: "artifact.recanters_cloak",
+    name: "Recanter's Cloak",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "During this Combat, no Hero can use spells with Power 0. — OR — During this Combat, no Hero can use Spells. Remove this card after Combat."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: no Hero can use a spell with Power 0 (every cast must reach Power 1+)",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Recanter's Cloak",
+              scope: "global",
+              duration: { type: "combat" },
+              modifiers: [{ type: "SPELL_CAST_RESTRICTION", minPower: 1 }]
+            }
+          }
+        },
+        {
+          label: "This Combat: no Hero can use Spells (remove this card)",
+          combatOnly: true,
+          cost: { removeSelf: true },
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Recanter's Cloak",
+              scope: "global",
+              duration: { type: "combat" },
+              modifiers: [{ type: "SPELL_CAST_RESTRICTION", lockAll: true }]
+            }
+          }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "recanters_cloak", "Recanter's Cloak"),
+    implementationStatus: "implemented",
+    source: artifactSource("recanters_cloak")
+  },
+  // Boots of Polarity (Relic): option A is a chance-based spell counter — react
+  // to an enemy cast, roll 2 Attack dice and keep the best; on a "+1" face the
+  // Spell is ignored (CANCEL_SPELL with a diceRoll gate). A failed roll still
+  // spends the card but lets the Spell resolve. Option B is a single-effect
+  // dispel: REMOVE_ACTIVE_EFFECT strips one removable ongoing effect from a
+  // chosen unit (the most recently applied one).
+  "artifact.boots_of_polarity": {
+    id: "artifact.boots_of_polarity",
+    name: "Boots of Polarity",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "relic",
+    tags: [
+      "artifact",
+      "relic",
+      "Play after an enemy casts a spell. Roll 2 Attack dice and choose one. On a +1, ignore the spell's effect. — OR — Remove 1 ongoing effect from a unit."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Roll 2 Attack dice; on a +1, ignore the enemy spell",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "CANCEL_SPELL", diceRoll: { count: 2, successFace: 1 } }
+        },
+        {
+          label: "Remove 1 ongoing effect from a unit",
+          combatOnly: true,
+          target: { type: "any-unit" },
+          effect: { type: "REMOVE_ACTIVE_EFFECT" }
+        }
+      ]
+    },
+    assets: artifactAssets("relic", "boots_of_polarity", "Boots of Polarity"),
+    implementationStatus: "implemented",
+    source: artifactSource("boots_of_polarity")
+  },
+  // Plate of the Dying Light (Relic): the Interference mechanic as a relic — a
+  // Defense bonus that, unusually, also reduces Spell damage. Reuses
+  // INTERFERE_SPELL, so it is offered (like Interference) as a reaction to an
+  // enemy single-target damaging Spell aimed at one of your units, and grants
+  // that unit a Combat-long DEFENSE_BONUS (vs attacks) AND a
+  // SPELL_DAMAGE_REDUCTION (vs spells) — so it blunts the triggering Spell and
+  // any later Spell or attack on that unit. Option A grants +1 (kept/discarded);
+  // option B grants +4 and removes the card.
+  "artifact.plate_of_the_dying_light": {
+    id: "artifact.plate_of_the_dying_light",
+    name: "Plate of the Dying Light",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "relic",
+    tags: [
+      "artifact",
+      "relic",
+      "+1 defense, which can also reduce damage from spells. — OR — +4 defense, which can also reduce damage from spells. Then remove this card."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+1 defense for the Combat, which also reduces spell damage",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "INTERFERE_SPELL", amount: 1 }
+        },
+        {
+          label: "+4 defense for the Combat, which also reduces spell damage (remove this card)",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          cost: { removeSelf: true },
+          effect: { type: "INTERFERE_SPELL", amount: 4 }
+        }
+      ]
+    },
+    assets: artifactAssets("relic", "plate_of_the_dying_light", "Plate of the Dying Light"),
+    implementationStatus: "implemented",
+    source: artifactSource("plate_of_the_dying_light")
   }
 };
 
@@ -2549,6 +2697,7 @@ export const artifactDeckLegacy: string[] = [
   "artifact.cards_of_prophecy",
   "artifact.diplomats_ring",
   "artifact.ambassadors_sash",
+  "artifact.recanters_cloak",
   // relic
   "artifact.angel_wings",
   "artifact.dragon_scale_armor",
@@ -2563,7 +2712,9 @@ export const artifactDeckLegacy: string[] = [
   "artifact.helm_of_heavenly_enlightenment",
   "artifact.celestial_necklace_of_bliss",
   "artifact.lions_shield_of_courage",
-  "artifact.sandals_of_the_saint"
+  "artifact.sandals_of_the_saint",
+  "artifact.boots_of_polarity",
+  "artifact.plate_of_the_dying_light"
 ];
 
 /** BINH Minor Artifact deck (adds the BINH-extra minors). */
@@ -2632,7 +2783,8 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.royal_armor_of_nix",
   "artifact.cards_of_prophecy",
   "artifact.diplomats_ring",
-  "artifact.ambassadors_sash"
+  "artifact.ambassadors_sash",
+  "artifact.recanters_cloak"
 ];
 
 /** BINH Relic Artifact deck (adds the BINH-extra relics). */
@@ -2650,5 +2802,7 @@ export const artifactDeckBinhRelic: string[] = [
   "artifact.lions_shield_of_courage",
   "artifact.sandals_of_the_saint",
   "artifact.orb_of_vulnerability",
-  "artifact.orb_of_inhibition"
+  "artifact.orb_of_inhibition",
+  "artifact.boots_of_polarity",
+  "artifact.plate_of_the_dying_light"
 ];
