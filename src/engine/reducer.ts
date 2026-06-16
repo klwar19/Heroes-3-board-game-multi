@@ -4292,6 +4292,7 @@ function resolvePlaceTokensChoice(state: GameState, action: Extract<GameAction, 
   // option (or a now-occupied space) discards the leftover tokens, exactly as
   // the rulebook allows. Either way the picker re-opens only while tokens and
   // empty spaces both remain.
+  let reopened = false;
   if (combat && position !== undefined && !isSpaceBlockedForSummon(combat, position)) {
     addBattlefieldToken(state, {
       kind: plan.kind,
@@ -4300,12 +4301,12 @@ function resolvePlaceTokensChoice(state: GameState, action: Extract<GameAction, 
       armed: plan.armedSlots[plan.placedCount],
       damage: plan.kind === "land_mine" ? plan.triggerDamage : undefined
     });
-    openTokenPlacementChoice(state, action.playerId, plan.kind, plan.armedSlots, plan.placedCount + 1, plan.triggerDamage);
+    reopened = openTokenPlacementChoice(state, action.playerId, plan.kind, plan.armedSlots, plan.placedCount + 1, plan.triggerDamage);
   }
 
-  if (state.pendingChoice) {
+  if (reopened) {
     state.phase = "choice";
-    state.priorityPlayerId = state.pendingChoice.playerId;
+    state.priorityPlayerId = action.playerId;
   } else {
     state.phase = "combat";
     state.priorityPlayerId = null;
