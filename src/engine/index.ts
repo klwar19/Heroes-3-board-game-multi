@@ -215,6 +215,8 @@ export type {
   ArmyUnitState,
   ArtifactTier,
   AttackRollMode,
+  BattlefieldTokenKind,
+  BattlefieldTokenState,
   BuildingDefinition,
   BuildingEffectDefinition,
   BuildingId,
