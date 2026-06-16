@@ -541,3 +541,55 @@ describe("Shield of Naval Glory", () => {
     expect(after.players.p1.deck).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Royal Armor of Nix (Cove sea artifact)
+// ---------------------------------------------------------------------------
+
+const NIX = "artifact.royal_armor_of_nix";
+
+describe("Royal Armor of Nix", () => {
+  it("option 0 adds +2 Power to a spell cast (Lightning Bolt 2 → 4)", () => {
+    const state = createInitialGameState("nix-power");
+    state.players.p1.hand = ["spell.lightning_bolt", NIX];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    const target = state.combat!.units.unit_p2_skeletons;
+    target.maxHealth = 30;
+    target.damage = 0;
+
+    const cast = findCast(state, "p1", "spell.lightning_bolt", "unit_p2_skeletons");
+    const casted = applyOk(state, cast!.action);
+    const power = reactionAction(casted, "p1", NIX, 0);
+    expect(power, "the +2 Power side should be offered while casting").toBeTruthy();
+    const resolved = passAllReactions(applyOk(casted, power!));
+    // Lightning Bolt amountByPower {0:2,1:3,2:4}: +2 Power lifts it to its cap 4.
+    expect(resolved.combat!.units.unit_p2_skeletons.damage).toBe(4);
+  });
+
+  it("the Sea side searches the Spell deck only while on a Sea tile", () => {
+    const offSea = createAdventureGameState({ seed: "nix-offsea", difficulty: "normal", rollFirstPlayer: false });
+    offSea.activePlayerId = "p1";
+    offSea.players.p1.hand = [NIX];
+    setHeroSeaTile(offSea, false);
+    expect(findPlay(offSea, NIX, 1), "the Sea side must be hidden off a Sea tile").toBeFalsy();
+
+    const onSea = createAdventureGameState({ seed: "nix-onsea", difficulty: "normal", rollFirstPlayer: false });
+    onSea.activePlayerId = "p1";
+    onSea.players.p1.hand = [NIX];
+    setHeroSeaTile(onSea, true);
+
+    const play = findPlay(onSea, NIX, 1);
+    expect(play, "the Sea side should appear on a Sea tile").toBeTruthy();
+    const after = applyOk(onSea, play!.action);
+    expect(after.players.p1.discard).toContain(NIX);
+    const searching =
+      Boolean(
+        after.adventure?.rewardQueue.some(
+          (reward) => reward.kind === "shared-deck-search" && reward.deckId === "spells"
+        )
+      ) || after.pendingChoice?.type === "DECK_SEARCH";
+    expect(searching, "a Spell-deck search should be queued or open").toBe(true);
+  });
+});
