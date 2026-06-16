@@ -94,7 +94,7 @@ import {
   startWarMachineRound
 } from "./permanents";
 import { createSeededRandom } from "./random";
-import { estatesGold, getRuleset, spellLimitFor } from "./ruleset";
+import { activeSchoolFetches, estatesGold, getRuleset, spellLimitFor } from "./ruleset";
 import {
   destroyFortification,
   getDemolishAbility,
@@ -158,6 +158,7 @@ import {
   isHandLockedInCombat,
   isUnitAlive,
   payablePowerCardIds,
+  playerHasAttackInstantOfSchool,
   reflectableAttackInstantForPlayer,
   rerollSourceAvailableFor,
   spellAbilitiesSuppressed,
@@ -1924,12 +1925,26 @@ function getAttackStackDetails(
   const tokenAttack = tokenAttackBonus(attacker);
   const tokenDefense = tokenDefenseDelta(defender);
 
+  // Magic Mirror bounced an instant Curse/Weakness onto a unit: a one-shot stat
+  // delta that applies to this exact attack (and its retaliation, carried on the
+  // attackSequence) — read straight off the stack item like the instant it is.
+  const redirectedInstants = stackItem.modifiers.redirectedInstants ?? [];
+  const redirectedAttackDelta = redirectedInstants.reduce(
+    (sum, entry) => (entry.stat === "attack" && entry.unitId === attacker.id ? sum + entry.amount : sum),
+    0
+  );
+  const redirectedDefenseDelta = redirectedInstants.reduce(
+    (sum, entry) => (entry.stat === "defense" && entry.unitId === defender.id ? sum + entry.amount : sum),
+    0
+  );
+
   // Attack-card "ability lowers the target's defense" sources, applied after
   // corrosion, never on retaliations or printed follow-up attacks: Behemoths'
   // flat crush, and the Manticore "ignore the target's printed Defense" (which
   // subtracts the defender's printed Defense value). Both are floored together
   // so the effective Defense never drops below 0.
-  const defenseBonusBeforeAbility = stackItem.modifiers.defenseBonus + activeDefenseBonus + tokenDefense;
+  const defenseBonusBeforeAbility =
+    stackItem.modifiers.defenseBonus + activeDefenseBonus + tokenDefense + redirectedDefenseDelta;
   const defenseReductionSource =
     !isRetaliation && !abilityAttack ? getAttackDefenseReductionAbility(attacker) : null;
   const ignoreCardDefenseSource =
@@ -1973,7 +1988,7 @@ function getAttackStackDetails(
   // contributions to 0 while leaving every negative one (and the printed
   // attack) intact.
   const dealsElemental = unitDealsElementalDamage(state, attacker);
-  const cardAttackBonus = stackItem.modifiers.attackBonus + activeAttackBonus;
+  const cardAttackBonus = stackItem.modifiers.attackBonus + activeAttackBonus + redirectedAttackDelta;
   const effectiveCardAttackBonus = dealsElemental ? Math.min(0, cardAttackBonus) : cardAttackBonus;
   const effectiveTokenAttack = dealsElemental ? Math.min(0, tokenAttack) : tokenAttack;
 
@@ -2644,7 +2659,12 @@ function finishResolvedAttack(
       defenderId: details.defender.id,
       attackKind: details.attackKind,
       retaliationPending: shouldRetaliate(details.attacker, details.defender, details.attackKind),
-      afterRetaliationAbilityAttack: getAfterRetaliationAttack(details.attacker, details.defender)
+      afterRetaliationAbilityAttack: getAfterRetaliationAttack(details.attacker, details.defender),
+      // A Magic-Mirror-bounced Curse/Weakness on this attack carries to the
+      // retaliation so it strikes the new target there too, then is gone.
+      ...(stackItem.modifiers.redirectedInstants
+        ? { redirectedInstants: stackItem.modifiers.redirectedInstants }
+        : {})
     };
   }
 
@@ -4863,6 +4883,13 @@ function openRetaliationWindow(
     defenderId: attacker.id
   };
   const stackItem = makeStackItem(state, retaliationAction);
+  // A Magic-Mirror-bounced Curse/Weakness from the original attack applies to its
+  // retaliation too (e.g. the bounced Curse lowers the now-defending attacker's
+  // Defense as your unit strikes back). One-shot, gone when this stack item pops.
+  const redirectedInstants = state.combat.attackSequence?.redirectedInstants;
+  if (redirectedInstants && redirectedInstants.length > 0) {
+    stackItem.modifiers.redirectedInstants = redirectedInstants;
+  }
   state.stack.push(stackItem);
 
   const attackKind = getAttackKind(defender, attacker);
@@ -6487,8 +6514,7 @@ function applyReactionPlayCore(
       redirectInstant: {
         stat: found.stat,
         amount: signedAmount,
-        sourceCardId: found.cardId,
-        sourceName: instantCard?.name ?? "Spell"
+        sourceCardId: found.cardId
       }
     };
     appendEvent(state, {
@@ -6909,6 +6935,78 @@ function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, ca
   const keepPriority = allowedPlayerIds.includes(playerId) ? playerId : allowedPlayerIds[0];
   state.reactionWindow.priorityPlayerId = keepPriority;
   state.priorityPlayerId = keepPriority;
+}
+
+/** Basic X Magic's expert side: +3 Power for a matching-school spell. */
+const SCHOOL_FETCH_EXPERT_POWER = 3;
+
+/**
+ * Basic X Magic (the in-play spell-fetch permanent): spend an expert use to add
+ * +3 Power to a matching-school spell you are casting now — a normal cast (into
+ * the cast's School power) or an instant played into an attack (into your own
+ * attack-window Power pool, re-derived like any other paid Power). The fetch
+ * permanent stays in play; nothing is discarded. Once per stack per player.
+ */
+function applySchoolFetchExpert(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_SCHOOL_FETCH_EXPERT" }>
+): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+  if (!activeSchoolFetches(state, action.playerId).includes(action.school as "air" | "earth" | "fire" | "water")) {
+    throw new Error("No Basic Magic of that school is in play.");
+  }
+
+  const stackItem = state.stack.at(-1);
+  if (!stackItem) {
+    throw new Error("The +3 expert needs one of your spells being cast.");
+  }
+
+  const usedBy = (stackItem.modifiers.schoolFetchExpertUsedBy ??= []);
+  if (usedBy.includes(action.playerId)) {
+    throw new Error("The Basic Magic +3 expert is already applied here.");
+  }
+
+  const expertUsesLeft =
+    player.limits.expertUses +
+    (player.combatStats.expertUseBonusThisRound ?? 0) -
+    player.combatStats.expertUsesSpentThisRound;
+  if (expertUsesLeft <= 0) {
+    throw new Error("No expert uses are available this combat round.");
+  }
+
+  if (stackItem.action.type === "CAST_SPELL") {
+    const castSchools = cardLibrary[stackItem.action.cardId]?.spellSchools ?? [];
+    const matchesCast = castSchools.includes(action.school) || castSchools.includes("any");
+    if (stackItem.action.playerId !== action.playerId || !matchesCast) {
+      throw new Error("That cast does not match the Basic Magic school.");
+    }
+    if (stackItem.modifiers.scrollLocked) {
+      throw new Error("A Spell Scroll cast is locked to Power 0.");
+    }
+    stackItem.modifiers.schoolPowerBonus = (stackItem.modifiers.schoolPowerBonus ?? 0) + SCHOOL_FETCH_EXPERT_POWER;
+  } else if (isAttackStackItem(stackItem)) {
+    if (!playerHasAttackInstantOfSchool(stackItem, action.playerId, action.school)) {
+      throw new Error("You have no matching-school spell instant on this attack to empower.");
+    }
+    addAttackPower(stackItem, action.playerId, SCHOOL_FETCH_EXPERT_POWER);
+    recomputePowerScaledAttackInstants(stackItem);
+  } else {
+    throw new Error("The +3 expert needs one of your spells.");
+  }
+
+  usedBy.push(action.playerId);
+  player.combatStats.expertUsesSpentThisRound += 1;
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId: action.playerId,
+    cardId: `ability.basic_${action.school}_magic` as CardId,
+    timing: "instant",
+    mode: "expert",
+    effectAmount: SCHOOL_FETCH_EXPERT_POWER
+  });
 }
 
 /**
@@ -9141,20 +9239,17 @@ function chooseAbilityTarget(
 
     // (a) Reflecting an instant combat debuff off your attacked unit: the malus
     // was already lifted from your unit when the card was played; now it lands
-    // on the chosen unit as a lasting token, then the attack's window resumes.
+    // on the chosen unit, then the attack's window resumes. It stays an INSTANT —
+    // a one-shot stat delta the attack maths read for this attack and (carried
+    // through attackSequence) its retaliation, then it vanishes with the stack.
+    // It is NOT an ongoing effect or a token, so nothing can Dispel or ignore it;
+    // only spell-immunity stops it, already enforced by the redirect's target
+    // filter (you cannot bounce it onto a spell-immune unit).
+    if (choice.redirectInstant && top && chosen && isUnitAlive(chosen)) {
+      const { stat, amount } = choice.redirectInstant;
+      (top.modifiers.redirectedInstants ??= []).push({ unitId: chosen.id, stat, amount });
+    }
     if (choice.redirectInstant) {
-      if (chosen && isUnitAlive(chosen)) {
-        const { stat, amount, sourceName } = choice.redirectInstant;
-        if (stat === "defense") {
-          // Curse: −defense → a Corrosion token (positive magnitude, floored at 0).
-          placeCombatToken(state, chosen, "corrosion", Math.abs(amount), sourceName);
-        } else if (amount < 0) {
-          // Weakness: −attack → a Weakness token (signed; the milder is kept).
-          placeCombatToken(state, chosen, "weakness", amount, sourceName);
-        } else {
-          placeCombatToken(state, chosen, "attack", amount, sourceName);
-        }
-      }
       appendEvent(state, {
         type: "SPELL_REDIRECTED",
         playerId: action.playerId,
@@ -10359,6 +10454,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "START_ADVENTURE",
   "BUY_WAR_MACHINE",
   "USE_PERMANENT_EXPERT",
+  "USE_SCHOOL_FETCH_EXPERT",
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
   "HALL_OF_VALHALLA_BOOST",
@@ -10512,6 +10608,10 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "USE_PERMANENT_EXPERT":
         applyPermanentExpert(nextState, action);
         // The discarded permanent disappears from the open window's options.
+        refreshReactionWindowLegalReactions(nextState, cards);
+        break;
+      case "USE_SCHOOL_FETCH_EXPERT":
+        applySchoolFetchExpert(nextState, action);
         refreshReactionWindowLegalReactions(nextState, cards);
         break;
       case "DISCARD_PERMANENT":
