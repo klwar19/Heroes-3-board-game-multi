@@ -252,6 +252,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} reaches level ${event.level}${event.effects.length ? `: ${event.effects.join(", ")}` : ""}.`;
     case "MORALE_CHANGED":
       return `${playerName(state, event.playerId)} morale ${event.amount > 0 ? "+" : ""}${event.amount} (now ${event.total}).`;
+    case "FIELD_MORALE_IGNORED":
+      return `${playerName(state, event.playerId)} uses Crest of Valor to ignore the negative morale from the field.`;
     case "NEUTRAL_COMBAT_STARTED":
       return `${playerName(state, event.playerId)} engages the level ${event.difficulty} guards — deploy your units first.`;
     case "NEUTRAL_ARMY_REVEALED":

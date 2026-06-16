@@ -1476,6 +1476,7 @@ function isOptionEffectPlayable(
     case "CREATE_ATTACK_BUFF":
     case "CREATE_DEFENSE_BUFF":
     case "ADD_UNIT_MAX_HEALTH":
+    case "MOVE_UNIT_ADJACENT":
     case "HEAL_DAMAGE":
     case "AREA_DAMAGE_ALL_ADJACENT":
     case "AREA_DAMAGE_PICK_ADJACENT":
@@ -1578,6 +1579,7 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "CREATE_ATTACK_BUFF" ||
     effect.type === "CREATE_DEFENSE_BUFF" ||
     effect.type === "ADD_UNIT_MAX_HEALTH" ||
+    effect.type === "MOVE_UNIT_ADJACENT" ||
     effect.type === "HEAL_DAMAGE" ||
     effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
     effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
@@ -1702,6 +1704,35 @@ function addOptionPlays(
         }
         const maxGrade = gradeAtPower(gradeByPower, card.power ?? 0);
         return maxGrade !== null && gradeRank(unit.grade) <= gradeRank(maxGrade);
+      });
+    }
+    // Necklace of Swiftness's "Move one of your units 1 space": only offer a
+    // unit that has at least one empty orthogonally-adjacent space to step onto
+    // (occupied spaces, obstacles, Walls and the Gate are blocked) — otherwise
+    // the move would be a no-op. Mirrors the Clone target filter.
+    if (option.effect.type === "MOVE_UNIT_ADJACENT" && state.combat) {
+      const combat = state.combat;
+      const blocked = new Set<number>();
+      for (const unit of Object.values(combat.units)) {
+        if (isUnitAlive(unit)) {
+          blocked.add(unit.position);
+        }
+      }
+      for (const position of combat.obstacles ?? []) {
+        blocked.add(position);
+      }
+      for (const position of combat.siege?.walls ?? []) {
+        blocked.add(position);
+      }
+      if (combat.siege?.gatePosition != null) {
+        blocked.add(combat.siege.gatePosition);
+      }
+      targets = targets.filter((candidate) => {
+        if (candidate.type !== "unit") {
+          return false;
+        }
+        const unit = combat.units[candidate.unitId];
+        return Boolean(unit) && getOrthogonalNeighbors(unit!.position).some((position) => !blocked.has(position));
       });
     }
     if (targets.length === 0) {

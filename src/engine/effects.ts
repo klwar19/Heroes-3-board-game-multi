@@ -53,6 +53,7 @@ export const implementedCardEffectTypes = [
   "FORGETFULNESS",
   "BERSERK",
   "TELEPORT_UNIT",
+  "MOVE_UNIT_ADJACENT",
   "CLONE_UNIT",
   "DISPEL_EFFECTS",
   "IGNORE_DEFENSE",

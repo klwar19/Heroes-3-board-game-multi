@@ -4191,6 +4191,96 @@ function resolveCloneChoice(
 }
 
 /**
+ * Necklace of Swiftness (option B): opens the "step one space" destination pick
+ * — the empty spaces orthogonally adjacent to the chosen unit (occupied spaces,
+ * obstacles, Walls and the Gate are excluded by isSpaceBlockedForSummon). Does
+ * nothing when the unit is hemmed in with no empty neighbour. The play already
+ * filtered to a unit with at least one empty neighbour, so a choice always opens
+ * for a legal play.
+ */
+function openUnitStepChoice(state: GameState, playerId: PlayerId, unit: CombatUnitState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+
+  const positions = getOrthogonalNeighbors(unit.position).filter(
+    (position) => !isSpaceBlockedForSummon(combat, position)
+  );
+  if (positions.length === 0) {
+    return;
+  }
+
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Move ${unit.cardName} one space.`,
+    options: positions.map((position) => ({ label: `Move to ${getBattlefieldLabel(position)}` })),
+    context: "combat-step",
+    step: { unitId: unit.id, positions },
+    returnPhase: "combat"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId,
+    sourceEffectIds: [],
+    message: `${state.players[playerId]?.name ?? playerId} moves ${unit.cardName} one space.`
+  });
+}
+
+/** Resolves the Necklace of Swiftness step: relocate the unit to the chosen space. */
+function resolveUnitStepChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "combat-step" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.step
+  ) {
+    throw new Error("There is no movement choice to resolve.");
+  }
+
+  const combat = state.combat;
+  const unit = combat?.units[choice.step.unitId];
+  const destination = choice.step.positions[action.optionIndex];
+  if (!combat || !unit || destination === undefined || isSpaceBlockedForSummon(combat, destination)) {
+    throw new Error("That move destination is not available.");
+  }
+
+  const from = unit.position;
+  unit.position = destination;
+  appendEvent(state, {
+    type: "UNIT_MOVED",
+    playerId: unit.controllerId,
+    unitId: unit.id,
+    from,
+    to: destination
+  });
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
+
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  finishCombatIfNeeded(state);
+}
+
+/**
  * Liches' Death Cloud: opens the second-attack target choice (or declares
  * the attack straight away when only one unit qualifies). Returns true when
  * the attack sequence is paused on the choice or the follow-up attack.
@@ -8138,6 +8228,17 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
+  // Necklace of Swiftness (option B): move one of your own units one space. The
+  // destination empty space is picked in a follow-up (the "combat-step"
+  // OPTION_CHOICE), resolved by resolveUnitStepChoice. Only the controller's
+  // own units may be moved; a unit hemmed in with no empty neighbour is a no-op.
+  if (effect.type === "MOVE_UNIT_ADJACENT" && target && state.combat) {
+    const unit = state.combat.units[target.unitId];
+    if (unit && unit.controllerId === action.playerId) {
+      openUnitStepChoice(state, action.playerId, unit);
+    }
+  }
+
   // Xyron's Inferno: the chosen unit's space and every orthogonally adjacent
   // space — every unit in the blast, friend or foe — takes the flat damage.
   // Xyron's Inferno: select a space (occupied or empty); every unit on it and on
@@ -10899,6 +11000,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           nextState.pendingChoice.context === "combat-clone"
         ) {
           resolveCloneChoice(nextState, action);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "combat-step"
+        ) {
+          resolveUnitStepChoice(nextState, action);
         } else {
           chooseOption(nextState, action);
         }

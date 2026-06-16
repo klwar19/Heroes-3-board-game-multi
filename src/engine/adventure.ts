@@ -8,7 +8,12 @@ import { hasInternalBorder } from "@/data/map/borders";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import type { LocationInteraction, TileDefinition } from "@/data/map/types";
-import { expireEffectsForGameRoundEnd, expireEffectsForTurnEnd, releaseEndedOngoingCards } from "./active-effects";
+import {
+  consumeIgnoreFieldNegativeMorale,
+  expireEffectsForGameRoundEnd,
+  expireEffectsForTurnEnd,
+  releaseEndedOngoingCards
+} from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { applyUnitSideRules } from "./ruleset";
@@ -1884,7 +1889,18 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "GAIN_MORALE":
-        changeMorale(state, visit.playerId, step.amount);
+        // Crest of Valor (map side): a held shield negates one negative-morale
+        // token handed out by a Field. Positive morale and combat-loss morale
+        // are untouched — only a Field's own negative token is ignored here.
+        if (step.amount < 0 && consumeIgnoreFieldNegativeMorale(state, visit.playerId)) {
+          appendEvent(state, {
+            type: "FIELD_MORALE_IGNORED",
+            playerId: visit.playerId,
+            fieldId: visit.fieldId
+          });
+        } else {
+          changeMorale(state, visit.playerId, step.amount);
+        }
         break;
       case "ROLL_RESOURCE_DICE":
         rollResourceDice(state, visit, step.count);
