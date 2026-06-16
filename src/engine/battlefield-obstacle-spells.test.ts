@@ -428,6 +428,61 @@ describe("Dispel clears battlefield obstacles", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Player-chosen movement path — the mover may dictate its exact route (e.g. to
+// brave a Fire Wall on a shortcut, or detour around one) instead of always
+// taking the engine's auto safe path. Illegal routes are rejected.
+// ---------------------------------------------------------------------------
+
+describe("Player-chosen movement path", () => {
+  function moveAlong(state: GameState, unitId: UnitId, destination: number, path: number[]): GameState {
+    const unit = state.combat!.units[unitId];
+    return applyOk(state, { type: "MOVE_UNIT", playerId: unit.controllerId, unitId, destination, path });
+  }
+  function pathErrors(state: GameState, unitId: UnitId, destination: number, path: number[]): string[] {
+    const unit = state.combat!.units[unitId];
+    return applyAction(state, { type: "MOVE_UNIT", playerId: unit.controllerId, unitId, destination, path }).errors.map(
+      (error) => error.message
+    );
+  }
+
+  it("honours a route that braves a Fire Wall even though a clean route exists", () => {
+    const state = createInitialGameState("path-cross");
+    soloMover(state, "unit_p1_crusaders", 4);
+    state.combat!.units.unit_p1_crusaders.maxHealth = 40;
+    // 4 -> 9 has a clean length-2 route via 8; the wall sits on the other (via 5).
+    injectToken(state, { kind: "fire_wall", position: 5, controllerId: "p2", damage: 3 });
+    // The player deliberately routes THROUGH the wall (4 -> 5 -> 9).
+    const moved = moveAlong(state, "unit_p1_crusaders", 9, [5, 9]);
+    expect(moved.combat!.units.unit_p1_crusaders.position).toBe(9);
+    expect(moved.combat!.units.unit_p1_crusaders.damage).toBe(3);
+  });
+
+  it("honours a clean detour route that avoids the wall (no damage)", () => {
+    const state = createInitialGameState("path-detour");
+    soloMover(state, "unit_p1_crusaders", 4);
+    state.combat!.units.unit_p1_crusaders.maxHealth = 40;
+    injectToken(state, { kind: "fire_wall", position: 5, controllerId: "p2", damage: 3 });
+    const moved = moveAlong(state, "unit_p1_crusaders", 9, [8, 9]);
+    expect(moved.combat!.units.unit_p1_crusaders.position).toBe(9);
+    expect(moved.combat!.units.unit_p1_crusaders.damage).toBe(0);
+  });
+
+  it("rejects an illegal route (bad end, a non-adjacent jump, or through a Force Field)", () => {
+    const state = createInitialGameState("path-illegal");
+    soloMover(state, "unit_p1_crusaders", 4);
+    // Ends somewhere other than the destination.
+    expect(pathErrors(state, "unit_p1_crusaders", 9, [8]).length).toBeGreaterThan(0);
+    // A non-adjacent jump (4 -> 9 directly is two spaces away).
+    expect(pathErrors(state, "unit_p1_crusaders", 9, [9]).length).toBeGreaterThan(0);
+    // A route that walks through a Force Field (a blocked space) at 5.
+    injectToken(state, { kind: "force_field", position: 5, controllerId: "p2" });
+    expect(pathErrors(state, "unit_p1_crusaders", 9, [5, 9]).length).toBeGreaterThan(0);
+    // The unit never moved on any rejected attempt.
+    expect(state.combat!.units.unit_p1_crusaders.position).toBe(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Move-and-attack (the atomic Berserk approach) walks through tokens too — a
 // berserked unit charging the nearest foe is bitten / halted on the way in.
 // (Normal units move and attack as two separate actions, so their approach is

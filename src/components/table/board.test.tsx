@@ -173,3 +173,88 @@ describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
     expect(onAction).toHaveBeenCalledWith({ type: "CHOOSE_OPTION", playerId: "p1", choiceId: "choice_place", optionIndex: 1 });
   });
 });
+
+describe("BattlefieldBoard — move route planner (Fire Wall on the field)", () => {
+  function byText(re: RegExp): HTMLButtonElement | undefined {
+    return Array.from(document.querySelectorAll("button")).find((b) => re.test(b.textContent ?? "")) as
+      | HTMLButtonElement
+      | undefined;
+  }
+
+  it("lets the player hand-pick a route and walks it as MOVE_UNIT with an explicit path", () => {
+    const state = createInitialGameState("board-route");
+    state.combat!.obstacles = [];
+    state.combat!.activeUnitId = "unit_p1_crusaders";
+    const mover = state.combat!.units.unit_p1_crusaders;
+    mover.position = 0;
+    mover.activatedThisRound = false;
+    mover.movedThisActivation = false;
+    // A Fire Wall on the field is what surfaces the planner.
+    state.combat!.battlefieldTokens = [{ id: "fw", kind: "fire_wall", position: 1, controllerId: "p2", damage: 3 }];
+    // The active unit's legal moves (the board builds its destination set from these).
+    const legalActions: LegalAction[] = [1, 2, 4].map((destination) => ({
+      label: `Move to ${destination}`,
+      action: { type: "MOVE_UNIT", playerId: "p1", unitId: "unit_p1_crusaders", destination }
+    }));
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={legalActions}
+          selectedCardAction={null}
+          onAction={onAction}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    // The planner is offered because a Fire Wall stands on the board.
+    const planBtn = byText(/plan route/i);
+    expect(planBtn, "a Plan route button should appear").toBeTruthy();
+    fireEvent.click(planBtn!);
+
+    // Cell 1 (the Fire Wall, adjacent to the unit) is now a route step — pick it.
+    const cell1 = document.querySelector<HTMLButtonElement>('button[data-fx-cell="1"]');
+    expect(cell1!.getAttribute("aria-label")).toMatch(/route/i);
+    fireEvent.click(cell1!);
+
+    // Walking the chosen route emits MOVE_UNIT carrying the explicit path.
+    const walkBtn = byText(/walk route/i);
+    expect(walkBtn, "a Walk route button should appear once a step is chosen").toBeTruthy();
+    fireEvent.click(walkBtn!);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_crusaders",
+      destination: 1,
+      path: [1]
+    });
+  });
+
+  it("does not offer the planner when no Fire Wall is on the board", () => {
+    const state = createInitialGameState("board-noroute");
+    state.combat!.obstacles = [];
+    state.combat!.activeUnitId = "unit_p1_crusaders";
+    state.combat!.units.unit_p1_crusaders.position = 0;
+    state.combat!.units.unit_p1_crusaders.activatedThisRound = false;
+    state.combat!.battlefieldTokens = [];
+    const legalActions: LegalAction[] = [
+      { label: "Move to 1", action: { type: "MOVE_UNIT", playerId: "p1", unitId: "unit_p1_crusaders", destination: 1 } }
+    ];
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={legalActions}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    expect(byText(/plan route/i), "no planner without a Fire Wall").toBeUndefined();
+  });
+});

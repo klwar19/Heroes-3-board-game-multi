@@ -3763,6 +3763,47 @@ button.hbSlot:disabled { cursor: default; }
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6), inset 0 1px 2px rgba(255, 240, 200, 0.25);
 }
 
+/* Route planner: a banner, the offered/chosen cells, and the step-number badge. */
+.routePlanBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+  font-size: 0.82rem;
+  color: #f4ead4;
+}
+
+.battleCell.routeNext {
+  outline: 2px dashed #8fd0ff;
+  outline-offset: -3px;
+  cursor: pointer;
+}
+
+.battleCell.routeStep {
+  outline: 2px solid #ffd479;
+  outline-offset: -3px;
+}
+
+.routeBadge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 5;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: #c9962f;
+  color: #1a1207;
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 15px;
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
 /* A unit standing on a token: shrink the marker into a corner badge. */
 .boardCard .battlefieldToken {
   inset: auto;

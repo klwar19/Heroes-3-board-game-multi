@@ -19,7 +19,9 @@ import {
   getBattlefieldLabel,
   getBattlefieldTerrain,
   getUnitAbilityDefinitions,
+  getUnitMoveRange,
   getUnitTokens,
+  isAdjacent,
   isArrowTowerUnit,
   isUnitAlive,
   playerSpellCastsIgnoreLimit,
@@ -413,6 +415,13 @@ export function BattlefieldBoard({
   const [swapSelection, setSwapSelection] = useState<string | null>(null);
   const [hoverDestination, setHoverDestination] = useState<number | null>(null);
   const [flashCells, setFlashCells] = useState<readonly number[]>([]);
+  // Route-planner state: when the player chooses to hand-pick a move route
+  // (to brave or dodge a Fire Wall) this holds the active unit and the waypoints
+  // chosen so far. A plan left over from a different unit is ignored at render
+  // time (the `routePlan.unitId === activeMover.id` guard below), so no reset
+  // effect is needed.
+  const [routePlan, setRoutePlan] = useState<{ unitId: string; path: number[] } | null>(null);
+  const activeUnitId = combat?.activeUnitId ?? null;
   useEffect(() => {
     if (flashCells.length === 0) {
       return;
@@ -590,6 +599,47 @@ export function BattlefieldBoard({
         )
       : undefined;
 
+  // Route planner. When the active unit is the viewer's, can move, and a Fire
+  // Wall stands on the board, the player may hand-pick the move route (to brave a
+  // shortcut through the flames or detour around them) instead of the engine's
+  // auto safe path. Valid waypoints reuse the legal move-destination set, so each
+  // is a reachable, non-blocked cell (a Fire Wall cell qualifies; a Force Field
+  // does not). Flyers ignore routes (they never enter the spaces they cross).
+  const activeMover =
+    combat && activeUnitId && moveActionsByDestination.size > 0 ? combat.units[activeUnitId] : undefined;
+  const routePlanningAvailable =
+    !!activeMover &&
+    activeMover.controllerId === viewerPlayerId &&
+    activeMover.type !== "flying" &&
+    !selectedCardAction &&
+    (combat?.battlefieldTokens ?? []).some((token) => token.kind === "fire_wall");
+  const planning = Boolean(routePlanningAvailable && routePlan && activeMover && routePlan.unitId === activeMover.id);
+  const plannedPath = planning && routePlan ? routePlan.path : [];
+  const moveRange = activeMover ? getUnitMoveRange(activeMover) : 0;
+  const routeEnd = plannedPath.length > 0 ? plannedPath[plannedPath.length - 1] : activeMover?.position ?? -1;
+  const isRouteNextStep = (cell: number): boolean =>
+    planning &&
+    plannedPath.length < moveRange &&
+    moveActionsByDestination.has(cell) &&
+    !plannedPath.includes(cell) &&
+    isAdjacent(routeEnd, cell);
+  const plannedFireWallDamage = (combat?.battlefieldTokens ?? [])
+    .filter((token) => token.kind === "fire_wall" && plannedPath.includes(token.position))
+    .reduce((sum, token) => sum + (token.damage ?? 0), 0);
+  const walkRoute = () => {
+    if (!activeMover || plannedPath.length === 0) {
+      return;
+    }
+    onAction({
+      type: "MOVE_UNIT",
+      playerId: viewerPlayerId,
+      unitId: activeMover.id,
+      destination: plannedPath[plannedPath.length - 1],
+      path: plannedPath
+    });
+    setRoutePlan(null);
+  };
+
   return (
     <div className={`boardFelt ${flipped ? "flipped" : ""}`} aria-label="Combat board">
       {stopPlacingTokensAction ? (
@@ -602,6 +652,33 @@ export function BattlefieldBoard({
           >
             Stop placing tokens
           </button>
+        </div>
+      ) : null}
+      {routePlanningAvailable ? (
+        <div className="routePlanBanner" role="group" aria-label="Move route planner">
+          {!planning ? (
+            <button
+              className="commandButton"
+              onClick={() => activeMover && setRoutePlan({ unitId: activeMover.id, path: [] })}
+              type="button"
+              title="A Fire Wall is on the field — hand-pick this unit's route to brave or dodge it."
+            >
+              Plan route 🔥
+            </button>
+          ) : (
+            <>
+              <span>
+                Route: {plannedPath.length} step{plannedPath.length === 1 ? "" : "s"}
+                {plannedFireWallDamage > 0 ? ` · 🔥 ${plannedFireWallDamage} damage` : " · clear"} — click cells to extend, click a step to trim.
+              </span>
+              <button className="commandButton" disabled={plannedPath.length === 0} onClick={walkRoute} type="button">
+                Walk route
+              </button>
+              <button className="commandButton" onClick={() => setRoutePlan(null)} type="button">
+                Cancel
+              </button>
+            </>
+          )}
         </div>
       ) : null}
       <div className="battlefield">
@@ -640,7 +717,7 @@ export function BattlefieldBoard({
           const isFlashing = flashCells.includes(index);
           const className = `battleCell ${terrain} ${unit?.controllerId ?? ""} ${isActive ? "active" : ""} ${
             isObstacle ? "obstacle" : ""
-          } ${moveAction && !selectedCardAction ? "moveTarget" : ""} ${
+          } ${moveAction && !selectedCardAction && !planning ? "moveTarget" : ""} ${
             attackAction && !selectedCardAction ? "attackTarget" : ""
           } ${cardAction || spaceCardAction || teleportAction || placeTokenAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${dropTarget ? "dropTarget" : ""} ${
             isSwapSource ? "swapSource" : ""
@@ -839,8 +916,51 @@ export function BattlefieldBoard({
             );
           }
 
+          // Route-planning clicks take precedence: a next-step cell extends the
+          // chosen route; clicking a cell already on the route trims it back to
+          // there (clicking the last waypoint removes it). The normal one-click
+          // auto-move is suppressed while a route is being planned.
+          const routeStepIndex = planning ? plannedPath.indexOf(index) : -1;
+          const onRoute = routeStepIndex >= 0;
+          const nextStep = isRouteNextStep(index);
+          if (planning && (onRoute || nextStep)) {
+            const stepLabel = onRoute
+              ? `Trim route at ${getBattlefieldLabel(index)}`
+              : `Extend route to ${getBattlefieldLabel(index)}`;
+            return (
+              <button
+                aria-label={stepLabel}
+                className={`${className} routeCell ${onRoute ? "routeStep" : "routeNext"}`}
+                data-fx-cell={index}
+                data-fx-unit={unit?.id}
+                key={index}
+                onClick={() =>
+                  setRoutePlan((current) =>
+                    current
+                      ? { ...current, path: onRoute ? current.path.slice(0, routeStepIndex) : [...current.path, index] }
+                      : current
+                  )
+                }
+                title={stepLabel}
+                type="button"
+              >
+                {content}
+                {onRoute ? (
+                  <span className="routeBadge" aria-hidden="true">
+                    {routeStepIndex + 1}
+                  </span>
+                ) : null}
+              </button>
+            );
+          }
+
           const interactiveAction =
-            abilityAction ?? cardAction ?? spaceCardAction ?? teleportAction ?? placeTokenAction ?? (unit ? attackAction : moveAction);
+            abilityAction ??
+            cardAction ??
+            spaceCardAction ??
+            teleportAction ??
+            placeTokenAction ??
+            (unit ? attackAction : planning ? undefined : moveAction);
 
           if (interactiveAction && (!selectedCardAction || cardAction || spaceCardAction || teleportAction || placeTokenAction)) {
             const label = abilityAction

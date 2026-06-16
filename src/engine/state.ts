@@ -1767,7 +1767,21 @@ export type GameAction =
       destination: number;
       defenderId: UnitId;
     }
-  | { type: "MOVE_UNIT"; playerId: PlayerId; unitId: UnitId; destination: number }
+  | {
+      type: "MOVE_UNIT";
+      playerId: PlayerId;
+      unitId: UnitId;
+      destination: number;
+      /**
+       * Optional player-chosen route: the spaces the unit ENTERS in order
+       * (start-exclusive, `destination` last). Lets the player decide whether to
+       * brave a Fire Wall rather than always taking the engine's auto safe path.
+       * Must be a legal orthogonal walk within range that avoids blocked spaces
+       * (units / obstacles / Force Fields); omitted = the engine auto-routes.
+       * Ignored for flying units (they never enter the spaces they pass over).
+       */
+      path?: number[];
+    }
   | { type: "USE_UNIT_ABILITY"; playerId: PlayerId; unitId: UnitId; abilityId: string; target: TargetRef }
   | {
       /**
