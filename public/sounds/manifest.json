@@ -723,6 +723,21 @@
     "src": "/sounds/effects/spell-fizzle.mp3",
     "note": "spell fails / fizzles (RSBRYFZL)"
   },
+  "music/main-menu": {
+    "src": "/sounds/music/main-menu.mp3",
+    "loop": true,
+    "note": "setup/lobby background theme (MAINMENU)"
+  },
+  "music/grass": {
+    "src": "/sounds/music/grass.mp3",
+    "loop": true,
+    "note": "adventure-map background theme (GRASS)"
+  },
+  "music/combat-02": {
+    "src": "/sounds/music/combat-02.mp3",
+    "loop": true,
+    "note": "combat background theme (COMBAT02)"
+  },
   "music/battle": {
     "random": [
       "music/battle-00",

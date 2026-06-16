@@ -111,6 +111,8 @@ import {
 } from "@/data/map-sounds";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { playLibrarySound, playUnitSound } from "@/lib/sound";
+import { useBackgroundMusic, type MusicScene } from "@/lib/music";
+import { MusicToggle } from "@/components/music-toggle";
 import { connectRoom, type GameRoomSnapshot, type RoomConnection } from "@/lib/realtime";
 
 /** Events that move cards or play battle effects on the table. */
@@ -2019,6 +2021,19 @@ export default function Home() {
     [viewerPlayerId, state, isSeated]
   );
 
+  // Background-music scene, mirroring the three render branches below: the
+  // map-setup lobby (menu theme), the adventure map (grass theme) and the
+  // combat table (combat theme). Computed before the early return so the music
+  // hook runs on every render (rules of hooks); a null state plays nothing.
+  const musicScene: MusicScene | null = !state
+    ? null
+    : state.mode === "adventure" && Boolean(state.setupLobby) && state.phase === "setup"
+      ? "menu"
+      : state.mode === "adventure" && (!state.combat || combatTab === "map")
+        ? "map"
+        : "combat";
+  useBackgroundMusic(musicScene);
+
   if (!state || !playerView) {
     return (
       <main className="tableRoot loadingRoot">
@@ -2083,6 +2098,7 @@ export default function Home() {
         <small suppressHydrationWarning>
           v{roomVersion} · {syncStatus} · {state.phase}
         </small>
+        <MusicToggle />
       </div>
       <div className="menuRow resetRow">
         <button onClick={() => resetRoom("adventure")} title="Start a new adventure (map setup first)" type="button">
