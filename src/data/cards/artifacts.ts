@@ -29,6 +29,11 @@ const SCANLESS_ARTIFACTS = new Set([
   "orb_of_tempestuous_fire",
   "orb_of_the_firmament",
   "pendant_of_second_sight",
+  // Pendant of Negativity (Air-Magic counter) and Orb of Inhibition (combat
+  // lockdown relic) have no card scan committed to public/assets yet, so they
+  // fall back to the deck back until their scans land.
+  "pendant_of_negativity",
+  "orb_of_inhibition",
   // Newly added Cove/sea artifact whose card scan is not yet committed to
   // public/assets — it falls back to the deck back until the scan lands.
   // (Ring of the Wayfarer's scan is committed, so it is not listed here.)
@@ -1623,6 +1628,58 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("pendant_of_second_sight")
   },
+  // Pendant of Negativity (Tower expansion). Both sides defend against Air Magic.
+  // Option A is the reaction counter shared with Protection from Air, but with no
+  // School-level or Power gate — `CANCEL_SPELL { schools: ["air"] }` ends ANY Air
+  // spell the enemy casts (a school-agnostic "any" spell like Magic Arrow counts
+  // as Air, exactly as the cancel matcher and Protection from Air treat it).
+  // Option B is the ongoing side: a unit-scoped, combat-long SPELL_SCHOOL_IMMUNE
+  // air immunity placed on one of your units (engine: it bars Air spells from
+  // targeting or splashing that unit and zeroes their card damage, like a printed
+  // Elemental immunity — and, like Anti-Magic, is NOT lifted by Orb of
+  // Vulnerability).
+  "artifact.pendant_of_negativity": {
+    id: "artifact.pendant_of_negativity",
+    name: "Pendant of Negativity",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Play after an enemy casts an Air Magic spell to ignore its effect. — OR — During this Combat, your selected unit ignores Air Magic spells cast on it."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Ignore an enemy Air Magic spell",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "CANCEL_SPELL", schools: ["air"] }
+        },
+        {
+          label: "This Combat: your selected unit ignores Air Magic spells",
+          combatOnly: true,
+          target: { type: "friendly-unit" },
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Pendant of Negativity",
+              scope: "unit",
+              duration: { type: "combat" },
+              polarity: "positive",
+              removable: true,
+              modifiers: [{ type: "SPELL_SCHOOL_IMMUNE", schools: ["air"] }]
+            }
+          }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "pendant_of_negativity", "Pendant of Negativity"),
+    implementationStatus: "implemented",
+    source: artifactSource("pendant_of_negativity")
+  },
   // Sword of Hellfire (Fortress): the attacking-unit twin of Shield of the
   // Damned — a bigger attack bonus paid for in the attacker's own blood
   // (ADD_COMBAT_STAT attack + selfDamage). Because the attack bonus lands on
@@ -2356,6 +2413,69 @@ export const artifactCards: CardLibrary = {
     assets: artifactAssets("relic", "orb_of_vulnerability", "Orb of Vulnerability"),
     implementationStatus: "implemented",
     source: artifactSource("orb_of_vulnerability")
+  },
+  // Orb of Inhibition (Tower expansion): a combat-lockdown relic. Both sides are
+  // global, side-agnostic combat plays.
+  //  - Option A ("all Spell and Specialty cards deal 0 damage … Remove this card
+  //    instead of discarding it"): a combat-long global NULLIFY_CARD_DAMAGE effect
+  //    (engine: reducedCardDamage returns 0 for every Spell/Specialty card hit —
+  //    direct, area, Xyron, Chain Lightning — for both armies). The removeSelf cost
+  //    sends the card to the removed-from-game zone; the effect lives on its own in
+  //    activeEffects until the Combat ends.
+  //  - Option B ("during this Combat round, units cannot use their special
+  //    abilities"): a global, current-combat-round UNIT_ABILITY_SUPPRESSED effect.
+  //    syncAbilitySuppression flags every unit (effectAppliesToUnit treats a global
+  //    effect as applying to all), so the ability chokepoint (getUnitAbilityDefinitions)
+  //    sees nothing for one round; it lifts automatically at the round's end. Tower
+  //    Titans (ignore EVERY ongoing effect) shrug it off; Gargoyles only ignore
+  //    ongoing SPELL effects, so this artifact effect still suppresses them.
+  "artifact.orb_of_inhibition": {
+    id: "artifact.orb_of_inhibition",
+    name: "Orb of Inhibition",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "relic",
+    tags: [
+      "artifact",
+      "relic",
+      "During this Combat, all Spell and Specialty cards deal 0 damage. Remove this card instead of discarding it. — OR — During this Combat round, units cannot use their special abilities."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: all Spell and Specialty cards deal 0 damage (remove this card)",
+          combatOnly: true,
+          cost: { removeSelf: true },
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Orb of Inhibition",
+              scope: "global",
+              duration: { type: "combat" },
+              modifiers: [{ type: "NULLIFY_CARD_DAMAGE" }]
+            }
+          }
+        },
+        {
+          label: "This Combat round: units cannot use their special abilities",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Orb of Inhibition",
+              scope: "global",
+              duration: { type: "current-combat-round" },
+              modifiers: [{ type: "UNIT_ABILITY_SUPPRESSED" }]
+            }
+          }
+        }
+      ]
+    },
+    assets: artifactAssets("relic", "orb_of_inhibition", "Orb of Inhibition"),
+    implementationStatus: "implemented",
+    source: artifactSource("orb_of_inhibition")
   }
 };
 
@@ -2413,6 +2533,7 @@ export const artifactDeckLegacy: string[] = [
   "artifact.shackles_of_war",
   "artifact.pendant_of_courage",
   "artifact.necklace_of_dragonteeth",
+  "artifact.pendant_of_negativity",
   "artifact.crown_of_the_five_seas",
   "artifact.orb_of_driving_rain",
   "artifact.orb_of_silt",
@@ -2438,6 +2559,7 @@ export const artifactDeckLegacy: string[] = [
   "artifact.titans_gladius",
   "artifact.crown_of_dragontooth",
   "artifact.orb_of_vulnerability",
+  "artifact.orb_of_inhibition",
   "artifact.helm_of_heavenly_enlightenment",
   "artifact.celestial_necklace_of_bliss",
   "artifact.lions_shield_of_courage",
@@ -2493,6 +2615,7 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.shield_of_the_damned",
   "artifact.pendant_of_courage",
   "artifact.necklace_of_dragonteeth",
+  "artifact.pendant_of_negativity",
   "artifact.mystic_orb_of_mana",
   "artifact.shackles_of_war",
   "artifact.crown_of_the_five_seas",
@@ -2526,5 +2649,6 @@ export const artifactDeckBinhRelic: string[] = [
   "artifact.celestial_necklace_of_bliss",
   "artifact.lions_shield_of_courage",
   "artifact.sandals_of_the_saint",
-  "artifact.orb_of_vulnerability"
+  "artifact.orb_of_vulnerability",
+  "artifact.orb_of_inhibition"
 ];

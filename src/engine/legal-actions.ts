@@ -40,6 +40,7 @@ import {
   effectiveInitiative,
   playerCannotSurrenderCombat,
   playerHasSpellTimingFreedom,
+  unitImmuneToSpellSchoolsByEffect,
   unitIsBerserk
 } from "./active-effects";
 import { cancelSpellAllowsSchoolAndLevel, cardCanBoostPower, spellPowerValueOfCard } from "./effects";
@@ -958,7 +959,11 @@ function getTargetsForCard(
       // an otherwise-immune unit becomes a legal target. Anti-Magic (a Spell
       // effect, not a unit ability) still bars targeting.
       const innateImmune = !spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(unit, card.spellSchools);
-      return !isUnitSpellImmune(state, unit) && !innateImmune;
+      // Pendant of Negativity (option B): an artifact-granted school immunity also
+      // bars targeting; unlike printed immunity it is never lifted by Orb of
+      // Vulnerability.
+      const artifactImmune = unitImmuneToSpellSchoolsByEffect(state, unit, card.spellSchools);
+      return !isUnitSpellImmune(state, unit) && !innateImmune && !artifactImmune;
     });
   }
 

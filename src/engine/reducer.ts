@@ -112,8 +112,10 @@ import {
   tokenDefenseDelta
 } from "./tokens";
 import {
+  cardDamageNullified,
   effectAppliesToUnit,
   effectiveInitiative,
+  unitImmuneToSpellSchoolsByEffect,
   expireEffectsForActivationEnd,
   expireEffectsForCombatRoundEnd,
   expireEffectsForTurnEnd,
@@ -1312,10 +1314,23 @@ function unitIgnoresCardDamage(state: GameState, unit: CombatUnitState, card: Ca
   if (!card) {
     return false;
   }
+  // Orb of Inhibition (option A): for the rest of the Combat every Spell and
+  // Hero-Specialty CARD deals 0 damage to every unit. Checked at this shared
+  // card-damage predicate so the direct, area, Xyron and Chain Lightning paths
+  // (all of which gate on this function) are covered for both armies at once.
+  if (cardDamageNullified(state) && (card.kind === "spell" || card.kind === "hero-specialty")) {
+    return true;
+  }
   if (card.kind === "hero-specialty") {
     return hasImmuneToSpecialtyDamage(unit);
   }
   if (card.kind === "spell") {
+    // Pendant of Negativity (option B): an artifact-granted school immunity also
+    // turns the spell aside. Unlike printed immunity it is NOT lifted by Orb of
+    // Vulnerability (an artifact effect, like Anti-Magic).
+    if (unitImmuneToSpellSchoolsByEffect(state, unit, card.spellSchools)) {
+      return true;
+    }
     // Orb of Vulnerability negates printed spell-school immunity, so the unit
     // takes the spell like any other.
     return !spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(unit, card.spellSchools);
@@ -5145,8 +5160,9 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       if (target) {
         const power = getCurrentSpellPower(state, stackItem, cards);
         const rawAmount = getSpellDamageAmount(card, power);
-        // Spell/Specialty immunity zeroes the hit; otherwise "reduce spell
-        // damage by N" applies to Spell-kind damage only.
+        // Spell/Specialty immunity (Orb of Inhibition's global nullify and the
+        // Pendant's school immunity included) zeroes the hit; otherwise "reduce
+        // spell damage by N" applies to Spell-kind damage only.
         const amount = unitIgnoresCardDamage(state, target, card)
           ? 0
           : card.effect.damageKind === "spell"
@@ -5593,6 +5609,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
             unit.id !== target.id &&
             isUnitAlive(unit) &&
             isAdjacent(unit.position, target.position) &&
+            !unitImmuneToSpellSchoolsByEffect(state, unit, card.spellSchools) &&
             (spellAbilitiesSuppressed(state) || !unitImmuneToSpellSchools(unit, card.spellSchools))
         );
         if (splashCandidates.length > 0) {
