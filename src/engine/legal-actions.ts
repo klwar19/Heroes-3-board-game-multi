@@ -42,6 +42,7 @@ import {
   getSpellCastRestriction,
   playerCannotSurrenderCombat,
   playerHasSpellTimingFreedom,
+  unitAttackRollDisadvantaged,
   unitImmuneToSpellSchoolsByEffect,
   unitIsBerserk
 } from "./active-effects";
@@ -686,6 +687,14 @@ export function getAttackRollMode(
     isBackRow(defender.position) &&
     isOppositeBackRow(attacker.position, defender.position)
   ) {
+    return "disadvantage";
+  }
+
+  // Shaman's Puppet (option A): the puppeted unit rolls two Attack dice and
+  // resolves the LOWER result for every attack this activation. Checked before
+  // the Crusaders' advantage so the debuff wins when both are present (the
+  // puppet forces the worse roll). Needs `state` to read the active effect.
+  if (state && unitAttackRollDisadvantaged(state, attacker)) {
     return "disadvantage";
   }
 
@@ -1582,6 +1591,8 @@ function isOptionEffectPlayable(
     case "ADD_UNIT_MAX_HEALTH":
     case "MOVE_UNIT_ADJACENT":
     case "HEAL_DAMAGE":
+    // Shaman's Puppet (option B): a Cure-style cleanse, played in combat on a unit.
+    case "HEAL_DAMAGE_AND_REMOVE_EFFECTS":
     case "AREA_DAMAGE_ALL_ADJACENT":
     case "AREA_DAMAGE_PICK_ADJACENT":
     case "CREATE_FIRE_SHIELD":
@@ -1695,6 +1706,8 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "ADD_UNIT_MAX_HEALTH" ||
     effect.type === "MOVE_UNIT_ADJACENT" ||
     effect.type === "HEAL_DAMAGE" ||
+    // Shaman's Puppet (option B): a Cure-style cleanse placed on a chosen unit.
+    effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS" ||
     effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
     effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
     effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
