@@ -31,6 +31,7 @@ export const implementedCardEffectTypes = [
   "EAGLE_EYE_DIG",
   "TELEPORT_HERO_TO_TOWN",
   "DIMENSION_DOOR",
+  "VIEW_EARTH",
   "DISCOVER_TILE_CARD",
   "CLEAR_RETALIATION",
   "IGNORE_ATTACK_DIE",
@@ -53,6 +54,7 @@ export const implementedCardEffectTypes = [
   "FORGETFULNESS",
   "BERSERK",
   "TELEPORT_UNIT",
+  "CLONE_UNIT",
   "DISPEL_EFFECTS",
   "IGNORE_DEFENSE",
   "BALLISTA_SPECIALTY",
@@ -79,7 +81,8 @@ export const implementedCardEffectTypes = [
   "SACRIFICE_TRANSFER",
   "PLACE_FORCE_FIELD",
   "PLACE_FIRE_WALL",
-  "PLACE_HIDDEN_TOKENS"
+  "PLACE_HIDDEN_TOKENS",
+  "REMOVE_ACTIVE_EFFECT"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {
@@ -265,9 +268,11 @@ export function getSpellDamageAmount(card: CardDefinition, power: number): numbe
 
 export function getEffectAmount(effect: EffectDefinition, mode: CardPlayMode): number {
   // Interference carries an explicit expert amount (the Defense / spell-damage
-  // reduction it grants), so it reads it the same way the stat cards do.
+  // reduction it grants), so it reads it the same way the stat cards do. An
+  // artifact without an expert side (Plate of the Dying Light) falls back to the
+  // basic amount — its expert play is never offered, so this is only defensive.
   if (effect.type === "INTERFERE_SPELL") {
-    return mode === "expert" ? effect.expertAmount : effect.amount;
+    return mode === "expert" ? (effect.expertAmount ?? effect.amount) : effect.amount;
   }
 
   if (
@@ -671,6 +676,13 @@ export function describeCardEffect(card: CardDefinition): string {
       .map(([power, grade]) => `${power}:${grade}`)
       .join(", ");
     return `remove every removable ongoing effect from the selected unit (reachable grade by power ${breakpoints})`;
+  }
+
+  if (card.effect.type === "CLONE_UNIT") {
+    const breakpoints = Object.entries(card.effect.gradeByPower)
+      .map(([power, grade]) => `${power}:${grade}`)
+      .join(", ");
+    return `place a 1-Health copy of one of your units on an adjacent empty space — destroyed by any damage, by being attacked, or if its original leaves (reachable grade by power ${breakpoints})`;
   }
 
   if (card.effect.type === "IGNORE_DEFENSE") {

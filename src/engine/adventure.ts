@@ -1181,7 +1181,7 @@ function flagField(state: GameState, playerId: PlayerId, field: MapFieldState): 
   });
 }
 
-function applyMineFlag(state: GameState, playerId: PlayerId, field: MapFieldState): void {
+export function applyMineFlag(state: GameState, playerId: PlayerId, field: MapFieldState): void {
   const previousOwnerId = field.flagOwnerId;
   const resource = field.resource ?? "gold";
   const amount = field.amount ?? 0;
@@ -1212,6 +1212,44 @@ function applyMineFlag(state: GameState, playerId: PlayerId, field: MapFieldStat
     field.everFlagged = true;
     gainResources(state, playerId, { [resource]: amount }, `first to flag the ${resource} mine`);
   }
+}
+
+/**
+ * Enemy-owned Mine fields within `range` straight-line hexes of the player's
+ * main Hero — the candidates the View Earth spell may capture. A Mine counts
+ * only when another player's Faction cube is on it (an unflagged or own Mine is
+ * skipped). Sorted by space id so every client builds the same option list.
+ * Shared by the legal-action gate and the spell's resolver so the offer and the
+ * capture can never disagree.
+ */
+export function capturableEnemyMinesWithin(
+  state: GameState,
+  playerId: PlayerId,
+  range: number
+): MapSpaceId[] {
+  const adventure = state.adventure;
+  const hero = getMainHero(state, playerId);
+  const origin = hero?.spaceId ? parseHexSpaceId(hero.spaceId) : null;
+  if (!adventure || !origin || range <= 0) {
+    return [];
+  }
+
+  const mines: MapSpaceId[] = [];
+  for (const field of Object.values(adventure.fields)) {
+    if (field.location !== "mine") {
+      continue;
+    }
+    // "Choose enemy Mine": only Mines flagged by another player can be taken.
+    if (!field.flagOwnerId || field.flagOwnerId === playerId) {
+      continue;
+    }
+    const coord = parseHexSpaceId(field.spaceId);
+    if (!coord || hexDistance(origin, coord) > range) {
+      continue;
+    }
+    mines.push(field.spaceId);
+  }
+  return mines.sort();
 }
 
 function applyTownFlag(state: GameState, playerId: PlayerId, field: MapFieldState): void {

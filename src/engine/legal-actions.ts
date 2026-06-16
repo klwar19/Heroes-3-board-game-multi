@@ -7,6 +7,7 @@ import {
   applyRecruitDiscount,
   armyHasMapEffect,
   canHeroReachPlacedTile,
+  capturableEnemyMinesWithin,
   discountedReinforceCost,
   getActiveAstrologersCard,
   getMainHero,
@@ -38,8 +39,10 @@ import {
 import {
   effectAppliesToUnit,
   effectiveInitiative,
+  getSpellCastRestriction,
   playerCannotSurrenderCombat,
   playerHasSpellTimingFreedom,
+  unitImmuneToSpellSchoolsByEffect,
   unitIsBerserk
 } from "./active-effects";
 import { cancelSpellAllowsSchoolAndLevel, cardCanBoostPower, spellPowerValueOfCard } from "./effects";
@@ -955,7 +958,7 @@ function getTargetsForCard(
       ? cardTarget
       : ({ type: targetType } as UnitTargetDefinition);
 
-  const targets =
+  let targets =
     target.type === "friendly-unit"
       ? getFriendlyTargets(state, playerId, target)
       : target.type === "any-unit"
@@ -967,7 +970,7 @@ function getTargetsForCard(
   // Spell up to its grade; an Elemental's printed immunity blocks only Magic
   // Arrow and its own school (see unitImmuneToSpellSchools).
   if (card?.kind === "spell") {
-    return targets.filter((candidate) => {
+    targets = targets.filter((candidate) => {
       if (candidate.type !== "unit") {
         return true;
       }
@@ -979,7 +982,45 @@ function getTargetsForCard(
       // an otherwise-immune unit becomes a legal target. Anti-Magic (a Spell
       // effect, not a unit ability) still bars targeting.
       const innateImmune = !spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(unit, card.spellSchools);
-      return !isUnitSpellImmune(state, unit) && !innateImmune;
+      // Pendant of Negativity (option B): an artifact-granted school immunity also
+      // bars targeting; unlike printed immunity it is never lifted by Orb of
+      // Vulnerability.
+      const artifactImmune = unitImmuneToSpellSchoolsByEffect(state, unit, card.spellSchools);
+      return !isUnitSpellImmune(state, unit) && !innateImmune && !artifactImmune;
+    });
+  }
+
+  // Clone: only offer on a friendly unit that has a printed side to copy AND at
+  // least one empty space orthogonally adjacent to it for the Clone Token —
+  // otherwise the cast would be a no-op. The grade gate is NOT applied here: the
+  // cast can be empowered after it is declared, so the reachable grade is decided
+  // at resolution against the Power actually paid (like Berserk / Teleport).
+  if (card?.effect.type === "CLONE_UNIT" && state.combat) {
+    const combat = state.combat;
+    const blocked = new Set<number>();
+    for (const unit of Object.values(combat.units)) {
+      if (isUnitAlive(unit)) {
+        blocked.add(unit.position);
+      }
+    }
+    for (const position of combat.obstacles ?? []) {
+      blocked.add(position);
+    }
+    for (const position of combat.siege?.walls ?? []) {
+      blocked.add(position);
+    }
+    if (combat.siege?.gatePosition != null) {
+      blocked.add(combat.siege.gatePosition);
+    }
+    targets = targets.filter((candidate) => {
+      if (candidate.type !== "unit") {
+        return true;
+      }
+      const unit = combat.units[candidate.unitId];
+      if (!unit || !unit.unitDefId) {
+        return false;
+      }
+      return getOrthogonalNeighbors(unit.position).some((position) => !blocked.has(position));
     });
   }
 
@@ -1156,6 +1197,14 @@ function addSpellActions(
 
   const player = state.players[playerId];
   if (!player || player.combatStats.spellsCastThisRound >= spellLimitFor(state, player)) {
+    return;
+  }
+
+  // Recanter's Cloak (option B): "no Hero can use Spells" this Combat — a global
+  // lock that binds both heroes, so no cast is offered at all. (Option A's
+  // Power-0 floor is enforced at resolution, since the Power is only fixed once
+  // the cast window closes; a cast can still be declared and then boosted.)
+  if (getSpellCastRestriction(state).lockAll) {
     return;
   }
 
@@ -1445,6 +1494,14 @@ function isOptionEffectPlayable(
     case "GAIN_HERO_MOVEMENT":
     case "DIMENSION_DOOR":
       return context === "map" && Boolean(state.adventure);
+    case "VIEW_EARTH":
+      // View Earth captures an enemy-owned Mine in reach — offered only when at
+      // least one such Mine sits within this option's range of the caster's Hero.
+      return (
+        context === "map" &&
+        Boolean(state.adventure) &&
+        capturableEnemyMinesWithin(state, playerId, effect.withinFields).length > 0
+      );
     case "DIPLOMACY_RECRUIT":
       // Diplomacy's Map side only does something with at least one Dwelling.
       return context === "map" && Boolean(state.adventure) && unlockedRecruitTiers(state, playerId).size > 0;
@@ -1546,6 +1603,16 @@ function isOptionEffectPlayable(
         return countBallistas(state, playerId) >= 1;
       }
       return true;
+    case "REMOVE_ACTIVE_EFFECT":
+      // Boots of Polarity (option B): only worth playing while at least one
+      // removable, unit-scoped ongoing effect is on the table to strip.
+      return (
+        context === "combat" &&
+        Boolean(state.combat) &&
+        state.activeEffects.some(
+          (active) => active.target?.type === "unit" && active.removable !== false
+        )
+      );
     default:
       return false;
   }
@@ -1570,7 +1637,10 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
     effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
     effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" ||
-    effect.type === "PLACE_PARALYSIS"
+    effect.type === "PLACE_PARALYSIS" ||
+    // Boots of Polarity (option B): the ongoing effect it strips lives on a
+    // chosen unit (yours or the enemy's).
+    effect.type === "REMOVE_ACTIVE_EFFECT"
   );
 }
 
@@ -1690,6 +1760,20 @@ function addOptionPlays(
         const maxGrade = gradeAtPower(gradeByPower, card.power ?? 0);
         return maxGrade !== null && gradeRank(unit.grade) <= gradeRank(maxGrade);
       });
+    }
+    // Boots of Polarity (option B): only units that actually carry a removable
+    // ongoing effect are legal targets, so the play is never a no-op.
+    if (option.effect.type === "REMOVE_ACTIVE_EFFECT") {
+      targets = targets.filter(
+        (candidate) =>
+          candidate.type === "unit" &&
+          state.activeEffects.some(
+            (active) =>
+              active.target?.type === "unit" &&
+              active.target.unitId === candidate.unitId &&
+              active.removable !== false
+          )
+      );
     }
     if (targets.length === 0) {
       continue;
@@ -3087,6 +3171,11 @@ export function getLegalReactionsForTrigger(
 
   const result: Record<PlayerId, LegalAction[]> = {};
   const isAttackWindow = triggerEvent.type === "UNIT_ATTACK_DECLARED";
+  // Recanter's Cloak (option B): "no Hero can use Spells" blocks casting a Spell
+  // as a reaction/instant too, not just on a turn (the cast-offer gate handles
+  // turn casts). Artifact/ability counters (Resistance, the Boots, etc.) are not
+  // Spells and are unaffected.
+  const castLocked = getSpellCastRestriction(state).lockAll;
 
   for (const player of Object.values(state.players)) {
     // Garrison defense: "You cannot use your Deck during this Combat, as
@@ -3119,6 +3208,11 @@ export function getLegalReactionsForTrigger(
 
       // Spell instants respect the one-Spell-per-combat-round limit.
       if (card.kind === "spell" && spellLimitLeft <= 0) {
+        continue;
+      }
+
+      // Recanter's Cloak (option B) locks every Hero out of casting any Spell.
+      if (card.kind === "spell" && castLocked) {
         continue;
       }
 
@@ -3195,8 +3289,9 @@ export function getLegalReactionsForTrigger(
     }
 
     // Spell Scroll spells played as reactions: basic side only, power-locked
-    // to 0, removed once used. They respect the same spell-per-round limit.
-    if (spellLimitLeft > 0) {
+    // to 0, removed once used. They respect the same spell-per-round limit, and
+    // Recanter's Cloak (option B) locks them out along with every other Spell.
+    if (spellLimitLeft > 0 && !castLocked) {
       for (const scroll of player.scrolls ?? []) {
         for (const cardId of new Set(scroll.spellCardIds)) {
           const card = cards[cardId];
@@ -3735,9 +3830,10 @@ export function effectHasExpertMode(effect: ConcreteEffect): boolean {
     return Boolean(effect.expertIgnoresMaxPower || effect.expertIgnoresMaxSpellLevel);
   }
 
-  // Interference always has an expert side (+2 instead of +1).
+  // Interference has an expert side (+2 instead of +1); Plate of the Dying
+  // Light reuses the same effect with no expert side, so it omits expertAmount.
   if (effect.type === "INTERFERE_SPELL") {
-    return true;
+    return effect.expertAmount !== undefined;
   }
 
   return false;

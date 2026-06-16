@@ -410,6 +410,49 @@ export type ActiveEffectModifier =
        * a Tower Titan/Gargoyle that ignores ongoing effects is not suppressed.
        */
       type: "UNIT_ABILITY_SUPPRESSED";
+    }
+  | {
+      /**
+       * Orb of Inhibition (option A): for the rest of the Combat every Spell and
+       * Hero-Specialty CARD deals 0 damage — checked at the single card-damage
+       * chokepoint (reducedCardDamage), so direct, area, Xyron and Chain Lightning
+       * hits are all nullified for both armies. Unit-ability damage (the Faerie
+       * bolt, retaliation) is NOT a card and is untouched; the Orb's option B
+       * handles abilities separately. Global and side-agnostic, so one grant
+       * covers everyone.
+       */
+      type: "NULLIFY_CARD_DAMAGE";
+    }
+  | {
+      /**
+       * Pendant of Negativity (option B): an ongoing, unit-scoped immunity to
+       * Spells of the named School(s) cast on this unit — "ignore the effect of a
+       * spell from the School of Air Magic cast on this unit". Like the printed
+       * Elemental immunity it bars targeting and any area splash; a school-agnostic
+       * spell ("any", e.g. Magic Arrow) counts as belonging to every School, so an
+       * air immunity also turns Magic Arrow aside (mirroring this Pendant's own
+       * cancel side and Protection from Air). Read through effectAppliesToUnit, so
+       * a Tower Titan/Gargoyle that ignores ongoing effects is not protected by it.
+       * NOT negated by Orb of Vulnerability (an artifact effect, not a unit
+       * ability — exactly like Anti-Magic).
+       */
+      type: "SPELL_SCHOOL_IMMUNE";
+      schools: SpellSchool[];
+    }
+  | {
+      /**
+       * Recanter's Cloak: a global, combat-scoped restriction on spell-casting
+       * that binds BOTH heroes (the wearer included), enforced at the spell
+       * resolution chokepoint (resolveTopStack) and the cast-offer gate.
+       *   • `lockAll` (option B) — no Hero may cast any Spell this Combat.
+       *   • `minPower` (option A) — a Spell that resolves below this Power has no
+       *     effect, so "no Hero can use spells with Power 0" forces every cast to
+       *     be boosted to Power ≥ 1 (minPower 1) to do anything.
+       * Side-agnostic (scope "global"), so one grant covers both armies.
+       */
+      type: "SPELL_CAST_RESTRICTION";
+      lockAll?: boolean;
+      minPower?: number;
     };
 
 export type ActiveEffectDefinition = {
@@ -469,6 +512,14 @@ export type EffectDefinition =
        */
       maxSpellLevel?: "basic" | "expert";
       expertIgnoresMaxSpellLevel?: boolean;
+      /**
+       * Boots of Polarity: a chance-based cancel. When set, playing the reaction
+       * rolls `count` Attack dice and the player keeps the best ("choose one");
+       * the spell is ignored only if a kept die shows `successFace` (the "+1"
+       * face, value 1). A failed roll still spends the card but lets the spell
+       * resolve — unlike the deterministic Resistance/Protection cancels above.
+       */
+      diceRoll?: { count: number; successFace: number };
     }
   | {
       type: "DRAW_CARDS";
@@ -610,6 +661,19 @@ export type EffectDefinition =
        */
       type: "DIMENSION_DOOR";
       fields: number;
+    }
+  | {
+      /**
+       * View Earth (Basic Earth, Map): capture an enemy-owned Mine within
+       * `withinFields` hexes of the casting player's main Hero — the owner's
+       * Faction cube and the Mine's ongoing production are replaced with the
+       * caster's (no first-flag income, since the Mine was already flagged). The
+       * Power paid raises the reach (Power 0/1/2 -> 1/2/3 fields), encoded as the
+       * higher-cost options of the spell's CHOOSE_ONE. Resolved through the
+       * "view-earth" pending choice (which Mine to take).
+       */
+      type: "VIEW_EARTH";
+      withinFields: number;
     }
   | {
       /** Helm of Heavenly Enlightenment: an extra expert use this round. */
@@ -894,6 +958,25 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Clone Spell (Expert Water, Cove Expansion): place a 1-Health copy of one
+       * of the caster's units on an empty space orthogonally adjacent to it. The
+       * Clone copies everything printed on the original's card (statistics, type,
+       * printed abilities) but NONE of the ongoing effects/tokens layered on the
+       * original, and it starts with maxHealth 1. It is destroyed the instant it
+       * takes ANY damage, the instant it is attacked (even for 0 damage), and the
+       * instant its original leaves the Combat Board (see CombatUnitState.cloneOfUnitId
+       * and combat-units.removeLinkedClones). The reachable grade of the cloned
+       * unit rises with the Power paid (1 → bronze, 3 → silver, 5 → gold), the
+       * Implosion tier ladder; below Power 1 nothing is cloned. The destination
+       * empty space is picked in a follow-up choice after the cast (the
+       * "combat-clone" OPTION_CHOICE). The "OR Instant: +1 Power" side is the
+       * universal power-source discard, so it needs no dedicated option.
+       */
+      type: "CLONE_UNIT";
+      gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
        * Dispel Spell (Basic Water): strip every removable ongoing effect from
        * the selected unit — Haste, Slow, Bless's bonus, Anti-Magic, Forgetfulness,
        * Fire Shield, an enemy's buffs… anything created `removable` and bound to
@@ -1024,7 +1107,22 @@ export type EffectDefinition =
        */
       type: "INTERFERE_SPELL";
       amount: number;
-      expertAmount: number;
+      /**
+       * Interference's expert side grants +2 instead of +1. Optional: an
+       * artifact (Plate of the Dying Light) that grants the same Defense /
+       * spell-damage reduction through a CHOOSE_ONE option — not a basic/expert
+       * pair — omits it, so no expert reaction is offered or resolved for it.
+       */
+      expertAmount?: number;
+    }
+  | {
+      /**
+       * Boots of Polarity (option B): "Remove 1 ongoing effect." Targets one of
+       * your or the enemy's units and strips a single removable ongoing effect
+       * from it (the most recently applied one). A unit-scoped dispel of exactly
+       * one effect — narrower than Cure/Dispel, which clear several at once.
+       */
+      type: "REMOVE_ACTIVE_EFFECT";
     }
   | {
       type: "CREATE_ACTIVE_EFFECT";
@@ -3365,6 +3463,15 @@ export type CombatUnitState = {
    * only turn on a summoned unit when nothing else is left.
    */
   summoned?: boolean;
+  /**
+   * Clone Spell: when set, this unit is a 1-Health Clone Token copying the unit
+   * with this id. A Clone copies everything printed on the original's card but
+   * none of the ongoing effects/tokens on it, and is destroyed by any damage, by
+   * being attacked (even for 0 damage), or when its original is removed from the
+   * Combat Board. Clones never flip (Pack→Few), never Rebirth, leave no army
+   * bookkeeping, and never count as one of your units leaving for Pit Lords.
+   */
+  cloneOfUnitId?: UnitId;
   assets?: {
     cardImage?: string;
     imageAlt?: string;
@@ -4309,10 +4416,12 @@ export type PendingChoice =
         | "combat-knockback"
         | "combat-teleport"
         | "place-battlefield-tokens"
+        | "combat-clone"
         | "cover-of-darkness"
         | "diplomacy-skip"
         | "diplomacy-recruit"
         | "dimension-door"
+        | "view-earth"
         | "learning-level-up"
         | "fortune-boost"
         | "visions-boost"
@@ -4354,6 +4463,12 @@ export type PendingChoice =
         remaining: number;
         triggerDamage: number;
       };
+      /**
+       * combat-clone: the Clone Spell is placing a copy of `originalUnitId`; the
+       * caster picks which empty space adjacent to it (index-aligned with the
+       * options) the Clone Token lands on.
+       */
+      clone?: { originalUnitId: UnitId; positions: number[] };
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */
@@ -4382,6 +4497,12 @@ export type PendingChoice =
        * option carries no destination).
        */
       dimensionDoor?: { heroId: HeroId; destinations: MapSpaceId[] };
+      /**
+       * view-earth: the casting Hero and the enemy-owned Mine fields in reach
+       * (index-aligned with the options; the final "Cancel" option carries no
+       * Mine). Resolving captures the chosen Mine for the caster.
+       */
+      viewEarth?: { heroId: HeroId; mineSpaceIds: MapSpaceId[] };
       /**
        * diplomacy-skip: the neutral fight Cyra's Diplomacy may skip. Option 0
        * uses the card (claim the field, no XP); option 1 fights normally.

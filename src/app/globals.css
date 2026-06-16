@@ -3698,6 +3698,62 @@ button.hbSlot:disabled { cursor: default; }
   100% { opacity: 0; }
 }
 
+/* ---- Clone Token (Clone Spell) ------------------------------------------- */
+/* A 1-Health copy is shown as a round, player-coloured token cropped from the
+   cloned unit's own art — the physical Clone Token (blue for p1, red for p2) —
+   so it reads at a glance as a copy rather than the real stack. The card art is
+   cropped to a circle with object-fit: cover (never squashed). The appear
+   animation fades only (no transform), so it never fights the p1 board rotation. */
+.boardCard.cloneToken {
+  animation: cloneAppear 0.45s ease;
+}
+
+.boardCard.cloneToken .boardCardImage {
+  width: 90%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  margin: 5% auto 0;
+  border-radius: 50%;
+  object-fit: cover;
+  filter: saturate(0.9) brightness(1.04);
+}
+
+.boardCard.p1.cloneToken .boardCardImage {
+  box-shadow: 0 0 0 3px rgb(85 127 153 / 95%), 0 0 9px rgb(0 0 0 / 55%);
+}
+
+.boardCard.p2.cloneToken .boardCardImage {
+  box-shadow: 0 0 0 3px rgb(166 83 72 / 95%), 0 0 9px rgb(0 0 0 / 55%);
+}
+
+@keyframes cloneAppear {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.cloneBadge {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  padding: 1px 7px;
+  background: rgb(38 70 96 / 92%);
+  border: 1px solid rgb(150 196 226 / 75%);
+  border-radius: 999px;
+  color: #d8ecff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* p1 sits across the table (board rotated 180°): keep the badge text readable. */
+.boardCard.p1 .cloneBadge {
+  transform: translateX(-50%) rotate(180deg);
+}
+
 /* ---- Draw-card cinematic -------------------------------------------------- */
 .drawOverlay {
   position: fixed;
