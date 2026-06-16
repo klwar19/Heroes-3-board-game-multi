@@ -798,10 +798,34 @@ function addAttackPower(stackItem: ResolutionStackItem, playerId: PlayerId, amou
 }
 
 /**
+ * Whether a Power-scaled Frenzy on this attack pierces the defender's Defense:
+ * the pierced grade is re-derived from the caster's FINAL pooled attack-window
+ * Power (so Power paid after Frenzy still counts), then compared to the
+ * defender's grade. Fixed-grade Frenzy sets ignoreDefense outright and is not
+ * handled here.
+ */
+function frenzyPierces(stackItem: ResolutionStackItem, defender: CombatUnitState): boolean {
+  const table = stackItem.modifiers.ignoreDefenseGradeByPower;
+  if (!table) {
+    return false;
+  }
+  const caster =
+    stackItem.modifiers.ignoreDefenseCasterId ??
+    (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
+      ? stackItem.action.playerId
+      : undefined);
+  if (!caster) {
+    return false;
+  }
+  const reached = gradeAtPower(table, attackPowerFor(stackItem, caster));
+  return reached !== null && gradeRank(defender.grade) <= gradeRank(reached);
+}
+
+/**
  * Whether a spell instant's effect draws from the attack-window Power pool —
  * the Power-scaling buffs/debuffs (Bloodlust, Curse, Weakness, Precision, the
- * scaled Bless bonus and Slayer's roll count). Frenzy (IGNORE_DEFENSE) and a
- * plain Bless do not, so they are never credited standing Power into the pool.
+ * scaled Bless bonus, Slayer's roll count and Frenzy's pierced grade). A plain
+ * (unscaled) Bless does not, so it is never credited standing Power.
  */
 function effectScalesWithAttackPool(effect: ReturnType<typeof getEffectiveCardEffect>): boolean {
   if (!effect) {
@@ -815,6 +839,9 @@ function effectScalesWithAttackPool(effect: ReturnType<typeof getEffectiveCardEf
   }
   if (effect.type === "IGNORE_ATTACK_DIE") {
     return Boolean(effect.attackBonusByPower);
+  }
+  if (effect.type === "IGNORE_DEFENSE") {
+    return Boolean(effect.gradeByPower);
   }
   return false;
 }
@@ -1970,8 +1997,11 @@ function getAttackStackDetails(
     // Mummies "ignore the result on the Attack die" — their own attack die is
     // treated as 0, exactly like Bless / Elemental damage.
     ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie) || dealsElemental || hasIgnoreOwnAttackDie(attacker),
-    // Frenzy sets modifiers.ignoreDefense; Elemental damage ignores Defense innately.
-    ignoreDefense: dealsElemental || Boolean(stackItem.modifiers.ignoreDefense),
+    // Frenzy: legacy fixed-grade sets modifiers.ignoreDefense outright; the
+    // Power-scaled form re-derives its pierced grade now from the caster's final
+    // pooled Power, so Power paid after Frenzy was played still counts. Elemental
+    // damage ignores Defense innately.
+    ignoreDefense: dealsElemental || Boolean(stackItem.modifiers.ignoreDefense) || frenzyPierces(stackItem, defender),
     damageReduction: siegeRangedDamageReduction(combat, attacker, defender, attackKind),
     defenseReductionAbility,
     abilityAttack
@@ -6177,22 +6207,24 @@ function applyReactionPlayCore(
 
   // Standing spell Power for a Power-scaling spell instant played as a reaction
   // into an attack — by EITHER side (the attacker's Bloodlust/Bless/Precision/
-  // Slayer, the defender's Curse/Weakness): credit the once-per-turn Astrologers
-  // bonus, the once-per-round active-unit boost, and a School-of-Magic permanent's
-  // bonus for the spell's school — the same Power castSpell seeds for a spell cast
-  // on your turn. Added to THAT caster's pool once (before noteSpellCast advances
-  // the "first spell" counters) so the instant about to apply reads it like Power
-  // paid alongside it; non-pool spells (Frenzy) are never credited it here.
+  // Slayer/Frenzy, the defender's Curse/Weakness): credit the once-per-turn
+  // Astrologers bonus, the once-per-round active-unit boost, and a School-of-Magic
+  // permanent's bonus for the spell's school — the same Power castSpell seeds for
+  // a spell cast on your turn. Added to THAT caster's pool before noteSpellCast
+  // advances the "first spell" counters, so the instant about to apply reads it
+  // like Power paid alongside it. Seeded for EVERY pool-scaling spell (no
+  // once-per-attack gate): standingSpellPower itself gates the Astrologers/Magi
+  // "first spell" bonuses on those counters, so a second spell that turn keeps
+  // its School-of-Magic bonus (always on) while never re-counting the first-spell
+  // boosts.
   if (
     card.kind === "spell" &&
     !play.fromScroll &&
     player &&
     stackItem &&
     isAttackStackItem(stackItem) &&
-    effectScalesWithAttackPool(effect) &&
-    !(stackItem.modifiers.standingPowerSeededFor ?? []).includes(playerId)
+    effectScalesWithAttackPool(effect)
   ) {
-    (stackItem.modifiers.standingPowerSeededFor ??= []).push(playerId);
     const standing = standingSpellPower(state, playerId, card);
     if (standing > 0) {
       addAttackPower(stackItem, playerId, standing);
@@ -6638,17 +6670,22 @@ function applyReactionPlayCore(
   }
 
   // Frenzy: the pending attack ignores the attacked unit's Defense (counts as 0).
-  // Gated by the defender's grade — the chosen option's `powerCost` (paid from
-  // standing Power + the Power value of discarded power-source cards) reaches a
-  // fixed grade. Casting an option whose grade the defender exceeds spends the
-  // card but pierces nothing.
+  // Gated by the defender's grade. With gradeByPower it scales with the caster's
+  // pooled attack-window Power: the table + caster are stored and the pierced
+  // grade is re-derived at resolution (so Power paid after Frenzy keeps lifting
+  // bronze→silver→gold). The legacy fixed-grade form sets ignoreDefense at once.
   if (
     effect.type === "IGNORE_DEFENSE" &&
     (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
-    const defender = state.combat?.units[stackItem.action.defenderId];
-    if (defender && gradeRank(defender.grade) <= gradeRank(effect.grade)) {
-      stackItem.modifiers.ignoreDefense = true;
+    if (effect.gradeByPower) {
+      stackItem.modifiers.ignoreDefenseGradeByPower = effect.gradeByPower;
+      stackItem.modifiers.ignoreDefenseCasterId = playerId;
+    } else if (effect.grade) {
+      const defender = state.combat?.units[stackItem.action.defenderId];
+      if (defender && gradeRank(defender.grade) <= gradeRank(effect.grade)) {
+        stackItem.modifiers.ignoreDefense = true;
+      }
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
@@ -6841,11 +6878,13 @@ function playReaction(
           ? stackItem.action.playerId
           : undefined;
       // This player may keep empowering a Power-scaling spell instant THEY cast
-      // into the attack — the attacker's Bloodlust/Slayer, or the defender's
-      // Curse/Weakness. Lone Power with nothing of yours to feed still dissipates.
+      // into the attack — the attacker's Bloodlust/Slayer/Frenzy, or the
+      // defender's Curse/Weakness. Lone Power with nothing of yours to feed still
+      // dissipates.
       const empowerable =
         (stackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === action.playerId) ||
-        (attackOwner === action.playerId && stackItem?.modifiers.slayerRollsByPower !== undefined);
+        (attackOwner === action.playerId && stackItem?.modifiers.slayerRollsByPower !== undefined) ||
+        stackItem?.modifiers.ignoreDefenseCasterId === action.playerId;
       if (!empowerable) {
         throw new Error("Power can only be played into an attack together with a Spell card.");
       }
