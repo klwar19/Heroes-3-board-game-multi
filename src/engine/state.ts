@@ -480,6 +480,12 @@ export type EffectDefinition =
       perCostCard?: number;
       /** Offense/Armorer: "Then draw 1 card." */
       drawCards?: number;
+      /**
+       * Blackshard of the Dead Knight: "discard 1 card. If the discarded card
+       * was a spell, draw 1 card." When set, the play draws 1 card only if one
+       * of the cards paid through the option's `cost.discardCards` was a Spell.
+       */
+      drawIfCostCardSpell?: boolean;
       /** Sword of Hellfire / Shield of the Damned: the unit also takes damage. */
       selfDamage?: number;
       /**
@@ -1317,6 +1323,14 @@ export type CardOptionDefinition = {
    * Units.
    */
   requiresNeutralCombatStart?: boolean;
+  /**
+   * Targ of the Rampaging Ogre's top side: "Then, instead of discarding, put
+   * this card back into your hand." After the option's effect resolves the
+   * played card is returned to the owner's hand instead of staying in the
+   * discard pile (the cost cards it discarded stay discarded). Combat-reaction
+   * artifacts only — handled in the reaction-play resolution.
+   */
+  returnSelfToHand?: boolean;
   /**
    * Per-option target override for a CHOOSE_ONE card whose options strike
    * different sides. Ring of the Wayfarer's initiative side buffs a friendly
