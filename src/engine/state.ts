@@ -640,6 +640,19 @@ export type EffectDefinition =
       fields: number;
     }
   | {
+      /**
+       * View Earth (Basic Earth, Map): capture an enemy-owned Mine within
+       * `withinFields` hexes of the casting player's main Hero — the owner's
+       * Faction cube and the Mine's ongoing production are replaced with the
+       * caster's (no first-flag income, since the Mine was already flagged). The
+       * Power paid raises the reach (Power 0/1/2 -> 1/2/3 fields), encoded as the
+       * higher-cost options of the spell's CHOOSE_ONE. Resolved through the
+       * "view-earth" pending choice (which Mine to take).
+       */
+      type: "VIEW_EARTH";
+      withinFields: number;
+    }
+  | {
       /** Helm of Heavenly Enlightenment: an extra expert use this round. */
       type: "GAIN_EXPERT_USE";
       amount: number;
@@ -4252,6 +4265,7 @@ export type PendingChoice =
         | "diplomacy-skip"
         | "diplomacy-recruit"
         | "dimension-door"
+        | "view-earth"
         | "learning-level-up"
         | "fortune-boost"
         | "visions-boost"
@@ -4310,6 +4324,12 @@ export type PendingChoice =
        * option carries no destination).
        */
       dimensionDoor?: { heroId: HeroId; destinations: MapSpaceId[] };
+      /**
+       * view-earth: the casting Hero and the enemy-owned Mine fields in reach
+       * (index-aligned with the options; the final "Cancel" option carries no
+       * Mine). Resolving captures the chosen Mine for the caster.
+       */
+      viewEarth?: { heroId: HeroId; mineSpaceIds: MapSpaceId[] };
       /**
        * diplomacy-skip: the neutral fight Cyra's Diplomacy may skip. Option 0
        * uses the card (claim the field, no XP); option 1 fights normally.
