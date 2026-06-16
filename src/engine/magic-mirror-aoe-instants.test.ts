@@ -135,22 +135,32 @@ describe("Magic Mirror reflects an instant combat debuff off your unit", () => {
     expect(state.players.p1.discard).toContain("spell.magic_mirror");
   });
 
-  it("scales the bounced token with the Power paid into the Curse", () => {
-    // p2 casts Curse and pays a Power into the same attack window → −2 Defense.
-    let state = p2AttacksGriffins(["spell.magic_mirror"], ["spell.curse", "stat.power"]);
-    state = applyOk(state, reactionFor(state, "p2", "spell.curse")!.action);
-    const power = getLegalActions(state, "p2").find(
-      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "stat.power"
-    );
-    expect(power, "Power can be paid into the Curse").toBeTruthy();
-    state = applyOk(state, power!.action);
+  it("scales the bounced token with the Power paid into the Curse (per-caster pool)", () => {
+    // Curse is −1/−2/−3 Defense at Power 0/1/2; the bounced Corrosion token must
+    // carry the SAME magnitude the Curse had on the attack, re-derived from the
+    // caster's attack-Power pool at the moment it is reflected.
+    const corrosionForPower = (powerCards: number): number => {
+      let state = p2AttacksGriffins(
+        ["spell.magic_mirror"],
+        ["spell.curse", ...Array.from({ length: powerCards }, () => "stat.power")]
+      );
+      state = applyOk(state, reactionFor(state, "p2", "spell.curse")!.action);
+      for (let paid = 0; paid < powerCards; paid += 1) {
+        const power = getLegalActions(state, "p2").find(
+          (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "stat.power"
+        );
+        expect(power, "Power can be paid into the Curse").toBeTruthy();
+        state = applyOk(state, power!.action);
+      }
+      state = applyOk(state, reactionFor(state, "p1", "spell.magic_mirror", 0)!.action);
+      state = chooseRedirect(state, "p1", "unit_p2_skeletons");
+      state = passUntilSettled(state);
+      return tokenOn(state, "unit_p2_skeletons", "corrosion")?.amount ?? 0;
+    };
 
-    state = applyOk(state, reactionFor(state, "p1", "spell.magic_mirror", 0)!.action);
-    state = chooseRedirect(state, "p1", "unit_p2_skeletons");
-    state = passUntilSettled(state);
-
-    // Power-1 Curse is −2 Defense, so the Corrosion token carries 2.
-    expect(tokenOn(state, "unit_p2_skeletons", "corrosion")).toMatchObject({ amount: 2 });
+    expect(corrosionForPower(0)).toBe(1); // Power 0 → −1 Defense
+    expect(corrosionForPower(1)).toBe(2); // Power 1 → −2 Defense
+    expect(corrosionForPower(2)).toBe(3); // Power 2 → −3 Defense
   });
 
   it("does NOT offer Magic Mirror against an enemy self-buff (Bloodlust on the attacker)", () => {
@@ -261,6 +271,20 @@ describe("Magic Mirror reflects an instant combat debuff off your unit", () => {
     const roll = lastMainAttackRoll(state, "unit_p1_griffins");
     expect(roll && roll.type === "ATTACK_ROLLED" ? roll.attackBonus : null).toBe(0);
     expect(tokenOn(state, "unit_p2_skeletons", "weakness")).toMatchObject({ amount: -1, sourceName: "Weakness" });
+
+    // Power scales the bounced Weakness too: a Power-1 Weakness is −2 attack, so
+    // the Weakness token carries −2.
+    let scaled = p1Attacks(["spell.magic_mirror"], ["spell.weakness", "stat.power"]);
+    scaled = applyOk(scaled, reactionFor(scaled, "p2", "spell.weakness")!.action);
+    const wkPower = getLegalActions(scaled, "p2").find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "stat.power"
+    );
+    expect(wkPower, "Power can be paid into the Weakness").toBeTruthy();
+    scaled = applyOk(scaled, wkPower!.action);
+    scaled = applyOk(scaled, reactionFor(scaled, "p1", "spell.magic_mirror", 0)!.action);
+    scaled = chooseRedirect(scaled, "p1", "unit_p2_skeletons");
+    scaled = passUntilSettled(scaled);
+    expect(tokenOn(scaled, "unit_p2_skeletons", "weakness")).toMatchObject({ amount: -2 });
   });
 });
 
@@ -366,6 +390,61 @@ describe("Magic Mirror reflects an area damage spell that would catch your unit"
 
     expect(state.combat!.units.unit_p1_marksmen.damage).toBe(0);
     expect(state.combat!.units.unit_p2_skeletons.damage).toBeGreaterThan(0);
+    expect(state.eventLog.some((event) => event.type === "SPELL_REDIRECTED")).toBe(true);
+  });
+
+  it("recenters Frost Ring (a ring around a space) off your unit", () => {
+    // p2 casts Frost Ring on space 9; the ring hits the units ADJACENT to it (not
+    // the centre). p1's marksmen at 8 is adjacent, so it is about to be damaged.
+    function castFrostRing(p1Hand: string[]): GameState {
+      const state = createInitialGameState("mm-frost-ring");
+      state.players.p1.hand = [...p1Hand];
+      state.players.p2.hand = ["spell.frost_ring"];
+      state.activePlayerId = "p2";
+      state.combat!.activeUnitId = "unit_p2_dread_knights";
+      state.combat!.units.unit_p2_dread_knights.activatedThisRound = false;
+      state.combat!.units.unit_p2_dread_knights.position = 2; // caster, clear of both rings
+      state.combat!.units.unit_p1_marksmen.position = 8; // adjacent to space 9 → in the ring
+      state.combat!.units.unit_p1_marksmen.maxHealth = 20;
+      state.combat!.units.unit_p2_skeletons.position = 16; // far bronze redirect centre
+      state.combat!.units.unit_p2_vampires.position = 17; // adjacent to 16 → hit after redirect
+      state.combat!.units.unit_p2_vampires.maxHealth = 20;
+      state.combat!.units.unit_p1_griffins.position = 0; // clear of both rings
+      state.combat!.units.unit_p1_crusaders.position = 19; // clear of both rings
+      return applyOk(state, {
+        type: "CAST_SPELL",
+        playerId: "p2",
+        cardId: "spell.frost_ring",
+        target: { type: "space", position: 9 }
+      });
+    }
+
+    // Baseline: nobody mirrors → the ring around space 9 freezes the marksmen.
+    const baseline = passUntilSettled(castFrostRing([]));
+    expect(baseline.combat!.units.unit_p1_marksmen.damage).toBe(1);
+
+    // Reflected: the marksmen sits in the ring, so Magic Mirror is offered.
+    let state = castFrostRing(["spell.magic_mirror"]);
+    const mirror = reactionFor(state, "p1", "spell.magic_mirror", 0);
+    expect(mirror, "Magic Mirror is offered when a Frost Ring would freeze your unit").toBeTruthy();
+    state = applyOk(state, mirror!.action);
+
+    // Recenter the ring on the far skeletons (bronze); silver/gold are out of reach.
+    const choice = state.pendingChoice;
+    if (!choice || choice.type !== "ABILITY_TARGET_CHOICE" || choice.kind !== "spell-redirect") {
+      throw new Error("expected a spell-redirect choice");
+    }
+    expect(choice.candidateUnitIds).toContain("unit_p2_skeletons");
+    expect(choice.candidateUnitIds).not.toContain("unit_p2_vampires"); // silver
+    state = chooseRedirect(state, "p1", "unit_p2_skeletons");
+    state = passUntilSettled(state);
+
+    // The ring now circles space 16: the marksmen is spared and the vampires
+    // (adjacent to the new centre) take the freeze instead.
+    expect(state.combat!.units.unit_p1_marksmen.damage).toBe(0);
+    expect(state.combat!.units.unit_p2_vampires.damage).toBe(1);
+    // Frost Ring never hits its own centre, so the skeletons stay unharmed.
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(0);
     expect(state.eventLog.some((event) => event.type === "SPELL_REDIRECTED")).toBe(true);
   });
 

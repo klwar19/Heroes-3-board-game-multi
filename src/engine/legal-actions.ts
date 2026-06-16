@@ -283,6 +283,13 @@ export function spellRedirectTargets(
   );
 }
 
+/** Living units standing on any of `positions`. */
+function unitsOnPositions(combat: CombatState, positions: Set<number>): UnitId[] {
+  return Object.values(combat.units)
+    .filter((unit) => isUnitAlive(unit) && positions.has(unit.position))
+    .map((unit) => unit.id);
+}
+
 /**
  * The units an in-flight area Spell would (or could) damage — the set Magic
  * Mirror reads to decide whether one of your units "is about to be damaged".
@@ -292,6 +299,10 @@ export function spellRedirectTargets(
  *  - Fireball (unit target, AREA_DAMAGE_ADJACENT): the primary target plus every
  *    unit adjacent to it — the caster picks one of those adjacents as the splash,
  *    so any of them is a potential victim while the cast is pending.
+ *  - Frost Ring (space target, AREA_DAMAGE_PICK_ADJACENT): the units adjacent to
+ *    the centre — plus the centre unit when the ring includes it — friend or foe.
+ * Only a Spell CAST qualifies: a hero specialty reusing an area effect (Deemer's
+ * Meteor Shower, Xyron's Inferno) is never a Spell, so it is never reflectable.
  * Single-target casts have no splash and return [] (their primary is handled by
  * pendingSpellTargetForPlayer). Chain Lightning's forks are routed at resolution
  * and are intentionally not predicted here.
@@ -305,21 +316,22 @@ export function spellPotentialBlastUnitIds(
   if (!combat || stackItem.action.type !== "CAST_SPELL") {
     return [];
   }
-  const effect = cards[stackItem.action.cardId]?.effect;
-  if (!effect) {
+  const card = cards[stackItem.action.cardId];
+  if (card?.kind !== "spell") {
     return [];
   }
+  const effect = card.effect;
+  const target = stackItem.action.target;
 
-  if (effect.type === "INFERNO" && stackItem.action.target.type === "space") {
-    const centre = stackItem.action.target.position;
-    const blast = new Set<number>([centre, ...getOrthogonalNeighbors(centre)]);
-    return Object.values(combat.units)
-      .filter((unit) => isUnitAlive(unit) && blast.has(unit.position))
-      .map((unit) => unit.id);
+  // Inferno: the centre space and all orthogonal neighbours.
+  if (effect.type === "INFERNO" && target.type === "space") {
+    return unitsOnPositions(combat, new Set([target.position, ...getOrthogonalNeighbors(target.position)]));
   }
 
-  if (effect.type === "AREA_DAMAGE_ADJACENT" && stackItem.action.target.type === "unit") {
-    const primary = combat.units[stackItem.action.target.unitId];
+  // Fireball: the primary unit plus every unit adjacent to it (the caster picks
+  // one adjacent as the splash, so all of them are potential victims).
+  if (effect.type === "AREA_DAMAGE_ADJACENT" && target.type === "unit") {
+    const primary = combat.units[target.unitId];
     if (!primary) {
       return [];
     }
@@ -328,6 +340,25 @@ export function spellPotentialBlastUnitIds(
         (unit) => isUnitAlive(unit) && (unit.id === primary.id || isAdjacent(unit.position, primary.position))
       )
       .map((unit) => unit.id);
+  }
+
+  // Frost Ring (and any AREA_DAMAGE_PICK_ADJACENT cast): the centre's orthogonal
+  // neighbours, and the centre unit itself only when the effect includes it.
+  if (effect.type === "AREA_DAMAGE_PICK_ADJACENT") {
+    const centre =
+      target.type === "space"
+        ? target.position
+        : target.type === "unit"
+          ? combat.units[target.unitId]?.position
+          : undefined;
+    if (centre === undefined) {
+      return [];
+    }
+    const blast = new Set<number>(getOrthogonalNeighbors(centre));
+    if (effect.includeCenter) {
+      blast.add(centre);
+    }
+    return unitsOnPositions(combat, blast);
   }
 
   return [];
