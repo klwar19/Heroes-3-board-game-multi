@@ -386,6 +386,18 @@ export type ActiveEffectModifier =
        */
       type: "SPELL_DAMAGE_REDUCTION";
       amount: number;
+    }
+  | {
+      /**
+       * Disrupting Ray: while held, the unit "cannot use their special ability".
+       * getUnitAbilityDefinitions returns [] for a unit carrying this modifier,
+       * so every ability read — attack follow-ups, passives, activation
+       * abilities, printed immunities — sees nothing, for whatever abilities the
+       * unit has now OR gains later, until the suppression ends. Combat-scoped
+       * and removable (Dispel/Cure lift it). Read through effectAppliesToUnit, so
+       * a Tower Titan/Gargoyle that ignores ongoing effects is not suppressed.
+       */
+      type: "UNIT_ABILITY_SUPPRESSED";
     };
 
 export type ActiveEffectDefinition = {
@@ -894,7 +906,13 @@ export type EffectDefinition =
        * cost, the cost-gated grade pattern shared with Resurrection / Magic Mirror.
        */
       type: "IGNORE_DEFENSE";
-      grade: UnitGrade;
+      /** Fixed pierced grade (legacy/cost-gated form). */
+      grade?: UnitGrade;
+      /**
+       * Power→grade table (Frenzy): the pierced grade scales with the Power the
+       * caster pools into the attack window, re-derived at resolution like Slayer.
+       */
+      gradeByPower?: Record<number, UnitGrade>;
     }
   | {
       /**
@@ -1195,6 +1213,32 @@ export type EffectDefinition =
        */
       type: "VISIONS_SCRY";
       cardsByPower: Record<number, number>;
+    }
+  | {
+      /**
+       * Disrupting Ray Spell (Basic Air, Ongoing): until the end of the Combat
+       * the selected enemy unit cannot use its special ability. The reachable
+       * grade rises with the Power paid (0 → bronze, 1 → silver, 2 → gold) — the
+       * Anti-Magic/Blind gate; above it the cast does nothing. Backed by a
+       * combat-scoped UNIT_ABILITY_SUPPRESSED effect. As a single-target unit
+       * cast it can be deflected by Magic Mirror onto a new target.
+       */
+      type: "DISRUPTING_RAY";
+      gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
+       * Sacrifice Spell (Expert Fire, Activation): choose 1 of your damaged units
+       * (the heal target, grade-gated by the Power paid — 0/2/4 → bronze/silver/
+       * gold) and transfer its damage onto another of your units (the sacrifice,
+       * picked in a follow-up ABILITY_TARGET_CHOICE). The amount moved is
+       * min(heal target's damage, the sacrifice's remaining HP) — "up to as much
+       * as is needed for the other unit to perish": the heal target loses that
+       * much damage, the sacrifice takes it and perishes (a Pack flips to Few)
+       * when it reaches its remaining HP.
+       */
+      type: "SACRIFICE_TRANSFER";
+      gradeByPower: Record<number, UnitGrade>;
     };
 
 /**
@@ -1649,6 +1693,18 @@ export type GameAction =
        */
       type: "USE_PERMANENT_EXPERT";
       playerId: PlayerId;
+    }
+  | {
+      /**
+       * Basic X Magic (the in-play spell-fetch permanent): spend an expert use
+       * for +3 Power on a matching-school spell — a normal cast (into
+       * schoolPowerBonus) or an instant played into an attack (into the caster's
+       * attack-window Power pool). Unlike the card School-of-Magic expert it
+       * discards nothing; the fetch permanent stays in play.
+       */
+      type: "USE_SCHOOL_FETCH_EXPERT";
+      playerId: PlayerId;
+      school: SpellSchool;
     }
   | {
       /**
@@ -2753,6 +2809,15 @@ export type ResolutionStackItem = {
      */
     cancellableSpellInstants?: { cardId: CardId; playerId: PlayerId }[];
     /**
+     * Magic Mirror bounced an instant combat debuff (Curse/Weakness) onto a new
+     * unit. These are NOT ongoing effects or tokens — they are the instant
+     * itself, re-pointed: a one-shot stat delta that the attack maths apply to
+     * the named unit for THIS attack and (copied across) its retaliation, then
+     * vanish with the stack item. So nothing can Dispel or ignore them — only
+     * spell-immunity stops them, enforced by the redirect's target filter.
+     */
+    redirectedInstants?: { unitId: UnitId; stat: "attack" | "defense"; amount: number }[];
+    /**
      * Knowledge / Mysticism was played on this cast. The recall resolves
      * after the spell does: instants come back at once, ongoing spells only
      * when the effect they created ends.
@@ -2805,13 +2870,15 @@ export type ResolutionStackItem = {
      */
     attackPowerByPlayer?: Record<PlayerId, number>;
     /**
-     * Players whose Power-scaling spell instant in this attack has already been
-     * credited their standing spell Power (the once-per-turn Astrologers bonus,
-     * the once-per-round active-unit boost, and a School-of-Magic permanent's
-     * bonus for the spell's school) — the same Power a spell cast on your own
-     * turn receives. Tracked per player so each side is credited once.
+     * Frenzy's Power→grade table and its caster, kept on the attack so the
+     * pierced grade (bronze→silver→gold) is re-derived from the caster's final
+     * attack-window Power at resolution — Power paid after Frenzy keeps lifting
+     * it, exactly like Slayer's roll count.
      */
-    standingPowerSeededFor?: PlayerId[];
+    ignoreDefenseGradeByPower?: Record<number, CombatUnitState["grade"]>;
+    ignoreDefenseCasterId?: PlayerId;
+    /** Players who already spent their Basic X Magic +3 expert on this stack. */
+    schoolFetchExpertUsedBy?: PlayerId[];
     playedCardIds: CardId[];
   };
 };
@@ -3146,6 +3213,13 @@ export type CombatUnitState = {
   poisonCubes?: number;
   abilities: string[];
   /**
+   * Disrupting Ray: derived flag recomputed after every action from the unit's
+   * UNIT_ABILITY_SUPPRESSED active effects (syncAbilitySuppression). While set,
+   * getUnitAbilityDefinitions returns [] so the unit cannot use ANY special
+   * ability — current or future — until the suppression ends.
+   */
+  abilitiesSuppressed?: boolean;
+  /**
    * Specialty cards covering the unit card (Sandro's Cloak), bottom-up; the
    * top entry's statistics are the unit's current statistics. Printed
    * abilities stay inactive while a transform is on top.
@@ -3247,6 +3321,12 @@ export type AttackSequenceState = {
   attackKind: "melee" | "ranged";
   /** Whether the original target still owes its retaliation attack. */
   retaliationPending: boolean;
+  /**
+   * Magic Mirror bounced an instant debuff (Curse/Weakness) onto a unit during
+   * this attack: carried here so the same one-shot stat delta also applies to
+   * the retaliation, then vanishes (it is never an ongoing effect or token).
+   */
+  redirectedInstants?: { unitId: UnitId; stat: "attack" | "defense"; amount: number }[];
   /**
    * BINH Cerberi: remaining printed follow-up attacks (one full attack per
    * adjacent enemy), resolved one at a time before the retaliation.
@@ -4224,7 +4304,8 @@ export type PendingChoice =
         | "spell-redirect"
         | "enchanter-activation"
         | "faerie-damage"
-        | "chain-lightning";
+        | "chain-lightning"
+        | "sacrifice-transfer";
       abilityId: string | null;
       abilityName: string;
       prompt: string;
@@ -4250,17 +4331,17 @@ export type PendingChoice =
       /**
        * Magic Mirror reflecting an instant combat debuff played onto an attack
        * (Curse on your defender, Weakness on your attacker). The debuff was
-       * already lifted off your unit; once the new target is chosen it lands on
-       * that unit as a lasting combat token (corrosion for −defense, weakness
-       * for −attack), then the attack's reaction window reopens. Absent for a
-       * normal cast redirect, which re-points the pending Spell instead.
+       * already lifted off your unit; once the new target is chosen it is pushed
+       * onto the pending attack as a one-shot `redirectedInstants` stat delta
+       * (−defense for Curse, −attack for Weakness) covering this attack and its
+       * retaliation only — an instant, never an ongoing effect or token. Absent
+       * for a normal cast redirect, which re-points the pending Spell instead.
        */
       redirectInstant?: {
         stat: "attack" | "defense";
-        /** Signed stat delta the token carries (e.g. −2 for a Power-1 Curse). */
+        /** Signed stat delta the instant carries (e.g. −2 for a Power-1 Curse). */
         amount: number;
         sourceCardId: CardId;
-        sourceName: string;
       };
       /**
        * "area-pick" (Frost Ring / Meteor Shower VI): how many more adjacent units

@@ -94,7 +94,7 @@ import {
   startWarMachineRound
 } from "./permanents";
 import { createSeededRandom } from "./random";
-import { estatesGold, getRuleset, spellLimitFor } from "./ruleset";
+import { activeSchoolFetches, estatesGold, getRuleset, spellLimitFor } from "./ruleset";
 import {
   destroyFortification,
   getDemolishAbility,
@@ -126,6 +126,7 @@ import {
   makeActiveEffect,
   playerHasSpellTimingFreedom,
   releaseEndedOngoingCards,
+  syncAbilitySuppression,
   unitDealsElementalDamage,
   unitImmuneToParalysis
 } from "./active-effects";
@@ -157,6 +158,7 @@ import {
   isHandLockedInCombat,
   isUnitAlive,
   payablePowerCardIds,
+  playerHasAttackInstantOfSchool,
   reflectableAttackInstantForPlayer,
   rerollSourceAvailableFor,
   spellAbilitiesSuppressed,
@@ -798,10 +800,34 @@ function addAttackPower(stackItem: ResolutionStackItem, playerId: PlayerId, amou
 }
 
 /**
+ * Whether a Power-scaled Frenzy on this attack pierces the defender's Defense:
+ * the pierced grade is re-derived from the caster's FINAL pooled attack-window
+ * Power (so Power paid after Frenzy still counts), then compared to the
+ * defender's grade. Fixed-grade Frenzy sets ignoreDefense outright and is not
+ * handled here.
+ */
+function frenzyPierces(stackItem: ResolutionStackItem, defender: CombatUnitState): boolean {
+  const table = stackItem.modifiers.ignoreDefenseGradeByPower;
+  if (!table) {
+    return false;
+  }
+  const caster =
+    stackItem.modifiers.ignoreDefenseCasterId ??
+    (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
+      ? stackItem.action.playerId
+      : undefined);
+  if (!caster) {
+    return false;
+  }
+  const reached = gradeAtPower(table, attackPowerFor(stackItem, caster));
+  return reached !== null && gradeRank(defender.grade) <= gradeRank(reached);
+}
+
+/**
  * Whether a spell instant's effect draws from the attack-window Power pool —
  * the Power-scaling buffs/debuffs (Bloodlust, Curse, Weakness, Precision, the
- * scaled Bless bonus and Slayer's roll count). Frenzy (IGNORE_DEFENSE) and a
- * plain Bless do not, so they are never credited standing Power into the pool.
+ * scaled Bless bonus, Slayer's roll count and Frenzy's pierced grade). A plain
+ * (unscaled) Bless does not, so it is never credited standing Power.
  */
 function effectScalesWithAttackPool(effect: ReturnType<typeof getEffectiveCardEffect>): boolean {
   if (!effect) {
@@ -815,6 +841,9 @@ function effectScalesWithAttackPool(effect: ReturnType<typeof getEffectiveCardEf
   }
   if (effect.type === "IGNORE_ATTACK_DIE") {
     return Boolean(effect.attackBonusByPower);
+  }
+  if (effect.type === "IGNORE_DEFENSE") {
+    return Boolean(effect.gradeByPower);
   }
   return false;
 }
@@ -1896,12 +1925,26 @@ function getAttackStackDetails(
   const tokenAttack = tokenAttackBonus(attacker);
   const tokenDefense = tokenDefenseDelta(defender);
 
+  // Magic Mirror bounced an instant Curse/Weakness onto a unit: a one-shot stat
+  // delta that applies to this exact attack (and its retaliation, carried on the
+  // attackSequence) — read straight off the stack item like the instant it is.
+  const redirectedInstants = stackItem.modifiers.redirectedInstants ?? [];
+  const redirectedAttackDelta = redirectedInstants.reduce(
+    (sum, entry) => (entry.stat === "attack" && entry.unitId === attacker.id ? sum + entry.amount : sum),
+    0
+  );
+  const redirectedDefenseDelta = redirectedInstants.reduce(
+    (sum, entry) => (entry.stat === "defense" && entry.unitId === defender.id ? sum + entry.amount : sum),
+    0
+  );
+
   // Attack-card "ability lowers the target's defense" sources, applied after
   // corrosion, never on retaliations or printed follow-up attacks: Behemoths'
   // flat crush, and the Manticore "ignore the target's printed Defense" (which
   // subtracts the defender's printed Defense value). Both are floored together
   // so the effective Defense never drops below 0.
-  const defenseBonusBeforeAbility = stackItem.modifiers.defenseBonus + activeDefenseBonus + tokenDefense;
+  const defenseBonusBeforeAbility =
+    stackItem.modifiers.defenseBonus + activeDefenseBonus + tokenDefense + redirectedDefenseDelta;
   const defenseReductionSource =
     !isRetaliation && !abilityAttack ? getAttackDefenseReductionAbility(attacker) : null;
   const ignoreCardDefenseSource =
@@ -1945,7 +1988,7 @@ function getAttackStackDetails(
   // contributions to 0 while leaving every negative one (and the printed
   // attack) intact.
   const dealsElemental = unitDealsElementalDamage(state, attacker);
-  const cardAttackBonus = stackItem.modifiers.attackBonus + activeAttackBonus;
+  const cardAttackBonus = stackItem.modifiers.attackBonus + activeAttackBonus + redirectedAttackDelta;
   const effectiveCardAttackBonus = dealsElemental ? Math.min(0, cardAttackBonus) : cardAttackBonus;
   const effectiveTokenAttack = dealsElemental ? Math.min(0, tokenAttack) : tokenAttack;
 
@@ -1970,8 +2013,11 @@ function getAttackStackDetails(
     // Mummies "ignore the result on the Attack die" — their own attack die is
     // treated as 0, exactly like Bless / Elemental damage.
     ignoreAttackDie: Boolean(stackItem.modifiers.ignoreAttackDie) || dealsElemental || hasIgnoreOwnAttackDie(attacker),
-    // Frenzy sets modifiers.ignoreDefense; Elemental damage ignores Defense innately.
-    ignoreDefense: dealsElemental || Boolean(stackItem.modifiers.ignoreDefense),
+    // Frenzy: legacy fixed-grade sets modifiers.ignoreDefense outright; the
+    // Power-scaled form re-derives its pierced grade now from the caster's final
+    // pooled Power, so Power paid after Frenzy was played still counts. Elemental
+    // damage ignores Defense innately.
+    ignoreDefense: dealsElemental || Boolean(stackItem.modifiers.ignoreDefense) || frenzyPierces(stackItem, defender),
     damageReduction: siegeRangedDamageReduction(combat, attacker, defender, attackKind),
     defenseReductionAbility,
     abilityAttack
@@ -2613,7 +2659,12 @@ function finishResolvedAttack(
       defenderId: details.defender.id,
       attackKind: details.attackKind,
       retaliationPending: shouldRetaliate(details.attacker, details.defender, details.attackKind),
-      afterRetaliationAbilityAttack: getAfterRetaliationAttack(details.attacker, details.defender)
+      afterRetaliationAbilityAttack: getAfterRetaliationAttack(details.attacker, details.defender),
+      // A Magic-Mirror-bounced Curse/Weakness on this attack carries to the
+      // retaliation so it strikes the new target there too, then is gone.
+      ...(stackItem.modifiers.redirectedInstants
+        ? { redirectedInstants: stackItem.modifiers.redirectedInstants }
+        : {})
     };
   }
 
@@ -4832,6 +4883,13 @@ function openRetaliationWindow(
     defenderId: attacker.id
   };
   const stackItem = makeStackItem(state, retaliationAction);
+  // A Magic-Mirror-bounced Curse/Weakness from the original attack applies to its
+  // retaliation too (e.g. the bounced Curse lowers the now-defending attacker's
+  // Defense as your unit strikes back). One-shot, gone when this stack item pops.
+  const redirectedInstants = state.combat.attackSequence?.redirectedInstants;
+  if (redirectedInstants && redirectedInstants.length > 0) {
+    stackItem.modifiers.redirectedInstants = redirectedInstants;
+  }
   state.stack.push(stackItem);
 
   const attackKind = getAttackKind(defender, attacker);
@@ -5407,6 +5465,82 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
         openTeleportChoice(state, stackItem.action.playerId, target);
+      }
+    }
+
+    // Disrupting Ray: until the end of the Combat the selected enemy unit cannot
+    // use its special ability. Grade-gated like Blind (0 → bronze, 1 → silver,
+    // 2 → gold); above the unlocked grade the cast does nothing. Backed by a
+    // combat-scoped UNIT_ABILITY_SUPPRESSED effect. The target read here is the
+    // pending cast's target, so a Magic-Mirror redirect lands the suppression on
+    // the bounced unit instead.
+    if (card?.effect.type === "DISRUPTING_RAY" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const target = state.combat.units[stackItem.action.target.unitId];
+      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        createActiveEffect(
+          state,
+          {
+            name: card.name,
+            scope: "unit",
+            duration: { type: "combat" },
+            polarity: "negative",
+            removable: true,
+            modifiers: [{ type: "UNIT_ABILITY_SUPPRESSED" }]
+          },
+          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          stackItem.action.playerId,
+          stackItem.action.target
+        );
+      }
+    }
+
+    // Sacrifice: transfer the chosen (damaged, grade-gated) unit's wounds onto
+    // another of your units, which perishes. The heal target is the cast target;
+    // the sacrifice is picked in a follow-up ABILITY_TARGET_CHOICE. Grade-gated
+    // (0/2/4 → bronze/silver/gold) on the HEAL target; above the unlocked grade,
+    // or with nothing to transfer / no other unit to spend, the cast does nothing.
+    if (card?.effect.type === "SACRIFICE_TRANSFER" && state.combat && stackItem.action.target.type === "unit") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+      const healTarget = state.combat.units[stackItem.action.target.unitId];
+      const eligible =
+        Boolean(healTarget) &&
+        maxGrade !== null &&
+        gradeRank(healTarget!.grade) <= gradeRank(maxGrade) &&
+        healTarget!.damage > 0;
+      const candidates = eligible
+        ? Object.values(state.combat.units).filter(
+            (unit) =>
+              unit.id !== healTarget!.id &&
+              unit.controllerId === stackItem.action.playerId &&
+              isUnitAlive(unit)
+          )
+        : [];
+      if (healTarget && candidates.length > 0) {
+        const choiceId = `choice_${nextEventNumber(state)}`;
+        state.pendingChoice = {
+          id: choiceId,
+          type: "ABILITY_TARGET_CHOICE",
+          playerId: stackItem.action.playerId,
+          kind: "sacrifice-transfer",
+          abilityId: card.id,
+          abilityName: card.name,
+          prompt: `${card.name}: choose another of your units to sacrifice — it absorbs ${healTarget.cardName}'s wounds and may perish.`,
+          sourceUnitId: healTarget.id,
+          anchorUnitId: healTarget.id,
+          candidateUnitIds: candidates.map((unit) => unit.id),
+          optional: false
+        };
+        appendEvent(state, {
+          type: "PENDING_CHOICE_CREATED",
+          choiceId,
+          choiceType: "ABILITY_TARGET_CHOICE",
+          playerId: stackItem.action.playerId,
+          sourceEffectIds: [],
+          message: `${card.name}: choose a unit to sacrifice.`
+        });
       }
     }
 
@@ -6177,22 +6311,24 @@ function applyReactionPlayCore(
 
   // Standing spell Power for a Power-scaling spell instant played as a reaction
   // into an attack — by EITHER side (the attacker's Bloodlust/Bless/Precision/
-  // Slayer, the defender's Curse/Weakness): credit the once-per-turn Astrologers
-  // bonus, the once-per-round active-unit boost, and a School-of-Magic permanent's
-  // bonus for the spell's school — the same Power castSpell seeds for a spell cast
-  // on your turn. Added to THAT caster's pool once (before noteSpellCast advances
-  // the "first spell" counters) so the instant about to apply reads it like Power
-  // paid alongside it; non-pool spells (Frenzy) are never credited it here.
+  // Slayer/Frenzy, the defender's Curse/Weakness): credit the once-per-turn
+  // Astrologers bonus, the once-per-round active-unit boost, and a School-of-Magic
+  // permanent's bonus for the spell's school — the same Power castSpell seeds for
+  // a spell cast on your turn. Added to THAT caster's pool before noteSpellCast
+  // advances the "first spell" counters, so the instant about to apply reads it
+  // like Power paid alongside it. Seeded for EVERY pool-scaling spell (no
+  // once-per-attack gate): standingSpellPower itself gates the Astrologers/Magi
+  // "first spell" bonuses on those counters, so a second spell that turn keeps
+  // its School-of-Magic bonus (always on) while never re-counting the first-spell
+  // boosts.
   if (
     card.kind === "spell" &&
     !play.fromScroll &&
     player &&
     stackItem &&
     isAttackStackItem(stackItem) &&
-    effectScalesWithAttackPool(effect) &&
-    !(stackItem.modifiers.standingPowerSeededFor ?? []).includes(playerId)
+    effectScalesWithAttackPool(effect)
   ) {
-    (stackItem.modifiers.standingPowerSeededFor ??= []).push(playerId);
     const standing = standingSpellPower(state, playerId, card);
     if (standing > 0) {
       addAttackPower(stackItem, playerId, standing);
@@ -6378,8 +6514,7 @@ function applyReactionPlayCore(
       redirectInstant: {
         stat: found.stat,
         amount: signedAmount,
-        sourceCardId: found.cardId,
-        sourceName: instantCard?.name ?? "Spell"
+        sourceCardId: found.cardId
       }
     };
     appendEvent(state, {
@@ -6645,17 +6780,22 @@ function applyReactionPlayCore(
   }
 
   // Frenzy: the pending attack ignores the attacked unit's Defense (counts as 0).
-  // Gated by the defender's grade — the chosen option's `powerCost` (paid from
-  // standing Power + the Power value of discarded power-source cards) reaches a
-  // fixed grade. Casting an option whose grade the defender exceeds spends the
-  // card but pierces nothing.
+  // Gated by the defender's grade. With gradeByPower it scales with the caster's
+  // pooled attack-window Power: the table + caster are stored and the pierced
+  // grade is re-derived at resolution (so Power paid after Frenzy keeps lifting
+  // bronze→silver→gold). The legacy fixed-grade form sets ignoreDefense at once.
   if (
     effect.type === "IGNORE_DEFENSE" &&
     (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
-    const defender = state.combat?.units[stackItem.action.defenderId];
-    if (defender && gradeRank(defender.grade) <= gradeRank(effect.grade)) {
-      stackItem.modifiers.ignoreDefense = true;
+    if (effect.gradeByPower) {
+      stackItem.modifiers.ignoreDefenseGradeByPower = effect.gradeByPower;
+      stackItem.modifiers.ignoreDefenseCasterId = playerId;
+    } else if (effect.grade) {
+      const defender = state.combat?.units[stackItem.action.defenderId];
+      if (defender && gradeRank(defender.grade) <= gradeRank(effect.grade)) {
+        stackItem.modifiers.ignoreDefense = true;
+      }
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
@@ -6817,6 +6957,78 @@ function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, ca
   state.priorityPlayerId = keepPriority;
 }
 
+/** Basic X Magic's expert side: +3 Power for a matching-school spell. */
+const SCHOOL_FETCH_EXPERT_POWER = 3;
+
+/**
+ * Basic X Magic (the in-play spell-fetch permanent): spend an expert use to add
+ * +3 Power to a matching-school spell you are casting now — a normal cast (into
+ * the cast's School power) or an instant played into an attack (into your own
+ * attack-window Power pool, re-derived like any other paid Power). The fetch
+ * permanent stays in play; nothing is discarded. Once per stack per player.
+ */
+function applySchoolFetchExpert(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_SCHOOL_FETCH_EXPERT" }>
+): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+  if (!activeSchoolFetches(state, action.playerId).includes(action.school as "air" | "earth" | "fire" | "water")) {
+    throw new Error("No Basic Magic of that school is in play.");
+  }
+
+  const stackItem = state.stack.at(-1);
+  if (!stackItem) {
+    throw new Error("The +3 expert needs one of your spells being cast.");
+  }
+
+  const usedBy = (stackItem.modifiers.schoolFetchExpertUsedBy ??= []);
+  if (usedBy.includes(action.playerId)) {
+    throw new Error("The Basic Magic +3 expert is already applied here.");
+  }
+
+  const expertUsesLeft =
+    player.limits.expertUses +
+    (player.combatStats.expertUseBonusThisRound ?? 0) -
+    player.combatStats.expertUsesSpentThisRound;
+  if (expertUsesLeft <= 0) {
+    throw new Error("No expert uses are available this combat round.");
+  }
+
+  if (stackItem.action.type === "CAST_SPELL") {
+    const castSchools = cardLibrary[stackItem.action.cardId]?.spellSchools ?? [];
+    const matchesCast = castSchools.includes(action.school) || castSchools.includes("any");
+    if (stackItem.action.playerId !== action.playerId || !matchesCast) {
+      throw new Error("That cast does not match the Basic Magic school.");
+    }
+    if (stackItem.modifiers.scrollLocked) {
+      throw new Error("A Spell Scroll cast is locked to Power 0.");
+    }
+    stackItem.modifiers.schoolPowerBonus = (stackItem.modifiers.schoolPowerBonus ?? 0) + SCHOOL_FETCH_EXPERT_POWER;
+  } else if (isAttackStackItem(stackItem)) {
+    if (!playerHasAttackInstantOfSchool(stackItem, action.playerId, action.school)) {
+      throw new Error("You have no matching-school spell instant on this attack to empower.");
+    }
+    addAttackPower(stackItem, action.playerId, SCHOOL_FETCH_EXPERT_POWER);
+    recomputePowerScaledAttackInstants(stackItem);
+  } else {
+    throw new Error("The +3 expert needs one of your spells.");
+  }
+
+  usedBy.push(action.playerId);
+  player.combatStats.expertUsesSpentThisRound += 1;
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId: action.playerId,
+    cardId: `ability.basic_${action.school}_magic` as CardId,
+    timing: "instant",
+    mode: "expert",
+    effectAmount: SCHOOL_FETCH_EXPERT_POWER
+  });
+}
+
 /**
  * Closes the end-of-combat notice for an adventure combat: the next
  * automation pass runs finalizeAdventureCombat (XP, unit flips, the visit).
@@ -6861,11 +7073,13 @@ function playReaction(
           ? stackItem.action.playerId
           : undefined;
       // This player may keep empowering a Power-scaling spell instant THEY cast
-      // into the attack — the attacker's Bloodlust/Slayer, or the defender's
-      // Curse/Weakness. Lone Power with nothing of yours to feed still dissipates.
+      // into the attack — the attacker's Bloodlust/Slayer/Frenzy, or the
+      // defender's Curse/Weakness. Lone Power with nothing of yours to feed still
+      // dissipates.
       const empowerable =
         (stackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === action.playerId) ||
-        (attackOwner === action.playerId && stackItem?.modifiers.slayerRollsByPower !== undefined);
+        (attackOwner === action.playerId && stackItem?.modifiers.slayerRollsByPower !== undefined) ||
+        stackItem?.modifiers.ignoreDefenseCasterId === action.playerId;
       if (!empowerable) {
         throw new Error("Power can only be played into an attack together with a Spell card.");
       }
@@ -9049,20 +9263,17 @@ function chooseAbilityTarget(
 
     // (a) Reflecting an instant combat debuff off your attacked unit: the malus
     // was already lifted from your unit when the card was played; now it lands
-    // on the chosen unit as a lasting token, then the attack's window resumes.
+    // on the chosen unit, then the attack's window resumes. It stays an INSTANT —
+    // a one-shot stat delta the attack maths read for this attack and (carried
+    // through attackSequence) its retaliation, then it vanishes with the stack.
+    // It is NOT an ongoing effect or a token, so nothing can Dispel or ignore it;
+    // only spell-immunity stops it, already enforced by the redirect's target
+    // filter (you cannot bounce it onto a spell-immune unit).
+    if (choice.redirectInstant && top && chosen && isUnitAlive(chosen)) {
+      const { stat, amount } = choice.redirectInstant;
+      (top.modifiers.redirectedInstants ??= []).push({ unitId: chosen.id, stat, amount });
+    }
     if (choice.redirectInstant) {
-      if (chosen && isUnitAlive(chosen)) {
-        const { stat, amount, sourceName } = choice.redirectInstant;
-        if (stat === "defense") {
-          // Curse: −defense → a Corrosion token (positive magnitude, floored at 0).
-          placeCombatToken(state, chosen, "corrosion", Math.abs(amount), sourceName);
-        } else if (amount < 0) {
-          // Weakness: −attack → a Weakness token (signed; the milder is kept).
-          placeCombatToken(state, chosen, "weakness", amount, sourceName);
-        } else {
-          placeCombatToken(state, chosen, "attack", amount, sourceName);
-        }
-      }
       appendEvent(state, {
         type: "SPELL_REDIRECTED",
         playerId: action.playerId,
@@ -9112,6 +9323,34 @@ function chooseAbilityTarget(
     if (choice.anchorUnitId) {
       advanceChainLightning(state, action.playerId, chainCard, choice.anchorUnitId, reachable, remaining.slice(1));
     }
+    return;
+  }
+
+  // Sacrifice: move the heal target's damage onto the chosen sacrifice unit —
+  // up to the sacrifice's remaining HP ("as much as is needed for it to
+  // perish"). The heal target loses that much damage; the sacrifice takes it
+  // and perishes (a Pack flips to Few) when it reaches its remaining HP.
+  if (choice.kind === "sacrifice-transfer") {
+    const healTarget = choice.sourceUnitId ? combat.units[choice.sourceUnitId] : undefined;
+    const sacrifice = combat.units[action.targetUnitId];
+    if (healTarget && sacrifice && isUnitAlive(healTarget) && isUnitAlive(sacrifice)) {
+      const source = { type: "card" as const, cardId: choice.abilityId ?? "", controllerId: action.playerId };
+      const transfer = Math.min(healTarget.damage, sacrifice.maxHealth - sacrifice.damage);
+      if (transfer > 0) {
+        healUnitDamage(state, source, { type: "unit", unitId: healTarget.id }, transfer);
+        sacrifice.damage += transfer;
+        noteUnitDamagedForTokens(state, sacrifice, transfer);
+        appendEvent(state, {
+          type: "DAMAGE_ASSIGNED",
+          source,
+          target: { type: "unit", unitId: sacrifice.id },
+          amount: transfer,
+          damageKind: "effect"
+        });
+        markUnitRemovedIfNeeded(state, sacrifice);
+      }
+    }
+    finishCombatIfNeeded(state);
     return;
   }
 
@@ -10239,6 +10478,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "START_ADVENTURE",
   "BUY_WAR_MACHINE",
   "USE_PERMANENT_EXPERT",
+  "USE_SCHOOL_FETCH_EXPERT",
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
   "HALL_OF_VALHALLA_BOOST",
@@ -10394,6 +10634,10 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         // The discarded permanent disappears from the open window's options.
         refreshReactionWindowLegalReactions(nextState, cards);
         break;
+      case "USE_SCHOOL_FETCH_EXPERT":
+        applySchoolFetchExpert(nextState, action);
+        refreshReactionWindowLegalReactions(nextState, cards);
+        break;
       case "DISCARD_PERMANENT":
         discardPermanentVoluntarily(nextState, action);
         break;
@@ -10515,6 +10759,13 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       message: error instanceof Error ? error.message : "The action could not be applied."
     });
   }
+
+  // Disrupting Ray: refresh every unit's ability-suppression flag from the live
+  // UNIT_ABILITY_SUPPRESSED effects, so the ability chokepoint
+  // (getUnitAbilityDefinitions) sees the current state however the effect was
+  // just added (a cast) or removed (Dispel, combat/round end) — before any
+  // automation or future action reads the unit's abilities.
+  syncAbilitySuppression(nextState);
 
   try {
     runAdventureAutomations(nextState, cards);

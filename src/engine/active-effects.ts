@@ -399,6 +399,52 @@ export function unitIsBerserk(activeEffects: ActiveEffectState[], unit: CombatUn
 }
 
 /**
+ * Disrupting Ray: whether the unit currently holds a UNIT_ABILITY_SUPPRESSED
+ * effect — its special abilities are switched off until the effect ends. Read
+ * through effectAppliesToUnit, so a Tower Titan/Gargoyle that ignores the
+ * ongoing effect is not suppressed.
+ */
+export function unitSpecialAbilitySuppressed(
+  activeEffects: ActiveEffectState[],
+  unit: CombatUnitState
+): boolean {
+  return activeEffects.some(
+    (effect) =>
+      effectAppliesToUnit(effect, unit) &&
+      effect.modifiers.some((modifier) => modifier.type === "UNIT_ABILITY_SUPPRESSED")
+  );
+}
+
+/**
+ * Refreshes every combat unit's `abilitiesSuppressed` derived flag from the
+ * live UNIT_ABILITY_SUPPRESSED effects. Run after every action so the flag the
+ * ability chokepoint (getUnitAbilityDefinitions) reads is always in sync with
+ * the authoritative activeEffects — however the effect was just added (a
+ * Disrupting Ray cast) or removed (Dispel, combat/round end). Keeping the flag
+ * off the unit by default leaves it absent on snapshots that never suppress.
+ *
+ * Two passes: clear every flag first, then recompute. With all flags cleared,
+ * the suppression test below reads each unit's RAW abilities, so a Tower
+ * Titan's "ignore every ongoing effect" / a Gargoyle's "ignore ongoing spell
+ * effects" passive (honoured inside effectAppliesToUnit) is always visible when
+ * we decide whether the suppression even applies — those units shrug Disrupting
+ * Ray off and are never flagged, with no dependency on the previous flag value.
+ */
+export function syncAbilitySuppression(state: GameState): void {
+  if (!state.combat) {
+    return;
+  }
+  for (const unit of Object.values(state.combat.units)) {
+    delete unit.abilitiesSuppressed;
+  }
+  for (const unit of Object.values(state.combat.units)) {
+    if (unitSpecialAbilitySuppressed(state.activeEffects, unit)) {
+      unit.abilitiesSuppressed = true;
+    }
+  }
+}
+
+/**
  * Expires the activation-scoped effects bound to `unitId` (Mirth's
  * "this Activation", Forgetfulness's "its next activation") when that unit's
  * activation ends — including when the activation is skipped.
