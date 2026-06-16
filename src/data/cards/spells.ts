@@ -615,12 +615,24 @@ export const spellCards: CardLibrary = {
     implementationStatus: "implemented",
     source: spellSource("resurrection")
   },
-  // Magic Mirror is an instant reaction to an enemy Spell that targets one of
-  // your units: choose a new target for that Spell, gated by the Power paid
-  // (0 → bronze, 1 → silver, 2 → gold — one option per grade, like
-  // Resurrection). The new target is picked in a follow-up choice; the Spell
-  // then resolves against it. Casting Magic Mirror counts as your Spell for the
-  // combat round (Expert Knowledge / Intelligence raise or waive that limit).
+  // Magic Mirror is an instant reaction when one of your units is about to be
+  // TARGETED or DAMAGED by an enemy Spell: choose a new target, gated by the
+  // Power paid (0 → bronze, 1 → silver, 2 → gold — one option per grade, like
+  // Resurrection), picked in a follow-up choice. The engine fires it in three
+  // situations (see getMagicMirrorReactions / the REDIRECT_SPELL handlers):
+  //  - a single-target cast aimed at your unit (Magic Arrow, Implosion, …) — the
+  //    Spell re-points and resolves against the chosen unit;
+  //  - an AREA cast that would damage your unit (Fireball's splash, Inferno's
+  //    blast) even when its primary target is an enemy unit or a bare space — the
+  //    blast recenters on the chosen unit (Inferno → that unit's space). Hero
+  //    SPECIALTY damage (Xyron's Inferno, Solmyr's Chain Lightning) is not a Spell
+  //    cast and is NOT reflectable; nor are Chain Lightning's resolution-time forks;
+  //  - an instant combat debuff layered onto an attack (Curse on your defender,
+  //    Weakness on your attacker) — it is lifted off your unit and lands on the
+  //    chosen unit as a lasting token, then the attack's window resumes. Enemy
+  //    self-buffs (Bloodlust/Bless/Precision target the caster's OWN unit) never
+  //    fire it. Casting Magic Mirror counts as your Spell for the combat round
+  //    (Expert Knowledge / Intelligence raise or waive that limit).
   "spell.magic_mirror": {
     id: "spell.magic_mirror",
     name: "Magic Mirror",
