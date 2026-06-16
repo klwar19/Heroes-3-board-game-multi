@@ -78,6 +78,21 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
     };
   }
 
+  // Quicksand / Land Mine placement: the armed/decoy split the caster is laying
+  // down stays private to them, so an opponent never learns which of the
+  // face-down tokens are real before a unit springs one.
+  if (
+    choice.type === "OPTION_CHOICE" &&
+    choice.context === "place-battlefield-tokens" &&
+    choice.playerId !== viewerPlayerId &&
+    choice.placeTokens
+  ) {
+    return {
+      ...cloneSerializable(choice),
+      placeTokens: { ...choice.placeTokens, armedSlots: choice.placeTokens.armedSlots.map(() => false) }
+    };
+  }
+
   // Genies' Wish: the Spells dug out of the controller's own deck stay private
   // to them — opponents only learn how many Spells were offered.
   if (
@@ -171,12 +186,29 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
       }
     : null;
 
+  // Face-down traps (Quicksand / Land Mine) keep their position and kind public
+  // — the token sits on the board — but whether each is armed or a decoy stays
+  // hidden from everyone but its controller until a unit reveals it.
+  const combat = base.combat
+    ? {
+        ...base.combat,
+        battlefieldTokens: base.combat.battlefieldTokens?.map((token) =>
+          token.controllerId !== viewerPlayerId &&
+          !token.revealed &&
+          (token.kind === "quicksand" || token.kind === "land_mine")
+            ? { ...token, armed: undefined }
+            : token
+        )
+      }
+    : base.combat;
+
   return {
     ...base,
     viewerPlayerId,
     players,
     decks,
     adventure,
+    combat,
     reactionWindow: getVisibleReactionWindow(base.reactionWindow, viewerPlayerId),
     pendingChoice: getVisiblePendingChoice(base.pendingChoice, viewerPlayerId)
   };

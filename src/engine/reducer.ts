@@ -73,7 +73,8 @@ import {
   getBattlefieldDistance,
   getBattlefieldLabel,
   getOrthogonalNeighbors,
-  isBattlefieldPosition
+  isBattlefieldPosition,
+  planMovePath
 } from "./battlefield";
 import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
@@ -148,8 +149,10 @@ import {
   canPlayerBuildStructure,
   getAttackKind,
   getAttackRollMode,
+  getBlockedSpaces,
   getLegalActions,
   getLegalMoveDestinations,
+  getUnitMoveRange,
   combatEnemyImposesPowerTax,
   getLegalReactionsForTrigger,
   getNextUnitToActivate,
@@ -227,6 +230,8 @@ import type {
   AttackRollCandidate,
   AttackRollMode,
   BuildingLibrary,
+  BattlefieldTokenKind,
+  BattlefieldTokenState,
   CardDefinition,
   EffectDurationDefinition,
   CardId,
@@ -4087,6 +4092,227 @@ function resolveTeleportChoice(
   finishCombatIfNeeded(state);
 }
 
+// ---------------------------------------------------------------------------
+// Battlefield-obstacle Spells: Force Field, Fire Wall, Quicksand, Land Mine.
+// Each places a token on a Combat-board space (see BattlefieldTokenState). The
+// trigger logic lives in moveUnit/walkMoveThroughTokens; this block only places
+// the tokens, and for Quicksand/Land Mine runs the caster's "place the rest"
+// picker.
+// ---------------------------------------------------------------------------
+
+/** Adds a battlefield token to the combat board and announces it. */
+function addBattlefieldToken(state: GameState, token: Omit<BattlefieldTokenState, "id">): BattlefieldTokenState {
+  const combat = state.combat;
+  if (!combat) {
+    throw new Error("No combat to place a battlefield token in.");
+  }
+  const placed: BattlefieldTokenState = { ...token, id: `bftoken_${nextEventNumber(state)}` };
+  combat.battlefieldTokens = [...(combat.battlefieldTokens ?? []), placed];
+  appendEvent(state, {
+    type: "BATTLEFIELD_TOKEN_PLACED",
+    playerId: placed.controllerId,
+    tokenId: placed.id,
+    kind: placed.kind,
+    position: placed.position
+  });
+  return placed;
+}
+
+/**
+ * Lifts every Force Field whose timed duration ends with `finishedRound` (a
+ * Power 0 field after this round, a Power 1 field after the next). Fire Wall,
+ * Quicksand and Land Mine carry no expiry — they last the whole Combat and go
+ * when the combat state does.
+ */
+function expireBattlefieldTokensAtRoundEnd(state: GameState, finishedRound: number): void {
+  const combat = state.combat;
+  if (!combat?.battlefieldTokens?.length) {
+    return;
+  }
+  const expiring = combat.battlefieldTokens.filter((token) => token.expiresAtCombatRoundEnd === finishedRound);
+  if (expiring.length === 0) {
+    return;
+  }
+  combat.battlefieldTokens = combat.battlefieldTokens.filter((token) => token.expiresAtCombatRoundEnd !== finishedRound);
+  for (const token of expiring) {
+    appendEvent(state, {
+      type: "BATTLEFIELD_TOKEN_EXPIRED",
+      tokenId: token.id,
+      kind: token.kind,
+      position: token.position
+    });
+  }
+}
+
+/** The combat round at whose end a Force Field of the given duration lifts (undefined = whole combat). */
+function forceFieldExpiry(combat: CombatState, duration: EffectDurationDefinition): number | undefined {
+  if (duration.type === "current-combat-round") {
+    return combat.round;
+  }
+  if (duration.type === "next-combat-round") {
+    return combat.round + 1;
+  }
+  return undefined;
+}
+
+/** Empty board spaces a new token may be placed on (no unit, obstacle, fortification or other token). */
+function emptyTokenSpaces(combat: CombatState): number[] {
+  const positions: number[] = [];
+  for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+    if (!isSpaceBlockedForSummon(combat, position)) {
+      positions.push(position);
+    }
+  }
+  return positions;
+}
+
+/**
+ * The shuffled armed/decoy assignment for a Quicksand / Land Mine set: half the
+ * `count` tokens are armed and half are decoys, mixed with the combat's seeded
+ * RNG so the result is deterministic and server-authoritative (the opponent
+ * never sees it — see getPlayerView). Tokens are assigned these flags in
+ * placement order.
+ */
+function makeArmedSlots(state: GameState, count: number): boolean[] {
+  const slots: boolean[] = [];
+  const armedCount = Math.floor(count / 2);
+  for (let index = 0; index < count; index += 1) {
+    slots.push(index < armedCount);
+  }
+  const rng = createSeededRandom(`${state.combat?.dice.seed ?? "tokens"}:armed:${nextEventNumber(state)}`);
+  for (let index = slots.length - 1; index > 0; index -= 1) {
+    const swap = rng.nextInt(0, index);
+    [slots[index], slots[swap]] = [slots[swap], slots[index]];
+  }
+  return slots;
+}
+
+/**
+ * Opens (or re-opens) the caster's "place the next Quicksand / Land Mine token"
+ * picker. Each pick drops one token on a chosen empty space, taking its
+ * armed/decoy flag from `armedSlots[placedCount]`; the picker re-opens until the
+ * whole set is down, the player stops, or the board runs out of empty spaces
+ * ("discard any leftover Tokens"). Returns false when nothing remains to place.
+ */
+function openTokenPlacementChoice(
+  state: GameState,
+  playerId: PlayerId,
+  kind: "quicksand" | "land_mine",
+  armedSlots: boolean[],
+  placedCount: number,
+  triggerDamage: number
+): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+  const remaining = armedSlots.length - placedCount;
+  const positions = emptyTokenSpaces(combat);
+  if (remaining <= 0 || positions.length === 0) {
+    return false;
+  }
+
+  const spellName = kind === "quicksand" ? "Quicksand" : "Land Mine";
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `${spellName}: place a token on an empty space (${remaining} left), or stop.`,
+    options: [
+      ...positions.map((position) => ({ label: `Place at ${getBattlefieldLabel(position)}` })),
+      { label: "Stop placing tokens" }
+    ],
+    context: "place-battlefield-tokens",
+    placeTokens: { kind, positions, armedSlots, placedCount, remaining, triggerDamage },
+    returnPhase: "combat"
+  };
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId,
+    sourceEffectIds: [],
+    message: `${state.players[playerId]?.name ?? playerId} places ${spellName} tokens.`
+  });
+  return true;
+}
+
+/** Begins a Quicksand / Land Mine cast: drop the first token on the cast's space, then open the picker for the rest. */
+function beginHiddenTokenPlacement(
+  state: GameState,
+  playerId: PlayerId,
+  kind: "quicksand" | "land_mine",
+  count: number,
+  triggerDamage: number,
+  firstPosition: number
+): void {
+  const combat = state.combat;
+  if (!combat || count <= 0 || isSpaceBlockedForSummon(combat, firstPosition)) {
+    return;
+  }
+  const armedSlots = makeArmedSlots(state, count);
+  addBattlefieldToken(state, {
+    kind,
+    position: firstPosition,
+    controllerId: playerId,
+    armed: armedSlots[0],
+    damage: kind === "land_mine" ? triggerDamage : undefined
+  });
+  openTokenPlacementChoice(state, playerId, kind, armedSlots, 1, triggerDamage);
+}
+
+/** Resolves one pick of the Quicksand / Land Mine placement picker. */
+function resolvePlaceTokensChoice(state: GameState, action: Extract<GameAction, { type: "CHOOSE_OPTION" }>): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "place-battlefield-tokens" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.placeTokens
+  ) {
+    throw new Error("There is no token placement to resolve.");
+  }
+
+  const combat = state.combat;
+  const plan = choice.placeTokens;
+  const position = plan.positions[action.optionIndex];
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
+  state.pendingChoice = null;
+
+  // A chosen empty space drops the next token; the trailing "stop placing"
+  // option (or a now-occupied space) discards the leftover tokens, exactly as
+  // the rulebook allows. Either way the picker re-opens only while tokens and
+  // empty spaces both remain.
+  if (combat && position !== undefined && !isSpaceBlockedForSummon(combat, position)) {
+    addBattlefieldToken(state, {
+      kind: plan.kind,
+      position,
+      controllerId: action.playerId,
+      armed: plan.armedSlots[plan.placedCount],
+      damage: plan.kind === "land_mine" ? plan.triggerDamage : undefined
+    });
+    openTokenPlacementChoice(state, action.playerId, plan.kind, plan.armedSlots, plan.placedCount + 1, plan.triggerDamage);
+  }
+
+  if (state.pendingChoice) {
+    state.phase = "choice";
+    state.priorityPlayerId = state.pendingChoice.playerId;
+  } else {
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+  }
+  finishCombatIfNeeded(state);
+}
+
 /**
  * Liches' Death Cloud: opens the second-attack target choice (or declares
  * the attack straight away when only one unit qualifies). Returns true when
@@ -5639,6 +5865,48 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
           });
         }
       }
+    }
+
+    // Force Field (Basic Earth): drop an Obstacle on the chosen empty space.
+    // Its span grows with Power — Power 0: this Combat round, 1: the next, 2: the
+    // whole Combat — and while it stands it blocks non-flying movement.
+    if (card?.effect.type === "PLACE_FORCE_FIELD" && state.combat && stackItem.action.target.type === "space") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const duration = durationAtPower(card.effect.durationByPower, power) ?? { type: "combat" };
+      addBattlefieldToken(state, {
+        kind: "force_field",
+        position: stackItem.action.target.position,
+        controllerId: stackItem.action.playerId,
+        expiresAtCombatRoundEnd: forceFieldExpiry(state.combat, duration)
+      });
+    }
+
+    // Fire Wall (Basic Fire): drop an Effect Obstacle on the chosen empty space
+    // for the whole Combat; the damage it deals scales with Power (0/2/4 -> 1/2/3).
+    if (card?.effect.type === "PLACE_FIRE_WALL" && state.combat && stackItem.action.target.type === "space") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      addBattlefieldToken(state, {
+        kind: "fire_wall",
+        position: stackItem.action.target.position,
+        controllerId: stackItem.action.playerId,
+        damage: getAmountByPower(card.effect.damageByPower, 1, power)
+      });
+    }
+
+    // Quicksand (Basic Earth) / Land Mine (Expert Fire): place the first of
+    // 2/4/6 face-down tokens on the cast's space, then open the caster's picker
+    // for the rest (the place-battlefield-tokens choice).
+    if (card?.effect.type === "PLACE_HIDDEN_TOKENS" && state.combat && stackItem.action.target.type === "space") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const count = getAmountByPower(card.effect.countByPower, 2, power);
+      beginHiddenTokenPlacement(
+        state,
+        stackItem.action.playerId,
+        card.effect.tokenKind,
+        count,
+        card.effect.triggerDamage,
+        stackItem.action.target.position
+      );
     }
 
     appendEvent(state, {
@@ -8602,6 +8870,11 @@ export function isSpaceBlockedForSummon(combat: CombatState, position: number): 
   if ((combat.obstacles ?? []).includes(position)) {
     return true;
   }
+  // Any spell token (Force Field / Fire Wall / Quicksand / Land Mine) holds a
+  // space: a unit cannot be summoned or teleported onto it.
+  if ((combat.battlefieldTokens ?? []).some((token) => token.position === position)) {
+    return true;
+  }
   if (combat.siege?.walls.includes(position) || combat.siege?.gatePosition === position) {
     return true;
   }
@@ -9606,18 +9879,228 @@ function moveAndAttackUnit(
   }
 
   const from = attacker.position;
-  attacker.position = action.destination;
+  const destination = action.destination;
   attacker.movedThisActivation = true;
+
+  // The approach is walked through any battlefield tokens, just like a plain
+  // move: a Fire Wall / Land Mine bites the attacker on the way in, and a
+  // Quicksand can swallow it short of the target (no token on the board → the
+  // direct relocation below is unchanged).
+  let finalPosition = destination;
+  let haltedByQuicksand = false;
+  if ((combat.battlefieldTokens ?? []).length > 0) {
+    const enteredSpaces =
+      attacker.type === "flying"
+        ? [destination]
+        : (planMovePath(
+            from,
+            destination,
+            getUnitMoveRange(attacker),
+            getBlockedSpaces(combat, attacker),
+            getKnownHazardSpaces(combat, attacker)
+          ) ?? [destination]);
+    const walked = walkMoveThroughTokens(state, attacker, enteredSpaces);
+    finalPosition = walked.finalPosition;
+    haltedByQuicksand = walked.haltedByQuicksand;
+  }
+
+  attacker.position = finalPosition;
 
   appendEvent(state, {
     type: "UNIT_MOVED",
     playerId: action.playerId,
     unitId: attacker.id,
     from,
-    to: action.destination
+    to: finalPosition
   });
 
+  // A Fire Wall / Land Mine that struck the attacker down, or a Quicksand that
+  // swallowed it before it reached the target, ends the activation with no
+  // attack — the unit never arrives adjacent to its quarry.
+  if (!isUnitAlive(attacker) || haltedByQuicksand || finalPosition !== destination) {
+    if (isUnitAlive(attacker)) {
+      attacker.activatedThisRound = true;
+    }
+    if (combat.activeUnitId === attacker.id) {
+      appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, attacker.id), "activation-ended");
+      advanceActiveUnit(state);
+    }
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    finishCombatIfNeeded(state);
+    return;
+  }
+
   declareAttack(state, action, cards);
+}
+
+/** The spell a battlefield token's damage is attributed to (for damage events / FX). */
+const BATTLEFIELD_TOKEN_CARD_ID: Record<BattlefieldTokenKind, CardId> = {
+  force_field: "spell.force_field",
+  fire_wall: "spell.fire_wall",
+  quicksand: "spell.quicksand",
+  land_mine: "spell.land_mine"
+};
+
+/** Battlefield tokens occupying a given board space. */
+function tokensAtPosition(combat: CombatState, position: number): BattlefieldTokenState[] {
+  return (combat.battlefieldTokens ?? []).filter((token) => token.position === position);
+}
+
+/**
+ * Spaces the moving unit's side can SEE are dangerous: every face-up Fire Wall,
+ * plus the mover's OWN armed traps (a player "may look at their Tokens at any
+ * time"). A hazard-aware path lets a unit dodge these when an equally short
+ * route exists; the opponent's blind traps are unknown, so they are not avoided.
+ */
+function getKnownHazardSpaces(combat: CombatState, unit: CombatUnitState): Set<number> {
+  const hazards = new Set<number>();
+  for (const token of combat.battlefieldTokens ?? []) {
+    if (token.kind === "fire_wall") {
+      hazards.add(token.position);
+    } else if (
+      (token.kind === "quicksand" || token.kind === "land_mine") &&
+      token.armed === true &&
+      token.controllerId === unit.controllerId
+    ) {
+      hazards.add(token.position);
+    }
+  }
+  return hazards;
+}
+
+/** Reveals a face-down trap (Quicksand / Land Mine) to everyone the first time a unit enters it. */
+function revealBattlefieldToken(state: GameState, token: BattlefieldTokenState, unit: CombatUnitState): void {
+  if (token.revealed) {
+    return;
+  }
+  token.revealed = true;
+  appendEvent(state, {
+    type: "BATTLEFIELD_TOKEN_REVEALED",
+    tokenId: token.id,
+    kind: token.kind,
+    position: token.position,
+    armed: token.armed === true,
+    unitId: unit.id
+  });
+}
+
+/** Deals a Fire Wall / Land Mine token's flat damage to a unit moving over it. */
+function dealBattlefieldTokenDamage(
+  state: GameState,
+  token: BattlefieldTokenState,
+  unit: CombatUnitState,
+  amount: number
+): void {
+  if (amount <= 0) {
+    return;
+  }
+  appendEvent(state, {
+    type: "BATTLEFIELD_TOKEN_TRIGGERED",
+    tokenId: token.id,
+    kind: token.kind,
+    position: token.position,
+    unitId: unit.id,
+    outcome: "damage",
+    amount
+  });
+  unit.damage += amount;
+  noteUnitDamagedForTokens(state, unit, amount);
+  appendEvent(state, {
+    type: "DAMAGE_ASSIGNED",
+    source: { type: "card", cardId: BATTLEFIELD_TOKEN_CARD_ID[token.kind], controllerId: token.controllerId },
+    target: { type: "unit", unitId: unit.id },
+    amount,
+    // Flat board-effect damage: the rulebook applies no Spell-damage reduction
+    // or immunity to a token strike, so it is "effect", never "spell", damage.
+    damageKind: "effect"
+  });
+  markUnitRemovedIfNeeded(state, unit);
+}
+
+/**
+ * Walks a unit's move through the spaces it ENTERS (a flyer's caller passes only
+ * its landing space, since flyers never enter the spaces they pass over),
+ * springing each battlefield token. Returns where the unit comes to rest and
+ * whether a Quicksand halted it (which also ends its activation). Faithful to
+ * the rulebook: an entered face-down trap is revealed; an armed Land Mine deals
+ * its damage and the unit moves on; an armed Quicksand ends movement at once; a
+ * Fire Wall burns any unit stopping on it and any ground/ranged unit passing
+ * through. Stops early the moment a token kills the mover.
+ */
+function walkMoveThroughTokens(
+  state: GameState,
+  unit: CombatUnitState,
+  enteredSpaces: number[]
+): { finalPosition: number; haltedByQuicksand: boolean } {
+  const combat = state.combat;
+  if (!combat || enteredSpaces.length === 0) {
+    return { finalPosition: unit.position, haltedByQuicksand: false };
+  }
+
+  let finalPosition = unit.position;
+  for (let index = 0; index < enteredSpaces.length; index += 1) {
+    const position = enteredSpaces[index];
+    finalPosition = position;
+    const isLastStep = index === enteredSpaces.length - 1;
+    const tokens = tokensAtPosition(combat, position);
+
+    // Fire Wall (Effect Obstacle): stopping on it burns any unit; passing
+    // through burns only a ground or ranged unit (a flyer over it is unharmed,
+    // and a flyer is never mid-path here anyway).
+    for (const token of tokens) {
+      if (token.kind !== "fire_wall") {
+        continue;
+      }
+      const passingThrough = !isLastStep;
+      if (!passingThrough || unit.type !== "flying") {
+        dealBattlefieldTokenDamage(state, token, unit, token.damage ?? 0);
+        if (!isUnitAlive(unit)) {
+          return { finalPosition, haltedByQuicksand: false };
+        }
+      }
+    }
+
+    // Land Mine: reveal on entry; an armed one deals its damage, then the unit
+    // continues its move/activation if it survives.
+    for (const token of tokens) {
+      if (token.kind !== "land_mine") {
+        continue;
+      }
+      revealBattlefieldToken(state, token, unit);
+      if (token.armed) {
+        dealBattlefieldTokenDamage(state, token, unit, token.damage ?? 0);
+        if (!isUnitAlive(unit)) {
+          return { finalPosition, haltedByQuicksand: false };
+        }
+      }
+    }
+
+    // Quicksand: reveal on entry; an armed one ends movement AND activation here.
+    let armedQuicksand: BattlefieldTokenState | undefined;
+    for (const token of tokens) {
+      if (token.kind !== "quicksand") {
+        continue;
+      }
+      revealBattlefieldToken(state, token, unit);
+      if (token.armed) {
+        armedQuicksand = armedQuicksand ?? token;
+      }
+    }
+    if (armedQuicksand) {
+      appendEvent(state, {
+        type: "BATTLEFIELD_TOKEN_TRIGGERED",
+        tokenId: armedQuicksand.id,
+        kind: "quicksand",
+        position,
+        unitId: unit.id,
+        outcome: "stop"
+      });
+      return { finalPosition: position, haltedByQuicksand: true };
+    }
+  }
+
+  return { finalPosition, haltedByQuicksand: false };
 }
 
 function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UNIT" }>): void {
@@ -9628,21 +10111,58 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
   }
 
   const from = unit.position;
-  unit.position = action.destination;
+  const destination = action.destination;
   unit.movedThisActivation = true;
+
+  let finalPosition = destination;
+  let haltedByQuicksand = false;
+
+  // With battlefield tokens in play, the move is walked space-by-space so Fire
+  // Walls, Land Mines and Quicksand can bite along the way. With none on the
+  // board this is skipped entirely, so ordinary movement is unchanged.
+  if ((combat.battlefieldTokens ?? []).length > 0) {
+    const enteredSpaces =
+      unit.type === "flying"
+        ? [destination]
+        : (planMovePath(
+            from,
+            destination,
+            getUnitMoveRange(unit),
+            getBlockedSpaces(combat, unit),
+            getKnownHazardSpaces(combat, unit)
+          ) ?? [destination]);
+    const walked = walkMoveThroughTokens(state, unit, enteredSpaces);
+    finalPosition = walked.finalPosition;
+    haltedByQuicksand = walked.haltedByQuicksand;
+  }
+
+  unit.position = finalPosition;
 
   appendEvent(state, {
     type: "UNIT_MOVED",
     playerId: action.playerId,
     unitId: unit.id,
     from,
-    to: action.destination
+    to: finalPosition
   });
 
-  // Ranged units finish their activation with the move, whether it follows a
-  // shot or replaces it — they can never attack after moving. Ground and
-  // flying units stay active to attack an adjacent enemy or hold.
-  if (unit.type === "ranged") {
+  // A Fire Wall or Land Mine that struck the mover down ends its activation.
+  if (!isUnitAlive(unit)) {
+    if (combat.activeUnitId === unit.id) {
+      appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
+      advanceActiveUnit(state);
+    }
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    finishCombatIfNeeded(state);
+    return;
+  }
+
+  // Quicksand ends both movement AND activation, whatever the unit's type.
+  // Ranged units likewise finish their activation with any move — they can
+  // never attack after moving. Ground and flying units stay active to attack
+  // an adjacent enemy or hold.
+  if (haltedByQuicksand || unit.type === "ranged") {
     unit.activatedThisRound = true;
     appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
     advanceActiveUnit(state);
@@ -9703,6 +10223,7 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   resetCombatRound(state.combat);
   appendExpiredEffectEvents(state, expireEffectsForCombatRoundEnd(state, finishedRound), "combat-round-ended");
   expireTokensAtRoundEnd(state, state.combat, finishedRound);
+  expireBattlefieldTokensAtRoundEnd(state, finishedRound);
   for (const player of Object.values(state.players)) {
     player.combatStats.spellsCastThisRound = 0;
     player.combatStats.spellLimitBonusThisRound = 0;
@@ -10729,6 +11250,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           nextState.pendingChoice.context === "combat-teleport"
         ) {
           resolveTeleportChoice(nextState, action);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "place-battlefield-tokens"
+        ) {
+          resolvePlaceTokensChoice(nextState, action);
         } else {
           chooseOption(nextState, action);
         }

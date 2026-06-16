@@ -76,7 +76,10 @@ export const implementedCardEffectTypes = [
   "VISIONS_SCRY",
   "INTERFERE_SPELL",
   "DISRUPTING_RAY",
-  "SACRIFICE_TRANSFER"
+  "SACRIFICE_TRANSFER",
+  "PLACE_FORCE_FIELD",
+  "PLACE_FIRE_WALL",
+  "PLACE_HIDDEN_TOKENS"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {

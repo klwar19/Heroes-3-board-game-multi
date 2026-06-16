@@ -1143,6 +1143,45 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Force Field (Basic Earth): place an Obstacle on a chosen empty space.
+       * It blocks the movement of non-flying units and bars stopping on it,
+       * exactly like any Combat Obstacle, for a span that grows with the Power
+       * paid — Power 0: this Combat round, 1: the next Combat round, 2: the
+       * whole Combat. The "OR Instant: +1 Power" side is the universal
+       * power-source discard, so it needs no option here.
+       */
+      type: "PLACE_FORCE_FIELD";
+      durationByPower: Record<number, EffectDurationDefinition>;
+    }
+  | {
+      /**
+       * Fire Wall (Basic Fire): place an Effect Obstacle on a chosen empty
+       * space for the whole Combat. Units may enter it, but any unit STOPPING on
+       * it — and any GROUND or RANGED unit PASSING THROUGH it (flyers passing
+       * over are unharmed) — takes damage that scales with Power: 0 -> 1,
+       * 2 -> 2, 4 -> 3. The "OR Instant: +1 Power" side is the universal discard.
+       */
+      type: "PLACE_FIRE_WALL";
+      damageByPower: Record<number, number>;
+    }
+  | {
+      /**
+       * Quicksand (Basic Earth) / Land Mine (Expert Fire): take 2/4/6 tokens by
+       * Power (half armed, half decoy "empty"), shuffle them face down and place
+       * one on each chosen empty space. The caster picks the spaces one by one
+       * (the place-battlefield-tokens choice); the armed/decoy split stays hidden
+       * from the opponent until a unit enters a token and reveals it. An armed
+       * Quicksand ends the entering unit's movement AND activation; an armed Land
+       * Mine deals `triggerDamage` and the unit then continues. The "OR Instant:
+       * +1 Power" side is the universal discard.
+       */
+      type: "PLACE_HIDDEN_TOKENS";
+      tokenKind: "quicksand" | "land_mine";
+      countByPower: Record<number, number>;
+      triggerDamage: number;
+    }
+  | {
+      /**
        * Moandor's Liches VI specialty (one option of its "OR"): for the rest
        * of the Combat the chosen unit deals elemental damage. Restricted to the
        * named unit when `targetUnitName` is set (his card reads "your Liches").
@@ -2095,6 +2134,47 @@ export type GameEvent =
       unitId: UnitId;
       from: number;
       to: number;
+    }
+  | {
+      /** A Spell placed an Obstacle / Effect / face-down trap on a board space. */
+      id: string;
+      type: "BATTLEFIELD_TOKEN_PLACED";
+      playerId: PlayerId;
+      tokenId: string;
+      kind: BattlefieldTokenKind;
+      position: number;
+    }
+  | {
+      /** A moving unit entered a face-down trap, flipping it face up. */
+      id: string;
+      type: "BATTLEFIELD_TOKEN_REVEALED";
+      tokenId: string;
+      kind: BattlefieldTokenKind;
+      position: number;
+      armed: boolean;
+      unitId: UnitId;
+    }
+  | {
+      /**
+       * A battlefield token caught a unit moving over it: Fire Wall / Land Mine
+       * damage ("damage", with `amount`) or a Quicksand that halted it ("stop").
+       */
+      id: string;
+      type: "BATTLEFIELD_TOKEN_TRIGGERED";
+      tokenId: string;
+      kind: BattlefieldTokenKind;
+      position: number;
+      unitId: UnitId;
+      outcome: "damage" | "stop";
+      amount?: number;
+    }
+  | {
+      /** A timed Force Field reached the end of its duration and was removed. */
+      id: string;
+      type: "BATTLEFIELD_TOKEN_EXPIRED";
+      tokenId: string;
+      kind: BattlefieldTokenKind;
+      position: number;
     }
   | {
       id: string;
@@ -3163,6 +3243,37 @@ export type CombatTokenState = {
   sourceName: string;
 };
 
+export type BattlefieldTokenKind = "force_field" | "fire_wall" | "quicksand" | "land_mine";
+
+/**
+ * A token (or card) occupying a Combat-board space, placed by a Spell:
+ *  - force_field — an Obstacle: blocks non-flying movement and bars stopping
+ *    on it, until `expiresAtCombatRoundEnd` (absent = the whole Combat).
+ *  - fire_wall   — an Effect Obstacle: units may enter, but stopping on it (any
+ *    type) or passing through it (ground/ranged only) costs `damage`. Lasts the
+ *    whole Combat.
+ *  - quicksand / land_mine — a face-down trap: `armed` true for a real token,
+ *    false for a decoy ("empty"). `armed` is hidden from non-controllers (see
+ *    getPlayerView) until `revealed` flips true the moment a unit enters it. An
+ *    armed Quicksand ends the unit's movement and activation; an armed Land Mine
+ *    deals `damage`. Two tokens of the same kind may share a space only when
+ *    placed by different players.
+ */
+export type BattlefieldTokenState = {
+  id: string;
+  kind: BattlefieldTokenKind;
+  position: number;
+  controllerId: PlayerId;
+  /** fire_wall / land_mine: damage dealt to a caught unit. */
+  damage?: number;
+  /** quicksand / land_mine: true = real trap, false = decoy. Hidden until revealed. */
+  armed?: boolean;
+  /** quicksand / land_mine: flipped face up (to everyone) once a unit triggered it. */
+  revealed?: boolean;
+  /** force_field: combat round at whose end it lifts; absent = lasts the whole Combat. */
+  expiresAtCombatRoundEnd?: number;
+};
+
 export type CombatUnitState = {
   id: UnitId;
   controllerId: PlayerId;
@@ -3489,6 +3600,12 @@ export type CombatState = {
    * not land on them. Unit cards themselves also count as combat obstacles.
    */
   obstacles?: number[];
+  /**
+   * Spell-placed board tokens (Force Field, Fire Wall, Quicksand, Land Mine).
+   * Force Field tokens additionally count as Combat Obstacles (folded into the
+   * blocked-space set); the others let units enter but bite them as they move.
+   */
+  battlefieldTokens?: BattlefieldTokenState[];
 };
 
 export type DeckState = {
@@ -4191,6 +4308,7 @@ export type PendingChoice =
         | "genie-take-spell"
         | "combat-knockback"
         | "combat-teleport"
+        | "place-battlefield-tokens"
         | "cover-of-darkness"
         | "diplomacy-skip"
         | "diplomacy-recruit"
@@ -4219,6 +4337,23 @@ export type PendingChoice =
        * which empty space (index-aligned with the options) it lands on.
        */
       teleport?: { unitId: UnitId; positions: number[] };
+      /**
+       * place-battlefield-tokens: the caster places the rest of a Quicksand /
+       * Land Mine set, one token per pick. `positions` are the empty spaces still
+       * open (index-aligned with the options; a trailing "stop" option carries no
+       * position). `armedSlots` is the shuffled armed/decoy assignment for the
+       * placement slots in order — kept private to the caster (see player-view) —
+       * and `placedCount` is how many tokens are already down, so the next one
+       * takes `armedSlots[placedCount]`. `remaining` caps how many more may drop.
+       */
+      placeTokens?: {
+        kind: "quicksand" | "land_mine";
+        positions: number[];
+        armedSlots: boolean[];
+        placedCount: number;
+        remaining: number;
+        triggerDamage: number;
+      };
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */
