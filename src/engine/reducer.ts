@@ -33,6 +33,7 @@ import {
   openDiplomacyRecruit,
   openVisionsScry,
   openSiegeDemolishChoice,
+  openRemoveObstacleChoice,
   openSkeletonReinforceChoice,
   moveHeroAdventure,
   moveHeroPathAdventure,
@@ -3011,6 +3012,19 @@ function applyFireShieldDamage(
     return;
   }
 
+  // Announce the burn first so the table flares the Fire Shield over the
+  // attacker (its fire-shield-hit cue) before the damage number floats — the
+  // same trigger-then-damage shape the Wyverns' sting / Thunderbirds' bolt use.
+  // `unitId` is the shielded unit whose effect fires; `targetUnitId` is the
+  // attacker that takes (and anchors the sprite of) the burn.
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: defender.id,
+    abilityId: "fire-shield",
+    targetUnitId: attacker.id,
+    message: `${defender.cardName}'s Fire Shield burns ${attacker.cardName} for ${total}.`
+  });
+
   attacker.damage += total;
   noteUnitDamagedForTokens(state, attacker, total);
   appendEvent(state, {
@@ -5798,6 +5812,12 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
 
     if (card?.effect.type === "EARTHQUAKE" && state.combat?.siege) {
       resolveEarthquakeSpell(state, stackItem.action.playerId, getCurrentSpellPower(state, stackItem, cards));
+    }
+
+    if (card?.effect.type === "REMOVE_OBSTACLE" && state.combat) {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const count = getAmountByPower(card.effect.countByPower, 0, power);
+      openRemoveObstacleChoice(state, stackItem.action.playerId, count);
     }
 
     if (card?.effect.type === "DEAL_DAMAGE" && state.combat && stackItem.action.target.type === "unit") {

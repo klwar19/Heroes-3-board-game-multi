@@ -205,6 +205,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         : `${unitName(state, event.unitId)} takes ${event.amount ?? 0} from ${event.kind === "fire_wall" ? "a Fire Wall" : "a Land Mine"} at ${getBattlefieldLabel(event.position)}.`;
     case "BATTLEFIELD_TOKEN_EXPIRED":
       return `The ${event.kind === "force_field" ? "Force Field" : "spell token"} at ${getBattlefieldLabel(event.position)} fades.`;
+    case "COMBAT_OBSTACLE_REMOVED":
+      return `${playerName(state, event.playerId)} removes the obstacle at ${getBattlefieldLabel(event.position)}.`;
     case "UNIT_DEFENDED":
       return `${unitName(state, event.unitId)} takes defense.`;
     case "UNIT_ACTIVATION_ENDED":
