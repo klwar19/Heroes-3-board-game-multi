@@ -1242,27 +1242,13 @@ export const spellCards: CardLibrary = {
       "fire",
       "Instant: This unit ignores the defense of the attacked unit. Power 0: bronze; Power 2: bronze or silver; Power 4: bronze, silver, or gold. — OR — Instant: +1 Power."
     ],
+    // Pierced grade scales with the Power pooled into the attack (statistics,
+    // +1 discards, standing School/Astrologers/Magi Power), re-derived at
+    // resolution like Slayer — so Power paid after Frenzy keeps lifting it.
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
     effect: {
-      type: "CHOOSE_ONE",
-      options: [
-        {
-          label: "Ignore a bronze unit's defense",
-          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "IGNORE_DEFENSE", grade: "bronze" }
-        },
-        {
-          label: "Ignore a bronze or silver unit's defense (pay 2 Power)",
-          cost: { powerCost: 2, costCardFilter: "power-source" },
-          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "IGNORE_DEFENSE", grade: "silver" }
-        },
-        {
-          label: "Ignore a bronze, silver, or gold unit's defense (pay 4 Power)",
-          cost: { powerCost: 4, costCardFilter: "power-source" },
-          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "IGNORE_DEFENSE", grade: "gold" }
-        }
-      ]
+      type: "IGNORE_DEFENSE",
+      gradeByPower: { 0: "bronze", 2: "silver", 4: "gold" }
     },
     assets: {
       cardImage: "/assets/spells-frenzy.webp",

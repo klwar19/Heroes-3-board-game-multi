@@ -221,14 +221,23 @@ describe("Frenzy spell", () => {
     });
   }
 
-  function frenzyReaction(state: GameState, optionIndex: number) {
-    return getLegalActions(state, "p1").find(
+  function frenzyOffered(state: GameState): boolean {
+    return getLegalActions(state, "p1").some(
       (legal) =>
-        legal.action.type === "PLAY_REACTION" &&
-        legal.action.cardId === "spell.frenzy" &&
-        legal.action.optionIndex === optionIndex &&
-        !legal.action.asPowerBoost
+        legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.frenzy" && !legal.action.asPowerBoost
     );
+  }
+
+  function playFrenzy(state: GameState): GameState {
+    return applyOk(state, { type: "PLAY_REACTION", playerId: "p1", cardId: "spell.frenzy", mode: "basic" });
+  }
+
+  function payPower(state: GameState, times: number): GameState {
+    let next = state;
+    for (let i = 0; i < times; i += 1) {
+      next = applyOk(next, { type: "PLAY_REACTION", playerId: "p1", cardId: "stat.power", mode: "basic" });
+    }
+    return next;
   }
 
   it("baseline without Frenzy: 6 attack − 4 defense = 2 damage", () => {
@@ -237,58 +246,45 @@ describe("Frenzy spell", () => {
     expect(result.combat!.units.unit_p2_skeletons.damage).toBe(2);
   });
 
-  it("the bronze option makes the attack ignore a bronze defender's defense (6 damage)", () => {
+  it("at Power 0 it pierces a bronze defender's defense (6 damage)", () => {
     const attacked = declareAttack(attackState("frenzy-bronze", "bronze"));
-    const reaction = frenzyReaction(attacked, 0);
-    expect(reaction, "Frenzy's bronze option should be offered against a bronze defender").toBeTruthy();
-    const frenzied = applyOk(attacked, reaction!.action);
-    const result = passAllReactions(frenzied);
-    // Defense counts as 0 → full 6 attack lands.
+    expect(frenzyOffered(attacked), "Frenzy is offered to the attacker").toBe(true);
+    // Frenzy played with no Power pooled → Power 0 → pierces bronze.
+    const result = passAllReactions(playFrenzy(attacked));
     expect(result.combat!.units.unit_p2_skeletons.damage).toBe(6);
   });
 
-  it("is grade-gated: the bronze option is not offered against a gold defender", () => {
-    const attacked = declareAttack(attackState("frenzy-gate", "gold"));
-    expect(frenzyReaction(attacked, 0), "bronze option must not reach a gold defender").toBeFalsy();
-    expect(
-      frenzyReaction(attacked, 2),
-      "the gold option should be offered when its 4-Power cost is affordable"
-    ).toBeTruthy();
-  });
+  it("at Power 0 it does NOT pierce a gold defender, but 4 pooled Power does", () => {
+    // Power 0 against gold: bronze pierce only, the gold Defense stands → 2 damage.
+    const noPower = passAllReactions(playFrenzy(declareAttack(attackState("frenzy-gate", "gold"))));
+    expect(noPower.combat!.units.unit_p2_skeletons.damage).toBe(2);
 
-  it("reaches the silver pierce with one +2 Power artifact (Power value, not card count)", () => {
-    const state = attackState("frenzy-value", "silver");
-    // One +2 Power artifact pays the whole 2-Power silver pierce on its own,
-    // where the old "discard 2 cards" rule demanded two separate cards.
-    state.players.p1.hand = ["spell.frenzy", "artifact.necklace_of_dragonteeth"];
-    const attacked = declareAttack(state);
-    const reaction = frenzyReaction(attacked, 1);
-    expect(reaction, "the silver pierce is affordable from one +2 artifact").toBeTruthy();
-    const frenzied = applyOk(attacked, {
-      type: "PLAY_REACTION",
-      playerId: "p1",
-      cardId: "spell.frenzy",
-      optionIndex: 1,
-      mode: "basic",
-      costCardIds: ["artifact.necklace_of_dragonteeth"]
-    });
-    const result = passAllReactions(frenzied);
+    // Four Power statistics pooled into the attack lift the pierce to gold → 6.
+    const frenzied = playFrenzy(declareAttack(attackState("frenzy-gold", "gold")));
+    const result = passAllReactions(payPower(frenzied, 4));
     expect(result.combat!.units.unit_p2_skeletons.damage).toBe(6);
   });
 
-  it("the gold option (pay 4 Power) ignores a gold defender's defense", () => {
-    const attacked = declareAttack(attackState("frenzy-gold", "gold"));
-    const reaction = frenzyReaction(attacked, 2);
-    expect(reaction).toBeTruthy();
-    const frenzied = applyOk(attacked, {
-      type: "PLAY_REACTION",
-      playerId: "p1",
-      cardId: "spell.frenzy",
-      optionIndex: 2,
-      mode: "basic",
-      costCardIds: ["stat.power", "stat.power", "stat.power", "stat.power"]
-    });
-    const result = passAllReactions(frenzied);
+  it("Power paid AFTER Frenzy keeps lifting the pierced grade (caster keeps empowering)", () => {
+    // Frenzy played first (Power 0 = bronze, would not pierce silver), then two
+    // Power statistics paid into the same window lift it to silver → 6 damage.
+    const frenzied = playFrenzy(declareAttack(attackState("frenzy-empower", "silver")));
+    const result = passAllReactions(payPower(frenzied, 2));
     expect(result.combat!.units.unit_p2_skeletons.damage).toBe(6);
+  });
+
+  it("standing School-of-Magic Power feeds Frenzy's pool (Fire Magic + 1 Power → silver)", () => {
+    // Fire Magic grants +1 standing Power to Frenzy (Fire). With one more Power
+    // statistic the pool reaches 2 → silver pierce on a silver defender (6 damage).
+    const withSchool = attackState("frenzy-school", "silver");
+    withSchool.players.p1.permanents = ["ability.fire_magic"];
+    const empowered = passAllReactions(payPower(playFrenzy(declareAttack(withSchool)), 1));
+    expect(empowered.combat!.units.unit_p2_skeletons.damage).toBe(6);
+
+    // Guard: without the permanent, one Power statistic only reaches Power 1 →
+    // bronze pierce, so the silver Defense stands → 2 damage.
+    const noSchool = attackState("frenzy-noschool", "silver");
+    const plain = passAllReactions(payPower(playFrenzy(declareAttack(noSchool)), 1));
+    expect(plain.combat!.units.unit_p2_skeletons.damage).toBe(2);
   });
 });

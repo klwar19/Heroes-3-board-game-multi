@@ -223,6 +223,52 @@ describe("attack-window power pairing", () => {
     expect(s.combat!.units.unit_p2_skeletons.damage).toBe(5);
   });
 
+  it("retaliation reverses the roles: each side still empowers its own spell from its own Power pool", () => {
+    // p1's griffins attack p2's skeletons; with no reactions to p1's attack the
+    // skeletons' retaliation opens, where the roles flip: p2 is now the attacker
+    // (buffs its retaliating unit) and p1 is now the defender (debuffs the
+    // retaliator). Each must still scale only with the Power IT pools.
+    const state = createInitialGameState("attack-window-seed");
+    state.players.p1.hand = ["spell.weakness"]; // original attacker, now defending the retaliation
+    state.players.p2.hand = ["spell.bloodlust", "stat.power"]; // original defender, now retaliating
+    const griffins = state.combat!.units.unit_p1_griffins;
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    griffins.abilities = [];
+    skeletons.abilities = [];
+    griffins.position = 9;
+    skeletons.position = 13;
+    griffins.maxHealth = 60;
+    griffins.damage = 0;
+    skeletons.maxHealth = 60;
+    skeletons.damage = 0;
+    skeletons.attack = 8;
+    griffins.defense = 2;
+    state.combat!.dice.scriptedRolls = new Array(12).fill(0);
+    state.combat!.dice.rollCount = 0;
+
+    // p1's attack resolves with no reactions; the retaliation window opens on p2.
+    let s = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    expect(s.reactionWindow?.priorityPlayerId).toBe("p2");
+
+    // Retaliating side (p2) empowers Bloodlust on the skeletons: pool 1 → +2.
+    s = applyOk(s, { type: "PLAY_REACTION", playerId: "p2", cardId: "spell.bloodlust", mode: "basic" });
+    s = applyOk(s, { type: "PLAY_REACTION", playerId: "p2", cardId: "stat.power", mode: "basic" });
+    // Original attacker (p1), now the defender, nerfs the retaliation with
+    // Weakness and no Power of its own → its own pool is 0 → only −1.
+    s = applyOk(s, { type: "PLAY_REACTION", playerId: "p1", cardId: "spell.weakness", mode: "basic" });
+    s = passAll(s);
+
+    // Retaliation: 8 attack + 2 (p2 Bloodlust) − 1 (p1 Weakness, own pool 0) − 2
+    // defense + 0 die = 7. A shared pool would feed p2's Power into p1's Weakness
+    // (−2), wrongly netting 6.
+    expect(s.combat!.units.unit_p1_griffins.damage).toBe(7);
+  });
+
   it("still allows the +1 Power discard toward your own spell cast", () => {
     const state = createInitialGameState("attack-window-seed-2");
     state.players.p1.hand = ["spell.magic_arrow", "spell.bloodlust"];
