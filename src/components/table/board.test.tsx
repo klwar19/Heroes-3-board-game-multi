@@ -87,7 +87,7 @@ describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
     expect(mark!.textContent).toContain("2");
   });
 
-  it("shows the opponent only a face-down marker, but a revealed armed trap to all", () => {
+  it("shows the opponent a face-down marker, but shows the caster its armed/decoy face", () => {
     const hiddenState = createInitialGameState("board-hidden-trap");
     // armed === undefined mirrors what getPlayerView leaves for an enemy trap.
     hiddenState.combat!.battlefieldTokens = [{ id: "t1", kind: "land_mine", position: 10, controllerId: "p2" }];
@@ -97,14 +97,28 @@ describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
 
     cleanup();
 
-    const revealedState = createInitialGameState("board-revealed-trap");
-    revealedState.combat!.battlefieldTokens = [
-      { id: "t1", kind: "land_mine", position: 10, controllerId: "p2", armed: true, revealed: true, damage: 2 }
+    // The caster's own trap shows its armed/decoy face (armed is defined for them).
+    const ownState = createInitialGameState("board-own-trap");
+    ownState.combat!.battlefieldTokens = [
+      { id: "t1", kind: "land_mine", position: 10, controllerId: "p1", armed: true, damage: 2 }
     ];
-    renderBoard(revealedState);
-    const revealed = document.querySelector('[data-fx-cell="10"] .battlefieldToken');
-    expect(revealed!.className).not.toContain("faceDown");
-    expect(revealed!.className).toContain("revealed");
+    renderBoard(ownState);
+    const own = document.querySelector('[data-fx-cell="10"] .battlefieldToken');
+    expect(own!.className).not.toContain("faceDown");
+    expect(own!.textContent ?? "").toContain("armed");
+  });
+
+  it("renders the Force Field as its obstacle sprite art, not a flat shield glyph", () => {
+    const state = createInitialGameState("board-force-field");
+    state.combat!.battlefieldTokens = [{ id: "t1", kind: "force_field", position: 10, controllerId: "p1" }];
+    renderBoard(state);
+    const mark = document.querySelector('[data-fx-cell="10"] .battlefieldToken.force_field');
+    expect(mark, "a Force Field marker should render on space 10").toBeTruthy();
+    const sprite = mark!.querySelector<HTMLElement>(".battlefieldTokenSprite");
+    expect(sprite, "the Force Field should render its converted sprite art").toBeTruthy();
+    expect(sprite!.style.backgroundImage).toContain("force-field");
+    // It must not fall back to the old shield emoji.
+    expect(mark!.textContent ?? "").not.toContain("🛡");
   });
 
   it("runs the placement picker: empty cells place a token and a Stop button ends it", () => {

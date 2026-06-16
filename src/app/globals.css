@@ -3736,8 +3736,25 @@ button.hbSlot:disabled { cursor: default; }
   opacity: 0.9;
 }
 
-.battlefieldToken.revealed {
-  animation: tokenReveal 0.5s ease;
+/* Animated obstacle art (Force Field): one frame's box, scrubbed by JS. */
+.battlefieldTokenSprite {
+  display: block;
+  height: 84%;
+  width: auto;
+  max-width: 96%;
+  background-position: 0% center;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
+  animation: forceFieldShimmer 2.4s ease-in-out infinite;
+}
+
+@keyframes forceFieldShimmer {
+  0%,
+  100% {
+    opacity: 0.82;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 /* A unit standing on a token: shrink the marker into a corner badge. */
@@ -3749,23 +3766,12 @@ button.hbSlot:disabled { cursor: default; }
   z-index: 4;
 }
 
-.boardCard.p1 .battlefieldToken {
-  transform: rotate(180deg);
+.boardCard .battlefieldTokenSprite {
+  height: 22px;
 }
 
-@keyframes tokenReveal {
-  0% {
-    transform: scale(0.4) rotate(-12deg);
-    opacity: 0.2;
-  }
-  60% {
-    transform: scale(1.25) rotate(4deg);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1) rotate(0deg);
-    opacity: 1;
-  }
+.boardCard.p1 .battlefieldToken {
+  transform: rotate(180deg);
 }
 
 .placeTokensBanner {

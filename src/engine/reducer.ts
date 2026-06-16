@@ -10638,20 +10638,9 @@ function getKnownHazardSpaces(combat: CombatState, unit: CombatUnitState): Set<n
   return hazards;
 }
 
-/** Reveals a face-down trap (Quicksand / Land Mine) to everyone the first time a unit enters it. */
-function revealBattlefieldToken(state: GameState, token: BattlefieldTokenState, unit: CombatUnitState): void {
-  if (token.revealed) {
-    return;
-  }
-  token.revealed = true;
-  appendEvent(state, {
-    type: "BATTLEFIELD_TOKEN_REVEALED",
-    tokenId: token.id,
-    kind: token.kind,
-    position: token.position,
-    armed: token.armed === true,
-    unitId: unit.id
-  });
+/** Takes a sprung face-down trap (Quicksand / Land Mine) off the board. */
+function removeBattlefieldToken(combat: CombatState, tokenId: string): void {
+  combat.battlefieldTokens = (combat.battlefieldTokens ?? []).filter((token) => token.id !== tokenId);
 }
 
 /** Deals a Fire Wall / Land Mine token's flat damage to a unit moving over it. */
@@ -10692,10 +10681,13 @@ function dealBattlefieldTokenDamage(
  * its landing space, since flyers never enter the spaces they pass over),
  * springing each battlefield token. Returns where the unit comes to rest and
  * whether a Quicksand halted it (which also ends its activation). Faithful to
- * the rulebook: an entered face-down trap is revealed; an armed Land Mine deals
- * its damage and the unit moves on; an armed Quicksand ends movement at once; a
- * Fire Wall burns any unit stopping on it and any ground/ranged unit passing
- * through. Stops early the moment a token kills the mover.
+ * the rulebook: a Land Mine and a Quicksand are face-down traps that spring ONCE
+ * and are then taken off the board (so the opponent never learns which of the
+ * remaining face-down tokens are real) — an armed Land Mine deals its damage and
+ * the unit moves on, an armed Quicksand ends movement at once, a decoy of either
+ * does nothing. A Fire Wall is a lasting Effect Obstacle: it is NOT consumed —
+ * it burns any unit stopping on it and any ground/ranged unit passing through,
+ * for the whole Combat. Stops early the moment a token kills the mover.
  */
 function walkMoveThroughTokens(
   state: GameState,
@@ -10730,41 +10722,62 @@ function walkMoveThroughTokens(
       }
     }
 
-    // Land Mine: reveal on entry; an armed one deals its damage, then the unit
-    // continues its move/activation if it survives.
+    // Land Mine: a sprung trap is removed at once. An armed one deals its damage
+    // (then the unit continues if it survives); a decoy does nothing. Either way
+    // the token is taken off the board, so its armed/decoy identity never leaks.
     for (const token of tokens) {
       if (token.kind !== "land_mine") {
         continue;
       }
-      revealBattlefieldToken(state, token, unit);
-      if (token.armed) {
+      if (token.armed === true) {
         dealBattlefieldTokenDamage(state, token, unit, token.damage ?? 0);
+        removeBattlefieldToken(combat, token.id);
         if (!isUnitAlive(unit)) {
           return { finalPosition, haltedByQuicksand: false };
         }
+      } else {
+        appendEvent(state, {
+          type: "BATTLEFIELD_TOKEN_TRIGGERED",
+          tokenId: token.id,
+          kind: "land_mine",
+          position,
+          unitId: unit.id,
+          outcome: "decoy"
+        });
+        removeBattlefieldToken(combat, token.id);
       }
     }
 
-    // Quicksand: reveal on entry; an armed one ends movement AND activation here.
+    // Quicksand: a sprung trap is removed at once. An armed one ends movement AND
+    // activation here; a decoy does nothing. Both are taken off the board.
     let armedQuicksand: BattlefieldTokenState | undefined;
     for (const token of tokens) {
       if (token.kind !== "quicksand") {
         continue;
       }
-      revealBattlefieldToken(state, token, unit);
-      if (token.armed) {
-        armedQuicksand = armedQuicksand ?? token;
+      if (token.armed === true && !armedQuicksand) {
+        armedQuicksand = token;
+        appendEvent(state, {
+          type: "BATTLEFIELD_TOKEN_TRIGGERED",
+          tokenId: token.id,
+          kind: "quicksand",
+          position,
+          unitId: unit.id,
+          outcome: "stop"
+        });
+      } else if (token.armed !== true) {
+        appendEvent(state, {
+          type: "BATTLEFIELD_TOKEN_TRIGGERED",
+          tokenId: token.id,
+          kind: "quicksand",
+          position,
+          unitId: unit.id,
+          outcome: "decoy"
+        });
       }
+      removeBattlefieldToken(combat, token.id);
     }
     if (armedQuicksand) {
-      appendEvent(state, {
-        type: "BATTLEFIELD_TOKEN_TRIGGERED",
-        tokenId: armedQuicksand.id,
-        kind: "quicksand",
-        position,
-        unitId: unit.id,
-        outcome: "stop"
-      });
       return { finalPosition: position, haltedByQuicksand: true };
     }
   }

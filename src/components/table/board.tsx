@@ -5,7 +5,8 @@
 import { ChevronDown, ChevronUp, Crown, Mountain, Plus, ScrollText, Shield, Sparkles, Swords } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
-import { useEffect, useMemo, useState } from "react";
+import { getFxSheet } from "@/data/fx";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ATTACKER_BACKLINE,
@@ -123,10 +124,65 @@ const BATTLEFIELD_TOKEN_VIEW: Record<BattlefieldTokenState["kind"], { glyph: str
 };
 
 /**
+ * On-board sprite art for a battlefield obstacle, drawn from a converted Heroes
+ * III .def sheet (see fx-manifest). The element is sized to one frame's aspect
+ * ratio and loops through the sheet's frames by scrubbing `background-position`
+ * via requestAnimationFrame — no React re-renders, so it is cheap and never
+ * fights the test renderer. Falls back to nothing when the sheet is missing
+ * (the caller then shows its emoji), and to a static first frame off-DOM.
+ */
+function TokenSprite({ fxKey }: { fxKey: string }) {
+  const sheet = getFxSheet(fxKey);
+  const ref = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || !sheet || sheet.frames <= 1 || sheet.rows !== 1) {
+      return;
+    }
+    if (typeof requestAnimationFrame !== "function") {
+      return;
+    }
+    const denominator = sheet.cols > 1 ? sheet.cols - 1 : 1;
+    const start = typeof performance !== "undefined" ? performance.now() : Date.now();
+    let raf = 0;
+    const step = (now: number) => {
+      const elapsed = now - start;
+      const frame = Math.floor((elapsed / 1000) * sheet.fps) % sheet.frames;
+      element.style.backgroundPositionX = `${(frame / denominator) * 100}%`;
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [sheet]);
+
+  if (!sheet) {
+    return null;
+  }
+  return (
+    <span
+      ref={ref}
+      aria-hidden="true"
+      className="battlefieldTokenSprite"
+      style={{
+        backgroundImage: `url(${assetUrl(sheet.src)})`,
+        backgroundRepeat: "no-repeat",
+        backgroundSize: `${sheet.cols * 100}% ${sheet.rows * 100}%`,
+        backgroundPositionX: "0%",
+        backgroundPositionY: "center",
+        aspectRatio: `${sheet.frameWidth} / ${sheet.frameHeight}`
+      }}
+    />
+  );
+}
+
+/**
  * Spell token sitting on a board space (Force Field / Fire Wall / Quicksand /
  * Land Mine). Quicksand and Land Mine are face down: their controller sees
- * armed/decoy, the opponent only a face-down marker until a unit springs it
- * (player-view strips the `armed` flag, leaving it undefined here).
+ * armed/decoy, the opponent only a face-down marker (player-view strips the
+ * `armed` flag, leaving it undefined here) — and a sprung trap is removed by
+ * the engine, so it never lingers on the board. The Force Field shows its
+ * shimmering obstacle art (the converted H3 sprite) rather than a flat glyph.
  */
 function BattlefieldTokenMark({
   token,
@@ -140,8 +196,11 @@ function BattlefieldTokenMark({
   const view = BATTLEFIELD_TOKEN_VIEW[token.kind];
   const isTrap = token.kind === "quicksand" || token.kind === "land_mine";
   // The opponent's hidden trap: player-view stripped the armed flag.
-  const faceDown = isTrap && !token.revealed && token.armed === undefined;
+  const faceDown = isTrap && token.armed === undefined;
   const owner = state.players[token.controllerId]?.name ?? token.controllerId;
+  // The Force Field renders as its animated obstacle sprite; the others keep
+  // their emoji marker.
+  const forceFieldSheet = token.kind === "force_field" ? getFxSheet("force-field-b") : undefined;
 
   let detail = "";
   if (token.kind === "fire_wall") {
@@ -150,8 +209,6 @@ function BattlefieldTokenMark({
     detail = token.expiresAtCombatRoundEnd === undefined ? "combat" : `r${token.expiresAtCombatRoundEnd}`;
   } else if (faceDown) {
     detail = "?";
-  } else if (token.revealed) {
-    detail = token.armed ? "!" : "✗";
   } else {
     detail = token.armed ? "armed" : "decoy";
   }
@@ -163,19 +220,17 @@ function BattlefieldTokenMark({
         ? `Force Field (${owner}) — an obstacle; blocks non-flying movement${token.expiresAtCombatRoundEnd === undefined ? " for this combat" : ` until the end of combat round ${token.expiresAtCombatRoundEnd}`}`
         : faceDown
           ? `${view.label} (${owner}) — a face-down trap; you cannot see whether it is armed`
-          : token.revealed
-            ? `${view.label} (${owner}) — revealed ${token.armed ? "armed" : "decoy"}`
-            : `${view.label} (${owner}) — your token: ${token.armed ? "armed" : "decoy"}`;
+          : `${view.label} (${owner}) — your token: ${token.armed ? "armed" : "decoy"}`;
 
   return (
     <span
       aria-label={describe}
-      className={`battlefieldToken ${token.kind} ${faceDown ? "faceDown" : ""} ${token.revealed ? "revealed" : ""} ${
+      className={`battlefieldToken ${token.kind} ${faceDown ? "faceDown" : ""} ${
         token.controllerId === viewerPlayerId ? "own" : "enemy"
       }`}
       title={describe}
     >
-      <b aria-hidden="true">{faceDown ? "🎴" : view.glyph}</b>
+      {forceFieldSheet ? <TokenSprite fxKey="force-field-b" /> : <b aria-hidden="true">{faceDown ? "🎴" : view.glyph}</b>}
       {detail ? <small>{detail}</small> : null}
     </span>
   );

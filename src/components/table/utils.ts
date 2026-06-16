@@ -196,11 +196,12 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       };
       return `${playerName(state, event.playerId)} places ${names[event.kind]} at ${getBattlefieldLabel(event.position)}.`;
     }
-    case "BATTLEFIELD_TOKEN_REVEALED":
-      return `${unitName(state, event.unitId)} reveals a ${event.kind === "quicksand" ? "Quicksand" : "Land Mine"} at ${getBattlefieldLabel(event.position)} (${event.armed ? "armed" : "empty"}).`;
     case "BATTLEFIELD_TOKEN_TRIGGERED":
+      if (event.outcome === "decoy") {
+        return `${unitName(state, event.unitId)} springs an empty ${event.kind === "quicksand" ? "Quicksand" : "Land Mine"} decoy at ${getBattlefieldLabel(event.position)} — it is cleared away.`;
+      }
       return event.outcome === "stop"
-        ? `${unitName(state, event.unitId)} is caught in Quicksand at ${getBattlefieldLabel(event.position)} — its activation ends.`
+        ? `${unitName(state, event.unitId)} is caught in Quicksand at ${getBattlefieldLabel(event.position)} — its activation ends, and the trap is spent.`
         : `${unitName(state, event.unitId)} takes ${event.amount ?? 0} from ${event.kind === "fire_wall" ? "a Fire Wall" : "a Land Mine"} at ${getBattlefieldLabel(event.position)}.`;
     case "BATTLEFIELD_TOKEN_EXPIRED":
       return `The ${event.kind === "force_field" ? "Force Field" : "spell token"} at ${getBattlefieldLabel(event.position)} fades.`;
