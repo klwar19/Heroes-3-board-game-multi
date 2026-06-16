@@ -65,7 +65,14 @@ import {
 import { getDemolishAbility, isArrowTowerUnit, siegeBlockedPositions } from "./siege";
 import { canPlaceTransformOn } from "./unit-transforms";
 import { SHARED_DECK_IDS } from "./decks";
-import { expertUsesAvailable, getRuleset, spellLimitFor, wisdomGoldDiscount, wisdomSearchCount } from "./ruleset";
+import {
+  activeSchoolFetches,
+  expertUsesAvailable,
+  getRuleset,
+  spellLimitFor,
+  wisdomGoldDiscount,
+  wisdomSearchCount
+} from "./ruleset";
 import type {
   AttackRerollSource,
   AttackRollMode,
@@ -3214,6 +3221,14 @@ export function getLegalReactionsForTrigger(
       reactions.push(fieldExpert);
     }
 
+    // Basic X Magic in play (the spell-fetch permanent): +3 Power for a
+    // matching-school spell — a normal cast or an instant on the attack — without
+    // discarding the permanent. Once per stack per player, and only while you
+    // hold an expert use.
+    for (const offer of getSchoolFetchExpertActions(state, player.id, triggerEvent, cards)) {
+      reactions.push(offer);
+    }
+
     // Brimstone Stormclouds: a stored faction cube powers the owner's cast.
     if (triggerEvent.type === "SPELL_CAST_STARTED" && triggerEvent.playerId === player.id) {
       const town = Object.values(state.towns).find((candidate) => candidate.controllerId === player.id);
@@ -3437,6 +3452,91 @@ function getPermanentFieldExpertAction(
     label: `Discard ${match.card.name} from play: +${match.expertPower} power (expert)`,
     action: { type: "USE_PERMANENT_EXPERT", playerId }
   };
+}
+
+/** Whether a card's schools include `school` (or the school-agnostic "any"). */
+function cardMatchesSchool(cardId: CardId, school: SpellSchool): boolean {
+  const schools = cardLibrary[cardId]?.spellSchools ?? [];
+  return schools.includes(school) || schools.includes("any");
+}
+
+/**
+ * Whether `playerId` has a Power-scaling spell instant of `school` of their own
+ * on this attack — the spells whose Power the Basic X Magic +3 expert can feed:
+ * the recorded buffs/debuffs (Bloodlust, Curse, Weakness, Precision, the scaled
+ * Bless), plus Slayer and Frenzy (both Fire, tracked separately).
+ */
+export function playerHasAttackInstantOfSchool(
+  stackItem: ResolutionStackItem,
+  playerId: PlayerId,
+  school: SpellSchool
+): boolean {
+  const records = stackItem.modifiers.powerScaledAttackInstants ?? [];
+  if (records.some((record) => record.playerId === playerId && cardMatchesSchool(record.cardId, school))) {
+    return true;
+  }
+  const attackerId =
+    stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
+      ? stackItem.action.playerId
+      : undefined;
+  // Slayer and Frenzy are Fire and do not create scaling records.
+  if (school === "fire") {
+    if (stackItem.modifiers.slayerRollsByPower !== undefined && attackerId === playerId) {
+      return true;
+    }
+    if (stackItem.modifiers.ignoreDefenseCasterId === playerId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Basic X Magic (in-play spell-fetch permanent): its expert +3 Power offers, for
+ * every school the player can fetch. Offered while one of the player's matching
+ * spells is on the stack — a normal cast they own, or an instant of that school
+ * they played into the attack — and an expert use remains, once per stack.
+ */
+function getSchoolFetchExpertActions(
+  state: GameState,
+  playerId: PlayerId,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
+  cards: CardLibrary
+): LegalAction[] {
+  if (triggerEvent.type !== "SPELL_CAST_STARTED" && triggerEvent.type !== "UNIT_ATTACK_DECLARED") {
+    return [];
+  }
+  const player = state.players[playerId];
+  if (!player || expertUsesAvailable(player) <= 0) {
+    return [];
+  }
+  const stackItem = triggerEvent.type === "UNIT_ATTACK_DECLARED" ? state.stack.at(-1) : getPendingStackItem(state, triggerEvent);
+  if (!stackItem || (stackItem.modifiers.schoolFetchExpertUsedBy ?? []).includes(playerId)) {
+    return [];
+  }
+
+  const offers: LegalAction[] = [];
+  for (const school of activeSchoolFetches(state, playerId)) {
+    let matches = false;
+    if (stackItem.action.type === "CAST_SPELL") {
+      if (stackItem.action.playerId === playerId && !stackItem.modifiers.scrollLocked) {
+        const schools = cards[stackItem.action.cardId]?.spellSchools ?? [];
+        matches = schools.includes(school) || schools.includes("any");
+      }
+    } else if (
+      stackItem.action.type === "ATTACK_UNIT" ||
+      stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
+    ) {
+      matches = playerHasAttackInstantOfSchool(stackItem, playerId, school);
+    }
+    if (matches) {
+      offers.push({
+        label: `Basic ${school.charAt(0).toUpperCase()}${school.slice(1)} Magic: +3 Power (expert)`,
+        action: { type: "USE_SCHOOL_FETCH_EXPERT", playerId, school }
+      });
+    }
+  }
+  return offers;
 }
 
 function variantMatchesTrigger(
