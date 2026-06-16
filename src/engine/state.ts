@@ -2344,19 +2344,13 @@ export type GameEvent =
       position: number;
     }
   | {
-      /** A moving unit entered a face-down trap, flipping it face up. */
-      id: string;
-      type: "BATTLEFIELD_TOKEN_REVEALED";
-      tokenId: string;
-      kind: BattlefieldTokenKind;
-      position: number;
-      armed: boolean;
-      unitId: UnitId;
-    }
-  | {
       /**
-       * A battlefield token caught a unit moving over it: Fire Wall / Land Mine
-       * damage ("damage", with `amount`) or a Quicksand that halted it ("stop").
+       * A moving unit sprang a battlefield token. Fire Wall / Land Mine damage
+       * ("damage", with `amount`), a Quicksand that halted it ("stop"), or a
+       * face-down trap that turned out to be an empty decoy ("decoy"). For the
+       * face-down traps (Quicksand / Land Mine) the token is removed from the
+       * board the instant it is sprung, so the opponent never learns which of
+       * the remaining face-down tokens are real.
        */
       id: string;
       type: "BATTLEFIELD_TOKEN_TRIGGERED";
@@ -2364,7 +2358,7 @@ export type GameEvent =
       kind: BattlefieldTokenKind;
       position: number;
       unitId: UnitId;
-      outcome: "damage" | "stop";
+      outcome: "damage" | "stop" | "decoy";
       amount?: number;
     }
   | {
@@ -3505,10 +3499,13 @@ export type BattlefieldTokenKind = "force_field" | "fire_wall" | "quicksand" | "
  *    whole Combat.
  *  - quicksand / land_mine — a face-down trap: `armed` true for a real token,
  *    false for a decoy ("empty"). `armed` is hidden from non-controllers (see
- *    getPlayerView) until `revealed` flips true the moment a unit enters it. An
- *    armed Quicksand ends the unit's movement and activation; an armed Land Mine
- *    deals `damage`. Two tokens of the same kind may share a space only when
- *    placed by different players.
+ *    getPlayerView) — only the caster ever knows which are real. The instant a
+ *    unit enters a trap it is sprung and REMOVED from the board: an armed
+ *    Quicksand ends the unit's movement and activation, an armed Land Mine deals
+ *    `damage`, a decoy does nothing. Because a sprung trap is taken off the
+ *    board, the opponent never learns which of the remaining face-down tokens
+ *    are real. Two tokens of the same kind may share a space only when placed by
+ *    different players.
  */
 export type BattlefieldTokenState = {
   id: string;
@@ -3517,10 +3514,8 @@ export type BattlefieldTokenState = {
   controllerId: PlayerId;
   /** fire_wall / land_mine: damage dealt to a caught unit. */
   damage?: number;
-  /** quicksand / land_mine: true = real trap, false = decoy. Hidden until revealed. */
+  /** quicksand / land_mine: true = real trap, false = decoy. Hidden from non-controllers. */
   armed?: boolean;
-  /** quicksand / land_mine: flipped face up (to everyone) once a unit triggered it. */
-  revealed?: boolean;
   /** force_field: combat round at whose end it lifts; absent = lasts the whole Combat. */
   expiresAtCombatRoundEnd?: number;
 };

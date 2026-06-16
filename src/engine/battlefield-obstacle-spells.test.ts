@@ -11,12 +11,15 @@ import type { BattlefieldTokenState, GameAction, GameState, UnitId } from "./sta
  * engine-enforced; each test fails if its wiring is removed.
  *  - Force Field (Basic Earth) — places a blocking Obstacle for a Power-scaled
  *    span (this round / next round / whole combat).
- *  - Fire Wall  (Basic Fire)  — an Effect Obstacle: burns a unit stopping on it
- *    and a ground/ranged unit passing through (a flyer over it is safe).
+ *  - Fire Wall  (Basic Fire)  — a lasting Effect Obstacle: burns a unit stopping
+ *    on it and a ground/ranged unit passing through (a flyer over it is safe).
+ *    It is NEVER consumed — it stays for the whole combat.
  *  - Quicksand  (Basic Earth) — face-down traps; an armed one ends the entering
- *    unit's movement AND activation. Armed/decoy stays hidden from the opponent.
+ *    unit's movement AND activation, a decoy does nothing. A sprung trap is
+ *    REMOVED, and armed/decoy stays hidden from the opponent throughout.
  *  - Land Mine  (Expert Fire) — face-down traps; an armed one deals 2 damage and
- *    the unit then continues. Armed/decoy stays hidden from the opponent.
+ *    the unit then continues, a decoy does nothing. A sprung trap is REMOVED,
+ *    and armed/decoy stays hidden from the opponent throughout.
  *
  * Sandbox board (4 columns x 5 rows), positions 0-19:
  *    0  1  2  3 / 4  5  6  7 / 8  9 10 11 / 12 13 14 15 / 16 17 18 19
@@ -181,6 +184,8 @@ describe("Fire Wall spell", () => {
     const moved = moveTo(state, "unit_p1_crusaders", 2);
     expect(moved.combat!.units.unit_p1_crusaders.position).toBe(2);
     expect(moved.combat!.units.unit_p1_crusaders.damage).toBe(2);
+    // The wall is a lasting obstacle: passing through does not consume it.
+    expect((moved.combat!.battlefieldTokens ?? []).filter((token) => token.kind === "fire_wall")).toHaveLength(1);
   });
 
   it("burns any unit STOPPING on the wall", () => {
@@ -191,6 +196,8 @@ describe("Fire Wall spell", () => {
     const moved = moveTo(state, "unit_p1_crusaders", 1);
     expect(moved.combat!.units.unit_p1_crusaders.position).toBe(1);
     expect(moved.combat!.units.unit_p1_crusaders.damage).toBe(3);
+    // Stopping on the wall does not consume it either — it stays for the combat.
+    expect((moved.combat!.battlefieldTokens ?? []).filter((token) => token.kind === "fire_wall")).toHaveLength(1);
   });
 
   it("does NOT burn a flying unit passing over it, but DOES when it stops on it", () => {
@@ -221,6 +228,26 @@ describe("Fire Wall spell", () => {
     const moved = moveTo(state, "unit_p1_crusaders", 9);
     expect(moved.combat!.units.unit_p1_crusaders.position).toBe(9);
     expect(moved.combat!.units.unit_p1_crusaders.damage).toBe(0);
+  });
+
+  it("stays for its duration even when a unit steps on it — it can burn a later unit too", () => {
+    const state = createInitialGameState("fw-lasting");
+    soloMover(state, "unit_p1_crusaders", 0);
+    state.combat!.units.unit_p1_crusaders.maxHealth = 40;
+    injectToken(state, { kind: "fire_wall", position: 1, controllerId: "p2", damage: 3 });
+    // First unit passes through the wall and is burned.
+    const first = moveTo(state, "unit_p1_crusaders", 2);
+    expect(first.combat!.units.unit_p1_crusaders.damage).toBe(3);
+    expect((first.combat!.battlefieldTokens ?? []).filter((token) => token.kind === "fire_wall")).toHaveLength(1);
+
+    // The wall still stands: a second unit stopping on it is burned just the same
+    // (soloMover re-parks the others but leaves the battlefield tokens in place).
+    soloMover(first, "unit_p1_griffins", 0);
+    first.combat!.units.unit_p1_griffins.maxHealth = 40;
+    const second = moveTo(first, "unit_p1_griffins", 1);
+    expect(second.combat!.units.unit_p1_griffins.position).toBe(1);
+    expect(second.combat!.units.unit_p1_griffins.damage).toBe(3);
+    expect((second.combat!.battlefieldTokens ?? []).filter((token) => token.kind === "fire_wall")).toHaveLength(1);
   });
 });
 
@@ -253,8 +280,8 @@ describe("Quicksand spell", () => {
     // The unit is sucked in at 1, never reaching 2, and is done for the round.
     expect(moved.combat!.units.unit_p1_crusaders.position).toBe(1);
     expect(moved.combat!.units.unit_p1_crusaders.activatedThisRound).toBe(true);
-    // The trap is now revealed to everyone.
-    expect(moved.combat!.battlefieldTokens![0].revealed).toBe(true);
+    // The sprung trap is removed from the board (it is spent).
+    expect(moved.combat!.battlefieldTokens ?? []).toHaveLength(0);
   });
 
   it("a decoy Quicksand lets the unit pass through and reach its destination", () => {
@@ -265,8 +292,8 @@ describe("Quicksand spell", () => {
     expect(moved.combat!.units.unit_p1_crusaders.position).toBe(2);
     // A ground unit that finished a plain move stays active to attack/hold.
     expect(moved.combat!.units.unit_p1_crusaders.activatedThisRound).toBe(false);
-    // Entering even a decoy flips it face up.
-    expect(moved.combat!.battlefieldTokens![0].revealed).toBe(true);
+    // Stepping on even a decoy clears it off the board.
+    expect(moved.combat!.battlefieldTokens ?? []).toHaveLength(0);
   });
 
   it("hides the armed/decoy flag of an enemy face-down trap from the opponent's view", () => {
@@ -281,14 +308,15 @@ describe("Quicksand spell", () => {
     expect(enemyView.combat!.battlefieldTokens![0].armed).toBeUndefined();
   });
 
-  it("reveals the armed flag to everyone once the trap has been sprung", () => {
-    const state = createInitialGameState("qs-revealed");
+  it("removes a sprung trap from the board entirely (in both players' views)", () => {
+    const state = createInitialGameState("qs-sprung");
     soloMover(state, "unit_p1_crusaders", 0);
     injectToken(state, { kind: "quicksand", position: 1, controllerId: "p2", armed: true });
     const moved = moveTo(state, "unit_p1_crusaders", 2);
-    const enemyView = getPlayerView(moved, "p1"); // p1 is the opponent of the p2 trap
-    expect(enemyView.combat!.battlefieldTokens![0].revealed).toBe(true);
-    expect(enemyView.combat!.battlefieldTokens![0].armed).toBe(true);
+    expect(moved.combat!.battlefieldTokens ?? []).toHaveLength(0);
+    // Neither the caster nor the opponent sees a lingering token after it sprang.
+    expect(getPlayerView(moved, "p1").combat!.battlefieldTokens ?? []).toHaveLength(0);
+    expect(getPlayerView(moved, "p2").combat!.battlefieldTokens ?? []).toHaveLength(0);
   });
 });
 
@@ -320,10 +348,11 @@ describe("Land Mine spell", () => {
     // Unlike Quicksand, the mine does not stop movement — the unit reaches 2.
     expect(moved.combat!.units.unit_p1_crusaders.position).toBe(2);
     expect(moved.combat!.units.unit_p1_crusaders.damage).toBe(2);
-    expect(moved.combat!.battlefieldTokens![0].revealed).toBe(true);
+    // The detonated mine is removed from the board.
+    expect(moved.combat!.battlefieldTokens ?? []).toHaveLength(0);
   });
 
-  it("a decoy Land Mine deals nothing", () => {
+  it("a decoy Land Mine deals nothing and is cleared off the board", () => {
     const state = createInitialGameState("lm-decoy");
     soloMover(state, "unit_p1_crusaders", 0);
     state.combat!.units.unit_p1_crusaders.maxHealth = 40;
@@ -331,6 +360,25 @@ describe("Land Mine spell", () => {
     const moved = moveTo(state, "unit_p1_crusaders", 2);
     expect(moved.combat!.units.unit_p1_crusaders.position).toBe(2);
     expect(moved.combat!.units.unit_p1_crusaders.damage).toBe(0);
+    expect(moved.combat!.battlefieldTokens ?? []).toHaveLength(0);
+  });
+
+  it("keeps the other face-down mines secret after one is sprung (only the caster knows)", () => {
+    const state = createInitialGameState("lm-secret");
+    soloMover(state, "unit_p1_crusaders", 0);
+    state.combat!.units.unit_p1_crusaders.maxHealth = 40;
+    // p2 lays an armed mine on the mover's path (1) and a decoy off to the side (9).
+    injectToken(state, { kind: "land_mine", position: 1, controllerId: "p2", armed: true, damage: 2 });
+    injectToken(state, { kind: "land_mine", position: 9, controllerId: "p2", armed: false, damage: 2 });
+    const moved = moveTo(state, "unit_p1_crusaders", 2);
+    // The sprung mine is gone; the untouched one remains face down.
+    const tokens = moved.combat!.battlefieldTokens ?? [];
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0].position).toBe(9);
+    // The opponent (p1) cannot tell whether the survivor is real…
+    expect(getPlayerView(moved, "p1").combat!.battlefieldTokens![0].armed).toBeUndefined();
+    // …but the caster (p2) still knows it is a decoy.
+    expect(getPlayerView(moved, "p2").combat!.battlefieldTokens![0].armed).toBe(false);
   });
 });
 

@@ -1558,11 +1558,16 @@ export default function Home() {
               break;
             }
             case "BATTLEFIELD_TOKEN_TRIGGERED": {
-              // A unit moving over a token sprang it: a Fire Wall flames, a Land
-              // Mine detonates, a Quicksand swallows. Any damage number floats off
-              // the DAMAGE_ASSIGNED that follows.
+              // A unit moving over a token sprang it: a Fire Wall flames, an armed
+              // Land Mine detonates, an armed Quicksand swallows, and a face-down
+              // decoy flips up empty and is cleared away. Any damage number floats
+              // off the DAMAGE_ASSIGNED that follows.
               const at = timeline;
-              if (event.kind === "fire_wall") {
+              if (event.outcome === "decoy") {
+                // An empty decoy: the dull token cue plays as it is removed, no bite.
+                window.setTimeout(() => playLibrarySound(event.kind === "land_mine" ? "spells/land-mine" : "spells/quicksand"), at);
+                cues.push({ kind: "floater", id: `${event.id}-decoy`, at: `cell:${event.position}`, text: "Empty", tone: "info", delayMs: at + 120 });
+              } else if (event.kind === "fire_wall") {
                 cues.push({ kind: "sprite", id: `${event.id}-burn`, fxKey: "fire-wall-e", at: `cell:${event.position}`, sound: "spells/fire-wall", delayMs: at });
               } else if (event.kind === "land_mine") {
                 cues.push({ kind: "sprite", id: `${event.id}-boom`, fxKey: "land-mine-hit", at: `cell:${event.position}`, sound: "spells/land-mine-trigger", delayMs: at });
