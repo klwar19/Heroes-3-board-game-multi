@@ -130,7 +130,10 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   "UNIT_ATTACK_DECLARED",
   "UNIT_MOVED",
   "UNIT_DEFENDED",
-  "UNIT_REMOVED"
+  "UNIT_REMOVED",
+  // Battlefield-obstacle spells: token placement and the bites/halts they cause.
+  "BATTLEFIELD_TOKEN_PLACED",
+  "BATTLEFIELD_TOKEN_TRIGGERED"
 ]);
 
 const OBSERVER_SEAT = "observer";
@@ -1534,6 +1537,43 @@ export default function Home() {
               } else {
                 playUnitSound(unitVoice(event.unitId), "death", timeline);
                 timeline += 650;
+              }
+              break;
+            }
+            case "BATTLEFIELD_TOKEN_PLACED": {
+              // A spell laid a token on a board space. Force Field / Fire Wall
+              // flare into place with their cast cue; the face-down traps drop
+              // quietly — their bite waits until a unit springs them.
+              const at = timeline;
+              if (event.kind === "force_field") {
+                cues.push({ kind: "sprite", id: `${event.id}-place`, fxKey: "force-field-b", at: `cell:${event.position}`, sound: "spells/force-field", delayMs: at });
+                timeline += 520;
+              } else if (event.kind === "fire_wall") {
+                cues.push({ kind: "sprite", id: `${event.id}-place`, fxKey: "fire-wall-e", at: `cell:${event.position}`, sound: "spells/fire-wall", delayMs: at });
+                timeline += 520;
+              } else {
+                const soundKey = event.kind === "land_mine" ? "spells/land-mine" : "spells/quicksand";
+                window.setTimeout(() => playLibrarySound(soundKey), at);
+              }
+              break;
+            }
+            case "BATTLEFIELD_TOKEN_TRIGGERED": {
+              // A unit moving over a token sprang it: a Fire Wall flames, a Land
+              // Mine detonates, a Quicksand swallows. Any damage number floats off
+              // the DAMAGE_ASSIGNED that follows.
+              const at = timeline;
+              if (event.kind === "fire_wall") {
+                cues.push({ kind: "sprite", id: `${event.id}-burn`, fxKey: "fire-wall-e", at: `cell:${event.position}`, sound: "spells/fire-wall", delayMs: at });
+              } else if (event.kind === "land_mine") {
+                cues.push({ kind: "sprite", id: `${event.id}-boom`, fxKey: "land-mine-hit", at: `cell:${event.position}`, sound: "spells/land-mine-trigger", delayMs: at });
+              } else {
+                window.setTimeout(() => playLibrarySound("spells/quicksand"), at);
+                cues.push({ kind: "floater", id: `${event.id}-stuck`, at: `cell:${event.position}`, text: "Stuck!", tone: "info", delayMs: at + 120 });
+              }
+              timeline += 600;
+              if (inCombat) {
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 600);
               }
               break;
             }

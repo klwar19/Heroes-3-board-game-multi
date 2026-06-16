@@ -125,3 +125,94 @@ export function getReachableDestinations(
   reached.delete(start);
   return [...reached.keys()].filter((position) => !blockedSpaces.has(position)).sort((a, b) => a - b);
 }
+
+/**
+ * The orthogonal step path a NON-FLYING unit walks from `start` to
+ * `destination`, as the list of spaces it ENTERS (start exclusive, destination
+ * inclusive). It routes around `blockedSpaces` (other units, obstacles, Force
+ * Fields, fortifications) in the fewest steps and — among equally short routes —
+ * through the fewest `hazardSpaces` (the visible Fire Walls and the mover's own
+ * known traps), so a unit never needlessly steps into a hazard it can see while
+ * blind enemy traps still get a chance to bite. Returns null when `destination`
+ * is unreachable within `range`. Flyers do not "enter" the spaces they pass
+ * over, so callers route them straight to the destination instead of here.
+ */
+export function planMovePath(
+  start: number,
+  destination: number,
+  range: number,
+  blockedSpaces: ReadonlySet<number>,
+  hazardSpaces: ReadonlySet<number>
+): number[] | null {
+  if (start === destination || !isBattlefieldPosition(start) || !isBattlefieldPosition(destination)) {
+    return null;
+  }
+
+  type Cost = { steps: number; hazards: number };
+  const isBetter = (a: Cost, b: Cost): boolean =>
+    a.steps < b.steps || (a.steps === b.steps && a.hazards < b.hazards);
+
+  const best = new Map<number, Cost>([[start, { steps: 0, hazards: 0 }]]);
+  const parent = new Map<number, number>();
+  const visited = new Set<number>();
+
+  // Uniform-cost search over the 20-cell board: cost is (steps, hazards entered)
+  // compared lexicographically, so the route is shortest first and least-hazard
+  // second. Linear scans are trivially cheap at this size.
+  for (;;) {
+    let current = -1;
+    let currentCost: Cost | null = null;
+    for (const [position, cost] of best) {
+      if (visited.has(position)) {
+        continue;
+      }
+      // Ties (same steps and hazards) break toward the lower position for a
+      // stable, deterministic path — which equal route shows is immaterial.
+      if (currentCost === null || isBetter(cost, currentCost) || (!isBetter(currentCost, cost) && position < current)) {
+        current = position;
+        currentCost = cost;
+      }
+    }
+    if (current === -1 || currentCost === null || current === destination) {
+      break;
+    }
+    visited.add(current);
+    if (currentCost.steps >= range) {
+      continue;
+    }
+
+    for (const neighbor of getOrthogonalNeighbors(current)) {
+      if (visited.has(neighbor) || (blockedSpaces.has(neighbor) && neighbor !== destination)) {
+        continue;
+      }
+      const stepCost: Cost = {
+        steps: currentCost.steps + 1,
+        // The chosen destination is a fixed stop, so its own hazard never sways
+        // which route is taken; only intermediate hazards are weighed.
+        hazards: currentCost.hazards + (neighbor !== destination && hazardSpaces.has(neighbor) ? 1 : 0)
+      };
+      const existing = best.get(neighbor);
+      if (!existing || isBetter(stepCost, existing)) {
+        best.set(neighbor, stepCost);
+        parent.set(neighbor, current);
+      }
+    }
+  }
+
+  const reached = best.get(destination);
+  if (!reached || reached.steps > range) {
+    return null;
+  }
+
+  const path: number[] = [];
+  let node = destination;
+  while (node !== start) {
+    path.push(node);
+    const previous = parent.get(node);
+    if (previous === undefined) {
+      return null;
+    }
+    node = previous;
+  }
+  return path.reverse();
+}
