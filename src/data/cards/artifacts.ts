@@ -29,6 +29,11 @@ const SCANLESS_ARTIFACTS = new Set([
   "orb_of_tempestuous_fire",
   "orb_of_the_firmament",
   "pendant_of_second_sight",
+  // Pendant of Negativity (Air-Magic counter) and Orb of Inhibition (combat
+  // lockdown relic) have no card scan committed to public/assets yet, so they
+  // fall back to the deck back until their scans land.
+  "pendant_of_negativity",
+  "orb_of_inhibition",
   // Newly added Cove/sea artifact whose card scan is not yet committed to
   // public/assets — it falls back to the deck back until the scan lands.
   // (Ring of the Wayfarer's scan is committed, so it is not listed here.)
@@ -45,7 +50,11 @@ const SCANLESS_ARTIFACTS = new Set([
   // Crest of Valor (Fortress) has its wiki card scan committed; Necklace of
   // Swiftness (Stretch Goals 2024) has no scan yet, so only it falls back to the
   // deck back until its scan lands.
-  "necklace_of_swiftness"
+  "necklace_of_swiftness",
+  // Plate of the Dying Light has no card scan on the wiki yet, so it falls back
+  // to the deck back until the scan lands. (Recanter's Cloak and Boots of
+  // Polarity have their wiki scans committed, so they are not listed here.)
+  "plate_of_the_dying_light"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
@@ -1723,6 +1732,58 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("pendant_of_second_sight")
   },
+  // Pendant of Negativity (Tower expansion). Both sides defend against Air Magic.
+  // Option A is the reaction counter shared with Protection from Air, but with no
+  // School-level or Power gate — `CANCEL_SPELL { schools: ["air"] }` ends ANY Air
+  // spell the enemy casts (a school-agnostic "any" spell like Magic Arrow counts
+  // as Air, exactly as the cancel matcher and Protection from Air treat it).
+  // Option B is the ongoing side: a unit-scoped, combat-long SPELL_SCHOOL_IMMUNE
+  // air immunity placed on one of your units (engine: it bars Air spells from
+  // targeting or splashing that unit and zeroes their card damage, like a printed
+  // Elemental immunity — and, like Anti-Magic, is NOT lifted by Orb of
+  // Vulnerability).
+  "artifact.pendant_of_negativity": {
+    id: "artifact.pendant_of_negativity",
+    name: "Pendant of Negativity",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Play after an enemy casts an Air Magic spell to ignore its effect. — OR — During this Combat, your selected unit ignores Air Magic spells cast on it."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Ignore an enemy Air Magic spell",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "CANCEL_SPELL", schools: ["air"] }
+        },
+        {
+          label: "This Combat: your selected unit ignores Air Magic spells",
+          combatOnly: true,
+          target: { type: "friendly-unit" },
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Pendant of Negativity",
+              scope: "unit",
+              duration: { type: "combat" },
+              polarity: "positive",
+              removable: true,
+              modifiers: [{ type: "SPELL_SCHOOL_IMMUNE", schools: ["air"] }]
+            }
+          }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "pendant_of_negativity", "Pendant of Negativity"),
+    implementationStatus: "implemented",
+    source: artifactSource("pendant_of_negativity")
+  },
   // Sword of Hellfire (Fortress): the attacking-unit twin of Shield of the
   // Damned — a bigger attack bonus paid for in the attacker's own blood
   // (ADD_COMBAT_STAT attack + selfDamage). Because the attack bonus lands on
@@ -2456,6 +2517,212 @@ export const artifactCards: CardLibrary = {
     assets: artifactAssets("relic", "orb_of_vulnerability", "Orb of Vulnerability"),
     implementationStatus: "implemented",
     source: artifactSource("orb_of_vulnerability")
+  },
+  // Orb of Inhibition (Tower expansion): a combat-lockdown relic. Both sides are
+  // global, side-agnostic combat plays.
+  //  - Option A ("all Spell and Specialty cards deal 0 damage … Remove this card
+  //    instead of discarding it"): a combat-long global NULLIFY_CARD_DAMAGE effect
+  //    (engine: reducedCardDamage returns 0 for every Spell/Specialty card hit —
+  //    direct, area, Xyron, Chain Lightning — for both armies). The removeSelf cost
+  //    sends the card to the removed-from-game zone; the effect lives on its own in
+  //    activeEffects until the Combat ends.
+  //  - Option B ("during this Combat round, units cannot use their special
+  //    abilities"): a global, current-combat-round UNIT_ABILITY_SUPPRESSED effect.
+  //    syncAbilitySuppression flags every unit (effectAppliesToUnit treats a global
+  //    effect as applying to all), so the ability chokepoint (getUnitAbilityDefinitions)
+  //    sees nothing for one round; it lifts automatically at the round's end. Tower
+  //    Titans (ignore EVERY ongoing effect) shrug it off; Gargoyles only ignore
+  //    ongoing SPELL effects, so this artifact effect still suppresses them.
+  "artifact.orb_of_inhibition": {
+    id: "artifact.orb_of_inhibition",
+    name: "Orb of Inhibition",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "relic",
+    tags: [
+      "artifact",
+      "relic",
+      "During this Combat, all Spell and Specialty cards deal 0 damage. Remove this card instead of discarding it. — OR — During this Combat round, units cannot use their special abilities."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: all Spell and Specialty cards deal 0 damage (remove this card)",
+          combatOnly: true,
+          cost: { removeSelf: true },
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Orb of Inhibition",
+              scope: "global",
+              duration: { type: "combat" },
+              modifiers: [{ type: "NULLIFY_CARD_DAMAGE" }]
+            }
+          }
+        },
+        {
+          label: "This Combat round: units cannot use their special abilities",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Orb of Inhibition",
+              scope: "global",
+              duration: { type: "current-combat-round" },
+              modifiers: [{ type: "UNIT_ABILITY_SUPPRESSED" }]
+            }
+          }
+        }
+      ]
+    },
+    assets: artifactAssets("relic", "orb_of_inhibition", "Orb of Inhibition"),
+    implementationStatus: "implemented",
+    source: artifactSource("orb_of_inhibition")
+  },
+  // ---- Ability-interference batch (wiki import) ---------------------------
+  // Three relics/majors whose whole point is interfering with the enemy's
+  // magic. Each side below names exactly what the engine runs.
+  //
+  // Recanter's Cloak (Major): a global combat-scoped spell-cast restriction
+  // that binds BOTH heroes (the wearer included).
+  //   • Option A — SPELL_CAST_RESTRICTION{minPower:1}: a Spell that RESOLVES at
+  //     Power 0 applies none of its effects, so every cast must be boosted to
+  //     Power 1+ to do anything. Enforced at the spell-resolution chokepoint
+  //     (resolveTopStack), re-reading the spell's final Power. Scope: the
+  //     standard CAST_SPELL channel (turn casts + scroll casts that resolve
+  //     through the stack). Attack-window instant spells, which resolve inline
+  //     and not through that chokepoint, are not power-floored by option A.
+  //   • Option B — SPELL_CAST_RESTRICTION{lockAll}: no Spell may be cast at all,
+  //     comprehensively — turn casts, reaction/instant casts and scroll casts
+  //     are all un-offered (and any stacked cast still fizzles). The card is
+  //     removed after Combat.
+  "artifact.recanters_cloak": {
+    id: "artifact.recanters_cloak",
+    name: "Recanter's Cloak",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "During this Combat, no Hero can use spells with Power 0. — OR — During this Combat, no Hero can use Spells. Remove this card after Combat."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This Combat: no Hero can use a spell with Power 0 (every cast must reach Power 1+)",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Recanter's Cloak",
+              scope: "global",
+              duration: { type: "combat" },
+              modifiers: [{ type: "SPELL_CAST_RESTRICTION", minPower: 1 }]
+            }
+          }
+        },
+        {
+          label: "This Combat: no Hero can use Spells (remove this card)",
+          combatOnly: true,
+          cost: { removeSelf: true },
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Recanter's Cloak",
+              scope: "global",
+              duration: { type: "combat" },
+              modifiers: [{ type: "SPELL_CAST_RESTRICTION", lockAll: true }]
+            }
+          }
+        }
+      ]
+    },
+    assets: artifactAssets("major", "recanters_cloak", "Recanter's Cloak"),
+    implementationStatus: "implemented",
+    source: artifactSource("recanters_cloak")
+  },
+  // Boots of Polarity (Relic): option A is a chance-based spell counter — react
+  // to an enemy cast, roll 2 Attack dice and keep the best; on a "+1" face the
+  // Spell is ignored (CANCEL_SPELL with a diceRoll gate). A failed roll still
+  // spends the card but lets the Spell resolve. Option B is a single-effect
+  // dispel: REMOVE_ACTIVE_EFFECT strips one removable ongoing effect from a
+  // chosen unit (the most recently applied one).
+  "artifact.boots_of_polarity": {
+    id: "artifact.boots_of_polarity",
+    name: "Boots of Polarity",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "relic",
+    tags: [
+      "artifact",
+      "relic",
+      "Play after an enemy casts a spell. Roll 2 Attack dice and choose one. On a +1, ignore the spell's effect. — OR — Remove 1 ongoing effect from a unit."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Roll 2 Attack dice; on a +1, ignore the enemy spell",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "CANCEL_SPELL", diceRoll: { count: 2, successFace: 1 } }
+        },
+        {
+          label: "Remove 1 ongoing effect from a unit",
+          combatOnly: true,
+          target: { type: "any-unit" },
+          effect: { type: "REMOVE_ACTIVE_EFFECT" }
+        }
+      ]
+    },
+    assets: artifactAssets("relic", "boots_of_polarity", "Boots of Polarity"),
+    implementationStatus: "implemented",
+    source: artifactSource("boots_of_polarity")
+  },
+  // Plate of the Dying Light (Relic): the Interference mechanic as a relic — a
+  // Defense bonus that, unusually, also reduces Spell damage. Reuses
+  // INTERFERE_SPELL, so it is offered (like Interference) as a reaction to an
+  // enemy single-target damaging Spell aimed at one of your units, and grants
+  // that unit a Combat-long DEFENSE_BONUS (vs attacks) AND a
+  // SPELL_DAMAGE_REDUCTION (vs spells) — so it blunts the triggering Spell and
+  // any later Spell or attack on that unit. Option A grants +1 (kept/discarded);
+  // option B grants +4 and removes the card.
+  "artifact.plate_of_the_dying_light": {
+    id: "artifact.plate_of_the_dying_light",
+    name: "Plate of the Dying Light",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "relic",
+    tags: [
+      "artifact",
+      "relic",
+      "+1 defense, which can also reduce damage from spells. — OR — +4 defense, which can also reduce damage from spells. Then remove this card."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+1 defense for the Combat, which also reduces spell damage",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "INTERFERE_SPELL", amount: 1 }
+        },
+        {
+          label: "+4 defense for the Combat, which also reduces spell damage (remove this card)",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          cost: { removeSelf: true },
+          effect: { type: "INTERFERE_SPELL", amount: 4 }
+        }
+      ]
+    },
+    assets: artifactAssets("relic", "plate_of_the_dying_light", "Plate of the Dying Light"),
+    implementationStatus: "implemented",
+    source: artifactSource("plate_of_the_dying_light")
   }
 };
 
@@ -2515,6 +2782,7 @@ export const artifactDeckLegacy: string[] = [
   "artifact.shackles_of_war",
   "artifact.pendant_of_courage",
   "artifact.necklace_of_dragonteeth",
+  "artifact.pendant_of_negativity",
   "artifact.crown_of_the_five_seas",
   "artifact.orb_of_driving_rain",
   "artifact.orb_of_silt",
@@ -2530,6 +2798,7 @@ export const artifactDeckLegacy: string[] = [
   "artifact.cards_of_prophecy",
   "artifact.diplomats_ring",
   "artifact.ambassadors_sash",
+  "artifact.recanters_cloak",
   // relic
   "artifact.angel_wings",
   "artifact.dragon_scale_armor",
@@ -2540,10 +2809,13 @@ export const artifactDeckLegacy: string[] = [
   "artifact.titans_gladius",
   "artifact.crown_of_dragontooth",
   "artifact.orb_of_vulnerability",
+  "artifact.orb_of_inhibition",
   "artifact.helm_of_heavenly_enlightenment",
   "artifact.celestial_necklace_of_bliss",
   "artifact.lions_shield_of_courage",
-  "artifact.sandals_of_the_saint"
+  "artifact.sandals_of_the_saint",
+  "artifact.boots_of_polarity",
+  "artifact.plate_of_the_dying_light"
 ];
 
 /** BINH Minor Artifact deck (adds the BINH-extra minors). */
@@ -2597,6 +2869,7 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.shield_of_the_damned",
   "artifact.pendant_of_courage",
   "artifact.necklace_of_dragonteeth",
+  "artifact.pendant_of_negativity",
   "artifact.mystic_orb_of_mana",
   "artifact.shackles_of_war",
   "artifact.crown_of_the_five_seas",
@@ -2613,7 +2886,8 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.royal_armor_of_nix",
   "artifact.cards_of_prophecy",
   "artifact.diplomats_ring",
-  "artifact.ambassadors_sash"
+  "artifact.ambassadors_sash",
+  "artifact.recanters_cloak"
 ];
 
 /** BINH Relic Artifact deck (adds the BINH-extra relics). */
@@ -2630,5 +2904,8 @@ export const artifactDeckBinhRelic: string[] = [
   "artifact.celestial_necklace_of_bliss",
   "artifact.lions_shield_of_courage",
   "artifact.sandals_of_the_saint",
-  "artifact.orb_of_vulnerability"
+  "artifact.orb_of_vulnerability",
+  "artifact.orb_of_inhibition",
+  "artifact.boots_of_polarity",
+  "artifact.plate_of_the_dying_light"
 ];

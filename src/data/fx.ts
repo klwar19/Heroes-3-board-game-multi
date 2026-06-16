@@ -128,6 +128,10 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "spell.sorrow": { affect: [{ key: "sorrow" }], sound: "spells/sorrow" },
   "spell.slayer": { affect: [{ key: "slayer" }], sound: "spells/slayer" },
   "spell.magic_mirror": { affect: [{ key: "magic-mirror" }], sound: "spells/magic-mirror" },
+  // Misfortune: a hex shimmers over the attacker whose Attack die it negates,
+  // with the H3 misfortune cast cue (its converted sheet + sound were already on
+  // disk). Played as an instant on the declared attack, like Weakness.
+  "spell.misfortune": { affect: [{ key: "misfortune" }], sound: "spells/misfortune" },
   // Shield / Air Shield: a warding shimmer over the buffed unit with the H3 cast
   // cue (their sprite sheets + sounds were converted but never wired).
   "spell.shield": { affect: [{ key: "shield" }], sound: "spells/shield" },

@@ -1203,6 +1203,112 @@ export const spellCards: CardLibrary = {
     implementationStatus: "implemented",
     source: spellSource("visions")
   },
+  // View Air (Basic Air, Map; Tower Expansion): a pure economy spell — pick a
+  // resource tier and gain it. There is no Hero Power statistic on the map, so
+  // the higher tiers are paid the board-game way (discard power-source cards via
+  // each option's cost): Power 0 -> 3 gold (free), Power 1 -> 2 Building
+  // Materials (discard 1 Spell/Power), Power 2 -> 1 Valuables (discard 2). The
+  // universal "OR Instant: +1 Power" side is the generic power-source discard
+  // (any Spell), so it needs no dedicated option. Reuses the already-wired
+  // GAIN_RESOURCES map effect; no new engine code beyond this definition.
+  "spell.view_air": {
+    id: "spell.view_air",
+    name: "View Air",
+    kind: "spell",
+    timing: "map",
+    spellLevel: "basic",
+    spellSchools: ["air"],
+    power: 0,
+    tags: [
+      "spell",
+      "basic",
+      "air",
+      "map",
+      "Map effect: Gain — Power 0: 3 gold; Power 1: 2 Building Materials; Power 2: 1 Valuables. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Gain 3 gold",
+          mapOnly: true,
+          effect: { type: "GAIN_RESOURCES", gain: { gold: 3 } }
+        },
+        {
+          label: "Gain 2 Building Materials (pay 1 Power)",
+          mapOnly: true,
+          cost: { discardCards: 1, costCardFilter: "power-source" },
+          effect: { type: "GAIN_RESOURCES", gain: { buildingMaterials: 2 } }
+        },
+        {
+          label: "Gain 1 Valuables (pay 2 Power)",
+          mapOnly: true,
+          cost: { discardCards: 2, costCardFilter: "power-source" },
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 } }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "/assets/spells-view_air.webp",
+      imageAlt: "View Air card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("view_air")
+  },
+  // View Earth (Basic Earth, Map; Fortress Expansion): "Choose enemy Mine within
+  // X fields. Replace the owner's cube with yours." Played on the adventure map
+  // (the wiki shows the Instant icon, but the effect acts on map Mines, so like
+  // Visions it is a Map-timed cast). The reach scales with the Power paid (Power
+  // 0/1/2 -> within 1/2/3 fields), paid by discarding power-source cards via each
+  // option's cost. The chosen Mine's Faction cube and ongoing production transfer
+  // to the caster (no first-flag income — the Mine was already flagged). The
+  // universal "OR Instant: +1 Power" side is the generic power-source discard, so
+  // it needs no dedicated option. Resolved via the "view-earth" pending choice
+  // (VIEW_EARTH effect -> openViewEarthChoice -> applyMineFlag).
+  "spell.view_earth": {
+    id: "spell.view_earth",
+    name: "View Earth",
+    kind: "spell",
+    timing: "map",
+    spellLevel: "basic",
+    spellSchools: ["earth"],
+    power: 0,
+    tags: [
+      "spell",
+      "basic",
+      "earth",
+      "map",
+      "Map effect: Choose an enemy Mine within X fields and replace the owner's cube with yours: Power 0: 1; Power 1: 2; Power 2: 3. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Capture an enemy Mine within 1 field",
+          mapOnly: true,
+          effect: { type: "VIEW_EARTH", withinFields: 1 }
+        },
+        {
+          label: "Capture an enemy Mine within 2 fields (pay 1 Power)",
+          mapOnly: true,
+          cost: { discardCards: 1, costCardFilter: "power-source" },
+          effect: { type: "VIEW_EARTH", withinFields: 2 }
+        },
+        {
+          label: "Capture an enemy Mine within 3 fields (pay 2 Power)",
+          mapOnly: true,
+          cost: { discardCards: 2, costCardFilter: "power-source" },
+          effect: { type: "VIEW_EARTH", withinFields: 3 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "/assets/spells-view_earth.webp",
+      imageAlt: "View Earth card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("view_earth")
+  },
   // Implosion (Expert Earth, Activation): the heaviest single-target nuke — the
   // selected enemy takes flat spell damage that climbs with the Power paid
   // (Power 1 → 2, 3 → 4, 5 → 6). Power 0 has no printed tier, so the engine deals
@@ -1568,6 +1674,215 @@ export const spellCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: spellSource("sacrifice")
+  },
+  // Force Field (Basic Earth, Stretch Goals 2 Expansion): place an Obstacle on a
+  // chosen empty space. While it stands it works as a Combat Obstacle — it
+  // blocks the movement of non-flying units (flyers pass over) and nobody may
+  // stop on it. The span grows with the Power paid: Power 0 — this Combat round,
+  // Power 1 — the next Combat round, Power 2 — the whole Combat. Engine:
+  // PLACE_FORCE_FIELD drops a force_field battlefield token (folded into the
+  // movement blocked-space set; lifted at the matching combat-round end). The
+  // "OR Instant: +1 Power" side is the universal power-source discard.
+  "spell.force_field": {
+    id: "spell.force_field",
+    name: "Force Field",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "basic",
+    spellSchools: ["earth"],
+    power: 0,
+    target: { type: "empty-space" },
+    tags: [
+      "spell",
+      "basic",
+      "earth",
+      "Ongoing: Place this card or a Force Field token on an empty space. It counts as an Obstacle until the end of: Power 0: this Combat round; Power 1: the next Combat round; Power 2: this Combat. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "PLACE_FORCE_FIELD",
+      durationByPower: {
+        0: { type: "current-combat-round" },
+        1: { type: "next-combat-round" },
+        2: { type: "combat" }
+      }
+    },
+    assets: {
+      cardImage: "/assets/spells-force_field.webp",
+      imageAlt: "Force Field card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("force_field")
+  },
+  // Fire Wall (Basic Fire, Rampart Expansion): place an Effect Obstacle on a
+  // chosen empty space for the whole Combat. Units may enter it, but any unit
+  // STOPPING on it — and any GROUND or RANGED unit PASSING THROUGH it (a flyer
+  // passing over is unharmed) — takes damage that scales with the Power paid:
+  // Power 0 -> 1, Power 2 -> 2, Power 4 -> 3. Engine: PLACE_FIRE_WALL drops a
+  // fire_wall battlefield token; moveUnit walks a moving unit through the spaces
+  // it enters and applies the wall's bite (see walkMoveThroughTokens). The "OR
+  // Instant: +1 Power" side is the universal power-source discard.
+  "spell.fire_wall": {
+    id: "spell.fire_wall",
+    name: "Fire Wall",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "basic",
+    spellSchools: ["fire"],
+    power: 0,
+    target: { type: "empty-space" },
+    tags: [
+      "spell",
+      "basic",
+      "fire",
+      "Ongoing: For this Combat, place this card on an empty space. Deal damage to any unit stopping here and to any ground or ranged unit passing through: Power 0: 1 damage; Power 2: 2 damage; Power 4: 3 damage. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "PLACE_FIRE_WALL",
+      damageByPower: { 0: 1, 2: 2, 4: 3 }
+    },
+    assets: {
+      cardImage: "/assets/spells-fire_wall.webp",
+      imageAlt: "Fire Wall card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("fire_wall")
+  },
+  // Quicksand (Basic Earth, Stronghold Expansion): take 2/4/6 tokens by Power
+  // (half armed with the Quicksand icon, half empty decoys), shuffle them face
+  // down and place one on each chosen empty space. The caster places them one by
+  // one and may look at their own at any time; the armed/decoy split is hidden
+  // from the opponent until a unit enters a token and reveals it. An armed
+  // Quicksand ends the entering unit's movement AND activation; a decoy lets it
+  // continue. Engine: PLACE_HIDDEN_TOKENS (tokenKind "quicksand") runs the
+  // place-the-rest picker; walkMoveThroughTokens springs the trap on entry. The
+  // "OR Instant: +1 Power" side is the universal power-source discard.
+  "spell.quicksand": {
+    id: "spell.quicksand",
+    name: "Quicksand",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "basic",
+    spellSchools: ["earth"],
+    power: 0,
+    target: { type: "empty-space" },
+    tags: [
+      "spell",
+      "basic",
+      "earth",
+      "Ongoing: Shuffle up to X Quicksand tokens (half armed, half empty) and place them face down on chosen empty spaces. A unit entering an armed token ends its movement and activation: Power 0: 2 tokens; Power 1: 4 tokens; Power 2: 6 tokens. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "PLACE_HIDDEN_TOKENS",
+      tokenKind: "quicksand",
+      countByPower: { 0: 2, 1: 4, 2: 6 },
+      triggerDamage: 0
+    },
+    assets: {
+      cardImage: "/assets/spells-quicksand.webp",
+      imageAlt: "Quicksand card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("quicksand")
+  },
+  // Land Mine (Expert Fire, Stretch Goals 2 Expansion): take 2/4/6 tokens by
+  // Power (half armed with a "2 damage" icon, half empty decoys), shuffle them
+  // face down and place one on each chosen empty space. The caster places them
+  // one by one and may look at their own; the armed/decoy split is hidden from
+  // the opponent until a unit enters a token and reveals it. An armed Land Mine
+  // deals 2 damage and the unit then continues its activation; a decoy lets it
+  // continue unharmed. Engine: PLACE_HIDDEN_TOKENS (tokenKind "land_mine",
+  // triggerDamage 2) runs the place-the-rest picker; walkMoveThroughTokens
+  // detonates it on entry. The "OR Instant: +1 Power" side is the universal discard.
+  "spell.land_mine": {
+    id: "spell.land_mine",
+    name: "Land Mine",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["fire"],
+    power: 0,
+    target: { type: "empty-space" },
+    tags: [
+      "spell",
+      "expert",
+      "fire",
+      "Ongoing: Shuffle up to X Land Mine tokens (half armed for 2 damage, half empty) and place them face down on chosen empty spaces. A unit entering an armed token takes 2 damage, then continues: Power 0: 2 tokens; Power 1: 4 tokens; Power 2: 6 tokens. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "PLACE_HIDDEN_TOKENS",
+      tokenKind: "land_mine",
+      countByPower: { 0: 2, 1: 4, 2: 6 },
+      triggerDamage: 2
+    },
+    assets: {
+      cardImage: "/assets/spells-land_mine.webp",
+      imageAlt: "Land Mine card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("land_mine")
+  },
+  // Misfortune (Basic Fire, Instant; Fortress Expansion): the defensive mirror of
+  // Bless. "Played immediately when the enemy unit is attacking, BEFORE other
+  // cards" — so it has its own pre-buff window (engine: misfortunePhase, opened
+  // ahead of the normal attack-declared window). Playing it NEGATES that attack:
+  // the attacker can no longer increase their attack from ANY source for this
+  // attack (Bloodlust/Precision/Bless/Slayer, Hall of Valhalla / Cage attack
+  // boosts — all refused by the legal-action layer once negateAttackBuffs is set)
+  // AND the Attack die is cancelled (face 0, no die-triggered effects, via
+  // attackDieCancelled). It cannot undo a buff already on the unit — only future
+  // increases — which the pre-window guarantees by firing before any buff. Grade-
+  // gated on the ATTACKING unit by the Power paid (0 → bronze, 1 → silver,
+  // 2 → gold), modelled as one CHOOSE_ONE option per grade (free / pay 1 / pay 2
+  // power-source cards) like Magic Mirror; only the option whose grade matches the
+  // attacker is offered, and only when affordable. The universal "OR Instant:
+  // +1 Power" side is the generic power-source discard.
+  "spell.misfortune": {
+    id: "spell.misfortune",
+    name: "Misfortune",
+    kind: "spell",
+    timing: "reaction",
+    phaseLimit: ["reaction", "combat"],
+    spellLevel: "basic",
+    spellSchools: ["fire"],
+    power: 0,
+    tags: [
+      "spell",
+      "basic",
+      "fire",
+      "Instant: Play immediately when the selected enemy unit is attacking, before any other card. That unit cannot increase its attack from any source for this attack (and its Attack die is negated): Power 0: bronze; Power 1: bronze or silver; Power 2: bronze, silver, or golden. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Negate a bronze unit's attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+          effect: { type: "NEGATE_ATTACK", grade: "bronze" }
+        },
+        {
+          label: "Negate a silver unit's attack (pay 1 Power)",
+          cost: { discardCards: 1, costCardFilter: "power-source" },
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+          effect: { type: "NEGATE_ATTACK", grade: "silver" }
+        },
+        {
+          label: "Negate a gold unit's attack (pay 2 Power)",
+          cost: { discardCards: 2, costCardFilter: "power-source" },
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+          effect: { type: "NEGATE_ATTACK", grade: "gold" }
+        }
+      ]
+    },
+    assets: {
+      cardImage: "/assets/spells-misfortune.webp",
+      imageAlt: "Misfortune card"
+    },
+    implementationStatus: "implemented",
+    source: spellSource("misfortune")
   }
 };
 
@@ -1633,6 +1948,9 @@ export const spellDeckLegacy: string[] = [
   // Inferno Expansion spell.
   "spell.inferno",
   "spell.visions",
+  // View Air (Basic Air) & View Earth (Basic Earth) — map utility spells.
+  "spell.view_air",
+  "spell.view_earth",
   // Additional wiki spells.
   "spell.implosion",
   "spell.dispel",
@@ -1653,7 +1971,15 @@ export const spellDeckLegacy: string[] = [
   "spell.protection_from_water",
   // Disrupting Ray (Basic Air) & Sacrifice (Expert Fire).
   "spell.disrupting_ray",
-  "spell.sacrifice"
+  "spell.sacrifice",
+  // Battlefield-obstacle spells: Force Field & Quicksand (Basic Earth), Fire
+  // Wall (Basic Fire), Land Mine (Expert Fire).
+  "spell.force_field",
+  "spell.fire_wall",
+  "spell.quicksand",
+  "spell.land_mine",
+  // Misfortune — Basic Fire.
+  "spell.misfortune"
 ];
 
 /** BINH split decks. */
@@ -1688,6 +2014,9 @@ export const spellDeckBinhBasic: string[] = [
   "spell.earthquake",
   "spell.forgetfulness",
   "spell.visions",
+  // View Air (Basic Air) & View Earth (Basic Earth) — map utility spells.
+  "spell.view_air",
+  "spell.view_earth",
   // Dispel — Basic Water.
   "spell.dispel",
   // Tower Expansion / Stretch Goal defensive spells (all Basic).
@@ -1698,7 +2027,13 @@ export const spellDeckBinhBasic: string[] = [
   "spell.protection_from_fire",
   "spell.protection_from_water",
   // Disrupting Ray — Basic Air.
-  "spell.disrupting_ray"
+  "spell.disrupting_ray",
+  // Battlefield-obstacle spells — Force Field & Quicksand (Basic Earth), Fire Wall (Basic Fire).
+  "spell.force_field",
+  "spell.quicksand",
+  "spell.fire_wall",
+  // Misfortune — Basic Fire.
+  "spell.misfortune"
 ];
 
 export const spellDeckBinhExpert: string[] = [
@@ -1738,5 +2073,7 @@ export const spellDeckBinhExpert: string[] = [
   // Clone — Expert Water (Cove Expansion).
   "spell.clone",
   // Sacrifice — Expert Fire.
-  "spell.sacrifice"
+  "spell.sacrifice",
+  // Land Mine — Expert Fire.
+  "spell.land_mine"
 ];

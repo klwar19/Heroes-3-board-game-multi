@@ -7,6 +7,7 @@ import {
   applyRecruitDiscount,
   armyHasMapEffect,
   canHeroReachPlacedTile,
+  capturableEnemyMinesWithin,
   discountedReinforceCost,
   getActiveAstrologersCard,
   getMainHero,
@@ -38,8 +39,10 @@ import {
 import {
   effectAppliesToUnit,
   effectiveInitiative,
+  getSpellCastRestriction,
   playerCannotSurrenderCombat,
   playerHasSpellTimingFreedom,
+  unitImmuneToSpellSchoolsByEffect,
   unitIsBerserk
 } from "./active-effects";
 import { cancelSpellAllowsSchoolAndLevel, cardCanBoostPower, spellPowerValueOfCard } from "./effects";
@@ -460,11 +463,27 @@ export function getCombatObstacles(combat: CombatState): number[] {
 }
 
 /**
+ * Spaces holding a Force Field token: these count as Combat Obstacles (they
+ * block non-flying movement and nobody may stop on them) while they stand. The
+ * other battlefield tokens (Fire Wall / Quicksand / Land Mine) deliberately do
+ * NOT block — units enter them so the wall can burn or the trap can spring.
+ */
+export function getForceFieldPositions(combat: CombatState): number[] {
+  return (combat.battlefieldTokens ?? [])
+    .filter((token) => token.kind === "force_field")
+    .map((token) => token.position);
+}
+
+/**
  * Every unit card and obstacle token on the board is a Combat Obstacle.
  * They block movement paths for non-flying units and nobody can stop on them.
  */
-function getBlockedSpaces(combat: CombatState, movingUnit?: CombatUnitState): Set<number> {
+export function getBlockedSpaces(combat: CombatState, movingUnit?: CombatUnitState): Set<number> {
   const blocked = new Set<number>(getCombatObstacles(combat));
+
+  for (const position of getForceFieldPositions(combat)) {
+    blocked.add(position);
+  }
 
   for (const unit of Object.values(combat.units)) {
     if (isUnitAlive(unit) && unit.id !== movingUnit?.id) {
@@ -897,6 +916,11 @@ function getTargetsForCard(
     for (const position of combat.obstacles ?? []) {
       blocked.add(position);
     }
+    // A space already holding any spell token (Force Field / Fire Wall /
+    // Quicksand / Land Mine) is not "empty" for placing another one or summoning.
+    for (const token of combat.battlefieldTokens ?? []) {
+      blocked.add(token.position);
+    }
     for (const position of combat.siege?.walls ?? []) {
       blocked.add(position);
     }
@@ -958,7 +982,11 @@ function getTargetsForCard(
       // an otherwise-immune unit becomes a legal target. Anti-Magic (a Spell
       // effect, not a unit ability) still bars targeting.
       const innateImmune = !spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(unit, card.spellSchools);
-      return !isUnitSpellImmune(state, unit) && !innateImmune;
+      // Pendant of Negativity (option B): an artifact-granted school immunity also
+      // bars targeting; unlike printed immunity it is never lifted by Orb of
+      // Vulnerability.
+      const artifactImmune = unitImmuneToSpellSchoolsByEffect(state, unit, card.spellSchools);
+      return !isUnitSpellImmune(state, unit) && !innateImmune && !artifactImmune;
     });
   }
 
@@ -1169,6 +1197,14 @@ function addSpellActions(
 
   const player = state.players[playerId];
   if (!player || player.combatStats.spellsCastThisRound >= spellLimitFor(state, player)) {
+    return;
+  }
+
+  // Recanter's Cloak (option B): "no Hero can use Spells" this Combat — a global
+  // lock that binds both heroes, so no cast is offered at all. (Option A's
+  // Power-0 floor is enforced at resolution, since the Power is only fixed once
+  // the cast window closes; a cast can still be declared and then boosted.)
+  if (getSpellCastRestriction(state).lockAll) {
     return;
   }
 
@@ -1458,6 +1494,14 @@ function isOptionEffectPlayable(
     case "GAIN_HERO_MOVEMENT":
     case "DIMENSION_DOOR":
       return context === "map" && Boolean(state.adventure);
+    case "VIEW_EARTH":
+      // View Earth captures an enemy-owned Mine in reach — offered only when at
+      // least one such Mine sits within this option's range of the caster's Hero.
+      return (
+        context === "map" &&
+        Boolean(state.adventure) &&
+        capturableEnemyMinesWithin(state, playerId, effect.withinFields).length > 0
+      );
     case "DIPLOMACY_RECRUIT":
       // Diplomacy's Map side only does something with at least one Dwelling.
       return context === "map" && Boolean(state.adventure) && unlockedRecruitTiers(state, playerId).size > 0;
@@ -1560,6 +1604,16 @@ function isOptionEffectPlayable(
         return countBallistas(state, playerId) >= 1;
       }
       return true;
+    case "REMOVE_ACTIVE_EFFECT":
+      // Boots of Polarity (option B): only worth playing while at least one
+      // removable, unit-scoped ongoing effect is on the table to strip.
+      return (
+        context === "combat" &&
+        Boolean(state.combat) &&
+        state.activeEffects.some(
+          (active) => active.target?.type === "unit" && active.removable !== false
+        )
+      );
     default:
       return false;
   }
@@ -1585,7 +1639,10 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
     effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
     effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" ||
-    effect.type === "PLACE_PARALYSIS"
+    effect.type === "PLACE_PARALYSIS" ||
+    // Boots of Polarity (option B): the ongoing effect it strips lives on a
+    // chosen unit (yours or the enemy's).
+    effect.type === "REMOVE_ACTIVE_EFFECT"
   );
 }
 
@@ -1734,6 +1791,20 @@ function addOptionPlays(
         const unit = combat.units[candidate.unitId];
         return Boolean(unit) && getOrthogonalNeighbors(unit!.position).some((position) => !blocked.has(position));
       });
+    }
+    // Boots of Polarity (option B): only units that actually carry a removable
+    // ongoing effect are legal targets, so the play is never a no-op.
+    if (option.effect.type === "REMOVE_ACTIVE_EFFECT") {
+      targets = targets.filter(
+        (candidate) =>
+          candidate.type === "unit" &&
+          state.activeEffects.some(
+            (active) =>
+              active.target?.type === "unit" &&
+              active.target.unitId === candidate.unitId &&
+              active.removable !== false
+          )
+      );
     }
     if (targets.length === 0) {
       continue;
@@ -2910,6 +2981,73 @@ function getDieCancelReactions(
   return reactions.length > 0 ? { [playerId]: reactions } : {};
 }
 
+/**
+ * Misfortune's dedicated pre-buff window: the instant an enemy unit declares an
+ * attack, the attacked unit's controller may play Misfortune — before any other
+ * card — to negate that attack's die and lock the attacker out of buffing it.
+ * Only the option whose grade matches the attacking unit is offered, and only
+ * when affordable and within the one-Spell-per-combat-round limit. Returns the
+ * defender's offers (or nothing, so the pre-window simply does not open and the
+ * normal buff window takes over).
+ */
+function getMisfortunePreWindowReactions(
+  state: GameState,
+  triggerEvent: Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }>,
+  cards: CardLibrary
+): Record<PlayerId, LegalAction[]> {
+  const combat = state.combat;
+  const attacker = combat?.units[triggerEvent.attackerId];
+  const defender = combat?.units[triggerEvent.defenderId];
+  if (!combat || !attacker || !defender) {
+    return {};
+  }
+  const playerId = defender.controllerId;
+  const player = state.players[playerId];
+  if (!player || playerId === NEUTRAL_PLAYER_ID || isHandLockedInCombat(state, playerId)) {
+    return {};
+  }
+  // Misfortune is a Spell, so it respects the one-Spell-per-round limit.
+  if (spellLimitFor(state, player) - player.combatStats.spellsCastThisRound <= 0) {
+    return {};
+  }
+
+  const reactions: LegalAction[] = [];
+  for (const cardId of new Set(player.hand)) {
+    const card = cards[cardId];
+    if (
+      !card ||
+      card.kind !== "spell" ||
+      card.implementationStatus !== "implemented" ||
+      card.effect.type !== "CHOOSE_ONE"
+    ) {
+      continue;
+    }
+    for (const [optionIndex, option] of card.effect.options.entries()) {
+      // Only the option whose grade matches the attacking unit (Power 0/1/2 →
+      // bronze/silver/gold) is offered, and only when its Power cost is payable.
+      if (
+        option.effect.type !== "NEGATE_ATTACK" ||
+        option.effect.grade === undefined ||
+        gradeRank(attacker.grade) !== gradeRank(option.effect.grade) ||
+        !canAffordCardCost(state, playerId, cardId, option.cost)
+      ) {
+        continue;
+      }
+      reactions.push(
+        makeReactionAction(`${card.name}: ${option.label}`, {
+          type: "PLAY_REACTION",
+          playerId,
+          cardId,
+          mode: "basic",
+          optionIndex
+        })
+      );
+    }
+  }
+
+  return reactions.length > 0 ? { [playerId]: reactions } : {};
+}
+
 function getLethalSaveReactions(
   state: GameState,
   triggerEvent: Extract<GameEvent, { type: "UNIT_LETHAL_HIT" }>,
@@ -3131,6 +3269,20 @@ export function getLegalReactionsForTrigger(
 
   const result: Record<PlayerId, LegalAction[]> = {};
   const isAttackWindow = triggerEvent.type === "UNIT_ATTACK_DECLARED";
+  // Recanter's Cloak (option B): "no Hero can use Spells" blocks casting a Spell
+  // as a reaction/instant too, not just on a turn (the cast-offer gate handles
+  // turn casts). Artifact/ability counters (Resistance, the Boots, etc.) are not
+  // Spells and are unaffected.
+  const castLocked = getSpellCastRestriction(state).lockAll;
+
+  // Misfortune pre-buff window: the instant an enemy unit declares an attack, the
+  // attacked unit's controller may play Misfortune BEFORE any other card. While
+  // that phase is open, ONLY Misfortune is offered (to the defender) — no buffs,
+  // no debuffs — matching "play immediately when the enemy is attacking, before
+  // other cards are played".
+  if (isAttackWindow && state.stack.at(-1)?.modifiers.misfortunePhase) {
+    return getMisfortunePreWindowReactions(state, triggerEvent, cards);
+  }
 
   for (const player of Object.values(state.players)) {
     // Garrison defense: "You cannot use your Deck during this Combat, as
@@ -3163,6 +3315,11 @@ export function getLegalReactionsForTrigger(
 
       // Spell instants respect the one-Spell-per-combat-round limit.
       if (card.kind === "spell" && spellLimitLeft <= 0) {
+        continue;
+      }
+
+      // Recanter's Cloak (option B) locks every Hero out of casting any Spell.
+      if (card.kind === "spell" && castLocked) {
         continue;
       }
 
@@ -3239,8 +3396,9 @@ export function getLegalReactionsForTrigger(
     }
 
     // Spell Scroll spells played as reactions: basic side only, power-locked
-    // to 0, removed once used. They respect the same spell-per-round limit.
-    if (spellLimitLeft > 0) {
+    // to 0, removed once used. They respect the same spell-per-round limit, and
+    // Recanter's Cloak (option B) locks them out along with every other Spell.
+    if (spellLimitLeft > 0 && !castLocked) {
       for (const scroll of player.scrolls ?? []) {
         for (const cardId of new Set(scroll.spellCardIds)) {
           const card = cards[cardId];
@@ -3367,9 +3525,11 @@ export function getLegalReactionsForTrigger(
     }
 
     // Hall of Valhalla: once per round, +1 attack on one of your attacks.
+    // Misfortune-locked attacks cannot be buffed, so it is not offered then.
     if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
       const attacker = state.combat?.units[triggerEvent.attackerId];
-      if (attacker && attacker.controllerId === player.id) {
+      const attackLocked = Boolean(state.stack.at(-1)?.modifiers.negateAttackBuffs);
+      if (attacker && attacker.controllerId === player.id && !attackLocked) {
         const town = Object.values(state.towns).find((candidate) => candidate.controllerId === player.id);
         for (const buildingId of town?.buildings ?? []) {
           const building = coreBuildingDefinitions[buildingId];
@@ -3399,7 +3559,10 @@ export function getLegalReactionsForTrigger(
         if (building?.effect?.type !== "COMBAT_CUBES" || building.effect.spend !== "attack-or-defense" || cubes <= 0) {
           continue;
         }
-        if (attacker && attacker.controllerId === player.id) {
+        // A Misfortune-locked attack cannot be buffed: the attacker's +attack
+        // option is withheld, but the defender's +defense option stands.
+        const attackLocked = Boolean(state.stack.at(-1)?.modifiers.negateAttackBuffs);
+        if (attacker && attacker.controllerId === player.id && !attackLocked) {
           reactions.push({
             label: `${building.name}: remove 1 cube for +1 attack (${cubes} stored)`,
             action: { type: "SPEND_TOWN_CUBE", playerId: player.id, buildingId, boost: "attack" }
@@ -3779,9 +3942,10 @@ export function effectHasExpertMode(effect: ConcreteEffect): boolean {
     return Boolean(effect.expertIgnoresMaxPower || effect.expertIgnoresMaxSpellLevel);
   }
 
-  // Interference always has an expert side (+2 instead of +1).
+  // Interference has an expert side (+2 instead of +1); Plate of the Dying
+  // Light reuses the same effect with no expert side, so it omits expertAmount.
   if (effect.type === "INTERFERE_SPELL") {
-    return true;
+    return effect.expertAmount !== undefined;
   }
 
   return false;
@@ -3932,16 +4096,24 @@ export function isEffectLegalForTrigger(
       });
     }
 
+    // Misfortune locked this attack: refuse every attack-INCREASING reaction to
+    // the attacker (its die is cancelled and its attack cannot be buffed from any
+    // source). The defender's debuffs and the attacker's defense-ignore (Frenzy)
+    // are untouched — only increases to the attacker's attack are negated.
+    const attackBuffsNegated = Boolean(
+      attacker.controllerId === playerId && state.stack.at(-1)?.modifiers.negateAttackBuffs
+    );
+
     // Bless: "the selected ground or flying unit" ignores the die — only the
     // attacker's controller plays it, and never on a ranged shot.
     if (effect.type === "IGNORE_ATTACK_DIE") {
-      return attacker.controllerId === playerId && attacker.type !== "ranged";
+      return !attackBuffsNegated && attacker.controllerId === playerId && attacker.type !== "ranged";
     }
 
     // Slayer: only the attacker's controller, and only when striking a gold
-    // unit ("when attacking a golden unit").
+    // unit ("when attacking a golden unit"). Misfortune locks it out too.
     if (effect.type === "SLAYER_ATTACK") {
-      return attacker.controllerId === playerId && defender.grade === "gold";
+      return !attackBuffsNegated && attacker.controllerId === playerId && defender.grade === "gold";
     }
 
     // Frenzy: only the attacker's controller. The Power-scaled form (gradeByPower)
@@ -3980,6 +4152,14 @@ export function isEffectLegalForTrigger(
     }
 
     if (effect.type !== "ADD_COMBAT_STAT") {
+      return false;
+    }
+
+    // Misfortune: a positive attack bonus on the attacker (Bloodlust, Precision)
+    // is refused once their attack is locked. A negative attack (Weakness, the
+    // defender's debuff) and any defense change (Curse) are NOT attack increases,
+    // so they are untouched.
+    if (attackBuffsNegated && effect.stat === "attack" && effect.amount >= 0) {
       return false;
     }
 

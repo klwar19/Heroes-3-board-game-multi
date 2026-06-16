@@ -432,6 +432,49 @@ export type ActiveEffectModifier =
        * a Tower Titan/Gargoyle that ignores ongoing effects is not suppressed.
        */
       type: "UNIT_ABILITY_SUPPRESSED";
+    }
+  | {
+      /**
+       * Orb of Inhibition (option A): for the rest of the Combat every Spell and
+       * Hero-Specialty CARD deals 0 damage — checked at the single card-damage
+       * chokepoint (reducedCardDamage), so direct, area, Xyron and Chain Lightning
+       * hits are all nullified for both armies. Unit-ability damage (the Faerie
+       * bolt, retaliation) is NOT a card and is untouched; the Orb's option B
+       * handles abilities separately. Global and side-agnostic, so one grant
+       * covers everyone.
+       */
+      type: "NULLIFY_CARD_DAMAGE";
+    }
+  | {
+      /**
+       * Pendant of Negativity (option B): an ongoing, unit-scoped immunity to
+       * Spells of the named School(s) cast on this unit — "ignore the effect of a
+       * spell from the School of Air Magic cast on this unit". Like the printed
+       * Elemental immunity it bars targeting and any area splash; a school-agnostic
+       * spell ("any", e.g. Magic Arrow) counts as belonging to every School, so an
+       * air immunity also turns Magic Arrow aside (mirroring this Pendant's own
+       * cancel side and Protection from Air). Read through effectAppliesToUnit, so
+       * a Tower Titan/Gargoyle that ignores ongoing effects is not protected by it.
+       * NOT negated by Orb of Vulnerability (an artifact effect, not a unit
+       * ability — exactly like Anti-Magic).
+       */
+      type: "SPELL_SCHOOL_IMMUNE";
+      schools: SpellSchool[];
+    }
+  | {
+      /**
+       * Recanter's Cloak: a global, combat-scoped restriction on spell-casting
+       * that binds BOTH heroes (the wearer included), enforced at the spell
+       * resolution chokepoint (resolveTopStack) and the cast-offer gate.
+       *   • `lockAll` (option B) — no Hero may cast any Spell this Combat.
+       *   • `minPower` (option A) — a Spell that resolves below this Power has no
+       *     effect, so "no Hero can use spells with Power 0" forces every cast to
+       *     be boosted to Power ≥ 1 (minPower 1) to do anything.
+       * Side-agnostic (scope "global"), so one grant covers both armies.
+       */
+      type: "SPELL_CAST_RESTRICTION";
+      lockAll?: boolean;
+      minPower?: number;
     };
 
 export type ActiveEffectDefinition = {
@@ -491,6 +534,14 @@ export type EffectDefinition =
        */
       maxSpellLevel?: "basic" | "expert";
       expertIgnoresMaxSpellLevel?: boolean;
+      /**
+       * Boots of Polarity: a chance-based cancel. When set, playing the reaction
+       * rolls `count` Attack dice and the player keeps the best ("choose one");
+       * the spell is ignored only if a kept die shows `successFace` (the "+1"
+       * face, value 1). A failed roll still spends the card but lets the spell
+       * resolve — unlike the deterministic Resistance/Protection cancels above.
+       */
+      diceRoll?: { count: number; successFace: number };
     }
   | {
       type: "DRAW_CARDS";
@@ -634,6 +685,19 @@ export type EffectDefinition =
       fields: number;
     }
   | {
+      /**
+       * View Earth (Basic Earth, Map): capture an enemy-owned Mine within
+       * `withinFields` hexes of the casting player's main Hero — the owner's
+       * Faction cube and the Mine's ongoing production are replaced with the
+       * caster's (no first-flag income, since the Mine was already flagged). The
+       * Power paid raises the reach (Power 0/1/2 -> 1/2/3 fields), encoded as the
+       * higher-cost options of the spell's CHOOSE_ONE. Resolved through the
+       * "view-earth" pending choice (which Mine to take).
+       */
+      type: "VIEW_EARTH";
+      withinFields: number;
+    }
+  | {
       /** Helm of Heavenly Enlightenment: an extra expert use this round. */
       type: "GAIN_EXPERT_USE";
       amount: number;
@@ -725,6 +789,20 @@ export type EffectDefinition =
        * post-roll window (ATTACK_DIE_SETTLED), never as a free combat instant.
        */
       type: "IGNORE_ATTACK_DIE_RESULT";
+    }
+  | {
+      /**
+       * Misfortune (Basic Fire): the defender plays it the instant an enemy unit
+       * declares an attack — in a dedicated window BEFORE the attacker can buff —
+       * to negate that attack's Attack die result AND lock the attacker out of
+       * increasing the attack from any source for this attack (cards, town/cube
+       * boosts, the die). Grade-gated on the ATTACKING unit (Power 0/1/2 →
+       * bronze/silver/gold). Engine: sets the attack's `negateAttackBuffs` +
+       * `attackDieCancelled` modifiers; the legal-action layer then refuses every
+       * attack-increasing reaction to the attacker for the rest of the attack.
+       */
+      type: "NEGATE_ATTACK";
+      grade?: UnitGrade;
     }
   | {
       /** Anti-Magic: spell immunity for a unit (tier rises with Power). */
@@ -1078,7 +1156,22 @@ export type EffectDefinition =
        */
       type: "INTERFERE_SPELL";
       amount: number;
-      expertAmount: number;
+      /**
+       * Interference's expert side grants +2 instead of +1. Optional: an
+       * artifact (Plate of the Dying Light) that grants the same Defense /
+       * spell-damage reduction through a CHOOSE_ONE option — not a basic/expert
+       * pair — omits it, so no expert reaction is offered or resolved for it.
+       */
+      expertAmount?: number;
+    }
+  | {
+      /**
+       * Boots of Polarity (option B): "Remove 1 ongoing effect." Targets one of
+       * your or the enemy's units and strips a single removable ongoing effect
+       * from it (the most recently applied one). A unit-scoped dispel of exactly
+       * one effect — narrower than Cure/Dispel, which clear several at once.
+       */
+      type: "REMOVE_ACTIVE_EFFECT";
     }
   | {
       type: "CREATE_ACTIVE_EFFECT";
@@ -1194,6 +1287,45 @@ export type EffectDefinition =
        */
       type: "SUMMON_ELEMENTAL";
       unitDefId: string;
+    }
+  | {
+      /**
+       * Force Field (Basic Earth): place an Obstacle on a chosen empty space.
+       * It blocks the movement of non-flying units and bars stopping on it,
+       * exactly like any Combat Obstacle, for a span that grows with the Power
+       * paid — Power 0: this Combat round, 1: the next Combat round, 2: the
+       * whole Combat. The "OR Instant: +1 Power" side is the universal
+       * power-source discard, so it needs no option here.
+       */
+      type: "PLACE_FORCE_FIELD";
+      durationByPower: Record<number, EffectDurationDefinition>;
+    }
+  | {
+      /**
+       * Fire Wall (Basic Fire): place an Effect Obstacle on a chosen empty
+       * space for the whole Combat. Units may enter it, but any unit STOPPING on
+       * it — and any GROUND or RANGED unit PASSING THROUGH it (flyers passing
+       * over are unharmed) — takes damage that scales with Power: 0 -> 1,
+       * 2 -> 2, 4 -> 3. The "OR Instant: +1 Power" side is the universal discard.
+       */
+      type: "PLACE_FIRE_WALL";
+      damageByPower: Record<number, number>;
+    }
+  | {
+      /**
+       * Quicksand (Basic Earth) / Land Mine (Expert Fire): take 2/4/6 tokens by
+       * Power (half armed, half decoy "empty"), shuffle them face down and place
+       * one on each chosen empty space. The caster picks the spaces one by one
+       * (the place-battlefield-tokens choice); the armed/decoy split stays hidden
+       * from the opponent until a unit enters a token and reveals it. An armed
+       * Quicksand ends the entering unit's movement AND activation; an armed Land
+       * Mine deals `triggerDamage` and the unit then continues. The "OR Instant:
+       * +1 Power" side is the universal discard.
+       */
+      type: "PLACE_HIDDEN_TOKENS";
+      tokenKind: "quicksand" | "land_mine";
+      countByPower: Record<number, number>;
+      triggerDamage: number;
     }
   | {
       /**
@@ -2151,6 +2283,47 @@ export type GameEvent =
       to: number;
     }
   | {
+      /** A Spell placed an Obstacle / Effect / face-down trap on a board space. */
+      id: string;
+      type: "BATTLEFIELD_TOKEN_PLACED";
+      playerId: PlayerId;
+      tokenId: string;
+      kind: BattlefieldTokenKind;
+      position: number;
+    }
+  | {
+      /** A moving unit entered a face-down trap, flipping it face up. */
+      id: string;
+      type: "BATTLEFIELD_TOKEN_REVEALED";
+      tokenId: string;
+      kind: BattlefieldTokenKind;
+      position: number;
+      armed: boolean;
+      unitId: UnitId;
+    }
+  | {
+      /**
+       * A battlefield token caught a unit moving over it: Fire Wall / Land Mine
+       * damage ("damage", with `amount`) or a Quicksand that halted it ("stop").
+       */
+      id: string;
+      type: "BATTLEFIELD_TOKEN_TRIGGERED";
+      tokenId: string;
+      kind: BattlefieldTokenKind;
+      position: number;
+      unitId: UnitId;
+      outcome: "damage" | "stop";
+      amount?: number;
+    }
+  | {
+      /** A timed Force Field reached the end of its duration and was removed. */
+      id: string;
+      type: "BATTLEFIELD_TOKEN_EXPIRED";
+      tokenId: string;
+      kind: BattlefieldTokenKind;
+      position: number;
+    }
+  | {
       id: string;
       type: "UNIT_DEFENDED";
       playerId: PlayerId;
@@ -2241,6 +2414,20 @@ export type GameEvent =
       spellCardId: CardId;
       cancelledByPlayerId: PlayerId;
       cancelledByCardId: CardId;
+    }
+  | {
+      /**
+       * A cast could not take effect at the Power paid (Clone on a unit whose
+       * grade the Power did not reach) and was refunded instead of wasted: the
+       * Spell card and any Power spent on it return to the caster's hand and the
+       * cast no longer counts against the one-Spell-per-round limit. Surfaced to
+       * the player so they know nothing was lost. `reason` is a human message.
+       */
+      id: string;
+      type: "SPELL_CAST_REFUNDED";
+      playerId: PlayerId;
+      spellCardId: CardId;
+      reason: string;
     }
   | {
       /** Magic Mirror: a pending Spell was re-pointed to a new target. */
@@ -2920,6 +3107,22 @@ export type ResolutionStackItem = {
      */
     attackDieCancelled?: boolean;
     /**
+     * Misfortune: while true, this attack opened the dedicated pre-buff window
+     * where only the defender's Misfortune may be played (before any other card,
+     * per the card's timing). Cleared the instant Misfortune is played or the
+     * defender declines, at which point the normal attack-declared buff window
+     * takes over.
+     */
+    misfortunePhase?: boolean;
+    /**
+     * Misfortune resolved on this attack: the attacker can no longer increase
+     * their attack from any source for this attack. The legal-action layer
+     * refuses every attack-increasing reaction to the attacker (Bloodlust,
+     * Precision, Bless, Slayer, Hall of Valhalla / Cage attack boosts), and the
+     * Attack die is cancelled alongside (`attackDieCancelled`).
+     */
+    negateAttackBuffs?: boolean;
+    /**
      * A defending defender's Defense roll for this attack, rolled once and
      * reused across the lethal-save window so the same outcome decides the hit.
      * Only a "+1" grants +1 Defense.
@@ -3222,6 +3425,37 @@ export type CombatTokenState = {
   expiresAtCombatRoundEnd?: number;
   /** Display name of whatever placed the token. */
   sourceName: string;
+};
+
+export type BattlefieldTokenKind = "force_field" | "fire_wall" | "quicksand" | "land_mine";
+
+/**
+ * A token (or card) occupying a Combat-board space, placed by a Spell:
+ *  - force_field — an Obstacle: blocks non-flying movement and bars stopping
+ *    on it, until `expiresAtCombatRoundEnd` (absent = the whole Combat).
+ *  - fire_wall   — an Effect Obstacle: units may enter, but stopping on it (any
+ *    type) or passing through it (ground/ranged only) costs `damage`. Lasts the
+ *    whole Combat.
+ *  - quicksand / land_mine — a face-down trap: `armed` true for a real token,
+ *    false for a decoy ("empty"). `armed` is hidden from non-controllers (see
+ *    getPlayerView) until `revealed` flips true the moment a unit enters it. An
+ *    armed Quicksand ends the unit's movement and activation; an armed Land Mine
+ *    deals `damage`. Two tokens of the same kind may share a space only when
+ *    placed by different players.
+ */
+export type BattlefieldTokenState = {
+  id: string;
+  kind: BattlefieldTokenKind;
+  position: number;
+  controllerId: PlayerId;
+  /** fire_wall / land_mine: damage dealt to a caught unit. */
+  damage?: number;
+  /** quicksand / land_mine: true = real trap, false = decoy. Hidden until revealed. */
+  armed?: boolean;
+  /** quicksand / land_mine: flipped face up (to everyone) once a unit triggered it. */
+  revealed?: boolean;
+  /** force_field: combat round at whose end it lifts; absent = lasts the whole Combat. */
+  expiresAtCombatRoundEnd?: number;
 };
 
 export type CombatUnitState = {
@@ -3559,6 +3793,12 @@ export type CombatState = {
    * not land on them. Unit cards themselves also count as combat obstacles.
    */
   obstacles?: number[];
+  /**
+   * Spell-placed board tokens (Force Field, Fire Wall, Quicksand, Land Mine).
+   * Force Field tokens additionally count as Combat Obstacles (folded into the
+   * blocked-space set); the others let units enter but bite them as they move.
+   */
+  battlefieldTokens?: BattlefieldTokenState[];
 };
 
 export type DeckState = {
@@ -4261,12 +4501,14 @@ export type PendingChoice =
         | "genie-take-spell"
         | "combat-knockback"
         | "combat-teleport"
+        | "place-battlefield-tokens"
         | "combat-clone"
         | "combat-step"
         | "cover-of-darkness"
         | "diplomacy-skip"
         | "diplomacy-recruit"
         | "dimension-door"
+        | "view-earth"
         | "learning-level-up"
         | "fortune-boost"
         | "visions-boost"
@@ -4291,6 +4533,23 @@ export type PendingChoice =
        * which empty space (index-aligned with the options) it lands on.
        */
       teleport?: { unitId: UnitId; positions: number[] };
+      /**
+       * place-battlefield-tokens: the caster places the rest of a Quicksand /
+       * Land Mine set, one token per pick. `positions` are the empty spaces still
+       * open (index-aligned with the options; a trailing "stop" option carries no
+       * position). `armedSlots` is the shuffled armed/decoy assignment for the
+       * placement slots in order — kept private to the caster (see player-view) —
+       * and `placedCount` is how many tokens are already down, so the next one
+       * takes `armedSlots[placedCount]`. `remaining` caps how many more may drop.
+       */
+      placeTokens?: {
+        kind: "quicksand" | "land_mine";
+        positions: number[];
+        armedSlots: boolean[];
+        placedCount: number;
+        remaining: number;
+        triggerDamage: number;
+      };
       /**
        * combat-clone: the Clone Spell is placing a copy of `originalUnitId`; the
        * caster picks which empty space adjacent to it (index-aligned with the
@@ -4331,6 +4590,12 @@ export type PendingChoice =
        * option carries no destination).
        */
       dimensionDoor?: { heroId: HeroId; destinations: MapSpaceId[] };
+      /**
+       * view-earth: the casting Hero and the enemy-owned Mine fields in reach
+       * (index-aligned with the options; the final "Cancel" option carries no
+       * Mine). Resolving captures the chosen Mine for the caster.
+       */
+      viewEarth?: { heroId: HeroId; mineSpaceIds: MapSpaceId[] };
       /**
        * diplomacy-skip: the neutral fight Cyra's Diplomacy may skip. Option 0
        * uses the card (claim the field, no XP); option 1 fights normally.

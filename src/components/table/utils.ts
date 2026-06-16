@@ -187,6 +187,23 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${unitName(state, event.attackerId)} retaliates against ${unitName(state, event.defenderId)}.`;
     case "UNIT_MOVED":
       return `${unitName(state, event.unitId)} moves ${getBattlefieldLabel(event.from)} -> ${getBattlefieldLabel(event.to)}.`;
+    case "BATTLEFIELD_TOKEN_PLACED": {
+      const names: Record<typeof event.kind, string> = {
+        force_field: "Force Field",
+        fire_wall: "Fire Wall",
+        quicksand: "Quicksand",
+        land_mine: "Land Mine"
+      };
+      return `${playerName(state, event.playerId)} places ${names[event.kind]} at ${getBattlefieldLabel(event.position)}.`;
+    }
+    case "BATTLEFIELD_TOKEN_REVEALED":
+      return `${unitName(state, event.unitId)} reveals a ${event.kind === "quicksand" ? "Quicksand" : "Land Mine"} at ${getBattlefieldLabel(event.position)} (${event.armed ? "armed" : "empty"}).`;
+    case "BATTLEFIELD_TOKEN_TRIGGERED":
+      return event.outcome === "stop"
+        ? `${unitName(state, event.unitId)} is caught in Quicksand at ${getBattlefieldLabel(event.position)} — its activation ends.`
+        : `${unitName(state, event.unitId)} takes ${event.amount ?? 0} from ${event.kind === "fire_wall" ? "a Fire Wall" : "a Land Mine"} at ${getBattlefieldLabel(event.position)}.`;
+    case "BATTLEFIELD_TOKEN_EXPIRED":
+      return `The ${event.kind === "force_field" ? "Force Field" : "spell token"} at ${getBattlefieldLabel(event.position)} fades.`;
     case "UNIT_DEFENDED":
       return `${unitName(state, event.unitId)} takes defense.`;
     case "UNIT_ACTIVATION_ENDED":
@@ -234,6 +251,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} gains a Secondary Hero at ${event.fieldId}.`;
     case "SPELL_CAST_CANCELLED":
       return `${playerName(state, event.cancelledByPlayerId)} ends ${cardName(event.spellCardId)} with ${cardName(event.cancelledByCardId)}.`;
+    case "SPELL_CAST_REFUNDED":
+      return event.reason;
     case "SPELL_REDIRECTED":
       return `${playerName(state, event.playerId)} redirects ${cardName(event.spellCardId)} to ${targetName(state, event.toTarget)} with ${cardName(event.byCardId)}.`;
     case "DAMAGE_ASSIGNED":

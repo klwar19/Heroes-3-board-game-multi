@@ -37,6 +37,7 @@ import {
   moveHeroAdventure,
   moveHeroPathAdventure,
   openDimensionDoorChoice,
+  openViewEarthChoice,
   openMarket,
   openSharedDeckSearch,
   openFortuneBoostStep,
@@ -73,7 +74,8 @@ import {
   getBattlefieldDistance,
   getBattlefieldLabel,
   getOrthogonalNeighbors,
-  isBattlefieldPosition
+  isBattlefieldPosition,
+  planMovePath
 } from "./battlefield";
 import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
@@ -112,8 +114,10 @@ import {
   tokenDefenseDelta
 } from "./tokens";
 import {
+  cardDamageNullified,
   effectAppliesToUnit,
   effectiveInitiative,
+  unitImmuneToSpellSchoolsByEffect,
   expireEffectsForActivationEnd,
   expireEffectsForCombatRoundEnd,
   expireEffectsForTurnEnd,
@@ -126,6 +130,7 @@ import {
   makeActiveEffect,
   playerHasSpellTimingFreedom,
   releaseEndedOngoingCards,
+  spellNullifiedByRestriction,
   syncAbilitySuppression,
   unitDealsElementalDamage,
   unitImmuneToParalysis
@@ -148,8 +153,10 @@ import {
   canPlayerBuildStructure,
   getAttackKind,
   getAttackRollMode,
+  getBlockedSpaces,
   getLegalActions,
   getLegalMoveDestinations,
+  getUnitMoveRange,
   combatEnemyImposesPowerTax,
   getLegalReactionsForTrigger,
   getNextUnitToActivate,
@@ -227,6 +234,8 @@ import type {
   AttackRollCandidate,
   AttackRollMode,
   BuildingLibrary,
+  BattlefieldTokenKind,
+  BattlefieldTokenState,
   CardDefinition,
   EffectDurationDefinition,
   CardId,
@@ -1228,6 +1237,38 @@ function removeEffectsFromTarget(
   });
 }
 
+/**
+ * Boots of Polarity (option B): strip exactly ONE removable ongoing effect from
+ * the chosen unit — the most recently applied one (the last pushed). Returns
+ * whether anything was removed. Honours `removable === false` (permanent
+ * effects stay), and only touches unit-scoped effects (the global relic locks
+ * are not unit-targeted). Narrower than Cure/Dispel, which clear several.
+ */
+function removeOneEffectFromTarget(
+  state: GameState,
+  source: ActiveEffectState["source"],
+  target: { type: "unit"; unitId: UnitId }
+): boolean {
+  for (let index = state.activeEffects.length - 1; index >= 0; index -= 1) {
+    const effect = state.activeEffects[index];
+    if (
+      effect.target?.type === "unit" &&
+      effect.target.unitId === target.unitId &&
+      effect.removable !== false
+    ) {
+      state.activeEffects.splice(index, 1);
+      appendEvent(state, {
+        type: "ACTIVE_EFFECTS_REMOVED",
+        source,
+        target,
+        effectIds: [effect.id]
+      });
+      return true;
+    }
+  }
+  return false;
+}
+
 function healUnitDamage(
   state: GameState,
   source: ActiveEffectState["source"],
@@ -1312,10 +1353,23 @@ function unitIgnoresCardDamage(state: GameState, unit: CombatUnitState, card: Ca
   if (!card) {
     return false;
   }
+  // Orb of Inhibition (option A): for the rest of the Combat every Spell and
+  // Hero-Specialty CARD deals 0 damage to every unit. Checked at this shared
+  // card-damage predicate so the direct, area, Xyron and Chain Lightning paths
+  // (all of which gate on this function) are covered for both armies at once.
+  if (cardDamageNullified(state) && (card.kind === "spell" || card.kind === "hero-specialty")) {
+    return true;
+  }
   if (card.kind === "hero-specialty") {
     return hasImmuneToSpecialtyDamage(unit);
   }
   if (card.kind === "spell") {
+    // Pendant of Negativity (option B): an artifact-granted school immunity also
+    // turns the spell aside. Unlike printed immunity it is NOT lifted by Orb of
+    // Vulnerability (an artifact effect, like Anti-Magic).
+    if (unitImmuneToSpellSchoolsByEffect(state, unit, card.spellSchools)) {
+      return true;
+    }
     // Orb of Vulnerability negates printed spell-school immunity, so the unit
     // takes the spell like any other.
     return !spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(unit, card.spellSchools);
@@ -1359,6 +1413,35 @@ function negatesCardOnDwarfRoll(state: GameState, target: TargetRef | undefined,
       : `${unit.cardName} rolls ${roll} for ${negate.abilityName}; ${cardName} takes hold.`
   });
   return negated;
+}
+
+/**
+ * Boots of Polarity: roll `count` Attack dice against a pending Spell and keep
+ * the best ("choose one"). The cancel succeeds when at least one kept die shows
+ * the success face (the "+1", value 1). Logged as a SPELL_DICE_ROLLED so the
+ * client shows the dice tumbling on the spell; `hits` is the number of success
+ * faces. Returns whether the spell is ignored.
+ */
+function rollSpellCancelDice(
+  state: GameState,
+  diceRoll: { count: number; successFace: number },
+  pendingSpellCardId: CardId,
+  rollerId: PlayerId
+): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+  const rolls = Array.from({ length: Math.max(1, diceRoll.count) }, () => rollAttackDie(combat));
+  const hits = rolls.filter((value) => value === diceRoll.successFace).length;
+  appendEvent(state, {
+    type: "SPELL_DICE_ROLLED",
+    spellCardId: pendingSpellCardId,
+    playerId: rollerId,
+    rolls,
+    hits
+  });
+  return hits > 0;
 }
 
 /**
@@ -4104,23 +4187,246 @@ function resolveTeleportChoice(
   finishCombatIfNeeded(state);
 }
 
+// ---------------------------------------------------------------------------
+// Battlefield-obstacle Spells: Force Field, Fire Wall, Quicksand, Land Mine.
+// Each places a token on a Combat-board space (see BattlefieldTokenState). The
+// trigger logic lives in moveUnit/walkMoveThroughTokens; this block only places
+// the tokens, and for Quicksand/Land Mine runs the caster's "place the rest"
+// picker.
+// ---------------------------------------------------------------------------
+
+/** Adds a battlefield token to the combat board and announces it. */
+function addBattlefieldToken(state: GameState, token: Omit<BattlefieldTokenState, "id">): BattlefieldTokenState {
+  const combat = state.combat;
+  if (!combat) {
+    throw new Error("No combat to place a battlefield token in.");
+  }
+  const placed: BattlefieldTokenState = { ...token, id: `bftoken_${nextEventNumber(state)}` };
+  combat.battlefieldTokens = [...(combat.battlefieldTokens ?? []), placed];
+  appendEvent(state, {
+    type: "BATTLEFIELD_TOKEN_PLACED",
+    playerId: placed.controllerId,
+    tokenId: placed.id,
+    kind: placed.kind,
+    position: placed.position
+  });
+  return placed;
+}
+
+/**
+ * Lifts every Force Field whose timed duration ends with `finishedRound` (a
+ * Power 0 field after this round, a Power 1 field after the next). Fire Wall,
+ * Quicksand and Land Mine carry no expiry — they last the whole Combat and go
+ * when the combat state does.
+ */
+function expireBattlefieldTokensAtRoundEnd(state: GameState, finishedRound: number): void {
+  const combat = state.combat;
+  if (!combat?.battlefieldTokens?.length) {
+    return;
+  }
+  const expiring = combat.battlefieldTokens.filter((token) => token.expiresAtCombatRoundEnd === finishedRound);
+  if (expiring.length === 0) {
+    return;
+  }
+  combat.battlefieldTokens = combat.battlefieldTokens.filter((token) => token.expiresAtCombatRoundEnd !== finishedRound);
+  for (const token of expiring) {
+    appendEvent(state, {
+      type: "BATTLEFIELD_TOKEN_EXPIRED",
+      tokenId: token.id,
+      kind: token.kind,
+      position: token.position
+    });
+  }
+}
+
+/** The combat round at whose end a Force Field of the given duration lifts (undefined = whole combat). */
+function forceFieldExpiry(combat: CombatState, duration: EffectDurationDefinition): number | undefined {
+  if (duration.type === "current-combat-round") {
+    return combat.round;
+  }
+  if (duration.type === "next-combat-round") {
+    return combat.round + 1;
+  }
+  return undefined;
+}
+
+/** Empty board spaces a new token may be placed on (no unit, obstacle, fortification or other token). */
+function emptyTokenSpaces(combat: CombatState): number[] {
+  const positions: number[] = [];
+  for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+    if (!isSpaceBlockedForSummon(combat, position)) {
+      positions.push(position);
+    }
+  }
+  return positions;
+}
+
+/**
+ * The shuffled armed/decoy assignment for a Quicksand / Land Mine set: half the
+ * `count` tokens are armed and half are decoys, mixed with the combat's seeded
+ * RNG so the result is deterministic and server-authoritative (the opponent
+ * never sees it — see getPlayerView). Tokens are assigned these flags in
+ * placement order.
+ */
+function makeArmedSlots(state: GameState, count: number): boolean[] {
+  const slots: boolean[] = [];
+  const armedCount = Math.floor(count / 2);
+  for (let index = 0; index < count; index += 1) {
+    slots.push(index < armedCount);
+  }
+  const rng = createSeededRandom(`${state.combat?.dice.seed ?? "tokens"}:armed:${nextEventNumber(state)}`);
+  for (let index = slots.length - 1; index > 0; index -= 1) {
+    const swap = rng.nextInt(0, index);
+    [slots[index], slots[swap]] = [slots[swap], slots[index]];
+  }
+  return slots;
+}
+
+/**
+ * Opens (or re-opens) the caster's "place the next Quicksand / Land Mine token"
+ * picker. Each pick drops one token on a chosen empty space, taking its
+ * armed/decoy flag from `armedSlots[placedCount]`; the picker re-opens until the
+ * whole set is down, the player stops, or the board runs out of empty spaces
+ * ("discard any leftover Tokens"). Returns false when nothing remains to place.
+ */
+function openTokenPlacementChoice(
+  state: GameState,
+  playerId: PlayerId,
+  kind: "quicksand" | "land_mine",
+  armedSlots: boolean[],
+  placedCount: number,
+  triggerDamage: number
+): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+  const remaining = armedSlots.length - placedCount;
+  const positions = emptyTokenSpaces(combat);
+  if (remaining <= 0 || positions.length === 0) {
+    return false;
+  }
+
+  const spellName = kind === "quicksand" ? "Quicksand" : "Land Mine";
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `${spellName}: place a token on an empty space (${remaining} left), or stop.`,
+    options: [
+      ...positions.map((position) => ({ label: `Place at ${getBattlefieldLabel(position)}` })),
+      { label: "Stop placing tokens" }
+    ],
+    context: "place-battlefield-tokens",
+    placeTokens: { kind, positions, armedSlots, placedCount, remaining, triggerDamage },
+    returnPhase: "combat"
+  };
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId,
+    sourceEffectIds: [],
+    message: `${state.players[playerId]?.name ?? playerId} places ${spellName} tokens.`
+  });
+  return true;
+}
+
+/** Begins a Quicksand / Land Mine cast: drop the first token on the cast's space, then open the picker for the rest. */
+function beginHiddenTokenPlacement(
+  state: GameState,
+  playerId: PlayerId,
+  kind: "quicksand" | "land_mine",
+  count: number,
+  triggerDamage: number,
+  firstPosition: number
+): void {
+  const combat = state.combat;
+  if (!combat || count <= 0 || isSpaceBlockedForSummon(combat, firstPosition)) {
+    return;
+  }
+  const armedSlots = makeArmedSlots(state, count);
+  addBattlefieldToken(state, {
+    kind,
+    position: firstPosition,
+    controllerId: playerId,
+    armed: armedSlots[0],
+    damage: kind === "land_mine" ? triggerDamage : undefined
+  });
+  openTokenPlacementChoice(state, playerId, kind, armedSlots, 1, triggerDamage);
+}
+
+/** Resolves one pick of the Quicksand / Land Mine placement picker. */
+function resolvePlaceTokensChoice(state: GameState, action: Extract<GameAction, { type: "CHOOSE_OPTION" }>): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "place-battlefield-tokens" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.placeTokens
+  ) {
+    throw new Error("There is no token placement to resolve.");
+  }
+
+  const combat = state.combat;
+  const plan = choice.placeTokens;
+  const position = plan.positions[action.optionIndex];
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
+  state.pendingChoice = null;
+
+  // A chosen empty space drops the next token; the trailing "stop placing"
+  // option (or a now-occupied space) discards the leftover tokens, exactly as
+  // the rulebook allows. Either way the picker re-opens only while tokens and
+  // empty spaces both remain.
+  let reopened = false;
+  if (combat && position !== undefined && !isSpaceBlockedForSummon(combat, position)) {
+    addBattlefieldToken(state, {
+      kind: plan.kind,
+      position,
+      controllerId: action.playerId,
+      armed: plan.armedSlots[plan.placedCount],
+      damage: plan.kind === "land_mine" ? plan.triggerDamage : undefined
+    });
+    reopened = openTokenPlacementChoice(state, action.playerId, plan.kind, plan.armedSlots, plan.placedCount + 1, plan.triggerDamage);
+  }
+
+  if (reopened) {
+    state.phase = "choice";
+    state.priorityPlayerId = action.playerId;
+  } else {
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+  }
+  finishCombatIfNeeded(state);
+}
+
 /**
  * Clone Spell: opens the destination pick — the empty spaces orthogonally
  * adjacent to the cloned unit. Mirrors openTeleportChoice but is restricted to
- * the original's neighbours ("an adjacent empty space"). Does nothing when the
- * original is hemmed in with no empty neighbour.
+ * the original's neighbours ("an adjacent empty space"). Returns false (opening
+ * nothing) when the original is hemmed in with no empty neighbour, so the caller
+ * can refund the cast rather than waste it.
  */
-function openCloneChoice(state: GameState, playerId: PlayerId, original: CombatUnitState): void {
+function openCloneChoice(state: GameState, playerId: PlayerId, original: CombatUnitState): boolean {
   const combat = state.combat;
   if (!combat) {
-    return;
+    return false;
   }
 
   const positions = getOrthogonalNeighbors(original.position).filter(
     (position) => !isSpaceBlockedForSummon(combat, position)
   );
   if (positions.length === 0) {
-    return;
+    return false;
   }
 
   const choiceId = `choice_${nextEventNumber(state)}`;
@@ -4142,6 +4448,85 @@ function openCloneChoice(state: GameState, playerId: PlayerId, original: CombatU
     sourceEffectIds: [],
     message: `${state.players[playerId]?.name ?? playerId} clones ${original.cardName}.`
   });
+  return true;
+}
+
+/** The least Power that a `gradeByPower` ladder needs to reach `grade`. */
+function powerRequiredForGrade(
+  gradeByPower: Record<number, CombatUnitState["grade"]>,
+  grade: CombatUnitState["grade"]
+): number | null {
+  const match = Object.entries(gradeByPower)
+    .map(([power, atGrade]) => ({ power: Number(power), atGrade }))
+    .filter((entry) => Number.isFinite(entry.power) && gradeRank(entry.atGrade) >= gradeRank(grade))
+    .sort((left, right) => left.power - right.power)[0];
+  return match ? match.power : null;
+}
+
+/**
+ * Clone could not land at the Power paid (the chosen unit's grade was out of
+ * reach, or — defensively — no adjacent empty space remained). Rather than
+ * silently waste the cast, refund it: the Clone card and every Power-source card
+ * spent on it return to the caster's hand, the cast stops counting against the
+ * one-Spell-per-round limit, and a notice tells the player nothing was lost.
+ * The caster is returned to the battle screen. Mirrors no card/Power leaving
+ * play, so re-casting (after paying enough Power) is always possible.
+ */
+function refundInsufficientCloneCast(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  target: CombatUnitState,
+  reason: string
+): void {
+  if (stackItem.action.type !== "CAST_SPELL") {
+    return;
+  }
+  const playerId = stackItem.action.playerId;
+  const player = state.players[playerId];
+
+  // Return the Power-source cards played into this cast (the "+1 Power" discards
+  // and Power statistics) to the caster's hand. A scroll cast pays no such cards.
+  if (player && !stackItem.modifiers.scrollLocked) {
+    for (const cardId of stackItem.modifiers.playedCardIds) {
+      const discardIndex = player.discard.lastIndexOf(cardId);
+      if (discardIndex !== -1) {
+        player.discard.splice(discardIndex, 1);
+        player.hand.push(cardId);
+      }
+    }
+  }
+
+  // Return the Clone card itself (a scroll cast removed the spell from the game,
+  // so there is no card to return — only the Power, handled above).
+  if (player && !stackItem.modifiers.scrollLocked) {
+    const discardIndex = player.discard.lastIndexOf(stackItem.action.cardId);
+    if (discardIndex !== -1) {
+      player.discard.splice(discardIndex, 1);
+      player.hand.push(stackItem.action.cardId);
+    }
+  }
+
+  // The refunded cast no longer counts as a Spell this round/turn, so it neither
+  // burns the one-Spell limit nor the "first spell" Power bonuses.
+  if (player) {
+    player.combatStats.spellsCastThisRound = Math.max(0, player.combatStats.spellsCastThisRound - 1);
+    player.combatStats.spellsCastThisTurn = Math.max(0, (player.combatStats.spellsCastThisTurn ?? 0) - 1);
+  }
+
+  appendEvent(state, {
+    type: "SPELL_CAST_REFUNDED",
+    playerId,
+    spellCardId: stackItem.action.cardId,
+    reason
+  });
+
+  stackItem.status = "cancelled";
+  state.stack.pop();
+  state.pendingChoice = null;
+  if (!finishCombatIfNeeded(state)) {
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+  }
 }
 
 /** Resolves the Clone destination pick: drop the 1-Health Clone Token there. */
@@ -5053,6 +5438,33 @@ function shouldRetaliate(
   );
 }
 
+/**
+ * Open the reaction windows for a freshly declared attack (or retaliation).
+ * Misfortune is "played immediately when the enemy unit is attacking, before
+ * other cards", so a dedicated pre-buff window offering ONLY the defender's
+ * Misfortune is tried first (misfortunePhase). If the defender holds no playable
+ * Misfortune, the normal attack-declared buff window opens instead; the attack
+ * resolves straight away when nobody can react at all. Once Misfortune is played
+ * or declined the same window object continues as the normal buff window (see
+ * the NEGATE_ATTACK handler and the misfortune-phase handling in passReaction).
+ */
+function openDeclaredAttackWindow(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  attackDeclared: GameEvent,
+  cards: CardLibrary
+): void {
+  stackItem.modifiers.misfortunePhase = true;
+  if (openReactionWindowForTrigger(state, stackItem, attackDeclared, cards)) {
+    return;
+  }
+  // No Misfortune to offer: fall through to the ordinary attack-declared window.
+  stackItem.modifiers.misfortunePhase = false;
+  if (!openReactionWindowForTrigger(state, stackItem, attackDeclared, cards)) {
+    resolveTopStack(state, cards);
+  }
+}
+
 function openRetaliationWindow(
   state: GameState,
   attacker: CombatUnitState,
@@ -5102,9 +5514,7 @@ function openRetaliationWindow(
   });
   stackItem.triggerEventIds.push(attackDeclared.id);
 
-  if (!openReactionWindowForTrigger(state, stackItem, attackDeclared, cards)) {
-    resolveTopStack(state, cards);
-  }
+  openDeclaredAttackWindow(state, stackItem, attackDeclared, cards);
 }
 
 /**
@@ -5329,6 +5739,31 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       return;
     }
 
+    // Recanter's Cloak: a global spell-cast restriction wipes this cast out —
+    // a total lock (option B) or a Power below the floor (option A's "no spells
+    // with Power 0", so an unboosted cast does nothing). The spell still
+    // resolves and is discarded, applying none of its effects, exactly like a
+    // shrugged-off Dwarf roll above. Re-reads the final Power so a Power card
+    // played into the cast window lifts an option-A cast over the floor.
+    if (spellNullifiedByRestriction(state, getCurrentSpellPower(state, stackItem, cards))) {
+      appendEvent(state, {
+        type: "SPELL_CAST_RESOLVED",
+        playerId: stackItem.action.playerId,
+        spellCardId: stackItem.action.cardId,
+        target: stackItem.action.target,
+        power: getCurrentSpellPower(state, stackItem, cards)
+      });
+      finalizeSpellCardDestination(state, stackItem, effectCountBeforeCast);
+      stackItem.status = "resolved";
+      state.stack.pop();
+      if (finishCombatIfNeeded(state)) {
+        return;
+      }
+      state.phase = "combat";
+      state.priorityPlayerId = null;
+      return;
+    }
+
     if (card?.effect.type === "EARTHQUAKE" && state.combat?.siege) {
       resolveEarthquakeSpell(state, stackItem.action.playerId, getCurrentSpellPower(state, stackItem, cards));
     }
@@ -5338,8 +5773,9 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       if (target) {
         const power = getCurrentSpellPower(state, stackItem, cards);
         const rawAmount = getSpellDamageAmount(card, power);
-        // Spell/Specialty immunity zeroes the hit; otherwise "reduce spell
-        // damage by N" applies to Spell-kind damage only.
+        // Spell/Specialty immunity (Orb of Inhibition's global nullify and the
+        // Pendant's school immunity included) zeroes the hit; otherwise "reduce
+        // spell damage by N" applies to Spell-kind damage only.
         const amount = unitIgnoresCardDamage(state, target, card)
           ? 0
           : card.effect.damageKind === "spell"
@@ -5663,15 +6099,38 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
 
     // Clone: place a 1-Health copy of the selected allied unit on an adjacent
     // empty space. Grade-gated by the Power paid (1 → bronze, 3 → silver,
-    // 5 → gold); below Power 1, or on a unit above the unlocked grade, the cast
-    // does nothing. The destination is picked in a follow-up (the combat-clone
-    // OPTION_CHOICE), resolved by resolveCloneChoice.
+    // 5 → gold). If the Power paid does not reach the chosen unit's grade (e.g.
+    // a silver unit needs Power 3 but only 2 was paid), the cast is REFUNDED
+    // rather than wasted — the Clone card and the Power spent on it return to
+    // hand, a notice explains, and the caster goes back to the battle screen
+    // (nothing lost). On success the destination is picked in a follow-up (the
+    // combat-clone OPTION_CHOICE), resolved by resolveCloneChoice.
     if (card?.effect.type === "CLONE_UNIT" && state.combat && stackItem.action.target.type === "unit") {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
-        openCloneChoice(state, stackItem.action.playerId, target);
+        // Grade reached: if the unit somehow has no adjacent empty space left,
+        // refund too (nothing was placed) rather than swallow the cast.
+        if (!openCloneChoice(state, stackItem.action.playerId, target)) {
+          refundInsufficientCloneCast(
+            state,
+            stackItem,
+            target,
+            `${target.cardName} has no adjacent empty space to place a Clone — the spell was returned to your hand.`
+          );
+          return;
+        }
+      } else if (target) {
+        const required = powerRequiredForGrade(card.effect.gradeByPower, target.grade);
+        const need = required === null ? "more" : `Power ${required}`;
+        refundInsufficientCloneCast(
+          state,
+          stackItem,
+          target,
+          `Not enough Power to Clone ${target.cardName} (a ${target.grade} unit needs ${need}, you paid Power ${power}) — the spell was returned to your hand.`
+        );
+        return;
       }
     }
 
@@ -5800,6 +6259,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
             unit.id !== target.id &&
             isUnitAlive(unit) &&
             isAdjacent(unit.position, target.position) &&
+            !unitImmuneToSpellSchoolsByEffect(state, unit, card.spellSchools) &&
             (spellAbilitiesSuppressed(state) || !unitImmuneToSpellSchools(unit, card.spellSchools))
         );
         if (splashCandidates.length > 0) {
@@ -5846,6 +6306,48 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
           });
         }
       }
+    }
+
+    // Force Field (Basic Earth): drop an Obstacle on the chosen empty space.
+    // Its span grows with Power — Power 0: this Combat round, 1: the next, 2: the
+    // whole Combat — and while it stands it blocks non-flying movement.
+    if (card?.effect.type === "PLACE_FORCE_FIELD" && state.combat && stackItem.action.target.type === "space") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const duration = durationAtPower(card.effect.durationByPower, power) ?? { type: "combat" };
+      addBattlefieldToken(state, {
+        kind: "force_field",
+        position: stackItem.action.target.position,
+        controllerId: stackItem.action.playerId,
+        expiresAtCombatRoundEnd: forceFieldExpiry(state.combat, duration)
+      });
+    }
+
+    // Fire Wall (Basic Fire): drop an Effect Obstacle on the chosen empty space
+    // for the whole Combat; the damage it deals scales with Power (0/2/4 -> 1/2/3).
+    if (card?.effect.type === "PLACE_FIRE_WALL" && state.combat && stackItem.action.target.type === "space") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      addBattlefieldToken(state, {
+        kind: "fire_wall",
+        position: stackItem.action.target.position,
+        controllerId: stackItem.action.playerId,
+        damage: getAmountByPower(card.effect.damageByPower, 1, power)
+      });
+    }
+
+    // Quicksand (Basic Earth) / Land Mine (Expert Fire): place the first of
+    // 2/4/6 face-down tokens on the cast's space, then open the caster's picker
+    // for the rest (the place-battlefield-tokens choice).
+    if (card?.effect.type === "PLACE_HIDDEN_TOKENS" && state.combat && stackItem.action.target.type === "space") {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const count = getAmountByPower(card.effect.countByPower, 2, power);
+      beginHiddenTokenPlacement(
+        state,
+        stackItem.action.playerId,
+        card.effect.tokenKind,
+        count,
+        card.effect.triggerDamage,
+        stackItem.action.target.position
+      );
     }
 
     appendEvent(state, {
@@ -6201,6 +6703,39 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   openReactionWindowForTrigger(state, stackItem, spellStarted, cards);
 }
 
+/**
+ * If the open window is Misfortune's pre-buff phase and it just emptied (the
+ * defender declined Misfortune), hand the SAME window object over to the normal
+ * attack-declared buff window: clear the phase, recompute the full offers, reset
+ * passes and restore the normal (attacker-first) priority. Returns true when it
+ * took over, so the caller does not resolve the attack. A no-op (returns false)
+ * for any other window, or when nobody can react in the normal window either.
+ */
+function transitionFromMisfortunePhase(state: GameState, cards: CardLibrary): boolean {
+  const window = state.reactionWindow;
+  const top = state.stack.at(-1);
+  if (
+    !window ||
+    !top ||
+    (top.action.type !== "ATTACK_UNIT" && top.action.type !== "MOVE_AND_ATTACK_UNIT") ||
+    !top.modifiers.misfortunePhase
+  ) {
+    return false;
+  }
+
+  top.modifiers.misfortunePhase = false;
+  window.passedPlayerIds = [];
+  refreshReactionWindowLegalReactions(state, cards);
+  if (window.allowedPlayerIds.length === 0) {
+    // Nobody can react in the ordinary window either — let the attack resolve.
+    return false;
+  }
+  // Normal order: the attacker (initiator) leads the buff exchange again.
+  window.priorityPlayerId = window.allowedPlayerIds[0];
+  state.priorityPlayerId = window.allowedPlayerIds[0];
+  return true;
+}
+
 function passReaction(state: GameState, action: Extract<GameAction, { type: "PASS_REACTION" }>, cards: CardLibrary): void {
   if (!state.reactionWindow) {
     throw new Error("No reaction window is open.");
@@ -6222,6 +6757,11 @@ function passReaction(state: GameState, action: Extract<GameAction, { type: "PAS
   );
 
   if (remainingPlayers.length === 0) {
+    // The defender declined Misfortune in its pre-buff window: hand off to the
+    // normal attack-declared buff window instead of resolving the attack.
+    if (transitionFromMisfortunePhase(state, cards)) {
+      return;
+    }
     closeReactionWindow(state, "all-pass");
     resolveTopStack(state, cards);
     return;
@@ -6254,9 +6794,10 @@ function effectSupportsExpertPlay(effect: NonNullable<ReturnType<typeof getEffec
     return Boolean(effect.expertIgnoresMaxPower || effect.expertIgnoresMaxSpellLevel);
   }
 
-  // Interference's expert side (+2 instead of +1) always exists.
+  // Interference's expert side (+2 instead of +1) exists; Plate of the Dying
+  // Light reuses INTERFERE_SPELL with no expert side (no expertAmount).
   if (effect.type === "INTERFERE_SPELL") {
-    return true;
+    return effect.expertAmount !== undefined;
   }
 
   return false;
@@ -6563,6 +7104,13 @@ function applyReactionPlayCore(
   });
 
   if (effect.type === "CANCEL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
+    // Boots of Polarity: a chance-based cancel. Roll its Attack dice; on a
+    // failed roll the card is already spent (moved to discard above) but the
+    // spell resolves — return without ending the window so the cast continues
+    // to resolution and other reactions may still answer it.
+    if (effect.diceRoll && !rollSpellCancelDice(state, effect.diceRoll, stackItem.action.cardId, playerId)) {
+      return { windowEnded: false };
+    }
     // Resistance-style plays always end the spell once they apply: the stack
     // item is cancelled and the reaction window closes immediately.
     stackItem.status = "cancelled";
@@ -6945,6 +7493,23 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
+  // Misfortune: played in its own pre-buff window. Lock the pending attack — the
+  // attacker can no longer increase their attack from any source for this attack
+  // (the legal-action layer refuses every attack-buff to them) and the Attack die
+  // is cancelled (face 0, no die-triggered effects). Clearing the misfortune
+  // phase hands the window over to the normal buff exchange, now with the
+  // attacker's buffs locked out. Counts as the defender's Spell (noteSpellCast
+  // already ran above).
+  if (
+    effect.type === "NEGATE_ATTACK" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    stackItem.modifiers.negateAttackBuffs = true;
+    stackItem.modifiers.attackDieCancelled = true;
+    stackItem.modifiers.misfortunePhase = false;
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
   // Bless: the pending attack skips its Attack die (and may gain attack).
   if (
     effect.type === "IGNORE_ATTACK_DIE" &&
@@ -7088,7 +7653,9 @@ function applyReactionPlayCore(
       createActiveEffect(
         state,
         {
-          name: mode === "expert" ? "Expert Interference" : "Interference",
+          // Interference → "Interference"/"Expert Interference"; Plate of the
+          // Dying Light reuses this effect and names it after the artifact.
+          name: mode === "expert" ? `Expert ${card.name}` : card.name,
           scope: "unit",
           duration: { type: "combat" },
           polarity: "positive",
@@ -7895,6 +8462,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     createActiveEffectFromCard(state, card, effect, action.playerId, mode, target);
   }
 
+  if (effect.type === "REMOVE_ACTIVE_EFFECT" && target) {
+    removeOneEffectFromTarget(
+      state,
+      { type: "card", cardId: card.id, controllerId: action.playerId },
+      target
+    );
+  }
+
   if (effect.type === "CREATE_ATTACK_BUFF" && target) {
     createAttackBuffFromCard(state, card, effect, action.playerId, card.power ?? 0, target);
   }
@@ -8103,6 +8678,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "DIMENSION_DOOR") {
     openDimensionDoorChoice(state, action.playerId, effect.fields);
+  }
+
+  // View Earth (Map): open the choice of which enemy Mine in reach to capture.
+  if (effect.type === "VIEW_EARTH") {
+    openViewEarthChoice(state, action.playerId, effect.withinFields);
   }
 
   if (effect.type === "GAIN_EXPERT_USE") {
@@ -8818,6 +9398,11 @@ export function isSpaceBlockedForSummon(combat: CombatState, position: number): 
     return true;
   }
   if ((combat.obstacles ?? []).includes(position)) {
+    return true;
+  }
+  // Any spell token (Force Field / Fire Wall / Quicksand / Land Mine) holds a
+  // space: a unit cannot be summoned or teleported onto it.
+  if ((combat.battlefieldTokens ?? []).some((token) => token.position === position)) {
     return true;
   }
   if (combat.siege?.walls.includes(position) || combat.siege?.gatePosition === position) {
@@ -9840,9 +10425,7 @@ function declareAttack(
   });
   stackItem.triggerEventIds.push(attackDeclared.id);
 
-  if (!openReactionWindowForTrigger(state, stackItem, attackDeclared, cards)) {
-    resolveTopStack(state, cards);
-  }
+  openDeclaredAttackWindow(state, stackItem, attackDeclared, cards);
 }
 
 function attackUnit(
@@ -9872,18 +10455,228 @@ function moveAndAttackUnit(
   }
 
   const from = attacker.position;
-  attacker.position = action.destination;
+  const destination = action.destination;
   attacker.movedThisActivation = true;
+
+  // The approach is walked through any battlefield tokens, just like a plain
+  // move: a Fire Wall / Land Mine bites the attacker on the way in, and a
+  // Quicksand can swallow it short of the target (no token on the board → the
+  // direct relocation below is unchanged).
+  let finalPosition = destination;
+  let haltedByQuicksand = false;
+  if ((combat.battlefieldTokens ?? []).length > 0) {
+    const enteredSpaces =
+      attacker.type === "flying"
+        ? [destination]
+        : (planMovePath(
+            from,
+            destination,
+            getUnitMoveRange(attacker),
+            getBlockedSpaces(combat, attacker),
+            getKnownHazardSpaces(combat, attacker)
+          ) ?? [destination]);
+    const walked = walkMoveThroughTokens(state, attacker, enteredSpaces);
+    finalPosition = walked.finalPosition;
+    haltedByQuicksand = walked.haltedByQuicksand;
+  }
+
+  attacker.position = finalPosition;
 
   appendEvent(state, {
     type: "UNIT_MOVED",
     playerId: action.playerId,
     unitId: attacker.id,
     from,
-    to: action.destination
+    to: finalPosition
   });
 
+  // A Fire Wall / Land Mine that struck the attacker down, or a Quicksand that
+  // swallowed it before it reached the target, ends the activation with no
+  // attack — the unit never arrives adjacent to its quarry.
+  if (!isUnitAlive(attacker) || haltedByQuicksand || finalPosition !== destination) {
+    if (isUnitAlive(attacker)) {
+      attacker.activatedThisRound = true;
+    }
+    if (combat.activeUnitId === attacker.id) {
+      appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, attacker.id), "activation-ended");
+      advanceActiveUnit(state);
+    }
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    finishCombatIfNeeded(state);
+    return;
+  }
+
   declareAttack(state, action, cards);
+}
+
+/** The spell a battlefield token's damage is attributed to (for damage events / FX). */
+const BATTLEFIELD_TOKEN_CARD_ID: Record<BattlefieldTokenKind, CardId> = {
+  force_field: "spell.force_field",
+  fire_wall: "spell.fire_wall",
+  quicksand: "spell.quicksand",
+  land_mine: "spell.land_mine"
+};
+
+/** Battlefield tokens occupying a given board space. */
+function tokensAtPosition(combat: CombatState, position: number): BattlefieldTokenState[] {
+  return (combat.battlefieldTokens ?? []).filter((token) => token.position === position);
+}
+
+/**
+ * Spaces the moving unit's side can SEE are dangerous: every face-up Fire Wall,
+ * plus the mover's OWN armed traps (a player "may look at their Tokens at any
+ * time"). A hazard-aware path lets a unit dodge these when an equally short
+ * route exists; the opponent's blind traps are unknown, so they are not avoided.
+ */
+function getKnownHazardSpaces(combat: CombatState, unit: CombatUnitState): Set<number> {
+  const hazards = new Set<number>();
+  for (const token of combat.battlefieldTokens ?? []) {
+    if (token.kind === "fire_wall") {
+      hazards.add(token.position);
+    } else if (
+      (token.kind === "quicksand" || token.kind === "land_mine") &&
+      token.armed === true &&
+      token.controllerId === unit.controllerId
+    ) {
+      hazards.add(token.position);
+    }
+  }
+  return hazards;
+}
+
+/** Reveals a face-down trap (Quicksand / Land Mine) to everyone the first time a unit enters it. */
+function revealBattlefieldToken(state: GameState, token: BattlefieldTokenState, unit: CombatUnitState): void {
+  if (token.revealed) {
+    return;
+  }
+  token.revealed = true;
+  appendEvent(state, {
+    type: "BATTLEFIELD_TOKEN_REVEALED",
+    tokenId: token.id,
+    kind: token.kind,
+    position: token.position,
+    armed: token.armed === true,
+    unitId: unit.id
+  });
+}
+
+/** Deals a Fire Wall / Land Mine token's flat damage to a unit moving over it. */
+function dealBattlefieldTokenDamage(
+  state: GameState,
+  token: BattlefieldTokenState,
+  unit: CombatUnitState,
+  amount: number
+): void {
+  if (amount <= 0) {
+    return;
+  }
+  appendEvent(state, {
+    type: "BATTLEFIELD_TOKEN_TRIGGERED",
+    tokenId: token.id,
+    kind: token.kind,
+    position: token.position,
+    unitId: unit.id,
+    outcome: "damage",
+    amount
+  });
+  unit.damage += amount;
+  noteUnitDamagedForTokens(state, unit, amount);
+  appendEvent(state, {
+    type: "DAMAGE_ASSIGNED",
+    source: { type: "card", cardId: BATTLEFIELD_TOKEN_CARD_ID[token.kind], controllerId: token.controllerId },
+    target: { type: "unit", unitId: unit.id },
+    amount,
+    // Flat board-effect damage: the rulebook applies no Spell-damage reduction
+    // or immunity to a token strike, so it is "effect", never "spell", damage.
+    damageKind: "effect"
+  });
+  markUnitRemovedIfNeeded(state, unit);
+}
+
+/**
+ * Walks a unit's move through the spaces it ENTERS (a flyer's caller passes only
+ * its landing space, since flyers never enter the spaces they pass over),
+ * springing each battlefield token. Returns where the unit comes to rest and
+ * whether a Quicksand halted it (which also ends its activation). Faithful to
+ * the rulebook: an entered face-down trap is revealed; an armed Land Mine deals
+ * its damage and the unit moves on; an armed Quicksand ends movement at once; a
+ * Fire Wall burns any unit stopping on it and any ground/ranged unit passing
+ * through. Stops early the moment a token kills the mover.
+ */
+function walkMoveThroughTokens(
+  state: GameState,
+  unit: CombatUnitState,
+  enteredSpaces: number[]
+): { finalPosition: number; haltedByQuicksand: boolean } {
+  const combat = state.combat;
+  if (!combat || enteredSpaces.length === 0) {
+    return { finalPosition: unit.position, haltedByQuicksand: false };
+  }
+
+  let finalPosition = unit.position;
+  for (let index = 0; index < enteredSpaces.length; index += 1) {
+    const position = enteredSpaces[index];
+    finalPosition = position;
+    const isLastStep = index === enteredSpaces.length - 1;
+    const tokens = tokensAtPosition(combat, position);
+
+    // Fire Wall (Effect Obstacle): stopping on it burns any unit; passing
+    // through burns only a ground or ranged unit (a flyer over it is unharmed,
+    // and a flyer is never mid-path here anyway).
+    for (const token of tokens) {
+      if (token.kind !== "fire_wall") {
+        continue;
+      }
+      const passingThrough = !isLastStep;
+      if (!passingThrough || unit.type !== "flying") {
+        dealBattlefieldTokenDamage(state, token, unit, token.damage ?? 0);
+        if (!isUnitAlive(unit)) {
+          return { finalPosition, haltedByQuicksand: false };
+        }
+      }
+    }
+
+    // Land Mine: reveal on entry; an armed one deals its damage, then the unit
+    // continues its move/activation if it survives.
+    for (const token of tokens) {
+      if (token.kind !== "land_mine") {
+        continue;
+      }
+      revealBattlefieldToken(state, token, unit);
+      if (token.armed) {
+        dealBattlefieldTokenDamage(state, token, unit, token.damage ?? 0);
+        if (!isUnitAlive(unit)) {
+          return { finalPosition, haltedByQuicksand: false };
+        }
+      }
+    }
+
+    // Quicksand: reveal on entry; an armed one ends movement AND activation here.
+    let armedQuicksand: BattlefieldTokenState | undefined;
+    for (const token of tokens) {
+      if (token.kind !== "quicksand") {
+        continue;
+      }
+      revealBattlefieldToken(state, token, unit);
+      if (token.armed) {
+        armedQuicksand = armedQuicksand ?? token;
+      }
+    }
+    if (armedQuicksand) {
+      appendEvent(state, {
+        type: "BATTLEFIELD_TOKEN_TRIGGERED",
+        tokenId: armedQuicksand.id,
+        kind: "quicksand",
+        position,
+        unitId: unit.id,
+        outcome: "stop"
+      });
+      return { finalPosition: position, haltedByQuicksand: true };
+    }
+  }
+
+  return { finalPosition, haltedByQuicksand: false };
 }
 
 function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UNIT" }>): void {
@@ -9894,21 +10687,58 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
   }
 
   const from = unit.position;
-  unit.position = action.destination;
+  const destination = action.destination;
   unit.movedThisActivation = true;
+
+  let finalPosition = destination;
+  let haltedByQuicksand = false;
+
+  // With battlefield tokens in play, the move is walked space-by-space so Fire
+  // Walls, Land Mines and Quicksand can bite along the way. With none on the
+  // board this is skipped entirely, so ordinary movement is unchanged.
+  if ((combat.battlefieldTokens ?? []).length > 0) {
+    const enteredSpaces =
+      unit.type === "flying"
+        ? [destination]
+        : (planMovePath(
+            from,
+            destination,
+            getUnitMoveRange(unit),
+            getBlockedSpaces(combat, unit),
+            getKnownHazardSpaces(combat, unit)
+          ) ?? [destination]);
+    const walked = walkMoveThroughTokens(state, unit, enteredSpaces);
+    finalPosition = walked.finalPosition;
+    haltedByQuicksand = walked.haltedByQuicksand;
+  }
+
+  unit.position = finalPosition;
 
   appendEvent(state, {
     type: "UNIT_MOVED",
     playerId: action.playerId,
     unitId: unit.id,
     from,
-    to: action.destination
+    to: finalPosition
   });
 
-  // Ranged units finish their activation with the move, whether it follows a
-  // shot or replaces it — they can never attack after moving. Ground and
-  // flying units stay active to attack an adjacent enemy or hold.
-  if (unit.type === "ranged") {
+  // A Fire Wall or Land Mine that struck the mover down ends its activation.
+  if (!isUnitAlive(unit)) {
+    if (combat.activeUnitId === unit.id) {
+      appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
+      advanceActiveUnit(state);
+    }
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    finishCombatIfNeeded(state);
+    return;
+  }
+
+  // Quicksand ends both movement AND activation, whatever the unit's type.
+  // Ranged units likewise finish their activation with any move — they can
+  // never attack after moving. Ground and flying units stay active to attack
+  // an adjacent enemy or hold.
+  if (haltedByQuicksand || unit.type === "ranged") {
     unit.activatedThisRound = true;
     appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
     advanceActiveUnit(state);
@@ -9969,6 +10799,7 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   resetCombatRound(state.combat);
   appendExpiredEffectEvents(state, expireEffectsForCombatRoundEnd(state, finishedRound), "combat-round-ended");
   expireTokensAtRoundEnd(state, state.combat, finishedRound);
+  expireBattlefieldTokensAtRoundEnd(state, finishedRound);
   for (const player of Object.values(state.players)) {
     player.combatStats.spellsCastThisRound = 0;
     player.combatStats.spellLimitBonusThisRound = 0;
@@ -10995,6 +11826,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           nextState.pendingChoice.context === "combat-teleport"
         ) {
           resolveTeleportChoice(nextState, action);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "place-battlefield-tokens"
+        ) {
+          resolvePlaceTokensChoice(nextState, action);
         } else if (
           nextState.pendingChoice?.type === "OPTION_CHOICE" &&
           nextState.pendingChoice.context === "combat-clone"
