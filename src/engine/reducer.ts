@@ -6041,20 +6041,24 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       }
     }
 
-    // Dispel: strip every removable ongoing effect from the selected unit, gated
-    // by the Power-reached grade (0 → bronze, 1 → silver, 2 → gold) just like
-    // Anti-Magic / Blind. Casting above the unlocked grade does nothing.
-    if (card?.effect.type === "DISPEL_EFFECTS" && state.combat && stackItem.action.target.type === "unit") {
-      const power = getCurrentSpellPower(state, stackItem, cards);
-      const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
-      const target = state.combat.units[stackItem.action.target.unitId];
-      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
-        removeEffectsFromTarget(
-          state,
-          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
-          stackItem.action.target,
-          "any-removable"
-        );
+    // Dispel: "Remove all ongoing effects from a space, or a unit and the space
+    // it occupies." On a UNIT it strips that unit's removable effects (gated by
+    // the Power-reached grade 0/1/2 → bronze/silver/gold, like Anti-Magic/Blind)
+    // and then clears any obstacle on the space it stands on. On a SPACE it
+    // clears that space's obstacle/trap tokens — tokens carry no grade, so this
+    // works at any Power.
+    if (card?.effect.type === "DISPEL_EFFECTS" && state.combat) {
+      const dispelSource = { type: "card" as const, cardId: card.id, controllerId: stackItem.action.playerId };
+      if (stackItem.action.target.type === "unit") {
+        const power = getCurrentSpellPower(state, stackItem, cards);
+        const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+        const target = state.combat.units[stackItem.action.target.unitId];
+        if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+          removeEffectsFromTarget(state, dispelSource, stackItem.action.target, "any-removable");
+          clearBattlefieldTokensAt(state, state.combat, target.position);
+        }
+      } else if (stackItem.action.target.type === "space") {
+        clearBattlefieldTokensAt(state, state.combat, stackItem.action.target.position);
       }
     }
 
@@ -10641,6 +10645,28 @@ function getKnownHazardSpaces(combat: CombatState, unit: CombatUnitState): Set<n
 /** Takes a sprung face-down trap (Quicksand / Land Mine) off the board. */
 function removeBattlefieldToken(combat: CombatState, tokenId: string): void {
   combat.battlefieldTokens = (combat.battlefieldTokens ?? []).filter((token) => token.id !== tokenId);
+}
+
+/**
+ * Dispel / "Remove all ongoing effects from a space": lifts every battlefield
+ * token (Force Field, Fire Wall, Quicksand, Land Mine) off `position` and
+ * announces each, so the board clears and the log notes it. Returns the count.
+ */
+function clearBattlefieldTokensAt(state: GameState, combat: CombatState, position: number): number {
+  const here = (combat.battlefieldTokens ?? []).filter((token) => token.position === position);
+  if (here.length === 0) {
+    return 0;
+  }
+  combat.battlefieldTokens = (combat.battlefieldTokens ?? []).filter((token) => token.position !== position);
+  for (const token of here) {
+    appendEvent(state, {
+      type: "BATTLEFIELD_TOKEN_EXPIRED",
+      tokenId: token.id,
+      kind: token.kind,
+      position: token.position
+    });
+  }
+  return here.length;
 }
 
 /** Deals a Fire Wall / Land Mine token's flat damage to a unit moving over it. */
