@@ -1194,9 +1194,13 @@ function addSpellActions(
   }
 
   const player = state.players[playerId];
-  if (!player || player.combatStats.spellsCastThisRound >= spellLimitFor(state, player)) {
+  if (!player) {
     return;
   }
+  // The one-Spell-per-combat-round limit blocks hand and Scroll casts. The Helm
+  // of the Alabaster Unicorn cast is a free bonus that does not count toward the
+  // limit, so it is still offered (and added) even once the limit is reached.
+  const spellLimitReached = player.combatStats.spellsCastThisRound >= spellLimitFor(state, player);
 
   // Neutral Pegasi: a living enemy Pegasi gates every Spell cast behind paying
   // an extra Power card — with none to pay, the cast is not offered at all.
@@ -1217,13 +1221,15 @@ function addSpellActions(
 
   // Hand spells plus every Spell Scroll spell (scroll spells are not in hand;
   // they cast at power 0 and are removed once used). Both share the timing and
-  // targeting rules below.
-  const castCandidates: { cardId: string; fromScroll?: string; fromSpellDeck?: string }[] = [
-    ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
-    ...(player.scrolls ?? []).flatMap((scroll) =>
-      [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
-    )
-  ];
+  // targeting rules below, and both are blocked once the spell limit is reached.
+  const castCandidates: { cardId: string; fromScroll?: string; fromSpellDeck?: string }[] = spellLimitReached
+    ? []
+    : [
+        ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
+        ...(player.scrolls ?? []).flatMap((scroll) =>
+          [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
+        )
+      ];
 
   // Helm of the Alabaster Unicorn (option B): cast the top card of the shared
   // Spell-deck discard pile. Offered like a scroll cast — the spell is sourced
@@ -1536,25 +1542,6 @@ function isOptionEffectPlayable(
       // Ring of the Wayfarer's paralysis side is a combat play; the neutral /
       // opening-round gate lives on its `requiresNeutralCombatStart` flag.
       return context === "combat" && Boolean(state.combat);
-    case "ACTIVATE_RANGED_UNIT": {
-      // Bowstring of the Unicorn's Mane (option A): "Play this card before a unit
-      // activates." A combat instant played on your own turn, before your fresh
-      // active unit has acted. Requires one of your units to be the active unit
-      // and untouched this activation; the chosen ranged unit then activates out
-      // of order (the eligible-target check is the offer loop's filter below).
-      if (context !== "combat" || !state.combat) {
-        return false;
-      }
-      const activeId = state.combat.activeUnitId;
-      const active = activeId ? state.combat.units[activeId] : undefined;
-      return Boolean(
-        active &&
-          active.controllerId === playerId &&
-          !active.activatedThisRound &&
-          !active.movedThisActivation &&
-          !active.attackedThisActivation
-      );
-    }
     case "BLOCK_ENEMY_SURRENDER":
       // Shackles of War (house rule): only at the start of a player-vs-player
       // combat, where there is an enemy hero who could otherwise surrender.
@@ -1645,8 +1632,7 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
     effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
     effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" ||
-    effect.type === "PLACE_PARALYSIS" ||
-    effect.type === "ACTIVATE_RANGED_UNIT"
+    effect.type === "PLACE_PARALYSIS"
   );
 }
 
@@ -1766,12 +1752,6 @@ function addOptionPlays(
         const maxGrade = gradeAtPower(gradeByPower, card.power ?? 0);
         return maxGrade !== null && gradeRank(unit.grade) <= gradeRank(maxGrade);
       });
-    }
-    // Bowstring of the Unicorn's Mane: you activate a DIFFERENT ranged unit —
-    // never the one that is already the active unit (that would be a no-op).
-    if (option.effect.type === "ACTIVATE_RANGED_UNIT") {
-      const activeId = state.combat?.activeUnitId;
-      targets = targets.filter((candidate) => !(candidate.type === "unit" && candidate.unitId === activeId));
     }
     if (targets.length === 0) {
       continue;
@@ -2896,6 +2876,32 @@ export function getLegalActions(
  * controller, only while the die-cancel has not already been armed, and never
  * when the defender's hand is locked out of the Combat.
  */
+/**
+ * Bowstring of the Unicorn's Mane: a player's ranged units that may be activated
+ * out of order in the pre-activation window — alive, ranged, not yet activated
+ * this round, and not the unit currently about to activate.
+ */
+function getActivateRangedUnitTargets(
+  state: GameState,
+  playerId: PlayerId,
+  aboutToActivateUnitId: UnitId
+): UnitId[] {
+  const combat = state.combat;
+  if (!combat) {
+    return [];
+  }
+  return Object.values(combat.units)
+    .filter(
+      (unit) =>
+        unit.controllerId === playerId &&
+        isUnitAlive(unit) &&
+        unit.type === "ranged" &&
+        !unit.activatedThisRound &&
+        unit.id !== aboutToActivateUnitId
+    )
+    .map((unit) => unit.id);
+}
+
 function getDieCancelReactions(
   state: GameState,
   defenderId: UnitId,
@@ -3248,15 +3254,33 @@ export function getLegalReactionsForTrigger(
           !card.permanent &&
           isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic")
         ) {
-          push(
-            makeReactionAction(variantName, {
-              type: "PLAY_REACTION",
-              playerId: player.id,
-              cardId,
-              mode: "basic",
-              ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
-            })
-          );
+          if (variant.effect.type === "ACTIVATE_RANGED_UNIT" && triggerEvent.type === "UNIT_ACTIVATION_STARTED") {
+            // Bowstring of the Unicorn's Mane: one play per eligible ranged unit —
+            // the chosen unit travels on the reaction's `target`.
+            for (const unitId of getActivateRangedUnitTargets(state, player.id, triggerEvent.unitId)) {
+              const targetUnit = state.combat?.units[unitId];
+              push(
+                makeReactionAction(`${variantName} (${targetUnit?.cardName ?? unitId})`, {
+                  type: "PLAY_REACTION",
+                  playerId: player.id,
+                  cardId,
+                  mode: "basic",
+                  ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
+                  target: { type: "unit", unitId }
+                })
+              );
+            }
+          } else {
+            push(
+              makeReactionAction(variantName, {
+                type: "PLAY_REACTION",
+                playerId: player.id,
+                cardId,
+                mode: "basic",
+                ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
+              })
+            );
+          }
         }
 
         if (
@@ -3855,6 +3879,13 @@ export function isEffectLegalForTrigger(
   // separately by canAffordCardCost, so a grade you cannot pay never opens the
   // window.
   if (triggerEvent.type === "UNIT_ACTIVATION_STARTED") {
+    // Bowstring of the Unicorn's Mane: either side may interject here (controller
+    // "any") to activate one of THEIR ranged units that has not acted this round —
+    // never the unit about to activate. Legal as long as such a ranged unit
+    // exists; the offer loop enumerates one play per eligible unit.
+    if (effect.type === "ACTIVATE_RANGED_UNIT") {
+      return getActivateRangedUnitTargets(state, playerId, triggerEvent.unitId).length > 0;
+    }
     if (effect.type !== "SKIP_ACTIVATION" || !effect.grade) {
       return false;
     }

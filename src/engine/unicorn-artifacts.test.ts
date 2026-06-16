@@ -209,7 +209,22 @@ describe("Helm of the Alabaster Unicorn — cast the Spell-deck discard top (opt
     expect(after.decks.spells.discardPile).toContain("spell.magic_arrow");
     expect(after.players.p1.discard).not.toContain("spell.magic_arrow");
     expect(after.players.p1.hand).not.toContain("spell.magic_arrow");
-    // It counts as the player's spell for the combat round.
+    // It is a free bonus cast: it does NOT consume the one-Spell-per-round limit.
+    expect(after.players.p1.combatStats.spellsCastThisRound).toBe(0);
+  });
+
+  it("is a free cast — offered, and castable, even after the spell limit is used up", () => {
+    const state = helmCastState("helm-past-limit");
+    // The player has already cast their Spell this combat round.
+    state.players.p1.combatStats.spellsCastThisRound = 1;
+
+    const cast = helmCast(state);
+    expect(cast, "the Helm cast bypasses the spell limit").toBeTruthy();
+
+    const after = passAllReactions(applyOk(state, cast!.action));
+    expect(after.combat!.units.unit_p2_skeletons.damage).toBe(1);
+    expect(after.players.p1.removed).toContain(HELM);
+    // Still does not bump the limit counter past where it already was.
     expect(after.players.p1.combatStats.spellsCastThisRound).toBe(1);
   });
 
@@ -265,75 +280,141 @@ describe("Helm of the Alabaster Unicorn — cast the Spell-deck discard top (opt
 // ---------------------------------------------------------------------------
 
 describe("Bowstring of the Unicorn's Mane — activate a ranged unit (option A)", () => {
-  function combatState(seed: string): GameState {
-    const state = createInitialGameState(seed);
-    state.players.p1.hand = [BOWSTRING];
+  /**
+   * Leaves Griffins (active), `targetId`, and p1's ranged Marksmen fresh, then
+   * ends Griffins so `targetId` becomes the about-to-activate unit and the
+   * pre-activation window settles around it. `targetId` is given top initiative
+   * and the Marksmen the lowest so the queue is deterministic.
+   */
+  function aboutToActivate(targetId: string, p1Hand: string[]): GameState {
+    const state = createInitialGameState("bowstring-seed");
+    state.players.p1.hand = [...p1Hand];
     state.players.p2.hand = [];
-    const griffins = state.combat!.units.unit_p1_griffins;
-    griffins.type = "ground";
-    griffins.activatedThisRound = false;
-    griffins.movedThisActivation = false;
-    griffins.attackedThisActivation = false;
-    const marksmen = state.combat!.units.unit_p1_marksmen;
-    marksmen.type = "ranged";
-    marksmen.activatedThisRound = false;
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_griffins";
-    return state;
+    const marksmen = state.combat!.units.unit_p1_marksmen;
+    marksmen.type = "ranged";
+    marksmen.initiative = 1; // lowest — never jumps the queue ahead of the target
+    state.combat!.units[targetId].initiative = 99; // activates right after Griffins
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.activatedThisRound = !["unit_p1_griffins", targetId, "unit_p1_marksmen"].includes(unit.id);
+    }
+    return applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
   }
 
-  it("offers activating a ranged unit that has not acted — but never the active unit itself", () => {
-    const state = combatState("bowstring-offer");
-    expect(findPlay(state, "p1", BOWSTRING, 0, "unit_p1_marksmen"), "the ranged unit is a target").toBeTruthy();
-    // The currently-active unit is excluded (activating it would be a no-op).
-    expect(findPlay(state, "p1", BOWSTRING, 0, "unit_p1_griffins")).toBeFalsy();
-    // A ground unit is never a target.
-    state.combat!.units.unit_p1_crusaders.type = "ground";
-    state.combat!.units.unit_p1_crusaders.activatedThisRound = false;
-    expect(findPlay(state, "p1", BOWSTRING, 0, "unit_p1_crusaders")).toBeFalsy();
-  });
-
-  it("makes the chosen ranged unit the active unit and takes its activation out of order", () => {
-    const state = combatState("bowstring-activate");
-    // Leave only Griffins (active) and Marksmen un-activated, so the resume is
-    // deterministic: everyone else has already gone this round.
-    for (const unit of Object.values(state.combat!.units)) {
-      if (unit.id !== "unit_p1_griffins" && unit.id !== "unit_p1_marksmen") {
-        unit.activatedThisRound = true;
-      }
-    }
-
-    const play = findPlay(state, "p1", BOWSTRING, 0, "unit_p1_marksmen");
-    expect(play).toBeTruthy();
-    const activated = passAllReactions(applyOk(state, play!));
-
-    // The Marksmen are now the active unit, fresh and ready to act.
-    expect(activated.combat!.activeUnitId).toBe("unit_p1_marksmen");
-    expect(activated.combat!.units.unit_p1_marksmen.activatedThisRound).toBe(false);
-    // The Bowstring was spent (it has no "Remove this card").
-    expect(activated.players.p1.hand).not.toContain(BOWSTRING);
-    expect(activated.players.p1.discard).toContain(BOWSTRING);
-
-    // Ending the Marksmen's out-of-order turn (they Defend) marks them done and
-    // hands the round back to the interrupted Griffins — no unit activates twice.
-    const ended = passAllReactions(
-      applyOk(activated, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_marksmen" })
+  function bowstringReaction(state: GameState, playerId: PlayerId, targetUnitId?: UnitId) {
+    return getLegalActions(state, playerId).find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === BOWSTRING &&
+        legal.action.optionIndex === 0 &&
+        (targetUnitId === undefined ||
+          (legal.action.target?.type === "unit" && legal.action.target.unitId === targetUnitId))
     );
-    expect(ended.combat!.units.unit_p1_marksmen.activatedThisRound).toBe(true);
-    expect(ended.combat!.activeUnitId).toBe("unit_p1_griffins");
-    expect(ended.combat!.units.unit_p1_griffins.activatedThisRound).toBe(false);
+  }
+
+  it("opens a pre-activation window to activate your ranged unit BEFORE an enemy unit acts", () => {
+    let state = aboutToActivate("unit_p2_skeletons", [BOWSTRING]);
+    // The enemy Skeletons are about to activate; the shared window is open to p1.
+    expect(state.combat!.activeUnitId).toBe("unit_p2_skeletons");
+    expect(state.reactionWindow, "the pre-activation window should open").toBeTruthy();
+
+    const play = bowstringReaction(state, "p1", "unit_p1_marksmen");
+    expect(play, "p1 may activate their Marksmen before the enemy acts").toBeTruthy();
+    state = applyOk(state, play!.action);
+
+    // The Marksmen take an out-of-order activation now; the Bowstring is spent.
+    expect(state.combat!.activeUnitId).toBe("unit_p1_marksmen");
+    expect(state.players.p1.hand).not.toContain(BOWSTRING);
+    expect(state.players.p1.discard).toContain(BOWSTRING);
   });
 
-  it("is not offered once the active unit has already moved or attacked this turn", () => {
-    const state = combatState("bowstring-not-fresh");
-    state.combat!.units.unit_p1_griffins.movedThisActivation = true;
-    expect(findPlay(state, "p1", BOWSTRING, 0, "unit_p1_marksmen")).toBeFalsy();
+  it("can also interject before your own unit acts, and the interrupted unit then resumes", () => {
+    let state = aboutToActivate("unit_p1_crusaders", [BOWSTRING]);
+    expect(state.combat!.activeUnitId).toBe("unit_p1_crusaders");
+
+    const play = bowstringReaction(state, "p1", "unit_p1_marksmen");
+    expect(play, "p1 may activate their Marksmen before their own Crusaders").toBeTruthy();
+    state = passAllReactions(applyOk(state, play!.action));
+    expect(state.combat!.activeUnitId).toBe("unit_p1_marksmen");
+
+    // End the Marksmen's out-of-order turn: the interrupted Crusaders resume and
+    // no unit activates twice.
+    state = passAllReactions(applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_marksmen" }));
+    expect(state.combat!.units.unit_p1_marksmen.activatedThisRound).toBe(true);
+    expect(state.combat!.activeUnitId).toBe("unit_p1_crusaders");
+    expect(state.combat!.units.unit_p1_crusaders.activatedThisRound).toBe(false);
   });
 
-  it("does not target a ranged unit that has already been activated this round", () => {
-    const state = combatState("bowstring-already-acted");
-    state.combat!.units.unit_p1_marksmen.activatedThisRound = true;
-    expect(findPlay(state, "p1", BOWSTRING, 0, "unit_p1_marksmen")).toBeFalsy();
+  it("offers only your ranged units that have not acted — not ground units, not the active unit", () => {
+    const state = aboutToActivate("unit_p2_skeletons", [BOWSTRING]);
+    // The Marksmen (ranged, fresh) are a target.
+    expect(bowstringReaction(state, "p1", "unit_p1_marksmen")).toBeTruthy();
+    // The enemy unit about to act is never a target (it is the active unit).
+    expect(bowstringReaction(state, "p1", "unit_p2_skeletons")).toBeFalsy();
+    // Griffins are a ground unit (and already activated) — never offered.
+    expect(bowstringReaction(state, "p1", "unit_p1_griffins")).toBeFalsy();
+  });
+
+  it("shares the pre-activation window with other interrupts (Sorrow) — both are offered at once", () => {
+    // p1's Crusaders are about to act (bronze, so Sorrow's free skip matches).
+    // p2 holds Sorrow (skip the Crusaders); p1 holds the Bowstring (fire the
+    // Marksmen first). Both interrupts must be live in the one shared window.
+    const state = createInitialGameState("bowstring-compose");
+    state.players.p1.hand = [BOWSTRING];
+    state.players.p2.hand = ["spell.sorrow"];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const marksmen = state.combat!.units.unit_p1_marksmen;
+    marksmen.type = "ranged";
+    marksmen.initiative = 1;
+    const crusaders = state.combat!.units.unit_p1_crusaders;
+    crusaders.grade = "bronze";
+    crusaders.initiative = 99;
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.activatedThisRound = !["unit_p1_griffins", "unit_p1_crusaders", "unit_p1_marksmen"].includes(unit.id);
+    }
+    const advanced = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+
+    expect(advanced.combat!.activeUnitId).toBe("unit_p1_crusaders");
+    expect(advanced.reactionWindow, "the shared pre-activation window opens").toBeTruthy();
+    const p2Reactions = advanced.reactionWindow?.legalReactions.p2 ?? [];
+    const p1Reactions = advanced.reactionWindow?.legalReactions.p1 ?? [];
+    expect(
+      p2Reactions.some((legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.sorrow"),
+      "p2's Sorrow skip is offered"
+    ).toBe(true);
+    expect(
+      p1Reactions.some(
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" &&
+          legal.action.cardId === BOWSTRING &&
+          legal.action.target?.type === "unit" &&
+          legal.action.target.unitId === "unit_p1_marksmen"
+      ),
+      "p1's Bowstring activation is offered in the same window"
+    ).toBe(true);
+  });
+
+  it("does not open the window when the player has no eligible ranged unit", () => {
+    const state = aboutToActivate("unit_p2_skeletons", [BOWSTRING]);
+    // Re-run with the Marksmen turned into a ground unit: no ranged target exists,
+    // so the Bowstring offers nothing and (being the only interrupt) no window opens.
+    const noRanged = createInitialGameState("bowstring-no-ranged");
+    noRanged.players.p1.hand = [BOWSTRING];
+    noRanged.players.p2.hand = [];
+    noRanged.activePlayerId = "p1";
+    noRanged.combat!.activeUnitId = "unit_p1_griffins";
+    noRanged.combat!.units.unit_p1_marksmen.type = "ground";
+    noRanged.combat!.units.unit_p2_skeletons.initiative = 99;
+    for (const unit of Object.values(noRanged.combat!.units)) {
+      unit.activatedThisRound = !["unit_p1_griffins", "unit_p2_skeletons"].includes(unit.id);
+    }
+    const advanced = applyOk(noRanged, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    expect(advanced.combat!.activeUnitId).toBe("unit_p2_skeletons");
+    expect(bowstringReaction(advanced, "p1")).toBeFalsy();
+    // Sanity: the harness with a ranged unit DID open it.
+    expect(state.reactionWindow).toBeTruthy();
   });
 });
 
