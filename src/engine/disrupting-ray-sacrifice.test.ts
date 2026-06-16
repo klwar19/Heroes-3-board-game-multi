@@ -247,6 +247,46 @@ describe("Disrupting Ray spell", () => {
       effect.modifiers.some((modifier) => modifier.type === "UNIT_ABILITY_SUPPRESSED")
     )!.duration).toEqual({ type: "combat" });
   });
+
+  it("is ignored by a Tower Gargoyle (ongoing spell effects never apply to it)", () => {
+    const state = createInitialGameState("dray-gargoyle");
+    state.players.p1.hand = ["spell.disrupting_ray"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    // Gargoyles "ignore ongoing effects created by a Spell" — Disrupting Ray is
+    // a Spell, so its suppression never takes hold; the unit keeps its ability.
+    const gargoyle = state.combat!.units.unit_p2_skeletons;
+    gargoyle.abilities = ["gargoyle-spell-ward", "double-attack"];
+
+    const cast = findCast(state, "p1", "spell.disrupting_ray", "unit_p2_skeletons");
+    const result = passAllReactions(applyOk(state, cast!.action));
+
+    const target = result.combat!.units.unit_p2_skeletons;
+    expect(target.abilitiesSuppressed).toBeFalsy();
+    expect(hasUnitAbilityEffect(target, "DOUBLE_ATTACK")).toBe(true);
+    expect(getUnitAbilityDefinitions(target).length).toBeGreaterThan(0);
+  });
+
+  it("is ignored by a Tower Titan (every ongoing effect on it is ignored)", () => {
+    const state = createInitialGameState("dray-titan");
+    state.players.p1.hand = ["spell.disrupting_ray"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    // Titans "ignore any ongoing effects on this unit, whatever the source" —
+    // so Disrupting Ray's suppression never applies and the ability stays live.
+    const titan = state.combat!.units.unit_p2_skeletons;
+    titan.abilities = ["titan-ignore-ongoing", "double-attack"];
+
+    const cast = findCast(state, "p1", "spell.disrupting_ray", "unit_p2_skeletons");
+    const result = passAllReactions(applyOk(state, cast!.action));
+
+    const target = result.combat!.units.unit_p2_skeletons;
+    expect(target.abilitiesSuppressed).toBeFalsy();
+    expect(hasUnitAbilityEffect(target, "DOUBLE_ATTACK")).toBe(true);
+    expect(getUnitAbilityDefinitions(target).length).toBeGreaterThan(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
