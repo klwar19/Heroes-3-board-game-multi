@@ -39,6 +39,7 @@ import {
 import {
   effectAppliesToUnit,
   effectiveInitiative,
+  getSpellCastRestriction,
   playerCannotSurrenderCombat,
   playerHasSpellTimingFreedom,
   unitImmuneToSpellSchoolsByEffect,
@@ -1178,6 +1179,14 @@ function addSpellActions(
     return;
   }
 
+  // Recanter's Cloak (option B): "no Hero can use Spells" this Combat — a global
+  // lock that binds both heroes, so no cast is offered at all. (Option A's
+  // Power-0 floor is enforced at resolution, since the Power is only fixed once
+  // the cast window closes; a cast can still be declared and then boosted.)
+  if (getSpellCastRestriction(state).lockAll) {
+    return;
+  }
+
   // Neutral Pegasi: a living enemy Pegasi gates every Spell cast behind paying
   // an extra Power card — with none to pay, the cast is not offered at all.
   const powerTaxed = combatEnemyImposesPowerTax(state, playerId);
@@ -1573,6 +1582,16 @@ function isOptionEffectPlayable(
         return countBallistas(state, playerId) >= 1;
       }
       return true;
+    case "REMOVE_ACTIVE_EFFECT":
+      // Boots of Polarity (option B): only worth playing while at least one
+      // removable, unit-scoped ongoing effect is on the table to strip.
+      return (
+        context === "combat" &&
+        Boolean(state.combat) &&
+        state.activeEffects.some(
+          (active) => active.target?.type === "unit" && active.removable !== false
+        )
+      );
     default:
       return false;
   }
@@ -1597,7 +1616,10 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
     effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
     effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" ||
-    effect.type === "PLACE_PARALYSIS"
+    effect.type === "PLACE_PARALYSIS" ||
+    // Boots of Polarity (option B): the ongoing effect it strips lives on a
+    // chosen unit (yours or the enemy's).
+    effect.type === "REMOVE_ACTIVE_EFFECT"
   );
 }
 
@@ -1717,6 +1739,20 @@ function addOptionPlays(
         const maxGrade = gradeAtPower(gradeByPower, card.power ?? 0);
         return maxGrade !== null && gradeRank(unit.grade) <= gradeRank(maxGrade);
       });
+    }
+    // Boots of Polarity (option B): only units that actually carry a removable
+    // ongoing effect are legal targets, so the play is never a no-op.
+    if (option.effect.type === "REMOVE_ACTIVE_EFFECT") {
+      targets = targets.filter(
+        (candidate) =>
+          candidate.type === "unit" &&
+          state.activeEffects.some(
+            (active) =>
+              active.target?.type === "unit" &&
+              active.target.unitId === candidate.unitId &&
+              active.removable !== false
+          )
+      );
     }
     if (targets.length === 0) {
       continue;
@@ -3114,6 +3150,11 @@ export function getLegalReactionsForTrigger(
 
   const result: Record<PlayerId, LegalAction[]> = {};
   const isAttackWindow = triggerEvent.type === "UNIT_ATTACK_DECLARED";
+  // Recanter's Cloak (option B): "no Hero can use Spells" blocks casting a Spell
+  // as a reaction/instant too, not just on a turn (the cast-offer gate handles
+  // turn casts). Artifact/ability counters (Resistance, the Boots, etc.) are not
+  // Spells and are unaffected.
+  const castLocked = getSpellCastRestriction(state).lockAll;
 
   for (const player of Object.values(state.players)) {
     // Garrison defense: "You cannot use your Deck during this Combat, as
@@ -3146,6 +3187,11 @@ export function getLegalReactionsForTrigger(
 
       // Spell instants respect the one-Spell-per-combat-round limit.
       if (card.kind === "spell" && spellLimitLeft <= 0) {
+        continue;
+      }
+
+      // Recanter's Cloak (option B) locks every Hero out of casting any Spell.
+      if (card.kind === "spell" && castLocked) {
         continue;
       }
 
@@ -3222,8 +3268,9 @@ export function getLegalReactionsForTrigger(
     }
 
     // Spell Scroll spells played as reactions: basic side only, power-locked
-    // to 0, removed once used. They respect the same spell-per-round limit.
-    if (spellLimitLeft > 0) {
+    // to 0, removed once used. They respect the same spell-per-round limit, and
+    // Recanter's Cloak (option B) locks them out along with every other Spell.
+    if (spellLimitLeft > 0 && !castLocked) {
       for (const scroll of player.scrolls ?? []) {
         for (const cardId of new Set(scroll.spellCardIds)) {
           const card = cards[cardId];
@@ -3762,9 +3809,10 @@ export function effectHasExpertMode(effect: ConcreteEffect): boolean {
     return Boolean(effect.expertIgnoresMaxPower || effect.expertIgnoresMaxSpellLevel);
   }
 
-  // Interference always has an expert side (+2 instead of +1).
+  // Interference has an expert side (+2 instead of +1); Plate of the Dying
+  // Light reuses the same effect with no expert side, so it omits expertAmount.
   if (effect.type === "INTERFERE_SPELL") {
-    return true;
+    return effect.expertAmount !== undefined;
   }
 
   return false;

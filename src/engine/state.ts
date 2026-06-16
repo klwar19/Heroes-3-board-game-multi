@@ -438,6 +438,21 @@ export type ActiveEffectModifier =
        */
       type: "SPELL_SCHOOL_IMMUNE";
       schools: SpellSchool[];
+    }
+  | {
+      /**
+       * Recanter's Cloak: a global, combat-scoped restriction on spell-casting
+       * that binds BOTH heroes (the wearer included), enforced at the spell
+       * resolution chokepoint (resolveTopStack) and the cast-offer gate.
+       *   • `lockAll` (option B) — no Hero may cast any Spell this Combat.
+       *   • `minPower` (option A) — a Spell that resolves below this Power has no
+       *     effect, so "no Hero can use spells with Power 0" forces every cast to
+       *     be boosted to Power ≥ 1 (minPower 1) to do anything.
+       * Side-agnostic (scope "global"), so one grant covers both armies.
+       */
+      type: "SPELL_CAST_RESTRICTION";
+      lockAll?: boolean;
+      minPower?: number;
     };
 
 export type ActiveEffectDefinition = {
@@ -497,6 +512,14 @@ export type EffectDefinition =
        */
       maxSpellLevel?: "basic" | "expert";
       expertIgnoresMaxSpellLevel?: boolean;
+      /**
+       * Boots of Polarity: a chance-based cancel. When set, playing the reaction
+       * rolls `count` Attack dice and the player keeps the best ("choose one");
+       * the spell is ignored only if a kept die shows `successFace` (the "+1"
+       * face, value 1). A failed roll still spends the card but lets the spell
+       * resolve — unlike the deterministic Resistance/Protection cancels above.
+       */
+      diceRoll?: { count: number; successFace: number };
     }
   | {
       type: "DRAW_CARDS";
@@ -1084,7 +1107,22 @@ export type EffectDefinition =
        */
       type: "INTERFERE_SPELL";
       amount: number;
-      expertAmount: number;
+      /**
+       * Interference's expert side grants +2 instead of +1. Optional: an
+       * artifact (Plate of the Dying Light) that grants the same Defense /
+       * spell-damage reduction through a CHOOSE_ONE option — not a basic/expert
+       * pair — omits it, so no expert reaction is offered or resolved for it.
+       */
+      expertAmount?: number;
+    }
+  | {
+      /**
+       * Boots of Polarity (option B): "Remove 1 ongoing effect." Targets one of
+       * your or the enemy's units and strips a single removable ongoing effect
+       * from it (the most recently applied one). A unit-scoped dispel of exactly
+       * one effect — narrower than Cure/Dispel, which clear several at once.
+       */
+      type: "REMOVE_ACTIVE_EFFECT";
     }
   | {
       type: "CREATE_ACTIVE_EFFECT";
