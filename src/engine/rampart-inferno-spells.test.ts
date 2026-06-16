@@ -235,6 +235,65 @@ describe("Sorrow", () => {
     expect(state.combat!.activeUnitId).toBe("unit_p2_skeletons");
     expect(state.reactionWindow).toBeNull();
   });
+
+  // The grade cost is a Power VALUE, not a card count: a single +2 artifact
+  // (Necklace of Dragonteeth) pays the whole 2-Power silver skip on its own,
+  // where the old "discard 2 cards" rule would have demanded two cards.
+  it("reaches the silver skip with one +2 Power artifact (value, not card count)", () => {
+    let state = aboutToActivate("unit_p2_vampires", ["spell.sorrow", "artifact.necklace_of_dragonteeth"]);
+    expect(state.reactionWindow, "+2 Power covers the silver skip, so the window opens").toBeTruthy();
+    const silver = reactionFor(state, "p1", "spell.sorrow", 1);
+    expect(silver, "the silver skip is affordable from one +2 artifact").toBeTruthy();
+    state = applyOk(state, { ...silver!.action, costCardIds: ["artifact.necklace_of_dragonteeth"] } as GameAction);
+    expect(state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
+  });
+
+  it("a single +2 Power artifact still cannot reach a gold unit (needs 4 Power)", () => {
+    const state = aboutToActivate("unit_p2_dread_knights", ["spell.sorrow", "artifact.necklace_of_dragonteeth"]);
+    // 2 Power < the 4 the gold skip needs, so its window never opens.
+    expect(state.reactionWindow).toBeNull();
+    expect(state.combat!.units.unit_p2_dread_knights.activatedThisRound).toBe(false);
+  });
+
+  it("counts standing School-of-Magic Power toward the grade, shrinking the discard", () => {
+    // Earth Magic in play grants +1 standing Power to Sorrow (an Earth spell).
+    // That +1, plus one Spell discarded for +1, reaches the 2-Power silver skip.
+    const withSchool = createInitialGameState("sorrow-school-seed");
+    withSchool.players.p1.hand = ["spell.sorrow", "spell.haste"];
+    withSchool.players.p1.permanents = ["ability.earth_magic"];
+    withSchool.players.p2.hand = [];
+    withSchool.activePlayerId = "p1";
+    withSchool.combat!.activeUnitId = "unit_p1_griffins";
+    for (const unit of Object.values(withSchool.combat!.units)) {
+      unit.activatedThisRound = unit.id !== "unit_p1_griffins" && unit.id !== "unit_p2_vampires";
+    }
+    let state = applyOk(withSchool, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    expect(state.reactionWindow, "standing +1 plus one discard reaches silver").toBeTruthy();
+    const silver = reactionFor(state, "p1", "spell.sorrow", 1);
+    expect(silver, "silver is affordable with standing Power + one discard").toBeTruthy();
+    state = applyOk(state, { ...silver!.action, costCardIds: ["spell.haste"] } as GameAction);
+    expect(state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
+
+    // Without the School permanent the very same hand (one +1 discard = 1 Power)
+    // falls short of the 2-Power silver skip, so no window opens (guard).
+    const noSchool = aboutToActivate("unit_p2_vampires", ["spell.sorrow", "spell.haste"]);
+    expect(noSchool.reactionWindow, "one +1 discard alone cannot reach silver").toBeNull();
+  });
+
+  it("rejects over-paying the silver skip (a redundant Power card must be dropped)", () => {
+    const state = aboutToActivate("unit_p2_vampires", [
+      "spell.sorrow",
+      "artifact.necklace_of_dragonteeth",
+      "artifact.necklace_of_dragonteeth"
+    ]);
+    const silver = reactionFor(state, "p1", "spell.sorrow", 1)!;
+    // Two +2 artifacts (4 Power) for a 2-Power skip — the second is redundant.
+    const result = applyAction(state, {
+      ...silver.action,
+      costCardIds: ["artifact.necklace_of_dragonteeth", "artifact.necklace_of_dragonteeth"]
+    } as GameAction);
+    expect(result.errors[0]?.message).toContain("more Power than it needs");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -365,6 +424,41 @@ describe("Slayer", () => {
       state.eventLog.some((event) => event.type === "CARDS_DRAWN" && event.playerId === "p1"),
       "the negated Slayer draws no card"
     ).toBe(false);
+  });
+
+  // School-restricted Power (an Orb) may empower a matching-school spell instant
+  // played into an attack. Slayer is Fire, so the Fire Orb's +5 lifts its roll
+  // count (Power 4+ → 6 dice); a Water Orb is never offered against it.
+  it("a Fire Orb (+5, Fire-only) empowers a reaction-played Slayer; a Water Orb does not", () => {
+    let state = slayerSetup("unit_p2_dread_knights", ["spell.slayer", "artifact.orb_of_tempestuous_fire"]);
+    state.players.p1.hand.push("artifact.orb_of_driving_rain"); // Water Orb (+5 Water-only)
+    state.combat!.dice.scriptedRolls = [1, 1, 0, 0, 0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    state = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_dread_knights"
+    });
+
+    // Before Slayer is on the attack, no Orb is offered (no Fire spell yet).
+    expect(reactionFor(state, "p1", "artifact.orb_of_tempestuous_fire", 1)).toBeUndefined();
+
+    state = applyOk(state, reactionFor(state, "p1", "spell.slayer")!.action);
+
+    // Now the Fire Orb may fuel the Fire Slayer; the Water Orb still may not.
+    expect(reactionFor(state, "p1", "artifact.orb_of_tempestuous_fire", 1), "Fire Orb fuels Fire Slayer").toBeTruthy();
+    expect(
+      reactionFor(state, "p1", "artifact.orb_of_driving_rain", 1),
+      "a Water Orb never empowers a Fire spell"
+    ).toBeUndefined();
+
+    state = applyOk(state, reactionFor(state, "p1", "artifact.orb_of_tempestuous_fire", 1)!.action);
+    state = passAllReactions(state);
+
+    // Power 0 → 2 rolls; the Orb's +5 lifts Slayer to its Power-4 row → 6 dice.
+    const rolled = state.eventLog.find((event) => event.type === "ATTACK_ROLLED" && !event.isRetaliation);
+    expect(rolled?.type === "ATTACK_ROLLED" ? rolled.rolls.length : -1).toBe(6);
   });
 });
 

@@ -180,6 +180,19 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Berserk: while held (its next activation), the unit MUST attack the
+       * nearest unit — friend or foe — or move toward it and attack it. The
+       * legal-action layer drops every other action (no free move, defend or
+       * ability) and the neutral AI targets the nearest unit instead of by
+       * tier; `canUnitAttack` lets the berserked unit strike its own allies
+       * (the attacked ally still retaliates). Bound to the unit's next
+       * activation (the "next-activation" duration removes it when that
+       * activation ends).
+       */
+      type: "BERSERK_FORCED_ATTACK";
+    }
+  | {
+      /**
        * Shackles of War (house rule): while held, the affected player's Hero
        * cannot *Surrender* the current Combat. Retreat (and a fought-out loss)
        * is unaffected. Player-scoped, lasts the Combat.
@@ -705,12 +718,36 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Xyron's Inferno: pick a space (any unit's space); that unit and every
-       * unit orthogonally adjacent to it — friend or foe — take `amount`
-       * damage. The discard cost is carried on the card option.
+       * Xyron's Inferno: select a space (occupied or empty); every unit on that
+       * space and every unit orthogonally adjacent to it — friend or foe — takes
+       * `amount` damage. The discard cost is carried on the card option.
        */
       type: "AREA_DAMAGE_ALL_ADJACENT";
       amount: number;
+    }
+  | {
+      /**
+       * Area blast that damages up to `adjacentPicks` units adjacent to a centre
+       * (the chosen space, or the chosen unit's space), letting the caster choose
+       * which when more than that are adjacent. `includeCenter` also damages the
+       * unit on the centre space (Meteor Shower hits its target; Frost Ring rings
+       * the centre and spares it). Friend or foe alike are hit. Damage is fixed
+       * (`amount`, hero-specialty options) or power-scaled (`amountByPower`,
+       * Frost Ring's spell cast).
+       */
+      type: "AREA_DAMAGE_PICK_ADJACENT";
+      amount?: number;
+      amountByPower?: Record<number, number>;
+      includeCenter: boolean;
+      adjacentPicks: number;
+    }
+  | {
+      /**
+       * Deemer's Meteor Shower IV: shuffle the player's whole discard pile back
+       * into their deck, then draw `drawCards` card(s).
+       */
+      type: "RESHUFFLE_DISCARD_THEN_DRAW";
+      drawCards: number;
     }
   | {
       /**
@@ -758,8 +795,10 @@ export type EffectDefinition =
        * Sorrow Spell (Instant reaction on UNIT_ACTIVATION_STARTED): when an
        * enemy unit is about to activate, skip its activation. The grade reached
        * is set by the Power paid (0 → bronze, 2 → silver, 4 → gold), modelled as
-       * one CHOOSE_ONE option per grade (free for bronze, pay 2/4 power-source
-       * cards for silver/gold — like Resurrection).
+       * one CHOOSE_ONE option per grade — bronze free, silver/gold cost a Power
+       * VALUE (`powerCost` 2/4) met by the caster's standing spell Power plus the
+       * printed Power of any discarded power-source cards, so one +4 artifact (or
+       * a +2 statistic) can reach a grade instead of forcing N separate discards.
        */
       type: "SKIP_ACTIVATION";
       grade: UnitGrade;
@@ -792,6 +831,33 @@ export type EffectDefinition =
        * UNIT_CANNOT_ATTACK effect with the "next-activation" duration.
        */
       type: "FORGETFULNESS";
+      gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
+       * Berserk Spell (Expert Fire, Activation): the selected unit MUST, during
+       * its next activation, attack the nearest unit or move to the nearest unit
+       * and attack it (friend or foe — the berserked unit may be forced onto its
+       * own allies, who retaliate as normal). The reachable grade rises with the
+       * Power paid (0 → bronze, 2 → silver, 4 → gold), exactly like Blind: casting
+       * on a unit above the unlocked grade does nothing. Backed by a
+       * BERSERK_FORCED_ATTACK effect with the "next-activation" duration.
+       */
+      type: "BERSERK";
+      gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
+       * Teleport Spell (Expert Water, Activation): move one of the caster's units
+       * to any empty space on the combat board, ignoring obstacles, other units
+       * and the distance in-between. The reachable grade of the moved unit rises
+       * with the Power paid (0 → bronze, 1 → silver, 2 → gold), like Anti-Magic /
+       * Blind; casting on a unit above the unlocked grade does nothing. The
+       * destination empty space is picked in a follow-up choice after the cast
+       * (the "combat-teleport" OPTION_CHOICE). The move is a free relocation: it
+       * costs the unit no movement and provokes no Retaliation.
+       */
+      type: "TELEPORT_UNIT";
       gradeByPower: Record<number, UnitGrade>;
     }
   | {
@@ -1135,6 +1201,18 @@ export type CardPlayCost = {
   discardCards?: number;
   /** Discard any number up to this many (effects may scale per card). */
   discardCardsUpTo?: number;
+  /**
+   * Pay at least this much spell Power (instead of a fixed card count). Met by
+   * the caster's standing spell Power for the played card's school (Power
+   * statistic / School-of-Magic permanent / active-unit boost) PLUS the full
+   * printed Power of each discarded power-source card — a Spell counts as the
+   * "+1 Power" on its bottom side, a Power statistic/artifact/ability counts as
+   * its printed Power (school-restricted Power only when the school matches).
+   * Used by Sorrow's silver/gold skip so a single +4 artifact (or your Power
+   * stat) reaches a grade instead of forcing N separate discards. Requires
+   * `costCardFilter: "power-source"`.
+   */
+  powerCost?: number;
   /**
    * The discarded/removed cards must match this filter. "power-source" cards
    * are anything that can contribute Power: a Power statistic or any Spell
@@ -2701,6 +2779,23 @@ export type ResolutionStackItem = {
      * Power instead of being frozen at the value they had when first played.
      */
     powerScaledAttackInstants?: PowerScaledAttackInstant[];
+    /**
+     * Per-player Power pool for an attack window. Each side's spell instants
+     * (the attacker's Bloodlust/Bless/Precision/Slayer, the defender's
+     * Curse/Weakness) scale only with the Power THAT side paid — Power cards,
+     * +1 discards and standing bonuses are kept per caster so one player's Power
+     * never inflates the other's spell. (Spell casts on your own turn use the
+     * single `spellPowerBonus`; only the shared attack window needs splitting.)
+     */
+    attackPowerByPlayer?: Record<PlayerId, number>;
+    /**
+     * Players whose Power-scaling spell instant in this attack has already been
+     * credited their standing spell Power (the once-per-turn Astrologers bonus,
+     * the once-per-round active-unit boost, and a School-of-Magic permanent's
+     * bonus for the spell's school) — the same Power a spell cast on your own
+     * turn receives. Tracked per player so each side is credited once.
+     */
+    standingPowerSeededFor?: PlayerId[];
     playedCardIds: CardId[];
   };
 };
@@ -2711,6 +2806,8 @@ export type ResolutionStackItem = {
  */
 export type PowerScaledAttackInstant = {
   cardId: CardId;
+  /** The caster — its bonus re-derives from this player's attack Power pool. */
+  playerId: PlayerId;
   stat: "attack" | "defense";
   /** The card's power→amount table (e.g. Bloodlust { 0:1, 1:2, 2:3 }). */
   amountByPower: Record<number, number>;
@@ -3977,6 +4074,7 @@ export type PendingChoice =
         | "combat-reposition"
         | "genie-take-spell"
         | "combat-knockback"
+        | "combat-teleport"
         | "cover-of-darkness"
         | "diplomacy-skip"
         | "diplomacy-recruit"
@@ -4000,6 +4098,11 @@ export type PendingChoice =
        * move to. `attackerId` is the Ghost Dragons whose attack triggered it.
        */
       knockback?: { unitId: UnitId; attackerId: UnitId; positions: number[] };
+      /**
+       * combat-teleport: the Teleport Spell moved this unit; the caster picks
+       * which empty space (index-aligned with the options) it lands on.
+       */
+      teleport?: { unitId: UnitId; positions: number[] };
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */
@@ -4101,6 +4204,7 @@ export type PendingChoice =
         | "neutral-target"
         | "war-machine"
         | "spell-splash"
+        | "area-pick"
         | "spell-redirect"
         | "enchanter-activation"
         | "faerie-damage"
@@ -4142,6 +4246,14 @@ export type PendingChoice =
         sourceCardId: CardId;
         sourceName: string;
       };
+      /**
+       * "area-pick" (Frost Ring / Meteor Shower VI): how many more adjacent units
+       * the caster still has to pick for this blast. Each pick takes `amount`
+       * damage; the choice re-opens until this reaches 0 or the candidates run out.
+       */
+      picksRemaining?: number;
+      /** Card the area-pick damage is sourced from (for damage reduction). */
+      sourceCardId?: CardId;
     }
   | {
       /**

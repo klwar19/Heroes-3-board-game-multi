@@ -41,6 +41,8 @@ export const implementedCardEffectTypes = [
   "ADD_UNIT_MAX_HEALTH",
   "AREA_DAMAGE_ADJACENT",
   "AREA_DAMAGE_ALL_ADJACENT",
+  "AREA_DAMAGE_PICK_ADJACENT",
+  "RESHUFFLE_DISCARD_THEN_DRAW",
   "GAIN_WAR_MACHINE",
   "CHAIN_LIGHTNING",
   "PLACE_PARALYSIS",
@@ -49,6 +51,8 @@ export const implementedCardEffectTypes = [
   "SLAYER_ATTACK",
   "INFERNO",
   "FORGETFULNESS",
+  "BERSERK",
+  "TELEPORT_UNIT",
   "DISPEL_EFFECTS",
   "IGNORE_DEFENSE",
   "BALLISTA_SPECIALTY",
@@ -145,6 +149,58 @@ export function cardCanBoostPower(card: CardDefinition | undefined): boolean {
     return card.effect.options.some((option) => option.effect.type === "ADD_SPELL_POWER");
   }
   return false;
+}
+
+/**
+ * The card's ADD_SPELL_POWER effect (top-level or inside an "OR" option) used to
+ * value it as a discarded power source. A cost-free power side is preferred over
+ * one that demands its own extra discard (Titan's Cuirass: +2 plain, not the
+ * +4 that costs another card), so a simple discard is never over-valued.
+ */
+function findAddSpellPowerEffect(
+  card: CardDefinition
+): Extract<EffectDefinition, { type: "ADD_SPELL_POWER" }> | undefined {
+  if (card.effect.type === "ADD_SPELL_POWER") {
+    return card.effect;
+  }
+  if (card.effect.type === "CHOOSE_ONE") {
+    const powerOptions = card.effect.options.filter((option) => option.effect.type === "ADD_SPELL_POWER");
+    const costFree = powerOptions.find((option) => !option.cost);
+    const chosen = costFree ?? powerOptions[0];
+    return chosen?.effect.type === "ADD_SPELL_POWER" ? chosen.effect : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * How much spell Power a card contributes when discarded as a power source for
+ * a spell of `spellSchools` — the unit used by Power-value costs (Sorrow):
+ *  - a Spell counts as 1 (the "+1 Power" on its bottom side),
+ *  - a Power statistic/artifact/ability counts as its printed Power `amount`,
+ *    but a school-restricted source only when the empowered spell's school
+ *    matches (otherwise it contributes nothing — a non-spell has no generic
+ *    "+1 Power" side in this engine).
+ * `perCostCard` scaling is ignored (it needs its own sub-cost); the flat
+ * printed `amount` is used.
+ */
+export function spellPowerValueOfCard(
+  card: CardDefinition | undefined,
+  spellSchools: readonly SpellSchool[]
+): number {
+  if (!card) {
+    return 0;
+  }
+  if (card.kind === "spell") {
+    return 1;
+  }
+  const add = findAddSpellPowerEffect(card);
+  if (!add) {
+    return 0;
+  }
+  if (add.schoolOnly && !(spellSchools.includes(add.schoolOnly) || spellSchools.includes("any"))) {
+    return 0;
+  }
+  return add.amount;
 }
 
 /**
@@ -528,6 +584,20 @@ export function describeCardEffect(card: CardDefinition): string {
     return `${card.effect.amount} damage to a space and every adjacent unit (friend or foe)`;
   }
 
+  if (card.effect.type === "AREA_DAMAGE_PICK_ADJACENT") {
+    const amount = card.effect.amountByPower
+      ? `by power (${Object.entries(card.effect.amountByPower)
+          .map(([power, value]) => `${power}:${value}`)
+          .join(", ")})`
+      : `${card.effect.amount ?? 0}`;
+    const centre = card.effect.includeCenter ? "the centre unit and " : "";
+    return `${amount} damage to ${centre}up to ${card.effect.adjacentPicks} unit(s) adjacent to the chosen ${card.effect.includeCenter ? "unit" : "space"} (friend or foe; the caster picks when more are adjacent)`;
+  }
+
+  if (card.effect.type === "RESHUFFLE_DISCARD_THEN_DRAW") {
+    return `shuffle your discard pile into your deck, then draw ${card.effect.drawCards}`;
+  }
+
   if (card.effect.type === "GAIN_WAR_MACHINE") {
     const machine = card.effect.warMachineCardId
       .split(".")
@@ -575,6 +645,20 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "FORGETFULNESS") {
     return "the selected enemy ranged unit cannot attack during its next activation (tier rises with power)";
+  }
+
+  if (card.effect.type === "BERSERK") {
+    const breakpoints = Object.entries(card.effect.gradeByPower)
+      .map(([power, grade]) => `${power}:${grade}`)
+      .join(", ");
+    return `the selected unit must attack the nearest unit (friend or foe) on its next activation (reachable grade by power ${breakpoints})`;
+  }
+
+  if (card.effect.type === "TELEPORT_UNIT") {
+    const breakpoints = Object.entries(card.effect.gradeByPower)
+      .map(([power, grade]) => `${power}:${grade}`)
+      .join(", ");
+    return `move one of your units to any empty space, ignoring obstacles (reachable grade by power ${breakpoints})`;
   }
 
   if (card.effect.type === "DISPEL_EFFECTS") {

@@ -1072,6 +1072,25 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     boardScan: "/assets/heroes-dungeon-magic-alamar.webp",
     source: heroSource("alamar")
   },
+  // Deemer (Dungeon Warlock): the Meteor Shower specialist — see
+  // specialty.deemer.1/4/6 in src/data/cards/adventure.ts.
+  deemer: {
+    id: "deemer",
+    name: "Deemer",
+    faction: "dungeon",
+    class: "Warlock",
+    type: "magic",
+    startingStats: { attack: 0, defense: 0, power: 3, knowledge: 2 },
+    startingAbilityCardId: "ability.scouting",
+    specialtyCardIds: {
+      1: "specialty.deemer.1",
+      4: "specialty.deemer.4",
+      6: "specialty.deemer.6"
+    },
+    portrait: "/assets/hero_boardart-deemer.webp",
+    boardScan: "/assets/heroes-dungeon-magic-deemer.webp",
+    source: heroSource("deemer")
+  },
   mutare: {
     id: "mutare",
     name: "Mutare",
@@ -1301,7 +1320,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Dungeon",
     color: "#c0392b",
     startingTileId: "S2",
-    heroes: ["alamar", "mutare"],
+    heroes: ["alamar", "deemer", "mutare"],
     buildings: buildingsOfFaction("dungeon"),
     units: unitsOfFaction("dungeon"),
     townImage: "/assets/towns-dungeon-empty.webp",
