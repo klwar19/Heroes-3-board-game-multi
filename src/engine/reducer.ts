@@ -3786,7 +3786,8 @@ function resolveCombatHandDiscard(
           playerId: action.playerId,
           cardId: toll.cardId,
           target: toll.target,
-          ...(toll.fromScroll ? { fromScroll: toll.fromScroll } : {})
+          ...(toll.fromScroll ? { fromScroll: toll.fromScroll } : {}),
+          ...(toll.fromSpellDeck ? { fromSpellDeck: toll.fromSpellDeck } : {})
         },
         cards
       );
@@ -5175,10 +5176,12 @@ function finalizeSpellCardDestination(
     return;
   }
 
-  // Spell Scroll casts were already removed from the game when played: there is
-  // no card in hand/discard to hold ongoing, recall, or send to the discard.
-  // Any ongoing effect they created still lives on in activeEffects.
-  if (stackItem.modifiers.scrollLocked) {
+  // Spell Scroll casts were already removed from the game when played, and Helm
+  // of the Alabaster Unicorn casts (fromSpellDeck) leave their spell in the
+  // shared Spell-deck discard pile — in both cases there is no card in
+  // hand/discard to hold ongoing, recall, or send to the discard. Any ongoing
+  // effect they created still lives on in activeEffects.
+  if (stackItem.modifiers.scrollLocked || stackItem.modifiers.fromSpellDeck) {
     return;
   }
 
@@ -6029,7 +6032,8 @@ function openPegasiTollChoice(
     tollSpell: {
       cardId: action.cardId,
       target: action.target,
-      ...(action.fromScroll ? { fromScroll: action.fromScroll } : {})
+      ...(action.fromScroll ? { fromScroll: action.fromScroll } : {}),
+      ...(action.fromSpellDeck ? { fromSpellDeck: action.fromSpellDeck } : {})
     }
   };
   state.phase = "choice";
@@ -6062,6 +6066,15 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     if (!consumeScrollSpell(state, action.playerId, action.fromScroll, action.cardId)) {
       throw new Error("That spell is not in the named Spell Scroll.");
     }
+  } else if (action.fromSpellDeck) {
+    // Helm of the Alabaster Unicorn (option B): the spell is cast from the top of
+    // the shared Spell-deck discard pile and stays there (it is never moved to a
+    // hand/discard). The Helm named on the action pays the "Remove this card"
+    // cost: it leaves the game. No enemy-spell hand tax — nothing left the hand.
+    const removeError = moveCardFromHandToDiscard(state, action.playerId, action.fromSpellDeck, "removed");
+    if (removeError) {
+      throw new Error(removeError.message);
+    }
   } else {
     const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
     if (moveError) {
@@ -6077,6 +6090,14 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   noteSpellCast(state, caster);
 
   const stackItem = makeStackItem(state, action);
+
+  // Helm of the Alabaster Unicorn cast: flag the stack item so the spell card is
+  // left in the Spell-deck discard pile when it resolves (no hand/discard card to
+  // relocate). Unlike a scroll it casts at the caster's normal Power, so it falls
+  // through to the power hooks below.
+  if (action.fromSpellDeck) {
+    stackItem.modifiers.fromSpellDeck = true;
+  }
 
   // Scroll spells are locked to power 0 and cannot be boosted by any Power
   // source — skip every power-granting hook below and flag the stack item.
@@ -7690,6 +7711,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "ARTILLERY_BALLISTA_VOLLEY") {
     throw new Error("Artillery's expert side resolves when your Ballista fires, not from hand.");
   }
+  // Helm of the Alabaster Unicorn's cast side is never played from hand: it is
+  // offered as a `fromSpellDeck` CAST_SPELL of the top of the Spell-deck discard
+  // pile (see addSpellActions / performSpellCast), which removes the Helm.
+  if (effect.type === "CAST_FROM_SPELL_DISCARD") {
+    throw new Error("Helm of the Alabaster Unicorn's cast side is played as a Spell-deck cast, not from hand.");
+  }
   // First Aid's expert side is likewise not played from hand: it is offered when
   // this player activates their First Aid Tent's heal (see permanents.ts).
   if (effect.type === "FIRST_AID_TENT_VOLLEY") {
@@ -8152,6 +8179,24 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     const unit = state.combat.units[target.unitId];
     if (unit && unit.controllerId === action.playerId) {
       unit.maxHealth += doubleAmountForUnitName(effect.amount, unit, effect.doubleForUnitName);
+    }
+  }
+
+  // Bowstring of the Unicorn's Mane (option A): the chosen friendly ranged unit
+  // that has not been activated this round becomes the active unit and takes a
+  // full out-of-order activation now. The interrupted fresh active unit was not
+  // consumed, so it resumes its place in initiative order once this one ends.
+  if (effect.type === "ACTIVATE_RANGED_UNIT" && target && state.combat) {
+    const unit = state.combat.units[target.unitId];
+    if (
+      unit &&
+      isUnitAlive(unit) &&
+      unit.controllerId === action.playerId &&
+      unit.type === "ranged" &&
+      !unit.activatedThisRound &&
+      unit.id !== state.combat.activeUnitId
+    ) {
+      setActiveUnit(state, unit.id);
     }
   }
 

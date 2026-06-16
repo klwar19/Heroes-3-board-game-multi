@@ -106,7 +106,16 @@ export type TargetDefinition =
        */
       lowestInitiativeOnly?: boolean;
     }
-  | { type: "friendly-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
+  | {
+      type: "friendly-unit";
+      unitTypes?: UnitType[];
+      damagedOnly?: boolean;
+      /**
+       * Bowstring of the Unicorn's Mane: the chosen ranged unit must not have
+       * been activated yet this combat round (it is about to take its turn).
+       */
+      notActivatedThisRound?: boolean;
+    }
   | { type: "any-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
   /** Summon spells: a chosen empty space on the combat board. */
   | { type: "empty-space" }
@@ -731,6 +740,29 @@ export type EffectDefinition =
        * post-roll window (ATTACK_DIE_SETTLED), never as a free combat instant.
        */
       type: "IGNORE_ATTACK_DIE_RESULT";
+    }
+  | {
+      /**
+       * Bowstring of the Unicorn's Mane (option A): "Play this card before a unit
+       * activates. Activate one of your ranged units that has not been activated
+       * this round." The chosen friendly ranged unit (target) is made the active
+       * unit and takes a full out-of-order activation now. House-rule narrowing:
+       * the engine only offers it on your own turn (one of your units is the fresh
+       * active unit), since combat instants are played by the active player.
+       */
+      type: "ACTIVATE_RANGED_UNIT";
+    }
+  | {
+      /**
+       * Helm of the Alabaster Unicorn (option B): "Cast a spell from the top of the
+       * spell deck discard pile and Remove this card." Played as a `fromSpellDeck`
+       * CAST_SPELL (mirroring a Spell Scroll cast), NOT a PLAY_CARD: the top card of
+       * the shared Spell-deck discard pile is cast at the caster's normal Power, the
+       * spell card stays in that discard pile, and the Helm is removed from the game.
+       * This marker only flags the card as implemented and tells the legal-action
+       * layer to offer that cast; it is never applied from playCard.
+       */
+      type: "CAST_FROM_SPELL_DISCARD";
     }
   | {
       /** Anti-Magic: spell immunity for a unit (tier rises with Power). */
@@ -1437,6 +1469,13 @@ export type CardOptionDefinition = {
    */
   returnSelfToHand?: boolean;
   /**
+   * Bowstring of the Unicorn's Mane (option B): "Use this after a ranged unit's
+   * Attack die roll." The post-roll die-ignore (IGNORE_ATTACK_DIE_RESULT) is only
+   * offered when the attacking unit is a ranged unit — otherwise this option is
+   * never offered in the ATTACK_DIE_SETTLED window.
+   */
+  requiresRangedAttacker?: boolean;
+  /**
    * Per-option target override for a CHOOSE_ONE card whose options strike
    * different sides. Ring of the Wayfarer's initiative side buffs a friendly
    * unit (the card-level `target`) while its paralysis side hits any non-Azure
@@ -1543,6 +1582,13 @@ export type GameAction =
        * removed from the game once it resolves.
        */
       fromScroll?: string;
+      /**
+       * Helm of the Alabaster Unicorn (option B): the spell is cast from the top
+       * of the shared Spell-deck discard pile (not the hand). It resolves at the
+       * caster's normal Power, the spell card stays in that discard pile, and the
+       * Helm card named here is removed from the game once the cast resolves.
+       */
+      fromSpellDeck?: CardId;
     }
   | {
       type: "PLAY_CARD";
@@ -2837,6 +2883,13 @@ export type ResolutionStackItem = {
      * raise it — getCurrentSpellPower returns 0 while this is set.
      */
     scrollLocked?: boolean;
+    /**
+     * Helm of the Alabaster Unicorn cast (option B): the spell was cast from the
+     * top of the Spell-deck discard pile. Like a scroll cast it has no hand/discard
+     * card to send anywhere afterward — the card stays in the Spell-deck discard
+     * pile — so finalizeSpellCardDestination leaves it untouched.
+     */
+    fromSpellDeck?: boolean;
     /** Bless: the Attack die is not rolled (counts as 0). */
     ignoreAttackDie?: boolean;
     /** Frenzy: this attack ignores the defender's Defense (counts as 0). */
@@ -4457,7 +4510,7 @@ export type PendingChoice =
       /** Cards in the chooser's hand that can contribute Power. */
       powerCardIds: CardId[];
       /** "pegasi-toll" only: the Spell cast deferred until the toll is paid. */
-      tollSpell?: { cardId: CardId; target: TargetRef; fromScroll?: string };
+      tollSpell?: { cardId: CardId; target: TargetRef; fromScroll?: string; fromSpellDeck?: CardId };
     }
   | null;
 

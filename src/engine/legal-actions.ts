@@ -806,6 +806,12 @@ function unitMatchesTarget(unit: CombatUnitState, target: UnitTargetDefinition):
     return false;
   }
 
+  // Bowstring of the Unicorn's Mane: only a ranged unit that has not yet taken
+  // its turn this round can be activated.
+  if (target.type === "friendly-unit" && target.notActivatedThisRound && unit.activatedThisRound) {
+    return false;
+  }
+
   return true;
 }
 
@@ -1162,6 +1168,21 @@ export function handCanPayPowerTax(
   return payablePowerCardIds(hand, cards, castCardId, fromScroll).length > 0;
 }
 
+/**
+ * Whether a card in hand is a Helm of the Alabaster Unicorn-style artifact whose
+ * CHOOSE_ONE offers the "cast the top of the Spell-deck discard pile" side. Such
+ * a card lets its holder cast the public top spell of the shared Spell-deck
+ * discard pile (sourced from there, not the hand), removing the artifact.
+ */
+function cardEnablesSpellDeckCast(card: CardDefinition | undefined): boolean {
+  return Boolean(
+    card &&
+      card.implementationStatus === "implemented" &&
+      card.effect.type === "CHOOSE_ONE" &&
+      card.effect.options.some((option) => option.effect.type === "CAST_FROM_SPELL_DISCARD")
+  );
+}
+
 function addSpellActions(
   actions: LegalAction[],
   state: GameState,
@@ -1197,14 +1218,26 @@ function addSpellActions(
   // Hand spells plus every Spell Scroll spell (scroll spells are not in hand;
   // they cast at power 0 and are removed once used). Both share the timing and
   // targeting rules below.
-  const castCandidates: { cardId: string; fromScroll?: string }[] = [
+  const castCandidates: { cardId: string; fromScroll?: string; fromSpellDeck?: string }[] = [
     ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
     ...(player.scrolls ?? []).flatMap((scroll) =>
       [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
     )
   ];
 
-  for (const { cardId, fromScroll } of castCandidates) {
+  // Helm of the Alabaster Unicorn (option B): cast the top card of the shared
+  // Spell-deck discard pile. Offered like a scroll cast — the spell is sourced
+  // from that discard, not the hand — and the Helm that enables it is removed by
+  // the cast (its removal lives in performSpellCast). Only the public top card is
+  // castable; the same timing/targeting rules below decide whether it can be cast
+  // now (a map-only or untargetable top spell is simply not offered).
+  const helmId = [...new Set(player.hand)].find((handCardId) => cardEnablesSpellDeckCast(cards[handCardId]));
+  const spellDeckTop = state.decks.spells?.discardPile.at(-1);
+  if (helmId && spellDeckTop) {
+    castCandidates.push({ cardId: spellDeckTop, fromSpellDeck: helmId });
+  }
+
+  for (const { cardId, fromScroll, fromSpellDeck } of castCandidates) {
     const card = cards[cardId];
     if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
       continue;
@@ -1240,13 +1273,18 @@ function addSpellActions(
 
     for (const target of getTargetsForCard(state, playerId, cardId, cards)) {
       actions.push({
-        label: fromScroll ? `Cast ${card.name} (Scroll)` : `Cast ${card.name}`,
+        label: fromScroll
+          ? `Cast ${card.name} (Scroll)`
+          : fromSpellDeck
+            ? `Cast ${card.name} (Helm of the Alabaster Unicorn)`
+            : `Cast ${card.name}`,
         action: {
           type: "CAST_SPELL",
           playerId,
           cardId,
           target,
-          ...(fromScroll ? { fromScroll } : {})
+          ...(fromScroll ? { fromScroll } : {}),
+          ...(fromSpellDeck ? { fromSpellDeck } : {})
         }
       });
     }
@@ -1498,6 +1536,25 @@ function isOptionEffectPlayable(
       // Ring of the Wayfarer's paralysis side is a combat play; the neutral /
       // opening-round gate lives on its `requiresNeutralCombatStart` flag.
       return context === "combat" && Boolean(state.combat);
+    case "ACTIVATE_RANGED_UNIT": {
+      // Bowstring of the Unicorn's Mane (option A): "Play this card before a unit
+      // activates." A combat instant played on your own turn, before your fresh
+      // active unit has acted. Requires one of your units to be the active unit
+      // and untouched this activation; the chosen ranged unit then activates out
+      // of order (the eligible-target check is the offer loop's filter below).
+      if (context !== "combat" || !state.combat) {
+        return false;
+      }
+      const activeId = state.combat.activeUnitId;
+      const active = activeId ? state.combat.units[activeId] : undefined;
+      return Boolean(
+        active &&
+          active.controllerId === playerId &&
+          !active.activatedThisRound &&
+          !active.movedThisActivation &&
+          !active.attackedThisActivation
+      );
+    }
     case "BLOCK_ENEMY_SURRENDER":
       // Shackles of War (house rule): only at the start of a player-vs-player
       // combat, where there is an enemy hero who could otherwise surrender.
@@ -1588,7 +1645,8 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
     effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
     effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" ||
-    effect.type === "PLACE_PARALYSIS"
+    effect.type === "PLACE_PARALYSIS" ||
+    effect.type === "ACTIVATE_RANGED_UNIT"
   );
 }
 
@@ -1708,6 +1766,12 @@ function addOptionPlays(
         const maxGrade = gradeAtPower(gradeByPower, card.power ?? 0);
         return maxGrade !== null && gradeRank(unit.grade) <= gradeRank(maxGrade);
       });
+    }
+    // Bowstring of the Unicorn's Mane: you activate a DIFFERENT ranged unit —
+    // never the one that is already the active unit (that would be a no-op).
+    if (option.effect.type === "ACTIVATE_RANGED_UNIT") {
+      const activeId = state.combat?.activeUnitId;
+      targets = targets.filter((candidate) => !(candidate.type === "unit" && candidate.unitId === activeId));
     }
     if (targets.length === 0) {
       continue;
@@ -2835,6 +2899,7 @@ export function getLegalActions(
 function getDieCancelReactions(
   state: GameState,
   defenderId: UnitId,
+  attackerId: UnitId,
   cards: CardLibrary
 ): Record<PlayerId, LegalAction[]> {
   const combat = state.combat;
@@ -2842,6 +2907,8 @@ function getDieCancelReactions(
   if (!combat || !defender) {
     return {};
   }
+  // Bowstring of the Unicorn's Mane (option B) is gated to a ranged attacker.
+  const attackerIsRanged = combat.units[attackerId]?.type === "ranged";
   const playerId = defender.controllerId;
   const player = state.players[playerId];
   if (!player || playerId === NEUTRAL_PLAYER_ID || isHandLockedInCombat(state, playerId)) {
@@ -2864,6 +2931,11 @@ function getDieCancelReactions(
     }
     for (const [optionIndex, option] of card.effect.options.entries()) {
       if (option.effect.type !== "IGNORE_ATTACK_DIE_RESULT") {
+        continue;
+      }
+      // Bowstring of the Unicorn's Mane: only "after a ranged unit's Attack die
+      // roll". Shield of the Dwarven Lords sets no such gate and is always offered.
+      if (option.requiresRangedAttacker && !attackerIsRanged) {
         continue;
       }
       if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
@@ -3092,7 +3164,7 @@ export function getLegalReactionsForTrigger(
   // Shield of the Dwarven Lords: the defender's post-roll window to ignore the
   // Attack die and the effects it triggered.
   if (triggerEvent.type === "ATTACK_DIE_SETTLED") {
-    return getDieCancelReactions(state, triggerEvent.defenderId, cards);
+    return getDieCancelReactions(state, triggerEvent.defenderId, triggerEvent.attackerId, cards);
   }
 
   if (
