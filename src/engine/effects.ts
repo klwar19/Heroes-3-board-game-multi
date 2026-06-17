@@ -12,6 +12,7 @@ export const implementedCardEffectTypes = [
   "TRANSFORM_UNIT",
   "NECROMANCY_REINFORCE",
   "ADD_SPELL_POWER",
+  "SET_SPELL_POWER_MAX",
   "GAIN_MORALE",
   "CREATE_ACTIVE_EFFECT",
   "CREATE_ATTACK_BUFF",
@@ -539,7 +540,14 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "EAGLE_EYE_DIG") {
+    if (card.effect.school) {
+      return `dig the Spell deck for the first ${card.effect.school} Magic spell`;
+    }
     return "dig the Spell deck for the first Basic (expert: Expert) spell";
+  }
+
+  if (card.effect.type === "SET_SPELL_POWER_MAX") {
+    return `cast a ${card.effect.schoolOnly} Magic spell at maximum Power for free`;
   }
 
   if (card.effect.type === "TELEPORT_HERO_TO_TOWN") {

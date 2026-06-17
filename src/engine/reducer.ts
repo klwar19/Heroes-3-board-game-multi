@@ -261,6 +261,7 @@ import type {
   ResourceKind,
   ResolutionStackItem,
   RulesError,
+  SpellSchool,
   TargetRef,
   UnitGrade,
   UnitId
@@ -5454,6 +5455,51 @@ function enemySpellPowerReduction(state: GameState, casterPlayerId: PlayerId): n
   return total;
 }
 
+/**
+ * Recursively harvest every Power breakpoint a card's effect scales on — the
+ * numeric keys of every `*ByPower` table (amountByPower, gradeByPower,
+ * durationByPower, damagesByPower, countByPower, …), including those nested in a
+ * CHOOSE_ONE's options. Used to find the top Power tier a spell can reach.
+ */
+function collectPowerBreakpoints(value: unknown, acc: number[]): void {
+  if (!value || typeof value !== "object") {
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectPowerBreakpoints(item, acc);
+    }
+    return;
+  }
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    if (key.endsWith("ByPower") && nested && typeof nested === "object" && !Array.isArray(nested)) {
+      for (const breakpoint of Object.keys(nested)) {
+        const numeric = Number(breakpoint);
+        if (Number.isFinite(numeric)) {
+          acc.push(numeric);
+        }
+      }
+    } else {
+      collectPowerBreakpoints(nested, acc);
+    }
+  }
+}
+
+/**
+ * The highest Power level a spell's effect scales to. The Tome artifacts force a
+ * cast to this tier "without paying the Power cost". Spells whose top tier needs
+ * Power 4 or 5 (e.g. Animate Dead, Implosion) are honoured, not capped at 2;
+ * spells with no Power scaling fall back to the game's standard Expert cap (2).
+ */
+function spellMaxPowerBreakpoint(card: CardDefinition | undefined): number {
+  if (!card) {
+    return 0;
+  }
+  const breakpoints: number[] = [];
+  collectPowerBreakpoints(card.effect, breakpoints);
+  return breakpoints.length > 0 ? Math.max(...breakpoints) : 2;
+}
+
 function getCurrentSpellPower(state: GameState, stackItem: ResolutionStackItem, cards: CardLibrary): number {
   // (School of Magic permanents add schoolPowerBonus below, beside the
   // once-per-cast Power-card bonus.)
@@ -6881,7 +6927,9 @@ function effectSupportsExpertPlay(effect: NonNullable<ReturnType<typeof getEffec
   }
 
   if (effect.type === "RECALL_SPELL") {
-    return Boolean(effect.expertSpellLimitBonus);
+    // Mysticism's expert side recalls every card played with the spell;
+    // Knowledge's expert side raises the spell-per-round limit.
+    return Boolean(effect.expertSpellLimitBonus || effect.expertRecallPlayedCards);
   }
 
   if (effect.type === "CANCEL_SPELL") {
@@ -7095,6 +7143,18 @@ function applyReactionPlayCore(
 
   // Elemental Magic power boosts only empower spells of their school.
   if (effect.type === "ADD_SPELL_POWER" && effect.schoolOnly && stackItem?.action.type === "CAST_SPELL") {
+    const pendingSpell = cards[stackItem.action.cardId];
+    const schools = pendingSpell?.spellSchools ?? [];
+    if (!schools.includes(effect.schoolOnly) && !schools.includes("any")) {
+      throw new Error(`${card.name} only empowers ${effect.schoolOnly} spells.`);
+    }
+  }
+
+  // Tome of X (option B) only empowers a spell of its own School.
+  if (effect.type === "SET_SPELL_POWER_MAX") {
+    if (stackItem?.action.type !== "CAST_SPELL") {
+      throw new Error(`${card.name} can only be played while casting a spell.`);
+    }
     const pendingSpell = cards[stackItem.action.cardId];
     const schools = pendingSpell?.spellSchools ?? [];
     if (!schools.includes(effect.schoolOnly) && !schools.includes("any")) {
@@ -7481,6 +7541,20 @@ function applyReactionPlayCore(
     if (effect.drawCards) {
       drawCardsForPlayer(state, playerId, effect.drawCards);
     }
+  }
+
+  // Tome of X (option B): "resolve its effect without paying the Power cost."
+  // Top up the pending cast to the spell's maximum Power breakpoint through the
+  // normal Power channel, so every readout, the Resistance gate and a later
+  // Mysticism recall (this Tome is in playedCardIds) all stay consistent.
+  if (effect.type === "SET_SPELL_POWER_MAX" && stackItem?.action.type === "CAST_SPELL") {
+    const target = spellMaxPowerBreakpoint(cards[stackItem.action.cardId]);
+    const current = getCurrentSpellPower(state, stackItem, cards);
+    if (target > current) {
+      stackItem.modifiers.spellPowerBonus += target - current;
+    }
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+    recomputePowerScaledAttackInstants(stackItem);
   }
 
   if (effect.type === "GAIN_MORALE") {
@@ -8901,7 +8975,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "EAGLE_EYE_DIG") {
-    resolveEagleEyeDig(state, action.playerId, mode, cards);
+    resolveEagleEyeDig(state, action.playerId, mode, cards, effect.school);
   }
 
   if (effect.type === "TELEPORT_HERO_TO_TOWN") {
@@ -9240,10 +9314,18 @@ function discardRandomEnemyCards(state: GameState, playerId: PlayerId, count: nu
  * the find. In BINH mode the split decks make the dig a plain top-card draw
  * of the matching deck.
  */
-function resolveEagleEyeDig(state: GameState, playerId: PlayerId, mode: CardPlayMode, cards: CardLibrary): void {
+function resolveEagleEyeDig(
+  state: GameState,
+  playerId: PlayerId,
+  mode: CardPlayMode,
+  cards: CardLibrary,
+  school?: Exclude<SpellSchool, "any">
+): void {
   const wantedLevel = mode === "expert" ? "expert" : "basic";
+  // A Tome's School dig (option A) always reads the shared/basic Spell deck; the
+  // level-based Eagle Eye dig may switch to the BINH Expert Spell deck.
   const deckId =
-    getRuleset(state) === "binh" && wantedLevel === "expert" && state.decks["spells-expert"]
+    !school && getRuleset(state) === "binh" && wantedLevel === "expert" && state.decks["spells-expert"]
       ? "spells-expert"
       : "spells";
   const deck = state.decks[deckId];
@@ -9251,12 +9333,23 @@ function resolveEagleEyeDig(state: GameState, playerId: PlayerId, mode: CardPlay
     return;
   }
 
-  // Dig from the top of the draw pile for the first matching spell.
+  // Dig from the top of the draw pile for the first matching spell. A Tome's
+  // School dig matches by School (any level — a school-agnostic "any" spell
+  // counts as every School); the level dig matches by Basic/Expert level.
+  const matches = (candidate: CardDefinition | undefined): boolean => {
+    if (candidate?.kind !== "spell") {
+      return false;
+    }
+    if (school) {
+      const schools = candidate.spellSchools ?? [];
+      return schools.includes(school) || schools.includes("any");
+    }
+    return (candidate.spellLevel ?? "basic") === wantedLevel;
+  };
   const remaining = [...deck.drawPile];
   let foundCardId: string | null = null;
   for (let index = remaining.length - 1; index >= 0; index -= 1) {
-    const candidate = cards[remaining[index]];
-    if (candidate?.kind === "spell" && (candidate.spellLevel ?? "basic") === wantedLevel) {
+    if (matches(cards[remaining[index]])) {
       foundCardId = remaining[index];
       remaining.splice(index, 1);
       break;
@@ -9267,6 +9360,7 @@ function resolveEagleEyeDig(state: GameState, playerId: PlayerId, mode: CardPlay
     return;
   }
 
+  const digLabel = school ? `${school} Magic` : "Eagle Eye";
   deck.drawPile = shuffleCards(remaining, `${state.seed}#eagle-eye#${eventSeedNumber(state)}`);
 
   const choiceId = `choice_${nextEventNumber(state)}`;
@@ -9274,7 +9368,7 @@ function resolveEagleEyeDig(state: GameState, playerId: PlayerId, mode: CardPlay
     id: choiceId,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: `Eagle Eye found ${cards[foundCardId]?.name ?? foundCardId}`,
+    prompt: `${digLabel} found ${cards[foundCardId]?.name ?? foundCardId}`,
     options: [{ label: `Take ${cards[foundCardId]?.name ?? foundCardId} into hand` }, { label: "Discard it" }],
     context: "eagle-eye",
     eagleEye: { deckId, cardId: foundCardId },

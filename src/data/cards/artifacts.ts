@@ -1,4 +1,4 @@
-import type { CardLibrary } from "@/engine/state";
+import type { CardLibrary, SpellSchool } from "@/engine/state";
 
 const wikiCredit =
   "Card text from the fan wiki artifact pages; verify against official owned components before full content import.";
@@ -63,7 +63,13 @@ const SCANLESS_ARTIFACTS = new Set([
   // public/assets yet, so they fall back to the deck back until the scans land.
   // (Spirit of Oppression's scan is committed, so it is not listed here.)
   "thunder_helmet",
-  "shamans_puppet"
+  "shamans_puppet",
+  // The four Conflux Tome relics have no card scan on the wiki yet, so they fall
+  // back to the deck back until their scans land.
+  "tome_of_air",
+  "tome_of_earth",
+  "tome_of_fire",
+  "tome_of_water"
 ]);
 
 function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
@@ -73,6 +79,56 @@ function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: s
       ? "/assets/player-deck-back.webp"
       : `/assets/artifacts_${tier}-${slug}.webp`,
     imageAlt: `${name} artifact card`
+  };
+}
+
+// Tome of Air/Earth/Fire/Water (Conflux expansion, Relic). One per School of
+// Magic, sharing one shape. Each side names exactly what the engine runs:
+//   • Option A (map): the School-filtered Spell-deck dig — find the first spell
+//     of this School (any level), take it into hand OR discard it, then reshuffle
+//     (engine: EAGLE_EYE_DIG { school }, the school-aware Eagle Eye dig).
+//   • Option B (combat reaction, the new mechanic): "When playing a {School}
+//     Magic spell, resolve its effect without paying the Power cost." Played
+//     while casting a matching spell, it lifts that cast to the spell's MAXIMUM
+//     Power breakpoint for free (engine: SET_SPELL_POWER_MAX { schoolOnly }; the
+//     boost is added through the normal Power channel, so the Resistance gate,
+//     the power readout and a Mysticism-expert recall all see the Tome).
+// A school-agnostic "any" spell (Magic Arrow) qualifies for either side of any
+// Tome, exactly as the Orbs and the Basic-School Magic boosts treat it.
+function tomeArtifact(school: Exclude<SpellSchool, "any">): CardLibrary[string] {
+  const schoolName = school.charAt(0).toUpperCase() + school.slice(1);
+  const slug = `tome_of_${school}`;
+  const name = `Tome of ${schoolName}`;
+  return {
+    id: `artifact.${slug}`,
+    name,
+    kind: "artifact",
+    artifactTier: "relic",
+    timing: "instant",
+    tags: [
+      "artifact",
+      "relic",
+      `Find the first ${schoolName} Magic spell in the Spell deck. Take it into your hand or discard it. Then, reshuffle the deck. — OR — When playing a ${schoolName} Magic spell, resolve its effect without paying the Power cost.`
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: `Find the first ${schoolName} Magic spell in the Spell deck (take or discard), then reshuffle`,
+          mapOnly: true,
+          effect: { type: "EAGLE_EYE_DIG", school }
+        },
+        {
+          label: `Resolve a ${schoolName} Magic spell at maximum Power without paying`,
+          combatOnly: true,
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "SET_SPELL_POWER_MAX", schoolOnly: school }
+        }
+      ]
+    },
+    assets: artifactAssets("relic", slug, name),
+    implementationStatus: "implemented",
+    source: artifactSource(slug)
   };
 }
 
@@ -2978,7 +3034,13 @@ export const artifactCards: CardLibrary = {
     assets: artifactAssets("minor", "spirit_of_oppression", "Spirit of Oppression"),
     implementationStatus: "implemented",
     source: artifactSource("spirit_of_oppression")
-  }
+  },
+
+  // ---- Tome artifacts (Conflux expansion, Relic) --------------------------
+  "artifact.tome_of_air": tomeArtifact("air"),
+  "artifact.tome_of_earth": tomeArtifact("earth"),
+  "artifact.tome_of_fire": tomeArtifact("fire"),
+  "artifact.tome_of_water": tomeArtifact("water")
 };
 
 /**
@@ -3075,7 +3137,11 @@ export const artifactDeckLegacy: string[] = [
   "artifact.sandals_of_the_saint",
   "artifact.boots_of_polarity",
   "artifact.plate_of_the_dying_light",
-  "artifact.thunder_helmet"
+  "artifact.thunder_helmet",
+  "artifact.tome_of_air",
+  "artifact.tome_of_earth",
+  "artifact.tome_of_fire",
+  "artifact.tome_of_water"
 ];
 
 /** BINH Minor Artifact deck (adds the BINH-extra minors). */
@@ -3172,5 +3238,9 @@ export const artifactDeckBinhRelic: string[] = [
   "artifact.orb_of_inhibition",
   "artifact.boots_of_polarity",
   "artifact.plate_of_the_dying_light",
-  "artifact.thunder_helmet"
+  "artifact.thunder_helmet",
+  "artifact.tome_of_air",
+  "artifact.tome_of_earth",
+  "artifact.tome_of_fire",
+  "artifact.tome_of_water"
 ];
