@@ -9,7 +9,6 @@ import {
   canHeroReachPlacedTile,
   capturableEnemyMinesWithin,
   discountedReinforceCost,
-  effectiveHandLimit,
   getActiveAstrologersCard,
   getMainHero,
   getSecondaryHero,
@@ -5228,21 +5227,27 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
-  // The required start-of-turn hand step: the player must resolve it before
-  // taking any other turn action. It is a single mutually-exclusive choice —
-  // "draw new" (draw up to the hand limit, discarding nothing) or "discard and
-  // draw new" (the UI sends the chosen cards to discard, then it draws up to
-  // the limit). Only town/morale actions (allowed during any player's turn)
-  // stay available alongside it.
+  // Over the hand limit at the start of the turn: discarding down (then drawing
+  // back up) is required before anything else.
   if (player.needsHandRefresh) {
-    const overLimit = player.hand.length - effectiveHandLimit(state, playerId);
     return [
       {
-        label: overLimit > 0 ? "Discard down to your hand limit, then draw" : "Draw new (draw up to your hand limit)",
+        label: "Discard down to your hand limit, then draw",
         action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
       },
       ...actions
     ];
+  }
+
+  // Optional start-of-turn draw (every turn, including the first): discard any
+  // number of cards, then draw back up to the hand limit. It is the single
+  // either/or — "draw new" (no discards) or "discard and draw new" — and is
+  // available until the player draws or begins their turn with a map action.
+  if (player.canMulligan) {
+    actions.push({
+      label: "Draw new — or discard some and draw up to your hand limit (start of turn)",
+      action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
+    });
   }
 
   // Instant, Ongoing and Map cards may be played during your own map turn.

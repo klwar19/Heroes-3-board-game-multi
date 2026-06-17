@@ -3484,22 +3484,21 @@ export type PlayerState = {
    */
   moraleOverflow?: number;
   /**
-   * The start-of-turn hand step is still pending: the player must resolve it
-   * (REFRESH_HAND) before taking any other turn action. Resolving it discards
-   * any cards the player chooses and then draws back up to the hand limit, in
-   * that order (rulebook: "may discard any number of hand cards, then draws up
-   * to hand limit"). Set at the start of every turn from a player's SECOND turn
-   * onward — their freshly dealt starting hand on the first turn is kept as-is.
-   * It also covers the over-the-limit case: discards must bring the hand down
-   * to the limit before the draw runs.
+   * Over the hand limit at the start of the turn (only reachable via card
+   * effects, since the hand is no longer auto-drawn): the player must discard
+   * down to the limit (REFRESH_HAND) before taking any other turn action.
    */
   needsHandRefresh?: boolean;
   /**
-   * Number of turns this player has started (incremented in startPlayerTurn).
-   * Used to skip the start-of-turn draw/discard step on the player's very first
-   * turn, where the dealt starting hand is kept untouched.
+   * The optional start-of-turn draw is still available this turn: the player
+   * MAY discard any number of cards and then draw back up to the hand limit
+   * (rulebook: "may discard any number of hand cards, then draws up to hand
+   * limit"). Offered on every turn, including the first; it is the single
+   * either/or — "draw new" (discard nothing) or "discard and draw new", never
+   * both, because the hand is never auto-drawn. Cleared once used, or once the
+   * player takes their first map/exploration action of the turn.
    */
-  turnsStarted?: number;
+  canMulligan?: boolean;
   /** Second negative morale token: the hand is discarded when the turn ends. */
   discardHandAtTurnEnd?: boolean;
   /**

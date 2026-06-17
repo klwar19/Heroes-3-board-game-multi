@@ -255,7 +255,7 @@ function makePlayer(config: AdventurePlayerConfig, seed: string, options: GameSe
     },
     morale: 0,
     needsHandRefresh: false,
-    turnsStarted: 0,
+    canMulligan: false,
     limits: {
       hand: 4,
       expertUses: 0
