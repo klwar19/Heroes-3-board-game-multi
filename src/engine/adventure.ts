@@ -3310,6 +3310,7 @@ export function refreshRoundTokens(state: GameState): void {
 
     player.townTokens = { build: true, population: true, spellBook: true };
     player.combatStats.expertUsesSpentThisRound = 0;
+    player.combatStats.expertUseBonusThisRound = 0;
   }
 
   for (const hero of Object.values(state.heroes)) {
