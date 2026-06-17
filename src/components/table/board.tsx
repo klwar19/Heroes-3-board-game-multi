@@ -160,6 +160,13 @@ function TokenChips({ unit }: { unit: CombatUnitState }) {
  * original conversion and are corrected here. Quicksand / Land Mine show this
  * art only to their controller; the opponent sees a face-down token back (the
  * armed/decoy state is secret).
+ *
+ * The Land Mine uses `land-mine-b`, the single static placed-mine frame (C09SPF1)
+ * — NOT `land-mine-a`/`-c`, which are the igniting/detonation animations. A
+ * dormant mine sitting on the board must not loop its own explosion; the real
+ * blast (`land-mine-hit`, C09SPF3) plays once, off BATTLEFIELD_TOKEN_TRIGGERED,
+ * only when an armed mine is sprung (see page.tsx). Traps render a static idle
+ * frame (see `BattlefieldTokenMark` / `TokenSprite` `animate`).
  */
 const BATTLEFIELD_TOKEN_VIEW: Record<
   BattlefieldTokenState["kind"],
@@ -168,7 +175,7 @@ const BATTLEFIELD_TOKEN_VIEW: Record<
   force_field: { sprite: "force-field", glyph: "🛡️", label: "Force Field" },
   fire_wall: { sprite: "fire-wall-e", glyph: "🔥", label: "Fire Wall" },
   quicksand: { sprite: "quicksand", glyph: "🌀", label: "Quicksand" },
-  land_mine: { sprite: "land-mine-a", glyph: "💣", label: "Land Mine" }
+  land_mine: { sprite: "land-mine-b", glyph: "💣", label: "Land Mine" }
 };
 
 /**
@@ -178,14 +185,19 @@ const BATTLEFIELD_TOKEN_VIEW: Record<
  * via requestAnimationFrame — no React re-renders, so it is cheap and never
  * fights the test renderer. Falls back to nothing when the sheet is missing
  * (the caller then shows its emoji), and to a static first frame off-DOM.
+ *
+ * `animate` defaults on for the visible, living obstacles (Force Field shimmer,
+ * Fire Wall flames). It is turned OFF for dormant traps so they hold their idle
+ * frame instead of looping — a Land Mine must not perpetually spark and a
+ * Quicksand pit must not endlessly bubble while it sits waiting to be sprung.
  */
-function TokenSprite({ fxKey }: { fxKey: string }) {
+function TokenSprite({ fxKey, animate = true }: { fxKey: string; animate?: boolean }) {
   const sheet = getFxSheet(fxKey);
   const ref = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => {
     const element = ref.current;
-    if (!element || !sheet || sheet.frames <= 1 || sheet.rows !== 1) {
+    if (!animate || !element || !sheet || sheet.frames <= 1 || sheet.rows !== 1) {
       return;
     }
     if (typeof requestAnimationFrame !== "function") {
@@ -202,7 +214,7 @@ function TokenSprite({ fxKey }: { fxKey: string }) {
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [sheet]);
+  }, [sheet, animate]);
 
   if (!sheet) {
     return null;
@@ -276,7 +288,8 @@ function BattlefieldTokenMark({
       </span>
     );
   } else if (spriteSheet) {
-    art = <TokenSprite fxKey={view.sprite} />;
+    // Traps hold a static idle frame; only the visible obstacles animate.
+    art = <TokenSprite fxKey={view.sprite} animate={!isTrap} />;
   } else {
     art = <b aria-hidden="true">{view.glyph}</b>;
   }
