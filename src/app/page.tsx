@@ -99,7 +99,7 @@ import {
   spellPresentationMs,
   type SpellFxPlan
 } from "@/data/fx";
-import { orderFxEventsForPresentation } from "@/components/table/fx-sequence";
+import { orderFxEventsForPresentation, partitionCombatMoves } from "@/components/table/fx-sequence";
 import {
   LOCATION_VISIT_SOUNDS,
   MAP_CUE_SOUNDS,
@@ -1042,7 +1042,17 @@ export default function Home() {
         // new one instead of teleporting, trailing a couple of after-images and
         // its footstep sound. The board has already re-rendered the unit at its
         // destination, so the FX layer hides the real card and flies a ghost.
-        freshCombatMoves.forEach((event, index) => {
+        // Approach moves (a unit sliding toward its target) play up front;
+        // after-attack moves — a Harpy's "Strike and Return" fly-back, or a
+        // ranged unit's step after shooting — are held until the strike has
+        // played out (queued after the attack loop below). A neutral guard
+        // resolves move → attack → return in one snapshot, so without this the
+        // Harpy would teleport home before its die was ever thrown.
+        const { approach: approachMoves, afterAttack: returnMoves } = partitionCombatMoves(
+          nextState.eventLog,
+          freshCombatMoves
+        );
+        approachMoves.forEach((event, index) => {
           const unit = nextState.combat?.units[event.unitId];
           const moveDelay = index * 130;
           cues.push({
@@ -1117,6 +1127,28 @@ export default function Home() {
           }
           // The struck unit recoils at the moment of impact.
           cues.push({ kind: "shake", id: `${roll.id}-shake`, unitId: roll.defenderId, delayMs: impactAt });
+        });
+
+        // After-attack moves now that the strike beats are known: a Harpy's
+        // fly-back (or a shooter's step) glides home once the last strike's
+        // number/death has played out, so the activation reads "move in → dice →
+        // attack/sfx → fly back". Each carries the unit's own footstep/voice and
+        // pushes out the post-action pause so the table holds until it lands.
+        returnMoves.forEach((event, index) => {
+          const unit = nextState.combat?.units[event.unitId];
+          const moveDelay = combatPresentationEnd + index * 130;
+          cues.push({
+            kind: "move",
+            id: `${event.id}-move`,
+            unitId: event.unitId,
+            from: `cell:${event.from}`,
+            to: `unit:${event.unitId}`,
+            cardImage: unit?.assets?.cardImage,
+            flip: false,
+            delayMs: moveDelay
+          });
+          playUnitSound(unitVoice(event.unitId), "move", moveDelay);
+          combatPresentationEnd = Math.max(combatPresentationEnd, moveDelay + COMBAT_MOVE_MS);
         });
 
         // A struck unit holds its pre-hit health until its blow lands (above for

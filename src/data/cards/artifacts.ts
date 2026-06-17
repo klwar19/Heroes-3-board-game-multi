@@ -2929,6 +2929,48 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("thunder_helmet")
   },
+  // Spellbinder's Hat (Relic, Tower Expansion). A deck-management relic; both
+  // sides are map plays.
+  //   • Option A ("Remove 1 card from your hand, then Search(2) the card's
+  //     deck"): the Hat discards normally, then the player removes one card from
+  //     hand and Search(2)s whichever deck it belonged to. Only abilities,
+  //     artifacts and spells can be removed (they have a deck to dig — the
+  //     "removable" filter, which also keeps the starting Ability), so Statistics
+  //     and Specialties are never offered. Reuses the Market-of-Time
+  //     REMOVE_HAND_CARD → search-same-deck machinery via REMOVE_HAND_CARD_THEN_SEARCH.
+  //   • Option B ("Remove this card and another one from your hand or discard
+  //     pile"): the Hat removes itself (cost.removeSelf) and the player then picks
+  //     one more card from hand OR discard to remove from the game — any card
+  //     qualifies (REMOVE_ANOTHER_CARD_FROM_HAND_OR_DISCARD).
+  "artifact.spellbinders_hat": {
+    id: "artifact.spellbinders_hat",
+    name: "Spellbinder's Hat",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "relic",
+    tags: [
+      "artifact",
+      "relic",
+      "Remove 1 card from your hand, then Search (2) the card's deck. — OR — Remove this card and another one from your hand or discard pile."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Remove 1 card from your hand, then Search (2) the card's deck",
+          effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count: 2 }
+        },
+        {
+          label: "Remove this card and another from your hand or discard pile",
+          cost: { removeSelf: true },
+          effect: { type: "REMOVE_ANOTHER_CARD_FROM_HAND_OR_DISCARD" }
+        }
+      ]
+    },
+    assets: artifactAssets("relic", "spellbinders_hat", "Spellbinder's Hat"),
+    implementationStatus: "implemented",
+    source: artifactSource("spellbinders_hat")
+  },
   // Shaman's Puppet (Minor). Option A places a unit-scoped, next-activation
   // ATTACK_ROLL_DISADVANTAGE effect on a chosen enemy unit: for every attack that
   // unit makes during its activation, getAttackRollMode makes it roll two Attack
@@ -3138,6 +3180,7 @@ export const artifactDeckLegacy: string[] = [
   "artifact.boots_of_polarity",
   "artifact.plate_of_the_dying_light",
   "artifact.thunder_helmet",
+  "artifact.spellbinders_hat",
   "artifact.tome_of_air",
   "artifact.tome_of_earth",
   "artifact.tome_of_fire",
@@ -3239,6 +3282,7 @@ export const artifactDeckBinhRelic: string[] = [
   "artifact.boots_of_polarity",
   "artifact.plate_of_the_dying_light",
   "artifact.thunder_helmet",
+  "artifact.spellbinders_hat",
   "artifact.tome_of_air",
   "artifact.tome_of_earth",
   "artifact.tome_of_fire",

@@ -55,7 +55,7 @@ function magiState(p2Hand: string[]): GameState {
   const magi = state.combat!.units.unit_p1_marksmen;
   magi.name = "Magi";
   magi.cardName = "Magi";
-  magi.abilities = ["ignore-combat-penalties", "magi-power-drain"];
+  magi.abilities = ["ignore-all-combat-penalties", "magi-power-drain"];
   magi.attack = 1;
   state.players.p1.hand = [];
   state.players.p2.hand = [...p2Hand];

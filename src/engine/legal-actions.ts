@@ -673,16 +673,22 @@ export function getAttackRollMode(
   defender: CombatUnitState,
   state?: GameState
 ): AttackRollMode {
-  const ignoresPenalty =
-    hasUnitAbilityEffect(attacker, "IGNORE_RANGED_BACK_ROW_PENALTY") || hasRangedPenaltyWaiver(state, attacker);
+  // A full waiver (Ammo Cart, or the "ignore the combat penalties" units —
+  // Magi / Sharpshooters / Halflings) drops both the adjacent-attack and the
+  // long-range penalty. The "ignore the combat penalty against adjacent units"
+  // units (Evil Eyes / Medusas / Zealots / Titans) drop only the adjacent one.
+  const ignoresAllPenalties =
+    hasUnitAbilityEffect(attacker, "IGNORE_RANGED_PENALTIES") || hasRangedPenaltyWaiver(state, attacker);
+  const ignoresMeleePenalty =
+    ignoresAllPenalties || hasUnitAbilityEffect(attacker, "IGNORE_RANGED_MELEE_PENALTY");
 
-  if (attacker.type === "ranged" && getAttackKind(attacker, defender) === "melee" && !ignoresPenalty) {
+  if (attacker.type === "ranged" && getAttackKind(attacker, defender) === "melee" && !ignoresMeleePenalty) {
     return "disadvantage";
   }
 
   if (
     getAttackKind(attacker, defender) === "ranged" &&
-    !ignoresPenalty &&
+    !ignoresAllPenalties &&
     isBackRow(attacker.position) &&
     isBackRow(defender.position) &&
     isOppositeBackRow(attacker.position, defender.position)
@@ -1578,6 +1584,26 @@ function isOptionEffectPlayable(
     case "GAIN_HERO_MOVEMENT":
     case "DIMENSION_DOOR":
       return context === "map" && Boolean(state.adventure);
+    case "REMOVE_HAND_CARD_THEN_SEARCH":
+      // Spellbinder's Hat (option A): map play. The Hat discards itself, then a
+      // DIFFERENT removable card (ability / artifact / spell — the cards that
+      // have a deck to dig) is removed. The Hat is itself a removable card in
+      // hand at this point, so "another removable card exists" means the
+      // removable count is at least 2.
+      return (
+        context === "map" &&
+        Boolean(state.adventure) &&
+        removableHandCards(state, playerId, "removable").length >= 2
+      );
+    case "REMOVE_ANOTHER_CARD_FROM_HAND_OR_DISCARD": {
+      // Spellbinder's Hat (option B): map play; needs at least one OTHER card to
+      // remove alongside the Hat (which is still in hand at this point).
+      if (context !== "map" || !state.adventure) {
+        return false;
+      }
+      const player = state.players[playerId];
+      return Boolean(player && player.hand.length + player.discard.length >= 2);
+    }
     case "VIEW_EARTH":
       // View Earth captures an enemy-owned Mine in reach — offered only when at
       // least one such Mine sits within this option's range of the caster's Hero.

@@ -787,6 +787,27 @@ export type EffectDefinition =
       count: number;
     }
   | {
+      /**
+       * Spellbinder's Hat (option A): "Remove 1 card from your hand, then
+       * Search(<count>) the card's deck." Opens the REMOVE_HAND_CARD →
+       * search-same-deck flow (filter "removable" = only abilities, artifacts and
+       * spells, which are the cards that have a corresponding deck to dig). The
+       * deck searched is whichever deck the removed card belongs to.
+       */
+      type: "REMOVE_HAND_CARD_THEN_SEARCH";
+      count: number;
+    }
+  | {
+      /**
+       * Spellbinder's Hat (option B): "Remove this card and another one from your
+       * hand or discard pile." The Hat itself leaves via the option's
+       * cost.removeSelf; this then removes one more card the player picks from
+       * hand OR discard pile (any card — "any card may be removed together with
+       * the Spellbinder's Hat").
+       */
+      type: "REMOVE_ANOTHER_CARD_FROM_HAND_OR_DISCARD";
+    }
+  | {
       /** Dragon Wing Tabard: discard random card(s) from the enemy hand. */
       type: "RANDOM_ENEMY_DISCARD";
       count: number;
@@ -4160,6 +4181,21 @@ export type VisitStep =
       prompt: string;
       filter: "any" | "ability" | "statistic" | "removable";
       then: "none" | "gain-valuables" | "search-same-deck" | "choose-deck-search";
+    }
+  | {
+      /**
+       * Spellbinder's Hat (option B): open a menu of every card in the player's
+       * hand AND discard pile; the picked one is removed from the game. Builds a
+       * CHOOSE_ONE whose options each carry a REMOVE_CARD_FROM_PILE leaf.
+       */
+      type: "REMOVE_ONE_FROM_HAND_OR_DISCARD";
+      prompt: string;
+    }
+  | {
+      /** Removes the named card from the player's hand or discard pile (→ removed). */
+      type: "REMOVE_CARD_FROM_PILE";
+      cardId: CardId;
+      source: "hand" | "discard";
     }
   | {
       /** University: pick one of the top cards of a shared discard pile. */
