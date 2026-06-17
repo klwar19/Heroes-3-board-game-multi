@@ -9033,6 +9033,40 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     });
   }
 
+  // Spellbinder's Hat (option A): remove a card from hand, then Search(N) its
+  // own deck. Reuses the Market-of-Time / Faerie-Ring REMOVE_HAND_CARD step with
+  // the "removable" filter (only abilities, artifacts and spells — the cards
+  // that have a deck to dig) and the "search-same-deck" follow-up.
+  if (effect.type === "REMOVE_HAND_CARD_THEN_SEARCH") {
+    state.adventure?.rewardQueue.unshift({
+      playerId: action.playerId,
+      kind: "visit-steps",
+      steps: [
+        {
+          type: "REMOVE_HAND_CARD",
+          prompt: `${card.name}: remove a card to Search (${effect.count}) its deck`,
+          filter: "removable",
+          then: "search-same-deck"
+        }
+      ]
+    });
+  }
+
+  // Spellbinder's Hat (option B): the Hat was removed by cost.removeSelf; now
+  // remove one more card the player picks from hand OR discard pile.
+  if (effect.type === "REMOVE_ANOTHER_CARD_FROM_HAND_OR_DISCARD") {
+    state.adventure?.rewardQueue.unshift({
+      playerId: action.playerId,
+      kind: "visit-steps",
+      steps: [
+        {
+          type: "REMOVE_ONE_FROM_HAND_OR_DISCARD",
+          prompt: `${card.name}: remove another card from your hand or discard pile`
+        }
+      ]
+    });
+  }
+
   if (effect.type === "RANDOM_ENEMY_DISCARD") {
     discardRandomEnemyCards(state, action.playerId, effect.count);
   }
@@ -11431,43 +11465,14 @@ function searchDeck(state: GameState, action: Extract<GameAction, { type: "SEARC
   if (!deck || !isSharedDeckId(action.deckId)) {
     throw new Error("That deck cannot be searched.");
   }
-
-  // Lift the top cards off the deck so opponents see an accurate pile count
-  // while the searcher decides. "Search X" reveals up to X cards.
-  const revealedCardIds: string[] = [];
-  for (let count = 0; count < action.count; count += 1) {
-    const cardId = deck.drawPile.pop();
-    if (!cardId) {
-      break;
-    }
-    revealedCardIds.push(cardId);
-  }
-
-  const canTakeDiscardTop = deck.discardPile.length > 0;
-  if (revealedCardIds.length === 0 && !canTakeDiscardTop) {
+  if (deck.drawPile.length + deck.discardPile.length === 0) {
     throw new Error("That deck has no cards left to search.");
   }
 
-  const choiceId = `choice_${nextEventNumber(state)}`;
-  state.pendingChoice = {
-    id: choiceId,
-    type: "DECK_SEARCH",
-    playerId: action.playerId,
-    deckId: action.deckId,
-    revealedCardIds,
-    canTakeDiscardTop,
-    returnPhase: state.phase
-  };
-  state.phase = "choice";
-  state.priorityPlayerId = action.playerId;
-
-  appendEvent(state, {
-    type: "DECK_SEARCH_STARTED",
-    playerId: action.playerId,
-    deckId: action.deckId,
-    choiceId,
-    revealedCount: revealedCardIds.length
-  });
+  // Route through the shared "Search X" flow: when the discard pile holds cards
+  // the player first chooses Search-the-deck OR take-the-top-discard, and only
+  // sees the revealed cards on the Search branch — never both at once.
+  openSharedDeckSearch(state, action.playerId, action.deckId, action.count);
 }
 
 /**
@@ -11523,20 +11528,6 @@ function resolveDeckSearch(
     }
     deck.drawPile = shuffleCards(deck.drawPile, `${state.seed}#school-fetch#${eventSeedNumber(state)}`);
     discardedCardIds = [];
-  } else if (action.pick.kind === "discard-top") {
-    if (!choice.canTakeDiscardTop) {
-      throw new Error("The discard pile is empty.");
-    }
-
-    const takenCardId = deck.discardPile.pop();
-    if (!takenCardId) {
-      throw new Error("The discard pile is empty.");
-    }
-
-    player.hand.push(takenCardId);
-    recordDeckDrawnAbility(player, choice.deckId, takenCardId);
-    discardedCardIds = [...choice.revealedCardIds];
-    deck.discardPile.push(...discardedCardIds);
   } else {
     const keptCardId = choice.revealedCardIds[action.pick.index];
     if (!keptCardId) {

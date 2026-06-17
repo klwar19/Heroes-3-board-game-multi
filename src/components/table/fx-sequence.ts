@@ -55,3 +55,49 @@ export function orderFxEventsForPresentation<T extends { type: GameEvent["type"]
   ordered.push(...pendingResults);
   return ordered;
 }
+
+/**
+ * Split this snapshot's combat-unit moves into the ones that happen BEFORE a
+ * unit's own attack (its approach to the target) and the ones that happen AFTER
+ * it (a Harpy's "Strike and Return" fly-back, or a ranged unit's step after
+ * shooting).
+ *
+ * A neutral guard resolves move → attack → return in a single action, so all
+ * three events land in one snapshot. Played back in raw log order the return
+ * move would animate first — the Harpy teleports home before the dice even roll
+ * — which is the bug this fixes. By detecting that a move sits AFTER the same
+ * unit's `ATTACK_ROLLED` in the event log, the caller can pin the fly-back to
+ * after the strike so the table reads "move in → dice → attack/sfx → fly back".
+ *
+ * `eventLog` must be in log order. A move is "after-attack" when this unit
+ * (`unitId`) has an `ATTACK_ROLLED` (as `attackerId`) earlier in the log.
+ */
+export function partitionCombatMoves<M extends { id: string; unitId: string }>(
+  eventLog: readonly { id: string; type: GameEvent["type"]; attackerId?: string }[],
+  moves: M[]
+): { approach: M[]; afterAttack: M[] } {
+  const positionById = new Map<string, number>();
+  eventLog.forEach((event, index) => positionById.set(event.id, index));
+
+  const firstAttackIndexByUnit = new Map<string, number>();
+  eventLog.forEach((event, index) => {
+    if (event.type === "ATTACK_ROLLED" && event.attackerId !== undefined) {
+      if (!firstAttackIndexByUnit.has(event.attackerId)) {
+        firstAttackIndexByUnit.set(event.attackerId, index);
+      }
+    }
+  });
+
+  const approach: M[] = [];
+  const afterAttack: M[] = [];
+  for (const move of moves) {
+    const movePosition = positionById.get(move.id);
+    const attackPosition = firstAttackIndexByUnit.get(move.unitId);
+    if (movePosition !== undefined && attackPosition !== undefined && attackPosition < movePosition) {
+      afterAttack.push(move);
+    } else {
+      approach.push(move);
+    }
+  }
+  return { approach, afterAttack };
+}

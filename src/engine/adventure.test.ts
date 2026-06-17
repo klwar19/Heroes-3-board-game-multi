@@ -39,7 +39,33 @@ function apply(state: GameState, action: GameAction): GameState {
 }
 
 function refreshP1(state: GameState): GameState {
+  // Resolve the required start-of-turn draw (every turn, including the first).
+  if (!state.players.p1.needsHandRefresh) {
+    return state;
+  }
   return apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+}
+
+/**
+ * Fully resolves a shared-deck "Search X". When the deck's discard pile holds
+ * cards the engine first raises the Search-or-take-discard choice; this picks
+ * the Search branch and then keeps the first revealed card.
+ */
+function resolveSharedSearch(state: GameState): GameState {
+  const pre = state.pendingChoice;
+  if (pre?.type === "OPTION_CHOICE" && pre.context === "deck-search-mode") {
+    state = apply(state, { type: "CHOOSE_OPTION", playerId: pre.playerId, choiceId: pre.id, optionIndex: 0 });
+  }
+  const search = state.pendingChoice;
+  if (search?.type === "DECK_SEARCH") {
+    state = apply(state, {
+      type: "RESOLVE_DECK_SEARCH",
+      playerId: search.playerId,
+      choiceId: search.id,
+      pick: { kind: "revealed", index: 0 }
+    });
+  }
+  return state;
 }
 
 describe("hex math", () => {
@@ -264,38 +290,126 @@ describe("adventure setup", () => {
 });
 
 describe("turns and movement", () => {
-  it("deals starting hands at setup and auto-draws at turn start", () => {
+  // Advances to p1's SECOND turn, pinning a no-op Astrologers event so the
+  // round-2 wrap raises no choice.
+  function toP1SecondTurn(state: GameState): GameState {
+    state.decks.astrologers.drawPile.push("astrologers.dead_silence");
+    state = apply(state, { type: "END_TURN", playerId: "p1" });
+    state = apply(state, { type: "END_TURN", playerId: "p2" });
+    return state;
+  }
+
+  it("deals empty-discard starting hands and opens the optional draw on the first turn", () => {
     const state = makeGame();
     // Both players hold their starting hand from the first moment.
     expect(state.players.p1.hand).toHaveLength(4);
     expect(state.players.p2.hand).toHaveLength(4);
-    expect(state.players.p1.needsHandRefresh).toBe(false);
-    // The start-of-turn mulligan is open until the first real action.
+    // Nothing is discarded at the start — personal and shared piles are empty.
+    expect(state.players.p1.discard).toHaveLength(0);
+    expect(state.players.p2.discard).toHaveLength(0);
+    for (const [deckId, deck] of Object.entries(state.decks)) {
+      expect(deck.discardPile, `${deckId} discard should start empty`).toHaveLength(0);
+    }
+    // The start-of-turn draw is offered (not forced) from the very first turn,
+    // and the hand is not over the limit, so no forced discard is pending.
     expect(state.players.p1.canMulligan).toBe(true);
+    expect(state.players.p1.needsHandRefresh).toBe(false);
   });
 
-  it("mulligans once per turn: pick the cards, discard them together, draw that many", () => {
+  it("offers discard-and-draw on the first turn without blocking play", () => {
     let state = makeGame();
-    const discards = state.players.p1.hand.slice(0, 2);
-    state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: discards });
+    expect(state.players.p1.canMulligan).toBe(true);
 
+    // First turn: the player MAY discard a card and draw back up to the limit.
+    const tossed = state.players.p1.hand[0];
+    state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [tossed] });
     expect(state.players.p1.hand).toHaveLength(4);
-    expect(state.players.p1.discard).toHaveLength(2);
+    expect(state.players.p1.hand).not.toContain(tossed);
+    expect(state.players.p1.discard).toEqual([tossed]);
+    // The draw is once per turn — a second one is rejected.
     expect(state.players.p1.canMulligan).toBe(false);
-
-    // The mulligan is once per turn: a second one is rejected.
-    const again = applyAction(state, {
-      type: "REFRESH_HAND",
-      playerId: "p1",
-      discardCardIds: [state.players.p1.hand[0]]
-    });
+    const again = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
     expect(again.errors).toHaveLength(1);
   });
 
-  it("closes the mulligan window once the hero moves", () => {
+  it("lets the first-turn player skip the draw and just act (the window then closes)", () => {
     let state = makeGame();
+    expect(state.players.p1.canMulligan).toBe(true);
+    // Acting without drawing is allowed; the start-of-turn draw window then closes.
     state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:3" });
+    expect(state.heroes.hero_p1.spaceId).toBe("h:8:3");
     expect(state.players.p1.canMulligan).toBe(false);
+    const tooLate = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    expect(tooLate.errors).toHaveLength(1);
+  });
+
+  it("offers the start-of-turn draw to BOTH players on their own turns", () => {
+    let state = makeGame();
+    expect(state.players.p1.canMulligan).toBe(true);
+    state = apply(state, { type: "END_TURN", playerId: "p1" });
+    // p2's turn: p2 may now discard and draw too.
+    expect(state.activePlayerId).toBe("p2");
+    expect(state.players.p2.canMulligan).toBe(true);
+    const tossed = state.players.p2.hand[0];
+    state = apply(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [tossed] });
+    expect(state.players.p2.discard).toEqual([tossed]);
+    expect(state.players.p2.hand).toHaveLength(4);
+  });
+
+  it("draws up to the hand limit (draw new), never auto-refilling and never both", () => {
+    let state = toP1SecondTurn(makeGame());
+    // No auto-draw: a below-limit hand stays below the limit until the player
+    // chooses to draw.
+    state.players.p1.hand = state.players.p1.hand.slice(0, 2);
+    expect(state.players.p1.canMulligan).toBe(true);
+    const deckBefore = state.players.p1.deck.length;
+
+    // "Draw new": discard nothing, draw back UP TO the limit (two cards here) —
+    // not a draw-as-many-as-you-discard mulligan, and not stacked on an
+    // auto-draw.
+    state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    expect(state.players.p1.hand).toHaveLength(4);
+    expect(state.players.p1.discard).toHaveLength(0);
+    expect(state.players.p1.deck.length).toBe(deckBefore - 2);
+    expect(state.players.p1.canMulligan).toBe(false);
+  });
+
+  it("discards first, then draws back up to the limit (discard and draw new)", () => {
+    let state = toP1SecondTurn(makeGame());
+    state.players.p1.hand = state.players.p1.hand.slice(0, 2);
+    const tossed = state.players.p1.hand[0];
+
+    state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [tossed] });
+    // Discarded one (1 left), then drew back up to the limit of 4 — three cards,
+    // not "one drawn per one discarded".
+    expect(state.players.p1.hand).toHaveLength(4);
+    expect(state.players.p1.hand).not.toContain(tossed);
+    expect(state.players.p1.discard).toEqual([tossed]);
+  });
+
+  it("forces a discard down to the limit before acting when the hand is over it", () => {
+    // Stuff p1's hand over the limit, then let a fresh turn start re-derive the
+    // forced-discard flag the way startPlayerTurn does.
+    let state = makeGame();
+    state.players.p1.hand = [...state.players.p1.hand, state.players.p1.deck[0]];
+    state.decks.astrologers.drawPile.push("astrologers.dead_silence");
+    state = apply(state, { type: "END_TURN", playerId: "p1" });
+    state = apply(state, { type: "END_TURN", playerId: "p2" });
+    expect(state.players.p1.hand.length).toBeGreaterThan(state.players.p1.limits.hand);
+    expect(state.players.p1.needsHandRefresh).toBe(true);
+
+    // Acting before discarding down is rejected.
+    const blocked = applyAction(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:3" });
+    expect(blocked.errors).toHaveLength(1);
+
+    // Discarding down to the limit resolves the step (and draws 0 more).
+    state = apply(state, {
+      type: "REFRESH_HAND",
+      playerId: "p1",
+      discardCardIds: state.players.p1.hand.slice(0, state.players.p1.hand.length - 4)
+    });
+    expect(state.players.p1.hand).toHaveLength(4);
+    expect(state.players.p1.needsHandRefresh).toBe(false);
   });
 
   it("moves one field for 1 MP and visits resource fields with a die roll", () => {
@@ -1339,12 +1453,14 @@ describe("town economy", () => {
       buildingId: "castle.mage_guild"
     });
 
-    // Building it queues two free Search (2) of the Spell deck.
+    // Building it queues two free Search (2) of the Spell deck. The first opens
+    // straight onto the reveal (the spell discard starts empty); resolving it
+    // discards the unkept card, so the second opens the Search-or-take-discard
+    // choice. Resolve both fully through the shared-search helper.
     expect(state.pendingChoice?.type).toBe("DECK_SEARCH");
-    for (let i = 0; i < 2 && state.pendingChoice; i += 1) {
-      const actions = getLegalActions(state, "p1");
-      state = apply(state, actions[0].action);
-    }
+    state = resolveSharedSearch(state);
+    state = resolveSharedSearch(state);
+    expect(state.pendingChoice).toBeNull();
 
     const sameRound = applyAction(state, { type: "SPELL_BOOK_ACTION", playerId: "p1" });
     expect(sameRound.errors).toHaveLength(1);
@@ -1364,7 +1480,12 @@ describe("town economy", () => {
     state.players.p1.resources.gold = 10;
     state = apply(state, { type: "SPELL_BOOK_ACTION", playerId: "p1" });
     expect(state.players.p1.resources.gold).toBe(4);
-    expect(state.pendingChoice?.type).toBe("DECK_SEARCH");
+    // Earlier searches left cards in the spell discard, so the Spell Book search
+    // opens the up-front Search-or-take-discard choice rather than a bare reveal.
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    expect(state.pendingChoice && "context" in state.pendingChoice ? state.pendingChoice.context : null).toBe(
+      "deck-search-mode"
+    );
   });
 });
 

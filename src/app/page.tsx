@@ -101,7 +101,7 @@ import {
   spellPresentationMs,
   type SpellFxPlan
 } from "@/data/fx";
-import { orderFxEventsForPresentation } from "@/components/table/fx-sequence";
+import { orderFxEventsForPresentation, partitionCombatMoves } from "@/components/table/fx-sequence";
 import {
   LOCATION_VISIT_SOUNDS,
   MAP_CUE_SOUNDS,
@@ -1148,7 +1148,17 @@ export default function Home() {
         // new one instead of teleporting, trailing a couple of after-images and
         // its footstep sound. The board has already re-rendered the unit at its
         // destination, so the FX layer hides the real card and flies a ghost.
-        freshCombatMoves.forEach((event, index) => {
+        // Approach moves (a unit sliding toward its target) play up front;
+        // after-attack moves — a Harpy's "Strike and Return" fly-back, or a
+        // ranged unit's step after shooting — are held until the strike has
+        // played out (queued after the attack loop below). A neutral guard
+        // resolves move → attack → return in one snapshot, so without this the
+        // Harpy would teleport home before its die was ever thrown.
+        const { approach: approachMoves, afterAttack: returnMoves } = partitionCombatMoves(
+          nextState.eventLog,
+          freshCombatMoves
+        );
+        approachMoves.forEach((event, index) => {
           const unit = nextState.combat?.units[event.unitId];
           const moveDelay = index * 130;
           cues.push({
@@ -1223,6 +1233,28 @@ export default function Home() {
           }
           // The struck unit recoils at the moment of impact.
           cues.push({ kind: "shake", id: `${roll.id}-shake`, unitId: roll.defenderId, delayMs: impactAt });
+        });
+
+        // After-attack moves now that the strike beats are known: a Harpy's
+        // fly-back (or a shooter's step) glides home once the last strike's
+        // number/death has played out, so the activation reads "move in → dice →
+        // attack/sfx → fly back". Each carries the unit's own footstep/voice and
+        // pushes out the post-action pause so the table holds until it lands.
+        returnMoves.forEach((event, index) => {
+          const unit = nextState.combat?.units[event.unitId];
+          const moveDelay = combatPresentationEnd + index * 130;
+          cues.push({
+            kind: "move",
+            id: `${event.id}-move`,
+            unitId: event.unitId,
+            from: `cell:${event.from}`,
+            to: `unit:${event.unitId}`,
+            cardImage: unit?.assets?.cardImage,
+            flip: false,
+            delayMs: moveDelay
+          });
+          playUnitSound(unitVoice(event.unitId), "move", moveDelay);
+          combatPresentationEnd = Math.max(combatPresentationEnd, moveDelay + COMBAT_MOVE_MS);
         });
 
         // A struck unit holds its pre-hit health until its blow lands (above for
@@ -2382,9 +2414,15 @@ export default function Home() {
     const viewer = isSeated ? state.players[viewerPlayerId] : null;
     const handCards = isSeated ? (playerView.players[viewerPlayerId]?.hand ?? []) : [];
     const handLimit = viewer ? effectiveHandLimit(state, viewerPlayerId) : 0;
+    // Over the hand limit at the start of the turn (only via card effects):
+    // the player MUST discard down to the limit before acting.
     const forcedDiscard = Boolean(viewer?.needsHandRefresh) && state.activePlayerId === viewerPlayerId;
-    const canMulligan =
-      Boolean(viewer?.canMulligan) && state.activePlayerId === viewerPlayerId && !forcedDiscard && handCards.length > 0;
+    // The optional start-of-turn draw is available this turn (every turn,
+    // including the first): one either/or — "draw new" (discard nothing, draw
+    // up to the limit) or "discard and draw new". Never both, since the hand is
+    // not auto-drawn. It does not block playing or moving.
+    const canDraw =
+      Boolean(viewer?.canMulligan) && state.activePlayerId === viewerPlayerId && !forcedDiscard;
     const hasMorale = (viewer?.morale ?? 0) > 0;
     const moraleOverflow = viewer?.moraleOverflow ?? 0;
     const overLimit = viewer ? handCards.length - handDiscards.length - handLimit : 0;
@@ -2557,15 +2595,29 @@ export default function Home() {
                     Over the hand limit: discard down to {handLimit}.{overLimit > 0 ? ` Pick ${overLimit} more.` : ""}
                   </span>
                 ) : null}
+                {/* The start-of-turn draw: one either/or — draw new, OR discard
+                    and draw new. Available every turn (including the first), but
+                    optional, so playing and moving are still possible. */}
                 {!forcedDiscard && handMode === null ? (
                   <div className="handButtons">
-                    {canMulligan ? (
-                      <span className="handHint">
-                        Start of turn: click cards to pick discards (once per turn), or
-                        <button className="commandButton" onClick={() => setHandMode("mulligan")} type="button">
-                          Mulligan (discard &amp; draw)
+                    {canDraw ? (
+                      <>
+                        <span className="handHint">Start of turn:</span>
+                        <button
+                          className="commandButton primary"
+                          onClick={() =>
+                            submitAction({ type: "REFRESH_HAND", playerId: viewerPlayerId, discardCardIds: [] })
+                          }
+                          type="button"
+                        >
+                          Draw new (up to {handLimit})
                         </button>
-                      </span>
+                        {handCards.length > 0 ? (
+                          <button className="commandButton" onClick={() => setHandMode("mulligan")} type="button">
+                            Discard and draw new
+                          </button>
+                        ) : null}
+                      </>
                     ) : null}
                     {hasMorale ? (
                       <>
@@ -2591,20 +2643,20 @@ export default function Home() {
                       {handMode === "morale-redraw"
                         ? `Spend morale: discard ${handDiscards.length || "some"} and draw that many.`
                         : forcedDiscard
-                          ? ""
-                          : `Discard ${handDiscards.length} card${handDiscards.length === 1 ? "" : "s"}, draw ${handDiscards.length}.`}
+                          ? `Discard at least ${Math.max(0, handCards.length - handLimit)}, then draw up to ${handLimit}.`
+                          : `Discard ${handDiscards.length} card${handDiscards.length === 1 ? "" : "s"}, then draw up to ${handLimit}.`}
                     </span>
                     <button
                       className="commandButton primary"
-                      disabled={forcedDiscard ? overLimit > 0 : handMode === "morale-redraw" && handDiscards.length === 0}
+                      disabled={
+                        handMode === "morale-redraw" ? handDiscards.length === 0 : forcedDiscard ? overLimit > 0 : false
+                      }
                       onClick={confirmHandAction}
                       type="button"
                     >
-                      {forcedDiscard
-                        ? `Discard ${handDiscards.length}`
-                        : handMode === "morale-redraw"
-                          ? `Redraw ${handDiscards.length}`
-                          : `Draw ${handDiscards.length} new`}
+                      {handMode === "morale-redraw"
+                        ? `Redraw ${handDiscards.length}`
+                        : `Discard ${handDiscards.length} & draw`}
                     </button>
                     {!forcedDiscard ? (
                       <button
@@ -2691,11 +2743,11 @@ export default function Home() {
                             });
                             return;
                           }
-                          // While the once-per-turn mulligan window is open,
-                          // clicking a card marks it for the discard pile —
-                          // the confirm button then discards them all and
-                          // draws that many in one go.
-                          if (!selecting && canMulligan && plays.length === 0) {
+                          // During the start-of-turn draw window, clicking a
+                          // card that has no play marks it for the discard pile —
+                          // the confirm button then discards them all and draws
+                          // back up to the hand limit in one go.
+                          if (!selecting && canDraw && plays.length === 0) {
                             setHandMode("mulligan");
                             setHandDiscards([index]);
                             return;
@@ -2722,8 +2774,8 @@ export default function Home() {
                                 : cardName(cardId)
                               : plays.length > 0
                                 ? `Play ${cardName(cardId)}`
-                                : canMulligan
-                                  ? `Click to mark ${cardName(cardId)} for the mulligan discard`
+                                : canDraw
+                                  ? `Click to mark ${cardName(cardId)} to discard, then draw`
                                   : cardName(cardId)
                         }
                         type="button"
@@ -2778,19 +2830,6 @@ export default function Home() {
                           <button className="ghost" onClick={() => setOpenHandIndex(null)} type="button">
                             Close
                           </button>
-                          {canMulligan ? (
-                            <button
-                              className="ghost"
-                              onClick={() => {
-                                setOpenHandIndex(null);
-                                setHandMode("mulligan");
-                                setHandDiscards([index]);
-                              }}
-                              type="button"
-                            >
-                              Mark for mulligan instead
-                            </button>
-                          ) : null}
                         </div>
                       ) : null}
                       <AdventureHandZoom cardId={cardId} />

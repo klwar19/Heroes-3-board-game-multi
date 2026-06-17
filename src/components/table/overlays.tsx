@@ -989,8 +989,6 @@ export function SearchModal({
     );
   }
 
-  const discardTop = state.decks[choice.deckId]?.discardPile.at(-1);
-
   return (
     <div className="modalBackdrop" role="dialog" aria-label={`Search the ${choice.deckId} deck`}>
       <div className="searchModal">
@@ -1019,23 +1017,6 @@ export function SearchModal({
               <ZoomButton label={`Read ${cardName(cardId)}`} onZoom={() => zoomCard(cardId)} />
             </div>
           ))}
-          {choice.canTakeDiscardTop ? (
-            <button
-              className="searchCard discardPick"
-              onClick={() =>
-                onAction({
-                  type: "RESOLVE_DECK_SEARCH",
-                  playerId: viewerPlayerId,
-                  choiceId: choice.id,
-                  pick: { kind: "discard-top" }
-                })
-              }
-              type="button"
-            >
-              <CardFrame cardId={discardTop} className="searchCardImage" />
-              <span>Take the discard top instead</span>
-            </button>
-          ) : null}
         </div>
       </div>
     </div>

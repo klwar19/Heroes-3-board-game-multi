@@ -732,16 +732,22 @@ export function getAttackRollMode(
   defender: CombatUnitState,
   state?: GameState
 ): AttackRollMode {
-  const ignoresPenalty =
-    hasUnitAbilityEffect(attacker, "IGNORE_RANGED_BACK_ROW_PENALTY") || hasRangedPenaltyWaiver(state, attacker);
+  // A full waiver (Ammo Cart, or the "ignore the combat penalties" units —
+  // Magi / Sharpshooters / Halflings) drops both the adjacent-attack and the
+  // long-range penalty. The "ignore the combat penalty against adjacent units"
+  // units (Evil Eyes / Medusas / Zealots / Titans) drop only the adjacent one.
+  const ignoresAllPenalties =
+    hasUnitAbilityEffect(attacker, "IGNORE_RANGED_PENALTIES") || hasRangedPenaltyWaiver(state, attacker);
+  const ignoresMeleePenalty =
+    ignoresAllPenalties || hasUnitAbilityEffect(attacker, "IGNORE_RANGED_MELEE_PENALTY");
 
-  if (attacker.type === "ranged" && getAttackKind(attacker, defender) === "melee" && !ignoresPenalty) {
+  if (attacker.type === "ranged" && getAttackKind(attacker, defender) === "melee" && !ignoresMeleePenalty) {
     return "disadvantage";
   }
 
   if (
     getAttackKind(attacker, defender) === "ranged" &&
-    !ignoresPenalty &&
+    !ignoresAllPenalties &&
     isBackRow(attacker.position) &&
     isBackRow(defender.position) &&
     isOppositeBackRow(attacker.position, defender.position)
@@ -1637,6 +1643,26 @@ function isOptionEffectPlayable(
     case "GAIN_HERO_MOVEMENT":
     case "DIMENSION_DOOR":
       return context === "map" && Boolean(state.adventure);
+    case "REMOVE_HAND_CARD_THEN_SEARCH":
+      // Spellbinder's Hat (option A): map play. The Hat discards itself, then a
+      // DIFFERENT removable card (ability / artifact / spell — the cards that
+      // have a deck to dig) is removed. The Hat is itself a removable card in
+      // hand at this point, so "another removable card exists" means the
+      // removable count is at least 2.
+      return (
+        context === "map" &&
+        Boolean(state.adventure) &&
+        removableHandCards(state, playerId, "removable").length >= 2
+      );
+    case "REMOVE_ANOTHER_CARD_FROM_HAND_OR_DISCARD": {
+      // Spellbinder's Hat (option B): map play; needs at least one OTHER card to
+      // remove alongside the Hat (which is still in hand at this point).
+      if (context !== "map" || !state.adventure) {
+        return false;
+      }
+      const player = state.players[playerId];
+      return Boolean(player && player.hand.length + player.discard.length >= 2);
+    }
     case "VIEW_EARTH":
       // View Earth captures an enemy-owned Mine in reach — offered only when at
       // least one such Mine sits within this option's range of the caster's Hero.
@@ -2868,6 +2894,9 @@ export function getLegalActions(
 
     if (state.pendingChoice.type === "DECK_SEARCH") {
       const choice = state.pendingChoice;
+      // The discard-top alternative is resolved up front (the "deck-search-mode"
+      // option choice), so once a player is looking at the revealed cards they
+      // only keep one of those — they can't fall back to the discard pile here.
       const actions: LegalAction[] = choice.revealedCardIds.map((cardId, index) => ({
         label: `Keep ${cards[cardId]?.name ?? cardId}`,
         action: {
@@ -2877,18 +2906,6 @@ export function getLegalActions(
           pick: { kind: "revealed", index }
         }
       }));
-
-      if (choice.canTakeDiscardTop) {
-        actions.push({
-          label: "Take the top discard instead",
-          action: {
-            type: "RESOLVE_DECK_SEARCH",
-            playerId,
-            choiceId: choice.id,
-            pick: { kind: "discard-top" }
-          }
-        });
-      }
 
       return actions;
     }
@@ -5278,20 +5295,25 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
+  // Over the hand limit at the start of the turn: discarding down (then drawing
+  // back up) is required before anything else.
   if (player.needsHandRefresh) {
     return [
       {
-        label: "Discard down to your hand limit",
+        label: "Discard down to your hand limit, then draw",
         action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
       },
       ...actions
     ];
   }
 
-  // Start-of-turn mulligan: discard any number of cards, draw that many.
-  if (player.canMulligan && player.hand.length > 0) {
+  // Optional start-of-turn draw (every turn, including the first): discard any
+  // number of cards, then draw back up to the hand limit. It is the single
+  // either/or — "draw new" (no discards) or "discard and draw new" — and is
+  // available until the player draws or begins their turn with a map action.
+  if (player.canMulligan) {
     actions.push({
-      label: "Discard any cards and draw that many (start of turn)",
+      label: "Draw new — or discard some and draw up to your hand limit (start of turn)",
       action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
     });
   }

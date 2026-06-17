@@ -787,6 +787,27 @@ export type EffectDefinition =
       count: number;
     }
   | {
+      /**
+       * Spellbinder's Hat (option A): "Remove 1 card from your hand, then
+       * Search(<count>) the card's deck." Opens the REMOVE_HAND_CARD →
+       * search-same-deck flow (filter "removable" = only abilities, artifacts and
+       * spells, which are the cards that have a corresponding deck to dig). The
+       * deck searched is whichever deck the removed card belongs to.
+       */
+      type: "REMOVE_HAND_CARD_THEN_SEARCH";
+      count: number;
+    }
+  | {
+      /**
+       * Spellbinder's Hat (option B): "Remove this card and another one from your
+       * hand or discard pile." The Hat itself leaves via the option's
+       * cost.removeSelf; this then removes one more card the player picks from
+       * hand OR discard pile (any card — "any card may be removed together with
+       * the Spellbinder's Hat").
+       */
+      type: "REMOVE_ANOTHER_CARD_FROM_HAND_OR_DISCARD";
+    }
+  | {
       /** Dragon Wing Tabard: discard random card(s) from the enemy hand. */
       type: "RANDOM_ENEMY_DISCARD";
       count: number;
@@ -1760,7 +1781,6 @@ export type ReactionPlay = {
 
 export type DeckSearchPick =
   | { kind: "revealed"; index: number }
-  | { kind: "discard-top" }
   | {
       /**
        * Basic X Magic: instead of the search, return the revealed cards and
@@ -3464,13 +3484,19 @@ export type PlayerState = {
    */
   moraleOverflow?: number;
   /**
-   * Over the hand limit at the start of the turn: the player must discard
-   * down (REFRESH_HAND) before doing anything else.
+   * Over the hand limit at the start of the turn (only reachable via card
+   * effects, since the hand is no longer auto-drawn): the player must discard
+   * down to the limit (REFRESH_HAND) before taking any other turn action.
    */
   needsHandRefresh?: boolean;
   /**
-   * Start-of-turn mulligan still available: discard any number of cards and
-   * draw that many. Cleared by the first movement/town action of the turn.
+   * The optional start-of-turn draw is still available this turn: the player
+   * MAY discard any number of cards and then draw back up to the hand limit
+   * (rulebook: "may discard any number of hand cards, then draws up to hand
+   * limit"). Offered on every turn, including the first; it is the single
+   * either/or — "draw new" (discard nothing) or "discard and draw new", never
+   * both, because the hand is never auto-drawn. Cleared once used, or once the
+   * player takes their first map/exploration action of the turn.
    */
   canMulligan?: boolean;
   /** Second negative morale token: the hand is discarded when the turn ends. */
@@ -4162,6 +4188,21 @@ export type VisitStep =
       then: "none" | "gain-valuables" | "search-same-deck" | "choose-deck-search";
     }
   | {
+      /**
+       * Spellbinder's Hat (option B): open a menu of every card in the player's
+       * hand AND discard pile; the picked one is removed from the game. Builds a
+       * CHOOSE_ONE whose options each carry a REMOVE_CARD_FROM_PILE leaf.
+       */
+      type: "REMOVE_ONE_FROM_HAND_OR_DISCARD";
+      prompt: string;
+    }
+  | {
+      /** Removes the named card from the player's hand or discard pile (→ removed). */
+      type: "REMOVE_CARD_FROM_PILE";
+      cardId: CardId;
+      source: "hand" | "discard";
+    }
+  | {
       /** University: pick one of the top cards of a shared discard pile. */
       type: "SEARCH_DISCARD";
       deckId: DeckId;
@@ -4616,7 +4657,6 @@ export type PendingChoice =
       deckId: DeckId;
       /** Cards lifted off the top of the deck; only the searcher may see them. */
       revealedCardIds: CardId[];
-      canTakeDiscardTop: boolean;
       /**
        * Basic X Magic in play: the search may instead fetch the deck's first
        * spell of one of these schools (cards are put back and reshuffled).
@@ -4637,6 +4677,7 @@ export type PendingChoice =
         | "satyr-swap"
         | "war-machine"
         | "deck-pick"
+        | "deck-search-mode"
         | "discard-pick"
         | "hand-discard"
         | "eagle-eye"
@@ -4721,6 +4762,13 @@ export type PendingChoice =
       activationOrder?: { unitIds: UnitId[] };
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number };
+      /**
+       * deck-search-mode: a "Search X" with a non-empty discard pile, waiting on
+       * the up-front either/or — Search the deck (reveal the top X, keep one) OR
+       * take the top of that deck's discard pile. The searched cards are only
+       * revealed if the player commits to searching.
+       */
+      deckSearchMode?: { deckId: DeckId; count: number };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */
       ownDeckPick?: { cardIds: CardId[] };
       /** rogues-scout: the deck being peeked and its revealed top card. */
