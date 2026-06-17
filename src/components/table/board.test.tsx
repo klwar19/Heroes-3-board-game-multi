@@ -211,7 +211,45 @@ describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
     const own = document.querySelector('[data-fx-cell="10"] .battlefieldToken');
     expect(own!.className).not.toContain("faceDown");
     expect(own!.textContent ?? "").toContain("armed");
-    expect(spriteOnCell(10)!.style.backgroundImage).toContain("land-mine");
+    // A dormant mine shows the STATIC placed-mine frame (land-mine-b), never the
+    // igniting/detonation animations (land-mine-a / -c). Those would loop the
+    // mine sparking forever; the real blast is land-mine-hit, played only when
+    // the mine is sprung (see the BATTLEFIELD_TOKEN_TRIGGERED tests in page.tsx).
+    const bg = spriteOnCell(10)!.style.backgroundImage;
+    expect(bg).toContain("land-mine-b");
+    expect(bg).not.toContain("land-mine-a");
+    expect(bg).not.toContain("land-mine-c");
+    expect(bg).not.toContain("land-mine-hit");
+  });
+
+  // A dormant trap must hold its idle frame, not loop its sheet: a Land Mine
+  // must not perpetually spark nor a Quicksand pit endlessly bubble while it
+  // waits to be sprung. TokenSprite drives its loop with requestAnimationFrame,
+  // so a trap that animates schedules a frame and a static one never does. The
+  // visible obstacles (Fire Wall flames) DO keep animating, which pins that the
+  // gate is the trap/obstacle distinction and not "nothing animates".
+  it("holds traps on a static idle frame (no animation loop), while visible obstacles still animate", () => {
+    const rafSpy = vi.spyOn(window, "requestAnimationFrame");
+
+    const fireWall = createInitialGameState("board-anim-fire-wall");
+    fireWall.combat!.battlefieldTokens = [{ id: "fw", kind: "fire_wall", position: 10, controllerId: "p1", damage: 2 }];
+    rafSpy.mockClear();
+    renderBoard(fireWall);
+    expect(spriteOnCell(10), "the Fire Wall draws its animated sprite").toBeTruthy();
+    expect(rafSpy, "a visible obstacle keeps animating").toHaveBeenCalled();
+    cleanup();
+
+    for (const kind of ["land_mine", "quicksand"] as const) {
+      const trap = createInitialGameState(`board-anim-${kind}`);
+      trap.combat!.battlefieldTokens = [{ id: "t", kind, position: 10, controllerId: "p1", armed: true, damage: 2 }];
+      rafSpy.mockClear();
+      renderBoard(trap);
+      expect(spriteOnCell(10), `the caster's ${kind} still draws its sprite`).toBeTruthy();
+      expect(rafSpy, `the dormant ${kind} must not loop its sheet`).not.toHaveBeenCalled();
+      cleanup();
+    }
+
+    rafSpy.mockRestore();
   });
 
   it("runs the placement picker: empty cells place a token and a Stop button ends it", () => {

@@ -811,8 +811,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "tower",
     tier: "silver",
     type: "ranged",
-    few: { attack: 3, defense: 0, health: 4, initiative: 5, cost: { gold: 6 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_attack] Ignore combat penalties.", cardImage: "/assets/units-tower-silver-magi-few.webp" },
-    pack: { attack: 4, defense: 1, health: 4, initiative: 6, cost: { gold: 11 }, abilities: ["ignore-combat-penalties", "magi-power-boost"], abilityText: "[unit_attack] Ignore combat penalties. [activation] Add +1 [power] to the first spell you cast this round.", cardImage: "/assets/units-tower-silver-magi-pack.webp" },
+    few: { attack: 3, defense: 0, health: 4, initiative: 5, cost: { gold: 6 }, abilities: ["ignore-all-combat-penalties"], abilityText: "[unit_attack] Ignore combat penalties.", cardImage: "/assets/units-tower-silver-magi-few.webp" },
+    pack: { attack: 4, defense: 1, health: 4, initiative: 6, cost: { gold: 11 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost"], abilityText: "[unit_attack] Ignore combat penalties. [activation] Add +1 [power] to the first spell you cast this round.", cardImage: "/assets/units-tower-silver-magi-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/magi/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
@@ -928,7 +928,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ranged",
-    neutral: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 5 }, abilities: ["attack-roll-advantage", "ignore-combat-penalties"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one. Ignore combat penalties.", cardImage: "/assets/units-neutral-bronze-halflings.webp" },
+    neutral: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 5 }, abilities: ["attack-roll-advantage", "ignore-all-combat-penalties"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one. Ignore combat penalties.", cardImage: "/assets/units-neutral-bronze-halflings.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/halflings/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1138,7 +1138,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ranged",
-    neutral: { attack: 3, defense: 0, health: 6, initiative: 9, cost: { gold: 10 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_attack] Ignore the combat penalties.", cardImage: "/assets/units-neutral-silver-sharpshooters.webp" },
+    neutral: { attack: 3, defense: 0, health: 6, initiative: 9, cost: { gold: 10 }, abilities: ["ignore-all-combat-penalties"], abilityText: "[unit_attack] Ignore the combat penalties.", cardImage: "/assets/units-neutral-silver-sharpshooters.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/sharpshooters/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
@@ -1906,7 +1906,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ranged",
-    neutral: { attack: 3, defense: 0, health: 5, initiative: 6, cost: { gold: 11 }, abilities: ["ignore-combat-penalties", "magi-power-drain"], abilityText: "[unit_passive] Ignore the combat penalties. [unit_attack] After this unit's attack, the enemy discards a card that can boost [power] (their choice) or a random card.", cardImage: "/assets/units-neutral-silver-magi.webp" },
+    neutral: { attack: 3, defense: 0, health: 5, initiative: 6, cost: { gold: 11 }, abilities: ["ignore-all-combat-penalties", "magi-power-drain"], abilityText: "[unit_passive] Ignore the combat penalties. [unit_attack] After this unit's attack, the enemy discards a card that can boost [power] (their choice) or a random card.", cardImage: "/assets/units-neutral-silver-magi.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/magi/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GameEvent } from "@/engine";
-import { orderFxEventsForPresentation } from "./fx-sequence";
+import { orderFxEventsForPresentation, partitionCombatMoves } from "./fx-sequence";
 
 /** Minimal event stand-ins; only `type` (and an id for tracking) matter here. */
 function ev(type: GameEvent["type"], id: string): { type: GameEvent["type"]; id: string } {
@@ -90,5 +90,46 @@ describe("orderFxEventsForPresentation", () => {
     // around a following event.
     const log = [ev("DAMAGE_ASSIGNED", "fs"), ev("UNIT_DEFENDED", "def")];
     expect(orderFxEventsForPresentation(log).map((e) => (e as { id: string }).id)).toEqual(["fs", "def"]);
+  });
+});
+
+describe("partitionCombatMoves (Harpy Strike-and-Return ordering)", () => {
+  // The neutral Harpy resolves move → attack → fly-back in one snapshot. The
+  // approach move precedes its ATTACK_ROLLED in the log; the return move follows
+  // it. The return must be held until after the strike, or the Harpy teleports
+  // home before its die is thrown.
+  const log = [
+    { type: "UNIT_MOVED" as const, id: "m-approach", unitId: "harpy" },
+    { type: "ATTACK_ROLLED" as const, id: "roll", attackerId: "harpy" },
+    { type: "RETALIATION_ATTACKED" as const, id: "retal" },
+    { type: "UNIT_MOVED" as const, id: "m-return", unitId: "harpy" }
+  ];
+
+  it("classifies the pre-attack move as approach and the post-attack move as fly-back", () => {
+    const moves = [
+      { id: "m-approach", unitId: "harpy", from: "10" },
+      { id: "m-return", unitId: "harpy", from: "2" }
+    ];
+    const { approach, afterAttack } = partitionCombatMoves(log, moves);
+    expect(approach.map((m) => m.id)).toEqual(["m-approach"]);
+    expect(afterAttack.map((m) => m.id)).toEqual(["m-return"]);
+  });
+
+  it("treats a unit's move as approach when it has no attack this snapshot", () => {
+    // A plain repositioning unit (no ATTACK_ROLLED) always animates up front.
+    const moves = [{ id: "m-approach", unitId: "ghost", from: "10" }];
+    const { approach, afterAttack } = partitionCombatMoves(log, moves);
+    expect(approach.map((m) => m.id)).toEqual(["m-approach"]);
+    expect(afterAttack).toEqual([]);
+  });
+
+  it("only pins the moving unit's own attack — another unit's roll does not reorder it", () => {
+    const otherLog = [
+      { type: "ATTACK_ROLLED" as const, id: "roll-other", attackerId: "marksmen" },
+      { type: "UNIT_MOVED" as const, id: "m1", unitId: "harpy" }
+    ];
+    const { approach, afterAttack } = partitionCombatMoves(otherLog, [{ id: "m1", unitId: "harpy", from: "5" }]);
+    expect(approach.map((m) => m.id)).toEqual(["m1"]);
+    expect(afterAttack).toEqual([]);
   });
 });

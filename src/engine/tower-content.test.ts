@@ -100,7 +100,9 @@ describe("Tower content", () => {
       expect(unit.pack?.cardImage, `${unit.id} pack art`).toContain("/assets/units-tower-");
     }
     // Implemented engine ability tags are wired on the right sides.
-    expect(coreUnitDefinitions["tower.magi"].few?.abilities).toContain("ignore-combat-penalties");
+    // Magi read "ignore the combat penalties" (all of them); Titans read
+    // "...combat penalties against adjacent units" (only the adjacent one).
+    expect(coreUnitDefinitions["tower.magi"].few?.abilities).toContain("ignore-all-combat-penalties");
     expect(coreUnitDefinitions["tower.nagas"].pack?.abilities).toContain("ignores-retaliation");
     expect(coreUnitDefinitions["tower.titans"].pack?.abilities).toContain("ignore-combat-penalties");
   });

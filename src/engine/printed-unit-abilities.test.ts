@@ -143,7 +143,7 @@ describe("Neutral Halfling — twin Attack dice", () => {
   it("carries both the advantage-roll and ignore-penalty abilities", () => {
     const abilities = coreUnitDefinitions["neutral.halflings"].neutral?.abilities ?? [];
     expect(abilities).toContain("attack-roll-advantage");
-    expect(abilities).toContain("ignore-combat-penalties");
+    expect(abilities).toContain("ignore-all-combat-penalties");
   });
 
   it("rolls two Attack dice and resolves the higher one", () => {

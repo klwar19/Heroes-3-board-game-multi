@@ -2308,6 +2308,45 @@ export function processPendingVisit(state: GameState): void {
         player.discard.push(`stat.${stat}.empowered`);
         break;
       }
+      case "REMOVE_ONE_FROM_HAND_OR_DISCARD": {
+        // Spellbinder's Hat (option B): open a menu of every hand and discard
+        // card; the picked one is removed via a REMOVE_CARD_FROM_PILE leaf.
+        const player = state.players[visit.playerId];
+        if (!player) {
+          break;
+        }
+        const seen = new Set<string>();
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        const addSource = (cardId: CardId, source: "hand" | "discard") => {
+          const key = `${source}:${cardId}`;
+          if (seen.has(key)) {
+            return;
+          }
+          seen.add(key);
+          options.push({
+            label: `Remove ${cardLibrary[cardId]?.name ?? cardId} (${source})`,
+            steps: [{ type: "REMOVE_CARD_FROM_PILE", cardId, source } as VisitStep]
+          });
+        };
+        player.hand.forEach((cardId) => addSource(cardId, "hand"));
+        player.discard.forEach((cardId) => addSource(cardId, "discard"));
+        if (options.length === 0) {
+          break;
+        }
+        visit.steps.unshift({ type: "CHOOSE_ONE", prompt: step.prompt, options });
+        break;
+      }
+      case "REMOVE_CARD_FROM_PILE": {
+        const player = state.players[visit.playerId];
+        const pile = step.source === "hand" ? player?.hand : player?.discard;
+        const index = pile?.indexOf(step.cardId) ?? -1;
+        if (!player || !pile || index === -1) {
+          break;
+        }
+        pile.splice(index, 1);
+        player.removed.push(step.cardId);
+        break;
+      }
       case "BLACK_MARKET": {
         const player = state.players[visit.playerId];
         if (!player) {
@@ -3582,15 +3621,15 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
 
   appendEvent(state, { type: "TURN_STARTED", playerId, round: state.round });
 
+  // The start-of-turn hand step is offered on EVERY turn, including the first:
+  // the player MAY discard any number of cards and then draw back up to the
+  // hand limit ("draw new" = discard nothing; "discard and draw new" = toss
+  // some first). The hand is NEVER drawn automatically, so the player can never
+  // both keep a fresh full hand AND swap on top of it — it is one either/or
+  // choice. Only an over-the-limit hand (from card effects) forces a discard
+  // before acting.
   const limit = effectiveHandLimit(state, playerId);
-  if (player.hand.length > limit) {
-    player.needsHandRefresh = true;
-  } else {
-    player.needsHandRefresh = false;
-    if (player.hand.length < limit) {
-      drawCardsForPlayer(state, playerId, limit - player.hand.length);
-    }
-  }
+  player.needsHandRefresh = player.hand.length > limit;
   player.canMulligan = true;
   // Army map abilities reset for the new turn (Nomads' step, Rogues' scout).
   player.nomadStepDoneThisTurn = false;

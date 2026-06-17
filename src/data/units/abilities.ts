@@ -3,7 +3,16 @@ import type { CombatTokenKind, EffectDurationDefinition, SpellSchool, UnitType }
 export type UnitAbilityEffectDefinition =
   | { type: "ALLOW_UNLIMITED_RETALIATION" }
   | { type: "IGNORE_RETALIATION" }
-  | { type: "IGNORE_RANGED_BACK_ROW_PENALTY" }
+  // Ranged combat-penalty waivers. A ranged attack rolls at disadvantage in two
+  // distinct cases: (1) striking an ADJACENT unit (the "combat penalty against
+  // adjacent units"), and (2) shooting from the back row across to the opposite
+  // back row (the long-range / behind-wall penalty). These are two separate
+  // abilities so a unit whose card reads "ignore the combat penalty against
+  // adjacent units" (Evil Eyes, Medusas, Zealots, Titans) waives ONLY case (1),
+  // while a unit whose card reads "ignore the combat penalties" (Magi,
+  // Sharpshooters, Halflings) waives BOTH.
+  | { type: "IGNORE_RANGED_MELEE_PENALTY" }
+  | { type: "IGNORE_RANGED_PENALTIES" }
   | { type: "MOVE_ANYWHERE" }
   | {
       /**
@@ -712,9 +721,16 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   },
   "ignore-combat-penalties": {
     id: "ignore-combat-penalties",
-    name: "No Range Penalty",
-    text: "Ignores the long ranged back-row attack penalty.",
-    effect: { type: "IGNORE_RANGED_BACK_ROW_PENALTY" },
+    name: "No Adjacent Penalty",
+    text: "Ignores the combat penalty for attacking an adjacent unit. The long-range / behind-wall penalty still applies.",
+    effect: { type: "IGNORE_RANGED_MELEE_PENALTY" },
+    implementationStatus: "implemented"
+  },
+  "ignore-all-combat-penalties": {
+    id: "ignore-all-combat-penalties",
+    name: "No Combat Penalties",
+    text: "Ignores all ranged combat penalties — both attacking an adjacent unit and the long-range / behind-wall shot.",
+    effect: { type: "IGNORE_RANGED_PENALTIES" },
     implementationStatus: "implemented"
   },
   "ranged-extra-shot-on-low-roll": {

@@ -478,27 +478,29 @@ function assertActiveTurn(state: GameState, playerId: PlayerId): void {
 }
 
 function assertHandRefreshed(state: GameState, playerId: PlayerId): void {
-  if (state.players[playerId]?.needsHandRefresh) {
+  const player = state.players[playerId];
+  if (player?.needsHandRefresh) {
     throw new Error("Discard down to your hand limit before acting.");
   }
-}
-
-/** The start-of-turn mulligan closes the moment the player really acts. */
-function closeMulliganWindow(state: GameState, playerId: PlayerId): void {
-  const player = state.players[playerId];
+  // Taking a map/exploration action ends the start-of-turn draw window: the
+  // discard-and-draw choice only stands before the player begins their turn.
   if (player?.canMulligan) {
     player.canMulligan = false;
   }
 }
 
 // ---------------------------------------------------------------------------
-// Hand refresh (start-of-turn discard/redraw)
+// Hand refresh (the start-of-turn discard/draw step)
 // ---------------------------------------------------------------------------
 
 /**
- * Discards the listed cards and draws that many back (never past the hand
- * limit). Used both for the forced discard-down when over the limit and for
- * the optional start-of-turn mulligan.
+ * Resolves the start-of-turn hand step: discards the cards the player chose
+ * (if any) and then draws back up to the hand limit, in that order (rulebook:
+ * "may discard any number of hand cards, then draws up to hand limit"). This is
+ * the single, mutually-exclusive choice the player makes at the start of their
+ * turn — "draw new" is an empty `discardCardIds`, "discard and draw new" lists
+ * the cards to throw away. It is offered every turn (including the first) and
+ * also covers discarding down when the hand is over the limit.
  */
 export function refreshHand(state: GameState, action: Extract<GameAction, { type: "REFRESH_HAND" }>): void {
   const player = state.players[action.playerId];
@@ -509,7 +511,7 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
   assertActiveTurn(state, action.playerId);
 
   if (!player.needsHandRefresh && !player.canMulligan) {
-    throw new Error("Cards can only be redrawn at the start of your turn (or by spending morale).");
+    throw new Error("The hand is only drawn at the start of your turn (spend morale to draw at other times).");
   }
 
   const handCounts = new Map<string, number>();
@@ -536,11 +538,13 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
     throw new Error(`Discard down to your hand limit of ${limit} first.`);
   }
 
-  // One mulligan per turn: pick any number of cards, discard them together,
-  // draw that many — then the window closes for the rest of the turn.
-  const toDraw = Math.min(action.discardCardIds.length, Math.max(0, limit - player.hand.length));
+  // Discard first, then draw back up to the hand limit — one card flow, never
+  // a draw-to-limit followed by a separate swap, so the player can never both
+  // "draw new" and "discard and draw new" in the same turn.
+  const toDraw = Math.max(0, limit - player.hand.length);
   const drawn = toDraw > 0 ? drawCardsForPlayer(state, action.playerId, toDraw) : 0;
   player.needsHandRefresh = false;
+  // The once-per-turn start-of-turn draw is now spent.
   player.canMulligan = false;
 
   appendEvent(state, {
@@ -989,7 +993,6 @@ export function moveHeroAdventure(state: GameState, action: Extract<GameAction, 
     throw new Error("Heroes can only move to adjacent, passable fields.");
   }
 
-  closeMulliganWindow(state, action.playerId);
   performHeroStep(state, hero, action.to, false);
 }
 
@@ -1054,7 +1057,6 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
     cursor = step;
   }
 
-  closeMulliganWindow(state, action.playerId);
 
   for (const step of action.path) {
     if (hero.movementPoints <= 0) {
@@ -1092,7 +1094,6 @@ export function revisitField(state: GameState, action: Extract<GameAction, { typ
     throw new Error("Only revisitable fields can be visited again.");
   }
 
-  closeMulliganWindow(state, action.playerId);
   hero.movementPoints -= 1;
   beginFieldVisit(state, hero.id, hero.spaceId, true);
 }
@@ -1120,7 +1121,6 @@ export function openMarket(state: GameState, action: Extract<GameAction, { type:
     throw new Error("That hero is not standing on a Market.");
   }
 
-  closeMulliganWindow(state, action.playerId);
   beginFieldVisit(state, hero.id, hero.spaceId, true);
 }
 
@@ -1135,7 +1135,6 @@ export function discoverTile(state: GameState, action: Extract<GameAction, { typ
     throw new Error("Discovering a tile costs 1 movement point.");
   }
 
-  closeMulliganWindow(state, action.playerId);
   hero.movementPoints -= 1;
   revealTileForHero(state, action.playerId, hero, action.tileInstanceId);
 }
@@ -1353,7 +1352,6 @@ export function placeTile(state: GameState, action: Extract<GameAction, { type: 
     throw new Error("Your hero can't cross onto that tile from here — its border lines seal it off. Pick another spot.");
   }
 
-  closeMulliganWindow(state, action.playerId);
   supply.splice(action.supplyIndex, 1);
   hero.movementPoints -= 1;
   const tile = instantiateTile(adventure, tileDefId, center, 0, false, { materialize: false });
@@ -4019,7 +4017,6 @@ export function buildStructureAdventure(
   }
 
   spendResources(state, action.playerId, building.cost, `built ${building.name}`);
-  closeMulliganWindow(state, action.playerId);
   player.townTokens.build = false;
   town.buildings.push(action.buildingId);
 
@@ -4189,7 +4186,6 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
   }
 
   spendRecruitResources(state, action.playerId, discountedTotal, "population action");
-  closeMulliganWindow(state, action.playerId);
   player.townTokens.population = false;
   if (usedLegionDiscount) {
     consumeRecruitDiscount(state, action.playerId);
@@ -4303,7 +4299,6 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
   if (goldCost > 0) {
     spendResources(state, action.playerId, cost, "spell book");
   }
-  closeMulliganWindow(state, action.playerId);
   player.townTokens.spellBook = false;
   appendEvent(state, { type: "SPELLS_PURCHASED", playerId: action.playerId, cost });
 
@@ -4351,7 +4346,6 @@ export function blacksmithAction(state: GameState, action: Extract<GameAction, {
 
     spendResources(state, action.playerId, cost, "Blacksmith");
     player.blacksmithUsedRound = state.round;
-    closeMulliganWindow(state, action.playerId);
     state.adventure?.rewardQueue.push({
       playerId: action.playerId,
       kind: "shared-deck-search",
@@ -4370,7 +4364,6 @@ export function blacksmithAction(state: GameState, action: Extract<GameAction, {
   player.hand.splice(index, 1);
   player.removed.push(cardId);
   player.blacksmithUsedRound = state.round;
-  closeMulliganWindow(state, action.playerId);
   gainResources(state, action.playerId, { gold: smith.effect.sellGold }, `sold ${cardLibrary[cardId]?.name ?? cardId} at the Blacksmith`);
 }
 
@@ -4402,7 +4395,6 @@ export function activateTownBuilding(state: GameState, action: Extract<GameActio
 
   const markUsed = () => {
     player.buildingUsedRound = { ...player.buildingUsedRound, [action.buildingId]: state.round };
-    closeMulliganWindow(state, action.playerId);
   };
 
   if (building.effect?.type === "COVER_OF_DARKNESS") {
@@ -4710,7 +4702,6 @@ export function roguesScoutDeck(state: GameState, action: Extract<GameAction, { 
   }
 
   player.rogueScoutUsedThisTurn = true;
-  player.canMulligan = false;
 
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
@@ -4754,6 +4745,63 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
     openSharedDeckSearch(state, action.playerId, deckId, choice.deckPick?.count ?? 2);
+    return;
+  }
+
+  if (choice.context === "deck-search-mode") {
+    const mode = choice.deckSearchMode;
+    const player = state.players[action.playerId];
+    if (!mode || !player) {
+      throw new Error("That search cannot be resolved.");
+    }
+    state.pendingChoice = null;
+
+    // Option 0 commits to searching: reveal the top cards and open the keep-one
+    // choice. Option 1 takes the top of the discard pile instead — no reveal.
+    if (action.optionIndex === 0) {
+      state.phase = choice.returnPhase;
+      revealSharedDeckSearch(state, action.playerId, mode.deckId, mode.count);
+      return;
+    }
+
+    const deck = state.decks[mode.deckId];
+    const takenCardId = deck?.discardPile.pop();
+    if (!deck || !takenCardId) {
+      throw new Error("The discard pile is empty.");
+    }
+    player.hand.push(takenCardId);
+    // Mirror the DECK_SEARCH resolver: an Ability card pulled from the shared
+    // deck is tracked so its printed ability can be granted.
+    if (mode.deckId === "abilities") {
+      (player.deckDrawnAbilityCardIds ??= []).push(takenCardId);
+    }
+    appendEvent(state, {
+      type: "DECK_SEARCH_RESOLVED",
+      playerId: action.playerId,
+      deckId: mode.deckId,
+      choiceId: choice.id,
+      pick: "discard-top",
+      discardedCardIds: []
+    });
+
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+
+    // Pendant of Courage: the whole Search action repeats once, even when this
+    // branch took the discard top instead of revealing the deck.
+    if (takeSearchRepeatEffect(state, action.playerId)) {
+      if (state.adventure) {
+        state.adventure.rewardQueue.unshift({
+          playerId: action.playerId,
+          kind: "shared-deck-search",
+          deckId: mode.deckId,
+          count: mode.count
+        });
+        pumpAdventureQueues(state);
+      } else {
+        openSharedDeckSearch(state, action.playerId, mode.deckId, mode.count);
+      }
+    }
     return;
   }
 
@@ -5184,7 +5232,6 @@ export function endTurnAdventure(state: GameState, action: Extract<GameAction, {
 
   const player = state.players[action.playerId];
   if (player) {
-    player.canMulligan = false;
     // The after-combat Necromancy window closes when the turn ends.
     player.necromancyWindow = false;
     // The second negative morale token: the hand is discarded at turn end.
@@ -5330,11 +5377,55 @@ export function resolveSearchDeckCandidates(state: GameState, playerId: PlayerId
 }
 
 /**
- * Opens the DECK_SEARCH pending choice on a concrete deck, applying Scouting
- * search-size overrides, Basic X Magic school fetches and the Pendant of
- * Courage repeat.
+ * Opens a "Search X" on a shared deck. When that deck's discard pile is not
+ * empty, the rulebook gives the player an either/or — Search the deck (reveal
+ * the top X, keep one) OR take the top of the discard pile — and the searched
+ * cards may only be looked at once the player commits to searching. So this
+ * raises an up-front two-option choice first and only reveals cards down the
+ * "Search" branch. With an empty discard pile there is nothing to take, so it
+ * reveals and opens the DECK_SEARCH straight away.
  */
 export function openSharedDeckSearch(state: GameState, playerId: PlayerId, deckId: string, baseCount: number): void {
+  const deck = state.decks[deckId];
+  if (!deck) {
+    return;
+  }
+
+  if (deck.discardPile.length > 0) {
+    const topCardId = deck.discardPile[deck.discardPile.length - 1];
+    // Show the base search size in the label only — the real count override
+    // (Scouting) is consumed when the player actually reveals, not here, so
+    // taking the discard top leaves any override intact for a later search.
+    state.pendingChoice = {
+      id: `choice_${nextEventNumber(state)}`,
+      type: "OPTION_CHOICE",
+      playerId,
+      prompt: `Search the ${deckId} deck, or take its top discard?`,
+      options: [
+        { label: `Search (${baseCount}) — look at the top cards and keep one` },
+        { label: `Take the top discard (${cardLibrary[topCardId]?.name ?? topCardId})` }
+      ],
+      context: "deck-search-mode",
+      deckSearchMode: { deckId, count: baseCount },
+      returnPhase: state.combat ? "combat" : "player-turn"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = playerId;
+    return;
+  }
+
+  revealSharedDeckSearch(state, playerId, deckId, baseCount);
+}
+
+/**
+ * Reveals the top of a shared deck and opens the DECK_SEARCH "keep one" choice,
+ * applying Scouting search-size overrides, Basic X Magic school fetches and the
+ * Pendant of Courage repeat. The discard-top option is never offered here — it
+ * is the alternative branch resolved before any reveal (see
+ * `openSharedDeckSearch`), so a player can never both peek the deck and still
+ * take the discard top.
+ */
+export function revealSharedDeckSearch(state: GameState, playerId: PlayerId, deckId: string, baseCount: number): void {
   const deck = state.decks[deckId];
   if (!deck) {
     return;
@@ -5360,10 +5451,9 @@ export function openSharedDeckSearch(state: GameState, playerId: PlayerId, deckI
     playerId,
     deckId,
     revealedCardIds,
-    canTakeDiscardTop: deck.discardPile.length > 0,
     ...(schoolFetch.length > 0 ? { schoolFetch } : {}),
     ...(repeats ? { repeatSearch: { deckId, count: baseCount } } : {}),
-    returnPhase: "player-turn"
+    returnPhase: state.combat ? "combat" : "player-turn"
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
