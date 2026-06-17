@@ -19,6 +19,54 @@ function expertOffers(state: GameState, playerId: PlayerId) {
   return getLegalActions(state, playerId).filter((legal) => (legal.action as { mode?: string }).mode === "expert");
 }
 
+function scriptDice(state: GameState, rolls: number[]): void {
+  state.combat!.dice.scriptedRolls = rolls;
+}
+
+describe("expert-effect crown limit — realistic combat flow", () => {
+  it("a 1-crown hero who plays Archery expert cannot then play an attack-instant expert", () => {
+    let state = createInitialGameState("crown-archery-then-instant");
+    state.players.p1.limits.expertUses = 1;
+    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
+    state.players.p1.hand = ["ability.archery", "stat.attack"];
+    state.players.p2.hand = [];
+    state.combat!.units.unit_p1_griffins.position = 9; // adjacent to the skeletons
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.activePlayerId = "p1";
+    scriptDice(state, [1, -1, 1, -1]);
+
+    // Archery expert (ongoing) spends the only crown.
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "ability.archery",
+      mode: "expert",
+      target: { type: "none" }
+    });
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+    expect(expertUsesAvailable(state.players.p1)).toBe(0);
+
+    // Declaring an attack opens the reaction window.
+    state = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    expect(state.reactionWindow).toBeTruthy();
+
+    // The Attack statistic's expert side is NOT offered, and forcing it fails.
+    const offers = getLegalActions(state, "p1").filter(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "stat.attack"
+    );
+    expect(offers.every((legal) => (legal.action as { mode?: string }).mode !== "expert")).toBe(true);
+
+    const forced = applyAction(state, { type: "PLAY_REACTION", playerId: "p1", cardId: "stat.attack", mode: "expert" });
+    expect(forced.errors.length, "a second expert play must be rejected").toBeGreaterThan(0);
+    expect(forced.state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
+});
+
 describe("expert-effect crown limit", () => {
   it("a level-2 hero (1 crown) cannot play a second expert effect in the same round", () => {
     let state = createInitialGameState("crown-lv2-seed");

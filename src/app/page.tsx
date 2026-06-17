@@ -4,7 +4,9 @@ import { Crosshair, Eye, Map as MapIcon, StepForward, Swords } from "lucide-reac
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   effectiveHandLimit,
+  effectHasExpertMode,
   ENGINE_SIGNATURE,
+  getEffectiveCardEffect,
   getLegalActions,
   getPlayerView,
   getRuleset,
@@ -2635,6 +2637,40 @@ export default function Home() {
                               {legal.label}
                             </button>
                           ))}
+                          {(() => {
+                            // The card has an expert side, but no expert play is
+                            // offered AND the player has no crowns left this
+                            // combat round — show the option locked, not hidden,
+                            // so it is clear why expert cannot be chosen.
+                            if (!state.combat) {
+                              return null;
+                            }
+                            const viewer = state.players[viewerPlayerId];
+                            const crownsLeft = viewer
+                              ? viewer.limits.expertUses +
+                                (viewer.combatStats.expertUseBonusThisRound ?? 0) -
+                                viewer.combatStats.expertUsesSpentThisRound
+                              : 0;
+                            const effect = getEffectiveCardEffect(cardLibrary[cardId], undefined);
+                            const hasExpertSide = effect ? effectHasExpertMode(effect) : false;
+                            const expertOffered = plays.some(
+                              (legal) => (legal.action as { mode?: string }).mode === "expert"
+                            );
+                            if (!hasExpertSide || expertOffered || crownsLeft > 0) {
+                              return null;
+                            }
+                            return (
+                              <button
+                                aria-disabled="true"
+                                className="expertLocked"
+                                disabled
+                                title="No expert-effect crowns left this combat round."
+                                type="button"
+                              >
+                                🔒 Expert — no crowns left
+                              </button>
+                            );
+                          })()}
                           <button className="ghost" onClick={() => setOpenHandIndex(null)} type="button">
                             Close
                           </button>
