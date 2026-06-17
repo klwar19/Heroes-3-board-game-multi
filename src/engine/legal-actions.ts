@@ -3060,6 +3060,9 @@ export function getLegalActions(
   addDeckSearchActions(actions, state, playerId);
   if (isCombatParticipant(state, playerId)) {
     addPermanentDiscardActions(actions, state, playerId);
+    // A positive morale token may be spent mid-combat for its draw / discard-
+    // redraw here (the reroll use is offered by the attack-die reroll choice).
+    addMoraleActions(actions, state, playerId);
   }
 
   return actions;
