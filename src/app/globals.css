@@ -613,9 +613,12 @@ button {
   z-index: 0;
 }
 
-/* Seat-relative view: the board flips so your own army sits on your left. */
-.boardFelt.flipped .battlefield {
-  transform: rotate(180deg);
+/* Seat-relative view: a horizontal mirror swaps the two armies left↔right
+   (done per-cell in board.tsx, so cards stay upright and animations stay in
+   plain screen space). The only thing to turn here is the terrain art — spin it
+   the other way so grass/dirt follow the swapped sides. */
+.boardFelt.flipped .battlefieldTerrain {
+  transform: translate(-50%, -50%) rotate(-90deg);
 }
 
 .battleCell {
@@ -870,19 +873,6 @@ button.battleCell {
   box-shadow:
     0 10px 12px rgb(0 0 0 / 40%),
     0 0 0 2px rgb(12 10 7 / 86%);
-}
-
-/* Player 1 sits across the table: their cards face away. */
-.boardCard.p1 {
-  transform: rotate(180deg);
-}
-
-.boardCard.p1 .boardCardHud {
-  top: 0;
-  right: auto;
-  bottom: auto;
-  left: 0;
-  transform: rotate(180deg);
 }
 
 .boardCardImage {
@@ -3863,10 +3853,6 @@ button.hbSlot:disabled { cursor: default; }
   height: 22px;
 }
 
-.boardCard.p1 .battlefieldToken {
-  transform: rotate(180deg);
-}
-
 .placeTokensBanner {
   display: flex;
   align-items: center;
@@ -3958,11 +3944,6 @@ button.hbSlot:disabled { cursor: default; }
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
-}
-
-/* p1 sits across the table (board rotated 180°): keep the badge text readable. */
-.boardCard.p1 .cloneBadge {
-  transform: translateX(-50%) rotate(180deg);
 }
 
 /* ---- Draw-card cinematic -------------------------------------------------- */
