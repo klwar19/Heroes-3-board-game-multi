@@ -8,6 +8,7 @@ import {
   createInitialGameState,
   getLegalActions,
   getPlayerView,
+  type GameAction,
   type GameState,
   type LegalAction,
   type PlayerId
@@ -433,5 +434,228 @@ describe("ReactionTray — live Power readout", () => {
     // still carries the Power readout.
     render(trayFor(state, "p2"));
     expect(screen.getByText("Power 0")).toBeTruthy();
+  });
+});
+
+describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker", () => {
+  function trayFor(state: GameState, onAction: (action: GameAction) => void) {
+    return (
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  /** A silver unit (vampires) is about to activate; p1 holds Sorrow + `power`. */
+  function silverSkipWindow(power: string[]): GameState {
+    const state = createInitialGameState("sorrow-tray-seed");
+    state.players.p1.hand = ["spell.sorrow", ...power];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.activatedThisRound = unit.id !== "unit_p1_griffins" && unit.id !== "unit_p2_vampires";
+    }
+    const result = applyAction(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    expect(result.errors).toEqual([]);
+    expect(result.state.reactionWindow?.priorityPlayerId).toBe("p1");
+    expect(result.state.combat!.activeUnitId).toBe("unit_p2_vampires");
+    return result.state;
+  }
+
+  const confirmButton = () => screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
+
+  it("gates the silver skip until two +1 Power cards are clicked, then plays them as the cost", () => {
+    // Before this fix the silver/gold skip (a `powerCost`, not a `discardCards`,
+    // cost) drew NO payment picker, so the Power could never be added and the play
+    // was rejected by the engine. The picker must let the player click Power.
+    const state = silverSkipWindow(["stat.power", "stat.power"]);
+
+    const onAction = vi.fn();
+    render(trayFor(state, onAction));
+
+    const pick = screen.getByRole("button", { name: /skip a silver unit/i });
+    act(() => fireEvent.click(pick));
+    expect(confirmButton().disabled, "2 Power is owed but none paid yet").toBe(true);
+
+    // Two Power chips, each worth +1, appear in the picker.
+    const chips = () => screen.getAllByRole("button", { name: /^Power \(\+1\)$/ });
+    expect(chips()).toHaveLength(2);
+
+    act(() => fireEvent.click(chips()[0]));
+    expect(confirmButton().disabled, "1 of 2 Power is not enough").toBe(true);
+
+    act(() => fireEvent.click(chips()[1]));
+    expect(confirmButton().disabled, "2 Power reaches the silver skip").toBe(false);
+
+    act(() => fireEvent.click(confirmButton()));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    expect(played).toMatchObject({ type: "PLAY_REACTION", playerId: "p1", cardId: "spell.sorrow", optionIndex: 1 });
+    expect(played.costCardIds).toEqual(["stat.power", "stat.power"]);
+
+    // The engine accepts exactly that action: the silver vampires are skipped.
+    const applied = applyAction(state, played);
+    expect(applied.errors).toEqual([]);
+    expect(applied.state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
+  });
+
+  it("reaches the silver skip with one +2 Power card (value, not card count) and blocks over-paying", () => {
+    // The cost is a Power VALUE: a single +2 source pays the 2-Power skip on its
+    // own, where the old "discard 2 cards" rule demanded two. A spare +1 Power
+    // card is then disabled, so the engine's no-over-pay rule is never tripped.
+    const state = silverSkipWindow(["artifact.necklace_of_dragonteeth", "stat.power"]);
+
+    const onAction = vi.fn();
+    render(trayFor(state, onAction));
+
+    act(() => fireEvent.click(screen.getByRole("button", { name: /skip a silver unit/i })));
+    const necklace = screen.getByRole("button", { name: /necklace of dragonteeth \(\+2\)/i });
+    act(() => fireEvent.click(necklace));
+
+    // The +2 alone satisfies the skip, so the spare +1 Power chip is disabled.
+    expect(confirmButton().disabled).toBe(false);
+    expect((screen.getByRole("button", { name: /^Power \(\+1\)$/ }) as HTMLButtonElement).disabled).toBe(true);
+
+    act(() => fireEvent.click(confirmButton()));
+    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    expect(played.costCardIds).toEqual(["artifact.necklace_of_dragonteeth"]);
+    const applied = applyAction(state, played);
+    expect(applied.errors).toEqual([]);
+    expect(applied.state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
+  });
+});
+
+describe("ReactionTray — Magic Mirror's paid redirect can pay its cost in the picker", () => {
+  function trayFor(state: GameState, onAction: (action: GameAction) => void) {
+    return (
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  /** p2 casts Magic Arrow at p1's griffins; p1 holds Magic Mirror + 1 Power. */
+  function redirectWindow(): GameState {
+    const state = createInitialGameState("mirror-tray-seed");
+    state.players.p1.hand = ["spell.magic_mirror", "stat.power"];
+    state.players.p2.hand = ["spell.magic_arrow"];
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    state.combat!.units.unit_p2_skeletons.activatedThisRound = false;
+    const cast = applyAction(state, {
+      type: "CAST_SPELL",
+      playerId: "p2",
+      cardId: "spell.magic_arrow",
+      target: { type: "unit", unitId: "unit_p1_griffins" }
+    });
+    expect(cast.errors).toEqual([]);
+    expect(cast.state.reactionWindow?.priorityPlayerId).toBe("p1");
+    return cast.state;
+  }
+
+  it("draws a cost picker for the silver redirect (a non-batchable play that still owes 1 Power)", () => {
+    // REDIRECT_SPELL is window-ending (non-batchable), so the tray used to render
+    // it as a lone one-click button — fine for the FREE bronze grade, but the
+    // silver/gold grades owe Power and the engine rejects a play that pays none.
+    // A paid window-ender must offer the cost picker, kept solo, fired by Confirm.
+    const state = redirectWindow();
+    const onAction = vi.fn();
+    render(trayFor(state, onAction));
+
+    // Free bronze redirect stays a one-click button…
+    expect(screen.getByRole("button", { name: /redirect the spell to a bronze unit/i })).toBeTruthy();
+    // …the paid silver redirect now gets a pick + payment picker.
+    act(() => fireEvent.click(screen.getByRole("button", { name: /bronze or silver unit \(pay 1 power\)/i })));
+
+    const confirm = () => screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
+    expect(confirm().disabled, "1 Power is owed but unpaid").toBe(true);
+
+    act(() => fireEvent.click(screen.getByRole("button", { name: /^Power$/ })));
+    expect(confirm().disabled, "the 1-Power cost is now covered").toBe(false);
+
+    act(() => fireEvent.click(confirm()));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    expect(played).toMatchObject({ type: "PLAY_REACTION", cardId: "spell.magic_mirror", optionIndex: 1 });
+    expect(played.costCardIds).toEqual(["stat.power"]);
+
+    // The engine accepts it: the redirect's new-target choice opens, no errors.
+    const applied = applyAction(state, played);
+    expect(applied.errors).toEqual([]);
+    expect(applied.state.pendingChoice?.type).toBe("ABILITY_TARGET_CHOICE");
+  });
+});
+
+describe("ReactionTray — Bowstring carries its chosen ranged unit through the play", () => {
+  function trayFor(state: GameState, onAction: (action: GameAction) => void) {
+    return (
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  /** Enemy skeletons about to act; p1 holds Bowstring + a fresh ranged Marksmen. */
+  function bowstringWindow(): GameState {
+    const state = createInitialGameState("bowstring-tray-seed");
+    state.players.p1.hand = ["artifact.bowstring_of_the_unicorns_mane"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const marksmen = state.combat!.units.unit_p1_marksmen;
+    marksmen.type = "ranged";
+    marksmen.initiative = 1;
+    state.combat!.units.unit_p2_skeletons.initiative = 99;
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.activatedThisRound = !["unit_p1_griffins", "unit_p2_skeletons", "unit_p1_marksmen"].includes(unit.id);
+    }
+    const result = applyAction(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    expect(result.errors).toEqual([]);
+    expect(result.state.reactionWindow?.priorityPlayerId).toBe("p1");
+    expect(result.state.combat!.activeUnitId).toBe("unit_p2_skeletons");
+    return result.state;
+  }
+
+  it("fires the out-of-order activation WITH its target, so the engine activates that unit (not a no-op)", () => {
+    // The reaction's per-unit target rides only on a single PLAY_REACTION. The
+    // tray used to group plays by card+option and drop the target, so the engine
+    // received a targetless play and silently activated nobody. The button must
+    // carry the unit it names.
+    const state = bowstringWindow();
+    const onAction = vi.fn();
+    render(trayFor(state, onAction));
+
+    act(() => fireEvent.click(screen.getByRole("button", { name: /activate/i })));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    expect(played).toMatchObject({
+      type: "PLAY_REACTION",
+      cardId: "artifact.bowstring_of_the_unicorns_mane",
+      optionIndex: 0,
+      target: { type: "unit", unitId: "unit_p1_marksmen" }
+    });
+
+    const applied = applyAction(state, played);
+    expect(applied.errors).toEqual([]);
+    expect(applied.state.combat!.activeUnitId).toBe("unit_p1_marksmen");
   });
 });
