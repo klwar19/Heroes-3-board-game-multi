@@ -196,12 +196,19 @@ describe("Artillery (expert) — the Ballista volley", () => {
     return state;
   }
 
-  /** Makes `unitId` the uniquely slowest enemy and tanky enough to soak a volley. */
+  /**
+   * Makes `unitId` the uniquely slowest enemy and tanky enough to soak a volley.
+   * The other enemies get DISTINCT high initiatives (below the attacker's
+   * fastest unit) so neither side ends up tied for the first activation — this
+   * keeps the war-machine round the only thing under test, with no
+   * tied-activation order choice opening afterwards.
+   */
   function singleSlowest(state: GameState, unitId: string): void {
     const units = state.combat!.units;
+    let next = 8;
     for (const id of Object.keys(units)) {
       if (units[id].controllerId === "p2") {
-        units[id].initiative = id === unitId ? 1 : 9;
+        units[id].initiative = id === unitId ? 1 : next--;
       }
     }
     units[unitId].maxHealth = 12;

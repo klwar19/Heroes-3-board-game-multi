@@ -1055,6 +1055,17 @@ describe("neutral combat", () => {
         });
         continue;
       }
+      // Same-speed units on one side: the controller picks which goes first.
+      // This driver just takes them in the offered order.
+      if (choice?.type === "OPTION_CHOICE" && choice.context === "combat-activation-order") {
+        state = apply(state, {
+          type: "CHOOSE_OPTION",
+          playerId: choice.playerId,
+          choiceId: choice.id,
+          optionIndex: 0
+        });
+        continue;
+      }
       const active = state.combat?.activeUnitId ? state.combat.units[state.combat.activeUnitId] : null;
       if (!active || active.controllerId !== "p1" || state.pendingChoice) {
         return state;
@@ -1170,6 +1181,12 @@ describe("neutral combat", () => {
       safety -= 1;
       if (state.reactionWindow) {
         state = apply(state, { type: "PASS_REACTION", playerId: state.reactionWindow.priorityPlayerId });
+        continue;
+      }
+      // p1's three units share initiative 99, so it is asked which goes first.
+      const choice = state.pendingChoice;
+      if (choice?.type === "OPTION_CHOICE" && choice.context === "combat-activation-order") {
+        state = apply(state, { type: "CHOOSE_OPTION", playerId: choice.playerId, choiceId: choice.id, optionIndex: 0 });
         continue;
       }
       const active = state.combat.activeUnitId ? state.combat.units[state.combat.activeUnitId] : null;

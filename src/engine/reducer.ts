@@ -161,8 +161,8 @@ import {
   getLegalMoveDestinations,
   getUnitMoveRange,
   combatEnemyImposesPowerTax,
+  getActivationStep,
   getLegalReactionsForTrigger,
-  getNextUnitToActivate,
   getOffTurnCombatReactions,
   isAdjacent,
   isHandLockedInCombat,
@@ -4828,7 +4828,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
       playerId: activeUnit.controllerId,
       unitId: activeUnit.id
     });
-    setActiveUnit(state, getNextUnitToActivate(state.combat, state.activeEffects)?.id ?? null);
+    advanceActiveUnit(state);
     return;
   }
 
@@ -4870,7 +4870,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
       playerId: activeUnit.controllerId,
       unitId: activeUnit.id
     });
-    setActiveUnit(state, getNextUnitToActivate(state.combat, state.activeEffects)?.id ?? null);
+    advanceActiveUnit(state);
     return;
   }
 
@@ -4943,12 +4943,97 @@ function applyActivationStartAbilities(state: GameState, unit: CombatUnitState):
   }
 }
 
+/**
+ * Hands the activation slot to the next unit. When several of the acting
+ * side's units are tied for that slot (same effective initiative), the
+ * controlling player is prompted to choose which goes first — unless that side
+ * is the neutral army, which auto-takes its first unit (its AI then plays it).
+ * Cross-side ties are resolved by getActivationStep (alternating, no attacker
+ * advantage), so this only ever prompts for one side at a time.
+ */
 function advanceActiveUnit(state: GameState): void {
-  if (!state.combat) {
+  const combat = state.combat;
+  if (!combat) {
     return;
   }
 
-  setActiveUnit(state, getNextUnitToActivate(state.combat, state.activeEffects)?.id ?? null);
+  const step = getActivationStep(combat, state.activeEffects);
+  if (step && step.candidates.length >= 2 && step.side !== NEUTRAL_PLAYER_ID) {
+    // Clear the just-finished unit so nothing reads it as still active while the
+    // order choice is open.
+    combat.activeUnitId = null;
+    openActivationOrderChoice(state, step.side, step.candidates);
+    return;
+  }
+
+  setActiveUnit(state, step?.candidates[0]?.id ?? null);
+}
+
+/**
+ * Opens the "which of your tied units goes first" choice. Index-aligned with
+ * `candidates`; resolveActivationOrderChoice makes the picked unit active.
+ */
+function openActivationOrderChoice(state: GameState, playerId: PlayerId, candidates: CombatUnitState[]): void {
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: "Several units share the same speed — choose which activates first.",
+    options: candidates.map((unit) => ({
+      label: `Activate ${unit.cardName} (${getBattlefieldLabel(unit.position)})`
+    })),
+    context: "combat-activation-order",
+    activationOrder: { unitIds: candidates.map((unit) => unit.id) },
+    returnPhase: "combat"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId,
+    sourceEffectIds: [],
+    message: `${state.players[playerId]?.name ?? playerId} chooses which tied unit activates first.`
+  });
+}
+
+/** Resolves the tied-activation pick: the chosen unit becomes active. */
+function resolveActivationOrderChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "combat-activation-order" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.activationOrder
+  ) {
+    throw new Error("There is no activation-order choice to resolve.");
+  }
+
+  const combat = state.combat;
+  const unitId = choice.activationOrder.unitIds[action.optionIndex];
+  const unit = combat ? combat.units[unitId] : undefined;
+  if (!combat || !unit || !isUnitAlive(unit) || unit.activatedThisRound || unit.controllerId !== action.playerId) {
+    throw new Error("That unit can no longer take the first activation.");
+  }
+
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
+
+  setActiveUnit(state, unit.id);
 }
 
 /**
@@ -11133,25 +11218,53 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     nextRound: state.combat.round
   });
 
-  const nextUnit = getNextUnitToActivate(state.combat, state.activeEffects);
   appendEvent(state, {
     type: "COMBAT_ROUND_STARTED",
     round: state.combat.round,
-    activeUnitId: nextUnit?.id ?? null
+    activeUnitId: null
   });
 
-  setActiveUnit(state, nextUnit?.id ?? null);
+  // Round-start war machines fire BEFORE any unit activates, so the first
+  // activation is chosen only once they finish. Leave the active unit unset
+  // (like round 1's finalizeCombatStart): ensureCombatActivation — or, in
+  // adventure mode, the automation pump — opens the first activation (or its
+  // tied-order choice) after the war-machine round completes.
+  state.combat.activeUnitId = null;
   state.activePlayerId = byPlayerId;
-  if (nextUnit) {
-    state.activePlayerId = nextUnit.controllerId;
-  }
 
-  // Permanents played before this combat (or while it ran) keep their
-  // presence up, then war machines fire before activations.
+  // Permanents played before this combat (or while it ran) keep their presence.
   applyPermanentCombatEffectsForPlayer(state, state.combat.attackerPlayerId);
   applyPermanentCombatEffectsForPlayer(state, state.combat.defenderPlayerId);
   startWarMachineRound(state);
-  finishCombatIfNeeded(state);
+  if (finishCombatIfNeeded(state)) {
+    return;
+  }
+  ensureCombatActivation(state);
+}
+
+/**
+ * After every settled step, make sure a running combat has an active unit (or
+ * the tied-order choice that picks one). No-op while a sub-step is still in
+ * flight — an open choice, reaction window, war-machine round, the resolving
+ * stack, the end-of-combat notice, or a finished/setup combat.
+ */
+function ensureCombatActivation(state: GameState): void {
+  const combat = state.combat;
+  if (
+    !combat ||
+    combat.outcome ||
+    combat.setup ||
+    combat.awaitingContinue ||
+    combat.warMachineRound ||
+    combat.activeUnitId ||
+    state.pendingChoice ||
+    state.reactionWindow ||
+    state.stack.length > 0
+  ) {
+    return;
+  }
+
+  advanceActiveUnit(state);
 }
 
 function endCombatRound(state: GameState, action: Extract<GameAction, { type: "END_COMBAT_ROUND" }>): void {
@@ -11792,9 +11905,13 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       state.stack.length === 0
     ) {
       if (!combat.activeUnitId) {
-        const nextUnit = getNextUnitToActivate(combat, state.activeEffects);
-        if (nextUnit) {
-          setActiveUnit(state, nextUnit.id);
+        const step = getActivationStep(combat, state.activeEffects);
+        if (step) {
+          // Sets the next unit, or opens the tied-order choice for a human side.
+          advanceActiveUnit(state);
+          if (state.pendingChoice) {
+            break;
+          }
           continue;
         }
 
@@ -12162,6 +12279,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           nextState.pendingChoice.context === "combat-step"
         ) {
           resolveUnitStepChoice(nextState, action);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "combat-activation-order"
+        ) {
+          resolveActivationOrderChoice(nextState, action);
         } else {
           chooseOption(nextState, action);
         }
@@ -12211,6 +12333,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           : "The action could not complete its automatic follow-up."
     });
   }
+
+  // Combat-sandbox combats (and any post-war-machine round start) have no
+  // adventure pump to hand out the activation slot, so settle it here: open the
+  // next unit, or the tied-order choice that picks it.
+  ensureCombatActivation(nextState);
 
   // Pre-activation interrupts (Sorrow's skip, Bowstring of the Unicorn's Mane's
   // out-of-order ranged activation): once everything else has settled, open the

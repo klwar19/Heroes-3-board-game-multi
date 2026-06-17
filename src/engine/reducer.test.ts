@@ -840,22 +840,44 @@ describe("rules engine prototype", () => {
     defended.activePlayerId = "p1";
     const nextRound = applyOk(defended, { type: "END_COMBAT_ROUND", playerId: "p1" });
 
-    // The token survives the round end (Griffins activate first)...
-    expect(nextRound.combat?.activeUnitId).toBe("unit_p1_griffins");
+    // The token survives the round end. Round 2 opens with the init-9 cross-side
+    // tie (Griffins vs Vampires) resolved defender-first — no attacker edge.
+    expect(nextRound.combat?.activeUnitId).toBe("unit_p2_vampires");
     expect(nextRound.combat?.units.unit_p1_crusaders.defenseToken).toBe(true);
 
-    // ...and is discarded the moment the Crusaders activate again.
-    const afterGriffins = applyOk(nextRound, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
-    expect(afterGriffins.combat?.activeUnitId).toBe("unit_p2_vampires");
-    const afterVampires = applyOk(afterGriffins, { type: "DEFEND_UNIT", playerId: "p2", unitId: "unit_p2_vampires" });
-    expect(afterVampires.combat?.units.unit_p1_crusaders.defenseToken).toBe(true);
-    const afterDread = applyOk(afterVampires, {
+    // Run down the order: Vampires (9), Griffins (9), Dread Knights (7)...
+    const afterVampires = applyOk(nextRound, { type: "DEFEND_UNIT", playerId: "p2", unitId: "unit_p2_vampires" });
+    expect(afterVampires.combat?.activeUnitId).toBe("unit_p1_griffins");
+    const afterGriffins = applyOk(afterVampires, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    expect(afterGriffins.combat?.activeUnitId).toBe("unit_p2_dread_knights");
+    const afterDread = applyOk(afterGriffins, {
       type: "DEFEND_UNIT",
       playerId: "p2",
       unitId: "unit_p2_dread_knights"
     });
-    expect(afterDread.combat?.activeUnitId).toBe("unit_p1_crusaders");
-    expect(afterDread.combat?.units.unit_p1_crusaders.defenseToken).toBe(false);
+
+    // ...now the Marksmen + Crusaders are tied at init 6, so p1 is asked which
+    // of its own units goes first. The token still rides on the Crusaders.
+    expect(afterDread.pendingChoice?.type).toBe("OPTION_CHOICE");
+    expect(
+      afterDread.pendingChoice?.type === "OPTION_CHOICE" ? afterDread.pendingChoice.context : null
+    ).toBe("combat-activation-order");
+    expect(afterDread.combat?.units.unit_p1_crusaders.defenseToken).toBe(true);
+
+    // Pick the Crusaders to activate first — its defense token is discarded the
+    // moment it becomes active.
+    const order =
+      afterDread.pendingChoice?.type === "OPTION_CHOICE" ? afterDread.pendingChoice.activationOrder : undefined;
+    const crusadersIndex = order?.unitIds.indexOf("unit_p1_crusaders") ?? -1;
+    expect(crusadersIndex).toBeGreaterThanOrEqual(0);
+    const afterChoice = applyOk(afterDread, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: afterDread.pendingChoice!.id,
+      optionIndex: crusadersIndex
+    });
+    expect(afterChoice.combat?.activeUnitId).toBe("unit_p1_crusaders");
+    expect(afterChoice.combat?.units.unit_p1_crusaders.defenseToken).toBe(false);
   });
 
   it("plays an ongoing Archery effect only on the active player's own activation and expires it at round end", () => {
