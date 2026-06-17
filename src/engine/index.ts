@@ -40,7 +40,8 @@ export {
   getEffectiveCardEffect,
   getSpellDamageAmount,
   implementedCardEffectTypes,
-  isImplementedCardEffect
+  isImplementedCardEffect,
+  spellPowerValueOfCard
 } from "./effects";
 export { getPlayerView } from "./player-view";
 export { createSeededRandom } from "./random";
@@ -184,7 +185,8 @@ export {
   isAdjacent,
   isEffectLegalForTrigger,
   isUnitAlive,
-  sortUnitsForActivation
+  sortUnitsForActivation,
+  standingSpellPower
 } from "./legal-actions";
 export type { PendingReactionPower } from "./legal-actions";
 export {

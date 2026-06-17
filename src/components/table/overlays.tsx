@@ -14,6 +14,8 @@ import {
   getPendingReactionPower,
   getPermanentCardIds,
   getSpellDamageAmount,
+  spellPowerValueOfCard,
+  standingSpellPower,
   SURRENDER_GOLD_COST,
   type CardPlayMode,
   type GameAction,
@@ -38,8 +40,10 @@ type TrayGroup = {
   batchable: boolean;
   /** "Discard {card}: +1 Power" alternative play of a Spell card. */
   asPowerBoost?: boolean;
+  /** Bowstring: the friendly ranged unit this play activates out of order. */
+  target?: ReactionLegal["target"];
   /** Cards from hand this option demands as payment. */
-  costCards?: { exact?: number; upTo?: number; filter?: "spell" | "power-source" };
+  costCards?: { exact?: number; upTo?: number; powerCost?: number; filter?: "spell" | "power-source" };
 };
 
 type TraySelection = {
@@ -48,7 +52,9 @@ type TraySelection = {
   optionIndex?: number;
   mode: CardPlayMode;
   asPowerBoost?: boolean;
-  costCards?: { exact?: number; upTo?: number; filter?: "spell" | "power-source" };
+  /** Window-ending play (Magic Mirror's paid redirect): always selected solo. */
+  nonBatchable?: boolean;
+  costCards?: { exact?: number; upTo?: number; powerCost?: number; filter?: "spell" | "power-source" };
   /** Hand indexes chosen to pay the option's discard cost. */
   costHandIndexes: number[];
 };
@@ -225,13 +231,19 @@ export function ReactionTray({
   // are their own group), then expose one selectable tile per copy in hand.
   const groupsByCard = new Map<string, TrayGroup[]>();
   for (const action of reactionActions) {
-    const key = `${action.cardId}#${action.optionIndex ?? -1}#${action.asPowerBoost ? "boost" : "play"}`;
+    // A per-unit target (Bowstring) makes otherwise-identical plays distinct, so
+    // it joins the group key — each ranged unit gets its own tile button.
+    const targetKey = action.target?.type === "unit" ? `#${action.target.unitId}` : "";
+    const key = `${action.cardId}#${action.optionIndex ?? -1}#${action.asPowerBoost ? "boost" : "play"}${targetKey}`;
     const card = cardLibrary[action.cardId];
     const effect = card && !action.asPowerBoost ? getEffectiveCardEffect(card, action.optionIndex) : null;
     const batchable = action.asPowerBoost
       ? true
       : Boolean(
           effect &&
+            // A target rides only the single PLAY_REACTION, never the batch
+            // (PLAY_REACTIONS carries no target), so it must resolve on its own.
+            !action.target &&
             effect.type !== "CANCEL_SPELL" &&
             effect.type !== "RECALL_SPELL" &&
             effect.type !== "REDIRECT_SPELL"
@@ -242,13 +254,22 @@ export function ReactionTray({
         : undefined;
     const cost = option?.cost;
     const costCards =
-      cost && (cost.discardCards !== undefined || cost.discardCardsUpTo !== undefined)
-        ? { exact: cost.discardCards, upTo: cost.discardCardsUpTo, filter: cost.costCardFilter }
+      cost &&
+      (cost.discardCards !== undefined || cost.discardCardsUpTo !== undefined || cost.powerCost !== undefined)
+        ? {
+            exact: cost.discardCards,
+            upTo: cost.discardCardsUpTo,
+            // Sorrow's silver/gold skip: pay a Power VALUE (2/4), not a card
+            // count — selected power-source cards count their printed Power.
+            powerCost: cost.powerCost,
+            filter: cost.costCardFilter
+          }
         : undefined;
     const cardGroups = groupsByCard.get(action.cardId) ?? [];
-    const existing = cardGroups.find(
-      (group) => `${group.cardId}#${group.optionIndex ?? -1}#${group.asPowerBoost ? "boost" : "play"}` === key
-    );
+    const existing = cardGroups.find((group) => {
+      const groupTargetKey = group.target?.type === "unit" ? `#${group.target.unitId}` : "";
+      return `${group.cardId}#${group.optionIndex ?? -1}#${group.asPowerBoost ? "boost" : "play"}${groupTargetKey}` === key;
+    });
 
     if (existing) {
       if (!existing.modes.includes(action.mode ?? "basic")) {
@@ -258,10 +279,15 @@ export function ReactionTray({
       cardGroups.push({
         cardId: action.cardId,
         optionIndex: action.optionIndex,
-        optionLabel: action.asPowerBoost ? "Discard for +1 Power" : option?.label,
+        optionLabel: action.asPowerBoost
+          ? "Discard for +1 Power"
+          : action.target?.type === "unit"
+            ? `Activate ${unitName(state, action.target.unitId)}`
+            : option?.label,
         modes: [action.mode ?? "basic"],
         batchable,
         asPowerBoost: action.asPowerBoost,
+        target: action.target,
         costCards
       });
     }
@@ -292,22 +318,31 @@ export function ReactionTray({
         return current.filter((selection) => selection.handIndex !== handIndex);
       }
 
-      const next = current
-        .filter((selection) => selection.handIndex !== handIndex)
-        // A card leaving/entering play also leaves any payment role.
-        .map((selection) => ({
-          ...selection,
-          costHandIndexes: selection.costHandIndexes.filter((index) => index !== handIndex)
-        }));
-      next.push({
+      const incoming: TraySelection = {
         handIndex,
         cardId,
         optionIndex: group.optionIndex,
         mode: "basic",
         asPowerBoost: group.asPowerBoost,
+        nonBatchable: group.batchable === false,
         costCards: group.costCards,
         costHandIndexes: []
-      });
+      };
+
+      // A window-ending play (Magic Mirror's paid redirect) is always solo:
+      // picking it clears any batch, and a later batchable pick clears it.
+      if (incoming.nonBatchable) {
+        return [incoming];
+      }
+
+      const next = current
+        .filter((selection) => selection.handIndex !== handIndex && !selection.nonBatchable)
+        // A card leaving/entering play also leaves any payment role.
+        .map((selection) => ({
+          ...selection,
+          costHandIndexes: selection.costHandIndexes.filter((index) => index !== handIndex)
+        }));
+      next.push(incoming);
       return next.sort((left, right) => left.handIndex - right.handIndex);
     });
   };
@@ -344,10 +379,40 @@ export function ReactionTray({
     }
   }
 
-  const paymentInvalid = selections.some(
-    (selection) =>
-      selection.costCards?.exact !== undefined && selection.costHandIndexes.length !== selection.costCards.exact
-  );
+  // Power-value cost (Sorrow's silver/gold skip): the standing spell Power for
+  // the played card's school plus the printed Power of each chosen power-source
+  // card. Mirrors the engine's payOptionCardCost so the tray's running total and
+  // the resolution agree on what reaches a grade.
+  const powerPaidBy = (selection: TraySelection) => {
+    const card = cardLibrary[selection.cardId];
+    const schools = card?.spellSchools ?? [];
+    const standing = card ? standingSpellPower(state, viewerPlayerId, card) : 0;
+    const fromCards = selection.costHandIndexes.reduce(
+      (sum, index) => sum + spellPowerValueOfCard(cardLibrary[hand[index]], schools),
+      0
+    );
+    return { standing, total: standing + fromCards };
+  };
+
+  const paymentInvalid = selections.some((selection) => {
+    const cost = selection.costCards;
+    if (!cost) {
+      return false;
+    }
+    if (cost.powerCost !== undefined) {
+      const { total } = powerPaidBy(selection);
+      // Under-paid, or carrying a redundant Power card the engine would reject
+      // ("more Power than it needs"): every chosen card must be necessary.
+      if (total < cost.powerCost) {
+        return true;
+      }
+      const schools = cardLibrary[selection.cardId]?.spellSchools ?? [];
+      return selection.costHandIndexes.some(
+        (index) => total - spellPowerValueOfCard(cardLibrary[hand[index]], schools) >= cost.powerCost!
+      );
+    }
+    return cost.exact !== undefined && selection.costHandIndexes.length !== cost.exact;
+  });
 
   const isAttackWindow = window.triggerEvent.type === "UNIT_ATTACK_DECLARED";
   // Attack-window pairing rule: Power (the statistic card or a "+1 Power"
@@ -474,9 +539,12 @@ export function ReactionTray({
                       selection.optionIndex === group.optionIndex &&
                       Boolean(selection.asPowerBoost) === Boolean(group.asPowerBoost)
                   );
-                  if (!group.batchable) {
-                    // Window-ending plays (Resistance, spell recall) resolve
-                    // immediately and on their own.
+                  if (!group.batchable && !group.costCards) {
+                    // Cost-free window-ending plays (Resistance, spell recall)
+                    // resolve immediately and on their own. A PAID window-ender
+                    // (Magic Mirror's silver/gold redirect) falls through to the
+                    // pick + cost-picker path below so its Power can be paid; it
+                    // is kept solo by toggleSelection and fired by the footer.
                     return group.modes.map((mode) => (
                       <button
                         className="trayInstant"
@@ -487,7 +555,8 @@ export function ReactionTray({
                             playerId: viewerPlayerId,
                             cardId: group.cardId,
                             mode,
-                            ...(group.optionIndex !== undefined ? { optionIndex: group.optionIndex } : {})
+                            ...(group.optionIndex !== undefined ? { optionIndex: group.optionIndex } : {}),
+                            ...(group.target ? { target: group.target } : {})
                           })
                         }
                         type="button"
@@ -500,6 +569,13 @@ export function ReactionTray({
 
                   const needsPayment = groupSelected && selection?.costCards;
                   const paymentTarget = selection?.costCards?.exact ?? selection?.costCards?.upTo ?? 0;
+                  // Sorrow's silver/gold skip pays a Power VALUE, not a card
+                  // count: each chip is valued by its printed Power and the
+                  // running total (standing + chosen) must reach the threshold.
+                  const powerCostValue = selection?.costCards?.powerCost;
+                  const isPowerCost = powerCostValue !== undefined;
+                  const playedSchools = cardLibrary[tile.cardId]?.spellSchools ?? [];
+                  const powerPaid = isPowerCost && selection ? powerPaidBy(selection) : null;
 
                   return (
                     <div className="trayGroup" key={`${group.cardId}-${group.optionIndex ?? "x"}-${group.asPowerBoost ? "boost" : "play"}`}>
@@ -529,9 +605,13 @@ export function ReactionTray({
                       {needsPayment ? (
                         <div className="trayPayment" aria-label="Choose cards to pay the cost">
                           <small>
-                            {selection?.costCards?.exact !== undefined
-                              ? `Discard exactly ${selection.costCards.exact}:`
-                              : `Discard up to ${paymentTarget}:`}
+                            {isPowerCost
+                              ? `Pay ${powerCostValue} Power${
+                                  (powerPaid?.standing ?? 0) > 0 ? ` · ${powerPaid?.standing} standing` : ""
+                                } — ${powerPaid?.total ?? 0}/${powerCostValue} chosen`
+                              : selection?.costCards?.exact !== undefined
+                                ? `Discard exactly ${selection.costCards.exact}:`
+                                : `Discard up to ${paymentTarget}:`}
                           </small>
                           <div className="trayPaymentChips">
                             {hand.map((payCardId, payIndex) => {
@@ -543,12 +623,21 @@ export function ReactionTray({
                               const wrongKind =
                                 selection?.costCards?.filter !== undefined &&
                                 !costCardEligible(payCardId, selection.costCards.filter);
-                              if (takenElsewhere || wrongKind) {
+                              // A power source of the wrong school contributes
+                              // nothing to this spell, so it can never validly pay.
+                              const powerValue = isPowerCost
+                                ? spellPowerValueOfCard(cardLibrary[payCardId], playedSchools)
+                                : 0;
+                              if (takenElsewhere || wrongKind || (isPowerCost && powerValue <= 0)) {
                                 return null;
                               }
+                              // Count mode fills at the card target; Power mode
+                              // stops once the threshold is met (no over-paying).
                               const full =
                                 !inThisPayment &&
-                                (selection?.costHandIndexes.length ?? 0) >= paymentTarget;
+                                (isPowerCost
+                                  ? (powerPaid?.total ?? 0) >= (powerCostValue ?? 0)
+                                  : (selection?.costHandIndexes.length ?? 0) >= paymentTarget);
                               return (
                                 <button
                                   aria-pressed={inThisPayment}
@@ -559,6 +648,7 @@ export function ReactionTray({
                                   type="button"
                                 >
                                   {cardName(payCardId)}
+                                  {isPowerCost ? ` (+${powerValue})` : ""}
                                 </button>
                               );
                             })}
