@@ -3620,14 +3620,16 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
 
   appendEvent(state, { type: "TURN_STARTED", playerId, round: state.round });
 
-  // The start-of-turn hand step (discard any number, then draw up to the hand
-  // limit) is required from a player's SECOND turn onward; their freshly dealt
-  // starting hand on the first turn is kept untouched. The hand is never drawn
-  // automatically — the player resolves it with a single REFRESH_HAND, so they
-  // either "draw new" (discard nothing, draw to limit) or "discard and draw
-  // new", never both.
-  player.turnsStarted = (player.turnsStarted ?? 0) + 1;
-  player.needsHandRefresh = player.turnsStarted >= 2;
+  // The start-of-turn hand step is offered on EVERY turn, including the first:
+  // the player MAY discard any number of cards and then draw back up to the
+  // hand limit ("draw new" = discard nothing; "discard and draw new" = toss
+  // some first). The hand is NEVER drawn automatically, so the player can never
+  // both keep a fresh full hand AND swap on top of it — it is one either/or
+  // choice. Only an over-the-limit hand (from card effects) forces a discard
+  // before acting.
+  const limit = effectiveHandLimit(state, playerId);
+  player.needsHandRefresh = player.hand.length > limit;
+  player.canMulligan = true;
   // Army map abilities reset for the new turn (Nomads' step, Rogues' scout).
   player.nomadStepDoneThisTurn = false;
   player.rogueScoutUsedThisTurn = false;

@@ -478,13 +478,19 @@ function assertActiveTurn(state: GameState, playerId: PlayerId): void {
 }
 
 function assertHandRefreshed(state: GameState, playerId: PlayerId): void {
-  if (state.players[playerId]?.needsHandRefresh) {
+  const player = state.players[playerId];
+  if (player?.needsHandRefresh) {
     throw new Error("Discard down to your hand limit before acting.");
+  }
+  // Taking a map/exploration action ends the start-of-turn draw window: the
+  // discard-and-draw choice only stands before the player begins their turn.
+  if (player?.canMulligan) {
+    player.canMulligan = false;
   }
 }
 
 // ---------------------------------------------------------------------------
-// Hand refresh (the required start-of-turn discard/draw step)
+// Hand refresh (the start-of-turn discard/draw step)
 // ---------------------------------------------------------------------------
 
 /**
@@ -493,8 +499,8 @@ function assertHandRefreshed(state: GameState, playerId: PlayerId): void {
  * "may discard any number of hand cards, then draws up to hand limit"). This is
  * the single, mutually-exclusive choice the player makes at the start of their
  * turn — "draw new" is an empty `discardCardIds`, "discard and draw new" lists
- * the cards to throw away. It is required (blocking) from a player's second
- * turn onward, and also covers discarding down when the hand is over the limit.
+ * the cards to throw away. It is offered every turn (including the first) and
+ * also covers discarding down when the hand is over the limit.
  */
 export function refreshHand(state: GameState, action: Extract<GameAction, { type: "REFRESH_HAND" }>): void {
   const player = state.players[action.playerId];
@@ -504,7 +510,7 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
 
   assertActiveTurn(state, action.playerId);
 
-  if (!player.needsHandRefresh) {
+  if (!player.needsHandRefresh && !player.canMulligan) {
     throw new Error("The hand is only drawn at the start of your turn (spend morale to draw at other times).");
   }
 
@@ -538,6 +544,8 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
   const toDraw = Math.max(0, limit - player.hand.length);
   const drawn = toDraw > 0 ? drawCardsForPlayer(state, action.playerId, toDraw) : 0;
   player.needsHandRefresh = false;
+  // The once-per-turn start-of-turn draw is now spent.
+  player.canMulligan = false;
 
   appendEvent(state, {
     type: "HAND_REFRESHED",

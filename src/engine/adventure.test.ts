@@ -39,8 +39,7 @@ function apply(state: GameState, action: GameAction): GameState {
 }
 
 function refreshP1(state: GameState): GameState {
-  // The start-of-turn draw step only exists from a player's second turn on; on
-  // the freshly dealt first turn there is nothing to resolve.
+  // Resolve the required start-of-turn draw (every turn, including the first).
   if (!state.players.p1.needsHandRefresh) {
     return state;
   }
@@ -291,8 +290,8 @@ describe("adventure setup", () => {
 });
 
 describe("turns and movement", () => {
-  // Advances to p1's SECOND turn (where the start-of-turn draw is required),
-  // pinning a no-op Astrologers event so the round-2 wrap raises no choice.
+  // Advances to p1's SECOND turn, pinning a no-op Astrologers event so the
+  // round-2 wrap raises no choice.
   function toP1SecondTurn(state: GameState): GameState {
     state.decks.astrologers.drawPile.push("astrologers.dead_silence");
     state = apply(state, { type: "END_TURN", playerId: "p1" });
@@ -300,7 +299,7 @@ describe("turns and movement", () => {
     return state;
   }
 
-  it("deals empty-discard starting hands and keeps the first turn's dealt hand (no draw step)", () => {
+  it("deals empty-discard starting hands and opens the optional draw on the first turn", () => {
     const state = makeGame();
     // Both players hold their starting hand from the first moment.
     expect(state.players.p1.hand).toHaveLength(4);
@@ -311,52 +310,68 @@ describe("turns and movement", () => {
     for (const [deckId, deck] of Object.entries(state.decks)) {
       expect(deck.discardPile, `${deckId} discard should start empty`).toHaveLength(0);
     }
-    // The very first turn keeps the dealt hand: no required draw step.
+    // The start-of-turn draw is offered (not forced) from the very first turn,
+    // and the hand is not over the limit, so no forced discard is pending.
+    expect(state.players.p1.canMulligan).toBe(true);
     expect(state.players.p1.needsHandRefresh).toBe(false);
-    expect(state.players.p1.turnsStarted).toBe(1);
-    // With no draw pending the hero may act right away.
-    const moved = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:3" });
-    expect(moved.heroes.hero_p1.spaceId).toBe("h:8:3");
   });
 
-  it("requires the start-of-turn draw from each player's second turn, and blocks acting until it is done", () => {
+  it("offers discard-and-draw on the first turn without blocking play", () => {
     let state = makeGame();
-    // First turns (p1 then p2) need no draw step.
-    expect(state.players.p1.needsHandRefresh).toBe(false);
-    state = apply(state, { type: "END_TURN", playerId: "p1" });
-    expect(state.activePlayerId).toBe("p2");
-    expect(state.players.p2.needsHandRefresh).toBe(false);
-    // Round wraps to p1's second turn: the draw step is now required.
-    state = toP1SecondTurn(makeGame());
-    expect(state.activePlayerId).toBe("p1");
-    expect(state.players.p1.needsHandRefresh).toBe(true);
-    // Acting before drawing is rejected…
-    const blocked = applyAction(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:3" });
-    expect(blocked.errors).toHaveLength(1);
-    // …and allowed once the draw is resolved.
-    state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
-    expect(state.players.p1.needsHandRefresh).toBe(false);
+    expect(state.players.p1.canMulligan).toBe(true);
+
+    // First turn: the player MAY discard a card and draw back up to the limit.
+    const tossed = state.players.p1.hand[0];
+    state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [tossed] });
+    expect(state.players.p1.hand).toHaveLength(4);
+    expect(state.players.p1.hand).not.toContain(tossed);
+    expect(state.players.p1.discard).toEqual([tossed]);
+    // The draw is once per turn — a second one is rejected.
+    expect(state.players.p1.canMulligan).toBe(false);
+    const again = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    expect(again.errors).toHaveLength(1);
+  });
+
+  it("lets the first-turn player skip the draw and just act (the window then closes)", () => {
+    let state = makeGame();
+    expect(state.players.p1.canMulligan).toBe(true);
+    // Acting without drawing is allowed; the start-of-turn draw window then closes.
     state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:3" });
     expect(state.heroes.hero_p1.spaceId).toBe("h:8:3");
+    expect(state.players.p1.canMulligan).toBe(false);
+    const tooLate = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    expect(tooLate.errors).toHaveLength(1);
   });
 
-  it("draws up to the hand limit (draw new), discarding nothing, and only once", () => {
+  it("offers the start-of-turn draw to BOTH players on their own turns", () => {
+    let state = makeGame();
+    expect(state.players.p1.canMulligan).toBe(true);
+    state = apply(state, { type: "END_TURN", playerId: "p1" });
+    // p2's turn: p2 may now discard and draw too.
+    expect(state.activePlayerId).toBe("p2");
+    expect(state.players.p2.canMulligan).toBe(true);
+    const tossed = state.players.p2.hand[0];
+    state = apply(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [tossed] });
+    expect(state.players.p2.discard).toEqual([tossed]);
+    expect(state.players.p2.hand).toHaveLength(4);
+  });
+
+  it("draws up to the hand limit (draw new), never auto-refilling and never both", () => {
     let state = toP1SecondTurn(makeGame());
-    expect(state.players.p1.needsHandRefresh).toBe(true);
-    // Put p1 below the limit so "draw up to the limit" is observable (it is NOT
-    // a draw-as-many-as-you-discard mulligan).
+    // No auto-draw: a below-limit hand stays below the limit until the player
+    // chooses to draw.
     state.players.p1.hand = state.players.p1.hand.slice(0, 2);
+    expect(state.players.p1.canMulligan).toBe(true);
     const deckBefore = state.players.p1.deck.length;
 
+    // "Draw new": discard nothing, draw back UP TO the limit (two cards here) —
+    // not a draw-as-many-as-you-discard mulligan, and not stacked on an
+    // auto-draw.
     state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
     expect(state.players.p1.hand).toHaveLength(4);
     expect(state.players.p1.discard).toHaveLength(0);
     expect(state.players.p1.deck.length).toBe(deckBefore - 2);
-    expect(state.players.p1.needsHandRefresh).toBe(false);
-
-    // The step resolves once: a second draw the same turn is rejected.
-    const again = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
-    expect(again.errors).toHaveLength(1);
+    expect(state.players.p1.canMulligan).toBe(false);
   });
 
   it("discards first, then draws back up to the limit (discard and draw new)", () => {
@@ -372,16 +387,20 @@ describe("turns and movement", () => {
     expect(state.players.p1.discard).toEqual([tossed]);
   });
 
-  it("forces a discard down to the limit before drawing when the hand is over it", () => {
-    let state = toP1SecondTurn(makeGame());
-    // Stuff the hand over the limit (5 in a 4-card limit).
-    const extra = state.players.p1.deck.slice(0, 1);
-    state.players.p1.hand = [...state.players.p1.hand, ...extra];
+  it("forces a discard down to the limit before acting when the hand is over it", () => {
+    // Stuff p1's hand over the limit, then let a fresh turn start re-derive the
+    // forced-discard flag the way startPlayerTurn does.
+    let state = makeGame();
+    state.players.p1.hand = [...state.players.p1.hand, state.players.p1.deck[0]];
+    state.decks.astrologers.drawPile.push("astrologers.dead_silence");
+    state = apply(state, { type: "END_TURN", playerId: "p1" });
+    state = apply(state, { type: "END_TURN", playerId: "p2" });
     expect(state.players.p1.hand.length).toBeGreaterThan(state.players.p1.limits.hand);
+    expect(state.players.p1.needsHandRefresh).toBe(true);
 
-    // "Draw new" with no discard is rejected while over the limit.
-    const tooMany = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
-    expect(tooMany.errors).toHaveLength(1);
+    // Acting before discarding down is rejected.
+    const blocked = applyAction(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:3" });
+    expect(blocked.errors).toHaveLength(1);
 
     // Discarding down to the limit resolves the step (and draws 0 more).
     state = apply(state, {
