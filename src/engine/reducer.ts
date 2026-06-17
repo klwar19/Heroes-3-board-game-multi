@@ -11120,6 +11120,10 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     player.combatStats.spellsCastThisRound = 0;
     player.combatStats.spellLimitBonusThisRound = 0;
     player.combatStats.expertUsesSpentThisRound = 0;
+    // The "+1 expert use this round" bonus (Pendant of Courage / Helm of
+    // Heavenly Enlightenment) is a one-round grant — it must not carry into the
+    // next combat round, or a single play would hand out a permanent crown.
+    player.combatStats.expertUseBonusThisRound = 0;
     player.combatStats.anySpellCastThisRound = false;
   }
 

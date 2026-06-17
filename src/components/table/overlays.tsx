@@ -9,6 +9,7 @@ import { cardLibrary } from "@/data/cards/library";
 import { getFxSheet } from "@/data/fx";
 import { playDiceRoll, playLibrarySound } from "@/lib/sound";
 import {
+  effectHasExpertMode,
   getEffectAmount,
   getEffectiveCardEffect,
   getPendingReactionPower,
@@ -600,6 +601,27 @@ export function ReactionTray({
                         >
                           <Crown aria-hidden="true" size={13} />
                           <span>Expert</span>
+                        </button>
+                      ) : groupSelected &&
+                        !group.asPowerBoost &&
+                        !group.modes.includes("expert") &&
+                        crownsAvailable <= 0 &&
+                        (() => {
+                          const effect = getEffectiveCardEffect(cardLibrary[group.cardId], group.optionIndex);
+                          return effect ? effectHasExpertMode(effect) : false;
+                        })() ? (
+                        // The card HAS an expert side, but there are no crowns left
+                        // this combat round — show the option locked, not hidden,
+                        // so the player understands why they can't pick it.
+                        <button
+                          aria-disabled="true"
+                          className="trayExpert locked"
+                          disabled
+                          title="No expert-effect crowns left this combat round."
+                          type="button"
+                        >
+                          <Crown aria-hidden="true" size={13} />
+                          <span>Expert 🔒</span>
                         </button>
                       ) : null}
                       {needsPayment ? (

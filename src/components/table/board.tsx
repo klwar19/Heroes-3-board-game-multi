@@ -1538,7 +1538,11 @@ export function CommandDock({
   const spellLimit = 1 + (player?.combatStats.spellLimitBonusThisRound ?? 0);
   const spellLimitLabel = ignoreSpellLimit ? "∞" : String(spellLimit);
   const spellsCast = player?.combatStats.spellsCastThisRound ?? 0;
-  const crownsLeft = player ? player.limits.expertUses - player.combatStats.expertUsesSpentThisRound : 0;
+  const crownsLeft = player
+    ? player.limits.expertUses +
+      (player.combatStats.expertUseBonusThisRound ?? 0) -
+      player.combatStats.expertUsesSpentThisRound
+    : 0;
 
   return (
     <div className="commandDock" aria-label="Commands">

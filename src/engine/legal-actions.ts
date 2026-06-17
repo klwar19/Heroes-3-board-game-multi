@@ -1077,10 +1077,10 @@ function getAttackRerollsForMode(card: CardDefinition, mode: CardPlayMode): numb
 }
 
 function getPlayableModesForCard(state: GameState, playerId: PlayerId, card: CardDefinition): CardPlayMode[] {
+  const expertCrownFree = expertUsesAvailable(state.players[playerId]) > 0;
+
   if (card.effect.type === "CREATE_ATTACK_DIE_REROLL" && card.effect.basicRerolls <= 0) {
-    return card.effect.expertRerolls && state.players[playerId].combatStats.expertUsesSpentThisRound < state.players[playerId].limits.expertUses
-      ? ["expert"]
-      : [];
+    return card.effect.expertRerolls && expertCrownFree ? ["expert"] : [];
   }
 
   const modes: CardPlayMode[] = ["basic"];
@@ -1096,7 +1096,7 @@ function getPlayableModesForCard(state: GameState, playerId: PlayerId, card: Car
       (card.effect.type === "CREATE_ATTACK_DIE_REROLL" && card.effect.expertRerolls && card.effect.expertRerolls > 0) ||
       (card.effect.type === "GAIN_MORALE" && card.effect.expertDrawCards !== undefined) ||
       ("expertAmount" in card.effect && card.effect.expertAmount !== undefined)) &&
-    state.players[playerId].combatStats.expertUsesSpentThisRound < state.players[playerId].limits.expertUses
+    expertCrownFree
   ) {
     modes.push("expert");
   }
@@ -3808,7 +3808,7 @@ function getPermanentFieldExpertAction(
     return null;
   }
 
-  if (player.combatStats.expertUsesSpentThisRound >= player.limits.expertUses) {
+  if (expertUsesAvailable(player) <= 0) {
     return null;
   }
 
@@ -4415,12 +4415,18 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     const field = adventure.fields[visit.fieldId];
     const free = field ? !field.everFlagged : false;
     actions.push(
-      { label: "Increase gold income by 1", action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 } },
       {
-        label: "Increase building materials income by 1",
+        label: `Increase gold income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.gold}`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 }
+      },
+      {
+        label: `Increase building materials income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.buildingMaterials}`,
         action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 1 }
       },
-      { label: "Increase valuables income by 1", action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 2 } }
+      {
+        label: `Increase valuables income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.valuables}`,
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 2 }
+      }
     );
 
     const fewUnits = player.army.filter((unit) => {

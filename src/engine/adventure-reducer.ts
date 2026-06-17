@@ -1638,15 +1638,18 @@ function applySettlementFlag(
   if (previousOwnerId && previousOwnerId !== playerId && field.settlementResource) {
     const previous = state.players[previousOwnerId];
     if (previous) {
+      // Strip the whole resource-gain level the former owner was earning from
+      // this settlement (+5 gold / +2 materials / +1 valuables), never below 0.
+      const lost = RESOURCE_GAIN_LEVEL_AMOUNTS[field.settlementResource];
       previous.production[field.settlementResource] = Math.max(
         0,
-        previous.production[field.settlementResource] - 1
+        previous.production[field.settlementResource] - lost
       );
       appendEvent(state, {
         type: "PRODUCTION_CHANGED",
         playerId: previousOwnerId,
         resource: field.settlementResource,
-        amount: -1
+        amount: -lost
       });
     }
     field.settlementResource = null;
@@ -1663,15 +1666,19 @@ function applySettlementFlag(
 
   if (resource) {
     field.settlementResource = resource;
+    // Flagging a settlement raises that production track by one full
+    // resource-gain level — +5 gold, +2 building materials, or +1 valuables
+    // (the same levels as the town-conquest reward), not a flat +1.
+    const gained = RESOURCE_GAIN_LEVEL_AMOUNTS[resource];
     const player = state.players[playerId];
     if (player) {
-      player.production[resource] += 1;
-      appendEvent(state, { type: "PRODUCTION_CHANGED", playerId, resource, amount: 1 });
+      player.production[resource] += gained;
+      appendEvent(state, { type: "PRODUCTION_CHANGED", playerId, resource, amount: gained });
     }
 
     if (!field.everFlagged) {
       field.everFlagged = true;
-      gainResources(state, playerId, { [resource]: 1 }, "first to flag the settlement");
+      gainResources(state, playerId, { [resource]: gained }, "first to flag the settlement");
     }
   }
 
@@ -2008,6 +2015,7 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       player.combatStats.spellsCastThisRound = 0;
       player.combatStats.spellLimitBonusThisRound = 0;
       player.combatStats.expertUsesSpentThisRound = 0;
+      player.combatStats.expertUseBonusThisRound = 0;
       player.combatStats.anySpellCastThisRound = false;
     }
   }

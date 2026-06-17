@@ -4,6 +4,7 @@ import { hasResources, processPendingVisit, spendResources } from "./adventure";
 import { isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { noteUnitDamagedForTokens } from "./tokens";
+import { expertUsesAvailable } from "./ruleset";
 import { appendEvent, nextEventNumber } from "./events";
 import type {
   CardDefinition,
@@ -696,7 +697,7 @@ function openWarMachineOffer(
 
 function hasExpertUseLeft(state: GameState, playerId: PlayerId): boolean {
   const player = state.players[playerId];
-  return Boolean(player && player.combatStats.expertUsesSpentThisRound < player.limits.expertUses);
+  return Boolean(player && expertUsesAvailable(player) > 0);
 }
 
 /**
@@ -1057,7 +1058,7 @@ export function applyPermanentExpert(state: GameState, action: Extract<GameActio
     throw new Error("The expert school bonus is already applied.");
   }
 
-  if (player.combatStats.expertUsesSpentThisRound >= player.limits.expertUses) {
+  if (expertUsesAvailable(player) <= 0) {
     throw new Error("No expert uses are available this combat round.");
   }
 
