@@ -5494,6 +5494,13 @@ button.hbSlot:disabled { cursor: default; }
   color: #b9a37c;
 }
 
+.handPlayMenu button.expertLocked {
+  background: transparent;
+  border-style: dashed;
+  color: rgba(185, 163, 124, 0.55);
+  cursor: not-allowed;
+}
+
 .costPicker {
   background: rgba(53, 38, 16, 0.85);
   border: 1px solid #7c6432;
