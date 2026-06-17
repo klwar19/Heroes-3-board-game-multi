@@ -23,7 +23,6 @@ import {
   EffectsRail,
   InitiativeRail,
   InspectPanel,
-  isBoardFlipped,
   LogDrawer
 } from "@/components/table/board";
 import { CardFrame, DeckWells, HandFan, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
@@ -1043,7 +1042,6 @@ export default function Home() {
         // new one instead of teleporting, trailing a couple of after-images and
         // its footstep sound. The board has already re-rendered the unit at its
         // destination, so the FX layer hides the real card and flies a ghost.
-        const boardFlipped = isBoardFlipped(nextState, viewerId);
         freshCombatMoves.forEach((event, index) => {
           const unit = nextState.combat?.units[event.unitId];
           const moveDelay = index * 130;
@@ -1054,8 +1052,9 @@ export default function Home() {
             from: `cell:${event.from}`,
             to: `unit:${event.unitId}`,
             cardImage: unit?.assets?.cardImage,
-            // Match the card's on-board orientation (p1 / a flipped view sit upside-down).
-            flip: (unit?.controllerId === "p1") !== boardFlipped,
+            // Cards always stand upright now (the seat flip only mirrors cell
+            // positions), so the ghost never turns.
+            flip: false,
             delayMs: moveDelay
           });
           playUnitSound(unitVoice(event.unitId), "move", moveDelay);
@@ -1098,8 +1097,9 @@ export default function Home() {
             attackerId: roll.attackerId,
             to: defenderCell,
             attackKind: ranged ? "ranged" : "melee",
-            // Match the card's on-board orientation (p1 / a flipped view sit upside-down).
-            flip: (attacker.controllerId === "p1") !== boardFlipped,
+            // Cards always stand upright now, so the lunge uses the plain
+            // screen-space direction to the target.
+            flip: false,
             delayMs: strikeAt
           });
           if (ranged) {

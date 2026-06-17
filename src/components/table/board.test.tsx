@@ -10,28 +10,40 @@ afterEach(cleanup);
 
 /**
  * The battlefield is drawn horizontally: the engine's 4-wide × 5-tall logical
- * grid is transposed so the armies face off left↔right. These tests pin both
- * the mapping (`battlefieldCellPlacement`) and the fact that it is actually
+ * grid is transposed so the armies stand left↔right. The seat flip is a pure
+ * horizontal mirror (rows never reverse), so cards stay upright on both sides.
+ * These tests pin the mapping for both seats and the fact that it is actually
  * wired onto every rendered cell — remove either and they fail.
  */
 describe("battlefieldCellPlacement — horizontal transpose", () => {
-  it("lays each engine row out as a column, attacker on the left, defender on the right", () => {
+  it("unflipped: each engine row becomes a column, attacker on the left, defender on the right", () => {
     // Attacker back-line (engine row 4, positions 16-19) is the left-most column.
-    expect(battlefieldCellPlacement(16)).toEqual({ gridColumn: 1, gridRow: 1 });
-    expect(battlefieldCellPlacement(19)).toEqual({ gridColumn: 1, gridRow: 4 });
+    expect(battlefieldCellPlacement(16, false)).toEqual({ gridColumn: 1, gridRow: 1 });
+    expect(battlefieldCellPlacement(19, false)).toEqual({ gridColumn: 1, gridRow: 4 });
     // Attacker front-line (engine row 3) sits one column in.
-    expect(battlefieldCellPlacement(12)).toEqual({ gridColumn: 2, gridRow: 1 });
+    expect(battlefieldCellPlacement(12, false)).toEqual({ gridColumn: 2, gridRow: 1 });
     // The crossing (engine row 2) is the middle column.
-    expect(battlefieldCellPlacement(8)).toEqual({ gridColumn: 3, gridRow: 1 });
+    expect(battlefieldCellPlacement(8, false)).toEqual({ gridColumn: 3, gridRow: 1 });
     // Defender front-line (engine row 1) and back-line (engine row 0) on the right.
-    expect(battlefieldCellPlacement(4)).toEqual({ gridColumn: 4, gridRow: 1 });
-    expect(battlefieldCellPlacement(0)).toEqual({ gridColumn: 5, gridRow: 1 });
-    expect(battlefieldCellPlacement(3)).toEqual({ gridColumn: 5, gridRow: 4 });
+    expect(battlefieldCellPlacement(4, false)).toEqual({ gridColumn: 4, gridRow: 1 });
+    expect(battlefieldCellPlacement(0, false)).toEqual({ gridColumn: 5, gridRow: 1 });
+    expect(battlefieldCellPlacement(3, false)).toEqual({ gridColumn: 5, gridRow: 4 });
   });
 
-  it("keeps each four-cell lane together in one column", () => {
+  it("flipped: mirrors columns left↔right (own army to the left) while rows stay put", () => {
+    // Columns are mirrored (col -> 6 - col); rows are identical, so nothing turns
+    // upside-down. Attacker back-line moves from the left to the right column.
+    expect(battlefieldCellPlacement(16, true)).toEqual({ gridColumn: 5, gridRow: 1 });
+    expect(battlefieldCellPlacement(12, true)).toEqual({ gridColumn: 4, gridRow: 1 });
+    expect(battlefieldCellPlacement(8, true)).toEqual({ gridColumn: 3, gridRow: 1 });
+    expect(battlefieldCellPlacement(4, true)).toEqual({ gridColumn: 2, gridRow: 1 });
+    expect(battlefieldCellPlacement(0, true)).toEqual({ gridColumn: 1, gridRow: 1 });
+    expect(battlefieldCellPlacement(3, true)).toEqual({ gridColumn: 1, gridRow: 4 });
+  });
+
+  it("keeps each four-cell lane together in one column (rows never reverse)", () => {
     // Engine row 0 (positions 0-3) becomes a single column spanning rows 1-4.
-    expect([0, 1, 2, 3].map(battlefieldCellPlacement)).toEqual([
+    expect([0, 1, 2, 3].map((p) => battlefieldCellPlacement(p, false))).toEqual([
       { gridColumn: 5, gridRow: 1 },
       { gridColumn: 5, gridRow: 2 },
       { gridColumn: 5, gridRow: 3 },
@@ -43,6 +55,7 @@ describe("battlefieldCellPlacement — horizontal transpose", () => {
 describe("BattlefieldBoard — horizontal cell placement", () => {
   it("places every cell on the transposed grid via inline grid-column / grid-row", () => {
     const state = createInitialGameState("board-horizontal");
+    // The sandbox flips p1's seat, so the rendered cells use the mirrored map.
     render(
       <CardZoomProvider>
         <BattlefieldBoard
@@ -59,7 +72,7 @@ describe("BattlefieldBoard — horizontal cell placement", () => {
     for (let position = 0; position < 20; position += 1) {
       const cell = document.querySelector<HTMLElement>(`[data-fx-cell="${position}"]`);
       expect(cell, `cell ${position} should render`).toBeTruthy();
-      const { gridColumn, gridRow } = battlefieldCellPlacement(position);
+      const { gridColumn, gridRow } = battlefieldCellPlacement(position, true);
       expect(cell!.style.gridColumn, `cell ${position} column`).toBe(String(gridColumn));
       expect(cell!.style.gridRow, `cell ${position} row`).toBe(String(gridRow));
     }

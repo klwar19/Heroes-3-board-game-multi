@@ -75,21 +75,29 @@ export function isBoardFlipped(state: GameState, viewerPlayerId: PlayerId): bool
  * battles face off LEFT↔RIGHT, so the board is drawn transposed: each engine
  * ROW (defender back · defender front · crossing · attacker front · attacker
  * back) becomes a vertical COLUMN of the field, and each engine COLUMN becomes
- * a horizontal ROW. The attacker's rows land in the left columns and the
- * defender's in the right ones; the seat-relative 180° flip
- * (`.boardFelt.flipped`) then turns the whole field so each player's own army
- * sits on their left.
+ * a horizontal ROW.
+ *
+ * The seat flip is a pure horizontal MIRROR (left↔right), not a 180° turn:
+ * unflipped the attacker's columns are on the left; flipped they swap to the
+ * right so the viewing player's own army sits on their left. Rows keep their
+ * order either way, so unit cards always stand upright and readable — no side
+ * is ever shown upside-down, and every attack/projectile animation plays in
+ * plain screen space.
  *
  * Returns 1-indexed `gridColumn` / `gridRow`, ready to drop into a CSS grid.
  * The engine coordinates are never touched — this is purely on-screen layout.
  */
-export function battlefieldCellPlacement(position: number): { gridColumn: number; gridRow: number } {
+export function battlefieldCellPlacement(
+  position: number,
+  flipped: boolean
+): { gridColumn: number; gridRow: number } {
   const engineRow = Math.floor(position / BATTLEFIELD_COLUMNS);
   const engineColumn = position % BATTLEFIELD_COLUMNS;
   return {
-    // High engine rows are the attacker's back/front lines — keep them on the
-    // left, so the field reads attacker → crossing → defender, left to right.
-    gridColumn: BATTLEFIELD_ROWS - engineRow,
+    // Unflipped: high engine rows (attacker) on the left. Flipped: mirror so the
+    // viewer's own army sits on the left. Either way the field reads, from the
+    // viewer's side inward, own army → crossing → enemy.
+    gridColumn: flipped ? engineRow + 1 : BATTLEFIELD_ROWS - engineRow,
     gridRow: engineColumn + 1
   };
 }
@@ -345,22 +353,23 @@ function RepositionPreview({
   sourcePosition,
   destinationPosition,
   movingImage,
-  swapBackImage
+  swapBackImage,
+  flipped
 }: {
   kind: "move" | "swap";
   sourcePosition: number;
   destinationPosition: number;
   movingImage?: string;
   swapBackImage?: string;
+  flipped: boolean;
 }) {
   // The field renders horizontally (engine rows → visual columns); this overlay
-  // is a child of `.battlefield`, so it shares that transposed map and the
-  // board's flip rotation. Visual grid: BATTLEFIELD_ROWS columns wide,
-  // BATTLEFIELD_COLUMNS rows tall.
+  // shares the same transposed, flip-aware map as the cells. Visual grid:
+  // BATTLEFIELD_ROWS columns wide, BATTLEFIELD_COLUMNS rows tall.
   const cols = BATTLEFIELD_ROWS;
   const rows = BATTLEFIELD_COLUMNS;
   const visualCell = (position: number) => {
-    const { gridColumn, gridRow } = battlefieldCellPlacement(position);
+    const { gridColumn, gridRow } = battlefieldCellPlacement(position, flipped);
     return { col: gridColumn - 1, row: gridRow - 1 };
   };
   const center = (position: number) => {
@@ -778,7 +787,7 @@ export function BattlefieldBoard({
           // Place the cell on the transposed horizontal grid (see
           // `battlefieldCellPlacement`). DOM order stays in engine order so
           // `data-fx-cell` lookups and tests are unaffected.
-          const cellStyle = battlefieldCellPlacement(index);
+          const cellStyle = battlefieldCellPlacement(index, flipped);
           const health = unit ? Math.max(0, unit.maxHealth - shownDamage(unit)) : 0;
           // Hovering a candidate cell drives the ghost + arrow toward it.
           const repositionHoverProps = isRepositionCandidate
@@ -1106,6 +1115,7 @@ export function BattlefieldBoard({
         {repositionKind && repositionSourcePosition !== null && hoverDestination !== null ? (
           <RepositionPreview
             destinationPosition={hoverDestination}
+            flipped={flipped}
             kind={repositionKind}
             movingImage={repositionGhostImage}
             sourcePosition={repositionSourcePosition}
