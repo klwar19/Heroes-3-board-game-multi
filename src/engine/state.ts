@@ -4654,6 +4654,7 @@ export type PendingChoice =
         | "place-battlefield-tokens"
         | "combat-clone"
         | "combat-step"
+        | "combat-activation-order"
         | "cover-of-darkness"
         | "diplomacy-skip"
         | "diplomacy-recruit"
@@ -4712,6 +4713,12 @@ export type PendingChoice =
        * with the options) it steps to.
        */
       step?: { unitId: UnitId; positions: number[] };
+      /**
+       * combat-activation-order: several of this player's units are tied for the
+       * next activation slot (same effective initiative). The player picks which
+       * one activates now (index-aligned with the options).
+       */
+      activationOrder?: { unitIds: UnitId[] };
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */

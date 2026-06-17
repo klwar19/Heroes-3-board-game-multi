@@ -625,8 +625,67 @@ export function sortUnitsForActivation(combat: CombatState, activeEffects: Activ
     });
 }
 
+/**
+ * Which side activates next, and the units that side may pick from, at the top
+ * (highest effective initiative) tier of un-acted units.
+ *
+ * Tie rules (house rules layered on the rulebook initiative order):
+ *  - Units of the SAME side tied at this initiative are ALL returned as
+ *    `candidates`, so the controller chooses which goes first (engine prompt).
+ *  - When BOTH sides have units tied at this initiative, activation ALTERNATES
+ *    between them rather than letting the attacker run all of its tied units
+ *    first. The side that has activated fewer units at this initiative this
+ *    round acts next; on an even split the defender/neutral side goes first, so
+ *    the attacker never gets the old tie advantage.
+ */
+export type ActivationStep = {
+  side: PlayerId;
+  candidates: CombatUnitState[];
+  initiative: number;
+};
+
+export function getActivationStep(
+  combat: CombatState,
+  activeEffects: ActiveEffectState[] = []
+): ActivationStep | null {
+  const eligible = Object.values(combat.units).filter((unit) => isUnitAlive(unit) && !unit.activatedThisRound);
+  if (eligible.length === 0) {
+    return null;
+  }
+
+  const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects);
+  const topInitiative = Math.max(...eligible.map(initiativeOf));
+  const tier = eligible
+    .filter((unit) => initiativeOf(unit) === topInitiative)
+    .sort((left, right) => left.id.localeCompare(right.id));
+
+  const attackerId = combat.attackerPlayerId;
+  const tierAttackers = tier.filter((unit) => unit.controllerId === attackerId);
+  const tierOthers = tier.filter((unit) => unit.controllerId !== attackerId);
+
+  if (tierOthers.length === 0) {
+    return { side: attackerId, candidates: tierAttackers, initiative: topInitiative };
+  }
+  if (tierAttackers.length === 0) {
+    return { side: tierOthers[0].controllerId, candidates: tierOthers, initiative: topInitiative };
+  }
+
+  // Both sides are present at this initiative: alternate, defender-first on ties.
+  const actedAtTier = (predicate: (unit: CombatUnitState) => boolean) =>
+    Object.values(combat.units).filter(
+      (unit) => unit.activatedThisRound && initiativeOf(unit) === topInitiative && predicate(unit)
+    ).length;
+  const attackerActed = actedAtTier((unit) => unit.controllerId === attackerId);
+  const othersActed = actedAtTier((unit) => unit.controllerId !== attackerId);
+
+  if (attackerActed < othersActed) {
+    return { side: attackerId, candidates: tierAttackers, initiative: topInitiative };
+  }
+  return { side: tierOthers[0].controllerId, candidates: tierOthers, initiative: topInitiative };
+}
+
 export function getNextUnitToActivate(combat: CombatState, activeEffects: ActiveEffectState[] = []): CombatUnitState | null {
-  return sortUnitsForActivation(combat, activeEffects).find((unit) => !unit.activatedThisRound) ?? null;
+  return getActivationStep(combat, activeEffects)?.candidates[0] ?? null;
 }
 
 function hasAdjacentEnemy(combat: CombatState, unit: CombatUnitState): boolean {

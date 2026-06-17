@@ -70,7 +70,7 @@ This note captures the working model for future development. Treat the official 
 ## Combat Model
 
 - The battlefield is a 4-wide by 5-tall grid (20 spaces). Adjacency and movement are orthogonal: a diagonal space is not adjacent, so reaching it costs two spaces. The engine measures distance with Manhattan distance, not Chebyshev.
-- Units have attack, defense, health points, and initiative. Higher initiative activates first; ties favor the attacking player.
+- Units have attack, defense, health points, and initiative. Higher initiative activates first. Same-speed ties (house rule, `getActivationStep` + `advanceActiveUnit`): when several of ONE side's units tie for the slot, that player is prompted to choose which goes first (`combat-activation-order` choice; the neutral army auto-takes its first, its AI then plays it). When BOTH sides have units tied at that initiative, activation alternates between them — no automatic attacker advantage — with the defender/neutral side taking the first of an even split. Units still act one at a time (a faster resolution can still remove a tied enemy before it acts).
 - A combat round is a full cycle in which eligible units normally activate once.
 - On activation, a unit may move and attack according to its type, or defend (or hold position once it has begun acting).
 - Movement points: melee (ground) and flying units have 3; ranged units have 1.
