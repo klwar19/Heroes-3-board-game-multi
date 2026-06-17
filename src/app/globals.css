@@ -3445,6 +3445,27 @@ button.hbSlot:disabled { cursor: default; }
   justify-content: center;
 }
 
+.combatMorale {
+  display: flex;
+  justify-content: center;
+  margin-top: 6px;
+}
+
+.combatMorale .handButtons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.moraleRedrawCards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin: 10px 0;
+}
+
 .pileModal ul {
   margin: 0;
   padding: 0;

@@ -251,6 +251,110 @@ function MoraleOverflowPrompt({
   );
 }
 
+/**
+ * Spend the positive morale token DURING combat: draw 1, or discard any number
+ * of cards and redraw that many. (The token's third use — rerolling a die — is
+ * offered inside the attack-die reroll prompt when a die is thrown.) Shown in
+ * the combat table when the engine offers the morale plays to this seat.
+ */
+function CombatMoralePanel({
+  legalActions,
+  hand,
+  viewerPlayerId,
+  onAction
+}: {
+  legalActions: LegalAction[];
+  hand: string[];
+  viewerPlayerId: PlayerId;
+  onAction: (action: GameAction) => void;
+}) {
+  const [picking, setPicking] = useState(false);
+  const [picks, setPicks] = useState<number[]>([]);
+
+  const drawAction = legalActions.find(
+    (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "draw"
+  );
+  const redrawAction = legalActions.find(
+    (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "redraw"
+  );
+
+  if (!drawAction && !redrawAction) {
+    return null;
+  }
+
+  const confirmRedraw = () => {
+    if (picks.length === 0) {
+      return;
+    }
+    onAction({
+      type: "SPEND_MORALE",
+      playerId: viewerPlayerId,
+      benefit: "redraw",
+      discardCardIds: picks.map((index) => hand[index])
+    });
+    setPicking(false);
+    setPicks([]);
+  };
+
+  return (
+    <div className="combatMorale" aria-label="Spend morale">
+      <div className="handButtons">
+        {drawAction ? (
+          <button className="commandButton" onClick={() => onAction(drawAction.action)} type="button">
+            🎖 Morale: draw 1
+          </button>
+        ) : null}
+        {redrawAction ? (
+          <button className="commandButton" onClick={() => setPicking(true)} type="button">
+            🎖 Morale: discard &amp; redraw
+          </button>
+        ) : null}
+      </div>
+      {picking ? (
+        <div className="moraleOverflowBackdrop" role="dialog" aria-modal="true" aria-label="Discard and redraw">
+          <div className="moraleOverflowPopup">
+            <strong>Spend morale: discard cards, draw that many</strong>
+            <div className="moraleRedrawCards">
+              {hand.map((cardId, index) => (
+                <button
+                  aria-pressed={picks.includes(index)}
+                  className={`trayChip ${picks.includes(index) ? "picked" : ""}`}
+                  key={`${cardId}-${index}`}
+                  onClick={() =>
+                    setPicks((current) =>
+                      current.includes(index)
+                        ? current.filter((value) => value !== index)
+                        : [...current, index]
+                    )
+                  }
+                  type="button"
+                >
+                  {cardName(cardId)}
+                </button>
+              ))}
+            </div>
+            <div className="handButtons">
+              <button className="commandButton primary" disabled={picks.length === 0} onClick={confirmRedraw} type="button">
+                Discard {picks.length} &amp; draw {picks.length}
+              </button>
+              <button
+                className="commandButton ghost"
+                onClick={() => {
+                  setPicking(false);
+                  setPicks([]);
+                }}
+                type="button"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function getInitialRoomId(): string {
   if (typeof window === "undefined") {
     return "dev-room";
@@ -2894,6 +2998,12 @@ export default function Home() {
               state={state}
               trayActive={trayActive}
               view={playerView}
+              viewerPlayerId={viewerPlayerId}
+            />
+            <CombatMoralePanel
+              hand={playerView.players[viewerPlayerId]?.hand ?? []}
+              legalActions={legalActions}
+              onAction={submitAction}
               viewerPlayerId={viewerPlayerId}
             />
           </div>

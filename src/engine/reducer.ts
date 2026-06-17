@@ -2186,8 +2186,10 @@ function buildRerollSources(
   );
 
   const player = state.players[attacker.controllerId];
+  // The positive morale token's "reroll any die" use is available in every mode
+  // a combat runs in (adventure and the combat sandbox alike).
   const moraleSources: AttackRerollSource[] =
-    state.mode === "adventure" && player && player.morale > 0
+    player && player.morale > 0
       ? [{ name: "Positive morale token", morale: true, remaining: 1, used: 0 }]
       : [];
 
