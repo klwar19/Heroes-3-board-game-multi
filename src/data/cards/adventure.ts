@@ -491,6 +491,36 @@ function towerStatBoostSpecialty(
   };
 }
 
+/**
+ * Armorer specialty (Mephala / the Armorer-defense heroes): a flat +N Defense to
+ * a single attack, played as a defense reaction. Unlike a creature specialty it
+ * has no signature unit, so the bonus never doubles. I/IV/VI = +2/+3/+4 Defense.
+ */
+function armorerSpecialty(heroSlug: string, level: 1 | 4 | 6, amount: number): CardLibrary[string] {
+  return {
+    id: `specialty.${heroSlug}.${level}`,
+    name: `Armorer ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      heroSlug,
+      "armorer",
+      `Your selected unit gains +${amount} defense.`
+    ],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+    effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount },
+    assets: {
+      cardImage: specialtyCardImage(heroSlug, level),
+      imageAlt: `Armorer level ${towerRoman(level)} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource(heroSlug)
+  };
+}
+
 export const adventureCards: CardLibrary = {
   "ability.leadership": {
     id: "ability.leadership",
@@ -1722,5 +1752,162 @@ export const adventureCards: CardLibrary = {
     effect: { type: "BALLISTA_SPECIALTY", grant: "combat", activate: "all" },
     implementationStatus: "implemented",
     source: heroSource("torosar")
+  },
+
+  // ---- Additional heroes (fan-wiki "Regular Stretch Goals 2024") ---------
+  // Fiona (Inferno, Demoniac): the Cerberi specialist — the standard might
+  // shape, each bonus doubled when it lands on a Cerberi unit. I = +1 A/D;
+  // IV = +1 HP for the combat; VI = +2 attack on a single attack.
+  "specialty.fiona.1": mightSpecialtyOne("fiona", "Cerberi", "Cerberi"),
+  "specialty.fiona.4": unitHealthSpecialty("fiona", "Cerberi", 4, 1, "Cerberi"),
+  "specialty.fiona.6": towerStatBoostSpecialty("fiona", "Cerberi", 6, "attack", 2, "Cerberi"),
+  // Lorelei is the Dungeon Harpies analogue of Fiona — not shipped yet (no wiki
+  // board art); see the deferred list in docs/content-tracker.md.
+
+  // Mephala (Rampart, Ranger): the Armorer specialist — a flat defense reaction
+  // with no signature unit. I/IV/VI = +2/+3/+4 Defense to a single attack.
+  "specialty.mephala.1": armorerSpecialty("mephala", 1, 2),
+  "specialty.mephala.4": armorerSpecialty("mephala", 4, 3),
+  "specialty.mephala.6": armorerSpecialty("mephala", 6, 4),
+
+  // Clancy (Rampart, Ranger): the Unicorns specialist. I = +1 A/D; IV = +1
+  // initiative for the combat; VI = a Spell Ward (reduce the damage the chosen
+  // unit takes from Spells by 1, min 0) — each effect doubled on a Unicorns unit.
+  "specialty.clancy.1": mightSpecialtyOne("clancy", "Unicorns", "Unicorns"),
+  "specialty.clancy.4": unitInitiativeSpecialty("clancy", "Unicorns", 4, 1, "Unicorns"),
+  "specialty.clancy.6": {
+    id: "specialty.clancy.6",
+    name: "Unicorns VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "clancy",
+      "unicorns",
+      "For this Combat, your selected unit reduces any damage it takes from Spells by 1 (to a minimum of 0). This effect doubles for the Unicorns unit."
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_SPELL_WARD",
+      amount: 1,
+      duration: { type: "combat" },
+      doubleForUnitName: "Unicorns",
+      removable: false
+    },
+    assets: {
+      cardImage: specialtyCardImage("clancy", 6),
+      imageAlt: "Unicorns level VI specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("clancy")
+  },
+
+  // Adelaide (Castle, Cleric): the Frost Ring specialist. I/VI: discard 1/2
+  // cards, target a space, and every unit ADJACENT to it (not the centre,
+  // friend or foe) takes 1/2 damage — the Frost-Ring AREA_DAMAGE_PICK_ADJACENT
+  // machinery (includeCenter: false). IV: a map play that returns 1 Spell or
+  // Specialty card from your discard pile to your hand.
+  "specialty.adelaide.1": {
+    id: "specialty.adelaide.1",
+    name: "Frost Ring I",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "adelaide",
+      "frost-ring",
+      "Discard 1 card, then target a space on the Combat board: every unit adjacent to that space (not the space itself, friend or foe) takes 1 damage."
+    ],
+    target: { type: "any-space" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Discard 1 card: 1 damage to every unit adjacent to a space",
+          cost: { discardCards: 1 },
+          effect: {
+            type: "AREA_DAMAGE_PICK_ADJACENT",
+            amount: 1,
+            includeCenter: false,
+            adjacentPicks: 4
+          }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("adelaide", 1),
+      imageAlt: "Frost Ring level I specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("adelaide")
+  },
+  "specialty.adelaide.4": {
+    id: "specialty.adelaide.4",
+    name: "Frost Ring IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "adelaide",
+      "frost-ring",
+      "Select 1 Spell or Specialty card from your discard pile and put it back in your hand."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Take a Spell or Specialty card from your discard pile",
+          mapOnly: true,
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell-or-specialty" }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("adelaide", 4),
+      imageAlt: "Frost Ring level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("adelaide")
+  },
+  "specialty.adelaide.6": {
+    id: "specialty.adelaide.6",
+    name: "Frost Ring VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "adelaide",
+      "frost-ring",
+      "Discard 2 cards, then target a space on the Combat board: every unit adjacent to that space (not the space itself, friend or foe) takes 2 damage."
+    ],
+    target: { type: "any-space" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Discard 2 cards: 2 damage to every unit adjacent to a space",
+          cost: { discardCards: 2 },
+          effect: {
+            type: "AREA_DAMAGE_PICK_ADJACENT",
+            amount: 2,
+            includeCenter: false,
+            adjacentPicks: 4
+          }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("adelaide", 6),
+      imageAlt: "Frost Ring level VI specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("adelaide")
   }
 };
