@@ -220,6 +220,32 @@ export function spellPowerValueOfCard(
 }
 
 /**
+ * How many cards a power source makes its owner draw when it is discarded to pay
+ * a Power-value cost (Sorrow's silver/gold, Alamar's Resurrection) — the Sorcery
+ * ability's "+1 Power, then draw 1 card", and the same bonus on Scales of the
+ * Greater Basilisk / Tunic of the Cyclops King. Read off the SAME ADD_SPELL_POWER
+ * effect `spellPowerValueOfCard` used to value the card, so the draw only fires
+ * when (and the school check passes so) the card actually contributed Power.
+ * Spells (the generic "+1 Power" discard) never draw.
+ */
+export function spellPowerSourceDrawCards(
+  card: CardDefinition | undefined,
+  spellSchools: readonly SpellSchool[]
+): number {
+  if (!card || card.kind === "spell") {
+    return 0;
+  }
+  const add = findAddSpellPowerEffect(card);
+  if (!add) {
+    return 0;
+  }
+  if (add.schoolOnly && !(spellSchools.includes(add.schoolOnly) || spellSchools.includes("any"))) {
+    return 0;
+  }
+  return add.drawCards ?? 0;
+}
+
+/**
  * Resolves the concrete effect a play applies: for "OR" cards this is the
  * chosen option's effect, otherwise the card's printed effect.
  */
