@@ -11346,43 +11346,14 @@ function searchDeck(state: GameState, action: Extract<GameAction, { type: "SEARC
   if (!deck || !isSharedDeckId(action.deckId)) {
     throw new Error("That deck cannot be searched.");
   }
-
-  // Lift the top cards off the deck so opponents see an accurate pile count
-  // while the searcher decides. "Search X" reveals up to X cards.
-  const revealedCardIds: string[] = [];
-  for (let count = 0; count < action.count; count += 1) {
-    const cardId = deck.drawPile.pop();
-    if (!cardId) {
-      break;
-    }
-    revealedCardIds.push(cardId);
-  }
-
-  const canTakeDiscardTop = deck.discardPile.length > 0;
-  if (revealedCardIds.length === 0 && !canTakeDiscardTop) {
+  if (deck.drawPile.length + deck.discardPile.length === 0) {
     throw new Error("That deck has no cards left to search.");
   }
 
-  const choiceId = `choice_${nextEventNumber(state)}`;
-  state.pendingChoice = {
-    id: choiceId,
-    type: "DECK_SEARCH",
-    playerId: action.playerId,
-    deckId: action.deckId,
-    revealedCardIds,
-    canTakeDiscardTop,
-    returnPhase: state.phase
-  };
-  state.phase = "choice";
-  state.priorityPlayerId = action.playerId;
-
-  appendEvent(state, {
-    type: "DECK_SEARCH_STARTED",
-    playerId: action.playerId,
-    deckId: action.deckId,
-    choiceId,
-    revealedCount: revealedCardIds.length
-  });
+  // Route through the shared "Search X" flow: when the discard pile holds cards
+  // the player first chooses Search-the-deck OR take-the-top-discard, and only
+  // sees the revealed cards on the Search branch — never both at once.
+  openSharedDeckSearch(state, action.playerId, action.deckId, action.count);
 }
 
 /**
@@ -11438,20 +11409,6 @@ function resolveDeckSearch(
     }
     deck.drawPile = shuffleCards(deck.drawPile, `${state.seed}#school-fetch#${eventSeedNumber(state)}`);
     discardedCardIds = [];
-  } else if (action.pick.kind === "discard-top") {
-    if (!choice.canTakeDiscardTop) {
-      throw new Error("The discard pile is empty.");
-    }
-
-    const takenCardId = deck.discardPile.pop();
-    if (!takenCardId) {
-      throw new Error("The discard pile is empty.");
-    }
-
-    player.hand.push(takenCardId);
-    recordDeckDrawnAbility(player, choice.deckId, takenCardId);
-    discardedCardIds = [...choice.revealedCardIds];
-    deck.discardPile.push(...discardedCardIds);
   } else {
     const keptCardId = choice.revealedCardIds[action.pick.index];
     if (!keptCardId) {

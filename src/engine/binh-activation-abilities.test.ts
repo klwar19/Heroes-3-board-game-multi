@@ -310,7 +310,7 @@ function makeGame(): GameState {
 }
 
 function refreshP1(state: GameState): GameState {
-  return applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+  return state.players.p1.needsHandRefresh ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }) : state;
 }
 
 function moveOntoGuardedMine(state: GameState): GameState {

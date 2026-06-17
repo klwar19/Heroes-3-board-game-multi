@@ -16,7 +16,7 @@ function makeGame(): GameState {
 }
 
 function refreshP1(state: GameState): GameState {
-  return apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+  return state.players.p1.needsHandRefresh ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }) : state;
 }
 
 /** Walk onto the level-I building-materials mine guarded at (9,1). */

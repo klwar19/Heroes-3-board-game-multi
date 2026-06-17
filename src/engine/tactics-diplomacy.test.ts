@@ -32,7 +32,7 @@ function apply(state: GameState, action: GameAction): GameState {
 }
 
 function refreshP1(state: GameState): GameState {
-  return apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+  return state.players.p1.needsHandRefresh ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }) : state;
 }
 
 /** Steps p1's level-1 hero onto the building-materials mine guarded at level I. */
