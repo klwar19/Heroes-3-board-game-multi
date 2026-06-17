@@ -1781,7 +1781,6 @@ export type ReactionPlay = {
 
 export type DeckSearchPick =
   | { kind: "revealed"; index: number }
-  | { kind: "discard-top" }
   | {
       /**
        * Basic X Magic: instead of the search, return the revealed cards and
@@ -3485,15 +3484,22 @@ export type PlayerState = {
    */
   moraleOverflow?: number;
   /**
-   * Over the hand limit at the start of the turn: the player must discard
-   * down (REFRESH_HAND) before doing anything else.
+   * The start-of-turn hand step is still pending: the player must resolve it
+   * (REFRESH_HAND) before taking any other turn action. Resolving it discards
+   * any cards the player chooses and then draws back up to the hand limit, in
+   * that order (rulebook: "may discard any number of hand cards, then draws up
+   * to hand limit"). Set at the start of every turn from a player's SECOND turn
+   * onward — their freshly dealt starting hand on the first turn is kept as-is.
+   * It also covers the over-the-limit case: discards must bring the hand down
+   * to the limit before the draw runs.
    */
   needsHandRefresh?: boolean;
   /**
-   * Start-of-turn mulligan still available: discard any number of cards and
-   * draw that many. Cleared by the first movement/town action of the turn.
+   * Number of turns this player has started (incremented in startPlayerTurn).
+   * Used to skip the start-of-turn draw/discard step on the player's very first
+   * turn, where the dealt starting hand is kept untouched.
    */
-  canMulligan?: boolean;
+  turnsStarted?: number;
   /** Second negative morale token: the hand is discarded when the turn ends. */
   discardHandAtTurnEnd?: boolean;
   /**
@@ -4652,7 +4658,6 @@ export type PendingChoice =
       deckId: DeckId;
       /** Cards lifted off the top of the deck; only the searcher may see them. */
       revealedCardIds: CardId[];
-      canTakeDiscardTop: boolean;
       /**
        * Basic X Magic in play: the search may instead fetch the deck's first
        * spell of one of these schools (cards are put back and reshuffled).
@@ -4673,6 +4678,7 @@ export type PendingChoice =
         | "satyr-swap"
         | "war-machine"
         | "deck-pick"
+        | "deck-search-mode"
         | "discard-pick"
         | "hand-discard"
         | "eagle-eye"
@@ -4750,6 +4756,13 @@ export type PendingChoice =
       step?: { unitId: UnitId; positions: number[] };
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number };
+      /**
+       * deck-search-mode: a "Search X" with a non-empty discard pile, waiting on
+       * the up-front either/or — Search the deck (reveal the top X, keep one) OR
+       * take the top of that deck's discard pile. The searched cards are only
+       * revealed if the player commits to searching.
+       */
+      deckSearchMode?: { deckId: DeckId; count: number };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */
       ownDeckPick?: { cardIds: CardId[] };
       /** rogues-scout: the deck being peeked and its revealed top card. */

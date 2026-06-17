@@ -10,6 +10,7 @@ import {
   getUnitMoveRange,
   sampleCards
 } from "./index";
+import { makeActiveEffect } from "./active-effects";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 const castMagicArrow = {
@@ -2096,27 +2097,96 @@ describe("rules engine prototype", () => {
     expect(resolved.players.p1.hand).toContain(choice.revealedCardIds[0]);
     expect(resolved.decks.spells.discardPile).toEqual([choice.revealedCardIds[1]]);
 
-    // A later search may take the now-public discard top instead.
+    // A later search, with the discard now non-empty, first raises the
+    // Search-or-take-discard choice — the player must commit to one before any
+    // deck cards are revealed, so they can never both peek and take the discard.
     const searchingAgain = applyOk(resolved, {
       type: "SEARCH_DECK",
       playerId: "p1",
       deckId: "spells",
       count: 2
     });
-    const secondChoice = searchingAgain.pendingChoice;
-    if (secondChoice?.type !== "DECK_SEARCH") {
-      throw new Error("Expected a deck search choice.");
+    const preChoice = searchingAgain.pendingChoice;
+    if (preChoice?.type !== "OPTION_CHOICE" || preChoice.context !== "deck-search-mode") {
+      throw new Error("Expected the Search-or-take-discard choice.");
     }
-    expect(secondChoice.canTakeDiscardTop).toBe(true);
+    // No deck cards are lifted while the choice is open (nothing revealed yet).
+    const drawBefore = searchingAgain.decks.spells.drawPile.length;
 
+    // Option 1 takes the top of the discard pile without revealing the deck.
     const tookDiscard = applyOk(searchingAgain, {
-      type: "RESOLVE_DECK_SEARCH",
+      type: "CHOOSE_OPTION",
       playerId: "p1",
-      choiceId: secondChoice.id,
-      pick: { kind: "discard-top" }
+      choiceId: preChoice.id,
+      optionIndex: 1
     });
     expect(tookDiscard.players.p1.hand).toContain(choice.revealedCardIds[1]);
-    expect(tookDiscard.decks.spells.discardPile).toEqual(secondChoice.revealedCardIds);
+    expect(tookDiscard.decks.spells.discardPile).toEqual([]);
+    expect(tookDiscard.decks.spells.drawPile.length).toBe(drawBefore);
+    expect(tookDiscard.pendingChoice).toBeNull();
+  });
+
+  it("keeps a Scouting search-size override for the search branch and intact when taking the discard top", () => {
+    const addScouting = (state: GameState): void => {
+      state.activeEffects.push(
+        makeActiveEffect(
+          state,
+          {
+            name: "Scouting (test)",
+            scope: "player",
+            duration: { type: "current-turn" },
+            modifiers: [{ type: "SEARCH_COUNT_OVERRIDE", count: 3 }]
+          },
+          { type: "card", cardId: "ability.scouting", controllerId: "p1" },
+          "p1"
+        )
+      );
+    };
+
+    // Branch A — searching reveals the OVERRIDDEN count (3), not the base 2.
+    const searchState = (() => {
+      const s = createInitialGameState();
+      s.players.p2.hand = [];
+      s.decks.spells.discardPile = [s.decks.spells.drawPile.pop()!];
+      addScouting(s);
+      return s;
+    })();
+    const preA = applyOk(searchState, { type: "SEARCH_DECK", playerId: "p1", deckId: "spells", count: 2 });
+    if (preA.pendingChoice?.type !== "OPTION_CHOICE" || preA.pendingChoice.context !== "deck-search-mode") {
+      throw new Error("Expected the Search-or-take-discard choice.");
+    }
+    const searched = applyOk(preA, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: preA.pendingChoice.id,
+      optionIndex: 0
+    });
+    if (searched.pendingChoice?.type !== "DECK_SEARCH") {
+      throw new Error("Expected a deck search reveal.");
+    }
+    expect(searched.pendingChoice.revealedCardIds).toHaveLength(3);
+
+    // Branch B — taking the discard top does not consume the override.
+    const takeState = (() => {
+      const s = createInitialGameState();
+      s.players.p2.hand = [];
+      s.decks.spells.discardPile = [s.decks.spells.drawPile.pop()!];
+      addScouting(s);
+      return s;
+    })();
+    const preB = applyOk(takeState, { type: "SEARCH_DECK", playerId: "p1", deckId: "spells", count: 2 });
+    if (preB.pendingChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("Expected the Search-or-take-discard choice.");
+    }
+    const tookTop = applyOk(preB, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: preB.pendingChoice.id,
+      optionIndex: 1
+    });
+    expect(tookTop.activeEffects.some((effect) => effect.modifiers.some((m) => m.type === "SEARCH_COUNT_OVERRIDE"))).toBe(
+      true
+    );
   });
 
   it("moves a hero across adjacent map fields and spends movement points", () => {

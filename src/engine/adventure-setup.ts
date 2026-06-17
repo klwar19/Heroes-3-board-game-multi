@@ -166,16 +166,13 @@ function makeNeutralDecks(seed: string): Record<string, DeckState> {
  * its top card to start the discard pile, as printed.
  */
 function makeSharedDecks(seed: string, ruleset: GameRuleset): Record<string, DeckState> {
-  const make = (id: string, cardIds: string[]): DeckState => {
-    const drawPile = shuffleCards(cardIds, `${seed}#deck#${id}`);
-    // Setup rule: flip the top card of each shared deck to start its discard.
-    const discardTop = drawPile.pop();
-    return {
-      id,
-      drawPile,
-      discardPile: discardTop ? [discardTop] : []
-    };
-  };
+  const make = (id: string, cardIds: string[]): DeckState => ({
+    id,
+    // Shared decks start fully stacked with an empty discard pile; cards only
+    // reach the discard once a Search leaves them there.
+    drawPile: shuffleCards(cardIds, `${seed}#deck#${id}`),
+    discardPile: []
+  });
 
   if (ruleset === "binh") {
     return {
@@ -258,7 +255,7 @@ function makePlayer(config: AdventurePlayerConfig, seed: string, options: GameSe
     },
     morale: 0,
     needsHandRefresh: false,
-    canMulligan: false,
+    turnsStarted: 0,
     limits: {
       hand: 4,
       expertUses: 0

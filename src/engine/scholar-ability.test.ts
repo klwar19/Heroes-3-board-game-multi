@@ -22,7 +22,11 @@ function apply(state: GameState, action: GameAction): GameState {
 }
 
 function ready(): GameState {
-  return apply(makeGame(), { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+  const game = makeGame();
+  // The start-of-turn draw only exists from a player's second turn on.
+  return game.players.p1.needsHandRefresh
+    ? apply(game, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+    : game;
 }
 
 function scholarPlay(state: GameState, optionIndex: number) {

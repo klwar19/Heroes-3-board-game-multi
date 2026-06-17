@@ -95,6 +95,12 @@ describe("Black Market", () => {
     player.resources.gold = 30;
     player.hand = [];
 
+    // Artifact discard piles start empty, so seed one discarded artifact for
+    // the Black Market to offer (as a prior turn's discard would).
+    const artifactDeckId = state.decks["artifacts"] ? "artifacts" : "artifacts-minor";
+    const seeded = state.decks[artifactDeckId].drawPile.pop()!;
+    state.decks[artifactDeckId].discardPile.push(seeded);
+
     const offers = blackMarketOffers(state);
     expect(offers.length).toBeGreaterThan(0);
     const offer = offers[0];

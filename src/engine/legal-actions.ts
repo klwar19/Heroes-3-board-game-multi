@@ -9,6 +9,7 @@ import {
   canHeroReachPlacedTile,
   capturableEnemyMinesWithin,
   discountedReinforceCost,
+  effectiveHandLimit,
   getActiveAstrologersCard,
   getMainHero,
   getSecondaryHero,
@@ -2835,6 +2836,9 @@ export function getLegalActions(
 
     if (state.pendingChoice.type === "DECK_SEARCH") {
       const choice = state.pendingChoice;
+      // The discard-top alternative is resolved up front (the "deck-search-mode"
+      // option choice), so once a player is looking at the revealed cards they
+      // only keep one of those — they can't fall back to the discard pile here.
       const actions: LegalAction[] = choice.revealedCardIds.map((cardId, index) => ({
         label: `Keep ${cards[cardId]?.name ?? cardId}`,
         action: {
@@ -2844,18 +2848,6 @@ export function getLegalActions(
           pick: { kind: "revealed", index }
         }
       }));
-
-      if (choice.canTakeDiscardTop) {
-        actions.push({
-          label: "Take the top discard instead",
-          action: {
-            type: "RESOLVE_DECK_SEARCH",
-            playerId,
-            choiceId: choice.id,
-            pick: { kind: "discard-top" }
-          }
-        });
-      }
 
       return actions;
     }
@@ -5236,22 +5228,21 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
+  // The required start-of-turn hand step: the player must resolve it before
+  // taking any other turn action. It is a single mutually-exclusive choice —
+  // "draw new" (draw up to the hand limit, discarding nothing) or "discard and
+  // draw new" (the UI sends the chosen cards to discard, then it draws up to
+  // the limit). Only town/morale actions (allowed during any player's turn)
+  // stay available alongside it.
   if (player.needsHandRefresh) {
+    const overLimit = player.hand.length - effectiveHandLimit(state, playerId);
     return [
       {
-        label: "Discard down to your hand limit",
+        label: overLimit > 0 ? "Discard down to your hand limit, then draw" : "Draw new (draw up to your hand limit)",
         action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
       },
       ...actions
     ];
-  }
-
-  // Start-of-turn mulligan: discard any number of cards, draw that many.
-  if (player.canMulligan && player.hand.length > 0) {
-    actions.push({
-      label: "Discard any cards and draw that many (start of turn)",
-      action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
-    });
   }
 
   // Instant, Ongoing and Map cards may be played during your own map turn.

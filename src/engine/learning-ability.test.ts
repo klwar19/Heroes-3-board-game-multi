@@ -193,7 +193,10 @@ describe("Learning resolution", () => {
 
 describe("Learning is never played from hand", () => {
   it("is not offered as a normal map play and rejects a direct PLAY_CARD", () => {
-    const state = apply(makeGame(), { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    const base = makeGame();
+    const state = base.players.p1.needsHandRefresh
+      ? apply(base, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      : base;
     state.players.p1.hand = ["ability.learning"];
     const plays = getLegalActions(state, "p1").filter(
       (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.learning"

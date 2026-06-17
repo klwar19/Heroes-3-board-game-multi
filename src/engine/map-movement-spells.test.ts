@@ -41,7 +41,7 @@ function expectError(state: GameState, action: GameAction): void {
 
 /** Refresh p1's opening hand, then replace it with exactly `cards`. */
 function withHand(state: GameState, cards: string[]): GameState {
-  const next = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+  const next = state.players.p1.needsHandRefresh ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }) : state;
   next.players.p1.hand = [...cards];
   return next;
 }
