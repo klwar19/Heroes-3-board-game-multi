@@ -8946,6 +8946,40 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     });
   }
 
+  // Spellbinder's Hat (option A): remove a card from hand, then Search(N) its
+  // own deck. Reuses the Market-of-Time / Faerie-Ring REMOVE_HAND_CARD step with
+  // the "removable" filter (only abilities, artifacts and spells — the cards
+  // that have a deck to dig) and the "search-same-deck" follow-up.
+  if (effect.type === "REMOVE_HAND_CARD_THEN_SEARCH") {
+    state.adventure?.rewardQueue.unshift({
+      playerId: action.playerId,
+      kind: "visit-steps",
+      steps: [
+        {
+          type: "REMOVE_HAND_CARD",
+          prompt: `${card.name}: remove a card to Search (${effect.count}) its deck`,
+          filter: "removable",
+          then: "search-same-deck"
+        }
+      ]
+    });
+  }
+
+  // Spellbinder's Hat (option B): the Hat was removed by cost.removeSelf; now
+  // remove one more card the player picks from hand OR discard pile.
+  if (effect.type === "REMOVE_ANOTHER_CARD_FROM_HAND_OR_DISCARD") {
+    state.adventure?.rewardQueue.unshift({
+      playerId: action.playerId,
+      kind: "visit-steps",
+      steps: [
+        {
+          type: "REMOVE_ONE_FROM_HAND_OR_DISCARD",
+          prompt: `${card.name}: remove another card from your hand or discard pile`
+        }
+      ]
+    });
+  }
+
   if (effect.type === "RANDOM_ENEMY_DISCARD") {
     discardRandomEnemyCards(state, action.playerId, effect.count);
   }

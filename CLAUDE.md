@@ -68,7 +68,7 @@ Tracked honestly so they are not mistaken for working features:
 - `tower.genies` few & pack — "discard from deck, take a Spell" does nothing
   (`abilities: []`).
 - `tower.magi` pack — "+1 Power to the first spell you cast this round" does
-  nothing (only `ignore-combat-penalties` is wired).
+  nothing (only `ignore-all-combat-penalties` is wired).
 - `tower.gargoyles`, `tower.titans`, `tower.iron_golems` — the ongoing-effect /
   spell-damage-reduction lines are display-only.
 - Hero specialties in `PENDING_TOWER_SPECIALTIES`
