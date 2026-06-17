@@ -280,6 +280,39 @@ describe("Sorrow", () => {
     expect(noSchool.reactionWindow, "one +1 discard alone cannot reach silver").toBeNull();
   });
 
+  // A power source spent on the grade cost still resolves its own "draw 1 card"
+  // rider: the Sorcery ability is "+1 Power, then draw 1 card", so paying the
+  // silver skip with two Sorcery (1 Power each) skips the unit AND draws two.
+  it("draws Sorcery's card when Sorcery is spent on the silver skip's Power cost", () => {
+    let state = aboutToActivate("unit_p2_vampires", ["spell.sorrow", "ability.sorcery", "ability.sorcery"]);
+    expect(state.reactionWindow, "two Sorcery (1 Power each) cover the silver skip").toBeTruthy();
+    const silver = reactionFor(state, "p1", "spell.sorrow", 1);
+    expect(silver, "the silver skip is affordable from two Sorcery power sources").toBeTruthy();
+
+    // Known draw pile so the two Sorcery draws are observable (and isolated from
+    // a discard reshuffle).
+    state.players.p1.deck = ["spell.haste", "spell.bless"];
+    const deckBefore = state.players.p1.deck.length;
+
+    state = applyOk(state, { ...silver!.action, costCardIds: ["ability.sorcery", "ability.sorcery"] } as GameAction);
+    expect(state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
+    // Each Sorcery spent as a power source draws its card: two paid → two drawn.
+    expect(deckBefore - state.players.p1.deck.length).toBe(2);
+    expect(state.players.p1.hand).toContain("spell.haste");
+    expect(state.players.p1.hand).toContain("spell.bless");
+  });
+
+  // Guard: a plain Power statistic has no draw rider, so spending it on the same
+  // skip draws nothing — proving the draw is Sorcery's own effect, not the skip.
+  it("a plain Power statistic spent on the silver skip draws nothing", () => {
+    let state = aboutToActivate("unit_p2_vampires", ["spell.sorrow", "stat.power", "stat.power"]);
+    const silver = reactionFor(state, "p1", "spell.sorrow", 1)!;
+    state.players.p1.deck = ["spell.haste", "spell.bless"];
+    const deckBefore = state.players.p1.deck.length;
+    state = applyOk(state, { ...silver.action, costCardIds: ["stat.power", "stat.power"] } as GameAction);
+    expect(state.players.p1.deck.length).toBe(deckBefore);
+  });
+
   it("rejects over-paying the silver skip (a redundant Power card must be dropped)", () => {
     const state = aboutToActivate("unit_p2_vampires", [
       "spell.sorrow",
@@ -351,6 +384,31 @@ describe("Slayer", () => {
     expect(
       state.eventLog.some((event) => event.type === "CARDS_DRAWN" && event.playerId === "p1" && event.count === 1)
     ).toBe(true);
+  });
+
+  // The user-reported case: empowering an instant (Slayer) with the Sorcery
+  // ability resolves Sorcery's "+1 Power, then draw 1 card" rider too. p1 draws
+  // twice: once for Sorcery when it is played, once for Slayer at resolution.
+  it("draws Sorcery's extra card when Sorcery empowers Slayer (on top of Slayer's own draw)", () => {
+    let state = slayerSetup("unit_p2_dread_knights", ["spell.slayer", "ability.sorcery"]);
+    state.players.p1.deck = ["spell.haste", "spell.bless", "spell.haste"];
+    state = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_dread_knights"
+    });
+    state = applyOk(state, reactionFor(state, "p1", "spell.slayer")!.action);
+
+    const sorcery = reactionFor(state, "p1", "ability.sorcery");
+    expect(sorcery, "Sorcery should be offered to empower the Slayer instant").toBeTruthy();
+    state = applyOk(state, sorcery!.action);
+    state = passAllReactions(state);
+
+    const draws = state.eventLog
+      .filter((event) => event.type === "CARDS_DRAWN" && event.playerId === "p1")
+      .reduce((sum, event) => sum + (event.type === "CARDS_DRAWN" ? event.count : 0), 0);
+    expect(draws, "Sorcery's draw rider + Slayer's draw = two p1 draws").toBe(2);
   });
 
   it("is not offered when the defender is not gold", () => {
