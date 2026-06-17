@@ -5484,7 +5484,7 @@ function openDiscardPickChoice(
   playerId: PlayerId,
   pick: {
     count: number;
-    filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic";
+    filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty";
     fromTop?: number;
     shuffleRestIntoDeck?: boolean;
   }
@@ -5505,6 +5505,9 @@ function openDiscardPickChoice(
     }
     if (pick.filter === "specialty") {
       return kind === "hero-specialty";
+    }
+    if (pick.filter === "spell-or-specialty") {
+      return kind === "spell" || kind === "hero-specialty";
     }
     if (pick.filter === "power-or-knowledge-statistic") {
       const statisticType = cardLibrary[cardId]?.statisticType;

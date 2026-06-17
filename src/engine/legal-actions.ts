@@ -1618,6 +1618,9 @@ function isOptionEffectPlayable(
         if (effect.filter === "non-artifact") {
           return kind !== "artifact";
         }
+        if (effect.filter === "spell-or-specialty") {
+          return kind === "spell" || kind === "hero-specialty";
+        }
         return true;
       });
     }

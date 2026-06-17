@@ -43,6 +43,21 @@ function towerHeroSource(slug: string) {
 }
 
 /**
+ * Source for the additional heroes the fan wiki lists under "Regular Stretch
+ * Goals 2024" (Fiona, Mephala, Clancy, Adelaide, …): the printed board scan is
+ * on the wiki and the portrait is cropped from it (hosted locally), exactly like
+ * the core/expansion heroes.
+ */
+function stretchGoalHeroSource(slug: string) {
+  return {
+    product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals 2024)",
+    credit:
+      "Hero board data and board scan from the fan wiki; the portrait is the board-game art cropped from that scan (hosted locally). Verify against official components before final release.",
+    url: `https://en.homm3bg.wiki/heroes/${slug}/`
+  };
+}
+
+/**
  * Source for the two Tower heroes whose printed boards are not on the fan wiki
  * yet (only placeholder art): stats follow the verified Wizard/Alchemist board
  * pattern and the portrait is the classic PC hero portrait (heroes.thelazy.net,
@@ -1243,6 +1258,79 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     portrait: "/assets/hero_boardart-wystan.webp",
     boardScan: "/assets/heroes-fortress-might-wystan.webp",
     source: heroSource("wystan")
+  },
+
+  // ---- Additional heroes (fan-wiki "Regular Stretch Goals 2024") ---------
+  // Each ships with its real printed board scan + cropped portrait + the three
+  // specialty card faces (see scripts/fetch-extra-heroes-art.py). Stats and
+  // starting ability transcribed from each hero's wiki page.
+  fiona: {
+    id: "fiona",
+    name: "Fiona",
+    faction: "inferno",
+    class: "Demoniac",
+    type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.scouting",
+    specialtyCardIds: {
+      1: "specialty.fiona.1",
+      4: "specialty.fiona.4",
+      6: "specialty.fiona.6"
+    },
+    portrait: "/assets/hero_boardart-fiona.webp",
+    boardScan: "/assets/heroes-inferno-might-fiona.webp",
+    source: stretchGoalHeroSource("fiona")
+  },
+  mephala: {
+    id: "mephala",
+    name: "Mephala",
+    faction: "rampart",
+    class: "Ranger",
+    type: "might",
+    startingStats: { attack: 1, defense: 3, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.leadership",
+    specialtyCardIds: {
+      1: "specialty.mephala.1",
+      4: "specialty.mephala.4",
+      6: "specialty.mephala.6"
+    },
+    portrait: "/assets/hero_boardart-mephala.webp",
+    boardScan: "/assets/heroes-rampart-might-mephala.webp",
+    source: stretchGoalHeroSource("mephala")
+  },
+  clancy: {
+    id: "clancy",
+    name: "Clancy",
+    faction: "rampart",
+    class: "Ranger",
+    type: "might",
+    startingStats: { attack: 1, defense: 3, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.pathfinding",
+    specialtyCardIds: {
+      1: "specialty.clancy.1",
+      4: "specialty.clancy.4",
+      6: "specialty.clancy.6"
+    },
+    portrait: "/assets/hero_boardart-clancy.webp",
+    boardScan: "/assets/heroes-rampart-might-clancy.webp",
+    source: stretchGoalHeroSource("clancy")
+  },
+  adelaide: {
+    id: "adelaide",
+    name: "Adelaide",
+    faction: "castle",
+    class: "Cleric",
+    type: "magic",
+    startingStats: { attack: 1, defense: 0, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: {
+      1: "specialty.adelaide.1",
+      4: "specialty.adelaide.4",
+      6: "specialty.adelaide.6"
+    },
+    portrait: "/assets/hero_boardart-adelaide.webp",
+    boardScan: "/assets/heroes-castle-magic-adelaide.webp",
+    source: stretchGoalHeroSource("adelaide")
   }
 };
 
@@ -1264,7 +1352,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Castle",
     color: "#2f6fd0",
     startingTileId: "S3",
-    heroes: ["catherine", "rion"],
+    heroes: ["catherine", "rion", "adelaide"],
     buildings: buildingsOfFaction("castle"),
     units: unitsOfFaction("castle"),
     townImage: "/assets/towns-castle-empty.webp",
@@ -1275,7 +1363,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Rampart",
     color: "#2e9e57",
     startingTileId: "S4",
-    heroes: ["gelu", "gem"],
+    heroes: ["gelu", "gem", "clancy", "mephala"],
     buildings: buildingsOfFaction("rampart"),
     units: unitsOfFaction("rampart"),
     townImage: "/assets/towns-rampart-empty.webp",
@@ -1286,7 +1374,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Inferno",
     color: "#e07020",
     startingTileId: "S6",
-    heroes: ["xyron", "rashka", "zydar"],
+    heroes: ["xyron", "rashka", "zydar", "fiona"],
     buildings: buildingsOfFaction("inferno"),
     units: unitsOfFaction("inferno"),
     townImage: "/assets/towns-inferno-empty.webp",

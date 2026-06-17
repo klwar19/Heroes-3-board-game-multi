@@ -1160,6 +1160,39 @@ function createFireShieldFromCard(
   );
 }
 
+/**
+ * Spell Ward active effect (Clancy's Unicorns specialty VI): the chosen unit
+ * reduces the damage it takes from Spells/Specialties by `amount`, doubled when
+ * the ward lands on the specialty's signature unit (his Unicorns).
+ */
+function createSpellWardFromCard(
+  state: GameState,
+  card: CardDefinition,
+  effect: Extract<EffectDefinition, { type: "CREATE_SPELL_WARD" }>,
+  playerId: PlayerId,
+  target: { type: "unit"; unitId: UnitId }
+): void {
+  const targetUnit = state.combat?.units[target.unitId];
+  const amount = doubleAmountForUnitName(effect.amount, targetUnit, effect.doubleForUnitName);
+  if (amount <= 0) {
+    return;
+  }
+  createActiveEffect(
+    state,
+    {
+      name: card.name,
+      scope: "unit",
+      duration: effect.duration,
+      polarity: "positive",
+      removable: effect.removable ?? true,
+      modifiers: [{ type: "SPELL_DAMAGE_REDUCTION", amount }]
+    },
+    { type: "card", cardId: card.id, controllerId: playerId },
+    playerId,
+    target
+  );
+}
+
 function createAttackRerollEffectFromCard(
   state: GameState,
   card: CardDefinition,
@@ -8816,6 +8849,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // melee attackers take 1 damage (2 for an Efreet at level VI).
   if (effect.type === "CREATE_FIRE_SHIELD" && target && state.combat) {
     createFireShieldFromCard(state, card, effect, action.playerId, card.power ?? 0, target);
+  }
+
+  // Clancy's Unicorns specialty (VI): a Spell Ward on the chosen unit — it takes
+  // `amount` less damage from Spells/Specialties (2 on a Unicorns unit).
+  if (effect.type === "CREATE_SPELL_WARD" && target && state.combat) {
+    createSpellWardFromCard(state, card, effect, action.playerId, target);
   }
 
   if (effect.type === "CREATE_ATTACK_DIE_REROLL") {

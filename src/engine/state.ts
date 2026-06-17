@@ -762,7 +762,7 @@ export type EffectDefinition =
        */
       type: "TAKE_FROM_DISCARD";
       count: number;
-      filter?: "spell" | "non-artifact";
+      filter?: "spell" | "non-artifact" | "spell-or-specialty";
       /** Only the top N discard cards qualify (Mystic Orb of Mana). */
       fromTop?: number;
       /** Rib Cage: shuffle the rest of the discard pile into the deck. */
@@ -923,6 +923,20 @@ export type EffectDefinition =
       type: "CREATE_FIRE_SHIELD";
       amount?: number;
       amountByPower?: Record<number, number>;
+      duration: EffectDurationDefinition;
+      doubleForUnitName?: string;
+      removable?: boolean;
+    }
+  | {
+      /**
+       * Spell Ward: the chosen friendly unit reduces the damage it takes from
+       * Spells (and Hero-Specialty damage) by `amount` for the duration, summed
+       * into totalSpellDamageReduction alongside the Golems' printed passive.
+       * Clancy's Unicorns specialty (VI) uses a flat `amount`, doubled when the
+       * ward lands on his signature unit (`doubleForUnitName`, his Unicorns).
+       */
+      type: "CREATE_SPELL_WARD";
+      amount: number;
       duration: EffectDurationDefinition;
       doubleForUnitName?: string;
       removable?: boolean;
@@ -4057,7 +4071,7 @@ export type AdventureReward =
       playerId: PlayerId;
       kind: "discard-pick";
       count: number;
-      filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic";
+      filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty";
       fromTop?: number;
       shuffleRestIntoDeck?: boolean;
     }
@@ -4249,7 +4263,7 @@ export type VisitStep =
       /** Queue a discard-pile pick through the shared reward pipeline. */
       type: "DISCARD_PICK";
       count: number;
-      filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic";
+      filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty";
     }
   | {
       /**
@@ -4792,7 +4806,7 @@ export type PendingChoice =
       discardPick?: {
         cardIds: CardId[];
         remaining: number;
-        filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic";
+        filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty";
         fromTop?: number;
         shuffleRestIntoDeck?: boolean;
       };

@@ -44,6 +44,7 @@ export const implementedCardEffectTypes = [
   "NEGATE_ATTACK",
   "CREATE_SPELL_IMMUNITY",
   "CREATE_FIRE_SHIELD",
+  "CREATE_SPELL_WARD",
   "CREATE_INITIATIVE_BUFF",
   "ADD_UNIT_MAX_HEALTH",
   "AREA_DAMAGE_ADJACENT",
@@ -520,7 +521,14 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "TAKE_FROM_DISCARD") {
-    const filter = card.effect.filter === "spell" ? " Spell" : card.effect.filter === "non-artifact" ? " non-Artifact" : "";
+    const filter =
+      card.effect.filter === "spell"
+        ? " Spell"
+        : card.effect.filter === "non-artifact"
+          ? " non-Artifact"
+          : card.effect.filter === "spell-or-specialty"
+            ? " Spell or Specialty"
+            : "";
     const top = card.effect.fromTop ? ` (top ${card.effect.fromTop})` : "";
     return `take ${card.effect.count}${filter} card${card.effect.count === 1 ? "" : "s"} from your discard pile${top}`;
   }
