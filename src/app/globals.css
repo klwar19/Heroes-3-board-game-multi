@@ -557,17 +557,21 @@ button {
   position: relative;
   display: grid;
   place-items: center;
-  padding: 22px;
-  border: 2px solid #8a6129;
-  border-radius: 12px;
+  padding: 26px;
+  border: 3px solid #8a6129;
+  border-radius: 14px;
   background:
     radial-gradient(ellipse at 50% 40%, rgb(72 110 80 / 26%), transparent 70%),
     linear-gradient(90deg, rgb(61 37 16 / 72%), transparent 16%, transparent 84%, rgb(61 37 16 / 72%)),
     linear-gradient(180deg, var(--wood-1), #b47a37 6%, #70481f 94%, var(--wood-2));
+  /* Layered wooden frame: dark groove, gold inlay, second groove — reads like
+     the routed edge of a physical game board. */
   box-shadow:
     inset 0 0 0 3px #3a2412,
-    inset 0 0 0 8px rgb(248 223 164 / 20%),
-    0 28px 45px rgb(0 0 0 / 36%);
+    inset 0 0 0 9px rgb(248 223 164 / 24%),
+    inset 0 0 0 11px rgb(58 36 18 / 92%),
+    inset 0 0 70px rgb(0 0 0 / 26%),
+    0 32px 52px rgb(0 0 0 / 44%);
 }
 
 /* Horizontal battlefield: 5 columns wide (attacker back/front · crossing ·
@@ -577,7 +581,7 @@ button {
 .battlefield {
   position: relative;
   z-index: 1;
-  width: min(100%, 700px);
+  width: min(100%, 780px);
   aspect-ratio: 5 / 4;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -627,12 +631,14 @@ button {
   display: grid;
   place-items: center;
   padding: 0;
-  border: 1px solid rgb(30 22 12 / 46%);
+  border: 1px solid rgb(26 18 9 / 60%);
   color: inherit;
   background: transparent;
+  /* Engraved grid line: a dark rule with a faint lit edge, so the squares read
+     as a printed board over the terrain art. */
   box-shadow:
-    inset 0 0 0 1px rgb(255 230 168 / 8%),
-    inset 0 0 16px rgb(0 0 0 / 10%);
+    inset 0 0 0 1px rgb(255 232 172 / 13%),
+    inset 0 0 18px rgb(0 0 0 / 16%);
   outline: 0 solid transparent;
 }
 
@@ -865,14 +871,17 @@ button.battleCell {
 }
 
 .boardCard {
-  width: min(82px, 68%);
+  width: min(92px, 76%);
   aspect-ratio: 5 / 7;
   position: relative;
   display: block;
-  border-radius: 5px;
+  border-radius: 6px;
+  /* Game-piece frame: a dark edge ringed by a thin warm-gold inlay, lifted off
+     the board with a soft drop shadow. */
   box-shadow:
-    0 10px 12px rgb(0 0 0 / 40%),
-    0 0 0 2px rgb(12 10 7 / 86%);
+    0 9px 15px rgb(0 0 0 / 46%),
+    0 0 0 1px rgb(10 8 6 / 92%),
+    0 0 0 2.5px rgb(214 178 104 / 60%);
 }
 
 .boardCardImage {
