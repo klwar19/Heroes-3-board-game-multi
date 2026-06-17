@@ -147,6 +147,7 @@ import {
   getEffectDamageAmount,
   getEffectiveCardEffect,
   getSpellDamageAmount,
+  spellPowerSourceDrawCards,
   spellPowerValueOfCard
 } from "./effects";
 import {
@@ -7146,6 +7147,20 @@ function payOptionCardCost(
       player.removed.push(cardId);
     } else {
       player.discard.push(cardId);
+    }
+  }
+
+  // Power sources spent to pay a Power-value cost (Sorrow's silver/gold,
+  // Alamar's Resurrection) still resolve their own "draw 1 card" rider — the
+  // Sorcery ability "+1 Power, then draw 1 card", and the same line on Scales of
+  // the Greater Basilisk / Tunic of the Cyclops King. The Empower channel already
+  // draws (it routes through the ADD_SPELL_POWER handler); the cost channel
+  // discards the card directly, so the draw has to fire here too.
+  if (cost.costCardFilter === "power-source") {
+    const schools = playedCard.spellSchools ?? [];
+    const draws = paying.reduce((sum, cardId) => sum + spellPowerSourceDrawCards(cards[cardId], schools), 0);
+    if (draws > 0) {
+      drawCardsForPlayer(state, playerId, draws);
     }
   }
 
