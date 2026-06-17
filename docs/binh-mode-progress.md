@@ -82,6 +82,12 @@ Mirror of the build request. ✅ = implemented **and wired** (engine + UI + test
 - [x] Tests: 115 passing (ruleset suite covers modes, gates, Cerberi, morale, Wisdom purchase, spell-into-attack)
 - [x] content-tracker.md + README updated
 
+## Tome artifacts + Mysticism expert (wiki import, new mechanic)
+- [x] **Tome of Air / Earth / Fire / Water** (Conflux relics) added and dealt into the legacy + BINH relic decks (`tome-artifacts.test.ts`). Each has two real, engine-wired sides:
+  - **Option A (map):** find the first spell of the Tome's School in the Spell deck, take it or discard it, then reshuffle — the school-aware Eagle Eye dig (`EAGLE_EYE_DIG { school }`). A school-agnostic "any" spell counts as that School.
+  - **Option B (combat):** the **new `SET_SPELL_POWER_MAX` mechanic** — "resolve its effect without paying the Power cost": a matching-School spell resolves at its **maximum Power breakpoint** for free. Honours spells whose top tier needs Power 4/5 (e.g. Implosion 0 → 6), not a flat Power-2 cap; gated to the Tome's own School. The boost rides the normal Power channel, so the power readout, the Resistance gate and a Mysticism recall all stay consistent.
+- [x] **Mysticism expert was previously unreachable** and is now fixed: `effectHasExpertMode`/`effectSupportsExpertPlay` for `RECALL_SPELL` only recognised Knowledge's `expertSpellLimitBonus`, so Mysticism's `expertRecallPlayedCards` side ("also take back all other cards played together with the spell") was never offered. Both gates now also accept `expertRecallPlayedCards`. Tested end-to-end: expert Mysticism recalls the spell **and** every power source played with it — a Power statistic, a spell discarded as power, and a Tome — back to hand; basic Mysticism still recalls only the spell.
+
 ## Known gaps (tracked in content-tracker.md)
 - Every implemented Artifact, Spell and Ability is now dealt into the shared draw decks — including the previously library-only Chain Lightning, Blind, Greater Gnoll's Flail, Mystic Orb of Mana, Charm of Mana, Shackles of War, Shield of the Dwarven Lords and Orb of Vulnerability, plus the Tower Schools of Magic permanents (BINH ability deck). The invariant is enforced by `deck-coverage.test.ts` (which also fails if a not-implemented card is ever placed in a deck).
 - PvP **Surrender/Retreat** are distinct house rules (round 1; enforced engine-side, `surrender-retreat.test.ts`):

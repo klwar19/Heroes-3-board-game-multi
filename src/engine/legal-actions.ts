@@ -4073,7 +4073,10 @@ export function effectHasExpertMode(effect: ConcreteEffect): boolean {
   }
 
   if (effect.type === "RECALL_SPELL") {
-    return Boolean(effect.expertSpellLimitBonus);
+    // Mysticism's expert side recalls every card played with the spell;
+    // Knowledge's expert side raises the spell-per-round limit. Either makes the
+    // expert play real.
+    return Boolean(effect.expertSpellLimitBonus || effect.expertRecallPlayedCards);
   }
 
   if (effect.type === "CANCEL_SPELL") {
@@ -4151,6 +4154,19 @@ export function isEffectLegalForTrigger(
       }
 
       return true;
+    }
+
+    // Tome of X (option B): offered to the caster only, while casting a spell of
+    // the Tome's School (a school-agnostic "any" spell qualifies).
+    if (effect.type === "SET_SPELL_POWER_MAX") {
+      if (triggerEvent.playerId !== playerId) {
+        return false;
+      }
+      const stackItem = getPendingStackItem(state, triggerEvent);
+      const pendingSpell =
+        stackItem?.action.type === "CAST_SPELL" ? cardLibrary[stackItem.action.cardId] : undefined;
+      const schools = pendingSpell?.spellSchools ?? [];
+      return schools.includes(effect.schoolOnly) || schools.includes("any");
     }
 
     if (effect.type === "CANCEL_SPELL") {

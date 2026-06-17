@@ -694,6 +694,19 @@ export type EffectDefinition =
       /** Elemental Magic abilities: only spells of this school qualify. */
       schoolOnly?: SpellSchool;
     }
+  | {
+      /**
+       * Tome of Air/Earth/Fire/Water (option B): "When playing a {School} Magic
+       * spell, resolve its effect without paying the Power cost." Played as a
+       * SPELL_CAST_STARTED self reaction during a turn/scroll cast of a matching
+       * spell, it lifts that cast to the spell's maximum Power breakpoint for
+       * free (added through the normal Power channel, so every readout, the
+       * Resistance gate and a Mysticism recall stay consistent). A
+       * school-agnostic "any" spell qualifies for any Tome.
+       */
+      type: "SET_SPELL_POWER_MAX";
+      schoolOnly: Exclude<SpellSchool, "any">;
+    }
   | { type: "GAIN_MORALE"; amount: number; expertDrawCards?: number }
   | {
       /** Estates, gold/resource artifacts: gain resources immediately. */
@@ -791,8 +804,14 @@ export type EffectDefinition =
       /**
        * Eagle Eye: dig the Spell deck for the first Basic (basic play) or
        * Expert (expert play) spell; take it or discard it; reshuffle.
+       *
+       * Tome of Air/Earth/Fire/Water (option A) sets `school`: instead of
+       * matching by level, the dig finds the first spell of that School (any
+       * level; a school-agnostic "any" spell counts as every School), then
+       * take/discard/reshuffle exactly as Eagle Eye does.
        */
       type: "EAGLE_EYE_DIG";
+      school?: Exclude<SpellSchool, "any">;
     }
   | {
       /** Town Portal: move the hero to a controlled town or settlement. */
