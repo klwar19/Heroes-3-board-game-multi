@@ -97,7 +97,7 @@ import {
   startWarMachineRound
 } from "./permanents";
 import { createSeededRandom } from "./random";
-import { activeSchoolFetches, canAcquireSharedDeckCard, estatesGold, getRuleset, spellLimitFor } from "./ruleset";
+import { activeSchoolFetches, estatesGold, getRuleset, spellLimitFor } from "./ruleset";
 import {
   destroyFortification,
   getDemolishAbility,
