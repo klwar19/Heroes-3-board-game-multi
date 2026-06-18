@@ -409,7 +409,7 @@ describe("Septienna's Death Ripple specialty", () => {
     expect(after.combat!.units.unit_p1_griffins.damage).toBe(0);
   });
 
-  it("VI's alternative option adds +2 Power to a Spell the caster is resolving", () => {
+  it("the +Power option boosts a NORMAL spell cast (Magic Arrow base 0 -> Power 2)", () => {
     const state = createInitialGameState("septienna-power");
     state.players.p1.hand = ["specialty.septienna.6", "spell.magic_arrow"];
     state.players.p2.hand = [];
@@ -437,6 +437,54 @@ describe("Septienna's Death Ripple specialty", () => {
           event.type === "SPELL_CAST_RESOLVED" && event.spellCardId === "spell.magic_arrow"
       );
     expect(resolved?.power).toBe(2);
+  });
+
+  it("the +Power option ALSO boosts an INSTANT attack-window spell (Bloodlust +1 -> +3 at Power 2)", () => {
+    // The same +Power option, played in the attack window where an instant Spell
+    // pools its Power onto the attack stack, must feed that instant too — not just
+    // a stand-alone cast. Bloodlust adds attack by Power (0->+1, 1->+2, 2->+3).
+    function bloodlustAttackBonus(boostWithPower: boolean): number | undefined {
+      const state = createInitialGameState(`septienna-instant-${boostWithPower}`);
+      state.players.p1.hand = boostWithPower
+        ? ["specialty.septienna.6", "spell.bloodlust"]
+        : ["spell.bloodlust"];
+      state.players.p2.hand = [];
+      const attacker = state.combat!.units.unit_p1_griffins;
+      attacker.abilities = [];
+      attacker.position = 9;
+      attacker.attack = 3;
+      const defender = state.combat!.units.unit_p2_skeletons;
+      defender.abilities = [];
+      defender.position = 13;
+      defender.defense = 0;
+      defender.maxHealth = 40;
+      defender.damage = 0;
+      state.combat!.dice.scriptedRolls = new Array(8).fill(0);
+      state.combat!.dice.rollCount = 0;
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = "unit_p1_griffins";
+      let current = applyOk(state, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: "unit_p1_griffins",
+        defenderId: "unit_p2_skeletons"
+      });
+      current = applyOk(current, { type: "PLAY_REACTION", playerId: "p1", cardId: "spell.bloodlust", mode: "basic" });
+      if (boostWithPower) {
+        const boost = (current.reactionWindow?.legalReactions.p1 ?? []).find(
+          (legal) =>
+            legal.action.type === "PLAY_REACTION" &&
+            legal.action.cardId === "specialty.septienna.6" &&
+            legal.action.optionIndex === 1
+        );
+        expect(boost, "the +Power option must be offered in the attack window too").toBeTruthy();
+        current = applyOk(current, boost!.action);
+      }
+      return lastAttackRolled(passAllReactions(current), (event) => event.attackerId === "unit_p1_griffins")
+        ?.attackBonus;
+    }
+    expect(bloodlustAttackBonus(false), "Bloodlust at base Power 0 adds +1").toBe(1);
+    expect(bloodlustAttackBonus(true), "Septienna's +2 Power lifts Bloodlust to +3").toBe(3);
   });
 });
 
