@@ -55,7 +55,7 @@ import {
   type PlayerId,
   type PlayerVisibleState
 } from "@/engine";
-import { moraleIcon, RESOURCE_ICONS, tileBackImage, TILE_BACK_IMAGES } from "@/data/assets/homm-assets";
+import { LOCATION_TOKEN_IMAGES, moraleIcon, RESOURCE_ICONS, tileBackImage, TILE_BACK_IMAGES } from "@/data/assets/homm-assets";
 import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
 import { actionKey, cardName, formatCost, setUnitDragImage, titleCase } from "@/components/table/utils";
 import { useCardZoom } from "@/components/table/zoom";
@@ -108,7 +108,8 @@ export const LOCATION_GLYPHS: Record<string, string> = {
   dragon_utopia: "🐉",
   grail: "🏆",
   star_axis: "✴",
-  blocked_field: "⛔"
+  blocked_field: "⛔",
+  subterranean_gate: "🕳"
 };
 
 const ROMAN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
@@ -573,7 +574,24 @@ export function HexMapBoard({
         </polygon>
       );
 
-      if (!artShown && glyph && field.location !== "empty_field") {
+      // Location Token art (e.g. the Subterranean Gate) sits on top of the tile
+      // scan on the field it sacrificed, shown in both art and icon modes.
+      const tokenImage = LOCATION_TOKEN_IMAGES[field.location];
+      if (tokenImage) {
+        overlays.push(
+          <image
+            className="locationToken"
+            height={2 * HEX_SIZE}
+            href={assetUrl(tokenImage)}
+            key={`${spaceId}-token`}
+            preserveAspectRatio="none"
+            width={HEX_WIDTH}
+            x={x - HEX_WIDTH / 2}
+            y={y - HEX_SIZE}
+          />
+        );
+      }
+      if (!artShown && glyph && field.location !== "empty_field" && !tokenImage) {
         overlays.push(
           <text className="hexGlyph" key={`${spaceId}-glyph`} textAnchor="middle" x={x} y={y + 6}>
             {glyph}

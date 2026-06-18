@@ -23,6 +23,9 @@ import {
   drawGuardArmy,
   effectiveHandLimit,
   eliminatePlayer,
+  fieldLayer,
+  recomputeSubterraneanGates,
+  tileLayer,
   ELIMINATION_GRACE_TURNS,
   refreshEliminationClock,
   RESOURCE_GAIN_LEVEL_AMOUNTS,
@@ -808,6 +811,7 @@ function dimensionDoorDestinations(state: GameState, hero: HeroState, range: num
   }
 
   const movement = getHeroMovementCapabilities(state, hero);
+  const heroLayer = fieldLayer(state, hero.spaceId);
   const destinations: MapSpaceId[] = [];
   for (const spaceId of Object.keys(adventure.fields)) {
     if (spaceId === hero.spaceId) {
@@ -815,6 +819,12 @@ function dimensionDoorDestinations(state: GameState, hero: HeroState, range: num
     }
     const coord = parseHexSpaceId(spaceId);
     if (!coord || hexDistance(origin, coord) > range) {
+      continue;
+    }
+    // Dimension Door cannot breach the Surface↔Subterranean divide — only a
+    // Subterranean Gate or a Town Portal Spell may. Keep its reach on the
+    // hero's own layer.
+    if (fieldLayer(state, spaceId) !== heroLayer) {
       continue;
     }
     const kind = classifyHeroStep(state, hero, spaceId, movement);
@@ -1155,6 +1165,13 @@ export function revealTileForHero(
     throw new Error("Heroes can only discover tiles next to them.");
   }
 
+  // "You may not discover a Subterranean Map Tile while standing on a Surface
+  // Map Tile and vice versa." Crossing the divide is only possible by entering a
+  // Subterranean Gate, which reveals the far tile for free on its own.
+  if (tileLayer(tile) !== fieldLayer(state, hero.spaceId)) {
+    throw new Error("You can't discover across the Surface/Subterranean divide — enter a Subterranean Gate instead.");
+  }
+
   beginTileRotation(state, playerId, tile, "reveal");
 }
 
@@ -1301,6 +1318,11 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
   tile.awaitingRotation = false;
   adventure.pendingTileChoice = null;
   materializeTileFields(adventure, tile);
+  // With this tile's fields now on the board, carve any Subterranean Gate it
+  // shares with an adjacent tile on the other layer (the surface gate, and the
+  // entrance once the underground tile is revealed). Runs after rotation is
+  // locked, so the entrance is the nearest hex of the tile "when open".
+  recomputeSubterraneanGates(adventure);
 
   appendEvent(state, {
     type: "TILE_ROTATION_SET",
@@ -1350,6 +1372,13 @@ export function placeTile(state: GameState, action: Extract<GameAction, { type: 
   // otherwise its border lines would seal it off and the placement is wasted.
   if (![0, 1, 2, 3, 4, 5].some((rotation) => canHeroReachPlacedTile(state, hero, tileDefId, center, rotation))) {
     throw new Error("Your hero can't cross onto that tile from here — its border lines seal it off. Pick another spot.");
+  }
+
+  // A tile may only be added on the hero's own layer: a Surface hero cannot lay
+  // down a Subterranean tile or vice versa (same divide as discovery).
+  const placedLayer = tileLayer({ group: allTileDefinitions[tileDefId]?.group } as MapTileState);
+  if (hero.spaceId && placedLayer !== fieldLayer(state, hero.spaceId)) {
+    throw new Error("You can't place a tile across the Surface/Subterranean divide.");
   }
 
   supply.splice(action.supplyIndex, 1);
