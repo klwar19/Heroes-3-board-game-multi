@@ -1727,13 +1727,14 @@ function isOptionEffectPlayable(
       return Boolean(player && player.deck.length + player.discard.length > 0);
     }
     case "DRAW_TOP_ARTIFACT": {
-      // Tazar's War Hero VI: a map draw — useful while the Artifact deck still
-      // holds a card to draw.
+      // Tazar's War Hero VI: a map draw — useful while any Artifact deck (the
+      // Legacy deck, or a BINH Minor/Major/Relic deck) still holds a card.
       if (context !== "map" || !state.adventure) {
         return false;
       }
-      const artifactDeck = state.decks.artifacts ?? state.decks["artifacts-minor"];
-      return Boolean(artifactDeck && artifactDeck.drawPile.length > 0);
+      return ["artifacts", "artifacts-minor", "artifacts-major", "artifacts-relic"].some(
+        (deckId) => (state.decks[deckId]?.drawPile.length ?? 0) > 0
+      );
     }
     case "PLACE_PARALYSIS":
       // Ring of the Wayfarer's paralysis side is a combat play; the neutral /
@@ -2178,12 +2179,20 @@ function addTurnCardActions(
     if (card.effect.type === "NECROMANCY_REINFORCE") {
       const drawnFromLevelUp = player.deckDrawnAbilityCardIds?.includes(cardId) ?? false;
       if (player.necromancyWindow && player.factionId === "necropolis" && !drawnFromLevelUp) {
-        const modes: CardPlayMode[] = expertUsesAvailable(player) > 0 ? ["basic", "expert"] : ["basic"];
-        for (const mode of modes) {
+        if (card.effect.forceMode) {
+          // Vidomina's specialties: one fixed-tier reinforce, no expert crown.
           actions.push({
-            label: `Play ${card.name}${mode === "expert" ? " (expert)" : ""}`,
-            action: { type: "PLAY_CARD", playerId, cardId, mode, target: { type: "none" } }
+            label: `Play ${card.name}`,
+            action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
           });
+        } else {
+          const modes: CardPlayMode[] = expertUsesAvailable(player) > 0 ? ["basic", "expert"] : ["basic"];
+          for (const mode of modes) {
+            actions.push({
+              label: `Play ${card.name}${mode === "expert" ? " (expert)" : ""}`,
+              action: { type: "PLAY_CARD", playerId, cardId, mode, target: { type: "none" } }
+            });
+          }
         }
       }
       continue;

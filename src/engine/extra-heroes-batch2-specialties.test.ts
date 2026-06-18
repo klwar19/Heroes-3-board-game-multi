@@ -7,7 +7,7 @@ import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/cor
 import type { FactionId } from "@/data/factions/types";
 import { adventureCards } from "@/data/cards/adventure";
 import { spellCards } from "@/data/cards/spells";
-import type { ActiveEffectModifier, GameAction, GameEvent, GameState, TargetRef, UnitId } from "./state";
+import type { ActiveEffectModifier, GameAction, GameEvent, GameState, TargetRef, UnitId, VisitStep } from "./state";
 
 // ---------------------------------------------------------------------------
 // Additional heroes, batch 2 — shipped with their real printed art and fully
@@ -291,14 +291,11 @@ describe("Tazar's War Hero specialty", () => {
     expect(modifierTotalOn(after, "unit_p1_griffins", "DEFENSE_BONUS")).toBe(1);
   });
 
-  it("VI draws the top Artifact card by removing 1 card OR discarding 3", () => {
-    // Remove-1 option.
-    const removeState = adventureState("tazar-vi-remove", "tazar", "fortress");
-    const artDeck = removeState.decks.artifacts ?? removeState.decks["artifacts-minor"];
-    const topRemove = artDeck.drawPile[artDeck.drawPile.length - 1];
-    removeState.players.p1.hand = ["specialty.tazar.6", "stat.attack"];
-    removeState.players.p1.discard = [];
-    const removed = applyOk(removeState, {
+  it("VI removes 1 card, then draws the top of an Artifact deck of your choice (Minor/Major/Relic)", () => {
+    const state = adventureState("tazar-vi-remove", "tazar", "fortress");
+    state.players.p1.hand = ["specialty.tazar.6", "stat.attack"];
+    state.players.p1.discard = [];
+    const played = applyOk(state, {
       type: "PLAY_CARD",
       playerId: "p1",
       cardId: "specialty.tazar.6",
@@ -307,17 +304,35 @@ describe("Tazar's War Hero specialty", () => {
       target: { type: "none" },
       costCardIds: ["stat.attack"]
     });
-    expect(removed.players.p1.hand).toContain(topRemove);
-    expect(removed.players.p1.hand).not.toContain("stat.attack");
-    expect(removed.players.p1.discard).not.toContain("stat.attack"); // removed from the game, not discarded
+    // Remove-1 cost is paid (removed from the game, not discarded), and a deck choice opens.
+    expect(played.players.p1.hand).not.toContain("stat.attack");
+    expect(played.players.p1.discard).not.toContain("stat.attack");
+    const choice = played.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("artifact-deck-pick");
+    const deckIds = choice?.type === "OPTION_CHOICE" ? (choice.artifactDeckPick?.deckIds ?? []) : [];
+    // BINH default: all three split Artifact decks are offered.
+    expect(deckIds).toEqual(expect.arrayContaining(["artifacts-minor", "artifacts-major", "artifacts-relic"]));
 
-    // Discard-3 option.
-    const discardState = adventureState("tazar-vi-discard", "tazar", "fortress");
-    const artDeck2 = discardState.decks.artifacts ?? discardState.decks["artifacts-minor"];
-    const topDiscard = artDeck2.drawPile[artDeck2.drawPile.length - 1];
-    discardState.players.p1.hand = ["specialty.tazar.6", "stat.attack", "stat.defense", "stat.power"];
-    discardState.players.p1.discard = [];
-    const discarded = applyOk(discardState, {
+    // Draw from the RELIC deck specifically — proves it is not locked to Minor.
+    const relicIndex = deckIds.indexOf("artifacts-relic");
+    const relicTop = played.decks["artifacts-relic"].drawPile.at(-1)!;
+    const before = played.decks["artifacts-relic"].drawPile.length;
+    const drawn = applyOk(played, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (choice as { id: string }).id,
+      optionIndex: relicIndex
+    });
+    expect(drawn.players.p1.hand).toContain(relicTop);
+    expect(drawn.decks["artifacts-relic"].drawPile.length).toBe(before - 1);
+    expect(drawn.pendingChoice).toBeNull();
+  });
+
+  it("VI's discard-3 option pays 3 cards, then draws the chosen deck's top", () => {
+    const state = adventureState("tazar-vi-discard", "tazar", "fortress");
+    state.players.p1.hand = ["specialty.tazar.6", "stat.attack", "stat.defense", "stat.power"];
+    state.players.p1.discard = [];
+    const played = applyOk(state, {
       type: "PLAY_CARD",
       playerId: "p1",
       cardId: "specialty.tazar.6",
@@ -326,10 +341,18 @@ describe("Tazar's War Hero specialty", () => {
       target: { type: "none" },
       costCardIds: ["stat.attack", "stat.defense", "stat.power"]
     });
-    expect(discarded.players.p1.hand).toContain(topDiscard);
-    expect(discarded.players.p1.discard).toEqual(
-      expect.arrayContaining(["stat.attack", "stat.defense", "stat.power"])
-    );
+    expect(played.players.p1.discard).toEqual(expect.arrayContaining(["stat.attack", "stat.defense", "stat.power"]));
+    const choice = played.pendingChoice;
+    const deckIds = choice?.type === "OPTION_CHOICE" ? (choice.artifactDeckPick?.deckIds ?? []) : [];
+    const minorIndex = deckIds.indexOf("artifacts-minor");
+    const minorTop = played.decks["artifacts-minor"].drawPile.at(-1)!;
+    const drawn = applyOk(played, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (choice as { id: string }).id,
+      optionIndex: minorIndex
+    });
+    expect(drawn.players.p1.hand).toContain(minorTop);
   });
 });
 
@@ -400,6 +423,83 @@ describe("Adrienne's Fire Magic specialty", () => {
     const power = castResolvedPower(state, "spell.frost_ring", { type: "space", position: 0 });
     expect(power).toBe(0);
   });
+
+  // The Fire-magic bonus also reaches the instant attack-window Fire spells
+  // (Curse, Slayer, Frenzy), whose Power is pooled on the attack stack — not just
+  // the activation casts above.
+  function p1FireInstant(seed: string, level: 1 | 6 | null, instantCardId: string, prep: (s: GameState) => void): GameState {
+    let state = createInitialGameState(seed);
+    state.players.p1.hand = level ? [`specialty.adrienne.${level}`, instantCardId] : [instantCardId];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.combat!.units.unit_p1_griffins.activatedThisRound = false;
+    state.combat!.units.unit_p1_griffins.abilities = [];
+    state.combat!.units.unit_p1_griffins.position = 9;
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0, 0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    prep(state); // prep may override the scripted dice (e.g. Slayer needs "+1" faces)
+    if (level) {
+      state = applyOk(state, findPlay(state, `specialty.adrienne.${level}`)!.action);
+    }
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    const reaction = (declared.reactionWindow?.legalReactions.p1 ?? []).find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === instantCardId
+    );
+    expect(reaction, `${instantCardId} should be castable on the declared attack`).toBeTruthy();
+    return passAllReactions(applyOk(declared, reaction!.action));
+  }
+
+  it("buffs the instant Curse: under Fire Magic I it resolves at +1 Power (-2 Defense, not -1)", () => {
+    const prep = (s: GameState) => {
+      s.combat!.units.unit_p2_skeletons.position = 13;
+      s.combat!.units.unit_p2_skeletons.maxHealth = 40;
+    };
+    expect(defenseBonusOn(p1FireInstant("curse-plain", null, "spell.curse", prep), "unit_p2_skeletons")).toBe(-1);
+    expect(defenseBonusOn(p1FireInstant("curse-fire", 1, "spell.curse", prep), "unit_p2_skeletons")).toBe(-2);
+  });
+
+  it("buffs the instant Slayer: under Fire Magic VI (+2 Power) it rolls more dice, dealing more damage", () => {
+    const prep = (s: GameState) => {
+      const def = s.combat!.units.unit_p2_skeletons;
+      def.position = 13;
+      def.grade = "gold";
+      def.defense = 0;
+      def.maxHealth = 40;
+      def.abilities = [];
+      s.combat!.units.unit_p1_griffins.attack = 1;
+      // Every Slayer die reads "+1", so its bonus equals the number of dice it
+      // rolls: 2 at base Power, 4 once Fire Magic VI lifts it to Power 2.
+      s.combat!.dice.scriptedRolls = Array.from({ length: 12 }, () => 1);
+      s.combat!.dice.rollCount = 0;
+    };
+    const plain = p1FireInstant("slayer-plain", null, "spell.slayer", prep).combat!.units.unit_p2_skeletons.damage;
+    const boosted = p1FireInstant("slayer-fire", 6, "spell.slayer", prep).combat!.units.unit_p2_skeletons.damage;
+    expect(boosted).toBeGreaterThan(plain);
+  });
+
+  it("buffs the instant Frenzy: under Fire Magic VI (+2 Power) it pierces a silver unit's Defense", () => {
+    const prep = (s: GameState) => {
+      const def = s.combat!.units.unit_p2_skeletons;
+      def.position = 13;
+      def.grade = "silver";
+      def.defense = 12; // far above the attacker's Attack: no damage unless pierced
+      def.maxHealth = 40;
+      def.abilities = [];
+      s.combat!.units.unit_p1_griffins.attack = 3;
+    };
+    // Power 0 → bronze pierce only: the silver defender keeps its Defense (0 damage).
+    expect(p1FireInstant("frenzy-plain", null, "spell.frenzy", prep).combat!.units.unit_p2_skeletons.damage).toBe(0);
+    // Fire Magic VI lifts the cast to Power 2 → silver pierce → Defense ignored.
+    expect(
+      p1FireInstant("frenzy-fire", 6, "spell.frenzy", prep).combat!.units.unit_p2_skeletons.damage
+    ).toBeGreaterThan(0);
+  });
 });
 
 // ===========================================================================
@@ -446,5 +546,95 @@ describe("Adrienne's Fire Magic IV (Search 3, then reshuffle discard into deck)"
     expect(next.players.p1.hand).toContain("spell.magic_arrow");
     expect(next.players.p1.discard).toEqual([]);
     expect(next.players.p1.deck).toEqual(expect.arrayContaining(["stat.attack", "stat.defense"]));
+  });
+});
+
+// ===========================================================================
+// Vidomina (Necropolis) — Necromancy specialist
+// ===========================================================================
+
+/** Reinforce-choice option labels queued by a Necromancy reinforce. */
+function reinforceLabels(state: GameState): string[] {
+  const labels: string[] = [];
+  const collect = (steps: VisitStep[] | undefined) => {
+    for (const step of steps ?? []) {
+      if (step.type === "CHOOSE_ONE") {
+        labels.push(...step.options.map((option) => option.label));
+      }
+    }
+  };
+  for (const reward of state.adventure?.rewardQueue ?? []) {
+    if (reward.kind === "visit-steps") {
+      collect(reward.steps);
+    }
+  }
+  collect(state.adventure?.pendingVisit?.steps);
+  return labels;
+}
+
+describe("Vidomina's Necromancy specialty", () => {
+  it("IV places the Horde of Skeletons (A3 D1 H2 I6) on a Pack of Skeletons (TRANSFORM_UNIT)", () => {
+    const state = adventureState("vidomina-iv", "vidomina", "necropolis");
+    state.players.p1.hand = ["specialty.vidomina.4"];
+    state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "pack" }];
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.vidomina.4"
+    );
+    expect(play, "Vidomina IV should be placeable on a Pack of Skeletons").toBeTruthy();
+    const after = applyOk(state, play!.action);
+    const horde = after.players.p1.army.find((unit) => unit.id === "army_skel")?.transforms?.at(-1);
+    expect(horde).toMatchObject({ name: "Horde of Skeletons", attack: 3, defense: 1, health: 2, initiative: 6 });
+  });
+
+  it("IV cannot be placed on a Few of Skeletons (the printed card targets the Pack only)", () => {
+    const state = adventureState("vidomina-iv-few", "vidomina", "necropolis");
+    state.players.p1.hand = ["specialty.vidomina.4"];
+    state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.vidomina.4"
+    );
+    expect(play).toBeFalsy();
+  });
+
+  function playReinforce(level: 1 | 6): GameState {
+    const state = adventureState(`vidomina-${level}`, "vidomina", "necropolis");
+    state.players.p1.hand = [`specialty.vidomina.${level}`];
+    state.players.p1.necromancyWindow = true;
+    state.players.p1.resources.gold = 60;
+    // A bronze, a silver and a gold Few unit to reinforce.
+    state.players.p1.army = [
+      { id: "a_skel", unitDefId: "necropolis.skeletons", side: "few" },
+      { id: "a_vamp", unitDefId: "necropolis.vampires", side: "few" },
+      { id: "a_dk", unitDefId: "necropolis.dread_knights", side: "few" }
+    ];
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === `specialty.vidomina.${level}`
+    );
+    expect(play, `Vidomina ${level} should be offered in the after-combat window`).toBeTruthy();
+    const after = applyOk(state, play!.action);
+    expect(after.players.p1.necromancyWindow).toBe(false); // window consumed
+    return after;
+  }
+
+  it("I reinforces only a bronze or silver unit (half gold); the gold unit is excluded", () => {
+    const labels = reinforceLabels(playReinforce(1));
+    expect(labels.some((label) => /Skeletons/.test(label))).toBe(true); // bronze
+    expect(labels.some((label) => /Vampires/.test(label))).toBe(true); // silver
+    expect(labels.some((label) => /Dread Knights/.test(label))).toBe(false); // gold excluded
+  });
+
+  it("VI reinforces ANY unit (half gold) — the gold unit is offered, with no expert crown", () => {
+    const labels = reinforceLabels(playReinforce(6));
+    expect(labels.some((label) => /Dread Knights/.test(label))).toBe(true); // gold offered at VI
+  });
+
+  it("is Necropolis-gated to the after-combat window — never offered with the window closed", () => {
+    const state = adventureState("vidomina-window", "vidomina", "necropolis");
+    state.players.p1.hand = ["specialty.vidomina.1"];
+    state.players.p1.necromancyWindow = false;
+    const offered = getLegalActions(state, "p1").some(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.vidomina.1"
+    );
+    expect(offered).toBe(false);
   });
 });

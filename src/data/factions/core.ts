@@ -1421,6 +1421,23 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     portrait: "/assets/hero_boardart-adrienne.webp",
     boardScan: "/assets/heroes-fortress-magic-adrienne.webp",
     source: wikiBoardHeroSource("adrienne")
+  },
+  vidomina: {
+    id: "vidomina",
+    name: "Vidomina",
+    faction: "necropolis",
+    class: "Necromancer",
+    type: "magic",
+    startingStats: { attack: 1, defense: 0, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.necromancy",
+    specialtyCardIds: {
+      1: "specialty.vidomina.1",
+      4: "specialty.vidomina.4",
+      6: "specialty.vidomina.6"
+    },
+    portrait: "/assets/hero_boardart-vidomina.webp",
+    boardScan: "/assets/heroes-necropolis-magic-vidomina.webp",
+    source: wikiBoardHeroSource("vidomina")
   }
 };
 
@@ -1486,7 +1503,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Necropolis",
     color: "#7c4dbe",
     startingTileId: "S1",
-    heroes: ["sandro", "tamika", "moandor"],
+    heroes: ["sandro", "tamika", "moandor", "vidomina"],
     buildings: buildingsOfFaction("necropolis"),
     units: unitsOfFaction("necropolis"),
     ignoresMorale: true,

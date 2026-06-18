@@ -695,6 +695,12 @@ export type EffectDefinition =
        * gold cost, rounded down. Necropolis heroes only.
        */
       type: "NECROMANCY_REINFORCE";
+      /**
+       * Vidomina's specialties pin the reinforce tier regardless of expert
+       * crowns: I = "basic" (bronze/silver), VI = "expert" (any unit). When
+       * omitted (the printed Necromancy ability) the played mode decides.
+       */
+      forceMode?: "basic" | "expert";
     }
   | {
       type: "ADD_SPELL_POWER";
@@ -3270,6 +3276,9 @@ export type ResolutionStackItem = {
      * it had when first cast — the same recompute the attack/defense instants get.
      */
     slayerRollsByPower?: Record<number, number>;
+    /** Adrienne's Fire Magic: extra Power her School-of-Fire bonus adds to a
+     * fire Slayer's roll-count lookup (constant offset, folded into the Power). */
+    slayerSchoolPowerBonus?: number;
     /** Slayer: draw 1 card once the modified attack has resolved. */
     slayerDraw?: boolean;
     /** Precision: this shot ignores the ranged back-row penalty. */
@@ -3368,6 +3377,9 @@ export type ResolutionStackItem = {
      */
     ignoreDefenseGradeByPower?: Record<number, CombatUnitState["grade"]>;
     ignoreDefenseCasterId?: PlayerId;
+    /** Adrienne's Fire Magic: extra Power her School-of-Fire bonus adds to a
+     * fire Frenzy's pierced-grade lookup (constant offset, folded into Power). */
+    ignoreDefenseSchoolPowerBonus?: number;
     /** Players who already spent their Basic X Magic +3 expert on this stack. */
     schoolFetchExpertUsedBy?: PlayerId[];
     playedCardIds: CardId[];
@@ -3389,6 +3401,12 @@ export type PowerScaledAttackInstant = {
   baseAmount: number;
   /** Power-independent extra (per-discarded-card bonuses) added on top. */
   fixedBonus: number;
+  /**
+   * Adrienne's Fire Magic: extra Power her School-of-Fire bonus adds to this
+   * spell instant. A constant offset (her effect lasts the Combat), folded into
+   * the Power passed to amountByPower at first play and every re-derivation.
+   */
+  schoolPowerBonus?: number;
   /** Hero-specialty doubling decided once at play time (1 or 2). */
   doubleFactor: number;
   /** The bonus currently folded into the stack item (after doubling). */
@@ -4738,6 +4756,7 @@ export type PendingChoice =
         | "hand-discard"
         | "eagle-eye"
         | "own-deck-pick"
+        | "artifact-deck-pick"
         | "garrison"
         | "siege-gate"
         | "siege-demolish"
@@ -4835,6 +4854,8 @@ export type PendingChoice =
          */
         thenReshuffleDiscard?: boolean;
       };
+      /** artifact-deck-pick (Tazar's War Hero VI): the Artifact decks to draw from. */
+      artifactDeckPick?: { deckIds: DeckId[] };
       /** rogues-scout: the deck being peeked and its revealed top card. */
       rogueScout?: { deckId: DeckId; cardId: CardId };
       /** siege-demolish: intact fortification positions and removals left. */

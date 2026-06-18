@@ -4935,6 +4935,26 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
+  if (choice.context === "artifact-deck-pick") {
+    // Tazar's War Hero VI: draw the top of the chosen Artifact deck.
+    const pick = choice.artifactDeckPick;
+    const deckId = pick?.deckIds[action.optionIndex];
+    const player = state.players[action.playerId];
+    const deck = deckId ? state.decks[deckId] : undefined;
+    if (!pick || !player || !deck) {
+      throw new Error("Pick one of the Artifact decks.");
+    }
+    const drawn = deck.drawPile.pop();
+    if (drawn) {
+      player.hand.push(drawn);
+      appendEvent(state, { type: "CARDS_DRAWN", playerId: action.playerId, count: 1, requested: 1, reshuffledDiscard: false });
+    }
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    return;
+  }
+
   if (choice.context === "rogues-scout") {
     const scout = choice.rogueScout;
     const deck = scout ? state.decks[scout.deckId] : undefined;
