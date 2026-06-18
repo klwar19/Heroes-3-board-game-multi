@@ -11809,43 +11809,12 @@ function resolveDeckSearch(
       }
     }
 
-    deck.drawPile = shuffleCards(deck.drawPile, `${state.seed}#school-fetch#${eventSeedNumber(state)}`);
-
+    // The fetched spell is taken straight into hand (as printed: "take the
+    // spell into your hand. Then, reshuffle the deck.").
     if (fetchedCardId) {
-      // The fetched spell is not auto-kept: the player decides to take it into
-      // hand or discard it (reusing the take/discard choice), and a Pendant of
-      // Courage repeat rides along so it still fires afterward.
-      appendEvent(state, {
-        type: "DECK_SEARCH_RESOLVED",
-        playerId: action.playerId,
-        deckId: choice.deckId,
-        choiceId: choice.id,
-        pick: "revealed",
-        discardedCardIds: []
-      });
-      const fetchedName = cards[fetchedCardId]?.name ?? fetchedCardId;
-      const keepChoiceId = `choice_${nextEventNumber(state)}`;
-      state.pendingChoice = {
-        id: keepChoiceId,
-        type: "OPTION_CHOICE",
-        playerId: action.playerId,
-        prompt: `Drew ${fetchedName} from the School of Magic — keep it?`,
-        options: [{ label: `Take ${fetchedName} into hand` }, { label: "Discard it" }],
-        context: "eagle-eye",
-        eagleEye: {
-          deckId: choice.deckId,
-          cardId: fetchedCardId,
-          ...(choice.repeatSearch ? { repeatSearch: choice.repeatSearch } : {})
-        },
-        returnPhase: choice.returnPhase
-      };
-      state.phase = "choice";
-      state.priorityPlayerId = action.playerId;
-      return;
+      player.hand.push(fetchedCardId);
     }
-
-    // No matching spell in the deck: nothing to keep — fall through to finish
-    // the search (and fire any Pendant of Courage repeat) below.
+    deck.drawPile = shuffleCards(deck.drawPile, `${state.seed}#school-fetch#${eventSeedNumber(state)}`);
     discardedCardIds = [];
   } else {
     const keptCardId = choice.revealedCardIds[action.pick.index];
