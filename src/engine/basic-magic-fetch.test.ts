@@ -73,50 +73,15 @@ describe("Basic X Magic — School of Magic fetch when searching the Spell deck"
       searched.pendingChoice?.type === "DECK_SEARCH" ? searched.pendingChoice.revealedCardIds.length : 0;
     const deckBefore = searched.decks["spells"].drawPile.length + revealedCount;
 
-    // The fetch finds the first Air spell and reshuffles — but does NOT auto-keep
-    // it: a take/discard choice opens, and the spell is not in hand yet.
-    const drawn = applyOk(searched, fetch!.action);
-    expect(drawn.pendingChoice?.type).toBe("OPTION_CHOICE");
-    expect(drawn.players.p1.hand).toEqual([]);
-    expect(drawn.decks["spells"].drawPile.length).toBe(deckBefore - 1);
-    expect(drawn.decks["spells"].drawPile).not.toContain("spell.haste");
+    const resolved = applyOk(searched, fetch!.action);
 
-    // Keep it (option 0) -> the Air spell goes to hand, nothing discarded.
-    const keep = getLegalActions(drawn, "p1").find(
-      (legal) => legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex === 0
-    );
-    expect(keep, "a 'take into hand' option should be offered").toBeTruthy();
-    const kept = applyOk(drawn, keep!.action);
-    expect(kept.players.p1.hand).toEqual(["spell.haste"]);
+    // The first Air spell is taken straight into hand; the deck shrank by exactly
+    // that card and the whole revealed batch went back (nothing discarded).
+    expect(resolved.players.p1.hand).toEqual(["spell.haste"]);
     expect((cardLibrary["spell.haste"]?.spellSchools ?? []).includes("air")).toBe(true);
-    expect(kept.decks["spells"].discardPile).toEqual([]);
-  });
-
-  it("lets the player discard the drawn spell instead of keeping it", () => {
-    const state = createInitialGameState("fetch-discard");
-    state.activePlayerId = "p1";
-    state.players.p1.hand = [];
-    pushFetch(state, "p1", "air");
-    state.decks["spells"].drawPile = ["spell.haste", "spell.slow", "spell.slow", "spell.slow"];
-    state.decks["spells"].discardPile = [];
-
-    const searched = applyOk(state, { type: "SEARCH_DECK", playerId: "p1", deckId: "spells", count: 2 });
-    const fetch = getLegalActions(searched, "p1").find(
-      (legal) =>
-        legal.action.type === "RESOLVE_DECK_SEARCH" &&
-        legal.action.pick.kind === "school-fetch" &&
-        legal.action.pick.school === "air"
-    );
-    const drawn = applyOk(searched, fetch!.action);
-
-    // Decline it (option 1) -> the spell goes to the deck's discard pile, hand empty.
-    const discard = getLegalActions(drawn, "p1").find(
-      (legal) => legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex === 1
-    );
-    expect(discard, "a 'discard it' option should be offered").toBeTruthy();
-    const tossed = applyOk(drawn, discard!.action);
-    expect(tossed.players.p1.hand).toEqual([]);
-    expect(tossed.decks["spells"].discardPile).toContain("spell.haste");
+    expect(resolved.decks["spells"].drawPile.length).toBe(deckBefore - 1);
+    expect(resolved.decks["spells"].drawPile).not.toContain("spell.haste");
+    expect(resolved.decks["spells"].discardPile).toEqual([]);
   });
 
   it("counts each Basic X Magic as an Expert-spell key card, so a buy offers the basic-or-expert deck pick", () => {
