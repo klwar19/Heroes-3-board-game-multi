@@ -27,7 +27,7 @@ import {
   InspectPanel,
   LogDrawer
 } from "@/components/table/board";
-import { CardFrame, DeckWells, HandFan, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
+import { CardFrame, CombatHeroBar, HandFan, PermanentSlot, PlayerDock } from "@/components/table/seats";
 import { HeroBoard } from "@/components/hero-board";
 import {
   CombatResultModal,
@@ -2898,7 +2898,7 @@ export default function Home() {
     <CardZoomProvider>
     <main className="tableRoot">
       <div className="tableTopRow">
-        {isSeated ? <OpponentBar state={state} view={playerView} viewerPlayerId={viewerPlayerId} /> : <div />}
+        <CombatHeroBar state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
         {tableMenu}
       </div>
 
@@ -2956,10 +2956,6 @@ export default function Home() {
       ) : null}
 
       <div className={`tableMidRow ${state.combat?.setup && isSeated ? "withPlacement" : ""}`}>
-        <div className="leftRail">
-          <DeckWells legalActions={legalActions} onAction={submitAction} view={playerView} />
-          <EffectsRail legalActions={legalActions} onAction={submitAction} state={state} />
-        </div>
         <div className="boardColumn">
           <InitiativeRail state={state} />
           <BattlefieldBoard
@@ -2973,6 +2969,9 @@ export default function Home() {
             tintedUnits={tintedUnits}
             viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
           />
+          {/* Active table effects used to sit in a left rail; with that gone they
+              ride under the board (the rail renders nothing when there are none). */}
+          <EffectsRail legalActions={legalActions} onAction={submitAction} state={state} />
         </div>
         {state.combat?.setup && isSeated ? (
           <div className="placementColumn">
