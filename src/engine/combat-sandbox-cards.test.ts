@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cardLibrary } from "@/data/cards/library";
+import { STARTING_ONLY_SPELLS } from "@/data/cards/spells";
 import { applyAction, createInitialGameState, getLegalActions, getRuleset, SHARED_DECK_IDS } from "./index";
 import type { SharedDeckId } from "./index";
 
@@ -13,9 +14,13 @@ import type { SharedDeckId } from "./index";
 
 const DECK_KINDS = ["spell", "ability", "artifact"] as const;
 
+// Starting-only spells (Magic Arrow) are gifted at setup and never shuffled into
+// a well, so they are not expected to be searchable in the sandbox.
+const startingOnly = new Set(STARTING_ONLY_SPELLS);
+
 function implementedIdsOfKind(kind: (typeof DECK_KINDS)[number]): string[] {
   return Object.values(cardLibrary)
-    .filter((card) => card.implementationStatus === "implemented" && card.kind === kind)
+    .filter((card) => card.implementationStatus === "implemented" && card.kind === kind && !startingOnly.has(card.id))
     .map((card) => card.id)
     .sort();
 }

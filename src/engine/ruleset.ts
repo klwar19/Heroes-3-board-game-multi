@@ -1,5 +1,7 @@
 import type { UnitSideDefinition } from "@/data/factions/types";
+import { STARTING_ONLY_SPELLS } from "@/data/cards/spells";
 import type {
+  CardId,
   CardLibrary,
   CardPlayMode,
   DeckId,
@@ -214,6 +216,65 @@ function playerOwnsAnyCard(state: GameState, playerId: PlayerId, cardIds: string
       effect.source.type === "card" &&
       cardIds.includes(effect.source.cardId)
   );
+}
+
+/** The Necropolis-only Ability and the faction allowed to draw it. */
+export const NECROMANCY_ABILITY_ID = "ability.necromancy";
+const NECROPOLIS_FACTION_ID = "necropolis";
+
+/**
+ * Every card the player currently holds, across every zone they could later
+ * draw it back from: hand, draw pile, discard, cards held in play (ongoing
+ * spells/abilities), spell scrolls, and any permanent effect already on the
+ * table. Used to stop a hero ever owning two copies of the same Ability/Spell.
+ */
+function playerHeldCardIds(state: GameState, playerId: PlayerId): Set<CardId> {
+  const player = state.players[playerId];
+  if (!player) {
+    return new Set();
+  }
+
+  const held = new Set<CardId>([...player.hand, ...player.deck, ...player.discard]);
+  for (const ongoing of player.ongoingCards ?? []) {
+    held.add(ongoing.cardId);
+  }
+  for (const scroll of player.scrolls ?? []) {
+    for (const cardId of scroll.spellCardIds) {
+      held.add(cardId);
+    }
+  }
+  for (const effect of state.activeEffects) {
+    if (effect.controllerId === playerId && effect.source.type === "card") {
+      held.add(effect.source.cardId);
+    }
+  }
+  return held;
+}
+
+/**
+ * Whether `cardId` revealed from shared deck `deckId` is a legal pull for this
+ * hero right now. The deck search must redraw past any card this returns false
+ * for. Enforces three house rules:
+ *  - a hero never takes a second copy of an Ability/Spell it already owns
+ *    (the deck holds two of each, so different players can still each take one);
+ *  - Necromancy is Necropolis-only — every other faction skips it entirely;
+ *  - Magic Arrow (and any other starting-only Spell) is never drawn from a deck.
+ */
+export function canAcquireSharedDeckCard(
+  state: GameState,
+  playerId: PlayerId,
+  deckId: DeckId,
+  cardId: CardId
+): boolean {
+  if (STARTING_ONLY_SPELLS.includes(cardId)) {
+    return false;
+  }
+
+  if (cardId === NECROMANCY_ABILITY_ID && state.players[playerId]?.factionId !== NECROPOLIS_FACTION_ID) {
+    return false;
+  }
+
+  return !playerHeldCardIds(state, playerId).has(cardId);
 }
 
 /** Tile group ("starting" | "far" | "near" | "center") the hero stands on. */

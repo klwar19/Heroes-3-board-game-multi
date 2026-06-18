@@ -472,31 +472,23 @@ export const extraAbilityCards: CardLibrary = {
 };
 
 /**
- * Shared Ability deck (legacy): the implemented Core + Rampart + Inferno
- * ability cards, two copies of the staples.
+ * Every distinct Ability the shared deck can hold. The deck itself holds
+ * exactly **two copies of each** (see `abilityDeckLegacy` / `abilityDeckBinh`):
+ * two different players may each draw their own copy of an ability, but a single
+ * hero never keeps two of the same one — the deck search redraws past a card the
+ * hero already owns (see `canAcquireSharedDeckCard` in `engine/ruleset.ts`).
  */
-export const abilityDeckLegacy: string[] = [
-  "ability.resistance",
+export const abilityDeckUnique: string[] = [
   "ability.resistance",
   "ability.archery",
-  "ability.archery",
-  "ability.offense",
   "ability.offense",
   "ability.armorer",
-  "ability.armorer",
-  "ability.luck",
   "ability.luck",
   "ability.leadership",
-  "ability.leadership",
-  "ability.sorcery",
   "ability.sorcery",
   "ability.mysticism",
-  "ability.mysticism",
-  "ability.estates",
   "ability.estates",
   "ability.wisdom",
-  "ability.wisdom",
-  "ability.logistics",
   "ability.logistics",
   "ability.scholar",
   "ability.learning",
@@ -505,40 +497,34 @@ export const abilityDeckLegacy: string[] = [
   "ability.artillery",
   "ability.intelligence",
   "ability.interference",
-  "ability.interference",
   "ability.tactics",
   "ability.diplomacy",
-  // Eagle Eye / Scouting and the elemental Magic schools (also in the BINH deck).
+  // Eagle Eye / Scouting and the elemental Magic schools.
   "ability.scouting",
   "ability.eagle_eye",
-  "ability.basic_air_magic",
-  "ability.basic_earth_magic",
-  "ability.basic_fire_magic",
-  "ability.basic_water_magic",
-  "ability.air_magic",
-  "ability.earth_magic",
-  "ability.fire_magic",
-  "ability.water_magic",
-  // Necropolis-only (rulebook p.24): other factions may keep a drawn copy
-  // but can never play it; searches simply pass it over.
-  "ability.necromancy",
-  "ability.necromancy"
-];
-
-/** BINH Ability deck: the legacy set plus the spell-deck key cards. */
-export const abilityDeckBinh: string[] = [
-  ...abilityDeckLegacy,
-  "ability.eagle_eye",
-  "ability.scouting",
   "ability.basic_air_magic",
   "ability.basic_earth_magic",
   "ability.basic_fire_magic",
   "ability.basic_water_magic",
   // Tower expansion Schools of Magic (permanents): +1 power for their school
-  // while in play, expert discard for +3 on one cast. Grouped with the other
-  // magic-school expansion cards in the BINH deck.
+  // while in play, expert discard for +3 on one cast.
   "ability.air_magic",
   "ability.earth_magic",
   "ability.fire_magic",
-  "ability.water_magic"
+  "ability.water_magic",
+  // Necropolis-only (rulebook p.24): a non-Necropolis hero can never draw it —
+  // the Ability-deck search redraws past it (see `canAcquireSharedDeckCard`).
+  "ability.necromancy"
 ];
+
+/**
+ * Shared Ability deck (legacy): two copies of every implemented Ability, so two
+ * players can each hold the same ability while no hero ever owns a duplicate.
+ */
+export const abilityDeckLegacy: string[] = abilityDeckUnique.flatMap((id) => [id, id]);
+
+/**
+ * BINH Ability deck. Same membership as the legacy deck (every implemented
+ * Ability is reachable in both), again two copies of each.
+ */
+export const abilityDeckBinh: string[] = abilityDeckUnique.flatMap((id) => [id, id]);
