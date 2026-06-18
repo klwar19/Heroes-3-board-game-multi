@@ -120,6 +120,12 @@ button {
   align-items: start;
 }
 
+/* During combat deployment the bigger board gets a dedicated deploy sidebar to
+   its right; the right rail (inspect/commands) still trails it. */
+.tableMidRow.withPlacement {
+  grid-template-columns: 168px minmax(0, 1fr) 248px 240px;
+}
+
 .tableSeatRow {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -2276,11 +2282,16 @@ button.battleCell {
   .tableMidRow {
     grid-template-columns: 150px minmax(0, 1fr) 210px;
   }
+
+  .tableMidRow.withPlacement {
+    grid-template-columns: 150px minmax(0, 1fr) 220px 200px;
+  }
 }
 
 @media (max-width: 1020px) {
   .tableTopRow,
   .tableMidRow,
+  .tableMidRow.withPlacement,
   .tableSeatRow {
     grid-template-columns: 1fr;
   }
@@ -3534,12 +3545,20 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 /* Combat placement */
+/* Deployment sidebar to the right of the board: stays at the top, scrolls if a
+   large army overflows so the Ready button never gets pushed off-screen. */
+.placementColumn {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-width: 0;
+}
+
 .placementPanel {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 10px 12px;
+  gap: 10px;
+  padding: 12px;
   background: rgba(33, 25, 15, 0.95);
   border: 1px solid rgba(220, 175, 95, 0.45);
   border-radius: 10px;
@@ -3547,30 +3566,34 @@ button.hbSlot:disabled { cursor: default; }
   font-size: 12px;
 }
 
+/* Big tiles — two per row in the ~248px sidebar — so they are easy to grab and
+   drag onto the board. */
 .placementUnits {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .placementUnit {
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 6px;
-  padding: 4px 9px 4px 4px;
-  border-radius: 8px;
+  padding: 8px 6px;
+  border-radius: 9px;
   border: 1px solid rgba(140, 110, 65, 0.5);
   background: rgba(20, 14, 9, 0.8);
   color: #e8d3a8;
   cursor: pointer;
   font-size: 11px;
+  text-align: center;
 }
 
 .placementUnitPortrait {
-  width: 30px;
-  height: 30px;
+  width: 100%;
+  aspect-ratio: 1 / 1;
   flex: none;
-  border-radius: 6px;
+  border-radius: 7px;
   object-fit: cover;
   object-position: top center;
   border: 1px solid rgba(20, 12, 4, 0.85);
@@ -3578,10 +3601,19 @@ button.hbSlot:disabled { cursor: default; }
   pointer-events: none;
 }
 
+.placementUnit > .tierDot {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  border-radius: 7px;
+}
+
 .placementUnitName {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
+  line-height: 1.2;
 }
 
 .placementUnit.selected {
@@ -3607,6 +3639,15 @@ button.hbSlot:disabled { cursor: default; }
 
 .placementNote {
   color: #ddb96d;
+}
+
+/* The Ready/Lock-in button anchors the bottom of the deploy sidebar full-width
+   so it reads as the next step after placing units. */
+.placementPanel .combatReadyButton {
+  width: 100%;
+  margin-top: 2px;
+  padding: 10px 12px;
+  font-size: 13px;
 }
 
 .placementCells {

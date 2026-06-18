@@ -2955,7 +2955,7 @@ export default function Home() {
         />
       ) : null}
 
-      <div className="tableMidRow">
+      <div className={`tableMidRow ${state.combat?.setup && isSeated ? "withPlacement" : ""}`}>
         <div className="leftRail">
           <DeckWells legalActions={legalActions} onAction={submitAction} view={playerView} />
           <EffectsRail legalActions={legalActions} onAction={submitAction} state={state} />
@@ -2973,15 +2973,17 @@ export default function Home() {
             tintedUnits={tintedUnits}
             viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
           />
-          {state.combat?.setup && isSeated ? (
+        </div>
+        {state.combat?.setup && isSeated ? (
+          <div className="placementColumn">
             <PlacementPanel
               legalActions={legalActions}
               onAction={submitAction}
               state={state}
               viewerPlayerId={viewerPlayerId}
             />
-          ) : null}
-        </div>
+          </div>
+        ) : null}
         <div className="rightRail">
           {!adventureMode
             ? // Battle simulator: both level 5 hero boards stay on the table.
