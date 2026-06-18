@@ -159,14 +159,24 @@ export const TILE_BACK_IMAGES: Record<string, string> = {
 };
 
 /**
- * Location Token art overlaid on the field a Token is placed on, on top of the
- * tile scan. Only the Subterranean Gate Token (Stronghold expansion) is wired
- * so far — the cave-mouth token cropped from the rulebook's page-35
- * "Subterranean Gate Tokens" illustration.
+ * Subterranean Gate Token art, cropped from the rulebook's page-35
+ * "Subterranean Gate Tokens" illustration, which shows the two connecting
+ * halves of one Token. They are drawn on top of the tile scan, on the field
+ * each half sacrifices:
+ * - `surface`: the surface gate — the dirt approach/path hex (placed first,
+ *   when the Surface tile is discovered).
+ * - `subterranean`: the underground entrance — the cave-mouth-with-skull hex
+ *   (added when a hero opens the gate and the Subterranean tile is revealed).
  */
-export const LOCATION_TOKEN_IMAGES: Record<string, string> = {
-  subterranean_gate: "/assets/board/tokens/subterranean-gate.webp"
-};
+export const SUBTERRANEAN_GATE_TOKEN_IMAGES = {
+  surface: "/assets/board/tokens/subterranean-gate-surface.webp",
+  subterranean: "/assets/board/tokens/subterranean-gate-underground.webp"
+} as const;
+
+/** The gate-half art for a field, chosen by the layer of the tile it sits on. */
+export function subterraneanGateTokenImage(layer: "surface" | "subterranean"): string {
+  return SUBTERRANEAN_GATE_TOKEN_IMAGES[layer];
+}
 
 /** Back image for a tile, from its group or its printed back label. */
 export function tileBackImage(group: string | undefined, backLabel: string | undefined): string {
