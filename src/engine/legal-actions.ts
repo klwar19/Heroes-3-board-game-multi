@@ -891,6 +891,25 @@ type UnitTargetDefinition = Exclude<
   { type: "none" } | { type: "empty-space" } | { type: "any-space" } | { type: "unit-or-obstacle" }
 >;
 
+/**
+ * Mirrors the reducer's `unitMatchesSpecialtyName` (kept local to avoid a
+ * legal-actions -> reducer import cycle): exact name, "X and/or Y" descriptors,
+ * and "a … unit" family suffixes all match.
+ */
+function matchesUnitName(unitName: string | undefined, target: string): boolean {
+  if (!unitName) {
+    return false;
+  }
+  if (/\s+(?:and|or)\s+/i.test(target)) {
+    return target.split(/\s+(?:and|or)\s+/i).some((part) => matchesUnitName(unitName, part.trim()));
+  }
+  if (unitName === target) {
+    return true;
+  }
+  const family = target.replace(/^an?\s+/i, "").replace(/\s+units?$/i, "").trim();
+  return family.length > 0 && family !== target && unitName.toLowerCase().endsWith(family.toLowerCase());
+}
+
 function unitMatchesTarget(unit: CombatUnitState, target: UnitTargetDefinition): boolean {
   if (target.unitTypes && !target.unitTypes.includes(unit.type)) {
     return false;
@@ -903,6 +922,11 @@ function unitMatchesTarget(unit: CombatUnitState, target: UnitTargetDefinition):
   // Bowstring of the Unicorn's Mane: only a ranged unit that has not yet taken
   // its turn this round can be activated.
   if (target.type === "friendly-unit" && target.notActivatedThisRound && unit.activatedThisRound) {
+    return false;
+  }
+
+  // Ingham's Zealots VI: the ignore-Defense side lands only on his Zealots unit.
+  if (target.type === "friendly-unit" && target.unitName && !matchesUnitName(unit.name, target.unitName)) {
     return false;
   }
 

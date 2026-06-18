@@ -115,6 +115,12 @@ export type TargetDefinition =
        * been activated yet this combat round (it is about to take its turn).
        */
       notActivatedThisRound?: boolean;
+      /**
+       * Ingham's Zealots VI: the effect lands only on a unit whose name matches
+       * (his "your Zealots unit") — matched with the same family/"or" logic the
+       * specialty-doubling uses, so the option is offered only when you field one.
+       */
+      unitName?: string;
     }
   | { type: "any-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
   /** Summon spells: a chosen empty space on the combat board. */
