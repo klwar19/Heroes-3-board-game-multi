@@ -151,6 +151,8 @@ export {
   getHeroMoveDestinations,
   isTileAdjacentToSpace,
   isTileRotationConnected,
+  observatoryPlacementCenters,
+  observatoryRevealTargets,
   pumpAdventureQueues
 } from "./adventure-reducer";
 export {

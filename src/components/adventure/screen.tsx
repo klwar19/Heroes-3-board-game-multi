@@ -1942,7 +1942,10 @@ export function PromptTray({
   const choice = state.pendingChoice;
 
   const visitActions = legalActions.filter(
-    (legal) => legal.action.type === "RESOLVE_VISIT_STEP" || legal.action.type === "TRADE_RESOURCES"
+    (legal) =>
+      legal.action.type === "RESOLVE_VISIT_STEP" ||
+      legal.action.type === "TRADE_RESOURCES" ||
+      legal.action.type === "PLACE_OBSERVATORY_TILE"
   );
   const optionActions = legalActions.filter((legal) => legal.action.type === "CHOOSE_OPTION");
   const abilityTargetActions = legalActions.filter((legal) => legal.action.type === "CHOOSE_ABILITY_TARGET");

@@ -46,6 +46,7 @@ import {
   placeCombatUnit,
   swapCombatUnits,
   placeTile,
+  placeObservatoryTile,
   populationAction,
   pumpAdventureQueues,
   refreshHand,
@@ -12264,6 +12265,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "OPEN_MARKET",
   "DISCOVER_TILE",
   "PLACE_TILE",
+  "PLACE_OBSERVATORY_TILE",
   "SET_TILE_ROTATION",
   "MOVE_HERO_PATH",
   "RESOLVE_VISIT_STEP",
@@ -12417,6 +12419,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "PLACE_TILE":
         placeTile(nextState, action);
+        break;
+      case "PLACE_OBSERVATORY_TILE":
+        placeObservatoryTile(nextState, action);
         break;
       case "SET_TILE_ROTATION":
         setTileRotation(nextState, action);
