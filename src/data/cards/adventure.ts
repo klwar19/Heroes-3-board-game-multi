@@ -747,15 +747,19 @@ function ignoreDefenseOrDrawSpecialty(
       "hero-specialty",
       "combat",
       heroSlug,
-      `For this Combat, your selected unit ignores its targets' Defense. — OR — Draw ${draw} card${draw === 1 ? "" : "s"}.`
+      `For this Combat, your ${specialtyName} unit ignores its targets' Defense. — OR — Draw ${draw} card${draw === 1 ? "" : "s"}.`
     ],
-    target: { type: "friendly-unit" },
+    // The card-level target falls back to the signature unit; the ignore-Defense
+    // option below pins it explicitly so the draw option can still target none.
+    target: { type: "friendly-unit", unitName: specialtyName },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Your selected unit ignores its targets' Defense this Combat",
+          label: `Your ${specialtyName} unit ignores its targets' Defense this Combat`,
           combatOnly: true,
+          // Printed "your Zealots unit": offered only on the signature unit.
+          target: { type: "friendly-unit", unitName: specialtyName },
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
             effect: {

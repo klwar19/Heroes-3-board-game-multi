@@ -228,6 +228,41 @@ describe("Valeska's Marksmen specialty", () => {
     expect(after.combat!.units.unit_p1_marksmen.activatedThisRound).toBe(false); // fresh activation
   });
 
+  it("VI respects turn order: the re-fired unit acts once, then play returns to the interrupted unit", () => {
+    const state = createInitialGameState("valeska-6-order");
+    state.players.p1.hand = ["specialty.valeska.6"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const marksmen = state.combat!.units.unit_p1_marksmen;
+    marksmen.type = "ranged";
+    marksmen.initiative = 1;
+    state.combat!.units.unit_p2_skeletons.initiative = 99; // the unit interrupted by the re-fire
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.activatedThisRound = !["unit_p1_griffins", "unit_p2_skeletons"].includes(unit.id);
+    }
+    // Griffins end their turn → the Skeletons are up; the pre-activation window opens.
+    const advanced = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    expect(advanced.combat!.activeUnitId).toBe("unit_p2_skeletons");
+    const reaction = getLegalActions(advanced, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "specialty.valeska.6" &&
+        legal.action.optionIndex === 0 &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === "unit_p1_marksmen"
+    );
+    const fired = applyOk(advanced, reaction!.action);
+    expect(fired.combat!.activeUnitId).toBe("unit_p1_marksmen");
+
+    // The Marksmen take their full out-of-order turn and end it.
+    const ended = applyOk(fired, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_marksmen" });
+    // Play returns to the interrupted unit — never skipped, never double-acted —
+    // and the Marksmen are now spent (they will not be offered a third turn).
+    expect(ended.combat!.activeUnitId).toBe("unit_p2_skeletons");
+    expect(ended.combat!.units.unit_p1_marksmen.activatedThisRound).toBe(true);
+  });
+
   it("VI can instead draw 2 cards", () => {
     const state = createInitialGameState("valeska-6-draw");
     state.players.p1.hand = ["specialty.valeska.6"];
@@ -271,12 +306,15 @@ describe("Ingham's Zealots specialty", () => {
   });
 
   it("VI makes the chosen unit's attacks ignore the target's Defense this combat (NEW)", () => {
+    // The ignore-Defense side is the printed "your ZEALOTS unit", so it lands
+    // only on a Zealots unit. The attacker here is renamed Zealots.
     function damageThroughDefense(playSpecialty: boolean): number {
       const state = createInitialGameState(`ingham-6-${playSpecialty}`);
       state.players.p1.hand = playSpecialty ? ["specialty.ingham.6"] : [];
       state.players.p2.hand = [];
       const attacker = state.combat!.units.unit_p1_griffins;
       attacker.abilities = [];
+      attacker.name = "Zealots"; // the signature unit the specialty applies to
       attacker.position = 9;
       attacker.attack = 3;
       const defender = state.combat!.units.unit_p2_skeletons;
@@ -302,7 +340,35 @@ describe("Ingham's Zealots specialty", () => {
       return passAllReactions(current).combat!.units.unit_p2_skeletons.damage;
     }
     expect(damageThroughDefense(false), "10 Defense soaks the 3 attack without the specialty").toBe(0);
-    expect(damageThroughDefense(true), "ignoring Defense lands the full 3").toBe(3);
+    expect(damageThroughDefense(true), "the Zealots unit ignores Defense -> full 3 lands").toBe(3);
+  });
+
+  it("VI's ignore-Defense side is offered ONLY on a Zealots unit (the printed restriction)", () => {
+    // No Zealots unit on the board: only the draw option is offered, never ignore-Defense.
+    const noZealots = createInitialGameState("ingham-6-nozealot");
+    noZealots.players.p1.hand = ["specialty.ingham.6"];
+    noZealots.players.p2.hand = [];
+    expect(findPlay(noZealots, "specialty.ingham.6", 0), "ignore-Defense not offered without a Zealots unit").toBeFalsy();
+    expect(findPlay(noZealots, "specialty.ingham.6", 1), "the draw option is still offered").toBeTruthy();
+    // A non-Zealots friendly unit cannot be chosen for ignore-Defense.
+    expect(
+      findPlay(noZealots, "specialty.ingham.6", 0, "unit_p1_griffins"),
+      "a non-Zealots unit is not a legal ignore-Defense target"
+    ).toBeFalsy();
+
+    // Rename a unit to Zealots: now the ignore-Defense option targets exactly it.
+    const withZealots = createInitialGameState("ingham-6-zealot");
+    withZealots.players.p1.hand = ["specialty.ingham.6"];
+    withZealots.players.p2.hand = [];
+    withZealots.combat!.units.unit_p1_crusaders.name = "Zealots";
+    expect(
+      findPlay(withZealots, "specialty.ingham.6", 0, "unit_p1_crusaders"),
+      "the Zealots unit is a legal ignore-Defense target"
+    ).toBeTruthy();
+    expect(
+      findPlay(withZealots, "specialty.ingham.6", 0, "unit_p1_griffins"),
+      "the non-Zealots Griffins are still not a legal target"
+    ).toBeFalsy();
   });
 
   it("VI can instead draw 1 card", () => {
