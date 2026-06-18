@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DICE_PRESENT_MS, DiceOverlay, NeutralStepOverlay, ReactionTray, type DiceCue } from "./overlays";
+import { DICE_PRESENT_MS, DiceOverlay, NeutralStepOverlay, ReactionTray, SearchModal, type DiceCue } from "./overlays";
 import { CardZoomProvider } from "./zoom";
 import {
   applyAction,
@@ -657,5 +657,57 @@ describe("ReactionTray — Bowstring carries its chosen ranged unit through the 
     const applied = applyAction(state, played);
     expect(applied.errors).toEqual([]);
     expect(applied.state.combat!.activeUnitId).toBe("unit_p1_marksmen");
+  });
+});
+
+describe("SearchModal — Basic X Magic surfaces a School-of-Magic fetch", () => {
+  function searchState(): GameState {
+    const state = createInitialGameState("modal-fetch");
+    state.activePlayerId = "p1";
+    state.players.p1.hand = [];
+    state.activeEffects.push({
+      id: "fetch_air",
+      name: "Basic Air Magic",
+      scope: "player",
+      duration: { type: "permanent" },
+      polarity: "positive",
+      removable: false,
+      modifiers: [{ type: "SPELL_SCHOOL_FETCH", school: "air" }],
+      source: { type: "card", cardId: "ability.basic_air_magic", controllerId: "p1" },
+      controllerId: "p1",
+      startedRound: state.round,
+      startedCombatRound: state.combat?.round ?? 0,
+      usedRollEventIds: [],
+      usedChoiceIds: [],
+      usedCombatRoundNumbers: []
+    } as (typeof state.activeEffects)[number]);
+    state.decks["spells"].drawPile = ["spell.haste", "spell.slow", "spell.slow", "spell.slow"];
+    state.decks["spells"].discardPile = [];
+    return applyAction(state, { type: "SEARCH_DECK", playerId: "p1", deckId: "spells", count: 2 }).state;
+  }
+
+  it("renders both keep-a-card and 'draw from the School of Magic', and dispatches the fetch", () => {
+    const state = searchState();
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <SearchModal state={state} view={getPlayerView(state, "p1")} viewerPlayerId="p1" onAction={onAction} />
+      </CardZoomProvider>
+    );
+
+    // The normal "buy" branch (keep a revealed card) is still offered…
+    expect(screen.getAllByRole("button", { name: /Keep / }).length).toBeGreaterThan(0);
+    // …alongside the School-of-Magic fetch.
+    const fetchButton = screen.getByRole("button", { name: /Draw the first Air Magic spell/i });
+    fireEvent.click(fetchButton);
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "RESOLVE_DECK_SEARCH",
+        playerId: "p1",
+        pick: { kind: "school-fetch", school: "air" }
+      })
+    );
   });
 });

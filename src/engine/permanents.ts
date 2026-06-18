@@ -1033,47 +1033,36 @@ export function buyWarMachine(state: GameState, action: Extract<GameAction, { ty
 }
 
 /**
- * School of Magic expert effect from the field: while one of the owner's
- * matching spells is on the stack, discard the in-play permanent and spend
- * one expert use to replace the basic +1 with the expert power bonus.
+ * Schools of Magic, cast-time expert: when the caster chose (as part of the
+ * cast) to discard the matching in-play permanent for its expert power bonus,
+ * this spends one expert use, removes the permanent and logs the play. Returns
+ * the discarded School card and its expert power so the caster's spell can take
+ * +3 instead of the standing +1 — or null when there is no matching permanent
+ * in play or no expert use is left, so the cast just keeps its basic bonus.
  */
-export function applyPermanentExpert(state: GameState, action: Extract<GameAction, { type: "USE_PERMANENT_EXPERT" }>): void {
-  const player = state.players[action.playerId];
-  if (!player) {
-    throw new Error("No School of Magic permanent is in play.");
-  }
-
-  const stackItem = state.stack.at(-1);
-  if (!stackItem || stackItem.action.type !== "CAST_SPELL" || stackItem.action.playerId !== action.playerId) {
-    throw new Error("The expert effect needs one of your spells being cast.");
-  }
-
-  const spellCard = cardLibrary[stackItem.action.cardId];
-  const match = spellCard ? getPermanentSchoolBonus(state, action.playerId, spellCard) : null;
-  if (!match) {
-    throw new Error("No in-play School of Magic matches that spell's school.");
-  }
-
-  if ((stackItem.modifiers.schoolPowerBonus ?? 0) >= match.expertPower) {
-    throw new Error("The expert school bonus is already applied.");
-  }
-
-  if (expertUsesAvailable(player) <= 0) {
-    throw new Error("No expert uses are available this combat round.");
+export function discardSchoolPermanentForExpert(
+  state: GameState,
+  playerId: PlayerId,
+  spellCard: CardDefinition
+): { cardId: CardId; expertPower: number } | null {
+  const player = state.players[playerId];
+  const match = player ? getPermanentSchoolBonus(state, playerId, spellCard) : null;
+  if (!player || !match || expertUsesAvailable(player) <= 0) {
+    return null;
   }
 
   player.combatStats.expertUsesSpentThisRound += 1;
-  stackItem.modifiers.schoolPowerBonus = match.expertPower;
-  stackItem.modifiers.playedCardIds.push(match.card.id);
-  discardPermanentFromPlay(state, action.playerId, match.card.id);
-  enforcePermanentLimit(state, action.playerId);
+  discardPermanentFromPlay(state, playerId, match.card.id);
+  enforcePermanentLimit(state, playerId);
 
   appendEvent(state, {
     type: "CARD_PLAYED",
-    playerId: action.playerId,
+    playerId,
     cardId: match.card.id,
     timing: match.card.timing,
     mode: "expert",
     effectAmount: match.expertPower
   });
+
+  return { cardId: match.card.id, expertPower: match.expertPower };
 }

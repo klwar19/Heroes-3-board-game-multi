@@ -83,10 +83,10 @@ import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTar
 import {
   activateBallistas,
   applyPermanentCombatEffectsForPlayer,
-  applyPermanentExpert,
   buyWarMachine,
   countBallistas,
   discardPermanentVoluntarily,
+  discardSchoolPermanentForExpert,
   firstAidVolleyHeals,
   getPermanentSchoolBonus,
   isLowestInitiativeEnemy,
@@ -7004,11 +7004,23 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
       }
     }
 
-    // School of Magic permanent in play: matching spells get its basic bonus
-    // for free (the expert discard may replace it during the cast).
-    const schoolBonus = getPermanentSchoolBonus(state, action.playerId, card);
-    if (schoolBonus) {
-      stackItem.modifiers.schoolPowerBonus = schoolBonus.basicPower;
+    // School of Magic permanent in play: a matching spell takes its standing
+    // basic bonus (+1) for free. If the caster chose, as part of this cast, to
+    // discard the permanent for its expert bonus, take +3 instead — decided here
+    // up front, so a plain cast just applies the +1 and resolves without popping
+    // a separate expert prompt.
+    if (action.useSchoolExpert) {
+      const expert = discardSchoolPermanentForExpert(state, action.playerId, card);
+      if (!expert) {
+        throw new Error("That spell cannot discard a School of Magic for its expert bonus right now.");
+      }
+      stackItem.modifiers.schoolPowerBonus = expert.expertPower;
+      stackItem.modifiers.playedCardIds.push(expert.cardId);
+    } else {
+      const schoolBonus = getPermanentSchoolBonus(state, action.playerId, card);
+      if (schoolBonus) {
+        stackItem.modifiers.schoolPowerBonus = schoolBonus.basicPower;
+      }
     }
   }
 
@@ -12279,7 +12291,6 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "SET_GAME_OPTIONS",
   "START_ADVENTURE",
   "BUY_WAR_MACHINE",
-  "USE_PERMANENT_EXPERT",
   "USE_SCHOOL_FETCH_EXPERT",
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
@@ -12430,11 +12441,6 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "SELL_SCROLL_SPELL":
         sellScrollSpell(nextState, action);
-        break;
-      case "USE_PERMANENT_EXPERT":
-        applyPermanentExpert(nextState, action);
-        // The discarded permanent disappears from the open window's options.
-        refreshReactionWindowLegalReactions(nextState, cards);
         break;
       case "USE_SCHOOL_FETCH_EXPERT":
         applySchoolFetchExpert(nextState, action);

@@ -677,6 +677,45 @@ describe("rules engine prototype", () => {
     });
   });
 
+  it("only lets the attacker triple the die with the Centaur's Axe — never the defender", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    // Both fighters hold a Centaur's Axe; p1's griffins attack p2's vampires.
+    state.players.p1.hand = ["artifact.centaurs_axe"];
+    state.players.p2.hand = ["artifact.centaurs_axe"];
+    scriptDice(state, [1]);
+
+    const moved = applyOk(state, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+      destination: 10
+    });
+    const declared = applyOk(moved, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_vampires"
+    });
+    expect(declared.phase).toBe("reaction");
+
+    const offersTriple = (playerId: PlayerId) =>
+      (declared.reactionWindow?.legalReactions[playerId] ?? []).some(
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" &&
+          legal.action.cardId === "artifact.centaurs_axe" &&
+          legal.action.optionIndex === 0
+      );
+
+    // The attacker may triple their own roll; the defender may not reach across
+    // to triple the enemy's die. (On a later retaliation the roles flip and the
+    // original defender, now attacking, may triple THAT roll — a separate window.)
+    expect(offersTriple("p1")).toBe(true);
+    expect(offersTriple("p2")).toBe(false);
+  });
+
   it("doubles Catherine's specialty bonus when Crusaders attack", () => {
     const state = createInitialGameState();
     if (!state.combat) {

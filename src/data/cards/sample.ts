@@ -665,8 +665,10 @@ export const sampleCards: CardLibrary = {
     artifactTier: "minor",
     tags: ["artifact", "minor", "instant", "attack", "or-choice", "wiki-reference"],
     // Wiki card text: "Triple the Attack die's outcome. — OR — +1 attack".
-    // Either fighter may play the tripling before the die is rolled; the flat
-    // bonus only helps the attacking player.
+    // Both options apply to the holder's OWN attack: the tripling and the flat
+    // bonus only ever modify the attacking player's roll, never the enemy's.
+    // engine: TRIPLE_ATTACK_DIE is offered to the attacking side only (see
+    // isEffectLegalForTrigger) — the defender cannot triple the enemy's die.
     effect: {
       type: "CHOOSE_ONE",
       options: [
@@ -674,7 +676,7 @@ export const sampleCards: CardLibrary = {
           label: "Triple the Attack die's outcome",
           trigger: {
             event: "UNIT_ATTACK_DECLARED",
-            controller: "any"
+            controller: "self"
           },
           effect: { type: "TRIPLE_ATTACK_DIE" }
         },

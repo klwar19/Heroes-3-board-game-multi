@@ -13,7 +13,6 @@ import {
   getEffectAmount,
   getEffectiveCardEffect,
   getPendingReactionPower,
-  getPermanentCardIds,
   getSpellDamageAmount,
   spellPowerValueOfCard,
   standingSpellPower,
@@ -196,13 +195,6 @@ export function ReactionTray({
     setLastHandSignature(handSignature);
     setSelections([]);
   }
-
-  // School of Magic in play: discard it from the field for the expert bonus.
-  const fieldExpert = legalActions.find((legal) => legal.action.type === "USE_PERMANENT_EXPERT");
-  const schoolPermanentId =
-    getPermanentCardIds(state, viewerPlayerId).find((cardId) =>
-      Boolean(cardLibrary[cardId]?.permanentEffect?.schoolBonus)
-    ) ?? null;
 
   // Town-building boosts usable inside this window (Brimstone cube on your
   // own cast, Hall of Valhalla on your unit's attack).
@@ -491,7 +483,7 @@ export function ReactionTray({
         <PendingPowerReadout state={state} />
       </header>
       <div className="trayTiles">
-        {tiles.length === 0 && !fieldExpert && buildingBoosts.length === 0 && scrollReactions.length === 0 ? (
+        {tiles.length === 0 && buildingBoosts.length === 0 && scrollReactions.length === 0 ? (
           <div className="trayEmpty">No playable instants — pass to continue.</div>
         ) : null}
         {buildingBoosts.map((legal) => (
@@ -515,17 +507,6 @@ export function ReactionTray({
             </div>
           </div>
         ))}
-        {fieldExpert && fieldExpert.action.type === "USE_PERMANENT_EXPERT" ? (
-          <div className="trayTile permanentTile" key="field-expert">
-            <CardFrame cardId={schoolPermanentId ?? undefined} className="trayCardImage" />
-            <div className="trayTileBody">
-              <strong>{cardName(schoolPermanentId ?? "")} (in play)</strong>
-              <button className="trayInstant" onClick={() => onAction(fieldExpert.action)} type="button">
-                <Crown aria-hidden="true" size={13} /> {fieldExpert.label}
-              </button>
-            </div>
-          </div>
-        ) : null}
         {tiles.map((tile) => {
           const selection = selections.find((candidate) => candidate.handIndex === tile.handIndex);
           return (
@@ -989,12 +970,21 @@ export function SearchModal({
     );
   }
 
+  // Basic X Magic in play: instead of keeping a revealed card the searcher may
+  // fetch the deck's first spell of that school (the cards are put back and the
+  // deck reshuffled). Surfaced as its own row so "buy normally OR draw from the
+  // School of Magic" is a real choice, not just the keep-a-card branch.
+  const schoolFetches = choice.schoolFetch ?? [];
+
   return (
     <div className="modalBackdrop" role="dialog" aria-label={`Search the ${choice.deckId} deck`}>
       <div className="searchModal">
         <header>
-          <strong>Search 2 — {choice.deckId}</strong>
-          <span>Keep one card. The rest go to the {choice.deckId} discard pile.</span>
+          <strong>Search {choice.revealedCardIds.length} — {choice.deckId}</strong>
+          <span>
+            Keep one card{schoolFetches.length > 0 ? ", or draw from a School of Magic" : ""}. The rest go to the{" "}
+            {choice.deckId} discard pile.
+          </span>
         </header>
         <div className="searchCards">
           {choice.revealedCardIds.map((cardId, index) => (
@@ -1018,6 +1008,31 @@ export function SearchModal({
             </div>
           ))}
         </div>
+        {schoolFetches.length > 0 ? (
+          <div className="searchFetch" aria-label="Draw from a School of Magic">
+            {schoolFetches.map((school) => {
+              const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
+              return (
+                <button
+                  className="commandButton"
+                  key={`fetch-${school}`}
+                  onClick={() =>
+                    onAction({
+                      type: "RESOLVE_DECK_SEARCH",
+                      playerId: viewerPlayerId,
+                      choiceId: choice.id,
+                      pick: { kind: "school-fetch", school }
+                    })
+                  }
+                  title={`Put the revealed cards back and take the first ${schoolName} Magic spell, then reshuffle the deck.`}
+                  type="button"
+                >
+                  Draw the first {schoolName} Magic spell
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
     </div>
   );

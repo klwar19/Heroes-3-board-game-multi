@@ -72,9 +72,10 @@ export function CardFrame({
 /**
  * The permanent cards in play next to a player's hero board — one as
  * printed, up to three with the Pandora's Box exception. Their effects are
- * always on. Each card shows a "permanent" badge, a voluntary "discard from
- * play" button when the engine offers it, and the School of Magic expert
- * discard whenever USE_PERMANENT_EXPERT is legal for the owner.
+ * always on. Each card shows a "permanent" badge and a voluntary "discard from
+ * play" button when the engine offers it. (A School of Magic's discard-for-+3
+ * is decided when casting — see the spell's "+ School of Magic" cast option —
+ * not from here.)
  */
 export function PermanentSlot({
   state,
@@ -101,9 +102,6 @@ export function PermanentSlot({
   }
 
   const ownView = Boolean(onAction && viewerPlayerId === playerId);
-  const expert = ownView
-    ? legalActions?.find((legal) => legal.action.type === "USE_PERMANENT_EXPERT")
-    : undefined;
   const discardActionFor = (cardId: string) =>
     ownView
       ? legalActions?.find(
@@ -136,11 +134,6 @@ export function PermanentSlot({
               </span>
               {!compact ? <strong>{card?.name ?? cardId}</strong> : null}
               {!compact && card ? <small>{describePermanentEffect(card)}</small> : null}
-              {expert && index === 0 ? (
-                <button className="commandButton" onClick={() => onAction?.(expert.action)} type="button">
-                  <Crown aria-hidden="true" size={12} /> {expert.label}
-                </button>
-              ) : null}
               {discard ? (
                 <button
                   className="commandButton ghost"
@@ -399,19 +392,23 @@ export function HandFan({
                   >
                     {sameCardSelection(selectedCardAction, action)
                       ? "Cancel targeting"
-                      : `Pick target${"mode" in action && action.mode === "expert" ? " (expert)" : ""}`}
+                      : `Pick target${"mode" in action && action.mode === "expert" ? " (expert)" : ""}${
+                          action.type === "CAST_SPELL" && action.useSchoolExpert ? " + School of Magic (+3)" : ""
+                        }`}
                   </button>
                 ))}
                 {entry.immediateActions.map((legal) => {
                   const action = legal.action as CardBoardAction;
                   const label =
-                    action.type === "PLAY_CARD" && action.optionIndex !== undefined && card?.effect.type === "CHOOSE_ONE"
-                      ? card.effect.options[action.optionIndex]?.label
-                      : action.type === "PLAY_CARD" && action.mode === "expert"
-                        ? "Use expert"
-                        : action.target?.type === "unit"
-                          ? `Use on ${targetName(state, action.target)}`
-                          : "Use";
+                    action.type === "CAST_SPELL" && action.useSchoolExpert
+                      ? "Cast + School of Magic (+3)"
+                      : action.type === "PLAY_CARD" && action.optionIndex !== undefined && card?.effect.type === "CHOOSE_ONE"
+                        ? card.effect.options[action.optionIndex]?.label
+                        : action.type === "PLAY_CARD" && action.mode === "expert"
+                          ? "Use expert"
+                          : action.target?.type === "unit"
+                            ? `Use on ${targetName(state, action.target)}`
+                            : "Use";
                   return (
                     <button
                       key={actionKey(action)}

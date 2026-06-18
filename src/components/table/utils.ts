@@ -443,7 +443,10 @@ export function cardSelectionKey(action: CardBoardAction): string {
     playerId: action.playerId,
     cardId: action.cardId,
     mode: "mode" in action ? (action.mode ?? "basic") : "basic",
-    optionIndex: "optionIndex" in action ? action.optionIndex : undefined
+    optionIndex: "optionIndex" in action ? action.optionIndex : undefined,
+    // The "discard a School of Magic for +3" cast is a distinct selection from
+    // the plain cast of the same spell at the same target.
+    useSchoolExpert: action.type === "CAST_SPELL" ? Boolean(action.useSchoolExpert) : false
   });
 }
 

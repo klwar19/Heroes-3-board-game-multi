@@ -1415,6 +1415,15 @@ function addSpellActions(
       }
     }
 
+    // School of Magic (Air/Earth/Fire/Water Magic) in play matching this spell,
+    // with an expert use to spend: a normal hand cast may instead discard the
+    // permanent for its expert power bonus. Offered as a separate cast option so
+    // the choice is made up front — never as a prompt after the cast.
+    const schoolExpert =
+      !fromScroll && !fromSpellDeck && expertUsesAvailable(player) > 0
+        ? getPermanentSchoolBonus(state, playerId, card)
+        : null;
+
     for (const target of getTargetsForCard(state, playerId, cardId, cards)) {
       actions.push({
         label: fromScroll
@@ -1431,6 +1440,19 @@ function addSpellActions(
           ...(fromSpellDeck ? { fromSpellDeck } : {})
         }
       });
+
+      if (schoolExpert) {
+        actions.push({
+          label: `Cast ${card.name} + ${schoolExpert.card.name} (+${schoolExpert.expertPower} expert)`,
+          action: {
+            type: "CAST_SPELL",
+            playerId,
+            cardId,
+            target,
+            useSchoolExpert: true
+          }
+        });
+      }
     }
   }
 }
@@ -2951,6 +2973,23 @@ export function getLegalActions(
         }
       }));
 
+      // Basic X Magic in play: instead of keeping a revealed card the searcher
+      // may draw from the School of Magic — put the revealed cards back and take
+      // the deck's first spell of that school, then reshuffle. Offered alongside
+      // the keep-one picks so it is a real alternative, not a forced replacement.
+      for (const school of choice.schoolFetch ?? []) {
+        const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
+        actions.push({
+          label: `Draw the first ${schoolName} Magic spell`,
+          action: {
+            type: "RESOLVE_DECK_SEARCH",
+            playerId,
+            choiceId: choice.id,
+            pick: { kind: "school-fetch", school }
+          }
+        });
+      }
+
       return actions;
     }
 
@@ -3710,12 +3749,11 @@ export function getLegalReactionsForTrigger(
       }
     }
 
-    // School of Magic in play: the caster may discard it for the expert
-    // power bonus while their matching spell is being cast.
-    const fieldExpert = getPermanentFieldExpertAction(state, player.id, triggerEvent, cards);
-    if (fieldExpert) {
-      reactions.push(fieldExpert);
-    }
+    // School of Magic (Air/Earth/Fire/Water Magic) in play: the discard-for-+3
+    // expert is NOT a reaction here — it would pop an extra prompt on every
+    // matching cast. It is decided up front as a cast option instead (a
+    // `useSchoolExpert` CAST_SPELL variant; see addSpellActions), so a plain
+    // cast just keeps the standing +1 and resolves.
 
     // Basic X Magic in play (the spell-fetch permanent): +3 Power for a
     // matching-school spell — a normal cast or an instant on the attack — without
@@ -3913,46 +3951,6 @@ export function getLegalReactionsForTrigger(
   }
 
   return result;
-}
-
-/**
- * The in-play School of Magic expert as a reaction: available to the spell's
- * caster while the matching cast is on the stack and an expert use is left.
- */
-function getPermanentFieldExpertAction(
-  state: GameState,
-  playerId: PlayerId,
-  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
-  cards: CardLibrary
-): LegalAction | null {
-  if (triggerEvent.type !== "SPELL_CAST_STARTED" || triggerEvent.playerId !== playerId) {
-    return null;
-  }
-
-  const player = state.players[playerId];
-  const spellCard = cards[triggerEvent.spellCardId];
-  if (!player || !spellCard) {
-    return null;
-  }
-
-  const match = getPermanentSchoolBonus(state, playerId, spellCard);
-  if (!match) {
-    return null;
-  }
-
-  if (expertUsesAvailable(player) <= 0) {
-    return null;
-  }
-
-  const stackItem = getPendingStackItem(state, triggerEvent);
-  if ((stackItem?.modifiers.schoolPowerBonus ?? 0) >= match.expertPower) {
-    return null;
-  }
-
-  return {
-    label: `Discard ${match.card.name} from play: +${match.expertPower} power (expert)`,
-    action: { type: "USE_PERMANENT_EXPERT", playerId }
-  };
 }
 
 /** Whether a card's schools include `school` (or the school-agnostic "any"). */
@@ -4373,10 +4371,12 @@ export function isEffectLegalForTrigger(
       return false;
     }
 
-    // Centaur's Axe: either fighter may triple the die — the attacker hoping
-    // for a +1, the defender fishing for a tripled -1.
+    // Centaur's Axe: only the attacker (the side whose unit is making this
+    // attack and rolling its Attack die) may triple the outcome. It is the
+    // attacker's own die — the defender can never reach across to triple the
+    // enemy's roll (e.g. fishing for a tripled -1 against the attacker).
     if (effect.type === "TRIPLE_ATTACK_DIE") {
-      return attacker.controllerId === playerId || defender.controllerId === playerId;
+      return attacker.controllerId === playerId;
     }
 
     if (effect.type === "CREATE_ACTIVE_EFFECT") {
