@@ -29,6 +29,7 @@ describe("HandFan — Schools of Magic offer the expert as a cast-time choice", 
           state={state}
           viewerPlayerId="p1"
           legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
           trayActive={false}
           onSelectCardAction={onSelectCardAction}
           onAction={() => {}}
