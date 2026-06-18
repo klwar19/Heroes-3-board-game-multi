@@ -120,8 +120,9 @@ describe("revealSharedDeckSearch — redraws past cards the hero may not take", 
     if (choice?.type === "DECK_SEARCH") {
       expect(choice.revealedCardIds).toEqual(["ability.luck"]);
     }
-    // The skipped duplicate cycles to the deck discard for the other copy's sake.
-    expect(state.decks.abilities.discardPile).toEqual(["ability.archery"]);
+    // The skipped duplicate is tucked back under the deck, never discarded.
+    expect(state.decks.abilities.discardPile).toEqual([]);
+    expect(state.decks.abilities.drawPile).toEqual(["ability.archery"]);
   });
 
   it("skips Necromancy for a non-Necropolis hero", () => {
@@ -137,7 +138,8 @@ describe("revealSharedDeckSearch — redraws past cards the hero may not take", 
     if (choice?.type === "DECK_SEARCH") {
       expect(choice.revealedCardIds).toEqual(["ability.offense"]);
     }
-    expect(state.decks.abilities.discardPile).toEqual(["ability.necromancy"]);
+    expect(state.decks.abilities.discardPile).toEqual([]);
+    expect(state.decks.abilities.drawPile).toEqual(["ability.necromancy"]);
   });
 
   it("lets a Necropolis hero reveal Necromancy", () => {
@@ -159,6 +161,28 @@ describe("revealSharedDeckSearch — redraws past cards the hero may not take", 
     expect(state.decks.abilities.discardPile).toEqual([]);
   });
 
+  it("never reveals two of the same card in a single search", () => {
+    const state = freshState("reveal-no-twins");
+    state.players.p1.deck = [];
+    // Top two are both Luck; only one should be revealed, the rest fills from
+    // the next distinct card (Offense).
+    state.decks.abilities.drawPile = ["ability.offense", "ability.luck", "ability.luck"];
+    state.decks.abilities.discardPile = [];
+
+    revealSharedDeckSearch(state, "p1", "abilities", 2);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("DECK_SEARCH");
+    if (choice?.type === "DECK_SEARCH") {
+      expect(choice.revealedCardIds).toEqual(["ability.luck", "ability.offense"]);
+      // No duplicates among the revealed cards.
+      expect(new Set(choice.revealedCardIds).size).toBe(choice.revealedCardIds.length);
+    }
+    // The skipped second copy of Luck is tucked back under the deck, not discarded.
+    expect(state.decks.abilities.discardPile).toEqual([]);
+    expect(state.decks.abilities.drawPile).toEqual(["ability.luck"]);
+  });
+
   it("skips a duplicate spell the hero owns", () => {
     const state = freshState("reveal-spell-dup");
     state.players.p1.deck = ["spell.haste"]; // p1 already owns Haste
@@ -172,7 +196,8 @@ describe("revealSharedDeckSearch — redraws past cards the hero may not take", 
     if (choice?.type === "DECK_SEARCH") {
       expect(choice.revealedCardIds).toEqual(["spell.bless"]);
     }
-    expect(state.decks.spells.discardPile).toEqual(["spell.haste"]);
+    expect(state.decks.spells.discardPile).toEqual([]);
+    expect(state.decks.spells.drawPile).toEqual(["spell.haste"]);
   });
 });
 

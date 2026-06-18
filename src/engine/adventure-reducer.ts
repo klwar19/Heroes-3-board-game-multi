@@ -5591,23 +5591,27 @@ export function revealSharedDeckSearch(state: GameState, playerId: PlayerId, dec
   const count = applySearchCountEffects(state, playerId, baseCount);
   const revealedCardIds: string[] = [];
   // Redraw past any card this hero may not take — a duplicate of one it already
-  // owns, a Necromancy it cannot use, or a starting-only spell. Skipped cards are
-  // set aside and dropped onto the deck's discard pile afterwards so they cycle
-  // back for other players (each ability/spell has a second copy in the deck).
+  // owns, a Necromancy it cannot use, or a starting-only spell — and also past a
+  // second copy of a card already revealed in this same search, so a single
+  // reveal never shows two of the same card. Skipped cards are set aside and
+  // tucked back under the deck afterwards (not discarded), so the deck keeps both
+  // copies for the other players and the revealed batch alone is what was drawn.
   const skippedCardIds: string[] = [];
   while (revealedCardIds.length < count) {
     const cardId = deck.drawPile.pop();
     if (!cardId) {
       break;
     }
-    if (canAcquireSharedDeckCard(state, playerId, deckId, cardId)) {
+    if (canAcquireSharedDeckCard(state, playerId, deckId, cardId) && !revealedCardIds.includes(cardId)) {
       revealedCardIds.push(cardId);
     } else {
       skippedCardIds.push(cardId);
     }
   }
   if (skippedCardIds.length > 0) {
-    deck.discardPile.push(...skippedCardIds);
+    // Bottom of the draw pile (front of the array, since the top is the last
+    // element) — never re-reached within this reveal, so there is no loop.
+    deck.drawPile.unshift(...skippedCardIds);
   }
 
   // Basic X Magic's "draw instead of Searching" is offered up front (see
