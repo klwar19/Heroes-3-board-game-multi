@@ -161,7 +161,8 @@ export const TILE_BACK_IMAGES: Record<string, string> = {
 /**
  * Location Token art overlaid on the field a Token is placed on, on top of the
  * tile scan. Only the Subterranean Gate Token (Stronghold expansion) is wired
- * so far — the cave-mouth token cropped from the rulebook's page-34 diagram.
+ * so far — the cave-mouth token cropped from the rulebook's page-35
+ * "Subterranean Gate Tokens" illustration.
  */
 export const LOCATION_TOKEN_IMAGES: Record<string, string> = {
   subterranean_gate: "/assets/board/tokens/subterranean-gate.webp"
