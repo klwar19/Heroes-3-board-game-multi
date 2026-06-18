@@ -11773,11 +11773,7 @@ function recordDeckDrawnAbility(player: PlayerState, deckId: string, cardId: Car
   (player.deckDrawnAbilityCardIds ??= []).push(cardId);
 }
 
-function resolveDeckSearch(
-  state: GameState,
-  action: Extract<GameAction, { type: "RESOLVE_DECK_SEARCH" }>,
-  cards: CardLibrary = cardLibrary
-): void {
+function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type: "RESOLVE_DECK_SEARCH" }>): void {
   const choice = state.pendingChoice;
   if (!choice || choice.type !== "DECK_SEARCH" || choice.id !== action.choiceId || choice.playerId !== action.playerId) {
     throw new Error("That deck search cannot be resolved.");
@@ -11789,52 +11785,25 @@ function resolveDeckSearch(
     throw new Error("That deck search cannot be resolved.");
   }
 
-  let discardedCardIds: string[];
-
-  if (action.pick.kind === "school-fetch") {
-    // Basic X Magic: put the revealed cards back, fetch the deck's first
-    // spell of the school (Magic Arrow's "any" counts), then reshuffle.
-    if (!choice.schoolFetch?.includes(action.pick.school)) {
-      throw new Error("No Basic Magic of that school is in play.");
-    }
-
-    deck.drawPile.push(...choice.revealedCardIds.reverse());
-    let fetchedCardId: string | null = null;
-    for (let index = deck.drawPile.length - 1; index >= 0; index -= 1) {
-      const schools = cards[deck.drawPile[index]]?.spellSchools ?? [];
-      if (schools.includes(action.pick.school) || schools.includes("any")) {
-        fetchedCardId = deck.drawPile[index];
-        deck.drawPile.splice(index, 1);
-        break;
-      }
-    }
-
-    // The fetched spell is taken straight into hand (as printed: "take the
-    // spell into your hand. Then, reshuffle the deck.").
-    if (fetchedCardId) {
-      player.hand.push(fetchedCardId);
-    }
-    deck.drawPile = shuffleCards(deck.drawPile, `${state.seed}#school-fetch#${eventSeedNumber(state)}`);
-    discardedCardIds = [];
-  } else {
-    const keptCardId = choice.revealedCardIds[action.pick.index];
-    if (!keptCardId) {
-      throw new Error("That revealed card is not available.");
-    }
-
-    player.hand.push(keptCardId);
-    recordDeckDrawnAbility(player, choice.deckId, keptCardId);
-    const keptIndex = action.pick.index;
-    discardedCardIds = choice.revealedCardIds.filter((_, index) => index !== keptIndex);
-    deck.discardPile.push(...discardedCardIds);
+  // Only the keep-one pick reaches here. Basic X Magic's "draw from a School of
+  // Magic" is resolved up front, before any reveal (see openSharedDeckSearch).
+  const keptCardId = choice.revealedCardIds[action.pick.index];
+  if (!keptCardId) {
+    throw new Error("That revealed card is not available.");
   }
+
+  player.hand.push(keptCardId);
+  recordDeckDrawnAbility(player, choice.deckId, keptCardId);
+  const keptIndex = action.pick.index;
+  const discardedCardIds = choice.revealedCardIds.filter((_, index) => index !== keptIndex);
+  deck.discardPile.push(...discardedCardIds);
 
   appendEvent(state, {
     type: "DECK_SEARCH_RESOLVED",
     playerId: action.playerId,
     deckId: choice.deckId,
     choiceId: choice.id,
-    pick: action.pick.kind === "school-fetch" ? "revealed" : action.pick.kind,
+    pick: "revealed",
     discardedCardIds
   });
 
@@ -12396,7 +12365,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         sandboxAddCard(nextState, action, cards);
         break;
       case "RESOLVE_DECK_SEARCH":
-        resolveDeckSearch(nextState, action, cards);
+        resolveDeckSearch(nextState, action);
         break;
       case "MOVE_HERO":
         if (nextState.mode === "adventure") {

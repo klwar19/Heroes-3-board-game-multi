@@ -2984,9 +2984,10 @@ export function getLegalActions(
 
     if (state.pendingChoice.type === "DECK_SEARCH") {
       const choice = state.pendingChoice;
-      // The discard-top alternative is resolved up front (the "deck-search-mode"
-      // option choice), so once a player is looking at the revealed cards they
-      // only keep one of those — they can't fall back to the discard pile here.
+      // The discard-top and Basic X Magic "draw from a School of Magic"
+      // alternatives are resolved up front (the "deck-search-mode" option
+      // choice), so once a player is looking at the revealed cards they only
+      // keep one of those — no fall back to the discard pile or a fetch here.
       const actions: LegalAction[] = choice.revealedCardIds.map((cardId, index) => ({
         label: `Keep ${cards[cardId]?.name ?? cardId}`,
         action: {
@@ -2996,23 +2997,6 @@ export function getLegalActions(
           pick: { kind: "revealed", index }
         }
       }));
-
-      // Basic X Magic in play: instead of keeping a revealed card the searcher
-      // may draw from the School of Magic — put the revealed cards back and take
-      // the deck's first spell of that school, then reshuffle. Offered alongside
-      // the keep-one picks so it is a real alternative, not a forced replacement.
-      for (const school of choice.schoolFetch ?? []) {
-        const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
-        actions.push({
-          label: `Draw the first ${schoolName} Magic spell`,
-          action: {
-            type: "RESOLVE_DECK_SEARCH",
-            playerId,
-            choiceId: choice.id,
-            pick: { kind: "school-fetch", school }
-          }
-        });
-      }
 
       return actions;
     }

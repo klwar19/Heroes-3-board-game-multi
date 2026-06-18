@@ -1909,16 +1909,7 @@ export type ReactionPlay = {
   asPowerBoost?: boolean;
 };
 
-export type DeckSearchPick =
-  | { kind: "revealed"; index: number }
-  | {
-      /**
-       * Basic X Magic: instead of the search, return the revealed cards and
-       * fetch the deck's first spell of this school, then reshuffle.
-       */
-      kind: "school-fetch";
-      school: SpellSchool;
-    };
+export type DeckSearchPick = { kind: "revealed"; index: number };
 
 export type GameAction =
   | {
@@ -4818,11 +4809,6 @@ export type PendingChoice =
       deckId: DeckId;
       /** Cards lifted off the top of the deck; only the searcher may see them. */
       revealedCardIds: CardId[];
-      /**
-       * Basic X Magic in play: the search may instead fetch the deck's first
-       * spell of one of these schools (cards are put back and reshuffled).
-       */
-      schoolFetch?: SpellSchool[];
       /** Pendant of Courage: this search repeats once after it resolves. */
       repeatSearch?: { deckId: DeckId; count: number };
       returnPhase: GamePhase;
@@ -4930,7 +4916,14 @@ export type PendingChoice =
        * take the top of that deck's discard pile. The searched cards are only
        * revealed if the player commits to searching.
        */
-      deckSearchMode?: { deckId: DeckId; count: number };
+      deckSearchMode?: {
+        deckId: DeckId;
+        count: number;
+        /** Basic X Magic schools offered as "draw instead of Searching" options. */
+        schoolFetch?: SpellSchool[];
+        /** Whether a "take the top discard" option is offered (index 1). */
+        hasDiscardTop?: boolean;
+      };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */
       ownDeckPick?: {
         cardIds: CardId[];

@@ -970,21 +970,12 @@ export function SearchModal({
     );
   }
 
-  // Basic X Magic in play: instead of keeping a revealed card the searcher may
-  // fetch the deck's first spell of that school (the cards are put back and the
-  // deck reshuffled). Surfaced as its own row so "buy normally OR draw from the
-  // School of Magic" is a real choice, not just the keep-a-card branch.
-  const schoolFetches = choice.schoolFetch ?? [];
-
   return (
     <div className="modalBackdrop" role="dialog" aria-label={`Search the ${choice.deckId} deck`}>
       <div className="searchModal">
         <header>
           <strong>Search {choice.revealedCardIds.length} — {choice.deckId}</strong>
-          <span>
-            Keep one card{schoolFetches.length > 0 ? ", or draw from a School of Magic" : ""}. The rest go to the{" "}
-            {choice.deckId} discard pile.
-          </span>
+          <span>Keep one card. The rest go to the {choice.deckId} discard pile.</span>
         </header>
         <div className="searchCards">
           {choice.revealedCardIds.map((cardId, index) => (
@@ -1008,31 +999,6 @@ export function SearchModal({
             </div>
           ))}
         </div>
-        {schoolFetches.length > 0 ? (
-          <div className="searchFetch" aria-label="Draw from a School of Magic">
-            {schoolFetches.map((school) => {
-              const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
-              return (
-                <button
-                  className="commandButton"
-                  key={`fetch-${school}`}
-                  onClick={() =>
-                    onAction({
-                      type: "RESOLVE_DECK_SEARCH",
-                      playerId: viewerPlayerId,
-                      choiceId: choice.id,
-                      pick: { kind: "school-fetch", school }
-                    })
-                  }
-                  title={`Put the revealed cards back and take the first ${schoolName} Magic spell, then reshuffle the deck.`}
-                  type="button"
-                >
-                  Draw the first {schoolName} Magic spell
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
       </div>
     </div>
   );
