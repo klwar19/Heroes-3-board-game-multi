@@ -88,7 +88,7 @@ describe("combat activation order — same-speed handling", () => {
     expect(state.combat!.activeUnitId).toBe("unit_p1_griffins");
   });
 
-  it("alternates sides on a cross-side tie, with no attacker edge (defender goes first)", () => {
+  it("alternates sides on a cross-side tie, attacker-first (the player/attacker leads)", () => {
     let state = createInitialGameState("order-cross-side");
     state.players.p1.hand = [];
     state.players.p2.hand = [];
@@ -104,16 +104,16 @@ describe("combat activation order — same-speed handling", () => {
 
     state = startFreshRound(state);
 
-    // Single candidate per side, so no prompt — and the defender's unit acts
-    // first (the old "ties favor the attacker" edge is gone).
+    // Single candidate per side, so no prompt — and the ATTACKER's unit (p1) acts
+    // first on the even split, then the two sides alternate.
     expect(orderChoice(state)).toBeNull();
-    expect(state.combat!.activeUnitId).toBe("unit_p2_vampires");
-
-    state = applyOk(state, { type: "DEFEND_UNIT", playerId: "p2", unitId: "unit_p2_vampires" });
     expect(state.combat!.activeUnitId).toBe("unit_p1_griffins");
+
+    state = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    expect(state.combat!.activeUnitId).toBe("unit_p2_vampires");
   });
 
-  it("interleaves the two sides when both have several units at the same speed", () => {
+  it("interleaves the two sides when both have several units at the same speed (attacker-first)", () => {
     let state = createInitialGameState("order-cross-multi");
     state.players.p1.hand = [];
     state.players.p2.hand = [];
@@ -129,31 +129,31 @@ describe("combat activation order — same-speed handling", () => {
 
     state = startFreshRound(state);
 
-    // Even split → the defender side picks first.
+    // Even split → the ATTACKER side (p1) picks first.
     let choice = orderChoice(state);
-    expect(choice, "defender picks first on an even tie").toBeTruthy();
-    expect(choice!.playerId).toBe("p2");
-    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p2", choiceId: choice!.id, optionIndex: 0 });
-    const firstDefender = state.combat!.activeUnitId!;
-    expect(P2).toContain(firstDefender);
-    state = applyOk(state, { type: "DEFEND_UNIT", playerId: "p2", unitId: firstDefender });
-
-    // Now the attacker is behind, so it activates next — and it has two tied
-    // units, so its owner is prompted.
-    choice = orderChoice(state);
-    expect(choice, "attacker picks after the defender's first unit").toBeTruthy();
+    expect(choice, "attacker picks first on an even tie").toBeTruthy();
     expect(choice!.playerId).toBe("p1");
     state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice!.id, optionIndex: 0 });
     const firstAttacker = state.combat!.activeUnitId!;
     expect(P1).toContain(firstAttacker);
     state = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: firstAttacker });
 
-    // Back to the defender's remaining unit — only one left at this speed, so no
+    // Now the defender is behind, so it activates next — and it has two tied
+    // units, so its owner is prompted.
+    choice = orderChoice(state);
+    expect(choice, "defender picks after the attacker's first unit").toBeTruthy();
+    expect(choice!.playerId).toBe("p2");
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p2", choiceId: choice!.id, optionIndex: 0 });
+    const firstDefender = state.combat!.activeUnitId!;
+    expect(P2).toContain(firstDefender);
+    state = applyOk(state, { type: "DEFEND_UNIT", playerId: "p2", unitId: firstDefender });
+
+    // Back to the attacker's remaining unit — only one left at this speed, so no
     // prompt this time.
     expect(orderChoice(state)).toBeNull();
-    const secondDefender = state.combat!.activeUnitId!;
-    expect(P2).toContain(secondDefender);
-    expect(secondDefender).not.toBe(firstDefender);
+    const secondAttacker = state.combat!.activeUnitId!;
+    expect(P1).toContain(secondAttacker);
+    expect(secondAttacker).not.toBe(firstAttacker);
   });
 });
 
@@ -181,7 +181,7 @@ describe("getActivationStep — the ordering primitive", () => {
     );
   });
 
-  it("auto-activates a tied neutral side instead of prompting (the AI can't answer a choice)", () => {
+  it("lets the attacker break a tied neutral side's order (the player operates the guards)", () => {
     let state = createInitialGameState("neutral-auto");
     state.players.p1.hand = [];
     state.players.p2.hand = [];
@@ -204,14 +204,31 @@ describe("getActivationStep — the ordering primitive", () => {
 
     state = startFreshRound(state);
 
-    // No activation-order choice is opened for the neutral side — one of its
-    // tied units is simply made active.
-    expect(orderChoice(state)).toBeNull();
-    expect(state.combat!.activeUnitId).not.toBeNull();
+    // The Neutral army cannot answer a prompt, so the attacker (p1, who runs the
+    // guards) is asked which tied Neutral unit activates first. The choice is the
+    // attacker's, but it lists the Neutral side's tied units.
+    const choice = orderChoice(state);
+    expect(choice, "the attacker breaks the neutral tie").toBeTruthy();
+    expect(choice!.playerId).toBe("p1");
+    expect(choice!.activationOrder!.side).toBe(NEUTRAL_PLAYER_ID);
+    expect(state.combat!.activeUnitId).toBeNull();
+    expect(new Set(choice!.activationOrder!.unitIds)).toEqual(
+      new Set(["unit_p2_skeletons", "unit_p2_vampires"])
+    );
+
+    // Pick the Vampires: a Neutral unit becomes active even though p1 answered.
+    const vampiresIndex = choice!.activationOrder!.unitIds.indexOf("unit_p2_vampires");
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice!.id,
+      optionIndex: vampiresIndex
+    });
+    expect(state.combat!.activeUnitId).toBe("unit_p2_vampires");
     expect(state.combat!.units[state.combat!.activeUnitId!].controllerId).toBe(NEUTRAL_PLAYER_ID);
   });
 
-  it("reports the neutral army as the acting side so the engine auto-runs it (no prompt)", () => {
+  it("reports the neutral army as the acting side with all its tied units as candidates", () => {
     const state = createInitialGameState("step-neutral");
     // Reassign the defender's units to the neutral army and tie them at the top.
     state.combat!.defenderPlayerId = NEUTRAL_PLAYER_ID;
@@ -231,8 +248,9 @@ describe("getActivationStep — the ordering primitive", () => {
     }
 
     const step = getActivationStep(state.combat!, state.activeEffects);
-    // The neutral side is up with two tied units; advanceActiveUnit auto-takes
-    // the first for a NEUTRAL_PLAYER_ID side rather than prompting.
+    // The neutral side is up with two tied units; advanceActiveUnit then hands
+    // the pick to the attacker (the player operating the guards), since the AI
+    // cannot answer a prompt itself.
     expect(step?.side).toBe(NEUTRAL_PLAYER_ID);
     expect(step?.candidates.length).toBe(2);
   });

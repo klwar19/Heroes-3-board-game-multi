@@ -881,16 +881,17 @@ describe("rules engine prototype", () => {
     const nextRound = applyOk(defended, { type: "END_COMBAT_ROUND", playerId: "p1" });
 
     // The token survives the round end. Round 2 opens with the init-9 cross-side
-    // tie (Griffins vs Vampires) resolved defender-first — no attacker edge.
-    expect(nextRound.combat?.activeUnitId).toBe("unit_p2_vampires");
+    // tie (Griffins vs Vampires) resolved attacker-first — p1 (the attacker)
+    // leads on the even split, then p2.
+    expect(nextRound.combat?.activeUnitId).toBe("unit_p1_griffins");
     expect(nextRound.combat?.units.unit_p1_crusaders.defenseToken).toBe(true);
 
-    // Run down the order: Vampires (9), Griffins (9), Dread Knights (7)...
-    const afterVampires = applyOk(nextRound, { type: "DEFEND_UNIT", playerId: "p2", unitId: "unit_p2_vampires" });
-    expect(afterVampires.combat?.activeUnitId).toBe("unit_p1_griffins");
-    const afterGriffins = applyOk(afterVampires, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
-    expect(afterGriffins.combat?.activeUnitId).toBe("unit_p2_dread_knights");
-    const afterDread = applyOk(afterGriffins, {
+    // Run down the order: Griffins (9), Vampires (9), Dread Knights (7)...
+    const afterGriffins = applyOk(nextRound, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    expect(afterGriffins.combat?.activeUnitId).toBe("unit_p2_vampires");
+    const afterVampires = applyOk(afterGriffins, { type: "DEFEND_UNIT", playerId: "p2", unitId: "unit_p2_vampires" });
+    expect(afterVampires.combat?.activeUnitId).toBe("unit_p2_dread_knights");
+    const afterDread = applyOk(afterVampires, {
       type: "DEFEND_UNIT",
       playerId: "p2",
       unitId: "unit_p2_dread_knights"

@@ -4903,11 +4903,15 @@ export type PendingChoice =
        */
       step?: { unitId: UnitId; positions: number[] };
       /**
-       * combat-activation-order: several of this player's units are tied for the
-       * next activation slot (same effective initiative). The player picks which
-       * one activates now (index-aligned with the options).
+       * combat-activation-order: several units of one side are tied for the next
+       * activation slot (same effective initiative); the chooser picks which one
+       * activates now (index-aligned with the options). `side` is the controller
+       * those tied units belong to — usually the chooser's own side, but for the
+       * Neutral army it is NEUTRAL_PLAYER_ID while the attacker breaks the tie on
+       * its behalf, so resolution validates the pick against `side`, not the
+       * answering player.
        */
-      activationOrder?: { unitIds: UnitId[] };
+      activationOrder?: { unitIds: UnitId[]; side: PlayerId };
       /** deck-pick: the shared-deck search waiting on the deck choice. */
       deckPick?: { deckIds: DeckId[]; count: number };
       /**

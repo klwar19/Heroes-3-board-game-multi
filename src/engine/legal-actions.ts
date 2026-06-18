@@ -635,10 +635,11 @@ export function sortUnitsForActivation(combat: CombatState, activeEffects: Activ
  *  - Units of the SAME side tied at this initiative are ALL returned as
  *    `candidates`, so the controller chooses which goes first (engine prompt).
  *  - When BOTH sides have units tied at this initiative, activation ALTERNATES
- *    between them rather than letting the attacker run all of its tied units
- *    first. The side that has activated fewer units at this initiative this
- *    round acts next; on an even split the defender/neutral side goes first, so
- *    the attacker never gets the old tie advantage.
+ *    between them rather than letting one side run all of its tied units first.
+ *    The side that has activated fewer units at this initiative this round acts
+ *    next; on an even split the ATTACKER side goes first, then they go back and
+ *    forth. In a Neutral fight the player is always the attacker, so the player
+ *    leads and the Neutral army follows; in PvP the attacker leads the defender.
  */
 export type ActivationStep = {
   side: PlayerId;
@@ -672,7 +673,10 @@ export function getActivationStep(
     return { side: tierOthers[0].controllerId, candidates: tierOthers, initiative: topInitiative };
   }
 
-  // Both sides are present at this initiative: alternate, defender-first on ties.
+  // Both sides are present at this initiative: alternate, ATTACKER-first on
+  // ties. Whichever side has activated fewer units at this tier goes next; on an
+  // even split the attacker leads (the player in a Neutral fight, the attacking
+  // hero in PvP), so the two sides go back and forth starting with the attacker.
   const actedAtTier = (predicate: (unit: CombatUnitState) => boolean) =>
     Object.values(combat.units).filter(
       (unit) => unit.activatedThisRound && initiativeOf(unit) === topInitiative && predicate(unit)
@@ -680,10 +684,10 @@ export function getActivationStep(
   const attackerActed = actedAtTier((unit) => unit.controllerId === attackerId);
   const othersActed = actedAtTier((unit) => unit.controllerId !== attackerId);
 
-  if (attackerActed < othersActed) {
-    return { side: attackerId, candidates: tierAttackers, initiative: topInitiative };
+  if (othersActed < attackerActed) {
+    return { side: tierOthers[0].controllerId, candidates: tierOthers, initiative: topInitiative };
   }
-  return { side: tierOthers[0].controllerId, candidates: tierOthers, initiative: topInitiative };
+  return { side: attackerId, candidates: tierAttackers, initiative: topInitiative };
 }
 
 export function getNextUnitToActivate(combat: CombatState, activeEffects: ActiveEffectState[] = []): CombatUnitState | null {

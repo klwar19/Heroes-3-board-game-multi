@@ -22,13 +22,15 @@ import { NEUTRAL_PLAYER_ID } from "./state";
  *   to a space next to the target. It never walks toward an out-of-reach
  *   favourite while a different enemy stands ready to be struck; it moves
  *   without attacking only when it can reach no one this activation.
- * - Ground and flying units prioritise attacking units of the same tier,
- *   then lower tiers in descending order, then higher tiers in ascending
- *   order.
- * - Ranged units prioritise other ranged units with the same tier order;
- *   only when no ranged target exists do they fall back to ground/flying.
- *   They never move-then-shoot, so they only count targets they can hit from
- *   where they stand. An engaged ranged unit must hit an adjacent enemy.
+ * - Ground and flying units prioritise attacking units of the SAME tier; when
+ *   no same-tier enemy is available they simply hit the NEAREST enemy, whatever
+ *   its tier — there is no further tier ordering, closest wins (a bronze with no
+ *   bronze target attacks the nearest unit, silver or gold or azure alike).
+ * - Ranged units prioritise other ranged units with that same rule (same tier
+ *   first, then nearest); only when no ranged target exists do they fall back to
+ *   ground/flying. They never move-then-shoot, so they only count targets they
+ *   can hit from where they stand. An engaged ranged unit must hit an adjacent
+ *   enemy.
  * - Among equally valid (attackable) targets they attack the closest. When
  *   targets are still tied after that, the rulebook says the player chooses —
  *   the activation pauses on an ABILITY_TARGET_CHOICE so the table decides.
@@ -38,28 +40,22 @@ import { NEUTRAL_PLAYER_ID } from "./state";
  * - Neutral units never defend.
  */
 
-const TIER_RANK: Record<UnitGrade, number> = { bronze: 0, silver: 1, gold: 2, azure: 3 };
-
+/**
+ * Same-tier-first, then "attack the nearest." A target of the attacker's own
+ * tier outranks every other tier (priority 0); ALL other tiers share one lower
+ * priority (1), so the distance tiebreaker in {@link sortNeutralTargetCandidates}
+ * — not any tier ordering — decides among them. (Earlier builds ranked the
+ * lower tiers in descending order, then the higher tiers ascending; the house
+ * rule is the simpler same-tier-then-closest.)
+ */
 function tierPriority(attackerTier: UnitGrade, targetTier: UnitGrade): number {
-  const attacker = TIER_RANK[attackerTier];
-  const target = TIER_RANK[targetTier];
-  if (target === attacker) {
-    return 0;
-  }
-
-  if (target < attacker) {
-    // Lower tiers next, closest tier first (descending order).
-    return attacker - target;
-  }
-
-  // Higher tiers last, ascending.
-  return 10 + (target - attacker);
+  return targetTier === attackerTier ? 0 : 1;
 }
 
 /**
  * The ranked target pool of a neutral unit: ranged attackers prefer ranged
- * targets, everyone prefers same tier, then lower, then higher tiers, and
- * closer targets beat farther ones.
+ * targets, everyone prefers same tier and then — with no same-tier target —
+ * simply the closest, distance alone breaking among the other tiers.
  */
 function rankedTargetPool(combat: CombatState, attacker: CombatUnitState): CombatUnitState[] {
   const enemies = Object.values(combat.units).filter(

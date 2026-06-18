@@ -125,4 +125,23 @@ describe("neutral units must attack if possible (rulebook AI)", () => {
 
     expect(intent).toEqual({ kind: "attack", defenderId: farSameTierBronze.id });
   });
+
+  it("with no same-tier target it strikes the NEAREST enemy, ignoring tier order", () => {
+    // The user's rule: "bronze prioritises bronze, but if no [bronze] target
+    // then attack the nearest." With no bronze enemy, tier no longer ranks the
+    // remaining targets — distance does. The adjacent GOLD is hit even though a
+    // SILVER (which the old descending/ascending order ranked first) is in play
+    // but farther. Both are reachable, so the choice is purely "closest".
+    const state = createInitialGameState("must-attack-nearest");
+    const attacker = place(state, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ground", 5);
+    const nearGold = place(state, "unit_p1_crusaders", "p1", "gold", "ground", 6); // adjacent (dist 1)
+    const farSilver = place(state, "unit_p1_griffins", "p1", "silver", "ground", 13); // dist 2, reachable
+    onlyUnits(state, [attacker, nearGold, farSilver]);
+
+    const intent = planNeutralActivation(state, state.combat!, attacker);
+
+    // Closest wins: the adjacent gold. (The old AI returned a move-and-attack on
+    // the farther silver because it ranked silver above gold by tier.)
+    expect(intent).toEqual({ kind: "attack", defenderId: nearGold.id });
+  });
 });
