@@ -35,7 +35,8 @@ import {
   hillFortCost,
   isTileAdjacentToSpace,
   isTileRotationConnected,
-  observatoryDiscoverTargets,
+  observatoryPlacementCenters,
+  observatoryRevealTargets,
   removableHandCards
 } from "./adventure-reducer";
 import {
@@ -4700,13 +4701,34 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
   if (step.type === "DISCOVER_ADJACENT_TILE") {
     const field = adventure.fields[visit.fieldId];
     const tile = field ? adventure.tiles[field.tileInstanceId] : undefined;
-    const candidates = tile ? observatoryDiscoverTargets(adventure, tile) : [];
+    const hero = state.heroes[visit.heroId];
+    // Flip an adjacent face-down tile the hero stands at an open border of.
+    const candidates = tile && hero ? observatoryRevealTargets(state, hero, tile) : [];
     candidates.forEach((candidate, index) => {
       actions.push({
         label: `Discover the face-down tile at (${candidate.centerRow}, ${candidate.centerCol})`,
         action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
       });
     });
+    // Or open a brand-new tile by dropping a Far (Ⅱ–Ⅲ) supply tile into an open
+    // border slot. Face-down Far tiles are interchangeable backs, so the top of
+    // the supply is offered for each reachable slot.
+    const supply = adventure.playerFarTiles[playerId] ?? [];
+    if (tile && hero && supply.length > 0) {
+      const supplyIndex = 0;
+      for (const center of observatoryPlacementCenters(state, hero, tile, supply[supplyIndex])) {
+        actions.push({
+          label: `Place a Far (Ⅱ–Ⅲ) tile at (${center.row}, ${center.col})`,
+          action: {
+            type: "PLACE_OBSERVATORY_TILE",
+            playerId,
+            supplyIndex,
+            centerRow: center.row,
+            centerCol: center.col
+          }
+        });
+      }
+    }
     actions.push({ label: "Skip", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
     return;
   }
@@ -5319,8 +5341,9 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     const tile = adventure.tiles[tileChoice.tileInstanceId];
     if (tileChoice.playerId === playerId && tile) {
       const anyConnected = [0, 1, 2, 3, 4, 5].some((rotation) => isTileRotationConnected(state, tile, rotation));
-      // Far placements also require a rotation the placing hero can cross onto.
-      const placingHero = tileChoice.kind === "place" && tileChoice.heroId ? state.heroes[tileChoice.heroId] : null;
+      // Far placements — and Redwood Observatory openings — also require a
+      // rotation the opening hero can cross onto (matches setTileRotation).
+      const placingHero = tileChoice.heroId ? state.heroes[tileChoice.heroId] : null;
       const center = { row: tile.centerRow, col: tile.centerCol };
       const anyReachable =
         placingHero != null &&

@@ -2117,6 +2117,19 @@ export type GameAction =
     }
   | {
       /**
+       * Redwood Observatory: instead of flipping an adjacent face-down tile, drop
+       * one of the visiting player's face-down Far (Ⅱ–Ⅲ) supply tiles into an
+       * open border slot next to the observatory (no movement cost). Resolves the
+       * open DISCOVER_ADJACENT_TILE visit step.
+       */
+      type: "PLACE_OBSERVATORY_TILE";
+      playerId: PlayerId;
+      supplyIndex: number;
+      centerRow: number;
+      centerCol: number;
+    }
+  | {
+      /**
        * Chooses the final rotation of a just-revealed or just-placed tile
        * ("You may always rotate Map Tiles when placing or revealing them").
        */

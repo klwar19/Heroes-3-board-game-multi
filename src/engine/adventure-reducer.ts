@@ -105,7 +105,18 @@ import {
   wisdomGoldDiscount,
   wisdomSearchCount
 } from "./ruleset";
-import { hexDistance, hexNeighbor, hexSpaceId, parseHexSpaceId, slotDirection, tileFootprint } from "./hex";
+import {
+  hexDistance,
+  hexEquals,
+  hexNeighbor,
+  hexNeighbors,
+  hexSpaceId,
+  parseHexSpaceId,
+  slotDirection,
+  tileFootprint,
+  tileLatticeNeighbors,
+  type HexCoord
+} from "./hex";
 import type {
   CardDefinition,
   CardId,
@@ -1303,9 +1314,10 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
     throw new Error("Rotate the tile so a path connects it to the rest of the map (border lines cannot seal it off).");
   }
 
-  // A placed Far tile must keep a doorway the placing hero can cross onto, in
-  // whatever rotation the player settles on.
-  const placingHero = pending.kind === "place" && pending.heroId ? state.heroes[pending.heroId] : null;
+  // A placed Far tile — or a tile opened through a Redwood Observatory — must
+  // keep a doorway the opening hero can cross onto, in whatever rotation the
+  // player settles on. Plain on-foot discoveries carry no heroId and skip this.
+  const placingHero = pending.heroId ? state.heroes[pending.heroId] : null;
   if (placingHero) {
     const center = { row: tile.centerRow, col: tile.centerCol };
     const anyReachable = [0, 1, 2, 3, 4, 5].some((candidate) =>
@@ -1942,23 +1954,81 @@ function resolveObservatoryDiscover(
   }
 
   const tile = adventure.tiles[field.tileInstanceId];
-  if (!tile) {
+  const hero = state.heroes[heroId];
+  if (!tile || !hero) {
     return;
   }
 
-  const faceDownNeighbors = observatoryDiscoverTargets(adventure, tile);
-  const target = faceDownNeighbors[action.optionIndex ?? 0];
+  // Same border + access gate as the legal-action list, so optionIndex lines up.
+  const targets = observatoryRevealTargets(state, hero, tile);
+  const target = targets[action.optionIndex ?? 0];
   if (!target) {
     return;
   }
 
-  beginTileRotation(state, action.playerId, target, "reveal");
+  // Pass the opening hero so SET_TILE_ROTATION keeps a doorway they can cross.
+  beginTileRotation(state, action.playerId, target, "reveal", hero.id);
+}
+
+/**
+ * Redwood Observatory: place one of the visiting player's face-down Far (Ⅱ–Ⅲ)
+ * supply tiles into an open border slot next to the observatory, for free. The
+ * wiki's "Discover a face down Tile adjacent to this one" also covers opening a
+ * brand-new tile from your supply when no face-down tile is there to flip — but
+ * only where the observatory field actually borders an empty slot across an open
+ * (non-yellow) edge, and the slot nests gaplessly into the map like any Far
+ * placement.
+ */
+export function placeObservatoryTile(
+  state: GameState,
+  action: Extract<GameAction, { type: "PLACE_OBSERVATORY_TILE" }>
+): void {
+  const adventure = requireAdventure(state);
+  const visit = adventure.pendingVisit;
+  const step = visit?.steps[0];
+  if (!visit || visit.playerId !== action.playerId || step?.type !== "DISCOVER_ADJACENT_TILE") {
+    throw new Error("Placing a Far tile here needs an open Redwood Observatory visit.");
+  }
+  if (state.pendingChoice) {
+    throw new Error("Resolve the pending card choice first.");
+  }
+
+  const hero = state.heroes[visit.heroId];
+  const observatoryField = adventure.fields[visit.fieldId];
+  const observatoryTile = observatoryField ? adventure.tiles[observatoryField.tileInstanceId] : undefined;
+  if (!hero || !observatoryField || !observatoryTile) {
+    throw new Error("The Redwood Observatory visit is no longer valid.");
+  }
+
+  const supply = adventure.playerFarTiles[action.playerId] ?? [];
+  const tileDefId = supply[action.supplyIndex];
+  if (!tileDefId) {
+    throw new Error("That Far tile is not in your supply.");
+  }
+
+  const center: HexCoord = { row: action.centerRow, col: action.centerCol };
+  const placeable = observatoryPlacementCenters(state, hero, observatoryTile, tileDefId);
+  if (!placeable.some((candidate) => hexEquals(candidate, center))) {
+    throw new Error(
+      "The Observatory can only place a Far tile at an open border slot next to it that nests against two tiles."
+    );
+  }
+
+  // Free observatory discovery — no movement point is spent. The supply tile
+  // leaves the player's hand and lands face up, awaiting its rotation choice.
+  supply.splice(action.supplyIndex, 1);
+  visit.steps.shift();
+  const tile = instantiateTile(adventure, tileDefId, center, 0, false, { materialize: false });
+  beginTileRotation(state, action.playerId, tile, "place", hero.id);
+  processPendingVisit(state);
 }
 
 /**
  * Face-down tiles the Redwood Observatory may flip: tiles whose flower
  * touches the observatory's tile (centers at hex distance 3 - the previous
- * row/column heuristic also matched tiles up to six hexes away).
+ * row/column heuristic also matched tiles up to six hexes away). This is the
+ * raw geometric set; {@link observatoryRevealTargets} narrows it to the tiles a
+ * given hero is actually standing at an open border of.
  */
 export function observatoryDiscoverTargets(
   adventure: NonNullable<GameState["adventure"]>,
@@ -1972,6 +2042,104 @@ export function observatoryDiscoverTargets(
         { row: tile.centerRow, col: tile.centerCol }
       ) === 3
   );
+}
+
+/**
+ * Whether the hero's field is "at an open border" of `footprintIds`: it is
+ * hex-adjacent to one of those hexes and its own outer edge is not a solid
+ * yellow line. A ring field sealed by a yellow outer arc — or the tile's centre
+ * field, which never touches a neighbouring flower — fails, so a hero walled in
+ * by yellow borders cannot open a new map at all. The far side's rotation is the
+ * player's to choose, so only the hero's own edge constrains access here.
+ */
+function fieldAtOpenBorder(
+  adventure: NonNullable<GameState["adventure"]>,
+  spaceId: MapSpaceId,
+  footprintIds: Set<MapSpaceId>
+): boolean {
+  const field = adventure.fields[spaceId];
+  const coord = parseHexSpaceId(spaceId);
+  if (!field || !coord) {
+    return false;
+  }
+  // A solid yellow outer border seals every cross-tile edge of this field.
+  if (isNeighborOuterEdgeSealed(adventure, field)) {
+    return false;
+  }
+  return hexNeighbors(coord).some((neighbor) => footprintIds.has(hexSpaceId(neighbor)));
+}
+
+/**
+ * Adjacent face-down tiles the Redwood Observatory may flip for the hero
+ * standing on it: geometric neighbours (flowers that touch the observatory's
+ * tile) on the same layer that the hero's field directly borders across an open
+ * edge. A tile the hero is sealed off from by a yellow border — or only touches
+ * from the observatory's centre field — is not offered (the "be at the border
+ * AND be able to access it" rule).
+ */
+export function observatoryRevealTargets(
+  state: GameState,
+  hero: HeroState,
+  observatoryTile: MapTileState
+): MapTileState[] {
+  const adventure = state.adventure;
+  if (!adventure || !hero.spaceId) {
+    return [];
+  }
+  const heroLayer = fieldLayer(state, hero.spaceId);
+  const heroSpaceId = hero.spaceId;
+  return observatoryDiscoverTargets(adventure, observatoryTile).filter((candidate) => {
+    if (tileLayer(candidate) !== heroLayer) {
+      return false;
+    }
+    const footprintIds = new Set(getTileFootprintSpaceIds(candidate));
+    return fieldAtOpenBorder(adventure, heroSpaceId, footprintIds);
+  });
+}
+
+/**
+ * Empty lattice slots next to the observatory where the hero may drop a Far
+ * (Ⅱ–Ⅲ) supply tile of the given kind: a gapless neighbour of the observatory's
+ * tile that nests against two existing tiles, sits on the hero's layer, that the
+ * hero's field borders across an open edge, and that the hero could cross onto
+ * in some rotation (so the rotation step has a legal choice).
+ */
+export function observatoryPlacementCenters(
+  state: GameState,
+  hero: HeroState,
+  observatoryTile: MapTileState,
+  tileDefId: string
+): HexCoord[] {
+  const adventure = state.adventure;
+  const def = allTileDefinitions[tileDefId];
+  if (!adventure || !def || !hero.spaceId) {
+    return [];
+  }
+  const heroLayer = fieldLayer(state, hero.spaceId);
+  // A Far tile may only land on the hero's own layer (no cross-divide placing).
+  if (tileLayer({ group: def.group } as MapTileState) !== heroLayer) {
+    return [];
+  }
+
+  const heroSpaceId = hero.spaceId;
+  const observatoryCenter: HexCoord = { row: observatoryTile.centerRow, col: observatoryTile.centerCol };
+  const centers: HexCoord[] = [];
+  for (const center of tileLatticeNeighbors(observatoryCenter)) {
+    // Standard Far-placement geometry: no overlap, nests against >=2 tiles, and
+    // sits next to the hero (footprint as a set is rotation-independent).
+    if (!canPlaceTileAt(state, hero, center, 0)) {
+      continue;
+    }
+    const footprintIds = new Set(tileFootprint(center, 0).map(hexSpaceId));
+    if (!fieldAtOpenBorder(adventure, heroSpaceId, footprintIds)) {
+      continue;
+    }
+    if (![0, 1, 2, 3, 4, 5].some((rotation) => canHeroReachPlacedTile(state, hero, tileDefId, center, rotation))) {
+      continue;
+    }
+    centers.push(center);
+  }
+  return centers;
 }
 
 export function tradeResources(state: GameState, action: Extract<GameAction, { type: "TRADE_RESOURCES" }>): void {
