@@ -212,6 +212,78 @@ describe("neutral combat — pre-activation reaction pause (Intelligence / insta
 });
 
 // ---------------------------------------------------------------------------
+// Neutral combat: the player breaks the guards' own same-speed ties
+// ---------------------------------------------------------------------------
+
+describe("neutral combat — tied-speed activation order", () => {
+  it("pauses on the attacker's activation-order choice when guards tie, then runs the picked guard", () => {
+    // One fast player unit and (at least) two Neutral guards tied for the next
+    // slot. The guards cannot answer a prompt, so once the player's unit has
+    // acted the engine drives — through the real adventure pump — straight onto
+    // the ATTACKER's activation-order choice; picking one makes that guard the
+    // active unit (which then opens its own pre-activation pause).
+    let state = moveOntoGuardedMine(refreshP1(makeGame()));
+    const armyUnit = state.players.p1.army[0];
+    state = apply(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: armyUnit.id, position: 13 });
+    // Freeze player units fast BEFORE the guard is drawn so the player acts first.
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.controllerId !== NEUTRAL_PLAYER_ID) {
+        unit.initiative = 99;
+      }
+    }
+    state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+
+    // Clone the drawn guard so two Neutral units certainly exist, then tie EVERY
+    // guard at one (slower) initiative — they all become the tied candidates.
+    const combat = state.combat!;
+    const guard1 = Object.values(combat.units).find((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)!;
+    const occupied = new Set(Object.values(combat.units).map((unit) => unit.position));
+    let freePosition = 0;
+    while (occupied.has(freePosition)) {
+      freePosition += 1;
+    }
+    const guard2: CombatUnitState = {
+      ...structuredClone(guard1),
+      id: `${guard1.id}__clone`,
+      position: freePosition
+    };
+    combat.units[guard2.id] = guard2;
+    const neutralIds = Object.values(combat.units)
+      .filter((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)
+      .map((unit) => unit.id);
+    for (const id of neutralIds) {
+      combat.units[id].initiative = 5;
+      combat.units[id].activatedThisRound = false;
+    }
+
+    // The player's unit is up first; defending it advances to the tied guards and
+    // the pump opens the attacker's order choice instead of auto-picking.
+    state = defendActivePlayerUnit(state);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    if (choice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected an activation-order choice");
+    }
+    expect(choice.context).toBe("combat-activation-order");
+    expect(choice.playerId).toBe("p1"); // the attacker breaks the neutral tie
+    expect(choice.activationOrder?.side).toBe(NEUTRAL_PLAYER_ID);
+    expect(new Set(choice.activationOrder?.unitIds)).toEqual(new Set(neutralIds));
+    expect(state.combat!.activeUnitId).toBeNull();
+
+    // Pick the cloned guard: it becomes the active unit, and being a guard it
+    // then opens its own pre-activation pause for the attacker to react to.
+    const cloneIndex = choice.activationOrder!.unitIds.indexOf(guard2.id);
+    expect(cloneIndex).toBeGreaterThanOrEqual(0);
+    state = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: cloneIndex });
+
+    expect(state.combat!.activeUnitId).toBe(guard2.id);
+    expect(state.combat!.pendingNeutralStep?.kind).toBe("pre-activation");
+    expect(state.combat!.pendingNeutralStep?.unitId).toBe(guard2.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Player-vs-player: pause for the Intelligence holder during the enemy's turn
 // ---------------------------------------------------------------------------
 

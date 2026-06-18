@@ -5037,12 +5037,14 @@ function applyActivationStartAbilities(state: GameState, unit: CombatUnitState):
 }
 
 /**
- * Hands the activation slot to the next unit. When several of the acting
- * side's units are tied for that slot (same effective initiative), the
- * controlling player is prompted to choose which goes first — unless that side
- * is the neutral army, which auto-takes its first unit (its AI then plays it).
- * Cross-side ties are resolved by getActivationStep (alternating, no attacker
- * advantage), so this only ever prompts for one side at a time.
+ * Hands the activation slot to the next unit. When several of the acting side's
+ * units are tied for that slot (same effective initiative), a human is prompted
+ * to choose which goes first. A real player breaks the tie among their own
+ * units; the Neutral army cannot answer a prompt, so the player operating the
+ * fight (the attacker — the player is always the attacker against guards) breaks
+ * it on Neutral's behalf, exactly as the attacker already breaks a Neutral
+ * unit's TARGET ties. Cross-side ties are resolved by getActivationStep
+ * (alternating, attacker-first), so this only ever prompts for one side at once.
  */
 function advanceActiveUnit(state: GameState): void {
   const combat = state.combat;
@@ -5051,11 +5053,20 @@ function advanceActiveUnit(state: GameState): void {
   }
 
   const step = getActivationStep(combat, state.activeEffects);
-  if (step && step.candidates.length >= 2 && step.side !== NEUTRAL_PLAYER_ID) {
+  if (step && step.candidates.length >= 2) {
+    const chooser = step.side === NEUTRAL_PLAYER_ID ? combat.attackerPlayerId : step.side;
+    if (chooser === NEUTRAL_PLAYER_ID) {
+      // No human operates this tied side (cannot happen in a normal fight — a
+      // Neutral combat's attacker is always the player). Fall back to the
+      // deterministic first pick so activation can never softlock on a prompt
+      // nobody can answer.
+      setActiveUnit(state, step.candidates[0]?.id ?? null);
+      return;
+    }
     // Clear the just-finished unit so nothing reads it as still active while the
     // order choice is open.
     combat.activeUnitId = null;
-    openActivationOrderChoice(state, step.side, step.candidates);
+    openActivationOrderChoice(state, chooser, step.candidates);
     return;
   }
 
@@ -5068,16 +5079,20 @@ function advanceActiveUnit(state: GameState): void {
  */
 function openActivationOrderChoice(state: GameState, playerId: PlayerId, candidates: CombatUnitState[]): void {
   const choiceId = `choice_${nextEventNumber(state)}`;
+  const side = candidates[0].controllerId;
+  const neutralPick = side === NEUTRAL_PLAYER_ID;
   state.pendingChoice = {
     id: choiceId,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: "Several units share the same speed — choose which activates first.",
+    prompt: neutralPick
+      ? "Several Neutral units share the same speed — choose which one activates first."
+      : "Several of your units share the same speed — choose which activates first.",
     options: candidates.map((unit) => ({
       label: `Activate ${unit.cardName} (${getBattlefieldLabel(unit.position)})`
     })),
     context: "combat-activation-order",
-    activationOrder: { unitIds: candidates.map((unit) => unit.id) },
+    activationOrder: { unitIds: candidates.map((unit) => unit.id), side },
     returnPhase: "combat"
   };
   state.phase = "choice";
@@ -5112,7 +5127,18 @@ function resolveActivationOrderChoice(
   const combat = state.combat;
   const unitId = choice.activationOrder.unitIds[action.optionIndex];
   const unit = combat ? combat.units[unitId] : undefined;
-  if (!combat || !unit || !isUnitAlive(unit) || unit.activatedThisRound || unit.controllerId !== action.playerId) {
+  // The pick must still be eligible and belong to the side the tie was opened
+  // for. The chooser is that side's controller for a real player, but for the
+  // Neutral army it is the attacker breaking Neutral's tie — so validate against
+  // the stored `side`, not the answering player (already gated above to the
+  // choice's playerId).
+  if (
+    !combat ||
+    !unit ||
+    !isUnitAlive(unit) ||
+    unit.activatedThisRound ||
+    unit.controllerId !== choice.activationOrder.side
+  ) {
     throw new Error("That unit can no longer take the first activation.");
   }
 

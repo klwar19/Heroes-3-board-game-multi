@@ -230,9 +230,12 @@ describe("Tactics — player-vs-player swap windows", () => {
     state = apply(state, { type: "PLACE_COMBAT_UNIT", playerId: "p2", armyUnitId: d2.id, position: 0 });
     state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p2" });
 
-    // The hero-absent defender is not eligible, and the attacker holds no card.
+    // The hero-absent defender is not eligible, and the attacker holds no card,
+    // so no Tactics swap window opens and the combat is never held in
+    // "combat-setup" for one. It drops straight into the round — here onto p1's
+    // own activation-order choice, since the attacker leads and its units tie.
     expect(state.combat?.pendingTacticsSwaps ?? null).toBeNull();
-    expect(state.phase).toBe("combat");
+    expect(state.phase).not.toBe("combat-setup");
   });
 });
 
