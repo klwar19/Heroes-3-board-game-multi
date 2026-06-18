@@ -242,11 +242,24 @@ function heroTileGroup(state: GameState, hero: HeroState | null): string | null 
   }
 }
 
+/** Whether any IV–V (or deeper) tile has been revealed on the map. */
+function anyNearOrCenterTileRevealed(state: GameState): boolean {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return false;
+  }
+
+  return Object.values(adventure.tiles).some(
+    (tile) => !tile.faceDown && !tile.awaitingRotation && (tile.backLabel === "Ⅳ–Ⅴ" || tile.backLabel === "Ⅵ–Ⅶ")
+  );
+}
+
 /**
- * BINH gate for the Expert Spell deck: a hero at level 4 or higher may search it
- * (choosing Basic or Expert); below level 4 only the Basic deck is available —
- * unless the hero owns a key card (Eagle Eye, Wisdom, or a Basic elemental
- * Magic), which unlocks the Expert deck at any level.
+ * BINH gate for the Expert Spell deck: a hero may search it (choosing Basic or
+ * Expert) once EITHER condition holds — the hero is level 4 or higher, OR a IV–V
+ * (or deeper) map tile has been revealed. Below both, only the Basic deck is
+ * available, unless the hero owns a key card (Eagle Eye, Wisdom, or a Basic
+ * elemental Magic), which unlocks the Expert deck at any level / map state.
  */
 export function canDrawExpertSpells(state: GameState, playerId: PlayerId, hero: HeroState | null): boolean {
   if (getRuleset(state) !== "binh") {
@@ -257,7 +270,7 @@ export function canDrawExpertSpells(state: GameState, playerId: PlayerId, hero: 
     return true;
   }
 
-  return (hero?.level ?? 1) >= 4;
+  return (hero?.level ?? 1) >= 4 || anyNearOrCenterTileRevealed(state);
 }
 
 /** Whether the player's town has an artifact-granting building (Blacksmith). */
