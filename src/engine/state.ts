@@ -416,6 +416,18 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Adrienne's Fire Magic specialty: while the owner holds this combat-scoped
+       * effect, every Spell they cast from the matching School (and the
+       * school-agnostic "any" spells, exactly as SPELL_POWER_DOUBLE treats them)
+       * is cast with this much extra Power. Stacks additively across copies and
+       * with the once-per-cast Power-card bonus; read in getCurrentSpellPower.
+       */
+      type: "SPELL_SCHOOL_POWER_BONUS";
+      school: SpellSchool;
+      amount: number;
+    }
+  | {
+      /**
        * Pendant of Second Sight, option A: the selected unit "cannot gain a
        * Paralysis token during this Combat". A unit-scoped, combat-duration
        * immunity that blocks every Paralysis source — the Blind Spell
@@ -1229,6 +1241,36 @@ export type EffectDefinition =
        * own Might and Magic deck, keep one in hand, and discard the rest.
        */
       type: "DECK_DIG_KEEP_ONE";
+      count: number;
+    }
+  | {
+      /**
+       * Jeddite's Mysterious Warlock I/VI: dig up to `count` cards off the top of
+       * your own deck, keep every card matching `filter` (Spell + Specialty) in
+       * your hand, and discard the rest. No choice is needed — all matches are
+       * kept — so this never opens a pending choice.
+       */
+      type: "DECK_DIG_KEEP_MATCHING";
+      count: number;
+      filter: "spell-or-specialty";
+    }
+  | {
+      /**
+       * Tazar's War Hero VI: draw the top card of the shared Artifact deck (the
+       * Legacy "artifacts" deck, or the BINH Minor deck) straight to your hand.
+       * The card's per-option `cost` pays the printed price (remove 1 card / or
+       * discard 3 cards); this effect only performs the draw.
+       */
+      type: "DRAW_TOP_ARTIFACT";
+    }
+  | {
+      /**
+       * Adrienne's Fire Magic IV: Search (`count`) your own deck (reveal the top
+       * `count`, keep one in hand, the rest go to your discard pile), THEN shuffle
+       * your whole discard pile back into your deck. The reshuffle runs after the
+       * pick resolves (the own-deck-pick choice carries `thenReshuffleDiscard`).
+       */
+      type: "SEARCH_DECK_THEN_RESHUFFLE";
       count: number;
     }
   | {
@@ -4784,7 +4826,15 @@ export type PendingChoice =
        */
       deckSearchMode?: { deckId: DeckId; count: number };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */
-      ownDeckPick?: { cardIds: CardId[] };
+      ownDeckPick?: {
+        cardIds: CardId[];
+        /**
+         * Adrienne's Fire Magic IV: after the pick (the chosen card to hand, the
+         * rest to discard), shuffle the player's whole discard pile back into
+         * their deck. Omitted for Mana Vortex / Chain Lightning IV.
+         */
+        thenReshuffleDiscard?: boolean;
+      };
       /** rogues-scout: the deck being peeked and its revealed top card. */
       rogueScout?: { deckId: DeckId; cardId: CardId };
       /** siege-demolish: intact fortification positions and removals left. */

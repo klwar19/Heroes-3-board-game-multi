@@ -175,6 +175,37 @@ export function getSchoolPowerMultiplier(
 }
 
 /**
+ * Adrienne's Fire Magic specialty: the extra Power `playerId` adds to a Spell of
+ * the matching School. Sums every in-play SPELL_SCHOOL_POWER_BONUS the caster
+ * controls whose school matches the spell — or any of them for a school-agnostic
+ * ("any") spell, mirroring how the school-locked +Power boosts and the Orb
+ * multiplier qualify. Returns 0 when none apply (a non-matching school is never
+ * touched). Added to the cast's base Power in getCurrentSpellPower.
+ */
+export function getSchoolPowerBonus(
+  state: GameState,
+  playerId: PlayerId,
+  spellCard: CardDefinition | undefined
+): number {
+  const schools = spellCard?.spellSchools ?? [];
+  let bonus = 0;
+  for (const effect of state.activeEffects) {
+    if (effect.controllerId !== playerId) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (
+        modifier.type === "SPELL_SCHOOL_POWER_BONUS" &&
+        (schools.includes(modifier.school) || schools.includes("any"))
+      ) {
+        bonus += modifier.amount;
+      }
+    }
+  }
+  return bonus;
+}
+
+/**
  * Whether an ongoing effect was created by a Spell card. Tower Gargoyles ignore
  * only those; Tower Titans ignore every ongoing effect whatever its source.
  */

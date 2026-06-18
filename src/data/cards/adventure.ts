@@ -296,35 +296,39 @@ function dessaSpecialtySix(): CardLibrary[string] {
 }
 
 /**
- * Alamar's Resurrection: a reaction in an attack window that cancels a normal
- * attack which would destroy one of your units (never spells or specialty
- * damage). One option per grade; its Power requirement is paid by discarding
- * that many "power-source" cards (a Power statistic or any Spell). A cost of 0
- * needs no discard.
+ * A lethal-save specialty (Alamar's Resurrection, Jeddite's Mysterious Warlock):
+ * a reaction in the engine's lethal-save window that cancels a normal attack
+ * which would destroy one of your units (never spells or specialty damage). One
+ * option per grade; its Power requirement is paid by discarding that many
+ * "power-source" cards (a Power statistic or any Spell). A cost of 0 needs no
+ * discard.
  */
-function resurrectionSpecialty(
+function lethalSaveSpecialty(
+  heroSlug: string,
+  specialtyName: string,
   level: 1 | 4 | 6,
   costs: { bronze: number; silver: number; gold: number }
 ): CardLibrary[string] {
   const grades = ["bronze", "silver", "gold"] as const;
+  const tagGroup = specialtyName.toLowerCase().replace(/\s+/g, "-");
   return {
-    id: `specialty.alamar.${level}`,
-    name: `Resurrection ${level === 1 ? "I" : level === 4 ? "IV" : "VI"}`,
+    id: `specialty.${heroSlug}.${level}`,
+    name: `${specialtyName} ${towerRoman(level)}`,
     kind: "hero-specialty",
     timing: "reaction",
     phaseLimit: ["reaction", "combat"],
     tags: [
       "hero-specialty",
       "reaction",
-      "alamar",
-      "resurrection",
+      heroSlug,
+      tagGroup,
       `Cancel an enemy attack that would reduce one of your units to 0 HP (attacks only, not spells or specialties). Discard Power (a Power statistic or a Spell): ${costs.bronze} for a bronze unit, ${costs.silver} for silver, ${costs.gold} for gold.`
     ],
     effect: {
       type: "CHOOSE_ONE",
-      // No per-option trigger: Resurrection is offered only in its own
-      // lethal-save window (when a unit is actually about to die), not as a
-      // normal attack-window reaction.
+      // No per-option trigger: the save is offered only in its own lethal-save
+      // window (when a unit is actually about to die), not as a normal
+      // attack-window reaction.
       options: grades.map((grade) => ({
         label:
           costs[grade] > 0
@@ -337,11 +341,11 @@ function resurrectionSpecialty(
       }))
     },
     assets: {
-      cardImage: specialtyCardImage("alamar", level),
-      imageAlt: `Resurrection level ${level} specialty card`
+      cardImage: specialtyCardImage(heroSlug, level),
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
     },
     implementationStatus: "implemented",
-    source: heroSource("alamar")
+    source: heroSource(heroSlug)
   };
 }
 
@@ -492,14 +496,21 @@ function towerStatBoostSpecialty(
 }
 
 /**
- * Armorer specialty (Mephala / the Armorer-defense heroes): a flat +N Defense to
- * a single attack, played as a defense reaction. Unlike a creature specialty it
- * has no signature unit, so the bonus never doubles. I/IV/VI = +2/+3/+4 Defense.
+ * Armorer / War Hero defense specialty (Mephala, Tazar): a flat +N Defense to a
+ * single attack, played as a defense reaction. Unlike a creature specialty it has
+ * no signature unit, so the bonus never doubles. Mephala I/IV/VI = +2/+3/+4;
+ * Tazar reuses it only for his "War Hero I" (+2).
  */
-function armorerSpecialty(heroSlug: string, level: 1 | 4 | 6, amount: number): CardLibrary[string] {
+function armorerSpecialty(
+  heroSlug: string,
+  level: 1 | 4 | 6,
+  amount: number,
+  specialtyName = "Armorer"
+): CardLibrary[string] {
+  const tagGroup = specialtyName.toLowerCase().replace(/\s+/g, "-");
   return {
     id: `specialty.${heroSlug}.${level}`,
-    name: `Armorer ${towerRoman(level)}`,
+    name: `${specialtyName} ${towerRoman(level)}`,
     kind: "hero-specialty",
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
@@ -507,17 +518,126 @@ function armorerSpecialty(heroSlug: string, level: 1 | 4 | 6, amount: number): C
       "hero-specialty",
       "instant",
       heroSlug,
-      "armorer",
+      tagGroup,
       `Your selected unit gains +${amount} defense.`
     ],
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
     effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
-      imageAlt: `Armorer level ${towerRoman(level)} specialty card`
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
     },
     implementationStatus: "implemented",
     source: heroSource(heroSlug)
+  };
+}
+
+/**
+ * Lord Haart's Estates specialty: an instant map play that gains a flat amount of
+ * gold (I/IV/VI = 2/3/5). Modelled as a single mapOnly option so it is only ever
+ * playable on the adventure map, never in combat.
+ */
+function estatesGoldSpecialty(level: 1 | 4 | 6, gold: number): CardLibrary[string] {
+  return {
+    id: `specialty.lord_haart.${level}`,
+    name: `Estates ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: ["hero-specialty", "instant", "lord_haart", "estates", `Gain ${gold} gold.`],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [{ label: `Gain ${gold} gold`, mapOnly: true, effect: { type: "GAIN_RESOURCES", gain: { gold } } }]
+    },
+    assets: {
+      cardImage: specialtyCardImage("lord_haart", level),
+      imageAlt: `Estates level ${towerRoman(level)} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource("lord_haart")
+  };
+}
+
+/**
+ * Jeddite's Mysterious Warlock I/VI: a map play that digs the top `count` cards
+ * of your own deck, keeps every Spell and Specialty among them in your hand, and
+ * discards the rest (DECK_DIG_KEEP_MATCHING). I draws up to 3, VI up to 4.
+ */
+function warlockDigSpecialty(level: 1 | 6, count: number): CardLibrary[string] {
+  return {
+    id: `specialty.jeddite.${level}`,
+    name: `Mysterious Warlock ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "jeddite",
+      "mysterious-warlock",
+      `Draw up to ${count} cards from your deck, take any Spell and Specialty cards to your hand, and discard the rest.`
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: `Dig ${count} cards; keep Spells and Specialties`,
+          mapOnly: true,
+          effect: { type: "DECK_DIG_KEEP_MATCHING", count, filter: "spell-or-specialty" }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("jeddite", level),
+      imageAlt: `Mysterious Warlock level ${towerRoman(level)} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource("jeddite")
+  };
+}
+
+/**
+ * Adrienne's Fire Magic I/VI: a combat play that, for the rest of the Combat,
+ * adds +amount Power to the caster's Fire-school Spells (a player-scoped
+ * SPELL_SCHOOL_POWER_BONUS read in getCurrentSpellPower). I = +1, VI = +2.
+ *
+ * engine: this boosts activation-cast spells (`CAST_SPELL` — the Fire damage
+ * spells: Inferno, Berserk, Blind, Fire Wall, …). It does NOT boost the instant
+ * attack-window Fire spell Curse, whose Power is pooled separately on the attack
+ * stack (recomputePowerScaledAttackInstants), so Curse keeps its base scaling.
+ */
+function fireMagicSpecialty(level: 1 | 6, amount: number): CardLibrary[string] {
+  return {
+    id: `specialty.adrienne.${level}`,
+    name: `Fire Magic ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "adrienne",
+      "fire-magic",
+      `During this Combat, every Spell you cast from the School of Fire is cast with +${amount} Power.`
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: `Fire Magic ${towerRoman(level)}`,
+        scope: "player",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "SPELL_SCHOOL_POWER_BONUS", school: "fire", amount }]
+      }
+    },
+    assets: {
+      cardImage: specialtyCardImage("adrienne", level),
+      imageAlt: `Fire Magic level ${towerRoman(level)} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource("adrienne")
   };
 }
 
@@ -1428,9 +1548,9 @@ export const adventureCards: CardLibrary = {
   "specialty.yog.1": mightSpecialtyOne("yog", "Cyclopes", "Cyclopes"),
   "specialty.yog.4": unitInitiativeSpecialty("yog", "Cyclopes", 4, 1, "Cyclopes"),
   "specialty.yog.6": unitHealthSpecialty("yog", "Cyclopes", 6, 1, "Cyclopes"),
-  "specialty.alamar.1": resurrectionSpecialty(1, { bronze: 1, silver: 2, gold: 4 }),
-  "specialty.alamar.4": resurrectionSpecialty(4, { bronze: 0, silver: 1, gold: 3 }),
-  "specialty.alamar.6": resurrectionSpecialty(6, { bronze: 0, silver: 0, gold: 2 }),
+  "specialty.alamar.1": lethalSaveSpecialty("alamar", "Resurrection", 1, { bronze: 1, silver: 2, gold: 4 }),
+  "specialty.alamar.4": lethalSaveSpecialty("alamar", "Resurrection", 4, { bronze: 0, silver: 1, gold: 3 }),
+  "specialty.alamar.6": lethalSaveSpecialty("alamar", "Resurrection", 6, { bronze: 0, silver: 0, gold: 2 }),
   // Deemer (Dungeon Warlock): the Meteor Shower specialist. I hits a unit and 1
   // neighbour; VI a unit and 2 neighbours (the caster picks which when more are
   // adjacent); IV cycles the deck or feeds +1 Power to a spell.
@@ -1909,5 +2029,133 @@ export const adventureCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: heroSource("adelaide")
-  }
+  },
+
+  // ---- Additional heroes, batch 2 (fan-wiki, real board art) -------------
+  // Lord Haart (Castle, Knight): the Estates / gold-economy specialist. Every
+  // level is a map play that gains a flat amount of gold (GAIN_RESOURCES).
+  "specialty.lord_haart.1": estatesGoldSpecialty(1, 2),
+  "specialty.lord_haart.4": estatesGoldSpecialty(4, 3),
+  "specialty.lord_haart.6": estatesGoldSpecialty(6, 5),
+
+  // Jeddite (Dungeon, Warlock): the Mysterious Warlock. I/VI dig the top 3/4
+  // cards of your deck and keep every Spell + Specialty (DECK_DIG_KEEP_MATCHING);
+  // IV is a lethal-save (CANCEL_LETHAL_ATTACK) costing Power 0/1/2 for a
+  // bronze/silver/gold unit, reusing the shared lethal-save window.
+  "specialty.jeddite.1": warlockDigSpecialty(1, 3),
+  "specialty.jeddite.4": lethalSaveSpecialty("jeddite", "Mysterious Warlock", 4, {
+    bronze: 0,
+    silver: 1,
+    gold: 2
+  }),
+  "specialty.jeddite.6": warlockDigSpecialty(6, 4),
+
+  // Tazar (Fortress, Beastmaster): the War Hero. I = +2 defense reaction (no
+  // signature unit); IV = a chosen unit gains +1 defense for the Combat
+  // (CREATE_DEFENSE_BUFF); VI = remove 1 OR discard 3 cards to draw the top of
+  // the Artifact deck (DRAW_TOP_ARTIFACT).
+  "specialty.tazar.1": armorerSpecialty("tazar", 1, 2, "War Hero"),
+  "specialty.tazar.4": {
+    id: "specialty.tazar.4",
+    name: "War Hero IV",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "tazar",
+      "war-hero",
+      "For this Combat, your selected unit gains +1 defense."
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_DEFENSE_BUFF",
+      name: "War Hero IV",
+      amount: 1,
+      duration: { type: "combat" },
+      polarity: "positive",
+      removable: false
+    },
+    assets: {
+      cardImage: specialtyCardImage("tazar", 4),
+      imageAlt: "War Hero level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("tazar")
+  },
+  "specialty.tazar.6": {
+    id: "specialty.tazar.6",
+    name: "War Hero VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "tazar",
+      "war-hero",
+      "From your hand, remove 1 card OR discard 3 cards to draw the top card of the Artifact deck."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Remove 1 card: draw the top Artifact card",
+          mapOnly: true,
+          cost: { discardCards: 1, removeCostCards: true },
+          effect: { type: "DRAW_TOP_ARTIFACT" }
+        },
+        {
+          label: "Discard 3 cards: draw the top Artifact card",
+          mapOnly: true,
+          cost: { discardCards: 3 },
+          effect: { type: "DRAW_TOP_ARTIFACT" }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("tazar", 6),
+      imageAlt: "War Hero level VI specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("tazar")
+  },
+
+  // Adrienne (Fortress, Witch): the Fire Magic specialist. I/VI add +1/+2 Power
+  // to every Fire-school Spell she casts for the Combat (SPELL_SCHOOL_POWER_BONUS
+  // via CREATE_ACTIVE_EFFECT); IV is a map play that Searches (3) her deck and
+  // shuffles her discard pile back in (SEARCH_DECK_THEN_RESHUFFLE).
+  "specialty.adrienne.1": fireMagicSpecialty(1, 1),
+  "specialty.adrienne.4": {
+    id: "specialty.adrienne.4",
+    name: "Fire Magic IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "adrienne",
+      "fire-magic",
+      "Search (3) your deck (keep 1 card), then shuffle your discard pile into your deck."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Search (3) your deck, then shuffle the discard into your deck",
+          mapOnly: true,
+          effect: { type: "SEARCH_DECK_THEN_RESHUFFLE", count: 3 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("adrienne", 4),
+      imageAlt: "Fire Magic level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("adrienne")
+  },
+  "specialty.adrienne.6": fireMagicSpecialty(6, 2)
 };

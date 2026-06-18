@@ -129,6 +129,7 @@ import {
   getAttackerTypeDefenseBonus,
   getAttackRerollEffects,
   getConditionalDefenseBonus,
+  getSchoolPowerBonus,
   getSchoolPowerMultiplier,
   makeActiveEffect,
   playerHasSpellTimingFreedom,
@@ -5639,7 +5640,9 @@ function getCurrentSpellPower(state: GameState, stackItem: ResolutionStackItem, 
     (card?.power ?? 0) +
     stackItem.modifiers.spellPowerBonus +
     (stackItem.modifiers.schoolPowerBonus ?? 0) +
-    (stackItem.modifiers.townCubePowerBonus ?? 0);
+    (stackItem.modifiers.townCubePowerBonus ?? 0) +
+    // Adrienne's Fire Magic: +1/+2 Power to every Fire-school spell she casts.
+    getSchoolPowerBonus(state, stackItem.action.playerId, card);
 
   // Elemental Orbs (option A): the matching in-play orb doubles the whole Power
   // brought to a spell of its School ("double the power used for this spell")
@@ -9347,6 +9350,96 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       };
       state.phase = "choice";
       state.priorityPlayerId = action.playerId;
+    }
+  }
+
+  // Jeddite's Mysterious Warlock I/VI: dig the top `count` cards of your own
+  // deck, keep every Spell and Specialty among them in your hand, discard the
+  // rest. No choice — all matches are taken automatically.
+  if (effect.type === "DECK_DIG_KEEP_MATCHING") {
+    const digPlayer = state.players[action.playerId];
+    const kept: CardId[] = [];
+    const discarded: CardId[] = [];
+    for (let index = 0; index < effect.count; index += 1) {
+      const drawn = digPlayer.deck.pop();
+      if (!drawn) {
+        break;
+      }
+      const drawnKind = cards[drawn]?.kind;
+      const matches =
+        effect.filter === "spell-or-specialty" && (drawnKind === "spell" || drawnKind === "hero-specialty");
+      if (matches) {
+        digPlayer.hand.push(drawn);
+        kept.push(drawn);
+      } else {
+        digPlayer.discard.push(drawn);
+        discarded.push(drawn);
+      }
+    }
+    appendEvent(state, {
+      type: "CARDS_DRAWN",
+      playerId: action.playerId,
+      count: kept.length,
+      requested: effect.count,
+      reshuffledDiscard: false
+    });
+  }
+
+  // Tazar's War Hero VI: draw the top card of the shared Artifact deck (the
+  // Legacy "artifacts" deck, or the BINH Minor deck) straight to hand. The
+  // option's `cost` already paid the printed price before we get here.
+  if (effect.type === "DRAW_TOP_ARTIFACT") {
+    const artifactDeck = state.decks.artifacts ?? state.decks["artifacts-minor"];
+    const drawn = artifactDeck?.drawPile.pop();
+    if (drawn) {
+      state.players[action.playerId].hand.push(drawn);
+      appendEvent(state, {
+        type: "CARDS_DRAWN",
+        playerId: action.playerId,
+        count: 1,
+        requested: 1,
+        reshuffledDiscard: false
+      });
+    }
+  }
+
+  // Adrienne's Fire Magic IV: Search (`count`) your own deck (reveal the top
+  // `count`, keep one, the rest to discard), then shuffle the discard pile back
+  // into the deck. The reshuffle runs AFTER the pick (the own-deck-pick choice
+  // carries `thenReshuffleDiscard`); a 0/1-card reveal reshuffles immediately.
+  if (effect.type === "SEARCH_DECK_THEN_RESHUFFLE") {
+    const searchPlayer = state.players[action.playerId];
+    const revealed: CardId[] = [];
+    for (let index = 0; index < effect.count; index += 1) {
+      const drawn = searchPlayer.deck.pop();
+      if (!drawn) {
+        break;
+      }
+      revealed.push(drawn);
+    }
+    if (revealed.length > 1) {
+      state.pendingChoice = {
+        id: `choice_${nextEventNumber(state)}`,
+        type: "OPTION_CHOICE",
+        playerId: action.playerId,
+        prompt: `${card.name}: take one card into your hand (the rest go to your discard pile), then your discard pile shuffles into your deck.`,
+        options: revealed.map((cardId) => ({ label: `Take ${cards[cardId]?.name ?? cardId}` })),
+        context: "own-deck-pick",
+        ownDeckPick: { cardIds: revealed, thenReshuffleDiscard: true },
+        returnPhase: state.combat ? "combat" : "player-turn"
+      };
+      state.phase = "choice";
+      state.priorityPlayerId = action.playerId;
+    } else {
+      // 0 or 1 revealed: keep the single card (if any), then reshuffle now.
+      if (revealed.length === 1) {
+        searchPlayer.hand.push(revealed[0]);
+      }
+      searchPlayer.deck = shuffleCards(
+        [...searchPlayer.deck, ...searchPlayer.discard],
+        `${state.seed}#fire-magic-iv#${action.playerId}#${eventSeedNumber(state)}`
+      );
+      searchPlayer.discard = [];
     }
   }
 

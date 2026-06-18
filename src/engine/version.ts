@@ -28,7 +28,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
  * factions, units — are detected automatically by the fingerprint below and
  * do NOT need a bump.
  */
-export const ENGINE_PROTOCOL_VERSION = 9;
+export const ENGINE_PROTOCOL_VERSION = 10;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */
