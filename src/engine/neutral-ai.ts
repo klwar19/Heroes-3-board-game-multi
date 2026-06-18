@@ -22,15 +22,17 @@ import { NEUTRAL_PLAYER_ID } from "./state";
  *   to a space next to the target. It never walks toward an out-of-reach
  *   favourite while a different enemy stands ready to be struck; it moves
  *   without attacking only when it can reach no one this activation.
- * - Ground and flying units prioritise attacking units of the SAME tier; when
- *   no same-tier enemy is available they simply hit the NEAREST enemy, whatever
- *   its tier — there is no further tier ordering, closest wins (a bronze with no
- *   bronze target attacks the nearest unit, silver or gold or azure alike).
- * - Ranged units prioritise other ranged units with that same rule (same tier
- *   first, then nearest); only when no ranged target exists do they fall back to
- *   ground/flying. They never move-then-shoot, so they only count targets they
- *   can hit from where they stand. An engaged ranged unit must hit an adjacent
- *   enemy.
+ * - Ground and flying units prioritise attacking units of the SAME tier, then
+ *   the LOWER tiers in descending order (the closest tier down first), and only
+ *   then the higher tiers. Among those remaining HIGHER tiers there is no tier
+ *   order — they go by distance, the NEAREST first. So a Bronze hits Bronze,
+ *   then the nearest of {Silver, Gold, Azure}; a Silver hits Silver, then
+ *   Bronze, then the nearer of {Gold, Azure}; a Gold hits Gold, then Silver,
+ *   then Bronze, then Azure; an Azure runs straight down Gold → Silver → Bronze.
+ * - Ranged units apply that exact rule but hunt other ranged units first; only
+ *   when no ranged target exists do they fall back to ground/flying (same rule
+ *   again). They never move-then-shoot, so they only count targets they can hit
+ *   from where they stand. An engaged ranged unit must hit an adjacent enemy.
  * - Among equally valid (attackable) targets they attack the closest. When
  *   targets are still tied after that, the rulebook says the player chooses —
  *   the activation pauses on an ABILITY_TARGET_CHOICE so the table decides.
@@ -40,22 +42,40 @@ import { NEUTRAL_PLAYER_ID } from "./state";
  * - Neutral units never defend.
  */
 
+const TIER_RANK: Record<UnitGrade, number> = { bronze: 0, silver: 1, gold: 2, azure: 3 };
+// Every higher tier shares this one priority class so the distance tiebreaker —
+// not the tier gap — orders them. It sits above any lower-tier value (those are
+// at most TIER_RANK spread = 3), so all lower tiers are still struck first.
+const HIGHER_TIER_PRIORITY = 10;
+
 /**
- * Same-tier-first, then "attack the nearest." A target of the attacker's own
- * tier outranks every other tier (priority 0); ALL other tiers share one lower
- * priority (1), so the distance tiebreaker in {@link sortNeutralTargetCandidates}
- * — not any tier ordering — decides among them. (Earlier builds ranked the
- * lower tiers in descending order, then the higher tiers ascending; the house
- * rule is the simpler same-tier-then-closest.)
+ * Target-tier ranking: the attacker's own tier first (0), then the LOWER tiers
+ * in descending order — the closest tier down ranks ahead of the next (so a
+ * Gold prefers Silver over Bronze) — and finally the higher tiers, which ALL
+ * share {@link HIGHER_TIER_PRIORITY}. That shared class means the distance
+ * tiebreaker in {@link sortNeutralTargetCandidates} picks the NEAREST higher
+ * tier rather than the smallest tier gap (a Bronze with no Bronze target takes
+ * the closest of Silver/Gold/Azure; a Silver after Silver+Bronze takes the
+ * nearer of Gold/Azure). Distance still breaks ties within any single class.
  */
 function tierPriority(attackerTier: UnitGrade, targetTier: UnitGrade): number {
-  return targetTier === attackerTier ? 0 : 1;
+  const attacker = TIER_RANK[attackerTier];
+  const target = TIER_RANK[targetTier];
+  if (target === attacker) {
+    return 0;
+  }
+  if (target < attacker) {
+    // Lower tiers next, the closest tier down first (descending order).
+    return attacker - target;
+  }
+  // Every higher tier ties here, so distance — not the tier gap — orders them.
+  return HIGHER_TIER_PRIORITY;
 }
 
 /**
  * The ranked target pool of a neutral unit: ranged attackers prefer ranged
- * targets, everyone prefers same tier and then — with no same-tier target —
- * simply the closest, distance alone breaking among the other tiers.
+ * targets; everyone then ranks by {@link tierPriority} (same tier, lower tiers
+ * descending, higher tiers by distance) with the closest breaking ties.
  */
 function rankedTargetPool(combat: CombatState, attacker: CombatUnitState): CombatUnitState[] {
   const enemies = Object.values(combat.units).filter(
