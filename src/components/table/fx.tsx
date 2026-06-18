@@ -237,9 +237,10 @@ async function runFlight(stage: HTMLElement, cue: Extract<FxCue, { kind: "flight
     return;
   }
 
-  // The traveling card is sized like a hand card; source/target rects are
+  // The traveling card is a small token — big enough to read which deck it came
+  // from, small enough not to dominate the combat board. Source/target rects are
   // matched with transforms so piles, fans and cells all look right.
-  const w = 96;
+  const w = 58;
   const h = Math.round((w * 7) / 5);
 
   const holder = document.createElement("div");
@@ -283,12 +284,12 @@ async function runFlight(stage: HTMLElement, cue: Extract<FxCue, { kind: "flight
         holder,
         [
           { transform: `${startTransform}`, offset: 0 },
-          { transform: "translate(0, 0) scale(1.65)", offset: 1 }
+          { transform: "translate(0, 0) scale(2.4)", offset: 1 }
         ],
         { duration: FLIGHT_MS, easing: "cubic-bezier(0.25, 0.8, 0.3, 1)", fill: "forwards" }
       );
       place(centerPoint);
-      holder.style.transform = "scale(1.65)";
+      holder.style.transform = "scale(2.4)";
       void animate(
         flipper,
         [{ transform: flipKeyframes.from }, { transform: flipKeyframes.to }],
@@ -304,7 +305,7 @@ async function runFlight(stage: HTMLElement, cue: Extract<FxCue, { kind: "flight
       await animate(
         holder,
         [
-          { transform: "translate(0, 0) scale(1.65)" },
+          { transform: "translate(0, 0) scale(2.4)" },
           {
             transform: `translate(${finalCenter.x - centerPoint.x}px, ${finalCenter.y - centerPoint.y}px) scale(${exitScale})`
           }

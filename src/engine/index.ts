@@ -22,6 +22,7 @@ export {
   expireEffectsForCombatRoundEnd,
   expireEffectsForGameRoundEnd,
   expireEffectsForTurnEnd,
+  effectiveInitiative,
   getActiveAttackBonus,
   getActiveDefenseBonus,
   getAttackRerollEffects,
