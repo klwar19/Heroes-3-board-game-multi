@@ -527,6 +527,35 @@ export type ActiveEffectModifier =
        * offered to anyone. Side-agnostic (scope "global").
        */
       type: "NO_ATTACK_DIE_REROLL";
+    }
+  | {
+      /**
+       * Ingham's Zealots VI: while this (friendly) unit attacks, its target's
+       * Defense counts as 0 (the printed "your Zealots unit ignores its targets'
+       * Defense"). A unit-scoped, combat-duration modifier read at attack
+       * resolution alongside the innate Behemoth/Manticore defense-pierce.
+       */
+      type: "IGNORES_DEFENSE";
+    }
+  | {
+      /**
+       * Lord Haart (Necropolis) Dread Knights I/VI: while this (friendly) unit is
+       * the target of an enemy Retaliation Attack, reduce that retaliation's
+       * damage by `amount`. The Dread Knights ×2 is folded into `amount` when the
+       * effect is created (see CREATE_RETALIATION_REDUCTION), like the other
+       * doubled specialties, so this modifier just carries the final amount.
+       */
+      type: "RETALIATION_DAMAGE_REDUCTION";
+      amount: number;
+    }
+  | {
+      /**
+       * Lord Haart (Necropolis) Dread Knights IV: while this (friendly) unit is
+       * the target of an enemy Retaliation Attack, that Retaliation Attack rolls
+       * two Attack dice and resolves the lower — the active-effect twin of the
+       * Dread Knights unit's printed RETALIATION_AGAINST_DISADVANTAGE ability.
+       */
+      type: "RETALIATION_AGAINST_DISADVANTAGE";
     };
 
 export type ActiveEffectDefinition = {
@@ -898,6 +927,8 @@ export type EffectDefinition =
        * interject — including before an enemy unit acts.
        */
       type: "ACTIVATE_RANGED_UNIT";
+      /** Valeska's Marksmen VI: allow re-activating an already-activated unit. */
+      allowAlreadyActivated?: boolean;
     }
   | {
       /**
@@ -908,6 +939,11 @@ export type EffectDefinition =
        * spell card stays in that discard pile, and the Helm is removed from the game.
        * This marker only flags the card as implemented and tells the legal-action
        * layer to offer that cast; it is never applied from playCard.
+       *
+       * Valeska's Marksmen VI sets `allowAlreadyActivated`: she may re-activate a
+       * ranged unit that has already acted this round (the printed "even if that
+       * unit has already been activated"). The Bowstring leaves it unset, so it
+       * keeps targeting only not-yet-activated ranged units.
        */
       type: "CAST_FROM_SPELL_DISCARD";
     }
@@ -970,6 +1006,20 @@ export type EffectDefinition =
       removable?: boolean;
       /** Hero specialties: the bonus doubles when placed on the named unit. */
       doubleForUnitName?: string;
+    }
+  | {
+      /**
+       * Lord Haart (Necropolis) Dread Knights I/VI: place a lasting
+       * RETALIATION_DAMAGE_REDUCTION on the chosen friendly unit. `amount` is the
+       * base reduction (1 / 2); it doubles at creation when the unit's name
+       * matches `doubleForUnitName` (his Dread Knights).
+       */
+      type: "CREATE_RETALIATION_REDUCTION";
+      name: string;
+      amount: number;
+      duration: EffectDurationDefinition;
+      doubleForUnitName?: string;
+      removable?: boolean;
     }
   | {
       /** Vial of Lifeblood: +1 printed HP for this combat. */
@@ -1214,6 +1264,18 @@ export type EffectDefinition =
        * the controller pick which slowest unit is hit. Deals "effect" damage.
        */
       type: "DAMAGE_LOWEST_INITIATIVE_ENEMY";
+      amount: number;
+    }
+  | {
+      /**
+       * Septienna's Death Ripple specialty (I/IV/VI): deal `amount` damage to
+       * EVERY enemy combat unit whose grade is one of `grades` (I -> bronze,
+       * IV -> silver, VI -> gold + azure). A combat activation with no chosen
+       * target — the engine finds the matching enemy units itself. Spell-damage
+       * reduction (Gargoyles etc.) applies per struck unit, like any card damage.
+       */
+      type: "DAMAGE_ENEMY_UNITS_BY_GRADE";
+      grades: UnitGrade[];
       amount: number;
     }
   | {

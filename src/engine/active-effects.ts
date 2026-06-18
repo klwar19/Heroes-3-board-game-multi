@@ -393,6 +393,45 @@ export function getActiveDefenseBonus(state: GameState, unit: CombatUnitState): 
   }, 0);
 }
 
+/** Ingham's Zealots VI: does this unit have a lasting "ignores Defense" effect? */
+export function hasActiveIgnoresDefense(state: GameState, unit: CombatUnitState): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effectAppliesToUnit(effect, unit) &&
+      effect.modifiers.some((modifier) => modifier.type === "IGNORES_DEFENSE")
+  );
+}
+
+/**
+ * Lord Haart (Necropolis) Dread Knights I/VI: total retaliation-damage reduction
+ * lasting on this unit (the ×2 for Dread Knights is already folded into each
+ * modifier's amount when the effect was created).
+ */
+export function getActiveRetaliationDamageReduction(state: GameState, unit: CombatUnitState): number {
+  return state.activeEffects.reduce((total, effect) => {
+    if (!effectAppliesToUnit(effect, unit)) {
+      return total;
+    }
+    return (
+      total +
+      effect.modifiers.reduce(
+        (modifierTotal, modifier) =>
+          modifier.type === "RETALIATION_DAMAGE_REDUCTION" ? modifierTotal + modifier.amount : modifierTotal,
+        0
+      )
+    );
+  }, 0);
+}
+
+/** Lord Haart (Necropolis) Dread Knights IV: enemy Retaliation Attacks against this unit roll at disadvantage. */
+export function hasActiveRetaliationDisadvantage(state: GameState, unit: CombatUnitState): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effectAppliesToUnit(effect, unit) &&
+      effect.modifiers.some((modifier) => modifier.type === "RETALIATION_AGAINST_DISADVANTAGE")
+  );
+}
+
 /** Initiative including Haste/Slow and other lasting bonuses on the unit. */
 export function effectiveInitiative(unit: CombatUnitState, activeEffects: ActiveEffectState[] = []): number {
   const bonus = activeEffects.reduce((total, effect) => {

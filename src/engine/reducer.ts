@@ -126,9 +126,12 @@ import {
   expireEffectsForTurnEnd,
   getActiveAttackBonus,
   getActiveDefenseBonus,
+  getActiveRetaliationDamageReduction,
   getAttackerTypeDefenseBonus,
   getAttackRerollEffects,
   getConditionalDefenseBonus,
+  hasActiveIgnoresDefense,
+  hasActiveRetaliationDisadvantage,
   getSchoolPowerBonus,
   getSchoolPowerMultiplier,
   makeActiveEffect,
@@ -1130,6 +1133,39 @@ function createDefenseBuffFromCard(
       cardId: card.id,
       controllerId: playerId
     },
+    playerId,
+    target
+  );
+}
+
+/**
+ * Lord Haart (Necropolis) Dread Knights I/VI: place a lasting
+ * RETALIATION_DAMAGE_REDUCTION on the chosen friendly unit. The base amount
+ * doubles when the unit is his signature Dread Knights (folded in here so the
+ * read-side helper just sums final amounts).
+ */
+function createRetaliationReductionFromCard(
+  state: GameState,
+  card: CardDefinition,
+  playerId: PlayerId,
+  target: { type: "unit"; unitId: UnitId }
+): void {
+  if (card.effect.type !== "CREATE_RETALIATION_REDUCTION") {
+    return;
+  }
+  const targetUnit = state.combat?.units[target.unitId];
+  const amount = doubleAmountForUnitName(card.effect.amount, targetUnit, card.effect.doubleForUnitName);
+  createActiveEffect(
+    state,
+    {
+      name: card.effect.name,
+      scope: "unit",
+      duration: card.effect.duration,
+      polarity: "positive",
+      removable: card.effect.removable ?? false,
+      modifiers: [{ type: "RETALIATION_DAMAGE_REDUCTION", amount }]
+    },
+    { type: "card", cardId: card.id, controllerId: playerId },
     playerId,
     target
   );
@@ -2184,8 +2220,18 @@ function getAttackStackDetails(
     // Power-scaled form re-derives its pierced grade now from the caster's final
     // pooled Power, so Power paid after Frenzy was played still counts. Elemental
     // damage ignores Defense innately.
-    ignoreDefense: dealsElemental || Boolean(stackItem.modifiers.ignoreDefense) || frenzyPierces(stackItem, defender),
-    damageReduction: siegeRangedDamageReduction(combat, attacker, defender, attackKind),
+    // Ingham's Zealots VI lasting "ignores Defense" reaches every attack the
+    // buffed unit makes, the same way Frenzy/elemental damage zero out Defense.
+    ignoreDefense:
+      dealsElemental ||
+      Boolean(stackItem.modifiers.ignoreDefense) ||
+      frenzyPierces(stackItem, defender) ||
+      hasActiveIgnoresDefense(state, attacker),
+    // Lord Haart (Necropolis) Dread Knights I/VI: the unit being retaliated
+    // against (the `defender` of a retaliation) soaks `amount` less damage.
+    damageReduction:
+      siegeRangedDamageReduction(combat, attacker, defender, attackKind) +
+      (isRetaliation ? getActiveRetaliationDamageReduction(state, defender) : 0),
     defenseReductionAbility,
     abilityAttack
   };
@@ -5740,10 +5786,13 @@ function openRetaliationWindow(
 
   const attackKind = getAttackKind(defender, attacker);
   // Necropolis Dread Knights (Few): the unit being retaliated against forces
-  // the Retaliation Attack to roll 2 dice and resolve the lower result.
-  const rollMode = hasRetaliationAgainstDisadvantage(attacker)
-    ? "disadvantage"
-    : getAttackRollMode(defender, attacker, state);
+  // the Retaliation Attack to roll 2 dice and resolve the lower result. Lord
+  // Haart (Necropolis) Dread Knights IV grants the same disadvantage as a
+  // lasting effect on whichever unit he buffed.
+  const rollMode =
+    hasRetaliationAgainstDisadvantage(attacker) || hasActiveRetaliationDisadvantage(state, attacker)
+      ? "disadvantage"
+      : getAttackRollMode(defender, attacker, state);
   const attackDeclared = appendEvent(state, {
     type: "UNIT_ATTACK_DECLARED",
     playerId: defender.controllerId,
@@ -6116,6 +6165,10 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         getCurrentSpellPower(state, stackItem, cards),
         stackItem.action.target
       );
+    }
+
+    if (card?.effect.type === "CREATE_RETALIATION_REDUCTION" && stackItem.action.target.type === "unit") {
+      createRetaliationReductionFromCard(state, card, stackItem.action.playerId, stackItem.action.target);
     }
 
     if (card?.effect.type === "CREATE_ATTACK_DIE_REROLL") {
@@ -7630,7 +7683,7 @@ function applyReactionPlayCore(
       isUnitAlive(chosen) &&
       chosen.controllerId === playerId &&
       chosen.type === "ranged" &&
-      !chosen.activatedThisRound &&
+      (!chosen.activatedThisRound || effect.allowAlreadyActivated) &&
       chosen.id !== state.combat?.activeUnitId
     ) {
       appendEvent(state, {
@@ -7639,6 +7692,9 @@ function applyReactionPlayCore(
         abilityId: card.id,
         message: `${card.name} activates ${chosen.cardName} out of order.`
       });
+      // Valeska's Marksmen VI re-fires a unit that already acted: clear its spent
+      // flag so the out-of-order activation is a full, fresh turn.
+      chosen.activatedThisRound = false;
       setActiveUnit(state, chosen.id);
       // Do not immediately re-open the pre-activation window on the unit we just
       // chose ("not repeatedly right after the current use"): mark it offered so
@@ -8894,6 +8950,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     createDefenseBuffFromCard(state, card, action.playerId, card.power ?? 0, target);
   }
 
+  if (effect.type === "CREATE_RETALIATION_REDUCTION" && target) {
+    createRetaliationReductionFromCard(state, card, action.playerId, target);
+  }
+
   // Ring of the Wayfarer's paralysis side: place a Paralysis token on the
   // chosen unit, gated by the grade the paid Power unlocks (Power 0 -> gold, so
   // an Azure unit — above the gate — is left untouched, matching "except
@@ -8990,6 +9050,20 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       damageKind: "effect"
     });
     markUnitRemovedIfNeeded(state, unit);
+    finishCombatIfNeeded(state);
+  }
+
+  // Septienna's Death Ripple (I/IV/VI): deal `amount` damage to every enemy
+  // combat unit whose grade matches (bronze / silver / gold + azure). No target
+  // — the engine sweeps the board itself. Per-unit spell-damage reduction and
+  // immunity apply through dealAreaCardDamage.
+  if (effect.type === "DAMAGE_ENEMY_UNITS_BY_GRADE" && state.combat) {
+    const grades = new Set(effect.grades);
+    for (const unit of Object.values(state.combat.units)) {
+      if (unit.controllerId !== action.playerId && isUnitAlive(unit) && grades.has(unit.grade)) {
+        dealAreaCardDamage(state, action.playerId, card, unit, effect.amount);
+      }
+    }
     finishCombatIfNeeded(state);
   }
 
