@@ -2157,5 +2157,85 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("adrienne")
   },
-  "specialty.adrienne.6": fireMagicSpecialty(6, 2)
+  "specialty.adrienne.6": fireMagicSpecialty(6, 2),
+
+  // Vidomina (Necropolis, Necromancer): the Necromancy specialist. I/VI are
+  // after-combat half-gold reinforces (NECROMANCY_REINFORCE, forced tier so the
+  // expert crown is not needed): I = a bronze or silver unit, VI = any unit. IV
+  // places the Horde of Skeletons on a Pack of Skeletons (TRANSFORM_UNIT, the
+  // same stat-replacement as Sandro's Cloak: A3 D1 H2 I6, discarded on defeat).
+  "specialty.vidomina.1": {
+    id: "specialty.vidomina.1",
+    name: "Necromancy I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "vidomina",
+      "necromancy",
+      "Play after winning a Combat other than a Quick Combat: reinforce a bronze or silver unit of your choice for half the gold cost (rounded down)."
+    ],
+    target: { type: "none" },
+    effect: { type: "NECROMANCY_REINFORCE", forceMode: "basic" },
+    assets: {
+      cardImage: specialtyCardImage("vidomina", 1),
+      imageAlt: "Necromancy level I specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("vidomina")
+  },
+  "specialty.vidomina.4": {
+    id: "specialty.vidomina.4",
+    name: "Necromancy IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "vidomina",
+      "transform",
+      "Put this card on the Pack of Skeletons Unit card; it replaces the card's statistics (Horde of Skeletons) until defeated, then is discarded."
+    ],
+    // Identical transformation to Sandro's Cloak I (Horde of Skeletons, A3 D1
+    // HP2 I6). Vidomina's keeps the printed 2 HP in both modes (the BINH +1 HP
+    // house rule is scoped to Sandro's cards).
+    effect: {
+      type: "TRANSFORM_UNIT",
+      targetUnitName: "Skeletons",
+      targetVariants: ["pack"],
+      newName: "Horde of Skeletons",
+      attack: 3,
+      defense: 1,
+      health: 2,
+      initiative: 6,
+      cardImage: "/assets/hero_specialties-vidomina-4.webp"
+    },
+    assets: {
+      cardImage: specialtyCardImage("vidomina", 4),
+      imageAlt: "Necromancy level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("vidomina")
+  },
+  "specialty.vidomina.6": {
+    id: "specialty.vidomina.6",
+    name: "Necromancy VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "vidomina",
+      "necromancy",
+      "Play after winning a Combat other than a Quick Combat: reinforce any unit of your choice for half the gold cost (rounded down)."
+    ],
+    target: { type: "none" },
+    effect: { type: "NECROMANCY_REINFORCE", forceMode: "expert" },
+    assets: {
+      cardImage: specialtyCardImage("vidomina", 6),
+      imageAlt: "Necromancy level VI specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("vidomina")
+  }
 };

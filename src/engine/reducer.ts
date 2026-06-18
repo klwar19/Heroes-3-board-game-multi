@@ -842,7 +842,10 @@ function frenzyPierces(stackItem: ResolutionStackItem, defender: CombatUnitState
   if (!caster) {
     return false;
   }
-  const reached = gradeAtPower(table, attackPowerFor(stackItem, caster));
+  const reached = gradeAtPower(
+    table,
+    attackPowerFor(stackItem, caster) + (stackItem.modifiers.ignoreDefenseSchoolPowerBonus ?? 0)
+  );
   return reached !== null && gradeRank(defender.grade) <= gradeRank(reached);
 }
 
@@ -891,7 +894,7 @@ function recomputePowerScaledAttackInstants(stackItem: ResolutionStackItem): voi
     stackItem.modifiers.slayerRolls = getAmountByPower(
       stackItem.modifiers.slayerRollsByPower,
       2,
-      attackPowerFor(stackItem, attackerId)
+      attackPowerFor(stackItem, attackerId) + (stackItem.modifiers.slayerSchoolPowerBonus ?? 0)
     );
   }
 
@@ -900,7 +903,11 @@ function recomputePowerScaledAttackInstants(stackItem: ResolutionStackItem): voi
     return;
   }
   for (const record of records) {
-    const scaled = getAmountByPower(record.amountByPower, record.baseAmount, attackPowerFor(stackItem, record.playerId));
+    const scaled = getAmountByPower(
+      record.amountByPower,
+      record.baseAmount,
+      attackPowerFor(stackItem, record.playerId) + (record.schoolPowerBonus ?? 0)
+    );
     const newApplied = (scaled + record.fixedBonus) * record.doubleFactor;
     const delta = newApplied - record.appliedAmount;
     if (delta === 0) {
@@ -972,8 +979,11 @@ function attackInstantSignedAmount(stackItem: ResolutionStackItem, cardId: CardI
       // recomputePowerScaledAttackInstants scales by), without the original
       // target's hero-specialty doubling — the malus is moving to a new unit.
       return (
-        getAmountByPower(record.amountByPower, record.baseAmount, attackPowerFor(stackItem, record.playerId)) +
-        record.fixedBonus
+        getAmountByPower(
+          record.amountByPower,
+          record.baseAmount,
+          attackPowerFor(stackItem, record.playerId) + (record.schoolPowerBonus ?? 0)
+        ) + record.fixedBonus
       );
     }
   }
@@ -7732,8 +7742,14 @@ function applyReactionPlayCore(
     // Spell instants scale with the Power played alongside them in this
     // window; cost-paid plays (Sword of Judgement) scale per discarded card.
     // A scroll spell ignores the window's Power pool — it is locked to power 0.
+    // Adrienne's Fire Magic adds +1/+2 Power to her School-of-Fire instants
+    // (Curse), a constant offset folded into the Power for the amount lookup.
+    const instantSchoolPowerBonus =
+      effect.amountByPower && card.kind === "spell" && !play.fromScroll
+        ? getSchoolPowerBonus(state, playerId, card)
+        : 0;
     if (effect.amountByPower && card.kind === "spell") {
-      const power = play.fromScroll ? 0 : attackPowerFor(stackItem, playerId);
+      const power = play.fromScroll ? 0 : attackPowerFor(stackItem, playerId) + instantSchoolPowerBonus;
       effectAmount = getAmountByPower(effect.amountByPower, effect.amount, power);
     }
     if (effect.perCostCard) {
@@ -7775,6 +7791,7 @@ function applyReactionPlayCore(
         amountByPower: effect.amountByPower,
         baseAmount: effect.amount,
         fixedBonus,
+        schoolPowerBonus: instantSchoolPowerBonus,
         doubleFactor,
         appliedAmount
       });
@@ -7910,6 +7927,10 @@ function applyReactionPlayCore(
     if (effect.gradeByPower) {
       stackItem.modifiers.ignoreDefenseGradeByPower = effect.gradeByPower;
       stackItem.modifiers.ignoreDefenseCasterId = playerId;
+      // Adrienne's Fire Magic lifts a fire Frenzy's pierced grade by her bonus.
+      stackItem.modifiers.ignoreDefenseSchoolPowerBonus = play.fromScroll
+        ? 0
+        : getSchoolPowerBonus(state, playerId, card);
     } else if (effect.grade) {
       const defender = state.combat?.units[stackItem.action.defenderId];
       if (defender && gradeRank(defender.grade) <= gradeRank(effect.grade)) {
@@ -7940,12 +7961,15 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
     const defenderRef: TargetRef = { type: "unit", unitId: stackItem.action.defenderId };
     if (!negatesCardOnDwarfRoll(state, defenderRef, card.name)) {
-      const power = play.fromScroll ? 0 : attackPowerFor(stackItem, playerId);
+      // Adrienne's Fire Magic adds her bonus to a fire Slayer's roll-count Power.
+      const slayerSchoolBonus = play.fromScroll ? 0 : getSchoolPowerBonus(state, playerId, card);
+      const power = play.fromScroll ? 0 : attackPowerFor(stackItem, playerId) + slayerSchoolBonus;
       stackItem.modifiers.slayerRolls = getAmountByPower(effect.rollsByPower, 2, power);
       stackItem.modifiers.slayerDraw = true;
       // Scroll casts are locked to power 0 and never grow, so they are not recorded.
       if (!play.fromScroll) {
         stackItem.modifiers.slayerRollsByPower = effect.rollsByPower;
+        stackItem.modifiers.slayerSchoolPowerBonus = slayerSchoolBonus;
       }
       (stackItem.modifiers.cancellableSpellInstants ??= []).push({ cardId: card.id, playerId });
     }
@@ -8578,6 +8602,26 @@ function openHandDiscardChoice(
   state.priorityPlayerId = playerId;
 }
 
+/** Every Artifact deck id, Legacy ("artifacts") and BINH split, in draw order. */
+const ARTIFACT_DECK_IDS = ["artifacts", "artifacts-minor", "artifacts-major", "artifacts-relic"] as const;
+const ARTIFACT_DECK_LABELS: Record<string, string> = {
+  artifacts: "Artifact",
+  "artifacts-minor": "Minor",
+  "artifacts-major": "Major",
+  "artifacts-relic": "Relic"
+};
+
+/** Tazar's War Hero VI: move the top card of an Artifact deck into a hand. */
+export function drawTopArtifact(state: GameState, playerId: PlayerId, deckId: string): void {
+  const deck = state.decks[deckId];
+  const drawn = deck?.drawPile.pop();
+  if (!drawn) {
+    return;
+  }
+  state.players[playerId]?.hand.push(drawn);
+  appendEvent(state, { type: "CARDS_DRAWN", playerId, count: 1, requested: 1, reshuffledDiscard: false });
+}
+
 function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CARD" }>, cards: CardLibrary): void {
   const card = cards[action.cardId];
   if (!card) {
@@ -8975,9 +9019,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "NECROMANCY_REINFORCE") {
-    // Playing the card consumes the after-combat window.
+    // Playing the card consumes the after-combat window. Vidomina's specialties
+    // pin the tier (forceMode); the printed ability uses the played mode.
     state.players[action.playerId].necromancyWindow = false;
-    queueNecromancyReinforce(state, action.playerId, mode);
+    queueNecromancyReinforce(state, action.playerId, effect.forceMode ?? mode);
   }
 
   if (effect.type === "GAIN_RESOURCES") {
@@ -9389,17 +9434,25 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // Legacy "artifacts" deck, or the BINH Minor deck) straight to hand. The
   // option's `cost` already paid the printed price before we get here.
   if (effect.type === "DRAW_TOP_ARTIFACT") {
-    const artifactDeck = state.decks.artifacts ?? state.decks["artifacts-minor"];
-    const drawn = artifactDeck?.drawPile.pop();
-    if (drawn) {
-      state.players[action.playerId].hand.push(drawn);
-      appendEvent(state, {
-        type: "CARDS_DRAWN",
+    // Tazar's War Hero VI: draw the top of an Artifact deck of the player's
+    // choice. Legacy has one ("artifacts"); BINH splits Minor/Major/Relic — when
+    // more than one still holds cards the caster picks which to draw from.
+    const available = ARTIFACT_DECK_IDS.filter((deckId) => (state.decks[deckId]?.drawPile.length ?? 0) > 0);
+    if (available.length === 1) {
+      drawTopArtifact(state, action.playerId, available[0]);
+    } else if (available.length > 1) {
+      state.pendingChoice = {
+        id: `choice_${nextEventNumber(state)}`,
+        type: "OPTION_CHOICE",
         playerId: action.playerId,
-        count: 1,
-        requested: 1,
-        reshuffledDiscard: false
-      });
+        prompt: `${card.name}: draw the top card of which Artifact deck?`,
+        options: available.map((deckId) => ({ label: `Draw the top ${ARTIFACT_DECK_LABELS[deckId]} Artifact` })),
+        context: "artifact-deck-pick",
+        artifactDeckPick: { deckIds: available },
+        returnPhase: state.combat ? "combat" : "player-turn"
+      };
+      state.phase = "choice";
+      state.priorityPlayerId = action.playerId;
     }
   }
 

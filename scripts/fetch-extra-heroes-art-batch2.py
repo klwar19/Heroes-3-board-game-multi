@@ -37,6 +37,7 @@ HEROES = [
     ("jeddite", "dungeon", "magic"),
     ("tazar", "fortress", "might"),
     ("adrienne", "fortress", "magic"),
+    ("vidomina", "necropolis", "magic"),
 ]
 SPECIALTY_SUFFIX = {1: "1", 4: "4", 6: "7"}
 
