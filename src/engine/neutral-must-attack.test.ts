@@ -126,12 +126,11 @@ describe("neutral units must attack if possible (rulebook AI)", () => {
     expect(intent).toEqual({ kind: "attack", defenderId: farSameTierBronze.id });
   });
 
-  it("with no same-tier target it strikes the NEAREST enemy, ignoring tier order", () => {
-    // The user's rule: "bronze prioritises bronze, but if no [bronze] target
-    // then attack the nearest." With no bronze enemy, tier no longer ranks the
-    // remaining targets — distance does. The adjacent GOLD is hit even though a
-    // SILVER (which the old descending/ascending order ranked first) is in play
-    // but farther. Both are reachable, so the choice is purely "closest".
+  it("a bronze with no bronze target hits the NEAREST of the higher tiers", () => {
+    // The user's bronze example: "Bronze find bronze, but then choose the
+    // nearest for the rest." Bronze has no lower tier, so every other enemy is a
+    // higher tier ranked by distance — the adjacent gold is struck over a
+    // farther silver (both reachable, so the pick is purely closest).
     const state = createInitialGameState("must-attack-nearest");
     const attacker = place(state, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ground", 5);
     const nearGold = place(state, "unit_p1_crusaders", "p1", "gold", "ground", 6); // adjacent (dist 1)
@@ -140,8 +139,56 @@ describe("neutral units must attack if possible (rulebook AI)", () => {
 
     const intent = planNeutralActivation(state, state.combat!, attacker);
 
-    // Closest wins: the adjacent gold. (The old AI returned a move-and-attack on
-    // the farther silver because it ranked silver above gold by tier.)
     expect(intent).toEqual({ kind: "attack", defenderId: nearGold.id });
+  });
+
+  it("prefers a LOWER tier over a nearer HIGHER tier (lower tiers come first)", () => {
+    // Gold attacker: the lower silver is preferred over the nearer azure, even
+    // though azure is adjacent and silver is two away — lower tiers rank ahead
+    // of higher tiers regardless of distance.
+    const state = createInitialGameState("must-attack-lower-first");
+    const attacker = place(state, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "gold", "ground", 9);
+    const nearAzure = place(state, "unit_p1_griffins", "p1", "azure", "ground", 10); // adjacent (dist 1)
+    const farSilver = place(state, "unit_p1_crusaders", "p1", "silver", "ground", 1); // dist 2, reachable
+    onlyUnits(state, [attacker, nearAzure, farSilver]);
+
+    const intent = planNeutralActivation(state, state.combat!, attacker);
+
+    expect(intent.kind).toBe("move-and-attack");
+    if (intent.kind === "move-and-attack") {
+      expect(intent.defenderId).toBe(farSilver.id);
+    }
+  });
+
+  it("orders the LOWER tiers descending — the closest tier down before the next", () => {
+    // Gold attacker with two lower tiers: silver (one down) ranks ahead of the
+    // nearer bronze (two down). The tier gap wins here, distance does not.
+    const state = createInitialGameState("must-attack-lower-descending");
+    const attacker = place(state, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "gold", "ground", 9);
+    const nearBronze = place(state, "unit_p1_griffins", "p1", "bronze", "ground", 10); // adjacent (dist 1)
+    const farSilver = place(state, "unit_p1_crusaders", "p1", "silver", "ground", 1); // dist 2, reachable
+    onlyUnits(state, [attacker, nearBronze, farSilver]);
+
+    const intent = planNeutralActivation(state, state.combat!, attacker);
+
+    expect(intent.kind).toBe("move-and-attack");
+    if (intent.kind === "move-and-attack") {
+      expect(intent.defenderId).toBe(farSilver.id);
+    }
+  });
+
+  it("among the HIGHER tiers it goes by distance, not by tier gap (nearer wins)", () => {
+    // Silver attacker, only higher tiers left: the nearer azure is struck over a
+    // farther gold. (The old order ranked gold — the smaller tier gap — first
+    // regardless of distance; the house rule takes the closest higher tier.)
+    const state = createInitialGameState("must-attack-higher-nearest");
+    const attacker = place(state, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "silver", "ground", 9);
+    const nearAzure = place(state, "unit_p1_griffins", "p1", "azure", "ground", 10); // adjacent (dist 1)
+    const farGold = place(state, "unit_p1_crusaders", "p1", "gold", "ground", 1); // dist 2, reachable
+    onlyUnits(state, [attacker, nearAzure, farGold]);
+
+    const intent = planNeutralActivation(state, state.combat!, attacker);
+
+    expect(intent).toEqual({ kind: "attack", defenderId: nearAzure.id });
   });
 });
