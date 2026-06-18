@@ -1664,6 +1664,18 @@ button.battleCell {
   flex-wrap: wrap;
 }
 
+/* Basic X Magic: the "draw from the School of Magic" alternative, set apart
+   from the keep-a-revealed-card row above it. */
+.searchFetch {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgb(243 239 228 / 12%);
+}
+
 .searchCard {
   display: grid;
   gap: 6px;

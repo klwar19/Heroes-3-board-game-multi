@@ -1933,6 +1933,14 @@ export type GameAction =
        * Helm card named here is removed from the game once the cast resolves.
        */
       fromSpellDeck?: CardId;
+      /**
+       * Schools of Magic (Air/Earth/Fire/Water Magic) in play: the caster may
+       * decide AS PART OF the cast to discard the matching permanent for its
+       * expert power bonus (+3 instead of the standing +1; costs one expert use).
+       * Decided up front so a normal cast just applies the +1 and resolves —
+       * never popping an extra expert prompt.
+       */
+      useSchoolExpert?: boolean;
     }
   | {
       type: "PLAY_CARD";
@@ -2153,15 +2161,6 @@ export type GameAction =
       playerId: PlayerId;
       scrollId: string;
       cardId: CardId;
-    }
-  | {
-      /**
-       * Schools of Magic: while casting a matching spell, discard the in-play
-       * permanent for its expert power bonus (replaces the basic +1; costs
-       * one expert use).
-       */
-      type: "USE_PERMANENT_EXPERT";
-      playerId: PlayerId;
     }
   | {
       /**

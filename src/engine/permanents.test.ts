@@ -79,11 +79,40 @@ describe("permanent cards", () => {
     expect(resolved.players.p1.permanents).toEqual(["ability.fire_magic"]);
   });
 
-  it("discards the school permanent for +3 power with the field expert effect", () => {
+  it("discards the school permanent for +3 power as a cast-time expert option", () => {
     const state = createInitialGameState();
     state.players.p1.hand = ["spell.magic_arrow"];
     state.players.p1.permanents = ["ability.earth_magic"];
     state.players.p2.hand = ["stat.defense"];
+
+    // The expert is offered as a SECOND cast option, decided up front — not as a
+    // prompt that pops after the spell is cast.
+    const expertCast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" &&
+        legal.action.useSchoolExpert === true &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === "unit_p2_vampires"
+    );
+    expect(expertCast, "the 'cast + School of Magic (+3)' option should be offered").toBeDefined();
+
+    // Choosing it discards the permanent and spends a crown the moment of the cast.
+    const cast = applyOk(state, expertCast!.action);
+    expect(cast.players.p1.permanents).toEqual([]);
+    expect(cast.players.p1.discard).toContain("ability.earth_magic");
+    expect(cast.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+
+    const resolved = passAllReactions(cast);
+    // Power 1 + 3 = 4 -> Magic Arrow deals its top bracket of 3.
+    expect(resolved.combat?.units.unit_p2_vampires.damage).toBe(3);
+  });
+
+  it("does not pop an expert prompt on a plain cast — it resolves at the standing +1", () => {
+    const state = createInitialGameState();
+    state.players.p1.hand = ["spell.magic_arrow"];
+    state.players.p1.permanents = ["ability.earth_magic"];
+    state.players.p2.hand = []; // no opponent reactions
 
     const cast = applyOk(state, {
       type: "CAST_SPELL",
@@ -92,17 +121,13 @@ describe("permanent cards", () => {
       target: { type: "unit", unitId: "unit_p2_vampires" }
     });
 
-    const expert = getLegalActions(cast, "p1").find((legal) => legal.action.type === "USE_PERMANENT_EXPERT");
-    expect(expert).toBeDefined();
-
-    const boosted = applyOk(cast, expert!.action);
-    expect(boosted.players.p1.permanents).toEqual([]);
-    expect(boosted.players.p1.discard).toContain("ability.earth_magic");
-    expect(boosted.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
-
-    const resolved = passAllReactions(boosted);
-    // Power 1 + 3 = 4 -> Magic Arrow deals its top bracket of 3.
-    expect(resolved.combat?.units.unit_p2_vampires.damage).toBe(3);
+    // The School-of-Magic expert no longer forces a reaction window: with nothing
+    // else to react with, the spell resolves straight away at the standing +1 and
+    // the permanent stays in play (no crown spent).
+    expect(cast.reactionWindow).toBeFalsy();
+    expect(cast.players.p1.permanents).toEqual(["ability.earth_magic"]);
+    expect(cast.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+    expect(cast.combat?.units.unit_p2_vampires.damage).toBe(2);
   });
 
   it("fires the Ballista at the slowest enemy at the start of each combat round", () => {
