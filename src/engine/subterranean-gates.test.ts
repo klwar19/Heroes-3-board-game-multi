@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { allTileDefinitions } from "@/data/map/tiles";
-import { LOCATION_TOKEN_IMAGES } from "@/data/assets/homm-assets";
+import { SUBTERRANEAN_GATE_TOKEN_IMAGES } from "@/data/assets/homm-assets";
 import { locationDefinitions } from "@/data/map/locations";
 import {
   beginFieldVisit,
@@ -127,11 +127,12 @@ function gateHalfTo(state: GameState, towardTileId: string): MapFieldState | und
 }
 
 describe("subterranean gate token art", () => {
-  it("ships the rulebook's Subterranean Gate token art and maps the gate location to it", () => {
-    const path = LOCATION_TOKEN_IMAGES.subterranean_gate;
-    expect(path).toBe("/assets/board/tokens/subterranean-gate.webp");
-    // The cropped rulebook token is actually on disk under public/.
-    expect(existsSync(`public${path}`)).toBe(true);
+  it("ships both halves of the page-35 Subterranean Gate Token (surface + underground)", () => {
+    // The illustration shows two connecting hexes; each half is its own crop.
+    expect(SUBTERRANEAN_GATE_TOKEN_IMAGES.surface).not.toBe(SUBTERRANEAN_GATE_TOKEN_IMAGES.subterranean);
+    for (const path of Object.values(SUBTERRANEAN_GATE_TOKEN_IMAGES)) {
+      expect(existsSync(`public${path}`)).toBe(true);
+    }
   });
 });
 

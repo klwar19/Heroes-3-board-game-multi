@@ -55,7 +55,7 @@ import {
   type PlayerId,
   type PlayerVisibleState
 } from "@/engine";
-import { LOCATION_TOKEN_IMAGES, moraleIcon, RESOURCE_ICONS, tileBackImage, TILE_BACK_IMAGES } from "@/data/assets/homm-assets";
+import { moraleIcon, RESOURCE_ICONS, subterraneanGateTokenImage, tileBackImage, TILE_BACK_IMAGES } from "@/data/assets/homm-assets";
 import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
 import { actionKey, cardName, formatCost, setUnitDragImage, titleCase } from "@/components/table/utils";
 import { useCardZoom } from "@/components/table/zoom";
@@ -574,9 +574,14 @@ export function HexMapBoard({
         </polygon>
       );
 
-      // Location Token art (e.g. the Subterranean Gate) sits on top of the tile
-      // scan on the field it sacrificed, shown in both art and icon modes.
-      const tokenImage = LOCATION_TOKEN_IMAGES[field.location];
+      // Location Token art (the Subterranean Gate) sits on top of the tile scan
+      // on the field it sacrificed, shown in both art and icon modes. The two
+      // halves are distinct: the surface gate on a Surface tile, the cave-mouth
+      // entrance on a Subterranean tile.
+      const tokenImage =
+        field.location === "subterranean_gate"
+          ? subterraneanGateTokenImage(tile.group === "subterranean" ? "subterranean" : "surface")
+          : undefined;
       if (tokenImage) {
         overlays.push(
           <image
