@@ -94,6 +94,7 @@ import { applyPermanentCombatEffects, resolveWarMachineOption, startWarMachineRo
 import {
   activeSchoolFetches,
   applySearchCountEffects,
+  canAcquireSharedDeckCard,
   deckDisplayName,
   eligibleArtifactDecks,
   eligibleSpellDecks,
@@ -1727,6 +1728,18 @@ function resolveWitchHut(state: GameState, action: Extract<GameAction, { type: "
 
   if (action.decline) {
     return;
+  }
+
+  // Take-the-top obeys the acquisition rules: redraw past any card this hero may
+  // not take (a duplicate it owns, or Necromancy for a non-Necropolis hero),
+  // dropping each onto the deck discard, so a duplicate is never gained.
+  if (action.optionIndex !== 1) {
+    while (
+      deck.drawPile.length > 0 &&
+      !canAcquireSharedDeckCard(state, action.playerId, "abilities", deck.drawPile[deck.drawPile.length - 1])
+    ) {
+      deck.discardPile.push(deck.drawPile.pop() as string);
+    }
   }
 
   // Option 0: take the top Ability card into hand. Option 1: discard it.
@@ -5479,7 +5492,12 @@ export function openSharedDeckSearch(state: GameState, playerId: PlayerId, deckI
   // Magic spell…". The draw is an alternative TO searching, decided up front —
   // before any card is revealed — never alongside the revealed cards.
   const schoolFetch = isSpellDeck(deckId) ? activeSchoolFetches(state, playerId) : [];
-  const discardTopId = deck.discardPile.length > 0 ? deck.discardPile[deck.discardPile.length - 1] : null;
+  // The "take the top discard" branch is only offered when the hero may actually
+  // take that card — taking it skips no redraw, so a duplicate / Necromancy /
+  // starting-only top would dodge the acquisition rules. When the top is off
+  // limits the player just searches the deck (which redraws past such cards).
+  const discardTop = deck.discardPile.length > 0 ? deck.discardPile[deck.discardPile.length - 1] : null;
+  const discardTopId = discardTop && canAcquireSharedDeckCard(state, playerId, deckId, discardTop) ? discardTop : null;
 
   if (discardTopId || schoolFetch.length > 0) {
     // Show the base search size in the label only — the real count override
@@ -5535,9 +5553,15 @@ function performSchoolFetch(state: GameState, playerId: PlayerId, deckId: string
 
   let fetchedCardId: CardId | null = null;
   for (let index = deck.drawPile.length - 1; index >= 0; index -= 1) {
-    const schools = cardLibrary[deck.drawPile[index]]?.spellSchools ?? [];
+    const candidateId = deck.drawPile[index];
+    // Skip any spell of the school the hero cannot take (already owns it, or it
+    // is starting-only) — the fetch redraws to the next matching spell.
+    if (!canAcquireSharedDeckCard(state, playerId, deckId, candidateId)) {
+      continue;
+    }
+    const schools = cardLibrary[candidateId]?.spellSchools ?? [];
     if (schools.includes(school) || schools.includes("any")) {
-      fetchedCardId = deck.drawPile[index];
+      fetchedCardId = candidateId;
       deck.drawPile.splice(index, 1);
       break;
     }
@@ -5566,12 +5590,24 @@ export function revealSharedDeckSearch(state: GameState, playerId: PlayerId, dec
 
   const count = applySearchCountEffects(state, playerId, baseCount);
   const revealedCardIds: string[] = [];
-  for (let index = 0; index < count; index += 1) {
+  // Redraw past any card this hero may not take — a duplicate of one it already
+  // owns, a Necromancy it cannot use, or a starting-only spell. Skipped cards are
+  // set aside and dropped onto the deck's discard pile afterwards so they cycle
+  // back for other players (each ability/spell has a second copy in the deck).
+  const skippedCardIds: string[] = [];
+  while (revealedCardIds.length < count) {
     const cardId = deck.drawPile.pop();
     if (!cardId) {
       break;
     }
-    revealedCardIds.push(cardId);
+    if (canAcquireSharedDeckCard(state, playerId, deckId, cardId)) {
+      revealedCardIds.push(cardId);
+    } else {
+      skippedCardIds.push(cardId);
+    }
+  }
+  if (skippedCardIds.length > 0) {
+    deck.discardPile.push(...skippedCardIds);
   }
 
   // Basic X Magic's "draw instead of Searching" is offered up front (see

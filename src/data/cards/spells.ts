@@ -1928,130 +1928,30 @@ export const spellCards: CardLibrary = {
 };
 
 /**
- * Single mixed deck (legacy mode): the Core+Rampart+Inferno implemented spells,
- * plus the map-movement Expert spells (Dimension Door, Fly, Water Walk) now that
- * they are wired into the engine.
+ * Magic Arrow is a **starting-only** Spell: every hero begins with a copy
+ * (Might heroes one, Magic heroes two — see `makeStartingDeck`), and it is never
+ * shuffled into a shared draw deck, so it can never be drawn or searched. Listed
+ * here as the single source of truth used by the engine's deck-acquisition gate
+ * and by the deck-coverage test's exemption list.
  */
-export const spellDeckLegacy: string[] = [
-  "spell.magic_arrow",
-  "spell.magic_arrow",
-  "spell.magic_arrow",
-  "spell.lightning_bolt",
-  "spell.lightning_bolt",
-  "spell.haste",
-  "spell.haste",
-  "spell.slow",
-  "spell.slow",
-  "spell.stone_skin",
-  "spell.stone_skin",
-  "spell.bloodlust",
-  "spell.bloodlust",
-  "spell.curse",
-  "spell.curse",
-  "spell.weakness",
-  "spell.weakness",
-  "spell.bless",
-  "spell.bless",
-  "spell.cure",
-  "spell.cure",
-  "spell.anti_magic",
-  "spell.anti_magic",
-  "spell.precision",
-  "spell.fortune",
-  "spell.fortune",
-  "spell.fireball",
-  "spell.fireball",
-  "spell.fire_shield",
-  "spell.fire_shield",
-  "spell.counterstrike",
-  "spell.counterstrike",
-  "spell.prayer",
-  "spell.prayer",
-  "spell.town_portal",
-  "spell.town_portal",
-  "spell.earthquake",
-  "spell.resurrection",
-  "spell.magic_mirror",
-  "spell.blind",
-  "spell.chain_lightning",
-  "spell.summon_air_elemental",
-  "spell.summon_earth_elemental",
-  "spell.summon_fire_elemental",
-  "spell.summon_water_elemental",
-  "spell.dimension_door",
-  "spell.fly",
-  "spell.water_walk",
-  // Rampart Expansion spells.
-  "spell.mirth",
-  "spell.sorrow",
-  "spell.slayer",
-  "spell.forgetfulness",
-  // Inferno Expansion spell.
-  "spell.inferno",
-  "spell.visions",
-  // View Air (Basic Air) & View Earth (Basic Earth) — map utility spells.
-  "spell.view_air",
-  "spell.view_earth",
-  // Additional wiki spells.
-  "spell.implosion",
-  "spell.dispel",
-  "spell.frenzy",
-  // Frost Ring — Expert Water.
-  "spell.frost_ring",
-  // Expert combat-movement / control spells.
-  "spell.teleport",
-  "spell.berserk",
-  // Clone — Expert Water (Cove Expansion).
-  "spell.clone",
-  // Tower Expansion / Stretch Goal defensive spells (all Basic).
-  "spell.shield",
-  "spell.air_shield",
-  "spell.protection_from_air",
-  "spell.protection_from_earth",
-  "spell.protection_from_fire",
-  "spell.protection_from_water",
-  // Disrupting Ray (Basic Air) & Sacrifice (Expert Fire).
-  "spell.disrupting_ray",
-  "spell.sacrifice",
-  // Battlefield-obstacle spells: Force Field & Quicksand (Basic Earth), Fire
-  // Wall (Basic Fire), Land Mine (Expert Fire).
-  "spell.force_field",
-  "spell.fire_wall",
-  "spell.quicksand",
-  "spell.land_mine",
-  // Misfortune — Basic Fire.
-  "spell.misfortune",
-  // Remove Obstacle — Basic Water.
-  "spell.remove_obstacle"
-];
+export const STARTING_ONLY_SPELLS: string[] = ["spell.magic_arrow"];
 
-/** BINH split decks. */
-export const spellDeckBinhBasic: string[] = [
-  "spell.magic_arrow",
-  "spell.magic_arrow",
-  "spell.magic_arrow",
-  "spell.lightning_bolt",
+/**
+ * Every distinct Basic Spell the shared deck can hold (Magic Arrow excluded —
+ * it is starting-only, see `STARTING_ONLY_SPELLS`).
+ */
+export const spellDeckBinhBasicUnique: string[] = [
   "spell.lightning_bolt",
   "spell.haste",
-  "spell.haste",
-  "spell.slow",
   "spell.slow",
   "spell.stone_skin",
-  "spell.stone_skin",
-  "spell.bloodlust",
   "spell.bloodlust",
   "spell.curse",
-  "spell.curse",
-  "spell.weakness",
   "spell.weakness",
   "spell.bless",
-  "spell.bless",
   "spell.cure",
-  "spell.cure",
-  "spell.anti_magic",
   "spell.anti_magic",
   "spell.precision",
-  "spell.fortune",
   "spell.fortune",
   "spell.blind",
   "spell.earthquake",
@@ -2081,16 +1981,12 @@ export const spellDeckBinhBasic: string[] = [
   "spell.remove_obstacle"
 ];
 
-export const spellDeckBinhExpert: string[] = [
-  "spell.fireball",
+/** Every distinct Expert Spell the shared deck can hold. */
+export const spellDeckBinhExpertUnique: string[] = [
   "spell.fireball",
   "spell.fire_shield",
-  "spell.fire_shield",
-  "spell.counterstrike",
   "spell.counterstrike",
   "spell.prayer",
-  "spell.prayer",
-  "spell.town_portal",
   "spell.town_portal",
   "spell.resurrection",
   "spell.magic_mirror",
@@ -2122,3 +2018,19 @@ export const spellDeckBinhExpert: string[] = [
   // Land Mine — Expert Fire.
   "spell.land_mine"
 ];
+
+/**
+ * Single mixed deck (legacy mode): two copies of every implemented Spell
+ * (Basic + Expert), Magic Arrow excluded. Two players can each draw the same
+ * spell, but no hero ever keeps a duplicate — the deck search redraws past a
+ * card the hero already owns (see `canAcquireSharedDeckCard`).
+ */
+export const spellDeckLegacy: string[] = [...spellDeckBinhBasicUnique, ...spellDeckBinhExpertUnique].flatMap((id) => [
+  id,
+  id
+]);
+
+/** BINH split decks: two copies of every spell of the tier, Magic Arrow excluded. */
+export const spellDeckBinhBasic: string[] = spellDeckBinhBasicUnique.flatMap((id) => [id, id]);
+
+export const spellDeckBinhExpert: string[] = spellDeckBinhExpertUnique.flatMap((id) => [id, id]);

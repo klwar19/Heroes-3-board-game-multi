@@ -16,7 +16,7 @@ import {
 } from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
-import { applyUnitSideRules } from "./ruleset";
+import { applyUnitSideRules, canAcquireSharedDeckCard } from "./ruleset";
 import {
   hexDistance,
   hexNeighbors,
@@ -1957,6 +1957,21 @@ export function processPendingVisit(state: GameState): void {
 
   while (visit.steps.length > 0) {
     const step = visit.steps[0];
+
+    if (step.type === "WITCH_HUT") {
+      // The Witch Hut hands over the top Ability card, so it obeys the same
+      // acquisition rules as a deck search: discard any top card this hero may
+      // not take (a duplicate it already owns, or Necromancy for a non-Necropolis
+      // hero) so only an acquirable card is ever revealed and taken.
+      const abilityDeck = state.decks.abilities;
+      while (
+        abilityDeck &&
+        abilityDeck.drawPile.length > 0 &&
+        !canAcquireSharedDeckCard(state, visit.playerId, "abilities", abilityDeck.drawPile[abilityDeck.drawPile.length - 1])
+      ) {
+        abilityDeck.discardPile.push(abilityDeck.drawPile.pop() as string);
+      }
+    }
 
     if (stepNeedsInput(step)) {
       return;
