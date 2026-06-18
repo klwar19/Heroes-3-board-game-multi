@@ -26,6 +26,7 @@ import {
   getUnitSide,
   instantiateTile,
   NEUTRAL_DECK_IDS,
+  recomputeSubterraneanGates,
   seaTileBand,
   startAdventureRound,
   startPlayerTurn,
@@ -732,6 +733,11 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       }
     });
   }
+
+  // Carve the Subterranean Gate Tokens for any Surface/Subterranean tiles the
+  // layout placed face-up next to each other (the rest are carved as tiles are
+  // discovered during play).
+  recomputeSubterraneanGates(adventure);
 
   // Far (II–III) tile supplies, with the settlement draft guarantee.
   for (const config of playerConfigs) {

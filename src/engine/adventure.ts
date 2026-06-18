@@ -408,6 +408,50 @@ export function isSeaField(state: GameState, spaceId: MapSpaceId): boolean {
 }
 
 /**
+ * The map "layer" a tile belongs to. Subterranean tiles form their own layer
+ * (the underground); every other tile — land and sea alike — is the Surface.
+ * The two layers may only be crossed through a Subterranean Gate (or a Town
+ * Portal Spell, which teleports and so never consults {@link canCrossEdge}).
+ *
+ * The layer is the tile *group*, NOT its `terrain`: the underground layer is
+ * exactly the Stronghold tiles with the unique cavern back (`group:
+ * "subterranean"`, drawn from the subterranean pool). Several core tiles (F2,
+ * F5, N2, …) carry `terrain: "subterranean"` for cave-themed ART but keep a
+ * normal Far/Near/Center back and live on the Surface — they must NOT be
+ * treated as underground.
+ */
+export type MapLayer = "surface" | "subterranean";
+
+export function tileLayer(tile: MapTileState | undefined): MapLayer {
+  return tile?.group === "subterranean" ? "subterranean" : "surface";
+}
+
+/** Which layer a field sits on, taken from the tile it was materialized from. */
+export function fieldLayer(state: GameState, spaceId: MapSpaceId | null | undefined): MapLayer {
+  const adventure = state.adventure;
+  const field = spaceId ? adventure?.fields[spaceId] : undefined;
+  const tile = field ? adventure?.tiles[field.tileInstanceId] : undefined;
+  return tileLayer(tile);
+}
+
+/**
+ * Whether two fields are the two halves of one Subterranean Gate Token — the
+ * single sanctioned Surface↔Subterranean crossing ("Treat both Fields of the
+ * Subterranean Gate Token as one Field"). Both must be gate fields that name
+ * each other as their linked partner.
+ */
+export function gateFieldsLinked(a: MapFieldState | undefined, b: MapFieldState | undefined): boolean {
+  return (
+    a !== undefined &&
+    b !== undefined &&
+    a.location === "subterranean_gate" &&
+    b.location === "subterranean_gate" &&
+    a.gateLinkSpaceId === b.spaceId &&
+    b.gateLinkSpaceId === a.spaceId
+  );
+}
+
+/**
  * Whether taking a single step from `from` to `to` ends the hero's movement for
  * the turn. Without Water Walk, only a step that crosses the coastline — land to
  * sea (embarking) or sea to land (disembarking) — halts the hero: they keep
@@ -446,6 +490,26 @@ export function canCrossEdge(
   const fromField = adventure.fields[from];
   const toField = adventure.fields[to];
   if (!fromField || !toField) {
+    return false;
+  }
+
+  // The two halves of a Subterranean Gate Token are "one Field": the step
+  // between them is always allowed in either direction, regardless of layer or
+  // any printed border — it is the tunnel the Gate carves between the tiles.
+  if (gateFieldsLinked(fromField, toField)) {
+    return true;
+  }
+
+  // Surface ↔ Subterranean divide: a Hero "cannot move between a Surface and a
+  // Subterranean Tile without using a Subterranean Gate in between." The only
+  // crossable layer edge is the linked Gate handled above; "no other movement
+  // effects from cards can allow you to move from one to the other", so Fly /
+  // Angel Wings / Water Walk never open any other one — this is checked before
+  // the blocked-field rule so a flyer cannot slip across onto a blocked hex of
+  // the far layer either.
+  const fromTile = adventure.tiles[fromField.tileInstanceId];
+  const toTile = adventure.tiles[toField.tileInstanceId];
+  if (tileLayer(fromTile) !== tileLayer(toTile)) {
     return false;
   }
 
@@ -2548,52 +2612,279 @@ function drawTopOfSharedDeck(state: GameState, deckId: string): string | null {
 }
 
 /**
- * Subterranean Gate: the hero moves to the gate on the adjacent tile (tile
- * centers at hex distance 3 - the two flowers touch). No gate there means
- * nothing happens.
+ * Subterranean Gate (Stronghold expansion): "When a Hero enters a Field with a
+ * Subterranean Gate, discover the Map Tile on the other side for free (if it is
+ * still not discovered). Otherwise treat a Subterranean Gate Token as an empty
+ * Field." Entering the gate is the only way to discover across the
+ * Surface↔Subterranean divide (a Hero "may not discover a Subterranean Map Tile
+ * while standing on a Surface Map Tile and vice versa").
+ *
+ * Revealing hands the far tile's rotation to the entering player, exactly like
+ * any other discovery. Once they lock that rotation, `setTileRotation`
+ * materializes the tile and re-runs {@link recomputeSubterraneanGates}, which
+ * sacrifices the entrance hex on the freshly revealed tile and links the two
+ * halves so the hero can then cross.
  */
 function resolveSubterraneanGate(state: GameState, visit: PendingVisit): void {
   const adventure = state.adventure;
-  const hero = state.heroes[visit.heroId];
   const field = adventure?.fields[visit.fieldId];
-  if (!adventure || !hero || !field) {
+  if (!adventure || !field || field.location !== "subterranean_gate" || !field.gateToTileId) {
     return;
   }
 
-  const homeTile = adventure.tiles[field.tileInstanceId];
-  if (!homeTile) {
+  const farTile = adventure.tiles[field.gateToTileId];
+  if (!farTile || !farTile.faceDown) {
+    // Other side already discovered: the gate is just an empty field.
     return;
   }
 
-  const target = Object.values(adventure.fields).find((candidate) => {
-    if (candidate.location !== "subterranean_gate" || candidate.spaceId === field.spaceId) {
+  // Flip the far tile up for free and hand its rotation to the entering player.
+  // This mirrors the "reveal" branch of beginTileRotation (which lives in the
+  // reducer and is not importable here without a cycle); SET_TILE_ROTATION then
+  // materializes it and carves the entrance via recomputeSubterraneanGates.
+  farTile.faceDown = false;
+  farTile.awaitingRotation = true;
+  adventure.pendingTileChoice = {
+    tileInstanceId: farTile.id,
+    playerId: visit.playerId,
+    kind: "reveal"
+  };
+  appendEvent(state, {
+    type: "TILE_REVEALED",
+    playerId: visit.playerId,
+    tileInstanceId: farTile.id,
+    tileDefId: farTile.tileDefId
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Subterranean Gate placement (Stronghold expansion)
+// ---------------------------------------------------------------------------
+
+/**
+ * Locations a Subterranean Gate Token may never be placed on. The rulebook
+ * forbids covering Blocked Fields, other Location Tokens, and "Fields
+ * containing Locations required to meet any of the Scenario's victory
+ * conditions". We treat Towns, Settlements, Mines and the special objective
+ * fields as off-limits so a gate never sacrifices something game-critical.
+ */
+const GATE_FORBIDDEN_LOCATIONS = new Set<string>([
+  "town",
+  "random_town",
+  "settlement",
+  "mine",
+  "grail",
+  "dragon_utopia",
+  "subterranean_gate"
+]);
+
+/** Whether a materialized field may be sacrificed to a Subterranean Gate. */
+function gateMayCoverField(field: MapFieldState | undefined): boolean {
+  if (!field) {
+    return false;
+  }
+  if (GATE_FORBIDDEN_LOCATIONS.has(field.location)) {
+    return false;
+  }
+  return locationDefinitions[field.location]?.category !== "blocked";
+}
+
+/** A tile is "materialized" once its rotation is locked and its 7 fields exist. */
+function tileMaterialized(adventure: AdventureState, tile: MapTileState): boolean {
+  return !tile.faceDown && !tile.awaitingRotation;
+}
+
+/** The map hexes a tile occupies (rotation-independent: the same 7 hexes). */
+function tileHexes(tile: MapTileState): HexCoord[] {
+  return tileFootprint({ row: tile.centerRow, col: tile.centerCol }, 0);
+}
+
+/** The ring hexes (slots 1-6, i.e. not the centre) of a tile, as space ids. */
+function tileRingSpaceIds(tile: MapTileState): MapSpaceId[] {
+  return tileHexes(tile).slice(1).map(hexSpaceId);
+}
+
+/**
+ * Picks the gate hex on `tile` nearest to `towardCenter`: the ring field the
+ * player must sacrifice. Only ring hexes that may be covered and that touch the
+ * other tile's footprint are eligible (so the matching half can sit adjacent on
+ * the other side). Ties break on the hex id for determinism.
+ */
+function chooseAnchorGateHex(
+  adventure: AdventureState,
+  tile: MapTileState,
+  towardCenter: HexCoord,
+  otherTile: MapTileState
+): MapSpaceId | null {
+  const otherHexes = new Set(tileHexes(otherTile).map(hexSpaceId));
+  const candidates = tileRingSpaceIds(tile).filter((spaceId) => {
+    if (!gateMayCoverField(adventure.fields[spaceId])) {
       return false;
     }
-    const tile = adventure.tiles[candidate.tileInstanceId];
-    return (
-      Boolean(tile) &&
-      !tile!.faceDown &&
-      hexDistance(
-        { row: homeTile.centerRow, col: homeTile.centerCol },
-        { row: tile!.centerRow, col: tile!.centerCol }
-      ) === 3
-    );
+    const coord = parseHexSpaceId(spaceId);
+    return coord !== null && hexNeighbors(coord).some((neighbor) => otherHexes.has(hexSpaceId(neighbor)));
   });
+  return pickNearestHex(candidates, towardCenter);
+}
 
-  if (!target || heroAtSpace(state, target.spaceId, hero.id)) {
-    return;
+/**
+ * Picks the entrance hex on `tile` adjacent to an already-placed gate half at
+ * `gateSpaceId`. Only coverable ring hexes that physically touch the gate hex
+ * qualify, so the two halves end up edge-to-edge ("one Field"). Nearest to the
+ * gate wins, ties on hex id.
+ */
+function chooseAdjacentGateHex(
+  adventure: AdventureState,
+  tile: MapTileState,
+  gateSpaceId: MapSpaceId
+): MapSpaceId | null {
+  const gateCoord = parseHexSpaceId(gateSpaceId);
+  if (!gateCoord) {
+    return null;
+  }
+  const candidates = tileRingSpaceIds(tile).filter((spaceId) => {
+    if (!gateMayCoverField(adventure.fields[spaceId])) {
+      return false;
+    }
+    const coord = parseHexSpaceId(spaceId);
+    return coord !== null && hexDistance(coord, gateCoord) === 1;
+  });
+  return pickNearestHex(candidates, gateCoord);
+}
+
+/** Closest space id to `target` (Manhattan hex distance), ties broken by id. */
+function pickNearestHex(candidates: MapSpaceId[], target: HexCoord): MapSpaceId | null {
+  let best: MapSpaceId | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const spaceId of candidates) {
+    const coord = parseHexSpaceId(spaceId);
+    if (!coord) {
+      continue;
+    }
+    const distance = hexDistance(coord, target);
+    if (distance < bestDistance || (distance === bestDistance && (best === null || spaceId < best))) {
+      best = spaceId;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/** Turns a materialized field into one half of a Subterranean Gate Token. */
+function carveGateField(adventure: AdventureState, spaceId: MapSpaceId, toTileId: string): MapFieldState | null {
+  const field = adventure.fields[spaceId];
+  if (!field) {
+    return null;
+  }
+  // Sacrifice the slot: the printed Location is overwritten by the gate. Clear
+  // everything tied to the old Location so the gate behaves as a clean field.
+  field.location = "subterranean_gate";
+  field.gateToTileId = toTileId;
+  delete field.difficulty;
+  delete field.resource;
+  delete field.amount;
+  delete field.faction;
+  delete field.terrain;
+  field.blackCube = false;
+  field.flagOwnerId = null;
+  delete field.extraFlagOwnerIds;
+  field.everFlagged = false;
+  field.settlementResource = null;
+  delete field.grailDiggable;
+  return field;
+}
+
+/** The gate half already carved on `tile` pointing at `towardTileId`, if any. */
+function findGateHalf(adventure: AdventureState, tile: MapTileState, towardTileId: string): MapFieldState | null {
+  for (const spaceId of tileRingSpaceIds(tile)) {
+    const field = adventure.fields[spaceId];
+    if (field && field.location === "subterranean_gate" && field.gateToTileId === towardTileId) {
+      return field;
+    }
+  }
+  return null;
+}
+
+/**
+ * Ensures the Subterranean Gate Token bridging one Surface tile and one
+ * adjacent Subterranean tile exists, placing whatever halves the discovered
+ * tiles allow:
+ *
+ *  - On the materialized tile, the gate is the ring field nearest the other
+ *    tile that may be covered (the "1 slot closest to the [other] tile").
+ *  - The matching half on the second tile is the ring field nearest that gate
+ *    once the second tile is revealed (so it is sacrificed "when open, … the
+ *    nearest hex"). Materialization happens only after the player has locked
+ *    the rotation, which is why "rotate first, then sacrifice" holds.
+ *  - When both halves exist and sit edge-to-edge they are linked, opening the
+ *    one crossable Surface↔Subterranean edge.
+ *
+ * Idempotent: re-running never moves or duplicates an existing half.
+ */
+function ensureSubterraneanGate(adventure: AdventureState, surface: MapTileState, subterranean: MapTileState): void {
+  let surfaceHalf = findGateHalf(adventure, surface, subterranean.id);
+  let undergroundHalf = findGateHalf(adventure, subterranean, surface.id);
+  const surfaceUp = tileMaterialized(adventure, surface);
+  const undergroundUp = tileMaterialized(adventure, subterranean);
+
+  // Carve the surface gate: adjacent to the underground half if it is already
+  // placed, otherwise the slot closest to the underground tile's centre.
+  if (!surfaceHalf && surfaceUp) {
+    const spaceId = undergroundHalf
+      ? chooseAdjacentGateHex(adventure, surface, undergroundHalf.spaceId)
+      : chooseAnchorGateHex(adventure, surface, { row: subterranean.centerRow, col: subterranean.centerCol }, subterranean);
+    if (spaceId) {
+      surfaceHalf = carveGateField(adventure, spaceId, subterranean.id);
+    }
   }
 
-  const from = hero.spaceId ?? visit.fieldId;
-  hero.spaceId = target.spaceId;
-  appendEvent(state, {
-    type: "HERO_MOVED",
-    playerId: visit.playerId,
-    heroId: hero.id,
-    from,
-    to: target.spaceId,
-    movementLeft: hero.movementPoints
-  });
+  // Carve the underground entrance: adjacent to the surface gate if it exists,
+  // otherwise (bootstrapping from below) the slot closest to the surface tile.
+  if (!undergroundHalf && undergroundUp) {
+    const spaceId = surfaceHalf
+      ? chooseAdjacentGateHex(adventure, subterranean, surfaceHalf.spaceId)
+      : chooseAnchorGateHex(adventure, subterranean, { row: surface.centerRow, col: surface.centerCol }, surface);
+    if (spaceId) {
+      undergroundHalf = carveGateField(adventure, spaceId, surface.id);
+    }
+  }
+
+  // Link the two halves once both exist and are edge-to-edge.
+  if (surfaceHalf && undergroundHalf) {
+    const a = parseHexSpaceId(surfaceHalf.spaceId);
+    const b = parseHexSpaceId(undergroundHalf.spaceId);
+    if (a && b && hexDistance(a, b) === 1) {
+      surfaceHalf.gateLinkSpaceId = undergroundHalf.spaceId;
+      undergroundHalf.gateLinkSpaceId = surfaceHalf.spaceId;
+    }
+  }
+}
+
+/**
+ * Places/links every Subterranean Gate Token implied by the current layout:
+ * one for each pair of gapless-adjacent tiles that straddle the
+ * Surface↔Subterranean divide. Safe to call after any tile is materialized and
+ * after setup; it only ever adds the halves a discovery now permits.
+ */
+export function recomputeSubterraneanGates(adventure: AdventureState): void {
+  const tiles = Object.values(adventure.tiles);
+  for (const surface of tiles) {
+    if (tileLayer(surface) !== "surface") {
+      continue;
+    }
+    for (const subterranean of tiles) {
+      if (
+        tileLayer(subterranean) !== "subterranean" ||
+        !tileCentersAdjacent(
+          { row: surface.centerRow, col: surface.centerCol },
+          { row: subterranean.centerRow, col: subterranean.centerCol }
+        )
+      ) {
+        continue;
+      }
+      ensureSubterraneanGate(adventure, surface, subterranean);
+    }
+  }
 }
 
 /**

@@ -120,7 +120,9 @@ export {
   canHeroReachPlacedTile,
   classifyHeroStep,
   effectiveHandLimit,
+  fieldLayer,
   gainExperience,
+  gateFieldsLinked,
   getActiveAstrologersCard,
   getAdjacentSpaceIds,
   getHeroMovementCapabilities,
@@ -133,11 +135,13 @@ export {
   isFieldGuarded,
   isSeaField,
   levelOfExperience,
+  recomputeSubterraneanGates,
   recruitDiscountAmount,
   seaStepHalts,
-  seaTileBand
+  seaTileBand,
+  tileLayer
 } from "./adventure";
-export type { HeroMovementCapabilities, HeroPathTarget, HeroStepKind } from "./adventure";
+export type { HeroMovementCapabilities, HeroPathTarget, HeroStepKind, MapLayer } from "./adventure";
 export {
   ATTACKER_BACKLINE,
   ATTACKER_FRONTLINE,

@@ -15,10 +15,12 @@ import {
   getTownOfPlayer,
   getUnitSide,
   hasRecruitResources,
+  fieldLayer,
   hasResources as playerHasResources,
   humanPlayerIds,
   isSeaField,
   NEUTRAL_DECK_IDS,
+  tileLayer,
   RESOURCE_GAIN_LEVEL_AMOUNTS,
   SURRENDER_GOLD_COST,
   townHasBuildingEffect,
@@ -5418,7 +5420,13 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       }
 
       for (const tile of Object.values(adventure.tiles)) {
-        if (tile.faceDown && isTileAdjacentToSpace(state, tile.id, hero.spaceId)) {
+        if (
+          tile.faceDown &&
+          isTileAdjacentToSpace(state, tile.id, hero.spaceId) &&
+          // No discovering across the Surface/Subterranean divide — that only
+          // happens for free by entering a Subterranean Gate.
+          tileLayer(tile) === fieldLayer(state, hero.spaceId)
+        ) {
           actions.push({
             label: `Discover the face-down tile at (${tile.centerRow}, ${tile.centerCol})`,
             action: { type: "DISCOVER_TILE", playerId, heroId: hero.id, tileInstanceId: tile.id }

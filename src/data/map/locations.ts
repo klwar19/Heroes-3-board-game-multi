@@ -636,7 +636,12 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
   subterranean_gate: {
     id: "subterranean_gate",
     name: "Subterranean Gate",
-    category: "revisitable",
+    // "Otherwise treat a Subterranean Gate Token as an empty Field": the gate is
+    // a free, walk-through field, not a stop. Its only effect — discovering the
+    // tile on the other layer for free — fires automatically when a Hero ENTERS
+    // it (beginFieldVisit runs the SUBTERRANEAN_GATE step on every arrival,
+    // including the open empty fields), so the category stays "empty".
+    category: "empty",
     interaction: { type: "SUBTERRANEAN_GATE" },
     implementationStatus: "implemented",
     source: source("subterranean_gate")

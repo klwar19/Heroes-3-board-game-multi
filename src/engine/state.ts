@@ -4175,6 +4175,22 @@ export type MapFieldState = {
    * waiting to be dug (1 movement point) before it can be carried home.
    */
   grailDiggable?: boolean;
+  /**
+   * Subterranean Gate token (Stronghold expansion). When a gate is placed, the
+   * sacrificed hex's `location` becomes "subterranean_gate" and these point at
+   * the tile on the OTHER layer the gate bridges:
+   * - `gateToTileId`: the opposite-layer tile this half connects to. A Hero who
+   *   enters this field discovers that tile for free if it is still face-down
+   *   (the only way to discover across the Surface↔Subterranean divide).
+   * - `gateLinkSpaceId`: the partner gate field — the matching half on the other
+   *   tile — set once both halves have been materialized. Movement may cross
+   *   between the two linked halves even though they sit on different layers:
+   *   they are the one sanctioned Surface↔Subterranean crossing ("Treat both
+   *   Fields of the Subterranean Gate Token as one Field"). Undefined while only
+   *   this half exists because the other tile is still face-down.
+   */
+  gateToTileId?: string;
+  gateLinkSpaceId?: MapSpaceId;
 };
 
 export type PendingVisit = {
@@ -4349,7 +4365,11 @@ export type VisitStep =
       type: "HILL_FORT";
     }
   | {
-      /** Subterranean Gate: move the hero to the linked gate on an adjacent tile. */
+      /**
+       * Subterranean Gate: entering the gate discovers the tile on the other
+       * layer for free if it is still face-down. Otherwise the gate is an empty
+       * field (the hero simply walks across the linked gate↔entrance edge).
+       */
       type: "SUBTERRANEAN_GATE";
     }
   | {
