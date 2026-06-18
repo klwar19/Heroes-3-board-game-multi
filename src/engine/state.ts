@@ -4962,8 +4962,12 @@ export type PendingChoice =
         fromTop?: number;
         shuffleRestIntoDeck?: boolean;
       };
-      /** eagle-eye: the dug spell waiting on take/discard. */
-      eagleEye?: { deckId: DeckId; cardId: CardId };
+      /**
+       * eagle-eye: the dug spell waiting on take/discard. Basic X Magic's
+       * School-of-Magic fetch reuses this choice; `repeatSearch` carries a
+       * Pendant of Courage repeat so it still fires once the keep/discard is made.
+       */
+      eagleEye?: { deckId: DeckId; cardId: CardId; repeatSearch?: { deckId: DeckId; count: number } };
       /** hand-discard: candidate hand cards (index-aligned with options) and how many still to discard (Charm of Mana / Shackles of War). */
       handDiscard?: { cardIds: CardId[]; remaining: number; drawnOnly: boolean };
       /**

@@ -4930,9 +4930,25 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       deck.discardPile.push(dig.cardId);
     }
 
+    const repeat = dig.repeatSearch;
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
+
+    // Basic X Magic fetch under Pendant of Courage: repeat the whole search.
+    if (repeat) {
+      if (state.adventure) {
+        state.adventure.rewardQueue.unshift({
+          playerId: action.playerId,
+          kind: "shared-deck-search",
+          deckId: repeat.deckId,
+          count: repeat.count
+        });
+        pumpAdventureQueues(state);
+      } else {
+        openSharedDeckSearch(state, action.playerId, repeat.deckId, repeat.count);
+      }
+    }
     return;
   }
 
