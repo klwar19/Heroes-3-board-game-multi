@@ -1,0 +1,450 @@
+import { describe, expect, it } from "vitest";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
+import { getSchoolPowerBonus } from "./active-effects";
+import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
+import type { FactionId } from "@/data/factions/types";
+import { adventureCards } from "@/data/cards/adventure";
+import { spellCards } from "@/data/cards/spells";
+import type { ActiveEffectModifier, GameAction, GameEvent, GameState, TargetRef, UnitId } from "./state";
+
+// ---------------------------------------------------------------------------
+// Additional heroes, batch 2 — shipped with their real printed art and fully
+// engine-wired I/IV/VI specialties. Every test fails if the specialty's engine
+// wiring is removed (mutation-checked).
+//
+//   Lord Haart (Castle)  — Estates: gain 2/3/5 gold (map play)
+//   Jeddite (Dungeon)    — Mysterious Warlock: dig-keep Spells+Specialties (I/VI),
+//                          lethal save costing Power 0/1/2 (IV)
+//   Tazar (Fortress)     — War Hero: +2 defense reaction (I), +1 defense buff (IV),
+//                          remove/discard to draw the top Artifact (VI)
+//   Adrienne (Fortress)  — Fire Magic: +1/+2 Power to Fire-school casts (I/VI),
+//                          Search(3) + reshuffle the discard (IV)
+// ---------------------------------------------------------------------------
+
+const assetPath = (src: string) => fileURLToPath(new URL(`../../public${src}`, import.meta.url));
+
+function applyOk(state: GameState, action: GameAction): GameState {
+  const result = applyAction(state, action);
+  expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+  return result.state;
+}
+
+function findPlay(state: GameState, cardId: string, optionIndex?: number, unitId?: UnitId) {
+  return getLegalActions(state, "p1").find(
+    (legal) =>
+      legal.action.type === "PLAY_CARD" &&
+      legal.action.cardId === cardId &&
+      (optionIndex === undefined || legal.action.optionIndex === optionIndex) &&
+      (unitId === undefined || (legal.action.target?.type === "unit" && legal.action.target.unitId === unitId))
+  );
+}
+
+function passAllReactions(state: GameState): GameState {
+  let current = state;
+  let safety = 40;
+  while (current.reactionWindow && safety > 0) {
+    safety -= 1;
+    current = applyOk(current, { type: "PASS_REACTION", playerId: current.reactionWindow.priorityPlayerId });
+  }
+  return current;
+}
+
+function modifierTotalOn(state: GameState, unitId: UnitId, kind: ActiveEffectModifier["type"]): number {
+  let total = 0;
+  for (const effect of state.activeEffects) {
+    if (effect.target?.type !== "unit" || effect.target.unitId !== unitId) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === kind && "amount" in modifier) {
+        total += modifier.amount;
+      }
+    }
+  }
+  return total;
+}
+
+function defenseBonusOn(state: GameState, defenderId: UnitId): number | undefined {
+  return [...state.eventLog]
+    .reverse()
+    .find(
+      (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> =>
+        event.type === "ATTACK_ROLLED" && event.defenderId === defenderId
+    )?.defenseBonus;
+}
+
+/** A two-player adventure game with p1 on the given hero, ready for a map play. */
+function adventureState(seed: string, heroDefId: string, factionId: FactionId): GameState {
+  const game = createAdventureGameState({
+    seed,
+    rollFirstPlayer: false,
+    players: [
+      { id: "p1", name: "Hero", factionId, heroDefId },
+      { id: "p2", name: "Foe", factionId: "castle", heroDefId: "catherine" }
+    ]
+  });
+  const state = game.players.p1.needsHandRefresh
+    ? applyOk(game, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+    : game;
+  state.activePlayerId = "p1";
+  state.pendingChoice = null;
+  state.reactionWindow = null;
+  return state;
+}
+
+// ===========================================================================
+// Roster + art wiring (CLAUDE.md rule #2: the data must state what runs)
+// ===========================================================================
+
+describe("batch-2 heroes are registered in their factions with art and implemented specialties", () => {
+  const roster: Array<[string, string]> = [
+    ["lord_haart", "castle"],
+    ["jeddite", "dungeon"],
+    ["tazar", "fortress"],
+    ["adrienne", "fortress"]
+  ];
+
+  it("each hero sits in its faction roster, carries portrait + board scan, and has 3 implemented specialties", () => {
+    for (const [heroId, factionId] of roster) {
+      const hero = coreHeroDefinitions[heroId];
+      expect(hero, `${heroId} should be defined`).toBeTruthy();
+      expect(coreFactionDefinitions[factionId].heroes, `${factionId} roster`).toContain(heroId);
+      expect(hero.portrait, `${heroId} portrait`).toContain(`/assets/hero_boardart-${heroId}.webp`);
+      expect(hero.boardScan, `${heroId} board scan`).toContain(`/assets/heroes-${factionId}-`);
+      // The portrait + board scan webp files are actually on disk.
+      expect(existsSync(assetPath(hero.portrait!)), `${heroId} portrait file`).toBe(true);
+      expect(existsSync(assetPath(hero.boardScan!)), `${heroId} board scan file`).toBe(true);
+      for (const level of [1, 4, 6] as const) {
+        const cardId = hero.specialtyCardIds[level];
+        const card = adventureCards[cardId];
+        expect(card, `${cardId} should exist`).toBeTruthy();
+        expect(card.implementationStatus, `${cardId} implemented`).toBe("implemented");
+        expect(card.tags, `${cardId} not flagged needs-implementation`).not.toContain("needs-implementation");
+        expect(card.assets?.cardImage, `${cardId} art`).toContain(`/assets/hero_specialties-${heroId}-${level}.webp`);
+        expect(existsSync(assetPath(card.assets!.cardImage!)), `${cardId} art file`).toBe(true);
+      }
+    }
+  });
+});
+
+// ===========================================================================
+// Lord Haart (Castle) — Estates gold
+// ===========================================================================
+
+describe("Lord Haart's Estates specialty", () => {
+  const levels: Array<[1 | 4 | 6, number]> = [
+    [1, 2],
+    [4, 3],
+    [6, 5]
+  ];
+
+  for (const [level, gold] of levels) {
+    it(`${level} gains ${gold} gold as a map play`, () => {
+      const state = adventureState(`haart-${level}`, "lord_haart", "castle");
+      state.players.p1.hand = [`specialty.lord_haart.${level}`];
+      const before = state.players.p1.resources.gold;
+      const play = findPlay(state, `specialty.lord_haart.${level}`, 0);
+      expect(play, `Estates ${level} should be a map play`).toBeTruthy();
+      const after = applyOk(state, play!.action);
+      expect(after.players.p1.resources.gold).toBe(before + gold);
+    });
+  }
+
+  it("is map-only — not offered during combat", () => {
+    const combat = createInitialGameState("haart-combat");
+    combat.players.p1.hand = ["specialty.lord_haart.6"];
+    expect(findPlay(combat, "specialty.lord_haart.6")).toBeFalsy();
+  });
+});
+
+// ===========================================================================
+// Jeddite (Dungeon) — Mysterious Warlock
+// ===========================================================================
+
+describe("Jeddite's Mysterious Warlock dig (I/VI)", () => {
+  it("I digs the top 3 of your deck, keeps the Spell + Specialty, discards the rest", () => {
+    const state = adventureState("jeddite-i", "jeddite", "dungeon");
+    state.players.p1.hand = ["specialty.jeddite.1"];
+    // Top of the deck is the LAST element (pop order): magic_arrow, gem.1, stat.attack.
+    state.players.p1.deck = ["stat.attack", "specialty.gem.1", "spell.magic_arrow"];
+    state.players.p1.discard = [];
+    const after = applyOk(state, findPlay(state, "specialty.jeddite.1", 0)!.action);
+    expect(after.players.p1.hand).toContain("spell.magic_arrow");
+    expect(after.players.p1.hand).toContain("specialty.gem.1");
+    expect(after.players.p1.discard).toContain("stat.attack");
+    expect(after.players.p1.hand).not.toContain("stat.attack");
+    expect(after.players.p1.deck).toEqual([]); // all 3 dug
+  });
+
+  it("VI digs the top 4, keeping every Spell + Specialty", () => {
+    const state = adventureState("jeddite-vi", "jeddite", "dungeon");
+    state.players.p1.hand = ["specialty.jeddite.6"];
+    state.players.p1.deck = ["stat.attack", "stat.defense", "specialty.gem.1", "spell.magic_arrow"];
+    state.players.p1.discard = [];
+    const after = applyOk(state, findPlay(state, "specialty.jeddite.6", 0)!.action);
+    expect(after.players.p1.hand).toEqual(expect.arrayContaining(["spell.magic_arrow", "specialty.gem.1"]));
+    expect(after.players.p1.discard).toEqual(expect.arrayContaining(["stat.attack", "stat.defense"]));
+  });
+
+  it("only digs as deep as the deck allows (no crash on a short deck)", () => {
+    const state = adventureState("jeddite-short", "jeddite", "dungeon");
+    state.players.p1.hand = ["specialty.jeddite.1"];
+    state.players.p1.deck = ["spell.magic_arrow"];
+    state.players.p1.discard = [];
+    const after = applyOk(state, findPlay(state, "specialty.jeddite.1", 0)!.action);
+    expect(after.players.p1.hand).toContain("spell.magic_arrow");
+    expect(after.players.p1.deck).toEqual([]);
+  });
+});
+
+describe("Jeddite's Mysterious Warlock IV (lethal save, Power 0/1/2)", () => {
+  function lethalSetup(defenderGrade: "bronze" | "silver" | "gold", p1Hand: string[]): GameState {
+    const state = createInitialGameState("jeddite-iv");
+    state.players.p1.hand = p1Hand;
+    state.players.p2.hand = [];
+    const defender = state.combat!.units.unit_p1_griffins;
+    defender.grade = defenderGrade;
+    defender.position = 9;
+    defender.defense = 0;
+    defender.damage = defender.maxHealth - 1; // one hit from death
+    const attacker = state.combat!.units.unit_p2_skeletons;
+    attacker.attack = 5; // clearly lethal
+    attacker.position = 13;
+    state.combat!.dice.scriptedRolls = [0];
+    state.combat!.dice.rollCount = 0;
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    return applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: "unit_p2_skeletons",
+      defenderId: "unit_p1_griffins"
+    });
+  }
+
+  function save(state: GameState) {
+    return (state.reactionWindow?.legalReactions.p1 ?? []).find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.jeddite.4"
+    );
+  }
+
+  it("saves a bronze unit for free (Power 0)", () => {
+    const declared = lethalSetup("bronze", ["specialty.jeddite.4"]);
+    expect(declared.reactionWindow?.triggerEvent.type).toBe("UNIT_LETHAL_HIT");
+    const reaction = save(declared);
+    expect(reaction, "the free bronze save should be offered").toBeTruthy();
+    const saved = applyOk(declared, reaction!.action);
+    const griffins = saved.combat!.units.unit_p1_griffins;
+    expect(griffins.damage).toBe(griffins.maxHealth - 1); // unscathed, not killed
+  });
+
+  it("cannot save a gold unit without 2 Power, but can with 2 Power-source cards", () => {
+    const noPower = lethalSetup("gold", ["specialty.jeddite.4"]);
+    expect(save(noPower), "no save without the 2 Power cost").toBeFalsy();
+
+    const withPower = lethalSetup("gold", ["specialty.jeddite.4", "stat.power", "stat.power"]);
+    const reaction = save(withPower);
+    expect(reaction, "the gold save should be offered once 2 Power can be paid").toBeTruthy();
+    const saved = applyOk(withPower, { ...reaction!.action, costCardIds: ["stat.power", "stat.power"] } as GameAction);
+    const griffins = saved.combat!.units.unit_p1_griffins;
+    expect(griffins.damage).toBe(griffins.maxHealth - 1);
+    // The 2 Power-source cards were spent paying the save.
+    expect(saved.players.p1.hand).not.toContain("stat.power");
+  });
+});
+
+// ===========================================================================
+// Tazar (Fortress) — War Hero
+// ===========================================================================
+
+describe("Tazar's War Hero specialty", () => {
+  it("I adds +2 defense to the attacked unit as a reaction", () => {
+    const state = createInitialGameState("tazar-i");
+    state.players.p1.hand = ["specialty.tazar.1"];
+    state.players.p2.hand = [];
+    state.combat!.units.unit_p2_skeletons.position = 9;
+    state.combat!.units.unit_p1_griffins.position = 13;
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    state.combat!.dice.scriptedRolls = [0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: "unit_p2_skeletons",
+      defenderId: "unit_p1_griffins"
+    });
+    const reaction = (declared.reactionWindow?.legalReactions.p1 ?? []).find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.tazar.1"
+    );
+    expect(reaction, "War Hero I should be offered to the defender").toBeTruthy();
+    const after = applyOk(declared, reaction!.action);
+    expect(defenseBonusOn(after, "unit_p1_griffins")).toBe(2);
+  });
+
+  it("IV gives a chosen unit +1 defense (a DEFENSE_BONUS modifier) for the combat", () => {
+    const state = createInitialGameState("tazar-iv");
+    state.players.p1.hand = ["specialty.tazar.4"];
+    const after = applyOk(state, findPlay(state, "specialty.tazar.4", undefined, "unit_p1_griffins")!.action);
+    expect(modifierTotalOn(after, "unit_p1_griffins", "DEFENSE_BONUS")).toBe(1);
+  });
+
+  it("VI draws the top Artifact card by removing 1 card OR discarding 3", () => {
+    // Remove-1 option.
+    const removeState = adventureState("tazar-vi-remove", "tazar", "fortress");
+    const artDeck = removeState.decks.artifacts ?? removeState.decks["artifacts-minor"];
+    const topRemove = artDeck.drawPile[artDeck.drawPile.length - 1];
+    removeState.players.p1.hand = ["specialty.tazar.6", "stat.attack"];
+    removeState.players.p1.discard = [];
+    const removed = applyOk(removeState, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.tazar.6",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "none" },
+      costCardIds: ["stat.attack"]
+    });
+    expect(removed.players.p1.hand).toContain(topRemove);
+    expect(removed.players.p1.hand).not.toContain("stat.attack");
+    expect(removed.players.p1.discard).not.toContain("stat.attack"); // removed from the game, not discarded
+
+    // Discard-3 option.
+    const discardState = adventureState("tazar-vi-discard", "tazar", "fortress");
+    const artDeck2 = discardState.decks.artifacts ?? discardState.decks["artifacts-minor"];
+    const topDiscard = artDeck2.drawPile[artDeck2.drawPile.length - 1];
+    discardState.players.p1.hand = ["specialty.tazar.6", "stat.attack", "stat.defense", "stat.power"];
+    discardState.players.p1.discard = [];
+    const discarded = applyOk(discardState, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.tazar.6",
+      mode: "basic",
+      optionIndex: 1,
+      target: { type: "none" },
+      costCardIds: ["stat.attack", "stat.defense", "stat.power"]
+    });
+    expect(discarded.players.p1.hand).toContain(topDiscard);
+    expect(discarded.players.p1.discard).toEqual(
+      expect.arrayContaining(["stat.attack", "stat.defense", "stat.power"])
+    );
+  });
+});
+
+// ===========================================================================
+// Adrienne (Fortress) — Fire Magic
+// ===========================================================================
+
+describe("Adrienne's Fire Magic specialty", () => {
+  function castResolvedPower(state: GameState, cardId: string, target: TargetRef): number | undefined {
+    const cast = applyOk(state, { type: "CAST_SPELL", playerId: "p1", cardId, target });
+    const resolved = passAllReactions(cast);
+    return [...resolved.eventLog]
+      .reverse()
+      .find(
+        (event): event is Extract<GameEvent, { type: "SPELL_CAST_RESOLVED" }> =>
+          event.type === "SPELL_CAST_RESOLVED" && event.spellCardId === cardId
+      )?.power;
+  }
+
+  function fireMagicCombat(level: 1 | 6): GameState {
+    const state = createInitialGameState(`adrienne-${level}`);
+    state.players.p1.hand = [`specialty.adrienne.${level}`];
+    state.players.p2.hand = [];
+    return applyOk(state, findPlay(state, `specialty.adrienne.${level}`)!.action);
+  }
+
+  it("I creates a player-scoped Fire +1 Power effect; VI a +2 effect", () => {
+    const one = fireMagicCombat(1);
+    expect(getSchoolPowerBonus(one, "p1", spellCards["spell.blind"])).toBe(1);
+    const six = fireMagicCombat(6);
+    expect(getSchoolPowerBonus(six, "p1", spellCards["spell.blind"])).toBe(2);
+  });
+
+  it("only boosts the caster's Fire-school spells, never another school or another player", () => {
+    const one = fireMagicCombat(1);
+    expect(getSchoolPowerBonus(one, "p1", spellCards["spell.frost_ring"])).toBe(0); // water
+    expect(getSchoolPowerBonus(one, "p1", spellCards["spell.weakness"])).toBe(0); // water
+    expect(getSchoolPowerBonus(one, "p2", spellCards["spell.blind"])).toBe(0); // opponent
+  });
+
+  it("a Fire spell actually resolves at the boosted Power (Blind cast at base 0 -> Power 1)", () => {
+    const state = fireMagicCombat(1);
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.combat!.units.unit_p1_griffins.activatedThisRound = false;
+    state.players.p1.hand = ["spell.blind"];
+    state.players.p2.hand = [];
+    state.combat!.units.unit_p2_skeletons.grade = "bronze";
+    const power = castResolvedPower(state, "spell.blind", {
+      type: "unit",
+      unitId: "unit_p2_skeletons"
+    });
+    expect(power).toBe(1);
+  });
+
+  it("does NOT boost a Water spell cast under the same effect (Frost Ring stays Power 0)", () => {
+    const state = fireMagicCombat(6);
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.combat!.units.unit_p1_griffins.activatedThisRound = false;
+    state.players.p1.hand = ["spell.frost_ring"];
+    state.players.p2.hand = [];
+    // Cast on an empty corner space with no adjacent units, so the ring is a clean no-op.
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.position = 15 - 0; // park everyone bottom-right cluster away from space 0's ring
+    }
+    state.combat!.units.unit_p1_griffins.position = 19;
+    const power = castResolvedPower(state, "spell.frost_ring", { type: "space", position: 0 });
+    expect(power).toBe(0);
+  });
+});
+
+// ===========================================================================
+// Adrienne IV — Search(3) then reshuffle the discard into the deck
+// ===========================================================================
+
+describe("Adrienne's Fire Magic IV (Search 3, then reshuffle discard into deck)", () => {
+  it("takes one of the top 3, then shuffles the whole discard pile back into the deck", () => {
+    const state = adventureState("adrienne-iv", "adrienne", "fortress");
+    state.players.p1.hand = ["specialty.adrienne.4"];
+    state.players.p1.deck = ["stat.power", "stat.attack", "stat.defense"]; // top = last = stat.defense
+    state.players.p1.discard = ["spell.magic_arrow"];
+
+    const play = findPlay(state, "specialty.adrienne.4", 0);
+    expect(play, "Fire Magic IV should be a map play with cards in the deck").toBeTruthy();
+    let next = applyOk(state, play!.action);
+
+    expect(next.pendingChoice?.type).toBe("OPTION_CHOICE");
+    // Keep the first revealed card (stat.defense); the other two head to discard,
+    // then the whole discard pile shuffles back into the deck.
+    next = applyOk(next, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: next.pendingChoice!.id,
+      optionIndex: 0
+    });
+
+    expect(next.players.p1.hand).toContain("stat.defense");
+    expect(next.players.p1.discard).toEqual([]); // reshuffled away
+    // The two unpicked search cards + the prior discard now live in the deck.
+    expect(next.players.p1.deck).toEqual(
+      expect.arrayContaining(["spell.magic_arrow", "stat.attack", "stat.power"])
+    );
+    expect(next.players.p1.deck).not.toContain("stat.defense");
+  });
+
+  it("with 0/1 cards revealed it still reshuffles the discard into the deck (no choice)", () => {
+    const state = adventureState("adrienne-iv-one", "adrienne", "fortress");
+    state.players.p1.hand = ["specialty.adrienne.4"];
+    state.players.p1.deck = ["spell.magic_arrow"]; // single reveal -> auto-kept
+    state.players.p1.discard = ["stat.attack", "stat.defense"];
+    const next = applyOk(state, findPlay(state, "specialty.adrienne.4", 0)!.action);
+    expect(next.pendingChoice).toBeNull();
+    expect(next.players.p1.hand).toContain("spell.magic_arrow");
+    expect(next.players.p1.discard).toEqual([]);
+    expect(next.players.p1.deck).toEqual(expect.arrayContaining(["stat.attack", "stat.defense"]));
+  });
+});

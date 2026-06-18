@@ -58,6 +58,22 @@ function stretchGoalHeroSource(slug: string) {
 }
 
 /**
+ * Source for additional wiki heroes shipped with their real printed board scan +
+ * cropped portrait + specialty card faces (Lord Haart, Jeddite, Tazar, Adrienne).
+ * The wiki PAGE slug can differ from the local ASSET slug — Lord Haart's board
+ * files use "lord_haart" while his page is /heroes/lord_haart_castle/ — so the
+ * page slug is passed explicitly.
+ */
+function wikiBoardHeroSource(pageSlug: string) {
+  return {
+    product: "Heroes of Might and Magic III: The Board Game",
+    credit:
+      "Hero board data and board scan from the fan wiki; the portrait is the board-game art cropped from that scan (hosted locally). Verify against official components before final release.",
+    url: `https://en.homm3bg.wiki/heroes/${pageSlug}/`
+  };
+}
+
+/**
  * Source for the two Tower heroes whose printed boards are not on the fan wiki
  * yet (only placeholder art): stats follow the verified Wizard/Alchemist board
  * pattern and the portrait is the classic PC hero portrait (heroes.thelazy.net,
@@ -1331,6 +1347,80 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     portrait: "/assets/hero_boardart-adelaide.webp",
     boardScan: "/assets/heroes-castle-magic-adelaide.webp",
     source: stretchGoalHeroSource("adelaide")
+  },
+
+  // ---- Additional heroes, batch 2 (fan-wiki, real board art) -------------
+  // Each ships with its printed board scan + cropped portrait + three specialty
+  // card faces (scripts/fetch-extra-heroes-art-batch2.py). Stats, class and
+  // starting ability transcribed from each hero's wiki page. Every I/IV/VI
+  // specialty runs in the engine (extra-heroes-batch2-specialties.test.ts).
+  lord_haart: {
+    id: "lord_haart",
+    name: "Lord Haart",
+    faction: "castle",
+    class: "Knight",
+    type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.estates",
+    specialtyCardIds: {
+      1: "specialty.lord_haart.1",
+      4: "specialty.lord_haart.4",
+      6: "specialty.lord_haart.6"
+    },
+    portrait: "/assets/hero_boardart-lord_haart.webp",
+    boardScan: "/assets/heroes-castle-might-lord_haart.webp",
+    source: wikiBoardHeroSource("lord_haart_castle")
+  },
+  jeddite: {
+    id: "jeddite",
+    name: "Jeddite",
+    faction: "dungeon",
+    class: "Warlock",
+    type: "magic",
+    startingStats: { attack: 0, defense: 0, power: 3, knowledge: 2 },
+    startingAbilityCardId: "ability.sorcery",
+    specialtyCardIds: {
+      1: "specialty.jeddite.1",
+      4: "specialty.jeddite.4",
+      6: "specialty.jeddite.6"
+    },
+    portrait: "/assets/hero_boardart-jeddite.webp",
+    boardScan: "/assets/heroes-dungeon-magic-jeddite.webp",
+    source: wikiBoardHeroSource("jeddite")
+  },
+  tazar: {
+    id: "tazar",
+    name: "Tazar",
+    faction: "fortress",
+    class: "Beastmaster",
+    type: "might",
+    startingStats: { attack: 0, defense: 4, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.armorer",
+    specialtyCardIds: {
+      1: "specialty.tazar.1",
+      4: "specialty.tazar.4",
+      6: "specialty.tazar.6"
+    },
+    portrait: "/assets/hero_boardart-tazar.webp",
+    boardScan: "/assets/heroes-fortress-might-tazar.webp",
+    source: wikiBoardHeroSource("tazar")
+  },
+  adrienne: {
+    id: "adrienne",
+    name: "Adrienne",
+    faction: "fortress",
+    class: "Witch",
+    type: "magic",
+    startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: {
+      1: "specialty.adrienne.1",
+      4: "specialty.adrienne.4",
+      6: "specialty.adrienne.6"
+    },
+    portrait: "/assets/hero_boardart-adrienne.webp",
+    boardScan: "/assets/heroes-fortress-magic-adrienne.webp",
+    source: wikiBoardHeroSource("adrienne")
   }
 };
 
@@ -1352,7 +1442,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Castle",
     color: "#2f6fd0",
     startingTileId: "S3",
-    heroes: ["catherine", "rion", "adelaide"],
+    heroes: ["catherine", "rion", "adelaide", "lord_haart"],
     buildings: buildingsOfFaction("castle"),
     units: unitsOfFaction("castle"),
     townImage: "/assets/towns-castle-empty.webp",
@@ -1408,7 +1498,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Dungeon",
     color: "#c0392b",
     startingTileId: "S2",
-    heroes: ["alamar", "deemer", "mutare"],
+    heroes: ["alamar", "deemer", "mutare", "jeddite"],
     buildings: buildingsOfFaction("dungeon"),
     units: unitsOfFaction("dungeon"),
     townImage: "/assets/towns-dungeon-empty.webp",
@@ -1430,7 +1520,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Fortress",
     color: "#6b8e23",
     startingTileId: "S5",
-    heroes: ["bron", "wystan"],
+    heroes: ["bron", "wystan", "tazar", "adrienne"],
     buildings: buildingsOfFaction("fortress"),
     units: unitsOfFaction("fortress"),
     source: townSource("fortress")

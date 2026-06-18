@@ -77,11 +77,11 @@ const ATTACK: Extract<GameAction, { type: "ATTACK_UNIT" }> = {
 describe("Fortress faction wiring", () => {
   const fortress = coreFactionDefinitions.fortress;
 
-  it("is registered with a swamp starting tile, two heroes and a full roster", () => {
+  it("is registered with a swamp starting tile, four heroes and a full roster", () => {
     expect(fortress).toBeDefined();
     expect(fortress.startingTileId).toBe("S5");
     expect(startingTileByFaction.fortress).toBe("S5");
-    expect(fortress.heroes).toEqual(["bron", "wystan"]);
+    expect(fortress.heroes).toEqual(["bron", "wystan", "tazar", "adrienne"]);
     // 7 creatures (3 bronze, 2 silver, 2 gold) and 8 buildings (6 standard + 2 special).
     expect(fortress.units).toHaveLength(7);
     expect(fortress.buildings).toHaveLength(8);
@@ -92,7 +92,7 @@ describe("Fortress faction wiring", () => {
     expect(names).toEqual(["Basilisks", "Dragon Flies", "Gnolls", "Gorgons", "Hydras", "Lizardmen", "Wyverns"]);
   });
 
-  it("gives both heroes a valid starting ability and three implemented specialties", () => {
+  it("gives every hero a valid starting ability and three implemented specialties", () => {
     for (const heroId of fortress.heroes) {
       const hero = coreHeroDefinitions[heroId];
       expect(hero.faction).toBe("fortress");

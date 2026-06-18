@@ -70,6 +70,9 @@ export const implementedCardEffectTypes = [
   "ARTILLERY_BALLISTA_VOLLEY",
   "FIRST_AID_TENT_VOLLEY",
   "DECK_DIG_KEEP_ONE",
+  "DECK_DIG_KEEP_MATCHING",
+  "DRAW_TOP_ARTIFACT",
+  "SEARCH_DECK_THEN_RESHUFFLE",
   "CANCEL_LETHAL_ATTACK",
   "REDIRECT_SPELL",
   "CONTINUE_NEUTRAL_FREE",
@@ -765,6 +768,18 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "DECK_DIG_KEEP_ONE") {
     return `discard up to ${card.effect.count} cards from your deck and return 1 of them to your hand`;
+  }
+
+  if (card.effect.type === "DECK_DIG_KEEP_MATCHING") {
+    return `draw up to ${card.effect.count} cards from your deck, keep every Spell and Specialty among them, and discard the rest`;
+  }
+
+  if (card.effect.type === "DRAW_TOP_ARTIFACT") {
+    return "draw the top card of the Artifact deck into your hand";
+  }
+
+  if (card.effect.type === "SEARCH_DECK_THEN_RESHUFFLE") {
+    return `search the top ${card.effect.count} cards of your deck (keep 1), then shuffle your discard pile into your deck`;
   }
 
   if (card.effect.type === "CANCEL_LETHAL_ATTACK") {

@@ -4918,6 +4918,17 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     player.hand.push(cardId);
     player.discard.push(...pick.cardIds.filter((_, index) => index !== action.optionIndex));
 
+    // Adrienne's Fire Magic IV: after the Search(3) pick, shuffle the whole
+    // discard pile (including the just-discarded revealed cards) back into the
+    // deck.
+    if (pick.thenReshuffleDiscard) {
+      player.deck = shuffleCards(
+        [...player.deck, ...player.discard],
+        `${state.seed}#fire-magic-iv#${action.playerId}#${eventSeedNumber(state)}`
+      );
+      player.discard = [];
+    }
+
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;

@@ -1708,6 +1708,33 @@ function isOptionEffectPlayable(
       const player = state.players[playerId];
       return Boolean(player && player.deck.length + player.discard.length > 0);
     }
+    case "DECK_DIG_KEEP_MATCHING": {
+      // Jeddite's Mysterious Warlock I/VI: a map dig — useful while the deck
+      // still holds at least one card to look at.
+      if (context !== "map" || !state.adventure) {
+        return false;
+      }
+      const player = state.players[playerId];
+      return Boolean(player && player.deck.length > 0);
+    }
+    case "SEARCH_DECK_THEN_RESHUFFLE": {
+      // Adrienne's Fire Magic IV: a map Search + reshuffle — useful whenever
+      // there is a card to reveal or a discard pile to shuffle back.
+      if (context !== "map" || !state.adventure) {
+        return false;
+      }
+      const player = state.players[playerId];
+      return Boolean(player && player.deck.length + player.discard.length > 0);
+    }
+    case "DRAW_TOP_ARTIFACT": {
+      // Tazar's War Hero VI: a map draw — useful while the Artifact deck still
+      // holds a card to draw.
+      if (context !== "map" || !state.adventure) {
+        return false;
+      }
+      const artifactDeck = state.decks.artifacts ?? state.decks["artifacts-minor"];
+      return Boolean(artifactDeck && artifactDeck.drawPile.length > 0);
+    }
     case "PLACE_PARALYSIS":
       // Ring of the Wayfarer's paralysis side is a combat play; the neutral /
       // opening-round gate lives on its `requiresNeutralCombatStart` flag.
