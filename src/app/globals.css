@@ -492,6 +492,7 @@ button {
 .boardColumn {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .initiativeRail {
@@ -557,6 +558,7 @@ button {
   position: relative;
   display: grid;
   place-items: center;
+  min-width: 0;
   padding: 26px;
   border: 3px solid #8a6129;
   border-radius: 14px;
@@ -574,6 +576,37 @@ button {
     0 32px 52px rgb(0 0 0 / 44%);
 }
 
+/* The combat board art is split into a slim scenery strip and the playable
+   5x4 battlefield. The strip is outside the grid so card placement stays exact. */
+.battlefieldFrame {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 1080px;
+  min-width: 0;
+  display: grid;
+  overflow: hidden;
+  border: 2px solid #45301c;
+  border-radius: 8px;
+  background: #16110a;
+  box-shadow:
+    inset 0 0 0 2px rgb(238 202 122 / 16%),
+    inset 0 0 34px rgb(0 0 0 / 24%),
+    0 25px 22px rgb(0 0 0 / 32%);
+}
+
+.battlefieldScenery {
+  display: block;
+  width: 100%;
+  aspect-ratio: 125 / 26;
+  object-fit: cover;
+  border-bottom: 2px solid rgb(26 18 9 / 68%);
+  pointer-events: none;
+  user-select: none;
+  transform-origin: center;
+  transition: transform 400ms ease;
+}
+
 /* Horizontal battlefield: 5 columns wide (attacker back/front · crossing ·
    defender front/back, left to right) by 4 rows tall. Cells are placed onto
    this grid explicitly from their engine position (see battlefieldCellPlacement
@@ -581,48 +614,37 @@ button {
 .battlefield {
   position: relative;
   z-index: 1;
-  width: min(100%, 780px);
+  width: 100%;
   aspect-ratio: 5 / 4;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   grid-template-rows: repeat(4, minmax(0, 1fr));
-  border: 2px solid #45301c;
-  border-radius: 8px;
   overflow: hidden;
   /* Fallback terrain if the art image fails to load: dirt (attacker) on the
-     left, the crossing in the middle, grass (defender) on the right. The real
-     art is the rotated <img> layer below, which covers this. */
+     left, the crossing in the middle, grass (defender) on the right. */
   background: linear-gradient(90deg, #574127 0%, #6c5333 28%, #59683f 50%, #3f7140 72%, #2f5a30 100%);
-  box-shadow:
-    inset 0 0 0 2px rgb(238 202 122 / 16%),
-    inset 0 0 34px rgb(0 0 0 / 24%),
-    0 25px 22px rgb(0 0 0 / 32%);
+  box-shadow: inset 0 0 34px rgb(0 0 0 / 24%);
+}
+
+.battlefieldTerrain {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+  transform-origin: center;
+  z-index: 0;
   transition: transform 400ms ease;
 }
 
-/* The painted board art is portrait (grass → crossing → dirt, top to bottom).
-   Rotating it 90° lays that out left-to-right to match the transposed cells.
-   Sized as the field's transpose (4/5 ratio) so a quarter-turn's bounding box
-   covers the field exactly; it sits behind the cells and turns with the flip. */
-.battlefieldTerrain {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 80%;
-  height: 125%;
-  object-fit: cover;
-  transform: translate(-50%, -50%) rotate(90deg);
-  pointer-events: none;
-  user-select: none;
-  z-index: 0;
-}
-
 /* Seat-relative view: a horizontal mirror swaps the two armies left↔right
-   (done per-cell in board.tsx, so cards stay upright and animations stay in
-   plain screen space). The only thing to turn here is the terrain art — spin it
-   the other way so grass/dirt follow the swapped sides. */
+   (done per-cell in board.tsx, so cards stay upright). Mirror only the art
+   layers so dirt/grass follow the swapped sides. */
+.boardFelt.flipped .battlefieldScenery,
 .boardFelt.flipped .battlefieldTerrain {
-  transform: translate(-50%, -50%) rotate(-90deg);
+  transform: scaleX(-1);
 }
 
 .battleCell {
@@ -871,7 +893,7 @@ button.battleCell {
 }
 
 .boardCard {
-  width: min(92px, 76%);
+  width: min(112px, 66%);
   aspect-ratio: 5 / 7;
   position: relative;
   display: block;
@@ -2294,13 +2316,17 @@ button.battleCell {
     padding: 8px;
   }
 
+  .battlefieldFrame {
+    max-width: calc(100vw - 48px);
+  }
+
   .battlefield {
-    width: min(100%, 460px);
     grid-template-columns: repeat(5, minmax(0, 1fr));
     grid-template-rows: repeat(4, minmax(0, 1fr));
   }
 
   .boardFelt {
+    justify-items: start;
     padding: 12px;
   }
 

@@ -743,18 +743,24 @@ export function BattlefieldBoard({
           )}
         </div>
       ) : null}
-      <div className="battlefield">
-        {/* Terrain art. The painted board is portrait (grass → crossing → dirt,
-            top to bottom); rotating it 90° lays that gradient out horizontally
-            so it lines up with the transposed cells. It sits behind the cells
-            and rotates with the board's seat flip. */}
+      <div className="battlefieldFrame">
         <img
           alt=""
           aria-hidden="true"
-          className="battlefieldTerrain"
+          className="battlefieldScenery"
           referrerPolicy="no-referrer"
-          src={assetUrl("/assets/board/battlefield-4x5-grass-dirt.png")}
+          src={assetUrl("/assets/board/battlefield-4x5-pro-scenery.png")}
         />
+        <div className="battlefield">
+          {/* Terrain art is a landscape 5x4 board, so it lines up directly with
+              the transposed cells and only mirrors for the seat-relative flip. */}
+          <img
+            alt=""
+            aria-hidden="true"
+            className="battlefieldTerrain"
+            referrerPolicy="no-referrer"
+            src={assetUrl("/assets/board/battlefield-4x5-pro.png")}
+          />
         {Array.from({ length: BATTLEFIELD_CELL_COUNT }, (_, index) => {
           const unit = unitsByPosition.get(index);
           const terrain = getBattlefieldTerrain(index);
@@ -1135,6 +1141,7 @@ export function BattlefieldBoard({
             swapBackImage={hoveredSwapPartnerUnit?.assets?.cardImage}
           />
         ) : null}
+        </div>
       </div>
       {arrowTower && isUnitAlive(arrowTower) ? (
         <ArrowTowerCard
