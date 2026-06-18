@@ -98,29 +98,28 @@ describe("split decks (BINH) vs single decks (legacy)", () => {
     expect(state.decks["artifacts-minor"]).toBeUndefined();
   });
 
-  it("gates the Expert spell deck by level + revealed IV–V tiles, with key-card bypass", () => {
+  it("gates the Expert spell deck by hero level (4+), with a key-card bypass below that", () => {
     const state = makeBinhGame();
     const hero = state.heroes.hero_p1;
-
-    // Level 1, no IV–V tile revealed, no key card: locked.
     state.players.p1.hand = [];
     state.players.p1.deck = [];
     state.players.p1.discard = [];
+
+    // Below level 4 with no key card: only the Basic deck.
+    hero.level = 1;
     expect(canDrawExpertSpells(state, "p1", hero)).toBe(false);
 
-    // A key card anywhere in the player's cards unlocks it.
+    // A key card (Eagle Eye / Wisdom / a Basic elemental Magic) unlocks the
+    // Expert deck at any level.
     state.players.p1.discard = ["ability.eagle_eye"];
     expect(canDrawExpertSpells(state, "p1", hero)).toBe(true);
     state.players.p1.discard = [];
 
-    // Level 4 alone is not enough while the map stays shallow.
-    hero.level = 4;
+    // Level alone decides it otherwise — no map progress required. 3 is still
+    // locked, 4 unlocks the Basic-or-Expert choice.
+    hero.level = 3;
     expect(canDrawExpertSpells(state, "p1", hero)).toBe(false);
-
-    // Level 4 plus an open IV–V tile unlocks it.
-    const nearTile = Object.values(state.adventure!.tiles).find((tile) => tile.backLabel === "Ⅳ–Ⅴ");
-    expect(nearTile).toBeDefined();
-    nearTile!.faceDown = false;
+    hero.level = 4;
     expect(canDrawExpertSpells(state, "p1", hero)).toBe(true);
   });
 
