@@ -119,6 +119,7 @@ import type {
   PlayerId,
   ResourceCost,
   ResourceKind,
+  SpellSchool,
   VisitStep
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
@@ -4785,39 +4786,62 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     }
     state.pendingChoice = null;
 
-    // Option 0 commits to searching: reveal the top cards and open the keep-one
-    // choice. Option 1 takes the top of the discard pile instead — no reveal.
+    // Option 0 commits to Searching: reveal the top cards and open the keep-one
+    // choice (revealSharedDeckSearch fires its own Pendant repeat).
     if (action.optionIndex === 0) {
       state.phase = choice.returnPhase;
       revealSharedDeckSearch(state, action.playerId, mode.deckId, mode.count);
       return;
     }
 
-    const deck = state.decks[mode.deckId];
-    const takenCardId = deck?.discardPile.pop();
-    if (!deck || !takenCardId) {
-      throw new Error("The discard pile is empty.");
+    const hasDiscardTop = mode.hasDiscardTop ?? false;
+    const fetchSchools = mode.schoolFetch ?? [];
+
+    // The remaining options take a card with no reveal: the discard top (when
+    // offered, at index 1), then one "draw from a School of Magic" per school.
+    if (hasDiscardTop && action.optionIndex === 1) {
+      const deck = state.decks[mode.deckId];
+      const takenCardId = deck?.discardPile.pop();
+      if (!deck || !takenCardId) {
+        throw new Error("The discard pile is empty.");
+      }
+      player.hand.push(takenCardId);
+      // Mirror the DECK_SEARCH resolver: an Ability card pulled from the shared
+      // deck is tracked so its printed ability can be granted.
+      if (mode.deckId === "abilities") {
+        (player.deckDrawnAbilityCardIds ??= []).push(takenCardId);
+      }
+      appendEvent(state, {
+        type: "DECK_SEARCH_RESOLVED",
+        playerId: action.playerId,
+        deckId: mode.deckId,
+        choiceId: choice.id,
+        pick: "discard-top",
+        discardedCardIds: []
+      });
+    } else {
+      // Basic X Magic: draw the first spell of the chosen School straight into
+      // hand — you keep whatever you get (the deck reshuffles in performSchoolFetch).
+      const school = fetchSchools[action.optionIndex - (hasDiscardTop ? 2 : 1)];
+      if (!school) {
+        throw new Error("That search option is not available.");
+      }
+      performSchoolFetch(state, action.playerId, mode.deckId, school);
+      appendEvent(state, {
+        type: "DECK_SEARCH_RESOLVED",
+        playerId: action.playerId,
+        deckId: mode.deckId,
+        choiceId: choice.id,
+        pick: "revealed",
+        discardedCardIds: []
+      });
     }
-    player.hand.push(takenCardId);
-    // Mirror the DECK_SEARCH resolver: an Ability card pulled from the shared
-    // deck is tracked so its printed ability can be granted.
-    if (mode.deckId === "abilities") {
-      (player.deckDrawnAbilityCardIds ??= []).push(takenCardId);
-    }
-    appendEvent(state, {
-      type: "DECK_SEARCH_RESOLVED",
-      playerId: action.playerId,
-      deckId: mode.deckId,
-      choiceId: choice.id,
-      pick: "discard-top",
-      discardedCardIds: []
-    });
 
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
 
     // Pendant of Courage: the whole Search action repeats once, even when this
-    // branch took the discard top instead of revealing the deck.
+    // branch took the discard top or drew from a School of Magic.
     if (takeSearchRepeatEffect(state, action.playerId)) {
       if (state.adventure) {
         state.adventure.rewardQueue.unshift({
@@ -5451,22 +5475,41 @@ export function openSharedDeckSearch(state: GameState, playerId: PlayerId, deckI
     return;
   }
 
-  if (deck.discardPile.length > 0) {
-    const topCardId = deck.discardPile[deck.discardPile.length - 1];
+  // Basic X Magic: "Instead of Searching the Spell deck, find the first <School>
+  // Magic spell…". The draw is an alternative TO searching, decided up front —
+  // before any card is revealed — never alongside the revealed cards.
+  const schoolFetch = isSpellDeck(deckId) ? activeSchoolFetches(state, playerId) : [];
+  const discardTopId = deck.discardPile.length > 0 ? deck.discardPile[deck.discardPile.length - 1] : null;
+
+  if (discardTopId || schoolFetch.length > 0) {
     // Show the base search size in the label only — the real count override
-    // (Scouting) is consumed when the player actually reveals, not here, so
-    // taking the discard top leaves any override intact for a later search.
+    // (Scouting) is consumed when the player actually reveals, not here, so an
+    // up-front discard/fetch leaves any override intact for a later search.
+    const options: { label: string }[] = [{ label: `Search (${baseCount}) — look at the top cards and keep one` }];
+    if (discardTopId) {
+      options.push({ label: `Take the top discard (${cardLibrary[discardTopId]?.name ?? discardTopId})` });
+    }
+    for (const school of schoolFetch) {
+      const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
+      options.push({ label: `Draw the first ${schoolName} Magic spell — take it into hand` });
+    }
+
     state.pendingChoice = {
       id: `choice_${nextEventNumber(state)}`,
       type: "OPTION_CHOICE",
       playerId,
-      prompt: `Search the ${deckId} deck, or take its top discard?`,
-      options: [
-        { label: `Search (${baseCount}) — look at the top cards and keep one` },
-        { label: `Take the top discard (${cardLibrary[topCardId]?.name ?? topCardId})` }
-      ],
+      prompt:
+        schoolFetch.length > 0
+          ? `Search the ${deckId} deck, or draw from a School of Magic instead?`
+          : `Search the ${deckId} deck, or take its top discard?`,
+      options,
       context: "deck-search-mode",
-      deckSearchMode: { deckId, count: baseCount },
+      deckSearchMode: {
+        deckId,
+        count: baseCount,
+        ...(schoolFetch.length > 0 ? { schoolFetch } : {}),
+        hasDiscardTop: Boolean(discardTopId)
+      },
       returnPhase: state.combat ? "combat" : "player-turn"
     };
     state.phase = "choice";
@@ -5478,12 +5521,42 @@ export function openSharedDeckSearch(state: GameState, playerId: PlayerId, deckI
 }
 
 /**
+ * Basic X Magic, the up-front "draw instead of Searching": take the deck's first
+ * spell of `school` (Magic Arrow's "any" counts) straight into hand, then
+ * reshuffle the deck. Returns the taken card id, or null when the deck holds no
+ * matching spell. No cards are revealed — this replaces the Search entirely.
+ */
+function performSchoolFetch(state: GameState, playerId: PlayerId, deckId: string, school: SpellSchool): CardId | null {
+  const deck = state.decks[deckId];
+  const player = state.players[playerId];
+  if (!deck || !player) {
+    return null;
+  }
+
+  let fetchedCardId: CardId | null = null;
+  for (let index = deck.drawPile.length - 1; index >= 0; index -= 1) {
+    const schools = cardLibrary[deck.drawPile[index]]?.spellSchools ?? [];
+    if (schools.includes(school) || schools.includes("any")) {
+      fetchedCardId = deck.drawPile[index];
+      deck.drawPile.splice(index, 1);
+      break;
+    }
+  }
+
+  if (fetchedCardId) {
+    player.hand.push(fetchedCardId);
+  }
+  deck.drawPile = shuffleCards(deck.drawPile, `${state.seed}#school-fetch#${eventSeedNumber(state)}`);
+  return fetchedCardId;
+}
+
+/**
  * Reveals the top of a shared deck and opens the DECK_SEARCH "keep one" choice,
- * applying Scouting search-size overrides, Basic X Magic school fetches and the
- * Pendant of Courage repeat. The discard-top option is never offered here — it
- * is the alternative branch resolved before any reveal (see
+ * applying Scouting search-size overrides and the Pendant of Courage repeat. The
+ * discard-top and Basic X Magic "draw from a School of Magic" alternatives are
+ * never offered here — they are resolved up front, before any reveal (see
  * `openSharedDeckSearch`), so a player can never both peek the deck and still
- * take the discard top.
+ * take the discard top or fetch.
  */
 export function revealSharedDeckSearch(state: GameState, playerId: PlayerId, deckId: string, baseCount: number): void {
   const deck = state.decks[deckId];
@@ -5501,7 +5574,9 @@ export function revealSharedDeckSearch(state: GameState, playerId: PlayerId, dec
     revealedCardIds.push(cardId);
   }
 
-  const schoolFetch = isSpellDeck(deckId) ? activeSchoolFetches(state, playerId) : [];
+  // Basic X Magic's "draw instead of Searching" is offered up front (see
+  // openSharedDeckSearch), so reaching this reveal means the player chose to
+  // Search — only the keep-one picks apply here.
   const repeats = takeSearchRepeatEffect(state, playerId);
 
   const choiceId = `choice_${nextEventNumber(state)}`;
@@ -5511,7 +5586,6 @@ export function revealSharedDeckSearch(state: GameState, playerId: PlayerId, dec
     playerId,
     deckId,
     revealedCardIds,
-    ...(schoolFetch.length > 0 ? { schoolFetch } : {}),
     ...(repeats ? { repeatSearch: { deckId, count: baseCount } } : {}),
     returnPhase: state.combat ? "combat" : "player-turn"
   };
