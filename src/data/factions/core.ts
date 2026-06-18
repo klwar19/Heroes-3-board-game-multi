@@ -89,6 +89,22 @@ function towerPcPortraitHeroSource(slug: string, pcName: string) {
 }
 
 /**
+ * Source for the "Regular Stretch Goals 2024" heroes whose fan-wiki page still
+ * shows only the deck-back placeholder (no printed board scan or specialty card
+ * faces yet): stats, class, starting ability and the I/IV/VI specialty rules are
+ * transcribed from that page, and the portrait is the classic PC hero portrait
+ * from heroes.thelazy.net (upscaled, hosted locally), exactly like Moandor.
+ */
+function stretchGoalPcPortraitHeroSource(slug: string, pcName: string) {
+  return {
+    product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals 2024)",
+    credit:
+      `Hero roster, class, statistics, starting ability and specialty rules from the fan wiki hero page. The printed board is not on the wiki yet (placeholder art), so the portrait is the classic PC hero portrait from heroes.thelazy.net/index.php/${pcName} (upscaled, hosted locally). Verify against official components before final release.`,
+    url: `https://en.homm3bg.wiki/heroes/${slug}/`
+  };
+}
+
+/**
  * Town buildings for the three core factions. Every faction shares the same
  * City Hall / Citadel / Mage Guild / dwelling costs; City Hall income choices,
  * Mage Guild spell prices, and the two faction buildings differ.
@@ -1438,6 +1454,97 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     portrait: "/assets/hero_boardart-vidomina.webp",
     boardScan: "/assets/heroes-necropolis-magic-vidomina.webp",
     source: wikiBoardHeroSource("vidomina")
+  },
+
+  // ---- Additional heroes, batch 3 ---------------------------------------
+  // Four "Regular Stretch Goals 2024" heroes whose fan-wiki pages still show the
+  // deck-back placeholder, so they ship the classic PC portrait (heroes.thelazy.net,
+  // like Moandor/Cyra/Torosar). Lord Haart (Necropolis) IS on the wiki with his
+  // real printed board + specialty faces. Every I/IV/VI specialty runs in the
+  // engine and is mutation-checked (extra-heroes-batch3-specialties.test.ts).
+  valeska: {
+    id: "valeska",
+    name: "Valeska",
+    faction: "castle",
+    class: "Knight",
+    type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.archery",
+    specialtyCardIds: {
+      1: "specialty.valeska.1",
+      4: "specialty.valeska.4",
+      6: "specialty.valeska.6"
+    },
+    portrait: "/assets/hero_portraits-valeska.webp",
+    source: stretchGoalPcPortraitHeroSource("valeska", "Valeska")
+  },
+  ingham: {
+    id: "ingham",
+    name: "Ingham",
+    faction: "castle",
+    class: "Cleric",
+    type: "magic",
+    startingStats: { attack: 1, defense: 0, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.mysticism",
+    specialtyCardIds: {
+      1: "specialty.ingham.1",
+      4: "specialty.ingham.4",
+      6: "specialty.ingham.6"
+    },
+    portrait: "/assets/hero_portraits-ingham.webp",
+    source: stretchGoalPcPortraitHeroSource("ingham", "Ingham")
+  },
+  lorelei: {
+    id: "lorelei",
+    name: "Lorelei",
+    faction: "dungeon",
+    class: "Overlord",
+    type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.scouting",
+    specialtyCardIds: {
+      1: "specialty.lorelei.1",
+      4: "specialty.lorelei.4",
+      6: "specialty.lorelei.6"
+    },
+    portrait: "/assets/hero_portraits-lorelei.webp",
+    source: stretchGoalPcPortraitHeroSource("lorelei", "Lorelei")
+  },
+  septienna: {
+    id: "septienna",
+    name: "Septienna",
+    faction: "necropolis",
+    class: "Necromancer",
+    type: "magic",
+    startingStats: { attack: 1, defense: 0, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.necromancy",
+    specialtyCardIds: {
+      1: "specialty.septienna.1",
+      4: "specialty.septienna.4",
+      6: "specialty.septienna.6"
+    },
+    portrait: "/assets/hero_portraits-septienna.webp",
+    source: stretchGoalPcPortraitHeroSource("septienna", "Septienna")
+  },
+  // Lord Haart (Necropolis): the undead Death Knight version of Lord Haart, a
+  // separate hero from the Castle Knight (id `lord_haart`). His real printed board
+  // and the three Dread Knights specialty faces are on the fan wiki.
+  lord_haart_necropolis: {
+    id: "lord_haart_necropolis",
+    name: "Lord Haart",
+    faction: "necropolis",
+    class: "Death Knight",
+    type: "might",
+    startingStats: { attack: 1, defense: 2, power: 2, knowledge: 1 },
+    startingAbilityCardId: "ability.necromancy",
+    specialtyCardIds: {
+      1: "specialty.lord_haart_necropolis.1",
+      4: "specialty.lord_haart_necropolis.4",
+      6: "specialty.lord_haart_necropolis.6"
+    },
+    portrait: "/assets/hero_boardart-lord_haart_necropolis.webp",
+    boardScan: "/assets/heroes-necropolis-might-lord_haart_necropolis.webp",
+    source: wikiBoardHeroSource("lord_haart_necropolis")
   }
 };
 
@@ -1459,7 +1566,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Castle",
     color: "#2f6fd0",
     startingTileId: "S3",
-    heroes: ["catherine", "rion", "adelaide", "lord_haart"],
+    heroes: ["catherine", "rion", "adelaide", "lord_haart", "valeska", "ingham"],
     buildings: buildingsOfFaction("castle"),
     units: unitsOfFaction("castle"),
     townImage: "/assets/towns-castle-empty.webp",
@@ -1503,7 +1610,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Necropolis",
     color: "#7c4dbe",
     startingTileId: "S1",
-    heroes: ["sandro", "tamika", "moandor", "vidomina"],
+    heroes: ["sandro", "tamika", "moandor", "vidomina", "septienna", "lord_haart_necropolis"],
     buildings: buildingsOfFaction("necropolis"),
     units: unitsOfFaction("necropolis"),
     ignoresMorale: true,
@@ -1515,7 +1622,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Dungeon",
     color: "#c0392b",
     startingTileId: "S2",
-    heroes: ["alamar", "deemer", "mutare", "jeddite"],
+    heroes: ["alamar", "deemer", "mutare", "jeddite", "lorelei"],
     buildings: buildingsOfFaction("dungeon"),
     units: unitsOfFaction("dungeon"),
     townImage: "/assets/towns-dungeon-empty.webp",

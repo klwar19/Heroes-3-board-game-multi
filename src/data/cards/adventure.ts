@@ -641,6 +641,243 @@ function fireMagicSpecialty(level: 1 | 6, amount: number): CardLibrary[string] {
   };
 }
 
+/**
+ * Strips the `assets.cardImage` reference from a specialty built by a shared
+ * helper. The "Regular Stretch Goals 2024" heroes whose fan-wiki page is still a
+ * placeholder (Valeska, Ingham, Lorelei, Septienna) have no printed specialty
+ * card faces to ship, so — exactly like Cyra/Torosar — their cards carry no
+ * cardImage (the UI renders the text side, never a broken image link).
+ */
+function withoutArt(card: CardLibrary[string]): CardLibrary[string] {
+  const next = { ...card };
+  delete next.assets;
+  return next;
+}
+
+/** "+N attack" instant on your own attack, doubled for the signature unit (Lorelei VI). */
+function attackInstantSpecialty(
+  heroSlug: string,
+  specialtyName: string,
+  level: 1 | 4 | 6,
+  amount: number,
+  doubledUnit: string
+): CardLibrary[string] {
+  return {
+    id: `specialty.${heroSlug}.${level}`,
+    name: `${specialtyName} ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: ["hero-specialty", "instant", heroSlug],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount, doubleForUnitName: doubledUnit },
+    assets: {
+      cardImage: specialtyCardImage(heroSlug, level),
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource(heroSlug)
+  };
+}
+
+/**
+ * Valeska's Marksmen VI: activate one of your ranged units even if it has
+ * already acted this round (ACTIVATE_RANGED_UNIT with allowAlreadyActivated),
+ * OR draw 2 cards.
+ */
+function activateRangedOrDrawSpecialty(
+  heroSlug: string,
+  specialtyName: string,
+  level: 1 | 4 | 6,
+  draw: number
+): CardLibrary[string] {
+  return {
+    id: `specialty.${heroSlug}.${level}`,
+    name: `${specialtyName} ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      heroSlug,
+      `Activate one of your ranged units, even if it has already been activated. — OR — Draw ${draw} cards.`
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Activate a ranged unit (even if already activated)",
+          trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "any" },
+          target: { type: "friendly-unit", unitTypes: ["ranged"] },
+          effect: { type: "ACTIVATE_RANGED_UNIT", allowAlreadyActivated: true }
+        },
+        {
+          label: `Draw ${draw} cards`,
+          effect: { type: "DRAW_CARDS", amount: draw }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage(heroSlug, level),
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource(heroSlug)
+  };
+}
+
+/**
+ * Ingham's Zealots VI: for the Combat, your chosen unit's attacks ignore the
+ * target's Defense (IGNORES_DEFENSE), OR draw 1 card.
+ */
+function ignoreDefenseOrDrawSpecialty(
+  heroSlug: string,
+  specialtyName: string,
+  level: 1 | 4 | 6,
+  draw: number
+): CardLibrary[string] {
+  return {
+    id: `specialty.${heroSlug}.${level}`,
+    name: `${specialtyName} ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      heroSlug,
+      `For this Combat, your selected unit ignores its targets' Defense. — OR — Draw ${draw} card${draw === 1 ? "" : "s"}.`
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Your selected unit ignores its targets' Defense this Combat",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: `${specialtyName} ${towerRoman(level)}`,
+              scope: "unit",
+              duration: { type: "combat" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [{ type: "IGNORES_DEFENSE" }]
+            }
+          }
+        },
+        {
+          label: `Draw ${draw} card${draw === 1 ? "" : "s"}`,
+          target: { type: "none" },
+          effect: { type: "DRAW_CARDS", amount: draw }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage(heroSlug, level),
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource(heroSlug)
+  };
+}
+
+/**
+ * Septienna's Death Ripple (I/IV/VI): deal `damage` to every enemy unit of the
+ * listed grade(s) (DAMAGE_ENEMY_UNITS_BY_GRADE), OR add `power` Power to a Spell
+ * you are casting (ADD_SPELL_POWER).
+ */
+function deathRippleSpecialty(
+  level: 1 | 4 | 6,
+  grades: ("bronze" | "silver" | "gold" | "azure")[],
+  damage: number,
+  power: number
+): CardLibrary[string] {
+  const gradeWords = grades
+    .map((grade) => (grade === "gold" ? "golden" : grade))
+    .join(" and ");
+  return {
+    id: `specialty.septienna.${level}`,
+    name: `Death Ripple ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "septienna",
+      "death-ripple",
+      `Activation: every enemy ${gradeWords} unit suffers ${damage} damage. — OR — +${power} Power on a Spell you are casting.`
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: `Every enemy ${gradeWords} unit suffers ${damage} damage`,
+          combatOnly: true,
+          effect: { type: "DAMAGE_ENEMY_UNITS_BY_GRADE", grades, amount: damage }
+        },
+        {
+          label: `+${power} Power`,
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: power }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("septienna", level),
+      imageAlt: `Death Ripple level ${towerRoman(level)} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource("septienna")
+  };
+}
+
+/**
+ * Lord Haart (Necropolis) Dread Knights I/VI: a chosen friendly unit takes
+ * `amount` less damage from enemy Retaliation Attacks this Combat, doubled for
+ * his Dread Knights (CREATE_RETALIATION_REDUCTION).
+ */
+function retaliationReductionSpecialty(
+  heroSlug: string,
+  specialtyName: string,
+  level: 1 | 4 | 6,
+  amount: number,
+  doubledUnit: string
+): CardLibrary[string] {
+  return {
+    id: `specialty.${heroSlug}.${level}`,
+    name: `${specialtyName} ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      heroSlug,
+      `For this Combat, your selected unit takes ${amount} less damage from enemy Retaliation Attacks. The effect doubles for the ${doubledUnit} unit.`
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_RETALIATION_REDUCTION",
+      name: `${specialtyName} ${towerRoman(level)}`,
+      amount,
+      duration: { type: "combat" },
+      doubleForUnitName: doubledUnit,
+      removable: false
+    },
+    assets: {
+      cardImage: specialtyCardImage(heroSlug, level),
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource(heroSlug)
+  };
+}
+
 export const adventureCards: CardLibrary = {
   "ability.leadership": {
     id: "ability.leadership",
@@ -2237,5 +2474,77 @@ export const adventureCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: heroSource("vidomina")
-  }
+  },
+
+  // ---- Additional heroes, batch 3 ----------------------------------------
+  // Valeska (Castle): the Marksmen specialist. I = +1 HP; IV = +1 A/D (both
+  // doubled for a Marksmen unit); VI = re-fire a ranged unit (even if already
+  // activated) or draw 2.
+  "specialty.valeska.1": withoutArt(towerHealthSpecialty("valeska", "Marksmen", 1, 1, "Marksmen")),
+  "specialty.valeska.4": withoutArt(towerAttackOrDefenseSpecialty("valeska", "Marksmen", 4, "Marksmen")),
+  "specialty.valeska.6": withoutArt(activateRangedOrDrawSpecialty("valeska", "Marksmen", 6, 2)),
+  // Ingham (Castle): the Zealots specialist. I = +1 A/D; IV = +1 HP (both
+  // doubled for a Zealots unit); VI = your selected unit ignores Defense, or draw 1.
+  "specialty.ingham.1": withoutArt(towerAttackOrDefenseSpecialty("ingham", "Zealots", 1, "Zealots")),
+  "specialty.ingham.4": withoutArt(towerHealthSpecialty("ingham", "Zealots", 4, 1, "Zealots")),
+  "specialty.ingham.6": withoutArt(ignoreDefenseOrDrawSpecialty("ingham", "Zealots", 6, 1)),
+  // Lorelei (Dungeon): the Harpies specialist. I = +1 A/D; IV = +1 HP; VI = +2
+  // attack on your attack — all doubled for a Harpies unit.
+  "specialty.lorelei.1": withoutArt(towerAttackOrDefenseSpecialty("lorelei", "Harpies", 1, "Harpies")),
+  "specialty.lorelei.4": withoutArt(towerHealthSpecialty("lorelei", "Harpies", 4, 1, "Harpies")),
+  "specialty.lorelei.6": withoutArt(attackInstantSpecialty("lorelei", "Harpies", 6, 2, "Harpies")),
+  // Septienna (Necropolis): the Death Ripple specialist. Each grade tier of
+  // enemy units takes damage (I bronze, IV silver, VI golden+azure), or +Power
+  // on a Spell you are casting.
+  "specialty.septienna.1": withoutArt(deathRippleSpecialty(1, ["bronze"], 1, 1)),
+  "specialty.septienna.4": withoutArt(deathRippleSpecialty(4, ["silver"], 1, 1)),
+  "specialty.septienna.6": withoutArt(deathRippleSpecialty(6, ["gold", "azure"], 2, 2)),
+  // Lord Haart (Necropolis): the Dread Knights specialist. I/VI reduce enemy
+  // retaliation damage by 1/2 (doubled for Dread Knights); IV makes enemy
+  // Retaliation Attacks against the chosen unit roll at disadvantage.
+  "specialty.lord_haart_necropolis.1": retaliationReductionSpecialty(
+    "lord_haart_necropolis",
+    "Dread Knights",
+    1,
+    1,
+    "Dread Knights"
+  ),
+  "specialty.lord_haart_necropolis.4": {
+    id: "specialty.lord_haart_necropolis.4",
+    name: "Dread Knights IV",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "lord_haart_necropolis",
+      "For this Combat, when an enemy performs a Retaliation Attack against your selected unit, that attack rolls 2 Attack dice and resolves the lower outcome."
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: "Dread Knights IV",
+        scope: "unit",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "RETALIATION_AGAINST_DISADVANTAGE" }]
+      }
+    },
+    assets: {
+      cardImage: specialtyCardImage("lord_haart_necropolis", 4),
+      imageAlt: "Dread Knights level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("lord_haart_necropolis")
+  },
+  "specialty.lord_haart_necropolis.6": retaliationReductionSpecialty(
+    "lord_haart_necropolis",
+    "Dread Knights",
+    6,
+    2,
+    "Dread Knights"
+  )
 };

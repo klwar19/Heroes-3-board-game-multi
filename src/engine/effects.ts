@@ -67,6 +67,8 @@ export const implementedCardEffectTypes = [
   "IGNORE_DEFENSE",
   "BALLISTA_SPECIALTY",
   "DAMAGE_LOWEST_INITIATIVE_ENEMY",
+  "DAMAGE_ENEMY_UNITS_BY_GRADE",
+  "CREATE_RETALIATION_REDUCTION",
   "ARTILLERY_BALLISTA_VOLLEY",
   "FIRST_AID_TENT_VOLLEY",
   "DECK_DIG_KEEP_ONE",
@@ -641,6 +643,13 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "ADD_UNIT_MAX_HEALTH") {
     return `+${card.effect.amount} HP for this combat`;
+  }
+
+  if (card.effect.type === "CREATE_RETALIATION_REDUCTION") {
+    const doubled = card.effect.doubleForUnitName
+      ? ` (doubled for the ${card.effect.doubleForUnitName} unit)`
+      : "";
+    return `the selected unit takes ${card.effect.amount} less damage from enemy Retaliation Attacks this combat${doubled}`;
   }
 
   if (card.effect.type === "AREA_DAMAGE_ADJACENT") {

@@ -1701,6 +1701,9 @@ function isOptionEffectPlayable(
     case "CREATE_FIRE_SHIELD":
     case "GRANT_ELEMENTAL_DAMAGE":
     case "DAMAGE_LOWEST_INITIATIVE_ENEMY":
+    // Septienna's Death Ripple: a targetless combat activation that sweeps every
+    // enemy unit of a grade.
+    case "DAMAGE_ENEMY_UNITS_BY_GRADE":
       return context === "combat" && Boolean(state.combat);
     case "RESHUFFLE_DISCARD_THEN_DRAW": {
       // Deemer's Meteor Shower IV deck-cycle: useful whenever there is a card to
@@ -3143,7 +3146,10 @@ export function getLegalActions(
 function getActivateRangedUnitTargets(
   state: GameState,
   playerId: PlayerId,
-  aboutToActivateUnitId: UnitId
+  aboutToActivateUnitId: UnitId,
+  // Valeska's Marksmen VI may re-fire a ranged unit that has already acted; the
+  // Bowstring leaves this false so it only reaches not-yet-activated units.
+  allowAlreadyActivated = false
 ): UnitId[] {
   const combat = state.combat;
   if (!combat) {
@@ -3155,7 +3161,7 @@ function getActivateRangedUnitTargets(
         unit.controllerId === playerId &&
         isUnitAlive(unit) &&
         unit.type === "ranged" &&
-        !unit.activatedThisRound &&
+        (allowAlreadyActivated || !unit.activatedThisRound) &&
         unit.id !== aboutToActivateUnitId
     )
     .map((unit) => unit.id);
@@ -3600,9 +3606,15 @@ export function getLegalReactionsForTrigger(
           isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic")
         ) {
           if (variant.effect.type === "ACTIVATE_RANGED_UNIT" && triggerEvent.type === "UNIT_ACTIVATION_STARTED") {
-            // Bowstring of the Unicorn's Mane: one play per eligible ranged unit —
-            // the chosen unit travels on the reaction's `target`.
-            for (const unitId of getActivateRangedUnitTargets(state, player.id, triggerEvent.unitId)) {
+            // Bowstring of the Unicorn's Mane / Valeska's Marksmen VI: one play
+            // per eligible ranged unit — the chosen unit travels on the reaction's
+            // `target`. Valeska may also re-fire an already-activated unit.
+            for (const unitId of getActivateRangedUnitTargets(
+              state,
+              player.id,
+              triggerEvent.unitId,
+              variant.effect.allowAlreadyActivated
+            )) {
               const targetUnit = state.combat?.units[unitId];
               push(
                 makeReactionAction(`${variantName} (${targetUnit?.cardName ?? unitId})`, {
@@ -4239,7 +4251,9 @@ export function isEffectLegalForTrigger(
     // never the unit about to activate. Legal as long as such a ranged unit
     // exists; the offer loop enumerates one play per eligible unit.
     if (effect.type === "ACTIVATE_RANGED_UNIT") {
-      return getActivateRangedUnitTargets(state, playerId, triggerEvent.unitId).length > 0;
+      return (
+        getActivateRangedUnitTargets(state, playerId, triggerEvent.unitId, effect.allowAlreadyActivated).length > 0
+      );
     }
     if (effect.type !== "SKIP_ACTIVATION" || !effect.grade) {
       return false;
