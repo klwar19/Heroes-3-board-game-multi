@@ -2673,6 +2673,45 @@ export function processPendingVisit(state: GameState): void {
         });
         break;
       }
+      case "WAR_MACHINE_GRANT_OFFER": {
+        // McGiver: rebuild the take-one menu from the LIVE supply each time so a
+        // later player never sees a machine an earlier one already took. Optional
+        // — a Skip exit lets a player decline. No-ops on an empty supply.
+        const supply = adventure.warMachineSupply ?? [];
+        if (supply.length === 0) {
+          break;
+        }
+        const options: { label: string; steps: VisitStep[] }[] = supply.map((cardId) => ({
+          label: `Take ${cardLibrary[cardId]?.name ?? cardId} (free)`,
+          steps: [{ type: "GRANT_WAR_MACHINE", cardId }]
+        }));
+        options.push({ label: "Skip", steps: [] });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: "McGiver: take one War Machine from the supply for free",
+          options
+        });
+        break;
+      }
+      case "GRANT_WAR_MACHINE": {
+        // McGiver leaf: move the chosen machine from the shared supply to hand at
+        // no cost (the player plays it as a permanent later, like any purchase).
+        const player = state.players[visit.playerId];
+        const supply = adventure.warMachineSupply ?? [];
+        if (!player || !supply.includes(step.cardId)) {
+          break;
+        }
+        adventure.warMachineSupply = supply.filter((cardId) => cardId !== step.cardId);
+        player.hand.push(step.cardId);
+        appendEvent(state, {
+          type: "WAR_MACHINE_BOUGHT",
+          playerId: visit.playerId,
+          cardId: step.cardId,
+          cost: {},
+          at: "factory"
+        });
+        break;
+      }
       case "BLACK_MARKET": {
         const player = state.players[visit.playerId];
         if (!player) {
@@ -4058,6 +4097,22 @@ export function startAdventureRound(state: GameState): void {
         });
       }
     }
+
+    // McGiver (Astrologers): "at the beginning of the next round, each player can
+    // take 1 War Machine of their choice from the supply at no cost." That next
+    // round is this Resource round — the proclamation is still face up (it expires
+    // only at the next Astrologers round), so a single Resource round hands the
+    // machine out exactly once. The offer also self-guards on an empty supply.
+    if (
+      getActiveAstrologersCard(state)?.effect.type === "GRANT_WAR_MACHINE_CHOICE" &&
+      (state.adventure?.warMachineSupply?.length ?? 0) > 0
+    ) {
+      state.adventure?.rewardQueue.push({
+        playerId,
+        kind: "visit-steps",
+        steps: [{ type: "WAR_MACHINE_GRANT_OFFER" }]
+      });
+    }
   }
 
   if (astrologers) {
@@ -4380,11 +4435,15 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
     case "FIRST_SPELL_RETURNS":
     case "NEUTRAL_DRAW_SWAP":
     case "PAID_EMPOWER_PER_TURN":
+    case "WAR_MACHINE_BUFF":
+    case "GRANT_WAR_MACHINE_CHOICE":
       // Passive while the card stays face up (read where the effect applies:
       // hand-limit in effectiveHandLimit, die rerolls in maybeReroll, the spell
       // bonuses in getCurrentSpellPower, the spell return in maybeReturnSpell;
       // Hero's paid empower is offered at the start of each turn, see
-      // queueTurnStartAstrologersChoices).
+      // queueTurnStartAstrologersChoices; Ammo Cart's war-machine buffs are read
+      // in permanents.ts / reducer.ts; McGiver's free war machine is handed out
+      // at the next Resource round, see startAdventureRound).
       break;
     case "GAIN_MORALE_ALL":
       for (const playerId of playerIds) {

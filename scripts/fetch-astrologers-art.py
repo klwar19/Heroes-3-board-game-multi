@@ -57,6 +57,8 @@ SLUGS = [
     "dancing_imp",            # Inferno
     "hero",                   # Inferno
     "plane_between_planes",   # Fortress
+    "ammo_cart",              # Rampart
+    "mcgiver",                # Rampart
 ]
 
 # The wiki publishes every proclamation at this landscape card size.

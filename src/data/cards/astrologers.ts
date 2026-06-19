@@ -10,13 +10,13 @@
  * Scope: the 19 Core Game proclamations plus the expansion cards whose effects
  * map cleanly onto existing engine systems and are wired + tested here
  * (Society, Big Cleanup, Blue Sky, Scorched Ground, Dancing Imp, Hero,
- * Plane Between Planes). The `effect` field is the single source of truth for
- * what the engine runs; `text` is the printed card wording. Every card has a
- * real card scan in `image`. Expansion proclamations that would need new
- * subsystems (PvP-attack bans, a generic Event deck, defense->attack
- * conversion, war-machine economies, ...) are intentionally NOT included rather
- * than shipped as inert text — see ASTROLOGERS_NOT_IMPLEMENTED below for the
- * honest list.
+ * Plane Between Planes, and the Rampart war-machine pair Ammo Cart + McGiver).
+ * The `effect` field is the single source of truth for what the engine runs;
+ * `text` is the printed card wording. Every card has a real card scan in
+ * `image`. Expansion proclamations that would need new subsystems (PvP-attack
+ * bans, a generic Event deck, defense->attack conversion, ...) are
+ * intentionally NOT included rather than shipped as inert text — see
+ * ASTROLOGERS_NOT_IMPLEMENTED below for the honest list.
  */
 
 import type { SpellSchool } from "@/engine/state";
@@ -47,14 +47,24 @@ export type AstrologersEffect =
   // Hero: ongoing — at the start of each of a player's turns they may pay
   // `costGold` to Remove a hand Statistic and replace it with the same-type
   // Empowered Statistic, up to `maxPerTurn` times that turn.
-  | { type: "PAID_EMPOWER_PER_TURN"; costGold: number; maxPerTurn: number };
+  | { type: "PAID_EMPOWER_PER_TURN"; costGold: number; maxPerTurn: number }
+  // McGiver: at the start of the next round each player may take one War Machine
+  // of their choice from the shared supply for free. Resolved at that next
+  // Resource round (startAdventureRound), not when the card is drawn.
+  | { type: "GRANT_WAR_MACHINE_CHOICE" }
+  // Ammo Cart: while face up, every Ballista deals +`ballistaDamageBonus`, every
+  // First Aid Tent heals +`firstAidHealBonus`, and (when `rangedAttackReroll`)
+  // an Ammo Cart owner's ranged units may reroll 1 Attack die. Read in the
+  // war-machine round (permanents.ts) and the attack-reroll builder (reducer.ts).
+  | { type: "WAR_MACHINE_BUFF"; ballistaDamageBonus: number; firstAidHealBonus: number; rangedAttackReroll: boolean };
 
 /** Boxed sets / expansions a proclamation can ship in (provenance, shown in the UI). */
 export const ASTROLOGERS_EXPANSIONS = [
   "Core Game",
   "Tower Expansion",
   "Fortress Expansion",
-  "Inferno Expansion"
+  "Inferno Expansion",
+  "Rampart Expansion"
 ] as const;
 
 export type AstrologersExpansion = (typeof ASTROLOGERS_EXPANSIONS)[number];
@@ -91,6 +101,16 @@ function image(slug: string): string {
 }
 
 export const astrologersCardDefinitions: Record<string, AstrologersCardDefinition> = {
+  "astrologers.ammo_cart": {
+    id: "astrologers.ammo_cart",
+    name: "Ammo Cart",
+    text: "Until the next Astrologers' round: each Ballista deals +1 damage, each First Aid Tent heals +1 health, and each Ammo Cart lets your ranged units reroll 1 Attack die.",
+    ongoing: true,
+    effect: { type: "WAR_MACHINE_BUFF", ballistaDamageBonus: 1, firstAidHealBonus: 1, rangedAttackReroll: true },
+    expansion: "Rampart Expansion",
+    image: image("ammo_cart"),
+    source: source("ammo_cart", "Rampart Expansion")
+  },
   "astrologers.annoying_lizard": {
     id: "astrologers.annoying_lizard",
     name: "Annoying Lizard",
@@ -261,6 +281,16 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     image: image("magic_tortoise"),
     source: source("magic_tortoise", "Core Game")
   },
+  "astrologers.mcgiver": {
+    id: "astrologers.mcgiver",
+    name: "McGiver",
+    text: "At the beginning of the next round, each player can take 1 War Machine of their choice from the supply at no cost.",
+    ongoing: true,
+    effect: { type: "GRANT_WAR_MACHINE_CHOICE" },
+    expansion: "Rampart Expansion",
+    image: image("mcgiver"),
+    source: source("mcgiver", "Rampart Expansion")
+  },
   "astrologers.merry_leprechaun": {
     id: "astrologers.merry_leprechaun",
     name: "Merry Leprechaun",
@@ -362,7 +392,6 @@ export const astrologersDeckCardIds: string[] = Object.keys(astrologersCardDefin
  * the omission is a conscious, reviewable decision rather than a silent gap.
  */
 export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; needs: string }[] = [
-  { name: "Ammo Cart", expansion: "Rampart", needs: "war-machine combat buffs (Ballista/First Aid Tent/Ammo Cart)" },
   { name: "Charlie and his Circus", expansion: "Rampart", needs: "multi-round neutral-unit recruitment offers" },
   { name: "Crag Hack", expansion: "Stronghold", needs: "first-combat ground-unit attack buff + free Goblin reinforce" },
   { name: "Destruction", expansion: "Stretch Goals", needs: "remove a permanent card in play for gold" },
@@ -372,7 +401,6 @@ export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; nee
   { name: "Forty Thieves", expansion: "Fortress", needs: "a generic Event-card deck (does not exist)" },
   { name: "Judge Dread", expansion: "Stronghold", needs: "attacker redraws the whole neutral guard" },
   { name: "Mages", expansion: "Conflux", needs: "free Spell Book token use" },
-  { name: "McGiver", expansion: "Rampart", needs: "free war-machine acquisition next round" },
   { name: "Multilingual Bron", expansion: "Stretch Goals", needs: "reroll of unit special-ability rolls" },
   { name: "Offense", expansion: "Stronghold", needs: "Defense cards acting as Attack" },
   { name: "Pirates", expansion: "Cove", needs: "post-combat-win Resource die reward" },
