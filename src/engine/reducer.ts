@@ -9169,6 +9169,18 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     gainResources(state, action.playerId, gain, `played ${card.name}`);
   }
 
+  // Legion artifacts' discount side: bank a one-shot gold discount on the
+  // player's next Recruitment/Reinforcement. This creates NO active effect, so
+  // holdOngoingCardIfEffectCreated leaves the card in the discard pile — the
+  // artifact is instant and is spent the moment the next recruit/reinforce uses
+  // the banked discount (see consumeRecruitDiscount), never lingering in play.
+  if (effect.type === "GAIN_RECRUIT_DISCOUNT") {
+    const discountPlayer = state.players[action.playerId];
+    if (discountPlayer) {
+      discountPlayer.recruitDiscount = (discountPlayer.recruitDiscount ?? 0) + effect.amount;
+    }
+  }
+
   if (effect.type === "GAIN_HERO_MOVEMENT") {
     // Buffs reach every hero the player commands, the Secondary Hero included.
     const amount = mode === "expert" ? (effect.expertAmount ?? effect.amount) : effect.amount;

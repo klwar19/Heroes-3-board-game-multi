@@ -6,6 +6,7 @@ import {
   classifyHeroStep,
   createAdventureGameState,
   getAdjacentSpaceIds,
+  getEndTurnMoveDestinations,
   getHeroMovementCapabilities,
   getHeroMoveDestinations,
   getLegalActions,
@@ -867,5 +868,85 @@ describe("Logistics ability", () => {
       target: { type: "none" }
     });
     expect(heroP1(state).movementPoints).toBe(before + 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// "Empty field" detection for the end-of-turn step (Logistics basic / Nomads).
+// Rulebook: a field counts as empty when it can no longer trigger anything —
+// truly empty fields, used (black-cube) visitables, and fields carrying THIS
+// player's faction cube. Anything that can still trigger is excluded.
+// ---------------------------------------------------------------------------
+
+/** Adjacent fields the p1 hero can actually cross to, once each is a clean field. */
+function adjacentCrossableFields(state: GameState): string[] {
+  const heroSpace = heroP1(state).spaceId as string;
+  return getAdjacentSpaceIds(heroSpace).filter((spaceId) => {
+    if (!state.adventure?.fields[spaceId]) {
+      return false;
+    }
+    setField(state, spaceId, "empty_field");
+    return canCrossEdge(state, heroSpace, spaceId);
+  });
+}
+
+describe("end-of-turn move: empty-field detection", () => {
+  it("counts empty fields and used (black-cube) visitables, never ones that can still trigger", () => {
+    const state = withHand(makeGame(), []);
+    const fields = adjacentCrossableFields(state);
+    // The hero sits at a tile centre, so all six ring hexes are reachable.
+    expect(fields.length).toBeGreaterThanOrEqual(6);
+    const [emptyF, usedVisitF, freshVisitF, myMineF, enemyMineF, guardedF] = fields;
+
+    // 1) plain empty field — valid
+    setField(state, emptyF, "empty_field");
+    // 2) visitable that has been used (black cube) — "no longer provides an effect" — valid
+    setField(state, usedVisitF, "resource_symbol");
+    state.adventure!.fields[usedVisitF]!.blackCube = true;
+    // 3) visitable not yet used — would still trigger — NOT valid
+    setField(state, freshVisitF, "resource_symbol");
+    // 4) mine flagged by this player (own faction cube) — valid
+    setField(state, myMineF, "mine");
+    state.adventure!.fields[myMineF]!.flagOwnerId = "p1";
+    state.adventure!.fields[myMineF]!.everFlagged = true;
+    // 5) mine flagged by the enemy — capturing it would trigger — NOT valid
+    setField(state, enemyMineF, "mine");
+    state.adventure!.fields[enemyMineF]!.flagOwnerId = "p2";
+    state.adventure!.fields[enemyMineF]!.everFlagged = true;
+    // 6) field still holding undefeated guards — NOT valid
+    setField(state, guardedF, "resource_symbol");
+    state.adventure!.fields[guardedF]!.difficulty = 1;
+
+    const destinations = new Set(getEndTurnMoveDestinations(state, "p1"));
+    expect(destinations.has(emptyF)).toBe(true);
+    expect(destinations.has(usedVisitF)).toBe(true);
+    expect(destinations.has(myMineF)).toBe(true);
+    expect(destinations.has(freshVisitF)).toBe(false);
+    expect(destinations.has(enemyMineF)).toBe(false);
+    expect(destinations.has(guardedF)).toBe(false);
+  });
+
+  it("excludes blocked fields and fields occupied by another hero", () => {
+    const state = withHand(makeGame(), []);
+    const fields = adjacentCrossableFields(state);
+    const [blockedF, occupiedF, openF] = fields;
+
+    setField(state, openF, "empty_field");
+    setField(state, blockedF, "blocked_field");
+    setField(state, occupiedF, "empty_field");
+    // Park the p1 Secondary hero on the occupied field.
+    state.heroes.hero_p1_secondary = {
+      id: "hero_p1_secondary",
+      kind: "secondary",
+      controllerId: "p1",
+      heroDefId: heroP1(state).heroDefId,
+      spaceId: occupiedF,
+      movementPoints: 0
+    } as (typeof state.heroes)[string];
+
+    const destinations = new Set(getEndTurnMoveDestinations(state, "p1"));
+    expect(destinations.has(openF)).toBe(true);
+    expect(destinations.has(blockedF)).toBe(false);
+    expect(destinations.has(occupiedF)).toBe(false);
   });
 });

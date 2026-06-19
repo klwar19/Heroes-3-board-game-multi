@@ -2512,6 +2512,32 @@ button.battleCell {
   filter: brightness(1.45);
 }
 
+/* Logistics (basic) / Nomads end-of-turn step: the adjacent empty fields the
+   hero may step onto. A distinct pulsing teal — set apart from the golden
+   click-to-move target — so the prompt's destinations read as clickable hexes
+   on the board, not just buttons in the tray. */
+.hexCell.endTurnMoveTarget {
+  cursor: pointer;
+  stroke: #57e0ff;
+  stroke-width: 3;
+  filter: brightness(1.3) drop-shadow(0 0 4px rgba(87, 224, 255, 0.85));
+  animation: endTurnMovePulse 1.2s ease-in-out infinite;
+}
+
+.hexCell.endTurnMoveTarget:hover {
+  filter: brightness(1.6) drop-shadow(0 0 7px rgba(87, 224, 255, 1));
+}
+
+@keyframes endTurnMovePulse {
+  0%,
+  100% {
+    stroke-opacity: 1;
+  }
+  50% {
+    stroke-opacity: 0.4;
+  }
+}
+
 .hexFaceDown {
   /* The printed starry back renders beneath; hexes stay as click targets. */
   fill: transparent;
@@ -4342,6 +4368,10 @@ button.hbSlot:disabled { cursor: default; }
 
 .hexCell.withArt.moveTarget {
   fill-opacity: 0.4;
+}
+
+.hexCell.withArt.endTurnMoveTarget {
+  fill-opacity: 0.42;
 }
 
 .hexCell.selectedTarget {

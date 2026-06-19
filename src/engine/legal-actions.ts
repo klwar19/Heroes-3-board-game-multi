@@ -1645,6 +1645,9 @@ function isOptionEffectPlayable(
   switch (effect.type) {
     case "DRAW_CARDS":
     case "GAIN_RESOURCES":
+    // Legion artifacts' discount side: banking the one-shot recruit discount is
+    // always a valid choice (it is spent later, on the map, by a recruit/reinforce).
+    case "GAIN_RECRUIT_DISCOUNT":
     case "GAIN_MORALE":
     case "ENEMY_MORALE_STRIP":
     case "ROLL_FOR_MORALE":
@@ -2129,6 +2132,8 @@ function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDef
 
   if (
     effect.type === "GAIN_RESOURCES" ||
+    // Legion artifacts' discount side: banked on the map for the next recruit.
+    effect.type === "GAIN_RECRUIT_DISCOUNT" ||
     effect.type === "ENEMY_MORALE_STRIP" ||
     effect.type === "ROLL_FOR_MORALE" ||
     effect.type === "RANDOM_ENEMY_DISCARD" ||
@@ -2158,7 +2163,6 @@ function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDef
         modifier.type === "SEARCH_COUNT_OVERRIDE" ||
         modifier.type === "SEARCH_REPEAT_ONCE" ||
         modifier.type === "SPELL_SCHOOL_FETCH" ||
-        modifier.type === "RECRUIT_DISCOUNT" ||
         modifier.type === "END_TURN_ADJACENT_MOVE" ||
         modifier.type === "HERO_MOVE_THROUGH"
     )

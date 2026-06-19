@@ -5367,11 +5367,20 @@ let cityHallChoiceBeingResolved: {
 // ---------------------------------------------------------------------------
 
 /**
- * Adjacent fields a hero may step onto for an "end of turn move" effect:
- * truly empty fields, used (black-cubed) visitables, and fields this player
- * has flagged; guarded, occupied and blocked fields do not count.
+ * Adjacent fields a hero may step onto for an "end of turn move" effect
+ * (Logistics basic, Nomads). The rulebook/wiki definition of an *empty* field:
+ * "Fields are considered empty if they cannot provide an effect or no longer
+ * provide an effect. This means that fields with black cubes or the player's
+ * faction cubes count as empty." Concretely a destination qualifies when it is
+ *   - a truly empty field (location category "empty"), OR
+ *   - a used visitable (it carries a black cube — its effect is spent), OR
+ *   - a flaggable field or town already flagged by THIS player (their faction
+ *     cube — stepping back on triggers nothing).
+ * Anything that can still trigger — an unvisited visitable, an unflagged or
+ * enemy mine/town, undefeated guards — is NOT empty. Blocked and occupied
+ * fields, and edges the hero cannot cross, are excluded too.
  */
-function getEndTurnMoveDestinations(state: GameState, playerId: PlayerId): MapSpaceId[] {
+export function getEndTurnMoveDestinations(state: GameState, playerId: PlayerId): MapSpaceId[] {
   const adventure = state.adventure;
   const hero = getMainHero(state, playerId);
   if (!adventure || !hero?.spaceId) {
