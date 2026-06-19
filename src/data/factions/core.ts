@@ -1545,6 +1545,64 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     portrait: "/assets/hero_boardart-lord_haart_necropolis.webp",
     boardScan: "/assets/heroes-necropolis-might-lord_haart_necropolis.webp",
     source: wikiBoardHeroSource("lord_haart_necropolis")
+  },
+
+  // ---- Additional heroes, batch 4 ---------------------------------------
+  // Three "Regular Stretch Goals 2024" heroes whose fan-wiki pages still show the
+  // deck-back placeholder, so (like Valeska/Ingham/Lorelei/Septienna) they ship
+  // the classic PC portrait from heroes.thelazy.net — no board scan, no specialty
+  // card faces. Every I/IV/VI specialty runs in the engine and is mutation-checked
+  // (extra-heroes-batch4-specialties.test.ts); each introduces a new mechanic.
+  ivor: {
+    id: "ivor",
+    name: "Ivor",
+    faction: "rampart",
+    class: "Ranger",
+    type: "might",
+    startingStats: { attack: 1, defense: 3, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.offense",
+    specialtyCardIds: {
+      1: "specialty.ivor.1",
+      4: "specialty.ivor.4",
+      6: "specialty.ivor.6"
+    },
+    portrait: "/assets/hero_portraits-ivor.webp",
+    source: stretchGoalPcPortraitHeroSource("ivor", "Ivor")
+  },
+  // Tarnum (Castle): the Knight variant of Tarnum. The board game ships six Tarnum
+  // heroes (one per Town); this is the Castle Ballista specialist. All six share
+  // the one classic PC Tarnum portrait.
+  tarnum_castle: {
+    id: "tarnum_castle",
+    name: "Tarnum",
+    faction: "castle",
+    class: "Knight",
+    type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.artillery",
+    specialtyCardIds: {
+      1: "specialty.tarnum_castle.1",
+      4: "specialty.tarnum_castle.4",
+      6: "specialty.tarnum_castle.6"
+    },
+    portrait: "/assets/hero_portraits-tarnum.webp",
+    source: stretchGoalPcPortraitHeroSource("tarnum_castle", "Tarnum")
+  },
+  merist: {
+    id: "merist",
+    name: "Merist",
+    faction: "fortress",
+    class: "Witch",
+    type: "magic",
+    startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.first_aid",
+    specialtyCardIds: {
+      1: "specialty.merist.1",
+      4: "specialty.merist.4",
+      6: "specialty.merist.6"
+    },
+    portrait: "/assets/hero_portraits-merist.webp",
+    source: stretchGoalPcPortraitHeroSource("merist", "Merist")
   }
 };
 
@@ -1566,7 +1624,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Castle",
     color: "#2f6fd0",
     startingTileId: "S3",
-    heroes: ["catherine", "rion", "adelaide", "lord_haart", "valeska", "ingham"],
+    heroes: ["catherine", "rion", "adelaide", "lord_haart", "valeska", "ingham", "tarnum_castle"],
     buildings: buildingsOfFaction("castle"),
     units: unitsOfFaction("castle"),
     townImage: "/assets/towns-castle-empty.webp",
@@ -1577,7 +1635,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Rampart",
     color: "#2e9e57",
     startingTileId: "S4",
-    heroes: ["gelu", "gem", "clancy", "mephala"],
+    heroes: ["gelu", "gem", "clancy", "mephala", "ivor"],
     buildings: buildingsOfFaction("rampart"),
     units: unitsOfFaction("rampart"),
     townImage: "/assets/towns-rampart-empty.webp",
@@ -1644,7 +1702,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Fortress",
     color: "#6b8e23",
     startingTileId: "S5",
-    heroes: ["bron", "wystan", "tazar", "adrienne"],
+    heroes: ["bron", "wystan", "tazar", "adrienne", "merist"],
     buildings: buildingsOfFaction("fortress"),
     units: unitsOfFaction("fortress"),
     source: townSource("fortress")

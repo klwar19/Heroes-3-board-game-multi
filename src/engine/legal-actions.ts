@@ -4471,6 +4471,15 @@ export function isEffectLegalForTrigger(
       return !attackBuffsNegated && attacker.controllerId === playerId && attacker.type !== "ranged";
     }
 
+    // Ivor's Elves I / VI: force this attack's die to a fixed face. The card's
+    // trigger controller already decided who may play it (I = "any" — either side
+    // may set the next roll to 0; VI = "self" — the attacker sets their roll to
+    // +1), so legality here only needs the attack to exist. A Misfortune-locked
+    // attacker may not touch their own die.
+    if (effect.type === "FORCE_ATTACK_ROLL") {
+      return !attackBuffsNegated;
+    }
+
     // Slayer: only the attacker's controller, and only when striking a gold
     // unit ("when attacking a golden unit"). Misfortune locks it out too.
     if (effect.type === "SLAYER_ATTACK") {
