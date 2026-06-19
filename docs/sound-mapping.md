@@ -184,6 +184,46 @@ other "not in the app" creatures — the clips are converted and indexed but not
 wired to any unit in `src/data/unit-sounds.ts`. Wiring is a separate step for
 when/if a HotA creature is added to the game.
 
+### Bulwark town, neutrals, war machine (also wired)
+
+The same pipeline now also covers, all verified against the VCMI HotA port:
+
+- **Bulwark** (HotA's in-development snow town): `units/jotunn-*` (JOTN) and
+  `units/jotunn-warlord-*` (JOTW), `units/kobold-*` (KOBL),
+  `units/mammoth-*` (MAMN) / `units/war-mammoth-*` (WMAM),
+  `units/mountain-ram-*` (MRAM, shared with Argali), `units/shaman-*` (SHAM,
+  shared by Shaman/Great Shaman), `units/yeti-*` (YETI),
+  `units/snow-elf-*` (VORI) / `units/steel-elf-*` (VORS).
+- **Neutrals**: `units/leprechaun-*` (LEPR), `units/satyr-*` (SATY),
+  `units/fangarm-*` (FNGR), `units/steel-golem-*` (SLGL).
+- **War machine**: `units/cannon-*` (CANN — death/shoot/hurt only).
+- **Creature special / movement sounds** (the `.wav` exists in the archive but
+  VCMI plays the ability via spell config): `units/<creature>-special` from
+  `ARMASPEC/AUTOSPEC/GUNSSPEC/WORMSPEC/SHAMSPEC`, `units/pirate-special`
+  (PIRTABIL), `units/fangarm-special` (FNGRSUMM); burrow/fly transitions
+  `units/{nymph,sandworm}-move-start|-move-end` (NIMP/WORM EXT1/EXT2);
+  `units/gold-golem-death-alt` (GGLMDETH).
+- **HotA map objects** — visit cue under `adventure/` and looping ambience
+  under `ambient/`: Black Tower, Ivory Tower, Red Tower, Mansion, Churchyard,
+  Junkman, Ancient Lamp, Vial of Mana, Seafaring Academy, Warehouses (+ the
+  seven `ambient/warehouse-<resource>` loops), Temple of the Sea, Ruins,
+  Pirate Cavern, Experimental Shop, Derrick, Prospector, Wolf Raider Picket,
+  Spit, Ziggurat.
+
+### Uncertain identifications in this batch
+
+Named best-effort and flagged in the manifest `note` (NOT verified in any VCMI
+or HotA config — listen and rename if you can place them):
+`spells/freeze` (FREEZE), `effects/rune` (RUNE), `effects/magcblth` (MAGCBLTH),
+`effects/eagle-eye` (EAGLEEYE), `effects/gog-fireball` (GOGFIREB),
+`spells/death-cloud-alt` (DEATHCLS), `units/ice-elemental-special` (ICEELMSH),
+`units/storm-elemental-special` (STORMELM),
+`adventure/horse-11`, `adventure/horse-penalty-30|31` (terrain id unverified),
+`ambient/{chicken,rooster,frogs-1,frogs-2,pig}`,
+`ambient/{loophogd,loopelal,loopmfor}` (unidentified dwelling ambiences),
+and `effects/horn-1..5`, `effects/horn-altar`, `effects/roger-1..4`,
+`effects/terror-1..7`.
+
 ## Conversion settings & history
 
 `ffmpeg -codec:a libmp3lame -q:a 5`, original 22 kHz sample rate kept

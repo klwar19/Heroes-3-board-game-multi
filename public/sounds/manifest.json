@@ -1,4 +1,12 @@
 {
+  "adventure/ancient-lamp": {
+    "src": "/sounds/adventure/ancient-lamp.mp3",
+    "note": "Ancient Lamp visit (LAMPVIST)"
+  },
+  "adventure/black-tower": {
+    "src": "/sounds/adventure/black-tower.mp3",
+    "note": "Black Tower visit (BLCKTWRS)"
+  },
   "adventure/build-town": {
     "src": "/sounds/adventure/build-town.mp3"
   },
@@ -7,6 +15,10 @@
   },
   "adventure/chest": {
     "src": "/sounds/adventure/chest.mp3"
+  },
+  "adventure/churchyard": {
+    "src": "/sounds/adventure/churchyard.mp3",
+    "note": "Churchyard visit (CEMETRY)"
   },
   "adventure/dig": {
     "src": "/sounds/adventure/dig.mp3",
@@ -36,6 +48,11 @@
   "adventure/hero-new-level": {
     "src": "/sounds/adventure/hero-new-level.mp3"
   },
+  "adventure/horse-11": {
+    "src": "/sounds/adventure/horse-11.mp3",
+    "loop": true,
+    "note": "HotA horse-movement sound, terrain id 11 (HORSE11); terrain unverified"
+  },
   "adventure/horse-dirt": {
     "src": "/sounds/adventure/horse-dirt.mp3",
     "loop": true,
@@ -55,6 +72,16 @@
     "src": "/sounds/adventure/horse-lava.mp3",
     "loop": true,
     "note": "hero riding on this terrain; penalty variant = slowed movement"
+  },
+  "adventure/horse-penalty-30": {
+    "src": "/sounds/adventure/horse-penalty-30.mp3",
+    "loop": true,
+    "note": "HotA horse-movement penalty sound (HORSE30); terrain unverified"
+  },
+  "adventure/horse-penalty-31": {
+    "src": "/sounds/adventure/horse-penalty-31.mp3",
+    "loop": true,
+    "note": "HotA horse-movement penalty sound (HORSE31); terrain unverified"
   },
   "adventure/horse-penalty-dirt": {
     "src": "/sounds/adventure/horse-penalty-dirt.mp3",
@@ -136,12 +163,24 @@
     "loop": true,
     "note": "hero riding on this terrain; penalty variant = slowed movement"
   },
+  "adventure/ivory-tower": {
+    "src": "/sounds/adventure/ivory-tower.mp3",
+    "note": "Ivory Tower visit (IVORYTOW)"
+  },
+  "adventure/junkman": {
+    "src": "/sounds/adventure/junkman.mp3",
+    "note": "Junkman visit (JUNKVIST)"
+  },
   "adventure/lighthouse": {
     "src": "/sounds/adventure/lighthouse.mp3"
   },
   "adventure/luck": {
     "src": "/sounds/adventure/luck.mp3",
     "note": "luck bonus gained at a map object"
+  },
+  "adventure/mansion": {
+    "src": "/sounds/adventure/mansion.mp3",
+    "note": "Mansion visit (MANSIONV)"
   },
   "adventure/military": {
     "src": "/sounds/adventure/military.mp3",
@@ -170,18 +209,6 @@
   },
   "adventure/obelisk": {
     "src": "/sounds/adventure/obelisk.mp3"
-  },
-  "adventure/pickup": {
-    "random": [
-      "adventure/pickup-01",
-      "adventure/pickup-02",
-      "adventure/pickup-03",
-      "adventure/pickup-04",
-      "adventure/pickup-05",
-      "adventure/pickup-06",
-      "adventure/pickup-07"
-    ],
-    "note": "play one member at random"
   },
   "adventure/pickup-01": {
     "src": "/sounds/adventure/pickup-01.mp3",
@@ -212,9 +239,21 @@
   "adventure/quest": {
     "src": "/sounds/adventure/quest.mp3"
   },
+  "adventure/red-tower": {
+    "src": "/sounds/adventure/red-tower.mp3",
+    "note": "Red Tower visit (REDTWRVS)"
+  },
   "adventure/rogue": {
     "src": "/sounds/adventure/rogue.mp3",
     "note": "Den of Thieves / rogue encounter (uncertain)"
+  },
+  "adventure/ruins": {
+    "src": "/sounds/adventure/ruins.mp3",
+    "note": "Ruins visit (RUINSVIS)"
+  },
+  "adventure/seafaring-academy": {
+    "src": "/sounds/adventure/seafaring-academy.mp3",
+    "note": "Seafaring Academy visit (ACADEMYV)"
   },
   "adventure/store": {
     "src": "/sounds/adventure/store.mp3",
@@ -223,6 +262,10 @@
   "adventure/teleport": {
     "src": "/sounds/adventure/teleport.mp3",
     "note": "map teleporter / monolith travel (TELEIN)"
+  },
+  "adventure/temple-of-the-sea": {
+    "src": "/sounds/adventure/temple-of-the-sea.mp3",
+    "note": "Temple of the Sea visit (SEATEMPL)"
   },
   "adventure/temple": {
     "src": "/sounds/adventure/temple.mp3"
@@ -234,6 +277,14 @@
   "adventure/ultimate-artifact": {
     "src": "/sounds/adventure/ultimate-artifact.mp3",
     "note": "Grail / ultimate artifact found"
+  },
+  "adventure/vial-of-mana": {
+    "src": "/sounds/adventure/vial-of-mana.mp3",
+    "note": "Vial of Mana pickup (BOTTLVIS)"
+  },
+  "adventure/warehouse": {
+    "src": "/sounds/adventure/warehouse.mp3",
+    "note": "Warehouses visit (WERHOUSE)"
   },
   "ambient/air": {
     "src": "/sounds/ambient/air.mp3",
@@ -260,6 +311,11 @@
     "loop": true,
     "note": "Cliff Nest (roc dwelling) (LOOPBIRD)"
   },
+  "ambient/black-tower": {
+    "src": "/sounds/ambient/black-tower.mp3",
+    "loop": true,
+    "note": "Black Tower ambience (HotA) (BLCKTWRL)"
+  },
   "ambient/buoy": {
     "src": "/sounds/ambient/buoy.mp3",
     "loop": true,
@@ -269,6 +325,21 @@
     "src": "/sounds/ambient/cave.mp3",
     "loop": true,
     "note": "Cyclops Cave, Demon Gate, Pillar of Eyes, Warren (LOOPCAVE)"
+  },
+  "ambient/chicken": {
+    "src": "/sounds/ambient/chicken.mp3",
+    "loop": true,
+    "note": "chicken ambience (uncertain) (CHICK)"
+  },
+  "ambient/churchyard": {
+    "src": "/sounds/ambient/churchyard.mp3",
+    "loop": true,
+    "note": "Churchyard (HotA map object) (LOOPCMTR)"
+  },
+  "ambient/cove-shack": {
+    "src": "/sounds/ambient/cove-shack.mp3",
+    "loop": true,
+    "note": "Shack (Cove crew mate dwelling) (LOOPMATR)"
   },
   "ambient/crystals": {
     "src": "/sounds/ambient/crystals.mp3",
@@ -284,6 +355,11 @@
     "src": "/sounds/ambient/den-of-thieves.mp3",
     "loop": true,
     "note": "Den of Thieves (LOOPDEN)"
+  },
+  "ambient/derrick": {
+    "src": "/sounds/ambient/derrick.mp3",
+    "loop": true,
+    "note": "Derrick (HotA map object) (LOOPDRRK)"
   },
   "ambient/devils": {
     "src": "/sounds/ambient/devils.mp3",
@@ -310,6 +386,11 @@
     "loop": true,
     "note": "Homestead (elf dwelling) (LOOPELF)"
   },
+  "ambient/experimental-shop": {
+    "src": "/sounds/ambient/experimental-shop.mp3",
+    "loop": true,
+    "note": "Experimental Shop (HotA map object) (LOOPEXSH)"
+  },
   "ambient/factory": {
     "src": "/sounds/ambient/factory.mp3",
     "loop": true,
@@ -320,15 +401,15 @@
     "loop": true,
     "note": "Faerie Ring (LOOPFAER)"
   },
-  "ambient/fire": {
-    "src": "/sounds/ambient/fire.mp3",
-    "loop": true,
-    "note": "Hell Hole, Imp Crucible, Altar of Fire (LOOPFIRE)"
-  },
   "ambient/fire-vents": {
     "src": "/sounds/ambient/fire-vents.mp3",
     "loop": true,
     "note": "Fire Lake / Hall of Sins (LOOPVENT)"
+  },
+  "ambient/fire": {
+    "src": "/sounds/ambient/fire.mp3",
+    "loop": true,
+    "note": "Hell Hole, Imp Crucible, Altar of Fire (LOOPFIRE)"
   },
   "ambient/flag": {
     "src": "/sounds/ambient/flag.mp3",
@@ -339,6 +420,21 @@
     "src": "/sounds/ambient/fountain.mp3",
     "loop": true,
     "note": "fountains / Altar of Water (LOOPFOUN)"
+  },
+  "ambient/frigate": {
+    "src": "/sounds/ambient/frigate.mp3",
+    "loop": true,
+    "note": "Frigate (Cove pirate dwelling) (LOOPFRIG)"
+  },
+  "ambient/frogs-1": {
+    "src": "/sounds/ambient/frogs-1.mp3",
+    "loop": true,
+    "note": "frog ambience (uncertain) (FROGS01)"
+  },
+  "ambient/frogs-2": {
+    "src": "/sounds/ambient/frogs-2.mp3",
+    "loop": true,
+    "note": "frog ambience (uncertain) (FROGS02)"
   },
   "ambient/garden": {
     "src": "/sounds/ambient/garden.mp3",
@@ -370,10 +466,20 @@
     "loop": true,
     "note": "Guardhouse (pikeman dwelling) (LOOPPIKE)"
   },
+  "ambient/halfling-adobe": {
+    "src": "/sounds/ambient/halfling-adobe.mp3",
+    "loop": true,
+    "note": "Halfling Adobe (Factory halfling dwelling) (LOOPHALF)"
+  },
   "ambient/harpies": {
     "src": "/sounds/ambient/harpies.mp3",
     "loop": true,
     "note": "Harpy Loft (LOOPHARP)"
+  },
+  "ambient/highlands-waterfall": {
+    "src": "/sounds/ambient/highlands-waterfall.mp3",
+    "loop": true,
+    "note": "Waterfall (HotA highlands) (LOOPWATR)"
   },
   "ambient/hydras": {
     "src": "/sounds/ambient/hydras.mp3",
@@ -384,6 +490,16 @@
     "src": "/sounds/ambient/insects.mp3",
     "loop": true,
     "note": "Dragon Fly / Serpent Fly Hive (LOOPLEAR)"
+  },
+  "ambient/ivory-tower": {
+    "src": "/sounds/ambient/ivory-tower.mp3",
+    "loop": true,
+    "note": "Ivory Tower ambience (HotA) (IVORTWLO)"
+  },
+  "ambient/junkman": {
+    "src": "/sounds/ambient/junkman.mp3",
+    "loop": true,
+    "note": "Junkman (HotA map object) (LOOPJUNK)"
   },
   "ambient/kennels": {
     "src": "/sounds/ambient/kennels.mp3",
@@ -400,15 +516,45 @@
     "loop": true,
     "note": "leprechaun-themed object (uncertain) (LOOPLEPR)"
   },
+  "ambient/loopelal": {
+    "src": "/sounds/ambient/loopelal.mp3",
+    "loop": true,
+    "note": "unidentified ambience (LOOPELAL); uncertain (LOOPELAL)"
+  },
+  "ambient/loophogd": {
+    "src": "/sounds/ambient/loophogd.mp3",
+    "loop": true,
+    "note": "unidentified dwelling ambience (LOOPHOGD); uncertain (LOOPHOGD)"
+  },
+  "ambient/loopmfor": {
+    "src": "/sounds/ambient/loopmfor.mp3",
+    "loop": true,
+    "note": "unidentified ambience (LOOPMFOR); uncertain (LOOPMFOR)"
+  },
   "ambient/lumber-mill": {
     "src": "/sounds/ambient/lumber-mill.mp3",
     "loop": true,
     "note": "Sawmill (LOOPLUMB)"
   },
+  "ambient/maelstrom": {
+    "src": "/sounds/ambient/maelstrom.mp3",
+    "loop": true,
+    "note": "Maelstrom (Cove sea serpent dwelling) (LOOPHASP)"
+  },
   "ambient/magic": {
     "src": "/sounds/ambient/magic.mp3",
     "loop": true,
     "note": "Mage Tower, Altar of Wishes, anti-magic garrison (LOOPMAGI)"
+  },
+  "ambient/mammoth-dwelling": {
+    "src": "/sounds/ambient/mammoth-dwelling.mp3",
+    "loop": true,
+    "note": "Mammoth dwelling ambience (Bulwark) (LOOPMAMN)"
+  },
+  "ambient/mansion": {
+    "src": "/sounds/ambient/mansion.mp3",
+    "loop": true,
+    "note": "Mansion (HotA map object) (LOOPMANS)"
   },
   "ambient/manticores": {
     "src": "/sounds/ambient/manticores.mp3",
@@ -460,10 +606,25 @@
     "loop": true,
     "note": "Basilisk Pit / Wyvern Nest (LOOPMONS)"
   },
+  "ambient/mummy-dwelling": {
+    "src": "/sounds/ambient/mummy-dwelling.mp3",
+    "loop": true,
+    "note": "Mummy dwelling ambience (LOOPMUMM)"
+  },
   "ambient/nagas": {
     "src": "/sounds/ambient/nagas.mp3",
     "loop": true,
     "note": "Golden Pavilion / Naga Bank (LOOPNAGA)"
+  },
+  "ambient/nix-fort": {
+    "src": "/sounds/ambient/nix-fort.mp3",
+    "loop": true,
+    "note": "Nix Fort (Cove nix dwelling) (LOOPNIXF)"
+  },
+  "ambient/nymph-waterfall": {
+    "src": "/sounds/ambient/nymph-waterfall.mp3",
+    "loop": true,
+    "note": "Nymph Waterfall (Cove nymph dwelling) (LOOPWTFL)"
   },
   "ambient/ocean": {
     "src": "/sounds/ambient/ocean.mp3",
@@ -480,20 +641,60 @@
     "loop": true,
     "note": "Orc Tower / Gnoll Hut (LOOPORC)"
   },
+  "ambient/peasant-dwelling": {
+    "src": "/sounds/ambient/peasant-dwelling.mp3",
+    "loop": true,
+    "note": "Peasant dwelling ambience (LOOPPEAS)"
+  },
   "ambient/pegasi": {
     "src": "/sounds/ambient/pegasi.mp3",
     "loop": true,
     "note": "Enchanted Spring (pegasus dwelling) (LOOPPEGA)"
+  },
+  "ambient/pig": {
+    "src": "/sounds/ambient/pig.mp3",
+    "loop": true,
+    "note": "pig ambience (uncertain) (PIGSND)"
+  },
+  "ambient/pirate-cavern": {
+    "src": "/sounds/ambient/pirate-cavern.mp3",
+    "loop": true,
+    "note": "Pirate Cavern (HotA map object) (LOOPPCAV)"
+  },
+  "ambient/prospector": {
+    "src": "/sounds/ambient/prospector.mp3",
+    "loop": true,
+    "note": "Prospector (HotA map object) (LOOPPROS)"
+  },
+  "ambient/red-tower": {
+    "src": "/sounds/ambient/red-tower.mp3",
+    "loop": true,
+    "note": "Red Tower ambience (HotA) (REDTWRLO)"
   },
   "ambient/refugee-camp": {
     "src": "/sounds/ambient/refugee-camp.mp3",
     "loop": true,
     "note": "Refugee Camp (LOOPCAMP)"
   },
+  "ambient/rooster": {
+    "src": "/sounds/ambient/rooster.mp3",
+    "loop": true,
+    "note": "rooster ambience (uncertain) (COCK)"
+  },
+  "ambient/ruins": {
+    "src": "/sounds/ambient/ruins.mp3",
+    "loop": true,
+    "note": "Ruins (HotA highlands object) (LOOPRUIN)"
+  },
   "ambient/sanctuary": {
     "src": "/sounds/ambient/sanctuary.mp3",
     "loop": true,
     "note": "Sanctuary / Portal of Glory (LOOPSANC)"
+  },
+  "ambient/serpentarium": {
+    "src": "/sounds/ambient/serpentarium.mp3",
+    "loop": true,
+    "note": "Serpentarium (Factory couatl dwelling) (LOOPCOTL)"
   },
   "ambient/shrine": {
     "src": "/sounds/ambient/shrine.mp3",
@@ -509,6 +710,11 @@
     "src": "/sounds/ambient/skeletons.mp3",
     "loop": true,
     "note": "Cursed Temple (skeleton dwelling) (LOOPSKEL)"
+  },
+  "ambient/spit": {
+    "src": "/sounds/ambient/spit.mp3",
+    "loop": true,
+    "note": "Spit (HotA map object) (LOOPBASI)"
   },
   "ambient/stables": {
     "src": "/sounds/ambient/stables.mp3",
@@ -550,10 +756,25 @@
     "loop": true,
     "note": "Tavern (LOOPTAV)"
   },
+  "ambient/temple-of-the-sea": {
+    "src": "/sounds/ambient/temple-of-the-sea.mp3",
+    "loop": true,
+    "note": "Temple of the Sea (HotA map object) (LOOPSTPL)"
+  },
   "ambient/titans": {
     "src": "/sounds/ambient/titans.mp3",
     "loop": true,
     "note": "Cloud Temple (titan dwelling) (LOOPTITA)"
+  },
+  "ambient/tower-of-the-seas": {
+    "src": "/sounds/ambient/tower-of-the-seas.mp3",
+    "loop": true,
+    "note": "Tower of the Seas (Cove sea witch dwelling) (LOOPSORC)"
+  },
+  "ambient/troll-dwelling": {
+    "src": "/sounds/ambient/troll-dwelling.mp3",
+    "loop": true,
+    "note": "Troll dwelling ambience (LOOPTRLL)"
   },
   "ambient/undead": {
     "src": "/sounds/ambient/undead.mp3",
@@ -570,6 +791,46 @@
     "loop": true,
     "note": "Volcano (LOOPVOLC)"
   },
+  "ambient/warehouse-crystal": {
+    "src": "/sounds/ambient/warehouse-crystal.mp3",
+    "loop": true,
+    "note": "Warehouse of Crystal (HotA) (WRHSCRST)"
+  },
+  "ambient/warehouse-gems": {
+    "src": "/sounds/ambient/warehouse-gems.mp3",
+    "loop": true,
+    "note": "Warehouse of Gems (HotA) (WRHSGEMS)"
+  },
+  "ambient/warehouse-gold": {
+    "src": "/sounds/ambient/warehouse-gold.mp3",
+    "loop": true,
+    "note": "Warehouse of Gold (HotA) (WRHSGOLD)"
+  },
+  "ambient/warehouse-mercury": {
+    "src": "/sounds/ambient/warehouse-mercury.mp3",
+    "loop": true,
+    "note": "Warehouse of Mercury (HotA) (WRHSMERC)"
+  },
+  "ambient/warehouse-ore": {
+    "src": "/sounds/ambient/warehouse-ore.mp3",
+    "loop": true,
+    "note": "Warehouse of Ore (HotA) (WRHSOREM)"
+  },
+  "ambient/warehouse-sulfur": {
+    "src": "/sounds/ambient/warehouse-sulfur.mp3",
+    "loop": true,
+    "note": "Warehouse of Sulfur (HotA) (WRHSSULF)"
+  },
+  "ambient/warehouse-wood": {
+    "src": "/sounds/ambient/warehouse-wood.mp3",
+    "loop": true,
+    "note": "Warehouse of Wood (HotA) (WRHSWOOD)"
+  },
+  "ambient/watchtower": {
+    "src": "/sounds/ambient/watchtower.mp3",
+    "loop": true,
+    "note": "Watchtower (Factory gunslinger dwelling) (LOOPGUNS)"
+  },
   "ambient/waterfall": {
     "src": "/sounds/ambient/waterfall.mp3",
     "loop": true,
@@ -585,22 +846,29 @@
     "loop": true,
     "note": "Windmill (LOOPWIND)"
   },
+  "ambient/wolf-raider-picket": {
+    "src": "/sounds/ambient/wolf-raider-picket.mp3",
+    "loop": true,
+    "note": "Wolf Raider Picket (HotA map object) (LOOPPICK)"
+  },
   "ambient/wolves": {
     "src": "/sounds/ambient/wolves.mp3",
     "loop": true,
     "note": "Wolf Pen (LOOPWOLF)"
   },
+  "ambient/ziggurat": {
+    "src": "/sounds/ambient/ziggurat.mp3",
+    "loop": true,
+    "note": "Ziggurat (HotA dwelling) (LOOPBEHD)"
+  },
   "cards/card-deal-1": {
-    "src": "/sounds/cards/card-deal-1.mp3",
-    "note": "card drawn / dealt (user-provided foley)"
+    "src": "/sounds/cards/card-deal-1.mp3"
   },
   "cards/card-deal-2": {
-    "src": "/sounds/cards/card-deal-2.mp3",
-    "note": "card drawn / dealt, longer (user-provided foley)"
+    "src": "/sounds/cards/card-deal-2.mp3"
   },
   "cards/card-play": {
-    "src": "/sounds/cards/card-play.mp3",
-    "note": "card played onto the table (user-provided foley)"
+    "src": "/sounds/cards/card-play.mp3"
   },
   "effects/acid-breath": {
     "src": "/sounds/effects/acid-breath.mp3"
@@ -653,6 +921,10 @@
     "src": "/sounds/effects/drawbridge.mp3",
     "note": "siege drawbridge raising/lowering"
   },
+  "effects/eagle-eye": {
+    "src": "/sounds/effects/eagle-eye.mp3",
+    "note": "EAGLEEYE — likely the Eagle Eye skill cue; uncertain"
+  },
   "effects/fear": {
     "src": "/sounds/effects/fear.mp3",
     "note": "Fear ability (Azure Dragon)"
@@ -665,6 +937,10 @@
     "src": "/sounds/effects/fire-storm.mp3",
     "note": "unknown/unused (FIRESTRM)"
   },
+  "effects/gog-fireball": {
+    "src": "/sounds/effects/gog-fireball.mp3",
+    "note": "Gog/Magog fireball (GOGFIREB); cf. GOGFLAME"
+  },
   "effects/gog-flame": {
     "src": "/sounds/effects/gog-flame.mp3",
     "note": "Gog/Magog fireball attack effect (GOGFLAME)"
@@ -675,9 +951,37 @@
   "effects/good-morale": {
     "src": "/sounds/effects/good-morale.mp3"
   },
+  "effects/horn-1": {
+    "src": "/sounds/effects/horn-1.mp3",
+    "note": "HORN1 — unidentified horn sound; uncertain"
+  },
+  "effects/horn-2": {
+    "src": "/sounds/effects/horn-2.mp3",
+    "note": "HORN2 — unidentified horn sound; uncertain"
+  },
+  "effects/horn-3": {
+    "src": "/sounds/effects/horn-3.mp3",
+    "note": "HORN3 — unidentified horn sound; uncertain"
+  },
+  "effects/horn-4": {
+    "src": "/sounds/effects/horn-4.mp3",
+    "note": "HORN4 — unidentified horn sound; uncertain"
+  },
+  "effects/horn-5": {
+    "src": "/sounds/effects/horn-5.mp3",
+    "note": "HORN5 — unidentified horn sound; uncertain"
+  },
+  "effects/horn-altar": {
+    "src": "/sounds/effects/horn-altar.mp3",
+    "note": "HORNALTR — unidentified horn/altar sound; uncertain"
+  },
   "effects/magcarow": {
     "src": "/sounds/effects/magcarow.mp3",
     "note": "unknown (MAGCAROW); possibly magic-arrow impact"
+  },
+  "effects/magcblth": {
+    "src": "/sounds/effects/magcblth.mp3",
+    "note": "MAGCBLTH — unidentified; uncertain"
   },
   "effects/magchdrn": {
     "src": "/sounds/effects/magchdrn.mp3",
@@ -707,6 +1011,26 @@
     "src": "/sounds/effects/regeneration.mp3",
     "note": "Regeneration ability (troll, wight)"
   },
+  "effects/roger-1": {
+    "src": "/sounds/effects/roger-1.mp3",
+    "note": "ROGER1 — unidentified (likely Cove/pirate); uncertain"
+  },
+  "effects/roger-2": {
+    "src": "/sounds/effects/roger-2.mp3",
+    "note": "ROGER2 — unidentified (likely Cove/pirate); uncertain"
+  },
+  "effects/roger-3": {
+    "src": "/sounds/effects/roger-3.mp3",
+    "note": "ROGER3 — unidentified (likely Cove/pirate); uncertain"
+  },
+  "effects/roger-4": {
+    "src": "/sounds/effects/roger-4.mp3",
+    "note": "ROGER4 — unidentified (likely Cove/pirate); uncertain"
+  },
+  "effects/rune": {
+    "src": "/sounds/effects/rune.mp3",
+    "note": "RUNE — likely Bulwark rune magic; uncertain, unverified in configs"
+  },
   "effects/siege-keep-shot": {
     "src": "/sounds/effects/siege-keep-shot.mp3",
     "note": "arrow tower firing during siege"
@@ -723,33 +1047,33 @@
     "src": "/sounds/effects/spell-fizzle.mp3",
     "note": "spell fails / fizzles (RSBRYFZL)"
   },
-  "music/main-menu": {
-    "src": "/sounds/music/main-menu.mp3",
-    "loop": true,
-    "note": "setup/lobby background theme (MAINMENU)"
+  "effects/terror-1": {
+    "src": "/sounds/effects/terror-1.mp3",
+    "note": "TERROR1 — unidentified; uncertain"
   },
-  "music/grass": {
-    "src": "/sounds/music/grass.mp3",
-    "loop": true,
-    "note": "adventure-map background theme (GRASS)"
+  "effects/terror-2": {
+    "src": "/sounds/effects/terror-2.mp3",
+    "note": "TERROR2 — unidentified; uncertain"
   },
-  "music/combat-02": {
-    "src": "/sounds/music/combat-02.mp3",
-    "loop": true,
-    "note": "combat background theme (COMBAT02)"
+  "effects/terror-3": {
+    "src": "/sounds/effects/terror-3.mp3",
+    "note": "TERROR3 — unidentified; uncertain"
   },
-  "music/battle": {
-    "random": [
-      "music/battle-00",
-      "music/battle-01",
-      "music/battle-02",
-      "music/battle-03",
-      "music/battle-04",
-      "music/battle-05",
-      "music/battle-06",
-      "music/battle-07"
-    ],
-    "note": "play one member at random"
+  "effects/terror-4": {
+    "src": "/sounds/effects/terror-4.mp3",
+    "note": "TERROR4 — unidentified; uncertain"
+  },
+  "effects/terror-5": {
+    "src": "/sounds/effects/terror-5.mp3",
+    "note": "TERROR5 — unidentified; uncertain"
+  },
+  "effects/terror-6": {
+    "src": "/sounds/effects/terror-6.mp3",
+    "note": "TERROR6 — unidentified; uncertain"
+  },
+  "effects/terror-7": {
+    "src": "/sounds/effects/terror-7.mp3",
+    "note": "TERROR7 — unidentified; uncertain"
   },
   "music/battle-00": {
     "src": "/sounds/music/battle-00.mp3",
@@ -782,6 +1106,18 @@
   },
   "music/battle-07": {
     "src": "/sounds/music/battle-07.mp3",
+    "loop": true
+  },
+  "music/combat-02": {
+    "src": "/sounds/music/combat-02.mp3",
+    "loop": true
+  },
+  "music/grass": {
+    "src": "/sounds/music/grass.mp3",
+    "loop": true
+  },
+  "music/main-menu": {
+    "src": "/sounds/music/main-menu.mp3",
     "loop": true
   },
   "spells/air-elemental": {
@@ -834,6 +1170,10 @@
   "spells/curse": {
     "src": "/sounds/spells/curse.mp3"
   },
+  "spells/death-cloud-alt": {
+    "src": "/sounds/spells/death-cloud-alt.mp3",
+    "note": "death-cloud variant (DEATHCLS); spells/death-cloud is DEATHCLD"
+  },
   "spells/death-cloud": {
     "src": "/sounds/spells/death-cloud.mp3"
   },
@@ -867,13 +1207,13 @@
   "spells/fire-wall": {
     "src": "/sounds/spells/fire-wall.mp3"
   },
-  "spells/fireball": {
-    "src": "/sounds/spells/fireball.mp3",
-    "note": "cast sound (SPONTCOMB); also the Magog's fireball ability"
-  },
   "spells/fireball-hit": {
     "src": "/sounds/spells/fireball-hit.mp3",
     "note": "explosion/impact (FIREBALL)"
+  },
+  "spells/fireball": {
+    "src": "/sounds/spells/fireball.mp3",
+    "note": "cast sound (SPONTCOMB); also the Magog's fireball ability"
   },
   "spells/fly": {
     "src": "/sounds/spells/fly.mp3"
@@ -887,28 +1227,36 @@
   "spells/fortune": {
     "src": "/sounds/spells/fortune.mp3"
   },
+  "spells/freeze": {
+    "src": "/sounds/spells/freeze.mp3",
+    "note": "FREEZE — likely a freeze/frost effect; uncertain, unverified in configs"
+  },
   "spells/frenzy": {
     "src": "/sounds/spells/frenzy.mp3"
   },
   "spells/frost-ring": {
     "src": "/sounds/spells/frost-ring.mp3"
   },
-  "spells/haste": {
-    "src": "/sounds/spells/haste.mp3"
+  "spells/grenade": {
+    "src": "/sounds/spells/grenade.mp3",
+    "note": "Grenade ability cast/explosion (GRENEXPL) — Halfling Grenadier / Bounty Hunter"
   },
   "spells/haste-alt": {
     "src": "/sounds/spells/haste-alt.mp3",
     "note": "unused alternate (HASTE); the game casts with TAILWIND"
   },
+  "spells/haste": {
+    "src": "/sounds/spells/haste.mp3"
+  },
   "spells/hypnotize": {
     "src": "/sounds/spells/hypnotize.mp3"
-  },
-  "spells/ice-bolt": {
-    "src": "/sounds/spells/ice-bolt.mp3"
   },
   "spells/ice-bolt-hit": {
     "src": "/sounds/spells/ice-bolt-hit.mp3",
     "note": "impact (ICERAYEX); cast is spells/ice-bolt"
+  },
+  "spells/ice-bolt": {
+    "src": "/sounds/spells/ice-bolt.mp3"
   },
   "spells/implosion": {
     "src": "/sounds/spells/implosion.mp3",
@@ -917,11 +1265,11 @@
   "spells/inferno": {
     "src": "/sounds/spells/inferno.mp3"
   },
-  "spells/land-mine": {
-    "src": "/sounds/spells/land-mine.mp3"
-  },
   "spells/land-mine-trigger": {
     "src": "/sounds/spells/land-mine-trigger.mp3"
+  },
+  "spells/land-mine": {
+    "src": "/sounds/spells/land-mine.mp3"
   },
   "spells/lightning-bolt": {
     "src": "/sounds/spells/lightning-bolt.mp3"
@@ -972,15 +1320,19 @@
   "spells/remove-obstacle": {
     "src": "/sounds/spells/remove-obstacle.mp3"
   },
+  "spells/repair": {
+    "src": "/sounds/spells/repair.mp3",
+    "note": "Repair ability cast (REPAIR) — Factory mechanical-unit heal"
+  },
   "spells/resurrection": {
     "src": "/sounds/spells/resurrection.mp3"
-  },
-  "spells/sacrifice": {
-    "src": "/sounds/spells/sacrifice.mp3"
   },
   "spells/sacrifice-2": {
     "src": "/sounds/spells/sacrifice-2.mp3",
     "note": "second Sacrifice sound (SACRIF2)"
+  },
+  "spells/sacrifice": {
+    "src": "/sounds/spells/sacrifice.mp3"
   },
   "spells/scuttle-boat": {
     "src": "/sounds/spells/scuttle-boat.mp3"
@@ -1003,12 +1355,12 @@
   "spells/summon-boat": {
     "src": "/sounds/spells/summon-boat.mp3"
   },
-  "spells/teleport": {
-    "src": "/sounds/spells/teleport.mp3"
-  },
   "spells/teleport-in": {
     "src": "/sounds/spells/teleport-in.mp3",
     "note": "battle teleport arrival (TELPTIN); spells/teleport is the cast"
+  },
+  "spells/teleport": {
+    "src": "/sounds/spells/teleport.mp3"
   },
   "spells/view": {
     "src": "/sounds/spells/view.mp3",
@@ -1171,6 +1523,49 @@
   "units/archer-shoot": {
     "src": "/sounds/units/archer-shoot.mp3"
   },
+  "units/armadillo-attack": {
+    "src": "/sounds/units/armadillo-attack.mp3"
+  },
+  "units/armadillo-death": {
+    "src": "/sounds/units/armadillo-death.mp3"
+  },
+  "units/armadillo-defend": {
+    "src": "/sounds/units/armadillo-defend.mp3"
+  },
+  "units/armadillo-hurt": {
+    "src": "/sounds/units/armadillo-hurt.mp3"
+  },
+  "units/armadillo-move": {
+    "src": "/sounds/units/armadillo-move.mp3",
+    "repeat": 2
+  },
+  "units/armadillo-special": {
+    "src": "/sounds/units/armadillo-special.mp3",
+    "note": "Armadillo special ability (ARMASPEC)"
+  },
+  "units/automaton-attack": {
+    "src": "/sounds/units/automaton-attack.mp3"
+  },
+  "units/automaton-death": {
+    "src": "/sounds/units/automaton-death.mp3"
+  },
+  "units/automaton-defend": {
+    "src": "/sounds/units/automaton-defend.mp3"
+  },
+  "units/automaton-hurt": {
+    "src": "/sounds/units/automaton-hurt.mp3"
+  },
+  "units/automaton-move": {
+    "src": "/sounds/units/automaton-move.mp3",
+    "repeat": 2
+  },
+  "units/automaton-shoot": {
+    "src": "/sounds/units/automaton-shoot.mp3"
+  },
+  "units/automaton-special": {
+    "src": "/sounds/units/automaton-special.mp3",
+    "note": "Automaton special ability (AUTOSPEC)"
+  },
   "units/azure-dragon-attack": {
     "src": "/sounds/units/azure-dragon-attack.mp3"
   },
@@ -1247,12 +1642,12 @@
   "units/beholder-attack": {
     "src": "/sounds/units/beholder-attack.mp3"
   },
-  "units/beholder-death": {
-    "src": "/sounds/units/beholder-death.mp3"
-  },
   "units/beholder-death-alt": {
     "src": "/sounds/units/beholder-death-alt.mp3",
     "note": "second death sound (BHDRDETH); BHDRKILL is the standard one"
+  },
+  "units/beholder-death": {
+    "src": "/sounds/units/beholder-death.mp3"
   },
   "units/beholder-defend": {
     "src": "/sounds/units/beholder-defend.mp3"
@@ -1330,6 +1725,15 @@
   "units/bone-dragon-move": {
     "src": "/sounds/units/bone-dragon-move.mp3",
     "repeat": 2
+  },
+  "units/cannon-death": {
+    "src": "/sounds/units/cannon-death.mp3"
+  },
+  "units/cannon-hurt": {
+    "src": "/sounds/units/cannon-hurt.mp3"
+  },
+  "units/cannon-shoot": {
+    "src": "/sounds/units/cannon-shoot.mp3"
   },
   "units/catapult-death": {
     "src": "/sounds/units/catapult-death.mp3"
@@ -1439,6 +1843,60 @@
   "units/chaos-hydra-move": {
     "src": "/sounds/units/chaos-hydra-move.mp3",
     "repeat": 2
+  },
+  "units/couatl-attack": {
+    "src": "/sounds/units/couatl-attack.mp3"
+  },
+  "units/couatl-death": {
+    "src": "/sounds/units/couatl-death.mp3"
+  },
+  "units/couatl-defend": {
+    "src": "/sounds/units/couatl-defend.mp3"
+  },
+  "units/couatl-hurt": {
+    "src": "/sounds/units/couatl-hurt.mp3"
+  },
+  "units/couatl-move": {
+    "src": "/sounds/units/couatl-move.mp3",
+    "repeat": 2
+  },
+  "units/couatl-shoot": {
+    "src": "/sounds/units/couatl-shoot.mp3"
+  },
+  "units/crew-mate-attack": {
+    "src": "/sounds/units/crew-mate-attack.mp3"
+  },
+  "units/crew-mate-death": {
+    "src": "/sounds/units/crew-mate-death.mp3"
+  },
+  "units/crew-mate-defend": {
+    "src": "/sounds/units/crew-mate-defend.mp3"
+  },
+  "units/crew-mate-hurt": {
+    "src": "/sounds/units/crew-mate-hurt.mp3"
+  },
+  "units/crew-mate-move": {
+    "src": "/sounds/units/crew-mate-move.mp3",
+    "repeat": 2
+  },
+  "units/crimson-couatl-attack": {
+    "src": "/sounds/units/crimson-couatl-attack.mp3"
+  },
+  "units/crimson-couatl-death": {
+    "src": "/sounds/units/crimson-couatl-death.mp3"
+  },
+  "units/crimson-couatl-defend": {
+    "src": "/sounds/units/crimson-couatl-defend.mp3"
+  },
+  "units/crimson-couatl-hurt": {
+    "src": "/sounds/units/crimson-couatl-hurt.mp3"
+  },
+  "units/crimson-couatl-move": {
+    "src": "/sounds/units/crimson-couatl-move.mp3",
+    "repeat": 2
+  },
+  "units/crimson-couatl-shoot": {
+    "src": "/sounds/units/crimson-couatl-shoot.mp3"
   },
   "units/crusader-attack": {
     "src": "/sounds/units/crusader-attack.mp3"
@@ -1609,6 +2067,25 @@
     "src": "/sounds/units/dread-knight-move.mp3",
     "repeat": 2
   },
+  "units/dreadnought-attack": {
+    "src": "/sounds/units/dreadnought-attack.mp3"
+  },
+  "units/dreadnought-death": {
+    "src": "/sounds/units/dreadnought-death.mp3"
+  },
+  "units/dreadnought-defend": {
+    "src": "/sounds/units/dreadnought-defend.mp3"
+  },
+  "units/dreadnought-hurt": {
+    "src": "/sounds/units/dreadnought-hurt.mp3"
+  },
+  "units/dreadnought-move": {
+    "src": "/sounds/units/dreadnought-move.mp3",
+    "repeat": 2
+  },
+  "units/dreadnought-shoot": {
+    "src": "/sounds/units/dreadnought-shoot.mp3"
+  },
   "units/dwarf-attack": {
     "src": "/sounds/units/dwarf-attack.mp3"
   },
@@ -1714,12 +2191,12 @@
   "units/evil-eye-attack": {
     "src": "/sounds/units/evil-eye-attack.mp3"
   },
-  "units/evil-eye-death": {
-    "src": "/sounds/units/evil-eye-death.mp3"
-  },
   "units/evil-eye-death-alt": {
     "src": "/sounds/units/evil-eye-death-alt.mp3",
     "note": "second death sound (EVLIDETH); EVLIKILL is the standard one"
+  },
+  "units/evil-eye-death": {
+    "src": "/sounds/units/evil-eye-death.mp3"
   },
   "units/evil-eye-defend": {
     "src": "/sounds/units/evil-eye-defend.mp3"
@@ -1755,7 +2232,7 @@
   },
   "units/faerie-dragon-special": {
     "src": "/sounds/units/faerie-dragon-special.mp3",
-    "note": "Faerie Dragon spell-cast (FAERIE) \u2014 play when its turn-start magic damage triggers"
+    "note": "Faerie Dragon spell-cast (FAERIE) — play when its turn-start magic damage triggers"
   },
   "units/familiar-attack": {
     "src": "/sounds/units/familiar-attack.mp3"
@@ -1772,6 +2249,26 @@
   "units/familiar-move": {
     "src": "/sounds/units/familiar-move.mp3",
     "repeat": 2
+  },
+  "units/fangarm-attack": {
+    "src": "/sounds/units/fangarm-attack.mp3"
+  },
+  "units/fangarm-death": {
+    "src": "/sounds/units/fangarm-death.mp3"
+  },
+  "units/fangarm-defend": {
+    "src": "/sounds/units/fangarm-defend.mp3"
+  },
+  "units/fangarm-hurt": {
+    "src": "/sounds/units/fangarm-hurt.mp3"
+  },
+  "units/fangarm-move": {
+    "src": "/sounds/units/fangarm-move.mp3",
+    "repeat": 2
+  },
+  "units/fangarm-special": {
+    "src": "/sounds/units/fangarm-special.mp3",
+    "note": "Fangarm summon/resurrect (FNGRSUMM)"
   },
   "units/fire-dragon-fly-attack": {
     "src": "/sounds/units/fire-dragon-fly-attack.mp3"
@@ -1850,7 +2347,7 @@
   },
   "units/genie-special": {
     "src": "/sounds/units/genie-special.mp3",
-    "note": "Genie/Master Genie spell-cast (GENIE) \u2014 play when it casts its ability"
+    "note": "Genie/Master Genie spell-cast (GENIE) — play when it casts its ability"
   },
   "units/ghost-dragon-attack": {
     "src": "/sounds/units/ghost-dragon-attack.mp3"
@@ -1986,6 +2483,10 @@
   "units/gold-golem-attack": {
     "src": "/sounds/units/gold-golem-attack.mp3"
   },
+  "units/gold-golem-death-alt": {
+    "src": "/sounds/units/gold-golem-death-alt.mp3",
+    "note": "Gold Golem alternate death (GGLMDETH); GGLMKILL is the standard one"
+  },
   "units/gold-golem-death": {
     "src": "/sounds/units/gold-golem-death.mp3"
   },
@@ -2102,6 +2603,29 @@
     "src": "/sounds/units/griffin-move.mp3",
     "repeat": 2
   },
+  "units/gunslinger-attack": {
+    "src": "/sounds/units/gunslinger-attack.mp3"
+  },
+  "units/gunslinger-death": {
+    "src": "/sounds/units/gunslinger-death.mp3"
+  },
+  "units/gunslinger-defend": {
+    "src": "/sounds/units/gunslinger-defend.mp3"
+  },
+  "units/gunslinger-hurt": {
+    "src": "/sounds/units/gunslinger-hurt.mp3"
+  },
+  "units/gunslinger-move": {
+    "src": "/sounds/units/gunslinger-move.mp3",
+    "repeat": 2
+  },
+  "units/gunslinger-shoot": {
+    "src": "/sounds/units/gunslinger-shoot.mp3"
+  },
+  "units/gunslinger-special": {
+    "src": "/sounds/units/gunslinger-special.mp3",
+    "note": "Gunslinger special ability (GUNSSPEC)"
+  },
   "units/halberdier-attack": {
     "src": "/sounds/units/halberdier-attack.mp3"
   },
@@ -2126,6 +2650,10 @@
   },
   "units/halfling-defend": {
     "src": "/sounds/units/halfling-defend.mp3"
+  },
+  "units/halfling-grenadier-shoot": {
+    "src": "/sounds/units/halfling-grenadier-shoot.mp3",
+    "note": "Halfling Grenadier ranged sound (HALGSHOT); its other actions reuse core HALF* files"
   },
   "units/halfling-hurt": {
     "src": "/sounds/units/halfling-hurt.mp3"
@@ -2271,6 +2799,10 @@
   "units/ice-elemental-shoot": {
     "src": "/sounds/units/ice-elemental-shoot.mp3"
   },
+  "units/ice-elemental-special": {
+    "src": "/sounds/units/ice-elemental-special.mp3",
+    "note": "ICEELMSH — Ice Elemental extra/special sound; uncertain"
+  },
   "units/imp-attack": {
     "src": "/sounds/units/imp-attack.mp3"
   },
@@ -2318,6 +2850,79 @@
   "units/iron-golem-move": {
     "src": "/sounds/units/iron-golem-move.mp3",
     "repeat": 2
+  },
+  "units/jotunn-attack": {
+    "src": "/sounds/units/jotunn-attack.mp3"
+  },
+  "units/jotunn-death": {
+    "src": "/sounds/units/jotunn-death.mp3"
+  },
+  "units/jotunn-defend": {
+    "src": "/sounds/units/jotunn-defend.mp3"
+  },
+  "units/jotunn-hurt": {
+    "src": "/sounds/units/jotunn-hurt.mp3"
+  },
+  "units/jotunn-move": {
+    "src": "/sounds/units/jotunn-move.mp3",
+    "repeat": 2
+  },
+  "units/jotunn-shoot": {
+    "src": "/sounds/units/jotunn-shoot.mp3"
+  },
+  "units/jotunn-warlord-attack": {
+    "src": "/sounds/units/jotunn-warlord-attack.mp3"
+  },
+  "units/jotunn-warlord-death": {
+    "src": "/sounds/units/jotunn-warlord-death.mp3"
+  },
+  "units/jotunn-warlord-defend": {
+    "src": "/sounds/units/jotunn-warlord-defend.mp3"
+  },
+  "units/jotunn-warlord-hurt": {
+    "src": "/sounds/units/jotunn-warlord-hurt.mp3"
+  },
+  "units/jotunn-warlord-move": {
+    "src": "/sounds/units/jotunn-warlord-move.mp3",
+    "repeat": 2
+  },
+  "units/jotunn-warlord-shoot": {
+    "src": "/sounds/units/jotunn-warlord-shoot.mp3"
+  },
+  "units/kobold-attack": {
+    "src": "/sounds/units/kobold-attack.mp3"
+  },
+  "units/kobold-death": {
+    "src": "/sounds/units/kobold-death.mp3"
+  },
+  "units/kobold-defend": {
+    "src": "/sounds/units/kobold-defend.mp3"
+  },
+  "units/kobold-hurt": {
+    "src": "/sounds/units/kobold-hurt.mp3"
+  },
+  "units/kobold-move": {
+    "src": "/sounds/units/kobold-move.mp3",
+    "repeat": 2
+  },
+  "units/leprechaun-attack": {
+    "src": "/sounds/units/leprechaun-attack.mp3"
+  },
+  "units/leprechaun-death": {
+    "src": "/sounds/units/leprechaun-death.mp3"
+  },
+  "units/leprechaun-defend": {
+    "src": "/sounds/units/leprechaun-defend.mp3"
+  },
+  "units/leprechaun-hurt": {
+    "src": "/sounds/units/leprechaun-hurt.mp3"
+  },
+  "units/leprechaun-move": {
+    "src": "/sounds/units/leprechaun-move.mp3",
+    "repeat": 2
+  },
+  "units/leprechaun-shoot": {
+    "src": "/sounds/units/leprechaun-shoot.mp3"
   },
   "units/lich-attack": {
     "src": "/sounds/units/lich-attack.mp3",
@@ -2454,6 +3059,22 @@
     "src": "/sounds/units/magog-shoot.mp3",
     "then": "spells/fireball-hit"
   },
+  "units/mammoth-attack": {
+    "src": "/sounds/units/mammoth-attack.mp3"
+  },
+  "units/mammoth-death": {
+    "src": "/sounds/units/mammoth-death.mp3"
+  },
+  "units/mammoth-defend": {
+    "src": "/sounds/units/mammoth-defend.mp3"
+  },
+  "units/mammoth-hurt": {
+    "src": "/sounds/units/mammoth-hurt.mp3"
+  },
+  "units/mammoth-move": {
+    "src": "/sounds/units/mammoth-move.mp3",
+    "repeat": 2
+  },
   "units/manticore-attack": {
     "src": "/sounds/units/manticore-attack.mp3"
   },
@@ -2510,6 +3131,25 @@
   },
   "units/master-gremlin-shoot": {
     "src": "/sounds/units/master-gremlin-shoot.mp3"
+  },
+  "units/mechanic-attack": {
+    "src": "/sounds/units/mechanic-attack.mp3"
+  },
+  "units/mechanic-death": {
+    "src": "/sounds/units/mechanic-death.mp3"
+  },
+  "units/mechanic-defend": {
+    "src": "/sounds/units/mechanic-defend.mp3"
+  },
+  "units/mechanic-hurt": {
+    "src": "/sounds/units/mechanic-hurt.mp3"
+  },
+  "units/mechanic-move": {
+    "src": "/sounds/units/mechanic-move.mp3",
+    "repeat": 2
+  },
+  "units/mechanic-shoot": {
+    "src": "/sounds/units/mechanic-shoot.mp3"
   },
   "units/medusa-attack": {
     "src": "/sounds/units/medusa-attack.mp3"
@@ -2619,6 +3259,22 @@
   "units/monk-shoot": {
     "src": "/sounds/units/monk-shoot.mp3"
   },
+  "units/mountain-ram-attack": {
+    "src": "/sounds/units/mountain-ram-attack.mp3"
+  },
+  "units/mountain-ram-death": {
+    "src": "/sounds/units/mountain-ram-death.mp3"
+  },
+  "units/mountain-ram-defend": {
+    "src": "/sounds/units/mountain-ram-defend.mp3"
+  },
+  "units/mountain-ram-hurt": {
+    "src": "/sounds/units/mountain-ram-hurt.mp3"
+  },
+  "units/mountain-ram-move": {
+    "src": "/sounds/units/mountain-ram-move.mp3",
+    "repeat": 2
+  },
   "units/mummy-attack": {
     "src": "/sounds/units/mummy-attack.mp3"
   },
@@ -2667,6 +3323,22 @@
     "src": "/sounds/units/naga-queen-move.mp3",
     "repeat": 2
   },
+  "units/nix-attack": {
+    "src": "/sounds/units/nix-attack.mp3"
+  },
+  "units/nix-death": {
+    "src": "/sounds/units/nix-death.mp3"
+  },
+  "units/nix-defend": {
+    "src": "/sounds/units/nix-defend.mp3"
+  },
+  "units/nix-hurt": {
+    "src": "/sounds/units/nix-hurt.mp3"
+  },
+  "units/nix-move": {
+    "src": "/sounds/units/nix-move.mp3",
+    "repeat": 2
+  },
   "units/nomad-attack": {
     "src": "/sounds/units/nomad-attack.mp3"
   },
@@ -2681,6 +3353,30 @@
   },
   "units/nomad-move": {
     "src": "/sounds/units/nomad-move.mp3",
+    "repeat": 2
+  },
+  "units/nymph-attack": {
+    "src": "/sounds/units/nymph-attack.mp3"
+  },
+  "units/nymph-death": {
+    "src": "/sounds/units/nymph-death.mp3"
+  },
+  "units/nymph-defend": {
+    "src": "/sounds/units/nymph-defend.mp3"
+  },
+  "units/nymph-hurt": {
+    "src": "/sounds/units/nymph-hurt.mp3"
+  },
+  "units/nymph-move-end": {
+    "src": "/sounds/units/nymph-move-end.mp3",
+    "note": "Nymph/Oceanid move-end (NIMPEXT2)"
+  },
+  "units/nymph-move-start": {
+    "src": "/sounds/units/nymph-move-start.mp3",
+    "note": "Nymph/Oceanid move-start (NIMPEXT1)"
+  },
+  "units/nymph-move": {
+    "src": "/sounds/units/nymph-move.mp3",
     "repeat": 2
   },
   "units/obsidian-gargoyle-attack": {
@@ -2835,6 +3531,29 @@
   "units/pikeman-move": {
     "src": "/sounds/units/pikeman-move.mp3",
     "repeat": 2
+  },
+  "units/pirate-attack": {
+    "src": "/sounds/units/pirate-attack.mp3"
+  },
+  "units/pirate-death": {
+    "src": "/sounds/units/pirate-death.mp3"
+  },
+  "units/pirate-defend": {
+    "src": "/sounds/units/pirate-defend.mp3"
+  },
+  "units/pirate-hurt": {
+    "src": "/sounds/units/pirate-hurt.mp3"
+  },
+  "units/pirate-move": {
+    "src": "/sounds/units/pirate-move.mp3",
+    "repeat": 2
+  },
+  "units/pirate-shoot": {
+    "src": "/sounds/units/pirate-shoot.mp3"
+  },
+  "units/pirate-special": {
+    "src": "/sounds/units/pirate-special.mp3",
+    "note": "Pirate/Corsair/Sea Dog special ability (PIRTABIL)"
   },
   "units/pit-fiend-attack": {
     "src": "/sounds/units/pit-fiend-attack.mp3"
@@ -3001,6 +3720,53 @@
     "src": "/sounds/units/rust-dragon-move.mp3",
     "repeat": 2
   },
+  "units/sandworm-attack": {
+    "src": "/sounds/units/sandworm-attack.mp3"
+  },
+  "units/sandworm-death": {
+    "src": "/sounds/units/sandworm-death.mp3"
+  },
+  "units/sandworm-defend": {
+    "src": "/sounds/units/sandworm-defend.mp3"
+  },
+  "units/sandworm-hurt": {
+    "src": "/sounds/units/sandworm-hurt.mp3"
+  },
+  "units/sandworm-move-end": {
+    "src": "/sounds/units/sandworm-move-end.mp3",
+    "note": "Sandworm surface / move-end (WORMEXT2)"
+  },
+  "units/sandworm-move-start": {
+    "src": "/sounds/units/sandworm-move-start.mp3",
+    "note": "Sandworm burrow / move-start (WORMEXT1)"
+  },
+  "units/sandworm-move": {
+    "src": "/sounds/units/sandworm-move.mp3",
+    "repeat": 2
+  },
+  "units/sandworm-special": {
+    "src": "/sounds/units/sandworm-special.mp3",
+    "note": "Sandworm special attack (WORMSPEC)"
+  },
+  "units/satyr-attack": {
+    "src": "/sounds/units/satyr-attack.mp3"
+  },
+  "units/satyr-death": {
+    "src": "/sounds/units/satyr-death.mp3"
+  },
+  "units/satyr-defend": {
+    "src": "/sounds/units/satyr-defend.mp3"
+  },
+  "units/satyr-hurt": {
+    "src": "/sounds/units/satyr-hurt.mp3"
+  },
+  "units/satyr-move": {
+    "src": "/sounds/units/satyr-move.mp3",
+    "repeat": 2
+  },
+  "units/satyr-shoot": {
+    "src": "/sounds/units/satyr-shoot.mp3"
+  },
   "units/scorpicore-attack": {
     "src": "/sounds/units/scorpicore-attack.mp3"
   },
@@ -3020,6 +3786,41 @@
   "units/scorpicore-shoot": {
     "src": "/sounds/units/scorpicore-shoot.mp3"
   },
+  "units/sea-serpent-attack": {
+    "src": "/sounds/units/sea-serpent-attack.mp3"
+  },
+  "units/sea-serpent-death": {
+    "src": "/sounds/units/sea-serpent-death.mp3"
+  },
+  "units/sea-serpent-defend": {
+    "src": "/sounds/units/sea-serpent-defend.mp3"
+  },
+  "units/sea-serpent-hurt": {
+    "src": "/sounds/units/sea-serpent-hurt.mp3"
+  },
+  "units/sea-serpent-move": {
+    "src": "/sounds/units/sea-serpent-move.mp3",
+    "repeat": 2
+  },
+  "units/sea-witch-attack": {
+    "src": "/sounds/units/sea-witch-attack.mp3"
+  },
+  "units/sea-witch-death": {
+    "src": "/sounds/units/sea-witch-death.mp3"
+  },
+  "units/sea-witch-defend": {
+    "src": "/sounds/units/sea-witch-defend.mp3"
+  },
+  "units/sea-witch-hurt": {
+    "src": "/sounds/units/sea-witch-hurt.mp3"
+  },
+  "units/sea-witch-move": {
+    "src": "/sounds/units/sea-witch-move.mp3",
+    "repeat": 2
+  },
+  "units/sea-witch-shoot": {
+    "src": "/sounds/units/sea-witch-shoot.mp3"
+  },
   "units/serpent-fly-attack": {
     "src": "/sounds/units/serpent-fly-attack.mp3"
   },
@@ -3035,6 +3836,29 @@
   "units/serpent-fly-move": {
     "src": "/sounds/units/serpent-fly-move.mp3",
     "repeat": 2
+  },
+  "units/shaman-attack": {
+    "src": "/sounds/units/shaman-attack.mp3"
+  },
+  "units/shaman-death": {
+    "src": "/sounds/units/shaman-death.mp3"
+  },
+  "units/shaman-defend": {
+    "src": "/sounds/units/shaman-defend.mp3"
+  },
+  "units/shaman-hurt": {
+    "src": "/sounds/units/shaman-hurt.mp3"
+  },
+  "units/shaman-move": {
+    "src": "/sounds/units/shaman-move.mp3",
+    "repeat": 2
+  },
+  "units/shaman-shoot": {
+    "src": "/sounds/units/shaman-shoot.mp3"
+  },
+  "units/shaman-special": {
+    "src": "/sounds/units/shaman-special.mp3",
+    "note": "Shaman special ability (SHAMSPEC)"
   },
   "units/sharpshooter-attack": {
     "src": "/sounds/units/sharpshooter-attack.mp3"
@@ -3103,6 +3927,25 @@
     "src": "/sounds/units/skeleton-warrior-move.mp3",
     "repeat": 2
   },
+  "units/snow-elf-attack": {
+    "src": "/sounds/units/snow-elf-attack.mp3"
+  },
+  "units/snow-elf-death": {
+    "src": "/sounds/units/snow-elf-death.mp3"
+  },
+  "units/snow-elf-defend": {
+    "src": "/sounds/units/snow-elf-defend.mp3"
+  },
+  "units/snow-elf-hurt": {
+    "src": "/sounds/units/snow-elf-hurt.mp3"
+  },
+  "units/snow-elf-move": {
+    "src": "/sounds/units/snow-elf-move.mp3",
+    "repeat": 2
+  },
+  "units/snow-elf-shoot": {
+    "src": "/sounds/units/snow-elf-shoot.mp3"
+  },
   "units/sprite-attack": {
     "src": "/sounds/units/sprite-attack.mp3"
   },
@@ -3117,6 +3960,41 @@
   },
   "units/sprite-move": {
     "src": "/sounds/units/sprite-move.mp3",
+    "repeat": 2
+  },
+  "units/steel-elf-attack": {
+    "src": "/sounds/units/steel-elf-attack.mp3"
+  },
+  "units/steel-elf-death": {
+    "src": "/sounds/units/steel-elf-death.mp3"
+  },
+  "units/steel-elf-defend": {
+    "src": "/sounds/units/steel-elf-defend.mp3"
+  },
+  "units/steel-elf-hurt": {
+    "src": "/sounds/units/steel-elf-hurt.mp3"
+  },
+  "units/steel-elf-move": {
+    "src": "/sounds/units/steel-elf-move.mp3",
+    "repeat": 2
+  },
+  "units/steel-elf-shoot": {
+    "src": "/sounds/units/steel-elf-shoot.mp3"
+  },
+  "units/steel-golem-attack": {
+    "src": "/sounds/units/steel-golem-attack.mp3"
+  },
+  "units/steel-golem-death": {
+    "src": "/sounds/units/steel-golem-death.mp3"
+  },
+  "units/steel-golem-defend": {
+    "src": "/sounds/units/steel-golem-defend.mp3"
+  },
+  "units/steel-golem-hurt": {
+    "src": "/sounds/units/steel-golem-hurt.mp3"
+  },
+  "units/steel-golem-move": {
+    "src": "/sounds/units/steel-golem-move.mp3",
     "repeat": 2
   },
   "units/stone-gargoyle-attack": {
@@ -3169,6 +4047,26 @@
   },
   "units/storm-elemental-shoot": {
     "src": "/sounds/units/storm-elemental-shoot.mp3"
+  },
+  "units/storm-elemental-special": {
+    "src": "/sounds/units/storm-elemental-special.mp3",
+    "note": "STORMELM — Storm Elemental extra/special sound; uncertain"
+  },
+  "units/stormbird-attack": {
+    "src": "/sounds/units/stormbird-attack.mp3"
+  },
+  "units/stormbird-death": {
+    "src": "/sounds/units/stormbird-death.mp3"
+  },
+  "units/stormbird-defend": {
+    "src": "/sounds/units/stormbird-defend.mp3"
+  },
+  "units/stormbird-hurt": {
+    "src": "/sounds/units/stormbird-hurt.mp3"
+  },
+  "units/stormbird-move": {
+    "src": "/sounds/units/stormbird-move.mp3",
+    "repeat": 2
   },
   "units/swordsman-attack": {
     "src": "/sounds/units/swordsman-attack.mp3"
@@ -3300,21 +4198,21 @@
   "units/vampire-lord-shoot": {
     "src": "/sounds/units/vampire-lord-shoot.mp3"
   },
-  "units/vampire-lord-special": {
-    "src": "/sounds/units/vampire-lord-special.mp3"
-  },
   "units/vampire-lord-special-2": {
     "src": "/sounds/units/vampire-lord-special-2.mp3"
+  },
+  "units/vampire-lord-special": {
+    "src": "/sounds/units/vampire-lord-special.mp3"
   },
   "units/vampire-move": {
     "src": "/sounds/units/vampire-move.mp3",
     "repeat": 2
   },
-  "units/vampire-special": {
-    "src": "/sounds/units/vampire-special.mp3"
-  },
   "units/vampire-special-2": {
     "src": "/sounds/units/vampire-special-2.mp3"
+  },
+  "units/vampire-special": {
+    "src": "/sounds/units/vampire-special.mp3"
   },
   "units/walking-dead-attack": {
     "src": "/sounds/units/walking-dead-attack.mp3"
@@ -3330,6 +4228,22 @@
   },
   "units/walking-dead-move": {
     "src": "/sounds/units/walking-dead-move.mp3",
+    "repeat": 2
+  },
+  "units/war-mammoth-attack": {
+    "src": "/sounds/units/war-mammoth-attack.mp3"
+  },
+  "units/war-mammoth-death": {
+    "src": "/sounds/units/war-mammoth-death.mp3"
+  },
+  "units/war-mammoth-defend": {
+    "src": "/sounds/units/war-mammoth-defend.mp3"
+  },
+  "units/war-mammoth-hurt": {
+    "src": "/sounds/units/war-mammoth-hurt.mp3"
+  },
+  "units/war-mammoth-move": {
+    "src": "/sounds/units/war-mammoth-move.mp3",
     "repeat": 2
   },
   "units/war-unicorn-attack": {
@@ -3450,6 +4364,22 @@
     "src": "/sounds/units/wyvern-move.mp3",
     "repeat": 2
   },
+  "units/yeti-attack": {
+    "src": "/sounds/units/yeti-attack.mp3"
+  },
+  "units/yeti-death": {
+    "src": "/sounds/units/yeti-death.mp3"
+  },
+  "units/yeti-defend": {
+    "src": "/sounds/units/yeti-defend.mp3"
+  },
+  "units/yeti-hurt": {
+    "src": "/sounds/units/yeti-hurt.mp3"
+  },
+  "units/yeti-move": {
+    "src": "/sounds/units/yeti-move.mp3",
+    "repeat": 2
+  },
   "units/zealot-attack": {
     "src": "/sounds/units/zealot-attack.mp3"
   },
@@ -3484,5 +4414,30 @@
   "units/zombie-lord-move": {
     "src": "/sounds/units/zombie-lord-move.mp3",
     "repeat": 2
+  },
+  "music/battle": {
+    "random": [
+      "music/battle-00",
+      "music/battle-01",
+      "music/battle-02",
+      "music/battle-03",
+      "music/battle-04",
+      "music/battle-05",
+      "music/battle-06",
+      "music/battle-07"
+    ],
+    "note": "play one member at random"
+  },
+  "adventure/pickup": {
+    "random": [
+      "adventure/pickup-01",
+      "adventure/pickup-02",
+      "adventure/pickup-03",
+      "adventure/pickup-04",
+      "adventure/pickup-05",
+      "adventure/pickup-06",
+      "adventure/pickup-07"
+    ],
+    "note": "play one member at random"
   }
 }
