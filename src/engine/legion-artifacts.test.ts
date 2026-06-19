@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cardLibrary } from "@/data/cards/library";
 import { artifactDeckBinhMajor, artifactDeckBinhMinor, artifactDeckLegacy } from "@/data/cards/artifacts";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import { applyAction, createAdventureGameState, getLegalActions } from "./index";
 import { recruitDiscountAmount, startPlayerTurn } from "./adventure";
 import type { GameAction, GameState, PlayerId } from "./state";
@@ -231,6 +232,33 @@ describe("The banked discount is read and consumed by the recruit/reinforce cost
     expect(state.players.p1.resources.gold).toBe(9);
     // The one-shot discount is consumed once it has been used.
     expect(recruitDiscountAmount(state, "p1")).toBe(0);
+  });
+
+  it("ends after buying once even when the discount did not lower the gold bill", () => {
+    // A no-gold recruit: the banked discount has nothing to reduce, but buying
+    // once must still consume it (single-use, not "spent only when it helped").
+    const fewSide = coreUnitDefinitions["castle.marksmen"]!.few!;
+    const originalCost = fewSide.cost;
+    fewSide.cost = { buildingMaterials: 1 };
+    try {
+      let state = setupRecruitTown();
+      state.players.p1.resources = { gold: 10, buildingMaterials: 2, valuables: 0 };
+      bankRecruitDiscount(state, "p1", 5);
+      expect(recruitDiscountAmount(state, "p1")).toBe(5);
+
+      state = apply(state, {
+        type: "POPULATION_ACTION",
+        playerId: "p1",
+        purchases: [{ kind: "recruit", unitDefId: "castle.marksmen" }]
+      });
+
+      // No gold was reduced (none to reduce), yet the one-shot bank is spent.
+      expect(state.players.p1.resources.gold).toBe(10);
+      expect(state.players.p1.resources.buildingMaterials).toBe(1);
+      expect(recruitDiscountAmount(state, "p1")).toBe(0);
+    } finally {
+      fewSide.cost = originalCost;
+    }
   });
 
   it("knocks the banked discount off a reinforcement's gold (upgrading a unit) and spends it", () => {
