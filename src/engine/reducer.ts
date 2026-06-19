@@ -9152,8 +9152,15 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
-  // Offense/Armorer outside combat: the stat fizzles, the draw still happens.
-  if (effect.type === "ADD_COMBAT_STAT" && effect.drawCards && !state.combat) {
+  // Offense/Armorer (ADD_COMBAT_STAT) and Sorcery (ADD_SPELL_POWER) played
+  // outside combat: with no attack/spell to apply it to the stat/Power fizzles,
+  // but the "then draw a card" rider still resolves. (In combat these route
+  // through the reaction path, which applies the stat/Power to the open window.)
+  if (
+    (effect.type === "ADD_COMBAT_STAT" || effect.type === "ADD_SPELL_POWER") &&
+    effect.drawCards &&
+    !state.combat
+  ) {
     drawCardsForPlayer(state, action.playerId, effect.drawCards);
   }
 
