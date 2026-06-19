@@ -152,13 +152,11 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "fountain_of_youth",
     name: "Fountain of Youth",
     category: "visitable",
-    interaction: {
-      type: "SEQUENCE",
-      interactions: [
-        { type: "GAIN_MORALE", amount: 1 },
-        { type: "GAIN_MOVEMENT", amount: 1 }
-      ]
-    },
+    // Effect swapped with Magic Spring to match the physical board game tiles
+    // (confirmed by playtest): the Fountain of Youth tile lets you look at the
+    // top 3 cards of your discard pile and return one to your hand. MAGIC_SPRING
+    // is the engine step that runs that discard-recovery logic.
+    interaction: { type: "MAGIC_SPRING" },
     implementationStatus: "implemented",
     source: source("fountain_of_youth")
   },
@@ -213,7 +211,16 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "magic_spring",
     name: "Magic Spring",
     category: "visitable",
-    interaction: { type: "MAGIC_SPRING" },
+    // Effect swapped with Fountain of Youth to match the physical board game
+    // tiles (confirmed by playtest): the Magic Spring tile grants a positive
+    // morale token and +1 movement for this turn.
+    interaction: {
+      type: "SEQUENCE",
+      interactions: [
+        { type: "GAIN_MORALE", amount: 1 },
+        { type: "GAIN_MOVEMENT", amount: 1 }
+      ]
+    },
     implementationStatus: "implemented",
     source: source("magic_spring")
   },

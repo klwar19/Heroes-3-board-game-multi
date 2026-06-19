@@ -51,7 +51,6 @@ import {
   populationAction,
   pumpAdventureQueues,
   refreshHand,
-  rehydrateCityHallChoice,
   resolveVisitStep,
   retreatFromCombat,
   surrenderFromCombat,
@@ -12279,8 +12278,6 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
   if (!state.adventure) {
     return;
   }
-
-  rehydrateCityHallChoice(state);
 
   let safety = 300;
   while (safety > 0) {
