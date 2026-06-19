@@ -8,6 +8,7 @@ import {
 } from "@/data/cards/artifacts";
 import { STARTING_ONLY_SPELLS, spellDeckBinhBasic, spellDeckBinhExpert, spellDeckLegacy } from "@/data/cards/spells";
 import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra";
+import { coreHeroDefinitions } from "@/data/factions/core";
 
 /**
  * Every fully-implemented Artifact, Spell and Ability must be reachable in a
@@ -107,6 +108,54 @@ describe("deck coverage", () => {
         }
       } else if (!binhAbility.has(card.id)) {
         problems.push(`${card.id}: missing from the BINH ability deck`);
+      }
+    }
+
+    expect(problems.sort()).toEqual([]);
+  });
+});
+
+/**
+ * A hero's starting Ability (Diplomacy, Logistics, Necromancy…) is NOT exclusive
+ * to that hero: the same Ability lives in the shared Ability deck, so any player
+ * can draw their own copy of it during the game. This guards that invariant —
+ * every hero's `startingAbilityCardId` must resolve to an implemented Ability
+ * card that is present in BOTH shared Ability decks (legacy + BINH). Without it,
+ * a future hero could ship a starting skill that nobody else can ever acquire
+ * (or, worse, a starting card with no library entry at all).
+ */
+describe("hero starting abilities are also in the shared deck pool", () => {
+  const legacy = new Set(abilityDeckLegacy);
+  const binh = new Set(abilityDeckBinh);
+  const heroes = Object.entries(coreHeroDefinitions);
+
+  it("has at least one hero whose starting ability is Diplomacy (the reported case)", () => {
+    const diplomats = heroes.filter(([, hero]) => hero.startingAbilityCardId === "ability.diplomacy");
+    expect(diplomats.length).toBeGreaterThan(0);
+    expect(legacy.has("ability.diplomacy")).toBe(true);
+    expect(binh.has("ability.diplomacy")).toBe(true);
+  });
+
+  it("places every hero's starting ability in both shared ability decks as an implemented card", () => {
+    const problems: string[] = [];
+    for (const [heroId, hero] of heroes) {
+      const abilityId = hero.startingAbilityCardId;
+      const card = cardLibrary[abilityId];
+      if (!card) {
+        problems.push(`${heroId}: starting ability ${abilityId} has no card library entry`);
+        continue;
+      }
+      if (card.kind !== "ability") {
+        problems.push(`${heroId}: starting ability ${abilityId} is a ${card.kind}, not an ability`);
+      }
+      if (card.implementationStatus !== "implemented") {
+        problems.push(`${heroId}: starting ability ${abilityId} is ${card.implementationStatus}`);
+      }
+      if (!legacy.has(abilityId)) {
+        problems.push(`${heroId}: starting ability ${abilityId} is missing from the legacy ability deck`);
+      }
+      if (!binh.has(abilityId)) {
+        problems.push(`${heroId}: starting ability ${abilityId} is missing from the BINH ability deck`);
       }
     }
 

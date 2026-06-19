@@ -102,6 +102,7 @@ import {
   healFxPlans,
   spellFxPlans,
   spellPresentationMs,
+  warMachineFxPlans,
   type SpellFxPlan
 } from "@/data/fx";
 import { orderFxEventsForPresentation, partitionCombatMoves } from "@/components/table/fx-sequence";
@@ -1590,6 +1591,31 @@ export default function Home() {
                 delayMs: timeline + 150
               });
               timeline += 800;
+              break;
+            }
+            case "WAR_MACHINE_TRIGGERED": {
+              // A firing war machine (Ballista, Catapult, Cannon) looses its shot
+              // here, just before the DAMAGE_ASSIGNED it logs next. Play its H3
+              // shot clip and advance the timeline by the clip's length so the
+              // struck unit's hurt cry + damage number (queued on that following
+              // DAMAGE_ASSIGNED) land only once the shot has been heard. The
+              // First Aid Tent never reaches this event (it heals — see
+              // healFxPlans); the Ammo Cart is a passive buff that never fires.
+              const shotPlan = warMachineFxPlans[event.cardId];
+              if (shotPlan?.sound) {
+                if (event.targetUnitId) {
+                  queueBoardFx(shotPlan, `${event.id}-shot`, "center", event.targetUnitId);
+                } else {
+                  const soundKey = shotPlan.sound;
+                  const at = timeline;
+                  window.setTimeout(() => playLibrarySound(soundKey), at);
+                  timeline = at + spellPresentationMs(shotPlan);
+                }
+                if (inCombat) {
+                  combatFxActive = true;
+                  combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
+                }
+              }
               break;
             }
             case "DAMAGE_ASSIGNED": {
