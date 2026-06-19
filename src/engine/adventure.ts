@@ -4121,9 +4121,12 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
     case "HAND_LIMIT_MODIFIER":
     case "DIE_REROLL_PER_TURN":
     case "FIRST_SPELL_POWER_BONUS":
+    case "SCHOOL_SPELL_POWER_BONUS":
     case "FIRST_SPELL_RETURNS":
     case "NEUTRAL_DRAW_SWAP":
-      // Passive while the card stays face up.
+      // Passive while the card stays face up (read where the effect applies:
+      // hand-limit in effectiveHandLimit, die rerolls in maybeReroll, the spell
+      // bonuses in getCurrentSpellPower, the spell return in maybeReturnSpell).
       break;
     case "GAIN_MORALE_ALL":
       for (const playerId of playerIds) {
@@ -4158,6 +4161,11 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
     case "RESHUFFLE_ARTIFACTS_SPELLS":
       for (const playerId of playerIds) {
         reshuffleArtifactsAndSpells(state, playerId);
+      }
+      break;
+    case "DISCARD_REDRAW_ALL":
+      for (const playerId of playerIds) {
+        discardHandAndRedraw(state, playerId);
       }
       break;
     case "PLAGUE_FLIP_ALL":
@@ -4199,6 +4207,19 @@ function reshuffleArtifactsAndSpells(state: GameState, playerId: PlayerId): void
     `${state.seed}#annoying-lizard#${playerId}#${eventSeedNumber(state)}`
   );
   drawCardsForPlayer(state, playerId, moved.length);
+}
+
+/** Big Cleanup: discard the whole hand to the discard pile, redraw as many. */
+function discardHandAndRedraw(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player || player.hand.length === 0) {
+    return;
+  }
+
+  const count = player.hand.length;
+  player.discard.push(...player.hand);
+  player.hand = [];
+  drawCardsForPlayer(state, playerId, count);
 }
 
 function queuePlagueFlip(state: GameState, playerId: PlayerId): void {
