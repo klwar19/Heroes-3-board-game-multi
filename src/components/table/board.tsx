@@ -313,10 +313,11 @@ function TokenSprite({
 /**
  * Spell token sitting on a board space (Force Field / Fire Wall / Quicksand /
  * Land Mine). Force Field and Fire Wall are visible obstacles, drawn with their
- * animated H3 sprite. Quicksand and Land Mine are face-down traps: their
- * controller sees the real art + armed/decoy, the opponent only a face-down
- * token back (player-view strips the `armed` flag, leaving it undefined here).
- * A sprung trap is removed by the engine, so it never lingers on the board.
+ * animated H3 sprite. Quicksand and Land Mine are traps: everyone sees the
+ * token's KIND (its normal icon sits on the board), but only its controller sees
+ * whether it is armed or a decoy — the opponent gets the same icon WITHOUT that
+ * armed/decoy label. A sprung trap is removed by the engine, so it never lingers
+ * on the board.
  */
 function BattlefieldTokenMark({
   token,
@@ -329,11 +330,12 @@ function BattlefieldTokenMark({
 }) {
   const view = BATTLEFIELD_TOKEN_VIEW[token.kind];
   const isTrap = token.kind === "quicksand" || token.kind === "land_mine";
-  // An enemy trap is always face-down to you — never reveal its armed/decoy
-  // state. The engine player-view also strips the flag, but the live board is
-  // fed the RAW state, so masking by ownership here is what actually hides it
-  // (and it is robust whether or not the flag was stripped upstream).
-  const faceDown = isTrap && token.controllerId !== viewerPlayerId;
+  // A trap's KIND is public (its icon sits on the board), but its armed/decoy
+  // state is the caster's secret. So an enemy trap shows the same icon, just
+  // WITHOUT the armed/decoy label. Masking by ownership is robust whether or not
+  // the upstream player-view already stripped the `armed` flag (the live board is
+  // fed the RAW state, so this masking is what actually hides it).
+  const hideArmedState = isTrap && token.controllerId !== viewerPlayerId;
   const owner = state.players[token.controllerId]?.name ?? token.controllerId;
   const spriteSheet = getFxSheet(view.sprite);
 
@@ -342,7 +344,8 @@ function BattlefieldTokenMark({
     detail = `${token.damage ?? 0}`;
   } else if (token.kind === "force_field") {
     detail = token.expiresAtCombatRoundEnd === undefined ? "combat" : `r${token.expiresAtCombatRoundEnd}`;
-  } else if (faceDown) {
+  } else if (hideArmedState) {
+    // The opponent sees the trap's icon but not whether it is armed or a decoy.
     detail = "";
   } else {
     detail = token.armed ? "armed" : "decoy";
@@ -353,18 +356,12 @@ function BattlefieldTokenMark({
       ? `Fire Wall (${owner}) — ${token.damage ?? 0} damage to a unit stopping here or a ground/ranged unit passing through`
       : token.kind === "force_field"
         ? `Force Field (${owner}) — an obstacle; blocks non-flying movement${token.expiresAtCombatRoundEnd === undefined ? " for this combat" : ` until the end of combat round ${token.expiresAtCombatRoundEnd}`}`
-        : faceDown
-          ? `${view.label} (${owner}) — a face-down trap; you cannot see whether it is armed`
+        : hideArmedState
+          ? `${view.label} (${owner}) — an enemy trap; you cannot see whether it is armed or a decoy`
           : `${view.label} (${owner}) — your token: ${token.armed ? "armed" : "decoy"}`;
 
   let art: React.ReactNode;
-  if (faceDown) {
-    art = (
-      <span className="battlefieldTokenBack" aria-hidden="true">
-        ?
-      </span>
-    );
-  } else if (spriteSheet) {
+  if (spriteSheet) {
     if (token.kind === "force_field") {
       // The barrier shimmers, but its sprite fades to nothing at both ends of
       // the sheet (frames 0–2 fade in, 12–14 fade out) — that fade reads as the
@@ -382,7 +379,7 @@ function BattlefieldTokenMark({
   return (
     <span
       aria-label={describe}
-      className={`battlefieldToken ${token.kind} ${faceDown ? "faceDown" : ""} ${
+      className={`battlefieldToken ${token.kind} ${hideArmedState ? "hiddenTrap" : ""} ${
         token.controllerId === viewerPlayerId ? "own" : "enemy"
       }`}
       title={describe}
