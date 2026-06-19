@@ -4432,24 +4432,13 @@ export function discountedReinforceCost(
 /**
  * Total one-shot gold discount a player currently holds on Recruitment and
  * Reinforcement, from the Legion artifacts (Legs/Loins/Torso/Arms/Head of
- * Legion). Each artifact's discount side creates a current-turn RECRUIT_DISCOUNT
- * active effect; the amounts pool together so a player who played more than one
- * piece this turn gets their sum. Pure read — the discount is only spent once a
- * recruit/reinforce actually uses it (see consumeRecruitDiscount).
+ * Legion). Each artifact's discount side is an INSTANT play that banks its gold
+ * onto `player.recruitDiscount`; the amounts pool together so a player who
+ * played more than one piece gets their sum. Pure read — the discount is only
+ * spent once a recruit/reinforce actually uses it (see consumeRecruitDiscount).
  */
 export function recruitDiscountAmount(state: GameState, playerId: PlayerId): number {
-  return state.activeEffects.reduce((total, effect) => {
-    if (effect.controllerId !== playerId) {
-      return total;
-    }
-    return (
-      total +
-      effect.modifiers.reduce(
-        (sum, modifier) => (modifier.type === "RECRUIT_DISCOUNT" ? sum + modifier.amount : sum),
-        0
-      )
-    );
-  }, 0);
+  return state.players[playerId]?.recruitDiscount ?? 0;
 }
 
 /**
@@ -4469,21 +4458,17 @@ export function applyRecruitDiscount(state: GameState, playerId: PlayerId, cost:
 }
 
 /**
- * Spends the player's Legion discounts after a Recruitment/Reinforcement that
- * used them: removes every RECRUIT_DISCOUNT effect they hold (each is a
- * single-purpose, single-modifier effect created by a Legion artifact). The
- * Population token allows only one recruit/reinforce action per turn and these
- * discounts last only the current turn, so this is the single window in which
- * they are spent. No-op when none are held.
+ * Spends the player's banked Legion discount after a Recruitment/Reinforcement
+ * that used it: the whole pool is one-shot, so it is cleared in full once a
+ * recruit/reinforce has knocked gold off its bill. Called only when the discount
+ * actually lowered the gold paid, so a 0-gold recruit leaves the bank untouched.
+ * No-op when none is banked.
  */
 export function consumeRecruitDiscount(state: GameState, playerId: PlayerId): void {
-  state.activeEffects = state.activeEffects.filter(
-    (effect) =>
-      !(
-        effect.controllerId === playerId &&
-        effect.modifiers.some((modifier) => modifier.type === "RECRUIT_DISCOUNT")
-      )
-  );
+  const player = state.players[playerId];
+  if (player) {
+    player.recruitDiscount = 0;
+  }
 }
 
 /**

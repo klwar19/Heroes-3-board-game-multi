@@ -307,11 +307,6 @@ export type ActiveEffectModifier =
       amount: number;
     }
   | {
-      /** Legion artifacts: the next recruit/reinforce costs less gold. */
-      type: "RECRUIT_DISCOUNT";
-      amount: number;
-    }
-  | {
       /** Scouting: the next Search(X) becomes Search(count). Consumed on use. */
       type: "SEARCH_COUNT_OVERRIDE";
       count: number;
@@ -766,6 +761,17 @@ export type EffectDefinition =
       type: "GAIN_RESOURCES";
       gain: ResourceCost;
       expertGain?: ResourceCost;
+    }
+  | {
+      /**
+       * Legion artifacts (Legs/Loins/Torso/Arms/Head of Legion) discount side.
+       * An INSTANT, one-shot effect: it banks `amount` gold of discount on the
+       * player (player.recruitDiscount) that comes off the NEXT Recruitment or
+       * Reinforcement, to a minimum of 0, and is then consumed. The artifact card
+       * resolves to the discard pile at once — it is never an ongoing effect.
+       */
+      type: "GAIN_RECRUIT_DISCOUNT";
+      amount: number;
     }
   | {
       /** Logistics expert, Boots of Speed: the main hero gains movement. */
@@ -3662,6 +3668,15 @@ export type PlayerState = {
   eliminationCountdown?: number | null;
   /** Nomads (army map ability): the end-of-turn adjacent step was offered this turn. */
   nomadStepDoneThisTurn?: boolean;
+  /**
+   * Legion artifacts (Legs/Loins/Torso/Arms/Head of Legion): a banked one-shot
+   * gold discount on the player's NEXT Recruitment/Reinforcement, set when the
+   * artifact's discount side is played. Multiple pieces pool into this sum; the
+   * whole pool comes off one recruit/reinforce (to a minimum of 0) and is then
+   * cleared. The artifact itself is instant — it never lingers as an ongoing
+   * effect — so this voucher persists until it is actually used, nothing more.
+   */
+  recruitDiscount?: number;
   /** Rogues (army map ability): the once-per-turn deck peek was used this turn. */
   rogueScoutUsedThisTurn?: boolean;
   limits: {

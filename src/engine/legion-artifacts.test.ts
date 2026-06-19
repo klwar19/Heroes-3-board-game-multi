@@ -1,19 +1,30 @@
 import { describe, expect, it } from "vitest";
 import { cardLibrary } from "@/data/cards/library";
-import { artifactDeckBinhMajor, artifactDeckLegacy } from "@/data/cards/artifacts";
+import { artifactDeckBinhMajor, artifactDeckBinhMinor, artifactDeckLegacy } from "@/data/cards/artifacts";
 import { applyAction, createAdventureGameState, getLegalActions } from "./index";
 import { recruitDiscountAmount } from "./adventure";
-import { makeActiveEffect } from "./active-effects";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 // ---------------------------------------------------------------------------
 // Legion artifacts (Legs/Loins/Torso/Arms/Head of Legion). Each one's discount
-// side creates a one-shot RECRUIT_DISCOUNT effect that knocks gold off the
-// player's next Recruitment/Reinforcement "to a minimum of 0". These tests pin
-// (1) the Arms of Legion definition and (2) that the discount is actually read
-// and consumed by the recruit/reinforce cost path — the bug being fixed is that
-// the modifier was created but never applied.
+// side is an INSTANT, one-shot effect: it banks a gold discount on the player
+// (player.recruitDiscount) that comes off their next Recruitment/Reinforcement
+// "to a minimum of 0" and is then consumed. The artifact card goes straight to
+// the discard pile — it is NOT an ongoing effect and does NOT linger in play.
+//
+// These tests pin (1) the definitions of all five pieces, (2) that playing the
+// discount side is instant (discarded at once, no active effect, no ongoing
+// card), and (3) that the banked discount is read and consumed by the
+// recruit/reinforce cost path — failing if the discount logic is removed.
 // ---------------------------------------------------------------------------
+
+const LEGION_DISCOUNTS: { cardId: string; tier: "minor" | "major"; amount: number; name: string }[] = [
+  { cardId: "artifact.legs_of_legion", tier: "minor", amount: 4, name: "Legs of Legion" },
+  { cardId: "artifact.loins_of_legion", tier: "minor", amount: 5, name: "Loins of Legion" },
+  { cardId: "artifact.torso_of_legion", tier: "minor", amount: 6, name: "Torso of Legion" },
+  { cardId: "artifact.head_of_legion", tier: "major", amount: 6, name: "Head of Legion" },
+  { cardId: "artifact.arms_of_legion", tier: "major", amount: 5, name: "Arms of Legion" }
+];
 
 function makeGame(): GameState {
   return createAdventureGameState({ seed: "legion-seed", difficulty: "normal", rollFirstPlayer: false });
@@ -41,21 +52,10 @@ function setupRecruitTown(): GameState {
   return state;
 }
 
-/** Injects a Legion-style one-shot recruit discount, the same shape the cards make. */
-function giveRecruitDiscount(state: GameState, playerId: PlayerId, amount: number): void {
-  state.activeEffects.push(
-    makeActiveEffect(
-      state,
-      {
-        name: "Legion discount (test)",
-        scope: "player",
-        duration: { type: "current-turn" },
-        modifiers: [{ type: "RECRUIT_DISCOUNT", amount }]
-      },
-      { type: "card", cardId: "artifact.legs_of_legion", controllerId: playerId },
-      playerId
-    )
-  );
+/** Banks a Legion-style one-shot recruit discount, the same way the cards do. */
+function bankRecruitDiscount(state: GameState, playerId: PlayerId, amount: number): void {
+  const player = state.players[playerId];
+  player.recruitDiscount = (player.recruitDiscount ?? 0) + amount;
 }
 
 function findPlay(
@@ -81,43 +81,78 @@ function recruitActionFor(state: GameState, unitDefId: string): GameAction | und
   )?.action;
 }
 
-describe("Arms of Legion (definition)", () => {
-  it("is a Major artifact wired to the 5-gold discount and a 2 building-materials option", () => {
-    const card = cardLibrary["artifact.arms_of_legion"];
-    expect(card, "Arms of Legion must exist in the card library").toBeTruthy();
-    expect(card.kind).toBe("artifact");
-    expect(card.artifactTier).toBe("major");
-    expect(card.implementationStatus).toBe("implemented");
+describe("Legion artifact definitions", () => {
+  it("each piece's discount side is an instant GAIN_RECRUIT_DISCOUNT of the right amount, plus a resource side", () => {
+    for (const { cardId, tier, amount, name } of LEGION_DISCOUNTS) {
+      const card = cardLibrary[cardId];
+      expect(card, `${name} must exist in the card library`).toBeTruthy();
+      expect(card.kind).toBe("artifact");
+      expect(card.timing, `${name} is an instant artifact`).toBe("instant");
+      expect(card.artifactTier).toBe(tier);
+      expect(card.implementationStatus).toBe("implemented");
 
-    const effect = card.effect;
-    expect(effect.type).toBe("CHOOSE_ONE");
-    if (effect.type !== "CHOOSE_ONE") {
-      throw new Error("Arms of Legion should offer a CHOOSE_ONE.");
-    }
-
-    const [discountOption, materialsOption] = effect.options;
-    expect(discountOption.effect).toMatchObject({
-      type: "CREATE_ACTIVE_EFFECT",
-      effect: {
-        scope: "player",
-        duration: { type: "current-turn" },
-        modifiers: [{ type: "RECRUIT_DISCOUNT", amount: 5 }]
+      const effect = card.effect;
+      expect(effect.type, `${name} offers a CHOOSE_ONE`).toBe("CHOOSE_ONE");
+      if (effect.type !== "CHOOSE_ONE") {
+        throw new Error(`${name} should offer a CHOOSE_ONE.`);
       }
-    });
-    expect(materialsOption.effect).toMatchObject({
-      type: "GAIN_RESOURCES",
-      gain: { buildingMaterials: 2 }
-    });
+
+      // Exactly one discount side, wired to the instant one-shot effect — never
+      // a CREATE_ACTIVE_EFFECT (which would keep the card in play as ongoing).
+      const discountSides = effect.options.filter((option) => option.effect.type === "GAIN_RECRUIT_DISCOUNT");
+      expect(discountSides, `${name} has one discount side`).toHaveLength(1);
+      expect(discountSides[0]!.effect).toMatchObject({ type: "GAIN_RECRUIT_DISCOUNT", amount });
+      expect(
+        effect.options.some((option) => option.effect.type === "CREATE_ACTIVE_EFFECT"),
+        `${name} discount must not be an ongoing CREATE_ACTIVE_EFFECT`
+      ).toBe(false);
+
+      // The other side(s) hand over resources immediately.
+      expect(
+        effect.options.some((option) => option.effect.type === "GAIN_RESOURCES"),
+        `${name} has a resource side`
+      ).toBe(true);
+    }
   });
 
-  it("is dealt into the legacy and BINH Major artifact decks (drawable, not orphaned)", () => {
-    expect(artifactDeckLegacy).toContain("artifact.arms_of_legion");
-    expect(artifactDeckBinhMajor).toContain("artifact.arms_of_legion");
+  it("all five pieces are dealt into the artifact decks (drawable, not orphaned)", () => {
+    for (const { cardId, tier } of LEGION_DISCOUNTS) {
+      expect(artifactDeckLegacy).toContain(cardId);
+      const binhDeck = tier === "minor" ? artifactDeckBinhMinor : artifactDeckBinhMajor;
+      expect(binhDeck).toContain(cardId);
+    }
   });
 });
 
-describe("RECRUIT_DISCOUNT is read by the recruit/reinforce cost path", () => {
-  it("recruits at full price when no Legion discount is held (baseline)", () => {
+describe("Playing a Legion discount side is instant, not ongoing", () => {
+  it("banks the discount, discards the card at once, and creates no ongoing effect or held card", () => {
+    let state = setupRecruitTown();
+    state.players.p1.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
+    state.players.p1.hand = ["artifact.torso_of_legion"];
+    const activeEffectsBefore = state.activeEffects.length;
+
+    const play = findPlay(state, "p1", "artifact.torso_of_legion", 0);
+    expect(play, "the Torso of Legion discount side should be playable on the map").toBeTruthy();
+    state = apply(state, play!);
+
+    // Banked on the player and visible through the shared reader.
+    expect(state.players.p1.recruitDiscount).toBe(6);
+    expect(recruitDiscountAmount(state, "p1")).toBe(6);
+
+    // Instant: the card is in the discard pile, not held in play, and it created
+    // no active effect (so nothing shows up as an ongoing effect, and turn-end
+    // effect expiry has nothing of its to drop).
+    expect(state.players.p1.discard).toContain("artifact.torso_of_legion");
+    expect(state.players.p1.hand).not.toContain("artifact.torso_of_legion");
+    expect(state.players.p1.ongoingCards ?? []).not.toContainEqual(
+      expect.objectContaining({ cardId: "artifact.torso_of_legion" })
+    );
+    expect(state.activeEffects.length).toBe(activeEffectsBefore);
+  });
+});
+
+describe("The banked discount is read and consumed by the recruit/reinforce cost path", () => {
+  it("recruits at full price when no Legion discount is banked (baseline)", () => {
     let state = setupRecruitTown();
     state.players.p1.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
 
@@ -127,15 +162,15 @@ describe("RECRUIT_DISCOUNT is read by the recruit/reinforce cost path", () => {
       purchases: [{ kind: "recruit", unitDefId: "castle.marksmen" }]
     });
 
-    // Marksmen Few cost 3 gold — paid in full with no discount active.
+    // Marksmen Few cost 3 gold — paid in full with no discount banked.
     expect(state.players.p1.resources.gold).toBe(7);
     expect(state.players.p1.army.some((unit) => unit.unitDefId === "castle.marksmen")).toBe(true);
   });
 
-  it("knocks the held discount off a recruit's gold and spends the artifact's effect", () => {
+  it("knocks the banked discount off a recruit's gold (buying a unit) and spends it", () => {
     let state = setupRecruitTown();
     state.players.p1.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
-    giveRecruitDiscount(state, "p1", 2);
+    bankRecruitDiscount(state, "p1", 2);
 
     state = apply(state, {
       type: "POPULATION_ACTION",
@@ -149,33 +184,14 @@ describe("RECRUIT_DISCOUNT is read by the recruit/reinforce cost path", () => {
     expect(recruitDiscountAmount(state, "p1")).toBe(0);
   });
 
-  it("pools multiple Legion discounts and floors the gold paid at 0", () => {
-    let state = setupRecruitTown();
-    state.players.p1.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
-    giveRecruitDiscount(state, "p1", 2);
-    giveRecruitDiscount(state, "p1", 2);
-    expect(recruitDiscountAmount(state, "p1")).toBe(4);
-
-    state = apply(state, {
-      type: "POPULATION_ACTION",
-      playerId: "p1",
-      purchases: [{ kind: "recruit", unitDefId: "castle.marksmen" }]
-    });
-
-    // 3 gold - 4 pooled discount = 0 (never below 0); no gold leaves the purse.
-    expect(state.players.p1.resources.gold).toBe(10);
-    // Both pooled discounts are consumed by the recruit.
-    expect(recruitDiscountAmount(state, "p1")).toBe(0);
-  });
-
-  it("knocks the held discount off a reinforcement's gold too", () => {
+  it("knocks the banked discount off a reinforcement's gold (upgrading a unit) and spends it", () => {
     const state = setupRecruitTown();
     const town = state.towns.town_p1;
     town.buildings = [...new Set([...town.buildings, "castle.citadel"])]; // UNLOCK_REINFORCE
     state.players.p1.army = state.players.p1.army.filter((unit) => unit.unitDefId !== "castle.griffins");
     state.players.p1.army.push({ id: "u_griffins_test", unitDefId: "castle.griffins", side: "few" });
     state.players.p1.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
-    giveRecruitDiscount(state, "p1", 4);
+    bankRecruitDiscount(state, "p1", 4);
 
     const next = apply(state, {
       type: "POPULATION_ACTION",
@@ -189,15 +205,34 @@ describe("RECRUIT_DISCOUNT is read by the recruit/reinforce cost path", () => {
     expect(recruitDiscountAmount(next, "p1")).toBe(0);
   });
 
+  it("pools multiple Legion pieces and floors the gold paid at 0, consuming the whole bank at once", () => {
+    let state = setupRecruitTown();
+    state.players.p1.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
+    bankRecruitDiscount(state, "p1", 2);
+    bankRecruitDiscount(state, "p1", 2);
+    expect(recruitDiscountAmount(state, "p1")).toBe(4);
+
+    state = apply(state, {
+      type: "POPULATION_ACTION",
+      playerId: "p1",
+      purchases: [{ kind: "recruit", unitDefId: "castle.marksmen" }]
+    });
+
+    // 3 gold - 4 pooled discount = 0 (never below 0); no gold leaves the purse.
+    expect(state.players.p1.resources.gold).toBe(10);
+    // The whole one-shot bank is consumed by the recruit.
+    expect(recruitDiscountAmount(state, "p1")).toBe(0);
+  });
+
   it("does not let the discount leak to another player", () => {
     const state = setupRecruitTown();
-    giveRecruitDiscount(state, "p1", 5);
+    bankRecruitDiscount(state, "p1", 5);
     expect(recruitDiscountAmount(state, "p1")).toBe(5);
     expect(recruitDiscountAmount(state, "p2")).toBe(0);
   });
 });
 
-describe("RECRUIT_DISCOUNT affects what is offered and works end to end", () => {
+describe("The banked discount affects what is offered and works end to end", () => {
   it("offers a recruit that only the Legion discount makes affordable", () => {
     const state = setupRecruitTown();
     state.players.p1.resources = { gold: 1, buildingMaterials: 0, valuables: 0 };
@@ -205,12 +240,12 @@ describe("RECRUIT_DISCOUNT affects what is offered and works end to end", () => 
     // 1 gold cannot afford the 3-gold Marksmen on its own.
     expect(recruitActionFor(state, "castle.marksmen")).toBeUndefined();
 
-    giveRecruitDiscount(state, "p1", 2);
+    bankRecruitDiscount(state, "p1", 2);
     // 3 gold - 2 discount = 1 gold, now exactly affordable, so the action appears.
     expect(recruitActionFor(state, "castle.marksmen")).toBeTruthy();
   });
 
-  it("applies the discount created by actually playing Legs of Legion", () => {
+  it("applies the discount created by actually playing Legs of Legion, then spends it once", () => {
     let state = setupRecruitTown();
     state.players.p1.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
     state.players.p1.hand = ["artifact.legs_of_legion"];
@@ -218,7 +253,7 @@ describe("RECRUIT_DISCOUNT affects what is offered and works end to end", () => 
     const play = findPlay(state, "p1", "artifact.legs_of_legion", 0);
     expect(play, "the Legs of Legion discount option should be playable on the map").toBeTruthy();
     state = apply(state, play!);
-    // Legs of Legion grants a 4-gold one-shot discount.
+    // Legs of Legion banks a 4-gold one-shot discount.
     expect(recruitDiscountAmount(state, "p1")).toBe(4);
 
     state = apply(state, {

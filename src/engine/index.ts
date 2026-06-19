@@ -149,6 +149,7 @@ export {
   COMBAT_UNIT_LIMIT,
   DEFENDER_BACKLINE,
   DEFENDER_FRONTLINE,
+  getEndTurnMoveDestinations,
   getHeroMoveDestinations,
   isTileAdjacentToSpace,
   isTileRotationConnected,

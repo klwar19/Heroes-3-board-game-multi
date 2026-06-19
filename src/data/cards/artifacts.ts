@@ -337,15 +337,9 @@ export const artifactCards: CardLibrary = {
       options: [
         {
           label: "Next recruit/reinforce costs 4 less gold",
-          effect: {
-            type: "CREATE_ACTIVE_EFFECT",
-            effect: {
-              name: "Legs of Legion",
-              scope: "player",
-              duration: { type: "current-turn" },
-              modifiers: [{ type: "RECRUIT_DISCOUNT", amount: 4 }]
-            }
-          }
+          // Instant, one-shot: banks the discount on the player and is discarded
+          // at once (never an ongoing effect). Used by the next recruit/reinforce.
+          effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 4 }
         },
         {
           label: "Gain 2 gold",
@@ -369,15 +363,9 @@ export const artifactCards: CardLibrary = {
       options: [
         {
           label: "Next recruit/reinforce costs 5 less gold",
-          effect: {
-            type: "CREATE_ACTIVE_EFFECT",
-            effect: {
-              name: "Loins of Legion",
-              scope: "player",
-              duration: { type: "current-turn" },
-              modifiers: [{ type: "RECRUIT_DISCOUNT", amount: 5 }]
-            }
-          }
+          // Instant, one-shot: banks the discount on the player and is discarded
+          // at once (never an ongoing effect). Used by the next recruit/reinforce.
+          effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 5 }
         },
         {
           label: "Gain 2 gold",
@@ -405,15 +393,9 @@ export const artifactCards: CardLibrary = {
       options: [
         {
           label: "Next recruit/reinforce costs 6 less gold",
-          effect: {
-            type: "CREATE_ACTIVE_EFFECT",
-            effect: {
-              name: "Torso of Legion",
-              scope: "player",
-              duration: { type: "current-turn" },
-              modifiers: [{ type: "RECRUIT_DISCOUNT", amount: 6 }]
-            }
-          }
+          // Instant, one-shot: banks the discount on the player and is discarded
+          // at once (never an ongoing effect). Used by the next recruit/reinforce.
+          effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 6 }
         },
         {
           label: "Gain 1 valuables",
@@ -1192,15 +1174,9 @@ export const artifactCards: CardLibrary = {
       options: [
         {
           label: "Next recruit/reinforce costs 6 less gold",
-          effect: {
-            type: "CREATE_ACTIVE_EFFECT",
-            effect: {
-              name: "Head of Legion",
-              scope: "player",
-              duration: { type: "current-turn" },
-              modifiers: [{ type: "RECRUIT_DISCOUNT", amount: 6 }]
-            }
-          }
+          // Instant, one-shot: banks the discount on the player and is discarded
+          // at once (never an ongoing effect). Used by the next recruit/reinforce.
+          effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 6 }
         },
         {
           label: "Gain 3 gold",
@@ -1228,15 +1204,9 @@ export const artifactCards: CardLibrary = {
       options: [
         {
           label: "Next recruit/reinforce costs 5 less gold",
-          effect: {
-            type: "CREATE_ACTIVE_EFFECT",
-            effect: {
-              name: "Arms of Legion",
-              scope: "player",
-              duration: { type: "current-turn" },
-              modifiers: [{ type: "RECRUIT_DISCOUNT", amount: 5 }]
-            }
-          }
+          // Instant, one-shot: banks the discount on the player and is discarded
+          // at once (never an ongoing effect). Used by the next recruit/reinforce.
+          effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 5 }
         },
         {
           label: "Gain 2 building materials",

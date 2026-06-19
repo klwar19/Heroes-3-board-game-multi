@@ -254,6 +254,38 @@ export function HexMapBoard({
     return targets;
   }, [legalActions]);
 
+  // When the engine is waiting on a "move your hero to a field" choice for the
+  // viewer — the Logistics (basic) / Nomads end-of-turn step's "move to an
+  // adjacent empty field, or stay" — surface the candidate destinations as
+  // highlighted, clickable hexes on the board, not just text buttons in the
+  // prompt tray. Every option whose first step teleports the hero maps its
+  // destination field to the action that selects it.
+  const endTurnMoveTargets = useMemo(() => {
+    const targets = new Map<MapSpaceId, GameAction>();
+    if (readOnly) {
+      return targets;
+    }
+    const visit = rawAdventure?.pendingVisit;
+    const step = visit?.steps[0];
+    if (!visit || visit.playerId !== viewerPlayerId || step?.type !== "CHOOSE_ONE") {
+      return targets;
+    }
+    const actionByOption = new Map<number, GameAction>();
+    for (const legal of legalActions) {
+      if (legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined) {
+        actionByOption.set(legal.action.optionIndex, legal.action);
+      }
+    }
+    step.options.forEach((option, optionIndex) => {
+      const inner = option.steps[0];
+      const action = actionByOption.get(optionIndex);
+      if (inner?.type === "TELEPORT_HERO" && action) {
+        targets.set(inner.spaceId, action);
+      }
+    });
+    return targets;
+  }, [rawAdventure?.pendingVisit, viewerPlayerId, legalActions, readOnly]);
+
   const legalRotations = useMemo(() => {
     const rotations = new Set<number>();
     for (const legal of legalActions) {
@@ -565,6 +597,7 @@ export function HexMapBoard({
 
       const location = locationDefinitions[field.location];
       const target = reachable.get(spaceId);
+      const endTurnMove = endTurnMoveTargets.get(spaceId);
       const guarded = Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
       const glyph = LOCATION_GLYPHS[field.location] ?? "";
       const isSelected = selectedTarget?.spaceId === spaceId;
@@ -575,27 +608,39 @@ export function HexMapBoard({
             "hexCell",
             field.location === "blocked_field" ? "blocked" : "",
             target ? "moveTarget" : "",
+            endTurnMove ? "endTurnMoveTarget" : "",
             isSelected ? "selectedTarget" : "",
             artShown ? "withArt" : ""
           ].join(" ")}
           fill={terrain}
           key={spaceId}
           onClick={
-            target && !readOnly
-              ? () => {
-                  if (suppressClickRef.current) {
-                    return;
+            readOnly
+              ? undefined
+              : endTurnMove
+                ? () => {
+                    if (suppressClickRef.current) {
+                      return;
+                    }
+                    onAction(endTurnMove);
                   }
-                  setSelectedTarget(selectedTarget?.spaceId === spaceId ? null : target);
-                }
-              : undefined
+                : target
+                  ? () => {
+                      if (suppressClickRef.current) {
+                        return;
+                      }
+                      setSelectedTarget(selectedTarget?.spaceId === spaceId ? null : target);
+                    }
+                  : undefined
           }
           points={hexCorners(x, y, HEX_SIZE - 1.2)}
         >
           <title>
             {`${location?.name ?? field.location}${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${
               field.flagOwnerId ? ` — flagged by ${state.players[field.flagOwnerId]?.name}` : ""
-            }${target ? ` — ${target.cost} movement point${target.cost === 1 ? "" : "s"}` : ""}`}
+            }${target ? ` — ${target.cost} movement point${target.cost === 1 ? "" : "s"}` : ""}${
+              endTurnMove ? " — click to move your hero here" : ""
+            }`}
           </title>
         </polygon>
       );
