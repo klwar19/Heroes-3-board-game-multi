@@ -56,7 +56,23 @@ export type AstrologersEffect =
   // First Aid Tent heals +`firstAidHealBonus`, and (when `rangedAttackReroll`)
   // an Ammo Cart owner's ranged units may reroll 1 Attack die. Read in the
   // war-machine round (permanents.ts) and the attack-reroll builder (reducer.ts).
-  | { type: "WAR_MACHINE_BUFF"; ballistaDamageBonus: number; firstAidHealBonus: number; rangedAttackReroll: boolean };
+  | { type: "WAR_MACHINE_BUFF"; ballistaDamageBonus: number; firstAidHealBonus: number; rangedAttackReroll: boolean }
+  // Explorers: ongoing — for every `per` cards a player discards during their
+  // start-of-turn hand refresh, they may empower one Statistic (hand or discard)
+  // into its same-type Empowered version, for free. Resolved in refreshHand.
+  | { type: "EMPOWER_PER_DISCARD"; per: number }
+  // Charlie and his Circus: each player may recruit one Neutral Unit they can
+  // afford, drawn one per Dwelling tier they control (capped at `maxDraws`); the
+  // rest shuffle back. Offered when drawn AND again at the next Resource round
+  // ("this round and the next one"). engine: "the corresponding Dwelling" is the
+  // Dwelling-tier gate already used by Cyra's Diplomacy (unlockedRecruitTiers).
+  | { type: "RECRUIT_NEUTRAL_DRAW"; maxDraws: number }
+  // Unexpected Reinforcements: immediate — each player may recruit one Neutral
+  // Unit for free, drawn one per Dwelling tier they control. Same Dwelling-tier
+  // gate (a single one-time offer). engine: "Azure units cannot be recruited" is
+  // automatic — no Dwelling unlocks the Azure tier (only bronze/silver/gold
+  // exist), and recruitment only ever draws from the player's Dwelling tiers.
+  | { type: "RECRUIT_NEUTRAL_FREE" };
 
 /** Boxed sets / expansions a proclamation can ship in (provenance, shown in the UI). */
 export const ASTROLOGERS_EXPANSIONS = [
@@ -151,6 +167,16 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     image: image("blue_sky"),
     source: source("blue_sky", "Tower Expansion")
   },
+  "astrologers.charlie_and_his_circus": {
+    id: "astrologers.charlie_and_his_circus",
+    name: "Charlie and his Circus",
+    text: "At the beginning of this round and the next one, each player can draw up to 3 cards from the Neutral Units decks they have a Dwelling for and recruit one of them, paying its cost. The rest are shuffled back.",
+    ongoing: true,
+    effect: { type: "RECRUIT_NEUTRAL_DRAW", maxDraws: 3 },
+    expansion: "Rampart Expansion",
+    image: image("charlie_and_his_circus"),
+    source: source("charlie_and_his_circus", "Rampart Expansion")
+  },
   "astrologers.crazy_wizard": {
     id: "astrologers.crazy_wizard",
     name: "Crazy Wizard",
@@ -180,6 +206,20 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     expansion: "Core Game",
     image: image("dead_silence"),
     source: source("dead_silence", "Core Game")
+  },
+  "astrologers.explorers": {
+    id: "astrologers.explorers",
+    name: "Explorers",
+    // engine: "do not draw at start of turn; instead draw up to your hand limit,
+    // then discard any number" is already the standard start-of-turn hand refresh
+    // (the engine never auto-draws). The wired effect is the per-3-discarded
+    // empower, resolved in refreshHand.
+    text: "During this round, players do not draw cards at the start of their turn; instead each player draws up to their hand limit, then may discard any number of cards. For every 3 cards discarded this way, they may Remove a Statistic card and replace it with an Empowered Statistic card of the same type.",
+    ongoing: true,
+    effect: { type: "EMPOWER_PER_DISCARD", per: 3 },
+    expansion: "Inferno Expansion",
+    image: image("explorers"),
+    source: source("explorers", "Inferno Expansion")
   },
   "astrologers.fancy_pixie": {
     id: "astrologers.fancy_pixie",
@@ -361,6 +401,16 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     image: image("terrible_plague"),
     source: source("terrible_plague", "Core Game")
   },
+  "astrologers.unexpected_reinforcements": {
+    id: "astrologers.unexpected_reinforcements",
+    name: "Unexpected Reinforcements",
+    text: "Each player can immediately recruit 1 Neutral Unit for free, drawn from the Neutral Units decks they have a Dwelling for. Azure units cannot be recruited this way.",
+    ongoing: false,
+    effect: { type: "RECRUIT_NEUTRAL_FREE" },
+    expansion: "Tower Expansion",
+    image: image("unexpected_reinforcements"),
+    source: source("unexpected_reinforcements", "Tower Expansion")
+  },
   "astrologers.white_raven": {
     id: "astrologers.white_raven",
     name: "White Raven",
@@ -392,12 +442,10 @@ export const astrologersDeckCardIds: string[] = Object.keys(astrologersCardDefin
  * the omission is a conscious, reviewable decision rather than a silent gap.
  */
 export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; needs: string }[] = [
-  { name: "Charlie and his Circus", expansion: "Rampart", needs: "multi-round neutral-unit recruitment offers" },
   { name: "Crag Hack", expansion: "Stronghold", needs: "first-combat ground-unit attack buff + free Goblin reinforce" },
   { name: "Destruction", expansion: "Stretch Goals", needs: "remove a permanent card in play for gold" },
   { name: "Disruption", expansion: "Stretch Goals", needs: "per-player free single-tile rotation flow" },
   { name: "Elementals", expansion: "Conflux", needs: "face-up Elemental units seeded onto neutral decks" },
-  { name: "Explorers", expansion: "Inferno", needs: "skip-draw + discard-for-empowered-statistic economy" },
   { name: "Forty Thieves", expansion: "Fortress", needs: "a generic Event-card deck (does not exist)" },
   { name: "Judge Dread", expansion: "Stronghold", needs: "attacker redraws the whole neutral guard" },
   { name: "Mages", expansion: "Conflux", needs: "free Spell Book token use" },
@@ -409,7 +457,6 @@ export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; nee
   { name: "Rulebook", expansion: "Stretch Goals", needs: "neutral-combat difficulty reduction" },
   { name: "Sanctuary", expansion: "Stretch Goals", needs: "a PvP-attack ban for the round (does not exist)" },
   { name: "Spells", expansion: "Conflux", needs: "widened spell-deck search" },
-  { name: "Unexpected Reinforcements", expansion: "Tower", needs: "free faction-unit recruit via neutral-deck search" },
   { name: "Wandering Merchant", expansion: "Stretch Goals", needs: "discounted war-machine purchase" },
   { name: "Whirlpool", expansion: "Cove", needs: "free whirlpool travel with exit choice" },
   { name: "Wind", expansion: "Cove", needs: "continued movement after entering a sea field" }

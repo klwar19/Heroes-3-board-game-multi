@@ -2712,6 +2712,112 @@ export function processPendingVisit(state: GameState): void {
         });
         break;
       }
+      case "NEUTRAL_RECRUIT_OFFER": {
+        // Charlie / Unexpected Reinforcements: draw one Neutral Unit per Dwelling
+        // tier the player controls (fixed order, capped at maxDraws), then offer
+        // to recruit one. Drawn cards leave their decks now; the recruit leaf
+        // returns the unchosen ones to their discards.
+        const player = state.players[visit.playerId];
+        if (!player) {
+          break;
+        }
+        // Bronze/silver/gold only — no Dwelling unlocks Azure, so it is never a
+        // recruit tier here (the engine-level guarantee behind the printed
+        // "Azure units cannot be recruited" on Unexpected Reinforcements).
+        const tierOrder: ("bronze" | "silver" | "gold" | "azure")[] = ["bronze", "silver", "gold", "azure"];
+        const unlocked = unlockedRecruitTiers(state, visit.playerId);
+        const drawn: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[] = [];
+        for (const tier of tierOrder) {
+          if (drawn.length >= step.maxDraws) {
+            break;
+          }
+          if (!unlocked.has(tier)) {
+            continue;
+          }
+          const unitDefId = drawFromNeutralDeck(state, tier);
+          if (unitDefId) {
+            drawn.push({ unitDefId, tier });
+          }
+        }
+        if (drawn.length === 0) {
+          break;
+        }
+        const recruitable = step.free
+          ? drawn
+          : drawn.filter((draw) =>
+              hasRecruitResources(state, visit.playerId, coreUnitDefinitions[draw.unitDefId]?.neutral?.cost ?? {})
+            );
+        if (recruitable.length === 0) {
+          // Nothing affordable: every drawn card returns to its tier's discard.
+          for (const draw of drawn) {
+            state.decks[NEUTRAL_DECK_IDS[draw.tier]]?.discardPile.push(draw.unitDefId);
+          }
+          break;
+        }
+        const options: { label: string; steps: VisitStep[] }[] = recruitable.map((draw) => {
+          const def = coreUnitDefinitions[draw.unitDefId];
+          const cost = def?.neutral?.cost ?? {};
+          const costLabel = step.free
+            ? "free"
+            : Object.entries(cost)
+                .map(([resource, amount]) => `${amount} ${resource}`)
+                .join(" + ") || "free";
+          return {
+            label: `Recruit ${def?.name ?? draw.unitDefId} (${costLabel})`,
+            steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: draw, drawn, free: step.free }]
+          };
+        });
+        options.push({
+          label: "Recruit none",
+          steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: null, drawn, free: step.free }]
+        });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: step.free
+            ? "Unexpected Reinforcements: recruit one drawn Neutral Unit for free"
+            : "Charlie and his Circus: recruit one drawn Neutral Unit",
+          options
+        });
+        break;
+      }
+      case "RECRUIT_DRAWN_NEUTRAL": {
+        const player = state.players[visit.playerId];
+        if (!player) {
+          break;
+        }
+        let recruitedDefId: string | undefined;
+        let recruitedTier: string | undefined;
+        if (step.recruit) {
+          const def = coreUnitDefinitions[step.recruit.unitDefId];
+          const cost = def?.neutral?.cost ?? {};
+          if (def?.neutral && (step.free || hasRecruitResources(state, visit.playerId, cost))) {
+            if (!step.free) {
+              spendRecruitResources(state, visit.playerId, cost, `recruited ${def.name}`);
+            }
+            addArmyUnit(player, step.recruit.unitDefId, "neutral");
+            appendEvent(state, {
+              type: "UNIT_RECRUITED",
+              playerId: visit.playerId,
+              unitDefId: step.recruit.unitDefId,
+              kind: "recruit",
+              cost: step.free ? {} : cost
+            });
+            recruitedDefId = step.recruit.unitDefId;
+            recruitedTier = step.recruit.tier;
+          }
+        }
+        // Return every drawn card except the one recruited (a single copy) to its
+        // tier's discard pile, so the deck can reshuffle it later.
+        let consumed = false;
+        for (const draw of step.drawn) {
+          if (!consumed && draw.unitDefId === recruitedDefId && draw.tier === recruitedTier) {
+            consumed = true;
+            continue;
+          }
+          state.decks[NEUTRAL_DECK_IDS[draw.tier]]?.discardPile.push(draw.unitDefId);
+        }
+        break;
+      }
       case "BLACK_MARKET": {
         const player = state.players[visit.playerId];
         if (!player) {
@@ -4113,6 +4219,14 @@ export function startAdventureRound(state: GameState): void {
         steps: [{ type: "WAR_MACHINE_GRANT_OFFER" }]
       });
     }
+
+    // Charlie and his Circus (Astrologers): "this round and the next one" — it was
+    // offered at the Astrologers round it was drawn (resolveAstrologersCard); this
+    // is the second offer, at the following Resource round, while it stays face up.
+    const activeRecruit = getActiveAstrologersCard(state)?.effect;
+    if (activeRecruit?.type === "RECRUIT_NEUTRAL_DRAW") {
+      queueNeutralRecruitOffer(state, playerId, { free: false, maxDraws: activeRecruit.maxDraws });
+    }
   }
 
   if (astrologers) {
@@ -4437,13 +4551,15 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
     case "PAID_EMPOWER_PER_TURN":
     case "WAR_MACHINE_BUFF":
     case "GRANT_WAR_MACHINE_CHOICE":
+    case "EMPOWER_PER_DISCARD":
       // Passive while the card stays face up (read where the effect applies:
       // hand-limit in effectiveHandLimit, die rerolls in maybeReroll, the spell
       // bonuses in getCurrentSpellPower, the spell return in maybeReturnSpell;
       // Hero's paid empower is offered at the start of each turn, see
       // queueTurnStartAstrologersChoices; Ammo Cart's war-machine buffs are read
       // in permanents.ts / reducer.ts; McGiver's free war machine is handed out
-      // at the next Resource round, see startAdventureRound).
+      // at the next Resource round, see startAdventureRound; Explorers' empower is
+      // granted per the cards discarded in each hand refresh, see refreshHand).
       break;
     case "GAIN_MORALE_ALL":
       for (const playerId of playerIds) {
@@ -4503,6 +4619,20 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
     case "REMOVE_CARDS_CHOICE":
       for (const playerId of playerIds) {
         queueRemoveCardsChoice(state, playerId, card.effect.count);
+      }
+      break;
+    case "RECRUIT_NEUTRAL_DRAW":
+      // Charlie and his Circus: offered now (the drawn Astrologers round) and
+      // again at the next Resource round — see startAdventureRound.
+      for (const playerId of playerIds) {
+        queueNeutralRecruitOffer(state, playerId, { free: false, maxDraws: card.effect.maxDraws });
+      }
+      break;
+    case "RECRUIT_NEUTRAL_FREE":
+      // Unexpected Reinforcements: a single immediate free recruit. maxDraws 3
+      // covers the bronze/silver/gold Dwelling tiers (the only recruitable ones).
+      for (const playerId of playerIds) {
+        queueNeutralRecruitOffer(state, playerId, { free: true, maxDraws: 3 });
       }
       break;
   }
@@ -4655,6 +4785,54 @@ function queueEmpowerStatisticChoice(state: GameState, playerId: PlayerId): void
         prompt: "Dancing Imp: empower one Statistic card (hand or discard)"
       }
     ]
+  });
+}
+
+/**
+ * Explorers (Astrologers): after a start-of-turn hand refresh that discarded
+ * some cards, queue up to `count` free same-type Statistic empowers (hand or
+ * discard), where `count` is floor(discarded / 3). Only queued when the player
+ * actually holds something to empower, so it never opens an empty prompt.
+ */
+export function queueExplorersEmpower(state: GameState, playerId: PlayerId, count: number): void {
+  const player = state.players[playerId];
+  if (!player || count <= 0 || !hasEmpowerableStatistic(player, ["hand", "discard"])) {
+    return;
+  }
+  state.adventure?.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [
+      {
+        type: "STAT_EMPOWER_OFFER",
+        sources: ["hand", "discard"],
+        remaining: count,
+        prompt: `Explorers: empower up to ${count} Statistic card(s) (hand or discard)`
+      }
+    ]
+  });
+}
+
+/**
+ * Charlie and his Circus / Unexpected Reinforcements (Astrologers): queue a
+ * Neutral-Unit recruit offer for `playerId`. Only queued when the player
+ * controls at least one qualifying Dwelling tier, so it never opens an empty
+ * prompt (the offer step itself also self-guards on an empty draw).
+ */
+export function queueNeutralRecruitOffer(
+  state: GameState,
+  playerId: PlayerId,
+  options: { free: boolean; maxDraws: number }
+): void {
+  // Only offered when the player controls a Dwelling tier to draw from (Azure is
+  // never among them — no Dwelling unlocks it — so it is never recruitable here).
+  if (unlockedRecruitTiers(state, playerId).size === 0) {
+    return;
+  }
+  state.adventure?.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [{ type: "NEUTRAL_RECRUIT_OFFER", ...options }]
   });
 }
 

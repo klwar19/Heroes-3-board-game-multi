@@ -62,6 +62,7 @@ import {
   placeNeutralUnits,
   playerDwellingTiers,
   processPendingVisit,
+  queueExplorersEmpower,
   queueSkeletonReinforce,
   reinforceArmyUnit,
   restoreStartingArmyIfEmpty,
@@ -570,6 +571,15 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
     discarded: action.discardCardIds.length,
     drawn
   });
+
+  // Explorers (Astrologers): "for every 3 cards discarded this way, Remove a
+  // Statistic card and replace it with an Empowered Statistic of the same type."
+  // The discard-and-draw above is the standard start-of-turn refresh; this is the
+  // card's added effect, keyed off how many cards the player chose to discard.
+  const explorers = getActiveAstrologersCard(state)?.effect;
+  if (explorers?.type === "EMPOWER_PER_DISCARD" && explorers.per > 0) {
+    queueExplorersEmpower(state, action.playerId, Math.floor(action.discardCardIds.length / explorers.per));
+  }
 }
 
 // ---------------------------------------------------------------------------
