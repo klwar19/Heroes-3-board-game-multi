@@ -3921,6 +3921,14 @@ export type CombatContext =
       siege?: boolean;
     };
 
+export type CombatBoardArtId =
+  | "classic"
+  | "frozen"
+  | "hell-necro"
+  | "jungle-fortress"
+  | "castle-siege"
+  | "ship-battle";
+
 /**
  * Siege fortifications on the combat board (town with a Citadel): 3 Walls and
  * 1 Gate fill the middle row, the Arrow Tower fights from beside the board.
@@ -3991,6 +3999,8 @@ export type CombatState = {
   defenderPlayerId: PlayerId;
   activeUnitId: UnitId | null;
   context: CombatContext;
+  /** Deterministic combat-board art selected when the fight starts. */
+  boardArtId?: CombatBoardArtId;
   setup: CombatSetupState | null;
   /** In-flight follow-ups of the attack that just resolved. */
   attackSequence?: AttackSequenceState | null;
