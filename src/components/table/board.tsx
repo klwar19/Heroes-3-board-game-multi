@@ -245,9 +245,29 @@ const BATTLEFIELD_TOKEN_VIEW: Record<
  * frame instead of looping — a Land Mine must not perpetually spark and a
  * Quicksand pit must not endlessly bubble while it sits waiting to be sprung.
  */
-function TokenSprite({ fxKey, animate = true }: { fxKey: string; animate?: boolean }) {
+function TokenSprite({
+  fxKey,
+  animate = true,
+  frameRange
+}: {
+  fxKey: string;
+  animate?: boolean;
+  /**
+   * Loop only frames [first, last] (inclusive) instead of the whole sheet — used
+   * to skip a sprite's fade tail (e.g. the Force Field frames where the barrier
+   * dissolves to nothing and reads as a blink). Defaults to the whole sheet, and
+   * also fixes the resting frame so the sprite never sits on a faded-out edge.
+   */
+  frameRange?: [number, number];
+}) {
   const sheet = getFxSheet(fxKey);
   const ref = useRef<HTMLSpanElement | null>(null);
+
+  const denominator = sheet && sheet.cols > 1 ? sheet.cols - 1 : 1;
+  const firstFrame = frameRange ? Math.max(0, frameRange[0]) : 0;
+  const lastFrame = sheet
+    ? Math.min(sheet.frames - 1, frameRange ? frameRange[1] : sheet.frames - 1)
+    : 0;
 
   useEffect(() => {
     const element = ref.current;
@@ -257,18 +277,18 @@ function TokenSprite({ fxKey, animate = true }: { fxKey: string; animate?: boole
     if (typeof requestAnimationFrame !== "function") {
       return;
     }
-    const denominator = sheet.cols > 1 ? sheet.cols - 1 : 1;
+    const count = Math.max(1, lastFrame - firstFrame + 1);
     const start = typeof performance !== "undefined" ? performance.now() : Date.now();
     let raf = 0;
     const step = (now: number) => {
       const elapsed = now - start;
-      const frame = Math.floor((elapsed / 1000) * sheet.fps) % sheet.frames;
+      const frame = firstFrame + (Math.floor((elapsed / 1000) * sheet.fps) % count);
       element.style.backgroundPositionX = `${(frame / denominator) * 100}%`;
       raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [sheet, animate]);
+  }, [sheet, animate, firstFrame, lastFrame, denominator]);
 
   if (!sheet) {
     return null;
@@ -282,7 +302,7 @@ function TokenSprite({ fxKey, animate = true }: { fxKey: string; animate?: boole
         backgroundImage: `url(${assetUrl(sheet.src)})`,
         backgroundRepeat: "no-repeat",
         backgroundSize: `${sheet.cols * 100}% ${sheet.rows * 100}%`,
-        backgroundPositionX: "0%",
+        backgroundPositionX: `${(firstFrame / denominator) * 100}%`,
         backgroundPositionY: "center",
         aspectRatio: `${sheet.frameWidth} / ${sheet.frameHeight}`
       }}
@@ -309,8 +329,11 @@ function BattlefieldTokenMark({
 }) {
   const view = BATTLEFIELD_TOKEN_VIEW[token.kind];
   const isTrap = token.kind === "quicksand" || token.kind === "land_mine";
-  // The opponent's hidden trap: player-view stripped the armed flag.
-  const faceDown = isTrap && token.armed === undefined;
+  // An enemy trap is always face-down to you — never reveal its armed/decoy
+  // state. The engine player-view also strips the flag, but the live board is
+  // fed the RAW state, so masking by ownership here is what actually hides it
+  // (and it is robust whether or not the flag was stripped upstream).
+  const faceDown = isTrap && token.controllerId !== viewerPlayerId;
   const owner = state.players[token.controllerId]?.name ?? token.controllerId;
   const spriteSheet = getFxSheet(view.sprite);
 
@@ -342,8 +365,16 @@ function BattlefieldTokenMark({
       </span>
     );
   } else if (spriteSheet) {
-    // Traps hold a static idle frame; only the visible obstacles animate.
-    art = <TokenSprite fxKey={view.sprite} animate={!isTrap} />;
+    if (token.kind === "force_field") {
+      // The barrier shimmers, but its sprite fades to nothing at both ends of
+      // the sheet (frames 0–2 fade in, 12–14 fade out) — that fade reads as the
+      // field blinking out, so loop only the solid middle frames.
+      art = <TokenSprite fxKey={view.sprite} frameRange={[3, 11]} />;
+    } else {
+      // The Fire Wall animates (its flames flicker); dormant traps (Quicksand /
+      // Land Mine) hold a single idle frame and never loop.
+      art = <TokenSprite fxKey={view.sprite} animate={token.kind === "fire_wall"} />;
+    }
   } else {
     art = <b aria-hidden="true">{view.glyph}</b>;
   }
