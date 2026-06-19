@@ -67,12 +67,13 @@ export type AstrologersEffect =
   // ("this round and the next one"). engine: "the corresponding Dwelling" is the
   // Dwelling-tier gate already used by Cyra's Diplomacy (unlockedRecruitTiers).
   | { type: "RECRUIT_NEUTRAL_DRAW"; maxDraws: number }
-  // Unexpected Reinforcements: immediate — each player may recruit one Neutral
-  // Unit for free, drawn one per Dwelling tier they control. Same Dwelling-tier
-  // gate (a single one-time offer). engine: "Azure units cannot be recruited" is
-  // automatic — no Dwelling unlocks the Azure tier (only bronze/silver/gold
-  // exist), and recruitment only ever draws from the player's Dwelling tiers.
-  | { type: "RECRUIT_NEUTRAL_FREE" };
+  // Unexpected Reinforcements: immediate — each player may recruit, for free, one
+  // unit of THEIR OWN faction whose Dwelling tier they have built (added to the
+  // army's Few side, like a normal recruit). Reads the player's faction roster +
+  // Dwelling tiers, so it works for any faction (incl. Conflux/Cove once defined).
+  // engine: "Azure units cannot be recruited" holds by construction — no Dwelling
+  // unlocks the Azure tier, so an Azure unit's tier is never among the player's.
+  | { type: "RECRUIT_FACTION_FREE" };
 
 /** Boxed sets / expansions a proclamation can ship in (provenance, shown in the UI). */
 export const ASTROLOGERS_EXPANSIONS = [
@@ -404,9 +405,9 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
   "astrologers.unexpected_reinforcements": {
     id: "astrologers.unexpected_reinforcements",
     name: "Unexpected Reinforcements",
-    text: "Each player can immediately recruit 1 Neutral Unit for free, drawn from the Neutral Units decks they have a Dwelling for. Azure units cannot be recruited this way.",
+    text: "Each player can immediately recruit, for free, 1 unit of their own faction for which they have the corresponding Dwelling built. Azure units cannot be recruited this way.",
     ongoing: false,
-    effect: { type: "RECRUIT_NEUTRAL_FREE" },
+    effect: { type: "RECRUIT_FACTION_FREE" },
     expansion: "Tower Expansion",
     image: image("unexpected_reinforcements"),
     source: source("unexpected_reinforcements", "Tower Expansion")

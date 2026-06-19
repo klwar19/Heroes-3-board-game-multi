@@ -2742,11 +2742,9 @@ export function processPendingVisit(state: GameState): void {
         if (drawn.length === 0) {
           break;
         }
-        const recruitable = step.free
-          ? drawn
-          : drawn.filter((draw) =>
-              hasRecruitResources(state, visit.playerId, coreUnitDefinitions[draw.unitDefId]?.neutral?.cost ?? {})
-            );
+        const recruitable = drawn.filter((draw) =>
+          hasRecruitResources(state, visit.playerId, coreUnitDefinitions[draw.unitDefId]?.neutral?.cost ?? {})
+        );
         if (recruitable.length === 0) {
           // Nothing affordable: every drawn card returns to its tier's discard.
           for (const draw of drawn) {
@@ -2757,25 +2755,19 @@ export function processPendingVisit(state: GameState): void {
         const options: { label: string; steps: VisitStep[] }[] = recruitable.map((draw) => {
           const def = coreUnitDefinitions[draw.unitDefId];
           const cost = def?.neutral?.cost ?? {};
-          const costLabel = step.free
-            ? "free"
-            : Object.entries(cost)
-                .map(([resource, amount]) => `${amount} ${resource}`)
-                .join(" + ") || "free";
+          const costLabel =
+            Object.entries(cost)
+              .map(([resource, amount]) => `${amount} ${resource}`)
+              .join(" + ") || "free";
           return {
             label: `Recruit ${def?.name ?? draw.unitDefId} (${costLabel})`,
-            steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: draw, drawn, free: step.free }]
+            steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: draw, drawn }]
           };
         });
-        options.push({
-          label: "Recruit none",
-          steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: null, drawn, free: step.free }]
-        });
+        options.push({ label: "Recruit none", steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: null, drawn }] });
         visit.steps.unshift({
           type: "CHOOSE_ONE",
-          prompt: step.free
-            ? "Unexpected Reinforcements: recruit one drawn Neutral Unit for free"
-            : "Charlie and his Circus: recruit one drawn Neutral Unit",
+          prompt: "Charlie and his Circus: recruit one drawn Neutral Unit",
           options
         });
         break;
@@ -2790,17 +2782,15 @@ export function processPendingVisit(state: GameState): void {
         if (step.recruit) {
           const def = coreUnitDefinitions[step.recruit.unitDefId];
           const cost = def?.neutral?.cost ?? {};
-          if (def?.neutral && (step.free || hasRecruitResources(state, visit.playerId, cost))) {
-            if (!step.free) {
-              spendRecruitResources(state, visit.playerId, cost, `recruited ${def.name}`);
-            }
+          if (def?.neutral && hasRecruitResources(state, visit.playerId, cost)) {
+            spendRecruitResources(state, visit.playerId, cost, `recruited ${def.name}`);
             addArmyUnit(player, step.recruit.unitDefId, "neutral");
             appendEvent(state, {
               type: "UNIT_RECRUITED",
               playerId: visit.playerId,
               unitDefId: step.recruit.unitDefId,
               kind: "recruit",
-              cost: step.free ? {} : cost
+              cost
             });
             recruitedDefId = step.recruit.unitDefId;
             recruitedTier = step.recruit.tier;
@@ -2815,6 +2805,64 @@ export function processPendingVisit(state: GameState): void {
             continue;
           }
           state.decks[NEUTRAL_DECK_IDS[draw.tier]]?.discardPile.push(draw.unitDefId);
+        }
+        break;
+      }
+      case "FACTION_RECRUIT_OFFER": {
+        // Unexpected Reinforcements: free recruit of one of the player's OWN
+        // faction units whose Dwelling tier they have built. Read from the live
+        // faction roster + Dwelling tiers, so any faction works (Conflux/Cove too,
+        // once defined). Azure never qualifies — no Dwelling unlocks that tier.
+        const player = state.players[visit.playerId];
+        if (!player) {
+          break;
+        }
+        const factionUnits = (player.factionId ? coreFactionDefinitions[player.factionId]?.units : undefined) ?? [];
+        const unlocked = unlockedRecruitTiers(state, visit.playerId);
+        const seen = new Set<string>();
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        for (const unitDefId of factionUnits) {
+          const def = coreUnitDefinitions[unitDefId];
+          if (!def?.few || !unlocked.has(def.tier) || seen.has(unitDefId)) {
+            continue;
+          }
+          seen.add(unitDefId);
+          options.push({
+            label: `Recruit ${def.name ?? unitDefId} (free)`,
+            steps: [{ type: "RECRUIT_FACTION_UNIT", unitDefId }]
+          });
+        }
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Skip", steps: [] });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: "Unexpected Reinforcements: recruit one of your faction's units for free",
+          options
+        });
+        break;
+      }
+      case "RECRUIT_FACTION_UNIT": {
+        const player = state.players[visit.playerId];
+        const def = coreUnitDefinitions[step.unitDefId];
+        // Re-check eligibility at resolution (faction membership + a built Dwelling
+        // for the unit's tier) so a stale option can never recruit illegally.
+        const factionUnits = (player?.factionId ? coreFactionDefinitions[player.factionId]?.units : undefined) ?? [];
+        if (
+          player &&
+          def?.few &&
+          factionUnits.includes(step.unitDefId) &&
+          unlockedRecruitTiers(state, visit.playerId).has(def.tier)
+        ) {
+          addArmyUnit(player, step.unitDefId, "few");
+          appendEvent(state, {
+            type: "UNIT_RECRUITED",
+            playerId: visit.playerId,
+            unitDefId: step.unitDefId,
+            kind: "recruit",
+            cost: {}
+          });
         }
         break;
       }
@@ -4225,7 +4273,7 @@ export function startAdventureRound(state: GameState): void {
     // is the second offer, at the following Resource round, while it stays face up.
     const activeRecruit = getActiveAstrologersCard(state)?.effect;
     if (activeRecruit?.type === "RECRUIT_NEUTRAL_DRAW") {
-      queueNeutralRecruitOffer(state, playerId, { free: false, maxDraws: activeRecruit.maxDraws });
+      queueNeutralRecruitOffer(state, playerId, { maxDraws: activeRecruit.maxDraws });
     }
   }
 
@@ -4625,14 +4673,14 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
       // Charlie and his Circus: offered now (the drawn Astrologers round) and
       // again at the next Resource round — see startAdventureRound.
       for (const playerId of playerIds) {
-        queueNeutralRecruitOffer(state, playerId, { free: false, maxDraws: card.effect.maxDraws });
+        queueNeutralRecruitOffer(state, playerId, { maxDraws: card.effect.maxDraws });
       }
       break;
-    case "RECRUIT_NEUTRAL_FREE":
-      // Unexpected Reinforcements: a single immediate free recruit. maxDraws 3
-      // covers the bronze/silver/gold Dwelling tiers (the only recruitable ones).
+    case "RECRUIT_FACTION_FREE":
+      // Unexpected Reinforcements: a single immediate free recruit of one of the
+      // player's own faction units they have the Dwelling for.
       for (const playerId of playerIds) {
-        queueNeutralRecruitOffer(state, playerId, { free: true, maxDraws: 3 });
+        queueFactionRecruitOffer(state, playerId);
       }
       break;
   }
@@ -4814,18 +4862,12 @@ export function queueExplorersEmpower(state: GameState, playerId: PlayerId, coun
 }
 
 /**
- * Charlie and his Circus / Unexpected Reinforcements (Astrologers): queue a
- * Neutral-Unit recruit offer for `playerId`. Only queued when the player
- * controls at least one qualifying Dwelling tier, so it never opens an empty
- * prompt (the offer step itself also self-guards on an empty draw).
+ * Charlie and his Circus (Astrologers): queue a paid Neutral-Unit recruit offer
+ * for `playerId`. Only queued when the player controls at least one Dwelling tier
+ * to draw from (the offer step itself also self-guards on an empty draw). Azure
+ * is never among the tiers — no Dwelling unlocks it.
  */
-export function queueNeutralRecruitOffer(
-  state: GameState,
-  playerId: PlayerId,
-  options: { free: boolean; maxDraws: number }
-): void {
-  // Only offered when the player controls a Dwelling tier to draw from (Azure is
-  // never among them — no Dwelling unlocks it — so it is never recruitable here).
+export function queueNeutralRecruitOffer(state: GameState, playerId: PlayerId, options: { maxDraws: number }): void {
   if (unlockedRecruitTiers(state, playerId).size === 0) {
     return;
   }
@@ -4833,6 +4875,30 @@ export function queueNeutralRecruitOffer(
     playerId,
     kind: "visit-steps",
     steps: [{ type: "NEUTRAL_RECRUIT_OFFER", ...options }]
+  });
+}
+
+/**
+ * Unexpected Reinforcements (Astrologers): queue a free recruit offer over the
+ * player's OWN faction units whose Dwelling tier they have built. Only queued
+ * when at least one such unit exists, so it never opens an empty prompt. Reads
+ * the live faction roster, so any faction works (Conflux/Cove once defined).
+ */
+export function queueFactionRecruitOffer(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  const factionUnits = (player?.factionId ? coreFactionDefinitions[player.factionId]?.units : undefined) ?? [];
+  const unlocked = unlockedRecruitTiers(state, playerId);
+  const canRecruit = factionUnits.some((unitDefId) => {
+    const def = coreUnitDefinitions[unitDefId];
+    return Boolean(def?.few) && unlocked.has(def!.tier);
+  });
+  if (!canRecruit) {
+    return;
+  }
+  state.adventure?.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [{ type: "FACTION_RECRUIT_OFFER" }]
   });
 }
 
