@@ -4207,6 +4207,15 @@ export type MapFieldState = {
   /** Resource chosen for a flagged settlement. */
   settlementResource: ResourceKind | null;
   /**
+   * Obelisk house rule: the Attack-die face (-1, 0, or +1) rolled the first
+   * time any Hero visits this Obelisk. It is locked in for the rest of the
+   * game — every later visitor (any player) receives the same reward category
+   * without rerolling: -1 = +1 positive morale, 0 = Search (2) the Artifact
+   * deck, +1 = roll one Treasure die and one Resource die. `undefined` until
+   * the first visit rolls it.
+   */
+  obeliskRoll?: -1 | 0 | 1;
+  /**
    * Grail Hunt: this Grail field's guards have been defeated and the Grail is
    * waiting to be dug (1 movement point) before it can be carried home.
    */

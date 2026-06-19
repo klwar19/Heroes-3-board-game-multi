@@ -1278,6 +1278,10 @@ function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
       return [{ type: "LIBRARY_SWAP", remaining: 2 }];
     case "STAR_AXIS":
       return [{ type: "STAR_AXIS_SWAP" }];
+    case "OBELISK":
+      // Obelisk is intercepted in beginFieldVisit (handleObeliskVisit), so it
+      // never compiles to generic steps; this keeps the switch exhaustive.
+      return [];
     case "BLACK_MARKET":
       return [{ type: "BLACK_MARKET" }];
     case "ELEMENTAL_CONFLUX":
@@ -1750,6 +1754,93 @@ function handleStarAxisVisit(state: GameState, hero: HeroState, field: MapFieldS
   }
 }
 
+/** Attack-die faces for an Obelisk roll (two each of -1, 0, +1). */
+const OBELISK_DIE_FACES: (-1 | 0 | 1)[] = [-1, -1, 0, 0, 1, 1];
+
+/** The reward a visitor receives for an Obelisk's locked Attack-die face. */
+function obeliskRewardSteps(roll: -1 | 0 | 1): VisitStep[] {
+  if (roll < 0) {
+    // -1: a single positive morale token.
+    return [{ type: "GAIN_MORALE", amount: 1 }];
+  }
+  if (roll > 0) {
+    // +1: roll one Treasure (yellow) die and one Resource die.
+    return [
+      { type: "ROLL_TREASURE_DICE", count: 1 },
+      { type: "ROLL_RESOURCE_DICE", count: 1 }
+    ];
+  }
+  // 0: Search (2) the Artifact deck (the game's standard artifact search).
+  return [{ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 2 }];
+}
+
+/**
+ * Obelisk house rule. Obelisks are flaggable (every visitor keeps a cube). The
+ * FIRST hero to visit a given Obelisk rolls one Attack die and the face is
+ * locked on the Field (`field.obeliskRoll`) for the rest of the game. Each
+ * player's first visit flags the Field and grants that locked reward — the
+ * Attack die is never rerolled, so every visitor gets the same category:
+ *   -1 -> +1 positive morale
+ *    0 -> Search (2) the Artifact deck
+ *   +1 -> roll one Treasure die and one Resource die
+ * Only the Attack-die category is fixed; each visitor still rolls their own
+ * Treasure/Resource dice (or searches their own Artifacts) for the +1/0 faces.
+ */
+function handleObeliskVisit(state: GameState, hero: HeroState, field: MapFieldState): void {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return;
+  }
+
+  const playerId = hero.controllerId;
+  const alreadyHere = field.flagOwnerId === playerId || Boolean(field.extraFlagOwnerIds?.includes(playerId));
+
+  // Flag for this player, keeping every other player's cube (multi-flag, like
+  // a Star Axis): "multiple players may have a Faction Cube on this Field".
+  field.everFlagged = true;
+  if (!field.flagOwnerId) {
+    flagField(state, playerId, field);
+  } else if (field.flagOwnerId !== playerId && !field.extraFlagOwnerIds?.includes(playerId)) {
+    field.extraFlagOwnerIds = [...(field.extraFlagOwnerIds ?? []), playerId];
+    appendEvent(state, {
+      type: "FIELD_FLAGGED",
+      playerId,
+      fieldId: field.spaceId,
+      location: field.location,
+      previousOwnerId: null
+    });
+  }
+
+  // A player who already holds a cube here just walks through — no second reward.
+  if (alreadyHere) {
+    return;
+  }
+
+  // Lock the Attack-die face the first time ANY hero visits this Obelisk; later
+  // visitors reuse it. A stored 0 is a real result, so test against undefined.
+  let roll = field.obeliskRoll;
+  if (roll === undefined) {
+    const random = adventureRandom(state, "obelisk-die");
+    roll = OBELISK_DIE_FACES[random.nextInt(0, OBELISK_DIE_FACES.length - 1)];
+    field.obeliskRoll = roll;
+    appendEvent(state, {
+      type: "ADVENTURE_DICE_ROLLED",
+      playerId,
+      dice: "attack",
+      results: [`Obelisk Attack die: ${roll >= 0 ? "+" : ""}${roll}`],
+      attackRolls: [roll]
+    });
+  }
+
+  adventure.pendingVisit = {
+    heroId: hero.id,
+    playerId,
+    fieldId: field.spaceId,
+    steps: obeliskRewardSteps(roll)
+  };
+  processPendingVisit(state);
+}
+
 /**
  * Grail Hunt: if the hero is carrying the Grail Token and has reached their
  * own town, the Grail is delivered and the game is won. Returns true when it
@@ -1898,6 +1989,10 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   }
   if (location.id === "star_axis") {
     handleStarAxisVisit(state, hero, field);
+    return;
+  }
+  if (location.id === "obelisk") {
+    handleObeliskVisit(state, hero, field);
     return;
   }
 
