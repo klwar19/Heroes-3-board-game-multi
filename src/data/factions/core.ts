@@ -1726,6 +1726,47 @@ export const neutralUnitIdsByTier: Record<"bronze" | "silver" | "gold" | "azure"
 };
 
 /**
+ * The Neutral Units deck card that depicts the same creature as a faction-roster
+ * unit — matched by creature name + tier. The board game prints most town
+ * creatures both as a faction unit (Few/Pack sides, recruited at the Dwelling)
+ * and as a single-sided Neutral Unit (recruited from the deck at external
+ * dwellings). This returns the neutral counterpart, or undefined when none
+ * exists (a faction's signature top-tier creatures — Gold Dragons, Titans,
+ * Hydras — have no Neutral Unit card and so are absent from the deck).
+ */
+export function neutralCounterpartId(factionUnitId: string): string | undefined {
+  const unit = coreUnitDefinitions[factionUnitId];
+  if (!unit) {
+    return undefined;
+  }
+  return Object.values(coreUnitDefinitions).find(
+    (candidate) =>
+      candidate.faction === "neutral" &&
+      Boolean(candidate.neutral) &&
+      candidate.name === unit.name &&
+      candidate.tier === unit.tier
+  )?.id;
+}
+
+/**
+ * Neutral Units deck cards "associated with" each faction — the neutral
+ * counterpart (same creature) of every unit on a faction's roster. Used by the
+ * Unexpected Reinforcements proclamation, which lets a player search the
+ * Neutral Units deck and recruit one neutral unit tied to their faction (added
+ * on the single-sided Neutral side, so — like any neutral unit — it can never
+ * be reinforced to a Pack). Faction-only top-tier creatures (Gold Dragons,
+ * Titans, Hydras) have no neutral card and are intentionally omitted.
+ */
+export const neutralUnitIdsByFaction: Record<string, string[]> = Object.fromEntries(
+  Object.values(coreFactionDefinitions).map((faction) => [
+    faction.id,
+    faction.units
+      .map((unitId) => neutralCounterpartId(unitId))
+      .filter((id): id is string => Boolean(id))
+  ])
+);
+
+/**
  * Which starting tile faces which faction, derived from the faction
  * definitions so the public faction data and the runtime setup map can never
  * drift apart. S1 = Necropolis, S2 = Dungeon, S3 = Castle (core box dirt/

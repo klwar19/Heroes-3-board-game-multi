@@ -4537,14 +4537,18 @@ export type VisitStep =
   | {
       /**
        * Astrologers (Unexpected Reinforcements): open a free recruit menu over the
-       * player's own faction units whose Dwelling tier they have built (rebuilt
-       * from the live town, so it works for any faction). Azure never qualifies —
-       * no Dwelling unlocks it.
+       * Neutral Units deck cards associated with the player's faction (the neutral
+       * counterpart of a roster unit) whose Dwelling tier they have built and whose
+       * card is still in the deck. Azure never qualifies — no Dwelling unlocks it.
        */
       type: "FACTION_RECRUIT_OFFER";
     }
   | {
-      /** Faction-recruit leaf: add `unitDefId` to the army's Few side, for free. */
+      /**
+       * Faction-recruit leaf: take one copy of neutral `unitDefId` from its tier's
+       * Neutral Units deck and add it to the army's single-sided Neutral side, for
+       * free. Recruited as neutral, it can never be reinforced to a Pack.
+       */
       type: "RECRUIT_FACTION_UNIT";
       unitDefId: CardId;
     }

@@ -1,6 +1,11 @@
 import { astrologersCardDefinitions, type AstrologersCardDefinition } from "@/data/cards/astrologers";
 import { cardLibrary } from "@/data/cards/library";
-import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
+import {
+  coreBuildingDefinitions,
+  coreFactionDefinitions,
+  coreHeroDefinitions,
+  neutralUnitIdsByFaction
+} from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities, type UnitMapAbilityEffect } from "@/data/units/abilities";
 import type { UnitDefinition, UnitSideDefinition } from "@/data/factions/types";
@@ -2901,21 +2906,28 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "FACTION_RECRUIT_OFFER": {
-        // Unexpected Reinforcements: free recruit of one of the player's OWN
-        // faction units whose Dwelling tier they have built. Read from the live
-        // faction roster + Dwelling tiers, so any faction works (Conflux/Cove too,
-        // once defined). Azure never qualifies — no Dwelling unlocks that tier.
+        // Unexpected Reinforcements: search the Neutral Units deck and recruit,
+        // for free, one neutral unit ASSOCIATED with the player's faction — the
+        // neutral-deck counterpart of a unit on their roster — whose Dwelling
+        // tier they have built. Recruited onto the single-sided Neutral side, so
+        // (like any neutral unit) it can never be reinforced to a Pack. Only
+        // copies still in the deck are offered, and a faction's top-tier
+        // signature creature (Gold Dragons, Titans, Hydras) has no neutral card,
+        // so it never appears. Azure never qualifies — no Dwelling unlocks it.
         const player = state.players[visit.playerId];
-        if (!player) {
+        if (!player?.factionId) {
           break;
         }
-        const factionUnits = (player.factionId ? coreFactionDefinitions[player.factionId]?.units : undefined) ?? [];
         const unlocked = unlockedRecruitTiers(state, visit.playerId);
+        const associated = neutralUnitIdsByFaction[player.factionId] ?? [];
         const seen = new Set<string>();
         const options: { label: string; steps: VisitStep[] }[] = [];
-        for (const unitDefId of factionUnits) {
+        for (const unitDefId of associated) {
           const def = coreUnitDefinitions[unitDefId];
-          if (!def?.few || !unlocked.has(def.tier) || seen.has(unitDefId)) {
+          if (!def?.neutral || !unlocked.has(def.tier) || seen.has(unitDefId)) {
+            continue;
+          }
+          if (!neutralDeckHas(state, def.tier, unitDefId)) {
             continue;
           }
           seen.add(unitDefId);
@@ -2930,7 +2942,7 @@ export function processPendingVisit(state: GameState): void {
         options.push({ label: "Skip", steps: [] });
         visit.steps.unshift({
           type: "CHOOSE_ONE",
-          prompt: "Unexpected Reinforcements: recruit one of your faction's units for free",
+          prompt: "Unexpected Reinforcements: search the Neutral Units deck and recruit one unit tied to your faction for free",
           options
         });
         break;
@@ -2938,16 +2950,22 @@ export function processPendingVisit(state: GameState): void {
       case "RECRUIT_FACTION_UNIT": {
         const player = state.players[visit.playerId];
         const def = coreUnitDefinitions[step.unitDefId];
-        // Re-check eligibility at resolution (faction membership + a built Dwelling
-        // for the unit's tier) so a stale option can never recruit illegally.
-        const factionUnits = (player?.factionId ? coreFactionDefinitions[player.factionId]?.units : undefined) ?? [];
+        // Re-check eligibility at resolution: still a neutral unit associated
+        // with the player's faction, a Dwelling for its tier is built, and a
+        // copy is still in the deck — removeFromNeutralDeck takes that copy so
+        // the search is honest (no duplicate card) and a stale option can never
+        // recruit illegally. Recruited on the Neutral side: not upgradeable.
+        const associated = player?.factionId ? neutralUnitIdsByFaction[player.factionId] ?? [] : [];
+        const tier = def?.tier;
         if (
           player &&
-          def?.few &&
-          factionUnits.includes(step.unitDefId) &&
-          unlockedRecruitTiers(state, visit.playerId).has(def.tier)
+          def?.neutral &&
+          associated.includes(step.unitDefId) &&
+          tier &&
+          unlockedRecruitTiers(state, visit.playerId).has(tier) &&
+          removeFromNeutralDeck(state, tier, step.unitDefId)
         ) {
-          addArmyUnit(player, step.unitDefId, "few");
+          addArmyUnit(player, step.unitDefId, "neutral");
           appendEvent(state, {
             type: "UNIT_RECRUITED",
             playerId: visit.playerId,
@@ -3825,6 +3843,45 @@ export function drawFromNeutralDeck(state: GameState, tier: "bronze" | "silver" 
   }
 
   return deck.drawPile.pop();
+}
+
+/** Whether a copy of `unitDefId` is still in tier `tier`'s Neutral Units deck. */
+export function neutralDeckHas(
+  state: GameState,
+  tier: "bronze" | "silver" | "gold" | "azure",
+  unitDefId: string
+): boolean {
+  const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+  return Boolean(deck) && (deck!.drawPile.includes(unitDefId) || deck!.discardPile.includes(unitDefId));
+}
+
+/**
+ * Searches tier `tier`'s Neutral Units deck for one copy of `unitDefId` and
+ * removes it (draw pile first, then discard pile). Returns whether a copy was
+ * taken — used by search-and-take recruits (Unexpected Reinforcements) so the
+ * card leaves the deck, mirroring how a recruited neutral card is conserved
+ * (it returns to the discard pile only when the unit is later defeated).
+ */
+export function removeFromNeutralDeck(
+  state: GameState,
+  tier: "bronze" | "silver" | "gold" | "azure",
+  unitDefId: string
+): boolean {
+  const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+  if (!deck) {
+    return false;
+  }
+  const drawIndex = deck.drawPile.lastIndexOf(unitDefId);
+  if (drawIndex !== -1) {
+    deck.drawPile.splice(drawIndex, 1);
+    return true;
+  }
+  const discardIndex = deck.discardPile.lastIndexOf(unitDefId);
+  if (discardIndex !== -1) {
+    deck.discardPile.splice(discardIndex, 1);
+    return true;
+  }
+  return false;
 }
 
 /** Draws the neutral army for a guarded field from the four tier decks. */
@@ -4988,17 +5045,19 @@ export function queueNeutralRecruitOffer(state: GameState, playerId: PlayerId, o
 
 /**
  * Unexpected Reinforcements (Astrologers): queue a free recruit offer over the
- * player's OWN faction units whose Dwelling tier they have built. Only queued
- * when at least one such unit exists, so it never opens an empty prompt. Reads
- * the live faction roster, so any faction works (Conflux/Cove once defined).
+ * Neutral Units deck cards associated with the player's faction (the neutral
+ * counterpart of a roster unit) whose Dwelling tier they have built and whose
+ * card is still in the deck. Only queued when at least one such unit exists, so
+ * it never opens an empty prompt. Reads the live faction roster, so any faction
+ * works (Conflux/Cove once defined).
  */
 export function queueFactionRecruitOffer(state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
-  const factionUnits = (player?.factionId ? coreFactionDefinitions[player.factionId]?.units : undefined) ?? [];
+  const associated = (player?.factionId ? neutralUnitIdsByFaction[player.factionId] : undefined) ?? [];
   const unlocked = unlockedRecruitTiers(state, playerId);
-  const canRecruit = factionUnits.some((unitDefId) => {
+  const canRecruit = associated.some((unitDefId) => {
     const def = coreUnitDefinitions[unitDefId];
-    return Boolean(def?.few) && unlocked.has(def!.tier);
+    return Boolean(def?.neutral) && unlocked.has(def!.tier) && neutralDeckHas(state, def!.tier, unitDefId);
   });
   if (!canRecruit) {
     return;
