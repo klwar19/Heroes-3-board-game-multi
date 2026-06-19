@@ -3671,12 +3671,21 @@ export type PlayerState = {
   /**
    * Legion artifacts (Legs/Loins/Torso/Arms/Head of Legion): a banked one-shot
    * gold discount on the player's NEXT Recruitment/Reinforcement, set when the
-   * artifact's discount side is played. Multiple pieces pool into this sum; the
+   * artifact's discount side is played. DIFFERENT pieces pool into this sum; the
    * whole pool comes off one recruit/reinforce (to a minimum of 0) and is then
-   * cleared. The artifact itself is instant — it never lingers as an ongoing
-   * effect — so this voucher persists until it is actually used, nothing more.
+   * cleared. The artifact itself is instant (never an ongoing effect); the
+   * banked discount expires at the start of the player's next turn — i.e. it is
+   * a current-turn voucher, exactly like the other map abilities.
    */
   recruitDiscount?: number;
+  /**
+   * The Legion artifact card ids that have already banked a discount this turn
+   * (see `recruitDiscount`). The SAME piece cannot stack with itself — replaying
+   * it (e.g. after pulling it back from the discard pile) adds nothing — while
+   * different pieces still pool. Cleared with `recruitDiscount` on consume and at
+   * the start of the player's next turn.
+   */
+  recruitDiscountSources?: string[];
   /** Rogues (army map ability): the once-per-turn deck peek was used this turn. */
   rogueScoutUsedThisTurn?: boolean;
   limits: {

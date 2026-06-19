@@ -3940,6 +3940,11 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   // Army map abilities reset for the new turn (Nomads' step, Rogues' scout).
   player.nomadStepDoneThisTurn = false;
   player.rogueScoutUsedThisTurn = false;
+  // Legion artifacts: any banked recruit discount is a current-turn voucher —
+  // it expires now (the owner's next turn), like the other map abilities, so an
+  // unused discount never carries over.
+  player.recruitDiscount = 0;
+  player.recruitDiscountSources = [];
 
   // "Resolve any 'at the beginning of your turn' abilities after drawing":
   // Necromancy Amplifier, Portal of Summoning, Mana Vortex.
@@ -4468,6 +4473,7 @@ export function consumeRecruitDiscount(state: GameState, playerId: PlayerId): vo
   const player = state.players[playerId];
   if (player) {
     player.recruitDiscount = 0;
+    player.recruitDiscountSources = [];
   }
 }
 

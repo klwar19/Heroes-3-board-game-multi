@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { cardLibrary } from "@/data/cards/library";
 import { artifactDeckBinhMajor, artifactDeckBinhMinor, artifactDeckLegacy } from "@/data/cards/artifacts";
 import { applyAction, createAdventureGameState, getLegalActions } from "./index";
-import { recruitDiscountAmount } from "./adventure";
+import { recruitDiscountAmount, startPlayerTurn } from "./adventure";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 // ---------------------------------------------------------------------------
@@ -21,7 +21,8 @@ import type { GameAction, GameState, PlayerId } from "./state";
 const LEGION_DISCOUNTS: { cardId: string; tier: "minor" | "major"; amount: number; name: string }[] = [
   { cardId: "artifact.legs_of_legion", tier: "minor", amount: 4, name: "Legs of Legion" },
   { cardId: "artifact.loins_of_legion", tier: "minor", amount: 5, name: "Loins of Legion" },
-  { cardId: "artifact.torso_of_legion", tier: "minor", amount: 6, name: "Torso of Legion" },
+  // House rule: Torso of Legion is a Major artifact.
+  { cardId: "artifact.torso_of_legion", tier: "major", amount: 6, name: "Torso of Legion" },
   { cardId: "artifact.head_of_legion", tier: "major", amount: 6, name: "Head of Legion" },
   { cardId: "artifact.arms_of_legion", tier: "major", amount: 5, name: "Arms of Legion" }
 ];
@@ -148,6 +149,54 @@ describe("Playing a Legion discount side is instant, not ongoing", () => {
       expect.objectContaining({ cardId: "artifact.torso_of_legion" })
     );
     expect(state.activeEffects.length).toBe(activeEffectsBefore);
+  });
+});
+
+describe("Stacking, same-piece guard, and end-of-turn expiry", () => {
+  it("pools DIFFERENT Legion pieces but never stacks the SAME piece with itself", () => {
+    let state = setupRecruitTown();
+    state.players.p1.resources = { gold: 20, buildingMaterials: 0, valuables: 0 };
+    state.players.p1.hand = ["artifact.legs_of_legion", "artifact.torso_of_legion"];
+
+    // Two different pieces pool: Legs (4) + Torso (6) = 10.
+    state = apply(state, findPlay(state, "p1", "artifact.legs_of_legion", 0)!);
+    state = apply(state, findPlay(state, "p1", "artifact.torso_of_legion", 0)!);
+    expect(recruitDiscountAmount(state, "p1")).toBe(10);
+    expect(state.players.p1.recruitDiscountSources).toEqual([
+      "artifact.legs_of_legion",
+      "artifact.torso_of_legion"
+    ]);
+
+    // Pull Legs back from the discard (as a discard-retrieval card would) and try
+    // to bank it again. Its discount side is no longer offered…
+    state.players.p1.hand = ["artifact.legs_of_legion"];
+    expect(findPlay(state, "p1", "artifact.legs_of_legion", 0)).toBeUndefined();
+    // …though the SAME card's resource side is still perfectly playable…
+    expect(findPlay(state, "p1", "artifact.legs_of_legion", 1)).toBeTruthy();
+    // …and a hand-crafted replay of the discount side is rejected, so the pooled
+    // discount stays at 10 (no self-stack).
+    const replay = applyAction(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "artifact.legs_of_legion",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "none" }
+    });
+    expect(replay.errors.length).toBeGreaterThan(0);
+    expect(recruitDiscountAmount(state, "p1")).toBe(10);
+  });
+
+  it("expires the banked discount at the start of the player's next turn", () => {
+    const state = setupRecruitTown();
+    state.players.p1.recruitDiscount = 6;
+    state.players.p1.recruitDiscountSources = ["artifact.torso_of_legion"];
+    expect(recruitDiscountAmount(state, "p1")).toBe(6);
+
+    // The discount is a current-turn voucher: the owner's next turn clears it.
+    startPlayerTurn(state, "p1");
+    expect(recruitDiscountAmount(state, "p1")).toBe(0);
+    expect(state.players.p1.recruitDiscountSources).toEqual([]);
   });
 });
 
