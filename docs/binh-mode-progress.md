@@ -23,6 +23,7 @@ Mirror of the build request. ✅ = implemented **and wired** (engine + UI + test
 - [x] Ongoing cards stay physically in play (next to the permanents) until every effect they created ends; only then they reach the discard pile — or the hand when Knowledge/Mysticism recalled them, so recalled Summon/Clone-style spells cannot be recast while active (tested)
 - [x] Second negative morale token → neutral + hand discard at turn end (tested)
 - [x] Mage Guild verified: build → Search (2) twice; token locked the build round; 6g Castle / 5g others per purchase
+- [x] Population token is no longer spent by a single purchase: a player may recruit and reinforce as many times as they can afford in a round. The window only closes once they have bought *and then* move a hero (`commitPopulationOnMove`); moving with nothing bought yet leaves it open (you can still buy later, even on a rival's turn). Resets each round. Engine-tested in `adventure.test.ts` ("Population window stays open until a move")
 - [x] Activation spells cast during your own unit's activation (the "Magic Arrow can't be cast" report)
 - [x] Buff/debuff spells (Bloodlust, Stone Skin, Curse, Weakness, Bless, Precision) played INTO attacks, Power-scaled, spell-limit-counted (tested end to end)
 - [x] Every spell discardable for the printed "+1 Power"; Empower stacks (rulebook)

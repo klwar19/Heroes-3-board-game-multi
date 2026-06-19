@@ -15,6 +15,7 @@ import {
   applyRecruitDiscount,
   changeMorale,
   classifyHeroStep,
+  commitPopulationOnMove,
   consumeRecruitDiscount,
   controlsTownOrSettlement,
   createSecondaryHero,
@@ -629,6 +630,7 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
     to,
     movementLeft: hero.movementPoints
   });
+  commitPopulationOnMove(state, hero.controllerId);
 
   haltAfterSeaStep(state, hero, from, to);
 
@@ -816,6 +818,7 @@ function dimensionDoorTeleport(state: GameState, hero: HeroState, to: MapSpaceId
     to,
     movementLeft: hero.movementPoints
   });
+  commitPopulationOnMove(state, hero.controllerId);
   // A teleport that touches the sea halts further movement, like a sea step.
   haltAfterSeaStep(state, hero, from, to);
   resolveHeroArrival(state, hero, to);
@@ -4420,7 +4423,11 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
   }
 
   spendRecruitResources(state, action.playerId, discountedTotal, "population action");
-  player.townTokens.population = false;
+  // The token is NOT consumed by a purchase: the player may keep recruiting and
+  // reinforcing this round (BINH house rule). Marking the round "purchased" arms
+  // the movement lock — the next time one of this player's heroes moves, the
+  // Population window closes (see commitPopulationOnMove).
+  player.populationPurchasedThisRound = true;
   consumeRecruitDiscount(state, action.playerId);
 
   for (const purchase of action.purchases) {
@@ -4709,6 +4716,7 @@ export function activateTownBuilding(state: GameState, action: Extract<GameActio
       to: action.spaceId,
       movementLeft: hero.movementPoints
     });
+    commitPopulationOnMove(state, hero.controllerId);
     appendEvent(state, {
       type: "TOWN_BUILDING_USED",
       playerId: action.playerId,

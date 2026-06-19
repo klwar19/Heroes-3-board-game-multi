@@ -3640,6 +3640,17 @@ export type PlayerState = {
   };
   /** Town action tokens flip inactive when used, refresh each round. */
   townTokens: TownTokenState;
+  /**
+   * Whether this player has already recruited/reinforced (a Population action)
+   * this round. The Population token is no longer consumed by a single
+   * purchase: a player may recruit and reinforce as many times as they can
+   * afford (BINH house rule). Movement is what closes the window — once this is
+   * true, the next time one of the player's heroes moves the Population token
+   * flips off for the rest of the round. Moving before any purchase leaves the
+   * window open (you may still buy later, even on an opponent's turn). Reset by
+   * refreshRoundTokens.
+   */
+  populationPurchasedThisRound?: boolean;
   /** Round number the Mage Guild was built (token unusable that round). */
   mageGuildBuiltRound?: number;
   /** +1 positive morale token (max 1) or a single negative token (-1). */

@@ -4,6 +4,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import {
   addArmyUnit,
   changeMorale,
+  commitPopulationOnMove,
   gainResources,
   getActiveAstrologersCard,
   getMainHero,
@@ -11935,6 +11936,7 @@ function moveHero(state: GameState, action: Extract<GameAction, { type: "MOVE_HE
     to: action.to,
     movementLeft: hero.movementPoints
   });
+  commitPopulationOnMove(state, hero.controllerId);
 }
 
 function endTurn(state: GameState, action: Extract<GameAction, { type: "END_TURN" }>): void {

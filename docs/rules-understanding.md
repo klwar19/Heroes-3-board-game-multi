@@ -41,7 +41,7 @@ This note captures the working model for future development. Treat the official 
 - The map is scenario-shaped from tiles. Each map tile has multiple fields/spaces, many start hidden, and heroes reveal or place tiles through movement actions.
 - Players own a faction, main hero, town board, unit cards, resources, income markers, and a deck of Might & Magic cards.
 - Main heroes use the player deck, gain experience, level up, and normally have 3 movement points per turn. Secondary heroes are lighter map pieces and do not use the deck.
-- Town actions are once per round per player and can happen during another player's turn, but not during combat. The core town action buckets are Build, Population, and Spell Book.
+- Town actions are once per round per player and can happen during another player's turn, but not during combat. The core town action buckets are Build, Population, and Spell Book. Exception: the **Population** bucket is not consumed by a single purchase — a player may recruit/reinforce repeatedly in a round and the window only closes once they have bought *and then* move a hero (moving before any purchase leaves it open). See `commitPopulationOnMove`.
 
 ## Round And Turn Flow
 
