@@ -67,12 +67,18 @@ export type AstrologersEffect =
   // ("this round and the next one"). engine: "the corresponding Dwelling" is the
   // Dwelling-tier gate already used by Cyra's Diplomacy (unlockedRecruitTiers).
   | { type: "RECRUIT_NEUTRAL_DRAW"; maxDraws: number }
-  // Unexpected Reinforcements: immediate — each player may recruit, for free, one
-  // unit of THEIR OWN faction whose Dwelling tier they have built (added to the
-  // army's Few side, like a normal recruit). Reads the player's faction roster +
-  // Dwelling tiers, so it works for any faction (incl. Conflux/Cove once defined).
-  // engine: "Azure units cannot be recruited" holds by construction — no Dwelling
-  // unlocks the Azure tier, so an Azure unit's tier is never among the player's.
+  // Unexpected Reinforcements: immediate — each player may search the Neutral
+  // Units deck and recruit, for free, one neutral unit ASSOCIATED with their
+  // faction (the neutral-deck counterpart of a unit on their roster) whose
+  // Dwelling tier they have built. The card is taken from the deck and added to
+  // the army's single-sided NEUTRAL side — so, like any neutral unit, it can
+  // never be reinforced to a Pack (this is the whole point: it is a neutral
+  // unit, not the upgradeable faction one). Reads the player's faction roster +
+  // Dwelling tiers, so it works for any faction (incl. Conflux/Cove once
+  // defined). A faction's signature top-tier creature (Gold Dragons, Titans,
+  // Hydras) has no neutral card and so is never offered. engine: "Azure units
+  // cannot be recruited" holds by construction — no Dwelling unlocks the Azure
+  // tier, so an Azure unit's tier is never among the player's.
   | { type: "RECRUIT_FACTION_FREE" };
 
 /** Boxed sets / expansions a proclamation can ship in (provenance, shown in the UI). */
@@ -405,7 +411,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
   "astrologers.unexpected_reinforcements": {
     id: "astrologers.unexpected_reinforcements",
     name: "Unexpected Reinforcements",
-    text: "Each player can immediately recruit, for free, 1 unit of their own faction for which they have the corresponding Dwelling built. Azure units cannot be recruited this way.",
+    text: "Each player can immediately search the Neutral Units deck and Recruit 1 chosen unit associated with their faction for free. Each player still needs to have the corresponding Dwelling built in their town. Azure units cannot be recruited this way.",
     ongoing: false,
     effect: { type: "RECRUIT_FACTION_FREE" },
     expansion: "Tower Expansion",
