@@ -1963,11 +1963,14 @@ export function TownPanel({
                 onClick={submitBasket}
                 type="button"
               >
-                Buy {basketSize} (1 token)
+                Buy {basketSize}
               </button>
             </div>
           ) : (
-            <small className="basketHint">The token flips after one purchase action — stock up in one go.</small>
+            <small className="basketHint">
+              Recruit and reinforce as much as you can afford — the window stays open until your hero moves after a
+              purchase.
+            </small>
           )}
         </div>
       ) : null}

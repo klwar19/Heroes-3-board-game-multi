@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { coreTileDefinitions } from "@/data/map/tile-defs";
-import { changeMorale, drawAstrologersCard, instantiateTile } from "./adventure";
+import { changeMorale, drawAstrologersCard, instantiateTile, refreshRoundTokens } from "./adventure";
 import {
   applyAction,
   canHeroReachPlacedTile,
@@ -1470,7 +1470,108 @@ describe("town economy", () => {
       purchases: [{ kind: "recruit", unitDefId: "castle.halberdiers" }]
     });
     expect(state.players.p1.army).toHaveLength(armyBefore + 1);
-    expect(state.players.p1.townTokens.population).toBe(false);
+    // A purchase no longer consumes the token outright: the window stays open
+    // for more recruiting/reinforcing and only arms the move lock.
+    expect(state.players.p1.townTokens.population).toBe(true);
+    expect(state.players.p1.populationPurchasedThisRound).toBe(true);
+  });
+
+  describe("Population window stays open until a move (BINH house rule)", () => {
+    // Bronze dwelling up and gold to spare. The scenario seeds every bronze
+    // few into the starting army, so clear marksmen + griffins (each unit card
+    // exists once) to leave them freshly recruitable.
+    function townReady(): GameState {
+      let state = refreshP1(makeGame());
+      state = apply(state, {
+        type: "BUILD_STRUCTURE",
+        playerId: "p1",
+        townId: "town_p1",
+        buildingId: "castle.dwelling_bronze"
+      });
+      state.players.p1.army = state.players.p1.army.filter(
+        (unit) => unit.unitDefId !== "castle.marksmen" && unit.unitDefId !== "castle.griffins"
+      );
+      state.players.p1.resources.gold = 50;
+      return state;
+    }
+
+    it("lets a player recruit again and again on one Population token", () => {
+      let state = townReady();
+
+      state = apply(state, {
+        type: "POPULATION_ACTION",
+        playerId: "p1",
+        purchases: [{ kind: "recruit", unitDefId: "castle.marksmen" }]
+      });
+      // The first buy does NOT spend the token; it only arms the move lock.
+      expect(state.players.p1.townTokens.population).toBe(true);
+      expect(state.players.p1.populationPurchasedThisRound).toBe(true);
+      expect(state.players.p1.army.some((unit) => unit.unitDefId === "castle.marksmen")).toBe(true);
+
+      // A second, separate recruit on the same token still goes through.
+      state = apply(state, {
+        type: "POPULATION_ACTION",
+        playerId: "p1",
+        purchases: [{ kind: "recruit", unitDefId: "castle.griffins" }]
+      });
+      expect(state.players.p1.army.some((unit) => unit.unitDefId === "castle.griffins")).toBe(true);
+      expect(state.players.p1.townTokens.population).toBe(true);
+    });
+
+    it("closes the window once a hero moves after a purchase", () => {
+      let state = townReady();
+      state = apply(state, {
+        type: "POPULATION_ACTION",
+        playerId: "p1",
+        purchases: [{ kind: "recruit", unitDefId: "castle.marksmen" }]
+      });
+      expect(state.players.p1.townTokens.population).toBe(true);
+
+      // Buying, then moving, commits the Population action for the round.
+      state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:3" });
+      expect(state.players.p1.townTokens.population).toBe(false);
+
+      const blocked = applyAction(state, {
+        type: "POPULATION_ACTION",
+        playerId: "p1",
+        purchases: [{ kind: "recruit", unitDefId: "castle.griffins" }]
+      });
+      expect(blocked.errors).toHaveLength(1);
+      expect(state.players.p1.army.some((unit) => unit.unitDefId === "castle.griffins")).toBe(false);
+    });
+
+    it("leaves the window open when a hero moves before any purchase", () => {
+      let state = townReady();
+
+      // Move first, having bought nothing — the window must stay open.
+      state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:3" });
+      expect(state.players.p1.townTokens.population).toBe(true);
+      expect(state.players.p1.populationPurchasedThisRound).toBeFalsy();
+
+      // Recruiting after the move still works (would even work on a rival's turn).
+      state = apply(state, {
+        type: "POPULATION_ACTION",
+        playerId: "p1",
+        purchases: [{ kind: "recruit", unitDefId: "castle.marksmen" }]
+      });
+      expect(state.players.p1.army.some((unit) => unit.unitDefId === "castle.marksmen")).toBe(true);
+      expect(state.players.p1.townTokens.population).toBe(true);
+    });
+
+    it("reopens the Population window each round", () => {
+      let state = townReady();
+      state = apply(state, {
+        type: "POPULATION_ACTION",
+        playerId: "p1",
+        purchases: [{ kind: "recruit", unitDefId: "castle.marksmen" }]
+      });
+      state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:3" });
+      expect(state.players.p1.townTokens.population).toBe(false);
+
+      refreshRoundTokens(state);
+      expect(state.players.p1.townTokens.population).toBe(true);
+      expect(state.players.p1.populationPurchasedThisRound).toBe(false);
+    });
   });
 
   it("buys spells through the Mage Guild one round after construction", () => {

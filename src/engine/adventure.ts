@@ -2267,6 +2267,7 @@ export function processPendingVisit(state: GameState): void {
             to: step.spaceId,
             movementLeft: movedHero.movementPoints
           });
+          commitPopulationOnMove(state, movedHero.controllerId);
           if (step.visit) {
             adventure.lastVisitedField[movedHero.id] = step.spaceId;
             beginFieldVisit(state, movedHero.id, step.spaceId, false);
@@ -4094,6 +4095,7 @@ export function refreshRoundTokens(state: GameState): void {
     }
 
     player.townTokens = { build: true, population: true, spellBook: true };
+    player.populationPurchasedThisRound = false;
     player.combatStats.expertUsesSpentThisRound = 0;
     player.combatStats.expertUseBonusThisRound = 0;
   }
@@ -4102,6 +4104,21 @@ export function refreshRoundTokens(state: GameState): void {
     hero.movementPoints = heroMovementMax(state, hero);
     // Fresh movement clears any sea-halt from waking up on / wading into the sea.
     hero.movementHaltedThisTurn = false;
+  }
+}
+
+/**
+ * Commits a player's Population action when one of their heroes moves (BINH
+ * house rule). The Population window stays open for unlimited recruiting and
+ * reinforcing all round; it only closes once the player has *already* bought
+ * this round and then moves a hero. Moving with nothing bought yet leaves the
+ * window open — the player may still recruit/reinforce later, even on another
+ * player's turn. Call this from every site that relocates a hero on the map.
+ */
+export function commitPopulationOnMove(state: GameState, controllerId: PlayerId): void {
+  const owner = state.players[controllerId];
+  if (owner?.populationPurchasedThisRound) {
+    owner.townTokens.population = false;
   }
 }
 
