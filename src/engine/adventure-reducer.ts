@@ -78,6 +78,7 @@ import {
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
+import { assignCombatBoardArt } from "./combat-board-art";
 import { cardCanBoostPower } from "./effects";
 import { createSeededRandom } from "./random";
 import {
@@ -588,11 +589,13 @@ export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapS
     }
 
     // A single step must end on a field the hero can stop on: "open" empty
-    // fields and "stop" fields (guards, enemy heroes, locations). Blocked fields
-    // crossed by Fly are "pass-only" (you fly over but cannot land), and allied
-    // heroes / sanctuaries are "pass-only" too — none are valid stops.
+    // fields, "stop" fields (guards, enemy heroes, locations), and Pathfinding
+    // "encounter" fields (a Neutral/enemy field the hero may end on to start
+    // Combat). Blocked fields crossed by Fly are "pass-only" (you fly over but
+    // cannot land), and allied heroes / sanctuaries are "pass-only" too — none
+    // are valid stops.
     const kind = classifyHeroStep(state, hero, spaceId, movement);
-    return kind === "open" || kind === "stop";
+    return kind === "open" || kind === "stop" || kind === "encounter";
   });
 }
 
@@ -841,7 +844,9 @@ function dimensionDoorDestinations(state: GameState, hero: HeroState, range: num
       continue;
     }
     const kind = classifyHeroStep(state, hero, spaceId, movement);
-    if (kind === "open" || kind === "stop") {
+    // A teleport lands and resolves the field, so a Pathfinding "encounter"
+    // (Neutral/enemy) is a valid target exactly like a plain "stop".
+    if (kind === "open" || kind === "stop" || kind === "encounter") {
       destinations.push(spaceId);
     }
   }
@@ -1081,12 +1086,18 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
   }
 
 
-  for (const step of action.path) {
+  for (const [index, step] of action.path.entries()) {
     if (hero.movementPoints <= 0) {
       break;
     }
 
-    const passThrough = classifyHeroStep(state, hero, step, movement) === "pass-only";
+    const kind = classifyHeroStep(state, hero, step, movement);
+    const isLast = index === action.path.length - 1;
+    // Pass over a field without resolving it when it only allows passage
+    // ("pass-only"), or when Pathfinding lets the hero walk through a
+    // Neutral/enemy field ("encounter") that is not where the walk ends.
+    // Ending on an "encounter" resolves normally — Combat begins.
+    const passThrough = kind === "pass-only" || (kind === "encounter" && !isLast);
     performHeroStep(state, hero, step, passThrough);
 
     // Wading into/out of the sea ends the walk even if points remain.
@@ -2309,6 +2320,7 @@ function beginNeutralCombatPlacement(
     difficulty,
     hasAzure: false
   };
+  assignCombatBoardArt(state, combat);
   combat.setup = {
     pendingPlayerIds: [playerId],
     placedUnitIds: { [playerId]: [] },
@@ -3257,6 +3269,7 @@ export function startPlayerCombat(
     fieldId,
     ...(siege ? { siege: true } : {})
   };
+  assignCombatBoardArt(state, combat);
   combat.setup = {
     pendingPlayerIds: [attacker.controllerId, defenderPlayerId],
     placedUnitIds: { [attacker.controllerId]: [], [defenderPlayerId]: [] },

@@ -366,6 +366,23 @@ export type ActiveEffectModifier =
       type: "HERO_WATER_WALK";
     }
   | {
+      /**
+       * Pathfinding ability (BINH house rule). For this turn the player's Heroes:
+       *  - Basic: may move *through* fields holding Neutral Units or enemy Heroes
+       *    without resolving them (Combat begins only if they END their movement
+       *    there), and over yellow (sealed) borders and blocked fields (never
+       *    ending on a blocked field — same "pass-over" rule as Fly).
+       *  - Expert (`expert: true`): also gains all of the above PLUS may cross the
+       *    coastline (land↔sea) with no halt, and may step directly between a
+       *    Surface and a Subterranean Tile without a Subterranean Gate — which
+       *    neither Dimension Door nor Fly can do.
+       * Translated into movement capabilities by getHeroMovementCapabilities and
+       * read by the adventure pathfinding (canCrossEdge / classifyHeroStep).
+       */
+      type: "HERO_PATHFINDING";
+      expert?: boolean;
+    }
+  | {
       /** Logistics (basic): step to an adjacent empty field at end of turn. */
       type: "END_TURN_ADJACENT_MOVE";
     }
@@ -3945,6 +3962,14 @@ export type CombatContext =
       siege?: boolean;
     };
 
+export type CombatBoardArtId =
+  | "classic"
+  | "frozen"
+  | "hell-necro"
+  | "jungle-fortress"
+  | "castle-siege"
+  | "ship-battle";
+
 /**
  * Siege fortifications on the combat board (town with a Citadel): 3 Walls and
  * 1 Gate fill the middle row, the Arrow Tower fights from beside the board.
@@ -4015,6 +4040,8 @@ export type CombatState = {
   defenderPlayerId: PlayerId;
   activeUnitId: UnitId | null;
   context: CombatContext;
+  /** Deterministic combat-board art selected when the fight starts. */
+  boardArtId?: CombatBoardArtId;
   setup: CombatSetupState | null;
   /** In-flight follow-ups of the attack that just resolved. */
   attackSequence?: AttackSequenceState | null;
@@ -4203,6 +4230,15 @@ export type MapFieldState = {
   everFlagged: boolean;
   /** Resource chosen for a flagged settlement. */
   settlementResource: ResourceKind | null;
+  /**
+   * Obelisk house rule: the Attack-die face (-1, 0, or +1) rolled the first
+   * time any Hero visits this Obelisk. It is locked in for the rest of the
+   * game — every later visitor (any player) receives the same reward category
+   * without rerolling: -1 = +1 positive morale, 0 = Search (2) the Artifact
+   * deck, +1 = roll one Treasure die and one Resource die. `undefined` until
+   * the first visit rolls it.
+   */
+  obeliskRoll?: -1 | 0 | 1;
   /**
    * Grail Hunt: this Grail field's guards have been defeated and the Grail is
    * waiting to be dug (1 movement point) before it can be carried home.

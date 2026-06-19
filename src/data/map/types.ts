@@ -162,6 +162,16 @@ export type LocationInteraction =
     }
   | {
       /**
+       * Obelisk (house rule): the first Hero to visit rolls the Attack die and
+       * the face is locked on the Field forever. Every visitor (any player) then
+       * receives that fixed reward without rerolling — -1: +1 positive morale,
+       * 0: Search (2) the Artifact deck, +1: roll one Treasure die and one
+       * Resource die. Resolved by the engine (handleObeliskVisit).
+       */
+      type: "OBELISK";
+    }
+  | {
+      /**
        * Black Market: browse the top of the Artifact discard pile(s) and buy
        * one — 5 gold Minor, 7 gold Major, 10 gold Relic.
        */
