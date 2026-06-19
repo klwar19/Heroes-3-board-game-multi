@@ -40,7 +40,12 @@ const WIRED_EFFECT_TYPES = {
   NEUTRAL_DRAW_SWAP: true,
   EMPOWER_STATISTIC_CHOICE: true,
   REMOVE_CARDS_CHOICE: true,
-  PAID_EMPOWER_PER_TURN: true
+  PAID_EMPOWER_PER_TURN: true,
+  GRANT_WAR_MACHINE_CHOICE: true,
+  WAR_MACHINE_BUFF: true,
+  EMPOWER_PER_DISCARD: true,
+  RECRUIT_NEUTRAL_DRAW: true,
+  RECRUIT_FACTION_FREE: true
 } satisfies Record<AstrologersEffect["type"], true>;
 
 const ASSETS_DIR = join(process.cwd(), "public", "assets");

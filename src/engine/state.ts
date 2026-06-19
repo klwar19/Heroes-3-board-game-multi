@@ -4467,6 +4467,56 @@ export type VisitStep =
       /** War Machine Factory: buy one war machine at the lower price. */
       type: "WAR_MACHINE_SHOP";
     }
+  | {
+      /**
+       * Astrologers (McGiver): open the self-rebuilding menu to take one War
+       * Machine of the player's choice from the shared supply for free. Rebuilt
+       * from the live supply each time so a second player never sees a machine an
+       * earlier one already took; offers a Skip exit (the take is optional).
+       */
+      type: "WAR_MACHINE_GRANT_OFFER";
+    }
+  | {
+      /**
+       * McGiver grant leaf: move the chosen war machine from the shared supply to
+       * the player's hand at no cost (they play it as a permanent later).
+       */
+      type: "GRANT_WAR_MACHINE";
+      cardId: CardId;
+    }
+  | {
+      /**
+       * Astrologers (Charlie and his Circus): draw one Neutral Unit per Dwelling
+       * tier the player controls (capped at `maxDraws`), then open a paid recruit
+       * menu over them. Azure is never drawn — no Dwelling unlocks it.
+       */
+      type: "NEUTRAL_RECRUIT_OFFER";
+      maxDraws: number;
+    }
+  | {
+      /**
+       * Neutral-recruit leaf: recruit `recruit` (paying its cost) and return every
+       * other card in `drawn` to its tier's discard pile. A null `recruit`
+       * declines and shuffles all of `drawn` back.
+       */
+      type: "RECRUIT_DRAWN_NEUTRAL";
+      recruit: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" } | null;
+      drawn: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
+    }
+  | {
+      /**
+       * Astrologers (Unexpected Reinforcements): open a free recruit menu over the
+       * player's own faction units whose Dwelling tier they have built (rebuilt
+       * from the live town, so it works for any faction). Azure never qualifies —
+       * no Dwelling unlocks it.
+       */
+      type: "FACTION_RECRUIT_OFFER";
+    }
+  | {
+      /** Faction-recruit leaf: add `unitDefId` to the army's Few side, for free. */
+      type: "RECRUIT_FACTION_UNIT";
+      unitDefId: CardId;
+    }
   | { type: "DISCOVER_ADJACENT_TILE" }
   | {
       /** Sea Chest / Jetsam: roll one Attack die, resolve the matching branch. */

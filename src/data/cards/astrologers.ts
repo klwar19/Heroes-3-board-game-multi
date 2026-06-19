@@ -10,13 +10,13 @@
  * Scope: the 19 Core Game proclamations plus the expansion cards whose effects
  * map cleanly onto existing engine systems and are wired + tested here
  * (Society, Big Cleanup, Blue Sky, Scorched Ground, Dancing Imp, Hero,
- * Plane Between Planes). The `effect` field is the single source of truth for
- * what the engine runs; `text` is the printed card wording. Every card has a
- * real card scan in `image`. Expansion proclamations that would need new
- * subsystems (PvP-attack bans, a generic Event deck, defense->attack
- * conversion, war-machine economies, ...) are intentionally NOT included rather
- * than shipped as inert text — see ASTROLOGERS_NOT_IMPLEMENTED below for the
- * honest list.
+ * Plane Between Planes, and the Rampart war-machine pair Ammo Cart + McGiver).
+ * The `effect` field is the single source of truth for what the engine runs;
+ * `text` is the printed card wording. Every card has a real card scan in
+ * `image`. Expansion proclamations that would need new subsystems (PvP-attack
+ * bans, a generic Event deck, defense->attack conversion, ...) are
+ * intentionally NOT included rather than shipped as inert text — see
+ * ASTROLOGERS_NOT_IMPLEMENTED below for the honest list.
  */
 
 import type { SpellSchool } from "@/engine/state";
@@ -47,14 +47,41 @@ export type AstrologersEffect =
   // Hero: ongoing — at the start of each of a player's turns they may pay
   // `costGold` to Remove a hand Statistic and replace it with the same-type
   // Empowered Statistic, up to `maxPerTurn` times that turn.
-  | { type: "PAID_EMPOWER_PER_TURN"; costGold: number; maxPerTurn: number };
+  | { type: "PAID_EMPOWER_PER_TURN"; costGold: number; maxPerTurn: number }
+  // McGiver: at the start of the next round each player may take one War Machine
+  // of their choice from the shared supply for free. Resolved at that next
+  // Resource round (startAdventureRound), not when the card is drawn.
+  | { type: "GRANT_WAR_MACHINE_CHOICE" }
+  // Ammo Cart: while face up, every Ballista deals +`ballistaDamageBonus`, every
+  // First Aid Tent heals +`firstAidHealBonus`, and (when `rangedAttackReroll`)
+  // an Ammo Cart owner's ranged units may reroll 1 Attack die. Read in the
+  // war-machine round (permanents.ts) and the attack-reroll builder (reducer.ts).
+  | { type: "WAR_MACHINE_BUFF"; ballistaDamageBonus: number; firstAidHealBonus: number; rangedAttackReroll: boolean }
+  // Explorers: ongoing — for every `per` cards a player discards during their
+  // start-of-turn hand refresh, they may empower one Statistic (hand or discard)
+  // into its same-type Empowered version, for free. Resolved in refreshHand.
+  | { type: "EMPOWER_PER_DISCARD"; per: number }
+  // Charlie and his Circus: each player may recruit one Neutral Unit they can
+  // afford, drawn one per Dwelling tier they control (capped at `maxDraws`); the
+  // rest shuffle back. Offered when drawn AND again at the next Resource round
+  // ("this round and the next one"). engine: "the corresponding Dwelling" is the
+  // Dwelling-tier gate already used by Cyra's Diplomacy (unlockedRecruitTiers).
+  | { type: "RECRUIT_NEUTRAL_DRAW"; maxDraws: number }
+  // Unexpected Reinforcements: immediate — each player may recruit, for free, one
+  // unit of THEIR OWN faction whose Dwelling tier they have built (added to the
+  // army's Few side, like a normal recruit). Reads the player's faction roster +
+  // Dwelling tiers, so it works for any faction (incl. Conflux/Cove once defined).
+  // engine: "Azure units cannot be recruited" holds by construction — no Dwelling
+  // unlocks the Azure tier, so an Azure unit's tier is never among the player's.
+  | { type: "RECRUIT_FACTION_FREE" };
 
 /** Boxed sets / expansions a proclamation can ship in (provenance, shown in the UI). */
 export const ASTROLOGERS_EXPANSIONS = [
   "Core Game",
   "Tower Expansion",
   "Fortress Expansion",
-  "Inferno Expansion"
+  "Inferno Expansion",
+  "Rampart Expansion"
 ] as const;
 
 export type AstrologersExpansion = (typeof ASTROLOGERS_EXPANSIONS)[number];
@@ -91,6 +118,16 @@ function image(slug: string): string {
 }
 
 export const astrologersCardDefinitions: Record<string, AstrologersCardDefinition> = {
+  "astrologers.ammo_cart": {
+    id: "astrologers.ammo_cart",
+    name: "Ammo Cart",
+    text: "Until the next Astrologers' round: each Ballista deals +1 damage, each First Aid Tent heals +1 health, and each Ammo Cart lets your ranged units reroll 1 Attack die.",
+    ongoing: true,
+    effect: { type: "WAR_MACHINE_BUFF", ballistaDamageBonus: 1, firstAidHealBonus: 1, rangedAttackReroll: true },
+    expansion: "Rampart Expansion",
+    image: image("ammo_cart"),
+    source: source("ammo_cart", "Rampart Expansion")
+  },
   "astrologers.annoying_lizard": {
     id: "astrologers.annoying_lizard",
     name: "Annoying Lizard",
@@ -131,6 +168,16 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     image: image("blue_sky"),
     source: source("blue_sky", "Tower Expansion")
   },
+  "astrologers.charlie_and_his_circus": {
+    id: "astrologers.charlie_and_his_circus",
+    name: "Charlie and his Circus",
+    text: "At the beginning of this round and the next one, each player can draw up to 3 cards from the Neutral Units decks they have a Dwelling for and recruit one of them, paying its cost. The rest are shuffled back.",
+    ongoing: true,
+    effect: { type: "RECRUIT_NEUTRAL_DRAW", maxDraws: 3 },
+    expansion: "Rampart Expansion",
+    image: image("charlie_and_his_circus"),
+    source: source("charlie_and_his_circus", "Rampart Expansion")
+  },
   "astrologers.crazy_wizard": {
     id: "astrologers.crazy_wizard",
     name: "Crazy Wizard",
@@ -160,6 +207,20 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     expansion: "Core Game",
     image: image("dead_silence"),
     source: source("dead_silence", "Core Game")
+  },
+  "astrologers.explorers": {
+    id: "astrologers.explorers",
+    name: "Explorers",
+    // engine: "do not draw at start of turn; instead draw up to your hand limit,
+    // then discard any number" is already the standard start-of-turn hand refresh
+    // (the engine never auto-draws). The wired effect is the per-3-discarded
+    // empower, resolved in refreshHand.
+    text: "During this round, players do not draw cards at the start of their turn; instead each player draws up to their hand limit, then may discard any number of cards. For every 3 cards discarded this way, they may Remove a Statistic card and replace it with an Empowered Statistic card of the same type.",
+    ongoing: true,
+    effect: { type: "EMPOWER_PER_DISCARD", per: 3 },
+    expansion: "Inferno Expansion",
+    image: image("explorers"),
+    source: source("explorers", "Inferno Expansion")
   },
   "astrologers.fancy_pixie": {
     id: "astrologers.fancy_pixie",
@@ -261,6 +322,16 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     image: image("magic_tortoise"),
     source: source("magic_tortoise", "Core Game")
   },
+  "astrologers.mcgiver": {
+    id: "astrologers.mcgiver",
+    name: "McGiver",
+    text: "At the beginning of the next round, each player can take 1 War Machine of their choice from the supply at no cost.",
+    ongoing: true,
+    effect: { type: "GRANT_WAR_MACHINE_CHOICE" },
+    expansion: "Rampart Expansion",
+    image: image("mcgiver"),
+    source: source("mcgiver", "Rampart Expansion")
+  },
   "astrologers.merry_leprechaun": {
     id: "astrologers.merry_leprechaun",
     name: "Merry Leprechaun",
@@ -331,6 +402,16 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     image: image("terrible_plague"),
     source: source("terrible_plague", "Core Game")
   },
+  "astrologers.unexpected_reinforcements": {
+    id: "astrologers.unexpected_reinforcements",
+    name: "Unexpected Reinforcements",
+    text: "Each player can immediately recruit, for free, 1 unit of their own faction for which they have the corresponding Dwelling built. Azure units cannot be recruited this way.",
+    ongoing: false,
+    effect: { type: "RECRUIT_FACTION_FREE" },
+    expansion: "Tower Expansion",
+    image: image("unexpected_reinforcements"),
+    source: source("unexpected_reinforcements", "Tower Expansion")
+  },
   "astrologers.white_raven": {
     id: "astrologers.white_raven",
     name: "White Raven",
@@ -362,17 +443,13 @@ export const astrologersDeckCardIds: string[] = Object.keys(astrologersCardDefin
  * the omission is a conscious, reviewable decision rather than a silent gap.
  */
 export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; needs: string }[] = [
-  { name: "Ammo Cart", expansion: "Rampart", needs: "war-machine combat buffs (Ballista/First Aid Tent/Ammo Cart)" },
-  { name: "Charlie and his Circus", expansion: "Rampart", needs: "multi-round neutral-unit recruitment offers" },
   { name: "Crag Hack", expansion: "Stronghold", needs: "first-combat ground-unit attack buff + free Goblin reinforce" },
   { name: "Destruction", expansion: "Stretch Goals", needs: "remove a permanent card in play for gold" },
   { name: "Disruption", expansion: "Stretch Goals", needs: "per-player free single-tile rotation flow" },
   { name: "Elementals", expansion: "Conflux", needs: "face-up Elemental units seeded onto neutral decks" },
-  { name: "Explorers", expansion: "Inferno", needs: "skip-draw + discard-for-empowered-statistic economy" },
   { name: "Forty Thieves", expansion: "Fortress", needs: "a generic Event-card deck (does not exist)" },
   { name: "Judge Dread", expansion: "Stronghold", needs: "attacker redraws the whole neutral guard" },
   { name: "Mages", expansion: "Conflux", needs: "free Spell Book token use" },
-  { name: "McGiver", expansion: "Rampart", needs: "free war-machine acquisition next round" },
   { name: "Multilingual Bron", expansion: "Stretch Goals", needs: "reroll of unit special-ability rolls" },
   { name: "Offense", expansion: "Stronghold", needs: "Defense cards acting as Attack" },
   { name: "Pirates", expansion: "Cove", needs: "post-combat-win Resource die reward" },
@@ -381,7 +458,6 @@ export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; nee
   { name: "Rulebook", expansion: "Stretch Goals", needs: "neutral-combat difficulty reduction" },
   { name: "Sanctuary", expansion: "Stretch Goals", needs: "a PvP-attack ban for the round (does not exist)" },
   { name: "Spells", expansion: "Conflux", needs: "widened spell-deck search" },
-  { name: "Unexpected Reinforcements", expansion: "Tower", needs: "free faction-unit recruit via neutral-deck search" },
   { name: "Wandering Merchant", expansion: "Stretch Goals", needs: "discounted war-machine purchase" },
   { name: "Whirlpool", expansion: "Cove", needs: "free whirlpool travel with exit choice" },
   { name: "Wind", expansion: "Cove", needs: "continued movement after entering a sea field" }

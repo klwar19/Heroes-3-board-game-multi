@@ -9,8 +9,11 @@ import {
   spellFxPlans,
   spellPresentationMs,
   spriteDurationMs,
+  warMachineFxPlans,
   type SpellFxPlan
 } from "./fx";
+import { cardLibrary } from "./cards/library";
+import { WAR_MACHINE_CARD_IDS } from "./cards/permanents";
 
 describe("soundDurationMs", () => {
   it("reads measured MP3 lengths from the durations manifest", () => {
@@ -131,6 +134,45 @@ describe("healFxPlans", () => {
 
   it("does not re-animate the Cure spell (which already animates as a cast)", () => {
     expect(healFxPlans["spell.cure"]).toBeUndefined();
+  });
+});
+
+describe("warMachineFxPlans", () => {
+  // A war machine "fires" when its card has a round-start effect (the Ballista's
+  // auto-shot, the Catapult's splash, the Cannon's expert shot). Those emit a
+  // WAR_MACHINE_TRIGGERED the table answers with a shot sound. The First Aid
+  // Tent (it heals — see healFxPlans) and the Ammo Cart (a passive ranged buff)
+  // have no round-start shot, so they correctly carry no shot plan.
+  const firingMachines = WAR_MACHINE_CARD_IDS.filter(
+    (cardId) => cardLibrary[cardId]?.permanentEffect?.roundStart
+  );
+
+  it("covers exactly the three firing war machines (Ballista, Catapult, Cannon)", () => {
+    expect([...firingMachines].sort()).toEqual(
+      ["war_machine.ballista", "war_machine.cannon", "war_machine.catapult"].sort()
+    );
+  });
+
+  it.each(firingMachines)("gives %s a real shot sound with a non-zero gate", (cardId) => {
+    const plan = warMachineFxPlans[cardId];
+    expect(plan, `${cardId} fires a shot but has no FX plan`).toBeTruthy();
+    expect(plan.sound, `${cardId} needs a shot sound`).toBeTruthy();
+    // The clip is a real converted sound (measured length on disk, in durations.json).
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    // The presentation gate is real, so the struck unit's hurt cry + damage
+    // number wait until the shot has been heard.
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  it("does not give the First Aid Tent or Ammo Cart a shot plan (they do not fire)", () => {
+    expect(warMachineFxPlans["war_machine.first_aid_tent"]).toBeUndefined();
+    expect(warMachineFxPlans["war_machine.ammo_cart"]).toBeUndefined();
+  });
+
+  it("references only real war machine cards", () => {
+    for (const cardId of Object.keys(warMachineFxPlans)) {
+      expect(WAR_MACHINE_CARD_IDS).toContain(cardId);
+    }
   });
 });
 

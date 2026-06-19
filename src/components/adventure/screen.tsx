@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Check, ChevronsUp, Hammer, Image as ImageIcon, Lock, Minus, Plus, RotateCcw, RotateCw, Star, Unlock, X } from "lucide-react";
+import { Check, ChevronsUp, Crown, Hammer, Image as ImageIcon, Lock, Minus, Plus, RotateCcw, RotateCw, Star, Unlock, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
@@ -2041,7 +2041,12 @@ export function PromptTray({
   let title: string | null = null;
   let body: LegalAction[] = [];
 
-  if (choice?.type === "OPTION_CHOICE" && choice.playerId === viewerPlayerId) {
+  if (
+    choice?.type === "OPTION_CHOICE" &&
+    choice.playerId === viewerPlayerId &&
+    // The Learning level-up offer has its own card-showing modal (LearningOfferModal).
+    choice.context !== "learning-level-up"
+  ) {
     title = choice.prompt;
     body = optionActions;
   } else if (choice?.type === "ABILITY_TARGET_CHOICE" && choice.playerId === viewerPlayerId) {
@@ -2085,6 +2090,100 @@ export function PromptTray({
             {legal.label}
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Learning offer modal (level-up hook)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pops in the player's face the instant their Hero crosses an Experience level
+ * while holding a Learning card — from ANY source that grants Experience (a
+ * Learning Stone, a Tree of Knowledge, a won Combat, …). It shows the Learning
+ * card itself and offers the basic play (advance a half level), the expert play
+ * (advance a full level, spend an expert use / "crown", then remove the card —
+ * only shown when an expert use is available) and a Decline. The engine drives
+ * everything; this is purely the surface for the "learning-level-up" choice.
+ */
+export function LearningOfferModal({
+  state,
+  viewerPlayerId,
+  legalActions,
+  onAction
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  legalActions: LegalAction[];
+  onAction: (action: GameAction) => void;
+}) {
+  const choice = state.pendingChoice;
+  if (choice?.type !== "OPTION_CHOICE" || choice.context !== "learning-level-up") {
+    return null;
+  }
+
+  // While another player is deciding, show a quiet waiting strip instead.
+  if (choice.playerId !== viewerPlayerId) {
+    return (
+      <div className="reactionStrip waiting" role="status">
+        <ChevronsUp aria-hidden="true" size={15} />
+        <span>{state.players[choice.playerId]?.name ?? choice.playerId} is about to level up…</span>
+      </div>
+    );
+  }
+
+  const modes = choice.learningLevelUp?.modes ?? [];
+  const optionActions = legalActions.filter(
+    (legal): legal is LegalAction & { action: Extract<GameAction, { type: "CHOOSE_OPTION" }> } =>
+      legal.action.type === "CHOOSE_OPTION" && legal.action.choiceId === choice.id
+  );
+  if (optionActions.length === 0) {
+    return null;
+  }
+
+  const card = cardLibrary["ability.learning"];
+  const cardImage = card?.assets?.cardImage;
+
+  return (
+    <div className="modalBackdrop" role="dialog" aria-label="Learning — about to level up">
+      <div className="searchModal learningOfferModal">
+        <header>
+          <strong>Your Hero is about to level up!</strong>
+          <span>You hold Learning. Play it now to advance even further — or keep it for later.</span>
+        </header>
+        <div className="learningOfferBody">
+          {cardImage ? (
+            <img
+              alt={card?.name ?? "Learning"}
+              className="learningOfferCard"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              src={assetUrl(cardImage)}
+            />
+          ) : (
+            <span className="marketCardFallback">{card?.name ?? "Learning"}</span>
+          )}
+          <div className="learningOfferOptions">
+            {optionActions.map((legal) => {
+              const optionIndex = legal.action.optionIndex;
+              const mode = optionIndex < modes.length ? modes[optionIndex] : undefined;
+              const isExpert = mode === "expert";
+              return (
+                <button
+                  className={`commandButton ${mode ? "primary" : ""} ${isExpert ? "learningExpert" : ""}`.trim()}
+                  key={actionKey(legal.action)}
+                  onClick={() => onAction(legal.action)}
+                  type="button"
+                >
+                  {isExpert ? <Crown aria-hidden="true" size={15} /> : null}
+                  {legal.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );

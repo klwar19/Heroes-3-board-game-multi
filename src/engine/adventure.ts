@@ -2673,6 +2673,199 @@ export function processPendingVisit(state: GameState): void {
         });
         break;
       }
+      case "WAR_MACHINE_GRANT_OFFER": {
+        // McGiver: rebuild the take-one menu from the LIVE supply each time so a
+        // later player never sees a machine an earlier one already took. Optional
+        // — a Skip exit lets a player decline. No-ops on an empty supply.
+        const supply = adventure.warMachineSupply ?? [];
+        if (supply.length === 0) {
+          break;
+        }
+        const options: { label: string; steps: VisitStep[] }[] = supply.map((cardId) => ({
+          label: `Take ${cardLibrary[cardId]?.name ?? cardId} (free)`,
+          steps: [{ type: "GRANT_WAR_MACHINE", cardId }]
+        }));
+        options.push({ label: "Skip", steps: [] });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: "McGiver: take one War Machine from the supply for free",
+          options
+        });
+        break;
+      }
+      case "GRANT_WAR_MACHINE": {
+        // McGiver leaf: move the chosen machine from the shared supply to hand at
+        // no cost (the player plays it as a permanent later, like any purchase).
+        const player = state.players[visit.playerId];
+        const supply = adventure.warMachineSupply ?? [];
+        if (!player || !supply.includes(step.cardId)) {
+          break;
+        }
+        adventure.warMachineSupply = supply.filter((cardId) => cardId !== step.cardId);
+        player.hand.push(step.cardId);
+        appendEvent(state, {
+          type: "WAR_MACHINE_BOUGHT",
+          playerId: visit.playerId,
+          cardId: step.cardId,
+          cost: {},
+          at: "factory"
+        });
+        break;
+      }
+      case "NEUTRAL_RECRUIT_OFFER": {
+        // Charlie / Unexpected Reinforcements: draw one Neutral Unit per Dwelling
+        // tier the player controls (fixed order, capped at maxDraws), then offer
+        // to recruit one. Drawn cards leave their decks now; the recruit leaf
+        // returns the unchosen ones to their discards.
+        const player = state.players[visit.playerId];
+        if (!player) {
+          break;
+        }
+        // Bronze/silver/gold only — no Dwelling unlocks Azure, so it is never a
+        // recruit tier here (the engine-level guarantee behind the printed
+        // "Azure units cannot be recruited" on Unexpected Reinforcements).
+        const tierOrder: ("bronze" | "silver" | "gold" | "azure")[] = ["bronze", "silver", "gold", "azure"];
+        const unlocked = unlockedRecruitTiers(state, visit.playerId);
+        const drawn: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[] = [];
+        for (const tier of tierOrder) {
+          if (drawn.length >= step.maxDraws) {
+            break;
+          }
+          if (!unlocked.has(tier)) {
+            continue;
+          }
+          const unitDefId = drawFromNeutralDeck(state, tier);
+          if (unitDefId) {
+            drawn.push({ unitDefId, tier });
+          }
+        }
+        if (drawn.length === 0) {
+          break;
+        }
+        const recruitable = drawn.filter((draw) =>
+          hasRecruitResources(state, visit.playerId, coreUnitDefinitions[draw.unitDefId]?.neutral?.cost ?? {})
+        );
+        if (recruitable.length === 0) {
+          // Nothing affordable: every drawn card returns to its tier's discard.
+          for (const draw of drawn) {
+            state.decks[NEUTRAL_DECK_IDS[draw.tier]]?.discardPile.push(draw.unitDefId);
+          }
+          break;
+        }
+        const options: { label: string; steps: VisitStep[] }[] = recruitable.map((draw) => {
+          const def = coreUnitDefinitions[draw.unitDefId];
+          const cost = def?.neutral?.cost ?? {};
+          const costLabel =
+            Object.entries(cost)
+              .map(([resource, amount]) => `${amount} ${resource}`)
+              .join(" + ") || "free";
+          return {
+            label: `Recruit ${def?.name ?? draw.unitDefId} (${costLabel})`,
+            steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: draw, drawn }]
+          };
+        });
+        options.push({ label: "Recruit none", steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: null, drawn }] });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: "Charlie and his Circus: recruit one drawn Neutral Unit",
+          options
+        });
+        break;
+      }
+      case "RECRUIT_DRAWN_NEUTRAL": {
+        const player = state.players[visit.playerId];
+        if (!player) {
+          break;
+        }
+        let recruitedDefId: string | undefined;
+        let recruitedTier: string | undefined;
+        if (step.recruit) {
+          const def = coreUnitDefinitions[step.recruit.unitDefId];
+          const cost = def?.neutral?.cost ?? {};
+          if (def?.neutral && hasRecruitResources(state, visit.playerId, cost)) {
+            spendRecruitResources(state, visit.playerId, cost, `recruited ${def.name}`);
+            addArmyUnit(player, step.recruit.unitDefId, "neutral");
+            appendEvent(state, {
+              type: "UNIT_RECRUITED",
+              playerId: visit.playerId,
+              unitDefId: step.recruit.unitDefId,
+              kind: "recruit",
+              cost
+            });
+            recruitedDefId = step.recruit.unitDefId;
+            recruitedTier = step.recruit.tier;
+          }
+        }
+        // Return every drawn card except the one recruited (a single copy) to its
+        // tier's discard pile, so the deck can reshuffle it later.
+        let consumed = false;
+        for (const draw of step.drawn) {
+          if (!consumed && draw.unitDefId === recruitedDefId && draw.tier === recruitedTier) {
+            consumed = true;
+            continue;
+          }
+          state.decks[NEUTRAL_DECK_IDS[draw.tier]]?.discardPile.push(draw.unitDefId);
+        }
+        break;
+      }
+      case "FACTION_RECRUIT_OFFER": {
+        // Unexpected Reinforcements: free recruit of one of the player's OWN
+        // faction units whose Dwelling tier they have built. Read from the live
+        // faction roster + Dwelling tiers, so any faction works (Conflux/Cove too,
+        // once defined). Azure never qualifies — no Dwelling unlocks that tier.
+        const player = state.players[visit.playerId];
+        if (!player) {
+          break;
+        }
+        const factionUnits = (player.factionId ? coreFactionDefinitions[player.factionId]?.units : undefined) ?? [];
+        const unlocked = unlockedRecruitTiers(state, visit.playerId);
+        const seen = new Set<string>();
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        for (const unitDefId of factionUnits) {
+          const def = coreUnitDefinitions[unitDefId];
+          if (!def?.few || !unlocked.has(def.tier) || seen.has(unitDefId)) {
+            continue;
+          }
+          seen.add(unitDefId);
+          options.push({
+            label: `Recruit ${def.name ?? unitDefId} (free)`,
+            steps: [{ type: "RECRUIT_FACTION_UNIT", unitDefId }]
+          });
+        }
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Skip", steps: [] });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: "Unexpected Reinforcements: recruit one of your faction's units for free",
+          options
+        });
+        break;
+      }
+      case "RECRUIT_FACTION_UNIT": {
+        const player = state.players[visit.playerId];
+        const def = coreUnitDefinitions[step.unitDefId];
+        // Re-check eligibility at resolution (faction membership + a built Dwelling
+        // for the unit's tier) so a stale option can never recruit illegally.
+        const factionUnits = (player?.factionId ? coreFactionDefinitions[player.factionId]?.units : undefined) ?? [];
+        if (
+          player &&
+          def?.few &&
+          factionUnits.includes(step.unitDefId) &&
+          unlockedRecruitTiers(state, visit.playerId).has(def.tier)
+        ) {
+          addArmyUnit(player, step.unitDefId, "few");
+          appendEvent(state, {
+            type: "UNIT_RECRUITED",
+            playerId: visit.playerId,
+            unitDefId: step.unitDefId,
+            kind: "recruit",
+            cost: {}
+          });
+        }
+        break;
+      }
       case "BLACK_MARKET": {
         const player = state.players[visit.playerId];
         if (!player) {
@@ -4058,6 +4251,30 @@ export function startAdventureRound(state: GameState): void {
         });
       }
     }
+
+    // McGiver (Astrologers): "at the beginning of the next round, each player can
+    // take 1 War Machine of their choice from the supply at no cost." That next
+    // round is this Resource round — the proclamation is still face up (it expires
+    // only at the next Astrologers round), so a single Resource round hands the
+    // machine out exactly once. The offer also self-guards on an empty supply.
+    if (
+      getActiveAstrologersCard(state)?.effect.type === "GRANT_WAR_MACHINE_CHOICE" &&
+      (state.adventure?.warMachineSupply?.length ?? 0) > 0
+    ) {
+      state.adventure?.rewardQueue.push({
+        playerId,
+        kind: "visit-steps",
+        steps: [{ type: "WAR_MACHINE_GRANT_OFFER" }]
+      });
+    }
+
+    // Charlie and his Circus (Astrologers): "this round and the next one" — it was
+    // offered at the Astrologers round it was drawn (resolveAstrologersCard); this
+    // is the second offer, at the following Resource round, while it stays face up.
+    const activeRecruit = getActiveAstrologersCard(state)?.effect;
+    if (activeRecruit?.type === "RECRUIT_NEUTRAL_DRAW") {
+      queueNeutralRecruitOffer(state, playerId, { maxDraws: activeRecruit.maxDraws });
+    }
   }
 
   if (astrologers) {
@@ -4380,11 +4597,17 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
     case "FIRST_SPELL_RETURNS":
     case "NEUTRAL_DRAW_SWAP":
     case "PAID_EMPOWER_PER_TURN":
+    case "WAR_MACHINE_BUFF":
+    case "GRANT_WAR_MACHINE_CHOICE":
+    case "EMPOWER_PER_DISCARD":
       // Passive while the card stays face up (read where the effect applies:
       // hand-limit in effectiveHandLimit, die rerolls in maybeReroll, the spell
       // bonuses in getCurrentSpellPower, the spell return in maybeReturnSpell;
       // Hero's paid empower is offered at the start of each turn, see
-      // queueTurnStartAstrologersChoices).
+      // queueTurnStartAstrologersChoices; Ammo Cart's war-machine buffs are read
+      // in permanents.ts / reducer.ts; McGiver's free war machine is handed out
+      // at the next Resource round, see startAdventureRound; Explorers' empower is
+      // granted per the cards discarded in each hand refresh, see refreshHand).
       break;
     case "GAIN_MORALE_ALL":
       for (const playerId of playerIds) {
@@ -4444,6 +4667,20 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
     case "REMOVE_CARDS_CHOICE":
       for (const playerId of playerIds) {
         queueRemoveCardsChoice(state, playerId, card.effect.count);
+      }
+      break;
+    case "RECRUIT_NEUTRAL_DRAW":
+      // Charlie and his Circus: offered now (the drawn Astrologers round) and
+      // again at the next Resource round — see startAdventureRound.
+      for (const playerId of playerIds) {
+        queueNeutralRecruitOffer(state, playerId, { maxDraws: card.effect.maxDraws });
+      }
+      break;
+    case "RECRUIT_FACTION_FREE":
+      // Unexpected Reinforcements: a single immediate free recruit of one of the
+      // player's own faction units they have the Dwelling for.
+      for (const playerId of playerIds) {
+        queueFactionRecruitOffer(state, playerId);
       }
       break;
   }
@@ -4596,6 +4833,72 @@ function queueEmpowerStatisticChoice(state: GameState, playerId: PlayerId): void
         prompt: "Dancing Imp: empower one Statistic card (hand or discard)"
       }
     ]
+  });
+}
+
+/**
+ * Explorers (Astrologers): after a start-of-turn hand refresh that discarded
+ * some cards, queue up to `count` free same-type Statistic empowers (hand or
+ * discard), where `count` is floor(discarded / 3). Only queued when the player
+ * actually holds something to empower, so it never opens an empty prompt.
+ */
+export function queueExplorersEmpower(state: GameState, playerId: PlayerId, count: number): void {
+  const player = state.players[playerId];
+  if (!player || count <= 0 || !hasEmpowerableStatistic(player, ["hand", "discard"])) {
+    return;
+  }
+  state.adventure?.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [
+      {
+        type: "STAT_EMPOWER_OFFER",
+        sources: ["hand", "discard"],
+        remaining: count,
+        prompt: `Explorers: empower up to ${count} Statistic card(s) (hand or discard)`
+      }
+    ]
+  });
+}
+
+/**
+ * Charlie and his Circus (Astrologers): queue a paid Neutral-Unit recruit offer
+ * for `playerId`. Only queued when the player controls at least one Dwelling tier
+ * to draw from (the offer step itself also self-guards on an empty draw). Azure
+ * is never among the tiers — no Dwelling unlocks it.
+ */
+export function queueNeutralRecruitOffer(state: GameState, playerId: PlayerId, options: { maxDraws: number }): void {
+  if (unlockedRecruitTiers(state, playerId).size === 0) {
+    return;
+  }
+  state.adventure?.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [{ type: "NEUTRAL_RECRUIT_OFFER", ...options }]
+  });
+}
+
+/**
+ * Unexpected Reinforcements (Astrologers): queue a free recruit offer over the
+ * player's OWN faction units whose Dwelling tier they have built. Only queued
+ * when at least one such unit exists, so it never opens an empty prompt. Reads
+ * the live faction roster, so any faction works (Conflux/Cove once defined).
+ */
+export function queueFactionRecruitOffer(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  const factionUnits = (player?.factionId ? coreFactionDefinitions[player.factionId]?.units : undefined) ?? [];
+  const unlocked = unlockedRecruitTiers(state, playerId);
+  const canRecruit = factionUnits.some((unitDefId) => {
+    const def = coreUnitDefinitions[unitDefId];
+    return Boolean(def?.few) && unlocked.has(def!.tier);
+  });
+  if (!canRecruit) {
+    return;
+  }
+  state.adventure?.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [{ type: "FACTION_RECRUIT_OFFER" }]
   });
 }
 
