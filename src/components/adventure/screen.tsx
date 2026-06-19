@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Check, ChevronsUp, Hammer, Image as ImageIcon, Minus, Plus, RotateCcw, RotateCw, Star, X } from "lucide-react";
+import { Check, ChevronsUp, Hammer, Image as ImageIcon, Lock, Minus, Plus, RotateCcw, RotateCw, Star, Unlock, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
@@ -180,8 +180,34 @@ export function HexMapBoard({
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
   const [showArt, setShowArt] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
+  // Wheel-zoom is OFF by default so scrolling the wheel pans the page (the map
+  // lives inside a scrolling layout) instead of fighting it. The toolbar lock
+  // button opts into wheel-to-zoom.
+  const [wheelZoomEnabled, setWheelZoomEnabled] = useState(false);
+  const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null);
   const suppressClickRef = useRef(false);
+
+  // Wheel-to-zoom is wired as a native non-passive listener (React routes wheel
+  // through a passive root listener, so preventDefault from onWheel is ignored
+  // and the page would still scroll). The listener is only attached while the
+  // user has unlocked zoom, so by default the wheel scrolls the page untouched.
+  useEffect(() => {
+    if (!wheelZoomEnabled) {
+      return;
+    }
+    const svg = svgRef.current;
+    if (!svg) {
+      return;
+    }
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
+      setCamera((current) => ({ ...current, scale: Math.min(2.6, Math.max(0.45, current.scale * factor)) }));
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, [wheelZoomEnabled]);
 
   const isSeated = Boolean(state.players[viewerPlayerId]) && viewerPlayerId !== "observer";
   // A player may field a Main Hero and (via Tavern / Prison) one Secondary
@@ -854,6 +880,7 @@ export function HexMapBoard({
   return (
     <div className="hexMapWrap" aria-label="Adventure map">
       <svg
+        ref={svgRef}
         className={`hexMapSvg ${isDragging ? "dragging" : ""}`}
         onPointerDown={(event) => {
           if (event.button !== 0) {
@@ -920,10 +947,6 @@ export function HexMapBoard({
             suppressClickRef.current = false;
           }, 0);
         }}
-        onWheel={(event) => {
-          const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
-          setCamera((current) => ({ ...current, scale: Math.min(2.6, Math.max(0.45, current.scale * factor)) }));
-        }}
         viewBox={`${minX} ${minY} ${maxX - minX} ${maxY - minY}`}
       >
         <defs>
@@ -946,6 +969,19 @@ export function HexMapBoard({
         </button>
         <button onClick={() => setCamera((c) => ({ ...c, scale: Math.max(0.45, c.scale / 1.2) }))} title="Zoom out" type="button">
           <Minus size={13} />
+        </button>
+        <button
+          aria-pressed={wheelZoomEnabled}
+          className={wheelZoomEnabled ? "selected" : ""}
+          onClick={() => setWheelZoomEnabled((value) => !value)}
+          title={
+            wheelZoomEnabled
+              ? "Mouse-wheel zoom is ON — scroll over the map to zoom. Click to lock it (wheel scrolls the page)."
+              : "Mouse-wheel zoom is locked. Click to unlock and zoom with the scroll wheel."
+          }
+          type="button"
+        >
+          {wheelZoomEnabled ? <Unlock size={13} /> : <Lock size={13} />}
         </button>
         <button onClick={() => setCamera({ x: 0, y: 0, scale: 1 })} title="Reset the view" type="button">
           ⤾
