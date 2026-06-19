@@ -1124,8 +1124,11 @@ export function AdventureHud({
           onClick={() =>
             zoomContent({
               title: `Astrologers proclaim: ${astrologersCard.name}`,
+              image: astrologersCard.image,
               lines: [astrologersCard.text],
-              subtitle: "Active until the next Astrologers round"
+              subtitle: astrologersCard.ongoing
+                ? "Active until the next Astrologers round"
+                : "Resolved this round"
             })
           }
           title={astrologersCard.text}
@@ -2517,7 +2520,7 @@ function PileModalCards({ cardIds, kind }: { cardIds: string[]; kind: "cards" | 
         const card = kind === "cards" ? cardLibrary[cardId] : undefined;
         const unit = kind === "units" ? coreUnitDefinitions[cardId] : undefined;
         const astro = kind === "astrologers" ? astrologersCardDefinitions[cardId] : undefined;
-        const image = card?.assets?.cardImage ?? unit?.neutral?.cardImage;
+        const image = card?.assets?.cardImage ?? unit?.neutral?.cardImage ?? astro?.image;
         const zoom = () =>
           card
             ? zoomCard(cardId)
