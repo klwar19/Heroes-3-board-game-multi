@@ -13,9 +13,9 @@ re-encode it as webp. The script aborts loudly on any miss so a broken or
 placeholder asset can never slip into the repo.
 
 Only the cards the engine actually deals are fetched: the 19 Core Game
-proclamations plus the four expansion cards wired in this pass (Society,
-Big Cleanup, Blue Sky, Scorched Ground). Keep this list in sync with
-src/data/cards/astrologers.ts.
+proclamations plus the expansion cards wired in (Society, Big Cleanup, Blue
+Sky, Scorched Ground, Dancing Imp, Hero, Plane Between Planes). Keep this list
+in sync with src/data/cards/astrologers.ts.
 """
 import io
 import sys
@@ -49,11 +49,14 @@ SLUGS = [
     "terrible_plague",
     "white_raven",
     "wild_debauchery",
-    # Expansion cards wired in this pass
-    "big_cleanup",       # Fortress
-    "blue_sky",          # Tower
-    "scorched_ground",   # Tower
-    "society",           # Tower
+    # Expansion cards wired in
+    "big_cleanup",            # Fortress
+    "blue_sky",               # Tower
+    "scorched_ground",        # Tower
+    "society",                # Tower
+    "dancing_imp",            # Inferno
+    "hero",                   # Inferno
+    "plane_between_planes",   # Fortress
 ]
 
 # The wiki publishes every proclamation at this landscape card size.
