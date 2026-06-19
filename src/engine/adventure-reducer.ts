@@ -78,6 +78,7 @@ import {
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
+import { assignCombatBoardArt } from "./combat-board-art";
 import { cardCanBoostPower } from "./effects";
 import { createSeededRandom } from "./random";
 import {
@@ -2309,6 +2310,7 @@ function beginNeutralCombatPlacement(
     difficulty,
     hasAzure: false
   };
+  assignCombatBoardArt(state, combat);
   combat.setup = {
     pendingPlayerIds: [playerId],
     placedUnitIds: { [playerId]: [] },
@@ -3257,6 +3259,7 @@ export function startPlayerCombat(
     fieldId,
     ...(siege ? { siege: true } : {})
   };
+  assignCombatBoardArt(state, combat);
   combat.setup = {
     pendingPlayerIds: [attacker.controllerId, defenderPlayerId],
     placedUnitIds: { [attacker.controllerId]: [], [defenderPlayerId]: [] },

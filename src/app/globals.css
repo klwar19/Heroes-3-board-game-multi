@@ -618,8 +618,8 @@ button {
 .battlefieldScenery {
   display: block;
   width: 100%;
-  aspect-ratio: 125 / 26;
-  object-fit: cover;
+  height: auto;
+  object-fit: contain;
   border-bottom: 2px solid rgb(26 18 9 / 68%);
   pointer-events: none;
   user-select: none;
@@ -913,7 +913,7 @@ button.battleCell {
 }
 
 .boardCard {
-  width: min(112px, 66%);
+  width: min(150px, 66%);
   aspect-ratio: 5 / 7;
   position: relative;
   display: block;
@@ -2346,7 +2346,7 @@ button.battleCell {
   }
 
   .battlefieldFrame {
-    max-width: calc(100vw - 48px);
+    max-width: calc(100vw - 32px);
   }
 
   .battlefield {
@@ -2360,7 +2360,7 @@ button.battleCell {
   }
 
   .boardCard {
-    width: min(52px, 74%);
+    width: min(48px, 66%);
   }
 
   .rightRail {
