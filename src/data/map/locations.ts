@@ -307,11 +307,14 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "obelisk",
     name: "Obelisk",
     category: "flaggable",
-    interaction: {
-      type: "NOT_IMPLEMENTED",
-      note: "Obelisk effects depend on the Scenario. Flagging works; multiple players may flag the same Obelisk."
-    },
-    implementationStatus: "not-implemented",
+    // House rule (engine: handleObeliskVisit): the first visitor rolls the
+    // Attack die and the face is locked on the Field for the rest of the game.
+    // Every visitor (any player) flags it and gets the same fixed reward, no
+    // reroll — -1: +1 positive morale; 0: Search (2) the Artifact deck;
+    // +1: roll one Treasure die and one Resource die. The original Scenario
+    // puzzle-map reveal is intentionally NOT modelled.
+    interaction: { type: "OBELISK" },
+    implementationStatus: "implemented",
     source: source("obelisk")
   },
   dragon_utopia: {

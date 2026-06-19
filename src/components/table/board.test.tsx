@@ -1,12 +1,143 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BattlefieldBoard, battlefieldCellPlacement } from "./board";
+import { BattlefieldBoard, COMBAT_BOARD_ART_VARIANTS, battlefieldCellPlacement, pickCombatBoardArt } from "./board";
 import { CardZoomProvider } from "./zoom";
-import { createInitialGameState, type GameAction, type LegalAction } from "@/engine";
+import {
+  applyCombatBoardArtObstacles,
+  assignCombatBoardArt,
+  createInitialGameState,
+  eligibleCombatBoardArtIds,
+  SHIP_BATTLE_OBSTACLES,
+  weightedCombatBoardArtIds,
+  type GameAction,
+  type GameState,
+  type LegalAction
+} from "@/engine";
 import type { CardBoardAction } from "./utils";
 
 afterEach(cleanup);
+
+describe("combat board art variants", () => {
+  function waterCombatState(seed = "board-art-water"): GameState {
+    const state = createInitialGameState(seed);
+    state.adventure = {
+      fields: {
+        sea_1: {
+          spaceId: "sea_1",
+          tileInstanceId: "tile_1",
+          slot: 0,
+          location: "open_sea",
+          terrain: "water",
+          blackCube: false,
+          flagOwnerId: null,
+          everFlagged: false,
+          settlementResource: null
+        }
+      },
+      tiles: {}
+    } as unknown as GameState["adventure"];
+    state.combat!.context = { kind: "neutral", heroId: "hero_p1", fieldId: "sea_1", difficulty: 1, hasAzure: false };
+    return state;
+  }
+
+  it("declares the classic board plus themed combat board variants", () => {
+    expect(COMBAT_BOARD_ART_VARIANTS.map((variant) => variant.id)).toEqual([
+      "classic",
+      "frozen",
+      "hell-necro",
+      "jungle-fortress",
+      "castle-siege",
+      "ship-battle"
+    ]);
+    expect(COMBAT_BOARD_ART_VARIANTS.map((variant) => variant.terrain)).toEqual([
+      "/assets/board/battlefield-4x5-pro.png",
+      "/assets/board/battlefield-4x5-frozen.webp",
+      "/assets/board/battlefield-4x5-hell-necro.webp",
+      "/assets/board/battlefield-4x5-jungle-fortress.webp",
+      "/assets/board/battlefield-4x5-castle-siege.webp",
+      "/assets/board/battlefield-4x5-ship-battle.webp"
+    ]);
+  });
+
+  it("picks stable seeded art per combat id, while varying across combats", () => {
+    const stable = createInitialGameState("board-art-seed");
+    stable.combat!.id = "combat_7";
+    expect(pickCombatBoardArt(stable)).toBe(pickCombatBoardArt(stable));
+
+    const seen = new Set(
+      Array.from({ length: 16 }, (_, index) => {
+        const state = createInitialGameState("board-art-seed");
+        state.combat!.id = `combat_${index}`;
+        return pickCombatBoardArt(state).id;
+      })
+    );
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it("only offers the ship board at sea and only offers the siege board in siege combat", () => {
+    const normal = createInitialGameState("board-art-normal");
+    expect(eligibleCombatBoardArtIds(normal, normal.combat)).not.toContain("ship-battle");
+    expect(eligibleCombatBoardArtIds(normal, normal.combat)).not.toContain("castle-siege");
+
+    const sea = waterCombatState();
+    expect(eligibleCombatBoardArtIds(sea, sea.combat)).toContain("ship-battle");
+    expect(eligibleCombatBoardArtIds(sea, sea.combat)).not.toContain("castle-siege");
+
+    sea.combat!.context = {
+      kind: "player",
+      attackerHeroId: "hero_p1",
+      defenderHeroId: "hero_p2",
+      fieldId: "sea_1",
+      siege: true
+    };
+    expect(eligibleCombatBoardArtIds(sea, sea.combat)).toContain("castle-siege");
+    expect(eligibleCombatBoardArtIds(sea, sea.combat)).not.toContain("ship-battle");
+  });
+
+  it("weights snow for Tower and grim battlefields for Inferno or Necropolis", () => {
+    const tower = createInitialGameState("board-art-tower");
+    tower.players.p1.factionId = "tower";
+    tower.players.p2.factionId = "castle";
+    const towerPool = weightedCombatBoardArtIds(tower, tower.combat);
+    expect(towerPool.filter((id) => id === "frozen")).toHaveLength(4);
+
+    const grim = createInitialGameState("board-art-grim");
+    grim.players.p1.factionId = "inferno";
+    grim.players.p2.factionId = "castle";
+    const grimPool = weightedCombatBoardArtIds(grim, grim.combat);
+    expect(grimPool.filter((id) => id === "hell-necro")).toHaveLength(4);
+  });
+
+  it("adds real obstacle markers to the ship board water squares", () => {
+    const state = waterCombatState("board-art-ship-obstacles");
+    state.combat!.boardArtId = "ship-battle";
+    state.combat!.obstacles = [];
+
+    applyCombatBoardArtObstacles(state.combat!);
+
+    expect(state.combat!.obstacles).toEqual([...SHIP_BATTLE_OBSTACLES]);
+  });
+
+  it("adds ship obstacles through the normal seeded board-art assignment path", () => {
+    const state = waterCombatState("board-art-ship-assignment");
+    let pickedShip = false;
+
+    for (let index = 0; index < 80; index += 1) {
+      state.combat!.id = `combat_${index}`;
+      state.combat!.boardArtId = undefined;
+      state.combat!.obstacles = [];
+      assignCombatBoardArt(state, state.combat!);
+      if (state.combat!.boardArtId === "ship-battle") {
+        pickedShip = true;
+        expect(state.combat!.obstacles).toEqual([...SHIP_BATTLE_OBSTACLES]);
+        break;
+      }
+    }
+
+    expect(pickedShip).toBe(true);
+  });
+});
 
 /**
  * The battlefield is drawn horizontally: the engine's 4-wide × 5-tall logical

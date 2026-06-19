@@ -25,9 +25,11 @@ import {
   isAdjacent,
   isArrowTowerUnit,
   isUnitAlive,
+  pickCombatBoardArtId,
   playerSpellCastsIgnoreLimit,
   sortUnitsForActivation,
   type BattlefieldTokenState,
+  type CombatBoardArtId,
   type CombatTokenState,
   type CombatUnitState,
   type GameAction,
@@ -67,6 +69,57 @@ export function isBoardFlipped(state: GameState, viewerPlayerId: PlayerId): bool
   }
 
   return viewerPlayerId === combat.defenderPlayerId;
+}
+
+export type CombatBoardArtVariant = {
+  id: CombatBoardArtId;
+  label: string;
+  terrain: string;
+  scenery: string;
+};
+
+export const COMBAT_BOARD_ART_VARIANTS: readonly CombatBoardArtVariant[] = [
+  {
+    id: "classic",
+    label: "Classic grass and dirt battlefield",
+    terrain: "/assets/board/battlefield-4x5-pro.png",
+    scenery: "/assets/board/battlefield-4x5-pro-scenery.png"
+  },
+  {
+    id: "frozen",
+    label: "Frozen ice and snow battlefield",
+    terrain: "/assets/board/battlefield-4x5-frozen.webp",
+    scenery: "/assets/board/battlefield-4x5-frozen-scenery.webp"
+  },
+  {
+    id: "hell-necro",
+    label: "Hellish necropolis battlefield",
+    terrain: "/assets/board/battlefield-4x5-hell-necro.webp",
+    scenery: "/assets/board/battlefield-4x5-hell-necro-scenery.webp"
+  },
+  {
+    id: "jungle-fortress",
+    label: "Tropical fortress battlefield",
+    terrain: "/assets/board/battlefield-4x5-jungle-fortress.webp",
+    scenery: "/assets/board/battlefield-4x5-jungle-fortress-scenery.webp"
+  },
+  {
+    id: "castle-siege",
+    label: "Castle siege battlefield",
+    terrain: "/assets/board/battlefield-4x5-castle-siege.webp",
+    scenery: "/assets/board/battlefield-4x5-castle-siege-scenery.webp"
+  },
+  {
+    id: "ship-battle",
+    label: "Ship battle battlefield",
+    terrain: "/assets/board/battlefield-4x5-ship-battle.webp",
+    scenery: "/assets/board/battlefield-4x5-ship-battle-scenery.webp"
+  }
+];
+
+export function pickCombatBoardArt(state: GameState): CombatBoardArtVariant {
+  const id = pickCombatBoardArtId(state, state.combat);
+  return COMBAT_BOARD_ART_VARIANTS.find((variant) => variant.id === id) ?? COMBAT_BOARD_ART_VARIANTS[0];
 }
 
 /**
@@ -471,6 +524,7 @@ export function BattlefieldBoard({
 }) {
   const combat = state.combat;
   const flipped = isBoardFlipped(state, viewerPlayerId);
+  const boardArt = useMemo(() => pickCombatBoardArt(state), [state]);
   // Repositioning UI state (Tactics swap / Necklace of Swiftness move):
   //  - swapSelection: the first unit picked for a Tactics swap (click-to-select).
   //  - hoverDestination: the candidate cell under the cursor, for the ghost+arrow.
@@ -744,13 +798,13 @@ export function BattlefieldBoard({
           )}
         </div>
       ) : null}
-      <div className="battlefieldFrame">
+      <div className="battlefieldFrame" data-board-art={boardArt.id} title={boardArt.label}>
         <img
           alt=""
           aria-hidden="true"
           className="battlefieldScenery"
           referrerPolicy="no-referrer"
-          src={assetUrl("/assets/board/battlefield-4x5-pro-scenery.png")}
+          src={assetUrl(boardArt.scenery)}
         />
         <div className="battlefield">
           {/* Terrain art is a landscape 5x4 board, so it lines up directly with
@@ -760,7 +814,7 @@ export function BattlefieldBoard({
             aria-hidden="true"
             className="battlefieldTerrain"
             referrerPolicy="no-referrer"
-            src={assetUrl("/assets/board/battlefield-4x5-pro.png")}
+            src={assetUrl(boardArt.terrain)}
           />
         {Array.from({ length: BATTLEFIELD_CELL_COUNT }, (_, index) => {
           const unit = unitsByPosition.get(index);

@@ -47,6 +47,16 @@ export {
 export { getPlayerView } from "./player-view";
 export { createSeededRandom } from "./random";
 export {
+  applyCombatBoardArtObstacles,
+  assignCombatBoardArt,
+  eligibleCombatBoardArtIds,
+  isSeaCombat,
+  isSiegeCombat,
+  pickCombatBoardArtId,
+  SHIP_BATTLE_OBSTACLES,
+  weightedCombatBoardArtIds
+} from "./combat-board-art";
+export {
   PVP_TROOP_LOSS_DESCRIPTIONS,
   PVP_TROOP_LOSS_LABELS,
   RULESET_DESCRIPTIONS,
@@ -238,6 +248,7 @@ export type {
   CardPlayMode,
   CardLibrary,
   CombatContext,
+  CombatBoardArtId,
   CombatDice,
   CombatSetupState,
   DeckSearchPick,

@@ -365,10 +365,25 @@ export function findTileAtSpace(adventure: AdventureState, spaceId: MapSpaceId):
  * the pathfinding lets a hero cross or stop on.
  */
 export type HeroMovementCapabilities = {
-  /** Fly / Angel Wings: may move through blocked fields (never stop on one). */
+  /** Fly / Angel Wings / Pathfinding: may move through blocked fields (never stop on one). */
   moveThrough: boolean;
-  /** Water Walk: may enter, cross and stop on sea (water-terrain) fields. */
+  /** Water Walk / expert Pathfinding: may enter, cross and stop on sea fields with no coastline halt. */
   waterWalk: boolean;
+  /**
+   * Pathfinding: may move *through* fields holding Neutral Units / enemy Heroes
+   * without resolving them (Combat only if the hero ENDS there). Defaults off.
+   */
+  passEncounters?: boolean;
+  /**
+   * Pathfinding: may cross yellow (sealed) borders — printed internal border
+   * lines and sealed outer tile edges alike. Defaults off.
+   */
+  crossSealedBorders?: boolean;
+  /**
+   * Expert Pathfinding: may step directly across a Surface↔Subterranean tile
+   * edge without a Subterranean Gate (Dimension Door / Fly cannot). Defaults off.
+   */
+  crossLayers?: boolean;
 };
 
 const NO_MOVEMENT_CAPABILITIES: HeroMovementCapabilities = { moveThrough: false, waterWalk: false };
@@ -382,6 +397,9 @@ const NO_MOVEMENT_CAPABILITIES: HeroMovementCapabilities = { moveThrough: false,
 export function getHeroMovementCapabilities(state: GameState, hero: HeroState): HeroMovementCapabilities {
   let moveThrough = false;
   let waterWalk = false;
+  let passEncounters = false;
+  let crossSealedBorders = false;
+  let crossLayers = false;
   for (const effect of state.activeEffects) {
     if (effect.controllerId !== hero.controllerId) {
       continue;
@@ -391,10 +409,24 @@ export function getHeroMovementCapabilities(state: GameState, hero: HeroState): 
         moveThrough = true;
       } else if (modifier.type === "HERO_WATER_WALK") {
         waterWalk = true;
+      } else if (modifier.type === "HERO_PATHFINDING") {
+        // Pathfinding always grants the "regular" set: pass over blocked fields,
+        // through Neutral/enemy fields, and across yellow borders. The expert
+        // side adds water-walking (no coastline halt) and Surface↔Subterranean
+        // crossing — a strict superset, so it composes with the basic flags.
+        moveThrough = true;
+        passEncounters = true;
+        crossSealedBorders = true;
+        if (modifier.expert) {
+          waterWalk = true;
+          crossLayers = true;
+        }
       }
     }
   }
-  return moveThrough || waterWalk ? { moveThrough, waterWalk } : NO_MOVEMENT_CAPABILITIES;
+  return moveThrough || waterWalk || passEncounters || crossSealedBorders || crossLayers
+    ? { moveThrough, waterWalk, passEncounters, crossSealedBorders, crossLayers }
+    : NO_MOVEMENT_CAPABILITIES;
 }
 
 /**
@@ -506,10 +538,13 @@ export function canCrossEdge(
   // effects from cards can allow you to move from one to the other", so Fly /
   // Angel Wings / Water Walk never open any other one — this is checked before
   // the blocked-field rule so a flyer cannot slip across onto a blocked hex of
-  // the far layer either.
+  // the far layer either. Expert Pathfinding is the sole exception (its
+  // `crossLayers`): it lets the Hero step directly between the layers anywhere
+  // they touch, falling through to the blocked-field rule so it still cannot
+  // STOP on a blocked far-layer hex.
   const fromTile = adventure.tiles[fromField.tileInstanceId];
   const toTile = adventure.tiles[toField.tileInstanceId];
-  if (tileLayer(fromTile) !== tileLayer(toTile)) {
+  if (tileLayer(fromTile) !== tileLayer(toTile) && !movement.crossLayers) {
     return false;
   }
 
@@ -523,6 +558,12 @@ export function canCrossEdge(
   // Walk that step is a forced stop (classifyHeroStep returns "stop" and the
   // mover is halted for the turn); with Water Walk the sea is normal terrain.
   // Either way the edge itself is crossable, so no sea gate is applied here.
+
+  // Pathfinding traverses yellow borders (the wiki's "regular" effect): both the
+  // printed internal lines and the sealed outer tile edges below give way to it.
+  if (movement.crossSealedBorders) {
+    return true;
+  }
 
   if (fromField.tileInstanceId === toField.tileInstanceId) {
     // Printed yellow lines inside a tile block ground movement between the
@@ -583,10 +624,14 @@ export function isFieldGuarded(field: MapFieldState): boolean {
  *    valid as both a stop and a pass-through.
  *  - "stop": entering triggers something (guards, enemy heroes, unvisited
  *    locations, flags to steal) so the path must end here.
+ *  - "encounter": Pathfinding over a Neutral-Unit / enemy-Hero field — the hero
+ *    may walk THROUGH it without resolving (no Combat) or END there (Combat
+ *    begins). Like "open" for reachability, but a non-final path step passes
+ *    over it instead of fighting.
  *  - "pass-only": an allied hero stands here; you may walk through but not stay.
  *  - "block": never enterable (blocked fields, sanctuary-protected enemies).
  */
-export type HeroStepKind = "open" | "stop" | "pass-only" | "block";
+export type HeroStepKind = "open" | "stop" | "encounter" | "pass-only" | "block";
 
 export function classifyHeroStep(
   state: GameState,
@@ -615,11 +660,16 @@ export function classifyHeroStep(
     }
     // Heroes inside a Sanctuary cannot be attacked; the rulebook lets
     // friendly heroes move through them but never stop there.
-    return location?.passive?.protectsFromAttack ? "pass-only" : "stop";
+    if (location?.passive?.protectsFromAttack) {
+      return "pass-only";
+    }
+    // Pathfinding walks through an enemy Hero's field; Combat only if you END here.
+    return movement.passEncounters ? "encounter" : "stop";
   }
 
   if (isFieldGuarded(field) && field.flagOwnerId !== playerId) {
-    return "stop";
+    // Pathfinding walks through Neutral Units; Combat only if you END here.
+    return movement.passEncounters ? "encounter" : "stop";
   }
 
   // Dragon Conqueror: a captured Dragon Utopia is a stronghold — its holder
@@ -696,6 +746,10 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
           continue;
         }
 
+        // "open" and Pathfinding's "encounter" are both a valid stop AND
+        // crossable: the field is reachable, and the walk may continue past it
+        // (an "encounter" passes over the Neutral/enemy field without fighting,
+        // resolving Combat only when it is the final step — see moveHeroPath).
         results.set(neighbor, { spaceId: neighbor, path, cost: path.length });
         if (!halts) {
           next.push({ spaceId: neighbor, path });
@@ -1224,6 +1278,10 @@ function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
       return [{ type: "LIBRARY_SWAP", remaining: 2 }];
     case "STAR_AXIS":
       return [{ type: "STAR_AXIS_SWAP" }];
+    case "OBELISK":
+      // Obelisk is intercepted in beginFieldVisit (handleObeliskVisit), so it
+      // never compiles to generic steps; this keeps the switch exhaustive.
+      return [];
     case "BLACK_MARKET":
       return [{ type: "BLACK_MARKET" }];
     case "ELEMENTAL_CONFLUX":
@@ -1696,6 +1754,93 @@ function handleStarAxisVisit(state: GameState, hero: HeroState, field: MapFieldS
   }
 }
 
+/** Attack-die faces for an Obelisk roll (two each of -1, 0, +1). */
+const OBELISK_DIE_FACES: (-1 | 0 | 1)[] = [-1, -1, 0, 0, 1, 1];
+
+/** The reward a visitor receives for an Obelisk's locked Attack-die face. */
+function obeliskRewardSteps(roll: -1 | 0 | 1): VisitStep[] {
+  if (roll < 0) {
+    // -1: a single positive morale token.
+    return [{ type: "GAIN_MORALE", amount: 1 }];
+  }
+  if (roll > 0) {
+    // +1: roll one Treasure (yellow) die and one Resource die.
+    return [
+      { type: "ROLL_TREASURE_DICE", count: 1 },
+      { type: "ROLL_RESOURCE_DICE", count: 1 }
+    ];
+  }
+  // 0: Search (2) the Artifact deck (the game's standard artifact search).
+  return [{ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 2 }];
+}
+
+/**
+ * Obelisk house rule. Obelisks are flaggable (every visitor keeps a cube). The
+ * FIRST hero to visit a given Obelisk rolls one Attack die and the face is
+ * locked on the Field (`field.obeliskRoll`) for the rest of the game. Each
+ * player's first visit flags the Field and grants that locked reward — the
+ * Attack die is never rerolled, so every visitor gets the same category:
+ *   -1 -> +1 positive morale
+ *    0 -> Search (2) the Artifact deck
+ *   +1 -> roll one Treasure die and one Resource die
+ * Only the Attack-die category is fixed; each visitor still rolls their own
+ * Treasure/Resource dice (or searches their own Artifacts) for the +1/0 faces.
+ */
+function handleObeliskVisit(state: GameState, hero: HeroState, field: MapFieldState): void {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return;
+  }
+
+  const playerId = hero.controllerId;
+  const alreadyHere = field.flagOwnerId === playerId || Boolean(field.extraFlagOwnerIds?.includes(playerId));
+
+  // Flag for this player, keeping every other player's cube (multi-flag, like
+  // a Star Axis): "multiple players may have a Faction Cube on this Field".
+  field.everFlagged = true;
+  if (!field.flagOwnerId) {
+    flagField(state, playerId, field);
+  } else if (field.flagOwnerId !== playerId && !field.extraFlagOwnerIds?.includes(playerId)) {
+    field.extraFlagOwnerIds = [...(field.extraFlagOwnerIds ?? []), playerId];
+    appendEvent(state, {
+      type: "FIELD_FLAGGED",
+      playerId,
+      fieldId: field.spaceId,
+      location: field.location,
+      previousOwnerId: null
+    });
+  }
+
+  // A player who already holds a cube here just walks through — no second reward.
+  if (alreadyHere) {
+    return;
+  }
+
+  // Lock the Attack-die face the first time ANY hero visits this Obelisk; later
+  // visitors reuse it. A stored 0 is a real result, so test against undefined.
+  let roll = field.obeliskRoll;
+  if (roll === undefined) {
+    const random = adventureRandom(state, "obelisk-die");
+    roll = OBELISK_DIE_FACES[random.nextInt(0, OBELISK_DIE_FACES.length - 1)];
+    field.obeliskRoll = roll;
+    appendEvent(state, {
+      type: "ADVENTURE_DICE_ROLLED",
+      playerId,
+      dice: "attack",
+      results: [`Obelisk Attack die: ${roll >= 0 ? "+" : ""}${roll}`],
+      attackRolls: [roll]
+    });
+  }
+
+  adventure.pendingVisit = {
+    heroId: hero.id,
+    playerId,
+    fieldId: field.spaceId,
+    steps: obeliskRewardSteps(roll)
+  };
+  processPendingVisit(state);
+}
+
 /**
  * Grail Hunt: if the hero is carrying the Grail Token and has reached their
  * own town, the Grail is delivered and the game is won. Returns true when it
@@ -1844,6 +1989,10 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   }
   if (location.id === "star_axis") {
     handleStarAxisVisit(state, hero, field);
+    return;
+  }
+  if (location.id === "obelisk") {
+    handleObeliskVisit(state, hero, field);
     return;
   }
 
