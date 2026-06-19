@@ -45,7 +45,7 @@ const WIRED_EFFECT_TYPES = {
   WAR_MACHINE_BUFF: true,
   EMPOWER_PER_DISCARD: true,
   RECRUIT_NEUTRAL_DRAW: true,
-  RECRUIT_NEUTRAL_FREE: true
+  RECRUIT_FACTION_FREE: true
 } satisfies Record<AstrologersEffect["type"], true>;
 
 const ASSETS_DIR = join(process.cwd(), "public", "assets");
