@@ -3,6 +3,7 @@
 import { Crosshair, Eye, Map as MapIcon, StepForward, Swords } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  astrologersCardDefinitions,
   effectiveHandLimit,
   effectHasExpertMode,
   ENGINE_SIGNATURE,
@@ -38,6 +39,7 @@ import {
   MapNoticeOverlay,
   NeutralStepOverlay,
   NewDayOverlay,
+  AstrologersProclamationOverlay,
   ReactionTray,
   RerollModal,
   SearchModal,
@@ -47,7 +49,8 @@ import {
   type FirstPlayerRollCue,
   type MapDiceCue,
   type MapNoticeCue,
-  type NewDayCue
+  type NewDayCue,
+  type AstrologersProclamationCue
 } from "@/components/table/overlays";
 import { CardZoomProvider, useCardZoom, ZoomButton } from "@/components/table/zoom";
 import { TableErrorBoundary } from "@/components/error-boundary";
@@ -558,6 +561,7 @@ export default function Home() {
     current: null,
     queue: []
   });
+  const [astrologerCue, setAstrologerCue] = useState<AstrologersProclamationCue | null>(null);
   const [drawCue, setDrawCue] = useState<DrawCue | null>(null);
   const [moveCue, setMoveCue] = useState<HeroMoveCue | null>(null);
   const [flippedUnitIds, setFlippedUnitIds] = useState<Set<string>>(new Set());
@@ -590,6 +594,9 @@ export default function Home() {
   const seenVisitIdsRef = useRef<Set<string>>(new Set());
   const seenFirstRollIdsRef = useRef<Set<string>>(new Set());
   const seenTurnIdsRef = useRef<Set<string>>(new Set());
+  // Last round whose Astrologers proclamation this client already popped, so the
+  // card resurfaces once per round (not on every action) and never on reconnect.
+  const seenAstrologerRoundRef = useRef<number | null>(null);
   const seenDrawIdsRef = useRef<Set<string>>(new Set());
   const seenFlipIdsRef = useRef<Set<string>>(new Set());
   const seenMoveIdsRef = useRef<Set<string>>(new Set());
@@ -738,6 +745,8 @@ export default function Home() {
       // A fresh connection joins mid-game without replaying every past turn's
       // sunrise: the first snapshot's TURN_STARTED events count as already seen.
       seenTurnIdsRef.current = new Set(turnEvents.map((event) => event.id));
+      // ...and without popping the current round's proclamation again on join.
+      seenAstrologerRoundRef.current = nextState.round;
       // Fresh room connection: drop any presentation state from the last room.
       setFxCues([]);
       setHiddenHandTail(0);
@@ -930,6 +939,28 @@ export default function Home() {
           round: latest.round
         } satisfies NewDayCue;
         setNewDay((current) => (current.current ? { current: current.current, queue: [cue] } : { current: cue, queue: [] }));
+      }
+
+      // Astrologers proclamation: once the sunrise has played, pop the round's
+      // active card into the player's face — once per round per client, so it
+      // resurfaces every round it stays face up without nagging every action.
+      if (freshTurns.length > 0 && !isGameStart) {
+        const round = freshTurns[freshTurns.length - 1].round;
+        const activeCardId = nextState.adventure?.astrologers?.activeCardId ?? null;
+        const card = activeCardId ? astrologersCardDefinitions[activeCardId] : undefined;
+        if (activeCardId && card && seenAstrologerRoundRef.current !== round) {
+          seenAstrologerRoundRef.current = round;
+          setAstrologerCue({
+            id: `astro-${round}-${activeCardId}`,
+            cardId: activeCardId,
+            name: card.name,
+            text: card.text,
+            image: card.image,
+            expansion: card.expansion,
+            ongoing: card.ongoing,
+            round
+          });
+        }
       }
 
       const seen = seenRollIdsRef.current;
@@ -2877,6 +2908,13 @@ export default function Home() {
           {!firstRoll && newDay.current ? (
             <NewDayOverlay cue={newDay.current} key={newDay.current.id} onDone={dismissNewDay} />
           ) : null}
+          {!firstRoll && !newDay.current && astrologerCue ? (
+            <AstrologersProclamationOverlay
+              cue={astrologerCue}
+              key={astrologerCue.id}
+              onDone={() => setAstrologerCue(null)}
+            />
+          ) : null}
           <FxStage cues={fxCues} onDone={handleFxDone} />
         </main>
       </CardZoomProvider>
@@ -3129,6 +3167,13 @@ export default function Home() {
       ) : null}
       {!firstRoll && newDay.current ? (
         <NewDayOverlay cue={newDay.current} key={newDay.current.id} onDone={dismissNewDay} />
+      ) : null}
+      {!firstRoll && !dice.current && !newDay.current && astrologerCue ? (
+        <AstrologersProclamationOverlay
+          cue={astrologerCue}
+          key={astrologerCue.id}
+          onDone={() => setAstrologerCue(null)}
+        />
       ) : null}
       <FxStage cues={fxCues} onDone={handleFxDone} />
     </main>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { coreTileDefinitions } from "@/data/map/tile-defs";
-import { changeMorale, instantiateTile } from "./adventure";
+import { changeMorale, drawAstrologersCard, instantiateTile } from "./adventure";
 import {
   applyAction,
   canHeroReachPlacedTile,
@@ -555,6 +555,35 @@ describe("astrologers rounds", () => {
     expect(state.players.p1.morale).toBe(1);
     // Sandro's Necropolis ignores all morale effects.
     expect(state.players.p2.morale).toBe(0);
+  });
+
+  it("society inflicts 1 negative morale on every player, still ignoring Necropolis", () => {
+    let state = makeGame();
+    state.decks.astrologers.drawPile.push("astrologers.society");
+
+    state = passRound(state);
+    expect(state.adventure?.astrologers?.activeCardId).toBe("astrologers.society");
+    expect(state.players.p1.morale).toBe(-1);
+    // Sandro's Necropolis ignores all morale effects, good and bad.
+    expect(state.players.p2.morale).toBe(0);
+  });
+
+  it("big cleanup discards each player's whole hand and redraws the same number", () => {
+    const state = makeGame();
+    // Pin a known hand and deck so the redraw is deterministic (pop draws the tail).
+    state.players.p1.hand = ["stat.attack", "stat.power"];
+    state.players.p1.deck = [...state.players.p1.deck, "stat.knowledge", "stat.defense"];
+    state.players.p1.discard = [];
+    const expectedRedraw = state.players.p1.deck.slice(-2).reverse(); // pop order
+    state.decks.astrologers.drawPile = ["astrologers.big_cleanup"];
+
+    drawAstrologersCard(state);
+
+    expect(state.adventure?.astrologers?.activeCardId).toBe("astrologers.big_cleanup");
+    // Same count, the old hand is now in the discard, and the redraw came off the deck.
+    expect(state.players.p1.hand).toHaveLength(2);
+    expect(state.players.p1.discard).toEqual(expect.arrayContaining(["stat.attack", "stat.power"]));
+    expect(state.players.p1.hand).toEqual(expectedRedraw);
   });
 });
 

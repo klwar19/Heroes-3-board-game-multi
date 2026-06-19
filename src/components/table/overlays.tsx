@@ -1527,6 +1527,92 @@ export function NewDayOverlay({ cue, onDone }: { cue: NewDayCue; onDone: () => v
   );
 }
 
+export type AstrologersProclamationCue = {
+  /** Unique per round so the overlay re-mounts when a new round resurfaces it. */
+  id: string;
+  cardId: string;
+  name: string;
+  text: string;
+  image: string;
+  expansion: string;
+  /** Lasts until the next Astrologers round (vs. resolved immediately). */
+  ongoing: boolean;
+  round: number;
+};
+
+/**
+ * The active Astrologers Proclaim card, popped into the player's face at the
+ * start of each round so nobody misses the rule in effect. Driven off the
+ * shared TURN_STARTED event but de-duplicated to once per round per client, so
+ * it surfaces the same card every round it stays face up without nagging on
+ * every single action. Dismissed by click / Enter / Escape (it never
+ * auto-closes — the player reads it and acknowledges).
+ */
+export function AstrologersProclamationOverlay({
+  cue,
+  onDone
+}: {
+  cue: AstrologersProclamationCue;
+  onDone: () => void;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const onDoneRef = useRef(onDone);
+
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  }, [onDone]);
+
+  useEffect(() => {
+    playLibrarySound("adventure/new-day", 0.35);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" || event.key === "Enter") {
+        onDoneRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  return (
+    <div
+      className="astrologersProclaimBackdrop"
+      role="dialog"
+      aria-label={`Astrologers proclaim: ${cue.name}`}
+      onClick={onDone}
+    >
+      <div className="astrologersProclaimCard" onClick={(event) => event.stopPropagation()}>
+        <header className="astrologersProclaimHead">
+          <span aria-hidden="true">🔭</span>
+          <strong>The Astrologers proclaim…</strong>
+          <span className="astrologersProclaimRound">round {cue.round}</span>
+        </header>
+        {cue.image && !imageFailed ? (
+          <img
+            alt={cue.name}
+            className="astrologersProclaimArt"
+            loading="eager"
+            referrerPolicy="no-referrer"
+            src={assetUrl(cue.image)}
+            onError={() => setImageFailed(true)}
+          />
+        ) : (
+          <div className="astrologersProclaimArt cardFaceFallback">{cue.name}</div>
+        )}
+        <div className="astrologersProclaimBody">
+          <strong>{cue.name}</strong>
+          <span className="astrologersProclaimMeta">
+            {cue.expansion} · {cue.ongoing ? "active until the next Astrologers round" : "resolved now"}
+          </span>
+          <p>{cue.text}</p>
+          <button className="commandButton primary" onClick={onDone} type="button">
+            Understood
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * End-of-combat notice: combat no longer drops back to the map by itself.
  * The battlefield stays up behind this popup until a participant clicks

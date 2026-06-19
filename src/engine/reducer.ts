@@ -5705,6 +5705,23 @@ function spellMaxPowerBreakpoint(card: CardDefinition | undefined): number {
   return breakpoints.length > 0 ? Math.max(...breakpoints) : 2;
 }
 
+/**
+ * Astrologers school-power proclamations (Blue Sky: Air+Water; Scorched Ground:
+ * Earth+Fire): +1 Power to every matching spell while the card is active, for
+ * every player. Mirrors the existing school-bonus convention (getSchoolPowerBonus)
+ * where a school-agnostic "any" spell (e.g. Magic Arrow) qualifies for any
+ * school bonus, so the two stay consistent. Returns 0 when no such card is up.
+ */
+function astrologersSchoolPowerBonus(state: GameState, spellCard: CardDefinition | undefined): number {
+  const active = getActiveAstrologersCard(state);
+  if (active?.effect.type !== "SCHOOL_SPELL_POWER_BONUS") {
+    return 0;
+  }
+  const schools = spellCard?.spellSchools ?? [];
+  const matches = schools.includes("any") || active.effect.schools.some((school) => schools.includes(school));
+  return matches ? active.effect.amount : 0;
+}
+
 function getCurrentSpellPower(state: GameState, stackItem: ResolutionStackItem, cards: CardLibrary): number {
   // (School of Magic permanents add schoolPowerBonus below, beside the
   // once-per-cast Power-card bonus.)
@@ -5725,7 +5742,10 @@ function getCurrentSpellPower(state: GameState, stackItem: ResolutionStackItem, 
     (stackItem.modifiers.schoolPowerBonus ?? 0) +
     (stackItem.modifiers.townCubePowerBonus ?? 0) +
     // Adrienne's Fire Magic: +1/+2 Power to every Fire-school spell she casts.
-    getSchoolPowerBonus(state, stackItem.action.playerId, card);
+    getSchoolPowerBonus(state, stackItem.action.playerId, card) +
+    // Astrologers — Blue Sky / Scorched Ground: +1 Power to every spell of the
+    // proclaimed schools while the card is face up (applies to all players).
+    astrologersSchoolPowerBonus(state, card);
 
   // Elemental Orbs (option A): the matching in-play orb doubles the whole Power
   // brought to a spell of its School ("double the power used for this spell")
