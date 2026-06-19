@@ -89,6 +89,7 @@ import {
   discardPermanentVoluntarily,
   discardSchoolPermanentForExpert,
   firstAidVolleyHeals,
+  getPermanentCardIds,
   getPermanentSchoolBonus,
   isLowestInitiativeEnemy,
   playerCanUseFirstAidVolley,
@@ -2244,6 +2245,8 @@ function getRerollUsesForEffect(effect: ActiveEffectState): number {
     .reduce((best, modifier) => Math.max(best, modifier.maxUsesPerRoll), 0);
 }
 
+const AMMO_CART_CARD_ID = "war_machine.ammo_cart" as CardId;
+
 /**
  * Builds the spend-ordered reroll pools for one attack roll. Rerolls from
  * different sources stack: unit abilities (e.g. Crusaders) are spent first,
@@ -2273,6 +2276,19 @@ function buildRerollSources(
     ...(source.onlyOnRoll !== undefined ? { onlyOnRoll: source.onlyOnRoll } : {})
   }));
 
+  // Ammo Cart (Astrologers): while the proclamation is face up, an owner of an
+  // Ammo Cart war machine may reroll 1 Attack die for each of their ranged units.
+  // Ability-style (no backing effect), rebuilt per attack → one reroll per ranged
+  // attack; suppressed with everything else by the attackRerollsBlocked gate above.
+  const proclamation = getActiveAstrologersCard(state)?.effect;
+  const ammoCartSources: AttackRerollSource[] =
+    attacker.type === "ranged" &&
+    proclamation?.type === "WAR_MACHINE_BUFF" &&
+    proclamation.rangedAttackReroll &&
+    getPermanentCardIds(state, attacker.controllerId).includes(AMMO_CART_CARD_ID)
+      ? [{ name: "Ammo Cart", remaining: 1, used: 0 }]
+      : [];
+
   const orderedEffects = [...rerollEffects].sort(
     (left, right) => Number(left.name.includes("Luck")) - Number(right.name.includes("Luck"))
   );
@@ -2287,6 +2303,7 @@ function buildRerollSources(
 
   return [
     ...abilitySources,
+    ...ammoCartSources,
     ...orderedEffects.map((effect) => ({
       name: effect.name,
       effectId: effect.id,

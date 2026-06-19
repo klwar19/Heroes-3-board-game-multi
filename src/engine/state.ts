@@ -4390,6 +4390,23 @@ export type VisitStep =
       /** War Machine Factory: buy one war machine at the lower price. */
       type: "WAR_MACHINE_SHOP";
     }
+  | {
+      /**
+       * Astrologers (McGiver): open the self-rebuilding menu to take one War
+       * Machine of the player's choice from the shared supply for free. Rebuilt
+       * from the live supply each time so a second player never sees a machine an
+       * earlier one already took; offers a Skip exit (the take is optional).
+       */
+      type: "WAR_MACHINE_GRANT_OFFER";
+    }
+  | {
+      /**
+       * McGiver grant leaf: move the chosen war machine from the shared supply to
+       * the player's hand at no cost (they play it as a permanent later).
+       */
+      type: "GRANT_WAR_MACHINE";
+      cardId: CardId;
+    }
   | { type: "DISCOVER_ADJACENT_TILE" }
   | {
       /** Sea Chest / Jetsam: roll one Attack die, resolve the matching branch. */
