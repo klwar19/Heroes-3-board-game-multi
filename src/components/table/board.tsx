@@ -1428,6 +1428,10 @@ const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "CONTINUE_NEUTRAL_COMBAT",
   "RETREAT_FROM_COMBAT",
   "ACKNOWLEDGE_COMBAT_END",
+  // After-combat Necromancy is a now-or-never window: the player either plays the
+  // ability from hand or clicks this Skip button (the field reward is withheld
+  // until they decide).
+  "SKIP_NECROMANCY",
   "BUILD_STRUCTURE",
   "MOVE_HERO",
   "END_TURN"
