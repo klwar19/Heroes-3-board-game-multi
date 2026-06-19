@@ -6,7 +6,8 @@ import {
   expertUsesAvailable,
   getLegalActions
 } from "./index";
-import { refreshRoundTokens } from "./adventure";
+import { getMainHero, refreshRoundTokens } from "./adventure";
+import { startPlayerCombat } from "./adventure-reducer";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -180,5 +181,32 @@ describe("expert-effect crown limit — crowns are shared between the map and th
     // The crown spent on the map is still spent: the battle offers no fresh crown.
     expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
     expect(expertUsesAvailable(state.players.p1)).toBe(0);
+  });
+
+  // One pool per game round, used or not on your own turn: if an enemy attacks
+  // you on THEIR turn, you defend with whatever crowns you have left — a spent
+  // pool is not refilled just because the battle started on someone else's turn.
+  it("a defender who already spent its crown this round gets none for the enemy-initiated battle", () => {
+    let state = createAdventureGameState({ seed: "tactics-diplomacy", difficulty: "normal", rollFirstPlayer: false });
+    if (state.players.p1.needsHandRefresh) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    const heroP1 = getMainHero(state, "p1")!;
+    const heroP2 = getMainHero(state, "p2")!;
+
+    // p2 is level 3 (1 crown) and already spent it earlier this round.
+    state.players.p2.limits.expertUses = 1;
+    state.players.p2.combatStats.expertUsesSpentThisRound = 1;
+    state.players.p2.combatStats.expertUseBonusThisRound = 0;
+    expect(expertUsesAvailable(state.players.p2)).toBe(0);
+
+    // p1 attacks p2 on p1's turn — a fresh combat where p2 is the defender.
+    const fieldId = heroP1.spaceId ?? Object.keys(state.adventure!.fields)[0];
+    startPlayerCombat(state, heroP1, heroP2, fieldId);
+    expect(state.combat, "the player-vs-player combat should start").toBeTruthy();
+
+    // The defender's crown stays spent: no fresh crown for the enemy-turn battle.
+    expect(state.players.p2.combatStats.expertUsesSpentThisRound).toBe(1);
+    expect(expertUsesAvailable(state.players.p2)).toBe(0);
   });
 });
