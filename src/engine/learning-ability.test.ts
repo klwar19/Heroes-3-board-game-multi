@@ -191,6 +191,83 @@ describe("Learning resolution", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Real-action map-object coverage. The unit tests above drive the level-up hook
+// directly through gainExperience + pumpAdventureQueues. These drive the actual
+// reducer (MOVE_HERO / RESOLVE_VISIT_STEP) so a regression in the visit -> reward
+// queue -> pump plumbing for ANY experience-granting Field is caught. Per the
+// wiki, Learning Stone and Tree of Knowledge are the Fields that grant XP; both
+// must surface the Learning offer when a level is crossed.
+// ---------------------------------------------------------------------------
+
+/** Refresh p1's required start-of-turn draw, then plant a single Learning card. */
+function readyHeroWithLearning(state: GameState, experience: number): GameState {
+  const refreshed = state.players.p1.needsHandRefresh
+    ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+    : state;
+  const hero = getMainHero(refreshed, "p1")!;
+  hero.experience = experience;
+  hero.level = levelOfExperience(experience);
+  hero.movementPoints = 6;
+  refreshed.players.p1.hand = ["ability.learning"];
+  return refreshed;
+}
+
+describe("Learning offer surfaces from real map-object visits", () => {
+  it("offers Learning after a Hero walks onto a Learning Stone and crosses a level", () => {
+    let state = readyHeroWithLearning(makeGame(), 5); // exp 5 (lvl 3)
+    state.adventure!.fields["h:7:2"].location = "learning_stone";
+    const heroId = getMainHero(state, "p1")!.id;
+
+    state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId, to: "h:7:2" });
+
+    // The Learning Stone granted +1 XP (exp 6, level 4) and the offer is open.
+    expect(getMainHero(state, "p1")!.experience).toBe(6);
+    expect(getMainHero(state, "p1")!.level).toBe(4);
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    if (state.pendingChoice?.type === "OPTION_CHOICE") {
+      expect(state.pendingChoice.context).toBe("learning-level-up");
+      expect(state.pendingChoice.playerId).toBe("p1");
+    }
+  });
+
+  it("offers Learning after paying to use a Tree of Knowledge (+2 XP)", () => {
+    let state = readyHeroWithLearning(makeGame(), 5); // exp 5 (lvl 3)
+    state.players.p1.resources.valuables = 5; // afford the 3-valuables cost
+    state.adventure!.fields["h:7:2"].location = "tree_of_knowledge";
+    const heroId = getMainHero(state, "p1")!.id;
+
+    state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId, to: "h:7:2" });
+    // The PAY_TO step waits for the player to decide whether to pay.
+    expect(state.adventure?.pendingVisit?.steps[0].type).toBe("PAY_TO");
+
+    // optionIndex 0 = the first cost option (3 valuables); paying grants +2 XP.
+    state = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+
+    expect(getMainHero(state, "p1")!.experience).toBe(7); // 5 + 2
+    expect(getMainHero(state, "p1")!.level).toBe(4);
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    if (state.pendingChoice?.type === "OPTION_CHOICE") {
+      expect(state.pendingChoice.context).toBe("learning-level-up");
+    }
+  });
+
+  it("does NOT offer Learning at a Tree of Knowledge when the player declines to pay", () => {
+    let state = readyHeroWithLearning(makeGame(), 5);
+    state.players.p1.resources.valuables = 5;
+    state.adventure!.fields["h:7:2"].location = "tree_of_knowledge";
+    const heroId = getMainHero(state, "p1")!.id;
+
+    state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId, to: "h:7:2" });
+    state = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", decline: true });
+
+    expect(getMainHero(state, "p1")!.experience).toBe(5); // no XP, no level-up
+    const isLearningChoice =
+      state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "learning-level-up";
+    expect(isLearningChoice).toBe(false);
+  });
+});
+
 describe("Learning is never played from hand", () => {
   it("is not offered as a normal map play and rejects a direct PLAY_CARD", () => {
     const base = makeGame();
