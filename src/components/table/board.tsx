@@ -16,6 +16,7 @@ import {
   BATTLEFIELD_ROWS,
   DEFENDER_BACKLINE,
   DEFENDER_FRONTLINE,
+  effectiveInitiative,
   getBattlefieldLabel,
   getBattlefieldTerrain,
   getUnitAbilityDefinitions,
@@ -1174,26 +1175,34 @@ export function InitiativeRail({ state }: { state: GameState }) {
         {inSetup ? "Order" : "Order"}
       </span>
       {units.length === 0 && inSetup ? <small className="initHint">Deploy units — they sort by initiative here.</small> : null}
-      {units.map((unit, index) => (
-        <button
-          className={`initCard ${unit.controllerId} ${state.combat?.activeUnitId === unit.id ? "active" : ""} ${
-            unit.activatedThisRound ? "done" : ""
-          }`}
-          key={unit.id}
-          onClick={() => zoomUnit(unit)}
-          title={`${index + 1}. ${unit.cardName} — initiative ${unit.initiative}${
-            unit.activatedThisRound ? " (already activated)" : ""
-          }. Click to read the card.`}
-          type="button"
-        >
-          {unit.assets?.cardImage ? (
-            <img alt={unit.cardName} loading="lazy" src={assetUrl(unit.assets.cardImage)} />
-          ) : (
-            <span className="initCardFallback">{unit.name}</span>
-          )}
-          <b className="initBadge">{unit.initiative}</b>
-        </button>
-      ))}
+      {units.map((unit, index) => {
+        // Haste/Slow and other lasting effects shift activation order, so the
+        // badge shows the *effective* initiative (what actually sorts this rail)
+        // rather than the printed base. A shift flags the badge so the table can
+        // see at a glance that a spell sped a unit up or slowed it down.
+        const init = effectiveInitiative(unit, state.activeEffects);
+        const delta = init - unit.initiative;
+        return (
+          <button
+            className={`initCard ${unit.controllerId} ${state.combat?.activeUnitId === unit.id ? "active" : ""} ${
+              unit.activatedThisRound ? "done" : ""
+            }`}
+            key={unit.id}
+            onClick={() => zoomUnit(unit)}
+            title={`${index + 1}. ${unit.cardName} — initiative ${init}${
+              delta !== 0 ? ` (base ${unit.initiative}, ${delta > 0 ? "+" : ""}${delta} from effects)` : ""
+            }${unit.activatedThisRound ? " (already activated)" : ""}. Click to read the card.`}
+            type="button"
+          >
+            {unit.assets?.cardImage ? (
+              <img alt={unit.cardName} loading="lazy" src={assetUrl(unit.assets.cardImage)} />
+            ) : (
+              <span className="initCardFallback">{unit.name}</span>
+            )}
+            <b className={`initBadge ${delta > 0 ? "boosted" : delta < 0 ? "slowed" : ""}`}>{init}</b>
+          </button>
+        );
+      })}
       <span className="roundChip">{inSetup ? "Setup" : `Round ${state.combat?.round ?? 0}`}</span>
     </div>
   );
@@ -1213,6 +1222,10 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
 
   const health = Math.max(0, unit.maxHealth - unit.damage);
   const abilities = getUnitAbilityDefinitions(unit);
+  // Effective initiative folds in Haste/Slow and other lasting shifts; show that
+  // (with the base noted) so the inspector matches the initiative rail.
+  const init = effectiveInitiative(unit, state.activeEffects);
+  const initDelta = init - unit.initiative;
 
   return (
     <section className="inspectPanel" aria-label={`${unit.name} card`}>
@@ -1239,7 +1252,9 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
         <strong>{unit.cardName}</strong>
         <span className="inspectKind">
           {isArrowTowerUnit(unit) ? "siege " : ""}
-          {unit.grade} {unit.type} · initiative {unit.initiative}
+          {unit.grade} {unit.type} · initiative{" "}
+          <span className={initDelta > 0 ? "initUp" : initDelta < 0 ? "initDown" : undefined}>{init}</span>
+          {initDelta !== 0 ? ` (base ${unit.initiative})` : ""}
         </span>
         <div className="inspectStats">
           <span title="Attack">⚔ {unit.attack}</span>
