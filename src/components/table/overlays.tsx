@@ -1143,8 +1143,11 @@ const TREASURE_DIE_LAYOUT: ("experience" | "artifact-search" | "resource-die" | 
 const TREASURE_FACE_ICONS: Record<string, { icon: React.ReactNode; label: string }> = {
   experience: { icon: <StarBannerIcon size={24} />, label: "½ Level" },
   "artifact-search": { icon: <AnkhIcon size={22} />, label: "artifact" },
-  "resource-die": { icon: <CrossedShovelsIcon size={22} />, label: "resource" },
-  "double-resource-die": { icon: <CrossedShovelsIcon size={22} />, label: "×2" }
+  "resource-die": {
+    icon: <img alt="" className="mapTreasureResourceIcon" src={assetUrl("/assets/ui/dice-resource-tools.webp")} />,
+    label: "resource"
+  },
+  "double-resource-die": { icon: <CrossedShovelsIcon size={31} />, label: "×2" }
 };
 
 const ATTACK_DIE_LAYOUT = [1, -1, 0, 0, -1, 1];
@@ -1251,7 +1254,12 @@ export function MapDiceOverlay({ cue, onDone }: { cue: MapDiceCue; onDone: () =>
   const rolling = phase === "rolling";
 
   return (
-    <div className="diceOverlay mapDiceOverlay" role="status" aria-label={`${MAP_DICE_TITLES[cue.dice]} roll`} onClick={onDone}>
+    <div
+      aria-label={`${MAP_DICE_TITLES[cue.dice]} roll`}
+      className="diceOverlay mapDiceOverlay"
+      onClick={onDone}
+      role="status"
+    >
       <div className="diceStage">
         <header>
           <Dices aria-hidden="true" size={16} />
