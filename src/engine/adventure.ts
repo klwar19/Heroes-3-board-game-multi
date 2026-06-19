@@ -5045,10 +5045,9 @@ export function applyRecruitDiscount(state: GameState, playerId: PlayerId, cost:
 }
 
 /**
- * Spends the player's banked Legion discount after a Recruitment/Reinforcement
- * that used it: the whole pool is one-shot, so it is cleared in full once a
- * recruit/reinforce has knocked gold off its bill. Called only when the discount
- * actually lowered the gold paid, so a 0-gold recruit leaves the bank untouched.
+ * Spends the player's banked Legion discount after a Recruitment/Reinforcement:
+ * the whole pool is one-shot, so buying or upgrading once clears it in full —
+ * whether or not it lowered the gold bill (a no-gold purchase still uses it up).
  * No-op when none is banked.
  */
 export function consumeRecruitDiscount(state: GameState, playerId: PlayerId): void {

@@ -4495,28 +4495,25 @@ function openTokenPlacementChoice(
   return true;
 }
 
-/** Begins a Quicksand / Land Mine cast: drop the first token on the cast's space, then open the picker for the rest. */
+/**
+ * Begins a Quicksand / Land Mine cast: shuffle the armed/decoy set, then open
+ * the caster's picker for the WHOLE set. Every token — including the first — is
+ * placed on a chosen empty space through that one picker (a no-target cast, like
+ * Remove Obstacle), so there is no special first-token-on-the-cast-space step.
+ */
 function beginHiddenTokenPlacement(
   state: GameState,
   playerId: PlayerId,
   kind: "quicksand" | "land_mine",
   count: number,
-  triggerDamage: number,
-  firstPosition: number
+  triggerDamage: number
 ): void {
   const combat = state.combat;
-  if (!combat || count <= 0 || isSpaceBlockedForSummon(combat, firstPosition)) {
+  if (!combat || count <= 0) {
     return;
   }
   const armedSlots = makeArmedSlots(state, count);
-  addBattlefieldToken(state, {
-    kind,
-    position: firstPosition,
-    controllerId: playerId,
-    armed: armedSlots[0],
-    damage: kind === "land_mine" ? triggerDamage : undefined
-  });
-  openTokenPlacementChoice(state, playerId, kind, armedSlots, 1, triggerDamage);
+  openTokenPlacementChoice(state, playerId, kind, armedSlots, 0, triggerDamage);
 }
 
 /** Resolves one pick of the Quicksand / Land Mine placement picker. */
@@ -6704,10 +6701,10 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       });
     }
 
-    // Quicksand (Basic Earth) / Land Mine (Expert Fire): place the first of
-    // 2/4/6 face-down tokens on the cast's space, then open the caster's picker
-    // for the rest (the place-battlefield-tokens choice).
-    if (card?.effect.type === "PLACE_HIDDEN_TOKENS" && state.combat && stackItem.action.target.type === "space") {
+    // Quicksand (Basic Earth) / Land Mine (Expert Fire): a no-target cast that
+    // opens the caster's picker for the whole set of 2/4/6 face-down tokens (the
+    // place-battlefield-tokens choice). Every token is placed through that picker.
+    if (card?.effect.type === "PLACE_HIDDEN_TOKENS" && state.combat) {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const count = getAmountByPower(card.effect.countByPower, 2, power);
       beginHiddenTokenPlacement(
@@ -6715,8 +6712,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         stackItem.action.playerId,
         card.effect.tokenKind,
         count,
-        card.effect.triggerDamage,
-        stackItem.action.target.position
+        card.effect.triggerDamage
       );
     }
 
