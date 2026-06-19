@@ -76,8 +76,10 @@ const payToVisitable = genericVisitable.filter((loc) => JSON.stringify(loc.inter
 describe("Visitable fields: every visit drops a black cube", () => {
   it("covers a meaningful set of fields (guards against an empty filter)", () => {
     expect(genericVisitable.length).toBeGreaterThan(20);
+    // Incantation is the paid shrine (3 gold); Gesture is free. (Gesture must
+    // NOT appear here — that was the bug where the costs were swapped.)
     expect(payToVisitable.map((loc) => loc.id).sort()).toEqual(
-      ["shrine_of_magic_gesture", "tree_of_knowledge", "university"].sort()
+      ["shrine_of_magic_incantation", "tree_of_knowledge", "university"].sort()
     );
   });
 

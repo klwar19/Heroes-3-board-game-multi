@@ -167,6 +167,15 @@ export type ActiveEffectModifier =
       amount: number;
     }
   | {
+      /**
+       * Merist's Stone Skin VI: a player-scoped, combat-duration flag. While the
+       * controller has it, their units' Defense tokens grant the +1 Defense on a
+       * "0" OR a "+1" Defense-die roll (instead of only on a "+1"). Carries no
+       * amount; resolveDefendBonus reads its presence on the defender's owner.
+       */
+      type: "DEFENSE_TOKEN_ON_ZERO";
+    }
+  | {
       type: "RANGED_ATTACK_BONUS";
       amount: number;
       nonAdjacentOnly: boolean;
@@ -700,6 +709,20 @@ export type EffectDefinition =
       ignoreRangedPenalty?: boolean;
       /** Hero specialties: the bonus doubles when the named unit is involved. */
       doubleForUnitName?: string;
+      /**
+       * Ivor's Elves IV: the bonus doubles when the unit it lands on is of this
+       * unit TYPE (his "doubles for a ranged unit") — the type-keyed sibling of
+       * `doubleForUnitName`. The attacker is checked for an attack bonus, the
+       * defender for a defense bonus, exactly like the name-keyed doubling.
+       */
+      doubleForUnitType?: UnitType;
+      /**
+       * Merist's Stone Skin I: this much EXTRA defense is added on top of
+       * `amount` when the buffed (defending) unit is orthogonally adjacent to the
+       * attacker — "+1 defense, and +1 more if it is adjacent to the attacker."
+       * Only meaningful for a `defense` reaction played in the attack window.
+       */
+      extraIfAdjacentToAttacker?: number;
       /**
        * Cyra's Haste IV: the bonus doubles when the attacked unit has strictly
        * higher (effective) Initiative than the attacker — rewards striking
@@ -1306,6 +1329,53 @@ export type EffectDefinition =
       type: "DAMAGE_ENEMY_UNITS_BY_GRADE";
       grades: UnitGrade[];
       amount: number;
+    }
+  | {
+      /**
+       * Tarnum (Castle)'s Ballista VI: "Choose `count` enemy units. Each of these
+       * units suffers `amount` damage." A combat activation: the engine gathers
+       * the caster's living enemy units and hits `count` of them for `amount`
+       * each. When more than `count` are alive the caster picks which through the
+       * shared area-pick choice (the same multi-pick used by Frost Ring / Meteor
+       * Shower); with `count` or fewer enemies they are all hit at once. Per-unit
+       * spell-damage reduction applies, like any card damage.
+       */
+      type: "DAMAGE_CHOSEN_ENEMIES";
+      count: number;
+      amount: number;
+    }
+  | {
+      /**
+       * Merist's Stone Skin IV: "All your units gain a Defense token." A combat
+       * activation with no target — every living unit the caster controls gets a
+       * Defense token (the Defend shield: a "+1" on the Defense die adds +1
+       * Defense to an incoming attack). Units that already hold one are unchanged.
+       */
+      type: "GRANT_DEFENSE_TOKENS";
+    }
+  | {
+      /**
+       * Merist's Stone Skin VI: an ongoing combat effect. When played it places a
+       * Defense token on all your units, and for the rest of the Combat your
+       * Defense tokens grant their +1 Defense on a "0" OR a "+1" roll (instead of
+       * only on a "+1"). Backed by a player-scoped DEFENSE_TOKEN_ON_ZERO modifier
+       * that resolveDefendBonus reads, plus the same token grant as level IV.
+       */
+      type: "STONE_SKIN_AURA";
+    }
+  | {
+      /**
+       * Ivor's Elves I / VI: force the dice of an attack roll to a fixed face
+       * value instead of rolling. Played as an instant in the attack window, it
+       * sets the pending attack's `forcedRoll`; at resolution every die of that
+       * attack shows `value` (a real face, so face-conditioned abilities still
+       * read it). I forces 0 ("set all dice of the next attack roll to 0"); VI's
+       * second option forces +1 ("set all dice of your roll to the values of your
+       * choice" — +1 is the only value that maximises an attack, so the engine
+       * realises the optimal choice). `value` is clamped to a real die face.
+       */
+      type: "FORCE_ATTACK_ROLL";
+      value: number;
     }
   | {
       /**
@@ -3355,6 +3425,13 @@ export type ResolutionStackItem = {
     fromSpellDeck?: boolean;
     /** Bless: the Attack die is not rolled (counts as 0). */
     ignoreAttackDie?: boolean;
+    /**
+     * Ivor's Elves I / VI: a played specialty forced this attack's die to a
+     * fixed face. At resolution every die shows this value (no roll, no reroll);
+     * it is a real face so face-conditioned abilities still read it. 0 = "set all
+     * dice to 0" (I); 1 = "set your roll to +1" (VI's chosen-value option).
+     */
+    forcedRoll?: number;
     /** Frenzy: this attack ignores the defender's Defense (counts as 0). */
     ignoreDefense?: boolean;
     /**

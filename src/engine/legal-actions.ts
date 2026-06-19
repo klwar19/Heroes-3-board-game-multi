@@ -2172,8 +2172,10 @@ function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDef
     return true;
   }
 
-  // Offense/Armorer: "may be played outside Combat just for the draw."
-  if (effect.type === "ADD_COMBAT_STAT" && effect.drawCards) {
+  // Offense/Armorer (ADD_COMBAT_STAT) and Sorcery (ADD_SPELL_POWER) carry a
+  // "then draw a card" rider: "may be played outside Combat just for the draw."
+  // On the map the stat/Power has nothing to apply to and fizzles; the draw runs.
+  if ((effect.type === "ADD_COMBAT_STAT" || effect.type === "ADD_SPELL_POWER") && effect.drawCards) {
     return true;
   }
 
@@ -2252,9 +2254,14 @@ function addTurnCardActions(
       continue;
     }
 
-    // Trigger cards wait for their windows — except Offense/Armorer, which
-    // the wiki allows playing outside Combat just for the card draw.
-    const drawOnly = card.effect.type === "ADD_COMBAT_STAT" && Boolean(card.effect.drawCards);
+    // Trigger cards wait for their windows — except the "+stat / +Power, then
+    // draw a card" instants (Offense/Armorer's ADD_COMBAT_STAT, Sorcery's
+    // ADD_SPELL_POWER), which may be played outside their window just for the
+    // card draw: with no attack/spell to apply it to the stat/Power fizzles, but
+    // the draw rider still resolves (see the matching reducer handler).
+    const drawOnly =
+      (card.effect.type === "ADD_COMBAT_STAT" || card.effect.type === "ADD_SPELL_POWER") &&
+      Boolean(card.effect.drawCards);
     if (card.trigger && !drawOnly) {
       continue;
     }
@@ -4469,6 +4476,15 @@ export function isEffectLegalForTrigger(
     // attacker's controller plays it, and never on a ranged shot.
     if (effect.type === "IGNORE_ATTACK_DIE") {
       return !attackBuffsNegated && attacker.controllerId === playerId && attacker.type !== "ranged";
+    }
+
+    // Ivor's Elves I / VI: force this attack's die to a fixed face. The card's
+    // trigger controller already decided who may play it (I = "any" — either side
+    // may set the next roll to 0; VI = "self" — the attacker sets their roll to
+    // +1), so legality here only needs the attack to exist. A Misfortune-locked
+    // attacker may not touch their own die.
+    if (effect.type === "FORCE_ATTACK_ROLL") {
+      return !attackBuffsNegated;
     }
 
     // Slayer: only the attacker's controller, and only when striking a gold
