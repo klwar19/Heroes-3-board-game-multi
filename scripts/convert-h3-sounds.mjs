@@ -16,9 +16,13 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const ROOT = path.join(import.meta.dirname, "..");
 const OUT = path.join(ROOT, "public/sounds");
+// Drop raw H3 / HotA .wav files here (or in the repo root) and run the script.
+// Scanned recursively, so the HotA sound-archive folder layout works as-is.
+const INCOMING = path.join(ROOT, "sounds-incoming");
 
 const ACTIONS = {
   ATTK: "attack", DFND: "defend", KILL: "death", MOVE: "move",
@@ -99,6 +103,18 @@ const AMBIENT = {
   LOOPWHIR: ["whirlpool", "Whirlpool"],
   LOOPWIND: ["windmill", "Windmill"],
   LOOPWOLF: ["wolves", "Wolf Pen"],
+  // --- HotA (Horn of the Abyss) Cove & Factory dwelling ambiences. Names from
+  // the VCMI HotA port's dwellings.json (vcmi-mods/horn-of-the-abyss). The
+  // Stormbird "Nest" reuses base LOOPBIRD, so it is not repeated here. ---
+  LOOPWTFL: ["nymph-waterfall", "Nymph Waterfall (Cove nymph dwelling)"],
+  LOOPMATR: ["cove-shack", "Shack (Cove crew mate dwelling)"],
+  LOOPFRIG: ["frigate", "Frigate (Cove pirate dwelling)"],
+  LOOPNIXF: ["nix-fort", "Nix Fort (Cove nix dwelling)"],
+  LOOPHASP: ["maelstrom", "Maelstrom (Cove sea serpent dwelling)"],
+  LOOPSORC: ["tower-of-the-seas", "Tower of the Seas (Cove sea witch dwelling)"],
+  LOOPHALF: ["halfling-adobe", "Halfling Adobe (Factory halfling dwelling)"],
+  LOOPGUNS: ["watchtower", "Watchtower (Factory gunslinger dwelling)"],
+  LOOPCOTL: ["serpentarium", "Serpentarium (Factory couatl dwelling)"],
 };
 
 // Re-home sounds whose derived destination lands in the wrong category,
@@ -261,6 +277,16 @@ const NOTES = {
   "effects/magchfil": "unknown (MAGCHFIL); possibly mana refilled at a magic well",
   "effects/mnrdeath": "unknown (MNRDEATH)",
   "ambient/storm": "storm weather (uncertain)",
+  // --- HotA additions. EXT1/EXT2 here are movement-transition sounds, not
+  // ability casts (the ACTIONS map names them -special/-special-2). ---
+  "units/nymph-special": "Nymph/Oceanid move-start sound (NIMPEXT1)",
+  "units/nymph-special-2": "Nymph/Oceanid move-end sound (NIMPEXT2)",
+  "units/sandworm-special": "Sandworm burrow / move-start (WORMEXT1)",
+  "units/sandworm-special-2": "Sandworm surface / move-end (WORMEXT2)",
+  "units/halfling-grenadier-shoot":
+    "Halfling Grenadier ranged sound (HALGSHOT); its other actions reuse core HALF* files",
+  "spells/grenade": "Grenade ability cast/explosion (GRENEXPL) — Halfling Grenadier / Bounty Hunter",
+  "spells/repair": "Repair ability cast (REPAIR) — Factory mechanical-unit heal",
 };
 for (const [name, [slug, desc]] of Object.entries(AMBIENT))
   NOTES[`ambient/${slug}`] = `${desc} (${name})`;
@@ -345,32 +371,60 @@ function buildManifest() {
   return Object.keys(entries).length;
 }
 
-const ref = loadReference();
-const seen = {}; // content hash -> id, to drop byte-identical duplicates
-const unresolved = [];
-let converted = 0;
-
-for (const f of fs.readdirSync(ROOT).filter((f) => f.endsWith(".wav")).sort()) {
-  const base = f.replace(/\.wav$/, "").toUpperCase();
-  const dest = destinationFor(base, ref);
-  if (!dest) { unresolved.push(f); continue; }
-  // Drop EXT2 only when byte-identical to its EXT1 (e.g. ADVLEXT2). Any other
-  // duplication is kept: creatures share audio across prefixes (dread knight
-  // reuses black knight files) and across actions (gog shoot == gog attack),
-  // and every id should resolve without fallback logic in the app.
-  const hash = createHash("md5").update(fs.readFileSync(path.join(ROOT, f))).digest("hex");
-  if (base.endsWith("EXT2") && seen[hash] === base.slice(0, -1) + "1") {
-    console.log(`skip ${f}: identical to ${seen[hash]}`);
-    continue;
-  }
-  seen[hash] = base;
-  const target = path.join(OUT, `${dest}.mp3`);
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y",
-    "-i", path.join(ROOT, f), "-codec:a", "libmp3lame", "-q:a", "5", target]);
-  converted++;
+// Gather .wav files to convert: everything under sounds-incoming/ (recursively,
+// so the HotA archive's nested folders work untouched) plus loose drops in the
+// repo root. Returned as absolute paths, ordered by file name.
+function collectWavs() {
+  const found = [];
+  const scan = (dir, recurse) => {
+    if (!fs.existsSync(dir)) return;
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) { if (recurse) scan(full, true); continue; }
+      if (/\.wav$/i.test(e.name)) found.push(full);
+    }
+  };
+  scan(INCOMING, true);
+  scan(ROOT, false);
+  return found.sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
 }
 
-const total = buildManifest();
-console.log(`converted ${converted}, manifest entries ${total}`);
-if (unresolved.length) console.log("UNRESOLVED (left in place):\n" + unresolved.join("\n"));
+function main() {
+  const ref = loadReference();
+  const seen = {}; // content hash -> id, to drop byte-identical duplicates
+  const unresolved = [];
+  let converted = 0;
+
+  for (const abs of collectWavs()) {
+    const base = path.basename(abs).replace(/\.wav$/i, "").toUpperCase();
+    const dest = destinationFor(base, ref);
+    if (!dest) { unresolved.push(path.relative(ROOT, abs)); continue; }
+    // Drop EXT2 only when byte-identical to its EXT1 (e.g. ADVLEXT2). Any other
+    // duplication is kept: creatures share audio across prefixes (dread knight
+    // reuses black knight files) and across actions (gog shoot == gog attack),
+    // and every id should resolve without fallback logic in the app.
+    const hash = createHash("md5").update(fs.readFileSync(abs)).digest("hex");
+    if (base.endsWith("EXT2") && seen[hash] === base.slice(0, -1) + "1") {
+      console.log(`skip ${path.relative(ROOT, abs)}: identical to ${seen[hash]}`);
+      continue;
+    }
+    seen[hash] = base;
+    const target = path.join(OUT, `${dest}.mp3`);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y",
+      "-i", abs, "-codec:a", "libmp3lame", "-q:a", "5", target]);
+    converted++;
+  }
+
+  const total = buildManifest();
+  console.log(`converted ${converted}, manifest entries ${total}`);
+  if (unresolved.length) console.log("UNRESOLVED (left in place):\n" + unresolved.join("\n"));
+}
+
+// Pure mapping helpers are exported for unit tests; conversion only runs when
+// the script is executed directly (so importing it never touches ffmpeg/disk).
+export { destinationFor, loadReference, ACTIONS, AMBIENT, kebab };
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}

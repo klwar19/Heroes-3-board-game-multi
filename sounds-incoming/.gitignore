@@ -1,0 +1,6 @@
+# Raw sound drops are transient build input, not committed assets.
+# Only this folder's README/.gitignore are tracked; the converted MP3s
+# live under public/sounds/.
+*.wav
+*.WAV
+*.mp3

@@ -8,8 +8,9 @@ VCMI engine's data files** (the open-source H3 engine) — see
 - Files: `public/sounds/<category>/<name>.mp3`
 - Index: `public/sounds/manifest.json` — **the single source of truth** for
   playback. Each entry: `{ src, repeat?, loop?, note? }`.
-- Converter: `scripts/convert-h3-sounds.mjs` (drop new WAVs in the repo root,
-  run with node; needs `ffmpeg`).
+- Converter: `scripts/convert-h3-sounds.mjs` (drop new WAVs in `sounds-incoming/`
+  — scanned recursively — or the repo root, then run with node; needs `ffmpeg`).
+  Unrecognised names are reported under `UNRESOLVED` and left untouched.
 
 ## Library layout (1012 sounds)
 
@@ -128,6 +129,60 @@ reflection), `ambient/storm`, and the object-visit cues
 `adventure/{military,mystery,nomad,rogue,store,protect,get-protection}` —
 all flagged with `(uncertain)`/`unknown` notes in the manifest. Listen and
 rename if you can place them.
+
+## Horn of the Abyss (HotA) additions
+
+HotA's Cove and Factory creature/spell/dwelling sounds are wired into the
+converter the same way as the base game. Identifications come from the VCMI
+HotA port (`vcmi-mods/horn-of-the-abyss`, branch `vcmi-1.7`) — its creature,
+spell and dwelling JSON name every `.wav` — so nothing here is guessed.
+`src/data/hota-sound-mapping.test.ts` asserts each of these resolves; remove a
+reference row and its case fails.
+
+To add them: drop the HotA `.wav` files into `sounds-incoming/` and run the
+converter. Decoding is identical — `<4-letter creature><4-letter action>`, e.g.
+`ARMAATTK` → `units/armadillo-attack`.
+
+**Creature voices** (one sound set per prefix; the upgrade reuses the base
+creature's set, matching the base-game convention like Marksman→Archer):
+
+| Prefix | File name | Used by |
+|---|---|---|
+| `NIMP` | `units/nymph-*` | Nymph, Oceanid (`EXT1/EXT2` = move-start/-end) |
+| `SAYL` | `units/crew-mate-*` | Crew Mate, Seaman |
+| `PIRT` | `units/pirate-*` | Pirate, Corsair, Sea Dog |
+| `ASSI` | `units/stormbird-*` | Stormbird, Ayssid |
+| `SORC` | `units/sea-witch-*` | Sea Witch, Sorceress |
+| `NIXX` | `units/nix-*` | Nix, Nix Warrior |
+| `ASPI` | `units/sea-serpent-*` | Sea Serpent, Haspid |
+| `MECH` | `units/mechanic-*` | Mechanic, Engineer |
+| `ARMA` | `units/armadillo-*` | Armadillo, Bellwether Armadillo |
+| `AUTO` | `units/automaton-*` | Automaton, Sentinel Automaton |
+| `WORM` | `units/sandworm-*` | Sandworm, Olgoi-Khorkhoi, Larva (`EXT1/EXT2` = burrow/surface) |
+| `GUNS` | `units/gunslinger-*` | Gunslinger, Bounty Hunter |
+| `COTL` | `units/couatl-*` | Couatl |
+| `CCOT` | `units/crimson-couatl-*` | Crimson Couatl (distinct set from `COTL`) |
+| `DRED` | `units/dreadnought-*` | Dreadnought, Juggernaut |
+| `HALG` | `units/halfling-grenadier-shoot` | Halfling Grenadier ranged shot only |
+
+Factory's basic **Halfling is `core:halfling`**, so it reuses the base-game
+`HALF*` files (`units/halfling-*`) — only the Grenadier's `HALGSHOT` is new.
+
+**Ability sounds** (filed under `spells/` as cast sounds):
+`GRENEXPL` → `spells/grenade` (Halfling Grenadier / Bounty Hunter),
+`REPAIR` → `spells/repair` (Factory mechanical-unit heal).
+
+**Dwelling ambiences** (`ambient/`, looped): `LOOPWTFL` → `nymph-waterfall`,
+`LOOPMATR` → `cove-shack`, `LOOPFRIG` → `frigate`, `LOOPNIXF` → `nix-fort`,
+`LOOPHASP` → `maelstrom`, `LOOPSORC` → `tower-of-the-seas`,
+`LOOPHALF` → `halfling-adobe`, `LOOPGUNS` → `watchtower`,
+`LOOPCOTL` → `serpentarium`. The Stormbird Nest reuses base `LOOPBIRD`
+(`ambient/birds`).
+
+None of these HotA creatures are in the board-game roster yet, so — like the
+other "not in the app" creatures — the clips are converted and indexed but not
+wired to any unit in `src/data/unit-sounds.ts`. Wiring is a separate step for
+when/if a HotA creature is added to the game.
 
 ## Conversion settings & history
 
