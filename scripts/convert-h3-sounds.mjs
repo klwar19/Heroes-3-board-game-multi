@@ -115,6 +115,47 @@ const AMBIENT = {
   LOOPHALF: ["halfling-adobe", "Halfling Adobe (Factory halfling dwelling)"],
   LOOPGUNS: ["watchtower", "Watchtower (Factory gunslinger dwelling)"],
   LOOPCOTL: ["serpentarium", "Serpentarium (Factory couatl dwelling)"],
+  // --- HotA map-object & dwelling ambiences (names from the VCMI HotA port's
+  // mapObjects / heroes3DataPatch / highlands configs, branch vcmi-1.7). ---
+  LOOPBASI: ["spit", "Spit (HotA map object)"],
+  LOOPBEHD: ["ziggurat", "Ziggurat (HotA dwelling)"],
+  LOOPCMTR: ["churchyard", "Churchyard (HotA map object)"],
+  LOOPDRRK: ["derrick", "Derrick (HotA map object)"],
+  LOOPEXSH: ["experimental-shop", "Experimental Shop (HotA map object)"],
+  LOOPJUNK: ["junkman", "Junkman (HotA map object)"],
+  LOOPMANS: ["mansion", "Mansion (HotA map object)"],
+  LOOPPCAV: ["pirate-cavern", "Pirate Cavern (HotA map object)"],
+  LOOPPICK: ["wolf-raider-picket", "Wolf Raider Picket (HotA map object)"],
+  LOOPPROS: ["prospector", "Prospector (HotA map object)"],
+  LOOPRUIN: ["ruins", "Ruins (HotA highlands object)"],
+  LOOPSTPL: ["temple-of-the-sea", "Temple of the Sea (HotA map object)"],
+  LOOPWATR: ["highlands-waterfall", "Waterfall (HotA highlands)"],
+  LOOPMAMN: ["mammoth-dwelling", "Mammoth dwelling ambience (Bulwark)"],
+  // base-dwelling ambiences re-specified by HotA's heroes3DataPatch (decode clear)
+  LOOPMUMM: ["mummy-dwelling", "Mummy dwelling ambience"],
+  LOOPPEAS: ["peasant-dwelling", "Peasant dwelling ambience"],
+  LOOPTRLL: ["troll-dwelling", "Troll dwelling ambience"],
+  // non-LOOP ambient object sounds
+  BLCKTWRL: ["black-tower", "Black Tower ambience (HotA)"],
+  IVORTWLO: ["ivory-tower", "Ivory Tower ambience (HotA)"],
+  REDTWRLO: ["red-tower", "Red Tower ambience (HotA)"],
+  WRHSCRST: ["warehouse-crystal", "Warehouse of Crystal (HotA)"],
+  WRHSGEMS: ["warehouse-gems", "Warehouse of Gems (HotA)"],
+  WRHSGOLD: ["warehouse-gold", "Warehouse of Gold (HotA)"],
+  WRHSMERC: ["warehouse-mercury", "Warehouse of Mercury (HotA)"],
+  WRHSOREM: ["warehouse-ore", "Warehouse of Ore (HotA)"],
+  WRHSSULF: ["warehouse-sulfur", "Warehouse of Sulfur (HotA)"],
+  WRHSWOOD: ["warehouse-wood", "Warehouse of Wood (HotA)"],
+  // critter ambiences from the base archive (not in VCMI configs — best-effort)
+  CHICK: ["chicken", "chicken ambience (uncertain)"],
+  COCK: ["rooster", "rooster ambience (uncertain)"],
+  FROGS01: ["frogs-1", "frog ambience (uncertain)"],
+  FROGS02: ["frogs-2", "frog ambience (uncertain)"],
+  PIGSND: ["pig", "pig ambience (uncertain)"],
+  // genuinely unidentified ambiences (kept rather than dropped; flagged)
+  LOOPHOGD: ["loophogd", "unidentified dwelling ambience (LOOPHOGD); uncertain"],
+  LOOPELAL: ["loopelal", "unidentified ambience (LOOPELAL); uncertain"],
+  LOOPMFOR: ["loopmfor", "unidentified ambience (LOOPMFOR); uncertain"],
 };
 
 // Re-home sounds whose derived destination lands in the wrong category,
@@ -203,6 +244,49 @@ const OVERRIDES = {
   BALLKILL: "units/ballista-death", BALLSHOT: "units/ballista-shoot", BALLWNCE: "units/ballista-hurt",
   CARTKILL: "units/ammo-cart-death", CARTWNCE: "units/ammo-cart-hurt",
   CATAKILL: "units/catapult-death", CATASHOT: "units/catapult-shoot", CATAWNCE: "units/catapult-hurt",
+
+  // ---------------------------------------------------------------------------
+  // HotA (Horn of the Abyss) batch — Cove / Factory / Bulwark / neutrals.
+  // ---------------------------------------------------------------------------
+  // Creature special-ability sounds. The .wav exists in the HotA archive, but
+  // the VCMI port plays the ability via a spell config rather than a creature
+  // sound slot, so these are not in the per-creature reference rows.
+  ARMASPEC: "units/armadillo-special", AUTOSPEC: "units/automaton-special",
+  GUNSSPEC: "units/gunslinger-special", WORMSPEC: "units/sandworm-special",
+  SHAMSPEC: "units/shaman-special", PIRTABIL: "units/pirate-special",
+  FNGRSUMM: "units/fangarm-special",
+  // Movement-transition sounds (burrow / fly start+end). Named explicitly so
+  // they read clearly and leave "-special" free for the ability sounds above.
+  NIMPEXT1: "units/nymph-move-start", NIMPEXT2: "units/nymph-move-end",
+  WORMEXT1: "units/sandworm-move-start", WORMEXT2: "units/sandworm-move-end",
+  // Gold Golem alternate death (DETH suffix; GGLMKILL is the standard death).
+  GGLMDETH: "units/gold-golem-death-alt",
+  // HotA map-object VISIT sounds (the looped ambiences go in the AMBIENT table).
+  ACADEMYV: "adventure/seafaring-academy", BLCKTWRS: "adventure/black-tower",
+  BOTTLVIS: "adventure/vial-of-mana", CEMETRY: "adventure/churchyard",
+  IVORYTOW: "adventure/ivory-tower", JUNKVIST: "adventure/junkman",
+  LAMPVIST: "adventure/ancient-lamp", MANSIONV: "adventure/mansion",
+  REDTWRVS: "adventure/red-tower", RUINSVIS: "adventure/ruins",
+  SEATEMPL: "adventure/temple-of-the-sea", WERHOUSE: "adventure/warehouse",
+  // Spell / effect sounds whose meaning decodes clearly.
+  DEATHCLS: "spells/death-cloud-alt", // variant of DEATHCLD (spells/death-cloud)
+  GOGFIREB: "effects/gog-fireball",   // Gog/Magog fireball (cf. GOGFLAME)
+  // HotA horse-movement sounds for the new terrains; exact terrain id is
+  // unverified, so they are named by index rather than asserting a terrain.
+  HORSE11: "adventure/horse-11", HORSE30: "adventure/horse-penalty-30",
+  HORSE31: "adventure/horse-penalty-31",
+  // --- Best-effort names for sounds not found in any VCMI config (uncertain;
+  // see NOTES). Kept so the files convert, flagged so no one trusts the label. ---
+  FREEZE: "spells/freeze", RUNE: "effects/rune", MAGCBLTH: "effects/magcblth",
+  ICEELMSH: "units/ice-elemental-special", STORMELM: "units/storm-elemental-special",
+  EAGLEEYE: "effects/eagle-eye",
+  HORN1: "effects/horn-1", HORN2: "effects/horn-2", HORN3: "effects/horn-3",
+  HORN4: "effects/horn-4", HORN5: "effects/horn-5", HORNALTR: "effects/horn-altar",
+  ROGER1: "effects/roger-1", ROGER2: "effects/roger-2", ROGER3: "effects/roger-3",
+  ROGER4: "effects/roger-4",
+  TERROR1: "effects/terror-1", TERROR2: "effects/terror-2", TERROR3: "effects/terror-3",
+  TERROR4: "effects/terror-4", TERROR5: "effects/terror-5", TERROR6: "effects/terror-6",
+  TERROR7: "effects/terror-7",
 };
 
 // VCMI entity ids that should not be kebab-cased mechanically.
@@ -277,16 +361,68 @@ const NOTES = {
   "effects/magchfil": "unknown (MAGCHFIL); possibly mana refilled at a magic well",
   "effects/mnrdeath": "unknown (MNRDEATH)",
   "ambient/storm": "storm weather (uncertain)",
-  // --- HotA additions. EXT1/EXT2 here are movement-transition sounds, not
-  // ability casts (the ACTIONS map names them -special/-special-2). ---
-  "units/nymph-special": "Nymph/Oceanid move-start sound (NIMPEXT1)",
-  "units/nymph-special-2": "Nymph/Oceanid move-end sound (NIMPEXT2)",
-  "units/sandworm-special": "Sandworm burrow / move-start (WORMEXT1)",
-  "units/sandworm-special-2": "Sandworm surface / move-end (WORMEXT2)",
+  // --- HotA additions ---
   "units/halfling-grenadier-shoot":
     "Halfling Grenadier ranged sound (HALGSHOT); its other actions reuse core HALF* files",
   "spells/grenade": "Grenade ability cast/explosion (GRENEXPL) — Halfling Grenadier / Bounty Hunter",
   "spells/repair": "Repair ability cast (REPAIR) — Factory mechanical-unit heal",
+  // creature special-ability sounds (present in the HotA archive; VCMI plays
+  // the ability via spell config, so they have no per-creature sound slot)
+  "units/armadillo-special": "Armadillo special ability (ARMASPEC)",
+  "units/automaton-special": "Automaton special ability (AUTOSPEC)",
+  "units/gunslinger-special": "Gunslinger special ability (GUNSSPEC)",
+  "units/sandworm-special": "Sandworm special attack (WORMSPEC)",
+  "units/shaman-special": "Shaman special ability (SHAMSPEC)",
+  "units/pirate-special": "Pirate/Corsair/Sea Dog special ability (PIRTABIL)",
+  "units/fangarm-special": "Fangarm summon/resurrect (FNGRSUMM)",
+  // movement-transition sounds
+  "units/nymph-move-start": "Nymph/Oceanid move-start (NIMPEXT1)",
+  "units/nymph-move-end": "Nymph/Oceanid move-end (NIMPEXT2)",
+  "units/sandworm-move-start": "Sandworm burrow / move-start (WORMEXT1)",
+  "units/sandworm-move-end": "Sandworm surface / move-end (WORMEXT2)",
+  "units/gold-golem-death-alt": "Gold Golem alternate death (GGLMDETH); GGLMKILL is the standard one",
+  // HotA map-object visit sounds
+  "adventure/seafaring-academy": "Seafaring Academy visit (ACADEMYV)",
+  "adventure/black-tower": "Black Tower visit (BLCKTWRS)",
+  "adventure/vial-of-mana": "Vial of Mana pickup (BOTTLVIS)",
+  "adventure/churchyard": "Churchyard visit (CEMETRY)",
+  "adventure/ivory-tower": "Ivory Tower visit (IVORYTOW)",
+  "adventure/junkman": "Junkman visit (JUNKVIST)",
+  "adventure/ancient-lamp": "Ancient Lamp visit (LAMPVIST)",
+  "adventure/mansion": "Mansion visit (MANSIONV)",
+  "adventure/red-tower": "Red Tower visit (REDTWRVS)",
+  "adventure/ruins": "Ruins visit (RUINSVIS)",
+  "adventure/temple-of-the-sea": "Temple of the Sea visit (SEATEMPL)",
+  "adventure/warehouse": "Warehouses visit (WERHOUSE)",
+  "spells/death-cloud-alt": "death-cloud variant (DEATHCLS); spells/death-cloud is DEATHCLD",
+  "effects/gog-fireball": "Gog/Magog fireball (GOGFIREB); cf. GOGFLAME",
+  // uncertain — named best-effort; NOT found in any VCMI/HotA config
+  "adventure/horse-11": "HotA horse-movement sound, terrain id 11 (HORSE11); terrain unverified",
+  "adventure/horse-penalty-30": "HotA horse-movement penalty sound (HORSE30); terrain unverified",
+  "adventure/horse-penalty-31": "HotA horse-movement penalty sound (HORSE31); terrain unverified",
+  "spells/freeze": "FREEZE — likely a freeze/frost effect; uncertain, unverified in configs",
+  "effects/rune": "RUNE — likely Bulwark rune magic; uncertain, unverified in configs",
+  "effects/magcblth": "MAGCBLTH — unidentified; uncertain",
+  "units/ice-elemental-special": "ICEELMSH — Ice Elemental extra/special sound; uncertain",
+  "units/storm-elemental-special": "STORMELM — Storm Elemental extra/special sound; uncertain",
+  "effects/eagle-eye": "EAGLEEYE — likely the Eagle Eye skill cue; uncertain",
+  "effects/horn-1": "HORN1 — unidentified horn sound; uncertain",
+  "effects/horn-2": "HORN2 — unidentified horn sound; uncertain",
+  "effects/horn-3": "HORN3 — unidentified horn sound; uncertain",
+  "effects/horn-4": "HORN4 — unidentified horn sound; uncertain",
+  "effects/horn-5": "HORN5 — unidentified horn sound; uncertain",
+  "effects/horn-altar": "HORNALTR — unidentified horn/altar sound; uncertain",
+  "effects/roger-1": "ROGER1 — unidentified (likely Cove/pirate); uncertain",
+  "effects/roger-2": "ROGER2 — unidentified (likely Cove/pirate); uncertain",
+  "effects/roger-3": "ROGER3 — unidentified (likely Cove/pirate); uncertain",
+  "effects/roger-4": "ROGER4 — unidentified (likely Cove/pirate); uncertain",
+  "effects/terror-1": "TERROR1 — unidentified; uncertain",
+  "effects/terror-2": "TERROR2 — unidentified; uncertain",
+  "effects/terror-3": "TERROR3 — unidentified; uncertain",
+  "effects/terror-4": "TERROR4 — unidentified; uncertain",
+  "effects/terror-5": "TERROR5 — unidentified; uncertain",
+  "effects/terror-6": "TERROR6 — unidentified; uncertain",
+  "effects/terror-7": "TERROR7 — unidentified; uncertain",
 };
 for (const [name, [slug, desc]] of Object.entries(AMBIENT))
   NOTES[`ambient/${slug}`] = `${desc} (${name})`;

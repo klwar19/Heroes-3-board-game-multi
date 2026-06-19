@@ -1,3 +1,5 @@
+import { existsSync, readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 // The converter exports its pure mapping helpers; importing it must not run any
 // conversion (that is guarded behind a direct-execution check in the script).
@@ -27,8 +29,8 @@ describe("HotA sound name decoding", () => {
       NIMPKILL: "units/nymph-death",
       NIMPMOVE: "units/nymph-move",
       NIMPWNCE: "units/nymph-hurt",
-      NIMPEXT1: "units/nymph-special",
-      NIMPEXT2: "units/nymph-special-2",
+      NIMPEXT1: "units/nymph-move-start",
+      NIMPEXT2: "units/nymph-move-end",
       // Crew Mate / Seaman (SAYL)
       SAYLATTK: "units/crew-mate-attack",
       SAYLWNCE: "units/crew-mate-hurt",
@@ -60,9 +62,11 @@ describe("HotA sound name decoding", () => {
       ARMAWNCE: "units/armadillo-hurt",
       // Automaton / Sentinel Automaton (AUTO)
       AUTOSHOT: "units/automaton-shoot",
-      // Sandworm / Olgoi-Khorkhoi / Larva (WORM) — EXT1/EXT2 burrow/surface
-      WORMEXT1: "units/sandworm-special",
-      WORMEXT2: "units/sandworm-special-2",
+      // Sandworm / Olgoi-Khorkhoi / Larva (WORM) — EXT1/EXT2 burrow/surface,
+      // WORMSPEC is the special attack (kept distinct from the move-transitions)
+      WORMEXT1: "units/sandworm-move-start",
+      WORMEXT2: "units/sandworm-move-end",
+      WORMSPEC: "units/sandworm-special",
       // Gunslinger / Bounty Hunter (GUNS)
       GUNSWNCE: "units/gunslinger-hurt",
       // Couatl (COTL) vs. Crimson Couatl (CCOT) — distinct sound sets
@@ -107,6 +111,73 @@ describe("HotA sound name decoding", () => {
     for (const [name, want] of Object.entries(expected)) {
       expect(dest(name), name).toBe(want);
     }
+  });
+
+  it("maps the Bulwark town creatures (VCMI HotA port)", () => {
+    const expected: Record<string, string> = {
+      JOTNATTK: "units/jotunn-attack",
+      JOTWKILL: "units/jotunn-warlord-death",
+      KOBLMOVE: "units/kobold-move",
+      MAMNATTK: "units/mammoth-attack",
+      WMAMKILL: "units/war-mammoth-death",
+      MRAMDFND: "units/mountain-ram-defend",
+      SHAMSHOT: "units/shaman-shoot",
+      YETIWNCE: "units/yeti-hurt",
+      VORISHOT: "units/snow-elf-shoot",
+      VORSSHOT: "units/steel-elf-shoot"
+    };
+    for (const [name, want] of Object.entries(expected)) expect(dest(name), name).toBe(want);
+  });
+
+  it("maps neutral creatures and the Cannon war machine", () => {
+    const expected: Record<string, string> = {
+      LEPRSHOT: "units/leprechaun-shoot",
+      SATYATTK: "units/satyr-attack",
+      FNGRKILL: "units/fangarm-death",
+      SLGLATTK: "units/steel-golem-attack",
+      CANNSHOT: "units/cannon-shoot",
+      CANNKILL: "units/cannon-death",
+      CANNWNCE: "units/cannon-hurt"
+    };
+    for (const [name, want] of Object.entries(expected)) expect(dest(name), name).toBe(want);
+  });
+
+  it("maps creature special/transition sounds without colliding", () => {
+    const expected: Record<string, string> = {
+      ARMASPEC: "units/armadillo-special",
+      AUTOSPEC: "units/automaton-special",
+      GUNSSPEC: "units/gunslinger-special",
+      SHAMSPEC: "units/shaman-special",
+      PIRTABIL: "units/pirate-special",
+      FNGRSUMM: "units/fangarm-special",
+      NIMPEXT1: "units/nymph-move-start",
+      GGLMDETH: "units/gold-golem-death-alt"
+    };
+    for (const [name, want] of Object.entries(expected)) expect(dest(name), name).toBe(want);
+  });
+
+  it("maps HotA map-object visit + ambience sounds", () => {
+    const expected: Record<string, string> = {
+      BLCKTWRS: "adventure/black-tower", // visit
+      BLCKTWRL: "ambient/black-tower", // ambience
+      IVORYTOW: "adventure/ivory-tower",
+      REDTWRVS: "adventure/red-tower",
+      MANSIONV: "adventure/mansion",
+      SEATEMPL: "adventure/temple-of-the-sea",
+      ACADEMYV: "adventure/seafaring-academy",
+      WERHOUSE: "adventure/warehouse",
+      WRHSGOLD: "ambient/warehouse-gold",
+      LOOPPCAV: "ambient/pirate-cavern"
+    };
+    for (const [name, want] of Object.entries(expected)) expect(dest(name), name).toBe(want);
+  });
+
+  it("resolves every uploaded sounds-incoming/*.wav (nothing left UNRESOLVED)", () => {
+    const dir = fileURLToPath(new URL("../../sounds-incoming", import.meta.url));
+    if (!existsSync(dir)) return; // raw drops are cleaned up after conversion
+    const wavs = readdirSync(dir).filter((f) => /\.wav$/i.test(f));
+    const unresolved = wavs.filter((f) => !dest(f.replace(/\.wav$/i, "").toUpperCase()));
+    expect(unresolved).toEqual([]);
   });
 
   it("still rejects unknown names instead of guessing", () => {
