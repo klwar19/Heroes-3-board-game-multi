@@ -63,6 +63,7 @@ import {
   ArmyPanel,
   FarTileTray,
   HexMapBoard,
+  LearningOfferModal,
   LOCATION_GLYPHS,
   MarketPanel,
   PileModal,
@@ -2910,6 +2911,7 @@ export default function Home() {
             />
           ) : null}
           <PromptTray legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
+          <LearningOfferModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
           <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
           <LogDrawer state={state} />
           {isSeated && handMode === null && !forcedDiscard ? (
@@ -3125,6 +3127,7 @@ export default function Home() {
         onDismiss={(id) => setFeedItems((current) => current.filter((item) => item.id !== id))}
       />
       <PromptTray legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
+      <LearningOfferModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
       {/* Hold the instant window back until the attack-die animation has fully
           played out, so a post-roll reaction prompt (e.g. a lethal-save window
           in a neutral fight) never pops over the rolling dice. */}

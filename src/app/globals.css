@@ -1712,6 +1712,48 @@ button.battleCell {
   box-shadow: 0 0 16px rgb(213 168 79 / 35%);
 }
 
+.learningOfferModal {
+  width: min(560px, 94vw);
+}
+
+.learningOfferBody {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.learningOfferCard {
+  width: 168px;
+  max-width: 44vw;
+  border-radius: 9px;
+  box-shadow: 0 0 20px rgb(213 168 79 / 30%);
+}
+
+.learningOfferOptions {
+  display: grid;
+  gap: 10px;
+  flex: 1 1 220px;
+  min-width: 220px;
+}
+
+.learningOfferOptions .commandButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.learningOfferOptions .commandButton.learningExpert {
+  border-color: var(--gold);
+}
+
+.learningOfferOptions .commandButton.learningExpert svg {
+  color: var(--gold);
+}
+
 .searchCard.discardPick {
   border-style: dashed;
 }
