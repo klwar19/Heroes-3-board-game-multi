@@ -1,10 +1,11 @@
 /**
  * Hand-drawn board-game iconography for the dice faces and treasure notices.
- * Everything is inline SVG on `currentColor` so the icons take on each die
- * face's ink colour (dark on the parchment Resource die, deep brown on the
- * gold Treasure die). Stylised to read like the printed symbols — these are
- * original art for the fan project, not scans.
+ * Most icons are inline SVG on `currentColor` so they take on each die face's
+ * ink colour. The crossed tools use the approved transparent raster asset so
+ * the shovel and pickaxe stay recognizable on the treasure die.
  */
+
+import { assetUrl } from "@/lib/asset-url";
 
 type IconProps = { size?: number; className?: string };
 
@@ -44,23 +45,23 @@ export function AnkhIcon({ size = 20, className }: IconProps) {
   );
 }
 
-/** Roll the Resource die — two crossed digging tools (a shovel and a spade). */
+/** Roll the Resource die — approved crossed shovel and pickaxe asset. */
 export function CrossedShovelsIcon({ size = 20, className }: IconProps) {
   return (
-    <svg aria-hidden="true" className={className} height={size} viewBox="0 0 24 24" width={size}>
-      <g transform="rotate(32 12 12)">
-        {/* pointed shovel blade */}
-        <path d="M12 2.4 14.5 6Q14.5 8.1 12 8.5 9.5 8.1 9.5 6Z" fill="currentColor" />
-        <rect fill="currentColor" height="9.6" rx="1" width="2" x="11" y="8" />
-        <rect fill="currentColor" height="2.2" rx="1.1" width="6.6" x="8.7" y="17.2" />
-      </g>
-      <g transform="rotate(-32 12 12)">
-        {/* flat spade blade */}
-        <rect fill="currentColor" height="4.4" rx="0.8" width="5.6" x="9.2" y="2.6" />
-        <rect fill="currentColor" height="11" rx="1" width="2" x="11" y="6.6" />
-        <rect fill="currentColor" height="2.2" rx="1.1" width="6.6" x="8.7" y="17.2" />
-      </g>
-    </svg>
+    <span
+      aria-hidden="true"
+      className={className}
+      style={{
+        display: "inline-block",
+        width: size,
+        height: size,
+        backgroundImage: `url(${assetUrl("/assets/ui/dice-resource-tools.webp")})`,
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+        backgroundSize: "contain",
+        filter: "drop-shadow(0 1px 1px rgb(0 0 0 / 35%))"
+      }}
+    />
   );
 }
 
