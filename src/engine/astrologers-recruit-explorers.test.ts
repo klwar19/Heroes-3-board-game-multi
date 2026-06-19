@@ -229,53 +229,104 @@ describe("Astrologers — Charlie and his Circus (paid Neutral recruit)", () => 
 });
 
 // ===========================================================================
-// Unexpected Reinforcements — free Neutral recruit, immediate, no Azure
+// Unexpected Reinforcements — free recruit of one of YOUR faction's units,
+// gated by the Dwellings you have built (faction-agnostic: any faction works).
 // ===========================================================================
 
-describe("Astrologers — Unexpected Reinforcements (free Neutral recruit)", () => {
-  function unexpectedGame(): GameState {
+describe("Astrologers — Unexpected Reinforcements (free own-faction recruit)", () => {
+  function unexpectedGame(tiers: ("bronze" | "silver" | "gold")[] = ["gold"]): GameState {
     const state = createAdventureGameState({ seed: "unexpected", difficulty: "normal", rollFirstPlayer: false });
-    setDwellingTiers(state, "p1", ["bronze"]);
-    setDwellingTiers(state, "p2", []);
+    state.players.p1.factionId = "castle";
+    setDwellingTiers(state, "p1", tiers);
+    setDwellingTiers(state, "p2", []); // only p1 is offered, keeping assertions focused
     state.players.p1.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
-    state.decks["neutral-bronze"]!.drawPile = ["neutral.boars"];
     state.decks.astrologers!.drawPile = ["astrologers.unexpected_reinforcements"];
     return state;
   }
 
-  it("recruits a Neutral Unit for free, drawn from a Dwelling-tier deck", () => {
-    const state = unexpectedGame();
+  it("recruits one of the player's own faction units for free, onto the Few side", () => {
+    const state = unexpectedGame(["gold"]); // Castle gold tier: Champions + Archangels
+    const armyBefore = state.players.p1.army.length;
     drawAstrologersCard(state);
     pumpAdventureQueues(state);
 
     expect(state.adventure?.pendingVisit?.playerId).toBe("p1");
-    expect(visitOptionLabels(state, "p1").some((label) => /Recruit Boars \(free\)/.test(label))).toBe(true);
+    const labels = visitOptionLabels(state, "p1");
+    expect(labels.some((label) => /Recruit Archangels \(free\)/.test(label))).toBe(true);
+    expect(labels).toContain("Skip");
 
-    const after = chooseVisitOption(state, "p1", /Recruit Boars/);
-    expect(after.players.p1.army.some((unit) => unit.unitDefId === "neutral.boars" && unit.side === "neutral")).toBe(true);
+    const after = chooseVisitOption(state, "p1", /Recruit Archangels/);
+    const recruited = after.players.p1.army.find((unit) => unit.unitDefId === "castle.archangels");
+    expect(recruited?.side).toBe("few");
+    expect(after.players.p1.army.length).toBe(armyBefore + 1);
     // "for free" — no resources spent despite having none.
-    expect(after.players.p1.resources.gold).toBe(0);
+    expect(after.players.p1.resources).toEqual({ gold: 0, buildingMaterials: 0, valuables: 0 });
+    expect(after.adventure?.pendingVisit).toBeNull();
+  });
+
+  it("only offers units whose Dwelling tier the player has built", () => {
+    const state = unexpectedGame(["gold"]); // only the gold Dwelling
+    drawAstrologersCard(state);
+    pumpAdventureQueues(state);
+
+    const labels = visitOptionLabels(state, "p1");
+    // Gold tier (Champions, Archangels) is offered...
+    expect(labels.some((label) => /Recruit Champions/.test(label))).toBe(true);
+    expect(labels.some((label) => /Recruit Archangels/.test(label))).toBe(true);
+    // ...but bronze-tier units (no bronze Dwelling) are not.
+    expect(labels.some((label) => /Recruit Halberdiers/.test(label))).toBe(false);
+    expect(labels.some((label) => /Recruit Griffins/.test(label))).toBe(false);
+  });
+
+  it("offers every unlocked tier when several Dwellings are built", () => {
+    const state = unexpectedGame(["bronze", "gold"]);
+    drawAstrologersCard(state);
+    pumpAdventureQueues(state);
+
+    const labels = visitOptionLabels(state, "p1");
+    expect(labels.some((label) => /Recruit Halberdiers/.test(label))).toBe(true); // bronze
+    expect(labels.some((label) => /Recruit Archangels/.test(label))).toBe(true); // gold
+    expect(labels.some((label) => /Recruit Crusaders/.test(label))).toBe(false); // silver — not built
+  });
+
+  it("is optional — Skip recruits nothing", () => {
+    const state = unexpectedGame(["gold"]);
+    const armyBefore = state.players.p1.army.length;
+    drawAstrologersCard(state);
+    pumpAdventureQueues(state);
+
+    const after = chooseVisitOption(state, "p1", /^Skip$/);
+    expect(after.players.p1.army.length).toBe(armyBefore);
     expect(after.adventure?.pendingVisit).toBeNull();
   });
 
   it("offers nothing to a player without a Dwelling", () => {
-    const state = unexpectedGame();
-    setDwellingTiers(state, "p1", []);
+    const state = unexpectedGame([]);
     drawAstrologersCard(state);
     pumpAdventureQueues(state);
     expect(state.adventure?.pendingVisit).toBeNull();
   });
 
-  it("never draws Azure — only Dwelling tiers (bronze/silver/gold) are recruitable", () => {
-    const state = unexpectedGame();
-    // Seed an Azure unit on top of the azure deck; with only a bronze Dwelling it
-    // is never drawn, so the Azure deck is left untouched and Boars is offered.
-    state.decks["neutral-azure"]!.drawPile = ["neutral.azure_dragons"];
-    const azureBefore = state.decks["neutral-azure"]!.drawPile.length;
+  it("reads the player's own faction — a Necropolis player is offered Necropolis units", () => {
+    const state = unexpectedGame([]);
+    state.players.p1.factionId = "necropolis";
+    setDwellingTiers(state, "p1", ["bronze"]); // Necropolis bronze
     drawAstrologersCard(state);
     pumpAdventureQueues(state);
 
-    expect(visitOptionLabels(state, "p1").some((label) => /Recruit Boars/.test(label))).toBe(true);
-    expect(state.decks["neutral-azure"]!.drawPile.length).toBe(azureBefore); // azure untouched
+    const labels = visitOptionLabels(state, "p1");
+    expect(labels.length).toBeGreaterThan(1); // some Necropolis bronze unit(s) + Skip
+    // None of the offered units belongs to another faction (e.g. Castle).
+    expect(labels.some((label) => /Halberdiers|Archangels|Champions/.test(label))).toBe(false);
+  });
+
+  it("handles factions with no units yet defined (e.g. Conflux/Cove) — no offer", () => {
+    const state = unexpectedGame(["bronze", "gold"]);
+    // A faction not yet in the game has no roster, so there is nothing to recruit
+    // even with Dwellings built — the offer self-guards instead of crashing.
+    state.players.p1.factionId = "conflux" as typeof state.players.p1.factionId;
+    drawAstrologersCard(state);
+    pumpAdventureQueues(state);
+    expect(state.adventure?.pendingVisit).toBeNull();
   });
 });

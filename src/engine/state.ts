@@ -4409,25 +4409,36 @@ export type VisitStep =
     }
   | {
       /**
-       * Astrologers (Charlie and his Circus / Unexpected Reinforcements): draw one
-       * Neutral Unit per Dwelling tier the player controls (capped at `maxDraws`),
-       * then open a recruit menu over them. `free` waives the recruitment cost
-       * (Unexpected Reinforcements). Azure is never drawn — no Dwelling unlocks it.
+       * Astrologers (Charlie and his Circus): draw one Neutral Unit per Dwelling
+       * tier the player controls (capped at `maxDraws`), then open a paid recruit
+       * menu over them. Azure is never drawn — no Dwelling unlocks it.
        */
       type: "NEUTRAL_RECRUIT_OFFER";
-      free: boolean;
       maxDraws: number;
     }
   | {
       /**
-       * Neutral-recruit leaf: recruit `recruit` (paying its cost unless `free`)
-       * and return every other card in `drawn` to its tier's discard pile. A null
-       * `recruit` declines and shuffles all of `drawn` back.
+       * Neutral-recruit leaf: recruit `recruit` (paying its cost) and return every
+       * other card in `drawn` to its tier's discard pile. A null `recruit`
+       * declines and shuffles all of `drawn` back.
        */
       type: "RECRUIT_DRAWN_NEUTRAL";
       recruit: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" } | null;
       drawn: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
-      free: boolean;
+    }
+  | {
+      /**
+       * Astrologers (Unexpected Reinforcements): open a free recruit menu over the
+       * player's own faction units whose Dwelling tier they have built (rebuilt
+       * from the live town, so it works for any faction). Azure never qualifies —
+       * no Dwelling unlocks it.
+       */
+      type: "FACTION_RECRUIT_OFFER";
+    }
+  | {
+      /** Faction-recruit leaf: add `unitDefId` to the army's Few side, for free. */
+      type: "RECRUIT_FACTION_UNIT";
+      unitDefId: CardId;
     }
   | { type: "DISCOVER_ADJACENT_TILE" }
   | {
