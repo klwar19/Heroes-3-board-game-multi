@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createInitialGameState, expertUsesAvailable, getLegalActions } from "./index";
+import {
+  applyAction,
+  createAdventureGameState,
+  createInitialGameState,
+  expertUsesAvailable,
+  getLegalActions
+} from "./index";
+import { refreshRoundTokens } from "./adventure";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -113,20 +120,65 @@ describe("expert-effect crown limit", () => {
     expect(expertOffers(state, "p1").map((legal) => legal.label)).toEqual([]);
   });
 
-  it("the one-round bonus crown does NOT survive into the next combat round", () => {
-    let state = createInitialGameState("crown-bonus-reset-seed");
+  it("crowns are a per-game-round budget: they survive across combat rounds within a battle", () => {
+    let state = createInitialGameState("crown-combat-round-seed");
     state.players.p1.limits.expertUses = 1;
-    state.players.p1.combatStats.expertUseBonusThisRound = 1;
-    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
+    state.players.p1.combatStats.expertUseBonusThisRound = 1; // e.g. Pendant of Courage
+    state.players.p1.combatStats.expertUsesSpentThisRound = 1; // base crown already spent
 
-    // 1 + 1 bonus available this round.
-    expect(expertUsesAvailable(state.players.p1)).toBe(2);
-
-    state = endRound(state, "p1");
-
-    // Next round: the bonus is gone, only the base crown is back.
-    expect(state.players.p1.combatStats.expertUseBonusThisRound ?? 0).toBe(0);
-    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+    // 1 + 1 bonus − 1 spent = 1 crown free this round.
     expect(expertUsesAvailable(state.players.p1)).toBe(1);
+
+    // Advancing to the next COMBAT round does NOT refresh crowns — the spend and
+    // the bonus are a per-game-round budget, not a per-combat-round one.
+    state = endRound(state, "p1");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+    expect(state.players.p1.combatStats.expertUseBonusThisRound ?? 0).toBe(1);
+    expect(expertUsesAvailable(state.players.p1)).toBe(1);
+  });
+
+  it("crowns and the one-round bonus refresh only at the start of the player's game round", () => {
+    const state = createInitialGameState("crown-game-round-seed");
+    state.players.p1.limits.expertUses = 1;
+    state.players.p1.combatStats.expertUseBonusThisRound = 1; // e.g. Pendant of Courage
+    state.players.p1.combatStats.expertUsesSpentThisRound = 1; // base crown already spent
+
+    // Nothing free until the game round refreshes (1 + 1 − 1 = 1... but the
+    // spend should clear, not the availability — verify the refresh below).
+    expect(expertUsesAvailable(state.players.p1)).toBe(1);
+
+    // The game-round refresh (start of the player's turn) clears the spend and
+    // the one-round bonus: only the base crown comes back.
+    refreshRoundTokens(state);
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+    expect(state.players.p1.combatStats.expertUseBonusThisRound ?? 0).toBe(0);
+    expect(expertUsesAvailable(state.players.p1)).toBe(1);
+  });
+});
+
+describe("expert-effect crown limit — crowns are shared between the map and the ensuing battle", () => {
+  // The reported bug: a level-3 hero (1 crown) spent its only crown on a map
+  // ability, then entered combat and was handed a *second* crown because
+  // starting combat reset `expertUsesSpentThisRound`. Crowns are a per-game-round
+  // budget shared across map abilities and combat, so the spend must carry in.
+  it("a crown spent on the map this round leaves nothing for the battle it triggers", () => {
+    let state = createAdventureGameState({ seed: "tactics-diplomacy", difficulty: "normal", rollFirstPlayer: false });
+    if (state.players.p1.needsHandRefresh) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+
+    // Level 3 → exactly one crown, already spent this round on a map ability.
+    state.players.p1.limits.expertUses = 1;
+    state.players.p1.combatStats.expertUsesSpentThisRound = 1;
+    state.players.p1.combatStats.expertUseBonusThisRound = 0;
+    expect(expertUsesAvailable(state.players.p1)).toBe(0);
+
+    // Step onto the level-I guarded mine — this starts a neutral combat.
+    state = applyOk(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:9:1" });
+    expect(state.combat, "moving onto the guarded mine should start a combat").toBeTruthy();
+
+    // The crown spent on the map is still spent: the battle offers no fresh crown.
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+    expect(expertUsesAvailable(state.players.p1)).toBe(0);
   });
 });
