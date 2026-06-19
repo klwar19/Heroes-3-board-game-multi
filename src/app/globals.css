@@ -110,12 +110,14 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 250px;
   gap: 10px;
-  align-items: stretch;
+  align-items: start;
 }
 
+/* The combat board fills the row now that the shared-deck rail is gone: a wide
+   board on the left and a roomier right rail for the unit card definition. */
 .tableMidRow {
   display: grid;
-  grid-template-columns: 168px minmax(0, 1fr) 240px;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 10px;
   align-items: start;
 }
@@ -123,7 +125,7 @@ button {
 /* During combat deployment the bigger board gets a dedicated deploy sidebar to
    its right; the right rail (inspect/commands) still trails it. */
 .tableMidRow.withPlacement {
-  grid-template-columns: 168px minmax(0, 1fr) 248px 240px;
+  grid-template-columns: minmax(0, 1fr) 248px 320px;
 }
 
 .tableSeatRow {
@@ -435,6 +437,18 @@ button {
   color: var(--muted);
 }
 
+/* ---------- combat card strip (top) ---------- */
+
+/* Everything card-related stacks here: each opponent's hand/deck/discard
+   (OpponentBar) above the viewer's own dock + permanents + playable hand
+   (a reused .tableSeatRow). Card-flight animations land in this strip. */
+.combatCardStrip {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+}
+
 /* ---------- deck wells (left rail) ---------- */
 
 .leftRail,
@@ -588,7 +602,7 @@ button {
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 1080px;
+  max-width: 1240px;
   min-width: 0;
   display: grid;
   overflow: hidden;
@@ -951,29 +965,32 @@ button.battleCell {
 
 /* ---------- right rail ---------- */
 
+/* The unit card definition: the card scan reads large at the top, its stats and
+   abilities beneath. Widened with the right rail so the artwork is actually
+   legible during a fight. */
 .inspectPanel {
   display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
-  gap: 9px;
+  gap: 10px;
   min-height: 150px;
-  padding: 9px;
+  padding: 11px;
   border: 1px solid rgb(243 239 228 / 11%);
   border-radius: 9px;
   background: linear-gradient(180deg, rgb(32 35 38 / 96%), rgb(18 20 22 / 98%));
 }
 
 .inspectPanel.empty {
-  grid-template-columns: 1fr;
   place-items: center;
   color: var(--muted);
   font-size: 12px;
 }
 
 .inspectImage {
-  width: 96px;
+  width: 100%;
+  max-width: 240px;
+  margin: 0 auto;
   aspect-ratio: 5 / 7;
   object-fit: contain;
-  border-radius: 5px;
+  border-radius: 7px;
   background: #090a0a;
 }
 
@@ -981,18 +998,29 @@ button.battleCell {
   min-width: 0;
   display: grid;
   align-content: start;
-  gap: 6px;
+  gap: 7px;
 }
 
 .inspectBody strong {
   overflow-wrap: anywhere;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .inspectKind {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   text-transform: uppercase;
+}
+
+/* Initiative shifted by Haste/Slow etc. reads green (up) or red (down). */
+.inspectKind .initUp {
+  color: var(--green-text, #7fd58a);
+  font-weight: 800;
+}
+
+.inspectKind .initDown {
+  color: #e08a7f;
+  font-weight: 800;
 }
 
 .inspectStats {
@@ -2280,11 +2308,11 @@ button.battleCell {
 
 @media (max-width: 1240px) {
   .tableMidRow {
-    grid-template-columns: 150px minmax(0, 1fr) 210px;
+    grid-template-columns: minmax(0, 1fr) 280px;
   }
 
   .tableMidRow.withPlacement {
-    grid-template-columns: 150px minmax(0, 1fr) 220px 200px;
+    grid-template-columns: minmax(0, 1fr) 220px 280px;
   }
 }
 
@@ -2294,16 +2322,6 @@ button.battleCell {
   .tableMidRow.withPlacement,
   .tableSeatRow {
     grid-template-columns: 1fr;
-  }
-
-  .leftRail {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    display: grid;
-  }
-
-  .deckWells {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-column: 1 / -1;
   }
 
   .rightRail {
@@ -3809,6 +3827,7 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 .inspectZoom {
+  width: 100%;
   padding: 0;
   border: 0;
   background: none;
@@ -6107,6 +6126,24 @@ button.hbSlot:disabled { cursor: default; }
   font-size: 9px;
   font-weight: 800;
   box-shadow: 0 1px 3px rgb(0 0 0 / 60%);
+}
+
+/* Haste/Slow and other lasting shifts recolour the badge so a sped-up or slowed
+   unit is obvious in the order stripe; a ring draws the eye to the change. */
+.initCard .initBadge.boosted {
+  background: #6fd07f;
+  color: #0c1f10;
+  box-shadow:
+    0 0 0 1px #bff0c6,
+    0 1px 3px rgb(0 0 0 / 60%);
+}
+
+.initCard .initBadge.slowed {
+  background: #e0796d;
+  color: #2a0c08;
+  box-shadow:
+    0 0 0 1px #f4bdb5,
+    0 1px 3px rgb(0 0 0 / 60%);
 }
 
 .initCard.p1 {

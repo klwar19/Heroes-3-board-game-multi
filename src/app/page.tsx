@@ -27,7 +27,7 @@ import {
   InspectPanel,
   LogDrawer
 } from "@/components/table/board";
-import { CardFrame, DeckWells, HandFan, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
+import { CardFrame, HandFan, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
 import { HeroBoard } from "@/components/hero-board";
 import {
   CombatResultModal,
@@ -2897,8 +2897,61 @@ export default function Home() {
     >
     <CardZoomProvider>
     <main className="tableRoot">
+      {/* All card logistics live up here: every opponent's hand/deck/discard and
+          the viewer's own dock + permanents + playable hand. Card-flight
+          animations land in this strip. Heroes stay on the right rail. */}
       <div className="tableTopRow">
-        {isSeated ? <OpponentBar state={state} view={playerView} viewerPlayerId={viewerPlayerId} /> : <div />}
+        <div className="combatCardStrip">
+          {isSeated ? <OpponentBar state={state} view={playerView} viewerPlayerId={viewerPlayerId} /> : null}
+          {isSeated ? (
+            <div className="tableSeatRow">
+              <PlayerDock state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
+              <PermanentSlot
+                legalActions={legalActions}
+                onAction={submitAction}
+                playerId={viewerPlayerId}
+                state={state}
+                viewerPlayerId={viewerPlayerId}
+              />
+              <div className="handColumn">
+                <button
+                  className="commandButton ghost handBrowse"
+                  onClick={() =>
+                    setPile({
+                      title: "Your hand",
+                      cardIds: playerView.players[viewerPlayerId]?.hand ?? [],
+                      kind: "cards"
+                    })
+                  }
+                  title="Read every card in your hand at full size"
+                  type="button"
+                >
+                  <Eye aria-hidden="true" size={13} /> View hand (
+                  {playerView.players[viewerPlayerId]?.hand.length ?? 0})
+                </button>
+                <HandFan
+                  hiddenTailCount={hiddenHandTail}
+                  legalActions={legalActions}
+                  onAction={submitAction}
+                  onSelectCardAction={setSelectedCardAction}
+                  selectedCardAction={selectedCardAction}
+                  state={state}
+                  trayActive={trayActive}
+                  view={playerView}
+                  viewerPlayerId={viewerPlayerId}
+                />
+                <CombatMoralePanel
+                  hand={playerView.players[viewerPlayerId]?.hand ?? []}
+                  legalActions={legalActions}
+                  onAction={submitAction}
+                  viewerPlayerId={viewerPlayerId}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="observerNote">Observer mode: hands stay hidden, the fight is live.</div>
+          )}
+        </div>
         {tableMenu}
       </div>
 
@@ -2956,10 +3009,6 @@ export default function Home() {
       ) : null}
 
       <div className={`tableMidRow ${state.combat?.setup && isSeated ? "withPlacement" : ""}`}>
-        <div className="leftRail">
-          <DeckWells legalActions={legalActions} onAction={submitAction} view={playerView} />
-          <EffectsRail legalActions={legalActions} onAction={submitAction} state={state} />
-        </div>
         <div className="boardColumn">
           <InitiativeRail state={state} />
           <BattlefieldBoard
@@ -2973,6 +3022,9 @@ export default function Home() {
             tintedUnits={tintedUnits}
             viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
           />
+          {/* Active table effects used to sit in a left rail; with that gone they
+              ride under the board (the rail renders nothing when there are none). */}
+          <EffectsRail legalActions={legalActions} onAction={submitAction} state={state} />
         </div>
         {state.combat?.setup && isSeated ? (
           <div className="placementColumn">
@@ -3000,57 +3052,6 @@ export default function Home() {
             />
           ) : null}
         </div>
-      </div>
-
-      <div className="tableSeatRow">
-        {isSeated ? <PlayerDock state={state} view={playerView} viewerPlayerId={viewerPlayerId} /> : <div />}
-        {isSeated ? (
-          <PermanentSlot
-            legalActions={legalActions}
-            onAction={submitAction}
-            playerId={viewerPlayerId}
-            state={state}
-            viewerPlayerId={viewerPlayerId}
-          />
-        ) : null}
-        {isSeated ? (
-          <div className="handColumn">
-            <button
-              className="commandButton ghost handBrowse"
-              onClick={() =>
-                setPile({
-                  title: "Your hand",
-                  cardIds: playerView.players[viewerPlayerId]?.hand ?? [],
-                  kind: "cards"
-                })
-              }
-              title="Read every card in your hand at full size"
-              type="button"
-            >
-              <Eye aria-hidden="true" size={13} /> View hand (
-              {playerView.players[viewerPlayerId]?.hand.length ?? 0})
-            </button>
-            <HandFan
-              hiddenTailCount={hiddenHandTail}
-              legalActions={legalActions}
-              onAction={submitAction}
-              onSelectCardAction={setSelectedCardAction}
-              selectedCardAction={selectedCardAction}
-              state={state}
-              trayActive={trayActive}
-              view={playerView}
-              viewerPlayerId={viewerPlayerId}
-            />
-            <CombatMoralePanel
-              hand={playerView.players[viewerPlayerId]?.hand ?? []}
-              legalActions={legalActions}
-              onAction={submitAction}
-              viewerPlayerId={viewerPlayerId}
-            />
-          </div>
-        ) : (
-          <div className="observerNote">Observer mode: hands stay hidden, the fight is live.</div>
-        )}
       </div>
 
       <LogDrawer state={state} />
