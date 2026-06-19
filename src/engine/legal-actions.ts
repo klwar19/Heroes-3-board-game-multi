@@ -1982,6 +1982,13 @@ function addOptionPlays(
     if (!isOptionEffectPlayable(state, playerId, option.effect, context)) {
       continue;
     }
+    // Legion artifacts: a given piece's discount cannot stack with itself. Once
+    // this card has banked its discount this turn, hide its discount side (its
+    // resource side stays available) so it cannot be replayed for a second stack
+    // after being pulled back from the discard pile. Different pieces still pool.
+    if (option.effect.type === "GAIN_RECRUIT_DISCOUNT" && player.recruitDiscountSources?.includes(cardId)) {
+      continue;
+    }
     if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
       continue;
     }

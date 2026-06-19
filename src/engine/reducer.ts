@@ -9174,10 +9174,18 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // holdOngoingCardIfEffectCreated leaves the card in the discard pile — the
   // artifact is instant and is spent the moment the next recruit/reinforce uses
   // the banked discount (see consumeRecruitDiscount), never lingering in play.
+  // DIFFERENT Legion pieces pool together; the SAME piece cannot stack with
+  // itself (replaying it after retrieving it from the discard adds nothing), so
+  // we only bank once per card id per turn. The legal-action layer already hides
+  // a second discount play of the same piece; this is the matching safety net.
   if (effect.type === "GAIN_RECRUIT_DISCOUNT") {
     const discountPlayer = state.players[action.playerId];
     if (discountPlayer) {
-      discountPlayer.recruitDiscount = (discountPlayer.recruitDiscount ?? 0) + effect.amount;
+      discountPlayer.recruitDiscountSources ??= [];
+      if (!discountPlayer.recruitDiscountSources.includes(card.id)) {
+        discountPlayer.recruitDiscountSources.push(card.id);
+        discountPlayer.recruitDiscount = (discountPlayer.recruitDiscount ?? 0) + effect.amount;
+      }
     }
   }
 

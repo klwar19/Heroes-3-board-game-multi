@@ -382,10 +382,11 @@ export const artifactCards: CardLibrary = {
     name: "Torso of Legion",
     kind: "artifact",
     timing: "instant",
-    artifactTier: "minor",
+    // House rule: Torso of Legion is played as a Major artifact (not Minor).
+    artifactTier: "major",
     tags: [
       "artifact",
-      "minor",
+      "major",
       "Reduce the cost of Recruitment or Reinforcing a unit by 6 gold. — OR — Gain 1 valuables or 2 building materials."
     ],
     effect: {
@@ -407,7 +408,7 @@ export const artifactCards: CardLibrary = {
         }
       ]
     },
-    assets: artifactAssets("minor", "torso_of_legion", "Torso of Legion"),
+    assets: artifactAssets("major", "torso_of_legion", "Torso of Legion"),
     implementationStatus: "implemented",
     source: artifactSource("torso_of_legion")
   },
@@ -3078,7 +3079,6 @@ export const artifactDeckLegacy: string[] = [
   "artifact.rib_cage",
   "artifact.shield_of_the_yawning_dead",
   "artifact.speculum",
-  "artifact.torso_of_legion",
   "artifact.boots_of_speed",
   "artifact.charm_of_mana",
   "artifact.greater_gnolls_flail",
@@ -3102,6 +3102,7 @@ export const artifactDeckLegacy: string[] = [
   "artifact.endless_purse_of_gold",
   "artifact.arms_of_legion",
   "artifact.head_of_legion",
+  "artifact.torso_of_legion",
   "artifact.ogres_club_of_havoc",
   "artifact.tunic_of_the_cyclops_king",
   "artifact.vial_of_lifeblood",
@@ -3174,7 +3175,6 @@ export const artifactDeckBinhMinor: string[] = [
   "artifact.rib_cage",
   "artifact.shield_of_the_yawning_dead",
   "artifact.speculum",
-  "artifact.torso_of_legion",
   "artifact.boots_of_speed",
   "artifact.skull_helmet",
   "artifact.equestrians_gloves",
@@ -3201,6 +3201,7 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.endless_purse_of_gold",
   "artifact.arms_of_legion",
   "artifact.head_of_legion",
+  "artifact.torso_of_legion",
   "artifact.ogres_club_of_havoc",
   "artifact.tunic_of_the_cyclops_king",
   "artifact.vial_of_lifeblood",
