@@ -5251,9 +5251,10 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
   }
 
   if (choice.context === "city-hall") {
-    const optionsSource = cityHallChoiceBeingResolved;
-    const option = optionsSource?.options[action.optionIndex];
-    if (!optionsSource || !option) {
+    // Options are carried in the pending choice (game state), so the pick stays
+    // resolvable across a reload/reconnect.
+    const option = choice.cityHall?.options[action.optionIndex];
+    if (!option) {
       throw new Error("That City Hall option does not exist.");
     }
 
@@ -5305,29 +5306,10 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     }
   }
 
-  cityHallChoiceBeingResolved = null;
   state.pendingChoice = null;
   state.phase = choice.returnPhase;
   state.priorityPlayerId = null;
 }
-
-/**
- * City Hall options under resolution; kept module-local because the pending
- * choice itself stores only labels. The queue pump repopulates it whenever a
- * city-hall choice opens, including after a state reload.
- */
-let cityHallChoiceBeingResolved: {
-  options: {
-    label: string;
-    gold?: number;
-    buildingMaterials?: number;
-    valuables?: number;
-    movement?: number;
-    drawCards?: number;
-    reinforceBronzeFree?: boolean;
-    tradingPost?: boolean;
-  }[];
-} | null = null;
 
 // ---------------------------------------------------------------------------
 // Turn and round flow
@@ -5963,7 +5945,6 @@ export function pumpAdventureQueues(state: GameState): void {
       }
 
       adventure.rewardQueue.shift();
-      cityHallChoiceBeingResolved = { options: building.effect.options };
       state.pendingChoice = {
         id: `choice_${nextEventNumber(state)}`,
         type: "OPTION_CHOICE",
@@ -5971,6 +5952,9 @@ export function pumpAdventureQueues(state: GameState): void {
         prompt: `${building.name}: choose this round's bonus`,
         options: building.effect.options.map((option) => ({ label: option.label })),
         context: "city-hall",
+        // Carry the full option payloads in state so resolution does not depend
+        // on any off-state cache that a reload/reconnect would wipe.
+        cityHall: { options: building.effect.options },
         returnPhase: state.phase === "choice" ? "player-turn" : state.phase
       };
       state.phase = "choice";
@@ -5988,21 +5972,3 @@ export function pumpAdventureQueues(state: GameState): void {
   }
 }
 
-/** Restores the city-hall options after a reload mid-choice. */
-export function rehydrateCityHallChoice(state: GameState): void {
-  const choice = state.pendingChoice;
-  if (choice?.type !== "OPTION_CHOICE" || choice.context !== "city-hall" || cityHallChoiceBeingResolved) {
-    return;
-  }
-
-  const labels = choice.options.map((option) => option.label).join("|");
-  for (const building of Object.values(coreBuildingDefinitions)) {
-    if (building.effect?.type === "RESOURCE_ROUND_CHOICE") {
-      const candidate = building.effect.options.map((option) => option.label).join("|");
-      if (candidate === labels) {
-        cityHallChoiceBeingResolved = { options: building.effect.options };
-        return;
-      }
-    }
-  }
-}

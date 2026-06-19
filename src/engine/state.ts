@@ -5098,6 +5098,26 @@ export type PendingChoice =
         | "visions-boost"
         | "visions-deck"
         | "visions-scry";
+      /**
+       * city-hall: the income options for the City Hall (Resource-round) choice
+       * under resolution, index-aligned with `options`. Stored here in game
+       * state so the pick survives serialization (reload / reconnect / server
+       * restart). It previously lived in a module-level variable that reset to
+       * null off-process, which made the choice unresolvable and left the player
+       * stuck in the "choice" phase, unable to draw or discard.
+       */
+      cityHall?: {
+        options: {
+          label: string;
+          gold?: number;
+          buildingMaterials?: number;
+          valuables?: number;
+          movement?: number;
+          drawCards?: number;
+          reinforceBronzeFree?: boolean;
+          tradingPost?: boolean;
+        }[];
+      };
       /** combat-reposition: Harpies' optional fly-back after their attack. */
       reposition?: { unitId: UnitId; originPosition: number };
       /**
