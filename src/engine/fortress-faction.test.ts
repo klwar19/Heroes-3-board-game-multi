@@ -77,11 +77,13 @@ const ATTACK: Extract<GameAction, { type: "ATTACK_UNIT" }> = {
 describe("Fortress faction wiring", () => {
   const fortress = coreFactionDefinitions.fortress;
 
-  it("is registered with a swamp starting tile, four heroes and a full roster", () => {
+  it("is registered with a swamp starting tile, five heroes and a full roster", () => {
     expect(fortress).toBeDefined();
     expect(fortress.startingTileId).toBe("S5");
     expect(startingTileByFaction.fortress).toBe("S5");
-    expect(fortress.heroes).toEqual(["bron", "wystan", "tazar", "adrienne"]);
+    // Bron/Wystan/Tazar/Adrienne ship board art; Merist (batch 4) is the
+    // placeholder-art (PC-portrait) Stone Skin Witch.
+    expect(fortress.heroes).toEqual(["bron", "wystan", "tazar", "adrienne", "merist"]);
     // 7 creatures (3 bronze, 2 silver, 2 gold) and 8 buildings (6 standard + 2 special).
     expect(fortress.units).toHaveLength(7);
     expect(fortress.buildings).toHaveLength(8);
@@ -126,15 +128,27 @@ describe("Fortress card art", () => {
     const broken: string[] = [];
     for (const heroId of coreFactionDefinitions.fortress.heroes) {
       const hero = coreHeroDefinitions[heroId];
-      for (const src of [hero.portrait, hero.boardScan]) {
-        if (!src || !existsSync(assetPath(src))) {
-          broken.push(`${heroId} ${src ?? "(none)"}`);
-        }
+      // Every hero needs a portrait on disk. Board-art heroes also ship a board
+      // scan plus the three printed specialty card faces; placeholder-art
+      // (PC-portrait) heroes like Merist ship neither (their specialty cards are
+      // face-less, via withoutArt) — exactly the batch-3/Tower convention.
+      if (!hero.portrait || !existsSync(assetPath(hero.portrait))) {
+        broken.push(`${heroId} portrait ${hero.portrait ?? "(none)"}`);
+      }
+      const isBoardArtHero = Boolean(hero.boardScan);
+      if (isBoardArtHero && !existsSync(assetPath(hero.boardScan!))) {
+        broken.push(`${heroId} board scan ${hero.boardScan}`);
       }
       for (const level of [1, 4, 6] as const) {
         const src = adventureCards[hero.specialtyCardIds[level]].assets?.cardImage;
-        if (!src || !existsSync(assetPath(src))) {
-          broken.push(`${heroId} specialty ${level} ${src ?? "(none)"}`);
+        if (isBoardArtHero) {
+          if (!src || !existsSync(assetPath(src))) {
+            broken.push(`${heroId} specialty ${level} ${src ?? "(none)"}`);
+          }
+        } else if (src) {
+          // A placeholder-art hero must not reference a specialty face that does
+          // not exist — its specialty cards are face-less.
+          broken.push(`${heroId} specialty ${level} should be face-less but is ${src}`);
         }
       }
     }

@@ -1671,6 +1671,24 @@ function dealAreaCardDamage(
 }
 
 /**
+ * Merist's Stone Skin IV / VI: give every living unit the player controls a
+ * Defense token (the Defend shield) for the rest of the combat. A unit already
+ * holding one is unchanged; the tokens render straight from unit state, and the
+ * card-played event already records the play.
+ */
+function grantDefenseTokensToAll(state: GameState, playerId: PlayerId): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+  for (const unit of Object.values(combat.units)) {
+    if (unit.controllerId === playerId && isUnitAlive(unit)) {
+      unit.defenseToken = true;
+    }
+  }
+}
+
+/**
  * Opens the "area-pick" choice: the caster picks one of `candidateUnitIds`,
  * which takes `amount` damage, then the choice re-opens (picksRemaining - 1)
  * until the picks are spent or the candidates run out. Used when more units are
@@ -2669,7 +2687,16 @@ function resolveDefendBonus(
     stackItem.modifiers.defendRoll = rollAttackDie(combat);
   }
   const roll = stackItem.modifiers.defendRoll;
-  return { roll, bonus: roll === 1 ? 1 : 0 };
+  // Merist's Stone Skin VI: while the defender's owner has the DEFENSE_TOKEN_ON_ZERO
+  // aura, the shield pays out on a "0" as well as the usual "+1" Defense roll.
+  const shieldOnZero = state.activeEffects.some(
+    (effect) =>
+      effect.scope === "player" &&
+      effect.controllerId === details.defender.controllerId &&
+      effect.modifiers.some((modifier) => modifier.type === "DEFENSE_TOKEN_ON_ZERO")
+  );
+  const grantsBonus = shieldOnZero ? roll >= 0 : roll === 1;
+  return { roll, bonus: grantsBonus ? 1 : 0 };
 }
 
 /**
@@ -5941,6 +5968,17 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     return;
   }
 
+  // Ivor's Elves I / VI: a played specialty fixed this attack's die. It is an
+  // explicit instant, so it overrides any roll — and the Mummy's passive die-set
+  // below — with no roll, no reroll and no post-roll die-cancel window, exactly
+  // like the Mummy path. The die still SHOWS the forced face, so finishResolved-
+  // Attack fires whatever that face triggers.
+  if (stackItem.modifiers.forcedRoll !== undefined) {
+    const forced = stackItem.modifiers.forcedRoll;
+    finishResolvedAttack(state, stackItem, details, { rolls: [forced], roll: forced }, cards);
+    return;
+  }
+
   // Mummies (defence): "set the opponent's Attack die to -1." While a Mummy is
   // the defender the attacker's die is forced — no roll, no reroll.
   const forcedDie = getForcedAttackerDie(details.defender);
@@ -7870,6 +7908,7 @@ function applyReactionPlayCore(
     // Hero specialties double their bonus when the signature unit is the one
     // attacking (attack bonus) or being attacked (defense bonus). Mutare's
     // "a Dragons unit" matches the whole Dragons family, not one exact name.
+    // Ivor's Elves IV doubles for the unit TYPE instead (his "ranged" unit).
     // Cyra's Haste IV instead doubles when the attacked unit is faster than the
     // attacker (a strictly higher effective Initiative).
     const defenderIsFaster =
@@ -7877,9 +7916,24 @@ function applyReactionPlayCore(
       Boolean(attacker) &&
       Boolean(defender) &&
       effectiveInitiative(defender!, state.activeEffects) > effectiveInitiative(attacker!, state.activeEffects);
+    const matchesDoubledType = Boolean(effect.doubleForUnitType) && affectedUnit?.type === effect.doubleForUnitType;
     const doubleFactor =
-      unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName) || defenderIsFaster ? 2 : 1;
-    const appliedAmount = effectAmount * doubleFactor;
+      unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName) || matchesDoubledType || defenderIsFaster
+        ? 2
+        : 1;
+    // Merist's Stone Skin I: a defense reaction grants extra Defense when the
+    // buffed (defending) unit is orthogonally adjacent to the attacker. The
+    // double factor scales the printed bonus only; the adjacency bonus is added
+    // flat on top (it is "+1 more", not part of the doubled signature bonus).
+    const adjacencyDefenseBonus =
+      effect.stat === "defense" &&
+      effect.extraIfAdjacentToAttacker &&
+      affectedUnit &&
+      attacker &&
+      isAdjacent(affectedUnit.position, attacker.position)
+        ? effect.extraIfAdjacentToAttacker
+        : 0;
+    const appliedAmount = effectAmount * doubleFactor + adjacencyDefenseBonus;
 
     if (effect.stat === "attack") {
       stackItem.modifiers.attackBonus += appliedAmount;
@@ -7965,6 +8019,19 @@ function applyReactionPlayCore(
     (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
     stackItem.modifiers.attackDieCancelled = true;
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
+  // Ivor's Elves I / VI: force this attack's die to a fixed face. Unlike Bless
+  // (which ignores the die) or the Dwarven Lords' cancel (which fires no
+  // die-triggered effects), the die genuinely SHOWS this value — so a "0" still
+  // triggers any "0"-face ability — it simply is not random. Clamp to a real
+  // attack-die face so a stray value can never desync the die-face readers.
+  if (
+    effect.type === "FORCE_ATTACK_ROLL" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    stackItem.modifiers.forcedRoll = Math.max(-1, Math.min(1, Math.trunc(effect.value)));
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
@@ -9120,6 +9187,46 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       }
     }
     finishCombatIfNeeded(state);
+  }
+
+  // Tarnum (Castle)'s Ballista VI: "Choose N enemy units. Each suffers `amount`
+  // damage." Gather the caster's living enemy units and hit N of them; the
+  // shared area-pick choice lets the caster pick which when more than N are
+  // alive (otherwise every enemy is hit). Per-unit spell-damage reduction and
+  // immunity apply through dealAreaCardDamage/applyAdjacentPicks.
+  if (effect.type === "DAMAGE_CHOSEN_ENEMIES" && state.combat) {
+    const enemyIds = Object.values(state.combat.units)
+      .filter((unit) => unit.controllerId !== action.playerId && isUnitAlive(unit))
+      .map((unit) => unit.id);
+    applyAdjacentPicks(state, action.playerId, card, enemyIds, effect.count, effect.amount);
+    finishCombatIfNeeded(state);
+  }
+
+  // Merist's Stone Skin IV: "All your units gain a Defense token." Every living
+  // unit the caster controls gets the Defend shield for the rest of the combat.
+  if (effect.type === "GRANT_DEFENSE_TOKENS" && state.combat) {
+    grantDefenseTokensToAll(state, action.playerId);
+  }
+
+  // Merist's Stone Skin VI: place a Defense token on all your units AND, for the
+  // rest of the Combat, make those tokens pay out on a "0" as well as a "+1"
+  // Defense roll (the player-scoped DEFENSE_TOKEN_ON_ZERO effect created via
+  // holdOngoingCardIfEffectCreated, like any combat-duration aura).
+  if (effect.type === "STONE_SKIN_AURA" && state.combat) {
+    grantDefenseTokensToAll(state, action.playerId);
+    createActiveEffect(
+      state,
+      {
+        name: card.name,
+        scope: "player",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "DEFENSE_TOKEN_ON_ZERO" }]
+      },
+      { type: "card", cardId: card.id, controllerId: action.playerId },
+      action.playerId
+    );
   }
 
   if (effect.type === "DRAW_CARDS") {

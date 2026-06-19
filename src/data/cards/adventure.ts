@@ -1,4 +1,4 @@
-import type { CardLibrary } from "@/engine/state";
+import type { CardLibrary, UnitType } from "@/engine/state";
 
 const wikiCredit =
   "Card text from the fan wiki ability/hero pages; verify against official owned components before full content import.";
@@ -872,6 +872,81 @@ function retaliationReductionSpecialty(
       duration: { type: "combat" },
       doubleForUnitName: doubledUnit,
       removable: false
+    },
+    assets: {
+      cardImage: specialtyCardImage(heroSlug, level),
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource(heroSlug)
+  };
+}
+
+/**
+ * Ivor's Elves I / VI (second option): force this attack's die to a fixed face
+ * (FORCE_ATTACK_ROLL). Played as an instant in the attack window; `controller`
+ * decides whose attacks it may target ("any" for the level I "next attack roll",
+ * "self" for the level VI "your roll").
+ */
+function forceAttackRollSpecialty(
+  heroSlug: string,
+  specialtyName: string,
+  level: 1 | 4 | 6,
+  value: number,
+  controller: "self" | "any",
+  description: string
+): CardLibrary[string] {
+  return {
+    id: `specialty.${heroSlug}.${level}`,
+    name: `${specialtyName} ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: ["hero-specialty", "instant", heroSlug, description],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller },
+    effect: { type: "FORCE_ATTACK_ROLL", value },
+    assets: {
+      cardImage: specialtyCardImage(heroSlug, level),
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource(heroSlug)
+  };
+}
+
+/**
+ * Ivor's Elves IV: "+1 attack OR +1 defense", doubled for a UNIT TYPE (his "a
+ * ranged unit") rather than a named unit — the type-keyed twin of
+ * towerAttackOrDefenseSpecialty (doubleForUnitType instead of doubleForUnitName).
+ */
+function attackOrDefenseByTypeSpecialty(
+  heroSlug: string,
+  specialtyName: string,
+  level: 1 | 4 | 6,
+  unitType: UnitType,
+  typeLabel: string
+): CardLibrary[string] {
+  return {
+    id: `specialty.${heroSlug}.${level}`,
+    name: `${specialtyName} ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: ["hero-specialty", "instant", heroSlug],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: `+1 attack (x2 for ${typeLabel})`,
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, doubleForUnitType: unitType }
+        },
+        {
+          label: `+1 defense (x2 for ${typeLabel})`,
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1, doubleForUnitType: unitType }
+        }
+      ]
     },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
@@ -2550,5 +2625,200 @@ export const adventureCards: CardLibrary = {
     6,
     2,
     "Dread Knights"
-  )
+  ),
+
+  // ---- Additional heroes, batch 4 ----------------------------------------
+  // Placeholder-art wiki heroes (PC portrait, no specialty card faces) whose
+  // I/IV/VI specialties are fully engine-wired and mutation-checked
+  // (extra-heroes-batch4-specialties.test.ts). Each tackles a NEW mechanic:
+  //  - Ivor (Rampart): forced attack dice (FORCE_ATTACK_ROLL) + doubling by
+  //    unit TYPE (doubleForUnitType).
+  //  - Tarnum (Castle): multi-target chosen-enemy damage (DAMAGE_CHOSEN_ENEMIES);
+  //    reuses the Ballista engine (BALLISTA_SPECIALTY) for I/IV.
+  //  - Merist (Fortress): adjacency-conditioned defense, a mass Defense-token
+  //    grant (GRANT_DEFENSE_TOKENS) and the Defense-token-on-"0" aura
+  //    (STONE_SKIN_AURA).
+
+  // Ivor (Rampart, Ranger): the Elves specialist who bends the dice.
+  // I: set all dice of the next attack roll (either side's) to "0".
+  "specialty.ivor.1": withoutArt(
+    forceAttackRollSpecialty("ivor", "Elves", 1, 0, "any", "Set all dice of the next attack roll to \"0\".")
+  ),
+  // IV: +1 attack OR +1 defense, doubled for a ranged unit (NEW doubleForUnitType).
+  "specialty.ivor.4": withoutArt(attackOrDefenseByTypeSpecialty("ivor", "Elves", 4, "ranged", "a ranged unit")),
+  // VI: +2 HP for the Combat (selected unit) — OR — set all dice of your own
+  // attack roll to "+1" (the only value that maximises an attack, so the engine
+  // realises "the values of your choice").
+  "specialty.ivor.6": withoutArt({
+    id: "specialty.ivor.6",
+    name: "Elves VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "ivor",
+      "For this Combat, your selected unit's Health is increased by 2. — OR — Instead of rolling, set all dice of your attack roll to \"+1\"."
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+2 Health for this Combat",
+          combatOnly: true,
+          target: { type: "friendly-unit" },
+          effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 2 }
+        },
+        {
+          label: "Set all dice of your attack roll to \"+1\"",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "FORCE_ATTACK_ROLL", value: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("ivor")
+  }),
+
+  // Tarnum (Castle, Knight): the Ballista specialist (one of six Tarnum variants).
+  // I: pay 5 gold to gain a Ballista (map) — OR — activate your Ballista (combat).
+  "specialty.tarnum_castle.1": withoutArt({
+    id: "specialty.tarnum_castle.1",
+    name: "Ballista I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "tarnum_castle",
+      "ballista",
+      "Pay 5 gold to gain a Ballista. — OR — Activate your Ballista (if you have one)."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Pay 5 gold to gain a Ballista",
+          mapOnly: true,
+          effect: { type: "GAIN_WAR_MACHINE", warMachineCardId: "war_machine.ballista", goldCost: 5 }
+        },
+        {
+          label: "Activate your Ballista",
+          combatOnly: true,
+          effect: { type: "BALLISTA_SPECIALTY", activate: "one" }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("tarnum_castle")
+  }),
+  // IV: gain an extra Ballista for this Combat (discarded afterwards) — OR — draw 1.
+  "specialty.tarnum_castle.4": withoutArt({
+    id: "specialty.tarnum_castle.4",
+    name: "Ballista IV",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "tarnum_castle",
+      "ballista",
+      "For this Combat, gain an additional Ballista, even if you already have one. — OR — Draw 1 card."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Gain an additional Ballista this Combat",
+          combatOnly: true,
+          effect: { type: "BALLISTA_SPECIALTY", grant: "combat" }
+        },
+        {
+          label: "Draw 1 card",
+          effect: { type: "DRAW_CARDS", amount: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("tarnum_castle")
+  }),
+  // VI: choose 2 enemy units; each suffers 2 damage (NEW DAMAGE_CHOSEN_ENEMIES).
+  "specialty.tarnum_castle.6": withoutArt({
+    id: "specialty.tarnum_castle.6",
+    name: "Ballista VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "tarnum_castle",
+      "ballista",
+      "Choose 2 enemy units. Each of these units suffers 2 damage."
+    ],
+    target: { type: "none" },
+    effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 2, amount: 2 },
+    implementationStatus: "implemented",
+    source: heroSource("tarnum_castle")
+  }),
+
+  // Merist (Fortress, Witch): the Stone Skin specialist — a defensive magic hero.
+  // I: defense reaction — +1 defense to the attacked unit, +1 more if it is
+  // orthogonally adjacent to the attacker (NEW extraIfAdjacentToAttacker).
+  "specialty.merist.1": withoutArt({
+    id: "specialty.merist.1",
+    name: "Stone Skin I",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "merist",
+      "stone-skin",
+      "Your selected unit gains +1 defense, and an additional +1 defense if it is adjacent to the attacker."
+    ],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+    effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1, extraIfAdjacentToAttacker: 1 },
+    implementationStatus: "implemented",
+    source: heroSource("merist")
+  }),
+  // IV: all your units gain a Defense token (NEW GRANT_DEFENSE_TOKENS).
+  "specialty.merist.4": withoutArt({
+    id: "specialty.merist.4",
+    name: "Stone Skin IV",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: ["hero-specialty", "combat", "merist", "stone-skin", "All your units gain a Defense token."],
+    target: { type: "none" },
+    effect: { type: "GRANT_DEFENSE_TOKENS" },
+    implementationStatus: "implemented",
+    source: heroSource("merist")
+  }),
+  // VI: place a Defense token on all your units and, for this Combat, your
+  // Defense tokens pay out on a "0" as well as a "+1" roll (NEW STONE_SKIN_AURA).
+  "specialty.merist.6": withoutArt({
+    id: "specialty.merist.6",
+    name: "Stone Skin VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "merist",
+      "stone-skin",
+      "For this Combat, your Defense tokens provide the extra defense on a \"0\" or a \"+1\" roll. When played, place a Defense token on all your units."
+    ],
+    target: { type: "none" },
+    effect: { type: "STONE_SKIN_AURA" },
+    implementationStatus: "implemented",
+    source: heroSource("merist")
+  })
 };
