@@ -77,6 +77,31 @@ function castSpaceSpell(seed: string, cardId: string, position: number, power: n
   return passAllReactions(casted);
 }
 
+/**
+ * Casts a no-target Spell (Quicksand / Land Mine: the cast picks no space — it
+ * opens the placement picker) with `power` Power pooled into it. Returns the
+ * state after the cast resolves, i.e. with the placement picker open.
+ */
+function castNoTargetSpell(seed: string, cardId: string, power: number): GameState {
+  const state = createInitialGameState(seed);
+  state.players.p1.hand = [cardId, "stat.power", "stat.power", "stat.power", "stat.power", "stat.power", "stat.power"];
+  state.players.p2.hand = [];
+  state.players.p1.permanents = [];
+  state.activePlayerId = "p1";
+  state.combat!.activeUnitId = "unit_p1_crusaders";
+  state.combat!.units.unit_p1_crusaders.activatedThisRound = false;
+
+  const cast = getLegalActions(state, "p1").find(
+    (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === cardId && legal.action.target?.type === "none"
+  );
+  expect(cast, `${cardId} should be castable with no space target`).toBeTruthy();
+  const casted = applyOk(state, cast!.action);
+  if (casted.stack[0]) {
+    casted.stack[0].modifiers.spellPowerBonus = power;
+  }
+  return passAllReactions(casted);
+}
+
 /** Pushes a battlefield token straight onto the board (used to isolate the trigger logic). */
 function injectToken(state: GameState, token: Omit<BattlefieldTokenState, "id">): string {
   const id = `test_token_${(state.combat!.battlefieldTokens?.length ?? 0) + 1}`;
@@ -257,8 +282,14 @@ describe("Fire Wall spell", () => {
 
 describe("Quicksand spell", () => {
   it("places half-armed face-down tokens, count scaling with Power (0/1/2 -> 2/4/6)", () => {
-    const result = castSpaceSpell("qs-count", "spell.quicksand", 9, 2);
-    // The cast drops one token; the picker is open for the rest.
+    const result = castNoTargetSpell("qs-count", "spell.quicksand", 2);
+    // No token is dropped by the cast itself: the picker is open for the WHOLE
+    // set, and every token (including the first) is placed through it.
+    expect((result.combat!.battlefieldTokens ?? []).filter((token) => token.kind === "quicksand")).toHaveLength(0);
+    expect(result.pendingChoice?.type).toBe("OPTION_CHOICE");
+    expect(result.pendingChoice && result.pendingChoice.type === "OPTION_CHOICE" ? result.pendingChoice.placeTokens?.placedCount : -1).toBe(0);
+    expect(result.pendingChoice && result.pendingChoice.type === "OPTION_CHOICE" ? result.pendingChoice.placeTokens?.remaining : -1).toBe(6);
+
     let current = result;
     let safety = 12;
     while (current.pendingChoice?.type === "OPTION_CHOICE" && current.pendingChoice.context === "place-battlefield-tokens" && safety > 0) {
@@ -326,7 +357,9 @@ describe("Quicksand spell", () => {
 
 describe("Land Mine spell", () => {
   it("places half-armed tokens carrying 2 damage, count scaling with Power", () => {
-    const result = castSpaceSpell("lm-count", "spell.land_mine", 9, 1);
+    const result = castNoTargetSpell("lm-count", "spell.land_mine", 1);
+    // The cast places nothing on its own — the whole set goes through the picker.
+    expect((result.combat!.battlefieldTokens ?? []).filter((token) => token.kind === "land_mine")).toHaveLength(0);
     let current = result;
     let safety = 12;
     while (current.pendingChoice?.type === "OPTION_CHOICE" && current.pendingChoice.context === "place-battlefield-tokens" && safety > 0) {

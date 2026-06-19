@@ -245,9 +245,29 @@ const BATTLEFIELD_TOKEN_VIEW: Record<
  * frame instead of looping — a Land Mine must not perpetually spark and a
  * Quicksand pit must not endlessly bubble while it sits waiting to be sprung.
  */
-function TokenSprite({ fxKey, animate = true }: { fxKey: string; animate?: boolean }) {
+function TokenSprite({
+  fxKey,
+  animate = true,
+  frameRange
+}: {
+  fxKey: string;
+  animate?: boolean;
+  /**
+   * Loop only frames [first, last] (inclusive) instead of the whole sheet — used
+   * to skip a sprite's fade tail (e.g. the Force Field frames where the barrier
+   * dissolves to nothing and reads as a blink). Defaults to the whole sheet, and
+   * also fixes the resting frame so the sprite never sits on a faded-out edge.
+   */
+  frameRange?: [number, number];
+}) {
   const sheet = getFxSheet(fxKey);
   const ref = useRef<HTMLSpanElement | null>(null);
+
+  const denominator = sheet && sheet.cols > 1 ? sheet.cols - 1 : 1;
+  const firstFrame = frameRange ? Math.max(0, frameRange[0]) : 0;
+  const lastFrame = sheet
+    ? Math.min(sheet.frames - 1, frameRange ? frameRange[1] : sheet.frames - 1)
+    : 0;
 
   useEffect(() => {
     const element = ref.current;
@@ -257,18 +277,18 @@ function TokenSprite({ fxKey, animate = true }: { fxKey: string; animate?: boole
     if (typeof requestAnimationFrame !== "function") {
       return;
     }
-    const denominator = sheet.cols > 1 ? sheet.cols - 1 : 1;
+    const count = Math.max(1, lastFrame - firstFrame + 1);
     const start = typeof performance !== "undefined" ? performance.now() : Date.now();
     let raf = 0;
     const step = (now: number) => {
       const elapsed = now - start;
-      const frame = Math.floor((elapsed / 1000) * sheet.fps) % sheet.frames;
+      const frame = firstFrame + (Math.floor((elapsed / 1000) * sheet.fps) % count);
       element.style.backgroundPositionX = `${(frame / denominator) * 100}%`;
       raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [sheet, animate]);
+  }, [sheet, animate, firstFrame, lastFrame, denominator]);
 
   if (!sheet) {
     return null;
@@ -282,7 +302,7 @@ function TokenSprite({ fxKey, animate = true }: { fxKey: string; animate?: boole
         backgroundImage: `url(${assetUrl(sheet.src)})`,
         backgroundRepeat: "no-repeat",
         backgroundSize: `${sheet.cols * 100}% ${sheet.rows * 100}%`,
-        backgroundPositionX: "0%",
+        backgroundPositionX: `${(firstFrame / denominator) * 100}%`,
         backgroundPositionY: "center",
         aspectRatio: `${sheet.frameWidth} / ${sheet.frameHeight}`
       }}
@@ -293,10 +313,11 @@ function TokenSprite({ fxKey, animate = true }: { fxKey: string; animate?: boole
 /**
  * Spell token sitting on a board space (Force Field / Fire Wall / Quicksand /
  * Land Mine). Force Field and Fire Wall are visible obstacles, drawn with their
- * animated H3 sprite. Quicksand and Land Mine are face-down traps: their
- * controller sees the real art + armed/decoy, the opponent only a face-down
- * token back (player-view strips the `armed` flag, leaving it undefined here).
- * A sprung trap is removed by the engine, so it never lingers on the board.
+ * animated H3 sprite. Quicksand and Land Mine are traps: everyone sees the
+ * token's KIND (its normal icon sits on the board), but only its controller sees
+ * whether it is armed or a decoy — the opponent gets the same icon WITHOUT that
+ * armed/decoy label. A sprung trap is removed by the engine, so it never lingers
+ * on the board.
  */
 function BattlefieldTokenMark({
   token,
@@ -309,8 +330,12 @@ function BattlefieldTokenMark({
 }) {
   const view = BATTLEFIELD_TOKEN_VIEW[token.kind];
   const isTrap = token.kind === "quicksand" || token.kind === "land_mine";
-  // The opponent's hidden trap: player-view stripped the armed flag.
-  const faceDown = isTrap && token.armed === undefined;
+  // A trap's KIND is public (its icon sits on the board), but its armed/decoy
+  // state is the caster's secret. So an enemy trap shows the same icon, just
+  // WITHOUT the armed/decoy label. Masking by ownership is robust whether or not
+  // the upstream player-view already stripped the `armed` flag (the live board is
+  // fed the RAW state, so this masking is what actually hides it).
+  const hideArmedState = isTrap && token.controllerId !== viewerPlayerId;
   const owner = state.players[token.controllerId]?.name ?? token.controllerId;
   const spriteSheet = getFxSheet(view.sprite);
 
@@ -319,7 +344,8 @@ function BattlefieldTokenMark({
     detail = `${token.damage ?? 0}`;
   } else if (token.kind === "force_field") {
     detail = token.expiresAtCombatRoundEnd === undefined ? "combat" : `r${token.expiresAtCombatRoundEnd}`;
-  } else if (faceDown) {
+  } else if (hideArmedState) {
+    // The opponent sees the trap's icon but not whether it is armed or a decoy.
     detail = "";
   } else {
     detail = token.armed ? "armed" : "decoy";
@@ -330,20 +356,22 @@ function BattlefieldTokenMark({
       ? `Fire Wall (${owner}) — ${token.damage ?? 0} damage to a unit stopping here or a ground/ranged unit passing through`
       : token.kind === "force_field"
         ? `Force Field (${owner}) — an obstacle; blocks non-flying movement${token.expiresAtCombatRoundEnd === undefined ? " for this combat" : ` until the end of combat round ${token.expiresAtCombatRoundEnd}`}`
-        : faceDown
-          ? `${view.label} (${owner}) — a face-down trap; you cannot see whether it is armed`
+        : hideArmedState
+          ? `${view.label} (${owner}) — an enemy trap; you cannot see whether it is armed or a decoy`
           : `${view.label} (${owner}) — your token: ${token.armed ? "armed" : "decoy"}`;
 
   let art: React.ReactNode;
-  if (faceDown) {
-    art = (
-      <span className="battlefieldTokenBack" aria-hidden="true">
-        ?
-      </span>
-    );
-  } else if (spriteSheet) {
-    // Traps hold a static idle frame; only the visible obstacles animate.
-    art = <TokenSprite fxKey={view.sprite} animate={!isTrap} />;
+  if (spriteSheet) {
+    if (token.kind === "force_field") {
+      // The barrier shimmers, but its sprite fades to nothing at both ends of
+      // the sheet (frames 0–2 fade in, 12–14 fade out) — that fade reads as the
+      // field blinking out, so loop only the solid middle frames.
+      art = <TokenSprite fxKey={view.sprite} frameRange={[3, 11]} />;
+    } else {
+      // The Fire Wall animates (its flames flicker); dormant traps (Quicksand /
+      // Land Mine) hold a single idle frame and never loop.
+      art = <TokenSprite fxKey={view.sprite} animate={token.kind === "fire_wall"} />;
+    }
   } else {
     art = <b aria-hidden="true">{view.glyph}</b>;
   }
@@ -351,7 +379,7 @@ function BattlefieldTokenMark({
   return (
     <span
       aria-label={describe}
-      className={`battlefieldToken ${token.kind} ${faceDown ? "faceDown" : ""} ${
+      className={`battlefieldToken ${token.kind} ${hideArmedState ? "hiddenTrap" : ""} ${
         token.controllerId === viewerPlayerId ? "own" : "enemy"
       }`}
       title={describe}

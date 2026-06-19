@@ -4031,10 +4031,6 @@ button.hbSlot:disabled { cursor: default; }
   color: #ff6b6b;
 }
 
-.battlefieldToken.faceDown b {
-  opacity: 0.9;
-}
-
 /* Animated obstacle art (Force Field / Fire Wall / Land Mine): one frame's box,
    scrubbed frame-by-frame by JS (see TokenSprite). */
 .battlefieldTokenSprite {
@@ -4048,35 +4044,19 @@ button.hbSlot:disabled { cursor: default; }
 
 /* Dormant traps (Quicksand / Land Mine) are not big visible obstacles like the
    Fire Wall / Force Field — they are meant to read as small markers sitting on a
-   space. Shrink both the sprite art and the emoji-glyph fallback so they no
-   longer fill the cell, keeping the owner's view in step with the ~60% face-down
-   back the opponent sees. The wide, short land-mine frame (42×19) would otherwise
-   clamp to nearly full width. */
+   space (both players see the icon; only the owner sees its armed/decoy label).
+   Shrink both the sprite art and the emoji-glyph fallback so they no longer fill
+   the cell. The wide, short land-mine frame (42×19) would otherwise clamp to
+   nearly full width. */
 .battlefieldToken.quicksand,
 .battlefieldToken.land_mine {
-  font-size: 1rem;
+  font-size: 0.5rem;
 }
 
 .battlefieldToken.quicksand .battlefieldTokenSprite,
 .battlefieldToken.land_mine .battlefieldTokenSprite {
-  height: 52%;
-  max-width: 62%;
-}
-
-/* A face-down enemy trap: a featureless token back hiding its armed/decoy state. */
-.battlefieldTokenBack {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 60%;
-  height: 60%;
-  border-radius: 50%;
-  font-size: 0.9rem;
-  font-weight: 800;
-  color: #e9dcc0;
-  background: radial-gradient(circle at 35% 30%, #5a4a36, #2a2014 78%);
-  border: 1.5px solid #8d7a55;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6), inset 0 1px 2px rgba(255, 240, 200, 0.25);
+  height: 26%;
+  max-width: 31%;
 }
 
 /* Route planner: a banner, the offered/chosen cells, and the step-number badge. */
@@ -6421,6 +6401,14 @@ button.hbSlot:disabled { cursor: default; }
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 30%));
 }
 
+.mapTreasureResourceIcon {
+  display: block;
+  width: 31px;
+  height: 31px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 35%));
+}
+
 /* Resource die: a carved bone / parchment cube with a faint grain. */
 .mapDieFace.mapDieFace-resource {
   color: #2a1d10;
@@ -6437,18 +6425,18 @@ button.hbSlot:disabled { cursor: default; }
   text-shadow: none;
 }
 
-/* Treasure die: a polished gold cube. */
+/* Treasure die: a polished grey cube. */
 .mapDieFace.mapDieFace-treasure {
-  color: #3a2604;
+  color: #241f18;
   background:
-    radial-gradient(120% 120% at 26% 14%, rgb(255 255 255 / 75%), rgb(255 255 255 / 0) 42%),
-    radial-gradient(135% 135% at 82% 98%, rgb(120 80 6 / 55%), rgb(120 80 6 / 0) 56%),
-    linear-gradient(150deg, #ffe79a 0%, #f3c23e 44%, #b9851a 100%);
-  border-color: rgb(255 244 198 / 95%);
+    radial-gradient(120% 120% at 26% 14%, rgb(255 255 255 / 76%), rgb(255 255 255 / 0) 42%),
+    radial-gradient(135% 135% at 82% 98%, rgb(30 32 34 / 46%), rgb(30 32 34 / 0) 56%),
+    linear-gradient(150deg, #eeeeea 0%, #b9b8b0 46%, #72716c 100%);
+  border-color: rgb(244 241 230 / 94%);
   box-shadow:
     inset 0 2px 3px rgb(255 255 255 / 72%),
-    inset 0 -6px 11px rgb(110 70 6 / 55%),
-    inset 0 0 0 2px rgb(140 96 20 / 18%);
+    inset 0 -6px 11px rgb(38 39 40 / 48%),
+    inset 0 0 0 2px rgb(75 72 64 / 16%);
   text-shadow: none;
 }
 
