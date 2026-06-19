@@ -2575,6 +2575,104 @@ export function processPendingVisit(state: GameState): void {
         player.removed.push(step.cardId);
         break;
       }
+      case "STAT_EMPOWER_OFFER": {
+        // Astrologers Dancing Imp / Hero: rebuild the empower menu from the live
+        // hand/discard each time (a chained Hero swap must see the post-swap
+        // piles and remaining gold). Stops offering once the player cannot pay.
+        const player = state.players[visit.playerId];
+        const cost = step.costGold ?? 0;
+        if (!player || step.remaining <= 0 || (cost > 0 && !hasResources(player, { gold: cost }))) {
+          break;
+        }
+        const seen = new Set<string>();
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        for (const source of step.sources) {
+          for (const cardId of player[source]) {
+            const card = cardLibrary[cardId];
+            const stat = card?.statisticType;
+            if (
+              card?.kind !== "statistic" ||
+              !stat ||
+              cardId.endsWith(".empowered") ||
+              seen.has(`${source}:${stat}`)
+            ) {
+              continue;
+            }
+            seen.add(`${source}:${stat}`);
+            const empowerLeaf: VisitStep = { type: "EMPOWER_STATISTIC", cardId, source };
+            if (cost > 0) {
+              empowerLeaf.costGold = cost;
+            }
+            const next: VisitStep[] = [empowerLeaf];
+            if (step.remaining - 1 > 0) {
+              next.push({ ...step, remaining: step.remaining - 1 });
+            }
+            options.push({
+              label: `${cost > 0 ? `Pay ${cost} gold: ` : ""}Empower ${card.name ?? cardId} (${source})`,
+              steps: next
+            });
+          }
+        }
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Done", steps: [] });
+        visit.steps.unshift({ type: "CHOOSE_ONE", prompt: step.prompt, options });
+        break;
+      }
+      case "EMPOWER_STATISTIC": {
+        const player = state.players[visit.playerId];
+        const pile = step.source === "hand" ? player?.hand : player?.discard;
+        const stat = cardLibrary[step.cardId]?.statisticType;
+        const index = pile?.indexOf(step.cardId) ?? -1;
+        const cost = step.costGold ?? 0;
+        if (!player || !pile || !stat || index === -1 || (cost > 0 && !hasResources(player, { gold: cost }))) {
+          break;
+        }
+        if (cost > 0) {
+          spendResources(state, visit.playerId, { gold: cost }, "empower a Statistic card");
+        }
+        pile.splice(index, 1);
+        player.removed.push(step.cardId);
+        // "Gain"/"replace with" an Empowered Statistic → into hand (as Star Axis).
+        player.hand.push(`stat.${stat}.empowered`);
+        break;
+      }
+      case "REMOVE_UP_TO": {
+        // Plane Between Planes: rebuild the removal menu each time so a second
+        // removal never offers the card the first one already took. Optional —
+        // a Done exit lets the player stop early or remove nothing.
+        const player = state.players[visit.playerId];
+        if (!player || step.remaining <= 0) {
+          break;
+        }
+        const seen = new Set<string>();
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        const addSource = (cardId: CardId, source: "hand" | "discard") => {
+          const key = `${source}:${cardId}`;
+          if (seen.has(key)) {
+            return;
+          }
+          seen.add(key);
+          const steps: VisitStep[] = [{ type: "REMOVE_CARD_FROM_PILE", cardId, source }];
+          if (step.remaining - 1 > 0) {
+            steps.push({ type: "REMOVE_UP_TO", remaining: step.remaining - 1 });
+          }
+          options.push({ label: `Remove ${cardLibrary[cardId]?.name ?? cardId} (${source})`, steps });
+        };
+        player.hand.forEach((cardId) => addSource(cardId, "hand"));
+        player.discard.forEach((cardId) => addSource(cardId, "discard"));
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Done", steps: [] });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `Plane Between Planes: Remove up to ${step.remaining} card(s) from your hand or discard pile`,
+          options
+        });
+        break;
+      }
       case "BLACK_MARKET": {
         const player = state.players[visit.playerId];
         if (!player) {
@@ -4098,6 +4196,9 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   // "Resolve any 'at the beginning of your turn' abilities after drawing":
   // Necromancy Amplifier, Portal of Summoning, Mana Vortex.
   queueTurnStartBuildingChoices(state, playerId);
+  // Hero (Astrologers): the ongoing "pay 4 gold to empower a Statistic, twice
+  // this turn" offer, if that proclamation is the one face up.
+  queueTurnStartAstrologersChoices(state, playerId);
 }
 
 /**
@@ -4278,9 +4379,12 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
     case "SCHOOL_SPELL_POWER_BONUS":
     case "FIRST_SPELL_RETURNS":
     case "NEUTRAL_DRAW_SWAP":
+    case "PAID_EMPOWER_PER_TURN":
       // Passive while the card stays face up (read where the effect applies:
       // hand-limit in effectiveHandLimit, die rerolls in maybeReroll, the spell
-      // bonuses in getCurrentSpellPower, the spell return in maybeReturnSpell).
+      // bonuses in getCurrentSpellPower, the spell return in maybeReturnSpell;
+      // Hero's paid empower is offered at the start of each turn, see
+      // queueTurnStartAstrologersChoices).
       break;
     case "GAIN_MORALE_ALL":
       for (const playerId of playerIds) {
@@ -4330,6 +4434,16 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
     case "REINFORCE_HALF_COST_ALL":
       for (const playerId of playerIds) {
         queueHalfCostReinforce(state, playerId);
+      }
+      break;
+    case "EMPOWER_STATISTIC_CHOICE":
+      for (const playerId of playerIds) {
+        queueEmpowerStatisticChoice(state, playerId);
+      }
+      break;
+    case "REMOVE_CARDS_CHOICE":
+      for (const playerId of playerIds) {
+        queueRemoveCardsChoice(state, playerId, card.effect.count);
       }
       break;
   }
@@ -4457,6 +4571,88 @@ function queueHalfCostReinforce(state: GameState, playerId: PlayerId): void {
     playerId,
     kind: "visit-steps",
     steps: [{ type: "CHOOSE_ONE", prompt: "Isra's Friends: reinforce one Few unit at half cost", options }]
+  });
+}
+
+/**
+ * Dancing Imp: queue an optional, free empower of one Statistic card (drawn
+ * from the hand OR discard pile) into the same-type Empowered Statistic. Only
+ * queued when the player actually holds an empowerable Statistic, so the prompt
+ * never appears empty.
+ */
+function queueEmpowerStatisticChoice(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player || !hasEmpowerableStatistic(player, ["hand", "discard"])) {
+    return;
+  }
+  state.adventure?.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [
+      {
+        type: "STAT_EMPOWER_OFFER",
+        sources: ["hand", "discard"],
+        remaining: 1,
+        prompt: "Dancing Imp: empower one Statistic card (hand or discard)"
+      }
+    ]
+  });
+}
+
+/**
+ * Plane Between Planes: queue an optional removal of up to `count` cards from
+ * the player's hand or discard pile. Skipped when both piles are empty.
+ */
+function queueRemoveCardsChoice(state: GameState, playerId: PlayerId, count: number): void {
+  const player = state.players[playerId];
+  if (!player || count <= 0 || (player.hand.length === 0 && player.discard.length === 0)) {
+    return;
+  }
+  state.adventure?.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [{ type: "REMOVE_UP_TO", remaining: count }]
+  });
+}
+
+/** Whether `player` holds at least one non-Empowered Statistic in `sources`. */
+function hasEmpowerableStatistic(player: PlayerState, sources: ("hand" | "discard")[]): boolean {
+  return sources.some((source) =>
+    player[source].some((cardId) => {
+      const card = cardLibrary[cardId];
+      return card?.kind === "statistic" && Boolean(card.statisticType) && !cardId.endsWith(".empowered");
+    })
+  );
+}
+
+/**
+ * Hero (ongoing): at the start of the active player's turn, offer up to
+ * `maxPerTurn` paid empowers of a hand Statistic into its same-type Empowered
+ * version. Both swaps must happen this turn — enforced by offering the whole
+ * allotment now and nowhere else. Only queued when the player can afford and
+ * holds a swappable hand Statistic, so it never opens an empty prompt.
+ */
+function queueTurnStartAstrologersChoices(state: GameState, playerId: PlayerId): void {
+  const active = getActiveAstrologersCard(state);
+  if (active?.effect.type !== "PAID_EMPOWER_PER_TURN") {
+    return;
+  }
+  const player = state.players[playerId];
+  if (!player || !hasResources(player, { gold: active.effect.costGold }) || !hasEmpowerableStatistic(player, ["hand"])) {
+    return;
+  }
+  state.adventure?.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [
+      {
+        type: "STAT_EMPOWER_OFFER",
+        sources: ["hand"],
+        remaining: active.effect.maxPerTurn,
+        costGold: active.effect.costGold,
+        prompt: `Hero: pay ${active.effect.costGold} gold to empower a Statistic card (up to ${active.effect.maxPerTurn}× this turn)`
+      }
+    ]
   });
 }
 

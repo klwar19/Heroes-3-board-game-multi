@@ -4537,6 +4537,39 @@ export type VisitStep =
       cardId: CardId;
     }
   | {
+      /**
+       * Astrologers (Dancing Imp / Hero): open the self-rebuilding menu to
+       * empower one Statistic card. Offers each non-Empowered Statistic in the
+       * given `sources` (deduped by source+type); `costGold` (Hero) is charged
+       * per swap; `remaining` chains further offers (Hero's "up to twice").
+       */
+      type: "STAT_EMPOWER_OFFER";
+      sources: ("hand" | "discard")[];
+      remaining: number;
+      prompt: string;
+      costGold?: number;
+    }
+  | {
+      /**
+       * Astrologers empower leaf: remove the named Statistic card from `source`
+       * (→ removed) and add the same-type Empowered Statistic to the hand. Pays
+       * `costGold` first when present (Hero); a free swap omits it (Dancing Imp).
+       */
+      type: "EMPOWER_STATISTIC";
+      cardId: CardId;
+      source: "hand" | "discard";
+      costGold?: number;
+    }
+  | {
+      /**
+       * Plane Between Planes: open the self-rebuilding menu to Remove up to
+       * `remaining` more cards from the hand or discard pile (optional — each
+       * step offers a Done exit). Each pick chains a REMOVE_CARD_FROM_PILE leaf.
+       */
+      type: "REMOVE_UP_TO";
+      remaining: number;
+    }
+  | {
       /** Black Market: open the buy menu over the top Artifact discards. */
       type: "BLACK_MARKET";
     }
