@@ -88,32 +88,32 @@ export const COMBAT_BOARD_ART_VARIANTS: readonly CombatBoardArtVariant[] = [
   {
     id: "frozen",
     label: "Frozen ice and snow battlefield",
-    terrain: "/assets/board/battlefield-4x5-frozen.png",
-    scenery: "/assets/board/battlefield-4x5-frozen-scenery.png"
+    terrain: "/assets/board/battlefield-4x5-frozen.webp",
+    scenery: "/assets/board/battlefield-4x5-frozen-scenery.webp"
   },
   {
     id: "hell-necro",
     label: "Hellish necropolis battlefield",
-    terrain: "/assets/board/battlefield-4x5-hell-necro.png",
-    scenery: "/assets/board/battlefield-4x5-hell-necro-scenery.png"
+    terrain: "/assets/board/battlefield-4x5-hell-necro.webp",
+    scenery: "/assets/board/battlefield-4x5-hell-necro-scenery.webp"
   },
   {
     id: "jungle-fortress",
     label: "Tropical fortress battlefield",
-    terrain: "/assets/board/battlefield-4x5-jungle-fortress.png",
-    scenery: "/assets/board/battlefield-4x5-jungle-fortress-scenery.png"
+    terrain: "/assets/board/battlefield-4x5-jungle-fortress.webp",
+    scenery: "/assets/board/battlefield-4x5-jungle-fortress-scenery.webp"
   },
   {
     id: "castle-siege",
     label: "Castle siege battlefield",
-    terrain: "/assets/board/battlefield-4x5-castle-siege.png",
-    scenery: "/assets/board/battlefield-4x5-castle-siege-scenery.png"
+    terrain: "/assets/board/battlefield-4x5-castle-siege.webp",
+    scenery: "/assets/board/battlefield-4x5-castle-siege-scenery.webp"
   },
   {
     id: "ship-battle",
     label: "Ship battle battlefield",
-    terrain: "/assets/board/battlefield-4x5-ship-battle.png",
-    scenery: "/assets/board/battlefield-4x5-ship-battle-scenery.png"
+    terrain: "/assets/board/battlefield-4x5-ship-battle.webp",
+    scenery: "/assets/board/battlefield-4x5-ship-battle-scenery.webp"
   }
 ];
 

@@ -52,11 +52,11 @@ describe("combat board art variants", () => {
     ]);
     expect(COMBAT_BOARD_ART_VARIANTS.map((variant) => variant.terrain)).toEqual([
       "/assets/board/battlefield-4x5-pro.png",
-      "/assets/board/battlefield-4x5-frozen.png",
-      "/assets/board/battlefield-4x5-hell-necro.png",
-      "/assets/board/battlefield-4x5-jungle-fortress.png",
-      "/assets/board/battlefield-4x5-castle-siege.png",
-      "/assets/board/battlefield-4x5-ship-battle.png"
+      "/assets/board/battlefield-4x5-frozen.webp",
+      "/assets/board/battlefield-4x5-hell-necro.webp",
+      "/assets/board/battlefield-4x5-jungle-fortress.webp",
+      "/assets/board/battlefield-4x5-castle-siege.webp",
+      "/assets/board/battlefield-4x5-ship-battle.webp"
     ]);
   });
 
