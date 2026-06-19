@@ -2,17 +2,15 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Anchor, Crown, Hourglass, Layers, Search, Sparkles, Swords } from "lucide-react";
+import { Anchor, Crown, Hourglass, Layers, Search, Sparkles } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
-import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { getDeckBack } from "@/data/decks";
 import {
   describeCardEffect,
   describePermanentEffect,
   getPermanentCardIds,
-  NEUTRAL_PLAYER_ID,
   playerSpellCastsIgnoreLimit,
   type GameAction,
   type GameState,
@@ -508,91 +506,6 @@ export function OpponentBar({
               </div>
             </div>
             <PermanentSlot compact playerId={playerId} state={state} />
-          </section>
-        );
-      })}
-    </div>
-  );
-}
-
-/**
- * Combat top bar: just the portraits of the heroes leading each side — attacker
- * on the left, defender on the right. This replaces the old per-seat strip of
- * hand backs, draw/discard piles and metrics; in combat the only thing the table
- * needs up here is who is fighting whom.
- *
- * Card-flight animations still need somewhere to land now that the opponent's
- * piles are gone, so each opponent's deck/hand/discard fx-anchors ride along on
- * their portrait (kept tiny and invisible). The viewer's own anchors stay on the
- * dock + hand at the bottom of the screen, so their draws still fly there.
- */
-export function CombatHeroBar({
-  state,
-  viewerPlayerId
-}: {
-  state: GameState;
-  viewerPlayerId: PlayerId;
-}) {
-  const combat = state.combat;
-  if (!combat) {
-    return null;
-  }
-
-  const sides: { playerId: PlayerId; role: "Attacker" | "Defender" }[] = [
-    { playerId: combat.attackerPlayerId, role: "Attacker" },
-    { playerId: combat.defenderPlayerId, role: "Defender" }
-  ];
-
-  return (
-    <div className="combatHeroBar" aria-label="Heroes in this combat">
-      {sides.map(({ playerId, role }) => {
-        const isViewer = playerId === viewerPlayerId;
-        const isNeutral = playerId === NEUTRAL_PLAYER_ID;
-        const player = state.players[playerId];
-        const heroDef = player?.heroDefId ? coreHeroDefinitions[player.heroDefId] : undefined;
-        const faction = heroDef ? coreFactionDefinitions[heroDef.faction] : undefined;
-        // Opponents lost their pile strip, so their flights need a target here;
-        // the viewer's flights keep using the real anchors on the bottom dock.
-        const fxPlayerId = isViewer ? null : playerId;
-        const name =
-          isNeutral && combat.context.kind === "neutral"
-            ? `Neutral guards · level ${combat.context.difficulty}`
-            : isNeutral
-              ? "Neutral guards"
-              : heroDef?.name ?? player?.name ?? playerId;
-
-        return (
-          <section
-            aria-label={`${name} — ${role}`}
-            className={`combatHero ${role.toLowerCase()} ${isNeutral ? "neutral" : ""}`}
-            key={`${playerId}-${role}`}
-          >
-            <div
-              className="combatHeroPortrait"
-              style={faction?.color ? ({ "--hero-edge": faction.color } as React.CSSProperties) : undefined}
-            >
-              {heroDef?.portrait ? (
-                <img alt={`${heroDef.name} portrait`} referrerPolicy="no-referrer" src={assetUrl(heroDef.portrait)} />
-              ) : (
-                <div className="combatHeroEmblem" aria-hidden="true">
-                  <Swords size={28} />
-                </div>
-              )}
-              {fxPlayerId ? (
-                <>
-                  <span aria-hidden="true" className="heroFxAnchor heroFxDeck" data-fx-anchor={`deck:${fxPlayerId}`} />
-                  <span aria-hidden="true" className="heroFxAnchor heroFxHand" data-fx-anchor={`hand:${fxPlayerId}`} />
-                  <span aria-hidden="true" className="heroFxAnchor heroFxDiscard" data-fx-anchor={`discard:${fxPlayerId}`} />
-                </>
-              ) : null}
-            </div>
-            <div className="combatHeroName">
-              <strong>{name}</strong>
-              <small>
-                {role}
-                {isViewer ? " · you" : ""}
-              </small>
-            </div>
           </section>
         );
       })}

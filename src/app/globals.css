@@ -110,7 +110,7 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 250px;
   gap: 10px;
-  align-items: stretch;
+  align-items: start;
 }
 
 /* The combat board fills the row now that the shared-deck rail is gone: a wide
@@ -437,103 +437,16 @@ button {
   color: var(--muted);
 }
 
-/* ---------- combat hero bar (top) ---------- */
+/* ---------- combat card strip (top) ---------- */
 
-/* The two combatants' hero portraits, attacker left / defender right. */
-.combatHeroBar {
-  display: flex;
-  justify-content: space-between;
-  align-items: stretch;
-  gap: 12px;
-}
-
-.combatHero {
-  display: flex;
-  align-items: center;
+/* Everything card-related stacks here: each opponent's hand/deck/discard
+   (OpponentBar) above the viewer's own dock + permanents + playable hand
+   (a reused .tableSeatRow). Card-flight animations land in this strip. */
+.combatCardStrip {
+  display: grid;
   gap: 10px;
+  align-content: start;
   min-width: 0;
-  padding: 6px 12px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: linear-gradient(180deg, rgb(34 28 20 / 92%), rgb(20 18 14 / 94%));
-  box-shadow: 0 8px 20px rgb(0 0 0 / 28%);
-}
-
-/* Defender sits on the right and reads right-to-left so the two heroes face
-   each other across the board. */
-.combatHero.defender {
-  flex-direction: row-reverse;
-  text-align: right;
-}
-
-.combatHeroPortrait {
-  position: relative;
-  flex: none;
-  width: 64px;
-  height: 64px;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #0c0d0d;
-  border: 2px solid var(--hero-edge, var(--line-strong));
-  box-shadow: inset 0 0 14px rgb(0 0 0 / 45%);
-}
-
-.combatHeroPortrait img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: 50% 18%;
-  display: block;
-}
-
-.combatHeroEmblem {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  color: var(--muted);
-}
-
-/* Card-flight landing markers ride invisibly on the opponent's portrait. */
-.heroFxAnchor {
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  pointer-events: none;
-}
-
-.heroFxDeck {
-  left: 6px;
-  bottom: 6px;
-}
-
-.heroFxHand {
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-}
-
-.heroFxDiscard {
-  right: 6px;
-  bottom: 6px;
-}
-
-.combatHeroName {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.combatHeroName strong {
-  font-size: 15px;
-  overflow-wrap: anywhere;
-}
-
-.combatHeroName small {
-  color: var(--muted);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 /* ---------- deck wells (left rail) ---------- */
@@ -2415,12 +2328,9 @@ button.battleCell {
     grid-template-columns: 1fr 1fr;
   }
 
-  .combatHeroBar {
-    flex-wrap: wrap;
-  }
-
-  .combatHero {
-    flex: 1 1 240px;
+  .opponentSeat {
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 }
 
