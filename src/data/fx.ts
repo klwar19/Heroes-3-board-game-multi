@@ -280,6 +280,22 @@ export const healFxPlans: Record<string, SpellFxPlan> = {
   "war_machine.first_aid_tent": { affect: [{ key: "cure" }], sound: "spells/cure" }
 };
 
+/**
+ * War machines that FIRE a shot in combat — the Ballista, Catapult and Cannon —
+ * play their own Heroes III shot at the WAR_MACHINE_TRIGGERED cue (see page.tsx),
+ * just before the struck unit's hurt cry lands on the DAMAGE_ASSIGNED that
+ * follows. Sound-only: the converted library has no shot sprite for these (the
+ * floating damage number is the visual), so each plan carries just its measured
+ * shot clip. The First Aid Tent is deliberately absent — it heals rather than
+ * fires and carries its cue through `healFxPlans` — and the Ammo Cart is a
+ * passive ranged buff that never fires a shot of its own.
+ */
+export const warMachineFxPlans: Record<string, SpellFxPlan> = {
+  "war_machine.ballista": { sound: "units/ballista-shoot" },
+  "war_machine.catapult": { sound: "units/catapult-shoot" },
+  "war_machine.cannon": { sound: "units/cannon-shoot" }
+};
+
 // ---------------------------------------------------------------------------
 // Presentation timing: how long a spell/ability's animation AND sound take, so
 // the damage / death / heal it causes can be held back until both have fully
