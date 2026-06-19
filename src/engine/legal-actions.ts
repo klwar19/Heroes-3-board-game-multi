@@ -70,6 +70,7 @@ import {
   warMachinesForSale
 } from "./permanents";
 import { getDemolishAbility, isArrowTowerUnit, siegeBlockedPositions } from "./siege";
+import { pvpEscapeWindowOpen } from "./combat-units";
 import { canPlaceTransformOn } from "./unit-transforms";
 import { SHARED_DECK_IDS } from "./decks";
 import {
@@ -4987,7 +4988,11 @@ function addTacticsCombatActions(actions: LegalAction[], state: GameState, playe
 function addTownActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   const town = getTownOfPlayer(state, playerId);
-  if (!player || !town || state.combat) {
+  // Town actions are normally blocked during a combat, with one exception: a
+  // defender in their PvP pre-combat preparation window may still spend the
+  // round's town actions before the fight (build / recruit / buy spells).
+  const inPrep = Boolean(state.combat?.defenderPrep && state.combat.defenderPrep.playerId === playerId);
+  if (!player || !town || (state.combat && !inPrep)) {
     return;
   }
 
@@ -5209,10 +5214,15 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
  */
 function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const combat = state.combat;
-  if (!combat || combat.context.kind !== "player" || combat.outcome || combat.round !== 1) {
+  if (!combat || combat.context.kind !== "player") {
     return;
   }
-  if (!isCombatCardWindowOpen(state)) {
+  // Retreat / Surrender is a start-of-combat decision, offered in two spots: the
+  // defender's pre-combat preparation window, and after deployment but before
+  // any unit has begun fighting (pvpEscapeWindowOpen) while the combat card
+  // window is open. Once a unit acts the escape closes for the rest of the fight.
+  const inPrep = Boolean(combat.defenderPrep && combat.defenderPrep.playerId === playerId);
+  if (!inPrep && (!pvpEscapeWindowOpen(combat) || !isCombatCardWindowOpen(state))) {
     return;
   }
   const heroId =
@@ -5310,6 +5320,22 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       actions.push({
         label: "Return to the adventure map",
         action: { type: "ACKNOWLEDGE_COMBAT_END", playerId }
+      });
+    }
+    return actions;
+  }
+
+  // PvP pre-combat preparation: before deployment, the defender may spend any
+  // town action they still hold this round (build / recruit / buy spells), then
+  // Accept to begin deployment — or Retreat / Surrender out of the fight. The
+  // town actions surface through addTownActions (allowed during this window).
+  if (state.combat?.defenderPrep) {
+    if (state.combat.defenderPrep.playerId === playerId) {
+      addTownActions(actions, state, playerId);
+      addPvpEscapeActions(actions, state, playerId);
+      actions.push({
+        label: "Accept the combat (begin deployment)",
+        action: { type: "ACCEPT_COMBAT", playerId }
       });
     }
     return actions;

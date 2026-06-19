@@ -1620,11 +1620,16 @@ export function CommandDock({
   // is the single, clear control. "Keep positions" (FINISH_TACTICS) stays. The
   // rare expert mid-combat swap is not a setup window, so it keeps its buttons.
   const inTacticsSetup = tacticsSetupActiveFor(state, viewerPlayerId);
-  const commands = legalActions.filter(
-    (legal) =>
-      COMMAND_ACTION_TYPES.has(legal.action.type) &&
-      !(inTacticsSetup && legal.action.type === "SWAP_COMBAT_UNITS")
-  );
+  // The PvP pre-combat preparation panel owns every prep control (build /
+  // recruit / buy spells / Accept / Retreat), so the dock stays out of its way.
+  const inDefenderPrep = state.combat?.defenderPrep?.playerId === viewerPlayerId;
+  const commands = inDefenderPrep
+    ? []
+    : legalActions.filter(
+        (legal) =>
+          COMMAND_ACTION_TYPES.has(legal.action.type) &&
+          !(inTacticsSetup && legal.action.type === "SWAP_COMBAT_UNITS")
+      );
   const activeUnitId = state.combat?.activeUnitId;
   const activeUnit = activeUnitId ? state.combat?.units[activeUnitId] : undefined;
   const outcome = state.combat?.outcome;
@@ -1638,15 +1643,22 @@ export function CommandDock({
       !activeUnit.activatedThisRound &&
       activeUnit.type === "ranged"
   );
+  const prepDefenderName = state.combat?.defenderPrep
+    ? state.players[state.combat.defenderPrep.playerId]?.name ?? "the defender"
+    : null;
   const status = outcome
     ? `${state.players[outcome.winnerPlayerId]?.name ?? outcome.winnerPlayerId} wins`
-    : waitingOn === viewerPlayerId
-      ? activeUnit && activeUnit.controllerId === viewerPlayerId
-        ? postShotMove
-          ? `${activeUnit.name} fired — step 1 space or hold`
-          : `${activeUnit.name} is active`
-        : "Your move"
-      : `Waiting for ${state.players[waitingOn]?.name ?? waitingOn}`;
+    : inDefenderPrep
+      ? "Prepare your defense"
+      : prepDefenderName
+        ? `${prepDefenderName} is preparing their defense…`
+        : waitingOn === viewerPlayerId
+          ? activeUnit && activeUnit.controllerId === viewerPlayerId
+            ? postShotMove
+              ? `${activeUnit.name} fired — step 1 space or hold`
+              : `${activeUnit.name} is active`
+            : "Your move"
+          : `Waiting for ${state.players[waitingOn]?.name ?? waitingOn}`;
 
   const player = state.players[viewerPlayerId];
   // Expert Intelligence "ignores the limit": casts still tick the counter, so

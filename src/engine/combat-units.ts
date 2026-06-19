@@ -168,6 +168,29 @@ function removeLinkedClones(state: GameState, removedUnitId: UnitId): void {
   }
 }
 
+/**
+ * Player-vs-player Retreat / Surrender is a *start of combat* decision: a hero
+ * may flee only before the fighting actually begins. The escape window closes
+ * the moment ANY unit has activated, moved or attacked this combat — after that
+ * the only ways out are winning, being defeated, or a fought-out loss. Keeping
+ * the escape available all through round 1 was the "Retreat button always shows"
+ * bug: it lingered on every player's screen (including the idle defender's,
+ * mid-attack) and a stray click ended the fight as an instant loss.
+ */
+export function pvpEscapeWindowOpen(combat: CombatState): boolean {
+  if (combat.outcome || combat.setup || combat.round !== 1) {
+    return false;
+  }
+  const fightingBegun = Object.values(combat.units).some(
+    (unit) =>
+      unit.activatedThisRound ||
+      unit.movedThisActivation ||
+      Boolean(unit.attackedThisActivation) ||
+      (unit.attacksThisActivation ?? 0) > 0
+  );
+  return !fightingBegun;
+}
+
 export function livingControllerIds(combat: CombatState): Set<PlayerId> {
   return new Set(
     Object.values(combat.units)

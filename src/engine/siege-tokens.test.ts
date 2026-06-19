@@ -167,6 +167,11 @@ describe("siege combat", () => {
   }
 
   function placeArmies(state: GameState): GameState {
+    // A defender with unspent town actions gets a pre-combat preparation window
+    // first; accept it to begin deployment.
+    if (state.combat?.defenderPrep) {
+      state = applyOk(state, { type: "ACCEPT_COMBAT", playerId: state.combat.defenderPrep.playerId });
+    }
     // Attacker places one unit, then the defender, then the gate choice opens.
     const p1Army = state.players.p1.army[0];
     state = applyOk(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: p1Army.id, position: 13 });

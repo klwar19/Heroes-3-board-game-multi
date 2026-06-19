@@ -81,6 +81,7 @@ import {
   type NeutralDraw
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
+import { pvpEscapeWindowOpen } from "./combat-units";
 import { makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
 import { assignCombatBoardArt } from "./combat-board-art";
 import { cardCanBoostPower } from "./effects";
@@ -3256,7 +3257,68 @@ export function startPlayerCombat(
   if (covers.length > 0) {
     combat.pendingCoverOfDarkness = covers;
     openNextCoverOfDarknessChoice(state);
+    return;
   }
+
+  maybeOpenDefenderPrep(state);
+}
+
+/**
+ * Player-vs-player pre-combat preparation window. When an enemy hero attacks,
+ * a defender who still holds an unused town action this round (the build,
+ * population or spell-book token) and owns a town may spend it before deploying
+ * — recruited units join the army in time to be placed — then ACCEPT_COMBAT to
+ * begin deployment. This is the fairness case the table asked for: a defender
+ * who has not had their own turn yet (so their tokens are still fresh) gets to
+ * recruit/build/buy spells before the fight instead of being caught flat-footed.
+ *
+ * Opened before placement (the defender takes priority while `setup` is already
+ * built). Returns true when the window is opened. A defender with no town, or
+ * one who already spent every town action this round, skips straight to
+ * deployment as before.
+ */
+function maybeOpenDefenderPrep(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat || combat.context.kind !== "player" || combat.defenderPrep) {
+    return false;
+  }
+  const defenderId = combat.defenderPlayerId;
+  const player = state.players[defenderId];
+  if (!player || !getTownOfPlayer(state, defenderId)) {
+    return false;
+  }
+  const hasUnspentTownAction =
+    player.townTokens.build || player.townTokens.population || player.townTokens.spellBook;
+  if (!hasUnspentTownAction) {
+    return false;
+  }
+
+  combat.defenderPrep = { playerId: defenderId };
+  state.phase = "combat-setup";
+  state.priorityPlayerId = defenderId;
+  return true;
+}
+
+/**
+ * Ends the defender's pre-combat preparation window (ACCEPT_COMBAT): clears the
+ * window and hands deployment priority to the first player still to place
+ * (the attacker, per the setup order).
+ */
+/** True while `playerId` holds the open PvP pre-combat preparation window. */
+export function inDefenderPrep(state: GameState, playerId: PlayerId): boolean {
+  return Boolean(state.combat?.defenderPrep && state.combat.defenderPrep.playerId === playerId);
+}
+
+export function acceptCombat(state: GameState, action: Extract<GameAction, { type: "ACCEPT_COMBAT" }>): void {
+  const combat = state.combat;
+  if (!combat || !combat.defenderPrep || combat.defenderPrep.playerId !== action.playerId) {
+    throw new Error("There is no combat preparation to accept right now.");
+  }
+
+  combat.defenderPrep = null;
+  state.phase = "combat-setup";
+  state.priorityPlayerId = combat.setup?.pendingPlayerIds[0] ?? combat.attackerPlayerId;
+  appendEvent(state, { type: "COMBAT_PREP_ACCEPTED", playerId: action.playerId });
 }
 
 /** Opens the next queued Cover of Darkness start-of-combat decision. */
@@ -3306,6 +3368,10 @@ export function resolveCoverOfDarknessChoice(state: GameState, playerId: PlayerI
     return;
   }
 
+  if (maybeOpenDefenderPrep(state)) {
+    return;
+  }
+
   state.phase = "combat-setup";
   state.priorityPlayerId = combat.setup?.pendingPlayerIds[0] ?? null;
 }
@@ -3327,6 +3393,10 @@ export function placeCombatUnit(state: GameState, action: Extract<GameAction, { 
   const player = state.players[action.playerId];
   if (!combat || !setup || !player) {
     throw new Error("No combat setup is in progress.");
+  }
+
+  if (combat.defenderPrep) {
+    throw new Error("Deployment waits while the defender prepares for combat.");
   }
 
   if (setup.pendingPlayerIds[0] !== action.playerId) {
@@ -3398,6 +3468,10 @@ export function unplaceCombatUnit(state: GameState, action: Extract<GameAction, 
     throw new Error("No combat placement to undo.");
   }
 
+  if (combat.defenderPrep) {
+    throw new Error("Deployment waits while the defender prepares for combat.");
+  }
+
   const placed = setup.placedUnitIds[action.playerId] ?? [];
   const index = placed.indexOf(action.armyUnitId);
   if (index === -1) {
@@ -3416,6 +3490,10 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
   const setup = combat?.setup;
   if (!combat || !setup || setup.pendingPlayerIds[0] !== action.playerId) {
     throw new Error("No combat placement to finish.");
+  }
+
+  if (combat.defenderPrep) {
+    throw new Error("Deployment waits while the defender prepares for combat.");
   }
 
   if ((setup.placedUnitIds[action.playerId] ?? []).length === 0) {
@@ -3857,8 +3935,12 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
   if (!heroId) {
     throw new Error("A hero must be present to retreat or surrender.");
   }
-  if (combat.round !== 1) {
-    throw new Error("Retreat or Surrender is only possible at the start of the combat.");
+  // Retreat / Surrender is a start-of-combat decision: during the defender's
+  // pre-combat preparation window, or once placement is locked in but before any
+  // unit has begun fighting. After the first unit acts the escape is closed.
+  const inDefenderPrep = Boolean(combat.defenderPrep && combat.defenderPrep.playerId === playerId);
+  if (!inDefenderPrep && !pvpEscapeWindowOpen(combat)) {
+    throw new Error("Retreat or Surrender is only possible at the start of the combat, before any unit acts.");
   }
   if (reason === "surrender") {
     // Shackles of War (house rule) locks the enemy out of Surrender only.
@@ -4163,7 +4245,7 @@ export function buildStructureAdventure(
     throw new Error("That structure cannot be built right now.");
   }
 
-  if (state.combat) {
+  if (state.combat && !inDefenderPrep(state, action.playerId)) {
     throw new Error("Town actions cannot interrupt a combat.");
   }
 
@@ -4279,7 +4361,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
     throw new Error("Unknown player.");
   }
 
-  if (state.combat) {
+  if (state.combat && !inDefenderPrep(state, action.playerId)) {
     throw new Error("Town actions cannot interrupt a combat.");
   }
 
@@ -4414,7 +4496,7 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
     throw new Error("Unknown player.");
   }
 
-  if (state.combat) {
+  if (state.combat && !inDefenderPrep(state, action.playerId)) {
     throw new Error("Town actions cannot interrupt a combat.");
   }
 
@@ -5870,7 +5952,11 @@ export function pumpAdventureQueues(state: GameState): void {
     return;
   }
 
-  if (state.combat || state.pendingChoice || state.reactionWindow || state.stack.length > 0) {
+  // A defender preparing for a PvP fight may buy spells / build a Mage Guild,
+  // which queue a Spell-deck search to resolve — so the queue pumps during the
+  // prep window even though a combat object exists. Every other combat blocks it.
+  const inPrep = Boolean(state.combat?.defenderPrep);
+  if ((state.combat && !inPrep) || state.pendingChoice || state.reactionWindow || state.stack.length > 0) {
     return;
   }
 

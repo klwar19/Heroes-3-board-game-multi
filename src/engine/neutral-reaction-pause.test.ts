@@ -324,6 +324,11 @@ function pvpFight(prep: (state: GameState) => void): GameState {
   defender.spaceId = field.spaceId;
 
   startPlayerCombat(state, attacker, defender, field.spaceId);
+  // The defender's pre-combat preparation window opens first (fresh town
+  // tokens); accept it to reach deployment.
+  if (state.combat?.defenderPrep) {
+    state = apply(state, { type: "ACCEPT_COMBAT", playerId: state.combat.defenderPrep.playerId });
+  }
   state = placeOne(state, "p1");
   state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
   state = placeOne(state, "p2");
