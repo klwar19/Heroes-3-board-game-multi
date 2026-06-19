@@ -93,6 +93,7 @@ Mirror of the build request. ✅ = implemented **and wired** (engine + UI + test
 - PvP **Surrender/Retreat** are distinct house rules (round 1; enforced engine-side, `surrender-retreat.test.ts`):
   - **Surrender** needs the full **10 gold** in hand, pays it to the opponent, keeps your whole army in *both* troop-loss modes, applies no morale hit, sends the hero home, and gives the opponent **nothing** toward winning (no XP, no Necromancy, no hero-defeat victory credit). Blocked by Shackles of War.
   - **Retreat** (or a fought-out loss) pays **5 gold to the winner and may push the loser into debt** (gold can go negative), takes −1 morale, loses troops per the mode, and counts as a win for the opponent (XP + Necromancy + hero-defeat credit). Shackles of War does **not** block it.
-- Still not implemented (library-only, kept out of the decks): Teleport (spell), Pathfinding (ability).
+- **Pathfinding** (ability, Clancy's starting skill) is implemented as a BINH house rule: Basic moves through Neutral/enemy fields (Combat only if you end there) and over yellow borders & blocked fields; Expert (spends a crown) additionally crosses the coastline with no halt and steps directly between the Surface and a Subterranean Tile with no Gate (unlike Dimension Door or Fly). Now dealt into the Ability decks; tested in `pathfinding-ability.test.ts`.
+- Still not implemented (library-only, kept out of the decks): Teleport (spell).
 - Map-spell Empowerment (Town Portal +MP at power 2/4) resolves at base power for now
 - Siege combat, secondary heroes, war machines beyond the Tent, scenario-specific Obelisk/Grail effects — unchanged from before

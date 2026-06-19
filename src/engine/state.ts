@@ -371,6 +371,23 @@ export type ActiveEffectModifier =
       type: "HERO_WATER_WALK";
     }
   | {
+      /**
+       * Pathfinding ability (BINH house rule). For this turn the player's Heroes:
+       *  - Basic: may move *through* fields holding Neutral Units or enemy Heroes
+       *    without resolving them (Combat begins only if they END their movement
+       *    there), and over yellow (sealed) borders and blocked fields (never
+       *    ending on a blocked field — same "pass-over" rule as Fly).
+       *  - Expert (`expert: true`): also gains all of the above PLUS may cross the
+       *    coastline (land↔sea) with no halt, and may step directly between a
+       *    Surface and a Subterranean Tile without a Subterranean Gate — which
+       *    neither Dimension Door nor Fly can do.
+       * Translated into movement capabilities by getHeroMovementCapabilities and
+       * read by the adventure pathfinding (canCrossEdge / classifyHeroStep).
+       */
+      type: "HERO_PATHFINDING";
+      expert?: boolean;
+    }
+  | {
       /** Logistics (basic): step to an adjacent empty field at end of turn. */
       type: "END_TURN_ADJACENT_MOVE";
     }

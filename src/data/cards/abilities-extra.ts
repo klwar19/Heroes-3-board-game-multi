@@ -20,20 +20,6 @@ function abilityAssets(slug: string, name: string, noScan = false) {
   };
 }
 
-function notImplementedAbility(slug: string, name: string, text: string): CardLibrary[string] {
-  return {
-    id: `ability.${slug}`,
-    name,
-    kind: "ability",
-    timing: "instant",
-    tags: ["ability", "needs-implementation", text],
-    effect: { type: "DRAW_CARDS", amount: 0 },
-    assets: abilityAssets(slug, name),
-    implementationStatus: "not-implemented",
-    source: abilitySource(slug)
-  };
-}
-
 /** Conflux "Basic X Magic": permanent school fetch OR expert +3 school power. */
 function basicSchoolMagic(school: Exclude<SpellSchool, "any">): CardLibrary[string] {
   const schoolName = school.charAt(0).toUpperCase() + school.slice(1);
@@ -374,11 +360,66 @@ export const extraAbilityCards: CardLibrary = {
     implementationStatus: "implemented",
     source: abilitySource("necromancy")
   },
-  "ability.pathfinding": notImplementedAbility(
-    "pathfinding",
-    "Pathfinding",
-    "Basic (Map): This turn your Hero can move through fields with Neutral Units and enemy Heroes; ending there starts Combat. Expert: move over yellow borders and blocked fields."
-  ),
+  // Pathfinding (Rampart Ranger Clancy's starting ability) — BINH house rule.
+  // engine: a current-turn HERO_PATHFINDING active effect drives the adventure
+  // pathfinding (getHeroMovementCapabilities → canCrossEdge / classifyHeroStep).
+  //   Basic  → move over yellow borders & blocked fields (never ending on a
+  //            blocked one) and THROUGH Neutral-Unit / enemy-Hero fields
+  //            (Combat only if the Hero ends there).
+  //   Expert → all of Basic PLUS cross the coastline (land↔sea) with no halt and
+  //            step directly between the Surface and a Subterranean Tile with no
+  //            Gate — which Dimension Door and Fly cannot do. Spends a crown.
+  "ability.pathfinding": {
+    id: "ability.pathfinding",
+    name: "Pathfinding",
+    kind: "ability",
+    timing: "instant",
+    abilityClass: "adventure",
+    tags: [
+      "ability",
+      "map",
+      "Basic (Map): This turn your Hero can move over yellow borders and blocked fields (never ending on a blocked field), and through fields with Neutral Units and enemy Heroes — ending on such a field starts Combat. Expert (BINH house rule): also cross between land and sea with no penalty and move directly between the Surface and a Subterranean Tile without a Gate (unlike Dimension Door or Fly)."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Basic: this turn pass over borders/blocked fields and through Neutral & enemy fields",
+          mapOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Pathfinding",
+              scope: "player",
+              duration: { type: "current-turn" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [{ type: "HERO_PATHFINDING" }]
+            }
+          }
+        },
+        {
+          label: "Expert: also cross the coastline and step into the Subterranean this turn (spend a crown)",
+          mapOnly: true,
+          expertOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Pathfinding (Expert)",
+              scope: "player",
+              duration: { type: "current-turn" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [{ type: "HERO_PATHFINDING", expert: true }]
+            }
+          }
+        }
+      ]
+    },
+    assets: abilityAssets("pathfinding", "Pathfinding"),
+    implementationStatus: "implemented",
+    source: abilitySource("pathfinding")
+  },
   "ability.learning": {
     id: "ability.learning",
     name: "Learning",
@@ -490,6 +531,9 @@ export const abilityDeckUnique: string[] = [
   "ability.estates",
   "ability.wisdom",
   "ability.logistics",
+  // Pathfinding (Clancy's starting skill): a map-movement ability whose expert
+  // side spends a crown — both tiers are wired (see HERO_PATHFINDING).
+  "ability.pathfinding",
   "ability.scholar",
   "ability.learning",
   "ability.first_aid",
