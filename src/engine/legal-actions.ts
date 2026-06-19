@@ -5408,8 +5408,9 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     const tile = adventure.tiles[tileChoice.tileInstanceId];
     if (tileChoice.playerId === playerId && tile) {
       const anyConnected = [0, 1, 2, 3, 4, 5].some((rotation) => isTileRotationConnected(state, tile, rotation));
-      // Far placements — and Redwood Observatory openings — also require a
-      // rotation the opening hero can cross onto (matches setTileRotation).
+      // On-foot Far placements also require a rotation the placing hero can cross
+      // onto (matches setTileRotation). Redwood Observatory openings carry no
+      // heroId — they only need to connect to the map, no hero-access gate.
       const placingHero = tileChoice.heroId ? state.heroes[tileChoice.heroId] : null;
       const center = { row: tile.centerRow, col: tile.centerCol };
       const anyReachable =

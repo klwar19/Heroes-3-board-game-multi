@@ -234,11 +234,12 @@ describe("rulebook conformance fixes", () => {
 
   // --- Redwood Observatory: opening adjacent maps --------------------------
   //
-  // The Observatory "discover[s] a face down Tile adjacent to this one". The
-  // hero must be standing at an OPEN border of that tile — a solid yellow line
-  // (or the flower's centre field, which never touches a neighbour) seals the
-  // map shut, even for dropping a fresh Far (Ⅱ–Ⅲ) supply tile into an empty
-  // slot. F7's slot-1 ring field is yellow-sealed; its other ring fields open.
+  // Rulebook: the Observatory lets you "choose 1 tile adjacent to this one that
+  // doesn't have a Hero on it", then rotate it freely under the standard Map
+  // Tile Placement rules. There is NO "stand at an open border" / "be able to
+  // step onto it" access rule — yellow borders, and where on the flower the
+  // hero stands, are irrelevant. Only the Surface/Subterranean divide limits it.
+  // F7's slot-1 ring field is yellow-sealed; its other ring fields are open.
 
   /** Per-ring-slot geometry of an F7 observatory flower centred at O. */
   function f7Rings(O: HexCoord) {
@@ -278,14 +279,16 @@ describe("rulebook conformance fixes", () => {
     };
   }
 
-  it("flips an adjacent face-down tile the hero stands at an open border of", () => {
-    const { state, adventure, obsTile, rings } = setupObservatory();
+  it("flips an adjacent face-down tile even from the flower's centre field", () => {
+    const { state, adventure, obsTile, O, rings } = setupObservatory();
     const open = rings.find((ring) => !ring.sealed && ring.neighborCenter);
     if (!open?.neighborCenter) {
       throw new Error("no open ring neighbour");
     }
     const faceDown = instantiateTile(adventure, "N1", open.neighborCenter, 0, true);
-    openObservatoryVisit(state, hexSpaceId(open.ringHex));
+    // Stand on the flower's CENTRE field — it touches no neighbour flower, so the
+    // old "be at an open border" rule wrongly refused to open anything from here.
+    openObservatoryVisit(state, hexSpaceId(O));
 
     expect(observatoryRevealTargets(state, state.heroes.hero_p1, obsTile).map((tile) => tile.id)).toContain(
       faceDown.id
@@ -299,19 +302,37 @@ describe("rulebook conformance fixes", () => {
     const next = apply(state, reveal!.action);
     expect(next.adventure!.tiles[faceDown.id].faceDown).toBe(false);
     expect(next.adventure!.tiles[faceDown.id].awaitingRotation).toBe(true);
-    // The opening hero is recorded so the rotation gate keeps a doorway for them.
     expect(next.adventure!.pendingTileChoice?.kind).toBe("reveal");
-    expect(next.adventure!.pendingTileChoice?.heroId).toBe("hero_p1");
+    // No opening hero is recorded: the tile rotates freely (no hero-cross gate).
+    expect(next.adventure!.pendingTileChoice?.heroId).toBeUndefined();
     expect(next.adventure!.pendingVisit).toBeNull();
   });
 
-  it("drops a Far (Ⅱ–Ⅲ) supply tile into an open border slot for free", () => {
+  it("flips an adjacent face-down tile across a yellow border (no access needed)", () => {
+    const { state, adventure, obsTile, rings } = setupObservatory();
+    const sealed = rings.find((ring) => ring.sealed && ring.neighborCenter);
+    if (!sealed?.neighborCenter) {
+      throw new Error("no sealed ring neighbour");
+    }
+    const faceDown = instantiateTile(adventure, "N1", sealed.neighborCenter, 0, true);
+    // Stand on the yellow-sealed ring field — the old rule wrongly sealed the
+    // map shut here; the Observatory does not care about borders.
+    openObservatoryVisit(state, hexSpaceId(sealed.ringHex));
+
+    expect(observatoryRevealTargets(state, state.heroes.hero_p1, obsTile).map((tile) => tile.id)).toContain(
+      faceDown.id
+    );
+    const labels = getLegalActions(state, "p1").map((legal) => legal.label);
+    expect(labels.some((label) => label.startsWith("Discover the face-down tile"))).toBe(true);
+  });
+
+  it("drops a Far (Ⅱ–Ⅲ) supply tile into an empty adjacent slot for free", () => {
     const { state, adventure, obsTile, O, rings } = setupObservatory();
     const open = rings.find((ring) => !ring.sealed && ring.neighborCenter);
     if (!open?.neighborCenter) {
       throw new Error("no open ring neighbour");
     }
-    const target = open.neighborCenter; // empty slot the open ring field borders
+    const target = open.neighborCenter; // empty slot adjacent to the observatory
     // The slot must nest against >=2 tiles: the observatory plus one more.
     const second = tileLatticeNeighbors(target).find(
       (candidate) =>
@@ -325,7 +346,8 @@ describe("rulebook conformance fixes", () => {
     }
     instantiateTile(adventure, "N1", second, 0, true);
     adventure.playerFarTiles.p1 = ["F4"];
-    openObservatoryVisit(state, hexSpaceId(open.ringHex));
+    // Stand on the flower's CENTRE field: placement needs no border access either.
+    openObservatoryVisit(state, hexSpaceId(O));
 
     const centers = observatoryPlacementCenters(state, state.heroes.hero_p1, obsTile, "F4");
     expect(centers.some((center) => hexEquals(center, target))).toBe(true);
@@ -346,68 +368,35 @@ describe("rulebook conformance fixes", () => {
     expect(next.adventure!.playerFarTiles.p1).toHaveLength(0);
     expect(next.heroes.hero_p1.movementPoints).toBe(mpBefore);
     expect(next.adventure!.pendingTileChoice?.kind).toBe("place");
-    expect(next.adventure!.pendingTileChoice?.heroId).toBe("hero_p1");
+    // No opening hero recorded — rotate freely, no hero-cross gate.
+    expect(next.adventure!.pendingTileChoice?.heroId).toBeUndefined();
     expect(next.adventure!.pendingVisit).toBeNull();
     const placed = next.adventure!.tiles[next.adventure!.pendingTileChoice!.tileInstanceId];
     expect(placed.centerRow).toBe(target.row);
     expect(placed.centerCol).toBe(target.col);
   });
 
-  it("cannot open a map across a yellow border, not even by placing a Far tile", () => {
-    const { state, adventure, obsTile, rings } = setupObservatory();
-    const sealed = rings.find((ring) => ring.sealed && ring.neighborCenter);
-    if (!sealed?.neighborCenter) {
-      throw new Error("no sealed ring neighbour");
-    }
-    // A face-down tile reachable only across the hero field's yellow border.
-    instantiateTile(adventure, "N1", sealed.neighborCenter, 0, true);
-    adventure.playerFarTiles.p1 = ["F4"];
-    openObservatoryVisit(state, hexSpaceId(sealed.ringHex));
-
-    expect(observatoryRevealTargets(state, state.heroes.hero_p1, obsTile)).toHaveLength(0);
-    expect(observatoryPlacementCenters(state, state.heroes.hero_p1, obsTile, "F4")).toHaveLength(0);
-
-    const labels = getLegalActions(state, "p1").map((legal) => legal.label);
-    expect(labels.some((label) => label.startsWith("Discover the face-down tile"))).toBe(false);
-    expect(labels.some((label) => label.startsWith("Place a Far"))).toBe(false);
-    expect(labels).toContain("Skip");
-  });
-
-  it("cannot open a map from the flower's centre field (not standing at a border)", () => {
-    const { state, adventure, obsTile, O, rings } = setupObservatory();
-    const open = rings.find((ring) => !ring.sealed && ring.neighborCenter);
-    if (!open?.neighborCenter) {
-      throw new Error("no open ring neighbour");
-    }
-    const target = open.neighborCenter;
-    const second = tileLatticeNeighbors(target).find(
+  it("still cannot open a tile that does not touch the observatory's flower", () => {
+    const { state, adventure, obsTile, O } = setupObservatory();
+    // A face-down tile two lattice steps away — not adjacent to the observatory.
+    const near = tileLatticeNeighbors(O)[0];
+    const far = tileLatticeNeighbors(near).find(
       (candidate) =>
         !hexEquals(candidate, O) &&
+        !tileLatticeNeighbors(O).some((adj) => hexEquals(adj, candidate)) &&
         !Object.values(adventure.tiles).some((tile) =>
           tileCentersOverlap({ row: tile.centerRow, col: tile.centerCol }, candidate)
         )
     );
-    if (!second) {
-      throw new Error("no second anchor tile for the placement slot");
+    if (!far) {
+      throw new Error("no non-adjacent slot found");
     }
-    instantiateTile(adventure, "N1", second, 0, true);
-    adventure.playerFarTiles.p1 = ["F4"];
-    // Stand on the centre field: it only touches its own ring, never a neighbour.
+    const faceDown = instantiateTile(adventure, "N1", far, 0, true);
     openObservatoryVisit(state, hexSpaceId(O));
 
-    expect(observatoryRevealTargets(state, state.heroes.hero_p1, obsTile)).toHaveLength(0);
-    expect(observatoryPlacementCenters(state, state.heroes.hero_p1, obsTile, "F4")).toHaveLength(0);
-
-    // The geometry IS a legal placement slot — only the hero's position blocks
-    // it — so the engine must reject a hand-crafted placement from the centre.
-    const rejected = applyAction(state, {
-      type: "PLACE_OBSERVATORY_TILE",
-      playerId: "p1",
-      supplyIndex: 0,
-      centerRow: target.row,
-      centerCol: target.col
-    });
-    expect(rejected.errors).toHaveLength(1);
+    expect(observatoryRevealTargets(state, state.heroes.hero_p1, obsTile).map((tile) => tile.id)).not.toContain(
+      faceDown.id
+    );
   });
 
   it("sells one Trading Post card for 1 gold, excluding statistics and Magic Arrow", () => {
