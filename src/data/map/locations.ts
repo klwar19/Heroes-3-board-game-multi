@@ -188,7 +188,15 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "shrine_of_magic_incantation",
     name: "Shrine of Magic Incantation",
     category: "visitable",
-    interaction: { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 2 },
+    // Incantation is the PAID shrine: pay 3 gold to Search(2) the Spell deck.
+    // The homm3bg wiki swaps the two shrines' costs (it lists the fee under
+    // Gesture); the physical board game charges here at Incantation and is free
+    // at Gesture, so the two interactions below are the corrected mapping.
+    interaction: {
+      type: "PAY_TO",
+      costOptions: [{ gold: 3 }],
+      interaction: { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 2 }
+    },
     implementationStatus: "implemented",
     source: source("shrine_of_magic_incantation")
   },
@@ -196,11 +204,8 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "shrine_of_magic_gesture",
     name: "Shrine of Magic Gesture",
     category: "visitable",
-    interaction: {
-      type: "PAY_TO",
-      costOptions: [{ gold: 3 }],
-      interaction: { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 2 }
-    },
+    // Gesture is the FREE shrine: Search(2) the Spell deck at no cost.
+    interaction: { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 2 },
     implementationStatus: "implemented",
     source: source("shrine_of_magic_gesture")
   },

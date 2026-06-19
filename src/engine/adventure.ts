@@ -1295,7 +1295,7 @@ function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
   }
 }
 
-function flagField(state: GameState, playerId: PlayerId, field: MapFieldState): void {
+export function flagField(state: GameState, playerId: PlayerId, field: MapFieldState): void {
   const previousOwnerId = field.flagOwnerId;
   field.flagOwnerId = playerId;
 
@@ -1338,6 +1338,76 @@ export function applyMineFlag(state: GameState, playerId: PlayerId, field: MapFi
   if (!field.everFlagged) {
     field.everFlagged = true;
     gainResources(state, playerId, { [resource]: amount }, `first to flag the ${resource} mine`);
+  }
+}
+
+/**
+ * Settle a settlement's resource income onto `playerId`.
+ *
+ * A settlement that has been flagged for a resource carries a token of that
+ * resource and produces one full resource-gain level of it (+5 gold, +2
+ * building materials, or +1 valuables — the same levels as a town-conquest
+ * reward). This helper moves that income with the flag:
+ *   - the former owner (if any, and different) loses the whole level from the
+ *     OLD token resource, never dropping below zero;
+ *   - the new owner's production rises by one level of `resource`;
+ *   - the field records `resource` as its token; and
+ *   - the one-time stockpile bonus is paid ONLY on the very first flag.
+ *
+ * Re-entering a settlement you already own is guarded out in `beginFieldVisit`,
+ * so this never re-stacks income for the same owner. When another player takes
+ * an already-founded settlement the caller passes `field.settlementResource`,
+ * so the new owner inherits exactly the resource the founder chose (they do not
+ * pick a new one) and — because `everFlagged` is already set — receives no
+ * repeat of the first-flag bonus.
+ */
+export function applySettlementResource(
+  state: GameState,
+  playerId: PlayerId,
+  field: MapFieldState,
+  resource: ResourceKind
+): void {
+  const previousOwnerId = field.flagOwnerId;
+  const firstFlag = !field.everFlagged;
+
+  // Strip the whole resource-gain level the former owner earned from this
+  // settlement's existing token (never below zero) before it changes hands.
+  if (previousOwnerId && previousOwnerId !== playerId && field.settlementResource) {
+    const previous = state.players[previousOwnerId];
+    if (previous) {
+      const lost = RESOURCE_GAIN_LEVEL_AMOUNTS[field.settlementResource];
+      previous.production[field.settlementResource] = Math.max(
+        0,
+        previous.production[field.settlementResource] - lost
+      );
+      appendEvent(state, {
+        type: "PRODUCTION_CHANGED",
+        playerId: previousOwnerId,
+        resource: field.settlementResource,
+        amount: -lost
+      });
+    }
+  }
+
+  flagField(state, playerId, field);
+  field.settlementResource = resource;
+  field.everFlagged = true;
+
+  const player = state.players[playerId];
+  if (player) {
+    const gained = RESOURCE_GAIN_LEVEL_AMOUNTS[resource];
+    player.production[resource] += gained;
+    appendEvent(state, { type: "PRODUCTION_CHANGED", playerId, resource, amount: gained });
+    if (firstFlag) {
+      gainResources(state, playerId, { [resource]: gained }, "first to flag the settlement");
+    }
+  }
+
+  // Settlements prevent Player Elimination (rulebook p.77): taking one clears
+  // the new owner's clock; losing one may start the former owner's.
+  refreshEliminationClock(state, playerId);
+  if (previousOwnerId && previousOwnerId !== playerId) {
+    refreshEliminationClock(state, previousOwnerId);
   }
 }
 
@@ -2028,7 +2098,33 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     return;
   }
 
-  if (location.category === "flaggable" && location.id !== "settlement") {
+  if (location.id === "settlement") {
+    // Re-entering a settlement you already own does nothing. The income is
+    // applied once when you take it and is collected every resource round from
+    // your production track — walking out and back in must NOT re-stack it.
+    if (field.flagOwnerId === playerId) {
+      return;
+    }
+    // A settlement that already carries a resource token is "founded": its
+    // income is locked to the resource the first owner chose. Taking it from
+    // another player automatically transfers THAT same income — the new owner
+    // does not choose a resource and gets no repeat of the first-flag bonus,
+    // while the former owner loses the income (all inside applySettlementResource).
+    if (field.settlementResource) {
+      applySettlementResource(state, playerId, field, field.settlementResource);
+      return;
+    }
+    // Otherwise this is the very first flag (no owner yet), or a settlement that
+    // was previously flagged only for a unit reinforcement (owned, but no
+    // resource token was ever placed). Either way the visitor chooses a resource
+    // income or a unit reinforcement; the one-time free reinforcement / stockpile
+    // bonus is gated on `everFlagged` inside the resolver.
+    adventure.pendingVisit = { heroId, playerId, fieldId, steps: [{ type: "SETTLEMENT_CHOICE" }] };
+    processPendingVisit(state);
+    return;
+  }
+
+  if (location.category === "flaggable") {
     // Obelisks and similar: multiple players may flag; keep enemy cubes.
     field.everFlagged = true;
     if (!field.flagOwnerId) {
@@ -2046,12 +2142,7 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     return;
   }
 
-  const steps =
-    location.id === "settlement"
-      ? interactionToSteps(location.interaction)
-      : location.implementationStatus === "implemented"
-        ? interactionToSteps(location.interaction)
-        : [];
+  const steps = location.implementationStatus === "implemented" ? interactionToSteps(location.interaction) : [];
 
   if (steps.length === 0) {
     return;
