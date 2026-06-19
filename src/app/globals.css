@@ -4054,13 +4054,13 @@ button.hbSlot:disabled { cursor: default; }
    clamp to nearly full width. */
 .battlefieldToken.quicksand,
 .battlefieldToken.land_mine {
-  font-size: 1rem;
+  font-size: 0.5rem;
 }
 
 .battlefieldToken.quicksand .battlefieldTokenSprite,
 .battlefieldToken.land_mine .battlefieldTokenSprite {
-  height: 52%;
-  max-width: 62%;
+  height: 26%;
+  max-width: 31%;
 }
 
 /* A face-down enemy trap: a featureless token back hiding its armed/decoy state. */

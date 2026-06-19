@@ -353,6 +353,28 @@ describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
     expect(bg).not.toContain("land-mine-hit");
   });
 
+  it("hides an enemy trap's armed/decoy state even when the board is fed RAW state", () => {
+    // The live board receives the raw GameState (not the masked player-view), so
+    // an enemy trap still carries its real `armed` flag. The opponent must NEVER
+    // see it: the marker stays face-down and leaks neither the sprite nor the
+    // "armed"/"decoy" label, whether the trap is armed or a decoy.
+    for (const armed of [true, false]) {
+      const state = createInitialGameState(`board-enemy-trap-${armed}`);
+      state.combat!.battlefieldTokens = [
+        { id: "t1", kind: "quicksand", position: 10, controllerId: "p2", armed }
+      ];
+      renderBoard(state); // viewer is p1, so p2's trap is the enemy's
+      const mark = document.querySelector('[data-fx-cell="10"] .battlefieldToken');
+      expect(mark!.className, "an enemy trap must be face-down").toContain("faceDown");
+      expect(mark!.querySelector(".battlefieldTokenBack"), "a face-down back hides it").toBeTruthy();
+      expect(mark!.querySelector(".battlefieldTokenSprite"), "no sprite leaks the trap").toBeNull();
+      const text = mark!.textContent ?? "";
+      expect(text).not.toContain("armed");
+      expect(text).not.toContain("decoy");
+      cleanup();
+    }
+  });
+
   // A dormant trap must hold its idle frame, not loop its sheet: a Land Mine
   // must not perpetually spark nor a Quicksand pit endlessly bubble while it
   // waits to be sprung. TokenSprite drives its loop with requestAnimationFrame,
@@ -380,6 +402,25 @@ describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
       cleanup();
     }
 
+    rafSpy.mockRestore();
+  });
+
+  it("animates the Force Field but loops only its solid frames (no fade-out blink)", () => {
+    const rafSpy = vi.spyOn(window, "requestAnimationFrame");
+    const state = createInitialGameState("board-anim-force-field");
+    state.combat!.battlefieldTokens = [{ id: "ff", kind: "force_field", position: 10, controllerId: "p1" }];
+    rafSpy.mockClear();
+    renderBoard(state);
+    const sprite = spriteOnCell(10);
+    expect(sprite, "the Force Field draws its sprite").toBeTruthy();
+    // It shimmers (unlike the static traps)…
+    expect(rafSpy, "the Force Field keeps shimmering").toHaveBeenCalled();
+    // …but the loop window starts on the first SOLID frame (3 of the 15-frame
+    // sheet), so it never rests on or blinks through the faded-out end frames
+    // (0–2 fade in, 12–14 fade out). Removing the frameRange would drop this
+    // back to frame 0 (≈ invisible), which is exactly the blink we are killing.
+    expect(sprite!.style.backgroundPositionX).not.toBe("0%");
+    expect(parseFloat(sprite!.style.backgroundPositionX)).toBeCloseTo((3 / 14) * 100, 1);
     rafSpy.mockRestore();
   });
 
