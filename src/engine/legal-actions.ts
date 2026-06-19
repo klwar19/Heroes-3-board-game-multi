@@ -2286,29 +2286,11 @@ function addTurnCardActions(
       continue;
     }
 
-    // Necromancy: playable on the map only in the window after winning a
-    // Combat other than a Quick Combat, and only by a Necropolis hero. A copy
-    // drawn from the Ability deck on level-up may be kept but never played
-    // (house rule) — only a hero's printed Necromancy is a real ability.
+    // Necromancy is NEVER a free-turn play: it is legal ONLY in the now-or-never
+    // after-combat window (the pendingNecromancy gate in
+    // getAdventureLegalActions, surfaced via addNecromancyPlays). Skip it here so
+    // a player can't bank gold during the turn and reinforce cheaply later.
     if (card.effect.type === "NECROMANCY_REINFORCE") {
-      const drawnFromLevelUp = player.deckDrawnAbilityCardIds?.includes(cardId) ?? false;
-      if (player.necromancyWindow && player.factionId === "necropolis" && !drawnFromLevelUp) {
-        if (card.effect.forceMode) {
-          // Vidomina's specialties: one fixed-tier reinforce, no expert crown.
-          actions.push({
-            label: `Play ${card.name}`,
-            action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
-          });
-        } else {
-          const modes: CardPlayMode[] = expertUsesAvailable(player) > 0 ? ["basic", "expert"] : ["basic"];
-          for (const mode of modes) {
-            actions.push({
-              label: `Play ${card.name}${mode === "expert" ? " (expert)" : ""}`,
-              action: { type: "PLAY_CARD", playerId, cardId, mode, target: { type: "none" } }
-            });
-          }
-        }
-      }
       continue;
     }
 
@@ -2347,6 +2329,45 @@ function addTurnCardActions(
         label: `Play ${card.name}${mode === "expert" ? " (expert)" : ""}`,
         action: { type: "PLAY_CARD", playerId, cardId, mode, target: { type: "none" } }
       });
+    }
+  }
+}
+
+/**
+ * The after-combat Necromancy plays for a Necropolis player who holds one. A
+ * copy drawn from the Ability deck on level-up is kept but never playable (house
+ * rule). Vidomina's specialties pin the tier (no expert crown); the printed
+ * ability may be played basic, or expert when a crown use is spare. Used only
+ * inside the pendingNecromancy now-or-never gate.
+ */
+function addNecromancyPlays(actions: LegalAction[], state: GameState, playerId: PlayerId, cards: CardLibrary): void {
+  const player = state.players[playerId];
+  if (!player || player.factionId !== "necropolis") {
+    return;
+  }
+
+  for (const cardId of new Set(player.hand)) {
+    const card = cards[cardId];
+    if (!card || card.effect.type !== "NECROMANCY_REINFORCE") {
+      continue;
+    }
+    if (player.deckDrawnAbilityCardIds?.includes(cardId)) {
+      continue;
+    }
+
+    if (card.effect.forceMode) {
+      actions.push({
+        label: `Play ${card.name}`,
+        action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
+      });
+    } else {
+      const modes: CardPlayMode[] = expertUsesAvailable(player) > 0 ? ["basic", "expert"] : ["basic"];
+      for (const mode of modes) {
+        actions.push({
+          label: `Play ${card.name}${mode === "expert" ? " (expert)" : ""}`,
+          action: { type: "PLAY_CARD", playerId, cardId, mode, target: { type: "none" } }
+        });
+      }
     }
   }
 }
@@ -5438,9 +5459,24 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
-  // Pending field visit choices.
+  // Pending field visit choices. Any free combat-driven reinforce (the Skeleton
+  // fallback) or level-up choice queued during finalization resolves here FIRST,
+  // before the Necromancy gate below — none of these is the withheld field
+  // reward, so the now-or-never rule is not weakened by letting them through.
   if (adventure.pendingVisit) {
     addVisitStepActions(actions, state, playerId, cards);
+    return actions;
+  }
+
+  // BINH house rule: the after-combat Necromancy window is now-or-never. Until
+  // the winner plays Necromancy or skips it, NOTHING else on the map is legal
+  // and the field reward of the fight they just won stays withheld — so "collect
+  // the field gold, then reinforce with it" is impossible.
+  if (adventure.pendingNecromancy) {
+    if (adventure.pendingNecromancy.playerId === playerId) {
+      addNecromancyPlays(actions, state, playerId, cards);
+      actions.push({ label: "Skip Necromancy", action: { type: "SKIP_NECROMANCY", playerId } });
+    }
     return actions;
   }
 

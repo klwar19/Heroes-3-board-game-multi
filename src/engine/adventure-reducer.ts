@@ -488,6 +488,10 @@ function assertNoPendingInput(state: GameState): void {
     throw new Error("Resolve the pending choice first.");
   }
 
+  if (state.adventure?.pendingNecromancy) {
+    throw new Error("Resolve the after-combat Necromancy window first (play it or skip it).");
+  }
+
   if (state.adventure?.pendingTileChoice) {
     throw new Error("Confirm the rotation of the new tile first.");
   }
@@ -3877,6 +3881,53 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
 }
 
 /**
+ * Can this player play a Necromancy ability at this very instant? True only for
+ * a Necropolis hero holding a printed Necromancy / Vidomina specialty in hand;
+ * a copy drawn from the Ability deck on level-up is kept but never playable
+ * (house rule). Drives the after-combat now-or-never window — it opens only for
+ * a winner who could actually use it the moment the fight ends.
+ */
+function playerCanPlayNecromancy(state: GameState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  if (!player || player.factionId !== "necropolis") {
+    return false;
+  }
+  return player.hand.some((cardId) => {
+    const card = cardLibrary[cardId];
+    return (
+      card?.effect.type === "NECROMANCY_REINFORCE" && !(player.deckDrawnAbilityCardIds?.includes(cardId) ?? false)
+    );
+  });
+}
+
+/**
+ * Decline the after-combat Necromancy window (BINH house rule). The window is
+ * gone for good — it never reopens until the next non-Quick Combat win — and the
+ * field reward withheld behind the decision is released now.
+ */
+export function skipNecromancy(state: GameState, action: Extract<GameAction, { type: "SKIP_NECROMANCY" }>): void {
+  const adventure = state.adventure;
+  const pending = adventure?.pendingNecromancy;
+  if (!adventure || !pending) {
+    throw new Error("There is no Necromancy window to skip.");
+  }
+  if (pending.playerId !== action.playerId) {
+    throw new Error("Only the player who won the combat may skip Necromancy.");
+  }
+
+  adventure.pendingNecromancy = null;
+  const player = state.players[action.playerId];
+  if (player) {
+    player.necromancyWindow = false;
+  }
+
+  // Release the field reward that was held back behind the decision.
+  if (pending.heroId && pending.fieldId) {
+    beginFieldVisit(state, pending.heroId, pending.fieldId, false);
+  }
+}
+
+/**
  * Applies the end-of-combat consequences for adventure combats: damage heals,
  * defeated player units leave the unit deck (packs were already flipped to
  * few during combat), neutrals go to their tier discard piles, experience and
@@ -4022,7 +4073,15 @@ export function finalizeAdventureCombat(state: GameState): void {
     state.priorityPlayerId = null;
 
     if (hero && playerId && outcome.winnerPlayerId === playerId && field) {
-      beginFieldVisit(state, hero.id, context.fieldId, false);
+      // BINH house rule: Necromancy is a now-or-never decision made BEFORE the
+      // field reward. If the winner can play it this instant, defer the field
+      // visit behind the decision (its reward is withheld until they play or
+      // skip); otherwise visit the field immediately as usual.
+      if (playerCanPlayNecromancy(state, playerId)) {
+        adventure.pendingNecromancy = { playerId, heroId: hero.id, fieldId: context.fieldId };
+      } else {
+        beginFieldVisit(state, hero.id, context.fieldId, false);
+      }
     }
     return;
   }
@@ -4116,7 +4175,14 @@ export function finalizeAdventureCombat(state: GameState): void {
   state.priorityPlayerId = null;
 
   if (winnerHero && winnerHero.id === context.attackerHeroId) {
-    beginFieldVisit(state, winnerHero.id, context.fieldId, false);
+    // Same now-or-never Necromancy gate as a neutral win (see above): defer the
+    // attacker's field visit behind the decision when they can play it now.
+    const winnerPid = winnerHero.controllerId;
+    if (playerCanPlayNecromancy(state, winnerPid)) {
+      adventure.pendingNecromancy = { playerId: winnerPid, heroId: winnerHero.id, fieldId: context.fieldId };
+    } else {
+      beginFieldVisit(state, winnerHero.id, context.fieldId, false);
+    }
   }
 }
 
@@ -5878,6 +5944,18 @@ export function pumpAdventureQueues(state: GameState): void {
         steps: [...reward.steps]
       };
       processPendingVisit(state);
+      if (state.pendingChoice || adventure.pendingVisit) {
+        return;
+      }
+      continue;
+    }
+
+    if (reward.kind === "field-visit") {
+      // A post-combat field visit that was deferred behind the Necromancy
+      // decision: now that the reinforce (if any) has been paid for, the field
+      // reward finally lands.
+      adventure.rewardQueue.shift();
+      beginFieldVisit(state, reward.heroId, reward.fieldId, false);
       if (state.pendingChoice || adventure.pendingVisit) {
         return;
       }

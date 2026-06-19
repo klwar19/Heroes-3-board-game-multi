@@ -2331,6 +2331,15 @@ export type GameAction =
       playerId: PlayerId;
     }
   | {
+      /**
+       * Decline the after-combat Necromancy window (BINH house rule). Closes the
+       * now-or-never window for good — it never reopens until the next non-Quick
+       * Combat win — and releases the field reward withheld behind the decision.
+       */
+      type: "SKIP_NECROMANCY";
+      playerId: PlayerId;
+    }
+  | {
       /** Population token: recruit and/or reinforce any number of units at once. */
       type: "POPULATION_ACTION";
       playerId: PlayerId;
@@ -4378,6 +4387,17 @@ export type AdventureReward =
     }
   | {
       /**
+       * A post-combat field visit deferred behind the after-combat Necromancy
+       * decision, so the field reward lands only AFTER Necromancy is paid for
+       * (see AdventureState.pendingNecromancy).
+       */
+      playerId: PlayerId;
+      kind: "field-visit";
+      heroId: HeroId;
+      fieldId: MapSpaceId;
+    }
+  | {
+      /**
        * Learning: the Hero just crossed at least one level and the player holds a
        * Learning ability card. Pumped into a "learning-level-up" choice offering
        * to advance an extra half/full level (see pumpAdventureQueues).
@@ -4825,6 +4845,22 @@ export type AdventureState = {
   pandoraDeck?: CardId[];
   /** Field visit currently being resolved (choices pending). */
   pendingVisit: PendingVisit | null;
+  /**
+   * After-combat Necromancy decision (BINH house rule). Set when a player wins a
+   * non-Quick Combat AND can play a Necromancy ability at that very instant.
+   * While it is set the winner may ONLY play Necromancy or skip it — nothing else
+   * on the map is legal and the field reward of the fight they just won is
+   * withheld (its visit is stored here) until the decision is made. This is what
+   * stops "collect the field gold, THEN reinforce with it": the reinforce is
+   * priced on the gold held before the reward lands. Cleared the instant the
+   * decision is made and never reopens until the next non-Quick Combat win.
+   */
+  pendingNecromancy?: {
+    playerId: PlayerId;
+    /** The post-combat field visit deferred behind the decision (if any). */
+    heroId?: HeroId;
+    fieldId?: MapSpaceId;
+  } | null;
   /** Rewards waiting to resolve one at a time (level-up searches, City Halls). */
   rewardQueue: AdventureReward[];
   /** Last field each hero visited, where a retreating hero returns. */
