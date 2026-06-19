@@ -9,13 +9,14 @@
  *
  * Scope: the 19 Core Game proclamations plus the expansion cards whose effects
  * map cleanly onto existing engine systems and are wired + tested here
- * (Society, Big Cleanup, Blue Sky, Scorched Ground). The `effect` field is the
- * single source of truth for what the engine runs; `text` is the printed card
- * wording. Every card has a real card scan in `image`. Expansion proclamations
- * that would need new subsystems (PvP-attack bans, a generic Event deck,
- * defense->attack conversion, statistic-empowering, ...) are intentionally NOT
- * included rather than shipped as inert text — see ASTROLOGERS_NOT_IMPLEMENTED
- * below for the honest list.
+ * (Society, Big Cleanup, Blue Sky, Scorched Ground, Dancing Imp, Hero,
+ * Plane Between Planes). The `effect` field is the single source of truth for
+ * what the engine runs; `text` is the printed card wording. Every card has a
+ * real card scan in `image`. Expansion proclamations that would need new
+ * subsystems (PvP-attack bans, a generic Event deck, defense->attack
+ * conversion, war-machine economies, ...) are intentionally NOT included rather
+ * than shipped as inert text — see ASTROLOGERS_NOT_IMPLEMENTED below for the
+ * honest list.
  */
 
 import type { SpellSchool } from "@/engine/state";
@@ -36,13 +37,27 @@ export type AstrologersEffect =
   | { type: "FIRST_SPELL_POWER_BONUS"; amount: number }
   | { type: "SCHOOL_SPELL_POWER_BONUS"; schools: SpellSchool[]; amount: number }
   | { type: "FIRST_SPELL_RETURNS" }
-  | { type: "NEUTRAL_DRAW_SWAP" };
+  | { type: "NEUTRAL_DRAW_SWAP" }
+  // Dancing Imp: each player may Remove one Statistic card (hand or discard) to
+  // gain the same-type Empowered Statistic, for free. Resolved at draw.
+  | { type: "EMPOWER_STATISTIC_CHOICE" }
+  // Plane Between Planes: each player may immediately Remove up to `count` cards
+  // from their hand or discard pile. Resolved at draw.
+  | { type: "REMOVE_CARDS_CHOICE"; count: number }
+  // Hero: ongoing — at the start of each of a player's turns they may pay
+  // `costGold` to Remove a hand Statistic and replace it with the same-type
+  // Empowered Statistic, up to `maxPerTurn` times that turn.
+  | { type: "PAID_EMPOWER_PER_TURN"; costGold: number; maxPerTurn: number };
 
-/** Boxed set / expansion a proclamation ships in (provenance, shown in the UI). */
-export type AstrologersExpansion =
-  | "Core Game"
-  | "Tower Expansion"
-  | "Fortress Expansion";
+/** Boxed sets / expansions a proclamation can ship in (provenance, shown in the UI). */
+export const ASTROLOGERS_EXPANSIONS = [
+  "Core Game",
+  "Tower Expansion",
+  "Fortress Expansion",
+  "Inferno Expansion"
+] as const;
+
+export type AstrologersExpansion = (typeof ASTROLOGERS_EXPANSIONS)[number];
 
 export type AstrologersCardDefinition = {
   id: string;
@@ -126,6 +141,16 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     image: image("crazy_wizard"),
     source: source("crazy_wizard", "Core Game")
   },
+  "astrologers.dancing_imp": {
+    id: "astrologers.dancing_imp",
+    name: "Dancing Imp",
+    text: "Each player can Remove a Statistic card from their discard pile or hand to gain 1 Empowered Statistic card of the same type.",
+    ongoing: false,
+    effect: { type: "EMPOWER_STATISTIC_CHOICE" },
+    expansion: "Inferno Expansion",
+    image: image("dancing_imp"),
+    source: source("dancing_imp", "Inferno Expansion")
+  },
   "astrologers.dead_silence": {
     id: "astrologers.dead_silence",
     name: "Dead Silence",
@@ -206,6 +231,16 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     image: image("groovy_satyr"),
     source: source("groovy_satyr", "Core Game")
   },
+  "astrologers.hero": {
+    id: "astrologers.hero",
+    name: "Hero",
+    text: "Each player can pay 4 gold to Remove a Statistic card from their hand and replace it with an Empowered Statistic card of the same type. Each player may do so twice, but both exchanges must be made on the same turn.",
+    ongoing: true,
+    effect: { type: "PAID_EMPOWER_PER_TURN", costGold: 4, maxPerTurn: 2 },
+    expansion: "Inferno Expansion",
+    image: image("hero"),
+    source: source("hero", "Inferno Expansion")
+  },
   "astrologers.isras_friends": {
     id: "astrologers.isras_friends",
     name: "Isra's Friends",
@@ -235,6 +270,16 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     expansion: "Core Game",
     image: image("merry_leprechaun"),
     source: source("merry_leprechaun", "Core Game")
+  },
+  "astrologers.plane_between_planes": {
+    id: "astrologers.plane_between_planes",
+    name: "Plane Between Planes",
+    text: "Each player can immediately Remove up to 2 cards from their hand or from their discard pile.",
+    ongoing: false,
+    effect: { type: "REMOVE_CARDS_CHOICE", count: 2 },
+    expansion: "Fortress Expansion",
+    image: image("plane_between_planes"),
+    source: source("plane_between_planes", "Fortress Expansion")
   },
   "astrologers.profuse_growth": {
     id: "astrologers.profuse_growth",
@@ -320,20 +365,17 @@ export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; nee
   { name: "Ammo Cart", expansion: "Rampart", needs: "war-machine combat buffs (Ballista/First Aid Tent/Ammo Cart)" },
   { name: "Charlie and his Circus", expansion: "Rampart", needs: "multi-round neutral-unit recruitment offers" },
   { name: "Crag Hack", expansion: "Stronghold", needs: "first-combat ground-unit attack buff + free Goblin reinforce" },
-  { name: "Dancing Imp", expansion: "Inferno", needs: "statistic -> empowered-statistic swap" },
   { name: "Destruction", expansion: "Stretch Goals", needs: "remove a permanent card in play for gold" },
   { name: "Disruption", expansion: "Stretch Goals", needs: "per-player free single-tile rotation flow" },
   { name: "Elementals", expansion: "Conflux", needs: "face-up Elemental units seeded onto neutral decks" },
   { name: "Explorers", expansion: "Inferno", needs: "skip-draw + discard-for-empowered-statistic economy" },
   { name: "Forty Thieves", expansion: "Fortress", needs: "a generic Event-card deck (does not exist)" },
-  { name: "Hero", expansion: "Inferno", needs: "pay-to-empower a statistic card" },
   { name: "Judge Dread", expansion: "Stronghold", needs: "attacker redraws the whole neutral guard" },
   { name: "Mages", expansion: "Conflux", needs: "free Spell Book token use" },
   { name: "McGiver", expansion: "Rampart", needs: "free war-machine acquisition next round" },
   { name: "Multilingual Bron", expansion: "Stretch Goals", needs: "reroll of unit special-ability rolls" },
   { name: "Offense", expansion: "Stronghold", needs: "Defense cards acting as Attack" },
   { name: "Pirates", expansion: "Cove", needs: "post-combat-win Resource die reward" },
-  { name: "Plane Between Planes", expansion: "Fortress", needs: "optional remove-from-hand/discard choice" },
   { name: "Plastic Tray", expansion: "Stronghold", needs: "defense-roll units skipping attack dice" },
   { name: "Restart", expansion: "Stretch Goals", needs: "forced hand reduction with player discard choice" },
   { name: "Rulebook", expansion: "Stretch Goals", needs: "neutral-combat difficulty reduction" },

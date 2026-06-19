@@ -999,7 +999,10 @@ function getTargetsForCard(
     // Mirth: a player-scoped reroll buff picks no unit.
     card?.effect.type === "CREATE_ATTACK_DIE_REROLL" ||
     // Remove Obstacle picks no unit — it opens a board-obstacle choice instead.
-    card?.effect.type === "REMOVE_OBSTACLE";
+    card?.effect.type === "REMOVE_OBSTACLE" ||
+    // Quicksand / Land Mine pick no unit either — the cast opens a face-down
+    // token placement picker (every token is placed there, including the first).
+    card?.effect.type === "PLACE_HIDDEN_TOKENS";
   const cardTarget = overrideTarget ?? card?.target;
   const targetType =
     cardTarget?.type ??
@@ -1440,6 +1443,43 @@ function addSpellActions(
       const hasToken = (combat?.battlefieldTokens ?? []).length > 0;
       const hasFortification = Boolean(siege && (siege.walls.length > 0 || siege.gatePosition !== null));
       if (!hasObstacleMarker && !hasToken && !hasFortification) {
+        continue;
+      }
+    }
+
+    // Quicksand / Land Mine open a face-down placement picker on cast, so the
+    // spell can only be cast when there is at least one empty space to drop a
+    // token on (same "empty space" rule as the Summon spells above).
+    if (card.effect.type === "PLACE_HIDDEN_TOKENS") {
+      if (!combat) {
+        continue;
+      }
+      const blocked = new Set<number>();
+      for (const unit of Object.values(combat.units)) {
+        if (isUnitAlive(unit)) {
+          blocked.add(unit.position);
+        }
+      }
+      for (const position of combat.obstacles ?? []) {
+        blocked.add(position);
+      }
+      for (const token of combat.battlefieldTokens ?? []) {
+        blocked.add(token.position);
+      }
+      for (const position of combat.siege?.walls ?? []) {
+        blocked.add(position);
+      }
+      if (combat.siege?.gatePosition != null) {
+        blocked.add(combat.siege.gatePosition);
+      }
+      let hasEmpty = false;
+      for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+        if (!blocked.has(position)) {
+          hasEmpty = true;
+          break;
+        }
+      }
+      if (!hasEmpty) {
         continue;
       }
     }

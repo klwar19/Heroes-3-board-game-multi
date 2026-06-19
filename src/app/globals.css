@@ -4046,6 +4046,23 @@ button.hbSlot:disabled { cursor: default; }
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
 }
 
+/* Dormant traps (Quicksand / Land Mine) are not big visible obstacles like the
+   Fire Wall / Force Field — they are meant to read as small markers sitting on a
+   space. Shrink both the sprite art and the emoji-glyph fallback so they no
+   longer fill the cell, keeping the owner's view in step with the ~60% face-down
+   back the opponent sees. The wide, short land-mine frame (42×19) would otherwise
+   clamp to nearly full width. */
+.battlefieldToken.quicksand,
+.battlefieldToken.land_mine {
+  font-size: 0.5rem;
+}
+
+.battlefieldToken.quicksand .battlefieldTokenSprite,
+.battlefieldToken.land_mine .battlefieldTokenSprite {
+  height: 26%;
+  max-width: 31%;
+}
+
 /* A face-down enemy trap: a featureless token back hiding its armed/decoy state. */
 .battlefieldTokenBack {
   display: flex;
@@ -4114,6 +4131,14 @@ button.hbSlot:disabled { cursor: default; }
 
 .boardCard .battlefieldTokenSprite {
   height: 22px;
+}
+
+/* Keep the corner-badge size when a unit stands on a trap: the per-kind shrink
+   above has higher specificity than the badge rule, so re-assert it here. */
+.boardCard .battlefieldToken.quicksand .battlefieldTokenSprite,
+.boardCard .battlefieldToken.land_mine .battlefieldTokenSprite {
+  height: 22px;
+  max-width: none;
 }
 
 .placeTokensBanner {

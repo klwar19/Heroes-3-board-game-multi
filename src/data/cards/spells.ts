@@ -1758,9 +1758,12 @@ export const spellCards: CardLibrary = {
   // one and may look at their own at any time; the armed/decoy split is hidden
   // from the opponent until a unit enters a token and reveals it. An armed
   // Quicksand ends the entering unit's movement AND activation; a decoy lets it
-  // continue. Engine: PLACE_HIDDEN_TOKENS (tokenKind "quicksand") runs the
-  // place-the-rest picker; walkMoveThroughTokens springs the trap on entry. The
-  // "OR Instant: +1 Power" side is the universal power-source discard.
+  // continue. Engine: a no-target cast (like Remove Obstacle) opens the
+  // place-the-whole-set picker — every token, including the first, is dropped on
+  // a chosen empty space through the same picker, so there is no special
+  // first-token-on-the-cast-space step. walkMoveThroughTokens springs the trap
+  // on entry. The "OR Instant: +1 Power" side is the universal power-source
+  // discard.
   "spell.quicksand": {
     id: "spell.quicksand",
     name: "Quicksand",
@@ -1770,7 +1773,6 @@ export const spellCards: CardLibrary = {
     spellLevel: "basic",
     spellSchools: ["earth"],
     power: 0,
-    target: { type: "empty-space" },
     tags: [
       "spell",
       "basic",
@@ -1796,9 +1798,10 @@ export const spellCards: CardLibrary = {
   // one by one and may look at their own; the armed/decoy split is hidden from
   // the opponent until a unit enters a token and reveals it. An armed Land Mine
   // deals 2 damage and the unit then continues its activation; a decoy lets it
-  // continue unharmed. Engine: PLACE_HIDDEN_TOKENS (tokenKind "land_mine",
-  // triggerDamage 2) runs the place-the-rest picker; walkMoveThroughTokens
-  // detonates it on entry. The "OR Instant: +1 Power" side is the universal discard.
+  // continue unharmed. Engine: a no-target cast (like Remove Obstacle) opens the
+  // place-the-whole-set picker — every token, including the first, is dropped on
+  // a chosen empty space through the same picker. walkMoveThroughTokens detonates
+  // it on entry. The "OR Instant: +1 Power" side is the universal discard.
   "spell.land_mine": {
     id: "spell.land_mine",
     name: "Land Mine",
@@ -1808,7 +1811,6 @@ export const spellCards: CardLibrary = {
     spellLevel: "expert",
     spellSchools: ["fire"],
     power: 0,
-    target: { type: "empty-space" },
     tags: [
       "spell",
       "expert",

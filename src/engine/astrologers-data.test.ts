@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  ASTROLOGERS_EXPANSIONS,
   ASTROLOGERS_NOT_IMPLEMENTED,
   astrologersCardDefinitions,
   astrologersDeckCardIds,
@@ -36,7 +37,10 @@ const WIRED_EFFECT_TYPES = {
   FIRST_SPELL_POWER_BONUS: true,
   SCHOOL_SPELL_POWER_BONUS: true,
   FIRST_SPELL_RETURNS: true,
-  NEUTRAL_DRAW_SWAP: true
+  NEUTRAL_DRAW_SWAP: true,
+  EMPOWER_STATISTIC_CHOICE: true,
+  REMOVE_CARDS_CHOICE: true,
+  PAID_EMPOWER_PER_TURN: true
 } satisfies Record<AstrologersEffect["type"], true>;
 
 const ASSETS_DIR = join(process.cwd(), "public", "assets");
@@ -58,7 +62,7 @@ describe("astrologers deck data integrity", () => {
     for (const [id, card] of Object.entries(astrologersCardDefinitions)) {
       expect(card.text.trim().length, `${id} text`).toBeGreaterThan(0);
       expect(card.name.trim().length, `${id} name`).toBeGreaterThan(0);
-      expect(["Core Game", "Tower Expansion", "Fortress Expansion"]).toContain(card.expansion);
+      expect(ASTROLOGERS_EXPANSIONS).toContain(card.expansion);
     }
   });
 
