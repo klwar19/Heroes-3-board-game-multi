@@ -606,28 +606,6 @@ export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitSt
   ).filter(isBattlefieldPosition);
 }
 
-export function sortUnitsForActivation(combat: CombatState, activeEffects: ActiveEffectState[] = []): CombatUnitState[] {
-  return Object.values(combat.units)
-    .filter(isUnitAlive)
-    .sort((left, right) => {
-      const leftInitiative = effectiveInitiative(left, activeEffects);
-      const rightInitiative = effectiveInitiative(right, activeEffects);
-      if (rightInitiative !== leftInitiative) {
-        return rightInitiative - leftInitiative;
-      }
-
-      if (left.controllerId === combat.attackerPlayerId && right.controllerId !== combat.attackerPlayerId) {
-        return -1;
-      }
-
-      if (right.controllerId === combat.attackerPlayerId && left.controllerId !== combat.attackerPlayerId) {
-        return 1;
-      }
-
-      return left.id.localeCompare(right.id);
-    });
-}
-
 /**
  * Which side activates next, and the units that side may pick from, at the top
  * (highest effective initiative) tier of un-acted units.
@@ -648,22 +626,29 @@ export type ActivationStep = {
   initiative: number;
 };
 
-export function getActivationStep(
-  combat: CombatState,
-  activeEffects: ActiveEffectState[] = []
+/**
+ * The single source of truth for "who activates next", shared by the live
+ * engine (getActivationStep, reading `activatedThisRound`) and the rail preview
+ * (getActivationOrder, simulating the round). Whatever counts as already-acted
+ * is supplied via `hasActed`, so the displayed order can never drift from the
+ * order the engine actually plays.
+ */
+function selectActivationStep(
+  units: CombatUnitState[],
+  attackerId: PlayerId,
+  initiativeOf: (unit: CombatUnitState) => number,
+  hasActed: (unit: CombatUnitState) => boolean
 ): ActivationStep | null {
-  const eligible = Object.values(combat.units).filter((unit) => isUnitAlive(unit) && !unit.activatedThisRound);
+  const eligible = units.filter((unit) => isUnitAlive(unit) && !hasActed(unit));
   if (eligible.length === 0) {
     return null;
   }
 
-  const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects);
   const topInitiative = Math.max(...eligible.map(initiativeOf));
   const tier = eligible
     .filter((unit) => initiativeOf(unit) === topInitiative)
     .sort((left, right) => left.id.localeCompare(right.id));
 
-  const attackerId = combat.attackerPlayerId;
   const tierAttackers = tier.filter((unit) => unit.controllerId === attackerId);
   const tierOthers = tier.filter((unit) => unit.controllerId !== attackerId);
 
@@ -679,9 +664,7 @@ export function getActivationStep(
   // even split the attacker leads (the player in a Neutral fight, the attacking
   // hero in PvP), so the two sides go back and forth starting with the attacker.
   const actedAtTier = (predicate: (unit: CombatUnitState) => boolean) =>
-    Object.values(combat.units).filter(
-      (unit) => unit.activatedThisRound && initiativeOf(unit) === topInitiative && predicate(unit)
-    ).length;
+    units.filter((unit) => hasActed(unit) && initiativeOf(unit) === topInitiative && predicate(unit)).length;
   const attackerActed = actedAtTier((unit) => unit.controllerId === attackerId);
   const othersActed = actedAtTier((unit) => unit.controllerId !== attackerId);
 
@@ -691,8 +674,62 @@ export function getActivationStep(
   return { side: attackerId, candidates: tierAttackers, initiative: topInitiative };
 }
 
+export function getActivationStep(
+  combat: CombatState,
+  activeEffects: ActiveEffectState[] = []
+): ActivationStep | null {
+  const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects);
+  return selectActivationStep(
+    Object.values(combat.units),
+    combat.attackerPlayerId,
+    initiativeOf,
+    (unit) => unit.activatedThisRound
+  );
+}
+
 export function getNextUnitToActivate(combat: CombatState, activeEffects: ActiveEffectState[] = []): CombatUnitState | null {
   return getActivationStep(combat, activeEffects)?.candidates[0] ?? null;
+}
+
+/**
+ * The full order the current combat round will actually play out, computed by
+ * stepping the SAME selection logic the engine uses, one unit at a time. The
+ * initiative rail shows this so the displayed order matches reality — in
+ * particular the cross-side ALTERNATION on initiative ties (attacker, defender,
+ * attacker, …), which a flat "highest initiative, attacker-first" sort gets
+ * wrong: it would list all of one side's tied units before the other's, even
+ * though the engine interleaves them.
+ *
+ * Already-activated units come first (the rail greys them as "done"), then the
+ * upcoming units in true activation order. Same-side ties are emitted in id
+ * order; the live engine prompts the controller to choose among them, so that
+ * part is a best-effort preview while the cross-side interleaving is exact.
+ */
+export function getActivationOrder(
+  combat: CombatState,
+  activeEffects: ActiveEffectState[] = []
+): CombatUnitState[] {
+  const alive = Object.values(combat.units).filter(isUnitAlive);
+  const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects);
+
+  const acted = new Set<UnitId>(alive.filter((unit) => unit.activatedThisRound).map((unit) => unit.id));
+  const done = alive
+    .filter((unit) => unit.activatedThisRound)
+    .sort((left, right) => initiativeOf(right) - initiativeOf(left) || left.id.localeCompare(right.id));
+
+  const upcoming: CombatUnitState[] = [];
+  // Bounded by the unit count: each pass marks exactly one more unit acted.
+  for (let guard = alive.length; guard > 0; guard -= 1) {
+    const next = selectActivationStep(alive, combat.attackerPlayerId, initiativeOf, (unit) => acted.has(unit.id))
+      ?.candidates[0];
+    if (!next) {
+      break;
+    }
+    upcoming.push(next);
+    acted.add(next.id);
+  }
+
+  return [...done, ...upcoming];
 }
 
 function hasAdjacentEnemy(combat: CombatState, unit: CombatUnitState): boolean {
