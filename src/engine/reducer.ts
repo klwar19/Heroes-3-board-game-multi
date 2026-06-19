@@ -11720,12 +11720,13 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   for (const player of Object.values(state.players)) {
     player.combatStats.spellsCastThisRound = 0;
     player.combatStats.spellLimitBonusThisRound = 0;
-    player.combatStats.expertUsesSpentThisRound = 0;
-    // The "+1 expert use this round" bonus (Pendant of Courage / Helm of
-    // Heavenly Enlightenment) is a one-round grant — it must not carry into the
-    // next combat round, or a single play would hand out a permanent crown.
-    player.combatStats.expertUseBonusThisRound = 0;
     player.combatStats.anySpellCastThisRound = false;
+    // Expert uses (crowns) and the "+1 expert use this round" bonus (Pendant of
+    // Courage / Helm of Heavenly Enlightenment) are a per-GAME-ROUND budget, not
+    // a per-combat-round one. They are NOT reset here: a single battle's many
+    // combat rounds share the same crowns, and those crowns were already shared
+    // with the player's map abilities. They refresh only at the start of the
+    // player's turn (refreshRoundTokens / startAdventureRound).
   }
 
   appendEvent(state, {
