@@ -1,6 +1,4 @@
-# Raw sound drops are transient build input, not committed assets.
-# Only this folder's README/.gitignore are tracked; the converted MP3s
-# live under public/sounds/.
-*.wav
-*.WAV
-*.mp3
+# Raw .wav drops are transient build input. Upload them here via GitHub
+# (they will be committed to the branch, then removed once converted to the
+# final MP3s under public/sounds/). This folder intentionally does NOT ignore
+# .wav files, so GitHub's "Upload files" can commit them for the converter.
