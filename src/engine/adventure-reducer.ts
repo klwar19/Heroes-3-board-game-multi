@@ -36,6 +36,8 @@ import {
   requiredHeroDefeats,
   tryDeliverGrail,
   applyMineFlag,
+  applySettlementResource,
+  flagField,
   capturableEnemyMinesWithin,
   gainExperience,
   gainResources,
@@ -1638,10 +1640,14 @@ function resolveSettlementChoice(
 
   const resourceByIndex: ("gold" | "buildingMaterials" | "valuables")[] = ["gold", "buildingMaterials", "valuables"];
 
-  const previousOwnerId = field.flagOwnerId;
   if (action.optionIndex !== undefined && action.optionIndex <= 2) {
-    const resource = resourceByIndex[action.optionIndex];
-    applySettlementFlag(state, action.playerId, field, resource, previousOwnerId);
+    // Choose a resource income. This path is only reached for the very first
+    // flag of the settlement (a settlement that already carries a token is
+    // transferred automatically in beginFieldVisit, without a choice).
+    // applySettlementResource records the token, raises this player's
+    // production by one resource-gain level, and pays the one-time stockpile
+    // bonus on the first flag.
+    applySettlementResource(state, action.playerId, field, resourceByIndex[action.optionIndex]);
     return;
   }
 
@@ -1678,8 +1684,17 @@ function resolveSettlementChoice(
   }
 
   target.side = "pack";
+  // A reinforcement places no resource token, so no ongoing income changes
+  // hands — the settlement is simply now owned by this player (which also makes
+  // it a spawn point and an elimination shield). Flag it and refresh both
+  // players' elimination clocks.
+  const previousOwnerId = field.flagOwnerId;
   field.everFlagged = true;
-  applySettlementFlag(state, action.playerId, field, null, previousOwnerId);
+  flagField(state, action.playerId, field);
+  refreshEliminationClock(state, action.playerId);
+  if (previousOwnerId && previousOwnerId !== action.playerId) {
+    refreshEliminationClock(state, previousOwnerId);
+  }
 
   appendEvent(state, {
     type: "UNIT_RECRUITED",
@@ -1688,68 +1703,6 @@ function resolveSettlementChoice(
     kind: "reinforce",
     cost
   });
-}
-
-function applySettlementFlag(
-  state: GameState,
-  playerId: PlayerId,
-  field: MapFieldState,
-  resource: "gold" | "buildingMaterials" | "valuables" | null,
-  previousOwnerId: PlayerId | null
-): void {
-  if (previousOwnerId && previousOwnerId !== playerId && field.settlementResource) {
-    const previous = state.players[previousOwnerId];
-    if (previous) {
-      // Strip the whole resource-gain level the former owner was earning from
-      // this settlement (+5 gold / +2 materials / +1 valuables), never below 0.
-      const lost = RESOURCE_GAIN_LEVEL_AMOUNTS[field.settlementResource];
-      previous.production[field.settlementResource] = Math.max(
-        0,
-        previous.production[field.settlementResource] - lost
-      );
-      appendEvent(state, {
-        type: "PRODUCTION_CHANGED",
-        playerId: previousOwnerId,
-        resource: field.settlementResource,
-        amount: -lost
-      });
-    }
-    field.settlementResource = null;
-  }
-
-  field.flagOwnerId = playerId;
-  appendEvent(state, {
-    type: "FIELD_FLAGGED",
-    playerId,
-    fieldId: field.spaceId,
-    location: field.location,
-    previousOwnerId
-  });
-
-  if (resource) {
-    field.settlementResource = resource;
-    // Flagging a settlement raises that production track by one full
-    // resource-gain level — +5 gold, +2 building materials, or +1 valuables
-    // (the same levels as the town-conquest reward), not a flat +1.
-    const gained = RESOURCE_GAIN_LEVEL_AMOUNTS[resource];
-    const player = state.players[playerId];
-    if (player) {
-      player.production[resource] += gained;
-      appendEvent(state, { type: "PRODUCTION_CHANGED", playerId, resource, amount: gained });
-    }
-
-    if (!field.everFlagged) {
-      field.everFlagged = true;
-      gainResources(state, playerId, { [resource]: gained }, "first to flag the settlement");
-    }
-  }
-
-  // Settlements prevent Player Elimination (rulebook p.77): taking one clears
-  // the new owner's clock; losing one may start the former owner's.
-  refreshEliminationClock(state, playerId);
-  if (previousOwnerId && previousOwnerId !== playerId) {
-    refreshEliminationClock(state, previousOwnerId);
-  }
 }
 
 function resolveWitchHut(state: GameState, action: Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>): void {
