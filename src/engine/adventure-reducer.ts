@@ -2172,16 +2172,21 @@ export function sellScrollSpell(state: GameState, action: Extract<GameAction, { 
 // ---------------------------------------------------------------------------
 
 function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderPlayerId: PlayerId): CombatState {
-  // Per-combat-round limits start fresh in every fight: a spell cast (or
-  // crown spent) in an earlier combat this turn must not block round 1 of
-  // the next one.
+  // The spell limit is per combat round (rulebook: "one spell card per combat
+  // round"), so it starts fresh in every fight: a spell cast in an earlier
+  // combat this turn must not block round 1 of the next one.
+  //
+  // Expert uses (crowns) are deliberately NOT reset here. A hero's crowns are a
+  // per-GAME-ROUND budget ("the number of expert effects usable per round"),
+  // shared across map abilities (Learning, Wisdom, Tactics, Pathfinding, …) and
+  // combat. They refresh only at the start of the player's turn
+  // (refreshRoundTokens). Resetting them on entering combat let a level-3 hero
+  // spend a crown on the map and then a *second* crown in the ensuing battle.
   for (const playerId of [attackerPlayerId, defenderPlayerId]) {
     const player = state.players[playerId];
     if (player) {
       player.combatStats.spellsCastThisRound = 0;
       player.combatStats.spellLimitBonusThisRound = 0;
-      player.combatStats.expertUsesSpentThisRound = 0;
-      player.combatStats.expertUseBonusThisRound = 0;
       player.combatStats.anySpellCastThisRound = false;
     }
   }
