@@ -1,6 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
 import { countExtraBallistas, effectiveInitiative, makeActiveEffect } from "./active-effects";
-import { hasResources, processPendingVisit, spendResources } from "./adventure";
+import { getActiveAstrologersCard, hasResources, processPendingVisit, spendResources } from "./adventure";
 import { isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { noteUnitDamagedForTokens } from "./tokens";
@@ -151,9 +151,25 @@ export function applyPermanentCombatEffectsForPlayer(state: GameState, playerId:
       continue;
     }
 
+    // Ammo Cart (Astrologers): every First Aid Tent heals +firstAidHealBonus while
+    // the proclamation is face up. Clone the modifier — makeActiveEffect only
+    // shallow-copies, so mutating it would corrupt the shared card definition.
+    let effectDefinition = combatEffect;
+    const healBonus = card.id === FIRST_AID_TENT_CARD_ID ? (ammoCartBuff(state)?.firstAidHealBonus ?? 0) : 0;
+    if (healBonus > 0) {
+      effectDefinition = {
+        ...combatEffect,
+        modifiers: combatEffect.modifiers.map((modifier) =>
+          modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND"
+            ? { ...modifier, amount: modifier.amount + healBonus }
+            : modifier
+        )
+      };
+    }
+
     const activeEffect = makeActiveEffect(
       state,
-      combatEffect,
+      effectDefinition,
       { type: "card", cardId: card.id, controllerId: playerId },
       playerId
     );
@@ -321,6 +337,20 @@ function getRoundStartDefinitionForCard(cardId: CardId): WarMachineRoundStartDef
   return cardLibrary[cardId]?.permanentEffect?.roundStart ?? null;
 }
 
+const FIRST_AID_TENT_CARD_ID = "war_machine.first_aid_tent" as CardId;
+
+/**
+ * The Ammo Cart Astrologers proclamation's war-machine buff while it is face up,
+ * or null. Global (it buffs every player's machines), so callers gate by what
+ * the firing player actually fields, not by who is "in" the proclamation.
+ */
+function ammoCartBuff(
+  state: GameState
+): { ballistaDamageBonus: number; firstAidHealBonus: number; rangedAttackReroll: boolean } | null {
+  const effect = getActiveAstrologersCard(state)?.effect;
+  return effect?.type === "WAR_MACHINE_BUFF" ? effect : null;
+}
+
 /** The war machine entry currently at the head of the round-start queue. */
 function activeWarMachineEntry(
   state: GameState,
@@ -331,10 +361,15 @@ function activeWarMachineEntry(
     return null;
   }
 
+  // Ammo Cart (Astrologers): every Ballista deals +ballistaDamageBonus while the
+  // proclamation is face up (folded into the round-start shot's amount here, so
+  // every consumer — auto-fire, tie-break and Artillery volley — sees it).
+  const ballistaBonus = ammoCartBuff(state)?.ballistaDamageBonus ?? 0;
+
   // Torosar's granted Ballistas have no permanent card: they fire a plain basic
   // shot (no expert volley) and skip the in-play check.
   if (head.granted) {
-    return { cardId: head.cardId, roundStart: { kind: "damage-lowest-initiative", amount: 1 } };
+    return { cardId: head.cardId, roundStart: { kind: "damage-lowest-initiative", amount: 1 + ballistaBonus } };
   }
 
   // The machine must still be in play (its expert/discard may have removed it).
@@ -343,7 +378,13 @@ function activeWarMachineEntry(
   }
 
   const roundStart = getRoundStartDefinitionForCard(head.cardId);
-  return roundStart ? { cardId: head.cardId, roundStart } : null;
+  if (!roundStart) {
+    return null;
+  }
+  if (roundStart.kind === "damage-lowest-initiative" && ballistaBonus > 0) {
+    return { cardId: head.cardId, roundStart: { ...roundStart, amount: roundStart.amount + ballistaBonus } };
+  }
+  return { cardId: head.cardId, roundStart };
 }
 
 /** Whether an in-play permanent is a Ballista (a round-start single-shot machine). */
@@ -628,7 +669,10 @@ export function activateBallistas(state: GameState, playerId: PlayerId, count: n
   if (count <= 0) {
     return;
   }
-  fireBallistaShots(state, playerId, 1, count, "war_machine.ballista");
+  // Ammo Cart (Astrologers): each Ballista shot deals +ballistaDamageBonus, the
+  // same buff the round-start shot gets, so Torosar's activated Ballistas match.
+  const amount = 1 + (ammoCartBuff(state)?.ballistaDamageBonus ?? 0);
+  fireBallistaShots(state, playerId, amount, count, "war_machine.ballista");
 }
 
 function openWarMachineTargetChoice(

@@ -63,6 +63,7 @@ import {
   ArmyPanel,
   FarTileTray,
   HexMapBoard,
+  LearningOfferModal,
   LOCATION_GLYPHS,
   MarketPanel,
   PileModal,
@@ -102,6 +103,7 @@ import {
   healFxPlans,
   spellFxPlans,
   spellPresentationMs,
+  warMachineFxPlans,
   type SpellFxPlan
 } from "@/data/fx";
 import { orderFxEventsForPresentation, partitionCombatMoves } from "@/components/table/fx-sequence";
@@ -1592,6 +1594,31 @@ export default function Home() {
               timeline += 800;
               break;
             }
+            case "WAR_MACHINE_TRIGGERED": {
+              // A firing war machine (Ballista, Catapult, Cannon) looses its shot
+              // here, just before the DAMAGE_ASSIGNED it logs next. Play its H3
+              // shot clip and advance the timeline by the clip's length so the
+              // struck unit's hurt cry + damage number (queued on that following
+              // DAMAGE_ASSIGNED) land only once the shot has been heard. The
+              // First Aid Tent never reaches this event (it heals — see
+              // healFxPlans); the Ammo Cart is a passive buff that never fires.
+              const shotPlan = warMachineFxPlans[event.cardId];
+              if (shotPlan?.sound) {
+                if (event.targetUnitId) {
+                  queueBoardFx(shotPlan, `${event.id}-shot`, "center", event.targetUnitId);
+                } else {
+                  const soundKey = shotPlan.sound;
+                  const at = timeline;
+                  window.setTimeout(() => playLibrarySound(soundKey), at);
+                  timeline = at + spellPresentationMs(shotPlan);
+                }
+                if (inCombat) {
+                  combatFxActive = true;
+                  combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
+                }
+              }
+              break;
+            }
             case "DAMAGE_ASSIGNED": {
               if (event.target.type === "unit" && event.amount > 0) {
                 const targetId = event.target.unitId;
@@ -2884,6 +2911,7 @@ export default function Home() {
             />
           ) : null}
           <PromptTray legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
+          <LearningOfferModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
           <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
           <LogDrawer state={state} />
           {isSeated && handMode === null && !forcedDiscard ? (
@@ -3099,6 +3127,7 @@ export default function Home() {
         onDismiss={(id) => setFeedItems((current) => current.filter((item) => item.id !== id))}
       />
       <PromptTray legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
+      <LearningOfferModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
       {/* Hold the instant window back until the attack-die animation has fully
           played out, so a post-roll reaction prompt (e.g. a lethal-save window
           in a neutral fight) never pops over the rolling dice. */}
