@@ -4400,10 +4400,10 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
 
   // Legion artifacts (Legs/Loins/Torso/Arms/Head of Legion): a one-shot gold
   // discount comes off this Recruitment/Reinforcement, to a minimum of 0. The
-  // pooled discount is spent only when it actually lowered the gold bill — a
-  // recruit that costs no gold leaves the artifact's effect untouched.
+  // banked discount is single-use — buying or upgrading once consumes it (and it
+  // expires at end of turn regardless), so it is spent here whether or not it
+  // happened to lower the gold bill (e.g. a no-gold purchase still uses it up).
   const discountedTotal = applyRecruitDiscount(state, action.playerId, totalCost);
-  const usedLegionDiscount = (discountedTotal.gold ?? 0) < (totalCost.gold ?? 0);
 
   if (!hasRecruitResources(state, action.playerId, discountedTotal)) {
     throw new Error("Not enough resources for those units.");
@@ -4411,9 +4411,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
 
   spendRecruitResources(state, action.playerId, discountedTotal, "population action");
   player.townTokens.population = false;
-  if (usedLegionDiscount) {
-    consumeRecruitDiscount(state, action.playerId);
-  }
+  consumeRecruitDiscount(state, action.playerId);
 
   for (const purchase of action.purchases) {
     if (purchase.kind === "recruit") {
