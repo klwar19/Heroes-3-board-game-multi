@@ -28,6 +28,7 @@ import {
   discoverTile,
   finalizeAdventureCombat,
   finishCombatPlacement,
+  acceptCombat,
   finishTactics,
   giveUpAdventure,
   hallOfValhallaBoost,
@@ -12415,7 +12416,11 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       continue;
     }
 
-    if (!state.combat && !state.pendingChoice && !state.reactionWindow) {
+    // During a PvP defender-preparation window the only queued rewards are the
+    // Spell-deck searches from buying spells / building a Mage Guild, so pump the
+    // queue then too (pumpAdventureQueues itself permits the prep exception).
+    const pumpDuringPrep = Boolean(state.combat?.defenderPrep);
+    if ((!state.combat || pumpDuringPrep) && !state.pendingChoice && !state.reactionWindow) {
       const queueLength = state.adventure.rewardQueue.length;
       const hadVisit = Boolean(state.adventure.pendingVisit);
       pumpAdventureQueues(state);
@@ -12446,6 +12451,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "SANDBOX_ADD_CARD",
   "FINISH_TACTICS",
   "FINISH_COMBAT_PLACEMENT",
+  "ACCEPT_COMBAT",
   "CONTINUE_NEUTRAL_COMBAT",
   "RETREAT_FROM_COMBAT",
   "SURRENDER_COMBAT",
@@ -12632,6 +12638,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "FINISH_COMBAT_PLACEMENT":
         finishCombatPlacement(nextState, action);
+        break;
+      case "ACCEPT_COMBAT":
+        acceptCombat(nextState, action);
         break;
       case "SWAP_COMBAT_UNITS":
         swapCombatUnits(nextState, action);

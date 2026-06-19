@@ -2762,6 +2762,74 @@ export function PlacementPanel({
     return null;
   }
 
+  // PvP pre-combat preparation: before deployment, a defender who still holds
+  // town actions this round may build / recruit / buy spells, then Accept (or
+  // Retreat / Surrender) — see maybeOpenDefenderPrep in adventure-reducer.
+  const prep = combat.defenderPrep;
+  if (prep) {
+    if (prep.playerId !== viewerPlayerId) {
+      const defenderName = state.players[prep.playerId]?.name ?? "the defender";
+      return (
+        <div className="placementPanel" aria-label="Combat setup">
+          <strong>Combat setup</strong>
+          <small>{defenderName} is preparing their defense before deployment…</small>
+        </div>
+      );
+    }
+
+    const prepTypes = new Set<GameAction["type"]>(["BUILD_STRUCTURE", "POPULATION_ACTION", "SPELL_BOOK_ACTION"]);
+    const prepActions = legalActions.filter((legal) => prepTypes.has(legal.action.type));
+    const accept = legalActions.find((legal) => legal.action.type === "ACCEPT_COMBAT");
+    const escapeActions = legalActions.filter(
+      (legal) => legal.action.type === "RETREAT_FROM_COMBAT" || legal.action.type === "SURRENDER_COMBAT"
+    );
+    return (
+      <div className="placementPanel" aria-label="Prepare your defense">
+        <strong>An enemy hero attacks — prepare your defense</strong>
+        <small>
+          Spend any town actions you have left this round (build, recruit, buy spells), then Accept to deploy. Units you
+          recruit now join your army in time to be placed.
+        </small>
+        {prepActions.length > 0 ? (
+          <div className="prepActions">
+            {prepActions.map((legal) => (
+              <button
+                className="commandButton"
+                key={actionKey(legal.action)}
+                onClick={() => onAction(legal.action)}
+                type="button"
+              >
+                {legal.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <small className="placementNote">No town actions remain this round — accept to deploy.</small>
+        )}
+        {accept ? (
+          <button
+            className="commandButton primary combatReadyButton"
+            onClick={() => onAction(accept.action)}
+            type="button"
+          >
+            <img alt="" aria-hidden="true" className="combatButtonIcon" src={assetUrl("/assets/ui/combat-button.png")} />
+            Accept the combat — deploy your army
+          </button>
+        ) : null}
+        {escapeActions.map((legal) => (
+          <button
+            className="commandButton"
+            key={actionKey(legal.action)}
+            onClick={() => onAction(legal.action)}
+            type="button"
+          >
+            {legal.label}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   const myTurn = setup.pendingPlayerIds[0] === viewerPlayerId;
   const placed = setup.placedUnitIds[viewerPlayerId] ?? [];
   const versusNeutrals = combat.context.kind === "neutral";

@@ -175,6 +175,10 @@ describe("Tactics — player-vs-player swap windows", () => {
 
     const fieldId = heroP1.spaceId ?? Object.keys(state.adventure!.fields)[0];
     startPlayerCombat(state, heroP1, heroP2, fieldId);
+    // The defender's fresh town tokens open a pre-combat prep window; accept it.
+    if (state.combat?.defenderPrep) {
+      state = apply(state, { type: "ACCEPT_COMBAT", playerId: "p2" });
+    }
 
     // Attacker (p1) deploys first, then the defender (p2).
     const [a1, a2] = state.players.p1.army;
@@ -220,6 +224,10 @@ describe("Tactics — player-vs-player swap windows", () => {
     const fieldId = heroP1.spaceId ?? Object.keys(state.adventure!.fields)[0];
     // Garrison defense: defender p2 has no hero standing in the combat.
     startPlayerCombat(state, heroP1, null, fieldId, "p2");
+    // The town owner may still prepare (build/recruit) before deployment.
+    if (state.combat?.defenderPrep) {
+      state = apply(state, { type: "ACCEPT_COMBAT", playerId: "p2" });
+    }
 
     const [a1, a2] = state.players.p1.army;
     state = apply(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: a1.id, position: 13 });

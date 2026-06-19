@@ -116,3 +116,49 @@ describe("PlacementPanel — deploy sidebar", () => {
     expect(onAction).toHaveBeenCalledWith({ type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
   });
 });
+
+describe("PlacementPanel — PvP pre-combat preparation window", () => {
+  function prepState(): GameState {
+    const base = deployState();
+    return {
+      ...base,
+      combat: {
+        ...base.combat!,
+        context: { kind: "player", attackerHeroId: "hero_p1", defenderHeroId: "hero_p2", fieldId: "0,0" },
+        defenderPrep: { playerId: "p2" }
+      }
+    } as GameState;
+  }
+
+  const PREP_ACTIONS: LegalAction[] = [
+    { action: { type: "BUILD_STRUCTURE", playerId: "p2", townId: "town_p2", buildingId: "necropolis.mage_guild" }, label: "Build Mage Guild" },
+    { action: { type: "POPULATION_ACTION", playerId: "p2", purchases: [{ kind: "recruit", unitDefId: "necropolis.zombies" }] }, label: "Recruit few Zombies" },
+    { action: { type: "RETREAT_FROM_COMBAT", playerId: "p2" }, label: "Retreat (lose the combat)" },
+    { action: { type: "ACCEPT_COMBAT", playerId: "p2" }, label: "Accept" }
+  ];
+
+  it("shows the defender their prep actions and an Accept button", () => {
+    const onAction = vi.fn<(action: GameAction) => void>();
+    const { getByText } = render(
+      <PlacementPanel legalActions={PREP_ACTIONS} onAction={onAction} state={prepState()} viewerPlayerId="p2" />
+    );
+
+    expect(getByText("Build Mage Guild")).toBeTruthy();
+    expect(getByText("Recruit few Zombies")).toBeTruthy();
+    expect(getByText("Retreat (lose the combat)")).toBeTruthy();
+
+    fireEvent.click(getByText("Accept the combat — deploy your army"));
+    expect(onAction).toHaveBeenCalledWith({ type: "ACCEPT_COMBAT", playerId: "p2" });
+  });
+
+  it("shows the attacker a waiting message (no deployment yet)", () => {
+    const onAction = vi.fn();
+    const { container, getByText } = render(
+      <PlacementPanel legalActions={[]} onAction={onAction} state={prepState()} viewerPlayerId="p1" />
+    );
+
+    // No deploy tiles for the attacker while the defender prepares.
+    expect(container.querySelectorAll(".placementUnit")).toHaveLength(0);
+    expect(getByText(/preparing their defense/i)).toBeTruthy();
+  });
+});

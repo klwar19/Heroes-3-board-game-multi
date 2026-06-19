@@ -2292,6 +2292,15 @@ export type GameAction =
   | { type: "FINISH_COMBAT_PLACEMENT"; playerId: PlayerId }
   | {
       /**
+       * Player-vs-player pre-combat preparation: the defender ends their
+       * preparation window (after any town actions) and begins deployment.
+       * Validated in acceptCombat.
+       */
+      type: "ACCEPT_COMBAT";
+      playerId: PlayerId;
+    }
+  | {
+      /**
        * Tactics ability: switch the positions of two of your own units, either
        * in the start-of-combat Tactics window (free) or on your turn before your
        * active unit moves (expert, spends one expert use). Both spend the Tactics
@@ -3213,6 +3222,12 @@ export type GameEvent =
   | {
       id: string;
       type: "COMBAT_PLACEMENT_FINISHED";
+      playerId: PlayerId;
+    }
+  | {
+      /** PvP: the defender finished pre-combat preparation; deployment begins. */
+      id: string;
+      type: "COMBAT_PREP_ACCEPTED";
       playerId: PlayerId;
     }
   | {
@@ -4222,6 +4237,18 @@ export type CombatState = {
    * (discard 1 random card from the enemy hand), resolved before placement.
    */
   pendingCoverOfDarkness?: PlayerId[];
+  /**
+   * Player-vs-player pre-combat preparation window. When an enemy hero attacks,
+   * the defender may still spend any town actions they have not used this round
+   * (build a structure, recruit/reinforce units, buy spells) before the fight —
+   * recruited units join the army in time to be deployed — then press
+   * ACCEPT_COMBAT to begin deployment. Opened (before placement) only when the
+   * defender has a town and at least one unspent town token; the defender holds
+   * priority while set (phase stays "combat-setup", `setup` already built).
+   * Retreat / Surrender are also available here. Cleared by ACCEPT_COMBAT (or by
+   * a Retreat / Surrender that ends the combat).
+   */
+  defenderPrep?: { playerId: PlayerId } | null;
   /**
    * Tactics ability: participants still entitled to a start-of-combat unit
    * swap, attacker first then a hero-present PvP defender. Set once all units
