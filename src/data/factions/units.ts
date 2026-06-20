@@ -866,6 +866,128 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     }
   },
 
+  // ---- Cove (expansion) --------------------------------------------------
+  // Stats and ability text transcribed from the fan wiki Cove town page and
+  // each unit page (https://en.homm3bg.wiki/towns/cove/). The wiki has no unit
+  // card art yet, so every side uses the blank tier-coloured placeholder. Four
+  // Cove-specific mechanics are engine-wired and covered in
+  // cove-unit-abilities.test.ts: Seamen "Plunder" (gain gold on a kill), Ayssids
+  // "Killer Instinct" (a kill lets them pounce on another adjacent unit), Nix
+  // "Hardened Shell" (per-attack damage cap) and Haspids "Vengeance" (+2 Attack
+  // once flipped down). The remaining tags reuse already-implemented abilities:
+  // Oceanids Pack = full Spell immunity (immune-all-spells), Sea Dogs = no
+  // adjacent penalty / no retaliation, Sorceresses = the Weakness-token abilities
+  // shared with the rulebook Sorceress, Haspids Pack = the Wyvern poison cubes.
+  "cove.oceanids": {
+    id: "cove.oceanids",
+    name: "Oceanids",
+    faction: "cove",
+    tier: "bronze",
+    type: "flying",
+    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-blank-bronze.webp" },
+    // engine: immune-all-spells (IMMUNE_TO_SPELL_SCHOOLS, every school) faithfully
+    // realises "ignore all effects and damage from spells".
+    pack: { attack: 3, defense: 0, health: 3, initiative: 8, cost: { gold: 3 }, abilities: ["immune-all-spells"], abilityText: "[unit_passive] Ignore all effects and [damage] from [spell].", cardImage: "/assets/units-blank-bronze.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/oceanids/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
+      credit: "Stats and ability text from the fan wiki Cove town and unit pages; unit art not on the wiki yet (blank placeholder). Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/oceanids/"
+    }
+  },
+  "cove.seamen": {
+    id: "cove.seamen",
+    name: "Seamen",
+    faction: "cove",
+    tier: "bronze",
+    type: "ground",
+    few: { attack: 2, defense: 1, health: 3, initiative: 5, cost: { gold: 3 }, abilities: [], cardImage: "/assets/units-blank-bronze.webp" },
+    pack: { attack: 2, defense: 1, health: 5, initiative: 6, cost: { gold: 5 }, abilities: ["seamen-plunder"], abilityText: "[unit_passive] Once per Combat, when this unit removes a unit from Combat, gain 2 [gold].", cardImage: "/assets/units-blank-bronze.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/seamen/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
+      credit: "Stats and ability text from the fan wiki Cove town and unit pages; unit art not on the wiki yet (blank placeholder). Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/seamen/"
+    }
+  },
+  "cove.sea_dogs": {
+    id: "cove.sea_dogs",
+    name: "Sea Dogs",
+    faction: "cove",
+    tier: "bronze",
+    type: "ranged",
+    few: { attack: 2, defense: 0, health: 4, initiative: 6, cost: { gold: 4 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units.", cardImage: "/assets/units-blank-bronze.webp" },
+    pack: { attack: 3, defense: 0, health: 5, initiative: 8, cost: { gold: 6 }, abilities: ["ignores-retaliation", "ignore-combat-penalties"], abilityText: "[unit_attack] Ignores Retaliation Attacks. [unit_passive] Ignore the combat penalty against adjacent units.", cardImage: "/assets/units-blank-bronze.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/sea_dogs/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
+      credit: "Stats and ability text from the fan wiki Cove town and unit pages; unit art not on the wiki yet (blank placeholder). Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/sea_dogs/"
+    }
+  },
+  "cove.ayssids": {
+    id: "cove.ayssids",
+    name: "Ayssids",
+    faction: "cove",
+    tier: "silver",
+    type: "flying",
+    few: { attack: 3, defense: 1, health: 5, initiative: 9, cost: { gold: 6 }, abilities: [], cardImage: "/assets/units-blank-silver.webp" },
+    pack: { attack: 3, defense: 1, health: 6, initiative: 11, cost: { gold: 10 }, abilities: ["ayssid-pounce"], abilityText: "[unit_attack] If the target is reduced to 0 [health_points], after resolving the [unit_retaliation] (if applicable), the Ayssids can attack another adjacent unit.", cardImage: "/assets/units-blank-silver.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/ayssids/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
+      credit: "Stats and ability text from the fan wiki Cove town and unit pages; unit art not on the wiki yet (blank placeholder). Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/ayssids/"
+    }
+  },
+  "cove.sorceresses": {
+    id: "cove.sorceresses",
+    name: "Sorceresses",
+    faction: "cove",
+    tier: "silver",
+    type: "ranged",
+    few: { attack: 3, defense: 1, health: 5, initiative: 6, cost: { gold: 8 }, abilities: ["sorceress-weakness-few"], abilityText: "[unit_other] Place a \"-2\" Weakness token on any one unit for 2 Combat rounds.", cardImage: "/assets/units-blank-silver.webp" },
+    pack: { attack: 4, defense: 1, health: 6, initiative: 7, cost: { gold: 13 }, abilities: ["sorceress-weakness-on-attack"], abilityText: "[unit_attack] After the attack, place a \"-1\" Weakness token on the target for 2 Combat rounds.", cardImage: "/assets/units-blank-silver.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/sorceresses/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
+      credit: "Stats and ability text from the fan wiki Cove town and unit pages; unit art not on the wiki yet (blank placeholder). Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/sorceresses/"
+    }
+  },
+  "cove.nix": {
+    id: "cove.nix",
+    name: "Nix",
+    faction: "cove",
+    tier: "gold",
+    type: "ground",
+    few: { attack: 5, defense: 2, health: 7, initiative: 6, cost: { gold: 12 }, abilities: [], cardImage: "/assets/units-blank-golden.webp" },
+    pack: { attack: 6, defense: 2, health: 8, initiative: 7, cost: { gold: 20, valuables: 1 }, abilities: ["nix-damage-cap"], abilityText: "[unit_passive] This unit cannot take more than 4 [damage] from a single attack.", cardImage: "/assets/units-blank-golden.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/nix/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
+      credit: "Stats and ability text from the fan wiki Cove town and unit pages; unit art not on the wiki yet (blank placeholder). Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/nix/"
+    }
+  },
+  "cove.haspids": {
+    id: "cove.haspids",
+    name: "Haspids",
+    faction: "cove",
+    tier: "gold",
+    type: "ground",
+    few: { attack: 5, defense: 3, health: 8, initiative: 9, cost: { gold: 18, valuables: 1 }, abilities: ["haspid-vengeance"], abilityText: "[unit_attack] +2 attack if, during this Combat, this unit was flipped from the Pack to the Few side.", cardImage: "/assets/units-blank-golden.webp" },
+    // engine: wyvern-poison-cube-pack (ON_ATTACK_POISON_CUBES, 2 cubes) is the
+    // same mechanic as the printed "2 faction cubes, 1 damage per activation".
+    pack: { attack: 7, defense: 3, health: 8, initiative: 12, cost: { gold: 30, valuables: 2 }, abilities: ["wyvern-poison-cube-pack"], abilityText: "[unit_attack] Place 2 faction cubes on the target. At the beginning of its every activation, remove 1 of them to inflict 1 [damage].", cardImage: "/assets/units-blank-golden.webp" },
+    wikiUrl: "https://en.homm3bg.wiki/units/haspids/",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
+      credit: "Stats and ability text from the fan wiki Cove town and unit pages; unit art not on the wiki yet (blank placeholder). Verify against official cards before final release.",
+      url: "https://en.homm3bg.wiki/units/haspids/"
+    }
+  },
+
   "neutral.boars": {
     id: "neutral.boars",
     name: "Boars",

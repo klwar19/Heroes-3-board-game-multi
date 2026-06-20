@@ -5750,6 +5750,25 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
         steps: [{ type: "TRADING_POST" }]
       });
     }
+    // Cove City Hall: pay an Artifact card from hand (this option is only offered
+    // when the player holds one — see the choice presentation) to gain experience.
+    if (option.removeArtifactFromHand) {
+      const player = state.players[action.playerId];
+      const artifactIndex = player?.hand.findIndex((cardId) => cardLibrary[cardId]?.kind === "artifact") ?? -1;
+      if (player && artifactIndex >= 0) {
+        const [removed] = player.hand.splice(artifactIndex, 1);
+        player.discard.push(removed);
+        appendEvent(state, {
+          type: "TOWN_BUILDING_USED",
+          playerId: action.playerId,
+          buildingId: "cove.city_hall",
+          message: `City Hall: removed ${cardLibrary[removed]?.name ?? removed} from hand to gain experience.`
+        });
+      }
+    }
+    if (option.experience) {
+      gainExperience(state, action.playerId, option.experience);
+    }
   }
 
   state.pendingChoice = null;
@@ -6401,10 +6420,19 @@ export function pumpAdventureQueues(state: GameState): void {
 
     if (reward.kind === "city-hall-choice") {
       const building = coreBuildingDefinitions[reward.buildingId];
-      if (building?.effect?.type !== "RESOURCE_ROUND_CHOICE") {
+      const choiceEffect = building?.effect;
+      if (choiceEffect?.type !== "RESOURCE_ROUND_CHOICE" && choiceEffect?.type !== "ASTROLOGERS_ROUND_CHOICE") {
         adventure.rewardQueue.shift();
         continue;
       }
+
+      // Cove City Hall: the "remove an Artifact for 1 experience" option is only
+      // offered when the player actually holds an Artifact card to pay it.
+      const player = state.players[reward.playerId];
+      const holdsArtifact = (player?.hand ?? []).some((cardId) => cardLibrary[cardId]?.kind === "artifact");
+      const options = choiceEffect.options.filter(
+        (option) => !option.removeArtifactFromHand || holdsArtifact
+      );
 
       adventure.rewardQueue.shift();
       state.pendingChoice = {
@@ -6412,11 +6440,11 @@ export function pumpAdventureQueues(state: GameState): void {
         type: "OPTION_CHOICE",
         playerId: reward.playerId,
         prompt: `${building.name}: choose this round's bonus`,
-        options: building.effect.options.map((option) => ({ label: option.label })),
+        options: options.map((option) => ({ label: option.label })),
         context: "city-hall",
         // Carry the full option payloads in state so resolution does not depend
         // on any off-state cache that a reload/reconnect would wipe.
-        cityHall: { options: building.effect.options },
+        cityHall: { options },
         returnPhase: state.phase === "choice" ? "player-turn" : state.phase
       };
       state.phase = "choice";

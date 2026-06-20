@@ -222,9 +222,52 @@ export type UnitAbilityEffectDefinition =
        * separate attack (the attacker chooses when several qualify) at the
        * Hydra's own attack value — undefined baseAttack means "use the unit's
        * attack". That follow-up never retaliates or chains further.
+       *
+       * Cove Ayssids (Pack) set `requiresTargetRemoved`: the follow-up only
+       * happens "if the target is reduced to 0 HP" — i.e. the primary attack
+       * removed the original target from the board. A removed target can never
+       * make a Retaliation Attack, so the Ayssids' "after resolving the
+       * retaliation (if applicable)" timing is satisfied by firing immediately
+       * (there is no retaliation to wait for). When the target merely flips a
+       * Pack down to its Few side (still alive) the follow-up does NOT trigger.
        */
       type: "SECOND_ATTACK_ONE_ADJACENT_TO_SELF";
       baseAttack?: number;
+      requiresTargetRemoved?: boolean;
+    }
+  | {
+      /**
+       * Cove Nix (Pack): "This unit cannot take more than N damage from a single
+       * attack." A defensive cap applied to every individual attack against this
+       * unit (the primary attack, each follow-up attack, and every Retaliation
+       * Attack count as separate attacks). Only attacks are capped — Spell and
+       * ability damage are unaffected.
+       */
+      type: "CAP_DAMAGE_PER_ATTACK";
+      amount: number;
+    }
+  | {
+      /**
+       * Cove Haspids (Few): "+N Attack if, during this Combat, this unit was
+       * flipped from the Pack to the Few side." A flat Attack bonus on every
+       * attack (and Retaliation Attack) the Few side makes, but only once the
+       * unit has actually been knocked down from its Pack side this combat
+       * (tracked by `flippedDownThisCombat`). A fresh-recruited Few gets nothing.
+       */
+      type: "ATTACK_BONUS_IF_FLIPPED";
+      amount: number;
+    }
+  | {
+      /**
+       * Cove Seamen (Pack): "Once per Combat, when this unit removes a unit from
+       * Combat, gain N gold." When one of this unit's attacks (or Retaliation
+       * Attacks) destroys a unit — actually removing it from the board, never a
+       * mere Pack→Few flip — its controller gains `amount` of the resource, once
+       * per combat per Seamen stack.
+       */
+      type: "ON_KILL_GAIN_RESOURCE";
+      resource: "gold" | "buildingMaterials" | "valuables";
+      amount: number;
     }
   | {
       /**
@@ -1542,6 +1585,39 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Mage's Insight",
     text: "[activation] Add +1 power to the first spell you cast this round.",
     effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Cove Nix (Pack): a hard cap on the damage any single attack can deal to it.
+  "nix-damage-cap": {
+    id: "nix-damage-cap",
+    name: "Hardened Shell",
+    text: "[unit_passive] This unit cannot take more than 4 damage from a single attack (Spell and ability damage are not capped).",
+    effect: { type: "CAP_DAMAGE_PER_ATTACK", amount: 4 },
+    implementationStatus: "implemented"
+  },
+  // Cove Haspids (Few): +2 Attack once it has been knocked down from its Pack side this combat.
+  "haspid-vengeance": {
+    id: "haspid-vengeance",
+    name: "Vengeance",
+    text: "[unit_attack] +2 Attack if, during this Combat, this unit was flipped from the Pack to the Few side.",
+    effect: { type: "ATTACK_BONUS_IF_FLIPPED", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  // Cove Seamen (Pack): once per combat, banking 2 gold for removing a unit from the board.
+  "seamen-plunder": {
+    id: "seamen-plunder",
+    name: "Plunder",
+    text: "[unit_passive] Once per Combat, when this unit removes a unit from Combat, gain 2 gold.",
+    effect: { type: "ON_KILL_GAIN_RESOURCE", resource: "gold", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  // Cove Ayssids (Pack): a kill lets it pounce on another unit adjacent to it —
+  // the Hydra follow-up gated on the original target being removed.
+  "ayssid-pounce": {
+    id: "ayssid-pounce",
+    name: "Killer Instinct",
+    text: "[unit_attack] If the target is reduced to 0 Health, after resolving the Retaliation Attack (if applicable), attack another unit adjacent to this unit.",
+    effect: { type: "SECOND_ATTACK_ONE_ADJACENT_TO_SELF", requiresTargetRemoved: true },
     implementationStatus: "implemented"
   }
 };
