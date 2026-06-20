@@ -3916,12 +3916,18 @@ export function surrenderFromCombat(
 }
 
 /**
- * Shared player-vs-player escape: at the start of the combat (round 1) a
- * participating hero may Retreat or Surrender, ending the combat as the loser.
- * House rule: Retreat is always available; Surrender needs the full 10-gold
- * toll in hand and is blocked by Shackles of War. The standard end-of-combat
- * automation (acknowledge → finalize) applies the consequences from the
- * `combat.outcome` reason — see `finalizeAdventureCombat`.
+ * Shared player-vs-player escape, ending the combat as the loser.
+ *
+ * Retreat (no casualties) is available all through the start of the combat — the
+ * defender's pre-combat prep window, while units are being placed, and the
+ * post-deployment pause — i.e. any point before the first unit acts. After that
+ * the in-fight concede (GIVE_UP_COMBAT, also shown as "Retreat") takes over.
+ *
+ * Surrender is a "before battle" decision only: it is allowed solely in the
+ * defender's prep window, needs the full 10-gold toll in hand and is blocked by
+ * Shackles of War. The standard end-of-combat automation (acknowledge →
+ * finalize) applies the consequences from the `combat.outcome` reason — see
+ * `finalizeAdventureCombat`.
  */
 function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat" | "surrender"): void {
   const combat = state.combat;
@@ -3941,14 +3947,20 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
   if (!heroId) {
     throw new Error("A hero must be present to retreat or surrender.");
   }
-  // Retreat / Surrender is a start-of-combat decision: during the defender's
-  // pre-combat preparation window, or once placement is locked in but before any
-  // unit has begun fighting. After the first unit acts the escape is closed.
   const inDefenderPrep = Boolean(combat.defenderPrep && combat.defenderPrep.playerId === playerId);
-  if (!inDefenderPrep && !pvpEscapeWindowOpen(combat)) {
-    throw new Error("Retreat or Surrender is only possible at the start of the combat, before any unit acts.");
+  // Retreat is allowed any time before the fighting begins: the defender's prep
+  // window, while deploying (combat.setup, round 1), and the post-deployment
+  // pause (pvpEscapeWindowOpen). After the first unit acts it is closed.
+  const duringPlacement = Boolean(combat.setup) && combat.round === 1;
+  if (!inDefenderPrep && !duringPlacement && !pvpEscapeWindowOpen(combat)) {
+    throw new Error("Retreat is only possible before any unit acts.");
   }
   if (reason === "surrender") {
+    // Surrender is a before-battle (prep) decision only — never once deployment
+    // has begun.
+    if (!inDefenderPrep) {
+      throw new Error("Surrender is only possible before the battle, during your prep.");
+    }
     // Shackles of War (house rule) locks the enemy out of Surrender only.
     if (playerCannotSurrenderCombat(state, playerId)) {
       throw new Error("Shackles of War prevents this hero from surrendering.");

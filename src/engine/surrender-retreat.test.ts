@@ -265,10 +265,11 @@ describe("Retreat / fought-out loss (house rule): a real defeat", () => {
   });
 });
 
-describe("Surrender gating: needs the full 10-gold toll, paid to the opponent", () => {
-  // A round-1 player-vs-player combat (the escape window), borrowed from the
-  // battle sim and reframed as p1-vs-p2, mirroring library-cards.test.ts.
-  function pvpState(seed: string): GameState {
+describe("Surrender gating: a before-battle (prep) decision needing the 10-gold toll", () => {
+  // Surrender is offered ONLY in the defender's pre-battle prep window. A
+  // round-1 PvP combat parked in that window: p1 attacks, p2 (the defender) is
+  // preparing and has the only escape choices.
+  function prepState(seed: string): GameState {
     const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
     state.combat = createInitialGameState(seed).combat;
     state.combat!.context = {
@@ -277,8 +278,9 @@ describe("Surrender gating: needs the full 10-gold toll, paid to the opponent", 
       defenderHeroId: "hero_p2",
       fieldId: state.heroes.hero_p1.spaceId ?? "0,0"
     };
-    state.phase = "combat";
-    state.activePlayerId = "p1";
+    state.combat!.defenderPrep = { playerId: "p2" };
+    state.phase = "combat-setup";
+    state.priorityPlayerId = "p2";
     state.players.p1.hand = [];
     state.players.p2.hand = [];
     return state;
@@ -289,29 +291,51 @@ describe("Surrender gating: needs the full 10-gold toll, paid to the opponent", 
   const offersRetreat = (state: GameState, playerId: PlayerId) =>
     getLegalActions(state, playerId).some((l) => l.action.type === "RETREAT_FROM_COMBAT");
 
-  it("offers Surrender only at >= 10 gold, but always offers Retreat", () => {
-    const state = pvpState("surr-gate");
+  it("offers the defender Surrender only at >= 10 gold, but always offers Retreat", () => {
+    const state = prepState("surr-gate");
 
-    state.players.p1.resources.gold = 10;
-    expect(offersSurrender(state, "p1")).toBe(true);
-    expect(offersRetreat(state, "p1")).toBe(true);
+    state.players.p2.resources.gold = 10;
+    expect(offersSurrender(state, "p2")).toBe(true);
+    expect(offersRetreat(state, "p2")).toBe(true);
 
-    state.players.p1.resources.gold = 9;
+    state.players.p2.resources.gold = 9;
+    expect(offersSurrender(state, "p2")).toBe(false);
+    expect(offersRetreat(state, "p2")).toBe(true); // a poorer hero may still flee
+  });
+
+  it("never offers Surrender to the attacker (no before-battle prep window)", () => {
+    const state = prepState("surr-attacker");
+    state.players.p1.resources.gold = 100;
     expect(offersSurrender(state, "p1")).toBe(false);
-    expect(offersRetreat(state, "p1")).toBe(true); // a poorer hero may still flee
   });
 
   it("rejects a Surrender action below 10 gold and accepts it at exactly 10", () => {
-    const poor = pvpState("surr-poor");
-    poor.players.p1.resources.gold = 9;
-    const rejected = applyAction(poor, { type: "SURRENDER_COMBAT", playerId: "p1" });
+    const poor = prepState("surr-poor");
+    poor.players.p2.resources.gold = 9;
+    const rejected = applyAction(poor, { type: "SURRENDER_COMBAT", playerId: "p2" });
     expect(rejected.errors.length).toBeGreaterThan(0);
     expect(rejected.state.combat?.outcome ?? null).toBeNull();
 
-    const rich = pvpState("surr-rich");
-    rich.players.p1.resources.gold = 10;
-    const ok = applyAction(rich, { type: "SURRENDER_COMBAT", playerId: "p1" });
+    const rich = prepState("surr-rich");
+    rich.players.p2.resources.gold = 10;
+    const ok = applyAction(rich, { type: "SURRENDER_COMBAT", playerId: "p2" });
     expect(ok.errors).toEqual([]);
-    expect(ok.state.combat?.outcome).toMatchObject({ defeatedPlayerId: "p1", reason: "surrender" });
+    expect(ok.state.combat?.outcome).toMatchObject({ defeatedPlayerId: "p2", reason: "surrender" });
+  });
+
+  it("rejects a Surrender once deployment has begun (no longer a before-battle decision)", () => {
+    const state = prepState("surr-too-late");
+    state.players.p2.resources.gold = 50;
+    // Deployment has started: the prep window is gone and placement is underway.
+    state.combat!.defenderPrep = null;
+    state.combat!.setup = {
+      pendingPlayerIds: ["p1", "p2"],
+      placedUnitIds: { p1: [], p2: [] },
+      unitLimit: 7
+    } as never;
+    expect(offersSurrender(state, "p2")).toBe(false);
+    const rejected = applyAction(state, { type: "SURRENDER_COMBAT", playerId: "p2" });
+    expect(rejected.errors.length).toBeGreaterThan(0);
+    expect(rejected.state.combat?.outcome ?? null).toBeNull();
   });
 });

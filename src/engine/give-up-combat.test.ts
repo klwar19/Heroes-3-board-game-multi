@@ -310,11 +310,12 @@ describe("Give up: action wiring and availability", () => {
   });
 });
 
-describe("Give up / Retreat merge: never both offered at the same moment", () => {
+describe("Retreat is the single in-combat escape; Surrender is before-battle only", () => {
   /**
-   * A round-1 PvP combat sitting in the start-of-combat escape window: deployment
-   * is done (no setup) and no unit has acted, so Retreat / Surrender are open.
-   * This is the moment Retreat and Give up used to be identical buttons.
+   * A round-1 PvP combat sitting in the post-deployment escape window: deployment
+   * is done (no setup) and no unit has acted. Only Retreat should be on the table
+   * here — Surrender is a before-battle (prep) option, and the in-fight concede is
+   * suppressed until fighting begins.
    */
   function escapeWindowPvp(seed: string): GameState {
     const state = makeGame();
@@ -325,7 +326,7 @@ describe("Give up / Retreat merge: never both offered at the same moment", () =>
     defender.spaceId = field.spaceId;
     state.players.p1.army = [{ id: "a1", unitDefId: "castle.pikemen", side: "few" }];
     state.players.p2.army = [{ id: "b1", unitDefId: "castle.pikemen", side: "few" }];
-    state.players.p1.resources.gold = 50; // enough to be offered Surrender too
+    state.players.p1.resources.gold = 50; // would be enough to Surrender, if it were offered
     state.players.p2.resources.gold = 50;
     state.phase = "combat";
     state.activePlayerId = "p1";
@@ -352,25 +353,46 @@ describe("Give up / Retreat merge: never both offered at the same moment", () =>
   const has = (state: GameState, playerId: PlayerId, type: "RETREAT_FROM_COMBAT" | "SURRENDER_COMBAT" | "GIVE_UP_COMBAT") =>
     getLegalActions(state, playerId).some((l) => l.action.type === type);
 
-  it("offers Retreat / Surrender but NOT Give up while the escape window is open", () => {
+  it("offers ONLY Retreat in the post-deployment window (no Surrender, no separate concede)", () => {
     const state = escapeWindowPvp("80,80");
     for (const playerId of ["p1", "p2"] as PlayerId[]) {
       expect(has(state, playerId, "RETREAT_FROM_COMBAT")).toBe(true);
-      expect(has(state, playerId, "SURRENDER_COMBAT")).toBe(true);
-      // Give up is the mid-fight concede; at the start Retreat covers it, so the
-      // two are never both on the table at once.
+      // Surrender is a before-battle (prep) option only.
+      expect(has(state, playerId, "SURRENDER_COMBAT")).toBe(false);
+      // The in-fight concede is suppressed while the no-casualties Retreat is up,
+      // so there is never more than one Retreat button on screen.
       expect(has(state, playerId, "GIVE_UP_COMBAT")).toBe(false);
     }
   });
 
-  it("swaps Retreat for Give up the instant a unit begins fighting", () => {
+  it("offers Retreat to the player currently deploying (not the one waiting), and never Surrender", () => {
+    const state = escapeWindowPvp("82,82");
+    // Mid-deployment: it is p1's turn to place; p2 is waiting.
+    state.combat!.setup = {
+      pendingPlayerIds: ["p1", "p2"],
+      placedUnitIds: { p1: [], p2: [] },
+      unitLimit: 7
+    } as never;
+    // The deploying player may Retreat…
+    expect(has(state, "p1", "RETREAT_FROM_COMBAT")).toBe(true);
+    expect(has(state, "p1", "SURRENDER_COMBAT")).toBe(false);
+    expect(has(state, "p1", "GIVE_UP_COMBAT")).toBe(false);
+    // …the waiting player has no escape control yet (they see a waiting panel).
+    expect(has(state, "p2", "RETREAT_FROM_COMBAT")).toBe(false);
+  });
+
+  it("keeps Retreat as the only escape once a unit begins fighting (now the concede)", () => {
     const state = escapeWindowPvp("81,81");
-    // A single unit acting closes the escape window for the rest of the fight.
+    // A single unit acting closes the start-of-combat window for the rest of the
+    // fight; the in-fight concede (GIVE_UP_COMBAT) takes over, labelled "Retreat".
     state.combat!.units.a1.activatedThisRound = true;
     for (const playerId of ["p1", "p2"] as PlayerId[]) {
       expect(has(state, playerId, "RETREAT_FROM_COMBAT")).toBe(false);
       expect(has(state, playerId, "SURRENDER_COMBAT")).toBe(false);
       expect(has(state, playerId, "GIVE_UP_COMBAT")).toBe(true);
+      // It is shown to the player as "Retreat", not "Give up".
+      const concede = getLegalActions(state, playerId).find((l) => l.action.type === "GIVE_UP_COMBAT");
+      expect(concede?.label.toLowerCase().startsWith("retreat")).toBe(true);
     }
   });
 });
