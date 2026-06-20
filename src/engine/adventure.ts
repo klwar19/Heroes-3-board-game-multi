@@ -5073,26 +5073,23 @@ function queueHalfCostReinforce(state: GameState, playerId: PlayerId): void {
 
   const options: { label: string; steps: VisitStep[] }[] = [];
   for (const unit of player.army) {
-    if (unit.side !== "few") {
+    if (unit.side !== "few" || !getUnitSide(unit.unitDefId, "pack")) {
       continue;
     }
 
-    const packSide = getUnitSide(unit.unitDefId, "pack");
-    if (!packSide) {
+    // Half-cost (all resources, rounded up) — but a Legion voucher reserved for
+    // this unit may make it cheaper still (non-stacking; see reinforceCostFor),
+    // so the label and the affordability gate use the actual charged cost.
+    const finalCost = reinforceCostFor(state, playerId, unit.id, true, false, false);
+    if (!finalCost || !hasResources(player, finalCost)) {
       continue;
     }
 
-    const halfCost: ResourceCost = {};
-    for (const [resource, amount] of Object.entries(packSide.cost) as [ResourceKind, number][]) {
-      halfCost[resource] = Math.ceil(amount / 2);
-    }
-    if (!hasResources(player, halfCost)) {
-      continue;
-    }
-
-    const costLabel = Object.entries(halfCost)
-      .map(([resource, amount]) => `${amount} ${resource}`)
-      .join(" + ");
+    const costLabel =
+      Object.entries(finalCost)
+        .filter(([, amount]) => amount)
+        .map(([resource, amount]) => `${amount} ${resource}`)
+        .join(" + ") || "free";
     options.push({
       label: `Reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${costLabel})`,
       steps: [{ type: "REINFORCE_ARMY_UNIT", armyUnitId: unit.id, halfCost: true }]
@@ -5510,44 +5507,50 @@ export function legionDiscountTargets(state: GameState, playerId: PlayerId): Leg
   }
   const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
   const tiers = unlockedRecruitTiers(state, playerId);
-  const canReinforce = townHasBuildingEffect(state, playerId, "UNLOCK_REINFORCE");
   const targets: LegionDiscountTarget[] = [];
 
+  // Recruit: the unit's Dwelling tier is built, it is not already owned (each
+  // unit card exists once), and there is gold to reduce. Recruiting genuinely
+  // needs the Dwelling, so that gate stays.
   for (const unitDefId of faction?.units ?? []) {
     const unit = coreUnitDefinitions[unitDefId];
-    if (!unit || !tiers.has(unit.tier)) {
+    const fewSide = unit?.few;
+    if (!unit || !fewSide || !tiers.has(unit.tier)) {
       continue;
     }
-
-    // Recruit: the unit's Dwelling is built, it is not already owned (each unit
-    // card exists once), and there is gold to reduce.
-    const fewSide = unit.few;
-    const owned = player.army.some((armyUnit) => armyUnit.unitDefId === unitDefId);
-    if (fewSide && !owned && (fewSide.cost.gold ?? 0) > 0) {
-      const purchase: RecruitPurchaseRef = { kind: "recruit", unitDefId };
-      targets.push({
-        purchase,
-        unitName: unit.name,
-        existingDiscount: bestRecruitGoldDiscount(state, playerId, purchase)
-      });
+    if (player.army.some((armyUnit) => armyUnit.unitDefId === unitDefId)) {
+      continue;
     }
-
-    // Reinforce: a Citadel is built and a Few of this type is in the army (with
-    // gold on its pack side to reduce).
-    const packSide = unit.pack;
-    if (canReinforce && packSide && (packSide.cost.gold ?? 0) > 0) {
-      for (const armyUnit of player.army) {
-        if (armyUnit.unitDefId !== unitDefId || armyUnit.side !== "few") {
-          continue;
-        }
-        const purchase: RecruitPurchaseRef = { kind: "reinforce", unitDefId, armyUnitId: armyUnit.id };
-        targets.push({
-          purchase,
-          unitName: unit.name,
-          existingDiscount: bestRecruitGoldDiscount(state, playerId, purchase)
-        });
-      }
+    if ((fewSide.cost.gold ?? 0) <= 0) {
+      continue;
     }
+    const purchase: RecruitPurchaseRef = { kind: "recruit", unitDefId };
+    targets.push({
+      purchase,
+      unitName: unit.name,
+      existingDiscount: bestRecruitGoldDiscount(state, playerId, purchase)
+    });
+  }
+
+  // Reinforce: ANY Few army unit with a Pack side and gold to reduce. A Citadel
+  // is deliberately NOT required and the tier need not be unlocked — a Few unit
+  // can be upgraded by Necromancy, Isra's Friends or a Settlement, none of which
+  // need the Citadel, so the discount must be applicable to those upgrades too.
+  for (const armyUnit of player.army) {
+    if (armyUnit.side !== "few") {
+      continue;
+    }
+    const unit = coreUnitDefinitions[armyUnit.unitDefId];
+    const packSide = unit?.pack;
+    if (!unit || !packSide || (packSide.cost.gold ?? 0) <= 0) {
+      continue;
+    }
+    const purchase: RecruitPurchaseRef = { kind: "reinforce", unitDefId: armyUnit.unitDefId, armyUnitId: armyUnit.id };
+    targets.push({
+      purchase,
+      unitName: unit.name,
+      existingDiscount: bestRecruitGoldDiscount(state, playerId, purchase)
+    });
   }
 
   return targets;
@@ -5626,6 +5629,54 @@ function bankRecruitDiscountVoucher(
  * down ("half the gold cost, rounded down"). A `free` flip (Skeletons reward)
  * spends nothing.
  */
+/**
+ * The final (non-stacking) cost to flip a Few army unit to its Pack, BEFORE any
+ * voucher is consumed — the shared truth for both the charge (reinforceArmyUnit)
+ * and the prompt label/affordability (Necromancy, Isra). Discounts never stack:
+ * the half-cost reward (`halfCost` halves every resource, `halfGoldOnly` only
+ * gold) and the best FLAT gold discount (Champions' Stables, a Legion voucher
+ * reserved for this unit, a future recruit-cost building / event) are rival
+ * sources, each measured from the ORIGINAL printed price; the cheaper GOLD wins
+ * and only that source's rules apply (so the half is never taken from an
+ * already-discounted price). Returns null when the unit cannot be reinforced.
+ */
+export function reinforceCostFor(
+  state: GameState,
+  playerId: PlayerId,
+  armyUnitId: string,
+  halfCost: boolean,
+  halfGoldOnly: boolean,
+  roundDown: boolean
+): ResourceCost | null {
+  const armyUnit = state.players[playerId]?.army.find((candidate) => candidate.id === armyUnitId);
+  const packSide = armyUnit ? getUnitSide(armyUnit.unitDefId, "pack") : null;
+  if (!armyUnit || !packSide) {
+    return null;
+  }
+  const purchase: RecruitPurchaseRef = { kind: "reinforce", unitDefId: armyUnit.unitDefId, armyUnitId };
+  const half = (amount: number) => (roundDown ? Math.floor(amount / 2) : Math.ceil(amount / 2));
+  const halfApplies = halfCost || halfGoldOnly;
+  const originalGold = packSide.cost.gold ?? 0;
+  const halfGold = half(originalGold);
+  const flatDiscount = bestRecruitGoldDiscount(state, playerId, purchase);
+  const flatGold = Math.max(0, originalGold - flatDiscount);
+  // The flat source wins only when it actually beats the half on gold; a tie (or
+  // no flat discount) keeps the half so its non-gold halving (Isra) still stands.
+  const useHalf = halfApplies && (flatDiscount <= 0 || halfGold <= flatGold);
+
+  const cost: ResourceCost = {};
+  for (const [resource, amount] of Object.entries(packSide.cost) as [ResourceKind, number][]) {
+    if (resource === "gold") {
+      cost.gold = useHalf ? halfGold : flatGold;
+    } else {
+      // Only the half-ALL reward (Isra) reduces non-gold; half-gold-only
+      // (Necromancy) and the flat sources leave other resources at full price.
+      cost[resource] = useHalf && halfCost ? half(amount) : amount;
+    }
+  }
+  return cost;
+}
+
 export function reinforceArmyUnit(
   state: GameState,
   playerId: PlayerId,
@@ -5642,42 +5693,8 @@ export function reinforceArmyUnit(
     return;
   }
 
-  const packSide = getUnitSide(armyUnit.unitDefId, "pack");
-  if (!packSide) {
-    return;
-  }
-
-  // Discounts NEVER stack. The half-cost reward (Necromancy / Isra / settlement)
-  // and any FLAT gold discount (Champions' Stables, a Legion voucher reserved for
-  // this unit, a future recruit-cost building / event) are rival sources, each
-  // measured against the ORIGINAL printed price; the cheaper GOLD wins and that
-  // one source's full rules apply. So a Legion voucher beats Necromancy's half on
-  // a cheap pack (and Necromancy is still figured from the original, not the
-  // discounted, price), while Necromancy's half wins on an expensive one.
   const purchase: RecruitPurchaseRef = { kind: "reinforce", unitDefId: armyUnit.unitDefId, armyUnitId };
-  const half = (amount: number) => (roundDown ? Math.floor(amount / 2) : Math.ceil(amount / 2));
-  const halfApplies = halfCost || halfGoldOnly;
-  const originalGold = packSide.cost.gold ?? 0;
-  const halfGold = half(originalGold);
-  const flatDiscount = bestRecruitGoldDiscount(state, playerId, purchase);
-  const flatGold = Math.max(0, originalGold - flatDiscount);
-  // The flat source wins only when it actually beats the half on gold; a tie (or
-  // no flat discount) keeps the half so its non-gold halving (Isra) still stands.
-  const useHalf = halfApplies && (flatDiscount <= 0 || halfGold <= flatGold);
-
-  const cost: ResourceCost = {};
-  if (!free) {
-    for (const [resource, amount] of Object.entries(packSide.cost) as [ResourceKind, number][]) {
-      if (resource === "gold") {
-        cost.gold = useHalf ? halfGold : flatGold;
-      } else {
-        // Only the half-ALL reward (Isra) reduces non-gold; half-gold-only
-        // (Necromancy) and the flat sources leave other resources at full price.
-        cost[resource] = useHalf && halfCost ? half(amount) : amount;
-      }
-    }
-  }
-  const finalCost = free ? {} : cost;
+  const finalCost = free ? {} : (reinforceCostFor(state, playerId, armyUnitId, halfCost, halfGoldOnly, roundDown) ?? {});
   if (!hasRecruitResources(state, playerId, finalCost)) {
     return;
   }
@@ -5686,7 +5703,7 @@ export function reinforceArmyUnit(
     state,
     playerId,
     finalCost,
-    free ? "free reinforcement" : halfApplies ? "half-cost reinforcement" : "reinforcement"
+    free ? "free reinforcement" : halfCost || halfGoldOnly ? "half-cost reinforcement" : "reinforcement"
   );
   armyUnit.side = "pack";
   // The reserved Legion voucher (if any) is spent on this unit, win or lose.
@@ -5769,9 +5786,12 @@ export function queueNecromancyReinforce(state: GameState, playerId: PlayerId, m
       continue;
     }
 
-    const cost: ResourceCost = { ...packSide.cost };
-    cost.gold = Math.floor((cost.gold ?? 0) / 2);
-    if (!hasRecruitResources(state, playerId, cost)) {
+    // Half the gold (rounded down) — but a Legion voucher reserved for this unit
+    // may beat that (non-stacking, and the half is still figured from the
+    // ORIGINAL price; see reinforceCostFor), so price and gate on the actual
+    // charged cost.
+    const cost = reinforceCostFor(state, playerId, unit.id, false, true, true);
+    if (!cost || !hasRecruitResources(state, playerId, cost)) {
       continue;
     }
 

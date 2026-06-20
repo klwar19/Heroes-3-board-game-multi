@@ -10,6 +10,7 @@ import {
   canHeroReachPlacedTile,
   capturableEnemyMinesWithin,
   legionDiscountTargets,
+  reinforceCostFor,
   getActiveAstrologersCard,
   getMainHero,
   getSecondaryHero,
@@ -4825,9 +4826,11 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
       return tier === "bronze" || tier === "silver";
     });
     fewUnits.forEach((unit, index) => {
-      const packSide = getUnitSide(unit.unitDefId, "pack");
-      const halfCost = Object.entries(packSide?.cost ?? {})
-        .map(([resource, amount]) => `${Math.ceil((amount as number) / 2)} ${resource}`)
+      // Half cost (rounded up), unless a Legion voucher reserved for this unit
+      // beats it (non-stacking; matches what resolveSettlementChoice charges).
+      const halfCost = Object.entries(reinforceCostFor(state, playerId, unit.id, true, false, false) ?? {})
+        .filter(([, amount]) => amount)
+        .map(([resource, amount]) => `${amount} ${resource}`)
         .join(" + ");
       actions.push({
         label: free

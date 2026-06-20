@@ -69,6 +69,7 @@ import {
   queueExplorersEmpower,
   queueSkeletonReinforce,
   reinforceArmyUnit,
+  reinforceCostFor,
   restoreStartingArmyIfEmpty,
   SCHOLAR_STAT_CARDS,
   spendRecruitResources,
@@ -1714,11 +1715,11 @@ function resolveSettlementChoice(
   }
 
   const free = !field.everFlagged;
-  const cost: ResourceCost = {};
+  // Half cost (all resources, rounded up) — but a Legion voucher reserved for
+  // this unit may make it cheaper still (non-stacking; see reinforceCostFor), so
+  // charge the actual best cost. A free first flag charges nothing.
+  const cost: ResourceCost = free ? {} : (reinforceCostFor(state, action.playerId, target.id, true, false, false) ?? {});
   if (!free) {
-    for (const [resource, amount] of Object.entries(packSide.cost) as ["gold" | "buildingMaterials" | "valuables", number][]) {
-      cost[resource] = Math.ceil(amount / 2);
-    }
     if (!hasResources(player, cost)) {
       throw new Error("Not enough resources to reinforce at half cost.");
     }
@@ -1726,6 +1727,12 @@ function resolveSettlementChoice(
   }
 
   target.side = "pack";
+  // The reserved Legion voucher (if any) is spent on this unit, win or lose.
+  consumeRecruitVoucherFor(state, action.playerId, {
+    kind: "reinforce",
+    unitDefId: target.unitDefId,
+    armyUnitId: target.id
+  });
   // A reinforcement places no resource token, so no ongoing income changes
   // hands — the settlement is simply now owned by this player (which also makes
   // it a spawn point and an elimination shield). Flag it and refresh both
