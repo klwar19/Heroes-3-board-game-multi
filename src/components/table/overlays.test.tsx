@@ -197,6 +197,23 @@ describe("NeutralStepOverlay — guard-step pacing", () => {
     act(() => vi.advanceTimersByTime(10000));
     expect(onAction).not.toHaveBeenCalled();
   });
+
+  it("labels the header by the viewer's role — only the reacting side is told to react", () => {
+    const onAction = vi.fn();
+    // The reacting side (p1) is invited to react.
+    const { unmount } = render(
+      <NeutralStepOverlay legalActions={[castArrow, resume]} onAction={onAction} state={pauseState()} viewerPlayerId="p1" />
+    );
+    expect(screen.getByText("Enemy turn — react?")).toBeTruthy();
+    expect(screen.queryByText("Reaction window")).toBeNull();
+    unmount();
+
+    // The side whose own unit is about to act (p2) gets a neutral, waiting header
+    // — never "Enemy turn — react?" over its own unit.
+    render(<NeutralStepOverlay legalActions={[]} onAction={onAction} state={pauseState()} viewerPlayerId="p2" />);
+    expect(screen.getByText("Reaction window")).toBeTruthy();
+    expect(screen.queryByText("Enemy turn — react?")).toBeNull();
+  });
 });
 
 describe("ReactionTray — in-progress selection survives only until the hand changes", () => {
