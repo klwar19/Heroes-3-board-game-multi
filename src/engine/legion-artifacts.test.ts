@@ -5,7 +5,9 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { applyAction, createAdventureGameState, getLegalActions } from "./index";
 import {
   applyBestRecruitDiscount,
+  beginFieldVisit,
   bestRecruitGoldDiscount,
+  getMainHero,
   legionVoucherDiscount,
   queueNecromancyReinforce,
   reinforceArmyUnit,
@@ -14,7 +16,7 @@ import {
   townHasBuildingEffect,
   type RecruitPurchaseRef
 } from "./adventure";
-import type { GameAction, GameState, PlayerId, RecruitDiscountVoucher } from "./state";
+import type { GameAction, GameState, MapFieldState, PlayerId, RecruitDiscountVoucher } from "./state";
 
 // ---------------------------------------------------------------------------
 // Legion artifacts (Legs/Loins/Torso/Arms/Head of Legion). Each one's discount
@@ -506,5 +508,94 @@ describe("The banked voucher affects what is offered", () => {
     const labels = queuedOptionLabels(withVoucher);
     expect(labels.some((label) => label.includes("Griffins") && label.includes("2 gold"))).toBe(true);
     expect(labels.some((label) => label.includes("Griffins") && label.includes("1 gold"))).toBe(false);
+  });
+});
+
+describe("Real Population-action pipeline (applyAction only): Champions' Stables × Legion never stack", () => {
+  it("plays the Legion piece, picks the Champion, then the town reinforce charges the single largest discount", () => {
+    // Castle town able to reinforce a gold-tier Champion (Bronze+Gold Dwellings,
+    // Citadel), hero on a Stables field (Champions' Stable Master = −6 gold).
+    let state = withCitadel(setupRecruitTown());
+    state.towns.town_p1.buildings = [...new Set([...state.towns.town_p1.buildings, "castle.dwelling_gold"])];
+    const heroSpace = state.heroes.hero_p1.spaceId;
+    if (heroSpace) {
+      state.adventure!.fields[heroSpace].location = "stables";
+    }
+    state.players.p1.army = state.players.p1.army.filter((unit) => unit.unitDefId !== "castle.champions");
+    state.players.p1.army.push({ id: "champ_few", unitDefId: "castle.champions", side: "few" });
+    state.players.p1.resources = { gold: 30, buildingMaterials: 0, valuables: 2 };
+    state.players.p1.hand = ["artifact.legs_of_legion"];
+
+    // Bank the voucher by actually PLAYING the piece and picking the Champion.
+    state = apply(state, findPlay(state, "p1", "artifact.legs_of_legion", 0)!);
+    state = resolveLegionPick(state, "Champions", "reinforce");
+    expect(state.players.p1.recruitDiscounts).toEqual([
+      { cardId: "artifact.legs_of_legion", amount: 4, target: { kind: "reinforce", armyUnitId: "champ_few" } }
+    ]);
+
+    // Reinforce through the real Population action. Champion Pack = 20 gold + 1
+    // valuables; the discount is max(Stables 6, Legion 4) = 6, never 10. So gold
+    // paid = 14 (30 → 16), valuables 1 (2 → 1) — NOT 10 (the stacked −10).
+    state = apply(state, {
+      type: "POPULATION_ACTION",
+      playerId: "p1",
+      purchases: [{ kind: "reinforce", unitDefId: "castle.champions", armyUnitId: "champ_few" }]
+    });
+    expect(state.players.p1.resources.gold).toBe(16);
+    expect(state.players.p1.resources.valuables).toBe(1);
+    expect(state.players.p1.army.find((unit) => unit.id === "champ_few")?.side).toBe("pack");
+    expect(state.players.p1.recruitDiscounts ?? []).toHaveLength(0);
+  });
+
+  it("keeps each player's voucher to themselves across a two-player game", () => {
+    const state = withCitadel(setupRecruitTown());
+    state.players.p1.army = state.players.p1.army.filter((unit) => unit.unitDefId !== "castle.griffins");
+    state.players.p1.army.push({ id: "p1_griffins", unitDefId: "castle.griffins", side: "few" });
+    bankVoucher(state, "p1", "artifact.head_of_legion", 6, { kind: "reinforce", armyUnitId: "p1_griffins" });
+
+    // p1's reinforce is discounted; p2 (a different seat) sees no discount on the
+    // same kind of purchase.
+    expect(bestRecruitGoldDiscount(state, "p1", { kind: "reinforce", unitDefId: "castle.griffins", armyUnitId: "p1_griffins" })).toBe(6);
+    expect(bestRecruitGoldDiscount(state, "p2", { kind: "recruit", unitDefId: "castle.griffins" })).toBe(0);
+    expect(state.players.p2.recruitDiscounts ?? []).toHaveLength(0);
+  });
+
+  it("a Settlement half-cost reinforce honors the voucher (non-stacking) and spends it — no Citadel involved", () => {
+    const state = setupRecruitTown();
+    state.players.p1.army = state.players.p1.army.filter((unit) => unit.unitDefId !== "castle.griffins");
+    state.players.p1.army.push({ id: "u_griffins", unitDefId: "castle.griffins", side: "few" });
+    state.players.p1.resources = { gold: 20, buildingMaterials: 0, valuables: 0 };
+    bankVoucher(state, "p1", "artifact.legs_of_legion", 4, { kind: "reinforce", armyUnitId: "u_griffins" });
+
+    // Stage a previously-flagged Settlement (half cost, not the free first flag).
+    const hero = getMainHero(state, "p1")!;
+    const fieldId = "70,70";
+    state.adventure!.fields[fieldId] = {
+      spaceId: fieldId,
+      tileInstanceId: "settle-tile",
+      slot: 0,
+      location: "settlement",
+      difficulty: 1,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: true,
+      settlementResource: null
+    } as MapFieldState;
+    hero.spaceId = fieldId;
+    beginFieldVisit(state, hero.id, fieldId, false);
+
+    // The Settlement reinforce option is priced with the voucher: Griffins Pack 6
+    // gold, half = 3, Legion −4 → pay 2 (the bigger discount), not 3 and not the
+    // stacked 1.
+    const reinforce = getLegalActions(state, "p1").find(
+      (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && entry.label.includes("Griffins")
+    );
+    expect(reinforce, "the Settlement should offer the Griffins reinforce").toBeTruthy();
+    expect(reinforce!.label).toContain("2 gold");
+
+    const next = apply(state, reinforce!.action);
+    expect(next.players.p1.resources.gold).toBe(18); // paid 2
+    expect(next.players.p1.army.find((unit) => unit.id === "u_griffins")?.side).toBe("pack");
+    expect(next.players.p1.recruitDiscounts ?? []).toHaveLength(0);
   });
 });

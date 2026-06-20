@@ -397,3 +397,151 @@ describe("Necromancy ability — now-or-never timing (BINH house rule)", () => {
     expect(state.adventure?.fields[fieldId].blackCube).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Legion artifact voucher × Necromancy reinforce — the full multiplayer flow
+// through applyAction/getLegalActions ONLY (no internals), proving discounts do
+// not stack: the Legion voucher and Necromancy's half are rival sources, each
+// figured from the ORIGINAL printed price, and the cost path takes the cheaper.
+// The voucher is banked by actually PLAYING the Legion piece and picking the
+// unit, then spent by the real now-or-never Necromancy reinforce.
+// ---------------------------------------------------------------------------
+describe("Legion voucher × Necromancy reinforce (real end-to-end, non-stacking)", () => {
+  function startSandroGame(): GameState {
+    return createAdventureGameState({
+      seed: "legion-necro",
+      ruleset: "binh",
+      difficulty: "normal",
+      players: [
+        { id: "p1", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" },
+        { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
+      ],
+      rollFirstPlayer: false
+    });
+  }
+
+  /** Stages a just-won neutral combat for p1 on an already-collected field (no
+   *  payout), so the gold change isolates the Necromancy reinforce cost. */
+  function stageNeutralWin(state: GameState): void {
+    const hero = getMainHero(state, "p1")!;
+    const fieldId = "99,1";
+    state.adventure!.fields[fieldId] = {
+      spaceId: fieldId,
+      tileInstanceId: "test-tile",
+      slot: 0,
+      location: "water_wheel",
+      difficulty: 1,
+      blackCube: true,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    } as MapFieldState;
+    hero.spaceId = fieldId;
+    state.activePlayerId = "p1";
+    state.combat = {
+      context: { kind: "neutral", heroId: hero.id, fieldId, difficulty: 1, hasAzure: false },
+      outcome: { winnerPlayerId: "p1", defeatedPlayerId: "neutral", reason: "all-enemy-units-defeated" },
+      units: {}
+    } as unknown as CombatState;
+  }
+
+  /** Plays a Legion piece on the map and picks `unitName`'s reinforce in the prompt. */
+  function bankLegionOnReinforceViaPlay(state: GameState, cardId: string, unitName: string): GameState {
+    state.activePlayerId = "p1";
+    let next = state.players.p1.needsHandRefresh
+      ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      : state;
+    next.players.p1.hand = [cardId];
+
+    const play = getLegalActions(next, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === cardId && legal.action.optionIndex === 0
+    );
+    expect(play, `${cardId} discount side should be playable`).toBeTruthy();
+    next = apply(next, play!.action);
+
+    const pick = getLegalActions(next, "p1").find(
+      (legal) =>
+        legal.action.type === "RESOLVE_VISIT_STEP" && legal.label.startsWith("Reinforce") && legal.label.includes(unitName)
+    );
+    expect(pick, `the prompt should offer a reinforce of ${unitName} (no Citadel needed)`).toBeTruthy();
+    return apply(next, pick!.action);
+  }
+
+  /** The Necromancy reinforce option label for `unitName` (or undefined). */
+  function necromancyReinforceLabel(state: GameState, unitName: string): string | undefined {
+    return getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "RESOLVE_VISIT_STEP" && legal.label.startsWith("Reinforce") && legal.label.includes(unitName)
+    )?.label;
+  }
+
+  it("Necromancy's half wins on an expensive unit, figured from the ORIGINAL price (never stacked), and still spends the voucher", () => {
+    // Vampires Pack = 12 gold. Necromancy half = 6. A Legs voucher (−4 → pay 8)
+    // is the SMALLER discount, so Necromancy's 6 wins. The 6 must come off the
+    // original 12 (NOT floor((12−4)/2) = 4, which would be illegal stacking).
+    let state = startSandroGame();
+    state.players.p1.army = [{ id: "army_vamp", unitDefId: "necropolis.vampires", side: "few" }];
+    state.players.p1.resources.gold = 20;
+
+    state = bankLegionOnReinforceViaPlay(state, "artifact.legs_of_legion", "Vampires");
+    expect(state.players.p1.recruitDiscounts).toEqual([
+      { cardId: "artifact.legs_of_legion", amount: 4, target: { kind: "reinforce", armyUnitId: "army_vamp" } }
+    ]);
+
+    // Hold Necromancy for the after-combat window, then stage + finalize the win.
+    state.players.p1.hand = ["ability.necromancy"];
+    stageNeutralWin(state);
+    finalizeAdventureCombat(state);
+
+    const playAction = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.necromancy" && (legal.action.mode ?? "basic") === "basic"
+    );
+    expect(playAction, "Necromancy should be playable in the open window").toBeTruthy();
+    state = apply(state, playAction!.action);
+
+    // The Necromancy prompt prices the Vampires at the original half (6 gold).
+    expect(necromancyReinforceLabel(state, "Vampires")).toContain("6 gold");
+
+    const reinforce = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.label.includes("Vampires")
+    );
+    state = apply(state, reinforce!.action);
+
+    // Paid 6 (original half), NOT 8 (Legion) and NOT 4 (stacked): 20 → 14.
+    expect(state.players.p1.resources.gold).toBe(14);
+    expect(state.players.p1.army.find((unit) => unit.id === "army_vamp")?.side).toBe("pack");
+    // The voucher is single-use: spent on this unit even though Necromancy won.
+    expect(state.players.p1.recruitDiscounts ?? []).toHaveLength(0);
+  });
+
+  it("the Legion voucher wins on a cheap unit (beats Necromancy's half) through the same real flow", () => {
+    // Wraiths Pack = 6 gold. Necromancy half = 3. A Legs voucher (−4 → pay 2) is
+    // the bigger discount, so the reinforce costs 2, not 3.
+    let state = startSandroGame();
+    state.players.p1.army = [{ id: "army_wraith", unitDefId: "necropolis.wraiths", side: "few" }];
+    state.players.p1.resources.gold = 20;
+
+    state = bankLegionOnReinforceViaPlay(state, "artifact.legs_of_legion", "Wraiths");
+    state.players.p1.hand = ["ability.necromancy"];
+    stageNeutralWin(state);
+    finalizeAdventureCombat(state);
+
+    const playAction = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.necromancy" && (legal.action.mode ?? "basic") === "basic"
+    );
+    expect(playAction, "Necromancy should be playable in the open window").toBeTruthy();
+    state = apply(state, playAction!.action);
+
+    expect(necromancyReinforceLabel(state, "Wraiths")).toContain("2 gold");
+    const reinforce = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.label.includes("Wraiths")
+    );
+    state = apply(state, reinforce!.action);
+
+    // Paid 2 (6 − 4 Legion), beating Necromancy's 3: 20 → 18.
+    expect(state.players.p1.resources.gold).toBe(18);
+    expect(state.players.p1.recruitDiscounts ?? []).toHaveLength(0);
+  });
+});
