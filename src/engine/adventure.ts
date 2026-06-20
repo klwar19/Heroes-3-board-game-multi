@@ -585,7 +585,7 @@ export function canCrossEdge(
   return !isOuterEdgeSealed(adventure, fromField) && !isOuterEdgeSealed(adventure, toField);
 }
 
-function isOuterEdgeSealed(adventure: AdventureState, field: MapFieldState): boolean {
+export function isOuterEdgeSealed(adventure: AdventureState, field: MapFieldState): boolean {
   if (field.slot === 0) {
     return false;
   }

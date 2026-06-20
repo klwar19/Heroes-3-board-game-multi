@@ -679,10 +679,11 @@ describe("morale actions", () => {
 describe("tile discovery and placement", () => {
   it("reveals a face-down tile, then the player rotates it before it lands", () => {
     const state = makeGame();
-    // Stand on the seat-0 town-flower hex (8,3), which borders the face-down
-    // Center tile (the hub at 9,4). Placing/standing is set directly so the
-    // reveal mechanics are exercised without walking through guarded fields.
-    state.heroes.hero_p1.spaceId = "h:8:3";
+    // Stand on (10,6) — S1 slot 5, an OPEN-border ring field that touches the
+    // face-down Center hub at (9,4) across an unsealed edge. Ordinary discovery
+    // needs that open border; placing/standing is set directly so the reveal
+    // mechanics are exercised without walking through guarded fields.
+    state.heroes.hero_p1.spaceId = "h:10:6";
     state.heroes.hero_p1.movementPoints = 3;
     const tile = Object.values(state.adventure!.tiles).find(
       (candidate) => candidate.centerRow === 9 && candidate.centerCol === 4
@@ -698,7 +699,7 @@ describe("tile discovery and placement", () => {
     expect(next.adventure!.fields["h:9:4"]).toBeUndefined();
 
     // Other actions are blocked while the rotation is pending.
-    const blocked = applyAction(next, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:2" });
+    const blocked = applyAction(next, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:10:5" });
     expect(blocked.errors).toHaveLength(1);
 
     const rotations = getLegalActions(next, "p1").filter((legal) => legal.action.type === "SET_TILE_ROTATION");
@@ -707,6 +708,39 @@ describe("tile discovery and placement", () => {
 
     expect(next.adventure!.tiles[tile!.id].awaitingRotation).toBe(false);
     expect(next.adventure!.fields["h:9:4"]).toBeTruthy();
+  });
+
+  it("refuses ordinary discovery across a sealed yellow border (edge/border gate)", () => {
+    const state = makeGame();
+    // (8,3) is S3 slot 2 — geometrically adjacent to the same face-down hub at
+    // (9,4), but its outer arc toward the hub is a printed yellow line. A hero
+    // standing behind that border cannot reveal across it on its own turn; only
+    // a Redwood Observatory / Speculum ignores borders. This is exactly the
+    // "border and edge interaction" the ordinary action requires.
+    state.heroes.hero_p1.spaceId = "h:8:3";
+    state.heroes.hero_p1.movementPoints = 3;
+    const tile = Object.values(state.adventure!.tiles).find(
+      (candidate) => candidate.centerRow === 9 && candidate.centerCol === 4
+    );
+    expect(tile?.faceDown).toBe(true);
+
+    // The action is not even offered…
+    const offered = getLegalActions(state, "p1").some(
+      (legal) => legal.action.type === "DISCOVER_TILE" && legal.action.tileInstanceId === tile!.id
+    );
+    expect(offered).toBe(false);
+
+    // …and is rejected if attempted directly, with the movement point untouched.
+    const result = applyAction(state, {
+      type: "DISCOVER_TILE",
+      playerId: "p1",
+      heroId: "hero_p1",
+      tileInstanceId: tile!.id
+    });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].message).toContain("yellow border");
+    expect(result.state.heroes.hero_p1.movementPoints).toBe(3);
+    expect(result.state.adventure!.tiles[tile!.id].faceDown).toBe(true);
   });
 
   it("places a far tile at the border for 1 MP, touching two tiles, then rotates it", () => {

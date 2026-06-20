@@ -56,6 +56,7 @@ import {
   heroAtSpace,
   instantiateTile,
   isFieldGuarded,
+  isOuterEdgeSealed,
   seaStepHalts,
   makeCombatUnitFromArmy,
   makeCombatUnitFromNeutral,
@@ -1219,6 +1220,16 @@ export function revealTileForHero(
     throw new Error("You can't discover across the Surface/Subterranean divide — enter a Subterranean Gate instead.");
   }
 
+  // Ordinary discovery needs an OPEN border: the hero's field edge toward the
+  // tile must not be a printed yellow line. (The Redwood Observatory and the
+  // Speculum artifact are the only ways to reveal across a sealed border.)
+  const heroField = adventure.fields[hero.spaceId];
+  if (!heroField || isOuterEdgeSealed(adventure, heroField)) {
+    throw new Error(
+      "A yellow border line seals this edge — move to an open border, or use a Redwood Observatory / Speculum to discover across it."
+    );
+  }
+
   beginTileRotation(state, playerId, tile, "reveal");
 }
 
@@ -1390,6 +1401,42 @@ export function isTileAdjacentToSpace(state: GameState, tileInstanceId: string, 
 
   const footprint = new Set(getTileFootprintSpaceIds(tile));
   return getAdjacentSpaceIds(spaceId).some((neighbor) => footprint.has(neighbor));
+}
+
+/**
+ * Whether a hero may discover a still-hidden tile under the ORDINARY movement
+ * rules ("opening a new map" / placing a Far Ⅱ–Ⅲ tile during your turn): the
+ * hero's own field must touch the target tile across an OPEN border — an outer
+ * edge that is not sealed by a printed yellow line, on the same Surface/
+ * Subterranean layer. This is the "border and edge interaction" the player
+ * normally needs.
+ *
+ * It is deliberately the gate that the Redwood Observatory and the Speculum
+ * artifact BYPASS: those discover an adjacent tile with no access requirement —
+ * the hero need not be at the tile's edge nor at an unsealed (open) border, so
+ * they never call this. Keep the two paths separate.
+ */
+export function canHeroDiscoverAdjacentTile(state: GameState, hero: HeroState, tile: MapTileState): boolean {
+  const adventure = state.adventure;
+  if (!adventure || !hero.spaceId || !tile.faceDown) {
+    return false;
+  }
+  const field = adventure.fields[hero.spaceId];
+  if (!field) {
+    return false;
+  }
+  // Must be geometrically next to the tile (an edge/ring field touching it),
+  // on the hero's own layer…
+  if (!isTileAdjacentToSpace(state, tile.id, hero.spaceId)) {
+    return false;
+  }
+  if (tileLayer(tile) !== fieldLayer(state, hero.spaceId)) {
+    return false;
+  }
+  // …and the field's outer edge toward the tile must be an OPEN border. A
+  // yellow-sealed arc blocks ordinary discovery (use a Redwood Observatory or
+  // Speculum to reveal across it instead).
+  return !isOuterEdgeSealed(adventure, field);
 }
 
 export function placeTile(state: GameState, action: Extract<GameAction, { type: "PLACE_TILE" }>): void {

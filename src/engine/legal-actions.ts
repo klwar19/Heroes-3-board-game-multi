@@ -16,12 +16,10 @@ import {
   getTownOfPlayer,
   getUnitSide,
   hasRecruitResources,
-  fieldLayer,
   hasResources as playerHasResources,
   humanPlayerIds,
   isSeaField,
   NEUTRAL_DECK_IDS,
-  tileLayer,
   RESOURCE_GAIN_LEVEL_AMOUNTS,
   SURRENDER_GOLD_COST,
   townHasBuildingEffect,
@@ -35,7 +33,7 @@ import {
   getHeroMoveDestinations,
   hillFortCost,
   inCombatPrep,
-  isTileAdjacentToSpace,
+  canHeroDiscoverAdjacentTile,
   isTileRotationConnected,
   observatoryPlacementCenters,
   observatoryRevealTargets,
@@ -4864,7 +4862,9 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     const field = adventure.fields[visit.fieldId];
     const tile = field ? adventure.tiles[field.tileInstanceId] : undefined;
     const hero = state.heroes[visit.heroId];
-    // Flip an adjacent face-down tile the hero stands at an open border of.
+    // Flip any adjacent face-down tile on the hero's layer — the Observatory /
+    // Speculum ignore borders and edges, so there is NO "stand at an open
+    // border" requirement here (unlike ordinary movement-driven discovery).
     const candidates = tile && hero ? observatoryRevealTargets(state, hero, tile) : [];
     candidates.forEach((candidate, index) => {
       actions.push({
@@ -4872,9 +4872,10 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
         action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
       });
     });
-    // Or open a brand-new tile by dropping a Far (Ⅱ–Ⅲ) supply tile into an open
-    // border slot. Face-down Far tiles are interchangeable backs, so the top of
-    // the supply is offered for each reachable slot.
+    // Or open a brand-new tile by dropping a Far (Ⅱ–Ⅲ) supply tile into an empty
+    // slot adjacent to the observatory's own flower — no hero-access/border gate
+    // (that is the whole point of the Observatory). Face-down Far tiles are
+    // interchangeable backs, so the top of the supply is offered for each slot.
     const supply = adventure.playerFarTiles[playerId] ?? [];
     if (tile && hero && supply.length > 0) {
       const supplyIndex = 0;
@@ -5741,13 +5742,10 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       }
 
       for (const tile of Object.values(adventure.tiles)) {
-        if (
-          tile.faceDown &&
-          isTileAdjacentToSpace(state, tile.id, hero.spaceId) &&
-          // No discovering across the Surface/Subterranean divide — that only
-          // happens for free by entering a Subterranean Gate.
-          tileLayer(tile) === fieldLayer(state, hero.spaceId)
-        ) {
+        // Ordinary discovery needs an open border on the hero's own layer (no
+        // crossing the Surface/Subterranean divide, no flipping across a sealed
+        // yellow edge). The Redwood Observatory / Speculum bypass this gate.
+        if (canHeroDiscoverAdjacentTile(state, hero, tile)) {
           actions.push({
             label: `Discover the face-down tile at (${tile.centerRow}, ${tile.centerCol})`,
             action: { type: "DISCOVER_TILE", playerId, heroId: hero.id, tileInstanceId: tile.id }

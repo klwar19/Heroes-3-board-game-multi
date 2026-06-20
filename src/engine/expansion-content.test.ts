@@ -555,6 +555,71 @@ describe("rulebook conformance fixes", () => {
     );
   });
 
+  // --- Speculum: discover an adjacent tile ignoring borders -----------------
+  //
+  // Speculum (minor artifact): "Discover any Map tile adjacent to the Map tile
+  // your Hero is currently on." Like the Redwood Observatory, it does NOT need
+  // the hero to be at the tile's edge nor at an open (unsealed) border — that
+  // is the whole point of the card. The hero's CURRENT tile is the anchor.
+  it("Speculum reveals an adjacent face-down tile across a sealed border (no edge/border gate)", () => {
+    const state = createAdventureGameState({ seed: "speculum", difficulty: "normal", rollFirstPlayer: false });
+    const adventure = state.adventure;
+    if (!adventure) {
+      throw new Error("no adventure");
+    }
+    state.players.p1.needsHandRefresh = false;
+
+    // The hero stands on its OWN F7 tile, on a yellow-sealed ring field, with a
+    // face-down tile across that sealed edge. Ordinary discovery is impossible
+    // from here; Speculum ignores the border.
+    const O: HexCoord = { row: 40, col: 30 };
+    instantiateTile(adventure, "F7", O, 0, false);
+    const rings = f7Rings(O);
+    const sealed = rings.find((ring) => ring.sealed && ring.neighborCenter);
+    if (!sealed?.neighborCenter) {
+      throw new Error("no sealed ring neighbour");
+    }
+    const faceDown = instantiateTile(adventure, "N1", sealed.neighborCenter, 0, true);
+    state.heroes.hero_p1.spaceId = hexSpaceId(sealed.ringHex);
+
+    // Contrast: the ordinary movement-driven discovery is refused at this
+    // sealed-border field — proving the two paths are separate.
+    const ordinary = applyAction(state, {
+      type: "DISCOVER_TILE",
+      playerId: "p1",
+      heroId: "hero_p1",
+      tileInstanceId: faceDown.id
+    });
+    expect(ordinary.errors).toHaveLength(1);
+    expect(ordinary.errors[0].message).toContain("yellow border");
+
+    // Now play Speculum's "discover" option from hand.
+    state.players.p1.hand = ["artifact.speculum"];
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "artifact.speculum" &&
+        legal.action.optionIndex === 0
+    );
+    expect(play, "Speculum discover option should be a legal map play").toBeTruthy();
+    const opened = apply(state, play!.action);
+
+    // A DISCOVER_ADJACENT_TILE visit is open, anchored on the hero's tile, and
+    // it offers the face-down neighbour even though its border is sealed.
+    const step = opened.adventure!.pendingVisit?.steps[0];
+    expect(step?.type).toBe("DISCOVER_ADJACENT_TILE");
+    const reveal = getLegalActions(opened, "p1").find((legal) =>
+      legal.label.startsWith("Discover the face-down tile")
+    );
+    expect(reveal, "Speculum should offer the sealed-border neighbour").toBeTruthy();
+
+    const revealed = apply(opened, reveal!.action);
+    expect(revealed.adventure!.tiles[faceDown.id].faceDown).toBe(false);
+    expect(revealed.adventure!.tiles[faceDown.id].awaitingRotation).toBe(true);
+    // Freely rotated — no opening hero recorded (no hero-cross gate).
+    expect(revealed.adventure!.pendingTileChoice?.heroId).toBeUndefined();
+  });
+
   it("sells one Trading Post card for 1 gold, excluding statistics and Magic Arrow", () => {
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
     const adventure = state.adventure;
