@@ -115,6 +115,32 @@ describe("PlacementPanel — deploy sidebar", () => {
     fireEvent.click(getByText("Ready for battle"));
     expect(onAction).toHaveBeenCalledWith({ type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
   });
+
+  it("shows a Retreat button during PvP deployment and fires RETREAT_FROM_COMBAT", () => {
+    // A PvP hero may Retreat while still placing units (before any fighting).
+    const pvpDeploy = (() => {
+      const base = deployState();
+      return {
+        ...base,
+        combat: {
+          ...base.combat!,
+          context: { kind: "player", attackerHeroId: "hero_p1", defenderHeroId: "hero_p2", fieldId: "0,0" }
+        }
+      } as GameState;
+    })();
+    const actions: LegalAction[] = [
+      ...PLACE_ACTIONS,
+      { action: { type: "RETREAT_FROM_COMBAT", playerId: "p1" }, label: "Retreat (lose the combat: pay 5 gold, -1 morale, fall back home)" }
+    ];
+    const onAction = vi.fn<(action: GameAction) => void>();
+    const { getByText } = render(
+      <PlacementPanel legalActions={actions} onAction={onAction} state={pvpDeploy} viewerPlayerId="p1" />
+    );
+
+    const retreat = getByText(/^Retreat/);
+    fireEvent.click(retreat);
+    expect(onAction).toHaveBeenCalledWith({ type: "RETREAT_FROM_COMBAT", playerId: "p1" });
+  });
 });
 
 describe("PlacementPanel — PvP pre-combat preparation window", () => {

@@ -5276,10 +5276,14 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
   if (!combat || combat.context.kind !== "player") {
     return;
   }
-  // Retreat / Surrender is a start-of-combat decision, offered in two spots: the
-  // defender's pre-combat preparation window, and after deployment but before
-  // any unit has begun fighting (pvpEscapeWindowOpen) while the combat card
-  // window is open. Once a unit acts the escape closes for the rest of the fight.
+  // Retreat is offered in two spots here: the defender's pre-combat preparation
+  // window, and after deployment but before any unit has begun fighting
+  // (pvpEscapeWindowOpen) while the combat card window is open. (It is also
+  // offered DURING placement — see addPvpRetreatDuringSetup.) Once a unit acts
+  // Retreat closes and the in-fight concede takes over (addGiveUpCombatActions,
+  // labelled Retreat). Surrender, by contrast, is a "before battle" option only:
+  // it is offered solely in the defender's prep window, never once deployment has
+  // begun.
   const inPrep = Boolean(combat.defenderPrep && combat.defenderPrep.playerId === playerId);
   if (!inPrep && (!pvpEscapeWindowOpen(combat) || !isCombatCardWindowOpen(state))) {
     return;
@@ -5293,8 +5297,9 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
     label: "Retreat (lose the combat: pay 5 gold, -1 morale, fall back home)",
     action: { type: "RETREAT_FROM_COMBAT", playerId }
   });
+  // Surrender is a before-battle decision only (the defender's prep window).
   const gold = state.players[playerId]?.resources.gold ?? 0;
-  if (gold >= SURRENDER_GOLD_COST && !playerCannotSurrenderCombat(state, playerId)) {
+  if (inPrep && gold >= SURRENDER_GOLD_COST && !playerCannotSurrenderCombat(state, playerId)) {
     actions.push({
       label: `Surrender (pay ${SURRENDER_GOLD_COST} gold, keep your whole army, return home)`,
       action: { type: "SURRENDER_COMBAT", playerId }
@@ -5303,27 +5308,59 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
 }
 
 /**
- * Give up a player-vs-player combat: the mid-fight concede. Always a defeat with
- * the Retreat consequences (5 gold, -1 morale, fall back home, the opponent
- * wins). The troop cost depends on the lobby's PvP casualty mode: in losing-troop
- * mode only the casualties taken up to that point are lost (survivors fall back);
- * in keep-troops mode every unit is kept and the hand is discarded instead.
- * Neutral-guard fights have no Give up — only the end-of-round Retreat.
+ * Retreat offered WHILE units are being placed (the combat-setup / deployment
+ * step). A PvP hero may bail out before the fighting starts even mid-deployment;
+ * no unit has acted yet, so it is the same no-casualties Retreat as the
+ * post-deployment window. Surrender is NOT offered here — it is a prep-only
+ * ("before battle") option.
+ */
+function addPvpRetreatDuringSetup(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  const combat = state.combat;
+  if (!combat || combat.context.kind !== "player" || combat.outcome || !combat.setup) {
+    return;
+  }
+  // Offered to the player whose turn it is to place (the one looking at the
+  // deployment panel) — the other side is shown a "waiting" panel with no
+  // controls, so offering it to them would be a button-less legal action.
+  if (combat.setup.pendingPlayerIds[0] !== playerId) {
+    return;
+  }
+  const heroId =
+    playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
+  if (!heroId) {
+    return;
+  }
+  actions.push({
+    label: "Retreat (lose the combat: pay 5 gold, -1 morale, fall back home)",
+    action: { type: "RETREAT_FROM_COMBAT", playerId }
+  });
+}
+
+/**
+ * The in-fight Retreat: once the fighting has begun there is only ONE way to
+ * leave a player-vs-player combat, and it is shown to the player as "Retreat".
+ * Internally it is the GIVE_UP_COMBAT concede (the start-of-combat
+ * RETREAT_FROM_COMBAT is a no-casualties flee that closes the instant a unit
+ * acts). Always a defeat with the same consequences (5 gold, -1 morale, fall
+ * back home, the opponent wins). The troop cost depends on the lobby's PvP
+ * casualty mode: in losing-troop mode only the casualties taken up to that point
+ * are lost (survivors fall back); in keep-troops mode every unit is kept and the
+ * hand is discarded instead. Neutral-guard fights have no in-fight Retreat — only
+ * the end-of-round Retreat.
  *
- * Give up is NOT offered while the start-of-combat escape window is still open:
- * there the equivalent Retreat already lets a hero leave (with no casualties yet
- * either way, and in keep-troops mode without even discarding the hand), so the
- * two would be the same button. Give up surfaces only once fighting has begun and
- * Retreat has closed — that is when conceding actually differs (it forfeits the
- * casualties already taken). This is what merges the two so they never overlap.
+ * It is NOT offered while the start-of-combat escape window is still open: there
+ * the no-casualties RETREAT_FROM_COMBAT is offered instead (also labelled
+ * "Retreat"), so the player always sees exactly one Retreat button. This concede
+ * surfaces only once fighting has begun and that window has closed.
  */
 function addGiveUpCombatActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const combat = state.combat;
   if (!combat || combat.outcome || combat.context.kind !== "player") {
     return;
   }
-  // While the hero can still Retreat (start of combat, before any unit acts),
-  // Give up is suppressed — Retreat is the equivalent, no-casualties exit.
+  // While the no-casualties RETREAT_FROM_COMBAT is still available (start of
+  // combat, before any unit acts) this concede is suppressed so there is never
+  // more than one Retreat button on screen at a time.
   if (pvpEscapeWindowOpen(combat)) {
     return;
   }
@@ -5336,8 +5373,8 @@ function addGiveUpCombatActions(actions: LegalAction[], state: GameState, player
   const losesTroops = adventurePvpTroopLoss(state) === "normal";
   actions.push({
     label: losesTroops
-      ? "Give up (concede: lose the combat — your fallen so far stay lost, survivors fall back home)"
-      : "Give up (concede: lose the combat and discard your hand, fall back home)",
+      ? "Retreat (lose the combat — your fallen so far stay lost, survivors fall back home)"
+      : "Retreat (lose the combat and discard your hand, fall back home)",
     action: { type: "GIVE_UP_COMBAT", playerId }
   });
 }
@@ -5452,6 +5489,8 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // Combat setup placement.
   if (state.combat?.setup) {
     addCombatSetupActions(actions, state, playerId);
+    // A PvP hero may still Retreat while deploying (before any fighting).
+    addPvpRetreatDuringSetup(actions, state, playerId);
     return actions;
   }
 

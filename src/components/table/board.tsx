@@ -1429,12 +1429,12 @@ const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "USE_GENIE_DECK_DRAW",
   "COMPLETE_SIMULTANEOUS_TURN",
   "CONTINUE_NEUTRAL_COMBAT",
+  // Retreat is the single in-combat escape button. RETREAT_FROM_COMBAT is the
+  // no-casualties flee shown before any unit acts; GIVE_UP_COMBAT is the in-fight
+  // concede shown after fighting begins — both labelled "Retreat" (legal-actions).
+  // Surrender is NOT here: it is a before-battle option, shown only in the
+  // defender's prep panel (PlacementPanel).
   "RETREAT_FROM_COMBAT",
-  // Surrender is the paid start-of-combat escape (keep your army, pay the toll).
-  // It is offered in the post-deployment escape window too, not just the
-  // defender's prep panel, so the attacker — who has no prep panel — needs this
-  // button to surrender at all.
-  "SURRENDER_COMBAT",
   "GIVE_UP_COMBAT",
   "ACKNOWLEDGE_COMBAT_END",
   // After-combat Necromancy is a now-or-never window: the player either plays the
@@ -1708,10 +1708,7 @@ export function CommandDock({
       ) : null}
       {commands.map((legal) => (
         <button
-          className={`commandButton ${legal.action.type === "DEFEND_UNIT" ? "defendButton" : ""}${
-            // Give up (concede) is a secondary, off-to-the-side control.
-            legal.action.type === "GIVE_UP_COMBAT" ? " ghost" : ""
-          }`}
+          className={`commandButton ${legal.action.type === "DEFEND_UNIT" ? "defendButton" : ""}`.trimEnd()}
           key={actionKey(legal.action)}
           onClick={() => onAction(legal.action)}
           type="button"

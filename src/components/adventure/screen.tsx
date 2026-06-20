@@ -2850,6 +2850,9 @@ export function PlacementPanel({
   );
   const finish = legalActions.find((legal) => legal.action.type === "FINISH_COMBAT_PLACEMENT");
   const unplaceActions = legalActions.filter((legal) => legal.action.type === "UNPLACE_COMBAT_UNIT");
+  // A PvP hero may Retreat while still deploying (before any unit fights). Only
+  // present in player-vs-player setups (see addPvpRetreatDuringSetup).
+  const retreatDuringSetup = legalActions.find((legal) => legal.action.type === "RETREAT_FROM_COMBAT");
 
   const cellsForSelected = selectedUnitId
     ? placeActions.filter((legal) => legal.action.armyUnitId === selectedUnitId)
@@ -2945,6 +2948,11 @@ export function PlacementPanel({
         <button className="commandButton primary combatReadyButton" onClick={() => onAction(finish.action)} type="button">
           <img alt="" aria-hidden="true" className="combatButtonIcon" src={assetUrl("/assets/ui/combat-button.png")} />
           {versusNeutrals ? "Lock in — reveal the guards" : "Ready for battle"}
+        </button>
+      ) : null}
+      {retreatDuringSetup ? (
+        <button className="commandButton" onClick={() => onAction(retreatDuringSetup.action)} type="button">
+          {retreatDuringSetup.label}
         </button>
       ) : null}
     </div>
