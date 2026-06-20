@@ -1,4 +1,5 @@
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { CREATURE_BANK_UNIT_SIDES, stackTokenDelta } from "@/data/map/creature-banks";
 import { applyUnitSideRules, specialtyTransformHealth } from "./ruleset";
 import type { CombatUnitState, EffectDefinition, GameRuleset, UnitTransformState } from "./state";
 
@@ -106,6 +107,23 @@ export function applyUnitCurrentSide(unit: CombatUnitState, ruleset: GameRuleset
     if (unit.assets && top.cardImage) {
       unit.assets.cardImage = top.cardImage;
     }
+    return;
+  }
+
+  // Creature Bank defenders fight from their own card; their current statistics
+  // are the bank card plus the bonus of any Stack Token currently on them.
+  if (unit.bankUnit && unit.unitDefId) {
+    const bankSide = CREATURE_BANK_UNIT_SIDES[unit.unitDefId];
+    if (!bankSide) {
+      return;
+    }
+    const bonus = (stat: "attack" | "defense" | "health" | "initiative") =>
+      unit.stackToken === stat ? stackTokenDelta(stat) : 0;
+    unit.attack = bankSide.attack + bonus("attack");
+    unit.defense = bankSide.defense + bonus("defense");
+    unit.maxHealth = bankSide.health + bonus("health");
+    unit.initiative = bankSide.initiative + bonus("initiative");
+    unit.abilities = bankSide.abilities;
     return;
   }
 

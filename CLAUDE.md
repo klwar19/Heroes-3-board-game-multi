@@ -74,3 +74,48 @@ Tracked honestly so they are not mistaken for working features:
 - Hero specialties in `PENDING_TOWER_SPECIALTIES`
   (`src/engine/hero-specialty-levels.test.ts`): Solmyr I/IV/VI, Cyra IV/VI,
   Torosar I/IV/VI.
+
+## Creature Banks (Naval Battles optional rule) — what runs vs. what is deferred
+
+Added in `src/data/map/creature-banks.ts` (data, tested in
+`creature-banks.test.ts`) and wired through the combat engine (tested in
+`src/engine/creature-bank-combat.test.ts`). Leading with what is NOT done:
+
+**Implemented and engine-enforced (a test fails if removed):**
+- The 12 banks' defenders, bank-card stats (their OWN stats, no tier — distinct
+  from Few/Pack/Neutral), and resource/morale/search rewards scaled by the
+  number of Stacked defenders (X).
+- Stack Tokens: count by Scenario Difficulty (Easy 1 / Normal 2 / Hard 3 /
+  Impossible 4), placed on distinct cards, +1 attack/defense/health or +2
+  initiative; a Stacked defender absorbs one lethal blow by discarding its token
+  and carrying the leftover damage (`markUnitRemovedIfNeeded`).
+- Bank combat: no Quick Combat, no experience; win marks a Black Cube and grants
+  the reward. `placeCreatureBank` converts a Blocked Field into a bank.
+- Bank-card abilities that map to a wired engine effect: Skeletons (rebirth),
+  Zombies (resilience), Vampires (life drain), Medusas + Nagas (ignore
+  retaliation), Dragon Flies (-2 retaliation attack), Water Elementals (Magic
+  Arrow immunity), Gold/Diamond Golems (spell-damage reduction), Griffins
+  (unlimited retaliation), Gold Dragons (line breath). Cyclops Stockpile prints
+  no ability.
+
+**Display-only bank-card abilities (declared in `DISPLAY_ONLY_BANK_ABILITIES`,
+`src/data/units/abilities.ts`) — these do NOTHING mechanically:**
+- Imp Cache Familiars (while-Stacked enemy spell-Power drain), Crypt/Shipwreck
+  Wraiths (on-attack enemy discard), Dwarven Treasury Dwarves / Dragon Utopia
+  Crystal Dragons (while-Stacked Defense token), Dragon Utopia Black Dragons
+  (while-Stacked +3 Attack), Dragon Utopia Faerie Dragons (while-Stacked spell
+  lock), and the Medusa Stores "if Stacked, Paralyze" rider (only the
+  ignore-retaliation half runs).
+
+**NOT implemented at all (deferred):**
+- "Gain a unit" rewards: Dragon Fly Hive and Griffin Conservatory grant nothing
+  (`rewardStatus: "not-implemented"`); the "Gained Stacked Units" mechanic does
+  not exist. The Pyramid's per-Stack "remove a card then Search(5)" extra is
+  also unimplemented (`rewardStatus: "partial"`; only base Search(5) runs).
+- The opt-in "draw a Creature Bank token when you discover a Near/Far Map Tile"
+  flow and any UI: only the `placeCreatureBank` engine primitive exists, so a
+  bank reaches the map via a scenario/test, not yet via player choice.
+- Bank units carry the underlying unit's `grade` for placement/display, so the
+  "no tier" exemption from tier-targeting effects (e.g. Berserk) is NOT
+  special-cased, and the rulebook's special AI-targeting rules for bank units
+  are not implemented.

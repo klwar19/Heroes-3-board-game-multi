@@ -362,6 +362,26 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     implementationStatus: "implemented",
     source: source("star_axis")
   },
+  creature_bank: {
+    id: "creature_bank",
+    name: "Creature Bank",
+    category: "visitable",
+    // Naval Battles optional rule (rulebook p.66-67, 84-85). A Creature Bank
+    // token sits on a Tile's Blocked Field. Entering it starts a Creature Bank
+    // Combat (no Field Difficulty: no Quick Combat, no Round limit, no MP to
+    // extend, no experience) against the bank's fixed defenders. The specific
+    // bank is stored on `field.bankId`; defenders, Stack Tokens and the scaled
+    // win reward are resolved in the engine (revealCreatureBankArmy /
+    // grantCreatureBankReward). The win reward is granted directly after combat,
+    // so the visit itself carries no generic interaction.
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Naval Battles Expansion)",
+      credit: wikiCredit,
+      url: "https://en.homm3bg.wiki/fields/creature-bank/"
+    }
+  },
 
   // --- Cove expansion: sea fields -----------------------------------------
   // Effects from the community rulebook's Map Locations appendix and the fan

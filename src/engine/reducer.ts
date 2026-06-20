@@ -12553,8 +12553,11 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
         }
 
         // All units acted: neutral combats hit their one-round time limit,
-        // player combats roll straight into the next round.
-        if (combat.context.kind === "neutral" && !combat.context.hasAzure) {
+        // player combats roll straight into the next round. Azure guards and
+        // Creature Banks have NO Round limit (and no MP to extend, rulebook
+        // p.66), so they roll into the next round automatically like a player
+        // combat.
+        if (combat.context.kind === "neutral" && !combat.context.hasAzure && !combat.context.bankId) {
           combat.awaitingContinue = true;
           state.priorityPlayerId = combat.attackerPlayerId;
           state.activePlayerId = combat.attackerPlayerId;

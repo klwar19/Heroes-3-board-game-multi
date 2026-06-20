@@ -1,6 +1,7 @@
 import { cardLibrary } from "@/data/cards/library";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { type CreatureBankId } from "@/data/map/creature-banks";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
@@ -9,6 +10,7 @@ import {
   adventureVictoryMode,
   armyHasMapEffect,
   beginFieldVisit,
+  buildCreatureBankCombatUnits,
   canCrossEdge,
   canHeroReachPlacedTile,
   canPlaceTileAt,
@@ -23,6 +25,9 @@ import {
   drawFromNeutralDeck,
   drawGuardArmy,
   effectiveHandLimit,
+  fieldCreatureBankId,
+  grantCreatureBankReward,
+  isCreatureBankId,
   eliminatePlayer,
   finalizeStartOfTurnHand,
   fieldLayer,
@@ -2261,6 +2266,13 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
   const playerId = hero.controllerId;
   const difficulty = field.difficulty ?? 1;
 
+  // Creature Banks have no Field Difficulty, so they skip Quick Combat and the
+  // Diplomacy shortcut entirely (rulebook p.66): you always fight the bank.
+  if (fieldCreatureBankId(field)) {
+    beginNeutralCombatPlacement(state, hero, field, 0);
+    return;
+  }
+
   // Quick Combat: a hero whose level beats the field difficulty wins outright.
   if (hero.level > difficulty) {
     appendEvent(state, {
@@ -2309,13 +2321,15 @@ function beginNeutralCombatPlacement(
 
   // Rulebook Combat Setup order: the player places up to 5 units first; the
   // guard army is drawn from the tier decks only after placement finishes.
+  const bankId = fieldCreatureBankId(field);
   const combat = makeCombatShell(state, playerId, NEUTRAL_PLAYER_ID);
   combat.context = {
     kind: "neutral",
     heroId: hero.id,
     fieldId: field.spaceId,
     difficulty,
-    hasAzure: false
+    hasAzure: false,
+    ...(bankId ? { bankId } : {})
   };
   assignCombatBoardArt(state, combat);
   combat.setup = {
@@ -3177,6 +3191,57 @@ function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void {
 }
 
 /**
+ * Reveals a Creature Bank's defenders once placement is locked in (rulebook
+ * p.66): build the fixed bank party, place its Stack Tokens by Scenario
+ * Difficulty, then deploy them like any neutral guard line. Records X (the
+ * number of Stacked defenders) on the combat context for the win reward.
+ */
+function revealCreatureBankArmy(state: GameState, bankId: CreatureBankId): void {
+  const combat = state.combat;
+  if (!combat || combat.context.kind !== "neutral") {
+    return;
+  }
+
+  const { units, stackedCount } = buildCreatureBankCombatUnits(state, bankId);
+  combat.context.bankStackCount = stackedCount;
+  // Bank defenders carry no tier, so the azure "no time limit" rule never fires.
+  combat.context.hasAzure = false;
+
+  if (units.length === 0) {
+    combat.setup = null;
+    combat.outcome = {
+      winnerPlayerId: combat.attackerPlayerId,
+      defeatedPlayerId: NEUTRAL_PLAYER_ID,
+      reason: "all-enemy-units-defeated"
+    };
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    return;
+  }
+
+  placeNeutralUnits(units, DEFENDER_BACKLINE, DEFENDER_FRONTLINE);
+  for (const unit of units) {
+    combat.units[unit.id] = unit;
+  }
+
+  appendEvent(state, {
+    type: "CREATURE_BANK_COMBAT_STARTED",
+    playerId: combat.attackerPlayerId,
+    heroId: combat.context.heroId,
+    fieldId: combat.context.fieldId,
+    bankId,
+    unitDefIds: units.map((unit) => unit.unitDefId ?? ""),
+    stackedCount
+  });
+
+  combat.setup = null;
+  if (openTacticsSetupWindows(state)) {
+    return;
+  }
+  finalizeCombatStart(state);
+}
+
+/**
  * Draws stashed while the Groovy Satyr swap choice is open; module-local
  * mirror of combat.pendingNeutralDraws used to rebuild prompt labels.
  */
@@ -3694,6 +3759,12 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
   // rulebook Combat Setup: place your units, then check the Difficulty
   // Table and draw the corresponding neutral cards.
   if (combat.context.kind === "neutral") {
+    // Creature Bank: a fixed party of bank cards with Stack Tokens, not a
+    // Field-Difficulty draw. The Groovy Satyr never swaps bank defenders.
+    if (isCreatureBankId(combat.context.bankId)) {
+      revealCreatureBankArmy(state, combat.context.bankId);
+      return;
+    }
     const guardField = state.adventure?.fields[combat.context.fieldId];
     const draws = drawGuardArmy(state, guardField, combat.context.difficulty);
     // The Groovy Satyr only swaps deck-drawn guards, never fixed bank guards.
@@ -4352,10 +4423,11 @@ export function finalizeAdventureCombat(state: GameState): void {
 
     if (hero && playerId) {
       if (outcome.winnerPlayerId === playerId) {
-        // Secondary Heroes never gain experience from their fights; the gold
-        // (Freelancer's Guild) and Necromancy rewards below are player-level
-        // and still apply.
-        if (hero.kind === "main") {
+        // Creature Banks have no Field Difficulty and grant NO experience
+        // (rulebook p.66). Secondary Heroes never gain experience either; the
+        // gold (Freelancer's Guild) and Necromancy rewards below are
+        // player-level and still apply.
+        if (hero.kind === "main" && !context.bankId) {
           const level = hero.level;
           if (context.hasAzure) {
             gainExperience(state, playerId, MAX_EXPERIENCE_GAIN_TO_SEVEN(hero));
@@ -4419,11 +4491,16 @@ export function finalizeAdventureCombat(state: GameState): void {
     state.priorityPlayerId = null;
 
     if (hero && playerId && outcome.winnerPlayerId === playerId && field) {
-      // BINH house rule: Necromancy is a now-or-never decision made BEFORE the
-      // field reward. If the winner can play it this instant, defer the field
-      // visit behind the decision (its reward is withheld until they play or
-      // skip); otherwise visit the field immediately as usual.
-      if (playerCanPlayNecromancy(state, playerId)) {
+      if (context.bankId) {
+        // Creature Bank win: claim the bank reward, scaled by X = the number of
+        // Stacked defenders (rulebook p.66-67). Banks sit outside the BINH
+        // Necromancy-timing deferral — their reward is granted immediately.
+        grantCreatureBankReward(state, hero.id, context.fieldId, context.bankStackCount ?? 0);
+      } else if (playerCanPlayNecromancy(state, playerId)) {
+        // BINH house rule: Necromancy is a now-or-never decision made BEFORE the
+        // field reward. If the winner can play it this instant, defer the field
+        // visit behind the decision (its reward is withheld until they play or
+        // skip); otherwise visit the field immediately as usual.
         adventure.pendingNecromancy = { playerId, heroId: hero.id, fieldId: context.fieldId };
       } else {
         beginFieldVisit(state, hero.id, context.fieldId, false);

@@ -996,6 +996,15 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "RETALIATION_AGAINST_ATTACK_PENALTY", amount: 1 },
     implementationStatus: "implemented"
   },
+  // Dragon Fly Hive creature-bank card: the same Dazzling Flight, but the
+  // retaliation penalty is -2 Attack instead of -1.
+  "dragon-fly-retaliation-penalty-2": {
+    id: "dragon-fly-retaliation-penalty-2",
+    name: "Dazzling Flight",
+    text: "Retaliation Attacks against this unit suffer -2 Attack.",
+    effect: { type: "RETALIATION_AGAINST_ATTACK_PENALTY", amount: 2 },
+    implementationStatus: "implemented"
+  },
   "dragon-fly-dispel": {
     id: "dragon-fly-dispel",
     name: "Dispel",
@@ -1336,6 +1345,16 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "ON_ATTACK_HEAL_SELF", amount: 2 },
     implementationStatus: "implemented"
   },
+  // Crypt creature-bank Vampires: "After the attack, remove ALL damage from
+  // this unit." The shared self-heal handler clamps to current damage, so a
+  // healthy margin removes every point of damage on any Stacked size.
+  "bank-vampire-life-drain": {
+    id: "bank-vampire-life-drain",
+    name: "Life Drain",
+    text: "[unit_attack] After this unit's attack, remove all damage from it.",
+    effect: { type: "ON_ATTACK_HEAL_SELF", amount: 9 },
+    implementationStatus: "implemented"
+  },
   "halberdier-defense-aura": {
     id: "halberdier-defense-aura",
     name: "Phalanx",
@@ -1544,4 +1563,34 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1 },
     implementationStatus: "implemented"
   }
+};
+
+/**
+ * Creature Bank cards whose printed `abilityText` describes an effect the
+ * engine does NOT (fully) execute. This is the explicit, reviewable registry
+ * the project rules (CLAUDE.md) require so a display-only line is a conscious
+ * declaration, not something a reader has to reverse-engineer. The key is the
+ * underlying neutral unit definition id; the value states exactly what runs.
+ *
+ * A bank card is listed here when EITHER it has no wired ability at all (its
+ * `abilities` array is empty but the text describes an effect) OR it has a
+ * wired ability plus an extra clause that is not wired ("partial"). Cards with
+ * no printed ability (e.g. the Cyclops Stockpile) are NOT listed — an empty
+ * `abilities` array with no `abilityText` is not a stub.
+ */
+export const DISPLAY_ONLY_BANK_ABILITIES: Record<string, string> = {
+  // Fully display-only (abilities: []):
+  "neutral.familiars":
+    "Imp Cache: the 'while Stacked, reduce the enemy's spell Power by 1' drain does nothing.",
+  "neutral.wraiths":
+    "Crypt/Shipwreck: the on-attack 'enemy discards 1 card' does nothing (the wired Wraith discard fires on activation, not on attack).",
+  "neutral.dwarves":
+    "Dwarven Treasury: the 'while Stacked, treated as if it had a Defense token' bonus does nothing.",
+  "neutral.black_dragons": "Dragon Utopia: the 'while Stacked, +3 Attack' bonus does nothing.",
+  "neutral.faerie_dragons": "Dragon Utopia: the 'while Stacked, the enemy cannot cast spells' lock does nothing.",
+  "neutral.crystal_dragons":
+    "Dragon Utopia: the 'while Stacked, treated as if it had a Defense token' bonus does nothing.",
+  // Partial (a wired ability plus a display-only clause):
+  "neutral.medusas":
+    "Medusa Stores: ignore-retaliation runs; the conditional 'if Stacked, the target is Paralyzed' rider does nothing."
 };
