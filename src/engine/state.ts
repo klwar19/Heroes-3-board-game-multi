@@ -4263,6 +4263,19 @@ export type CombatState = {
    */
   pendingCoverOfDarkness?: PlayerId[];
   /**
+   * Shackles of War: the attacker holds a "block the enemy's Surrender" instant
+   * and gets a start-of-combat decision to play it (before the defender's prep
+   * window, where Surrender lives) — resolved like Cover of Darkness. Holds the
+   * single deciding player while open; cleared once they choose.
+   */
+  pendingShackles?: PlayerId[] | null;
+  /**
+   * True once the start-of-combat Shackles decision has been offered this combat,
+   * so it is never re-offered (the attacker who keeps the card still holds it,
+   * which would otherwise re-trigger the prompt).
+   */
+  shacklesOffered?: boolean;
+  /**
    * Player-vs-player pre-combat preparation window. When an enemy hero attacks,
    * the defender may still spend any town actions they have not used this round
    * (build a structure, recruit/reinforce units, buy spells) before the fight —
@@ -5172,6 +5185,7 @@ export type PendingChoice =
         | "combat-step"
         | "combat-activation-order"
         | "cover-of-darkness"
+        | "shackles-of-war"
         | "diplomacy-skip"
         | "diplomacy-recruit"
         | "dimension-door"

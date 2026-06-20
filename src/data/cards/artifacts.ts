@@ -1537,12 +1537,18 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("necklace_of_dragonteeth")
   },
-  // Shackles of War: option 0, played at the start of a player-vs-player
-  // combat, stops the enemy hero Surrendering (BLOCK_ENEMY_SURRENDER → a
-  // CANNOT_SURRENDER_COMBAT effect on the enemy). House rule: it only blocks the
-  // paid Surrender escape — the enemy can still Retreat (and a fought-out loss
-  // is unaffected), so the printed "neither Retreat nor Surrender" is narrowed
-  // to Surrender here. Option 1 draws 2 and discards one of the two drawn cards.
+  // Shackles of War: option 0 stops the enemy hero Surrendering
+  // (BLOCK_ENEMY_SURRENDER → a CANNOT_SURRENDER_COMBAT effect on the enemy).
+  // House rule: it only blocks the paid Surrender escape — the enemy can still
+  // Retreat (and a fought-out loss is unaffected), so the printed "neither
+  // Retreat nor Surrender" is narrowed to Surrender here.
+  //
+  // engine: the block side is NOT played from hand. Because Surrender is a
+  // before-battle decision (the defender's prep window), the attacker is offered
+  // a dedicated start-of-combat choice to play Shackles and lock the defender out
+  // — see maybeOpenShacklesDecision / resolveShacklesChoice in adventure-reducer.
+  // (addOptionPlays suppresses the from-hand block play.) Option 1 (draw 2,
+  // discard one) is unchanged and still played from hand.
   "artifact.shackles_of_war": {
     id: "artifact.shackles_of_war",
     name: "Shackles of War",

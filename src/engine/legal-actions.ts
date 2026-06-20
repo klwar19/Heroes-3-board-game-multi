@@ -2039,6 +2039,13 @@ function addOptionPlays(
     if (option.combatOnly && context !== "combat") {
       continue;
     }
+    // Shackles of War's "block the enemy's Surrender" side is never played from
+    // hand: Surrender is a before-battle (defender prep) decision, so the block is
+    // offered to the attacker as a dedicated start-of-combat choice instead (see
+    // maybeOpenShacklesDecision). Played mid-fight it would be a no-op.
+    if (option.effect.type === "BLOCK_ENEMY_SURRENDER") {
+      continue;
+    }
     // Mystic Orb of Mana's "draw 2" option is offered only on an empty discard.
     if (option.requiresEmptyDiscard && (state.players[playerId]?.discard.length ?? 0) > 0) {
       continue;
