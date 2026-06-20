@@ -3963,35 +3963,20 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
 /**
  * Give up the combat: a concede a participating hero may choose at any point
  * once the fight is under way (unlike the start-of-combat Retreat / Surrender).
- * It always ends the combat as a defeat with the full Retreat consequences —
- * the troop / hand cost is applied in `finalizeAdventureCombat` from the
- * `"give-up"` reason (whole battle army lost in losing-troop mode and against
- * Neutral guards; hand discarded in keep-troops mode).
+ * Player-vs-player only — a Neutral-guard fight has no Give up, just the
+ * end-of-round Retreat. It always ends the combat as a defeat with the full
+ * Retreat consequences — the troop / hand cost is applied in
+ * `finalizeAdventureCombat` from the `"give-up"` reason (whole battle army lost
+ * in losing-troop mode; hand discarded in keep-troops mode).
  */
 export function giveUpCombat(state: GameState, action: Extract<GameAction, { type: "GIVE_UP_COMBAT" }>): void {
   const combat = state.combat;
   const playerId = action.playerId;
-  if (!combat || combat.context.kind === "sandbox") {
-    throw new Error("There is no combat to give up.");
+  if (!combat || combat.context.kind !== "player") {
+    throw new Error("Only a player-vs-player combat can be given up.");
   }
   if (combat.outcome) {
     throw new Error("This combat is already over.");
-  }
-
-  if (combat.context.kind === "neutral") {
-    const hero = state.heroes[combat.context.heroId];
-    if (!hero || hero.controllerId !== playerId) {
-      throw new Error("Only the attacking hero may give up this combat.");
-    }
-    combat.outcome = { winnerPlayerId: NEUTRAL_PLAYER_ID, defeatedPlayerId: playerId, reason: "give-up" };
-    combat.awaitingContinue = false;
-    appendEvent(state, {
-      type: "COMBAT_ENDED",
-      winnerPlayerId: NEUTRAL_PLAYER_ID,
-      defeatedPlayerId: playerId,
-      reason: "give-up"
-    });
-    return;
   }
 
   const isParticipant = combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId;
@@ -4032,12 +4017,11 @@ export function finalizeAdventureCombat(state: GameState): void {
   const keepTroops =
     context.kind === "player" && (adventurePvpTroopLoss(state) === "none" || outcome.reason === "surrender");
 
-  // Give up (concede): the conceding hero either loses its WHOLE battle army —
-  // every unit still on the board, survivors included — or, in keep-troops PvP
-  // mode, keeps every unit and instead discards its entire hand (handled after
-  // the loop). Fights against Neutral guards always cost casualties, so a
-  // Neutral give-up is always the full wipe. The opponent's army still settles
-  // by the normal rules below.
+  // Give up (concede, player-vs-player only): the conceding hero either loses
+  // its WHOLE battle army — every unit still on the board, survivors included —
+  // or, in keep-troops mode, keeps every unit and instead discards its entire
+  // hand (handled after the loop). The opponent's army still settles by the
+  // normal rules below.
   const gaveUp = outcome.reason === "give-up";
   const giveUpLoserId = gaveUp ? outcome.defeatedPlayerId : null;
   const giveUpKeepsTroops = gaveUp && context.kind === "player" && adventurePvpTroopLoss(state) === "none";
@@ -4158,9 +4142,7 @@ export function finalizeAdventureCombat(state: GameState): void {
         ) {
           queueSkeletonReinforce(state, playerId);
         }
-      } else if (outcome.reason === "retreat" || outcome.reason === "give-up") {
-        // Retreat and Give up both fall back to the last visited field (Give up
-        // additionally wipes the whole army, handled in the sync loop above).
+      } else if (outcome.reason === "retreat") {
         const returnTo = adventure.lastVisitedField[hero.id];
         if (returnTo) {
           hero.spaceId = returnTo;

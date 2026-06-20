@@ -201,21 +201,16 @@ describe("Give up: a defeat with the Retreat consequences", () => {
   });
 });
 
-describe("Give up vs Neutral guards: always a full army wipe", () => {
-  it("loses the whole battle army and falls the hero back to the last visited field", () => {
-    const state = makeGame({ pvpTroopLoss: "none" }); // keep-troops is PvP-only; neutrals still cost
+describe("Give up: player-vs-player only", () => {
+  it("is never offered, and is rejected by the reducer, in a Neutral-guard fight", () => {
+    const state = makeGame();
     const hero = getMainHero(state, "p1")!;
     const here = injectField(state, "50,50");
-    const lastField = injectField(state, "40,40");
     hero.spaceId = here.spaceId;
-    state.adventure!.lastVisitedField[hero.id] = lastField.spaceId;
-
-    state.players.p1.army = [
-      { id: "a1", unitDefId: "castle.pikemen", side: "few" },
-      { id: "a2", unitDefId: "castle.pikemen", side: "pack" }
-    ];
+    state.players.p1.army = [{ id: "a1", unitDefId: "castle.pikemen", side: "few" }];
 
     state.phase = "combat";
+    state.activePlayerId = "p1";
     state.combat = {
       id: "n1",
       round: 1,
@@ -225,21 +220,19 @@ describe("Give up vs Neutral guards: always a full army wipe", () => {
       context: { kind: "neutral", heroId: hero.id, fieldId: here.spaceId, difficulty: 7, hasAzure: false },
       setup: null,
       awaitingContinue: false,
-      outcome: { winnerPlayerId: NEUTRAL_PLAYER_ID, defeatedPlayerId: "p1", reason: "give-up" },
+      outcome: null,
       dice: { faces: [...ATTACK_DIE_FACES], seed: "s", rollCount: 0 },
       units: {
-        a1: unit({ id: "a1", controllerId: "p1", armyUnitId: "a1", damage: 0 }),
-        a2: unit({ id: "a2", controllerId: "p1", armyUnitId: "a2", variant: "pack", damage: 0 }),
+        a1: unit({ id: "a1", controllerId: "p1", armyUnitId: "a1", activatedThisRound: true }),
         g1: unit({ id: "g1", controllerId: NEUTRAL_PLAYER_ID, armyUnitId: "g1", bankGuard: true })
       }
     } as CombatState;
 
-    finalizeAdventureCombat(state);
+    expect(getLegalActions(state, "p1").some((l) => l.action.type === "GIVE_UP_COMBAT")).toBe(false);
 
-    const ids = state.players.p1.army.map((armyUnit) => armyUnit.id);
-    expect(ids).not.toContain("a1");
-    expect(ids).not.toContain("a2");
-    expect(state.heroes[hero.id].spaceId).toBe(lastField.spaceId);
+    const result = applyAction(state, { type: "GIVE_UP_COMBAT", playerId: "p1" });
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.state.combat?.outcome ?? null).toBeNull();
   });
 });
 
