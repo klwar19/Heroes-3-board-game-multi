@@ -195,6 +195,7 @@ export {
   getAttackRollMode,
   getCardPlayVariants,
   getLegalActions,
+  getActivationOrder,
   getActivationStep,
   getLegalMoveDestinations,
   getLegalReactionsForTrigger,
@@ -204,7 +205,6 @@ export {
   isAdjacent,
   isEffectLegalForTrigger,
   isUnitAlive,
-  sortUnitsForActivation,
   standingSpellPower
 } from "./legal-actions";
 export type { ActivationStep, PendingReactionPower } from "./legal-actions";

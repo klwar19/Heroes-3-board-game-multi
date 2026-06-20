@@ -17,6 +17,7 @@ import {
   DEFENDER_BACKLINE,
   DEFENDER_FRONTLINE,
   effectiveInitiative,
+  getActivationOrder,
   getBattlefieldLabel,
   getBattlefieldTerrain,
   getUnitAbilityDefinitions,
@@ -27,7 +28,6 @@ import {
   isUnitAlive,
   pickCombatBoardArtId,
   playerSpellCastsIgnoreLimit,
-  sortUnitsForActivation,
   type BattlefieldTokenState,
   type CombatBoardArtId,
   type CombatTokenState,
@@ -1240,14 +1240,17 @@ export function BattlefieldBoard({
 }
 
 /**
- * The activation order as a row of the actual unit cards, sorted the way the
- * round will play out (initiative, attacker first on ties). Visible already
- * during deployment, so both sides see how the placed armies will be sorted
- * before the combat starts.
+ * The activation order as a row of the actual unit cards, in the exact sequence
+ * the round will play out. This uses getActivationOrder, which steps the engine's
+ * own selection logic — so it honours the attacker-first tie rule (every attacker
+ * unit at a given initiative activates before any defender unit at the same
+ * initiative) and the Haste/Slow shifts that move units between tiers. Visible
+ * already during deployment, so both sides see how the placed armies will
+ * activate before the combat starts.
  */
 export function InitiativeRail({ state }: { state: GameState }) {
   const { zoomUnit } = useCardZoom();
-  const units = state.combat ? sortUnitsForActivation(state.combat, state.activeEffects) : [];
+  const units = state.combat ? getActivationOrder(state.combat, state.activeEffects) : [];
   const inSetup = Boolean(state.combat?.setup);
 
   return (

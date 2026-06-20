@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createInitialGameState, getActivationStep, NEUTRAL_PLAYER_ID } from "./index";
+import {
+  applyAction,
+  createInitialGameState,
+  getActivationOrder,
+  getActivationStep,
+  makeActiveEffect,
+  NEUTRAL_PLAYER_ID
+} from "./index";
 import type { GameAction, GameState, PendingChoice } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -27,6 +34,19 @@ function setInitiatives(state: GameState, values: Record<string, number>): void 
   for (const [id, initiative] of Object.entries(values)) {
     state.combat!.units[id].initiative = initiative;
   }
+}
+
+/** A lasting +amount initiative shift on one unit, exactly as Haste/Ammo Cart would. */
+function addInitiativeShift(state: GameState, unitId: string, amount: number): void {
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      { name: "Initiative shift", scope: "unit", duration: { type: "combat" }, modifiers: [{ type: "INITIATIVE_BONUS", amount }] },
+      { type: "system" },
+      state.combat!.units[unitId].controllerId,
+      { type: "unit", unitId }
+    )
+  );
 }
 
 describe("combat activation order — same-speed handling", () => {
@@ -88,7 +108,7 @@ describe("combat activation order — same-speed handling", () => {
     expect(state.combat!.activeUnitId).toBe("unit_p1_griffins");
   });
 
-  it("alternates sides on a cross-side tie, attacker-first (the player/attacker leads)", () => {
+  it("activates the attacker's tied unit before the defender's on a cross-side tie", () => {
     let state = createInitialGameState("order-cross-side");
     state.players.p1.hand = [];
     state.players.p2.hand = [];
@@ -104,8 +124,8 @@ describe("combat activation order — same-speed handling", () => {
 
     state = startFreshRound(state);
 
-    // Single candidate per side, so no prompt — and the ATTACKER's unit (p1) acts
-    // first on the even split, then the two sides alternate.
+    // Single candidate per side, so no prompt — the ATTACKER's unit (p1) acts
+    // first on the tie, then the defender's tied unit follows.
     expect(orderChoice(state)).toBeNull();
     expect(state.combat!.activeUnitId).toBe("unit_p1_griffins");
 
@@ -113,7 +133,7 @@ describe("combat activation order — same-speed handling", () => {
     expect(state.combat!.activeUnitId).toBe("unit_p2_vampires");
   });
 
-  it("interleaves the two sides when both have several units at the same speed (attacker-first)", () => {
+  it("runs ALL the attacker's tied units before any defender unit at that speed", () => {
     let state = createInitialGameState("order-cross-multi");
     state.players.p1.hand = [];
     state.players.p2.hand = [];
@@ -129,31 +149,31 @@ describe("combat activation order — same-speed handling", () => {
 
     state = startFreshRound(state);
 
-    // Even split → the ATTACKER side (p1) picks first.
+    // The attacker holds the tie outright: it is prompted to order BOTH of its
+    // tied units first.
     let choice = orderChoice(state);
-    expect(choice, "attacker picks first on an even tie").toBeTruthy();
+    expect(choice, "attacker picks first on a tie").toBeTruthy();
     expect(choice!.playerId).toBe("p1");
     state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice!.id, optionIndex: 0 });
     const firstAttacker = state.combat!.activeUnitId!;
     expect(P1).toContain(firstAttacker);
     state = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: firstAttacker });
 
-    // Now the defender is behind, so it activates next — and it has two tied
-    // units, so its owner is prompted.
-    choice = orderChoice(state);
-    expect(choice, "defender picks after the attacker's first unit").toBeTruthy();
-    expect(choice!.playerId).toBe("p2");
-    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p2", choiceId: choice!.id, optionIndex: 0 });
-    const firstDefender = state.combat!.activeUnitId!;
-    expect(P2).toContain(firstDefender);
-    state = applyOk(state, { type: "DEFEND_UNIT", playerId: "p2", unitId: firstDefender });
-
-    // Back to the attacker's remaining unit — only one left at this speed, so no
-    // prompt this time.
+    // The attacker's OTHER tied unit comes next — NOT the defender. With only one
+    // attacker unit left at this speed there is no prompt.
     expect(orderChoice(state)).toBeNull();
     const secondAttacker = state.combat!.activeUnitId!;
     expect(P1).toContain(secondAttacker);
     expect(secondAttacker).not.toBe(firstAttacker);
+    state = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: secondAttacker });
+
+    // Only now, with the whole attacking side done at init 7, does the defender
+    // activate — and it is prompted to order its own two tied units.
+    choice = orderChoice(state);
+    expect(choice, "defender activates only after every attacker at this speed").toBeTruthy();
+    expect(choice!.playerId).toBe("p2");
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p2", choiceId: choice!.id, optionIndex: 0 });
+    expect(P2).toContain(state.combat!.activeUnitId!);
   });
 });
 
@@ -253,5 +273,123 @@ describe("getActivationStep — the ordering primitive", () => {
     // cannot answer a prompt itself.
     expect(step?.side).toBe(NEUTRAL_PLAYER_ID);
     expect(step?.candidates.length).toBe(2);
+  });
+});
+
+/**
+ * Walks a whole round through the reducer and returns the ids in the exact
+ * sequence units became active. Always picks the first tied candidate, the same
+ * deterministic pick getActivationOrder previews, so the two can be compared.
+ */
+function playOutRoundSequence(state: GameState): string[] {
+  let current = state;
+  const sequence: string[] = [];
+  for (let guard = 0; guard < 40; guard += 1) {
+    const choice = orderChoice(current);
+    if (choice) {
+      current = applyOk(current, {
+        type: "CHOOSE_OPTION",
+        playerId: choice.playerId,
+        choiceId: choice.id,
+        optionIndex: 0
+      });
+      continue;
+    }
+    const activeId = current.combat!.activeUnitId;
+    if (!activeId) {
+      break;
+    }
+    sequence.push(activeId);
+    current = applyOk(current, {
+      type: "DEFEND_UNIT",
+      playerId: current.combat!.units[activeId].controllerId,
+      unitId: activeId
+    });
+  }
+  return sequence;
+}
+
+describe("getActivationOrder — the rail preview matches the engine's real order", () => {
+  it("lists every attacker unit at a tied speed before the defender's tied unit", () => {
+    let state = createInitialGameState("rail-cross-tie");
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    // Attacker (p1) has TWO units tied at the top; the defender (p2) has ONE.
+    setInitiatives(state, {
+      unit_p1_griffins: 9,
+      unit_p1_crusaders: 9,
+      unit_p1_marksmen: 1,
+      unit_p2_skeletons: 9,
+      unit_p2_vampires: 1,
+      unit_p2_dread_knights: 1
+    });
+
+    const preview = getActivationOrder(state.combat!, state.activeEffects).map((unit) => unit.id);
+
+    // Attacker-first: BOTH attacker units at init 9 come before the defender's
+    // tied unit. The defender never slips in between them.
+    expect(preview.slice(0, 3)).toEqual(["unit_p1_crusaders", "unit_p1_griffins", "unit_p2_skeletons"]);
+    expect(preview.indexOf("unit_p2_skeletons")).toBeGreaterThan(preview.indexOf("unit_p1_griffins"));
+
+    // And the preview is exactly the sequence the reducer actually plays.
+    state = startFreshRound(state);
+    expect(playOutRoundSequence(state)).toEqual(preview);
+  });
+
+  it("keeps a defender Cyclopes lifted to a TIE behind the attacker's same-speed unit (Archery-only repro)", () => {
+    // The reported bug: a defender Cyclopes (few, base initiative 6) plays Expert
+    // Archery for +1 initiative, reaching 7, and was activating ahead of the
+    // attacker. With attacker-first ties it must sit BEHIND the attacker's own
+    // 7-initiative unit, and of course behind the attacker's 9-initiative flier.
+    let state = createInitialGameState("rail-archery-cyclops");
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.combat!.units.unit_p2_skeletons.type = "ranged"; // stand-in for the Cyclopes
+    setInitiatives(state, {
+      unit_p1_griffins: 9, // attacker's Thunderbird-speed flier
+      unit_p1_crusaders: 7, // attacker's 7-speed unit the Cyclopes ties
+      unit_p1_marksmen: 1,
+      unit_p2_skeletons: 6, // Cyclopes few base initiative
+      unit_p2_vampires: 1,
+      unit_p2_dread_knights: 1
+    });
+    addInitiativeShift(state, "unit_p2_skeletons", 1); // Expert Archery's +1 → 7
+
+    const preview = getActivationOrder(state.combat!, state.activeEffects).map((unit) => unit.id);
+    // 9 leads, then the attacker's 7 (tie won by the attacker), then the Cyclopes
+    // at its boosted 7 — never first, never ahead of the same-speed attacker.
+    expect(preview.slice(0, 3)).toEqual(["unit_p1_griffins", "unit_p1_crusaders", "unit_p2_skeletons"]);
+
+    state = startFreshRound(state);
+    const sequence = playOutRoundSequence(state);
+    expect(sequence).toEqual(preview);
+    // The Cyclopes is behind both the 9 flier and the tied 7 attacker.
+    expect(sequence.indexOf("unit_p2_skeletons")).toBeGreaterThan(sequence.indexOf("unit_p1_griffins"));
+    expect(sequence.indexOf("unit_p2_skeletons")).toBeGreaterThan(sequence.indexOf("unit_p1_crusaders"));
+  });
+
+  it("still places a defender unit by its EFFECTIVE initiative when it OUTSPEEDS the attacker", () => {
+    let state = createInitialGameState("rail-boosted-defender");
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    // Defender (p2) ranged unit sits at a low printed initiative...
+    state.combat!.units.unit_p2_skeletons.type = "ranged";
+    setInitiatives(state, {
+      unit_p1_griffins: 8,
+      unit_p1_crusaders: 7,
+      unit_p1_marksmen: 1,
+      unit_p2_skeletons: 6,
+      unit_p2_vampires: 1,
+      unit_p2_dread_knights: 1
+    });
+    // ...but a +3 shift lifts it to 9, STRICTLY above every attacker unit. It then
+    // leads — attacker-first only breaks ties, it never overrides a real speed gap.
+    addInitiativeShift(state, "unit_p2_skeletons", 3);
+
+    const preview = getActivationOrder(state.combat!, state.activeEffects).map((unit) => unit.id);
+    expect(preview.slice(0, 3)).toEqual(["unit_p2_skeletons", "unit_p1_griffins", "unit_p1_crusaders"]);
+
+    state = startFreshRound(state);
+    expect(playOutRoundSequence(state)).toEqual(preview);
   });
 });
