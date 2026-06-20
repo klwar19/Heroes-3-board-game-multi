@@ -610,15 +610,15 @@ export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitSt
  * Which side activates next, and the units that side may pick from, at the top
  * (highest effective initiative) tier of un-acted units.
  *
- * Tie rules (house rules layered on the rulebook initiative order):
+ * Tie rules (layered on the rulebook initiative order):
+ *  - The ATTACKER is always prioritised on a tie: every attacker unit at this
+ *    initiative activates before any defender (or Neutral) unit at the same
+ *    initiative. So a defender unit that ties an attacker unit can never slip in
+ *    ahead of it — the whole attacking side at that speed goes first.
  *  - Units of the SAME side tied at this initiative are ALL returned as
- *    `candidates`, so the controller chooses which goes first (engine prompt).
- *  - When BOTH sides have units tied at this initiative, activation ALTERNATES
- *    between them rather than letting one side run all of its tied units first.
- *    The side that has activated fewer units at this initiative this round acts
- *    next; on an even split the ATTACKER side goes first, then they go back and
- *    forth. In a Neutral fight the player is always the attacker, so the player
- *    leads and the Neutral army follows; in PvP the attacker leads the defender.
+ *    `candidates`, so that side's controller chooses which of its own goes first
+ *    (engine prompt). The Neutral army cannot answer, so the attacker breaks its
+ *    tie on its behalf (see advanceActiveUnit).
  */
 export type ActivationStep = {
   side: PlayerId;
@@ -650,28 +650,17 @@ function selectActivationStep(
     .sort((left, right) => left.id.localeCompare(right.id));
 
   const tierAttackers = tier.filter((unit) => unit.controllerId === attackerId);
-  const tierOthers = tier.filter((unit) => unit.controllerId !== attackerId);
 
-  if (tierOthers.length === 0) {
+  // Attacker always goes first on a tie: hand out every attacker unit at this
+  // initiative before any defender/Neutral unit at the same initiative. Only
+  // once the attacking side has no un-acted unit left at this speed does the
+  // other side activate.
+  if (tierAttackers.length > 0) {
     return { side: attackerId, candidates: tierAttackers, initiative: topInitiative };
   }
-  if (tierAttackers.length === 0) {
-    return { side: tierOthers[0].controllerId, candidates: tierOthers, initiative: topInitiative };
-  }
 
-  // Both sides are present at this initiative: alternate, ATTACKER-first on
-  // ties. Whichever side has activated fewer units at this tier goes next; on an
-  // even split the attacker leads (the player in a Neutral fight, the attacking
-  // hero in PvP), so the two sides go back and forth starting with the attacker.
-  const actedAtTier = (predicate: (unit: CombatUnitState) => boolean) =>
-    units.filter((unit) => hasActed(unit) && initiativeOf(unit) === topInitiative && predicate(unit)).length;
-  const attackerActed = actedAtTier((unit) => unit.controllerId === attackerId);
-  const othersActed = actedAtTier((unit) => unit.controllerId !== attackerId);
-
-  if (othersActed < attackerActed) {
-    return { side: tierOthers[0].controllerId, candidates: tierOthers, initiative: topInitiative };
-  }
-  return { side: attackerId, candidates: tierAttackers, initiative: topInitiative };
+  const tierOthers = tier.filter((unit) => unit.controllerId !== attackerId);
+  return { side: tierOthers[0].controllerId, candidates: tierOthers, initiative: topInitiative };
 }
 
 export function getActivationStep(
@@ -693,17 +682,15 @@ export function getNextUnitToActivate(combat: CombatState, activeEffects: Active
 
 /**
  * The full order the current combat round will actually play out, computed by
- * stepping the SAME selection logic the engine uses, one unit at a time. The
- * initiative rail shows this so the displayed order matches reality — in
- * particular the cross-side ALTERNATION on initiative ties (attacker, defender,
- * attacker, …), which a flat "highest initiative, attacker-first" sort gets
- * wrong: it would list all of one side's tied units before the other's, even
- * though the engine interleaves them.
+ * stepping the SAME selection logic the engine uses, one unit at a time, so the
+ * initiative rail can never disagree with how the round actually activates —
+ * including the attacker-first tie rule (every attacker unit at a given
+ * initiative before any defender unit at the same initiative).
  *
  * Already-activated units come first (the rail greys them as "done"), then the
  * upcoming units in true activation order. Same-side ties are emitted in id
  * order; the live engine prompts the controller to choose among them, so that
- * part is a best-effort preview while the cross-side interleaving is exact.
+ * part is a best-effort preview while the cross-side ordering is exact.
  */
 export function getActivationOrder(
   combat: CombatState,
