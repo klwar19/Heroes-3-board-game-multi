@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, getLegalActions } from "./index";
-import { drawAstrologersCard, getTownOfPlayer, startAdventureRound } from "./adventure";
+import { drawAstrologersCard, getTownOfPlayer, NEUTRAL_DECK_IDS, startAdventureRound } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
+import { coreUnitDefinitions } from "@/data/factions/units";
+import { neutralUnitIdsByFaction, neutralUnitIdsByTier } from "@/data/factions/core";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 /**
@@ -13,7 +15,10 @@ import type { GameAction, GameState, PlayerId } from "./state";
  *   - Charlie and his Circus (Rampart): draw one Neutral Unit per Dwelling tier
  *     you control and recruit one, paying its cost — offered this round and the
  *     next (the drawn Astrologers round + the following Resource round).
- *   - Unexpected Reinforcements (Tower): the same draw, recruited for free, once.
+ *   - Unexpected Reinforcements (Tower): search the Neutral Units deck and
+ *     recruit, for free, one neutral unit associated with your faction (the
+ *     neutral counterpart of a roster unit) onto the Neutral side — so it can
+ *     never be reinforced to a Pack.
  *
  * The recruitment cards reuse the engine's Dwelling-tier gate (unlockedRecruitTiers,
  * the same gate behind Cyra's Diplomacy); Azure is never recruitable because no
@@ -229,11 +234,17 @@ describe("Astrologers — Charlie and his Circus (paid Neutral recruit)", () => 
 });
 
 // ===========================================================================
-// Unexpected Reinforcements — free recruit of one of YOUR faction's units,
-// gated by the Dwellings you have built (faction-agnostic: any faction works).
+// Unexpected Reinforcements — search the Neutral Units deck and recruit, for
+// free, one NEUTRAL unit associated with your faction (the neutral counterpart
+// of a roster unit), gated by the Dwellings you have built. It is added on the
+// single-sided Neutral side, so it can NEVER be reinforced to a Pack — the
+// whole point of the card (you get the neutral creature, not the upgradeable
+// faction unit). Faction-agnostic: any defined faction works.
 // ===========================================================================
 
-describe("Astrologers — Unexpected Reinforcements (free own-faction recruit)", () => {
+const NEUTRAL_GOLD_DECK = NEUTRAL_DECK_IDS.gold;
+
+describe("Astrologers — Unexpected Reinforcements (free associated-neutral recruit)", () => {
   function unexpectedGame(tiers: ("bronze" | "silver" | "gold")[] = ["gold"]): GameState {
     const state = createAdventureGameState({ seed: "unexpected", difficulty: "normal", rollFirstPlayer: false });
     state.players.p1.factionId = "castle";
@@ -244,9 +255,11 @@ describe("Astrologers — Unexpected Reinforcements (free own-faction recruit)",
     return state;
   }
 
-  it("recruits one of the player's own faction units for free, onto the Few side", () => {
+  it("recruits the neutral counterpart of a faction unit, for free, onto the Neutral side", () => {
     const state = unexpectedGame(["gold"]); // Castle gold tier: Champions + Archangels
     const armyBefore = state.players.p1.army.length;
+    const deckBefore = state.decks[NEUTRAL_GOLD_DECK]!.drawPile.length;
+    expect(state.decks[NEUTRAL_GOLD_DECK]!.drawPile).toContain("neutral.archangels");
     drawAstrologersCard(state);
     pumpAdventureQueues(state);
 
@@ -256,12 +269,45 @@ describe("Astrologers — Unexpected Reinforcements (free own-faction recruit)",
     expect(labels).toContain("Skip");
 
     const after = chooseVisitOption(state, "p1", /Recruit Archangels/);
-    const recruited = after.players.p1.army.find((unit) => unit.unitDefId === "castle.archangels");
-    expect(recruited?.side).toBe("few");
+    // The NEUTRAL Archangels card is recruited — not the upgradeable faction one.
+    const recruited = after.players.p1.army.find((unit) => unit.unitDefId === "neutral.archangels");
+    expect(recruited?.side).toBe("neutral");
+    expect(after.players.p1.army.some((unit) => unit.unitDefId === "castle.archangels")).toBe(false);
     expect(after.players.p1.army.length).toBe(armyBefore + 1);
     // "for free" — no resources spent despite having none.
     expect(after.players.p1.resources).toEqual({ gold: 0, buildingMaterials: 0, valuables: 0 });
+    // The card is taken out of the Neutral Units deck (a search-and-take), never
+    // duplicated — it only returns to the discard pile if the unit is defeated.
+    expect(after.decks[NEUTRAL_GOLD_DECK]!.drawPile).not.toContain("neutral.archangels");
+    expect(after.decks[NEUTRAL_GOLD_DECK]!.discardPile).not.toContain("neutral.archangels");
+    expect(after.decks[NEUTRAL_GOLD_DECK]!.drawPile.length).toBe(deckBefore - 1);
     expect(after.adventure?.pendingVisit).toBeNull();
+  });
+
+  // The bug this card had: it recruited the player's OWN faction unit on the Few
+  // side, which a Citadel could then reinforce to a Pack. A neutral unit has no
+  // Pack — assert the recruited creature is never offered a reinforcement.
+  it("the recruited unit can NEVER be reinforced to a Pack", () => {
+    const state = unexpectedGame(["gold"]);
+    const town = getTownOfPlayer(state, "p1")!;
+    town.buildings.push("castle.citadel"); // UNLOCK_REINFORCE — pack upgrades enabled
+    state.players.p1.townTokens.population = true;
+    // Plenty to pay any Pack cost (Archangels' Pack is 30 gold + 2 valuables), so
+    // the only reason no reinforcement is offered is that a neutral unit has none.
+    state.players.p1.resources = { gold: 100, buildingMaterials: 100, valuables: 100 };
+    drawAstrologersCard(state);
+    pumpAdventureQueues(state);
+
+    const after = chooseVisitOption(state, "p1", /Recruit Archangels/);
+    // With the fix the army holds neutral.archangels (Neutral side); a neutral
+    // unit is not on the faction roster the reinforce menu reads, so no Pack
+    // upgrade is ever offered. (Under the old Few-side bug this listed
+    // "Reinforce Archangels to a pack".)
+    const labels = getLegalActions(after, "p1")
+      .filter((entry) => entry.action.type === "POPULATION_ACTION")
+      .map((entry) => entry.label);
+    expect(labels.some((label) => /Reinforce Archangels/.test(label))).toBe(false);
+    expect(labels.some((label) => /Reinforce .* to a pack/.test(label))).toBe(false);
   });
 
   it("only offers units whose Dwelling tier the player has built", () => {
@@ -289,14 +335,62 @@ describe("Astrologers — Unexpected Reinforcements (free own-faction recruit)",
     expect(labels.some((label) => /Recruit Crusaders/.test(label))).toBe(false); // silver — not built
   });
 
+  it("never offers a faction's top-tier signature unit (its neutral card is azure)", () => {
+    const state = unexpectedGame([]);
+    state.players.p1.factionId = "rampart";
+    setDwellingTiers(state, "p1", ["gold"]); // Rampart gold: Unicorns + Gold Dragons
+    drawAstrologersCard(state);
+    pumpAdventureQueues(state);
+
+    const labels = visitOptionLabels(state, "p1");
+    expect(labels.some((label) => /Recruit Unicorns/.test(label))).toBe(true); // has neutral.unicorns (gold)
+    // Gold Dragons DO have a Neutral Units card, but only at the azure tier
+    // (neutral.gold_dragons) — no Dwelling unlocks azure, so it is never offered
+    // here. The card still exists and shows up as an azure neutral guard.
+    expect(labels.some((label) => /Gold Dragons/.test(label))).toBe(false);
+    expect(coreUnitDefinitions["neutral.gold_dragons"]?.tier).toBe("azure");
+    expect(neutralUnitIdsByTier.azure).toContain("neutral.gold_dragons");
+  });
+
+  it("ships the azure neutral top-tier creatures as guards, excluded from recruitment", () => {
+    // Gold Dragons / Titans / Hydras exist as azure Neutral Units (so they can
+    // guard high fields) but are not the same-tier counterpart of any faction
+    // unit, so no faction can recruit them via Unexpected Reinforcements.
+    for (const id of ["neutral.gold_dragons", "neutral.titans", "neutral.hydras"] as const) {
+      const def = coreUnitDefinitions[id];
+      expect(def?.neutral, `${id} has a neutral side`).toBeTruthy();
+      expect(def?.tier, `${id} is azure`).toBe("azure");
+      expect(neutralUnitIdsByTier.azure, `${id} is in the azure deck`).toContain(id);
+      const recruitableBy = Object.entries(neutralUnitIdsByFaction)
+        .filter(([, ids]) => ids.includes(id))
+        .map(([faction]) => faction);
+      expect(recruitableBy, `${id} is recruitable by no faction`).toEqual([]);
+    }
+  });
+
+  it("does not offer a unit whose only neutral copy has left the deck", () => {
+    const state = unexpectedGame(["gold"]);
+    // Remove both Castle gold counterparts from the deck (e.g. already drawn into
+    // a guard army that is still on the map) — neither can be searched out.
+    const deck = state.decks[NEUTRAL_GOLD_DECK]!;
+    deck.drawPile = deck.drawPile.filter((id) => id !== "neutral.archangels" && id !== "neutral.champions");
+    drawAstrologersCard(state);
+    pumpAdventureQueues(state);
+    // No gold counterpart remains in the deck, so there is nothing to offer.
+    expect(state.adventure?.pendingVisit).toBeNull();
+  });
+
   it("is optional — Skip recruits nothing", () => {
     const state = unexpectedGame(["gold"]);
     const armyBefore = state.players.p1.army.length;
+    const deckBefore = state.decks[NEUTRAL_GOLD_DECK]!.drawPile.length;
     drawAstrologersCard(state);
     pumpAdventureQueues(state);
 
     const after = chooseVisitOption(state, "p1", /^Skip$/);
     expect(after.players.p1.army.length).toBe(armyBefore);
+    // Skipping touches no deck — every counterpart stays in the Neutral deck.
+    expect(after.decks[NEUTRAL_GOLD_DECK]!.drawPile.length).toBe(deckBefore);
     expect(after.adventure?.pendingVisit).toBeNull();
   });
 

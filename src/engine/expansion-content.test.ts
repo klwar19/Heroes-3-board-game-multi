@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { TOWN_BUILDING_IMAGES } from "@/data/assets/homm-assets";
 import { cardLibrary } from "@/data/cards/library";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
@@ -13,22 +13,25 @@ import {
   classifyHeroStep,
   createAdventureGameState,
   getLegalActions,
+  getMainHero,
   applyAction,
   slotDirection,
   tileCentersOverlap,
   tileFootprint,
   tileLatticeNeighbors,
   type GameState,
-  type GameAction
+  type GameAction,
+  type MapFieldState
 } from "./index";
 import {
   hillFortCost,
   observatoryDiscoverTargets,
   observatoryPlacementCenters,
   observatoryRevealTargets,
+  pumpAdventureQueues,
   removableHandCards
 } from "./adventure-reducer";
-import { beginFieldVisit, instantiateTile } from "./adventure";
+import { beginFieldVisit, instantiateTile, startAdventureRound } from "./adventure";
 import { hexEquals, hexNeighbor, hexSpaceId, type HexCoord } from "./hex";
 
 function apply(state: GameState, action: GameAction): GameState {
@@ -179,6 +182,160 @@ describe("Stronghold content", () => {
     expect(unitAbilities["wolf-raiders-strike-twice"].implementationStatus).toBe("implemented");
     expect(unitAbilities["thunderbirds-lightning"].implementationStatus).toBe("implemented");
     expect(unitAbilities["behemoth-defense-crush-pack"].implementationStatus).toBe("implemented");
+  });
+});
+
+describe("Stronghold City Hall resource-round choice", () => {
+  // Regression: the City Hall options used to live in a module-level variable
+  // outside game state. After a reload / reconnect / server restart that
+  // variable reset to null, so choosing an option threw "That City Hall option
+  // does not exist", the action failed, and the pending choice was never
+  // cleared — the player stayed stuck in the "choice" phase and could no longer
+  // draw or discard. The options now ride in the pending choice (game state),
+  // so resolution survives a full serialization round-trip.
+  function openStrongholdCityHallChoice(): GameState {
+    const state = createAdventureGameState({ seed: "stronghold-cityhall", rollFirstPlayer: false });
+    state.towns.town_p1.factionId = "stronghold";
+    state.towns.town_p1.buildings = ["stronghold.city_hall"];
+    state.adventure!.rewardQueue = [];
+    state.round = 3; // a resource round → the City Hall offers its choice
+    startAdventureRound(state);
+    pumpAdventureQueues(state);
+    return state;
+  }
+
+  it("carries the option payloads in game state so they survive serialization", () => {
+    const state = openStrongholdCityHallChoice();
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    if (choice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the City Hall choice");
+    }
+    expect(choice.context).toBe("city-hall");
+    // Option 0 = draw 2 cards; option 1 = gain 2 building materials.
+    expect(choice.cityHall?.options[0]).toMatchObject({ drawCards: 2 });
+    expect(choice.cityHall?.options[1]).toMatchObject({ buildingMaterials: 2 });
+
+    // A serialized state keeps the payloads (nothing depends on an off-state cache).
+    const reloaded: GameState = JSON.parse(JSON.stringify(state));
+    const reloadedChoice = reloaded.pendingChoice;
+    if (reloadedChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the City Hall choice to survive the round-trip");
+    }
+    expect(reloadedChoice.cityHall?.options[0]).toMatchObject({ drawCards: 2 });
+  });
+
+  // Resolves a City Hall choice through a freshly re-imported engine, after
+  // round-tripping the state through JSON. vi.resetModules() re-initializes the
+  // engine module, so any module-level cache (the old `cityHallChoiceBeing
+  // Resolved` variable) is null — exactly the off-process condition (page
+  // reload / reconnect / server restart) that used to make the pick throw and
+  // strand the player in the choice phase. Resolution must rely on game state
+  // alone, so this fails if the option payloads stop riding in the choice.
+  async function resolveAfterReload(opened: GameState, optionIndex: number) {
+    const choiceId = opened.pendingChoice?.id;
+    expect(choiceId).toBeTruthy();
+    const serialized = JSON.stringify(opened);
+
+    vi.resetModules();
+    const fresh = await import("./index");
+    const before: GameState = JSON.parse(serialized);
+    const result = fresh.applyAction(JSON.parse(serialized), {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choiceId!,
+      optionIndex
+    });
+    expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+    return { before, after: result.state };
+  }
+
+  it("resolves the draw-2-cards option after a reload and frees the stuck choice", async () => {
+    const opened = openStrongholdCityHallChoice();
+    expect(opened.players.p1.deck.length).toBeGreaterThanOrEqual(2);
+
+    const { before, after } = await resolveAfterReload(opened, 0);
+
+    // The draw actually happened, the choice is cleared, and the player is no
+    // longer trapped in the choice phase (can draw / discard again).
+    expect(after.players.p1.hand.length).toBe(before.players.p1.hand.length + 2);
+    expect(after.players.p1.deck.length).toBe(before.players.p1.deck.length - 2);
+    expect(after.pendingChoice).toBeNull();
+    expect(after.phase).not.toBe("choice");
+  });
+
+  it("resolves the building-materials option after a reload", async () => {
+    const opened = openStrongholdCityHallChoice();
+    const { before, after } = await resolveAfterReload(opened, 1);
+
+    expect(after.players.p1.resources.buildingMaterials).toBe(
+      before.players.p1.resources.buildingMaterials + 2
+    );
+    expect(after.pendingChoice).toBeNull();
+    expect(after.phase).not.toBe("choice");
+  });
+});
+
+describe("Fountain of Youth / Magic Spring effects", () => {
+  // The two fields' effects are swapped relative to the printed wiki text to
+  // match the physical board game tiles (confirmed by playtest):
+  //   Fountain of Youth → look at the top 3 cards of your discard pile and
+  //                       return one to hand (engine step type MAGIC_SPRING).
+  //   Magic Spring      → gain a positive Morale token AND +1 movement.
+  // These tests fail if either definition is reverted to the other effect.
+  function injectVisitable(state: GameState, location: string, spaceId = "77,77"): MapFieldState {
+    const field: MapFieldState = {
+      spaceId,
+      tileInstanceId: "swap-test-tile",
+      slot: 0,
+      location,
+      difficulty: 0,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    };
+    state.adventure!.fields[spaceId] = field;
+    return field;
+  }
+
+  it("Magic Spring grants a morale token and +1 movement", () => {
+    const state = createAdventureGameState({ seed: "field-swap-spring", rollFirstPlayer: false });
+    const field = injectVisitable(state, "magic_spring");
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = field.spaceId;
+    const moraleBefore = state.players.p1.morale;
+    const movementBefore = hero.movementPoints;
+
+    beginFieldVisit(state, hero.id, field.spaceId, false);
+
+    // The morale + movement sequence resolves with no further input needed.
+    expect(state.adventure?.pendingVisit).toBeNull();
+    expect(state.players.p1.morale).toBe(moraleBefore + 1);
+    expect(state.heroes[hero.id].movementPoints).toBe(movementBefore + 1);
+  });
+
+  it("Fountain of Youth returns a card from the discard pile to hand", () => {
+    const state = createAdventureGameState({ seed: "field-swap-fountain", rollFirstPlayer: false });
+    const field = injectVisitable(state, "fountain_of_youth");
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = field.spaceId;
+
+    // Seed three known cards in the discard pile; the top is the last element.
+    state.players.p1.discard = ["fy_bottom", "fy_middle", "fy_top"];
+    const handBefore = state.players.p1.hand.length;
+
+    beginFieldVisit(state, hero.id, field.spaceId, false);
+
+    // The Fountain runs the discard-recovery step, awaiting the player's pick.
+    expect(state.adventure?.pendingVisit?.steps[0]?.type).toBe("MAGIC_SPRING");
+
+    // optionIndex 0 = the top of the discard pile ("fy_top").
+    const next = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(next.players.p1.hand).toContain("fy_top");
+    expect(next.players.p1.hand.length).toBe(handBefore + 1);
+    expect(next.players.p1.discard).not.toContain("fy_top");
+    expect(next.adventure?.pendingVisit).toBeNull();
   });
 });
 
