@@ -1788,6 +1788,10 @@ export function NeutralStepOverlay({
   const reactorId = step.reactingPlayerId ?? state.combat?.attackerPlayerId;
   const reactorName = reactorId ? state.players[reactorId]?.name : undefined;
   const isPre = step.kind !== "guard-walk";
+  // The header speaks to whoever is viewing: only the reacting side is invited
+  // to "react". The player whose own unit is about to act — and any spectator —
+  // gets a neutral "Reaction window" instead of being told it is the enemy's turn.
+  const isReactor = viewerPlayerId === reactorId;
 
   // Pre-activation preview: what the (neutral) unit is about to do.
   let summary: string;
@@ -1814,7 +1818,7 @@ export function NeutralStepOverlay({
       <div className="combatResultModal neutralStepModal">
         <header>
           <Swords aria-hidden="true" size={18} />
-          <strong>{isPre ? "Enemy turn — react?" : "Enemy turn"}</strong>
+          <strong>{!isPre ? "Enemy turn" : isReactor ? "Enemy turn — react?" : "Reaction window"}</strong>
         </header>
         <p>{summary}</p>
         {hasReactions ? (
