@@ -162,6 +162,7 @@ export {
   DEFENDER_FRONTLINE,
   getEndTurnMoveDestinations,
   getHeroMoveDestinations,
+  inCombatPrep,
   isTileAdjacentToSpace,
   isTileRotationConnected,
   observatoryPlacementCenters,

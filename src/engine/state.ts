@@ -2292,9 +2292,9 @@ export type GameAction =
   | { type: "FINISH_COMBAT_PLACEMENT"; playerId: PlayerId }
   | {
       /**
-       * Player-vs-player pre-combat preparation: the defender ends their
-       * preparation window (after any town actions) and begins deployment.
-       * Validated in acceptCombat.
+       * Player-vs-player pre-battle preparation: a participant (attacker or
+       * defender) readies up after any town actions. Deployment begins only once
+       * BOTH participants have accepted. Validated in acceptCombat.
        */
       type: "ACCEPT_COMBAT";
       playerId: PlayerId;
@@ -4263,17 +4263,20 @@ export type CombatState = {
    */
   pendingCoverOfDarkness?: PlayerId[];
   /**
-   * Player-vs-player pre-combat preparation window. When an enemy hero attacks,
-   * the defender may still spend any town actions they have not used this round
-   * (build a structure, recruit/reinforce units, buy spells) before the fight —
-   * recruited units join the army in time to be deployed — then press
-   * ACCEPT_COMBAT to begin deployment. Opened (before placement) only when the
-   * defender has a town and at least one unspent town token; the defender holds
-   * priority while set (phase stays "combat-setup", `setup` already built).
-   * Retreat / Surrender are also available here. Cleared by ACCEPT_COMBAT (or by
-   * a Retreat / Surrender that ends the combat).
+   * Player-vs-player pre-battle preparation window, presented on the adventure
+   * MAP (not the battlefield) so both sides can see their towns, resources and
+   * armies and plan with a clear head. When an enemy hero attacks, BOTH the
+   * attacker and the defender may spend any town actions they have not used this
+   * round (build a structure, recruit/reinforce units, buy spells) before the
+   * fight — recruited units join the army in time to be deployed — then each
+   * presses ACCEPT_COMBAT ("Accept the battle"). Deployment begins only once
+   * *both* participants have accepted. Retreat / Surrender are also available
+   * here. `accepted` lists the participants who have readied up so far; a
+   * participant who has not yet accepted may still take town actions, one who
+   * has is locked in and waits. Opened for every player-vs-player combat;
+   * cleared once both accept (or by a Retreat / Surrender that ends the combat).
    */
-  defenderPrep?: { playerId: PlayerId } | null;
+  prep?: { accepted: PlayerId[] } | null;
   /**
    * Tactics ability: participants still entitled to a start-of-combat unit
    * swap, attacker first then a hero-present PvP defender. Set once all units
