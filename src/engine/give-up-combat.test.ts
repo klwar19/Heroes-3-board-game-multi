@@ -12,16 +12,17 @@ import type { CombatState, CombatUnitState, GameState, MapFieldState, PlayerId }
 
 /**
  * "Give up" (house rule, engine-enforced — this suite fails if the wiring is
- * removed): a concede a participating hero may choose at ANY point once a fight
- * is under way, not just the start-of-combat Retreat / Surrender window.
+ * removed): a concede a participating hero may choose at ANY point once a
+ * player-vs-player fight is under way, not just the start-of-combat Retreat /
+ * Surrender window (a Neutral-guard fight has no Give up).
  *
  * It is always a defeat with the same consequences as a Retreat (5-gold toll,
- * -1 morale, fall back home, the opponent wins and gains its credit). What sets
- * it apart is the cost of the troops still on the board:
- *  - losing-troop PvP mode, and EVERY fight against Neutral guards (which always
- *    cost casualties): the conceding hero loses its WHOLE battle army — every
- *    unit still alive, not just the casualties a Retreat would take; and
- *  - keep-troops PvP mode: it keeps every unit but discards its entire hand.
+ * -1 morale, fall back home, the opponent wins and gains its credit). The cost
+ * of the troops depends on the lobby's PvP casualty mode:
+ *  - losing-troop mode: only the casualties taken up to the point of conceding
+ *    are lost — destroyed units leave and Packs flip, but survivors fall back
+ *    (it does NOT forfeit the whole army); and
+ *  - keep-troops mode: it keeps every unit but discards its entire hand.
  */
 
 function makeGame(opts: { victoryMode?: "conquest" | "grail"; pvpTroopLoss?: "normal" | "none" } = {}): GameState {
@@ -131,18 +132,15 @@ function stageGiveUpPvp(state: GameState): {
 }
 
 describe("Give up: troop / hand cost by mode", () => {
-  it("losing-troop mode: the conceding hero loses its WHOLE battle army — survivors included", () => {
+  it("losing-troop mode: loses only the casualties taken so far — survivors stay", () => {
     const state = makeGame({ pvpTroopLoss: "normal" });
     const { loserId } = stageGiveUpPvp(state);
 
     finalizeAdventureCombat(state);
 
-    // Neither b1 (destroyed) NOR b2 (survivor) remains — a Retreat would have
-    // kept b2. The wiped army falls back to its starting army (the safety net),
-    // so the staged b1/b2 ids must be gone entirely.
-    const ids = state.players[loserId].army.map((armyUnit) => armyUnit.id);
-    expect(ids).not.toContain("b1");
-    expect(ids).not.toContain("b2");
+    // b1 was destroyed before the concede, so it leaves; b2 (a survivor) STAYS —
+    // giving up forfeits the dead, not the whole army.
+    expect(state.players[loserId].army.map((armyUnit) => armyUnit.id)).toEqual(["b2"]);
     // The winner's army still settles by the normal rules: its damaged Pack flips
     // to Few exactly as in a Retreat (Give up is not a free pass for the winner).
     expect(state.players.p1.army).toEqual([{ id: "a1", unitDefId: "castle.pikemen", side: "few" }]);
@@ -281,10 +279,10 @@ describe("Give up: action wiring and availability", () => {
     expect(offersGiveUp(state, "p2")).toBe(true);
   });
 
-  it("labels the cost by the troop-loss mode (army wipe vs hand discard)", () => {
+  it("labels the cost by the troop-loss mode (casualties so far vs hand discard)", () => {
     const lossy = activePvp("71,71");
     const lossyLabel = getLegalActions(lossy, "p1").find((l) => l.action.type === "GIVE_UP_COMBAT")?.label ?? "";
-    expect(lossyLabel).toMatch(/whole battle army/i);
+    expect(lossyLabel).toMatch(/survivors fall back/i);
 
     const kept = activePvp("72,72");
     kept.adventure!.pvpTroopLoss = "none";

@@ -3970,8 +3970,8 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
  * Player-vs-player only — a Neutral-guard fight has no Give up, just the
  * end-of-round Retreat. It always ends the combat as a defeat with the full
  * Retreat consequences — the troop / hand cost is applied in
- * `finalizeAdventureCombat` from the `"give-up"` reason (whole battle army lost
- * in losing-troop mode; hand discarded in keep-troops mode).
+ * `finalizeAdventureCombat` from the `"give-up"` reason (only the casualties
+ * taken so far are lost in losing-troop mode; hand discarded in keep-troops mode).
  */
 export function giveUpCombat(state: GameState, action: Extract<GameAction, { type: "GIVE_UP_COMBAT" }>): void {
   const combat = state.combat;
@@ -4068,11 +4068,12 @@ export function finalizeAdventureCombat(state: GameState): void {
   const keepTroops =
     context.kind === "player" && (adventurePvpTroopLoss(state) === "none" || outcome.reason === "surrender");
 
-  // Give up (concede, player-vs-player only): the conceding hero either loses
-  // its WHOLE battle army — every unit still on the board, survivors included —
-  // or, in keep-troops mode, keeps every unit and instead discards its entire
-  // hand (handled after the loop). The opponent's army still settles by the
-  // normal rules below.
+  // Give up (concede, player-vs-player only): a defeat that costs only the
+  // casualties taken up to the point of conceding — destroyed units leave and
+  // damaged Packs flip, but survivors stay (it does NOT forfeit the whole army).
+  // In losing-troop mode that is exactly the normal casualty settlement below;
+  // in keep-troops mode every unit is kept and the conceding hand is discarded
+  // instead (handled after the loop). The opponent settles normally either way.
   const gaveUp = outcome.reason === "give-up";
   const giveUpLoserId = gaveUp ? outcome.defeatedPlayerId : null;
   const giveUpKeepsTroops = gaveUp && context.kind === "player" && adventurePvpTroopLoss(state) === "none";
@@ -4086,20 +4087,6 @@ export function finalizeAdventureCombat(state: GameState): void {
         const def = unit.grade === "gold" ? "gold" : unit.grade;
         const deck = state.decks[NEUTRAL_DECK_IDS[def as "bronze" | "silver" | "gold" | "azure"]];
         deck?.discardPile.push(unit.unitDefId);
-      }
-      continue;
-    }
-
-    // The conceding side of a Give up: lose the whole army (full wipe), unless
-    // keep-troops mode spares the units (its hand is discarded after the loop).
-    if (unit.controllerId === giveUpLoserId) {
-      if (giveUpKeepsTroops) {
-        continue;
-      }
-      const player = state.players[unit.controllerId];
-      const armyUnit = player?.army.find((candidate) => candidate.id === unit.armyUnitId);
-      if (player && armyUnit) {
-        discardDefeatedArmyUnit(state, player, armyUnit);
       }
       continue;
     }

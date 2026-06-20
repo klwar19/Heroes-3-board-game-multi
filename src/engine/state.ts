@@ -2338,11 +2338,11 @@ export type GameAction =
        * Give up, only the end-of-round Retreat). It is always a defeat — the same
        * loss consequences as a Retreat (5-gold toll, -1 morale, fall back home,
        * the opponent gains the win and its credit). The troop cost depends on the
-       * lobby's PvP casualty mode: in losing-troop mode the conceding hero loses
-       * its WHOLE battle army — every unit still on the board, survivors included;
-       * in keep-troops mode it keeps every unit but discards its entire hand.
-       * Offered to a participating hero throughout the fight. Validated in
-       * giveUpCombat / finalizeAdventureCombat.
+       * lobby's PvP casualty mode: in losing-troop mode only the casualties taken
+       * up to the point of conceding are lost (survivors fall back, exactly like
+       * a Retreat); in keep-troops mode it keeps every unit but discards its
+       * entire hand. Offered to a participating hero throughout the fight.
+       * Validated in giveUpCombat / finalizeAdventureCombat.
        */
       type: "GIVE_UP_COMBAT";
       playerId: PlayerId;
