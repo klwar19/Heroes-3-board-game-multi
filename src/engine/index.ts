@@ -131,6 +131,7 @@ export {
   canHeroReachPlacedTile,
   classifyHeroStep,
   effectiveHandLimit,
+  ensureUniqueArmyUnitIds,
   fieldLayer,
   gainExperience,
   gateFieldsLinked,

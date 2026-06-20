@@ -7,6 +7,7 @@ import {
   createAdventureLobbyState,
   createInitialGameState,
   ENGINE_SIGNATURE,
+  ensureUniqueArmyUnitIds,
   type AdventurePlayerConfig,
   type EngineResult,
   type GameAction,
@@ -161,16 +162,37 @@ function makeRoom(roomId: string, options: RoomResetOptions = {}): GameRoomRecor
   };
 }
 
+/**
+ * Repairs duplicate army-unit ids in a stored room (a legacy artifact of the
+ * old id scheme resetting its counter across a host recycle). Runs on every
+ * read so the snapshots we serve — and the legal actions / player views derived
+ * from them — already carry unique ids; otherwise a client could still drag a
+ * unit by a stale shared id before the next action heals the room. Bumps the
+ * version and notifies listeners only when it actually changed something.
+ */
+function healRoomArmyIds(roomId: string, record: GameRoomRecord): void {
+  if (!ensureUniqueArmyUnitIds(record.state)) {
+    return;
+  }
+  record.version += 1;
+  record.updatedAt = new Date().toISOString();
+  roomStore.set(roomId, record);
+  persistRoom(record);
+  notifyRoomListeners(roomId, withBootId(cloneSerializable(record)));
+}
+
 /** In-memory record, falling back to the persisted copy after a restart. */
 function getRoomRecord(roomId: string): GameRoomRecord {
   const existing = roomStore.get(roomId);
   if (existing) {
+    healRoomArmyIds(roomId, existing);
     return existing;
   }
 
   const persisted = loadPersistedRoom(roomId);
   if (persisted) {
     roomStore.set(roomId, persisted);
+    healRoomArmyIds(roomId, persisted);
     return persisted;
   }
 
