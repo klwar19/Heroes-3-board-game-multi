@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createInitialGameState, getActivationStep, NEUTRAL_PLAYER_ID } from "./index";
+import {
+  applyAction,
+  createInitialGameState,
+  getActivationOrder,
+  getActivationStep,
+  makeActiveEffect,
+  NEUTRAL_PLAYER_ID
+} from "./index";
 import type { GameAction, GameState, PendingChoice } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -27,6 +34,19 @@ function setInitiatives(state: GameState, values: Record<string, number>): void 
   for (const [id, initiative] of Object.entries(values)) {
     state.combat!.units[id].initiative = initiative;
   }
+}
+
+/** A lasting +amount initiative shift on one unit, exactly as Haste/Ammo Cart would. */
+function addInitiativeShift(state: GameState, unitId: string, amount: number): void {
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      { name: "Initiative shift", scope: "unit", duration: { type: "combat" }, modifiers: [{ type: "INITIATIVE_BONUS", amount }] },
+      { type: "system" },
+      state.combat!.units[unitId].controllerId,
+      { type: "unit", unitId }
+    )
+  );
 }
 
 describe("combat activation order — same-speed handling", () => {
@@ -253,5 +273,96 @@ describe("getActivationStep — the ordering primitive", () => {
     // cannot answer a prompt itself.
     expect(step?.side).toBe(NEUTRAL_PLAYER_ID);
     expect(step?.candidates.length).toBe(2);
+  });
+});
+
+/**
+ * Walks a whole round through the reducer and returns the ids in the exact
+ * sequence units became active. Always picks the first tied candidate, the same
+ * deterministic pick getActivationOrder previews, so the two can be compared.
+ */
+function playOutRoundSequence(state: GameState): string[] {
+  let current = state;
+  const sequence: string[] = [];
+  for (let guard = 0; guard < 40; guard += 1) {
+    const choice = orderChoice(current);
+    if (choice) {
+      current = applyOk(current, {
+        type: "CHOOSE_OPTION",
+        playerId: choice.playerId,
+        choiceId: choice.id,
+        optionIndex: 0
+      });
+      continue;
+    }
+    const activeId = current.combat!.activeUnitId;
+    if (!activeId) {
+      break;
+    }
+    sequence.push(activeId);
+    current = applyOk(current, {
+      type: "DEFEND_UNIT",
+      playerId: current.combat!.units[activeId].controllerId,
+      unitId: activeId
+    });
+  }
+  return sequence;
+}
+
+describe("getActivationOrder — the rail preview matches the engine's real order", () => {
+  it("interleaves the sides on a cross-side tie instead of listing one side first", () => {
+    let state = createInitialGameState("rail-cross-tie");
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    // Attacker (p1) has TWO units tied at the top; the defender (p2) has ONE.
+    setInitiatives(state, {
+      unit_p1_griffins: 9,
+      unit_p1_crusaders: 9,
+      unit_p1_marksmen: 1,
+      unit_p2_skeletons: 9,
+      unit_p2_vampires: 1,
+      unit_p2_dread_knights: 1
+    });
+
+    const preview = getActivationOrder(state.combat!, state.activeEffects).map((unit) => unit.id);
+
+    // Alternation: attacker, DEFENDER, attacker — the defender's single tied unit
+    // activates SECOND, between the attacker's two. A flat "attacker-first" sort
+    // would wrongly list it third (after both attacker units), so this fails if
+    // the rail falls back to a plain initiative sort.
+    expect(preview.slice(0, 3)).toEqual(["unit_p1_crusaders", "unit_p2_skeletons", "unit_p1_griffins"]);
+    expect(preview.indexOf("unit_p2_skeletons")).toBeLessThan(preview.indexOf("unit_p1_griffins"));
+
+    // And the preview is exactly the sequence the reducer actually plays.
+    state = startFreshRound(state);
+    expect(playOutRoundSequence(state)).toEqual(preview);
+  });
+
+  it("places a boosted defender ranged unit (e.g. Cyclopes) by its EFFECTIVE initiative, not its base", () => {
+    let state = createInitialGameState("rail-boosted-defender");
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    // Defender (p2) ranged unit sits at a low printed initiative...
+    state.combat!.units.unit_p2_skeletons.type = "ranged";
+    setInitiatives(state, {
+      unit_p1_griffins: 9,
+      unit_p1_crusaders: 7,
+      unit_p1_marksmen: 1,
+      unit_p2_skeletons: 6,
+      unit_p2_vampires: 1,
+      unit_p2_dread_knights: 1
+    });
+    // ...but a +3 initiative shift (an Ammo Cart's +2 and Expert Archery's +1 on a
+    // base-6 Cyclopes reach 9) lifts it to the top tier. It must sit by 9, ahead
+    // of the attacker's 7-initiative unit — never stranded at its printed 6.
+    addInitiativeShift(state, "unit_p2_skeletons", 3);
+
+    const preview = getActivationOrder(state.combat!, state.activeEffects).map((unit) => unit.id);
+    // griffins (attacker, 9) lead the 9-tie; the boosted defender follows at 9,
+    // and both come before the attacker's 7-initiative crusaders.
+    expect(preview.slice(0, 3)).toEqual(["unit_p1_griffins", "unit_p2_skeletons", "unit_p1_crusaders"]);
+
+    state = startFreshRound(state);
+    expect(playOutRoundSequence(state)).toEqual(preview);
   });
 });

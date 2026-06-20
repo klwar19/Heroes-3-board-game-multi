@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PlacementPanel } from "./screen";
+import { PlacementPanel, PreBattlePanel } from "./screen";
 import { createInitialGameState, type GameAction, type GameState, type LegalAction } from "@/engine";
 
 afterEach(cleanup);
@@ -114,5 +114,69 @@ describe("PlacementPanel — deploy sidebar", () => {
 
     fireEvent.click(getByText("Ready for battle"));
     expect(onAction).toHaveBeenCalledWith({ type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+  });
+});
+
+describe("PreBattlePanel — PvP pre-battle preparation (on the map)", () => {
+  function prepState(accepted: ("p1" | "p2")[] = []): GameState {
+    const base = deployState();
+    return {
+      ...base,
+      combat: {
+        ...base.combat!,
+        attackerPlayerId: "p1",
+        defenderPlayerId: "p2",
+        context: { kind: "player", attackerHeroId: "hero_p1", defenderHeroId: "hero_p2", fieldId: "0,0" },
+        prep: { accepted }
+      }
+    } as GameState;
+  }
+
+  // The escape + Accept legal actions the engine offers a preparing defender.
+  const DEFENDER_ACTIONS: LegalAction[] = [
+    { action: { type: "RETREAT_FROM_COMBAT", playerId: "p2" }, label: "Retreat (lose the combat)" },
+    { action: { type: "ACCEPT_COMBAT", playerId: "p2" }, label: "Accept the battle" }
+  ];
+
+  it("offers the preparing defender an Accept button (fires ACCEPT_COMBAT)", () => {
+    const onAction = vi.fn<(action: GameAction) => void>();
+    const { getByText } = render(
+      <PreBattlePanel legalActions={DEFENDER_ACTIONS} onAction={onAction} state={prepState()} viewerPlayerId="p2" />
+    );
+
+    expect(getByText("Retreat (lose the combat)")).toBeTruthy();
+    fireEvent.click(getByText("Accept the battle"));
+    expect(onAction).toHaveBeenCalledWith({ type: "ACCEPT_COMBAT", playerId: "p2" });
+  });
+
+  it("offers the ATTACKER an Accept button too (both sides prepare)", () => {
+    const onAction = vi.fn<(action: GameAction) => void>();
+    const attackerActions: LegalAction[] = [{ action: { type: "ACCEPT_COMBAT", playerId: "p1" }, label: "Accept" }];
+    const { getByText } = render(
+      <PreBattlePanel legalActions={attackerActions} onAction={onAction} state={prepState()} viewerPlayerId="p1" />
+    );
+
+    fireEvent.click(getByText("Accept the battle"));
+    expect(onAction).toHaveBeenCalledWith({ type: "ACCEPT_COMBAT", playerId: "p1" });
+  });
+
+  it("shows a waiting message once the viewer has accepted (no Accept button)", () => {
+    const onAction = vi.fn();
+    const { queryByText, getByText } = render(
+      <PreBattlePanel legalActions={[]} onAction={onAction} state={prepState(["p2"])} viewerPlayerId="p2" />
+    );
+
+    // The accepted defender can no longer accept; they wait on the attacker.
+    expect(queryByText("Accept the battle")).toBeNull();
+    expect(getByText(/Waiting for .* to accept the battle/i)).toBeTruthy();
+  });
+
+  it("renders nothing outside an open prep window", () => {
+    const onAction = vi.fn();
+    const noPrep = deployState(); // sandbox combat, no prep
+    const { container } = render(
+      <PreBattlePanel legalActions={[]} onAction={onAction} state={noPrep} viewerPlayerId="p2" />
+    );
+    expect(container.querySelector(".preBattlePanel")).toBeNull();
   });
 });

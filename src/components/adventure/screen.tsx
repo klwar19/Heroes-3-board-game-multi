@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Check, ChevronsUp, Crown, Hammer, Image as ImageIcon, Lock, Minus, Plus, RotateCcw, RotateCw, Star, Unlock, X } from "lucide-react";
+import { Check, ChevronsUp, Crown, Hammer, Image as ImageIcon, Lock, Minus, Plus, RotateCcw, RotateCw, Star, Swords, Unlock, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
@@ -31,6 +31,7 @@ import {
   getTileBorderSegments,
   hexDistance,
   hexToPixel,
+  inCombatPrep,
   parseHexSpaceId,
   recruitDiscountAmount,
   scenarioDefinitions,
@@ -922,6 +923,137 @@ export function HexMapBoard({
     return null;
   })();
 
+  // --- Floating controls anchored at the relevant hex/tile ------------------
+  // Move-confirm and rotate controls live *on the map*, right at the clicked
+  // destination hex / the tile being rotated, instead of a bar pinned to the
+  // bottom of the board. They sit inside the camera-transformed group so they
+  // pan with the map, and counter-scale (scale(1/camera.scale)) so they keep a
+  // constant on-screen size at any zoom level.
+  const floatingControls: ReactNode[] = [];
+
+  // How much vertical room (in screen px) sits above an anchor before it would
+  // be clipped by the top of the viewBox — used to flip a card below its hex.
+  const screenRoomAbove = (mapY: number) => camera.y + camera.scale * mapY - minY;
+
+  if (selectedTarget && myHero && !readOnly) {
+    const coord = parseHexSpaceId(selectedTarget.spaceId);
+    if (coord) {
+      const { x, y } = hexToPixel(coord, HEX_SIZE);
+      const cardW = 230;
+      const cardH = 104;
+      const gap = HEX_SIZE * 0.62;
+      const above = screenRoomAbove(y) >= cardH + gap;
+      const cost = selectedTarget.cost;
+      floatingControls.push(
+        <g key="move-confirm-float" transform={`translate(${x} ${y}) scale(${1 / camera.scale})`}>
+          <foreignObject className="mapFloatFO" height={cardH} width={cardW} x={-cardW / 2} y={above ? -cardH - gap : gap}>
+            <div className={`mapFloatOuter ${above ? "above" : "below"}`}>
+              <div
+                aria-label="Confirm movement"
+                className="mapFloatCard moveConfirmFloat"
+                onPointerDown={(event) => event.stopPropagation()}
+                role="dialog"
+              >
+                <span className="mapFloatLabel">
+                  <span aria-hidden="true">🐎</span> Move {cost} field{cost === 1 ? "" : "s"} ({cost} MP)
+                </span>
+                <div className="mapFloatButtons">
+                  <button
+                    className="commandButton primary"
+                    onClick={() => {
+                      onAction({
+                        type: "MOVE_HERO_PATH",
+                        playerId: viewerPlayerId,
+                        heroId: myHero.id,
+                        path: selectedTarget.path
+                      });
+                      setSelectedTarget(null);
+                    }}
+                    type="button"
+                  >
+                    <Check size={13} /> Move there
+                  </button>
+                  <button className="commandButton ghost" onClick={() => setSelectedTarget(null)} type="button">
+                    <X size={13} /> Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </foreignObject>
+        </g>
+      );
+    }
+  }
+
+  if (pendingTileChoice && rotatingTile) {
+    const tileCenter = hexToPixel({ row: rotatingTile.centerRow, col: rotatingTile.centerCol }, HEX_SIZE);
+    const cardW = iAmRotating ? 272 : 230;
+    const cardH = iAmRotating ? 158 : 70;
+    // The rotating tile spans a 5-hex-tall flower; clear its top edge so the
+    // card never covers the art it is acting on.
+    const gap = HEX_SIZE * 2.9;
+    const above = screenRoomAbove(tileCenter.y) >= cardH + gap;
+    floatingControls.push(
+      <g key="rotate-float" transform={`translate(${tileCenter.x} ${tileCenter.y}) scale(${1 / camera.scale})`}>
+        <foreignObject className="mapFloatFO" height={cardH} width={cardW} x={-cardW / 2} y={above ? -cardH - gap : gap}>
+          <div className={`mapFloatOuter ${above ? "above" : "below"}`}>
+            {iAmRotating ? (
+              <div
+                aria-label="Rotate the new tile"
+                className="mapFloatCard rotateFloat"
+                onPointerDown={(event) => event.stopPropagation()}
+                role="dialog"
+              >
+                <span className="mapFloatTitle">
+                  Rotate the {pendingTileChoice.kind === "place" ? "placed" : "revealed"} tile
+                </span>
+                <div className="rotateFloatRow">
+                  <button
+                    className="commandButton"
+                    onClick={() => setPreviewRotation((value) => (value + 5) % 6)}
+                    title="Rotate counter-clockwise"
+                    type="button"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                  <span className="rotateDegrees">{previewRotation * 60}°</span>
+                  <button
+                    className="commandButton"
+                    onClick={() => setPreviewRotation((value) => (value + 1) % 6)}
+                    title="Rotate clockwise"
+                    type="button"
+                  >
+                    <RotateCw size={14} />
+                  </button>
+                  <button
+                    className="commandButton primary"
+                    disabled={!rotationConnected}
+                    onClick={() =>
+                      onAction({
+                        type: "SET_TILE_ROTATION",
+                        playerId: viewerPlayerId,
+                        tileInstanceId: rotatingTile.id,
+                        rotation: previewRotation
+                      })
+                    }
+                    type="button"
+                  >
+                    <Check size={13} /> Confirm
+                  </button>
+                </div>
+                {!rotationConnected ? <small className="mapFloatWarn">Border lines seal the tile off — keep rotating.</small> : null}
+              </div>
+            ) : (
+              <div className="mapFloatCard passive">
+                <small>{state.players[pendingTileChoice.playerId]?.name ?? "A player"} is rotating the new tile…</small>
+              </div>
+            )}
+          </div>
+        </foreignObject>
+      </g>
+    );
+  }
+
   return (
     <div className="hexMapWrap" aria-label="Adventure map">
       <svg
@@ -1005,6 +1137,7 @@ export function HexMapBoard({
           {overlays}
           {pathOverlay}
           {heroPawns}
+          {floatingControls}
         </g>
       </svg>
 
@@ -1055,79 +1188,6 @@ export function HexMapBoard({
         </div>
       ) : null}
 
-      {selectedTarget && myHero && !readOnly ? (
-        <div className="moveConfirmBar" role="dialog" aria-label="Confirm movement">
-          <span>
-            <span aria-hidden="true">🐎</span> Move {selectedTarget.cost} field{selectedTarget.cost === 1 ? "" : "s"} (
-            {selectedTarget.cost} movement point{selectedTarget.cost === 1 ? "" : "s"})
-          </span>
-          <button
-            className="commandButton primary"
-            onClick={() => {
-              onAction({
-                type: "MOVE_HERO_PATH",
-                playerId: viewerPlayerId,
-                heroId: myHero.id,
-                path: selectedTarget.path
-              });
-              setSelectedTarget(null);
-            }}
-            type="button"
-          >
-            <Check size={13} /> Move there
-          </button>
-          <button className="commandButton ghost" onClick={() => setSelectedTarget(null)} type="button">
-            <X size={13} /> Cancel
-          </button>
-        </div>
-      ) : null}
-
-      {iAmRotating && rotatingTile ? (
-        <div className="rotateBar" role="dialog" aria-label="Rotate the new tile">
-          <strong>
-            {rotatingTile.tileDefId}: rotate the {pendingTileChoice?.kind === "place" ? "placed" : "revealed"} tile
-          </strong>
-          <button
-            className="commandButton"
-            onClick={() => setPreviewRotation((value) => (value + 5) % 6)}
-            title="Rotate counter-clockwise"
-            type="button"
-          >
-            <RotateCcw size={14} />
-          </button>
-          <span className="rotateDegrees">{previewRotation * 60}°</span>
-          <button
-            className="commandButton"
-            onClick={() => setPreviewRotation((value) => (value + 1) % 6)}
-            title="Rotate clockwise"
-            type="button"
-          >
-            <RotateCw size={14} />
-          </button>
-          <button
-            className="commandButton primary"
-            disabled={!rotationConnected}
-            onClick={() =>
-              onAction({
-                type: "SET_TILE_ROTATION",
-                playerId: viewerPlayerId,
-                tileInstanceId: rotatingTile.id,
-                rotation: previewRotation
-              })
-            }
-            type="button"
-          >
-            <Check size={13} /> Confirm
-          </button>
-          {!rotationConnected ? <small>Border lines seal the tile off — keep rotating.</small> : null}
-        </div>
-      ) : pendingTileChoice && rotatingTile ? (
-        <div className="rotateBar passive">
-          <small>
-            {state.players[pendingTileChoice.playerId]?.name ?? "A player"} is rotating the new tile…
-          </small>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -1526,8 +1586,13 @@ export function TownPanel({
   };
   const clearBuildingTip = (buildingId: string) =>
     setBuildingTip((current) => (current?.buildingId === buildingId ? null : current));
+  // Recruiting is blocked mid-combat — except in this player's own pre-battle
+  // preparation window, where spending town actions before the fight is the
+  // whole point (recruits join the army in time to deploy).
   const canPopulate =
-    player.townTokens.population && !state.combat && legalActions.some((legal) => legal.action.type === "POPULATION_ACTION");
+    player.townTokens.population &&
+    (!state.combat || inCombatPrep(state, viewerPlayerId)) &&
+    legalActions.some((legal) => legal.action.type === "POPULATION_ACTION");
 
   const unlockedTiers = new Set(
     town.buildings
@@ -1871,7 +1936,7 @@ export function TownPanel({
           })()
         : null}
 
-      {player.townTokens.population && !state.combat ? (
+      {player.townTokens.population && (!state.combat || inCombatPrep(state, viewerPlayerId)) ? (
         <div className="townRecruits" aria-label="Population token basket">
           <h4 title="Each unit card exists once: recruit the Few side, later reinforce it to the Pack side — then it is complete.">
             Population token — recruit &amp; reinforce
@@ -2737,6 +2802,121 @@ function PileModalCards({ cardIds, kind }: { cardIds: string[]; kind: "cards" | 
 }
 
 // ---------------------------------------------------------------------------
+// Pre-battle preparation panel (shown on the adventure MAP, not the battlefield)
+// ---------------------------------------------------------------------------
+
+/**
+ * The player-vs-player pre-battle preparation panel. When an enemy hero attacks,
+ * BOTH sides prepare here — on the map, with their town, resources and army in
+ * full view — spending any remaining town actions (build / recruit / buy spells
+ * at the town panel to the right) before pressing "Accept the battle". Deployment
+ * begins only once both the attacker and the defender have accepted; either side
+ * may instead Retreat / Surrender out of the fight. Renders nothing outside an
+ * open PvP prep window.
+ */
+export function PreBattlePanel({
+  state,
+  viewerPlayerId,
+  legalActions,
+  onAction
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  legalActions: LegalAction[];
+  onAction: (action: GameAction) => void;
+}) {
+  const combat = state.combat;
+  const prep = combat?.prep;
+  if (!combat || !prep || combat.context.kind !== "player") {
+    return null;
+  }
+
+  const attackerId = combat.attackerPlayerId;
+  const defenderId = combat.defenderPlayerId;
+  const attackerName = state.players[attackerId]?.name ?? "Attacker";
+  const defenderName = state.players[defenderId]?.name ?? "Defender";
+  const siege = combat.context.kind === "player" && combat.context.siege;
+  const hasAccepted = (id: PlayerId) => prep.accepted.includes(id);
+
+  const viewerIsParticipant = viewerPlayerId === attackerId || viewerPlayerId === defenderId;
+  // A participant who has not yet pressed Accept — still free to spend town actions.
+  const viewerPreparing = inCombatPrep(state, viewerPlayerId);
+  const opponentId = viewerPlayerId === attackerId ? defenderId : attackerId;
+
+  const accept = legalActions.find((legal) => legal.action.type === "ACCEPT_COMBAT");
+  const escapeActions = legalActions.filter(
+    (legal) => legal.action.type === "RETREAT_FROM_COMBAT" || legal.action.type === "SURRENDER_COMBAT"
+  );
+
+  const readyChip = (id: PlayerId, name: string, role: string) => (
+    <span className={`prepReadyChip ${hasAccepted(id) ? "ready" : "waiting"}`} key={id}>
+      {hasAccepted(id) ? <Check aria-hidden="true" size={12} /> : null}
+      {name} ({role}) — {hasAccepted(id) ? "ready" : "preparing…"}
+    </span>
+  );
+
+  return (
+    <div className="preBattlePanel" aria-label="Prepare for battle">
+      <div className="preBattleHeader">
+        <Swords aria-hidden="true" size={16} />
+        <strong>
+          Battle! {attackerName} attacks {defenderName}
+          {siege ? " (siege)" : ""}
+        </strong>
+      </div>
+      <div className="prepReadyRow">
+        {readyChip(attackerId, attackerName, "attacker")}
+        {readyChip(defenderId, defenderName, "defender")}
+      </div>
+      {viewerPreparing ? (
+        <>
+          <small className="prepNote">
+            Prepare on the map before the fight: spend any town actions you have left this round (build, recruit, buy
+            spells) at your town panel on the right. Units you recruit now join your army in time to be deployed. When you
+            are ready, accept the battle — deployment begins once both sides accept.
+          </small>
+          <div className="prepButtons">
+            {accept ? (
+              <button
+                className="commandButton primary combatReadyButton"
+                onClick={() => onAction(accept.action)}
+                type="button"
+              >
+                <img
+                  alt=""
+                  aria-hidden="true"
+                  className="combatButtonIcon"
+                  src={assetUrl("/assets/ui/combat-button.png")}
+                />
+                Accept the battle
+              </button>
+            ) : null}
+            {escapeActions.map((legal) => (
+              <button
+                className="commandButton"
+                key={actionKey(legal.action)}
+                onClick={() => onAction(legal.action)}
+                type="button"
+              >
+                {legal.label}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : viewerIsParticipant ? (
+        <small className="prepNote">
+          You are ready. Waiting for {state.players[opponentId]?.name ?? "your opponent"} to accept the battle…
+        </small>
+      ) : (
+        <small className="prepNote">
+          {attackerName} and {defenderName} are preparing for battle on the map…
+        </small>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Combat deployment panel: drag units onto the board (click still works)
 // ---------------------------------------------------------------------------
 
@@ -2760,6 +2940,19 @@ export function PlacementPanel({
   const player = state.players[viewerPlayerId];
   if (!combat || !setup || !player) {
     return null;
+  }
+
+  // PvP pre-battle preparation happens on the adventure MAP (see PreBattlePanel),
+  // not here on the battlefield — so deployment never opens while `prep` is set.
+  // This guard only fires on the rare path where the deploy sidebar renders
+  // before the map forces itself in front; it keeps stale deploy controls hidden.
+  if (combat.prep) {
+    return (
+      <div className="placementPanel" aria-label="Combat setup">
+        <strong>Preparing for battle</strong>
+        <small>Both sides are preparing on the map. Deployment opens once both accept the battle.</small>
+      </div>
+    );
   }
 
   const myTurn = setup.pendingPlayerIds[0] === viewerPlayerId;

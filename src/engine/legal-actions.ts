@@ -4,6 +4,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { sampleBuildings } from "@/data/towns/buildings";
 import {
+  adventurePvpTroopLoss,
   applyRecruitDiscount,
   armyHasMapEffect,
   canHeroReachPlacedTile,
@@ -33,6 +34,7 @@ import {
   DEFENDER_FRONTLINE,
   getHeroMoveDestinations,
   hillFortCost,
+  inCombatPrep,
   isTileAdjacentToSpace,
   isTileRotationConnected,
   observatoryPlacementCenters,
@@ -70,6 +72,7 @@ import {
   warMachinesForSale
 } from "./permanents";
 import { getDemolishAbility, isArrowTowerUnit, siegeBlockedPositions } from "./siege";
+import { pvpEscapeWindowOpen } from "./combat-units";
 import { canPlaceTransformOn } from "./unit-transforms";
 import { SHARED_DECK_IDS } from "./decks";
 import {
@@ -606,28 +609,6 @@ export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitSt
   ).filter(isBattlefieldPosition);
 }
 
-export function sortUnitsForActivation(combat: CombatState, activeEffects: ActiveEffectState[] = []): CombatUnitState[] {
-  return Object.values(combat.units)
-    .filter(isUnitAlive)
-    .sort((left, right) => {
-      const leftInitiative = effectiveInitiative(left, activeEffects);
-      const rightInitiative = effectiveInitiative(right, activeEffects);
-      if (rightInitiative !== leftInitiative) {
-        return rightInitiative - leftInitiative;
-      }
-
-      if (left.controllerId === combat.attackerPlayerId && right.controllerId !== combat.attackerPlayerId) {
-        return -1;
-      }
-
-      if (right.controllerId === combat.attackerPlayerId && left.controllerId !== combat.attackerPlayerId) {
-        return 1;
-      }
-
-      return left.id.localeCompare(right.id);
-    });
-}
-
 /**
  * Which side activates next, and the units that side may pick from, at the top
  * (highest effective initiative) tier of un-acted units.
@@ -648,22 +629,29 @@ export type ActivationStep = {
   initiative: number;
 };
 
-export function getActivationStep(
-  combat: CombatState,
-  activeEffects: ActiveEffectState[] = []
+/**
+ * The single source of truth for "who activates next", shared by the live
+ * engine (getActivationStep, reading `activatedThisRound`) and the rail preview
+ * (getActivationOrder, simulating the round). Whatever counts as already-acted
+ * is supplied via `hasActed`, so the displayed order can never drift from the
+ * order the engine actually plays.
+ */
+function selectActivationStep(
+  units: CombatUnitState[],
+  attackerId: PlayerId,
+  initiativeOf: (unit: CombatUnitState) => number,
+  hasActed: (unit: CombatUnitState) => boolean
 ): ActivationStep | null {
-  const eligible = Object.values(combat.units).filter((unit) => isUnitAlive(unit) && !unit.activatedThisRound);
+  const eligible = units.filter((unit) => isUnitAlive(unit) && !hasActed(unit));
   if (eligible.length === 0) {
     return null;
   }
 
-  const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects);
   const topInitiative = Math.max(...eligible.map(initiativeOf));
   const tier = eligible
     .filter((unit) => initiativeOf(unit) === topInitiative)
     .sort((left, right) => left.id.localeCompare(right.id));
 
-  const attackerId = combat.attackerPlayerId;
   const tierAttackers = tier.filter((unit) => unit.controllerId === attackerId);
   const tierOthers = tier.filter((unit) => unit.controllerId !== attackerId);
 
@@ -679,9 +667,7 @@ export function getActivationStep(
   // even split the attacker leads (the player in a Neutral fight, the attacking
   // hero in PvP), so the two sides go back and forth starting with the attacker.
   const actedAtTier = (predicate: (unit: CombatUnitState) => boolean) =>
-    Object.values(combat.units).filter(
-      (unit) => unit.activatedThisRound && initiativeOf(unit) === topInitiative && predicate(unit)
-    ).length;
+    units.filter((unit) => hasActed(unit) && initiativeOf(unit) === topInitiative && predicate(unit)).length;
   const attackerActed = actedAtTier((unit) => unit.controllerId === attackerId);
   const othersActed = actedAtTier((unit) => unit.controllerId !== attackerId);
 
@@ -691,8 +677,62 @@ export function getActivationStep(
   return { side: attackerId, candidates: tierAttackers, initiative: topInitiative };
 }
 
+export function getActivationStep(
+  combat: CombatState,
+  activeEffects: ActiveEffectState[] = []
+): ActivationStep | null {
+  const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects);
+  return selectActivationStep(
+    Object.values(combat.units),
+    combat.attackerPlayerId,
+    initiativeOf,
+    (unit) => unit.activatedThisRound
+  );
+}
+
 export function getNextUnitToActivate(combat: CombatState, activeEffects: ActiveEffectState[] = []): CombatUnitState | null {
   return getActivationStep(combat, activeEffects)?.candidates[0] ?? null;
+}
+
+/**
+ * The full order the current combat round will actually play out, computed by
+ * stepping the SAME selection logic the engine uses, one unit at a time. The
+ * initiative rail shows this so the displayed order matches reality — in
+ * particular the cross-side ALTERNATION on initiative ties (attacker, defender,
+ * attacker, …), which a flat "highest initiative, attacker-first" sort gets
+ * wrong: it would list all of one side's tied units before the other's, even
+ * though the engine interleaves them.
+ *
+ * Already-activated units come first (the rail greys them as "done"), then the
+ * upcoming units in true activation order. Same-side ties are emitted in id
+ * order; the live engine prompts the controller to choose among them, so that
+ * part is a best-effort preview while the cross-side interleaving is exact.
+ */
+export function getActivationOrder(
+  combat: CombatState,
+  activeEffects: ActiveEffectState[] = []
+): CombatUnitState[] {
+  const alive = Object.values(combat.units).filter(isUnitAlive);
+  const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects);
+
+  const acted = new Set<UnitId>(alive.filter((unit) => unit.activatedThisRound).map((unit) => unit.id));
+  const done = alive
+    .filter((unit) => unit.activatedThisRound)
+    .sort((left, right) => initiativeOf(right) - initiativeOf(left) || left.id.localeCompare(right.id));
+
+  const upcoming: CombatUnitState[] = [];
+  // Bounded by the unit count: each pass marks exactly one more unit acted.
+  for (let guard = alive.length; guard > 0; guard -= 1) {
+    const next = selectActivationStep(alive, combat.attackerPlayerId, initiativeOf, (unit) => acted.has(unit.id))
+      ?.candidates[0];
+    if (!next) {
+      break;
+    }
+    upcoming.push(next);
+    acted.add(next.id);
+  }
+
+  return [...done, ...upcoming];
 }
 
 function hasAdjacentEnemy(combat: CombatState, unit: CombatUnitState): boolean {
@@ -5035,7 +5075,11 @@ function addTacticsCombatActions(actions: LegalAction[], state: GameState, playe
 function addTownActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   const town = getTownOfPlayer(state, playerId);
-  if (!player || !town || state.combat) {
+  // Town actions are normally blocked during a combat, with one exception: a
+  // participant in their PvP pre-battle preparation window may still spend the
+  // round's town actions before the fight (build / recruit / buy spells).
+  const inPrep = inCombatPrep(state, playerId);
+  if (!player || !town || (state.combat && !inPrep)) {
     return;
   }
 
@@ -5257,10 +5301,15 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
  */
 function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const combat = state.combat;
-  if (!combat || combat.context.kind !== "player" || combat.outcome || combat.round !== 1) {
+  if (!combat || combat.context.kind !== "player") {
     return;
   }
-  if (!isCombatCardWindowOpen(state)) {
+  // Retreat / Surrender is a start-of-combat decision, offered in two spots: a
+  // participant's pre-battle preparation window, and after deployment but before
+  // any unit has begun fighting (pvpEscapeWindowOpen) while the combat card
+  // window is open. Once a unit acts the escape closes for the rest of the fight.
+  const inPrep = inCombatPrep(state, playerId);
+  if (!inPrep && (!pvpEscapeWindowOpen(combat) || !isCombatCardWindowOpen(state))) {
     return;
   }
   const heroId =
@@ -5279,6 +5328,35 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
       action: { type: "SURRENDER_COMBAT", playerId }
     });
   }
+}
+
+/**
+ * Give up a player-vs-player combat (a concede, offered throughout the fight —
+ * not just at the start like Retreat / Surrender). Always a defeat with the
+ * Retreat consequences (5 gold, -1 morale, fall back home, the opponent wins).
+ * The troop cost depends on the lobby's PvP casualty mode: in losing-troop mode
+ * only the casualties taken up to that point are lost (survivors fall back); in
+ * keep-troops mode every unit is kept and the hand is discarded instead.
+ * Neutral-guard fights have no Give up — only the end-of-round Retreat.
+ */
+function addGiveUpCombatActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  const combat = state.combat;
+  if (!combat || combat.outcome || combat.context.kind !== "player") {
+    return;
+  }
+  const isParticipant = combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId;
+  const heroId =
+    playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
+  if (!isParticipant || !heroId) {
+    return;
+  }
+  const losesTroops = adventurePvpTroopLoss(state) === "normal";
+  actions.push({
+    label: losesTroops
+      ? "Give up (concede: lose the combat — your fallen so far stay lost, survivors fall back home)"
+      : "Give up (concede: lose the combat and discard your hand, fall back home)",
+    action: { type: "GIVE_UP_COMBAT", playerId }
+  });
 }
 
 function addMoraleActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
@@ -5358,6 +5436,24 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       actions.push({
         label: "Return to the adventure map",
         action: { type: "ACKNOWLEDGE_COMBAT_END", playerId }
+      });
+    }
+    return actions;
+  }
+
+  // PvP pre-battle preparation: before deployment, BOTH the attacker and the
+  // defender may spend any town action they still hold this round (build /
+  // recruit / buy spells), then Accept to ready up — or Retreat / Surrender out
+  // of the fight. Deployment begins only once both have accepted. The town
+  // actions surface through addTownActions (allowed during this window). A
+  // participant who has already accepted gets nothing here but waits.
+  if (state.combat?.prep) {
+    if (inCombatPrep(state, playerId)) {
+      addTownActions(actions, state, playerId);
+      addPvpEscapeActions(actions, state, playerId);
+      actions.push({
+        label: "Accept the battle (ready up — deployment begins when both sides accept)",
+        action: { type: "ACCEPT_COMBAT", playerId }
       });
     }
     return actions;
@@ -5446,6 +5542,9 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       // by the attack-die reroll choice instead.
       addMoraleActions(actions, state, playerId);
       addPvpEscapeActions(actions, state, playerId);
+      // Give up (concede) is available throughout the fight, not just the
+      // start-of-combat escape window.
+      addGiveUpCombatActions(actions, state, playerId);
     }
     return actions;
   }

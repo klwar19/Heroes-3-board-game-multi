@@ -2376,6 +2376,15 @@ export type GameAction =
   | { type: "FINISH_COMBAT_PLACEMENT"; playerId: PlayerId }
   | {
       /**
+       * Player-vs-player pre-battle preparation: a participant (attacker or
+       * defender) readies up after any town actions. Deployment begins only once
+       * BOTH participants have accepted. Validated in acceptCombat.
+       */
+      type: "ACCEPT_COMBAT";
+      playerId: PlayerId;
+    }
+  | {
+      /**
        * Tactics ability: switch the positions of two of your own units, either
        * in the start-of-combat Tactics window (free) or on your turn before your
        * active unit moves (expert, spends one expert use). Both spend the Tactics
@@ -2404,6 +2413,22 @@ export type GameAction =
        * under Shackles of War.
        */
       type: "SURRENDER_COMBAT";
+      playerId: PlayerId;
+    }
+  | {
+      /**
+       * Give up a player-vs-player combat at any point once it is under way (a
+       * concede, not the start-of-combat Surrender; Neutral-guard fights have no
+       * Give up, only the end-of-round Retreat). It is always a defeat — the same
+       * loss consequences as a Retreat (5-gold toll, -1 morale, fall back home,
+       * the opponent gains the win and its credit). The troop cost depends on the
+       * lobby's PvP casualty mode: in losing-troop mode only the casualties taken
+       * up to the point of conceding are lost (survivors fall back, exactly like
+       * a Retreat); in keep-troops mode it keeps every unit but discards its
+       * entire hand. Offered to a participating hero throughout the fight.
+       * Validated in giveUpCombat / finalizeAdventureCombat.
+       */
+      type: "GIVE_UP_COMBAT";
       playerId: PlayerId;
     }
   | {
@@ -2854,7 +2879,7 @@ export type GameEvent =
       type: "COMBAT_ENDED";
       winnerPlayerId: PlayerId;
       defeatedPlayerId: PlayerId;
-      reason: "all-enemy-units-defeated" | "retreat" | "surrender";
+      reason: "all-enemy-units-defeated" | "retreat" | "surrender" | "give-up";
     }
   | {
       id: string;
@@ -3306,6 +3331,12 @@ export type GameEvent =
   | {
       id: string;
       type: "COMBAT_PLACEMENT_FINISHED";
+      playerId: PlayerId;
+    }
+  | {
+      /** PvP: the defender finished pre-combat preparation; deployment begins. */
+      id: string;
+      type: "COMBAT_PREP_ACCEPTED";
       playerId: PlayerId;
     }
   | {
@@ -4313,7 +4344,7 @@ export type CombatState = {
   outcome: {
     winnerPlayerId: PlayerId;
     defeatedPlayerId: PlayerId;
-    reason: "all-enemy-units-defeated" | "retreat" | "surrender";
+    reason: "all-enemy-units-defeated" | "retreat" | "surrender" | "give-up";
   } | null;
   /**
    * Adventure combats stay on the battlefield after the outcome until a
@@ -4328,6 +4359,21 @@ export type CombatState = {
    * (discard 1 random card from the enemy hand), resolved before placement.
    */
   pendingCoverOfDarkness?: PlayerId[];
+  /**
+   * Player-vs-player pre-battle preparation window, presented on the adventure
+   * MAP (not the battlefield) so both sides can see their towns, resources and
+   * armies and plan with a clear head. When an enemy hero attacks, BOTH the
+   * attacker and the defender may spend any town actions they have not used this
+   * round (build a structure, recruit/reinforce units, buy spells) before the
+   * fight — recruited units join the army in time to be deployed — then each
+   * presses ACCEPT_COMBAT ("Accept the battle"). Deployment begins only once
+   * *both* participants have accepted. Retreat / Surrender are also available
+   * here. `accepted` lists the participants who have readied up so far; a
+   * participant who has not yet accepted may still take town actions, one who
+   * has is locked in and waits. Opened for every player-vs-player combat;
+   * cleared once both accept (or by a Retreat / Surrender that ends the combat).
+   */
+  prep?: { accepted: PlayerId[] } | null;
   /**
    * Tactics ability: participants still entitled to a start-of-combat unit
    * swap, attacker first then a hero-present PvP defender. Set once all units
@@ -4533,6 +4579,15 @@ export type VisitStep =
   | {
       /** Marks the Swift Weasel once-per-turn adventure-die reroll as used. */
       type: "CONSUME_WEASEL";
+    }
+  | {
+      /**
+       * Plays a held reroll artifact (Diplomat's Ring / Ambassador's Sash) as an
+       * instant the moment a die is rolled: discards it from hand, then the
+       * adventure die is re-rolled by the step that follows.
+       */
+      type: "CONSUME_REROLL_ARTIFACT";
+      cardId: CardId;
     }
   | {
       /** Terrible Plague: flip one army card from Pack back to Few. */
@@ -5154,6 +5209,11 @@ export type AttackRerollSource = {
   effectId?: string;
   /** Positive morale token: spending the reroll discards the token. */
   morale?: boolean;
+  /**
+   * Held reroll artifact (Diplomat's Ring / Ambassador's Sash): taking the
+   * reroll plays the card, discarding it from the owner's hand.
+   */
+  cardId?: CardId;
   /**
    * Printed face gate (Crusaders: 'reroll every "0"'): the source is only
    * usable while the current roll shows this face, and using it never

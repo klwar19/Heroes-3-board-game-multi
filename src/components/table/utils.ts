@@ -229,6 +229,9 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       if (event.reason === "retreat") {
         return `${playerName(state, event.defeatedPlayerId)} retreats; ${playerName(state, event.winnerPlayerId)} wins the combat.`;
       }
+      if (event.reason === "give-up") {
+        return `${playerName(state, event.defeatedPlayerId)} gives up the combat; ${playerName(state, event.winnerPlayerId)} wins.`;
+      }
       return `${playerName(state, event.winnerPlayerId)} wins the combat.`;
     case "TURN_ENDED":
       return `${playerName(state, event.playerId)} ends the turn.`;
@@ -338,6 +341,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} deploys ${unitName(state, event.unitId)} at ${getBattlefieldLabel(event.position)}.`;
     case "COMBAT_PLACEMENT_FINISHED":
       return `${playerName(state, event.playerId)} is ready for battle.`;
+    case "COMBAT_PREP_ACCEPTED":
+      return `${playerName(state, event.playerId)} accepts the combat and moves to deployment.`;
     case "COMBAT_UNITS_SWAPPED":
       return `${playerName(state, event.playerId)} uses Tactics${
         event.mode === "expert" ? " (expert)" : ""

@@ -175,6 +175,11 @@ describe("Tactics — player-vs-player swap windows", () => {
 
     const fieldId = heroP1.spaceId ?? Object.keys(state.adventure!.fields)[0];
     startPlayerCombat(state, heroP1, heroP2, fieldId);
+    // A PvP fight opens a pre-battle prep window for both sides; both ready up.
+    if (state.combat?.prep) {
+      state = apply(state, { type: "ACCEPT_COMBAT", playerId: "p1" });
+      state = apply(state, { type: "ACCEPT_COMBAT", playerId: "p2" });
+    }
 
     // Attacker (p1) deploys first, then the defender (p2).
     const [a1, a2] = state.players.p1.army;
@@ -220,6 +225,11 @@ describe("Tactics — player-vs-player swap windows", () => {
     const fieldId = heroP1.spaceId ?? Object.keys(state.adventure!.fields)[0];
     // Garrison defense: defender p2 has no hero standing in the combat.
     startPlayerCombat(state, heroP1, null, fieldId, "p2");
+    // Both sides may prepare (build/recruit) before deployment; ready both up.
+    if (state.combat?.prep) {
+      state = apply(state, { type: "ACCEPT_COMBAT", playerId: "p1" });
+      state = apply(state, { type: "ACCEPT_COMBAT", playerId: "p2" });
+    }
 
     const [a1, a2] = state.players.p1.army;
     state = apply(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: a1.id, position: 13 });
