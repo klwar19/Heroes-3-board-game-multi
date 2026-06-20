@@ -2037,9 +2037,19 @@ export function PromptTray({
   const optionActions = legalActions.filter((legal) => legal.action.type === "CHOOSE_OPTION");
   const abilityTargetActions = legalActions.filter((legal) => legal.action.type === "CHOOSE_ABILITY_TARGET");
   const combatDiscardActions = legalActions.filter((legal) => legal.action.type === "RESOLVE_COMBAT_DISCARD");
-  const combatGate = legalActions.filter(
-    (legal) => legal.action.type === "CONTINUE_NEUTRAL_COMBAT" || legal.action.type === "RETREAT_FROM_COMBAT"
-  );
+  // "The combat round is over" is ONLY the neutral between-rounds gate: spend
+  // 1 MP to fight another round, or retreat. RETREAT_FROM_COMBAT *also* appears
+  // in the PvP start-of-combat escape window (offered to both heroes before any
+  // unit acts), where it is surfaced as a board command button — not here. Gate
+  // strictly on the neutral awaitingContinue state so this prompt no longer pops
+  // up during every PvP battle's opening window.
+  const combatRoundOver =
+    Boolean(state.combat?.awaitingContinue) && state.combat?.context.kind === "neutral";
+  const combatGate = combatRoundOver
+    ? legalActions.filter(
+        (legal) => legal.action.type === "CONTINUE_NEUTRAL_COMBAT" || legal.action.type === "RETREAT_FROM_COMBAT"
+      )
+    : [];
 
   let title: string | null = null;
   let body: LegalAction[] = [];
