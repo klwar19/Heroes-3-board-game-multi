@@ -306,6 +306,15 @@ export type ActiveEffectModifier =
       type: "EXTRA_BALLISTA";
     }
   | {
+      /**
+       * Gerwulf's Ballista VI (ongoing): while the controller holds this
+       * (player-scoped, combat duration), their Ballista's round-start shot
+       * targets an enemy unit of THEIR choice — every living enemy is a
+       * candidate — instead of being forced onto the lowest-initiative enemy.
+       */
+      type: "BALLISTA_CHOOSE_TARGET";
+    }
+  | {
       /** Anti-Magic: the unit cannot be targeted by spells (up to a tier). */
       type: "UNIT_SPELL_IMMUNE";
       maxGrade: UnitGrade;
@@ -729,6 +738,21 @@ export type EffectDefinition =
        * faster foes.
        */
       doubleIfDefenderInitiativeHigher?: boolean;
+      /**
+       * Ash's Bloodlust I/VI: "Place a Black cube on that unit." A Black cube on
+       * a unit's card means it has spent its Retaliation — it can no longer
+       * perform a Retaliation Attack this round (Counterstrike's CLEAR_RETALIATION
+       * removes it). On an attack-buff reaction (UNIT_ATTACK_DECLARED, self) the
+       * cube lands on the buffed ATTACKER once the attack resolves: the engine
+       * sets that unit's `retaliatedThisRound = true`.
+       */
+      placeBlackCube?: boolean;
+      /**
+       * Ash's Bloodlust VI: "and ignores Retaliation Attacks." For this single
+       * buffed attack the defender does not retaliate (the one-off equivalent of
+       * the `ignores-retaliation` unit ability).
+       */
+      ignoresRetaliation?: boolean;
     }
   | {
       /** Centaur's Axe: the attack die's outcome counts three times. */
@@ -1309,6 +1333,20 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Gerwulf's Ballista IV/VI: "Discard your Ballista to inflict `amount`
+       * damage on the selected unit." A combat play targeting an enemy unit:
+       * the player must own an in-play war-machine card matching
+       * `warMachineCardId` (a temporary Torosar-style grant cannot be discarded),
+       * which is sent to the discard pile, then the chosen enemy takes `amount`
+       * "effect" damage — the same physical Ballista shot, so spell-damage
+       * reduction does not apply. Gated in legal-actions on owning that machine.
+       */
+      type: "DISCARD_WAR_MACHINE_DAMAGE";
+      warMachineCardId: CardId;
+      amount: number;
+    }
+  | {
+      /**
        * Artillery (basic side): deal `amount` damage to an enemy unit with the
        * lowest (effective) initiative — the same shot a Ballista makes, played
        * from hand without one. The card constrains its legal targets to the
@@ -1503,6 +1541,13 @@ export type EffectDefinition =
       type: "CREATE_ACTIVE_EFFECT";
       effect: ActiveEffectDefinition;
       expertEffect?: ActiveEffectDefinition;
+      /**
+       * Ash's Bloodlust IV: "Place a Black cube on that unit." After the ongoing
+       * buff is created on the selected unit, that unit also spends its
+       * Retaliation for the round (`retaliatedThisRound = true`) — the same Black
+       * cube the instant Bloodlust sides place via ADD_COMBAT_STAT.placeBlackCube.
+       */
+      placeBlackCube?: boolean;
     }
   | {
       type: "CREATE_ATTACK_BUFF";
@@ -3562,6 +3607,19 @@ export type ResolutionStackItem = {
     ignoreDefenseSchoolPowerBonus?: number;
     /** Players who already spent their Basic X Magic +3 expert on this stack. */
     schoolFetchExpertUsedBy?: PlayerId[];
+    /**
+     * Ash's Bloodlust I/IV/VI: a played buff also "places a Black cube" on the
+     * buffed attacker — once this attack resolves the attacker spends its
+     * Retaliation for the round (`retaliatedThisRound = true`). Set from
+     * ADD_COMBAT_STAT.placeBlackCube during the attack-declared window.
+     */
+    setRetaliatedOnAttacker?: boolean;
+    /**
+     * Ash's Bloodlust VI: this single attack "ignores Retaliation Attacks" — the
+     * defender does not retaliate, the one-off equivalent of the attacker holding
+     * the `ignores-retaliation` ability. Set from ADD_COMBAT_STAT.ignoresRetaliation.
+     */
+    ignoresRetaliationThisAttack?: boolean;
     playedCardIds: CardId[];
   };
 };

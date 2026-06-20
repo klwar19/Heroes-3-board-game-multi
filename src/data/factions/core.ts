@@ -1603,6 +1603,48 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     },
     portrait: "/assets/hero_portraits-merist.webp",
     source: stretchGoalPcPortraitHeroSource("merist", "Merist")
+  },
+
+  // ---- Additional heroes, batch 5 ---------------------------------------
+  // Eight "Regular Stretch Goals 2024" heroes that complete the roster of every
+  // already-playable Town to match the fan wiki's hero list. Each fan-wiki page
+  // shows only the deck-back placeholder (no printed board scan, no specialty card
+  // faces), so — like Valeska/Ingham/batch-3/batch-4 — they ship the classic PC
+  // hero portrait from heroes.thelazy.net and face-less specialty cards. Stats
+  // follow the verified per-class board pattern; class, starting ability and the
+  // I/IV/VI specialty rules are transcribed from each hero's wiki page. Every
+  // specialty runs in the engine (extra-heroes-batch5-specialties.test.ts).
+  ash: {
+    id: "ash",
+    name: "Ash",
+    faction: "inferno",
+    class: "Heretic",
+    type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 1 },
+    startingAbilityCardId: "ability.eagle_eye",
+    specialtyCardIds: {
+      1: "specialty.ash.1",
+      4: "specialty.ash.4",
+      6: "specialty.ash.6"
+    },
+    portrait: "/assets/hero_portraits-ash.webp",
+    source: stretchGoalPcPortraitHeroSource("ash", "Ash")
+  },
+  gerwulf: {
+    id: "gerwulf",
+    name: "Gerwulf",
+    faction: "fortress",
+    class: "Beastmaster",
+    type: "might",
+    startingStats: { attack: 0, defense: 4, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.armorer",
+    specialtyCardIds: {
+      1: "specialty.gerwulf.1",
+      4: "specialty.gerwulf.4",
+      6: "specialty.gerwulf.6"
+    },
+    portrait: "/assets/hero_portraits-gerwulf.webp",
+    source: stretchGoalPcPortraitHeroSource("gerwulf", "Gerwulf")
   }
 };
 
@@ -1646,7 +1688,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Inferno",
     color: "#e07020",
     startingTileId: "S6",
-    heroes: ["xyron", "rashka", "zydar", "fiona"],
+    heroes: ["xyron", "rashka", "zydar", "fiona", "ash"],
     buildings: buildingsOfFaction("inferno"),
     units: unitsOfFaction("inferno"),
     townImage: "/assets/towns-inferno-empty.webp",
@@ -1702,7 +1744,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Fortress",
     color: "#6b8e23",
     startingTileId: "S5",
-    heroes: ["bron", "wystan", "tazar", "adrienne", "merist"],
+    heroes: ["bron", "wystan", "tazar", "adrienne", "merist", "gerwulf"],
     buildings: buildingsOfFaction("fortress"),
     units: unitsOfFaction("fortress"),
     source: townSource("fortress")

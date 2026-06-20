@@ -1,5 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
-import { countExtraBallistas, effectiveInitiative, makeActiveEffect } from "./active-effects";
+import { countExtraBallistas, effectiveInitiative, hasBallistaChooseTarget, makeActiveEffect } from "./active-effects";
 import { getActiveAstrologersCard, hasResources, processPendingVisit, spendResources } from "./adventure";
 import { isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
@@ -774,7 +774,10 @@ export function processWarMachineRound(state: GameState): void {
     const name = warMachineName(state, playerId);
 
     if (roundStart.kind === "damage-lowest-initiative") {
-      const candidates = lowestInitiativeEnemies(state, playerId);
+      // Gerwulf's Ballista VI (ongoing): while held, the owner aims their
+      // Ballista at any enemy they choose instead of the forced slowest one.
+      const chooseTarget = hasBallistaChooseTarget(state, playerId);
+      const candidates = chooseTarget ? enemiesOf(state, playerId) : lowestInitiativeEnemies(state, playerId);
       if (candidates.length === 0) {
         queue.pending.shift();
         continue;
@@ -805,7 +808,9 @@ export function processWarMachineRound(state: GameState): void {
       openWarMachineTargetChoice(
         state,
         playerId,
-        `${name}: ${roundStart.amount} damage to the enemy unit with the lowest initiative — break the tie.`,
+        chooseTarget
+          ? `${name}: choose which enemy unit takes ${roundStart.amount} damage.`
+          : `${name}: ${roundStart.amount} damage to the enemy unit with the lowest initiative — break the tie.`,
         candidates.map((unit) => unit.id),
         roundStart.amount
       );

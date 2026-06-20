@@ -85,8 +85,10 @@ import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTar
 import {
   activateBallistas,
   applyPermanentCombatEffectsForPlayer,
+  applyWarMachineDamage,
   buyWarMachine,
   countBallistas,
+  discardPermanentFromPlay,
   discardPermanentVoluntarily,
   discardSchoolPermanentForExpert,
   firstAidVolleyHeals,
@@ -2889,6 +2891,11 @@ function finishResolvedAttack(
   } else {
     details.attacker.attackedThisActivation = true;
     details.attacker.attacksThisActivation = (details.attacker.attacksThisActivation ?? 0) + 1;
+    // Ash's Bloodlust "places a Black cube" on the buffed attacker: it spends its
+    // Retaliation for the round (it can no longer perform a Retaliation Attack).
+    if (stackItem.modifiers.setRetaliatedOnAttacker) {
+      details.attacker.retaliatedThisRound = true;
+    }
   }
 
   stackItem.status = "resolved";
@@ -2934,7 +2941,12 @@ function finishResolvedAttack(
       attackerId: details.attacker.id,
       defenderId: details.defender.id,
       attackKind: details.attackKind,
-      retaliationPending: shouldRetaliate(details.attacker, details.defender, details.attackKind),
+      retaliationPending: shouldRetaliate(
+        details.attacker,
+        details.defender,
+        details.attackKind,
+        stackItem.modifiers.ignoresRetaliationThisAttack
+      ),
       afterRetaliationAbilityAttack: getAfterRetaliationAttack(details.attacker, details.defender),
       // A Magic-Mirror-bounced Curse/Weakness on this attack carries to the
       // retaliation so it strikes the new target there too, then is gone.
@@ -5802,13 +5814,16 @@ function getCurrentSpellPower(state: GameState, stackItem: ResolutionStackItem, 
 function shouldRetaliate(
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  attackKind: "melee" | "ranged"
+  attackKind: "melee" | "ranged",
+  /** Ash's Bloodlust VI: this single attack ignores Retaliation Attacks. */
+  ignoreRetaliationOverride = false
 ): boolean {
   return (
     isUnitAlive(attacker) &&
     isUnitAlive(defender) &&
     attackKind === "melee" &&
     isAdjacent(attacker.position, defender.position) &&
+    !ignoreRetaliationOverride &&
     !hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") &&
     (!defender.retaliatedThisRound || hasUnitAbilityEffect(defender, "ALLOW_UNLIMITED_RETALIATION"))
   );
@@ -8010,6 +8025,17 @@ function applyReactionPlayCore(
       }
     }
 
+    // Ash's Bloodlust: the buffed attack "places a Black cube" on the attacker
+    // (it spends its Retaliation once the attack resolves) and, at level VI, the
+    // attack also "ignores Retaliation Attacks". Both ride the pending attack so
+    // they are applied when finishResolvedAttack settles this strike.
+    if (effect.placeBlackCube) {
+      stackItem.modifiers.setRetaliatedOnAttacker = true;
+    }
+    if (effect.ignoresRetaliation) {
+      stackItem.modifiers.ignoresRetaliationThisAttack = true;
+    }
+
     if (effect.drawCards) {
       drawCardsForPlayer(state, playerId, effect.drawCards);
     }
@@ -9061,6 +9087,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
     createActiveEffectFromCard(state, card, effect, action.playerId, mode, target);
+    // Ash's Bloodlust IV: the ongoing buff also "places a Black cube" on the
+    // selected unit — it spends its Retaliation for the round.
+    if (effect.placeBlackCube && state.combat && target?.type === "unit") {
+      const cubed = state.combat.units[target.unitId];
+      if (cubed && cubed.controllerId === action.playerId) {
+        cubed.retaliatedThisRound = true;
+      }
+    }
   }
 
   if (effect.type === "REMOVE_ACTIVE_EFFECT" && target) {
@@ -9226,6 +9260,29 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       .map((unit) => unit.id);
     applyAdjacentPicks(state, action.playerId, card, enemyIds, effect.count, effect.amount);
     finishCombatIfNeeded(state);
+  }
+
+  // Gerwulf's Ballista IV/VI: "Discard your Ballista to inflict `amount` damage
+  // on the selected unit." Requires an in-play war-machine card matching the
+  // effect (gated in legal-actions); it is sent to the discard pile and the
+  // chosen enemy takes that much "effect" damage — a physical Ballista shot.
+  if (effect.type === "DISCARD_WAR_MACHINE_DAMAGE" && state.combat) {
+    const unit = target ? state.combat.units[target.unitId] : undefined;
+    if (!unit || !isUnitAlive(unit) || unit.controllerId === action.playerId) {
+      throw new Error(`${card.name} must hit a living enemy unit.`);
+    }
+    if (!getPermanentCardIds(state, action.playerId).includes(effect.warMachineCardId)) {
+      throw new Error(`${card.name} requires an in-play ${effect.warMachineCardId} to discard.`);
+    }
+    discardPermanentFromPlay(state, action.playerId, effect.warMachineCardId);
+    applyWarMachineDamage(
+      state,
+      action.playerId,
+      unit.id,
+      effect.amount,
+      `${card.name}: the discarded Ballista hits ${unit.cardName} for ${effect.amount} damage.`,
+      effect.warMachineCardId
+    );
   }
 
   // Merist's Stone Skin IV: "All your units gain a Defense token." Every living
