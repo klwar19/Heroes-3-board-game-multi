@@ -2,7 +2,6 @@ import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { SUBTERRANEAN_GATE_TOKEN_IMAGES } from "@/data/assets/homm-assets";
-import { locationDefinitions } from "@/data/map/locations";
 import {
   beginFieldVisit,
   fieldLayer,
@@ -194,33 +193,38 @@ describe("subterranean gate placement", () => {
     expect(hexDistance(parseHexSpaceId(gate.spaceId)!, undergroundCenter)).toBe(nearest);
   });
 
-  it("never sacrifices a Blocked Field, Mine, or Town to a gate", () => {
+  it("sacrifices whatever Field is closest — even a Blocked Field or Mine — for both halves", () => {
     const state = makeGame();
     const { surface, underground } = placePair(state);
-    // Keep U1's real fields (it has a Mine and a Blocked Field) but clear the
-    // Surface tile so the gate side is unconstrained.
     setAllEmpty(state, surface);
+    setAllEmpty(state, underground);
+
+    // Bury the entire shared seam under Blocked Fields and a Mine, so the only
+    // hexes the token can possibly use are "forbidden" ones. The gate must still
+    // form: it covers whatever is closest (the gate IS the field now).
+    const seamSurface = [...new Set(crossPairs(surface, underground).map(([s]) => s))];
+    const seamUnderground = [...new Set(crossPairs(surface, underground).map(([, u]) => u))];
+    expect(seamSurface.length).toBeGreaterThan(0);
+    expect(seamUnderground.length).toBeGreaterThan(0);
+    seamSurface.forEach((spaceId) => {
+      adv(state).fields[spaceId]!.location = "blocked_field";
+    });
+    seamUnderground.forEach((spaceId, index) => {
+      adv(state).fields[spaceId]!.location = index === 0 ? "mine" : "blocked_field";
+    });
 
     recomputeSubterraneanGates(adv(state));
 
+    const gate = gateHalfTo(state, underground.id);
     const entrance = gateHalfTo(state, surface.id);
-    expect(entrance, "an entrance should still be placeable around the forbidden fields").toBeDefined();
-
-    // The entrance never lands on a forbidden slot of the underground tile.
-    const def = allTileDefinitions[underground.tileDefId];
-    const forbidden = new Set(["mine", "settlement", "town", "random_town", "grail", "dragon_utopia"]);
-    const entranceLocation = def.fields[entrance!.slot].location;
-    expect(forbidden.has(entranceLocation)).toBe(false);
-    expect(locationDefinitions[entranceLocation]?.category).not.toBe("blocked");
-
-    // The original Blocked Field and Mine are untouched (still themselves).
-    for (const spaceId of getTileFootprintSpaceIds(underground)) {
-      const field = adv(state).fields[spaceId]!;
-      const original = def.fields[field.slot].location;
-      if (original === "blocked_field" || original === "mine") {
-        expect(field.location).toBe(original);
-      }
-    }
+    expect(gate, "the gate forms even when every seam hex is forbidden").toBeDefined();
+    expect(entrance).toBeDefined();
+    // Each half landed on a formerly-forbidden seam hex and is now the gate.
+    expect(seamSurface).toContain(gate!.spaceId);
+    expect(seamUnderground).toContain(entrance!.spaceId);
+    expect(gate!.location).toBe("subterranean_gate");
+    expect(entrance!.location).toBe("subterranean_gate");
+    expect(gateFieldsLinked(gate, entrance)).toBe(true);
   });
 
   it("is idempotent: re-running never moves or duplicates a gate", () => {
@@ -425,5 +429,158 @@ describe("subterranean tile discovery", () => {
     });
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.errors.some((error) => /Subterranean/i.test(error.message))).toBe(true);
+  });
+
+  it("discovers an adjacent Subterranean tile normally from the Subterranean layer (no gate)", () => {
+    // "When under a Subterranean Tile you discover Subterranean Tiles normally":
+    // two underground tiles share an ordinary border — no divide, no gate token.
+    let state = makeGame();
+    const here = instantiateTile(adv(state), "U1", { row: 24, col: 12 }, 0, false);
+    const target = instantiateTile(adv(state), "U2", tileLatticeNeighbors({ row: 24, col: 12 })[0], 0, true);
+    setAllEmpty(state, here);
+
+    const heroStart = crossPairs(here, target)[0][0];
+    state = state.players.p1.needsHandRefresh
+      ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      : state;
+    const hero = state.heroes.hero_p1;
+    hero.spaceId = heroStart;
+    hero.movementPoints = 5;
+    expect(fieldLayer(state, hero.spaceId!)).toBe("subterranean");
+
+    const revealed = applyOk(state, {
+      type: "DISCOVER_TILE",
+      playerId: "p1",
+      heroId: hero.id,
+      tileInstanceId: target.id
+    });
+    expect(revealed.adventure!.pendingTileChoice?.tileInstanceId).toBe(target.id);
+
+    const after = applyOk(revealed, {
+      type: "SET_TILE_ROTATION",
+      playerId: "p1",
+      tileInstanceId: target.id,
+      rotation: 0
+    });
+    // Two Subterranean tiles never spawn a Subterranean Gate between them.
+    expect(Object.values(after.adventure!.fields).some((field) => field.location === "subterranean_gate")).toBe(false);
+  });
+});
+
+describe("subterranean gate: reverse direction (Subterranean tile up, Surface tile face-down)", () => {
+  // The mirror of the forward flow: the entrance is sacrificed on the
+  // Subterranean tile first, and the Surface gate is carved only once the
+  // Surface tile is revealed (by entering the entrance) and rotated.
+  function placeUndergroundUpSurfaceDown(state: GameState): { surface: MapTileState; underground: MapTileState } {
+    const undergroundCenter = { row: 24, col: 12 };
+    const surfaceCenter = tileLatticeNeighbors(undergroundCenter)[0];
+    const underground = instantiateTile(adv(state), "U1", undergroundCenter, 0, false);
+    const surface = instantiateTile(adv(state), "F1", surfaceCenter, 0, true);
+    return { surface, underground };
+  }
+
+  it("carves the entrance toward the still-hidden Surface tile, with no gate half yet", () => {
+    const state = makeGame();
+    const { surface, underground } = placeUndergroundUpSurfaceDown(state);
+    setAllEmpty(state, underground);
+    recomputeSubterraneanGates(adv(state));
+
+    const entrance = gateHalfTo(state, surface.id);
+    expect(entrance).toBeDefined();
+    expect(getTileFootprintSpaceIds(underground)).toContain(entrance!.spaceId);
+    expect(entrance!.gateLinkSpaceId).toBeUndefined();
+    expect(gateHalfTo(state, underground.id)).toBeUndefined();
+    expect(adv(state).tiles[surface.id].faceDown).toBe(true);
+  });
+
+  it("reveals the Surface tile for free when a hero enters the entrance, then carves and links the gate", () => {
+    const state = makeGame();
+    const { surface, underground } = placeUndergroundUpSurfaceDown(state);
+    setAllEmpty(state, underground);
+    recomputeSubterraneanGates(adv(state));
+    const entrance = gateHalfTo(state, surface.id)!;
+
+    const hero = state.heroes.hero_p1;
+    hero.spaceId = entrance.spaceId;
+    expect(fieldLayer(state, hero.spaceId!)).toBe("subterranean");
+    beginFieldVisit(state, hero.id, entrance.spaceId, false);
+
+    // The far (Surface) tile flips up for free, rotation pending.
+    expect(adv(state).tiles[surface.id].faceDown).toBe(false);
+    expect(adv(state).pendingTileChoice?.tileInstanceId).toBe(surface.id);
+
+    // Lock the first legal rotation; the Surface gate is then carved next to the
+    // entrance — even onto F1's Blocked Field / settlement on this seam — and the
+    // two halves link into the one crossing.
+    let after: GameState | null = null;
+    for (const rotation of [0, 1, 2, 3, 4, 5]) {
+      const result = applyAction(state, {
+        type: "SET_TILE_ROTATION",
+        playerId: "p1",
+        tileInstanceId: surface.id,
+        rotation
+      });
+      if (result.errors.length === 0) {
+        after = result.state;
+        break;
+      }
+    }
+    expect(after, "a legal rotation must complete the gate").not.toBeNull();
+    const gate = gateHalfTo(after!, underground.id);
+    expect(gate).toBeDefined();
+    expect(getTileFootprintSpaceIds(after!.adventure!.tiles[surface.id])).toContain(gate!.spaceId);
+    const entranceAfter = after!.adventure!.fields[entrance.spaceId];
+    expect(gateFieldsLinked(gate, entranceAfter)).toBe(true);
+  });
+});
+
+describe("subterranean gate: crossing it with the real move action", () => {
+  it("reveals on entry, then carries a hero Surface→gate→entrance→underground in one path", () => {
+    let state = makeGame();
+    const { surface, underground } = placePair(state, { undergroundUp: false });
+    setAllEmpty(state, surface);
+    recomputeSubterraneanGates(adv(state));
+    const gate = gateHalfTo(state, underground.id)!;
+
+    state = state.players.p1.needsHandRefresh
+      ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      : state;
+    const surfaceCenter = hexSpaceId({ row: surface.centerRow, col: surface.centerCol });
+    const hero = state.heroes.hero_p1;
+    hero.spaceId = surfaceCenter;
+    hero.movementPoints = 8;
+    hero.movementHaltedThisTurn = false;
+
+    // Stepping onto the gate (an ordinary empty field) reveals the far tile for
+    // free and pauses the walk for the rotation, exactly like a discovery.
+    state = applyOk(state, { type: "MOVE_HERO_PATH", playerId: "p1", heroId: hero.id, path: [gate.spaceId] });
+    expect(state.heroes.hero_p1.spaceId).toBe(gate.spaceId);
+    expect(adv(state).tiles[underground.id].faceDown).toBe(false);
+    expect(adv(state).pendingTileChoice?.tileInstanceId).toBe(underground.id);
+
+    state = applyOk(state, {
+      type: "SET_TILE_ROTATION",
+      playerId: "p1",
+      tileInstanceId: underground.id,
+      rotation: 0
+    });
+    const entrance = gateHalfTo(state, surface.id)!;
+    expect(entrance).toBeDefined();
+
+    // With the token linked, the hero crosses the whole divide in a single walk.
+    state.heroes.hero_p1.spaceId = surfaceCenter;
+    state.heroes.hero_p1.movementPoints = 8;
+    state.heroes.hero_p1.movementHaltedThisTurn = false;
+    const reachable = getReachableHeroPaths(state, state.heroes.hero_p1);
+    const dest = [...reachable.keys()].find(
+      (spaceId) => fieldLayer(state, spaceId) === "subterranean" && spaceId !== entrance.spaceId
+    )!;
+    const path = reachable.get(dest)!.path;
+    expect(path).toContain(gate.spaceId);
+    expect(path).toContain(entrance.spaceId);
+
+    state = applyOk(state, { type: "MOVE_HERO_PATH", playerId: "p1", heroId: hero.id, path });
+    expect(state.heroes.hero_p1.spaceId).toBe(dest);
+    expect(fieldLayer(state, dest)).toBe("subterranean");
   });
 });
