@@ -5307,9 +5307,9 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
  * not just at the start like Retreat / Surrender). Always a defeat with the
  * Retreat consequences (5 gold, -1 morale, fall back home, the opponent wins).
  * The troop cost depends on the lobby's PvP casualty mode: in losing-troop mode
- * the whole battle army is lost; in keep-troops mode the army is kept and the
- * hand is discarded instead. Neutral-guard fights have no Give up — only the
- * end-of-round Retreat.
+ * only the casualties taken up to that point are lost (survivors fall back); in
+ * keep-troops mode every unit is kept and the hand is discarded instead.
+ * Neutral-guard fights have no Give up — only the end-of-round Retreat.
  */
 function addGiveUpCombatActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const combat = state.combat;
@@ -5325,7 +5325,7 @@ function addGiveUpCombatActions(actions: LegalAction[], state: GameState, player
   const losesTroops = adventurePvpTroopLoss(state) === "normal";
   actions.push({
     label: losesTroops
-      ? "Give up (concede: lose the combat and your whole battle army, fall back home)"
+      ? "Give up (concede: lose the combat — your fallen so far stay lost, survivors fall back home)"
       : "Give up (concede: lose the combat and discard your hand, fall back home)",
     action: { type: "GIVE_UP_COMBAT", playerId }
   });
