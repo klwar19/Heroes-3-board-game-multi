@@ -1968,6 +1968,19 @@ export type CardOptionDefinition = {
   mapOnly?: boolean;
   /** This option may only be played during combat. */
   combatOnly?: boolean;
+  /**
+   * "Instant" combat timing in the board-game sense: this option may be played
+   * at ANY time during a Combat — on your own turn AND off-turn while an enemy
+   * unit is active (its turn starting, mid-move, or just finished). Used by the
+   * instant damage specialties (Gerwulf's Ballista discard, Adelaide's Frost
+   * Ring, Deemer's Meteor Shower). The engine offers it off-turn through
+   * addCombatAnytimeSpecialtyPlays — which feeds the off-turn combat action pass
+   * AND getOffTurnCombatReactions (so it is also offered during every neutral /
+   * Intelligence reaction pause). A turn-only option (e.g. Gerwulf IV's free
+   * 1 damage, Gerwulf VI's ongoing aim) simply omits this flag, so it stays
+   * playable only on the owner's own turn.
+   */
+  combatAnytime?: boolean;
   /** This option is the card's expert side: playing it spends a crown. */
   expertOnly?: boolean;
   /**
@@ -4286,16 +4299,18 @@ export type CombatState = {
    *
    *  - "pre-activation": before a unit takes its turn, the OTHER side gets a
    *    window to react first — cast Intelligence-enabled spells (Magic Arrow,
-   *    Fireball…), trigger-free instant spells, or play an instant ability /
-   *    use an active effect. Set in neutral fights (the human reacts before
-   *    each guard acts) and in player-vs-player fights whenever the reacting
-   *    side holds Intelligence (the anytime-cast freedom). `reactingPlayerId`
-   *    holds priority; `intent` previews what the guard is about to do.
+   *    Fireball…), trigger-free instant spells, play an instant ability / use an
+   *    active effect (First Aid Tent), or play an instant damage specialty
+   *    (Gerwulf/Adelaide/Deemer — the `combatAnytime` options). Set in neutral
+   *    fights (the human reacts before each guard acts) and in player-vs-player
+   *    fights whenever the reacting side holds Intelligence (the anytime-cast
+   *    freedom). `reactingPlayerId` holds priority; `intent` previews the move.
    *  - "guard-walk": after a neutral guard walks (a pure move — attacks pause
    *    on the defender's reaction window and the attack die instead) the engine
    *    stops so the table can see the move. Neutral fights only.
    *
-   * The sandbox never pauses like this (its pump does not run).
+   * The sandbox never pauses like this (its pump does not run); there, off-turn
+   * instants are simply offered to the non-active player at any combat moment.
    */
   pendingNeutralStep?: {
     /** Older snapshots have no kind; treat a missing kind as "guard-walk". */
