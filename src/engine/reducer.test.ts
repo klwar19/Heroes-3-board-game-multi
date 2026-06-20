@@ -1036,6 +1036,57 @@ describe("rules engine prototype", () => {
     expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({ roll: 1 });
   });
 
+  it("plays a held Diplomat's Ring as an after-the-roll reaction to reroll the Attack die, then discards it", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    // The artifact is only HELD — never pre-played. Its reroll must be offered
+    // from hand once the Attack die is rolled, not selected up front.
+    state.players.p1.hand = ["artifact.diplomats_ring"];
+    state.players.p2.hand = [];
+    scriptDice(state, [-1, 1]);
+
+    const moved = applyOk(state, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+      destination: 10
+    });
+    const pending = applyOk(moved, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_vampires"
+    });
+
+    expect(pending.pendingChoice).toMatchObject({
+      type: "ATTACK_DIE_REROLL",
+      remainingRerolls: 1
+    });
+    expect(
+      pending.pendingChoice?.type === "ATTACK_DIE_REROLL" &&
+        pending.pendingChoice.rerollSources.some((source) => source.cardId === "artifact.diplomats_ring")
+    ).toBe(true);
+
+    const rerolled = applyOk(pending, {
+      type: "REROLL_PENDING_CHOICE",
+      playerId: "p1",
+      choiceId: pending.pendingChoice?.id ?? ""
+    });
+    const resolved = applyOk(rerolled, {
+      type: "CHOOSE_PENDING_ROLL",
+      playerId: "p1",
+      choiceId: rerolled.pendingChoice?.id ?? "",
+      candidateIndex: 1
+    });
+
+    // Taking the reroll plays (discards) the artifact, and the reroll lands.
+    expect(resolved.players.p1.hand).not.toContain("artifact.diplomats_ring");
+    expect(resolved.players.p1.discard).toContain("artifact.diplomats_ring");
+    expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({ roll: 1 });
+  });
+
   it("opens a pending reroll choice from Fortune before attack damage is assigned", () => {
     const state = createInitialGameState();
     if (!state.combat) {

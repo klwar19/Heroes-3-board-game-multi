@@ -2826,5 +2826,363 @@ export const adventureCards: CardLibrary = {
     effect: { type: "STONE_SKIN_AURA" },
     implementationStatus: "implemented",
     source: heroSource("merist")
+  }),
+
+  // ---- Additional heroes, batch 5 ---------------------------------------
+  // Eight "Regular Stretch Goals 2024" heroes that complete every already-playable
+  // Town's roster on the fan wiki. Their pages show only the deck-back placeholder
+  // (no board scan, no specialty faces), so — like batch 3/4 — they ship the classic
+  // PC portrait and face-less specialty cards (withoutArt). Every I/IV/VI specialty
+  // runs in the engine and is mutation-checked (extra-heroes-batch5-specialties.test.ts).
+
+  // Ash (Inferno, Heretic): the Bloodlust specialist — pumps a ground/flying unit's
+  // attack but "places a Black cube" on it (it spends its Retaliation). I/VI are
+  // instants on your declared attack; IV is an ongoing +2 attack / +1 initiative.
+  "specialty.ash.1": withoutArt({
+    id: "specialty.ash.1",
+    name: "Bloodlust I",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "ash",
+      "bloodlust",
+      "Instant: Your selected ground or flying unit gains +2 attack. Place a Black cube on that unit."
+    ],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+    effect: {
+      type: "ADD_COMBAT_STAT",
+      stat: "attack",
+      amount: 2,
+      unitTypes: ["ground", "flying"],
+      placeBlackCube: true
+    },
+    implementationStatus: "implemented",
+    source: heroSource("ash")
+  }),
+  "specialty.ash.4": withoutArt({
+    id: "specialty.ash.4",
+    name: "Bloodlust IV",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "ash",
+      "bloodlust",
+      "Ongoing: For this Combat, your selected ground or flying unit's attack is increased by 2 and its initiative is increased by 1. Place a Black cube on that unit."
+    ],
+    target: { type: "friendly-unit", unitTypes: ["ground", "flying"] },
+    effect: {
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: "Bloodlust IV",
+        scope: "unit",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: true,
+        modifiers: [
+          { type: "ATTACK_BONUS", amount: 2 },
+          { type: "INITIATIVE_BONUS", amount: 1 }
+        ]
+      },
+      placeBlackCube: true
+    },
+    implementationStatus: "implemented",
+    source: heroSource("ash")
+  }),
+  "specialty.ash.6": withoutArt({
+    id: "specialty.ash.6",
+    name: "Bloodlust VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "ash",
+      "bloodlust",
+      "Instant: Your selected ground or flying unit gains +3 attack and ignores Retaliation Attacks. Place a Black cube on that unit."
+    ],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+    effect: {
+      type: "ADD_COMBAT_STAT",
+      stat: "attack",
+      amount: 3,
+      unitTypes: ["ground", "flying"],
+      placeBlackCube: true,
+      ignoresRetaliation: true
+    },
+    implementationStatus: "implemented",
+    source: heroSource("ash")
+  }),
+
+  // Gerwulf (Fortress, Beastmaster): a Ballista specialist. I matches the other
+  // Ballista heroes (gain/activate). IV/VI add the "discard your Ballista to
+  // inflict N damage on the selected unit" instant (NEW DISCARD_WAR_MACHINE_DAMAGE);
+  // VI's ongoing side also lets you aim your Ballista (NEW BALLISTA_CHOOSE_TARGET).
+  "specialty.gerwulf.1": withoutArt({
+    id: "specialty.gerwulf.1",
+    name: "Ballista I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "gerwulf",
+      "ballista",
+      "Pay 5 gold to gain a Ballista. — OR — Activate your Ballista (if you have one)."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Pay 5 gold to gain a Ballista",
+          mapOnly: true,
+          effect: { type: "GAIN_WAR_MACHINE", warMachineCardId: "war_machine.ballista", goldCost: 5 }
+        },
+        {
+          label: "Activate your Ballista",
+          combatOnly: true,
+          effect: { type: "BALLISTA_SPECIALTY", activate: "one" }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("gerwulf")
+  }),
+  "specialty.gerwulf.4": withoutArt({
+    id: "specialty.gerwulf.4",
+    name: "Ballista IV",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "gerwulf",
+      "ballista",
+      "The selected unit suffers 1 damage. — OR — Discard your Ballista to inflict 2 damage on the selected unit."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "An enemy unit suffers 1 damage",
+          combatOnly: true,
+          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 1 }
+        },
+        {
+          label: "Discard your Ballista: 2 damage to an enemy unit",
+          combatOnly: true,
+          target: { type: "enemy-unit" },
+          effect: { type: "DISCARD_WAR_MACHINE_DAMAGE", warMachineCardId: "war_machine.ballista", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("gerwulf")
+  }),
+  "specialty.gerwulf.6": withoutArt({
+    id: "specialty.gerwulf.6",
+    name: "Ballista VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "gerwulf",
+      "ballista",
+      "Ongoing: For this Combat, you can choose targets for your Ballista (if you have one). — OR — Discard your Ballista to inflict 3 damage on the selected unit."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "For this Combat, you choose your Ballista's targets",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Ballista VI",
+              scope: "player",
+              duration: { type: "combat" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [{ type: "BALLISTA_CHOOSE_TARGET" }]
+            }
+          }
+        },
+        {
+          label: "Discard your Ballista: 3 damage to an enemy unit",
+          combatOnly: true,
+          target: { type: "enemy-unit" },
+          effect: { type: "DISCARD_WAR_MACHINE_DAMAGE", warMachineCardId: "war_machine.ballista", amount: 3 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("gerwulf")
+  }),
+
+  // Tarnum (Dungeon, Overlord): the Dragons specialist. I is the shared might
+  // specialty (doubles for Dragons, like Mutare). IV damages a whole vertical
+  // line of 5 spaces (NEW DAMAGE_BATTLEFIELD_LINE). VI toggles a Dragons unit's
+  // Black cube (NEW TOGGLE_RETALIATION_MARKER) or grants +2 attack on an attack.
+  "specialty.tarnum_dungeon.1": withoutArt(mightSpecialtyOne("tarnum_dungeon", "Dragons", "a Dragons unit")),
+  "specialty.tarnum_dungeon.4": withoutArt({
+    id: "specialty.tarnum_dungeon.4",
+    name: "Dragons IV",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "tarnum_dungeon",
+      "dragons",
+      "Choose a row (straight line of 5 consecutive spaces). Every unit in that row suffers 2 damage."
+    ],
+    target: { type: "any-space" },
+    effect: { type: "DAMAGE_BATTLEFIELD_LINE", amount: 2 },
+    implementationStatus: "implemented",
+    source: heroSource("tarnum_dungeon")
+  }),
+  "specialty.tarnum_dungeon.6": withoutArt({
+    id: "specialty.tarnum_dungeon.6",
+    name: "Dragons VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "tarnum_dungeon",
+      "dragons",
+      "Remove a Black cube from or place it on a Dragons unit. — OR — Your selected unit gains +2 attack."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Remove/place a Black cube on a Dragons unit",
+          combatOnly: true,
+          target: { type: "any-unit", unitName: "a Dragons unit" },
+          effect: { type: "TOGGLE_RETALIATION_MARKER" }
+        },
+        {
+          label: "+2 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("tarnum_dungeon")
+  }),
+
+  // Sephinroth (Dungeon, Warlock): the Valuables specialist — a map economy hero.
+  // Each level gains Valuables (NEW GAIN_RESOURCES.goldCost for I's "pay 2 gold")
+  // with an instant alternative. The wiki notes the gain "can be improved by spell
+  // power"; the engine has no map-phase hero Power, so the printed flat amounts run
+  // (the note is not modeled).
+  "specialty.sephinroth.1": withoutArt({
+    id: "specialty.sephinroth.1",
+    name: "Valuables I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "sephinroth",
+      "valuables",
+      "Pay 2 gold to gain 1 valuables. — OR — Draw 1 card."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Pay 2 gold to gain 1 valuables",
+          mapOnly: true,
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 }, goldCost: 2 }
+        },
+        {
+          label: "Draw 1 card",
+          effect: { type: "DRAW_CARDS", amount: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("sephinroth")
+  }),
+  "specialty.sephinroth.4": withoutArt({
+    id: "specialty.sephinroth.4",
+    name: "Valuables IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "sephinroth",
+      "valuables",
+      "Gain 1 valuables. — OR — +2 Power."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Gain 1 valuables",
+          mapOnly: true,
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 } }
+        },
+        {
+          label: "+2 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("sephinroth")
+  }),
+  "specialty.sephinroth.6": withoutArt({
+    id: "specialty.sephinroth.6",
+    name: "Valuables VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "sephinroth",
+      "valuables",
+      "Gain 2 valuables. — OR — Draw 2 cards."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Gain 2 valuables",
+          mapOnly: true,
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 2 } }
+        },
+        {
+          label: "Draw 2 cards",
+          effect: { type: "DRAW_CARDS", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("sephinroth")
   })
 };

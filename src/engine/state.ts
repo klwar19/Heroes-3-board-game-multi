@@ -122,7 +122,17 @@ export type TargetDefinition =
        */
       unitName?: string;
     }
-  | { type: "any-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
+  | {
+      type: "any-unit";
+      unitTypes?: UnitType[];
+      damagedOnly?: boolean;
+      /**
+       * Tarnum (Dungeon)'s Dragons VI: the effect lands only on a unit (friend or
+       * foe) whose name matches — his "a Dragons unit" — using the same family /
+       * "or" match the specialty-doubling uses.
+       */
+      unitName?: string;
+    }
   /** Summon spells: a chosen empty space on the combat board. */
   | { type: "empty-space" }
   /** Inferno: any space on the combat board (occupied or not). */
@@ -304,6 +314,15 @@ export type ActiveEffectModifier =
        * "activate all your Ballistas". One modifier per granted Ballista.
        */
       type: "EXTRA_BALLISTA";
+    }
+  | {
+      /**
+       * Gerwulf's Ballista VI (ongoing): while the controller holds this
+       * (player-scoped, combat duration), their Ballista's round-start shot
+       * targets an enemy unit of THEIR choice — every living enemy is a
+       * candidate — instead of being forced onto the lowest-initiative enemy.
+       */
+      type: "BALLISTA_CHOOSE_TARGET";
     }
   | {
       /** Anti-Magic: the unit cannot be targeted by spells (up to a tier). */
@@ -729,6 +748,21 @@ export type EffectDefinition =
        * faster foes.
        */
       doubleIfDefenderInitiativeHigher?: boolean;
+      /**
+       * Ash's Bloodlust I/VI: "Place a Black cube on that unit." A Black cube on
+       * a unit's card means it has spent its Retaliation — it can no longer
+       * perform a Retaliation Attack this round (Counterstrike's CLEAR_RETALIATION
+       * removes it). On an attack-buff reaction (UNIT_ATTACK_DECLARED, self) the
+       * cube lands on the buffed ATTACKER once the attack resolves: the engine
+       * sets that unit's `retaliatedThisRound = true`.
+       */
+      placeBlackCube?: boolean;
+      /**
+       * Ash's Bloodlust VI: "and ignores Retaliation Attacks." For this single
+       * buffed attack the defender does not retaliate (the one-off equivalent of
+       * the `ignores-retaliation` unit ability).
+       */
+      ignoresRetaliation?: boolean;
     }
   | {
       /** Centaur's Axe: the attack die's outcome counts three times. */
@@ -801,6 +835,12 @@ export type EffectDefinition =
       type: "GAIN_RESOURCES";
       gain: ResourceCost;
       expertGain?: ResourceCost;
+      /**
+       * Sephinroth's Valuables I: "Pay `goldCost` gold to gain …". The player must
+       * have the gold; it is spent before `gain` is granted (gated in legal-actions
+       * so the option is hidden when unaffordable).
+       */
+      goldCost?: number;
     }
   | {
       /**
@@ -1309,6 +1349,43 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Gerwulf's Ballista IV/VI: "Discard your Ballista to inflict `amount`
+       * damage on the selected unit." A combat play targeting an enemy unit:
+       * the player must own an in-play war-machine card matching
+       * `warMachineCardId` (a temporary Torosar-style grant cannot be discarded),
+       * which is sent to the discard pile, then the chosen enemy takes `amount`
+       * "effect" damage — the same physical Ballista shot, so spell-damage
+       * reduction does not apply. Gated in legal-actions on owning that machine.
+       */
+      type: "DISCARD_WAR_MACHINE_DAMAGE";
+      warMachineCardId: CardId;
+      amount: number;
+    }
+  | {
+      /**
+       * Tarnum (Dungeon)'s Dragons IV: "Choose a row (straight line of 5
+       * consecutive spaces). Every unit in that row suffers `amount` damage."
+       * The Combat board is 4 columns × 5 rows, so the only 5-space straight line
+       * is a vertical column. Played on a chosen space (any-space target); every
+       * living unit sharing that space's column — friend or foe — takes `amount`
+       * "effect" damage (per-unit spell-damage reduction applies, like any card).
+       */
+      type: "DAMAGE_BATTLEFIELD_LINE";
+      amount: number;
+    }
+  | {
+      /**
+       * Tarnum (Dungeon)'s Dragons VI (option A): "Remove a Black cube from or
+       * place it on a Dragons unit." Toggles the selected unit's Retaliation
+       * marker — if it has already spent its Retaliation this round
+       * (`retaliatedThisRound`) the cube is removed (it may retaliate again);
+       * otherwise a cube is placed (it cannot). The card's target restricts this
+       * to a Dragons unit (friend or foe).
+       */
+      type: "TOGGLE_RETALIATION_MARKER";
+    }
+  | {
+      /**
        * Artillery (basic side): deal `amount` damage to an enemy unit with the
        * lowest (effective) initiative — the same shot a Ballista makes, played
        * from hand without one. The card constrains its legal targets to the
@@ -1503,6 +1580,13 @@ export type EffectDefinition =
       type: "CREATE_ACTIVE_EFFECT";
       effect: ActiveEffectDefinition;
       expertEffect?: ActiveEffectDefinition;
+      /**
+       * Ash's Bloodlust IV: "Place a Black cube on that unit." After the ongoing
+       * buff is created on the selected unit, that unit also spends its
+       * Retaliation for the round (`retaliatedThisRound = true`) — the same Black
+       * cube the instant Bloodlust sides place via ADD_COMBAT_STAT.placeBlackCube.
+       */
+      placeBlackCube?: boolean;
     }
   | {
       type: "CREATE_ATTACK_BUFF";
@@ -2292,9 +2376,9 @@ export type GameAction =
   | { type: "FINISH_COMBAT_PLACEMENT"; playerId: PlayerId }
   | {
       /**
-       * Player-vs-player pre-combat preparation: the defender ends their
-       * preparation window (after any town actions) and begins deployment.
-       * Validated in acceptCombat.
+       * Player-vs-player pre-battle preparation: a participant (attacker or
+       * defender) readies up after any town actions. Deployment begins only once
+       * BOTH participants have accepted. Validated in acceptCombat.
        */
       type: "ACCEPT_COMBAT";
       playerId: PlayerId;
@@ -3593,6 +3677,19 @@ export type ResolutionStackItem = {
     ignoreDefenseSchoolPowerBonus?: number;
     /** Players who already spent their Basic X Magic +3 expert on this stack. */
     schoolFetchExpertUsedBy?: PlayerId[];
+    /**
+     * Ash's Bloodlust I/IV/VI: a played buff also "places a Black cube" on the
+     * buffed attacker — once this attack resolves the attacker spends its
+     * Retaliation for the round (`retaliatedThisRound = true`). Set from
+     * ADD_COMBAT_STAT.placeBlackCube during the attack-declared window.
+     */
+    setRetaliatedOnAttacker?: boolean;
+    /**
+     * Ash's Bloodlust VI: this single attack "ignores Retaliation Attacks" — the
+     * defender does not retaliate, the one-off equivalent of the attacker holding
+     * the `ignores-retaliation` ability. Set from ADD_COMBAT_STAT.ignoresRetaliation.
+     */
+    ignoresRetaliationThisAttack?: boolean;
     playedCardIds: CardId[];
   };
 };
@@ -4264,9 +4361,9 @@ export type CombatState = {
   pendingCoverOfDarkness?: PlayerId[];
   /**
    * Shackles of War: the attacker holds a "block the enemy's Surrender" instant
-   * and gets a start-of-combat decision to play it (before the defender's prep
-   * window, where Surrender lives) — resolved like Cover of Darkness. Holds the
-   * single deciding player while open; cleared once they choose.
+   * and gets a start-of-combat decision to play it (before the prep window, where
+   * Surrender lives) — resolved like Cover of Darkness. Holds the single deciding
+   * player while open; cleared once they choose.
    */
   pendingShackles?: PlayerId[] | null;
   /**
@@ -4276,17 +4373,20 @@ export type CombatState = {
    */
   shacklesOffered?: boolean;
   /**
-   * Player-vs-player pre-combat preparation window. When an enemy hero attacks,
-   * the defender may still spend any town actions they have not used this round
-   * (build a structure, recruit/reinforce units, buy spells) before the fight —
-   * recruited units join the army in time to be deployed — then press
-   * ACCEPT_COMBAT to begin deployment. Opened (before placement) only when the
-   * defender has a town and at least one unspent town token; the defender holds
-   * priority while set (phase stays "combat-setup", `setup` already built).
-   * Retreat / Surrender are also available here. Cleared by ACCEPT_COMBAT (or by
-   * a Retreat / Surrender that ends the combat).
+   * Player-vs-player pre-battle preparation window, presented on the adventure
+   * MAP (not the battlefield) so both sides can see their towns, resources and
+   * armies and plan with a clear head. When an enemy hero attacks, BOTH the
+   * attacker and the defender may spend any town actions they have not used this
+   * round (build a structure, recruit/reinforce units, buy spells) before the
+   * fight — recruited units join the army in time to be deployed — then each
+   * presses ACCEPT_COMBAT ("Accept the battle"). Deployment begins only once
+   * *both* participants have accepted. Retreat / Surrender are also available
+   * here. `accepted` lists the participants who have readied up so far; a
+   * participant who has not yet accepted may still take town actions, one who
+   * has is locked in and waits. Opened for every player-vs-player combat;
+   * cleared once both accept (or by a Retreat / Surrender that ends the combat).
    */
-  defenderPrep?: { playerId: PlayerId } | null;
+  prep?: { accepted: PlayerId[] } | null;
   /**
    * Tactics ability: participants still entitled to a start-of-combat unit
    * swap, attacker first then a hero-present PvP defender. Set once all units
@@ -4492,6 +4592,15 @@ export type VisitStep =
   | {
       /** Marks the Swift Weasel once-per-turn adventure-die reroll as used. */
       type: "CONSUME_WEASEL";
+    }
+  | {
+      /**
+       * Plays a held reroll artifact (Diplomat's Ring / Ambassador's Sash) as an
+       * instant the moment a die is rolled: discards it from hand, then the
+       * adventure die is re-rolled by the step that follows.
+       */
+      type: "CONSUME_REROLL_ARTIFACT";
+      cardId: CardId;
     }
   | {
       /** Terrible Plague: flip one army card from Pack back to Few. */
@@ -5113,6 +5222,11 @@ export type AttackRerollSource = {
   effectId?: string;
   /** Positive morale token: spending the reroll discards the token. */
   morale?: boolean;
+  /**
+   * Held reroll artifact (Diplomat's Ring / Ambassador's Sash): taking the
+   * reroll plays the card, discarding it from the owner's hand.
+   */
+  cardId?: CardId;
   /**
    * Printed face gate (Crusaders: 'reroll every "0"'): the source is only
    * usable while the current roll shows this face, and using it never

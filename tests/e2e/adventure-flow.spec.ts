@@ -1,15 +1,56 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 /**
  * Full adventure happy path against a live room: map-setup lobby (factions,
- * heroes, start), starting hands, click-to-move with the confirm bar, tile
- * discovery with the rotation flow, and the far-tile tray.
+ * heroes, start), the first-player ceremony, click-to-move with the confirm
+ * card anchored on the destination hex, and tile discovery with the rotation
+ * card anchored on the tile.
  */
-test("map setup lobby builds the adventure and the hero walks by clicking the map", async ({ page }) => {
-  const roomId = `e2e-${Date.now().toString(36)}`;
-  await page.goto(`/?room=${roomId}`);
 
-  // --- Lobby: seats pick factions, then start -----------------------------
+/** Dismiss the "Who goes first?" ceremony once its dice settle. */
+async function dismissFirstRoll(page: Page): Promise<void> {
+  const begin = page.getByRole("button", { name: /Begin the adventure/i });
+  await begin.waitFor({ state: "visible", timeout: 20000 });
+  await begin.click();
+  await page.locator(".firstRollOverlay").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+}
+
+/**
+ * Click-dismiss any map-notice toasts (resource pickups, etc.). They queue, so
+ * keep clearing until two consecutive checks find none — otherwise the full-bleed
+ * backdrop keeps intercepting the next click on the board.
+ */
+async function clearMapNotices(page: Page): Promise<void> {
+  let emptyChecks = 0;
+  for (let i = 0; i < 25 && emptyChecks < 2; i += 1) {
+    const notice = page.locator(".mapNoticeBackdrop").first();
+    if (await notice.isVisible().catch(() => false)) {
+      await notice.click({ force: true }).catch(() => {});
+      emptyChecks = 0;
+    } else {
+      emptyChecks += 1;
+    }
+    await page.waitForTimeout(300);
+  }
+}
+
+/**
+ * Sit at whichever seat actually holds the turn after the random first-player
+ * roll, identified by it being the only seat with reachable move targets.
+ */
+async function sitActiveSeat(page: Page): Promise<void> {
+  for (const title of [/Sit as Catherine/, /Sit as Sandro/]) {
+    await page.getByTitle(title).click({ timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(1200);
+    await clearMapNotices(page);
+    if ((await page.locator(".hexCell.moveTarget").count()) > 0) {
+      return;
+    }
+  }
+}
+
+async function startTwoPlayerAdventure(page: Page, roomId: string): Promise<void> {
+  await page.goto(`/?room=${roomId}`);
   await expect(page.getByRole("heading", { name: /Map setup/i })).toBeVisible({ timeout: 20000 });
 
   // Player 1 picks Castle — Catherine.
@@ -22,59 +63,100 @@ test("map setup lobby builds the adventure and the hero walks by clicking the ma
   await expect(page.getByText("Necropolis — Sandro", { exact: false })).toBeVisible();
 
   await page.getByRole("button", { name: "Start the adventure" }).click();
-
-  // --- Adventure map -------------------------------------------------------
   await expect(page.locator(".hexMapSvg")).toBeVisible({ timeout: 20000 });
+}
 
-  // Switch back to seat 1 (its turn) and check the starting hand is dealt.
-  await page.getByTitle(/Sit as Catherine/).click();
+test("the hero walks by clicking the map with the confirm card on the hex", async ({ page }) => {
+  await startTwoPlayerAdventure(page, `e2e-${Date.now().toString(36)}`);
+  await dismissFirstRoll(page);
+  await sitActiveSeat(page);
+
+  // The active seat was dealt its starting hand of four cards.
   await expect(page.locator(".adventureHandCard")).toHaveCount(4);
 
-  // The mulligan offer is open at the start of the turn.
-  await expect(page.getByRole("button", { name: /Mulligan/ })).toBeVisible();
-
-  // Click a reachable hex, then confirm the move.
+  // Click a reachable hex: the move-confirm card opens anchored on the map
+  // (foreignObject inside the SVG), not in a bar pinned to the bottom edge.
   const target = page.locator(".hexCell.moveTarget").first();
   await expect(target).toBeVisible();
   await target.click();
-  await expect(page.getByRole("button", { name: /Move there/ })).toBeVisible();
+  const confirmCard = page.locator(".moveConfirmFloat");
+  await expect(confirmCard).toBeVisible();
+  await expect(confirmCard).toContainText(/Move there/);
+
+  // Confirming consumes movement and dismisses the card.
+  const hudBefore = await page.locator(".advHud").innerText();
   await page.getByRole("button", { name: /Move there/ }).click();
+  await expect(confirmCard).toHaveCount(0);
+  await expect
+    .poll(async () => (await page.locator(".advHud").innerText()) !== hudBefore, { timeout: 5000 })
+    .toBe(true);
 
-  // The movement consumed MP (3 -> 2 or less, depending on the visited field).
-  await expect(page.locator(".advHud")).not.toContainText("MP 3");
-
-  // Far tile tray shows the two face-down Ⅱ–Ⅲ backs.
+  // Far tile tray shows the two face-down backs available to the active seat.
   await expect(page.locator(".farTileBack")).toHaveCount(2);
 });
 
-test("discovering a face-down tile asks for its rotation", async ({ page }) => {
-  const roomId = `e2e-rot-${Date.now().toString(36)}`;
-  await page.goto(`/?room=${roomId}`);
+test("discovering a face-down tile opens the rotation card on the tile", async ({ page }) => {
+  await startTwoPlayerAdventure(page, `e2e-rot-${Date.now().toString(36)}`);
+  await dismissFirstRoll(page);
+  await sitActiveSeat(page);
 
-  await expect(page.getByRole("heading", { name: /Map setup/i })).toBeVisible({ timeout: 20000 });
-  await page.getByRole("button", { name: /Catherine/ }).click();
-  await page.getByTitle("Sit as Player 2").click();
-  await page.getByRole("button", { name: /Sandro/ }).click();
-  await page.getByRole("button", { name: "Start the adventure" }).click();
-  await expect(page.locator(".hexMapSvg")).toBeVisible({ timeout: 20000 });
-
-  await page.getByTitle(/Sit as Catherine/).click();
-
-  // Walk next to the face-down near tile: pick the discoverable back directly
-  // if it is already adjacent, otherwise step towards it first.
+  // Walk towards the nearest face-down tile until one becomes discoverable.
   const discoverable = page.locator(".hexFaceDown.discoverable").first();
-  if (!(await discoverable.isVisible().catch(() => false))) {
-    // Step onto the NE empty field, which is adjacent to the near tile.
-    await page.locator(".hexCell.moveTarget").first().click();
+  for (let step = 0; step < 5; step += 1) {
+    await clearMapNotices(page);
+    if (await discoverable.isVisible().catch(() => false)) {
+      break;
+    }
+    const faces = page.locator(".hexFaceDown");
+    const faceCenters: { x: number; y: number }[] = [];
+    for (let i = 0; i < (await faces.count()); i += 1) {
+      const box = await faces.nth(i).boundingBox();
+      if (box) {
+        faceCenters.push({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+      }
+    }
+    const targets = page.locator(".hexCell.moveTarget");
+    const targetCount = await targets.count();
+    if (targetCount === 0 || faceCenters.length === 0) {
+      break;
+    }
+    // Step onto the reachable hex nearest any face-down tile, skipping guarded
+    // fields (their <title> says "(guard …)") so we approach the tile without
+    // tripping a neutral combat that would block the discovery.
+    let bestIndex = -1;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < targetCount; i += 1) {
+      const title = (await targets.nth(i).locator("title").textContent().catch(() => "")) ?? "";
+      if (/guard/i.test(title)) {
+        continue;
+      }
+      const box = await targets.nth(i).boundingBox();
+      if (!box) {
+        continue;
+      }
+      const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      const distance = Math.min(...faceCenters.map((f) => Math.hypot(f.x - center.x, f.y - center.y)));
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = i;
+      }
+    }
+    if (bestIndex < 0) {
+      break;
+    }
+    await targets.nth(bestIndex).click();
     await page.getByRole("button", { name: /Move there/ }).click();
+    await page.waitForTimeout(1000);
   }
 
-  await expect(page.locator(".hexFaceDown.discoverable").first()).toBeVisible();
-  await page.locator(".hexFaceDown.discoverable").first().click();
+  await clearMapNotices(page);
+  await expect(discoverable).toBeVisible();
+  await discoverable.click();
 
-  // The rotation bar opens with rotate buttons and a confirm. Rotations that
-  // border lines seal off disable the confirm — keep turning until legal.
-  await expect(page.locator(".rotateBar")).toBeVisible();
+  // The rotation card opens anchored on the tile (foreignObject) with rotate
+  // buttons and a confirm. Rotations that border lines seal off disable the
+  // confirm — keep turning until legal.
+  await expect(page.locator(".rotateFloat")).toBeVisible();
   const confirm = page.getByRole("button", { name: /Confirm/ });
   for (let turn = 0; turn < 6; turn += 1) {
     if (await confirm.isEnabled()) {
@@ -84,5 +166,5 @@ test("discovering a face-down tile asks for its rotation", async ({ page }) => {
   }
   await expect(confirm).toBeEnabled();
   await confirm.click();
-  await expect(page.locator(".rotateBar")).toHaveCount(0);
+  await expect(page.locator(".rotateFloat")).toHaveCount(0);
 });

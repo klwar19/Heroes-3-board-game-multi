@@ -357,15 +357,16 @@ describe("Shackles of War + PvP retreat/surrender", () => {
   }
 
   // House-rule windows: Retreat is the deployed/in-fight escape; Surrender is a
-  // before-battle (defender prep) decision only.
-  function defenderPrep(state: GameState): GameState {
-    state.combat!.defenderPrep = { playerId: "p2" };
-    state.priorityPlayerId = "p2";
+  // before-battle (prep) decision only. Parking a state in the prep window opens
+  // it for both participants (neither has accepted yet).
+  function openPrep(state: GameState): GameState {
+    state.combat!.prep = { accepted: [] };
+    state.priorityPlayerId = null;
     state.players.p2.resources.gold = 50;
     return state;
   }
 
-  it("a hero may Retreat once deployed, or Surrender before battle (defender prep)", () => {
+  it("a hero may Retreat once deployed, or Surrender before battle (in prep)", () => {
     // Retreat is available in the post-deployment window — but Surrender is not.
     const deployed = pvpState("pvp-escape");
     expect(escapeOptions(deployed, "p1")).toEqual({ retreat: true, surrender: false });
@@ -375,8 +376,8 @@ describe("Shackles of War + PvP retreat/surrender", () => {
       defeatedPlayerId: "p1",
       reason: "retreat"
     });
-    // Surrender is offered (and works) only in the defender's before-battle prep.
-    const prep = defenderPrep(pvpState("pvp-surrender"));
+    // Surrender is offered (and works) only in the before-battle prep window.
+    const prep = openPrep(pvpState("pvp-surrender"));
     expect(escapeOptions(prep, "p2")).toEqual({ retreat: true, surrender: true });
     const surrendered = applyOk(prep, { type: "SURRENDER_COMBAT", playerId: "p2" });
     expect(surrendered.combat?.outcome).toMatchObject({
@@ -427,8 +428,8 @@ describe("Shackles of War + PvP retreat/surrender", () => {
   it("playing it locks the defender out of Surrender in prep — Retreat still allowed", () => {
     let state = attack("shackles-play", true);
     state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: shacklesChoice(state)!.id, optionIndex: 0 });
-    // The defender's prep window is now open, but Surrender is locked out.
-    expect(state.combat?.defenderPrep?.playerId).toBe("p2");
+    // The pre-battle prep window is now open, but the defender's Surrender is locked out.
+    expect(state.combat?.prep).toBeTruthy();
     expect(escapeOptions(state, "p2")).toEqual({ retreat: true, surrender: false });
     const surrenderRejected = applyAction(state, { type: "SURRENDER_COMBAT", playerId: "p2" });
     expect(surrenderRejected.errors.length).toBeGreaterThan(0);
@@ -443,7 +444,7 @@ describe("Shackles of War + PvP retreat/surrender", () => {
   it("keeping it leaves the defender free to Surrender in prep, card still in hand", () => {
     let state = attack("shackles-keep", true);
     state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: shacklesChoice(state)!.id, optionIndex: 1 });
-    expect(state.combat?.defenderPrep?.playerId).toBe("p2");
+    expect(state.combat?.prep).toBeTruthy();
     expect(escapeOptions(state, "p2")).toEqual({ retreat: true, surrender: true });
     expect(state.players.p1.hand).toContain("artifact.shackles_of_war");
   });

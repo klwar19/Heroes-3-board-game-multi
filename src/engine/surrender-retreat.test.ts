@@ -266,9 +266,9 @@ describe("Retreat / fought-out loss (house rule): a real defeat", () => {
 });
 
 describe("Surrender gating: a before-battle (prep) decision needing the 10-gold toll", () => {
-  // Surrender is offered ONLY in the defender's pre-battle prep window. A
-  // round-1 PvP combat parked in that window: p1 attacks, p2 (the defender) is
-  // preparing and has the only escape choices.
+  // Surrender is offered ONLY in the pre-battle prep window (where BOTH sides
+  // ready up). A round-1 PvP combat parked in that window: p1 attacks p2, neither
+  // has accepted yet, so both hold their escape choices.
   function prepState(seed: string): GameState {
     const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
     state.combat = createInitialGameState(seed).combat;
@@ -278,9 +278,9 @@ describe("Surrender gating: a before-battle (prep) decision needing the 10-gold 
       defenderHeroId: "hero_p2",
       fieldId: state.heroes.hero_p1.spaceId ?? "0,0"
     };
-    state.combat!.defenderPrep = { playerId: "p2" };
+    state.combat!.prep = { accepted: [] };
     state.phase = "combat-setup";
-    state.priorityPlayerId = "p2";
+    state.priorityPlayerId = null;
     state.players.p1.hand = [];
     state.players.p2.hand = [];
     return state;
@@ -291,7 +291,7 @@ describe("Surrender gating: a before-battle (prep) decision needing the 10-gold 
   const offersRetreat = (state: GameState, playerId: PlayerId) =>
     getLegalActions(state, playerId).some((l) => l.action.type === "RETREAT_FROM_COMBAT");
 
-  it("offers the defender Surrender only at >= 10 gold, but always offers Retreat", () => {
+  it("offers a preparing hero Surrender only at >= 10 gold, but always offers Retreat", () => {
     const state = prepState("surr-gate");
 
     state.players.p2.resources.gold = 10;
@@ -303,9 +303,18 @@ describe("Surrender gating: a before-battle (prep) decision needing the 10-gold 
     expect(offersRetreat(state, "p2")).toBe(true); // a poorer hero may still flee
   });
 
-  it("never offers Surrender to the attacker (no before-battle prep window)", () => {
-    const state = prepState("surr-attacker");
+  it("offers Surrender to BOTH participants in prep (both get a before-battle window)", () => {
+    const state = prepState("surr-both");
     state.players.p1.resources.gold = 100;
+    state.players.p2.resources.gold = 100;
+    expect(offersSurrender(state, "p1")).toBe(true);
+    expect(offersSurrender(state, "p2")).toBe(true);
+  });
+
+  it("stops offering Surrender to a participant once they have accepted the battle", () => {
+    const state = prepState("surr-accepted");
+    state.players.p1.resources.gold = 100;
+    state.combat!.prep = { accepted: ["p1"] }; // p1 readied up
     expect(offersSurrender(state, "p1")).toBe(false);
   });
 
@@ -327,7 +336,7 @@ describe("Surrender gating: a before-battle (prep) decision needing the 10-gold 
     const state = prepState("surr-too-late");
     state.players.p2.resources.gold = 50;
     // Deployment has started: the prep window is gone and placement is underway.
-    state.combat!.defenderPrep = null;
+    state.combat!.prep = null;
     state.combat!.setup = {
       pendingPlayerIds: ["p1", "p2"],
       placedUnitIds: { p1: [], p2: [] },
