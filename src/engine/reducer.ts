@@ -12521,6 +12521,15 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       !state.pendingChoice &&
       state.stack.length === 0
     ) {
+      // A unit can be left as activeUnitId after dying WITHOUT acting — an
+      // off-turn instant (or a neutral-pause cast) that kills the very unit whose
+      // pre-activation reaction pause was open. Drop the corpse so activation
+      // advances to the next living unit instead of stalling on it.
+      const stalledActive = combat.activeUnitId ? combat.units[combat.activeUnitId] : null;
+      if (combat.activeUnitId && (!stalledActive || !isUnitAlive(stalledActive))) {
+        combat.activeUnitId = null;
+      }
+
       if (!combat.activeUnitId) {
         const step = getActivationStep(combat, state.activeEffects);
         if (step) {
