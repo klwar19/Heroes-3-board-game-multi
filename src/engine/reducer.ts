@@ -2749,7 +2749,12 @@ function applyOnAttackSelfHeal(state: GameState, attacker: CombatUnitState, isRe
     return;
   }
   const heal = getOnAttackSelfHeal(attacker);
-  if (!heal || attacker.damage <= 0) {
+  // A dead attacker must NOT Life-Drain itself back to life. By this point the
+  // defender's Fire Shield may already have burned the attacker down to 0
+  // Health — markUnitRemovedIfNeeded has fired UNIT_REMOVED and armed the Pit
+  // Lords' "a unit was removed" trigger — so healing here would leave it
+  // standing while the event log says it died. Bail unless it survived.
+  if (!heal || attacker.damage <= 0 || !isUnitAlive(attacker)) {
     return;
   }
   const healed = Math.min(heal.amount, attacker.damage);
