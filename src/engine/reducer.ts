@@ -146,7 +146,6 @@ import {
   getSchoolPowerBonus,
   getSchoolPowerMultiplier,
   makeActiveEffect,
-  playerHasSpellTimingFreedom,
   releaseEndedOngoingCards,
   spellNullifiedByRestriction,
   syncAbilitySuppression,
@@ -12387,14 +12386,20 @@ function previewNeutralIntent(
  * Who, if anyone, gets a pre-activation reaction pause before `active` takes
  * its turn — the participant on the OTHER side who can meaningfully react now:
  *
- *  - Neutral fights: the human attacker, whenever they hold any off-turn
- *    reaction (an Intelligence-enabled spell, a trigger-free instant spell, an
- *    instant ability, or a usable active effect). This is the "neutral combat
- *    goes slower so you can cast Intelligence / an instant" window.
- *  - Player-vs-player: the opposing player, but only while they hold the
- *    Intelligence anytime-cast freedom — they already get attack/spell reaction
- *    windows otherwise, so the pause is reserved for the off-turn casting that
- *    Intelligence unlocks.
+ *  - Neutral fights: the human attacker, always (the pause paces every guard so
+ *    they see it about to act); the client auto-resumes after a beat when there
+ *    is nothing to react with.
+ *  - Player-vs-player: the opposing (off-turn) player, whenever they hold ANY
+ *    off-turn reaction — an instant ability/specialty, a usable active effect
+ *    (First Aid Tent), a trigger-free instant spell, or (with the Intelligence
+ *    freedom) an activation spell. This is the real "stop before the enemy unit
+ *    acts so you can play your instant" window.
+ *
+ * In every mode the menu of "what can be played off-turn right now" is a single
+ * function — getOffTurnCombatReactions — and it is empty unless there is a real
+ * play. The PvP pause keys off exactly that, so it never stops the fight for
+ * nothing AND any future off-turn reaction added to getOffTurnCombatReactions
+ * automatically earns this stop, with no change here.
  *
  * Returns null in the sandbox, for neutral reactors, hand-locked sides
  * (heroless garrison / Secondary Hero), and whenever nothing can be done.
@@ -12422,10 +12427,12 @@ function reactionPauseReactor(
     if (combat.context.kind === "neutral") {
       return candidate;
     }
-    // Player-vs-player pauses only while the side holds the Intelligence
-    // freedom and actually has an off-turn play to make — they already get the
-    // attack/spell reaction windows otherwise.
-    if (playerHasSpellTimingFreedom(state, candidate) && getOffTurnCombatReactions(state, candidate, cards).length > 0) {
+    // Player-vs-player: stop before the enemy unit acts whenever this side has
+    // any off-turn reaction ready (see getOffTurnCombatReactions — the single
+    // source of truth, empty unless there is a real play). No Intelligence
+    // requirement: instant abilities/specialties and active effects qualify on
+    // their own, and new off-turn reactions get this stop for free.
+    if (getOffTurnCombatReactions(state, candidate, cards).length > 0) {
       return candidate;
     }
   }
@@ -12541,10 +12548,12 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       const active = combat.units[combat.activeUnitId];
       if (active && isUnitAlive(active) && !active.activatedThisRound) {
         // Pre-activation reaction pause: before this unit acts, give the other
-        // side a window to cast (Intelligence-enabled spells, trigger-free
-        // instant spells) or play an instant ability. Neutral fights "go
-        // slower" so the human can react to each guard; player-vs-player only
-        // pauses while a side holds the Intelligence freedom.
+        // side a real window to react — cast (Intelligence-enabled / trigger-free
+        // instant spells), play an instant ability/specialty, or use an active
+        // effect. Neutral fights "go slower" so the human can react to each
+        // guard; player-vs-player stops whenever the off-turn side actually holds
+        // a reaction (reactionPauseReactor decides). No intent is previewed for a
+        // human-driven unit — its controller has not chosen yet.
         if (!active.reactionPauseAcked) {
           const reactor = reactionPauseReactor(state, combat, active, cards);
           if (reactor) {

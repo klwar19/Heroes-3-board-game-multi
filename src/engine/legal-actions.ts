@@ -1702,11 +1702,17 @@ function addPlayableCardActions(
  * timing gate; trigger-free instant spells are castable by anyone), play an
  * instant ability/card (e.g. Intelligence itself), or use an active effect.
  *
- * This is exactly the set offered during a "pre-activation" reaction pause, and
- * the pump uses a non-empty result to decide whether opening that pause for a
- * player is worthwhile. It only returns anything while a combat card window is
- * open (no attack/reaction/choice resolving), so callers can rely on it being
- * empty whenever the player has nothing useful to do.
+ * This is the SINGLE source of truth for off-turn combat reactions, used two
+ * ways: it is the exact menu offered to the reacting player during a
+ * "pre-activation" pause, AND the pump opens that pause (neutral and PvP alike)
+ * precisely when this is non-empty for the off-turn side. It only returns
+ * anything while a combat card window is open (no attack/reaction/choice
+ * resolving), so callers can rely on it being empty whenever the player has
+ * nothing useful to do.
+ *
+ * To add a new off-turn reaction (a new instant, ability, or active effect),
+ * make it appear here — it then both shows up in the pause and earns the
+ * forced PvP stop automatically, with no change to the pump or reactor logic.
  */
 export function getOffTurnCombatReactions(
   state: GameState,
