@@ -586,6 +586,10 @@ export function BattlefieldBoard({
   const cardActionsByTarget = new Map<string, GameAction>();
   const spaceCardActionsByPosition = new Map<number, GameAction>();
   const abilityTargetActions = new Map<string, GameAction>();
+  // First Aid Tent: clicking a wounded friendly unit mends it (the basic, free
+  // heal). Populated from the USE_ACTIVE_EFFECT heal offers — on your turn AND
+  // inside the attack reaction window, so you can heal the instant you're hit.
+  const healActionsByTarget = new Map<string, GameAction>();
   const fortificationActionsByPosition = new Map<number, LegalAction>();
 
   const siege = combat?.siege ?? null;
@@ -671,6 +675,14 @@ export function BattlefieldBoard({
     }
     if (legal.action.type === "CHOOSE_ABILITY_TARGET") {
       abilityTargetActions.set(legal.action.targetUnitId, legal.action);
+    }
+    if (legal.action.type === "USE_ACTIVE_EFFECT" && legal.action.target.type === "unit") {
+      // Bind the click to the basic heal (no crown); never let an expert-volley
+      // variant overwrite it, so a plain click is always the simple mend.
+      const unitId = legal.action.target.unitId;
+      if (legal.action.mode !== "expert" || !healActionsByTarget.has(unitId)) {
+        healActionsByTarget.set(unitId, legal.action);
+      }
     }
     if (legal.action.type === "ATTACK_FORTIFICATION" && legal.action.target.kind !== "arrow-tower") {
       fortificationActionsByPosition.set(legal.action.target.position, legal);
@@ -863,6 +875,9 @@ export function BattlefieldBoard({
           const placeTokenAction = !unit ? placeTokenActionsByPosition.get(index) : undefined;
           const battlefieldToken = battlefieldTokensByPosition.get(index);
           const abilityAction = unit ? abilityTargetActions.get(unit.id) : undefined;
+          // First Aid Tent heal: only a click-to-heal when nothing else is being
+          // targeted (a selected spell/ability keeps priority over the mend).
+          const healAction = unit && !selectedCardAction ? healActionsByTarget.get(unit.id) : undefined;
           const isActive = Boolean(unit && combat?.activeUnitId === unit.id);
           const isFlipping = Boolean(unit && flippedUnitIds?.has(unit.id));
           const dropTarget = placing && ownRows.has(index) && !unit && !isObstacle;
@@ -882,7 +897,7 @@ export function BattlefieldBoard({
             isObstacle ? "obstacle" : ""
           } ${moveAction && !selectedCardAction && !planning ? "moveTarget" : ""} ${
             attackAction && !selectedCardAction ? "attackTarget" : ""
-          } ${cardAction || spaceCardAction || teleportAction || placeTokenAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${dropTarget ? "dropTarget" : ""} ${
+          } ${cardAction || spaceCardAction || teleportAction || placeTokenAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${healAction ? "healTarget" : ""} ${dropTarget ? "dropTarget" : ""} ${
             isSwapSource ? "swapSource" : ""
           } ${isSwapTarget ? "swapTarget" : ""} ${isSwapSelected ? "swapSelected" : ""} ${
             isRepositionSource ? "repositionSource" : ""
@@ -1138,7 +1153,7 @@ export function BattlefieldBoard({
             spaceCardAction ??
             teleportAction ??
             placeTokenAction ??
-            (unit ? attackAction : planning ? undefined : moveAction);
+            (unit ? (attackAction ?? healAction) : planning ? undefined : moveAction);
 
           if (interactiveAction && (!selectedCardAction || cardAction || spaceCardAction || teleportAction || placeTokenAction)) {
             const label = abilityAction
@@ -1154,7 +1169,9 @@ export function BattlefieldBoard({
                     : placeTokenAction
                       ? `Place token on ${getBattlefieldLabel(index)}`
                       : unit
-                        ? `Attack ${unit?.name}`
+                        ? attackAction
+                          ? `Attack ${unit?.name}`
+                          : `First Aid Tent: heal ${unit?.name}`
                         : `Move to ${getBattlefieldLabel(index)}`;
             return (
               <button
@@ -1645,6 +1662,16 @@ export function CommandDock({
           COMMAND_ACTION_TYPES.has(legal.action.type) &&
           !(inTacticsSetup && legal.action.type === "SWAP_COMBAT_UNITS")
       );
+  // First Aid Tent heal, surfaced right by the commands (not only in the
+  // under-board effects rail). One button per wounded friendly unit; also
+  // present inside the attack reaction window, so you can mend the instant
+  // you're hit. The basic heal comes first so it reads as the simple default.
+  const healCommands = inBattlePrep
+    ? []
+    : legalActions
+        .filter((legal) => legal.action.type === "USE_ACTIVE_EFFECT")
+        .sort((left, right) => Number(left.action.type === "USE_ACTIVE_EFFECT" && left.action.mode === "expert") -
+          Number(right.action.type === "USE_ACTIVE_EFFECT" && right.action.mode === "expert"));
   const activeUnitId = state.combat?.activeUnitId;
   const activeUnit = activeUnitId ? state.combat?.units[activeUnitId] : undefined;
   const outcome = state.combat?.outcome;
@@ -1717,6 +1744,17 @@ export function CommandDock({
             <img alt="" aria-hidden="true" className="defendButtonIcon" src={assetUrl("/assets/ui/defend-button.png")} />
           ) : null}
           {commandLabel(legal)}
+        </button>
+      ))}
+      {healCommands.map((legal) => (
+        <button
+          className="commandButton healCommandButton"
+          key={actionKey(legal.action)}
+          onClick={() => onAction(legal.action)}
+          title="First Aid Tent — remove damage from your unit (once per combat round; usable the instant you're attacked, before the hit lands)"
+          type="button"
+        >
+          <Plus aria-hidden="true" size={12} /> {legal.label}
         </button>
       ))}
       {state.combat?.context.kind === "sandbox" ? (
