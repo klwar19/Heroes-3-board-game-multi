@@ -1663,6 +1663,22 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     },
     portrait: "/assets/hero_portraits-tarnum_overlord.webp",
     source: stretchGoalPcPortraitHeroSource("tarnum_dungeon", "Tarnum (Overlord)")
+  },
+  sephinroth: {
+    id: "sephinroth",
+    name: "Sephinroth",
+    faction: "dungeon",
+    class: "Warlock",
+    type: "magic",
+    startingStats: { attack: 0, defense: 0, power: 3, knowledge: 2 },
+    startingAbilityCardId: "ability.intelligence",
+    specialtyCardIds: {
+      1: "specialty.sephinroth.1",
+      4: "specialty.sephinroth.4",
+      6: "specialty.sephinroth.6"
+    },
+    portrait: "/assets/hero_portraits-sephinroth.webp",
+    source: stretchGoalPcPortraitHeroSource("sephinroth", "Sephinroth")
   }
 };
 
@@ -1740,7 +1756,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Dungeon",
     color: "#c0392b",
     startingTileId: "S2",
-    heroes: ["alamar", "deemer", "mutare", "jeddite", "lorelei", "tarnum_dungeon"],
+    heroes: ["alamar", "deemer", "mutare", "jeddite", "lorelei", "tarnum_dungeon", "sephinroth"],
     buildings: buildingsOfFaction("dungeon"),
     units: unitsOfFaction("dungeon"),
     townImage: "/assets/towns-dungeon-empty.webp",

@@ -9408,6 +9408,20 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "GAIN_RESOURCES") {
+    // Sephinroth's Valuables I: "Pay N gold to gain …" — spend the gold first.
+    if (effect.goldCost) {
+      const payer = state.players[action.playerId];
+      if (!payer || payer.resources.gold < effect.goldCost) {
+        throw new Error(`${card.name} costs ${effect.goldCost} gold.`);
+      }
+      payer.resources.gold -= effect.goldCost;
+      appendEvent(state, {
+        type: "RESOURCES_SPENT",
+        playerId: action.playerId,
+        cost: { gold: effect.goldCost },
+        reason: `played ${card.name}`
+      });
+    }
     // BINH house rule: Estates is nerfed to 2 / 4 gold.
     const gain =
       card.id === "ability.estates"

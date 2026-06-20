@@ -3087,5 +3087,102 @@ export const adventureCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: heroSource("tarnum_dungeon")
+  }),
+
+  // Sephinroth (Dungeon, Warlock): the Valuables specialist — a map economy hero.
+  // Each level gains Valuables (NEW GAIN_RESOURCES.goldCost for I's "pay 2 gold")
+  // with an instant alternative. The wiki notes the gain "can be improved by spell
+  // power"; the engine has no map-phase hero Power, so the printed flat amounts run
+  // (the note is not modeled).
+  "specialty.sephinroth.1": withoutArt({
+    id: "specialty.sephinroth.1",
+    name: "Valuables I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "sephinroth",
+      "valuables",
+      "Pay 2 gold to gain 1 valuables. — OR — Draw 1 card."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Pay 2 gold to gain 1 valuables",
+          mapOnly: true,
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 }, goldCost: 2 }
+        },
+        {
+          label: "Draw 1 card",
+          effect: { type: "DRAW_CARDS", amount: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("sephinroth")
+  }),
+  "specialty.sephinroth.4": withoutArt({
+    id: "specialty.sephinroth.4",
+    name: "Valuables IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "sephinroth",
+      "valuables",
+      "Gain 1 valuables. — OR — +2 Power."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Gain 1 valuables",
+          mapOnly: true,
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 } }
+        },
+        {
+          label: "+2 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("sephinroth")
+  }),
+  "specialty.sephinroth.6": withoutArt({
+    id: "specialty.sephinroth.6",
+    name: "Valuables VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "sephinroth",
+      "valuables",
+      "Gain 2 valuables. — OR — Draw 2 cards."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Gain 2 valuables",
+          mapOnly: true,
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 2 } }
+        },
+        {
+          label: "Draw 2 cards",
+          effect: { type: "DRAW_CARDS", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("sephinroth")
   })
 };

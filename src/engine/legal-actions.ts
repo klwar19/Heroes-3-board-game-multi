@@ -1688,8 +1688,11 @@ function isOptionEffectPlayable(
   context: "combat" | "map"
 ): boolean {
   switch (effect.type) {
-    case "DRAW_CARDS":
     case "GAIN_RESOURCES":
+      // Sephinroth's Valuables I: "Pay N gold to gain …" is only offered when the
+      // player can actually afford the gold cost.
+      return !effect.goldCost || (state.players[playerId]?.resources.gold ?? 0) >= effect.goldCost;
+    case "DRAW_CARDS":
     // Legion artifacts' discount side: banking the one-shot recruit discount is
     // always a valid choice (it is spent later, on the map, by a recruit/reinforce).
     case "GAIN_RECRUIT_DISCOUNT":
