@@ -5369,7 +5369,15 @@ function applyActivationDamageSpell(
   target: CombatUnitState,
   ability: { abilityId: string; abilityName: string; amount: number }
 ): void {
-  // Golems et al. reduce Spell damage — the Faerie Bolt is explicitly a spell.
+  // The Faerie Bolt is spell DAMAGE, so the golems' / Unicorns' "reduce any
+  // damage from spells" passives soften it (reducedSpellDamage). It is NOT a
+  // Spell CARD, so — by deliberate design — spell-school IMMUNITY does not turn
+  // it aside: IMMUNE_TO_SPELL_SCHOOLS is scoped to "any Spell card whose school
+  // …", and the bolt has no card and no school. Hence a unit "Immune to all
+  // Spells" (Azure/Black Dragons) is still a legal target and still takes the
+  // bolt (only reduced if it also reduces spell damage), unlike a real cast,
+  // which excludes immune units at targeting. This split is intentional; do not
+  // add a unitImmuneToSpellSchools gate here without a confirmed ruling.
   const dealt = reducedSpellDamage(state, target, ability.amount);
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
@@ -5496,6 +5504,9 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
 
   const faerie = getActivationDamageSpellAbility(unit);
   if (faerie) {
+    // Any living enemy is a legal target — spell-school immunity is deliberately
+    // NOT filtered here (see applyActivationDamageSpell: the bolt is spell
+    // damage, not a Spell card).
     const targets = Object.values(combat.units).filter(
       (candidate) => candidate.controllerId !== unit.controllerId && isUnitAlive(candidate)
     );
