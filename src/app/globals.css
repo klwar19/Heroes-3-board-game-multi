@@ -4578,33 +4578,102 @@ button.hbSlot:disabled { cursor: default; }
   background: rgba(140, 106, 44, 0.35);
 }
 
-.moveConfirmBar,
-.rotateBar {
-  position: absolute;
-  left: 50%;
-  bottom: 12px;
-  transform: translateX(-50%);
+/* Floating map controls anchored at the destination hex / rotating tile.
+   These live inside the SVG (foreignObject) so they pan and zoom with the map
+   and sit right on the tile, rather than in a bar pinned to the bottom edge. */
+.mapFloatFO {
+  overflow: visible;
+  /* The foreignObject rect itself never eats pointer events; only the card
+     inside does, so transparent space around it stays click-through to the
+     hexes underneath. */
+  pointer-events: none;
+}
+
+.mapFloatOuter {
   display: flex;
-  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Hug the card to the edge nearest its hex so it points at the tile. */
+.mapFloatOuter.above {
+  align-items: flex-end;
+}
+
+.mapFloatOuter.below {
+  align-items: flex-start;
+}
+
+.mapFloatCard {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
-  padding: 8px 12px;
-  background: rgba(24, 18, 10, 0.94);
-  border: 1px solid rgba(255, 215, 106, 0.55);
+  padding: 8px 10px;
+  background: rgba(24, 18, 10, 0.96);
+  border: 1px solid rgba(255, 215, 106, 0.6);
   border-radius: 10px;
   color: #ffe9bd;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  max-width: 100%;
+}
+
+.mapFloatCard.passive {
+  border-color: rgba(170, 130, 70, 0.45);
+  color: #d6bd92;
+}
+
+.mapFloatCard.passive small {
   white-space: nowrap;
-  z-index: 5;
 }
 
-.rotateBar.passive {
-  border-color: rgba(170, 130, 70, 0.4);
-  color: #b89f78;
+.mapFloatLabel {
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-align: center;
 }
 
-.rotateBar small {
-  color: #e0a05a;
+.mapFloatTitle {
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
   white-space: normal;
-  max-width: 200px;
+}
+
+.mapFloatButtons {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.mapFloatButtons .commandButton,
+.rotateFloatRow .commandButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.rotateFloatRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+
+.mapFloatWarn {
+  color: #e0a05a;
+  font-size: 11.5px;
+  text-align: center;
+  white-space: normal;
 }
 
 .rotateDegrees {
