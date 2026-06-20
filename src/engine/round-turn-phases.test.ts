@@ -238,6 +238,50 @@ describe("the opening turn's hand step is live straight out of setup", () => {
   });
 });
 
+describe("special buildings fire on the correct round phase", () => {
+  it("grants Brotherhood of the Sword morale on Resource rounds, never on Astrologers rounds", () => {
+    let state = makeGame(); // p1 = Castle, which does not ignore morale
+    state.towns.town_p1.buildings = ["castle.brotherhood_of_the_sword"];
+    state.players.p1.morale = 0;
+    state.decks.astrologers!.drawPile.push("astrologers.dead_silence");
+
+    state = apply(state, { type: "END_TURN", playerId: "p1" }); // round 1 → p2
+    state = apply(state, { type: "END_TURN", playerId: "p2" }); // wrap → round 2 (astrologers)
+    expect(state.round).toBe(2);
+    // An Astrologers round must not trigger the Resource-round morale gain.
+    expect(state.players.p1.morale).toBe(0);
+
+    state = apply(state, { type: "END_TURN", playerId: "p1" }); // round 2 → p2
+    state = apply(state, { type: "END_TURN", playerId: "p2" }); // wrap → round 3 (resource)
+    expect(state.round).toBe(3);
+    expect(state.players.p1.morale).toBe(1);
+  });
+
+  it("stores a Brimstone cube on Astrologers rounds and a Cage cube on Resource rounds — each only on its own", () => {
+    let state = makeGame();
+    // The engine resolves a building by id, so co-locating the two cube
+    // buildings on one town is a clean fixture for their opposite timings.
+    state.towns.town_p1.buildings = ["inferno.brimstone_stormclouds", "fortress.cage_of_warlords"];
+    state.towns.town_p1.factionCubes = {};
+    state.decks.astrologers!.drawPile.push("astrologers.dead_silence");
+    const cubes = () => state.towns.town_p1.factionCubes ?? {};
+
+    state = apply(state, { type: "END_TURN", playerId: "p1" }); // round 1 → p2
+    state = apply(state, { type: "END_TURN", playerId: "p2" }); // wrap → round 2 (astrologers)
+    expect(state.round).toBe(2);
+    // Brimstone gains its cube on Astrologers rounds; Cage (Resource) does not.
+    expect(cubes()["inferno.brimstone_stormclouds"]).toBe(1);
+    expect(cubes()["fortress.cage_of_warlords"] ?? 0).toBe(0);
+
+    state = apply(state, { type: "END_TURN", playerId: "p1" }); // round 2 → p2
+    state = apply(state, { type: "END_TURN", playerId: "p2" }); // wrap → round 3 (resource)
+    expect(state.round).toBe(3);
+    // Cage gains its cube on Resource rounds; Brimstone (Astrologers) holds.
+    expect(cubes()["inferno.brimstone_stormclouds"]).toBe(1);
+    expect(cubes()["fortress.cage_of_warlords"]).toBe(1);
+  });
+});
+
 describe("multiplayer (PvP) — round-start City Hall draw forces each seat to discard on its own turn", () => {
   it("resolves both seats' round-start draws, then surfaces the over-limit discard per seat in their own view", () => {
     // Two real seats, each with a "draw 2" City Hall, each sitting at the limit.
