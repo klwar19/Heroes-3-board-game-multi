@@ -76,9 +76,10 @@ export type AstrologersEffect =
   // unit, not the upgradeable faction one). Reads the player's faction roster +
   // Dwelling tiers, so it works for any faction (incl. Conflux/Cove once
   // defined). A faction's signature top-tier creature (Gold Dragons, Titans,
-  // Hydras) has no neutral card and so is never offered. engine: "Azure units
-  // cannot be recruited" holds by construction — no Dwelling unlocks the Azure
-  // tier, so an Azure unit's tier is never among the player's.
+  // Hydras) is never offered: its only neutral card is the azure-tier version,
+  // not a gold-tier counterpart, and no Dwelling unlocks azure. engine: "Azure
+  // units cannot be recruited" holds by construction — no Dwelling unlocks the
+  // Azure tier, so an Azure unit's tier is never among the player's.
   | { type: "RECRUIT_FACTION_FREE" };
 
 /** Boxed sets / expansions a proclamation can ship in (provenance, shown in the UI). */

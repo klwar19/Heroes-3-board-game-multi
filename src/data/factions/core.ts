@@ -1727,12 +1727,16 @@ export const neutralUnitIdsByTier: Record<"bronze" | "silver" | "gold" | "azure"
 
 /**
  * The Neutral Units deck card that depicts the same creature as a faction-roster
- * unit — matched by creature name + tier. The board game prints most town
- * creatures both as a faction unit (Few/Pack sides, recruited at the Dwelling)
- * and as a single-sided Neutral Unit (recruited from the deck at external
- * dwellings). This returns the neutral counterpart, or undefined when none
- * exists (a faction's signature top-tier creatures — Gold Dragons, Titans,
- * Hydras — have no Neutral Unit card and so are absent from the deck).
+ * unit, recruitable at that faction's Dwelling tier — matched by creature name
+ * + tier. The board game prints most town creatures both as a faction unit
+ * (Few/Pack sides, recruited at the Dwelling) and as a single-sided Neutral Unit
+ * (recruited from the deck at external dwellings). This returns that same-tier
+ * neutral counterpart, or undefined when none exists. A faction's signature
+ * top-tier creatures — Gold Dragons, Titans, Hydras — DO have a Neutral Unit
+ * card, but it sits at the azure tier (neutral.gold_dragons / .titans / .hydras),
+ * not the faction's gold tier; that azure card appears only as a high guard and
+ * is not the gold-tier counterpart a Dwelling would recruit, so the name+tier
+ * match deliberately returns undefined for them.
  */
 export function neutralCounterpartId(factionUnitId: string): string | undefined {
   const unit = coreUnitDefinitions[factionUnitId];
@@ -1749,13 +1753,15 @@ export function neutralCounterpartId(factionUnitId: string): string | undefined 
 }
 
 /**
- * Neutral Units deck cards "associated with" each faction — the neutral
- * counterpart (same creature) of every unit on a faction's roster. Used by the
- * Unexpected Reinforcements proclamation, which lets a player search the
- * Neutral Units deck and recruit one neutral unit tied to their faction (added
- * on the single-sided Neutral side, so — like any neutral unit — it can never
- * be reinforced to a Pack). Faction-only top-tier creatures (Gold Dragons,
- * Titans, Hydras) have no neutral card and are intentionally omitted.
+ * Neutral Units deck cards "associated with" each faction — the same-tier neutral
+ * counterpart of every unit on a faction's roster. Used by the Unexpected
+ * Reinforcements proclamation, which lets a player search the Neutral Units deck
+ * and recruit one neutral unit tied to their faction (added on the single-sided
+ * Neutral side, so — like any neutral unit — it can never be reinforced to a
+ * Pack). A faction's top-tier signature creature (Gold Dragons, Titans, Hydras)
+ * is intentionally absent: its only neutral card is the azure-tier version, and
+ * no Dwelling unlocks azure, so it is never recruitable this way (it still shows
+ * up as an azure neutral guard via neutralUnitIdsByTier.azure).
  */
 export const neutralUnitIdsByFaction: Record<string, string[]> = Object.fromEntries(
   Object.values(coreFactionDefinitions).map((faction) => [

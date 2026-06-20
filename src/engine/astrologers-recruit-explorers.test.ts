@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, getLegalActions } from "./index";
 import { drawAstrologersCard, getTownOfPlayer, NEUTRAL_DECK_IDS, startAdventureRound } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
+import { coreUnitDefinitions } from "@/data/factions/units";
+import { neutralUnitIdsByFaction, neutralUnitIdsByTier } from "@/data/factions/core";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 /**
@@ -333,7 +335,7 @@ describe("Astrologers — Unexpected Reinforcements (free associated-neutral rec
     expect(labels.some((label) => /Recruit Crusaders/.test(label))).toBe(false); // silver — not built
   });
 
-  it("never offers a faction's top-tier signature unit (no neutral card exists)", () => {
+  it("never offers a faction's top-tier signature unit (its neutral card is azure)", () => {
     const state = unexpectedGame([]);
     state.players.p1.factionId = "rampart";
     setDwellingTiers(state, "p1", ["gold"]); // Rampart gold: Unicorns + Gold Dragons
@@ -341,9 +343,29 @@ describe("Astrologers — Unexpected Reinforcements (free associated-neutral rec
     pumpAdventureQueues(state);
 
     const labels = visitOptionLabels(state, "p1");
-    expect(labels.some((label) => /Recruit Unicorns/.test(label))).toBe(true); // has neutral.unicorns
-    // Gold Dragons have no Neutral Units card, so they cannot be recruited here.
+    expect(labels.some((label) => /Recruit Unicorns/.test(label))).toBe(true); // has neutral.unicorns (gold)
+    // Gold Dragons DO have a Neutral Units card, but only at the azure tier
+    // (neutral.gold_dragons) — no Dwelling unlocks azure, so it is never offered
+    // here. The card still exists and shows up as an azure neutral guard.
     expect(labels.some((label) => /Gold Dragons/.test(label))).toBe(false);
+    expect(coreUnitDefinitions["neutral.gold_dragons"]?.tier).toBe("azure");
+    expect(neutralUnitIdsByTier.azure).toContain("neutral.gold_dragons");
+  });
+
+  it("ships the azure neutral top-tier creatures as guards, excluded from recruitment", () => {
+    // Gold Dragons / Titans / Hydras exist as azure Neutral Units (so they can
+    // guard high fields) but are not the same-tier counterpart of any faction
+    // unit, so no faction can recruit them via Unexpected Reinforcements.
+    for (const id of ["neutral.gold_dragons", "neutral.titans", "neutral.hydras"] as const) {
+      const def = coreUnitDefinitions[id];
+      expect(def?.neutral, `${id} has a neutral side`).toBeTruthy();
+      expect(def?.tier, `${id} is azure`).toBe("azure");
+      expect(neutralUnitIdsByTier.azure, `${id} is in the azure deck`).toContain(id);
+      const recruitableBy = Object.entries(neutralUnitIdsByFaction)
+        .filter(([, ids]) => ids.includes(id))
+        .map(([faction]) => faction);
+      expect(recruitableBy, `${id} is recruitable by no faction`).toEqual([]);
+    }
   });
 
   it("does not offer a unit whose only neutral copy has left the deck", () => {
