@@ -54,6 +54,10 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
       return `Always on: each time you win against Neutral Units, gain ${effect.winGold} gold. When recruiting or reinforcing you may also pay the gold cost with building materials and valuables.`;
     case "ARTIFACT_SMITH":
       return `Once during your turn, choose one: pay ${effect.searchCost} gold to Search (2) the Artifact deck, OR remove an Artifact card from your hand to gain ${effect.sellGold} gold. Counts as an artifact source (hero level 4+ may search Major, 6+ Relic artifacts in BINH mode).`;
+    case "ROUND_START_FREE_SPRITE":
+      return "At the beginning of each round, you may recruit a Few of Sprites for free, or reinforce a Few of your Sprites to a Pack for free.";
+    case "MAGIC_UNIVERSITY":
+      return "At the beginning of your turn, choose a School of Magic, then discard cards from the top of your deck until you reveal a Spell of that school and take it to your hand.";
     case "NOT_IMPLEMENTED":
       return effect.note;
     default:
@@ -74,7 +78,10 @@ export function buildingTimingLabel(building: TownBuildingDefinition): string | 
     case "TURN_START_NECROMANCY":
     case "TURN_START_PORTAL_SUMMON":
     case "TURN_START_MANA_VORTEX":
+    case "MAGIC_UNIVERSITY":
       return "start of your turn";
+    case "ROUND_START_FREE_SPRITE":
+      return "start of each round";
     case "COVER_OF_DARKNESS":
     case "CASTLE_GATE":
     case "ARTIFACT_SMITH":
