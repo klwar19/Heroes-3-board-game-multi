@@ -118,7 +118,6 @@ import {
   hexNeighbor,
   hexSpaceId,
   parseHexSpaceId,
-  slotDirection,
   tileCentersAdjacent,
   tileCentersOverlap,
   tileFootprint,
@@ -1314,7 +1313,7 @@ export function isTileRotationConnected(state: GameState, tile: MapTileState, ro
       if (locationDefinitions[neighborField.location]?.category === "blocked") {
         continue;
       }
-      if (isNeighborOuterEdgeSealed(adventure, neighborField)) {
+      if (isOuterEdgeSealed(adventure, neighborField)) {
         continue;
       }
 
@@ -1323,21 +1322,6 @@ export function isTileRotationConnected(state: GameState, tile: MapTileState, ro
   }
 
   return false;
-}
-
-function isNeighborOuterEdgeSealed(state: NonNullable<GameState["adventure"]>, field: MapFieldState): boolean {
-  if (field.slot === 0) {
-    return false;
-  }
-
-  const tile = state.tiles[field.tileInstanceId];
-  const def = tile ? allTileDefinitions[tile.tileDefId] : undefined;
-  if (!tile || !def) {
-    return false;
-  }
-
-  const direction = slotDirection(field.slot, 0);
-  return direction === null ? false : Boolean(def.outerImpassable[direction]);
 }
 
 /** Confirms the rotation of a freshly revealed or placed tile. */
