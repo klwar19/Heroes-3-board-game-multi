@@ -12,11 +12,11 @@ import {
   canCrossEdge,
   canHeroReachPlacedTile,
   canPlaceTileAt,
-  applyRecruitDiscount,
+  applyBestRecruitDiscount,
   changeMorale,
   classifyHeroStep,
   commitPopulationOnMove,
-  consumeRecruitDiscount,
+  consumeRecruitVoucherFor,
   controlsTownOrSettlement,
   createSecondaryHero,
   declareAdventureWinner,
@@ -45,7 +45,7 @@ import {
   gainTownCube,
   getActiveAstrologersCard,
   getAdjacentSpaceIds,
-  discountedReinforceCost,
+  type RecruitPurchaseRef,
   getHeroMovementCapabilities,
   getMainHero,
   getTileFootprintSpaceIds,
@@ -4697,6 +4697,10 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
     }
   };
 
+  // Each purchase's actual (per-unit, non-stacking) discounted cost, kept so the
+  // affordability check, the spend and the per-unit log all agree.
+  const priced: { ref: RecruitPurchaseRef; finalCost: ResourceCost }[] = [];
+
   // Validate before mutating: simulate against a copy of the army.
   const armyCopy = player.army.map((unit) => ({ ...unit }));
   for (const purchase of action.purchases) {
@@ -4720,7 +4724,12 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
           `${coreUnitDefinitions[purchase.unitDefId]?.name ?? "That unit"} is already in your army — each unit card exists once. Reinforce it to a pack instead.`
         );
       }
-      addCost(side.cost);
+      // The single best (non-stacking) gold discount reserved for THIS unit —
+      // a Legion voucher, a recruit-cost building / event, never their sum.
+      const ref: RecruitPurchaseRef = { kind: "recruit", unitDefId: purchase.unitDefId };
+      const finalCost = applyBestRecruitDiscount(state, action.playerId, ref, side.cost);
+      addCost(finalCost);
+      priced.push({ ref, finalCost });
       armyCopy.push({ id: `pending_${armyCopy.length}`, unitDefId: purchase.unitDefId, side: "few" });
     } else {
       if (!canReinforce) {
@@ -4738,32 +4747,37 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       if (!packSide) {
         throw new Error("That unit has no pack side.");
       }
-      // Champions' Stables discount lowers the gold paid to reinforce here.
-      addCost(discountedReinforceCost(state, action.playerId, purchase.unitDefId, packSide.cost));
+      // The single best (non-stacking) gold discount for THIS reinforce: the
+      // larger of the Champions' Stables discount and any Legion voucher reserved
+      // for this unit — never the two added together.
+      // `target` was matched against purchase.armyUnitId above, so target.id is
+      // the validated (defined) army unit id.
+      const ref: RecruitPurchaseRef = {
+        kind: "reinforce",
+        unitDefId: purchase.unitDefId,
+        armyUnitId: target.id
+      };
+      const finalCost = applyBestRecruitDiscount(state, action.playerId, ref, packSide.cost);
+      addCost(finalCost);
+      priced.push({ ref, finalCost });
       target.side = "pack";
     }
   }
 
-  // Legion artifacts (Legs/Loins/Torso/Arms/Head of Legion): a one-shot gold
-  // discount comes off this Recruitment/Reinforcement, to a minimum of 0. The
-  // banked discount is single-use — buying or upgrading once consumes it (and it
-  // expires at end of turn regardless), so it is spent here whether or not it
-  // happened to lower the gold bill (e.g. a no-gold purchase still uses it up).
-  const discountedTotal = applyRecruitDiscount(state, action.playerId, totalCost);
-
-  if (!hasRecruitResources(state, action.playerId, discountedTotal)) {
+  if (!hasRecruitResources(state, action.playerId, totalCost)) {
     throw new Error("Not enough resources for those units.");
   }
 
-  spendRecruitResources(state, action.playerId, discountedTotal, "population action");
+  spendRecruitResources(state, action.playerId, totalCost, "population action");
   // The token is NOT consumed by a purchase: the player may keep recruiting and
   // reinforcing this round (BINH house rule). Marking the round "purchased" arms
   // the movement lock — the next time one of this player's heroes moves, the
   // Population window closes (see commitPopulationOnMove).
   player.populationPurchasedThisRound = true;
-  consumeRecruitDiscount(state, action.playerId);
 
-  for (const purchase of action.purchases) {
+  for (let index = 0; index < action.purchases.length; index += 1) {
+    const purchase = action.purchases[index];
+    const finalCost = priced[index]?.finalCost ?? {};
     if (purchase.kind === "recruit") {
       addArmyUnit(player, purchase.unitDefId, "few");
       appendEvent(state, {
@@ -4771,7 +4785,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
         playerId: action.playerId,
         unitDefId: purchase.unitDefId,
         kind: "recruit",
-        cost: getUnitSide(purchase.unitDefId, "few")?.cost ?? {}
+        cost: finalCost
       });
     } else {
       const target = player.army.find((unit) => unit.id === purchase.armyUnitId);
@@ -4782,10 +4796,12 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
           playerId: action.playerId,
           unitDefId: purchase.unitDefId,
           kind: "reinforce",
-          cost: discountedReinforceCost(state, action.playerId, purchase.unitDefId, getUnitSide(purchase.unitDefId, "pack")?.cost ?? {})
+          cost: finalCost
         });
       }
     }
+    // Spend the Legion voucher reserved for this exact unit (single-use).
+    consumeRecruitVoucherFor(state, action.playerId, priced[index]!.ref);
   }
 }
 

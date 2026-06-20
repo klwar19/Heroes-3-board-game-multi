@@ -15,6 +15,7 @@ import {
   isSeaField,
   makeCombatUnitFromArmy,
   NEUTRAL_DECK_IDS,
+  queueLegionDiscountChoice,
   queueNecromancyReinforce
 } from "./adventure";
 import {
@@ -9452,24 +9453,15 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     gainResources(state, action.playerId, gain, `played ${card.name}`);
   }
 
-  // Legion artifacts' discount side: bank a one-shot gold discount on the
-  // player's next Recruitment/Reinforcement. This creates NO active effect, so
-  // holdOngoingCardIfEffectCreated leaves the card in the discard pile — the
-  // artifact is instant and is spent the moment the next recruit/reinforce uses
-  // the banked discount (see consumeRecruitDiscount), never lingering in play.
-  // DIFFERENT Legion pieces pool together; the SAME piece cannot stack with
-  // itself (replaying it after retrieving it from the discard adds nothing), so
-  // we only bank once per card id per turn. The legal-action layer already hides
-  // a second discount play of the same piece; this is the matching safety net.
+  // Legion artifacts' discount side (map-only): open a blocking prompt to pick
+  // the ONE unit whose recruit/reinforce cost this piece reduces, then bank a
+  // voucher for that exact unit (queueLegionDiscountChoice → BANK_RECRUIT_DISCOUNT
+  // step). This creates NO active effect, so holdOngoingCardIfEffectCreated leaves
+  // the card in the discard pile — the artifact is instant and never lingers in
+  // play. The voucher never stacks (the cost path takes the single largest
+  // discount) and is spent when its unit is bought.
   if (effect.type === "GAIN_RECRUIT_DISCOUNT") {
-    const discountPlayer = state.players[action.playerId];
-    if (discountPlayer) {
-      discountPlayer.recruitDiscountSources ??= [];
-      if (!discountPlayer.recruitDiscountSources.includes(card.id)) {
-        discountPlayer.recruitDiscountSources.push(card.id);
-        discountPlayer.recruitDiscount = (discountPlayer.recruitDiscount ?? 0) + effect.amount;
-      }
-    }
+    queueLegionDiscountChoice(state, action.playerId, card.id, effect.amount);
   }
 
   if (effect.type === "GAIN_HERO_MOVEMENT") {
