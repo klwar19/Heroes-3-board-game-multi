@@ -81,6 +81,7 @@ import {
   type NeutralDraw
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
+import { pvpEscapeWindowOpen } from "./combat-units";
 import { makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
 import { assignCombatBoardArt } from "./combat-board-art";
 import { cardCanBoostPower } from "./effects";
@@ -124,6 +125,7 @@ import {
   type HexCoord
 } from "./hex";
 import type {
+  ArmyUnitState,
   CardDefinition,
   CardId,
   CombatState,
@@ -135,6 +137,7 @@ import type {
   MapSpaceId,
   MapTileState,
   PlayerId,
+  PlayerState,
   ResourceCost,
   ResourceKind,
   SpellSchool,
@@ -3260,7 +3263,94 @@ export function startPlayerCombat(
   if (covers.length > 0) {
     combat.pendingCoverOfDarkness = covers;
     openNextCoverOfDarknessChoice(state);
+    return;
   }
+
+  maybeOpenCombatPrep(state);
+}
+
+/**
+ * The two participants of a player-vs-player combat — the attacker and the
+ * defender — who each get a say in the pre-battle preparation window.
+ */
+function combatPrepParticipants(combat: CombatState): PlayerId[] {
+  return [combat.attackerPlayerId, combat.defenderPlayerId];
+}
+
+/**
+ * Player-vs-player pre-battle preparation window. When an enemy hero attacks,
+ * BOTH the attacker and the defender get a window — presented on the adventure
+ * MAP, not the battlefield — to spend any town actions they still hold this
+ * round (build, recruit/reinforce, buy spells) before deploying. Recruited units
+ * join the army in time to be placed. Each side then presses ACCEPT_COMBAT, and
+ * deployment begins only once both have. This is the fairness case the table
+ * asked for: a defender caught on the enemy's turn (fresh tokens) — and the
+ * attacker too — get to prepare with their towns and resources in full view,
+ * instead of calculating blind on the combat screen.
+ *
+ * Opened for every player-vs-player combat (the combat shell and `setup` already
+ * built, but deployment held back). Returns true when the window is opened;
+ * neutral-guard fights never open it.
+ */
+function maybeOpenCombatPrep(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat || combat.context.kind !== "player" || combat.prep) {
+    return false;
+  }
+
+  combat.prep = { accepted: [] };
+  state.phase = "combat-setup";
+  // Both participants may act at once; neither holds exclusive priority. Each
+  // side's legal actions are gated by `inCombatPrep`, not by priorityPlayerId.
+  state.priorityPlayerId = null;
+  return true;
+}
+
+/**
+ * True while `playerId` is a combat participant who is still preparing — i.e. the
+ * pre-battle window is open and they have not yet pressed ACCEPT_COMBAT. Such a
+ * player may still take town actions; a participant who has already accepted is
+ * locked in and waits for the other side.
+ */
+export function inCombatPrep(state: GameState, playerId: PlayerId): boolean {
+  const combat = state.combat;
+  if (!combat?.prep) {
+    return false;
+  }
+  return combatPrepParticipants(combat).includes(playerId) && !combat.prep.accepted.includes(playerId);
+}
+
+/**
+ * Accept the battle (ACCEPT_COMBAT): a participant readies up after any town
+ * actions. While one side waits on the other the window stays open; once BOTH
+ * the attacker and defender have accepted the window clears and deployment
+ * priority passes to the first player still to place (the attacker).
+ */
+export function acceptCombat(state: GameState, action: Extract<GameAction, { type: "ACCEPT_COMBAT" }>): void {
+  const combat = state.combat;
+  if (!combat || !combat.prep) {
+    throw new Error("There is no battle preparation to accept right now.");
+  }
+  if (!combatPrepParticipants(combat).includes(action.playerId)) {
+    throw new Error("Only a combat participant may accept the battle.");
+  }
+  if (combat.prep.accepted.includes(action.playerId)) {
+    throw new Error("You have already accepted — waiting for your opponent to ready up.");
+  }
+
+  combat.prep.accepted.push(action.playerId);
+  appendEvent(state, { type: "COMBAT_PREP_ACCEPTED", playerId: action.playerId });
+
+  if (!combatPrepParticipants(combat).every((id) => combat.prep!.accepted.includes(id))) {
+    // Still waiting on the other participant — keep the prep window open.
+    state.phase = "combat-setup";
+    state.priorityPlayerId = null;
+    return;
+  }
+
+  combat.prep = null;
+  state.phase = "combat-setup";
+  state.priorityPlayerId = combat.setup?.pendingPlayerIds[0] ?? combat.attackerPlayerId;
 }
 
 /** Opens the next queued Cover of Darkness start-of-combat decision. */
@@ -3310,6 +3400,10 @@ export function resolveCoverOfDarknessChoice(state: GameState, playerId: PlayerI
     return;
   }
 
+  if (maybeOpenCombatPrep(state)) {
+    return;
+  }
+
   state.phase = "combat-setup";
   state.priorityPlayerId = combat.setup?.pendingPlayerIds[0] ?? null;
 }
@@ -3331,6 +3425,10 @@ export function placeCombatUnit(state: GameState, action: Extract<GameAction, { 
   const player = state.players[action.playerId];
   if (!combat || !setup || !player) {
     throw new Error("No combat setup is in progress.");
+  }
+
+  if (combat.prep) {
+    throw new Error("Deployment waits until both sides accept the battle.");
   }
 
   if (setup.pendingPlayerIds[0] !== action.playerId) {
@@ -3402,6 +3500,10 @@ export function unplaceCombatUnit(state: GameState, action: Extract<GameAction, 
     throw new Error("No combat placement to undo.");
   }
 
+  if (combat.prep) {
+    throw new Error("Deployment waits until both sides accept the battle.");
+  }
+
   const placed = setup.placedUnitIds[action.playerId] ?? [];
   const index = placed.indexOf(action.armyUnitId);
   if (index === -1) {
@@ -3420,6 +3522,10 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
   const setup = combat?.setup;
   if (!combat || !setup || setup.pendingPlayerIds[0] !== action.playerId) {
     throw new Error("No combat placement to finish.");
+  }
+
+  if (combat.prep) {
+    throw new Error("Deployment waits until both sides accept the battle.");
   }
 
   if ((setup.placedUnitIds[action.playerId] ?? []).length === 0) {
@@ -3861,8 +3967,11 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
   if (!heroId) {
     throw new Error("A hero must be present to retreat or surrender.");
   }
-  if (combat.round !== 1) {
-    throw new Error("Retreat or Surrender is only possible at the start of the combat.");
+  // Retreat / Surrender is a start-of-combat decision: during a participant's
+  // pre-battle preparation window, or once placement is locked in but before any
+  // unit has begun fighting. After the first unit acts the escape is closed.
+  if (!inCombatPrep(state, playerId) && !pvpEscapeWindowOpen(combat)) {
+    throw new Error("Retreat or Surrender is only possible at the start of the combat, before any unit acts.");
   }
   if (reason === "surrender") {
     // Shackles of War (house rule) locks the enemy out of Surrender only.
@@ -3876,8 +3985,44 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
     }
   }
   const winnerPlayerId = playerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
+  // Escaping straight from the pre-battle prep window ends the fight before it
+  // begins: close the prep so the result is shown (the map no longer holds).
+  combat.prep = null;
   combat.outcome = { winnerPlayerId, defeatedPlayerId: playerId, reason };
   appendEvent(state, { type: "COMBAT_ENDED", winnerPlayerId, defeatedPlayerId: playerId, reason });
+}
+
+/**
+ * Give up the combat: a concede a participating hero may choose at any point
+ * once the fight is under way (unlike the start-of-combat Retreat / Surrender).
+ * Player-vs-player only — a Neutral-guard fight has no Give up, just the
+ * end-of-round Retreat. It always ends the combat as a defeat with the full
+ * Retreat consequences — the troop / hand cost is applied in
+ * `finalizeAdventureCombat` from the `"give-up"` reason (only the casualties
+ * taken so far are lost in losing-troop mode; hand discarded in keep-troops mode).
+ */
+export function giveUpCombat(state: GameState, action: Extract<GameAction, { type: "GIVE_UP_COMBAT" }>): void {
+  const combat = state.combat;
+  const playerId = action.playerId;
+  if (!combat || combat.context.kind !== "player") {
+    throw new Error("Only a player-vs-player combat can be given up.");
+  }
+  if (combat.outcome) {
+    throw new Error("This combat is already over.");
+  }
+
+  const isParticipant = combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId;
+  if (!isParticipant) {
+    throw new Error("Only a combat participant may give up.");
+  }
+  const heroId =
+    playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
+  if (!heroId) {
+    throw new Error("A hero must be present to give up.");
+  }
+  const winnerPlayerId = playerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
+  combat.outcome = { winnerPlayerId, defeatedPlayerId: playerId, reason: "give-up" };
+  appendEvent(state, { type: "COMBAT_ENDED", winnerPlayerId, defeatedPlayerId: playerId, reason: "give-up" });
 }
 
 /**
@@ -3951,6 +4096,16 @@ export function finalizeAdventureCombat(state: GameState): void {
   const keepTroops =
     context.kind === "player" && (adventurePvpTroopLoss(state) === "none" || outcome.reason === "surrender");
 
+  // Give up (concede, player-vs-player only): a defeat that costs only the
+  // casualties taken up to the point of conceding — destroyed units leave and
+  // damaged Packs flip, but survivors stay (it does NOT forfeit the whole army).
+  // In losing-troop mode that is exactly the normal casualty settlement below;
+  // in keep-troops mode every unit is kept and the conceding hand is discarded
+  // instead (handled after the loop). The opponent settles normally either way.
+  const gaveUp = outcome.reason === "give-up";
+  const giveUpLoserId = gaveUp ? outcome.defeatedPlayerId : null;
+  const giveUpKeepsTroops = gaveUp && context.kind === "player" && adventurePvpTroopLoss(state) === "none";
+
   // Sync army cards with what happened on the board.
   for (const unit of Object.values(combat.units)) {
     if (unit.controllerId === NEUTRAL_PLAYER_ID) {
@@ -3980,12 +4135,7 @@ export function finalizeAdventureCombat(state: GameState): void {
     if (unit.damage >= unit.maxHealth) {
       // Few side defeated: the unit card leaves the unit deck. A recruited
       // Neutral card returns to its tier's discard pile.
-      player.army = player.army.filter((candidate) => candidate.id !== armyUnit.id);
-      if (armyUnit.side === "neutral") {
-        const def = coreUnitDefinitions[armyUnit.unitDefId];
-        const tier = (def?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure";
-        state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(armyUnit.unitDefId);
-      }
+      discardDefeatedArmyUnit(state, player, armyUnit);
     } else if (armyUnit.side !== "neutral") {
       armyUnit.side = unit.variant === "pack" ? "pack" : "few";
       // Carry the surviving specialty stack (Sandro's Cloak) back to the
@@ -3996,6 +4146,16 @@ export function finalizeAdventureCombat(state: GameState): void {
       } else {
         delete armyUnit.transforms;
       }
+    }
+  }
+
+  // Keep-troops Give up: the conceding hero loses no unit but discards its whole
+  // hand to its discard pile (the cost of conceding when troops are kept).
+  if (giveUpKeepsTroops && giveUpLoserId) {
+    const player = state.players[giveUpLoserId];
+    if (player && player.hand.length > 0) {
+      player.discard.push(...player.hand);
+      player.hand = [];
     }
   }
 
@@ -4190,6 +4350,19 @@ function MAX_EXPERIENCE_GAIN_TO_SEVEN(hero: HeroState): number {
   return Math.max(0, 12 - hero.experience);
 }
 
+/**
+ * Removes a defeated (or conceded) unit card from a player's army. A recruited
+ * Neutral card is recycled back to its tier's discard pile rather than lost.
+ */
+function discardDefeatedArmyUnit(state: GameState, player: PlayerState, armyUnit: ArmyUnitState): void {
+  player.army = player.army.filter((candidate) => candidate.id !== armyUnit.id);
+  if (armyUnit.side === "neutral") {
+    const def = coreUnitDefinitions[armyUnit.unitDefId];
+    const tier = (def?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure";
+    state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(armyUnit.unitDefId);
+  }
+}
+
 function moveDefeatedHeroHome(state: GameState, hero: HeroState): void {
   const adventure = state.adventure;
   if (!adventure) {
@@ -4229,7 +4402,7 @@ export function buildStructureAdventure(
     throw new Error("That structure cannot be built right now.");
   }
 
-  if (state.combat) {
+  if (state.combat && !inCombatPrep(state, action.playerId)) {
     throw new Error("Town actions cannot interrupt a combat.");
   }
 
@@ -4345,7 +4518,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
     throw new Error("Unknown player.");
   }
 
-  if (state.combat) {
+  if (state.combat && !inCombatPrep(state, action.playerId)) {
     throw new Error("Town actions cannot interrupt a combat.");
   }
 
@@ -4480,7 +4653,7 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
     throw new Error("Unknown player.");
   }
 
-  if (state.combat) {
+  if (state.combat && !inCombatPrep(state, action.playerId)) {
     throw new Error("Town actions cannot interrupt a combat.");
   }
 
@@ -5918,7 +6091,11 @@ export function pumpAdventureQueues(state: GameState): void {
     return;
   }
 
-  if (state.combat || state.pendingChoice || state.reactionWindow || state.stack.length > 0) {
+  // A participant preparing for a PvP fight may buy spells / build a Mage Guild,
+  // which queue a Spell-deck search to resolve — so the queue pumps during the
+  // prep window even though a combat object exists. Every other combat blocks it.
+  const inPrep = Boolean(state.combat?.prep);
+  if ((state.combat && !inPrep) || state.pendingChoice || state.reactionWindow || state.stack.length > 0) {
     return;
   }
 

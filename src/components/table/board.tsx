@@ -17,17 +17,18 @@ import {
   DEFENDER_BACKLINE,
   DEFENDER_FRONTLINE,
   effectiveInitiative,
+  getActivationOrder,
   getBattlefieldLabel,
   getBattlefieldTerrain,
   getUnitAbilityDefinitions,
   getUnitMoveRange,
   getUnitTokens,
+  inCombatPrep,
   isAdjacent,
   isArrowTowerUnit,
   isUnitAlive,
   pickCombatBoardArtId,
   playerSpellCastsIgnoreLimit,
-  sortUnitsForActivation,
   type BattlefieldTokenState,
   type CombatBoardArtId,
   type CombatTokenState,
@@ -1240,14 +1241,17 @@ export function BattlefieldBoard({
 }
 
 /**
- * The activation order as a row of the actual unit cards, sorted the way the
- * round will play out (initiative, attacker first on ties). Visible already
- * during deployment, so both sides see how the placed armies will be sorted
+ * The activation order as a row of the actual unit cards, in the exact sequence
+ * the round will play out. This uses getActivationOrder, which steps the engine's
+ * own selection logic — so it reflects the cross-side ALTERNATION on initiative
+ * ties (attacker, defender, attacker, …), not a flat "all attackers, then all
+ * defenders" sort that would mis-order a tied defender unit. Visible already
+ * during deployment, so both sides see how the placed armies will activate
  * before the combat starts.
  */
 export function InitiativeRail({ state }: { state: GameState }) {
   const { zoomUnit } = useCardZoom();
-  const units = state.combat ? sortUnitsForActivation(state.combat, state.activeEffects) : [];
+  const units = state.combat ? getActivationOrder(state.combat, state.activeEffects) : [];
   const inSetup = Boolean(state.combat?.setup);
 
   return (
@@ -1427,6 +1431,7 @@ const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "COMPLETE_SIMULTANEOUS_TURN",
   "CONTINUE_NEUTRAL_COMBAT",
   "RETREAT_FROM_COMBAT",
+  "GIVE_UP_COMBAT",
   "ACKNOWLEDGE_COMBAT_END",
   // After-combat Necromancy is a now-or-never window: the player either plays the
   // ability from hand or clicks this Skip button (the field reward is withheld
@@ -1624,11 +1629,17 @@ export function CommandDock({
   // is the single, clear control. "Keep positions" (FINISH_TACTICS) stays. The
   // rare expert mid-combat swap is not a setup window, so it keeps its buttons.
   const inTacticsSetup = tacticsSetupActiveFor(state, viewerPlayerId);
-  const commands = legalActions.filter(
-    (legal) =>
-      COMMAND_ACTION_TYPES.has(legal.action.type) &&
-      !(inTacticsSetup && legal.action.type === "SWAP_COMBAT_UNITS")
-  );
+  // PvP pre-battle preparation runs on the adventure map (PreBattlePanel), which
+  // owns every prep control (build / recruit / buy spells / Accept / Retreat),
+  // so the battlefield dock stays out of its way while the window is open.
+  const inBattlePrep = inCombatPrep(state, viewerPlayerId);
+  const commands = inBattlePrep
+    ? []
+    : legalActions.filter(
+        (legal) =>
+          COMMAND_ACTION_TYPES.has(legal.action.type) &&
+          !(inTacticsSetup && legal.action.type === "SWAP_COMBAT_UNITS")
+      );
   const activeUnitId = state.combat?.activeUnitId;
   const activeUnit = activeUnitId ? state.combat?.units[activeUnitId] : undefined;
   const outcome = state.combat?.outcome;
@@ -1642,15 +1653,20 @@ export function CommandDock({
       !activeUnit.activatedThisRound &&
       activeUnit.type === "ranged"
   );
+  const prepOpen = Boolean(state.combat?.prep);
   const status = outcome
     ? `${state.players[outcome.winnerPlayerId]?.name ?? outcome.winnerPlayerId} wins`
-    : waitingOn === viewerPlayerId
-      ? activeUnit && activeUnit.controllerId === viewerPlayerId
-        ? postShotMove
-          ? `${activeUnit.name} fired — step 1 space or hold`
-          : `${activeUnit.name} is active`
-        : "Your move"
-      : `Waiting for ${state.players[waitingOn]?.name ?? waitingOn}`;
+    : inBattlePrep
+      ? "Prepare for battle on the map"
+      : prepOpen
+        ? "Both sides are preparing for battle on the map…"
+        : waitingOn === viewerPlayerId
+          ? activeUnit && activeUnit.controllerId === viewerPlayerId
+            ? postShotMove
+              ? `${activeUnit.name} fired — step 1 space or hold`
+              : `${activeUnit.name} is active`
+            : "Your move"
+          : `Waiting for ${state.players[waitingOn]?.name ?? waitingOn}`;
 
   const player = state.players[viewerPlayerId];
   // Expert Intelligence "ignores the limit": casts still tick the counter, so
@@ -1687,7 +1703,10 @@ export function CommandDock({
       ) : null}
       {commands.map((legal) => (
         <button
-          className={`commandButton ${legal.action.type === "DEFEND_UNIT" ? "defendButton" : ""}`}
+          className={`commandButton ${legal.action.type === "DEFEND_UNIT" ? "defendButton" : ""}${
+            // Give up (concede) is a secondary, off-to-the-side control.
+            legal.action.type === "GIVE_UP_COMBAT" ? " ghost" : ""
+          }`}
           key={actionKey(legal.action)}
           onClick={() => onAction(legal.action)}
           type="button"

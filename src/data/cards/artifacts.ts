@@ -11,6 +11,23 @@ function artifactSource(slug: string) {
   };
 }
 
+/**
+ * Cards of Prophecy, Diplomat's Ring and Ambassador's Sash all carry a "Reroll
+ * a die" instant. Per the printed cards this is a reaction you take AFTER seeing
+ * a die you dislike — not something you pre-commit. The engine therefore offers
+ * their reroll as a held-card instant the moment a die is rolled (the map
+ * Resource / Treasure dice and the combat Attack die), discarding the artifact
+ * when used. Their card `effect` only exposes the OTHER, proactive half (the
+ * Dwelling recruit, or Cards of Prophecy's map die-set); the reroll lives in the
+ * engine, keyed off this list. See `extraDieRerollOptions` (adventure.ts) and
+ * `buildRerollSources` (reducer.ts).
+ */
+export const REROLL_REACTION_ARTIFACT_IDS = [
+  "artifact.cards_of_prophecy",
+  "artifact.diplomats_ring",
+  "artifact.ambassadors_sash"
+] as const;
+
 const SCANLESS_ARTIFACTS = new Set([
   "necklace_of_dragonteeth",
   "pendant_of_courage",
@@ -2114,14 +2131,15 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("royal_armor_of_nix")
   },
-  // Cards of Prophecy (Tower expansion). Option 0 is the universal "reroll any
-  // die" instant, modelled on Expert Luck: a current-turn, player-scoped effect
-  // granting ONE reroll — of the combat Attack die (ATTACK_DIE_REROLL, consumed
-  // on use) OR a map Treasure/Resource die (ADVENTURE_DIE_REROLL "any", also
-  // single-use). Option 1 is a map play that lets you ignore the next Resource
-  // or Treasure die you roll and set it to a face of your choice
+  // Cards of Prophecy (Tower expansion). Its "Reroll any die" half is an instant
+  // REACTION offered from hand the moment a die is rolled (the map Resource /
+  // Treasure dice and the combat Attack die), discarding the card when used —
+  // see REROLL_REACTION_ARTIFACT_IDS — so it is NOT a pre-armed CHOOSE_ONE option
+  // here. The proactive play is the map-only "set a die" half: ignore the next
+  // Resource or Treasure die you roll and set it to a face of your choice
   // (ADVENTURE_DIE_SET — offered in rollResourceDice/rollTreasureDice and spent
-  // on the chosen face).
+  // on the chosen face), which is a deliberate up-front commitment to override
+  // the roll.
   "artifact.cards_of_prophecy": {
     id: "artifact.cards_of_prophecy",
     name: "Cards of Prophecy",
@@ -2131,28 +2149,13 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "Reroll any die. — OR — Set a Resource die or Treasure die on the side of your choice."
+      "Reroll any die. — OR — Set a Resource die or Treasure die on the side of your choice.",
+      // engine: the reroll is a held-card reaction offered after a die roll
+      // (REROLL_REACTION_ARTIFACT_IDS); only the set-die is a proactive play.
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
-        {
-          label: "Reroll any die",
-          effect: {
-            type: "CREATE_ACTIVE_EFFECT",
-            effect: {
-              name: "Cards of Prophecy",
-              scope: "player",
-              duration: { type: "current-turn" },
-              polarity: "positive",
-              removable: false,
-              modifiers: [
-                { type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: true },
-                { type: "ADVENTURE_DIE_REROLL", dice: "any" }
-              ]
-            }
-          }
-        },
         {
           label: "Set a Resource or Treasure die to the side of your choice",
           mapOnly: true,
@@ -2174,12 +2177,13 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: artifactSource("cards_of_prophecy")
   },
-  // Diplomat's Ring (Stronghold expansion). Option 0 is the universal "reroll
-  // any die" instant ("or any roll" reads the same in this engine — see Cards
-  // of Prophecy for the Expert-Luck reroll model). Option 1 is the Diplomacy
+  // Diplomat's Ring (Stronghold expansion). The proactive play is the Diplomacy
   // map recruit (DIPLOMACY_RECRUIT — draw one Neutral Unit card per Dwelling,
   // recruit one by paying its cost), the same effect Cyra's Diplomacy and
-  // Ambassador's Sash use.
+  // Ambassador's Sash use. The card's other half — "Reroll any die or any roll"
+  // — is an instant REACTION you take after a die is rolled, so it is NOT a
+  // pre-armed CHOOSE_ONE option here; the engine offers it from hand the moment
+  // a die is rolled (see REROLL_REACTION_ARTIFACT_IDS).
   "artifact.diplomats_ring": {
     id: "artifact.diplomats_ring",
     name: "Diplomat's Ring",
@@ -2189,28 +2193,13 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "Reroll any die or any roll. — OR — For every Dwelling you have, draw 1 corresponding Neutral Unit card. You can Recruit one of these units."
+      "Reroll any die or any roll. — OR — For every Dwelling you have, draw 1 corresponding Neutral Unit card. You can Recruit one of these units.",
+      // engine: the reroll is a held-card reaction offered after a die roll
+      // (REROLL_REACTION_ARTIFACT_IDS); only the recruit is a proactive play.
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
-        {
-          label: "Reroll any die or any roll",
-          effect: {
-            type: "CREATE_ACTIVE_EFFECT",
-            effect: {
-              name: "Diplomat's Ring",
-              scope: "player",
-              duration: { type: "current-turn" },
-              polarity: "positive",
-              removable: false,
-              modifiers: [
-                { type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: true },
-                { type: "ADVENTURE_DIE_REROLL", dice: "any" }
-              ]
-            }
-          }
-        },
         {
           label: "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)",
           mapOnly: true,
@@ -2223,10 +2212,10 @@ export const artifactCards: CardLibrary = {
     source: artifactSource("diplomats_ring")
   },
   // Ambassador's Sash (Rampart expansion) — Diplomat's Ring's companion (the
-  // wiki cross-links them). Option 0 is the Diplomacy map recruit
-  // (DIPLOMACY_RECRUIT, shared with Cyra's Diplomacy and Diplomat's Ring).
-  // Option 1 is the universal "reroll a die" instant (the Expert-Luck reroll
-  // model — see Cards of Prophecy).
+  // wiki cross-links them). The proactive play is the Diplomacy map recruit
+  // (DIPLOMACY_RECRUIT, shared with Cyra's Diplomacy and Diplomat's Ring). Its
+  // "Reroll a die" half is an instant REACTION offered from hand after a die is
+  // rolled (see REROLL_REACTION_ARTIFACT_IDS), not a pre-armed CHOOSE_ONE option.
   "artifact.ambassadors_sash": {
     id: "artifact.ambassadors_sash",
     name: "Ambassador's Sash",
@@ -2236,7 +2225,9 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "For every Dwelling you have, draw 1 corresponding Neutral Unit card. You can Recruit one of these units. — OR — Reroll a die."
+      "For every Dwelling you have, draw 1 corresponding Neutral Unit card. You can Recruit one of these units. — OR — Reroll a die.",
+      // engine: the reroll is a held-card reaction offered after a die roll
+      // (REROLL_REACTION_ARTIFACT_IDS); only the recruit is a proactive play.
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -2245,23 +2236,6 @@ export const artifactCards: CardLibrary = {
           label: "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)",
           mapOnly: true,
           effect: { type: "DIPLOMACY_RECRUIT" }
-        },
-        {
-          label: "Reroll a die",
-          effect: {
-            type: "CREATE_ACTIVE_EFFECT",
-            effect: {
-              name: "Ambassador's Sash",
-              scope: "player",
-              duration: { type: "current-turn" },
-              polarity: "positive",
-              removable: false,
-              modifiers: [
-                { type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: true },
-                { type: "ADVENTURE_DIE_REROLL", dice: "any" }
-              ]
-            }
-          }
         }
       ]
     },

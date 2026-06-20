@@ -1,14 +1,17 @@
 import { cardLibrary } from "@/data/cards/library";
+import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
 import { sampleBuildings } from "@/data/towns/buildings";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import {
   addArmyUnit,
   changeMorale,
   commitPopulationOnMove,
+  ensureUniqueArmyUnitIds,
   gainResources,
   getActiveAstrologersCard,
   getMainHero,
   getUnitSide,
+  hasDuplicateArmyUnitIds,
   isSeaField,
   makeCombatUnitFromArmy,
   NEUTRAL_DECK_IDS,
@@ -28,6 +31,7 @@ import {
   discoverTile,
   finalizeAdventureCombat,
   finishCombatPlacement,
+  acceptCombat,
   finishTactics,
   giveUpAdventure,
   hallOfValhallaBoost,
@@ -50,6 +54,7 @@ import {
   placeObservatoryTile,
   populationAction,
   pumpAdventureQueues,
+  giveUpCombat,
   refreshHand,
   resolveVisitStep,
   retreatFromCombat,
@@ -2322,6 +2327,20 @@ function buildRerollSources(
       ? [{ name: "Positive morale token", morale: true, remaining: 1, used: 0 }]
       : [];
 
+  // Diplomat's Ring / Ambassador's Sash: their "Reroll a die" half is an instant
+  // played from hand in reaction to the Attack die — one offer per distinct held
+  // copy, blocked when the attacker cannot use their Deck this Combat. Taking the
+  // reroll discards the artifact (handled in rerollPendingChoice).
+  const artifactSources: AttackRerollSource[] =
+    player && !isHandLockedInCombat(state, attacker.controllerId)
+      ? REROLL_REACTION_ARTIFACT_IDS.filter((cardId) => player.hand.includes(cardId)).map((cardId) => ({
+          name: cardLibrary[cardId]?.name ?? cardId,
+          cardId,
+          remaining: 1,
+          used: 0
+        }))
+      : [];
+
   return [
     ...abilitySources,
     ...ammoCartSources,
@@ -2331,6 +2350,7 @@ function buildRerollSources(
       remaining: getRerollUsesForEffect(effect),
       used: 0
     })),
+    ...artifactSources,
     ...moraleSources
   ].filter((source) => source.remaining > 0);
 }
@@ -10935,6 +10955,24 @@ function rerollPendingChoice(
     }
   }
 
+  // Diplomat's Ring / Ambassador's Sash: playing the reroll discards the artifact.
+  if (source.cardId && source.used === 1) {
+    const player = state.players[action.playerId];
+    const handIndex = player?.hand.indexOf(source.cardId) ?? -1;
+    if (player && handIndex !== -1) {
+      player.hand.splice(handIndex, 1);
+      player.discard.push(source.cardId);
+      appendEvent(state, {
+        type: "CARD_PLAYED",
+        playerId: action.playerId,
+        cardId: source.cardId,
+        timing: cardLibrary[source.cardId]?.timing ?? "instant",
+        mode: "basic",
+        optionLabel: "Reroll a die"
+      });
+    }
+  }
+
   appendEvent(state, {
     type: "ATTACK_REROLLED",
     choiceId: choice.id,
@@ -12548,7 +12586,11 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       continue;
     }
 
-    if (!state.combat && !state.pendingChoice && !state.reactionWindow) {
+    // During a PvP pre-battle preparation window the only queued rewards are the
+    // Spell-deck searches from buying spells / building a Mage Guild, so pump the
+    // queue then too (pumpAdventureQueues itself permits the prep exception).
+    const pumpDuringPrep = Boolean(state.combat?.prep);
+    if ((!state.combat || pumpDuringPrep) && !state.pendingChoice && !state.reactionWindow) {
       const queueLength = state.adventure.rewardQueue.length;
       const hadVisit = Boolean(state.adventure.pendingVisit);
       pumpAdventureQueues(state);
@@ -12579,6 +12621,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "SANDBOX_ADD_CARD",
   "FINISH_TACTICS",
   "FINISH_COMBAT_PLACEMENT",
+  "ACCEPT_COMBAT",
   "CONTINUE_NEUTRAL_COMBAT",
   "RETREAT_FROM_COMBAT",
   "SURRENDER_COMBAT",
@@ -12615,12 +12658,28 @@ function isHandlerValidated(state: GameState, action: GameAction): boolean {
 export function applyAction(state: GameState, action: GameAction, options: ReducerOptions = {}): EngineResult {
   const cards = options.cards ?? cardLibrary;
   const buildings = options.buildings ?? sampleBuildings;
-  const legalError = isHandlerValidated(state, action) ? null : assertLegal(state, action, cards, buildings);
-  if (legalError) {
-    return fail(state, legalError);
+
+  // Self-heal any duplicate army-unit ids before validating or running the
+  // action (see ensureUniqueArmyUnitIds). A legacy id collision — minted by the
+  // old counter scheme across a host recycle — would otherwise let both the
+  // legality check and the handlers match the *wrong* army unit (the reported
+  // "reinforcing/deploying the Orcs upgrades/places the Cyclopes" bug). Only the
+  // rare corrupted save needs a clone-and-repair; the common case validates and
+  // runs against the original state untouched (a rejected action still returns
+  // it unchanged). When we do repair, that copy is returned even on failure so
+  // the stored room heals on the next action regardless of the outcome.
+  let base = state;
+  if (hasDuplicateArmyUnitIds(state)) {
+    base = cloneState(state);
+    ensureUniqueArmyUnitIds(base);
   }
 
-  const nextState = cloneState(state);
+  const legalError = isHandlerValidated(base, action) ? null : assertLegal(base, action, cards, buildings);
+  if (legalError) {
+    return fail(base, legalError);
+  }
+
+  const nextState = cloneState(base);
   const startEventNumber = eventSeedNumber(nextState);
 
   try {
@@ -12769,6 +12828,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "FINISH_COMBAT_PLACEMENT":
         finishCombatPlacement(nextState, action);
         break;
+      case "ACCEPT_COMBAT":
+        acceptCombat(nextState, action);
+        break;
       case "SWAP_COMBAT_UNITS":
         swapCombatUnits(nextState, action);
         break;
@@ -12787,6 +12849,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "SURRENDER_COMBAT":
         surrenderFromCombat(nextState, action);
+        break;
+      case "GIVE_UP_COMBAT":
+        giveUpCombat(nextState, action);
         break;
       case "POPULATION_ACTION":
         populationAction(nextState, action);
@@ -12890,7 +12955,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
     }
   } catch (error) {
-    return fail(state, {
+    return fail(base, {
       code: "ACTION_NOT_LEGAL",
       message: error instanceof Error ? error.message : "The action could not be applied."
     });
@@ -12906,7 +12971,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   try {
     runAdventureAutomations(nextState, cards);
   } catch (error) {
-    return fail(state, {
+    return fail(base, {
       code: "ACTION_NOT_LEGAL",
       message:
         error instanceof Error
