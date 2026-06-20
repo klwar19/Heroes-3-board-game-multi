@@ -4484,6 +4484,15 @@ export type VisitStep =
       type: "CONSUME_WEASEL";
     }
   | {
+      /**
+       * Plays a held reroll artifact (Diplomat's Ring / Ambassador's Sash) as an
+       * instant the moment a die is rolled: discards it from hand, then the
+       * adventure die is re-rolled by the step that follows.
+       */
+      type: "CONSUME_REROLL_ARTIFACT";
+      cardId: CardId;
+    }
+  | {
       /** Terrible Plague: flip one army card from Pack back to Few. */
       type: "FLIP_PACK_TO_FEW";
       armyUnitId: string;
@@ -5103,6 +5112,11 @@ export type AttackRerollSource = {
   effectId?: string;
   /** Positive morale token: spending the reroll discards the token. */
   morale?: boolean;
+  /**
+   * Held reroll artifact (Diplomat's Ring / Ambassador's Sash): taking the
+   * reroll plays the card, discarding it from the owner's hand.
+   */
+  cardId?: CardId;
   /**
    * Printed face gate (Crusaders: 'reroll every "0"'): the source is only
    * usable while the current roll shows this face, and using it never
