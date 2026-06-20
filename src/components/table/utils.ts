@@ -1,4 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
+import { CREATURE_BANKS } from "@/data/map/creature-banks";
 import { assetUrl } from "@/lib/asset-url";
 import {
   cardCanBoostPower,
@@ -327,6 +328,16 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `The level ${event.difficulty} guards are revealed: ${event.unitDefIds
         .map((unitDefId) => unitDefId.split(".")[1] ?? unitDefId)
         .join(", ")}.`;
+    case "CREATURE_BANK_PLACED":
+      return `A ${CREATURE_BANKS[event.bankId as keyof typeof CREATURE_BANKS]?.name ?? "Creature Bank"} token is placed.`;
+    case "CREATURE_BANK_COMBAT_STARTED":
+      return `${playerName(state, event.playerId)} raids the ${
+        CREATURE_BANKS[event.bankId as keyof typeof CREATURE_BANKS]?.name ?? "Creature Bank"
+      } (${event.stackedCount} Stacked defender${event.stackedCount === 1 ? "" : "s"}).`;
+    case "STACK_TOKEN_DISCARDED":
+      return `${event.unitName} discards a Stack Token and survives the blow${
+        event.excessDamage > 0 ? ` (${event.excessDamage} damage carries over)` : ""
+      }.`;
     case "GAME_OPTIONS_CHANGED":
       return event.message;
     case "PLAYER_COMBAT_STARTED":

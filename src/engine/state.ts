@@ -3304,6 +3304,37 @@ export type GameEvent =
       unitDefIds: string[];
     }
   | {
+      /** A Creature Bank Token was placed on a Tile's Blocked Field. */
+      id: string;
+      type: "CREATURE_BANK_PLACED";
+      fieldId: MapSpaceId;
+      bankId: string;
+    }
+  | {
+      /** A Creature Bank Combat began (no Field Difficulty). */
+      id: string;
+      type: "CREATURE_BANK_COMBAT_STARTED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      fieldId: MapSpaceId;
+      bankId: string;
+      unitDefIds: string[];
+      stackedCount: number;
+    }
+  | {
+      /**
+       * A Stacked Creature Bank defender took a lethal blow and discarded its
+       * Stack Token instead of being removed, carrying the leftover damage to
+       * its new Health.
+       */
+      id: string;
+      type: "STACK_TOKEN_DISCARDED";
+      unitId: UnitId;
+      playerId: PlayerId;
+      unitName: string;
+      excessDamage: number;
+    }
+  | {
       id: string;
       type: "GAME_OPTIONS_CHANGED";
       playerId: PlayerId;
@@ -4076,6 +4107,9 @@ export type BattlefieldTokenState = {
   expiresAtCombatRoundEnd?: number;
 };
 
+/** A Stack Token modifies exactly one statistic of a Creature Bank defender. */
+export type StackTokenStat = "attack" | "defense" | "health" | "initiative";
+
 export type CombatUnitState = {
   id: UnitId;
   controllerId: PlayerId;
@@ -4162,6 +4196,20 @@ export type CombatUnitState = {
    */
   bankGuard?: boolean;
   /**
+   * Creature Bank defender (Naval Battles optional rule). Fights from its own
+   * Creature Bank unit card (distinct stats, NO tier), is returned to the bank
+   * pile rather than a Neutral tier deck, and follows the Stack Token rules.
+   * Implies bankGuard (minted, never deck-drawn).
+   */
+  bankUnit?: boolean;
+  /**
+   * The Stack Token currently sitting on this Creature Bank defender, if any.
+   * A Stacked unit's printed statistics already include the token's bonus; when
+   * it would take lethal damage the token is discarded (reverting the bonus) and
+   * the leftover damage carries to the new, lower Health (rulebook p.67).
+   */
+  stackToken?: StackTokenStat | null;
+  /**
    * Conjured onto the battlefield by a spell (Summon Elemental). Summoned
    * units carry no printed grade, so the neutral AI's same-tier targeting rule
    * never applies to them — guards attack every real, graded enemy first and
@@ -4209,6 +4257,16 @@ export type CombatContext =
       difficulty: number;
       /** Highest tier present in the drawn neutral army (azure has no time limit). */
       hasAzure: boolean;
+      /**
+       * Creature Bank combat (Naval Battles optional rule): the bank being
+       * fought. When set, this is NOT a Field-Difficulty fight — there is no
+       * Quick Combat, no Round limit, no MP to extend and no experience, and the
+       * win reward is the bank's (scaled by `bankStackCount`). A CreatureBankId
+       * (typed loosely here because state.ts has no data-layer imports).
+       */
+      bankId?: string;
+      /** Number of Stacked defenders placed on the bank (the reward's X). */
+      bankStackCount?: number;
     }
   | {
       kind: "player";
@@ -4495,6 +4553,12 @@ export type MapFieldState = {
   slot: number;
   location: string;
   difficulty?: number;
+  /**
+   * Creature Bank id (Naval Battles optional rule) when `location` is
+   * "creature_bank". A CreatureBankId, typed loosely because state.ts has no
+   * data-layer imports. The bank's defenders and reward are looked up from it.
+   */
+  bankId?: string;
   resource?: ResourceKind;
   amount?: number;
   faction?: string;

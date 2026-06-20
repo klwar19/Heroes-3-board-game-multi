@@ -94,6 +94,33 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     }
   }
 
+  // Creature Bank Stacked defenders: a Stack Token absorbs one lethal blow.
+  // "When it takes damage equal to or greater than its Health, instead of
+  // removing the unit, discard the Stack Token from it and deal any leftover
+  // damage, deducting it from the new Health." (rulebook p.67). The token is
+  // discarded (reverting its stat bonus via applyUnitCurrentSide) and the
+  // excess carries to the now-lower Health — the same shape as the Pack→Few
+  // flip above. A bank defender without a token is defeated normally.
+  if (unit.bankUnit && unit.stackToken) {
+    const excess = unit.damage - unit.maxHealth;
+    unit.stackToken = null;
+    unit.damage = 0;
+    applyUnitCurrentSide(unit, getRuleset(state));
+    unit.damage = Math.min(unit.maxHealth, Math.max(0, excess));
+
+    appendEvent(state, {
+      type: "STACK_TOKEN_DISCARDED",
+      unitId: unit.id,
+      playerId: unit.controllerId,
+      unitName: unit.name,
+      excessDamage: Math.max(0, excess)
+    });
+
+    if (unit.damage < unit.maxHealth) {
+      return;
+    }
+  }
+
   // Phoenixes: "Once per Combat, when this unit's HP drops to 0, set it to 1
   // instead." The last-ditch self-save, taken automatically once any Pack→Few
   // flip is exhausted — the unit survives the killing blow at 1 Health. Works
@@ -134,7 +161,14 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
 
   // Neutral Skeletons: a destroyed Skeleton guard lets the attacker's
   // Necropolis hero reinforce a bronze unit for free (resolved after combat).
-  if (state.combat && unit.controllerId === NEUTRAL_PLAYER_ID && unit.unitDefId === "neutral.skeletons") {
+  // This is the Neutral Skeletons card ability; the Crypt Creature Bank
+  // Skeleton card is a different card and does NOT grant the reinforce.
+  if (
+    state.combat &&
+    unit.controllerId === NEUTRAL_PLAYER_ID &&
+    unit.unitDefId === "neutral.skeletons" &&
+    !unit.bankUnit
+  ) {
     state.combat.skeletonGuardDefeated = true;
   }
 

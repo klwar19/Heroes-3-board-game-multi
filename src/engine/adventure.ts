@@ -11,6 +11,13 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities, type UnitMapAbilityEffect } from "@/data/units/abilities";
 import type { UnitDefinition, UnitSideDefinition } from "@/data/factions/types";
 import { hasInternalBorder } from "@/data/map/borders";
+import {
+  CREATURE_BANKS,
+  CREATURE_BANK_UNIT_SIDES,
+  STACK_TOKEN_STATS,
+  STACK_TOKENS_BY_DIFFICULTY,
+  type CreatureBankId
+} from "@/data/map/creature-banks";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import type { LocationInteraction, TileDefinition } from "@/data/map/types";
@@ -22,7 +29,7 @@ import {
 } from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
-import { applyUnitSideRules, canAcquireSharedDeckCard } from "./ruleset";
+import { applyUnitSideRules, canAcquireSharedDeckCard, getRuleset } from "./ruleset";
 import {
   hexDistance,
   hexNeighbors,
@@ -224,6 +231,15 @@ export function getUnitSide(unitDefId: string, side: "few" | "pack" | "neutral")
   }
 
   return side === "neutral" ? def.neutral : def[side];
+}
+
+/**
+ * The Creature Bank fighting side for a unit (Naval Battles optional rule).
+ * Bank cards have their own statistics and abilities and NO tier — distinct
+ * from the unit's Few/Pack/Neutral sides.
+ */
+export function getBankSide(unitDefId: string): UnitSideDefinition | undefined {
+  return CREATURE_BANK_UNIT_SIDES[unitDefId];
 }
 
 function adventureRandom(state: GameState, label: string) {
@@ -633,6 +649,11 @@ export function heroAtSpace(state: GameState, spaceId: MapSpaceId, excludeHeroId
 
 /** Whether the field still has undefeated neutral guards. */
 export function isFieldGuarded(field: MapFieldState): boolean {
+  // Creature Banks have no Field Difficulty: they are guarded until the win is
+  // marked with a Black Cube (rulebook p.66).
+  if (field.location === "creature_bank" && field.bankId) {
+    return !field.blackCube;
+  }
   return Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
 }
 
@@ -3849,6 +3870,12 @@ export type NeutralDraw = {
   bankGuard?: boolean;
   /** Random Town defender: fight this unit on its faction Pack side. */
   factionPack?: boolean;
+  /**
+   * Naval Battles Creature Bank defender: fight from the unit's Creature Bank
+   * card (its own stats/abilities, no tier) rather than the Few/Pack/Neutral
+   * side. Implies bankGuard.
+   */
+  bankUnit?: boolean;
 };
 
 /**
@@ -3978,6 +4005,153 @@ export function drawGuardArmy(state: GameState, field: MapFieldState | undefined
   return draws;
 }
 
+// ---------------------------------------------------------------------------
+// Creature Banks (Naval Battles optional rule, rulebook p.66-67, 84-85)
+// ---------------------------------------------------------------------------
+
+/** Whether `bankId` is a known Creature Bank. */
+export function isCreatureBankId(bankId: string | undefined): bankId is CreatureBankId {
+  return Boolean(bankId) && bankId! in CREATURE_BANKS;
+}
+
+/** The Creature Bank a field hosts, if any. */
+export function fieldCreatureBankId(field: MapFieldState | null | undefined): CreatureBankId | undefined {
+  if (field?.location === "creature_bank" && isCreatureBankId(field.bankId)) {
+    return field.bankId;
+  }
+  return undefined;
+}
+
+/** Builds the minted bank defenders (no Stack Tokens yet) for a Creature Bank. */
+export function buildCreatureBankDraws(bankId: CreatureBankId): NeutralDraw[] {
+  const bank = CREATURE_BANKS[bankId];
+  return bank.units.map((unitDefId) => ({ unitDefId, tier: "bronze" as const, bankUnit: true }));
+}
+
+/**
+ * Builds the Creature Bank defenders for a combat and places the Stack Tokens
+ * (rulebook p.66-67). The number of tokens follows the Scenario Difficulty
+ * (Easy 1 / Normal 2 / Hard 3 / Impossible 4), each token going on a DIFFERENT
+ * bank card and modifying one random statistic (+1 attack/defense/health or +2
+ * initiative). Returns the deployed-but-not-positioned units and the number of
+ * Stacked defenders (X, the reward multiplier).
+ */
+export function buildCreatureBankCombatUnits(
+  state: GameState,
+  bankId: CreatureBankId
+): { units: CombatUnitState[]; stackedCount: number } {
+  const ruleset = getRuleset(state);
+  const draws = buildCreatureBankDraws(bankId);
+  const units = draws.flatMap((draw, index) => {
+    const unit = makeCombatUnitFromNeutral(draw, `bank_${index + 1}_${draw.unitDefId.split(".")[1]}`, 0, ruleset);
+    return unit ? [unit] : [];
+  });
+
+  const difficulty = state.adventure?.difficulty ?? "normal";
+  // "place them randomly on up to four different Creature Bank unit cards"
+  const tokenCount = Math.min(STACK_TOKENS_BY_DIFFICULTY[difficulty], units.length, 4);
+
+  const random = adventureRandom(state, `creature-bank-stack-${bankId}`);
+  // Partial Fisher-Yates: pick `tokenCount` DISTINCT defenders to stack.
+  const order = units.map((_, index) => index);
+  for (let i = 0; i < tokenCount; i += 1) {
+    const j = random.nextInt(i, order.length - 1);
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  for (let i = 0; i < tokenCount; i += 1) {
+    const unit = units[order[i]];
+    unit.stackToken = STACK_TOKEN_STATS[random.nextInt(0, STACK_TOKEN_STATS.length - 1)];
+    // Re-derive the fighting statistics so the token's bonus is baked in.
+    applyUnitCurrentSide(unit, ruleset);
+  }
+
+  return { units, stackedCount: tokenCount };
+}
+
+/**
+ * Places a Creature Bank Token on a field, converting it into a bank Location
+ * (rulebook p.66: a token is placed on a Tile's Blocked Field). Mirrors the
+ * subterranean-gate carve: the old Location and all of its trappings are
+ * cleared so the bank behaves as a clean Visitable field. Returns the field, or
+ * null if the space or bank id is unknown.
+ */
+export function placeCreatureBank(
+  state: GameState,
+  spaceId: MapSpaceId,
+  bankId: CreatureBankId
+): MapFieldState | null {
+  const adventure = state.adventure;
+  const field = adventure?.fields[spaceId];
+  if (!adventure || !field || !isCreatureBankId(bankId)) {
+    return null;
+  }
+  field.location = "creature_bank";
+  field.bankId = bankId;
+  delete field.difficulty;
+  delete field.resource;
+  delete field.amount;
+  delete field.faction;
+  delete field.terrain;
+  field.blackCube = false;
+  field.flagOwnerId = null;
+  delete field.extraFlagOwnerIds;
+  field.everFlagged = false;
+  field.settlementResource = null;
+  delete field.grailDiggable;
+
+  appendEvent(state, {
+    type: "CREATURE_BANK_PLACED",
+    fieldId: spaceId,
+    bankId
+  });
+  return field;
+}
+
+/**
+ * Resolves a Creature Bank win reward (rulebook p.66-67): mark the Black Cube,
+ * then grant the bank's reward scaled by X = the number of Stacked defenders.
+ * The reward is compiled to ordinary visit steps so it flows through the same
+ * resource/morale/search pipeline as every other field. Banks whose reward is
+ * "gain a unit" (not implemented yet) grant nothing.
+ */
+export function grantCreatureBankReward(
+  state: GameState,
+  heroId: HeroId,
+  fieldId: MapSpaceId,
+  stackedCount: number
+): void {
+  const adventure = state.adventure;
+  const hero = state.heroes[heroId];
+  const field = adventure?.fields[fieldId];
+  const bankId = fieldCreatureBankId(field);
+  if (!adventure || !hero || !field || !bankId) {
+    return;
+  }
+  const playerId = hero.controllerId;
+  const bank = CREATURE_BANKS[bankId];
+
+  appendEvent(state, {
+    type: "FIELD_VISITED",
+    playerId,
+    heroId,
+    fieldId,
+    location: field.location,
+    revisit: false
+  });
+  adventure.lastVisitedField[heroId] = fieldId;
+
+  // "If you win, resolve the Field's effect and mark it with a Black Cube."
+  field.blackCube = true;
+
+  const reward = bank.buildReward(stackedCount);
+  const steps = interactionToSteps(reward);
+  if (steps.length === 0) {
+    return;
+  }
+  adventure.pendingVisit = { heroId, playerId, fieldId, steps };
+  processPendingVisit(state);
+}
+
 const PLAYABLE_FACTIONS = [
   "castle",
   "rampart",
@@ -4049,21 +4223,28 @@ export function makeCombatUnitFromNeutral(
   ruleset: GameRuleset = "legacy"
 ): CombatUnitState | null {
   const def = coreUnitDefinitions[draw.unitDefId];
-  // Random Town defenders fight on their faction's Pack side; every other
-  // guard uses the single-sided Neutral card.
+  // Creature Bank defenders fight from their own bank card; Random Town
+  // defenders fight on their faction's Pack side; every other guard uses the
+  // single-sided Neutral card.
+  const bankSide = draw.bankUnit ? getBankSide(draw.unitDefId) : undefined;
   const variant: "neutral" | "pack" = draw.factionPack ? "pack" : "neutral";
-  const printed = draw.factionPack ? def?.pack : def?.neutral;
+  const printed = draw.bankUnit ? bankSide : draw.factionPack ? def?.pack : def?.neutral;
   if (!def || !printed) {
     return null;
   }
 
-  const side = applyUnitSideRules(ruleset, draw.unitDefId, variant, printed);
+  // Bank cards carry no ruleset (legacy/binh) tweaks; their printed side is
+  // used verbatim. Other guards run through the ruleset side adjustments.
+  const side = draw.bankUnit ? printed : applyUnitSideRules(ruleset, draw.unitDefId, variant, printed);
+  const cardName = draw.bankUnit
+    ? `${def.name} (Creature Bank)`
+    : `${draw.factionPack ? "Pack of" : "Neutral"} ${def.name}`;
 
   return {
     id: unitId,
     controllerId: NEUTRAL_PLAYER_ID,
     name: def.name,
-    cardName: `${draw.factionPack ? "Pack of" : "Neutral"} ${def.name}`,
+    cardName,
     variant,
     grade: def.tier,
     type: side.type ?? def.type,
@@ -4079,7 +4260,8 @@ export function makeCombatUnitFromNeutral(
     defenseToken: false,
     abilities: side.abilities,
     unitDefId: draw.unitDefId,
-    ...(draw.bankGuard ? { bankGuard: true } : {}),
+    // Bank defenders are minted (never deck-drawn) and follow the bank rules.
+    ...(draw.bankUnit ? { bankUnit: true, bankGuard: true } : draw.bankGuard ? { bankGuard: true } : {}),
     assets: {
       cardImage: side.cardImage,
       imageAlt: `${def.name} unit card`,
