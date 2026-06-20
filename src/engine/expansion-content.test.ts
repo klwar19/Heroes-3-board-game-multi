@@ -277,12 +277,11 @@ describe("Stronghold City Hall resource-round choice", () => {
 });
 
 describe("Fountain of Youth / Magic Spring effects", () => {
-  // The two fields' effects are swapped relative to the printed wiki text to
-  // match the physical board game tiles (confirmed by playtest):
-  //   Fountain of Youth → look at the top 3 cards of your discard pile and
+  // Effects per the fan wiki (https://en.homm3bg.wiki/fields/):
+  //   Fountain of Youth → gain a positive Morale token AND +1 movement.
+  //   Magic Spring      → look at the top 3 cards of your discard pile and
   //                       return one to hand (engine step type MAGIC_SPRING).
-  //   Magic Spring      → gain a positive Morale token AND +1 movement.
-  // These tests fail if either definition is reverted to the other effect.
+  // These tests fail if either definition is swapped to the other effect.
   function injectVisitable(state: GameState, location: string, spaceId = "77,77"): MapFieldState {
     const field: MapFieldState = {
       spaceId,
@@ -299,9 +298,9 @@ describe("Fountain of Youth / Magic Spring effects", () => {
     return field;
   }
 
-  it("Magic Spring grants a morale token and +1 movement", () => {
-    const state = createAdventureGameState({ seed: "field-swap-spring", rollFirstPlayer: false });
-    const field = injectVisitable(state, "magic_spring");
+  it("Fountain of Youth grants a morale token and +1 movement", () => {
+    const state = createAdventureGameState({ seed: "field-swap-fountain", rollFirstPlayer: false });
+    const field = injectVisitable(state, "fountain_of_youth");
     const hero = getMainHero(state, "p1")!;
     hero.spaceId = field.spaceId;
     const moraleBefore = state.players.p1.morale;
@@ -315,9 +314,9 @@ describe("Fountain of Youth / Magic Spring effects", () => {
     expect(state.heroes[hero.id].movementPoints).toBe(movementBefore + 1);
   });
 
-  it("Fountain of Youth returns a card from the discard pile to hand", () => {
-    const state = createAdventureGameState({ seed: "field-swap-fountain", rollFirstPlayer: false });
-    const field = injectVisitable(state, "fountain_of_youth");
+  it("Magic Spring returns a card from the discard pile to hand", () => {
+    const state = createAdventureGameState({ seed: "field-swap-spring", rollFirstPlayer: false });
+    const field = injectVisitable(state, "magic_spring");
     const hero = getMainHero(state, "p1")!;
     hero.spaceId = field.spaceId;
 
@@ -327,7 +326,7 @@ describe("Fountain of Youth / Magic Spring effects", () => {
 
     beginFieldVisit(state, hero.id, field.spaceId, false);
 
-    // The Fountain runs the discard-recovery step, awaiting the player's pick.
+    // The Magic Spring runs the discard-recovery step, awaiting the player's pick.
     expect(state.adventure?.pendingVisit?.steps[0]?.type).toBe("MAGIC_SPRING");
 
     // optionIndex 0 = the top of the discard pile ("fy_top").

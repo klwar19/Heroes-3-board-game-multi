@@ -1,4 +1,5 @@
 import { astrologersCardDefinitions, type AstrologersCardDefinition } from "@/data/cards/astrologers";
+import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
 import { cardLibrary } from "@/data/cards/library";
 import {
   coreBuildingDefinitions,
@@ -2297,6 +2298,23 @@ export function processPendingVisit(state: GameState): void {
         }
         break;
       }
+      case "CONSUME_REROLL_ARTIFACT": {
+        const player = state.players[visit.playerId];
+        const handIndex = player?.hand.indexOf(step.cardId) ?? -1;
+        if (player && handIndex !== -1) {
+          player.hand.splice(handIndex, 1);
+          player.discard.push(step.cardId);
+          appendEvent(state, {
+            type: "CARD_PLAYED",
+            playerId: visit.playerId,
+            cardId: step.cardId,
+            timing: cardLibrary[step.cardId]?.timing ?? "instant",
+            mode: "basic",
+            optionLabel: "Reroll a die"
+          });
+        }
+        break;
+      }
       case "FLIP_PACK_TO_FEW": {
         const player = state.players[visit.playerId];
         const armyUnit = player?.army.find((candidate) => candidate.id === step.armyUnitId);
@@ -3618,6 +3636,19 @@ function extraDieRerollOptions(
       label: `Spend morale: reroll the ${dice} ${count > 1 ? "dice" : "die"}`,
       steps: [{ type: "CONSUME_MORALE" }, rollStep]
     });
+  }
+
+  // Diplomat's Ring / Ambassador's Sash: their "Reroll a die" half is an instant
+  // played in reaction to the roll you just saw — offer it from hand here, one
+  // offer per distinct held copy. Taking it discards the artifact, then re-rolls.
+  const hand = state.players[visit.playerId]?.hand ?? [];
+  for (const cardId of REROLL_REACTION_ARTIFACT_IDS) {
+    if (hand.includes(cardId)) {
+      options.push({
+        label: `Play ${cardLibrary[cardId]?.name ?? cardId}: reroll the ${dice} ${count > 1 ? "dice" : "die"}`,
+        steps: [{ type: "CONSUME_REROLL_ARTIFACT", cardId } as VisitStep, rollStep]
+      });
+    }
   }
 
   return options;
