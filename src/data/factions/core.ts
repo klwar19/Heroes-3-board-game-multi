@@ -1726,6 +1726,53 @@ export const neutralUnitIdsByTier: Record<"bronze" | "silver" | "gold" | "azure"
 };
 
 /**
+ * The Neutral Units deck card that depicts the same creature as a faction-roster
+ * unit, recruitable at that faction's Dwelling tier — matched by creature name
+ * + tier. The board game prints most town creatures both as a faction unit
+ * (Few/Pack sides, recruited at the Dwelling) and as a single-sided Neutral Unit
+ * (recruited from the deck at external dwellings). This returns that same-tier
+ * neutral counterpart, or undefined when none exists. A faction's signature
+ * top-tier creatures — Gold Dragons, Titans, Hydras — DO have a Neutral Unit
+ * card, but it sits at the azure tier (neutral.gold_dragons / .titans / .hydras),
+ * not the faction's gold tier; that azure card appears only as a high guard and
+ * is not the gold-tier counterpart a Dwelling would recruit, so the name+tier
+ * match deliberately returns undefined for them.
+ */
+export function neutralCounterpartId(factionUnitId: string): string | undefined {
+  const unit = coreUnitDefinitions[factionUnitId];
+  if (!unit) {
+    return undefined;
+  }
+  return Object.values(coreUnitDefinitions).find(
+    (candidate) =>
+      candidate.faction === "neutral" &&
+      Boolean(candidate.neutral) &&
+      candidate.name === unit.name &&
+      candidate.tier === unit.tier
+  )?.id;
+}
+
+/**
+ * Neutral Units deck cards "associated with" each faction — the same-tier neutral
+ * counterpart of every unit on a faction's roster. Used by the Unexpected
+ * Reinforcements proclamation, which lets a player search the Neutral Units deck
+ * and recruit one neutral unit tied to their faction (added on the single-sided
+ * Neutral side, so — like any neutral unit — it can never be reinforced to a
+ * Pack). A faction's top-tier signature creature (Gold Dragons, Titans, Hydras)
+ * is intentionally absent: its only neutral card is the azure-tier version, and
+ * no Dwelling unlocks azure, so it is never recruitable this way (it still shows
+ * up as an azure neutral guard via neutralUnitIdsByTier.azure).
+ */
+export const neutralUnitIdsByFaction: Record<string, string[]> = Object.fromEntries(
+  Object.values(coreFactionDefinitions).map((faction) => [
+    faction.id,
+    faction.units
+      .map((unitId) => neutralCounterpartId(unitId))
+      .filter((id): id is string => Boolean(id))
+  ])
+);
+
+/**
  * Which starting tile faces which faction, derived from the faction
  * definitions so the public faction data and the runtime setup map can never
  * drift apart. S1 = Necropolis, S2 = Dungeon, S3 = Castle (core box dirt/

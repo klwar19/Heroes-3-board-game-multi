@@ -5,10 +5,12 @@ import {
   addArmyUnit,
   changeMorale,
   commitPopulationOnMove,
+  ensureUniqueArmyUnitIds,
   gainResources,
   getActiveAstrologersCard,
   getMainHero,
   getUnitSide,
+  hasDuplicateArmyUnitIds,
   isSeaField,
   makeCombatUnitFromArmy,
   NEUTRAL_DECK_IDS,
@@ -53,13 +55,13 @@ import {
   pumpAdventureQueues,
   giveUpCombat,
   refreshHand,
-  rehydrateCityHallChoice,
   resolveVisitStep,
   retreatFromCombat,
   surrenderFromCombat,
   revisitField,
   roguesScoutDeck,
   setTileRotation,
+  skipNecromancy,
   spellBookAction,
   spendMorale,
   spendTownCube,
@@ -8826,6 +8828,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     throw new Error(`Unknown card ${action.cardId}.`);
   }
 
+  // BINH house rule: while the after-combat Necromancy window is open, the ONLY
+  // legal card play is that Necromancy itself — the field reward is withheld
+  // until the player commits, so no other card may resolve and bank value first.
+  const pendingNecro = state.adventure?.pendingNecromancy;
+  if (pendingNecro && (pendingNecro.playerId !== action.playerId || card.effect.type !== "NECROMANCY_REINFORCE")) {
+    throw new Error("Resolve the after-combat Necromancy window first (play it or skip it).");
+  }
+
   // Dessa's Logistics: playable only during the continue-or-retreat decision
   // against neutral units — the combat extends one round for free.
   if (card.effect.type === "CONTINUE_NEUTRAL_FREE") {
@@ -9283,9 +9293,25 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "NECROMANCY_REINFORCE") {
     // Playing the card consumes the after-combat window. Vidomina's specialties
-    // pin the tier (forceMode); the printed ability uses the played mode.
+    // pin the tier (forceMode); the printed ability uses the played mode. The
+    // reinforce options are built on the gold held RIGHT NOW — before the
+    // withheld field reward lands — which is the whole point of the now-or-never
+    // window. Once that is queued, release the deferred field visit so it
+    // resolves only after the reinforce is paid for.
     state.players[action.playerId].necromancyWindow = false;
     queueNecromancyReinforce(state, action.playerId, effect.forceMode ?? mode);
+    const pending = state.adventure?.pendingNecromancy;
+    if (pending && pending.playerId === action.playerId) {
+      if (pending.heroId && pending.fieldId) {
+        state.adventure!.rewardQueue.push({
+          playerId: action.playerId,
+          kind: "field-visit",
+          heroId: pending.heroId,
+          fieldId: pending.fieldId
+        });
+      }
+      state.adventure!.pendingNecromancy = null;
+    }
   }
 
   if (effect.type === "GAIN_RESOURCES") {
@@ -12282,8 +12308,6 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
     return;
   }
 
-  rehydrateCityHallChoice(state);
-
   let safety = 300;
   while (safety > 0) {
     safety -= 1;
@@ -12489,12 +12513,28 @@ function isHandlerValidated(state: GameState, action: GameAction): boolean {
 export function applyAction(state: GameState, action: GameAction, options: ReducerOptions = {}): EngineResult {
   const cards = options.cards ?? cardLibrary;
   const buildings = options.buildings ?? sampleBuildings;
-  const legalError = isHandlerValidated(state, action) ? null : assertLegal(state, action, cards, buildings);
-  if (legalError) {
-    return fail(state, legalError);
+
+  // Self-heal any duplicate army-unit ids before validating or running the
+  // action (see ensureUniqueArmyUnitIds). A legacy id collision — minted by the
+  // old counter scheme across a host recycle — would otherwise let both the
+  // legality check and the handlers match the *wrong* army unit (the reported
+  // "reinforcing/deploying the Orcs upgrades/places the Cyclopes" bug). Only the
+  // rare corrupted save needs a clone-and-repair; the common case validates and
+  // runs against the original state untouched (a rejected action still returns
+  // it unchanged). When we do repair, that copy is returned even on failure so
+  // the stored room heals on the next action regardless of the outcome.
+  let base = state;
+  if (hasDuplicateArmyUnitIds(state)) {
+    base = cloneState(state);
+    ensureUniqueArmyUnitIds(base);
   }
 
-  const nextState = cloneState(state);
+  const legalError = isHandlerValidated(base, action) ? null : assertLegal(base, action, cards, buildings);
+  if (legalError) {
+    return fail(base, legalError);
+  }
+
+  const nextState = cloneState(base);
   const startEventNumber = eventSeedNumber(nextState);
 
   try {
@@ -12630,6 +12670,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "ACKNOWLEDGE_COMBAT_END":
         acknowledgeCombatEnd(nextState, action);
+        break;
+      case "SKIP_NECROMANCY":
+        skipNecromancy(nextState, action);
         break;
       case "PLACE_COMBAT_UNIT":
         placeCombatUnit(nextState, action);
@@ -12767,7 +12810,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
     }
   } catch (error) {
-    return fail(state, {
+    return fail(base, {
       code: "ACTION_NOT_LEGAL",
       message: error instanceof Error ? error.message : "The action could not be applied."
     });
@@ -12783,7 +12826,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   try {
     runAdventureAutomations(nextState, cards);
   } catch (error) {
-    return fail(state, {
+    return fail(base, {
       code: "ACTION_NOT_LEGAL",
       message:
         error instanceof Error

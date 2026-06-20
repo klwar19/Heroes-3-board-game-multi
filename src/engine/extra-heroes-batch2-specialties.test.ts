@@ -600,6 +600,7 @@ describe("Vidomina's Necromancy specialty", () => {
     const state = adventureState(`vidomina-${level}`, "vidomina", "necropolis");
     state.players.p1.hand = [`specialty.vidomina.${level}`];
     state.players.p1.necromancyWindow = true;
+    state.adventure!.pendingNecromancy = { playerId: "p1" };
     state.players.p1.resources.gold = 60;
     // A bronze, a silver and a gold Few unit to reinforce.
     state.players.p1.army = [
