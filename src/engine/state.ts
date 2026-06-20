@@ -845,10 +845,13 @@ export type EffectDefinition =
   | {
       /**
        * Legion artifacts (Legs/Loins/Torso/Arms/Head of Legion) discount side.
-       * An INSTANT, one-shot effect: it banks `amount` gold of discount on the
-       * player (player.recruitDiscount) that comes off the NEXT Recruitment or
-       * Reinforcement, to a minimum of 0, and is then consumed. The artifact card
-       * resolves to the discard pile at once — it is never an ongoing effect.
+       * An INSTANT, map-only effect: playing it opens a prompt to choose ONE
+       * recruitable/reinforceable unit, then banks a one-shot voucher of `amount`
+       * gold reserved for that exact unit (player.recruitDiscounts). The artifact
+       * card resolves to the discard pile at once — it is never an ongoing effect.
+       * The voucher never stacks (the cost path takes the single largest discount)
+       * and is consumed when its unit is recruited/reinforced. See
+       * `queueLegionDiscountChoice` and the `BANK_RECRUIT_DISCOUNT` visit step.
        */
       type: "GAIN_RECRUIT_DISCOUNT";
       amount: number;
@@ -3829,6 +3832,28 @@ export type SpellScrollState = {
   spellCardIds: CardId[];
 };
 
+/**
+ * A Legion artifact discount voucher (Legs/Loins/Torso/Arms/Head of Legion).
+ * Playing a Legion discount side opens a prompt to pick ONE specific unit; the
+ * choice banks a voucher reserved for that exact recruit/reinforce target. The
+ * cost path NEVER stacks discounts — neither two Legion pieces aimed at the same
+ * unit nor a Legion piece with another source (Champions' Stables, a recruit-cost
+ * building, a discount event…). It always applies the single LARGEST applicable
+ * gold discount, each computed from the unit's ORIGINAL printed cost. A voucher
+ * is consumed when its target unit is recruited/reinforced (whichever path), and
+ * any unused vouchers expire at the start of the owner's next turn.
+ */
+export type RecruitDiscountVoucher = {
+  /** The Legion artifact card id that banked this voucher (one per piece per turn). */
+  cardId: CardId;
+  /** Gold knocked off the targeted unit's recruit/reinforce, floored at 0. */
+  amount: number;
+  /** The exact unit this voucher is reserved for. */
+  target:
+    | { kind: "recruit"; unitDefId: string }
+    | { kind: "reinforce"; armyUnitId: string };
+};
+
 export type PlayerState = {
   id: PlayerId;
   name: string;
@@ -3924,23 +3949,18 @@ export type PlayerState = {
   /** Nomads (army map ability): the end-of-turn adjacent step was offered this turn. */
   nomadStepDoneThisTurn?: boolean;
   /**
-   * Legion artifacts (Legs/Loins/Torso/Arms/Head of Legion): a banked one-shot
-   * gold discount on the player's NEXT Recruitment/Reinforcement, set when the
-   * artifact's discount side is played. DIFFERENT pieces pool into this sum; the
-   * whole pool comes off one recruit/reinforce (to a minimum of 0) and is then
-   * cleared. The artifact itself is instant (never an ongoing effect); the
-   * banked discount expires at the start of the player's next turn — i.e. it is
-   * a current-turn voucher, exactly like the other map abilities.
+   * Legion artifacts (Legs/Loins/Torso/Arms/Head of Legion): per-unit discount
+   * vouchers. Playing a Legion discount side opens a prompt to pick the single
+   * unit it applies to, banking one voucher reserved for that exact target. The
+   * recruit/reinforce cost path applies the single LARGEST applicable gold
+   * discount and never stacks vouchers — neither with each other on the same unit
+   * nor with any other source (Champions' Stables, a recruit-cost building, a
+   * discount event). A voucher is consumed when its unit is recruited/reinforced;
+   * each Legion piece may bank at most one voucher per turn (the SAME piece cannot
+   * stack with itself), and all unused vouchers expire at the start of the owner's
+   * next turn. See `bestRecruitGoldDiscount`/`consumeRecruitVoucherFor`.
    */
-  recruitDiscount?: number;
-  /**
-   * The Legion artifact card ids that have already banked a discount this turn
-   * (see `recruitDiscount`). The SAME piece cannot stack with itself — replaying
-   * it (e.g. after pulling it back from the discard pile) adds nothing — while
-   * different pieces still pool. Cleared with `recruitDiscount` on consume and at
-   * the start of the player's next turn.
-   */
-  recruitDiscountSources?: string[];
+  recruitDiscounts?: RecruitDiscountVoucher[];
   /** Rogues (army map ability): the once-per-turn deck peek was used this turn. */
   rogueScoutUsedThisTurn?: boolean;
   limits: {
@@ -4632,6 +4652,19 @@ export type VisitStep =
       /** Neutral Skeletons reward: reinforce one Few unit for free (Few→Pack). */
       type: "REINFORCE_FREE";
       armyUnitId: string;
+    }
+  | {
+      /**
+       * Legion artifact: the player picked which unit the just-played discount
+       * side applies to. Banks one `RecruitDiscountVoucher` for that exact target
+       * (no-op input; resolves automatically once the unit is chosen).
+       */
+      type: "BANK_RECRUIT_DISCOUNT";
+      cardId: CardId;
+      amount: number;
+      target:
+        | { kind: "recruit"; unitDefId: string }
+        | { kind: "reinforce"; armyUnitId: string };
     }
   | { type: "SEARCH_SHARED_DECK"; deckId: DeckId; count: number }
   | { type: "SETTLEMENT_CHOICE" }

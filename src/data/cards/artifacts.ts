@@ -353,9 +353,13 @@ export const artifactCards: CardLibrary = {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Next recruit/reinforce costs 4 less gold",
-          // Instant, one-shot: banks the discount on the player and is discarded
-          // at once (never an ongoing effect). Used by the next recruit/reinforce.
+          label: "Reduce a chosen unit's recruit/reinforce cost by 4 gold",
+          // Instant, map-only: playing it opens a prompt to pick the unit, then
+          // banks a one-shot voucher reserved for that unit (never an ongoing
+          // effect; the card is discarded at once). The voucher never stacks with
+          // another Legion piece or any other discount source — the cost path
+          // applies the single largest. See queueLegionDiscountChoice.
+          mapOnly: true,
           effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 4 }
         },
         {
@@ -379,9 +383,13 @@ export const artifactCards: CardLibrary = {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Next recruit/reinforce costs 5 less gold",
-          // Instant, one-shot: banks the discount on the player and is discarded
-          // at once (never an ongoing effect). Used by the next recruit/reinforce.
+          label: "Reduce a chosen unit's recruit/reinforce cost by 5 gold",
+          // Instant, map-only: playing it opens a prompt to pick the unit, then
+          // banks a one-shot voucher reserved for that unit (never an ongoing
+          // effect; the card is discarded at once). The voucher never stacks with
+          // another Legion piece or any other discount source — the cost path
+          // applies the single largest. See queueLegionDiscountChoice.
+          mapOnly: true,
           effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 5 }
         },
         {
@@ -410,9 +418,13 @@ export const artifactCards: CardLibrary = {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Next recruit/reinforce costs 6 less gold",
-          // Instant, one-shot: banks the discount on the player and is discarded
-          // at once (never an ongoing effect). Used by the next recruit/reinforce.
+          label: "Reduce a chosen unit's recruit/reinforce cost by 6 gold",
+          // Instant, map-only: playing it opens a prompt to pick the unit, then
+          // banks a one-shot voucher reserved for that unit (never an ongoing
+          // effect; the card is discarded at once). The voucher never stacks with
+          // another Legion piece or any other discount source — the cost path
+          // applies the single largest. See queueLegionDiscountChoice.
+          mapOnly: true,
           effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 6 }
         },
         {
@@ -1191,9 +1203,13 @@ export const artifactCards: CardLibrary = {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Next recruit/reinforce costs 6 less gold",
-          // Instant, one-shot: banks the discount on the player and is discarded
-          // at once (never an ongoing effect). Used by the next recruit/reinforce.
+          label: "Reduce a chosen unit's recruit/reinforce cost by 6 gold",
+          // Instant, map-only: playing it opens a prompt to pick the unit, then
+          // banks a one-shot voucher reserved for that unit (never an ongoing
+          // effect; the card is discarded at once). The voucher never stacks with
+          // another Legion piece or any other discount source — the cost path
+          // applies the single largest. See queueLegionDiscountChoice.
+          mapOnly: true,
           effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 6 }
         },
         {
@@ -1221,9 +1237,13 @@ export const artifactCards: CardLibrary = {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Next recruit/reinforce costs 5 less gold",
-          // Instant, one-shot: banks the discount on the player and is discarded
-          // at once (never an ongoing effect). Used by the next recruit/reinforce.
+          label: "Reduce a chosen unit's recruit/reinforce cost by 5 gold",
+          // Instant, map-only: playing it opens a prompt to pick the unit, then
+          // banks a one-shot voucher reserved for that unit (never an ongoing
+          // effect; the card is discarded at once). The voucher never stacks with
+          // another Legion piece or any other discount source — the cost path
+          // applies the single largest. See queueLegionDiscountChoice.
+          mapOnly: true,
           effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 5 }
         },
         {

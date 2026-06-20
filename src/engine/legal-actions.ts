@@ -5,11 +5,11 @@ import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/l
 import { sampleBuildings } from "@/data/towns/buildings";
 import {
   adventurePvpTroopLoss,
-  applyRecruitDiscount,
+  applyBestRecruitDiscount,
   armyHasMapEffect,
   canHeroReachPlacedTile,
   capturableEnemyMinesWithin,
-  discountedReinforceCost,
+  legionDiscountTargets,
   getActiveAstrologersCard,
   getMainHero,
   getSecondaryHero,
@@ -2166,12 +2166,18 @@ function addOptionPlays(
     if (!isOptionEffectPlayable(state, playerId, option.effect, context)) {
       continue;
     }
-    // Legion artifacts: a given piece's discount cannot stack with itself. Once
-    // this card has banked its discount this turn, hide its discount side (its
-    // resource side stays available) so it cannot be replayed for a second stack
-    // after being pulled back from the discard pile. Different pieces still pool.
-    if (option.effect.type === "GAIN_RECRUIT_DISCOUNT" && player.recruitDiscountSources?.includes(cardId)) {
-      continue;
+    // Legion artifacts' discount side: hide it unless there is a unit to spend it
+    // on, and never let one piece bank twice in a turn. Once this card has banked
+    // a voucher this turn its discount side disappears (its resource side stays),
+    // so it cannot be replayed for a second voucher after being pulled back from
+    // the discard pile; and with no recruitable/reinforceable target the only
+    // sensible choice is the resource side, so the discount side is withheld
+    // (this also guarantees the selection prompt is never opened empty).
+    if (option.effect.type === "GAIN_RECRUIT_DISCOUNT") {
+      const alreadyBanked = player.recruitDiscounts?.some((voucher) => voucher.cardId === cardId) ?? false;
+      if (alreadyBanked || legionDiscountTargets(state, playerId).length === 0) {
+        continue;
+      }
     }
     if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
       continue;
@@ -5201,9 +5207,10 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       // Each unit card exists once: a type already in the army cannot be
       // recruited again — only its Few card may be reinforced to the Pack.
       const owned = player.army.some((armyUnit) => armyUnit.unitDefId === unitDefId);
-      // Legion artifacts may make an otherwise-unaffordable unit recruitable —
-      // count their one-shot gold discount when offering the action.
-      if (!owned && hasRecruitResources(state, playerId, applyRecruitDiscount(state, playerId, fewSide.cost))) {
+      // A Legion voucher reserved for this unit may make it affordable — fold in
+      // the single best (non-stacking) gold discount when offering the action.
+      const recruitCost = applyBestRecruitDiscount(state, playerId, { kind: "recruit", unitDefId }, fewSide.cost);
+      if (!owned && hasRecruitResources(state, playerId, recruitCost)) {
         actions.push({
           label: `Recruit few ${unit.name}`,
           action: {
@@ -5217,11 +5224,18 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       if (canReinforce) {
         const target = player.army.find((armyUnit) => armyUnit.unitDefId === unitDefId && armyUnit.side === "few");
         const packSide = unit.pack;
-        // Both reinforcement discounts stack on the gold paid here: the
-        // Champions' Stables map discount, then the Legion artifacts' one-shot.
-        const reinforceCost = packSide
-          ? applyRecruitDiscount(state, playerId, discountedReinforceCost(state, playerId, unitDefId, packSide.cost))
-          : undefined;
+        // Reinforcement discounts do NOT stack: the gold paid drops by the single
+        // largest of the Champions' Stables discount and a Legion voucher reserved
+        // for this unit (applyBestRecruitDiscount), never their sum.
+        const reinforceCost =
+          packSide && target
+            ? applyBestRecruitDiscount(
+                state,
+                playerId,
+                { kind: "reinforce", unitDefId, armyUnitId: target.id },
+                packSide.cost
+              )
+            : undefined;
         if (target && packSide && reinforceCost && hasRecruitResources(state, playerId, reinforceCost)) {
           actions.push({
             label: `Reinforce ${unit.name} to a pack`,

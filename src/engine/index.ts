@@ -150,12 +150,18 @@ export {
   isSeaField,
   levelOfExperience,
   recomputeSubterraneanGates,
-  recruitDiscountAmount,
+  applyBestRecruitDiscount,
+  bestRecruitGoldDiscount,
+  legionVoucherDiscount,
+  externalRecruitGoldDiscount,
+  consumeRecruitVoucherFor,
+  legionDiscountTargets,
+  queueLegionDiscountChoice,
   seaStepHalts,
   seaTileBand,
   tileLayer
 } from "./adventure";
-export type { HeroMovementCapabilities, HeroPathTarget, HeroStepKind, MapLayer } from "./adventure";
+export type { HeroMovementCapabilities, HeroPathTarget, HeroStepKind, MapLayer, RecruitPurchaseRef } from "./adventure";
 export {
   ATTACKER_BACKLINE,
   ATTACKER_FRONTLINE,
@@ -291,6 +297,7 @@ export type {
   PlayerVisiblePlayerState,
   PlayerVisibleState,
   PendingChoice,
+  RecruitDiscountVoucher,
   PermanentEffectDefinition,
   ReactionPlay,
   ReactionWindow,

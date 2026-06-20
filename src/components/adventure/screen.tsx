@@ -33,7 +33,8 @@ import {
   hexToPixel,
   inCombatPrep,
   parseHexSpaceId,
-  recruitDiscountAmount,
+  applyBestRecruitDiscount,
+  legionVoucherDiscount,
   scenarioDefinitions,
   tileCentersAdjacent,
   tileCentersOverlap,
@@ -1611,25 +1612,29 @@ export function TownPanel({
       }
     }
   };
+  // Each unit's cost carries the single best (non-stacking) gold discount the
+  // engine will charge for it — a Legion voucher reserved for that unit, the
+  // Champions' Stables discount, etc. — never a pooled or stacked total, so the
+  // shown total and the affordability gate match the engine exactly.
   for (const unitDefId of recruitIds) {
     const few = coreUnitDefinitions[unitDefId]?.few;
     if (few) {
-      addCost(few.cost);
+      addCost(applyBestRecruitDiscount(state, viewerPlayerId, { kind: "recruit", unitDefId }, few.cost));
     }
   }
   for (const armyUnitId of reinforceIds) {
     const armyUnit = player.army.find((candidate) => candidate.id === armyUnitId);
     const pack = armyUnit ? coreUnitDefinitions[armyUnit.unitDefId]?.pack : undefined;
-    if (pack) {
-      addCost(pack.cost);
+    if (armyUnit && pack) {
+      addCost(
+        applyBestRecruitDiscount(
+          state,
+          viewerPlayerId,
+          { kind: "reinforce", unitDefId: armyUnit.unitDefId, armyUnitId },
+          pack.cost
+        )
+      );
     }
-  }
-  // Legion artifacts: the held one-shot gold discount comes off the basket's
-  // gold (to a minimum of 0) so the shown total and the affordability gate
-  // match what the engine will actually charge.
-  const recruitDiscount = recruitDiscountAmount(state, viewerPlayerId);
-  if (recruitDiscount > 0 && basketCost.gold) {
-    basketCost.gold = Math.max(0, basketCost.gold - recruitDiscount);
   }
   const basketAffordable =
     (basketCost.gold ?? 0) <= player.resources.gold &&
@@ -1966,6 +1971,9 @@ export function TownPanel({
               const def = coreUnitDefinitions[owned.unitDefId];
               const checked = reinforceIds.includes(owned.id);
               const upgradable = canReinforce && Boolean(def?.pack);
+              const reinforceRef = { kind: "reinforce" as const, unitDefId: owned.unitDefId, armyUnitId: owned.id };
+              const reinforceCost = applyBestRecruitDiscount(state, viewerPlayerId, reinforceRef, def?.pack?.cost ?? {});
+              const reinforceLegion = legionVoucherDiscount(state, viewerPlayerId, reinforceRef);
               return (
                 <label
                   className={`recruitRow reinforce ${checked ? "checked" : ""} ${upgradable ? "" : "locked"}`}
@@ -1978,8 +1986,9 @@ export function TownPanel({
                   </span>
                   {upgradable ? (
                     <>
-                      <span className="upgradeTag">
-                        <ChevronsUp aria-hidden="true" size={12} /> Pack {formatCost(def?.pack?.cost ?? {})}
+                      <span className="upgradeTag" title={reinforceLegion > 0 ? `Legion voucher reserved: −${reinforceLegion} gold` : undefined}>
+                        <ChevronsUp aria-hidden="true" size={12} /> Pack {formatCost(reinforceCost)}
+                        {reinforceLegion > 0 ? ` · Legion −${reinforceLegion}` : ""}
                       </span>
                       <input
                         aria-label={`Reinforce ${unit.name} to a pack`}
@@ -1999,11 +2008,17 @@ export function TownPanel({
               );
             }
             const checked = recruitIds.includes(unitDefId);
+            const recruitRef = { kind: "recruit" as const, unitDefId };
+            const recruitCost = applyBestRecruitDiscount(state, viewerPlayerId, recruitRef, unit.few.cost);
+            const recruitLegion = legionVoucherDiscount(state, viewerPlayerId, recruitRef);
             return (
               <label className="recruitRow" key={unitDefId}>
                 <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
                 <span className="recruitName">{unit.name}</span>
-                <small>{formatCost(unit.few.cost)}</small>
+                <small title={recruitLegion > 0 ? `Legion voucher reserved: −${recruitLegion} gold` : undefined}>
+                  {formatCost(recruitCost)}
+                  {recruitLegion > 0 ? ` · Legion −${recruitLegion}` : ""}
+                </small>
                 <input
                   checked={checked}
                   onChange={() =>
