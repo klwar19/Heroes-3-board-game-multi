@@ -1680,6 +1680,21 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     portrait: "/assets/hero_portraits-sephinroth.webp",
     source: stretchGoalPcPortraitHeroSource("sephinroth", "Sephinroth")
   }
+  // Four more wiki heroes complete the remaining rosters; their PC portraits are
+  // already fetched and committed (scripts/fetch-extra-heroes-art-batch5.py:
+  // octavia, melodia, tarnum_ranger, tarnum_beastmaster), but they are NOT yet
+  // registered here because each has ONE signature specialty that needs an engine
+  // subsystem not built yet — kept out rather than shipped as an inert stub:
+  //   - Octavia (Inferno, Demoniac): "Gold" — I sets a rolled Resource die to its
+  //     gold face reactively (an open resource-roll choice must be re-opened).
+  //   - Melodia (Rampart, Druid): "Fortune" — VI increases the number of dice you
+  //     roll at locations this turn (no per-turn location-dice modifier exists).
+  //   - Tarnum (Rampart, Ranger): "Sharpshooters" — VI summons a Neutral-deck
+  //     Sharpshooters into combat for that combat only (temporary-unit post-combat
+  //     cleanup is not modelled).
+  //   - Tarnum (Fortress, Beastmaster): "Basilisks" — VI makes a unit use its
+  //     die-gated special ability regardless of the roll (spans many ability
+  //     resolution points; no generic "force ability" hook exists).
 };
 
 function unitsOfFaction(faction: string): string[] {
