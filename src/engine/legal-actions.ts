@@ -34,6 +34,7 @@ import {
   getHeroMoveDestinations,
   hillFortCost,
   inCombatPrep,
+  isDefendingOwnFactionTown,
   canHeroDiscoverAdjacentTile,
   isTileRotationConnected,
   observatoryPlacementCenters,
@@ -70,7 +71,7 @@ import {
   playerCanUseFirstAidVolley,
   warMachinesForSale
 } from "./permanents";
-import { getDemolishAbility, isArrowTowerUnit, siegeBlockedPositions } from "./siege";
+import { getDemolishAbility, isArrowTowerUnit, parseFortificationTargetId, siegeBlockedPositions } from "./siege";
 import { pvpEscapeWindowOpen } from "./combat-units";
 import { canPlaceTransformOn } from "./unit-transforms";
 import { SHARED_DECK_IDS } from "./decks";
@@ -3255,10 +3256,26 @@ export function getLegalActions(
                   choice.kind === "spell-splash" ||
                   choice.kind === "area-pick" ||
                   choice.kind === "faerie-damage" ||
-                  choice.kind === "chain-lightning"
+                  choice.kind === "chain-lightning" ||
+                  choice.kind === "war-machine"
                 ? `${choice.abilityName}: hit`
                 : "Neutrals attack";
       const targetActions = choice.candidateUnitIds.flatMap((unitId) => {
+        // Catapult bombardment: a Wall/Gate target is a pseudo-id, not a unit.
+        const fort = parseFortificationTargetId(unitId);
+        if (fort) {
+          return [
+            {
+              label: `${choice.abilityName}: batter the ${fort.kind === "gate" ? "Gate" : "Wall"}`,
+              action: {
+                type: "CHOOSE_ABILITY_TARGET",
+                playerId,
+                choiceId: choice.id,
+                targetUnitId: unitId
+              }
+            } satisfies LegalAction
+          ];
+        }
         const unit = state.combat?.units[unitId];
         if (!unit || !isUnitAlive(unit)) {
           return [];
@@ -5430,9 +5447,15 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
     label: "Retreat (lose the combat: pay 5 gold, -1 morale, fall back home)",
     action: { type: "RETREAT_FROM_COMBAT", playerId }
   });
-  // Surrender is a before-battle decision only (the prep window).
+  // Surrender is a before-battle decision only (the prep window), and never when
+  // defending your own Faction Town (rulebook p.46).
   const gold = state.players[playerId]?.resources.gold ?? 0;
-  if (inPrep && gold >= SURRENDER_GOLD_COST && !playerCannotSurrenderCombat(state, playerId)) {
+  if (
+    inPrep &&
+    gold >= SURRENDER_GOLD_COST &&
+    !playerCannotSurrenderCombat(state, playerId) &&
+    !isDefendingOwnFactionTown(state, playerId)
+  ) {
     actions.push({
       label: `Surrender (pay ${SURRENDER_GOLD_COST} gold, keep your whole army, return home)`,
       action: { type: "SURRENDER_COMBAT", playerId }

@@ -4084,6 +4084,24 @@ export function retreatFromCombat(state: GameState, action: Extract<GameAction, 
   });
 }
 
+/**
+ * Whether `playerId` is the side defending their own Faction Town in this
+ * combat. The rulebook (p.46) forbids surrendering such a defence — "you cannot
+ * surrender when defending your Faction Town" — whether or not the town has a
+ * Citadel (a siege). A Town's `controllerId` is its faction owner and never
+ * changes on conquest (only the field flag does), so a player merely HOLDING a
+ * conquered enemy Town is not defending a Faction Town here and may still
+ * surrender, matching "Don't use Walls and Gate … you've conquered before".
+ */
+export function isDefendingOwnFactionTown(state: GameState, playerId: PlayerId): boolean {
+  const combat = state.combat;
+  if (!combat || combat.context.kind !== "player" || combat.defenderPlayerId !== playerId) {
+    return false;
+  }
+  const fieldId = combat.context.fieldId;
+  return Object.values(state.towns).some((town) => town.fieldId === fieldId && town.controllerId === playerId);
+}
+
 export function surrenderFromCombat(
   state: GameState,
   action: Extract<GameAction, { type: "SURRENDER_COMBAT" }>
@@ -4141,6 +4159,10 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
     // Shackles of War (house rule) locks the enemy out of Surrender only.
     if (playerCannotSurrenderCombat(state, playerId)) {
       throw new Error("Shackles of War prevents this hero from surrendering.");
+    }
+    // Rulebook p.46: no surrender while defending your own Faction Town.
+    if (isDefendingOwnFactionTown(state, playerId)) {
+      throw new Error("You cannot surrender while defending your Faction Town.");
     }
     // Surrender is a paid escape: you must hold the full toll to choose it
     // (no debt). A poorer hero must Retreat or fight on.
