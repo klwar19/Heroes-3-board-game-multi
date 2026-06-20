@@ -818,12 +818,12 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     name: "Magic University",
     faction: "conflux",
     cost: { gold: 6, buildingMaterials: 3 },
-    // "Once per round, choose a School of Magic and discard cards from the top
-    // of your deck until you find a Spell of that school, then take it." Not yet
-    // wired — the engine has no school-targeted deck dig — so it is honestly
-    // marked not-implemented (no-op) rather than shipped as decorative text.
-    effect: { type: "NOT_IMPLEMENTED", note: "Magic University school-dig not yet wired." },
-    implementationStatus: "not-implemented",
+    // "Once per round (at the start of your turn), choose a School of Magic and
+    // discard cards from the top of your deck until you reveal a Spell of that
+    // school, then take it to hand." (Magic Arrow, school 'any', matches every
+    // school — the engine's standing convention.)
+    effect: { type: "MAGIC_UNIVERSITY" },
+    implementationStatus: "implemented",
     source: townSource("conflux")
   },
   // ---- Fortress (expansion) ----------------------------------------------
