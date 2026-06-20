@@ -13,6 +13,7 @@ import {
 import {
   applyAction,
   canCrossEdge,
+  classifyHeroStep,
   createAdventureGameState,
   getReachableHeroPaths,
   getTileFootprintSpaceIds,
@@ -531,6 +532,56 @@ describe("subterranean gate: reverse direction (Subterranean tile up, Surface ti
     expect(getTileFootprintSpaceIds(after!.adventure!.tiles[surface.id])).toContain(gate!.spaceId);
     const entranceAfter = after!.adventure!.fields[entrance.spaceId];
     expect(gateFieldsLinked(gate, entranceAfter)).toBe(true);
+  });
+});
+
+describe("subterranean gate: a covered Field becomes unusable — it is the gate now", () => {
+  it("turns a guarded gold Mine on the seam into a plain walk-through gate (no guard, resource, flag or income)", () => {
+    let state = makeGame();
+    const { surface, underground } = placePair(state, { undergroundUp: false });
+    setAllEmpty(state, surface);
+    // Bury every Surface seam hex under a guarded gold Mine, so the gate has no
+    // choice but to cover one of them.
+    const seam = [...new Set(crossPairs(surface, underground).map(([surfaceHex]) => surfaceHex))];
+    expect(seam.length).toBeGreaterThan(0);
+    for (const spaceId of seam) {
+      const field = adv(state).fields[spaceId]!;
+      field.location = "mine";
+      field.difficulty = 5;
+      field.resource = "gold";
+      field.amount = 5;
+    }
+
+    recomputeSubterraneanGates(adv(state));
+
+    const gate = gateHalfTo(state, underground.id)!;
+    expect(gate).toBeDefined();
+    expect(seam).toContain(gate.spaceId);
+    // The Mine is gone: nothing of the old Location survives on the field.
+    expect(gate.location).toBe("subterranean_gate");
+    expect(gate.difficulty).toBeUndefined();
+    expect(gate.resource).toBeUndefined();
+    expect(gate.amount).toBeUndefined();
+    expect(gate.flagOwnerId).toBeNull();
+
+    // It is an open, walk-through step — not a guard stop.
+    state = state.players.p1.needsHandRefresh
+      ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      : state;
+    const hero = state.heroes.hero_p1;
+    hero.spaceId = hexSpaceId({ row: surface.centerRow, col: surface.centerCol });
+    hero.movementPoints = 8;
+    hero.movementHaltedThisTurn = false;
+    expect(classifyHeroStep(state, hero, gate.spaceId)).toBe("open");
+
+    // Walking onto it does the GATE thing (reveals the far tile) and NONE of the
+    // Mine thing: no combat, no flag, no income.
+    const goldBefore = state.players.p1.resources.gold;
+    state = applyOk(state, { type: "MOVE_HERO_PATH", playerId: "p1", heroId: hero.id, path: [gate.spaceId] });
+    expect(state.combat).toBeFalsy();
+    expect(adv(state).fields[gate.spaceId]!.flagOwnerId).toBeNull();
+    expect(state.players.p1.resources.gold).toBe(goldBefore);
+    expect(adv(state).tiles[underground.id].faceDown).toBe(false);
   });
 });
 

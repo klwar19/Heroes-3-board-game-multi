@@ -661,6 +661,7 @@ export function HexMapBoard({
         overlays.push(
           <image
             className="locationToken"
+            data-space-id={spaceId}
             height={2 * HEX_SIZE}
             href={assetUrl(tokenImage)}
             key={`${spaceId}-token`}

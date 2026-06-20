@@ -4,6 +4,7 @@ import { useState } from "react";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { HexMapBoard } from "./screen";
 import { instantiateTile } from "@/engine/adventure";
+import { SUBTERRANEAN_GATE_TOKEN_IMAGES } from "@/data/assets/homm-assets";
 import {
   applyAction,
   createAdventureGameState,
@@ -12,7 +13,9 @@ import {
   getPlayerView,
   getReachableHeroPaths,
   getTileFootprintSpaceIds,
+  hexNeighbors,
   hexSpaceId,
+  parseHexSpaceId,
   recomputeSubterraneanGates,
   tileLatticeNeighbors,
   type GameAction,
@@ -201,5 +204,70 @@ describe("Subterranean Gate — real board, real engine, click on geometry", () 
     const undergroundCells = container.querySelectorAll(`[data-tile-id="${underground.id}"]`);
     expect(undergroundCells.length).toBeGreaterThan(0);
     undergroundCells.forEach((cell) => expect(cell.classList.contains("discoverable")).toBe(false));
+  });
+});
+
+describe("Subterranean Gate — a covered Field is unusable (visual + click)", () => {
+  /** Surface ring hexes that touch the underground tile (the shared seam). */
+  function surfaceSeam(surface: MapTileState, underground: MapTileState): string[] {
+    const undergroundHexes = new Set(getTileFootprintSpaceIds(underground));
+    return getTileFootprintSpaceIds(surface).filter((spaceId) =>
+      hexNeighbors(parseHexSpaceId(spaceId)!).some((neighbour) => undergroundHexes.has(hexSpaceId(neighbour)))
+    );
+  }
+
+  it("draws the gate token over a covered Mine (not the Mine) and lets the hero walk through with no Mine effect", () => {
+    let state = createAdventureGameState({ seed: "subt-gate-mine-ui", difficulty: "normal", rollFirstPlayer: false });
+    state.activePlayerId = "p1";
+    if (state.players.p1.needsHandRefresh) {
+      const refreshed = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+      expect(refreshed.errors).toHaveLength(0);
+      state = refreshed.state;
+    }
+    const surfaceCenter = { row: 24, col: 12 };
+    const surface = instantiateTile(adv(state), "F3", surfaceCenter, 0, false);
+    const underground = instantiateTile(adv(state), "U1", tileLatticeNeighbors(surfaceCenter)[0], 0, true);
+    setAllEmpty(state, surface);
+
+    // Bury the whole seam under guarded gold Mines, so the gate must cover one.
+    for (const spaceId of surfaceSeam(surface, underground)) {
+      const field = adv(state).fields[spaceId]!;
+      field.location = "mine";
+      field.difficulty = 5;
+      field.resource = "gold";
+      field.amount = 5;
+    }
+    recomputeSubterraneanGates(adv(state));
+    const gateSpaceId = Object.values(adv(state).fields).find(
+      (field) => field.location === "subterranean_gate" && field.gateToTileId === underground.id
+    )!.spaceId;
+
+    const hero = state.heroes.hero_p1;
+    hero.spaceId = hexSpaceId(surfaceCenter);
+    hero.movementPoints = 8;
+    hero.movementHaltedThisTurn = false;
+
+    const { container, latest } = renderLiveBoard(state);
+
+    // VISUAL: the Subterranean Gate token is drawn on the covered hex (the Mine
+    // art is replaced by the gate), and the hex is a plain walk-through target —
+    // not a blocked or guarded stop.
+    const token = container.querySelector(`image.locationToken[data-space-id="${gateSpaceId}"]`);
+    expect(token).toBeTruthy();
+    expect(token!.getAttribute("href")).toContain(SUBTERRANEAN_GATE_TOKEN_IMAGES.surface);
+    const gateCell = hex(container, gateSpaceId);
+    expect(gateCell.classList.contains("moveTarget")).toBe(true);
+    expect(gateCell.classList.contains("blocked")).toBe(false);
+
+    // CLICK: walking onto the former Mine does the gate thing (reveals the far
+    // tile) and nothing of the Mine — no combat, and the field never flags.
+    const goldBefore = latest().players.p1.resources.gold;
+    fireEvent.click(gateCell);
+    clickButton(container, /Move there/i);
+    expect(latest().heroes.hero_p1.spaceId).toBe(gateSpaceId);
+    expect(latest().combat).toBeFalsy();
+    expect(latest().adventure!.fields[gateSpaceId]!.flagOwnerId).toBeNull();
+    expect(latest().players.p1.resources.gold).toBe(goldBefore);
+    expect(latest().adventure!.tiles[underground.id].faceDown).toBe(false);
   });
 });
