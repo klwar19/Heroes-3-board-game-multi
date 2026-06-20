@@ -352,3 +352,131 @@ describe("multiplayer (PvP) — round-start City Hall draw forces each seat to d
     expect(p2Actions.some((legal) => legal.action.type === "MOVE_HERO")).toBe(false);
   });
 });
+
+describe("hand draw/discard and recurring events keep working for the whole game", () => {
+  it("re-arms the start-of-turn draw for the active player on every turn through six rounds", () => {
+    let state = makeGame();
+    // Benign Proclaims for the Astrologers rounds 2, 4, 6.
+    state.decks.astrologers!.drawPile.push(
+      "astrologers.dead_silence",
+      "astrologers.dead_silence",
+      "astrologers.dead_silence"
+    );
+
+    for (let turn = 0; turn < 12; turn += 1) {
+      const active = state.activePlayerId;
+      const where = `turn ${turn}, round ${state.round}, ${active}`;
+      // Each turn of each round the snapshot has resolved cleanly: the optional
+      // draw is armed, a hand at/under the limit is not force-discarded, and no
+      // start-of-turn choice is left dangling (no stale markers / pending input).
+      expect(state.players[active]?.canMulligan, where).toBe(true);
+      expect(state.players[active]?.needsHandRefresh, where).toBe(false);
+      expect(state.pendingChoice, where).toBeNull();
+      // Exercise the optional draw on even turns, plain end on odd ones — both end
+      // the turn cleanly and the next turn re-arms.
+      if (turn % 2 === 0) {
+        state = apply(state, { type: "REFRESH_HAND", playerId: active, discardCardIds: [] });
+      }
+      state = apply(state, { type: "END_TURN", playerId: active });
+    }
+    expect(state.round).toBe(7); // 12 turns = six full rounds
+  });
+
+  it("re-fires the City Hall draw at each later Resource round (3 and 5), forcing a discard each time", () => {
+    let state = makeGame();
+    state.towns.town_p1.buildings = ["stronghold.city_hall"];
+    const limit = state.players.p1.limits.hand;
+    state.players.p1.hand = state.players.p1.hand.slice(0, limit);
+    state.decks.astrologers!.drawPile.push("astrologers.dead_silence", "astrologers.dead_silence");
+
+    const endTurn = (s: GameState, playerId: "p1" | "p2"): GameState => {
+      const p = s.players[playerId]!;
+      if (p.needsHandRefresh) {
+        s = apply(s, { type: "REFRESH_HAND", playerId, discardCardIds: p.hand.slice(0, p.hand.length - limit) });
+      }
+      return apply(s, { type: "END_TURN", playerId });
+    };
+    const resolveCityHallDraw = (s: GameState, round: number): GameState => {
+      const choice = s.pendingChoice;
+      expect(choice?.type === "OPTION_CHOICE" && choice.context === "city-hall", `round ${round}`).toBe(true);
+      expect(choice?.playerId).toBe("p1");
+      s = apply(s, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice!.id, optionIndex: 0 });
+      expect(s.round, `round ${round}`).toBe(round);
+      expect(s.players.p1.hand.length).toBe(limit + 2);
+      // The later-round draw still forces the discard — the fix is not round-1 only.
+      expect(s.players.p1.needsHandRefresh, `round ${round} forced discard`).toBe(true);
+      return apply(s, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: s.players.p1.hand.slice(0, 2) });
+    };
+
+    // Round 1 → round 3 (each round opens with p1, turn order is fixed [p1, p2]).
+    state = endTurn(state, "p1");
+    state = endTurn(state, "p2"); // wrap → round 2
+    state = endTurn(state, "p1");
+    state = endTurn(state, "p2"); // wrap → round 3, City Hall pending for p1
+    state = resolveCityHallDraw(state, 3);
+
+    // Round 3 → round 5: the same building event must recur.
+    state = endTurn(state, "p1");
+    state = endTurn(state, "p2"); // wrap → round 4
+    state = endTurn(state, "p1");
+    state = endTurn(state, "p2"); // wrap → round 5, City Hall pending for p1 again
+    state = resolveCityHallDraw(state, 5);
+  });
+
+  it("does not force a discard for a mid-turn draw, but the next turn-start snapshot does", () => {
+    let state = makeGame();
+    const limit = state.players.p1.limits.hand;
+    state.players.p1.morale = 1; // a token to spend mid-turn
+    state.players.p1.hand = state.players.p1.hand.slice(0, limit);
+
+    // Opening turn: armed, at the limit → no forced discard.
+    expect(state.players.p1.canMulligan).toBe(true);
+    expect(state.players.p1.needsHandRefresh).toBe(false);
+    // Take the optional draw (no discards), which closes the start-of-turn window.
+    state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    expect(state.players.p1.canMulligan).toBe(false);
+    expect(state.players.p1.hand.length).toBe(limit);
+
+    // Spend morale to draw mid-turn → over the limit, but NOT force-discarded: the
+    // hand limit is only enforced by the start-of-turn snapshot, never mid-turn.
+    state = apply(state, { type: "SPEND_MORALE", playerId: "p1", benefit: "draw" });
+    expect(state.players.p1.hand.length).toBe(limit + 1);
+    expect(state.players.p1.needsHandRefresh).toBe(false);
+
+    // It carries over: at p1's NEXT turn start the snapshot finally forces it down.
+    state.decks.astrologers!.drawPile.push("astrologers.dead_silence");
+    state = apply(state, { type: "END_TURN", playerId: "p1" });
+    state = apply(state, { type: "END_TURN", playerId: "p2" }); // wrap → round 2, p1
+    expect(state.players.p1.hand.length).toBe(limit + 1);
+    expect(state.players.p1.needsHandRefresh).toBe(true);
+  });
+
+  it("forces a discard when an expiring +1 hand-limit Proclaim drops the limit below the held hand", () => {
+    let state = makeGame();
+    const base = state.players.p1.limits.hand;
+    // pop() draws the LAST pushed card first: Profuse Growth at round 2 (+1 hand
+    // limit), then a benign card at round 4 when Profuse Growth expires.
+    state.decks.astrologers!.drawPile.push("astrologers.dead_silence", "astrologers.profuse_growth");
+
+    state = apply(state, { type: "END_TURN", playerId: "p1" }); // round 1 → p2
+    state = apply(state, { type: "END_TURN", playerId: "p2" }); // wrap → round 2 (Profuse Growth)
+    expect(state.round).toBe(2);
+    // The raised limit lets p1 draw an extra card.
+    state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    expect(state.players.p1.hand.length).toBe(base + 1);
+
+    // Round 3 (Resource): Profuse Growth is still face up, so base + 1 is legal.
+    state = apply(state, { type: "END_TURN", playerId: "p1" });
+    state = apply(state, { type: "END_TURN", playerId: "p2" }); // wrap → round 3
+    expect(state.round).toBe(3);
+    expect(state.players.p1.needsHandRefresh).toBe(false);
+
+    // Round 4 (Astrologers): Profuse Growth expires before the snapshot, so the
+    // limit reverts to base and the held base + 1 hand is now over it.
+    state = apply(state, { type: "END_TURN", playerId: "p1" });
+    state = apply(state, { type: "END_TURN", playerId: "p2" }); // wrap → round 4, Profuse Growth expires
+    expect(state.round).toBe(4);
+    expect(state.players.p1.hand.length).toBe(base + 1);
+    expect(state.players.p1.needsHandRefresh).toBe(true);
+  });
+});
