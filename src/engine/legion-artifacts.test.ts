@@ -7,9 +7,11 @@ import {
   applyBestRecruitDiscount,
   bestRecruitGoldDiscount,
   legionVoucherDiscount,
+  queueNecromancyReinforce,
   reinforceArmyUnit,
   reinforceGoldDiscount,
   startPlayerTurn,
+  townHasBuildingEffect,
   type RecruitPurchaseRef
 } from "./adventure";
 import type { GameAction, GameState, PlayerId, RecruitDiscountVoucher } from "./state";
@@ -107,6 +109,21 @@ function resolveLegionPick(state: GameState, unitName: string, kind: "recruit" |
   );
   expect(legal, `a Legion pick for ${verb} ${unitName} should be offered`).toBeTruthy();
   return apply(state, legal!.action);
+}
+
+/** Every CHOOSE_ONE option label currently queued (e.g. a Necromancy prompt). */
+function queuedOptionLabels(state: GameState): string[] {
+  const labels: string[] = [];
+  for (const reward of state.adventure?.rewardQueue ?? []) {
+    if (reward.kind === "visit-steps") {
+      for (const step of reward.steps) {
+        if (step.type === "CHOOSE_ONE") {
+          labels.push(...step.options.map((option) => option.label));
+        }
+      }
+    }
+  }
+  return labels;
 }
 
 function recruitActionFor(state: GameState, unitDefId: string): GameAction | undefined {
@@ -388,13 +405,37 @@ describe("Same-piece guard, the no-target gate, and end-of-turn expiry", () => {
   });
 
   it("hides the discount side when there is no unit to spend it on (the resource side still plays)", () => {
-    // A fresh game town has no Dwelling built and the starting army owns the
-    // bronze units, so nothing is recruitable/reinforceable: only the resource
-    // side of a Legion piece is offered.
+    // No Dwelling built (nothing to recruit) and no Few unit (nothing to
+    // reinforce by any path): only the resource side of a Legion piece is offered.
     const state = refreshP1(makeGame());
+    state.towns.town_p1.buildings = [];
+    state.players.p1.army = [{ id: "u_pack", unitDefId: "castle.griffins", side: "pack" }];
     state.players.p1.hand = ["artifact.legs_of_legion"];
     expect(findPlay(state, "p1", "artifact.legs_of_legion", 0)).toBeUndefined();
     expect(findPlay(state, "p1", "artifact.legs_of_legion", 1)).toBeTruthy();
+  });
+
+  it("offers a Few unit's reinforce as a target even with NO Citadel (Necromancy/Isra/settlements upgrade without one)", () => {
+    // The bug: a Citadel must NOT be required to aim a Legion discount at a unit
+    // you will reinforce by Necromancy/Isra/a Settlement (none of which need it).
+    const state = setupRecruitTown();
+    expect(townHasBuildingEffect(state, "p1", "UNLOCK_REINFORCE")).toBe(false); // no Citadel
+    state.players.p1.army = state.players.p1.army.filter((unit) => unit.unitDefId !== "castle.griffins");
+    state.players.p1.army.push({ id: "u_griffins", unitDefId: "castle.griffins", side: "few" });
+    state.players.p1.hand = ["artifact.legs_of_legion"];
+
+    const played = apply(state, findPlay(state, "p1", "artifact.legs_of_legion", 0)!);
+    const reinforceGriffins = getLegalActions(played, "p1").find(
+      (entry) =>
+        entry.action.type === "RESOLVE_VISIT_STEP" && entry.label.startsWith("Reinforce") && entry.label.includes("Griffins")
+    );
+    expect(reinforceGriffins, "a Few Griffins reinforce should be a Legion target with no Citadel").toBeTruthy();
+
+    // Picking it banks a reinforce voucher reserved for that exact army unit.
+    const next = apply(played, reinforceGriffins!.action);
+    expect(next.players.p1.recruitDiscounts).toEqual([
+      { cardId: "artifact.legs_of_legion", amount: 4, target: { kind: "reinforce", armyUnitId: "u_griffins" } }
+    ]);
   });
 
   it("expires the banked vouchers at the start of the player's next turn", () => {
@@ -424,21 +465,46 @@ describe("The banked voucher affects what is offered", () => {
 
   it("the selection prompt warns when the chosen unit is already discounted (no stacking)", () => {
     // A Champion Few standing on a Stables field is already −6. Playing a Legion
-    // piece must surface a warning on that unit's option and not stack.
-    let state = withCitadel(setupRecruitTown());
-    const town = state.towns.town_p1;
-    town.buildings = [...new Set([...town.buildings, "castle.dwelling_gold"])];
+    // piece must surface a warning on that unit's option and not stack — and the
+    // reinforce target shows up with NO Citadel.
+    const state = setupRecruitTown();
+    expect(townHasBuildingEffect(state, "p1", "UNLOCK_REINFORCE")).toBe(false);
     const hero = state.heroes.hero_p1;
     state.adventure!.fields[hero.spaceId!].location = "stables";
     state.players.p1.army.push({ id: "champ_few", unitDefId: "castle.champions", side: "few" });
     state.players.p1.hand = ["artifact.legs_of_legion"];
 
-    state = apply(state, findPlay(state, "p1", "artifact.legs_of_legion", 0)!);
-    const championOption = getLegalActions(state, "p1").find(
+    const played = apply(state, findPlay(state, "p1", "artifact.legs_of_legion", 0)!);
+    const championOption = getLegalActions(played, "p1").find(
       (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && entry.label.includes("Champions")
     );
     expect(championOption, "the Champions reinforce should be offered as a Legion target").toBeTruthy();
     expect(championOption!.label).toContain("already −6");
     expect(championOption!.label).toContain("does not stack");
+  });
+
+  it("the Necromancy prompt prices a reinforce with the voucher — non-stacking, half still from the original gold", () => {
+    function necropolisGriffinTurn(): GameState {
+      const state = setupRecruitTown();
+      state.players.p1.resources = { gold: 20, buildingMaterials: 0, valuables: 0 };
+      state.players.p1.army = state.players.p1.army.filter((unit) => unit.unitDefId !== "castle.griffins");
+      state.players.p1.army.push({ id: "u_griffins", unitDefId: "castle.griffins", side: "few" });
+      return state;
+    }
+
+    // No voucher: Griffins Pack 6 gold → Necromancy half (rounded down) = 3 gold.
+    const plain = necropolisGriffinTurn();
+    queueNecromancyReinforce(plain, "p1", "basic");
+    expect(queuedOptionLabels(plain).some((label) => label.includes("Griffins") && label.includes("3 gold"))).toBe(true);
+
+    // A 4-gold voucher beats the half: the flat 6 − 4 = 2 wins (and Necromancy's
+    // half is still figured from the original 6, not floor((6−4)/2)=1), so the
+    // prompt prices it at 2 gold.
+    const withVoucher = necropolisGriffinTurn();
+    bankVoucher(withVoucher, "p1", "artifact.legs_of_legion", 4, { kind: "reinforce", armyUnitId: "u_griffins" });
+    queueNecromancyReinforce(withVoucher, "p1", "basic");
+    const labels = queuedOptionLabels(withVoucher);
+    expect(labels.some((label) => label.includes("Griffins") && label.includes("2 gold"))).toBe(true);
+    expect(labels.some((label) => label.includes("Griffins") && label.includes("1 gold"))).toBe(false);
   });
 });
