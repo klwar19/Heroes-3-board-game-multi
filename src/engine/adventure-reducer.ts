@@ -3266,7 +3266,7 @@ export function startPlayerCombat(
     return;
   }
 
-  maybeOpenDefenderPrep(state);
+  continueStartOfCombat(state);
 }
 
 /**
@@ -3283,7 +3283,12 @@ export function startPlayerCombat(
  * one who already spent every town action this round, skips straight to
  * deployment as before.
  */
-function maybeOpenDefenderPrep(state: GameState): boolean {
+/**
+ * True when the defender would be given a pre-combat prep window (and therefore
+ * a chance to Surrender): they have a town and at least one unspent town token.
+ * A defender who would not get prep cannot Surrender at all.
+ */
+function defenderWouldGetPrep(state: GameState): boolean {
   const combat = state.combat;
   if (!combat || combat.context.kind !== "player" || combat.defenderPrep) {
     return false;
@@ -3293,15 +3298,17 @@ function maybeOpenDefenderPrep(state: GameState): boolean {
   if (!player || !getTownOfPlayer(state, defenderId)) {
     return false;
   }
-  const hasUnspentTownAction =
-    player.townTokens.build || player.townTokens.population || player.townTokens.spellBook;
-  if (!hasUnspentTownAction) {
+  return Boolean(player.townTokens.build || player.townTokens.population || player.townTokens.spellBook);
+}
+
+function maybeOpenDefenderPrep(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat || !defenderWouldGetPrep(state)) {
     return false;
   }
-
-  combat.defenderPrep = { playerId: defenderId };
+  combat.defenderPrep = { playerId: combat.defenderPlayerId };
   state.phase = "combat-setup";
-  state.priorityPlayerId = defenderId;
+  state.priorityPlayerId = combat.defenderPlayerId;
   return true;
 }
 
@@ -3374,12 +3381,124 @@ export function resolveCoverOfDarknessChoice(state: GameState, playerId: PlayerI
     return;
   }
 
+  continueStartOfCombat(state);
+}
+
+/**
+ * Continue the start-of-combat sequence after any Cover of Darkness decisions:
+ * offer the attacker the Shackles of War "block the enemy's Surrender" decision,
+ * then open the defender's prep window (or go straight to deployment).
+ */
+function continueStartOfCombat(state: GameState): void {
+  if (maybeOpenShacklesDecision(state)) {
+    return;
+  }
   if (maybeOpenDefenderPrep(state)) {
     return;
   }
-
+  const combat = state.combat;
   state.phase = "combat-setup";
-  state.priorityPlayerId = combat.setup?.pendingPlayerIds[0] ?? null;
+  state.priorityPlayerId = combat?.setup?.pendingPlayerIds[0] ?? null;
+}
+
+/** The attacker's Shackles of War (BLOCK_ENEMY_SURRENDER) instant in hand, if any. */
+function findShacklesInHand(state: GameState, playerId: PlayerId): CardId | null {
+  const hand = state.players[playerId]?.hand ?? [];
+  for (const cardId of hand) {
+    const effect = cardLibrary[cardId]?.effect;
+    if (
+      effect?.type === "CHOOSE_ONE" &&
+      effect.options.some((option) => option.effect.type === "BLOCK_ENEMY_SURRENDER")
+    ) {
+      return cardId;
+    }
+  }
+  return null;
+}
+
+/**
+ * Shackles of War, reworked to match "Surrender is a before-battle (defender
+ * prep) decision". The attacker is offered a start-of-combat decision — before
+ * the defender's prep opens — to play Shackles and lock the defender out of
+ * Surrender (they may still Retreat). Only offered when the defender could
+ * actually surrender (they would get a prep window) and the attacker holds the
+ * card. Resolved like Cover of Darkness. Returns true when the decision opened.
+ */
+function maybeOpenShacklesDecision(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat || combat.context.kind !== "player" || combat.pendingShackles || combat.shacklesOffered) {
+    return false;
+  }
+  // Only the defender can Surrender (in prep), so only the attacker can block it.
+  const attackerId = combat.attackerPlayerId;
+  const defenderId = combat.defenderPlayerId;
+  // No defending hero, or a defender who would not get a prep window, means there
+  // is no Surrender to block — do not prompt.
+  if (!combat.context.defenderHeroId || !defenderWouldGetPrep(state)) {
+    return false;
+  }
+  if (playerCannotSurrenderCombat(state, defenderId)) {
+    return false; // already locked
+  }
+  if (!findShacklesInHand(state, attackerId)) {
+    return false;
+  }
+
+  combat.pendingShackles = [attackerId];
+  combat.shacklesOffered = true;
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: attackerId,
+    prompt: "Shackles of War: play it now to stop the enemy hero surrendering this combat? (they may still Retreat)",
+    options: [{ label: "Play Shackles of War — no Surrender for the enemy" }, { label: "Keep it" }],
+    context: "shackles-of-war",
+    returnPhase: "combat-setup"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = attackerId;
+  return true;
+}
+
+/** Resolves the attacker's start-of-combat Shackles of War decision. */
+export function resolveShacklesChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const combat = state.combat;
+  if (!combat || combat.pendingShackles?.[0] !== playerId) {
+    throw new Error("There is no Shackles of War decision to make.");
+  }
+
+  combat.pendingShackles = null;
+  state.pendingChoice = null;
+
+  if (optionIndex === 0) {
+    const cardId = findShacklesInHand(state, playerId);
+    const player = state.players[playerId];
+    if (cardId && player) {
+      const handIndex = player.hand.indexOf(cardId);
+      if (handIndex >= 0) {
+        player.hand.splice(handIndex, 1);
+        player.discard.push(cardId);
+      }
+      // Lock the enemy (defender) out of Surrender for this combat.
+      const effect = makeActiveEffect(
+        state,
+        {
+          name: cardLibrary[cardId]?.name ?? "Shackles of War",
+          scope: "player",
+          duration: { type: "combat" },
+          polarity: "negative",
+          removable: false,
+          modifiers: [{ type: "CANNOT_SURRENDER_COMBAT" }]
+        },
+        { type: "card", cardId, controllerId: playerId },
+        combat.defenderPlayerId
+      );
+      state.activeEffects.push(effect);
+      appendEvent(state, { type: "CARD_PLAYED", playerId, cardId, timing: "instant", mode: "basic" });
+    }
+  }
+
+  continueStartOfCombat(state);
 }
 
 function placementCellsFor(state: GameState, playerId: PlayerId): number[] {
@@ -5420,6 +5539,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "cover-of-darkness") {
     resolveCoverOfDarknessChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "shackles-of-war") {
+    resolveShacklesChoice(state, action.playerId, action.optionIndex);
     return;
   }
 
