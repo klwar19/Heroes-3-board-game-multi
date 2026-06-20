@@ -5086,8 +5086,7 @@ function applyActivationStartAbilities(state: GameState, unit: CombatUnitState):
  * fight (the attacker — the player is always the attacker against guards) breaks
  * it on Neutral's behalf, exactly as the attacker already breaks a Neutral
  * unit's TARGET ties. Cross-side ties are resolved by getActivationStep
- * (attacker-first — the whole attacking side at a given speed goes before the
- * defender's units at that speed), so this only ever prompts for one side at once.
+ * (alternating, attacker-first), so this only ever prompts for one side at once.
  */
 function advanceActiveUnit(state: GameState): void {
   const combat = state.combat;
