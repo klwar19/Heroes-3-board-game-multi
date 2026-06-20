@@ -74,3 +74,14 @@ Tracked honestly so they are not mistaken for working features:
 - Hero specialties in `PENDING_TOWER_SPECIALTIES`
   (`src/engine/hero-specialty-levels.test.ts`): Solmyr I/IV/VI, Cyra IV/VI,
   Torosar I/IV/VI.
+- `conflux.magic_elementals` (Few & Pack) — "Attack all adjacent (enemy) units"
+  is display-only (the engine has no primary attack-every-adjacent action); the
+  Pack's "Ignore any ongoing spell effects and Specialty damage" line is also
+  display-only. What IS wired: `ignores-retaliation` (both sides) and, on the
+  Pack, Magic-Arrow immunity + elemental damage.
+- `conflux.magic_university` building — the "choose a school, discard your deck
+  until you find that school's Spell" dig is `not-implemented` (no-op effect).
+- Conflux heroes Ciele, Luna and Tarnum (Conflux) are NOT on the roster yet —
+  their spell/obstacle/search specialties are not implemented. Only the three
+  unit-specialist Planeswalkers (Erdamon, Monere, Pasis) ship, with all of
+  their I/IV/VI specialties implemented and tested (`conflux-content.test.ts`).

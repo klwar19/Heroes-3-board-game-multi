@@ -2348,6 +2348,21 @@ export function processPendingVisit(state: GameState): void {
       case "REINFORCE_FREE":
         reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, false, false, true);
         break;
+      case "RECRUIT_FREE": {
+        // Garden of Life (Conflux): add a Few of the unit to the army for free.
+        const recruitPlayer = state.players[visit.playerId];
+        if (recruitPlayer) {
+          addArmyUnit(recruitPlayer, step.unitDefId, "few");
+          appendEvent(state, {
+            type: "UNIT_RECRUITED",
+            playerId: visit.playerId,
+            unitDefId: step.unitDefId,
+            kind: "recruit",
+            cost: {}
+          });
+        }
+        break;
+      }
       case "BANK_RECRUIT_DISCOUNT":
         bankRecruitDiscountVoucher(state, visit.playerId, {
           cardId: step.cardId,
@@ -4430,6 +4445,9 @@ export function startAdventureRound(state: GameState): void {
         if (effect?.type === "ASTROLOGERS_HALF_GOLD_REINFORCE") {
           queueHalfGoldReinforce(state, playerId, buildingId, effect.tiers);
         }
+        if (effect?.type === "ROUND_START_FREE_SPRITE") {
+          queueGardenOfLife(state, playerId, buildingId, effect.unitDefId);
+        }
         if (effect?.type === "COMBAT_CUBES" && effect.gainOn === "astrologers" && town) {
           gainTownCube(state, town, buildingId, effect.max);
         }
@@ -4516,6 +4534,9 @@ export function startAdventureRound(state: GameState): void {
       if (effect?.type === "RESOURCE_ROUND_MORALE") {
         changeMorale(state, playerId, 1);
       }
+      if (effect?.type === "ROUND_START_FREE_SPRITE") {
+        queueGardenOfLife(state, playerId, buildingId, effect.unitDefId);
+      }
       if (effect?.type === "RESOURCE_ROUND_RESOURCE_DIE") {
         // Mystic Pond: roll a Resource die through the shared dice pipeline.
         state.adventure?.rewardQueue.push({
@@ -4587,6 +4608,50 @@ export function gainTownCube(state: GameState, town: TownState, buildingId: stri
 }
 
 /** Saplings: reinforce one unit of the listed tiers for half the gold cost. */
+/**
+ * Garden of Life (Conflux): at the beginning of each round, recruit a Few of
+ * the listed unit (Sprites) for free, or reinforce a Few of it already in the
+ * army to a Pack for free. Always offers a Skip; the building is itself the
+ * free Sprites dwelling, so the recruit option does not require the bronze
+ * Dwelling to be built.
+ */
+function queueGardenOfLife(state: GameState, playerId: PlayerId, buildingId: string, unitDefId: string): void {
+  const player = state.players[playerId];
+  const def = coreUnitDefinitions[unitDefId];
+  if (!player || !def) {
+    return;
+  }
+
+  const options: { label: string; steps: VisitStep[] }[] = [];
+  if (getUnitSide(unitDefId, "few")) {
+    options.push({ label: `Recruit ${def.name} (free)`, steps: [{ type: "RECRUIT_FREE", unitDefId }] });
+  }
+  for (const unit of player.army) {
+    if (unit.unitDefId === unitDefId && unit.side === "few" && getUnitSide(unitDefId, "pack")) {
+      options.push({
+        label: `Reinforce ${def.name} to a Pack (free)`,
+        steps: [{ type: "REINFORCE_FREE", armyUnitId: unit.id }]
+      });
+    }
+  }
+  if (options.length === 0) {
+    return;
+  }
+
+  options.push({ label: "Skip", steps: [] });
+  state.adventure?.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt: `${coreBuildingDefinitions[buildingId]?.name ?? "Garden of Life"}: recruit or reinforce ${def.name} for free`,
+        options
+      }
+    ]
+  });
+}
+
 function queueHalfGoldReinforce(state: GameState, playerId: PlayerId, buildingId: string, tiers: string[]): void {
   const player = state.players[playerId];
   if (!player) {

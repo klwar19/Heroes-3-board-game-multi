@@ -68,7 +68,8 @@ export type FactionId =
   | "dungeon"
   | "stronghold"
   | "fortress"
-  | "tower";
+  | "tower"
+  | "conflux";
 
 export type TargetRef =
   | { type: "unit"; unitId: UnitId }
@@ -4669,6 +4670,11 @@ export type VisitStep =
       armyUnitId: string;
     }
   | {
+      /** Garden of Life (Conflux): add a Few of `unitDefId` to the army for free. */
+      type: "RECRUIT_FREE";
+      unitDefId: string;
+    }
+  | {
       /**
        * Legion artifact: the player picked which unit the just-played discount
        * side applies to. Banks one `RecruitDiscountVoucher` for that exact target
@@ -5390,6 +5396,7 @@ export type PendingChoice =
           drawCards?: number;
           reinforceBronzeFree?: boolean;
           tradingPost?: boolean;
+          searchSpellDeck?: number;
         }[];
       };
       /** combat-reposition: Harpies' optional fly-back after their attack. */

@@ -6966,18 +6966,21 @@ function applyEnemySpellHandTax(state: GameState, casterId: PlayerId): void {
 
 /**
  * Tower Magi (Pack) "[activation] +N power to the first spell you cast this
- * round": the bonus is only available while the Magi is the active unit — i.e.
- * during its own turn — so this reads the boost off the currently-active unit
- * when it belongs to the caster. 0 at any other time (off-turn, another unit
- * active, no combat).
+ * round" and Conflux Pack Elementals "[activation] +N power to the first
+ * <school> Magic spell you cast during this Activation": the bonus is only
+ * available while the granting unit is the active unit — i.e. during its own
+ * turn — so this reads the boost off the currently-active unit when it belongs
+ * to the caster. The school-scoped Elemental boost lands only when the spell
+ * being cast (`spellSchools`) matches; the Magi's school-less boost always
+ * lands. 0 at any other time (off-turn, another unit active, no combat).
  */
-function activeUnitSpellPowerBoostFor(state: GameState, playerId: PlayerId): number {
+function activeUnitSpellPowerBoostFor(state: GameState, playerId: PlayerId, spellSchools?: SpellSchool[]): number {
   const combat = state.combat;
   const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
   if (!activeUnit || activeUnit.controllerId !== playerId) {
     return 0;
   }
-  return getActivationSpellPowerBoost(activeUnit);
+  return getActivationSpellPowerBoost(activeUnit, spellSchools);
 }
 
 function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_SPELL" }>, cards: CardLibrary): void {
@@ -7129,12 +7132,14 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     }
 
     // Tower Magi (Pack) "[activation] +N power to the first spell you cast this
-    // round": only while the Magi itself is the active unit (its own turn), and
-    // only for the round's first spell.
+    // round" and Conflux Pack Elementals "[activation] +N power to the first
+    // <school> Magic spell you cast during this Activation": only while that
+    // unit itself is the active unit (its own turn), only for the round's first
+    // spell, and — for the Elementals — only when the spell matches their school.
     if (isFirstSpellThisRound) {
-      const magiPower = activeUnitSpellPowerBoostFor(state, action.playerId);
-      if (magiPower > 0) {
-        stackItem.modifiers.spellPowerBonus += magiPower;
+      const activationPower = activeUnitSpellPowerBoostFor(state, action.playerId, card.spellSchools);
+      if (activationPower > 0) {
+        stackItem.modifiers.spellPowerBonus += activationPower;
       }
     }
 

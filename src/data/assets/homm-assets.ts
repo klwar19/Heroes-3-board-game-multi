@@ -102,6 +102,19 @@ export const TOWN_BUILDING_IMAGES: Record<string, Record<string, string>> = {
     dwelling_gold: "/assets/town/tower_cloud_temple.gif",
     artifact_merchants: "/assets/town/tower_artifact_merchants.gif",
     wall_of_knowledge: "/assets/town/tower_wall_of_knowledge.gif"
+  },
+  conflux: {
+    // Conflux town-screen renders (heroes.thelazy.net Conflux page). Dwellings
+    // map bronze/silver/gold to the Altars of Air & Water / Altars of Fire &
+    // Earth / Magical Pyre PC structures.
+    city_hall: "/assets/town/conflux_city_hall_large.gif",
+    citadel: "/assets/town/conflux_citadel_large.gif",
+    mage_guild: "/assets/town/conflux_mage_guild_level_1_large.gif",
+    dwelling_bronze: "/assets/town/conflux_altar_of_air.gif",
+    dwelling_silver: "/assets/town/conflux_altar_of_fire.gif",
+    dwelling_gold: "/assets/town/conflux_magic_university.gif",
+    garden_of_life: "/assets/town/conflux_garden_of_life.gif",
+    magic_university: "/assets/town/conflux_university.gif"
   }
 };
 

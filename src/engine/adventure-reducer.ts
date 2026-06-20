@@ -5750,6 +5750,16 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
         steps: [{ type: "TRADING_POST" }]
       });
     }
+    if (option.searchSpellDeck) {
+      // Conflux City Hall: Search(N) the Spell deck and take 1 card to hand,
+      // through the shared-deck-search pipeline (self-guards on an empty deck).
+      state.adventure?.rewardQueue.push({
+        playerId: action.playerId,
+        kind: "shared-deck-search",
+        deckId: "spells",
+        count: option.searchSpellDeck
+      });
+    }
   }
 
   state.pendingChoice = null;
