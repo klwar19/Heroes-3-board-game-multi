@@ -4,6 +4,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { sampleBuildings } from "@/data/towns/buildings";
 import {
+  adventurePvpTroopLoss,
   applyRecruitDiscount,
   armyHasMapEffect,
   canHeroReachPlacedTile,
@@ -5243,6 +5244,41 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
   }
 }
 
+/**
+ * Give up the combat (a concede, offered throughout the fight — not just at the
+ * start like Retreat / Surrender). Always a defeat with the Retreat
+ * consequences (5 gold, -1 morale, fall back home, the opponent wins). The
+ * troop cost depends on the lobby's PvP casualty mode: in losing-troop mode —
+ * and against Neutral guards, which always cost casualties — the whole battle
+ * army is lost; in keep-troops mode the army is kept and the hand is discarded.
+ */
+function addGiveUpCombatActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  const combat = state.combat;
+  if (!combat || combat.outcome || combat.context.kind === "sandbox") {
+    return;
+  }
+  if (combat.context.kind === "neutral") {
+    const hero = state.heroes[combat.context.heroId];
+    if (!hero || hero.controllerId !== playerId) {
+      return;
+    }
+  } else {
+    const isParticipant = combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId;
+    const heroId =
+      playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
+    if (!isParticipant || !heroId) {
+      return;
+    }
+  }
+  const losesTroops = combat.context.kind === "neutral" || adventurePvpTroopLoss(state) === "normal";
+  actions.push({
+    label: losesTroops
+      ? "Give up (concede: lose the combat and your whole battle army, fall back home)"
+      : "Give up (concede: lose the combat and discard your hand, fall back home)",
+    action: { type: "GIVE_UP_COMBAT", playerId }
+  });
+}
+
 function addMoraleActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   // The stored +1 token, or an overflow token gained past the cap that must be
@@ -5404,6 +5440,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
           label: "Retreat to the last visited field",
           action: { type: "RETREAT_FROM_COMBAT", playerId }
         });
+        addGiveUpCombatActions(actions, state, playerId);
       }
     }
     return actions;
@@ -5424,6 +5461,9 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       // by the attack-die reroll choice instead.
       addMoraleActions(actions, state, playerId);
       addPvpEscapeActions(actions, state, playerId);
+      // Give up (concede) is available throughout the fight, not just the
+      // start-of-combat escape window.
+      addGiveUpCombatActions(actions, state, playerId);
     }
     return actions;
   }

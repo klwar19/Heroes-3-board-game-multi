@@ -1427,6 +1427,7 @@ const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "COMPLETE_SIMULTANEOUS_TURN",
   "CONTINUE_NEUTRAL_COMBAT",
   "RETREAT_FROM_COMBAT",
+  "GIVE_UP_COMBAT",
   "ACKNOWLEDGE_COMBAT_END",
   "BUILD_STRUCTURE",
   "MOVE_HERO",
@@ -1695,7 +1696,10 @@ export function CommandDock({
       ) : null}
       {commands.map((legal) => (
         <button
-          className={`commandButton ${legal.action.type === "DEFEND_UNIT" ? "defendButton" : ""}`}
+          className={`commandButton ${legal.action.type === "DEFEND_UNIT" ? "defendButton" : ""}${
+            // Give up (concede) is a secondary, off-to-the-side control.
+            legal.action.type === "GIVE_UP_COMBAT" ? " ghost" : ""
+          }`}
           key={actionKey(legal.action)}
           onClick={() => onAction(legal.action)}
           type="button"
