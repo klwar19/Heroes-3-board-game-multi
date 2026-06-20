@@ -476,6 +476,7 @@ export function HexMapBoard({
           <g key={`${tile.id}-${slot}`}>
             <polygon
               className={`hexFaceDown ${discover && !readOnly ? "discoverable" : ""}`}
+              data-tile-id={tile.id}
               onClick={
                 discover && !readOnly
                   ? () => {
@@ -614,6 +615,7 @@ export function HexMapBoard({
             isSelected ? "selectedTarget" : "",
             artShown ? "withArt" : ""
           ].join(" ")}
+          data-space-id={spaceId}
           fill={terrain}
           key={spaceId}
           onClick={
@@ -659,6 +661,7 @@ export function HexMapBoard({
         overlays.push(
           <image
             className="locationToken"
+            data-space-id={spaceId}
             height={2 * HEX_SIZE}
             href={assetUrl(tokenImage)}
             key={`${spaceId}-token`}

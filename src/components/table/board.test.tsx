@@ -95,6 +95,24 @@ describe("combat board art variants", () => {
     expect(eligibleCombatBoardArtIds(sea, sea.combat)).not.toContain("ship-battle");
   });
 
+  it("always fights a siege on the castle board (never a random battlefield)", () => {
+    const state = createInitialGameState("board-art-siege");
+    state.combat!.context = {
+      kind: "player",
+      attackerHeroId: "hero_p1",
+      defenderHeroId: "hero_p2",
+      fieldId: "0,0",
+      siege: true
+    };
+    // Whatever the combat id / seed, a siege is the castle board every time —
+    // the defender stands on the castle side behind the Walls and Gate.
+    for (let index = 0; index < 16; index += 1) {
+      state.combat!.id = `combat_${index}`;
+      state.combat!.boardArtId = undefined;
+      expect(pickCombatBoardArt(state).id).toBe("castle-siege");
+    }
+  });
+
   it("weights snow for Tower and grim battlefields for Inferno or Necropolis", () => {
     const tower = createInitialGameState("board-art-tower");
     tower.players.p1.factionId = "tower";

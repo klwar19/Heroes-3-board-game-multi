@@ -348,3 +348,63 @@ describe("Surrender gating: a before-battle (prep) decision needing the 10-gold 
     expect(rejected.state.combat?.outcome ?? null).toBeNull();
   });
 });
+
+describe("Surrender ban: defending your own Faction Town (rulebook p.46)", () => {
+  // A prep-window PvP combat fought ON the defender's own Faction Town field:
+  // p1 besieges p2's town, p2's hero defends. Both still hold the 10-gold toll,
+  // so only the Faction-Town rule (not money) can withhold Surrender.
+  function townDefenseState(seed: string): GameState {
+    const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+    state.combat = createInitialGameState(seed).combat;
+    state.combat!.context = {
+      kind: "player",
+      attackerHeroId: "hero_p1",
+      defenderHeroId: "hero_p2",
+      fieldId: state.towns.town_p2.fieldId ?? "0,0"
+    };
+    state.combat!.prep = { accepted: [] };
+    state.phase = "combat-setup";
+    state.priorityPlayerId = null;
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.players.p1.resources.gold = 20;
+    state.players.p2.resources.gold = 20;
+    return state;
+  }
+
+  const offersSurrender = (state: GameState, playerId: PlayerId) =>
+    getLegalActions(state, playerId).some((l) => l.action.type === "SURRENDER_COMBAT");
+  const offersRetreat = (state: GameState, playerId: PlayerId) =>
+    getLegalActions(state, playerId).some((l) => l.action.type === "RETREAT_FROM_COMBAT");
+
+  it("withholds Surrender from the town's own defender, but still offers Retreat", () => {
+    const state = townDefenseState("surr-town-defender");
+    expect(state.towns.town_p2.controllerId).toBe("p2"); // it really is p2's Faction Town
+    expect(offersSurrender(state, "p2")).toBe(false);
+    expect(offersRetreat(state, "p2")).toBe(true);
+  });
+
+  it("still offers Surrender to the attacker (they are not defending a Faction Town)", () => {
+    const state = townDefenseState("surr-town-attacker");
+    expect(offersSurrender(state, "p1")).toBe(true);
+  });
+
+  it("rejects a forced Surrender from the town's defender, leaving combat unresolved", () => {
+    const state = townDefenseState("surr-town-force");
+    const rejected = applyAction(state, { type: "SURRENDER_COMBAT", playerId: "p2" });
+    expect(rejected.errors.length).toBeGreaterThan(0);
+    expect(rejected.state.combat?.outcome ?? null).toBeNull();
+  });
+
+  it("lets the defender Surrender a fight that is NOT on their Faction Town", () => {
+    const state = townDefenseState("surr-town-elsewhere");
+    // Same combat, but moved off the town onto open ground: the ban lifts.
+    state.combat!.context = {
+      kind: "player",
+      attackerHeroId: "hero_p1",
+      defenderHeroId: "hero_p2",
+      fieldId: "99,99"
+    };
+    expect(offersSurrender(state, "p2")).toBe(true);
+  });
+});

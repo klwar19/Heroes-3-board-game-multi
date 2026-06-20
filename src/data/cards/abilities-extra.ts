@@ -481,6 +481,14 @@ export const extraAbilityCards: CardLibrary = {
     implementationStatus: "implemented",
     source: abilitySource("artillery")
   },
+  // engine: basic = destroy 1 Wall or the Gate; expert (crown) = destroy the
+  // Arrow Tower. Both run via SIEGE_DEMOLISH (see reducer playAbilityCard →
+  // openSiegeDemolishChoice / removeArrowTower; siege-tokens.test.ts).
+  // NOT implemented: the card's "Empowered" printing ("Destroy 3 Walls and the
+  // Gate"). This game models no general empower-an-ability action — the only
+  // "empowered" ability (Diplomacy) is a hardcoded tag, not a player choice —
+  // so there is no path to reach an Empowered Ballistics, and a third option
+  // would be unreachable/decorative. Left out deliberately.
   "ability.ballistics": {
     id: "ability.ballistics",
     name: "Ballistics",
