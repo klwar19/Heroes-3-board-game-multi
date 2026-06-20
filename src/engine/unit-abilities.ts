@@ -563,16 +563,28 @@ export function getActivationAbilities(unit: CombatUnitState): ActivationAbility
 }
 
 /**
- * Tower Magi (Pack): the extra power this unit grants "to the first spell you
- * cast this round" — applied only while the Magi is the active unit (its own
- * turn), so the caller checks the active unit at cast time. 0 for other units.
+ * Tower Magi (Pack) and Conflux Pack Elementals: the extra power this unit
+ * grants "to the first spell you cast" — applied only while the unit is the
+ * active unit (its own turn), so the caller checks the active unit at cast
+ * time. 0 for other units.
+ *
+ * A school-less boost (the Magi) always counts. A school-scoped boost (the
+ * Conflux Pack Elementals — "the first Air/Water/Fire/Earth Magic spell")
+ * counts only when the spell being cast lists that school, so `spellSchools`
+ * must be passed for those to apply. Calling without `spellSchools` keeps the
+ * legacy Magi behaviour (school-less boosts only).
  */
-export function getActivationSpellPowerBoost(unit: CombatUnitState): number {
-  return getAbilitiesWithEffect(unit, "ON_ACTIVATION_SPELL_POWER_FIRST_CAST").reduce(
-    (total, ability) =>
-      total + (ability.effect?.type === "ON_ACTIVATION_SPELL_POWER_FIRST_CAST" ? ability.effect.amount : 0),
-    0
-  );
+export function getActivationSpellPowerBoost(unit: CombatUnitState, spellSchools?: SpellSchool[]): number {
+  return getAbilitiesWithEffect(unit, "ON_ACTIVATION_SPELL_POWER_FIRST_CAST").reduce((total, ability) => {
+    if (ability.effect?.type !== "ON_ACTIVATION_SPELL_POWER_FIRST_CAST") {
+      return total;
+    }
+    const { amount, school } = ability.effect;
+    if (school && !(spellSchools ?? []).includes(school)) {
+      return total;
+    }
+    return total + amount;
+  }, 0);
 }
 
 /** Enchanters: the activation heal-a-friendly-or-buff-self choice ability. */
