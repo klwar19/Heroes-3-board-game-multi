@@ -86,6 +86,14 @@ export function pickCombatBoardArtId(state: GameState, combat: CombatState | nul
     return combat.boardArtId;
   }
 
+  // A siege is ALWAYS fought on the castle siege board: the defender stands on
+  // the castle side, behind the Walls and the Gate that the battle is fought
+  // over. The other battlefields are flavour for open-field fights only — a
+  // siege must show the fortifications, so it is never a random pick.
+  if (isSiegeCombat(combat)) {
+    return "castle-siege";
+  }
+
   return createSeededRandom(`${state.seed}:${combat.id}:combat-board-art`).pick(weightedCombatBoardArtIds(state, combat));
 }
 

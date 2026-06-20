@@ -401,7 +401,12 @@ describe("Shackles of War + PvP retreat/surrender", () => {
     }
     const attacker = getMainHero(state, "p1")!;
     const defender = getMainHero(state, "p2")!;
-    startPlayerCombat(state, attacker, defender, defender.spaceId ?? "0,0");
+    // Stage the duel on neutral ground (the attacker's field), NOT the
+    // defender's home town: this suite tests only Shackles of War, and a Faction
+    // Town defence would separately forbid Surrender (rulebook p.46, covered in
+    // surrender-retreat.test.ts) and confound the contrast tested here.
+    defender.spaceId = attacker.spaceId;
+    startPlayerCombat(state, attacker, defender, attacker.spaceId ?? "0,0");
     return state;
   }
 
