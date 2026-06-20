@@ -51,6 +51,7 @@ import {
   placeObservatoryTile,
   populationAction,
   pumpAdventureQueues,
+  giveUpCombat,
   refreshHand,
   rehydrateCityHallChoice,
   resolveVisitStep,
@@ -12660,6 +12661,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "SURRENDER_COMBAT":
         surrenderFromCombat(nextState, action);
+        break;
+      case "GIVE_UP_COMBAT":
+        giveUpCombat(nextState, action);
         break;
       case "POPULATION_ACTION":
         populationAction(nextState, action);

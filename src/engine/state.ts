@@ -2333,6 +2333,22 @@ export type GameAction =
     }
   | {
       /**
+       * Give up the combat at any point once it is under way (a concede, not the
+       * start-of-combat Surrender). It is always a defeat — the same loss
+       * consequences as a Retreat (5-gold toll, -1 morale, fall back home, the
+       * opponent gains the win and its credit). The troop cost depends on the
+       * lobby's PvP casualty mode: in losing-troop mode (and against Neutral
+       * guards, which always cost casualties) the conceding hero loses its WHOLE
+       * battle army — every unit still on the board, survivors included; in
+       * keep-troops mode it keeps every unit but discards its entire hand.
+       * Offered to a participating hero throughout the fight. Validated in
+       * giveUpCombat / finalizeAdventureCombat.
+       */
+      type: "GIVE_UP_COMBAT";
+      playerId: PlayerId;
+    }
+  | {
+      /**
        * Close the end-of-combat notice: finalizes an adventure combat
        * (experience, unit flips, the field visit) and returns to the map.
        */
@@ -2770,7 +2786,7 @@ export type GameEvent =
       type: "COMBAT_ENDED";
       winnerPlayerId: PlayerId;
       defeatedPlayerId: PlayerId;
-      reason: "all-enemy-units-defeated" | "retreat" | "surrender";
+      reason: "all-enemy-units-defeated" | "retreat" | "surrender" | "give-up";
     }
   | {
       id: string;
@@ -4222,7 +4238,7 @@ export type CombatState = {
   outcome: {
     winnerPlayerId: PlayerId;
     defeatedPlayerId: PlayerId;
-    reason: "all-enemy-units-defeated" | "retreat" | "surrender";
+    reason: "all-enemy-units-defeated" | "retreat" | "surrender" | "give-up";
   } | null;
   /**
    * Adventure combats stay on the battlefield after the outcome until a

@@ -125,6 +125,7 @@ import {
   type HexCoord
 } from "./hex";
 import type {
+  ArmyUnitState,
   CardDefinition,
   CardId,
   CombatState,
@@ -136,6 +137,7 @@ import type {
   MapSpaceId,
   MapTileState,
   PlayerId,
+  PlayerState,
   ResourceCost,
   ResourceKind,
   SpellSchool,
@@ -3959,6 +3961,54 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
 }
 
 /**
+ * Give up the combat: a concede a participating hero may choose at any point
+ * once the fight is under way (unlike the start-of-combat Retreat / Surrender).
+ * It always ends the combat as a defeat with the full Retreat consequences —
+ * the troop / hand cost is applied in `finalizeAdventureCombat` from the
+ * `"give-up"` reason (whole battle army lost in losing-troop mode and against
+ * Neutral guards; hand discarded in keep-troops mode).
+ */
+export function giveUpCombat(state: GameState, action: Extract<GameAction, { type: "GIVE_UP_COMBAT" }>): void {
+  const combat = state.combat;
+  const playerId = action.playerId;
+  if (!combat || combat.context.kind === "sandbox") {
+    throw new Error("There is no combat to give up.");
+  }
+  if (combat.outcome) {
+    throw new Error("This combat is already over.");
+  }
+
+  if (combat.context.kind === "neutral") {
+    const hero = state.heroes[combat.context.heroId];
+    if (!hero || hero.controllerId !== playerId) {
+      throw new Error("Only the attacking hero may give up this combat.");
+    }
+    combat.outcome = { winnerPlayerId: NEUTRAL_PLAYER_ID, defeatedPlayerId: playerId, reason: "give-up" };
+    combat.awaitingContinue = false;
+    appendEvent(state, {
+      type: "COMBAT_ENDED",
+      winnerPlayerId: NEUTRAL_PLAYER_ID,
+      defeatedPlayerId: playerId,
+      reason: "give-up"
+    });
+    return;
+  }
+
+  const isParticipant = combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId;
+  if (!isParticipant) {
+    throw new Error("Only a combat participant may give up.");
+  }
+  const heroId =
+    playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
+  if (!heroId) {
+    throw new Error("A hero must be present to give up.");
+  }
+  const winnerPlayerId = playerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
+  combat.outcome = { winnerPlayerId, defeatedPlayerId: playerId, reason: "give-up" };
+  appendEvent(state, { type: "COMBAT_ENDED", winnerPlayerId, defeatedPlayerId: playerId, reason: "give-up" });
+}
+
+/**
  * Applies the end-of-combat consequences for adventure combats: damage heals,
  * defeated player units leave the unit deck (packs were already flipped to
  * few during combat), neutrals go to their tier discard piles, experience and
@@ -3982,6 +4032,16 @@ export function finalizeAdventureCombat(state: GameState): void {
   const keepTroops =
     context.kind === "player" && (adventurePvpTroopLoss(state) === "none" || outcome.reason === "surrender");
 
+  // Give up (concede): the conceding hero either loses its WHOLE battle army —
+  // every unit still on the board, survivors included — or, in keep-troops PvP
+  // mode, keeps every unit and instead discards its entire hand (handled after
+  // the loop). Fights against Neutral guards always cost casualties, so a
+  // Neutral give-up is always the full wipe. The opponent's army still settles
+  // by the normal rules below.
+  const gaveUp = outcome.reason === "give-up";
+  const giveUpLoserId = gaveUp ? outcome.defeatedPlayerId : null;
+  const giveUpKeepsTroops = gaveUp && context.kind === "player" && adventurePvpTroopLoss(state) === "none";
+
   // Sync army cards with what happened on the board.
   for (const unit of Object.values(combat.units)) {
     if (unit.controllerId === NEUTRAL_PLAYER_ID) {
@@ -3991,6 +4051,20 @@ export function finalizeAdventureCombat(state: GameState): void {
         const def = unit.grade === "gold" ? "gold" : unit.grade;
         const deck = state.decks[NEUTRAL_DECK_IDS[def as "bronze" | "silver" | "gold" | "azure"]];
         deck?.discardPile.push(unit.unitDefId);
+      }
+      continue;
+    }
+
+    // The conceding side of a Give up: lose the whole army (full wipe), unless
+    // keep-troops mode spares the units (its hand is discarded after the loop).
+    if (unit.controllerId === giveUpLoserId) {
+      if (giveUpKeepsTroops) {
+        continue;
+      }
+      const player = state.players[unit.controllerId];
+      const armyUnit = player?.army.find((candidate) => candidate.id === unit.armyUnitId);
+      if (player && armyUnit) {
+        discardDefeatedArmyUnit(state, player, armyUnit);
       }
       continue;
     }
@@ -4011,12 +4085,7 @@ export function finalizeAdventureCombat(state: GameState): void {
     if (unit.damage >= unit.maxHealth) {
       // Few side defeated: the unit card leaves the unit deck. A recruited
       // Neutral card returns to its tier's discard pile.
-      player.army = player.army.filter((candidate) => candidate.id !== armyUnit.id);
-      if (armyUnit.side === "neutral") {
-        const def = coreUnitDefinitions[armyUnit.unitDefId];
-        const tier = (def?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure";
-        state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(armyUnit.unitDefId);
-      }
+      discardDefeatedArmyUnit(state, player, armyUnit);
     } else if (armyUnit.side !== "neutral") {
       armyUnit.side = unit.variant === "pack" ? "pack" : "few";
       // Carry the surviving specialty stack (Sandro's Cloak) back to the
@@ -4027,6 +4096,16 @@ export function finalizeAdventureCombat(state: GameState): void {
       } else {
         delete armyUnit.transforms;
       }
+    }
+  }
+
+  // Keep-troops Give up: the conceding hero loses no unit but discards its whole
+  // hand to its discard pile (the cost of conceding when troops are kept).
+  if (giveUpKeepsTroops && giveUpLoserId) {
+    const player = state.players[giveUpLoserId];
+    if (player && player.hand.length > 0) {
+      player.discard.push(...player.hand);
+      player.hand = [];
     }
   }
 
@@ -4079,7 +4158,9 @@ export function finalizeAdventureCombat(state: GameState): void {
         ) {
           queueSkeletonReinforce(state, playerId);
         }
-      } else if (outcome.reason === "retreat") {
+      } else if (outcome.reason === "retreat" || outcome.reason === "give-up") {
+        // Retreat and Give up both fall back to the last visited field (Give up
+        // additionally wipes the whole army, handled in the sync loop above).
         const returnTo = adventure.lastVisitedField[hero.id];
         if (returnTo) {
           hero.spaceId = returnTo;
@@ -4204,6 +4285,19 @@ export function finalizeAdventureCombat(state: GameState): void {
 
 function MAX_EXPERIENCE_GAIN_TO_SEVEN(hero: HeroState): number {
   return Math.max(0, 12 - hero.experience);
+}
+
+/**
+ * Removes a defeated (or conceded) unit card from a player's army. A recruited
+ * Neutral card is recycled back to its tier's discard pile rather than lost.
+ */
+function discardDefeatedArmyUnit(state: GameState, player: PlayerState, armyUnit: ArmyUnitState): void {
+  player.army = player.army.filter((candidate) => candidate.id !== armyUnit.id);
+  if (armyUnit.side === "neutral") {
+    const def = coreUnitDefinitions[armyUnit.unitDefId];
+    const tier = (def?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure";
+    state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(armyUnit.unitDefId);
+  }
 }
 
 function moveDefeatedHeroHome(state: GameState, hero: HeroState): void {
