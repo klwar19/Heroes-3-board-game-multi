@@ -309,3 +309,68 @@ describe("Give up: action wiring and availability", () => {
     expect(result.state.combat?.outcome ?? null).toBeNull();
   });
 });
+
+describe("Give up / Retreat merge: never both offered at the same moment", () => {
+  /**
+   * A round-1 PvP combat sitting in the start-of-combat escape window: deployment
+   * is done (no setup) and no unit has acted, so Retreat / Surrender are open.
+   * This is the moment Retreat and Give up used to be identical buttons.
+   */
+  function escapeWindowPvp(seed: string): GameState {
+    const state = makeGame();
+    const attacker = getMainHero(state, "p1")!;
+    const defender = getMainHero(state, "p2")!;
+    const field = injectField(state, seed);
+    attacker.spaceId = field.spaceId;
+    defender.spaceId = field.spaceId;
+    state.players.p1.army = [{ id: "a1", unitDefId: "castle.pikemen", side: "few" }];
+    state.players.p2.army = [{ id: "b1", unitDefId: "castle.pikemen", side: "few" }];
+    state.players.p1.resources.gold = 50; // enough to be offered Surrender too
+    state.players.p2.resources.gold = 50;
+    state.phase = "combat";
+    state.activePlayerId = "p1";
+    state.combat = {
+      id: "c1",
+      round: 1,
+      attackerPlayerId: "p1",
+      defenderPlayerId: "p2",
+      activeUnitId: null,
+      context: { kind: "player", attackerHeroId: attacker.id, defenderHeroId: defender.id, fieldId: field.spaceId },
+      setup: null,
+      awaitingContinue: false,
+      outcome: null,
+      dice: { faces: [...ATTACK_DIE_FACES], seed: "s", rollCount: 0 },
+      units: {
+        // No unit has acted: the start-of-combat escape window is OPEN.
+        a1: unit({ id: "a1", controllerId: "p1", armyUnitId: "a1" }),
+        b1: unit({ id: "b1", controllerId: "p2", armyUnitId: "b1" })
+      }
+    } as CombatState;
+    return state;
+  }
+
+  const has = (state: GameState, playerId: PlayerId, type: "RETREAT_FROM_COMBAT" | "SURRENDER_COMBAT" | "GIVE_UP_COMBAT") =>
+    getLegalActions(state, playerId).some((l) => l.action.type === type);
+
+  it("offers Retreat / Surrender but NOT Give up while the escape window is open", () => {
+    const state = escapeWindowPvp("80,80");
+    for (const playerId of ["p1", "p2"] as PlayerId[]) {
+      expect(has(state, playerId, "RETREAT_FROM_COMBAT")).toBe(true);
+      expect(has(state, playerId, "SURRENDER_COMBAT")).toBe(true);
+      // Give up is the mid-fight concede; at the start Retreat covers it, so the
+      // two are never both on the table at once.
+      expect(has(state, playerId, "GIVE_UP_COMBAT")).toBe(false);
+    }
+  });
+
+  it("swaps Retreat for Give up the instant a unit begins fighting", () => {
+    const state = escapeWindowPvp("81,81");
+    // A single unit acting closes the escape window for the rest of the fight.
+    state.combat!.units.a1.activatedThisRound = true;
+    for (const playerId of ["p1", "p2"] as PlayerId[]) {
+      expect(has(state, playerId, "RETREAT_FROM_COMBAT")).toBe(false);
+      expect(has(state, playerId, "SURRENDER_COMBAT")).toBe(false);
+      expect(has(state, playerId, "GIVE_UP_COMBAT")).toBe(true);
+    }
+  });
+});

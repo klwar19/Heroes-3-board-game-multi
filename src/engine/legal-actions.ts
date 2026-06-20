@@ -5303,17 +5303,28 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
 }
 
 /**
- * Give up a player-vs-player combat (a concede, offered throughout the fight —
- * not just at the start like Retreat / Surrender). Always a defeat with the
- * Retreat consequences (5 gold, -1 morale, fall back home, the opponent wins).
- * The troop cost depends on the lobby's PvP casualty mode: in losing-troop mode
- * only the casualties taken up to that point are lost (survivors fall back); in
- * keep-troops mode every unit is kept and the hand is discarded instead.
+ * Give up a player-vs-player combat: the mid-fight concede. Always a defeat with
+ * the Retreat consequences (5 gold, -1 morale, fall back home, the opponent
+ * wins). The troop cost depends on the lobby's PvP casualty mode: in losing-troop
+ * mode only the casualties taken up to that point are lost (survivors fall back);
+ * in keep-troops mode every unit is kept and the hand is discarded instead.
  * Neutral-guard fights have no Give up — only the end-of-round Retreat.
+ *
+ * Give up is NOT offered while the start-of-combat escape window is still open:
+ * there the equivalent Retreat already lets a hero leave (with no casualties yet
+ * either way, and in keep-troops mode without even discarding the hand), so the
+ * two would be the same button. Give up surfaces only once fighting has begun and
+ * Retreat has closed — that is when conceding actually differs (it forfeits the
+ * casualties already taken). This is what merges the two so they never overlap.
  */
 function addGiveUpCombatActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const combat = state.combat;
   if (!combat || combat.outcome || combat.context.kind !== "player") {
+    return;
+  }
+  // While the hero can still Retreat (start of combat, before any unit acts),
+  // Give up is suppressed — Retreat is the equivalent, no-casualties exit.
+  if (pvpEscapeWindowOpen(combat)) {
     return;
   }
   const isParticipant = combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId;
