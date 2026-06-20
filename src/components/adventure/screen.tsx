@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Check, ChevronsUp, Crown, Hammer, Image as ImageIcon, Lock, Minus, Plus, RotateCcw, RotateCw, Star, Unlock, X } from "lucide-react";
+import { Check, ChevronsUp, Crown, Hammer, Image as ImageIcon, Lock, Minus, Plus, RotateCcw, RotateCw, Star, Swords, Unlock, X } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
@@ -31,6 +31,7 @@ import {
   getTileBorderSegments,
   hexDistance,
   hexToPixel,
+  inCombatPrep,
   parseHexSpaceId,
   recruitDiscountAmount,
   scenarioDefinitions,
@@ -1585,8 +1586,13 @@ export function TownPanel({
   };
   const clearBuildingTip = (buildingId: string) =>
     setBuildingTip((current) => (current?.buildingId === buildingId ? null : current));
+  // Recruiting is blocked mid-combat — except in this player's own pre-battle
+  // preparation window, where spending town actions before the fight is the
+  // whole point (recruits join the army in time to deploy).
   const canPopulate =
-    player.townTokens.population && !state.combat && legalActions.some((legal) => legal.action.type === "POPULATION_ACTION");
+    player.townTokens.population &&
+    (!state.combat || inCombatPrep(state, viewerPlayerId)) &&
+    legalActions.some((legal) => legal.action.type === "POPULATION_ACTION");
 
   const unlockedTiers = new Set(
     town.buildings
@@ -1930,7 +1936,7 @@ export function TownPanel({
           })()
         : null}
 
-      {player.townTokens.population && !state.combat ? (
+      {player.townTokens.population && (!state.combat || inCombatPrep(state, viewerPlayerId)) ? (
         <div className="townRecruits" aria-label="Population token basket">
           <h4 title="Each unit card exists once: recruit the Few side, later reinforce it to the Pack side — then it is complete.">
             Population token — recruit &amp; reinforce
@@ -2796,6 +2802,121 @@ function PileModalCards({ cardIds, kind }: { cardIds: string[]; kind: "cards" | 
 }
 
 // ---------------------------------------------------------------------------
+// Pre-battle preparation panel (shown on the adventure MAP, not the battlefield)
+// ---------------------------------------------------------------------------
+
+/**
+ * The player-vs-player pre-battle preparation panel. When an enemy hero attacks,
+ * BOTH sides prepare here — on the map, with their town, resources and army in
+ * full view — spending any remaining town actions (build / recruit / buy spells
+ * at the town panel to the right) before pressing "Accept the battle". Deployment
+ * begins only once both the attacker and the defender have accepted; either side
+ * may instead Retreat / Surrender out of the fight. Renders nothing outside an
+ * open PvP prep window.
+ */
+export function PreBattlePanel({
+  state,
+  viewerPlayerId,
+  legalActions,
+  onAction
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  legalActions: LegalAction[];
+  onAction: (action: GameAction) => void;
+}) {
+  const combat = state.combat;
+  const prep = combat?.prep;
+  if (!combat || !prep || combat.context.kind !== "player") {
+    return null;
+  }
+
+  const attackerId = combat.attackerPlayerId;
+  const defenderId = combat.defenderPlayerId;
+  const attackerName = state.players[attackerId]?.name ?? "Attacker";
+  const defenderName = state.players[defenderId]?.name ?? "Defender";
+  const siege = combat.context.kind === "player" && combat.context.siege;
+  const hasAccepted = (id: PlayerId) => prep.accepted.includes(id);
+
+  const viewerIsParticipant = viewerPlayerId === attackerId || viewerPlayerId === defenderId;
+  // A participant who has not yet pressed Accept — still free to spend town actions.
+  const viewerPreparing = inCombatPrep(state, viewerPlayerId);
+  const opponentId = viewerPlayerId === attackerId ? defenderId : attackerId;
+
+  const accept = legalActions.find((legal) => legal.action.type === "ACCEPT_COMBAT");
+  const escapeActions = legalActions.filter(
+    (legal) => legal.action.type === "RETREAT_FROM_COMBAT" || legal.action.type === "SURRENDER_COMBAT"
+  );
+
+  const readyChip = (id: PlayerId, name: string, role: string) => (
+    <span className={`prepReadyChip ${hasAccepted(id) ? "ready" : "waiting"}`} key={id}>
+      {hasAccepted(id) ? <Check aria-hidden="true" size={12} /> : null}
+      {name} ({role}) — {hasAccepted(id) ? "ready" : "preparing…"}
+    </span>
+  );
+
+  return (
+    <div className="preBattlePanel" aria-label="Prepare for battle">
+      <div className="preBattleHeader">
+        <Swords aria-hidden="true" size={16} />
+        <strong>
+          Battle! {attackerName} attacks {defenderName}
+          {siege ? " (siege)" : ""}
+        </strong>
+      </div>
+      <div className="prepReadyRow">
+        {readyChip(attackerId, attackerName, "attacker")}
+        {readyChip(defenderId, defenderName, "defender")}
+      </div>
+      {viewerPreparing ? (
+        <>
+          <small className="prepNote">
+            Prepare on the map before the fight: spend any town actions you have left this round (build, recruit, buy
+            spells) at your town panel on the right. Units you recruit now join your army in time to be deployed. When you
+            are ready, accept the battle — deployment begins once both sides accept.
+          </small>
+          <div className="prepButtons">
+            {accept ? (
+              <button
+                className="commandButton primary combatReadyButton"
+                onClick={() => onAction(accept.action)}
+                type="button"
+              >
+                <img
+                  alt=""
+                  aria-hidden="true"
+                  className="combatButtonIcon"
+                  src={assetUrl("/assets/ui/combat-button.png")}
+                />
+                Accept the battle
+              </button>
+            ) : null}
+            {escapeActions.map((legal) => (
+              <button
+                className="commandButton"
+                key={actionKey(legal.action)}
+                onClick={() => onAction(legal.action)}
+                type="button"
+              >
+                {legal.label}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : viewerIsParticipant ? (
+        <small className="prepNote">
+          You are ready. Waiting for {state.players[opponentId]?.name ?? "your opponent"} to accept the battle…
+        </small>
+      ) : (
+        <small className="prepNote">
+          {attackerName} and {defenderName} are preparing for battle on the map…
+        </small>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Combat deployment panel: drag units onto the board (click still works)
 // ---------------------------------------------------------------------------
 
@@ -2821,70 +2942,15 @@ export function PlacementPanel({
     return null;
   }
 
-  // PvP pre-combat preparation: before deployment, a defender who still holds
-  // town actions this round may build / recruit / buy spells, then Accept (or
-  // Retreat / Surrender) — see maybeOpenDefenderPrep in adventure-reducer.
-  const prep = combat.defenderPrep;
-  if (prep) {
-    if (prep.playerId !== viewerPlayerId) {
-      const defenderName = state.players[prep.playerId]?.name ?? "the defender";
-      return (
-        <div className="placementPanel" aria-label="Combat setup">
-          <strong>Combat setup</strong>
-          <small>{defenderName} is preparing their defense before deployment…</small>
-        </div>
-      );
-    }
-
-    const prepTypes = new Set<GameAction["type"]>(["BUILD_STRUCTURE", "POPULATION_ACTION", "SPELL_BOOK_ACTION"]);
-    const prepActions = legalActions.filter((legal) => prepTypes.has(legal.action.type));
-    const accept = legalActions.find((legal) => legal.action.type === "ACCEPT_COMBAT");
-    const escapeActions = legalActions.filter(
-      (legal) => legal.action.type === "RETREAT_FROM_COMBAT" || legal.action.type === "SURRENDER_COMBAT"
-    );
+  // PvP pre-battle preparation happens on the adventure MAP (see PreBattlePanel),
+  // not here on the battlefield — so deployment never opens while `prep` is set.
+  // This guard only fires on the rare path where the deploy sidebar renders
+  // before the map forces itself in front; it keeps stale deploy controls hidden.
+  if (combat.prep) {
     return (
-      <div className="placementPanel" aria-label="Prepare your defense">
-        <strong>An enemy hero attacks — prepare your defense</strong>
-        <small>
-          Spend any town actions you have left this round (build, recruit, buy spells), then Accept to deploy. Units you
-          recruit now join your army in time to be placed.
-        </small>
-        {prepActions.length > 0 ? (
-          <div className="prepActions">
-            {prepActions.map((legal) => (
-              <button
-                className="commandButton"
-                key={actionKey(legal.action)}
-                onClick={() => onAction(legal.action)}
-                type="button"
-              >
-                {legal.label}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <small className="placementNote">No town actions remain this round — accept to deploy.</small>
-        )}
-        {accept ? (
-          <button
-            className="commandButton primary combatReadyButton"
-            onClick={() => onAction(accept.action)}
-            type="button"
-          >
-            <img alt="" aria-hidden="true" className="combatButtonIcon" src={assetUrl("/assets/ui/combat-button.png")} />
-            Accept the combat — deploy your army
-          </button>
-        ) : null}
-        {escapeActions.map((legal) => (
-          <button
-            className="commandButton"
-            key={actionKey(legal.action)}
-            onClick={() => onAction(legal.action)}
-            type="button"
-          >
-            {legal.label}
-          </button>
-        ))}
+      <div className="placementPanel" aria-label="Combat setup">
+        <strong>Preparing for battle</strong>
+        <small>Both sides are preparing on the map. Deployment opens once both accept the battle.</small>
       </div>
     );
   }

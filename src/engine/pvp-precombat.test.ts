@@ -93,18 +93,21 @@ describe("PvP Retreat / Surrender — only before any unit acts", () => {
 });
 
 // ===========================================================================
-// Part 2 — PvP pre-combat preparation window: a defender who still holds town
-// actions this round may build / recruit / buy spells before deploying, then
-// press Accept.
+// Part 2 — PvP pre-battle preparation window: when an enemy hero attacks, BOTH
+// the attacker and the defender may build / recruit / buy spells (on the map,
+// with towns and resources in full view), then each presses Accept. Deployment
+// begins only once both sides have accepted.
 // ===========================================================================
 
-describe("PvP pre-combat preparation window (defender)", () => {
+describe("PvP pre-battle preparation window (both sides)", () => {
   /** Triggers a hero-vs-hero PvP combat with p1 attacking p2. */
   function attack(seed: string, prep: (state: GameState) => void = () => {}): GameState {
     const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
-    // Give the defender fresh town actions and resources to spend.
-    state.players.p2.townTokens = { build: true, population: true, spellBook: true };
-    state.players.p2.resources = { gold: 50, buildingMaterials: 20, valuables: 20, magic: 20 } as never;
+    // Give both sides fresh town actions and resources to spend in prep.
+    for (const id of ["p1", "p2"] as const) {
+      state.players[id].townTokens = { build: true, population: true, spellBook: true };
+      state.players[id].resources = { gold: 50, buildingMaterials: 20, valuables: 20, magic: 20 } as never;
+    }
     prep(state);
     const attacker = getMainHero(state, "p1")!;
     const defender = getMainHero(state, "p2")!;
@@ -112,53 +115,93 @@ describe("PvP pre-combat preparation window (defender)", () => {
     return state;
   }
 
-  it("opens for the defender (priority + ACCEPT_COMBAT) when they still hold town actions", () => {
+  it("opens for BOTH participants — each offered Accept, Retreat and town actions", () => {
     const state = attack("prep-open");
-    expect(state.combat?.defenderPrep?.playerId).toBe("p2");
-    expect(state.priorityPlayerId).toBe("p2");
+    expect(state.combat?.prep?.accepted).toEqual([]);
     expect(state.phase).toBe("combat-setup");
+    // No single priority holder: both sides may prepare at the same time.
+    expect(state.priorityPlayerId).toBeNull();
 
-    // The defender is offered Accept, Retreat, and at least one town action.
-    expect(offersAccept(state, "p2")).toBe(true);
-    expect(offersRetreat(state, "p2")).toBe(true);
-    const p2 = getLegalActions(state, "p2");
-    expect(p2.some((l) => l.action.type === "BUILD_STRUCTURE")).toBe(true);
-
-    // The attacker just waits — no actions until the defender accepts.
-    expect(getLegalActions(state, "p1")).toEqual([]);
+    for (const id of ["p1", "p2"] as const) {
+      expect(offersAccept(state, id), `${id} is offered Accept`).toBe(true);
+      expect(offersRetreat(state, id), `${id} is offered Retreat`).toBe(true);
+      const legal = getLegalActions(state, id);
+      expect(legal.some((l) => l.action.type === "BUILD_STRUCTURE"), `${id} may build`).toBe(true);
+    }
   });
 
-  it("does NOT open when the defender has already spent every town action this round", () => {
-    const state = attack("prep-none", (s) => {
+  it("opens even when a side has no town action left — they simply accept", () => {
+    const state = attack("prep-none-tokens", (s) => {
       s.players.p2.townTokens = { build: false, population: false, spellBook: false };
     });
-    expect(state.combat?.defenderPrep ?? null).toBeNull();
-    // Straight to deployment, attacker places first.
-    expect(state.phase).toBe("combat-setup");
-    expect(state.priorityPlayerId).toBe("p1");
-    expect(offersAccept(state, "p2")).toBe(false);
+    // The window still opens for both; the defender just has nothing to spend.
+    expect(state.combat?.prep?.accepted).toEqual([]);
+    expect(offersAccept(state, "p2")).toBe(true);
+    expect(getLegalActions(state, "p2").some((l) => l.action.type === "BUILD_STRUCTURE")).toBe(false);
+    // The attacker, with fresh tokens, may still build.
+    expect(getLegalActions(state, "p1").some((l) => l.action.type === "BUILD_STRUCTURE")).toBe(true);
   });
 
-  it("lets the defender build during prep, then ACCEPT to begin deployment (attacker first)", () => {
-    let state = attack("prep-build");
-    const goldBefore = state.players.p2.resources.gold;
-
+  it("lets the ATTACKER prepare too (build during the window)", () => {
+    let state = attack("prep-attacker-build");
+    const goldBefore = state.players.p1.resources.gold;
     state = applyOk(state, {
+      type: "BUILD_STRUCTURE",
+      playerId: "p1",
+      townId: "town_p1",
+      buildingId: "castle.dwelling_bronze"
+    });
+    expect(state.towns.town_p1.buildings).toContain("castle.dwelling_bronze");
+    expect(state.players.p1.resources.gold).toBeLessThan(goldBefore);
+    // The window stays open — nobody has accepted yet.
+    expect(state.combat?.prep?.accepted).toEqual([]);
+  });
+
+  it("requires BOTH accepts before deployment begins (attacker first)", () => {
+    let state = attack("prep-both-accept");
+
+    // The defender accepts first: still in prep, waiting on the attacker.
+    state = applyOk(state, { type: "ACCEPT_COMBAT", playerId: "p2" });
+    expect(state.combat?.prep?.accepted).toEqual(["p2"]);
+    expect(state.combat?.setup).not.toBeNull();
+    // Deployment is still locked: the attacker cannot place a unit yet.
+    const tooEarly = applyAction(state, {
+      type: "PLACE_COMBAT_UNIT",
+      playerId: "p1",
+      armyUnitId: state.players.p1.army[0].id,
+      position: 13
+    });
+    expect(tooEarly.errors.length).toBeGreaterThan(0);
+
+    // The attacker accepts: prep clears and deployment opens, attacker first.
+    state = applyOk(state, { type: "ACCEPT_COMBAT", playerId: "p1" });
+    expect(state.combat?.prep ?? null).toBeNull();
+    expect(state.priorityPlayerId).toBe("p1");
+    expect(state.phase).toBe("combat-setup");
+    expect(state.combat?.setup).not.toBeNull();
+  });
+
+  it("locks a side in once they accept — no more town actions, no double accept", () => {
+    let state = attack("prep-lock", (s) => {
+      // Free a bronze unit so the bronze dwelling actually unlocks a recruit.
+      s.players.p2.army = s.players.p2.army.filter((u) => u.unitDefId !== "necropolis.skeletons");
+    });
+    state = applyOk(state, { type: "ACCEPT_COMBAT", playerId: "p2" });
+
+    // The accepted defender gets no further actions and is rejected if they try.
+    expect(getLegalActions(state, "p2")).toEqual([]);
+    const buildAfter = applyAction(state, {
       type: "BUILD_STRUCTURE",
       playerId: "p2",
       townId: "town_p2",
       buildingId: "necropolis.dwelling_bronze"
     });
-    expect(state.towns.town_p2.buildings).toContain("necropolis.dwelling_bronze");
-    expect(state.players.p2.resources.gold).toBeLessThan(goldBefore);
-    // Still in the prep window after building.
-    expect(state.combat?.defenderPrep?.playerId).toBe("p2");
+    expect(buildAfter.errors.length).toBeGreaterThan(0);
+    const acceptTwice = applyAction(state, { type: "ACCEPT_COMBAT", playerId: "p2" });
+    expect(acceptTwice.errors.length).toBeGreaterThan(0);
 
-    state = applyOk(state, { type: "ACCEPT_COMBAT", playerId: "p2" });
-    expect(state.combat?.defenderPrep ?? null).toBeNull();
-    expect(state.combat?.setup).not.toBeNull();
-    expect(state.priorityPlayerId).toBe("p1");
-    expect(state.phase).toBe("combat-setup");
+    // The attacker is still free to prepare.
+    expect(getLegalActions(state, "p1").some((l) => l.action.type === "BUILD_STRUCTURE")).toBe(true);
   });
 
   it("recruits a fresh unit during prep that then joins the army for deployment", () => {
@@ -179,31 +222,36 @@ describe("PvP pre-combat preparation window (defender)", () => {
     });
 
     const armyBefore = state.players.p2.army.length;
-    const recruit = getLegalActions(state, "p2").find(
-      (l) => l.action.type === "POPULATION_ACTION"
-    );
+    const recruit = getLegalActions(state, "p2").find((l) => l.action.type === "POPULATION_ACTION");
     expect(recruit, "a recruit/reinforce should be available in prep").toBeTruthy();
     state = applyOk(state, recruit!.action);
 
     expect(state.players.p2.army.length).toBeGreaterThan(armyBefore);
-    // The window is still the defender's until they accept.
-    expect(state.combat?.defenderPrep?.playerId).toBe("p2");
+    // The window is still open until both sides accept.
+    expect(state.combat?.prep?.accepted).toEqual([]);
   });
 
-  it("lets the defender Retreat straight out of the prep window", () => {
-    const state = attack("prep-retreat");
-    const out = applyAction(state, { type: "RETREAT_FROM_COMBAT", playerId: "p2" });
-    expect(out.errors).toEqual([]);
-    expect(out.state.combat?.outcome).toMatchObject({ defeatedPlayerId: "p2", reason: "retreat" });
+  it("lets either side Retreat straight out of the prep window (and closes prep)", () => {
+    const fromDefender = applyAction(attack("prep-retreat-d"), { type: "RETREAT_FROM_COMBAT", playerId: "p2" });
+    expect(fromDefender.errors).toEqual([]);
+    expect(fromDefender.state.combat?.outcome).toMatchObject({ defeatedPlayerId: "p2", reason: "retreat" });
+    // The prep window closes so the result (not the map) takes over.
+    expect(fromDefender.state.combat?.prep ?? null).toBeNull();
+
+    const fromAttacker = applyAction(attack("prep-retreat-a"), { type: "RETREAT_FROM_COMBAT", playerId: "p1" });
+    expect(fromAttacker.errors).toEqual([]);
+    expect(fromAttacker.state.combat?.outcome).toMatchObject({ defeatedPlayerId: "p1", reason: "retreat" });
+    expect(fromAttacker.state.combat?.prep ?? null).toBeNull();
   });
 
-  it("blocks town actions for the attacker (only the defender may prep)", () => {
-    const state = attack("prep-attacker");
+  it("rejects a town action from a non-participant during prep", () => {
+    // p3 (if seated) is not part of this fight; even with a town it cannot prep.
+    const state = attack("prep-nonparticipant");
     const rejected = applyAction(state, {
       type: "BUILD_STRUCTURE",
       playerId: "p1",
-      townId: "town_p1",
-      buildingId: "castle.dwelling_bronze"
+      townId: "town_p2", // p1 may not build in p2's town
+      buildingId: "necropolis.dwelling_bronze"
     });
     expect(rejected.errors.length).toBeGreaterThan(0);
   });

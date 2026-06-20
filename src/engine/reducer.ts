@@ -12441,10 +12441,10 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       continue;
     }
 
-    // During a PvP defender-preparation window the only queued rewards are the
+    // During a PvP pre-battle preparation window the only queued rewards are the
     // Spell-deck searches from buying spells / building a Mage Guild, so pump the
     // queue then too (pumpAdventureQueues itself permits the prep exception).
-    const pumpDuringPrep = Boolean(state.combat?.defenderPrep);
+    const pumpDuringPrep = Boolean(state.combat?.prep);
     if ((!state.combat || pumpDuringPrep) && !state.pendingChoice && !state.reactionWindow) {
       const queueLength = state.adventure.rewardQueue.length;
       const hadVisit = Boolean(state.adventure.pendingVisit);

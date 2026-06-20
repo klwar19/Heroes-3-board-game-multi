@@ -34,6 +34,7 @@ import {
   DEFENDER_FRONTLINE,
   getHeroMoveDestinations,
   hillFortCost,
+  inCombatPrep,
   isTileAdjacentToSpace,
   isTileRotationConnected,
   observatoryPlacementCenters,
@@ -5048,9 +5049,9 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
   const player = state.players[playerId];
   const town = getTownOfPlayer(state, playerId);
   // Town actions are normally blocked during a combat, with one exception: a
-  // defender in their PvP pre-combat preparation window may still spend the
+  // participant in their PvP pre-battle preparation window may still spend the
   // round's town actions before the fight (build / recruit / buy spells).
-  const inPrep = Boolean(state.combat?.defenderPrep && state.combat.defenderPrep.playerId === playerId);
+  const inPrep = inCombatPrep(state, playerId);
   if (!player || !town || (state.combat && !inPrep)) {
     return;
   }
@@ -5276,11 +5277,11 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
   if (!combat || combat.context.kind !== "player") {
     return;
   }
-  // Retreat / Surrender is a start-of-combat decision, offered in two spots: the
-  // defender's pre-combat preparation window, and after deployment but before
+  // Retreat / Surrender is a start-of-combat decision, offered in two spots: a
+  // participant's pre-battle preparation window, and after deployment but before
   // any unit has begun fighting (pvpEscapeWindowOpen) while the combat card
   // window is open. Once a unit acts the escape closes for the rest of the fight.
-  const inPrep = Boolean(combat.defenderPrep && combat.defenderPrep.playerId === playerId);
+  const inPrep = inCombatPrep(state, playerId);
   if (!inPrep && (!pvpEscapeWindowOpen(combat) || !isCombatCardWindowOpen(state))) {
     return;
   }
@@ -5413,16 +5414,18 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
-  // PvP pre-combat preparation: before deployment, the defender may spend any
-  // town action they still hold this round (build / recruit / buy spells), then
-  // Accept to begin deployment — or Retreat / Surrender out of the fight. The
-  // town actions surface through addTownActions (allowed during this window).
-  if (state.combat?.defenderPrep) {
-    if (state.combat.defenderPrep.playerId === playerId) {
+  // PvP pre-battle preparation: before deployment, BOTH the attacker and the
+  // defender may spend any town action they still hold this round (build /
+  // recruit / buy spells), then Accept to ready up — or Retreat / Surrender out
+  // of the fight. Deployment begins only once both have accepted. The town
+  // actions surface through addTownActions (allowed during this window). A
+  // participant who has already accepted gets nothing here but waits.
+  if (state.combat?.prep) {
+    if (inCombatPrep(state, playerId)) {
       addTownActions(actions, state, playerId);
       addPvpEscapeActions(actions, state, playerId);
       actions.push({
-        label: "Accept the combat (begin deployment)",
+        label: "Accept the battle (ready up — deployment begins when both sides accept)",
         action: { type: "ACCEPT_COMBAT", playerId }
       });
     }
