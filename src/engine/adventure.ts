@@ -2908,12 +2908,13 @@ export function processPendingVisit(state: GameState): void {
       case "FACTION_RECRUIT_OFFER": {
         // Unexpected Reinforcements: search the Neutral Units deck and recruit,
         // for free, one neutral unit ASSOCIATED with the player's faction — the
-        // neutral-deck counterpart of a unit on their roster — whose Dwelling
-        // tier they have built. Recruited onto the single-sided Neutral side, so
-        // (like any neutral unit) it can never be reinforced to a Pack. Only
-        // copies still in the deck are offered, and a faction's top-tier
-        // signature creature (Gold Dragons, Titans, Hydras) has no neutral card,
-        // so it never appears. Azure never qualifies — no Dwelling unlocks it.
+        // same-tier neutral-deck counterpart of a unit on their roster — whose
+        // Dwelling tier they have built. Recruited onto the single-sided Neutral
+        // side, so (like any neutral unit) it can never be reinforced to a Pack.
+        // Only copies still in the deck are offered. A faction's top-tier
+        // signature creature (Gold Dragons, Titans, Hydras) only has an azure
+        // neutral card, never a gold-tier one, so it never appears here. Azure
+        // never qualifies anyway — no Dwelling unlocks it.
         const player = state.players[visit.playerId];
         if (!player?.factionId) {
           break;
