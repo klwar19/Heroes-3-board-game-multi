@@ -1430,6 +1430,11 @@ const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "COMPLETE_SIMULTANEOUS_TURN",
   "CONTINUE_NEUTRAL_COMBAT",
   "RETREAT_FROM_COMBAT",
+  // Surrender is the paid start-of-combat escape (keep your army, pay the toll).
+  // It is offered in the post-deployment escape window too, not just the
+  // defender's prep panel, so the attacker — who has no prep panel — needs this
+  // button to surrender at all.
+  "SURRENDER_COMBAT",
   "GIVE_UP_COMBAT",
   "ACKNOWLEDGE_COMBAT_END",
   // After-combat Necromancy is a now-or-never window: the player either plays the
