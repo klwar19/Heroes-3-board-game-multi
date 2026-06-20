@@ -1242,11 +1242,11 @@ export function BattlefieldBoard({
 /**
  * The activation order as a row of the actual unit cards, in the exact sequence
  * the round will play out. This uses getActivationOrder, which steps the engine's
- * own selection logic — so it honours the attacker-first tie rule (every attacker
- * unit at a given initiative activates before any defender unit at the same
- * initiative) and the Haste/Slow shifts that move units between tiers. Visible
- * already during deployment, so both sides see how the placed armies will
- * activate before the combat starts.
+ * own selection logic — so it reflects the cross-side ALTERNATION on initiative
+ * ties (attacker, defender, attacker, …), not a flat "all attackers, then all
+ * defenders" sort that would mis-order a tied defender unit. Visible already
+ * during deployment, so both sides see how the placed armies will activate
+ * before the combat starts.
  */
 export function InitiativeRail({ state }: { state: GameState }) {
   const { zoomUnit } = useCardZoom();
