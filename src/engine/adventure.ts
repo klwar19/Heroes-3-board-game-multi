@@ -56,6 +56,7 @@ import type {
   RecruitDiscountVoucher,
   ResourceCost,
   ResourceKind,
+  SpellSchool,
   TownState,
   UnitId,
   UnitTransformState,
@@ -2363,6 +2364,9 @@ export function processPendingVisit(state: GameState): void {
         }
         break;
       }
+      case "MAGIC_UNIVERSITY_DIG":
+        resolveMagicUniversityDig(state, visit.playerId, step.school);
+        break;
       case "BANK_RECRUIT_DISCOUNT":
         bankRecruitDiscountVoucher(state, visit.playerId, {
           cardId: step.cardId,
@@ -4860,6 +4864,22 @@ function queueTurnStartBuildingChoices(state: GameState, playerId: PlayerId): vo
         });
         break;
       }
+      case "MAGIC_UNIVERSITY": {
+        // Once per round (at the start of your turn): choose a School of Magic
+        // and dig your deck for a Spell of that school. Offered with a Skip.
+        const schools: SpellSchool[] = ["air", "earth", "fire", "water"];
+        const options: { label: string; steps: VisitStep[] }[] = schools.map((school) => ({
+          label: `Dig your deck for a ${school[0].toUpperCase()}${school.slice(1)} Magic spell`,
+          steps: [{ type: "MAGIC_UNIVERSITY_DIG", school }]
+        }));
+        options.push({ label: "Skip", steps: [] });
+        adventure.rewardQueue.push({
+          playerId,
+          kind: "visit-steps",
+          steps: [{ type: "CHOOSE_ONE", prompt: `${building.name}: choose a School of Magic to search for`, options }]
+        });
+        break;
+      }
       case "TURN_START_MANA_VORTEX": {
         if (player.hand.length === 0 || player.discard.length === 0) {
           break;
@@ -5966,6 +5986,63 @@ function resolveNecromancyFetch(state: GameState, playerId: PlayerId): void {
  * Mana Vortex: discard the chosen card, shuffle the discard pile back into
  * the deck, then Search (3) from the own deck (pick 1, discard the rest).
  */
+/**
+ * Magic University (Conflux): discard cards from the top of the player's deck
+ * one at a time until a Spell of the chosen school is revealed; that Spell goes
+ * to hand and the rejects stay in the discard pile. Magic Arrow (school "any")
+ * counts as every school, matching the School-of-Magic convention. If the deck
+ * is empty to start, the discard pile is shuffled back in first so the search
+ * is not a dead no-op (mirrors how drawing reshuffles an empty deck).
+ */
+function resolveMagicUniversityDig(state: GameState, playerId: PlayerId, school: SpellSchool): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+
+  if (player.deck.length === 0 && player.discard.length > 0) {
+    player.deck = shuffleCards(player.discard, `${state.seed}#magic-university#${playerId}#${eventSeedNumber(state)}`);
+    player.discard = [];
+  }
+
+  const matches = (cardId: string): boolean => {
+    const card = cardLibrary[cardId];
+    if (!card || card.kind !== "spell") {
+      return false;
+    }
+    const schools = card.spellSchools ?? [];
+    return schools.includes(school) || schools.includes("any");
+  };
+
+  let found: string | null = null;
+  const discarded: string[] = [];
+  while (player.deck.length > 0) {
+    const cardId = player.deck.pop();
+    if (cardId === undefined) {
+      break;
+    }
+    if (matches(cardId)) {
+      found = cardId;
+      break;
+    }
+    discarded.push(cardId);
+    player.discard.push(cardId);
+  }
+
+  appendEvent(state, {
+    type: "TOWN_BUILDING_USED",
+    playerId,
+    buildingId: "conflux.magic_university",
+    message: found
+      ? `Magic University discards ${discarded.length} card(s) and finds ${cardLibrary[found]?.name ?? found}.`
+      : `Magic University finds no ${school} spell (discarded ${discarded.length} card(s)).`
+  });
+
+  if (found) {
+    player.hand.push(found);
+  }
+}
+
 function resolveManaVortex(state: GameState, playerId: PlayerId, discardCardId: string): void {
   const player = state.players[playerId];
   if (!player) {

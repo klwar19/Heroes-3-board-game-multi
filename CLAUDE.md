@@ -79,8 +79,6 @@ Tracked honestly so they are not mistaken for working features:
   Pack's "Ignore any ongoing spell effects and Specialty damage" line is also
   display-only. What IS wired: `ignores-retaliation` (both sides) and, on the
   Pack, Magic-Arrow immunity + elemental damage.
-- `conflux.magic_university` building — the "choose a school, discard your deck
-  until you find that school's Spell" dig is `not-implemented` (no-op effect).
 - Conflux heroes Ciele, Luna and Tarnum (Conflux) are NOT on the roster yet —
   their spell/obstacle/search specialties are not implemented. Only the three
   unit-specialist Planeswalkers (Erdamon, Monere, Pasis) ship, with all of

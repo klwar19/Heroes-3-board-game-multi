@@ -12,7 +12,7 @@ import {
   getLegalActions,
   makeCombatUnitFromArmy
 } from "./index";
-import { startAdventureRound } from "./adventure";
+import { startAdventureRound, startPlayerTurn } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
 import type { CombatUnitState, GameAction, GameState } from "./state";
 
@@ -95,14 +95,14 @@ describe("Conflux content", () => {
     expect(coreBuildingDefinitions["conflux.city_hall"].cost).toEqual({ gold: 10, buildingMaterials: 3 });
   });
 
-  it("Garden of Life is implemented; Magic University is honestly not-implemented", () => {
+  it("Garden of Life and Magic University are both implemented", () => {
     const garden = coreBuildingDefinitions["conflux.garden_of_life"];
     expect(garden.implementationStatus).toBe("implemented");
     expect(garden.effect).toMatchObject({ type: "ROUND_START_FREE_SPRITE", unitDefId: "conflux.sprites" });
 
     const university = coreBuildingDefinitions["conflux.magic_university"];
-    expect(university.implementationStatus).toBe("not-implemented");
-    expect(university.effect?.type).toBe("NOT_IMPLEMENTED");
+    expect(university.implementationStatus).toBe("implemented");
+    expect(university.effect?.type).toBe("MAGIC_UNIVERSITY");
   });
 
   it("carries the implemented elemental / phoenix / sprite ability tags on the right sides", () => {
@@ -281,5 +281,88 @@ describe("Conflux elemental school spell-power boost", () => {
       state.combat!.units.unit_p1_griffins.abilities = ["magma-elemental-earth-power"];
     });
     expect(next.combat!.units.unit_p2_vampires.damage).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Magic University (Conflux): once per round, choose a School of Magic and
+// discard from the top of your deck until a Spell of that school is revealed,
+// then take it to hand.
+// ---------------------------------------------------------------------------
+
+describe("Conflux Magic University deck dig", () => {
+  function confluxGame(seed: string): GameState {
+    const state = createAdventureGameState({
+      seed,
+      rollFirstPlayer: false,
+      players: [
+        { id: "p1", name: "Monere", factionId: "conflux", heroDefId: "monere" },
+        { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
+      ]
+    });
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1");
+    if (!town) {
+      throw new Error("no Conflux town");
+    }
+    if (!town.buildings.includes("conflux.magic_university")) {
+      town.buildings.push("conflux.magic_university");
+    }
+    state.pendingChoice = null;
+    state.reactionWindow = null;
+    if (state.adventure) {
+      state.adventure.rewardQueue = [];
+      state.adventure.pendingVisit = null;
+    }
+    state.activePlayerId = "p1";
+    return state;
+  }
+
+  /** Push the school dig directly (the choice's chosen option) and resolve it. */
+  function digFor(state: GameState, school: "air" | "earth" | "fire" | "water"): GameState {
+    state.adventure!.rewardQueue.push({
+      playerId: "p1",
+      kind: "visit-steps",
+      steps: [{ type: "MAGIC_UNIVERSITY_DIG", school }]
+    });
+    pumpAdventureQueues(state);
+    return state;
+  }
+
+  it("offers the school choice at the start of the Conflux player's turn", () => {
+    const state = confluxGame("conflux-university-offer");
+    startPlayerTurn(state, "p1");
+    pumpAdventureQueues(state);
+    const labels = getLegalActions(state, "p1").map((legal) => legal.label);
+    expect(labels.some((label) => label.includes("Air Magic spell"))).toBe(true);
+    expect(labels.some((label) => label.includes("Fire Magic spell"))).toBe(true);
+  });
+
+  it("discards down to — and takes — the first Spell of the chosen school, skipping a wrong-school spell", () => {
+    const state = confluxGame("conflux-university-hit");
+    state.players.p1.hand = [];
+    state.players.p1.discard = [];
+    // Top of deck (popped first) → bottom: a Statistic, then a Fire spell
+    // (wrong school, must be skipped), then the Air spell we want.
+    state.players.p1.deck = ["spell.lightning_bolt", "spell.curse", "stat.attack"];
+    digFor(state, "air");
+
+    expect(state.players.p1.hand).toContain("spell.lightning_bolt");
+    // The skipped Fire spell and the Statistic were discarded, not taken.
+    expect(state.players.p1.discard).toContain("spell.curse");
+    expect(state.players.p1.discard).toContain("stat.attack");
+    expect(state.players.p1.deck).not.toContain("spell.lightning_bolt");
+  });
+
+  it("takes nothing (but still discards) when the deck holds no Spell of that school", () => {
+    const state = confluxGame("conflux-university-miss");
+    state.players.p1.hand = [];
+    state.players.p1.discard = [];
+    // Only a Fire spell + a Statistic; searching for Air finds nothing.
+    state.players.p1.deck = ["spell.curse", "stat.defense"];
+    digFor(state, "air");
+
+    expect(state.players.p1.hand).toEqual([]);
+    expect(state.players.p1.discard).toContain("spell.curse");
+    expect(state.players.p1.discard).toContain("stat.defense");
   });
 });

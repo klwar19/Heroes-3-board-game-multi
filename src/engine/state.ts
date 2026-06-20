@@ -4676,6 +4676,15 @@ export type VisitStep =
     }
   | {
       /**
+       * Magic University (Conflux): discard from the top of your deck until you
+       * reveal a Spell of `school`, then take it to hand (Magic Arrow, school
+       * "any", counts as every school).
+       */
+      type: "MAGIC_UNIVERSITY_DIG";
+      school: SpellSchool;
+    }
+  | {
+      /**
        * Legion artifact: the player picked which unit the just-played discount
        * side applies to. Banks one `RecruitDiscountVoucher` for that exact target
        * (no-op input; resolves automatically once the unit is chosen).
