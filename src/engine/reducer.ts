@@ -1,4 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
+import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
 import { sampleBuildings } from "@/data/towns/buildings";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import {
@@ -2324,6 +2325,20 @@ function buildRerollSources(
       ? [{ name: "Positive morale token", morale: true, remaining: 1, used: 0 }]
       : [];
 
+  // Diplomat's Ring / Ambassador's Sash: their "Reroll a die" half is an instant
+  // played from hand in reaction to the Attack die — one offer per distinct held
+  // copy, blocked when the attacker cannot use their Deck this Combat. Taking the
+  // reroll discards the artifact (handled in rerollPendingChoice).
+  const artifactSources: AttackRerollSource[] =
+    player && !isHandLockedInCombat(state, attacker.controllerId)
+      ? REROLL_REACTION_ARTIFACT_IDS.filter((cardId) => player.hand.includes(cardId)).map((cardId) => ({
+          name: cardLibrary[cardId]?.name ?? cardId,
+          cardId,
+          remaining: 1,
+          used: 0
+        }))
+      : [];
+
   return [
     ...abilitySources,
     ...ammoCartSources,
@@ -2333,6 +2348,7 @@ function buildRerollSources(
       remaining: getRerollUsesForEffect(effect),
       used: 0
     })),
+    ...artifactSources,
     ...moraleSources
   ].filter((source) => source.remaining > 0);
 }
@@ -10824,6 +10840,24 @@ function rerollPendingChoice(
         playerId: action.playerId,
         amount: -1,
         total: player.morale
+      });
+    }
+  }
+
+  // Diplomat's Ring / Ambassador's Sash: playing the reroll discards the artifact.
+  if (source.cardId && source.used === 1) {
+    const player = state.players[action.playerId];
+    const handIndex = player?.hand.indexOf(source.cardId) ?? -1;
+    if (player && handIndex !== -1) {
+      player.hand.splice(handIndex, 1);
+      player.discard.push(source.cardId);
+      appendEvent(state, {
+        type: "CARD_PLAYED",
+        playerId: action.playerId,
+        cardId: source.cardId,
+        timing: cardLibrary[source.cardId]?.timing ?? "instant",
+        mode: "basic",
+        optionLabel: "Reroll a die"
       });
     }
   }
