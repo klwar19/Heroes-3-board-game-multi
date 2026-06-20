@@ -1800,6 +1800,9 @@ function isOptionEffectPlayable(
     // Septienna's Death Ripple: a targetless combat activation that sweeps every
     // enemy unit of a grade.
     case "DAMAGE_ENEMY_UNITS_BY_GRADE":
+    // Tarnum (Castle)'s Ballista VI / Gerwulf's Ballista IV: pick N enemy units
+    // to damage (a targetless combat activation; the pick choice handles the rest).
+    case "DAMAGE_CHOSEN_ENEMIES":
       return context === "combat" && Boolean(state.combat);
     case "RESHUFFLE_DISCARD_THEN_DRAW": {
       // Deemer's Meteor Shower IV deck-cycle: useful whenever there is a card to
@@ -1905,6 +1908,14 @@ function isOptionEffectPlayable(
         return countBallistas(state, playerId) >= 1;
       }
       return true;
+    case "DISCARD_WAR_MACHINE_DAMAGE":
+      // Gerwulf's Ballista IV/VI discard: needs an in-play war-machine card to
+      // discard (a temporary Torosar grant is not a card and cannot be spent).
+      return (
+        context === "combat" &&
+        Boolean(state.combat) &&
+        getPermanentCardIds(state, playerId).includes(effect.warMachineCardId)
+      );
     case "REMOVE_ACTIVE_EFFECT":
       // Boots of Polarity (option B): only worth playing while at least one
       // removable, unit-scoped ongoing effect is on the table to strip.
@@ -1942,6 +1953,8 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
     effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
     effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" ||
+    // Gerwulf's Ballista discard: the player picks which enemy unit it hits.
+    effect.type === "DISCARD_WAR_MACHINE_DAMAGE" ||
     effect.type === "PLACE_PARALYSIS" ||
     // Boots of Polarity (option B): the ongoing effect it strips lives on a
     // chosen unit (yours or the enemy's).

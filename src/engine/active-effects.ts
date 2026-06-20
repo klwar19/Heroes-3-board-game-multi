@@ -533,6 +533,19 @@ export function countExtraBallistas(state: GameState, playerId: PlayerId): numbe
   }, 0);
 }
 
+/**
+ * Gerwulf's Ballista VI (ongoing): whether `playerId` currently holds a
+ * BALLISTA_CHOOSE_TARGET effect, letting their Ballista's round-start shot pick
+ * any enemy unit instead of being forced onto the lowest-initiative enemy.
+ */
+export function hasBallistaChooseTarget(state: GameState, playerId: PlayerId): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effect.controllerId === playerId &&
+      effect.modifiers.some((modifier) => modifier.type === "BALLISTA_CHOOSE_TARGET")
+  );
+}
+
 export function getAttackRerollEffects(state: GameState, context: AttackContext): ActiveEffectState[] {
   return state.activeEffects.filter((effect) => {
     if (!effectAppliesToUnit(effect, context.attacker)) {
