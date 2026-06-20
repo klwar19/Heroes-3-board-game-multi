@@ -4146,21 +4146,105 @@ export function playerDwellingTiers(
   return tiers;
 }
 
-let armyCounter = 0;
+/**
+ * Mints an army-unit id that is unique within this player's army.
+ *
+ * Army ids must be unique for the life of the game: the engine matches army
+ * units by id all over the place — `army.find(u => u.id === armyUnitId)` when
+ * reinforcing (Few→Pack) and when deploying a unit into combat — so two units
+ * sharing an id makes those lookups silently resolve to the *wrong* unit (the
+ * reported Stronghold bug where reinforcing/deploying the Orcs hit the Cyclopes
+ * instead, because the two share a stale id).
+ *
+ * The previous scheme mixed in a module-global counter. That counter is **not**
+ * part of the serialized game state, so it resets to 0 every time the host
+ * process recycles (serverless cold start / idle reclaim of a multiplayer
+ * room). After a recycle a freshly recruited unit could be minted with an id a
+ * surviving unit already held. We derive the id purely from the current army
+ * instead, scanning for a free ordinal, so it is collision-free regardless of
+ * the process's lifetime.
+ */
+function nextArmyUnitId(player: PlayerState): string {
+  const used = new Set(player.army.map((unit) => unit.id));
+  let ordinal = player.army.length + 1;
+  let id = `army_${player.id}_${ordinal}`;
+  while (used.has(id)) {
+    ordinal += 1;
+    id = `army_${player.id}_${ordinal}`;
+  }
+  return id;
+}
 
 export function addArmyUnit(
   player: PlayerState,
   unitDefId: string,
   side: "few" | "pack" | "neutral"
 ): PlayerState["army"][number] {
-  armyCounter += 1;
   const armyUnit = {
-    id: `army_${player.id}_${armyCounter}_${player.army.length + 1}`,
+    id: nextArmyUnitId(player),
     unitDefId,
     side
   };
   player.army.push(armyUnit);
   return armyUnit;
+}
+
+/** Cheap check for whether any player's army holds a repeated unit id. */
+export function hasDuplicateArmyUnitIds(state: GameState): boolean {
+  for (const player of Object.values(state.players)) {
+    const army = player?.army;
+    if (!army || army.length < 2) {
+      continue;
+    }
+    const seen = new Set<string>();
+    for (const unit of army) {
+      if (seen.has(unit.id)) {
+        return true;
+      }
+      seen.add(unit.id);
+    }
+  }
+  return false;
+}
+
+/**
+ * Self-heals any pre-existing duplicate army-unit ids (left behind by the old
+ * counter-based id scheme across a host recycle). For each player the first
+ * holder of an id keeps it and every later collision is re-minted to a fresh
+ * unique id, so combat units / placement entries that already reference the
+ * surviving id stay valid. Returns true when it changed anything, so callers
+ * can bump the room version / persist only when a repair actually happened.
+ *
+ * `unitDefId` is never touched — an Orc stays an Orc — only the bookkeeping id
+ * that the engine matches on is made unique again.
+ */
+export function ensureUniqueArmyUnitIds(state: GameState): boolean {
+  let changed = false;
+  for (const player of Object.values(state.players)) {
+    const army = player?.army;
+    if (!army || army.length < 2) {
+      continue;
+    }
+    const used = new Set<string>();
+    for (const unit of army) {
+      if (!used.has(unit.id)) {
+        used.add(unit.id);
+        continue;
+      }
+      // Duplicate id: mint a fresh one that collides with neither an id we have
+      // already kept nor one still waiting later in the army.
+      let ordinal = army.length + 1;
+      let candidate = `army_${player.id}_${ordinal}`;
+      while (used.has(candidate) || army.some((other) => other !== unit && other.id === candidate)) {
+        ordinal += 1;
+        candidate = `army_${player.id}_${ordinal}`;
+      }
+      unit.id = candidate;
+      used.add(candidate);
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 /** Replaces an empty unit deck with the scenario starting units. */

@@ -5,10 +5,12 @@ import {
   addArmyUnit,
   changeMorale,
   commitPopulationOnMove,
+  ensureUniqueArmyUnitIds,
   gainResources,
   getActiveAstrologersCard,
   getMainHero,
   getUnitSide,
+  hasDuplicateArmyUnitIds,
   isSeaField,
   makeCombatUnitFromArmy,
   NEUTRAL_DECK_IDS,
@@ -12482,12 +12484,28 @@ function isHandlerValidated(state: GameState, action: GameAction): boolean {
 export function applyAction(state: GameState, action: GameAction, options: ReducerOptions = {}): EngineResult {
   const cards = options.cards ?? cardLibrary;
   const buildings = options.buildings ?? sampleBuildings;
-  const legalError = isHandlerValidated(state, action) ? null : assertLegal(state, action, cards, buildings);
-  if (legalError) {
-    return fail(state, legalError);
+
+  // Self-heal any duplicate army-unit ids before validating or running the
+  // action (see ensureUniqueArmyUnitIds). A legacy id collision — minted by the
+  // old counter scheme across a host recycle — would otherwise let both the
+  // legality check and the handlers match the *wrong* army unit (the reported
+  // "reinforcing/deploying the Orcs upgrades/places the Cyclopes" bug). Only the
+  // rare corrupted save needs a clone-and-repair; the common case validates and
+  // runs against the original state untouched (a rejected action still returns
+  // it unchanged). When we do repair, that copy is returned even on failure so
+  // the stored room heals on the next action regardless of the outcome.
+  let base = state;
+  if (hasDuplicateArmyUnitIds(state)) {
+    base = cloneState(state);
+    ensureUniqueArmyUnitIds(base);
   }
 
-  const nextState = cloneState(state);
+  const legalError = isHandlerValidated(base, action) ? null : assertLegal(base, action, cards, buildings);
+  if (legalError) {
+    return fail(base, legalError);
+  }
+
+  const nextState = cloneState(base);
   const startEventNumber = eventSeedNumber(nextState);
 
   try {
@@ -12754,7 +12772,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
     }
   } catch (error) {
-    return fail(state, {
+    return fail(base, {
       code: "ACTION_NOT_LEGAL",
       message: error instanceof Error ? error.message : "The action could not be applied."
     });
@@ -12770,7 +12788,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   try {
     runAdventureAutomations(nextState, cards);
   } catch (error) {
-    return fail(state, {
+    return fail(base, {
       code: "ACTION_NOT_LEGAL",
       message:
         error instanceof Error
