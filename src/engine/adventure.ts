@@ -3266,31 +3266,16 @@ function resolveSubterraneanGate(state: GameState, visit: PendingVisit): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Locations a Subterranean Gate Token may never be placed on. The rulebook
- * forbids covering Blocked Fields, other Location Tokens, and "Fields
- * containing Locations required to meet any of the Scenario's victory
- * conditions". We treat Towns, Settlements, Mines and the special objective
- * fields as off-limits so a gate never sacrifices something game-critical.
+ * Whether a materialized field may be sacrificed to a Subterranean Gate.
+ *
+ * The token covers whatever Field is closest to the far tile — a Blocked Field,
+ * a Mine, even a Town all give way to it (the gate IS the field now). The only
+ * thing it never lands on is another gate half: each of the token's two halves
+ * needs its own hex, and a Surface tile touching two underground tiles must
+ * carve a distinct gate per neighbour rather than stack them.
  */
-const GATE_FORBIDDEN_LOCATIONS = new Set<string>([
-  "town",
-  "random_town",
-  "settlement",
-  "mine",
-  "grail",
-  "dragon_utopia",
-  "subterranean_gate"
-]);
-
-/** Whether a materialized field may be sacrificed to a Subterranean Gate. */
 function gateMayCoverField(field: MapFieldState | undefined): boolean {
-  if (!field) {
-    return false;
-  }
-  if (GATE_FORBIDDEN_LOCATIONS.has(field.location)) {
-    return false;
-  }
-  return locationDefinitions[field.location]?.category !== "blocked";
+  return field !== undefined && field.location !== "subterranean_gate";
 }
 
 /** A tile is "materialized" once its rotation is locked and its 7 fields exist. */
@@ -3310,9 +3295,9 @@ function tileRingSpaceIds(tile: MapTileState): MapSpaceId[] {
 
 /**
  * Picks the gate hex on `tile` nearest to `towardCenter`: the ring field the
- * player must sacrifice. Only ring hexes that may be covered and that touch the
- * other tile's footprint are eligible (so the matching half can sit adjacent on
- * the other side). Ties break on the hex id for determinism.
+ * player sacrifices (whatever it is — Blocked Field, Mine, Town and all; only an
+ * existing gate half is skipped). It must touch the other tile's footprint, so
+ * the matching half can sit adjacent on the other side. Ties break on hex id.
  */
 function chooseAnchorGateHex(
   adventure: AdventureState,
@@ -3415,7 +3400,8 @@ function findGateHalf(adventure: AdventureState, tile: MapTileState, towardTileI
  * tiles allow:
  *
  *  - On the materialized tile, the gate is the ring field nearest the other
- *    tile that may be covered (the "1 slot closest to the [other] tile").
+ *    tile (the "1 slot closest to the [other] tile") — whatever sits there is
+ *    sacrificed, even a Blocked Field, Mine or Town.
  *  - The matching half on the second tile is the ring field nearest that gate
  *    once the second tile is revealed (so it is sacrificed "when open, … the
  *    nearest hex"). Materialization happens only after the player has locked
@@ -4697,11 +4683,17 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   // hand limit ("draw new" = discard nothing; "discard and draw new" = toss
   // some first). The hand is NEVER drawn automatically, so the player can never
   // both keep a fresh full hand AND swap on top of it — it is one either/or
-  // choice. Only an over-the-limit hand (from card effects) forces a discard
-  // before acting.
-  const limit = effectiveHandLimit(state, playerId);
-  player.needsHandRefresh = player.hand.length > limit;
-  player.canMulligan = true;
+  // choice. Only an over-the-limit hand forces a discard before acting.
+  //
+  // The snapshot (forced discard + optional draw) is NOT taken here. The first
+  // player of a Round starts their turn in the same engine step that just queued
+  // the "beginning of the round" building effects (City Hall income/draws,
+  // Wall of Knowledge, …) and the "beginning of your turn" effects queued just
+  // below — all of which can still change the hand. So the hand step is queued
+  // as the LAST start-of-turn reward and the snapshot is taken when it pumps,
+  // once every earlier phase has resolved (see "start-turn-hand").
+  player.canMulligan = false;
+  player.needsHandRefresh = false;
   // Army map abilities reset for the new turn (Nomads' step, Rogues' scout).
   player.nomadStepDoneThisTurn = false;
   player.rogueScoutUsedThisTurn = false;
@@ -4716,6 +4708,31 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   // Hero (Astrologers): the ongoing "pay 4 gold to empower a Statistic, twice
   // this turn" offer, if that proclamation is the one face up.
   queueTurnStartAstrologersChoices(state, playerId);
+
+  // Phase divider: the hand-limit snapshot runs after every effect queued above
+  // (this turn's start-of-turn effects) and every round-start effect queued
+  // before this call. A pure-combat fixture has no reward queue — take the
+  // snapshot inline there.
+  if (state.adventure) {
+    state.adventure.rewardQueue.push({ playerId, kind: "start-turn-hand" });
+  } else {
+    finalizeStartOfTurnHand(state, playerId);
+  }
+}
+
+/**
+ * Opens the start-of-turn hand step for `playerId`: the optional discard-and-draw
+ * (`canMulligan`) plus the forced discard-down (`needsHandRefresh`) when the hand
+ * sits over the effective limit. Called from the "start-turn-hand" reward so the
+ * snapshot reflects every round-start and start-of-turn effect that ran first.
+ */
+export function finalizeStartOfTurnHand(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+  player.canMulligan = true;
+  player.needsHandRefresh = player.hand.length > effectiveHandLimit(state, playerId);
 }
 
 /**

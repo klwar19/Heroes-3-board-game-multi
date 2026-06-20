@@ -43,6 +43,46 @@ export function intactFortificationPositions(siege: SiegeState): number[] {
   return [...siege.walls, ...(siege.gatePosition !== null ? [siege.gatePosition] : [])];
 }
 
+/**
+ * Catapult bombardment targets. A standing Wall or the Gate has no unit card
+ * (and so no unit id), so it is aimed at by a reserved pseudo-id. The generic
+ * war-machine target choice carries a flat list of target ids, so this lets it
+ * offer fortifications alongside units. `parseFortificationTargetId` is the
+ * inverse; together they keep the "siege-fortification:" wire format in one
+ * place. The Arrow Tower is deliberately NOT a Catapult target — the card hits
+ * "units, Walls and the Gate", and the Tower sits off the board (position -1).
+ */
+export function fortificationTargetId(kind: "wall" | "gate", position: number): string {
+  return `siege-fortification:${kind}:${position}`;
+}
+
+export function parseFortificationTargetId(targetId: string): { kind: "wall" | "gate"; position: number } | null {
+  const match = /^siege-fortification:(wall|gate):(-?\d+)$/.exec(targetId);
+  if (!match) {
+    return null;
+  }
+  return { kind: match[1] as "wall" | "gate", position: Number(match[2]) };
+}
+
+/** Every standing Wall and the Gate as a Catapult-aimable target (id + position). */
+export function fortificationTargets(
+  siege: SiegeState
+): { id: string; kind: "wall" | "gate"; position: number }[] {
+  const targets: { id: string; kind: "wall" | "gate"; position: number }[] = siege.walls.map((position) => ({
+    id: fortificationTargetId("wall", position),
+    kind: "wall",
+    position
+  }));
+  if (siege.gatePosition !== null) {
+    targets.push({
+      id: fortificationTargetId("gate", siege.gatePosition),
+      kind: "gate",
+      position: siege.gatePosition
+    });
+  }
+  return targets;
+}
+
 /** Positions a moving unit may not enter because of fortifications. */
 export function siegeBlockedPositions(siege: SiegeState, movingUnit: CombatUnitState): number[] {
   if (movingUnit.controllerId === siege.townPlayerId) {

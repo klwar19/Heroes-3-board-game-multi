@@ -27,6 +27,7 @@ import {
   isAdjacent,
   isArrowTowerUnit,
   isUnitAlive,
+  parseFortificationTargetId,
   pickCombatBoardArtId,
   playerSpellCastsIgnoreLimit,
   type BattlefieldTokenState,
@@ -591,6 +592,9 @@ export function BattlefieldBoard({
   // inside the attack reaction window, so you can heal the instant you're hit.
   const healActionsByTarget = new Map<string, GameAction>();
   const fortificationActionsByPosition = new Map<number, LegalAction>();
+  // Catapult bombardment: a CHOOSE_ABILITY_TARGET aimed at a Wall/Gate (a
+  // pseudo-id, not a unit), keyed by board position so the cell is clickable.
+  const fortAbilityTargetByPosition = new Map<number, LegalAction>();
 
   const siege = combat?.siege ?? null;
   const wallPositions = new Set(siege?.walls ?? []);
@@ -675,6 +679,10 @@ export function BattlefieldBoard({
     }
     if (legal.action.type === "CHOOSE_ABILITY_TARGET") {
       abilityTargetActions.set(legal.action.targetUnitId, legal.action);
+      const fort = parseFortificationTargetId(legal.action.targetUnitId);
+      if (fort) {
+        fortAbilityTargetByPosition.set(fort.position, legal);
+      }
     }
     if (legal.action.type === "USE_ACTIVE_EFFECT" && legal.action.target.type === "unit") {
       // Bind the click to the basic heal (no crown); never let an expert-volley
@@ -937,7 +945,9 @@ export function BattlefieldBoard({
           const isWall = wallPositions.has(index);
           const isGate = gatePosition === index;
           if (isWall || isGate) {
-            const fortAction = fortificationActionsByPosition.get(index);
+            // An adjacent unit's melee demolish, or — during a Catapult target
+            // pick — the bombardment shot. Either makes the Wall/Gate clickable.
+            const fortAction = fortificationActionsByPosition.get(index) ?? fortAbilityTargetByPosition.get(index);
             const label = isGate
               ? "Gate — open to the defender, an obstacle to the attacker. Adjacent ground/flying units may tear it down as their attack."
               : "Wall — a combat obstacle. Adjacent ground/flying units may tear it down as their attack; defenders in its column take 1 less ranged damage.";

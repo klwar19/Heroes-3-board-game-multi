@@ -4595,6 +4595,21 @@ export type AdventureReward =
        */
       playerId: PlayerId;
       kind: "learning-level-up";
+    }
+  | {
+      /**
+       * Start-of-turn phase divider. Queued LAST by startPlayerTurn, after every
+       * round-start ("beginning of the round" City Hall income/draws, Astrologers
+       * Proclaim) and start-of-turn ("beginning of your turn" building/Astrologers)
+       * effect. When pumped it takes the hand-limit snapshot for the player whose
+       * turn is starting: it opens the optional discard-and-draw and, if the
+       * earlier effects pushed the hand over the limit, requires a discard down
+       * before the player may act. Snapshotting here — not eagerly in
+       * startPlayerTurn — is what makes a round-start draw (e.g. Stronghold City
+       * Hall "draw 2") correctly force the first player to discard.
+       */
+      playerId: PlayerId;
+      kind: "start-turn-hand";
     };
 
 export type VisitStep =

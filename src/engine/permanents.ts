@@ -3,6 +3,7 @@ import { countExtraBallistas, effectiveInitiative, hasBallistaChooseTarget, make
 import { getActiveAstrologersCard, hasResources, processPendingVisit, spendResources } from "./adventure";
 import { isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
+import { destroyFortification, fortificationTargets, parseFortificationTargetId } from "./siege";
 import { noteUnitDamagedForTokens } from "./tokens";
 import { expertUsesAvailable } from "./ruleset";
 import { appendEvent, nextEventNumber } from "./events";
@@ -428,10 +429,75 @@ export function isLowestInitiativeEnemy(state: GameState, playerId: PlayerId, un
   return lowestInitiativeEnemies(state, playerId).some((candidate) => candidate.id === unit.id);
 }
 
-/** Catapult first targets: units that have at least one living neighbor. */
-function splashFirstTargets(state: GameState): CombatUnitState[] {
-  const units = livingUnits(state);
-  return units.filter((unit) => units.some((other) => other.id !== unit.id && isAdjacent(other.position, unit.position)));
+/**
+ * Everything the Catapult may bombard right now: every living unit ON the board
+ * (the off-board Arrow Tower, position -1, is excluded — the card hits "units,
+ * Walls and the Gate", not the Tower) plus, during a siege, every standing Wall
+ * and the Gate. Each target is reduced to an id + board position so adjacency is
+ * uniform across units and fortifications.
+ */
+type SplashTarget = { id: UnitId; position: number };
+
+function splashTargets(state: GameState): SplashTarget[] {
+  const targets: SplashTarget[] = livingUnits(state)
+    .filter((unit) => unit.position >= 0)
+    .map((unit) => ({ id: unit.id, position: unit.position }));
+  const siege = state.combat?.siege;
+  if (siege) {
+    for (const fort of fortificationTargets(siege)) {
+      targets.push({ id: fort.id, position: fort.position });
+    }
+  }
+  return targets;
+}
+
+/** Catapult first targets: any unit/Wall/Gate with at least one adjacent target. */
+function splashFirstTargets(state: GameState): SplashTarget[] {
+  const targets = splashTargets(state);
+  return targets.filter((target) =>
+    targets.some((other) => other.id !== target.id && isAdjacent(other.position, target.position))
+  );
+}
+
+/** Board position of a Catapult target id (a unit id, or a Wall/Gate pseudo-id). */
+function splashTargetPosition(state: GameState, targetId: UnitId): number | null {
+  const fort = parseFortificationTargetId(targetId);
+  if (fort) {
+    return fort.position;
+  }
+  return state.combat?.units[targetId]?.position ?? null;
+}
+
+/**
+ * Resolves one Catapult hit on a target id. A Wall or the Gate is battered down
+ * (a fortification has no HP — one hit fells it, the rulebook's auto-success);
+ * a unit takes `amount` effect damage. Either way the Catapult "fires", so a
+ * WAR_MACHINE_TRIGGERED event is logged so the shot's sound/animation plays.
+ */
+function applyCatapultHit(state: GameState, playerId: PlayerId, targetId: UnitId, amount: number): void {
+  const fort = parseFortificationTargetId(targetId);
+  if (!fort) {
+    applyWarMachineDamage(state, playerId, targetId, amount);
+    return;
+  }
+  const combat = state.combat;
+  const siege = combat?.siege;
+  const standing = fort.kind === "wall" ? siege?.walls.includes(fort.position) : siege?.gatePosition === fort.position;
+  if (!combat || !siege || !standing) {
+    // Already gone (e.g. a shared piece felled by the first shot): nothing to do.
+    return;
+  }
+  const cardId = combat.warMachineRound?.pending[0]?.cardId ?? null;
+  if (cardId) {
+    appendEvent(state, {
+      type: "WAR_MACHINE_TRIGGERED",
+      playerId,
+      cardId,
+      message: `${warMachineName(state, playerId)} batters the ${fort.kind === "gate" ? "Gate" : "Wall"}.`
+    });
+  }
+  destroyFortification(state, null, fort.kind, fort.position);
+  finishCombatIfNeeded(state);
 }
 
 /**
@@ -928,8 +994,8 @@ export function resolveWarMachineOption(state: GameState, playerId: PlayerId, op
     openWarMachineTargetChoice(
       state,
       playerId,
-      `${name}: choose the first of two adjacent targets (${roundStart.amount} damage each).`,
-      splashFirstTargets(state).map((unit) => unit.id),
+      `${name}: choose the first of two adjacent targets — a unit, Wall or the Gate (${roundStart.amount} damage each).`,
+      splashFirstTargets(state).map((target) => target.id),
       roundStart.amount
     );
     return;
@@ -967,16 +1033,19 @@ export function resolveWarMachineTarget(state: GameState, playerId: PlayerId, ta
   const isSplash = roundStart?.kind === "pay-to-splash";
 
   if (isSplash && !queue.firstTargetUnitId) {
-    // First Catapult target: remember it, damage it, ask for the neighbor.
-    const first = combat.units[targetUnitId];
+    // First Catapult target (a unit, Wall or the Gate): note its position
+    // BEFORE the hit (the piece may be felled / the unit removed), strike it,
+    // then offer the second target adjacent to that same spot.
+    const firstPosition = splashTargetPosition(state, targetUnitId);
     queue.firstTargetUnitId = targetUnitId;
-    applyWarMachineDamage(state, playerId, targetUnitId, amount);
+    applyCatapultHit(state, playerId, targetUnitId, amount);
 
-    const neighbors = first
-      ? livingUnits(state).filter(
-          (unit) => unit.id !== targetUnitId && isAdjacent(unit.position, first.position)
-        )
-      : [];
+    const neighbors =
+      firstPosition === null
+        ? []
+        : splashTargets(state).filter(
+            (target) => target.id !== targetUnitId && isAdjacent(target.position, firstPosition)
+          );
 
     if (neighbors.length === 0) {
       queue.firstTargetUnitId = null;
@@ -986,7 +1055,7 @@ export function resolveWarMachineTarget(state: GameState, playerId: PlayerId, ta
     }
 
     if (neighbors.length === 1) {
-      applyWarMachineDamage(state, playerId, neighbors[0].id, amount);
+      applyCatapultHit(state, playerId, neighbors[0].id, amount);
       queue.firstTargetUnitId = null;
       queue.pending.shift();
       processWarMachineRound(state);
@@ -997,17 +1066,21 @@ export function resolveWarMachineTarget(state: GameState, playerId: PlayerId, ta
       state,
       playerId,
       `${warMachineName(state, playerId)}: choose the second target, adjacent to the first.`,
-      neighbors.map((unit) => unit.id),
+      neighbors.map((target) => target.id),
       amount
     );
     return;
   }
 
-  // Second Catapult target, Cannon shot, or a Ballista tie-break. An Artillery
-  // volley lands all of its shots on the one chosen target (volleyShots); every
-  // other case is a single hit (volleyShots absent → 1).
+  // Second Catapult target (may be a Wall/Gate), Cannon shot, or a Ballista
+  // tie-break. An Artillery volley lands all of its shots on the one chosen
+  // target (volleyShots); every other case is a single hit (volleyShots → 1).
   const shots = queue.volleyShots ?? 1;
-  fireShotsAtUnit(state, playerId, targetUnitId, amount, shots);
+  if (parseFortificationTargetId(targetUnitId)) {
+    applyCatapultHit(state, playerId, targetUnitId, amount);
+  } else {
+    fireShotsAtUnit(state, playerId, targetUnitId, amount, shots);
+  }
   queue.volleyShots = null;
   queue.firstTargetUnitId = null;
   queue.pending.shift();

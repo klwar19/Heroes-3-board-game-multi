@@ -160,8 +160,11 @@ export const permanentCards: CardLibrary = {
     name: "Catapult",
     kind: "war-machine",
     timing: "ongoing",
-    // Printed targets include Walls and the Gate; sieges are not in the
-    // engine yet, so units are the only selectable targets for now.
+    // engine: at each round start the owner may pay 1 building material to hit 2
+    // adjacent targets for 1 damage each — any combination of units, Walls and
+    // the Gate (a Wall/Gate has no HP, so a hit fells it; the auto-success
+    // demolition path). The off-board Arrow Tower is never a target. See
+    // permanents.ts processWarMachineRound and catapult-siege.test.ts.
     tags: ["war-machine", "permanent", "damage", "area", "wiki-reference"],
     permanent: true,
     permanentEffect: {
