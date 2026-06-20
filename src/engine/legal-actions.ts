@@ -606,28 +606,6 @@ export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitSt
   ).filter(isBattlefieldPosition);
 }
 
-export function sortUnitsForActivation(combat: CombatState, activeEffects: ActiveEffectState[] = []): CombatUnitState[] {
-  return Object.values(combat.units)
-    .filter(isUnitAlive)
-    .sort((left, right) => {
-      const leftInitiative = effectiveInitiative(left, activeEffects);
-      const rightInitiative = effectiveInitiative(right, activeEffects);
-      if (rightInitiative !== leftInitiative) {
-        return rightInitiative - leftInitiative;
-      }
-
-      if (left.controllerId === combat.attackerPlayerId && right.controllerId !== combat.attackerPlayerId) {
-        return -1;
-      }
-
-      if (right.controllerId === combat.attackerPlayerId && left.controllerId !== combat.attackerPlayerId) {
-        return 1;
-      }
-
-      return left.id.localeCompare(right.id);
-    });
-}
-
 /**
  * Which side activates next, and the units that side may pick from, at the top
  * (highest effective initiative) tier of un-acted units.
@@ -648,22 +626,29 @@ export type ActivationStep = {
   initiative: number;
 };
 
-export function getActivationStep(
-  combat: CombatState,
-  activeEffects: ActiveEffectState[] = []
+/**
+ * The single source of truth for "who activates next", shared by the live
+ * engine (getActivationStep, reading `activatedThisRound`) and the rail preview
+ * (getActivationOrder, simulating the round). Whatever counts as already-acted
+ * is supplied via `hasActed`, so the displayed order can never drift from the
+ * order the engine actually plays.
+ */
+function selectActivationStep(
+  units: CombatUnitState[],
+  attackerId: PlayerId,
+  initiativeOf: (unit: CombatUnitState) => number,
+  hasActed: (unit: CombatUnitState) => boolean
 ): ActivationStep | null {
-  const eligible = Object.values(combat.units).filter((unit) => isUnitAlive(unit) && !unit.activatedThisRound);
+  const eligible = units.filter((unit) => isUnitAlive(unit) && !hasActed(unit));
   if (eligible.length === 0) {
     return null;
   }
 
-  const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects);
   const topInitiative = Math.max(...eligible.map(initiativeOf));
   const tier = eligible
     .filter((unit) => initiativeOf(unit) === topInitiative)
     .sort((left, right) => left.id.localeCompare(right.id));
 
-  const attackerId = combat.attackerPlayerId;
   const tierAttackers = tier.filter((unit) => unit.controllerId === attackerId);
   const tierOthers = tier.filter((unit) => unit.controllerId !== attackerId);
 
@@ -679,9 +664,7 @@ export function getActivationStep(
   // even split the attacker leads (the player in a Neutral fight, the attacking
   // hero in PvP), so the two sides go back and forth starting with the attacker.
   const actedAtTier = (predicate: (unit: CombatUnitState) => boolean) =>
-    Object.values(combat.units).filter(
-      (unit) => unit.activatedThisRound && initiativeOf(unit) === topInitiative && predicate(unit)
-    ).length;
+    units.filter((unit) => hasActed(unit) && initiativeOf(unit) === topInitiative && predicate(unit)).length;
   const attackerActed = actedAtTier((unit) => unit.controllerId === attackerId);
   const othersActed = actedAtTier((unit) => unit.controllerId !== attackerId);
 
@@ -691,8 +674,62 @@ export function getActivationStep(
   return { side: attackerId, candidates: tierAttackers, initiative: topInitiative };
 }
 
+export function getActivationStep(
+  combat: CombatState,
+  activeEffects: ActiveEffectState[] = []
+): ActivationStep | null {
+  const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects);
+  return selectActivationStep(
+    Object.values(combat.units),
+    combat.attackerPlayerId,
+    initiativeOf,
+    (unit) => unit.activatedThisRound
+  );
+}
+
 export function getNextUnitToActivate(combat: CombatState, activeEffects: ActiveEffectState[] = []): CombatUnitState | null {
   return getActivationStep(combat, activeEffects)?.candidates[0] ?? null;
+}
+
+/**
+ * The full order the current combat round will actually play out, computed by
+ * stepping the SAME selection logic the engine uses, one unit at a time. The
+ * initiative rail shows this so the displayed order matches reality — in
+ * particular the cross-side ALTERNATION on initiative ties (attacker, defender,
+ * attacker, …), which a flat "highest initiative, attacker-first" sort gets
+ * wrong: it would list all of one side's tied units before the other's, even
+ * though the engine interleaves them.
+ *
+ * Already-activated units come first (the rail greys them as "done"), then the
+ * upcoming units in true activation order. Same-side ties are emitted in id
+ * order; the live engine prompts the controller to choose among them, so that
+ * part is a best-effort preview while the cross-side interleaving is exact.
+ */
+export function getActivationOrder(
+  combat: CombatState,
+  activeEffects: ActiveEffectState[] = []
+): CombatUnitState[] {
+  const alive = Object.values(combat.units).filter(isUnitAlive);
+  const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects);
+
+  const acted = new Set<UnitId>(alive.filter((unit) => unit.activatedThisRound).map((unit) => unit.id));
+  const done = alive
+    .filter((unit) => unit.activatedThisRound)
+    .sort((left, right) => initiativeOf(right) - initiativeOf(left) || left.id.localeCompare(right.id));
+
+  const upcoming: CombatUnitState[] = [];
+  // Bounded by the unit count: each pass marks exactly one more unit acted.
+  for (let guard = alive.length; guard > 0; guard -= 1) {
+    const next = selectActivationStep(alive, combat.attackerPlayerId, initiativeOf, (unit) => acted.has(unit.id))
+      ?.candidates[0];
+    if (!next) {
+      break;
+    }
+    upcoming.push(next);
+    acted.add(next.id);
+  }
+
+  return [...done, ...upcoming];
 }
 
 function hasAdjacentEnemy(combat: CombatState, unit: CombatUnitState): boolean {
@@ -2286,29 +2323,11 @@ function addTurnCardActions(
       continue;
     }
 
-    // Necromancy: playable on the map only in the window after winning a
-    // Combat other than a Quick Combat, and only by a Necropolis hero. A copy
-    // drawn from the Ability deck on level-up may be kept but never played
-    // (house rule) — only a hero's printed Necromancy is a real ability.
+    // Necromancy is NEVER a free-turn play: it is legal ONLY in the now-or-never
+    // after-combat window (the pendingNecromancy gate in
+    // getAdventureLegalActions, surfaced via addNecromancyPlays). Skip it here so
+    // a player can't bank gold during the turn and reinforce cheaply later.
     if (card.effect.type === "NECROMANCY_REINFORCE") {
-      const drawnFromLevelUp = player.deckDrawnAbilityCardIds?.includes(cardId) ?? false;
-      if (player.necromancyWindow && player.factionId === "necropolis" && !drawnFromLevelUp) {
-        if (card.effect.forceMode) {
-          // Vidomina's specialties: one fixed-tier reinforce, no expert crown.
-          actions.push({
-            label: `Play ${card.name}`,
-            action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
-          });
-        } else {
-          const modes: CardPlayMode[] = expertUsesAvailable(player) > 0 ? ["basic", "expert"] : ["basic"];
-          for (const mode of modes) {
-            actions.push({
-              label: `Play ${card.name}${mode === "expert" ? " (expert)" : ""}`,
-              action: { type: "PLAY_CARD", playerId, cardId, mode, target: { type: "none" } }
-            });
-          }
-        }
-      }
       continue;
     }
 
@@ -2347,6 +2366,45 @@ function addTurnCardActions(
         label: `Play ${card.name}${mode === "expert" ? " (expert)" : ""}`,
         action: { type: "PLAY_CARD", playerId, cardId, mode, target: { type: "none" } }
       });
+    }
+  }
+}
+
+/**
+ * The after-combat Necromancy plays for a Necropolis player who holds one. A
+ * copy drawn from the Ability deck on level-up is kept but never playable (house
+ * rule). Vidomina's specialties pin the tier (no expert crown); the printed
+ * ability may be played basic, or expert when a crown use is spare. Used only
+ * inside the pendingNecromancy now-or-never gate.
+ */
+function addNecromancyPlays(actions: LegalAction[], state: GameState, playerId: PlayerId, cards: CardLibrary): void {
+  const player = state.players[playerId];
+  if (!player || player.factionId !== "necropolis") {
+    return;
+  }
+
+  for (const cardId of new Set(player.hand)) {
+    const card = cards[cardId];
+    if (!card || card.effect.type !== "NECROMANCY_REINFORCE") {
+      continue;
+    }
+    if (player.deckDrawnAbilityCardIds?.includes(cardId)) {
+      continue;
+    }
+
+    if (card.effect.forceMode) {
+      actions.push({
+        label: `Play ${card.name}`,
+        action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
+      });
+    } else {
+      const modes: CardPlayMode[] = expertUsesAvailable(player) > 0 ? ["basic", "expert"] : ["basic"];
+      for (const mode of modes) {
+        actions.push({
+          label: `Play ${card.name}${mode === "expert" ? " (expert)" : ""}`,
+          action: { type: "PLAY_CARD", playerId, cardId, mode, target: { type: "none" } }
+        });
+      }
     }
   }
 }
@@ -5438,9 +5496,24 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
-  // Pending field visit choices.
+  // Pending field visit choices. Any free combat-driven reinforce (the Skeleton
+  // fallback) or level-up choice queued during finalization resolves here FIRST,
+  // before the Necromancy gate below — none of these is the withheld field
+  // reward, so the now-or-never rule is not weakened by letting them through.
   if (adventure.pendingVisit) {
     addVisitStepActions(actions, state, playerId, cards);
+    return actions;
+  }
+
+  // BINH house rule: the after-combat Necromancy window is now-or-never. Until
+  // the winner plays Necromancy or skips it, NOTHING else on the map is legal
+  // and the field reward of the fight they just won stays withheld — so "collect
+  // the field gold, then reinforce with it" is impossible.
+  if (adventure.pendingNecromancy) {
+    if (adventure.pendingNecromancy.playerId === playerId) {
+      addNecromancyPlays(actions, state, playerId, cards);
+      actions.push({ label: "Skip Necromancy", action: { type: "SKIP_NECROMANCY", playerId } });
+    }
     return actions;
   }
 

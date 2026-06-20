@@ -53,13 +53,13 @@ import {
   populationAction,
   pumpAdventureQueues,
   refreshHand,
-  rehydrateCityHallChoice,
   resolveVisitStep,
   retreatFromCombat,
   surrenderFromCombat,
   revisitField,
   roguesScoutDeck,
   setTileRotation,
+  skipNecromancy,
   spellBookAction,
   spendMorale,
   spendTownCube,
@@ -8826,6 +8826,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     throw new Error(`Unknown card ${action.cardId}.`);
   }
 
+  // BINH house rule: while the after-combat Necromancy window is open, the ONLY
+  // legal card play is that Necromancy itself — the field reward is withheld
+  // until the player commits, so no other card may resolve and bank value first.
+  const pendingNecro = state.adventure?.pendingNecromancy;
+  if (pendingNecro && (pendingNecro.playerId !== action.playerId || card.effect.type !== "NECROMANCY_REINFORCE")) {
+    throw new Error("Resolve the after-combat Necromancy window first (play it or skip it).");
+  }
+
   // Dessa's Logistics: playable only during the continue-or-retreat decision
   // against neutral units — the combat extends one round for free.
   if (card.effect.type === "CONTINUE_NEUTRAL_FREE") {
@@ -9283,9 +9291,25 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "NECROMANCY_REINFORCE") {
     // Playing the card consumes the after-combat window. Vidomina's specialties
-    // pin the tier (forceMode); the printed ability uses the played mode.
+    // pin the tier (forceMode); the printed ability uses the played mode. The
+    // reinforce options are built on the gold held RIGHT NOW — before the
+    // withheld field reward lands — which is the whole point of the now-or-never
+    // window. Once that is queued, release the deferred field visit so it
+    // resolves only after the reinforce is paid for.
     state.players[action.playerId].necromancyWindow = false;
     queueNecromancyReinforce(state, action.playerId, effect.forceMode ?? mode);
+    const pending = state.adventure?.pendingNecromancy;
+    if (pending && pending.playerId === action.playerId) {
+      if (pending.heroId && pending.fieldId) {
+        state.adventure!.rewardQueue.push({
+          playerId: action.playerId,
+          kind: "field-visit",
+          heroId: pending.heroId,
+          fieldId: pending.fieldId
+        });
+      }
+      state.adventure!.pendingNecromancy = null;
+    }
   }
 
   if (effect.type === "GAIN_RESOURCES") {
@@ -12282,8 +12306,6 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
     return;
   }
 
-  rehydrateCityHallChoice(state);
-
   let safety = 300;
   while (safety > 0) {
     safety -= 1;
@@ -12641,6 +12663,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "ACKNOWLEDGE_COMBAT_END":
         acknowledgeCombatEnd(nextState, action);
+        break;
+      case "SKIP_NECROMANCY":
+        skipNecromancy(nextState, action);
         break;
       case "PLACE_COMBAT_UNIT":
         placeCombatUnit(nextState, action);

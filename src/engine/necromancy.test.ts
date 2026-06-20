@@ -5,6 +5,7 @@ import {
   createAdventureGameState,
   findEvent,
   getLegalActions,
+  getMainHero,
   insertUnitTransform,
   makeCombatUnitFromArmy,
   makeUnitTransformState,
@@ -15,6 +16,8 @@ import {
   type GameState,
   type UnitTransformState
 } from "./index";
+import { finalizeAdventureCombat, pumpAdventureQueues } from "./adventure-reducer";
+import type { CombatState, MapFieldState } from "./state";
 import { cardLibrary } from "@/data/cards/library";
 
 function apply(state: GameState, action: GameAction): GameState {
@@ -152,7 +155,9 @@ describe("Necromancy ability — after-combat window", () => {
     );
     expect(before).toHaveLength(0);
 
+    // The window is the now-or-never gate opened right after a non-Quick win.
     state.players.p1.necromancyWindow = true;
+    state.adventure!.pendingNecromancy = { playerId: "p1" };
     const during = getLegalActions(state, "p1").filter(
       (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.necromancy"
     );
@@ -163,6 +168,7 @@ describe("Necromancy ability — after-combat window", () => {
     const state = startSandroGame();
     state.players.p1.hand = ["ability.necromancy"];
     state.players.p1.necromancyWindow = true;
+    state.adventure!.pendingNecromancy = { playerId: "p1" };
     // Same Necropolis hero, same open window — but this copy came out of the
     // level-up Ability-deck search, so it is kept yet unplayable.
     state.players.p1.deckDrawnAbilityCardIds = ["ability.necromancy"];
@@ -177,6 +183,7 @@ describe("Necromancy ability — after-combat window", () => {
     const state = startSandroGame();
     state.players.p2.hand = ["ability.necromancy"];
     state.players.p2.necromancyWindow = true;
+    state.adventure!.pendingNecromancy = { playerId: "p2" };
     state.activePlayerId = "p2";
 
     const plays = getLegalActions(state, "p2").filter(
@@ -189,6 +196,7 @@ describe("Necromancy ability — after-combat window", () => {
     const state = startSandroGame();
     state.players.p1.hand = ["ability.necromancy"];
     state.players.p1.necromancyWindow = true;
+    state.adventure!.pendingNecromancy = { playerId: "p1" };
     // Give Sandro a Few skeleton to reinforce and the gold to do it.
     state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
     state.players.p1.resources.gold = 20;
@@ -203,10 +211,189 @@ describe("Necromancy ability — after-combat window", () => {
 
     const next = apply(state, play!.action);
     expect(next.players.p1.necromancyWindow).toBe(false);
+    expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
     expect(next.players.p1.discard).toContain("ability.necromancy");
     // A reinforce prompt is now waiting for the player.
     const hasReinforcePrompt =
       Boolean(next.adventure?.pendingVisit) || (next.adventure?.rewardQueue.length ?? 0) > 0;
     expect(hasReinforcePrompt).toBe(true);
+  });
+});
+
+describe("Necromancy ability — now-or-never timing (BINH house rule)", () => {
+  function startSandroGame(): GameState {
+    return createAdventureGameState({
+      seed: "necro-timing",
+      ruleset: "binh",
+      difficulty: "normal",
+      players: [
+        { id: "p1", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" },
+        { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
+      ],
+      rollFirstPlayer: false
+    });
+  }
+
+  /**
+   * Stages a just-finished neutral combat won by p1 standing on a Water Wheel
+   * (a visit that pays out 3 gold). finalizeAdventureCombat then runs the real
+   * after-combat flow: the win, the (deferred) field visit, and the window.
+   */
+  function stageNeutralWinOnGoldField(state: GameState): { fieldId: string; heroId: string } {
+    const hero = getMainHero(state, "p1")!;
+    const fieldId = "99,1";
+    const field: MapFieldState = {
+      spaceId: fieldId,
+      tileInstanceId: "test-tile",
+      slot: 0,
+      location: "water_wheel", // pays 3 gold when visited
+      difficulty: 1,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    };
+    state.adventure!.fields[fieldId] = field;
+    hero.spaceId = fieldId;
+    state.activePlayerId = "p1";
+    state.combat = {
+      context: { kind: "neutral", heroId: hero.id, fieldId, difficulty: 1, hasAzure: false },
+      outcome: { winnerPlayerId: "p1", defeatedPlayerId: "neutral", reason: "all-enemy-units-defeated" },
+      units: {}
+    } as unknown as CombatState;
+    return { fieldId, heroId: hero.id };
+  }
+
+  /** Every reinforce-choice label currently waiting (prompt + reward queue). */
+  function reinforceLabels(state: GameState): string[] {
+    const labels: string[] = [];
+    for (const step of state.adventure?.pendingVisit?.steps ?? []) {
+      if (step.type === "CHOOSE_ONE") {
+        labels.push(...step.options.map((option) => option.label));
+      }
+    }
+    for (const reward of state.adventure?.rewardQueue ?? []) {
+      if (reward.kind === "visit-steps") {
+        for (const step of reward.steps) {
+          if (step.type === "CHOOSE_ONE") {
+            labels.push(...step.options.map((option) => option.label));
+          }
+        }
+      }
+    }
+    return labels;
+  }
+
+  it("withholds the just-won field's reward, and allows nothing but Necromancy or Skip", () => {
+    const state = startSandroGame();
+    state.players.p1.hand = ["ability.necromancy"];
+    state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    state.players.p1.resources.gold = 0;
+    const { fieldId } = stageNeutralWinOnGoldField(state);
+
+    finalizeAdventureCombat(state);
+
+    // The window is open and the 3-gold Water Wheel is NOT paid out yet.
+    expect(state.adventure?.pendingNecromancy?.playerId).toBe("p1");
+    expect(state.players.p1.resources.gold).toBe(0);
+    expect(state.adventure?.fields[fieldId].blackCube).toBe(false);
+
+    // The only legal moves are play-Necromancy or skip — no movement, no end turn.
+    const legal = getLegalActions(state, "p1");
+    expect(
+      legal.some((l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.necromancy")
+    ).toBe(true);
+    expect(legal.some((l) => l.action.type === "SKIP_NECROMANCY")).toBe(true);
+    expect(legal.some((l) => l.action.type === "MOVE_HERO" || l.action.type === "END_TURN")).toBe(false);
+  });
+
+  it("skipping releases the withheld field reward and closes the window for good", () => {
+    const state = startSandroGame();
+    state.players.p1.hand = ["ability.necromancy"];
+    state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    state.players.p1.resources.gold = 0;
+    const { fieldId } = stageNeutralWinOnGoldField(state);
+    finalizeAdventureCombat(state);
+
+    const next = apply(state, { type: "SKIP_NECROMANCY", playerId: "p1" });
+
+    expect(next.players.p1.resources.gold).toBe(3); // Water Wheel paid out, but only now
+    expect(next.adventure?.fields[fieldId].blackCube).toBe(true);
+    expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
+    expect(next.players.p1.necromancyWindow).toBe(false);
+    // It never reopens on its own — Necromancy is no longer offered.
+    expect(
+      getLegalActions(next, "p1").some(
+        (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.necromancy"
+      )
+    ).toBe(false);
+  });
+
+  it("prices the reinforce on the gold held BEFORE the field reward (no 'collect then reinforce')", () => {
+    const state = startSandroGame();
+    state.players.p1.hand = ["ability.necromancy"];
+    // A Few Skeleton reinforces for 1 gold (half the 3-gold Pack). The player
+    // holds 0; ONLY the withheld 3-gold Water Wheel would make it affordable —
+    // and that reward must be out of reach while deciding.
+    state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    state.players.p1.resources.gold = 0;
+    stageNeutralWinOnGoldField(state);
+    finalizeAdventureCombat(state);
+
+    const play = getLegalActions(state, "p1").find(
+      (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.necromancy"
+    );
+    const afterPlay = apply(state, play!.action);
+
+    // Options were built on 0 gold: the Skeleton reinforce is NOT offered. If the
+    // field reward had landed first (the bug this rule prevents) it would be.
+    expect(reinforceLabels(afterPlay).some((label) => /Skeletons/.test(label))).toBe(false);
+    expect(afterPlay.players.p1.resources.gold).toBe(0);
+  });
+
+  it("after a paid reinforce, the field reward lands — and only then", () => {
+    const state = startSandroGame();
+    state.players.p1.hand = ["ability.necromancy"];
+    state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    state.players.p1.resources.gold = 2; // covers the 1-gold Skeleton reinforce
+    stageNeutralWinOnGoldField(state);
+    finalizeAdventureCombat(state);
+
+    const play = getLegalActions(state, "p1").find(
+      (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.necromancy"
+    );
+    let next = apply(state, play!.action);
+
+    const reinforce = getLegalActions(next, "p1").find((l) => /Skeletons/.test(l.label));
+    expect(reinforce, "the 1-gold Skeleton reinforce should be affordable on the 2 gold held").toBeTruthy();
+    next = apply(next, reinforce!.action);
+
+    // Paid 1 for the reinforce (2 -> 1), THEN the withheld Water Wheel added 3.
+    expect(next.players.p1.resources.gold).toBe(4);
+    expect(next.players.p1.army.find((u) => u.id === "army_skel")?.side).toBe("pack");
+    expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
+  });
+
+  it("resolves a free Skeleton reinforce first, yet still withholds the field reward behind the window", () => {
+    const state = startSandroGame();
+    state.players.p1.hand = ["ability.necromancy"];
+    state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    state.players.p1.resources.gold = 0;
+    const { fieldId } = stageNeutralWinOnGoldField(state);
+    // The last guard killed was a Skeleton — a Necropolis hero earns a free bronze
+    // reinforce. It must resolve independently of the now-or-never Necromancy
+    // window, and neither may let the field gold land early.
+    state.combat!.skeletonGuardDefeated = true;
+
+    finalizeAdventureCombat(state);
+    pumpAdventureQueues(state);
+
+    // The free Skeleton reinforce prompt is up and resolvable right now...
+    expect(state.adventure?.pendingVisit).toBeTruthy();
+    expect(getLegalActions(state, "p1").some((l) => /Skeleton/i.test(l.label))).toBe(true);
+    // ...while the Necromancy window stays pending and the field reward withheld.
+    expect(state.adventure?.pendingNecromancy?.playerId).toBe("p1");
+    expect(state.players.p1.resources.gold).toBe(0);
+    expect(state.adventure?.fields[fieldId].blackCube).toBe(false);
   });
 });
