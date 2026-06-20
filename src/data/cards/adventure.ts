@@ -365,6 +365,9 @@ function meteorShowerSpecialty(level: 1 | 6, adjacentPicks: number): CardLibrary
       payPower === 0
         ? `Deal ${amount} damage to the unit and ${adjacentText}`
         : `Deal ${amount} damage (pay ${payPower} Power)`,
+    // Instant: playable at any time during Combat — on your turn and off-turn
+    // when an enemy unit's activation starts or when it finishes its move.
+    combatAnytime: true,
     ...(payPower > 0 ? { cost: { discardCards: payPower, costCardFilter: "power-source" as const } } : {}),
     effect: {
       type: "AREA_DAMAGE_PICK_ADJACENT" as const,
@@ -384,7 +387,7 @@ function meteorShowerSpecialty(level: 1 | 6, adjacentPicks: number): CardLibrary
       "combat",
       "deemer",
       "meteor-shower",
-      `Activation: Select a unit and ${adjacentText}. Deal to all selected units (friend or foe): Power 0: 1 damage; Power 2: 2 damage; Power 4: 3 damage.`
+      `Instant (any time, incl. an enemy unit's turn start or end of its move): Select a unit and ${adjacentText}. Deal to all selected units (friend or foe): Power 0: 1 damage; Power 2: 2 damage; Power 4: 3 damage.`
     ],
     target: { type: "any-unit" },
     effect: {
@@ -2249,8 +2252,10 @@ export const adventureCards: CardLibrary = {
   // Adelaide (Castle, Cleric): the Frost Ring specialist. I/VI: discard 1/2
   // cards, target a space, and every unit ADJACENT to it (not the centre,
   // friend or foe) takes 1/2 damage — the Frost-Ring AREA_DAMAGE_PICK_ADJACENT
-  // machinery (includeCenter: false). IV: a map play that returns 1 Spell or
-  // Specialty card from your discard pile to your hand.
+  // machinery (includeCenter: false). The Frost Ring is an Instant (combatAnytime):
+  // playable on your own turn AND off-turn when an enemy unit's activation starts
+  // or ends. IV: a map play that returns 1 Spell or Specialty card from your
+  // discard pile to your hand.
   "specialty.adelaide.1": {
     id: "specialty.adelaide.1",
     name: "Frost Ring I",
@@ -2262,7 +2267,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "adelaide",
       "frost-ring",
-      "Discard 1 card, then target a space on the Combat board: every unit adjacent to that space (not the space itself, friend or foe) takes 1 damage."
+      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 1 card, then target a space on the Combat board: every unit adjacent to that space (not the space itself, friend or foe) takes 1 damage."
     ],
     target: { type: "any-space" },
     effect: {
@@ -2270,6 +2275,7 @@ export const adventureCards: CardLibrary = {
       options: [
         {
           label: "Discard 1 card: 1 damage to every unit adjacent to a space",
+          combatAnytime: true,
           cost: { discardCards: 1 },
           effect: {
             type: "AREA_DAMAGE_PICK_ADJACENT",
@@ -2327,7 +2333,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "adelaide",
       "frost-ring",
-      "Discard 2 cards, then target a space on the Combat board: every unit adjacent to that space (not the space itself, friend or foe) takes 2 damage."
+      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 2 cards, then target a space on the Combat board: every unit adjacent to that space (not the space itself, friend or foe) takes 2 damage."
     ],
     target: { type: "any-space" },
     effect: {
@@ -2335,6 +2341,7 @@ export const adventureCards: CardLibrary = {
       options: [
         {
           label: "Discard 2 cards: 2 damage to every unit adjacent to a space",
+          combatAnytime: true,
           cost: { discardCards: 2 },
           effect: {
             type: "AREA_DAMAGE_PICK_ADJACENT",
@@ -2924,6 +2931,10 @@ export const adventureCards: CardLibrary = {
   // Ballista heroes (gain/activate). IV/VI add the "discard your Ballista to
   // inflict N damage on the selected unit" instant (NEW DISCARD_WAR_MACHINE_DAMAGE);
   // VI's ongoing side also lets you aim your Ballista (NEW BALLISTA_CHOOSE_TARGET).
+  // The Ballista-discard damage is a true Instant (combatAnytime): besides your
+  // own turn it may be played off-turn when an enemy unit's activation starts or
+  // when it finishes its move. The free 1 damage (IV) and the ongoing aim (VI)
+  // stay on your own turn only.
   "specialty.gerwulf.1": withoutArt({
     id: "specialty.gerwulf.1",
     name: "Ballista I",
@@ -2966,7 +2977,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "gerwulf",
       "ballista",
-      "The selected unit suffers 1 damage. — OR — Discard your Ballista to inflict 2 damage on the selected unit."
+      "On your turn: the selected unit suffers 1 damage. — OR — Instant (any time, incl. an enemy unit's turn start or end of its move): discard your Ballista to inflict 2 damage on the selected enemy unit."
     ],
     target: { type: "none" },
     effect: {
@@ -2980,6 +2991,7 @@ export const adventureCards: CardLibrary = {
         {
           label: "Discard your Ballista: 2 damage to an enemy unit",
           combatOnly: true,
+          combatAnytime: true,
           target: { type: "enemy-unit" },
           effect: { type: "DISCARD_WAR_MACHINE_DAMAGE", warMachineCardId: "war_machine.ballista", amount: 2 }
         }
@@ -2999,7 +3011,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "gerwulf",
       "ballista",
-      "Ongoing: For this Combat, you can choose targets for your Ballista (if you have one). — OR — Discard your Ballista to inflict 3 damage on the selected unit."
+      "Ongoing (your turn): For this Combat, you can choose targets for your Ballista (if you have one). — OR — Instant (any time, incl. an enemy unit's turn start or end of its move): discard your Ballista to inflict 3 damage on the selected enemy unit."
     ],
     target: { type: "none" },
     effect: {
@@ -3023,6 +3035,7 @@ export const adventureCards: CardLibrary = {
         {
           label: "Discard your Ballista: 3 damage to an enemy unit",
           combatOnly: true,
+          combatAnytime: true,
           target: { type: "enemy-unit" },
           effect: { type: "DISCARD_WAR_MACHINE_DAMAGE", warMachineCardId: "war_machine.ballista", amount: 3 }
         }

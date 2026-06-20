@@ -91,6 +91,7 @@ import type {
   BuildingLibrary,
   CardDefinition,
   CardId,
+  CardOptionDefinition,
   CardPlayCost,
   CardPlayMode,
   CardLibrary,
@@ -1717,7 +1718,70 @@ export function getOffTurnCombatReactions(
   addActiveEffectActions(actions, state, playerId);
   addSpellActions(actions, state, playerId, cards);
   addPlayableCardActions(actions, state, playerId, cards);
+  // Instant damage specialties (Gerwulf's Ballista discard, Adelaide's Frost
+  // Ring, Deemer's Meteor Shower) are "Instant" — playable off-turn during an
+  // enemy unit's activation, not only on the owner's own turn. They are timed
+  // "combat" (so addPlayableCardActions skips them off-turn); this offers just
+  // their `combatAnytime` sides here.
+  addCombatAnytimeSpecialtyPlays(actions, state, playerId, cards);
   return actions;
+}
+
+/**
+ * The instant damage specialties a player may play OFF-TURN — i.e. during an
+ * enemy unit's activation (Gerwulf's Ballista discard, Adelaide's Frost Ring,
+ * Deemer's Meteor Shower). Only the `combatAnytime` options are offered, never a
+ * card's own-turn-only sides (Gerwulf IV's free 1 damage, Gerwulf VI's ongoing
+ * aim). These cards are timed "combat", so the normal off-turn card pass
+ * (addPlayableCardActions) skips them while it is not the owner's turn — this
+ * adds just their instant sides back. It self-gates to OFF-turn: when the
+ * player's own unit is active and yet to act, the on-turn pass already offers
+ * every option, so this no-ops to avoid double-listing.
+ */
+function addCombatAnytimeSpecialtyPlays(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  cards: CardLibrary
+): void {
+  const combat = state.combat;
+  if (!combat || combat.outcome || combat.setup || !isCombatParticipant(state, playerId)) {
+    return;
+  }
+  if (isHandLockedInCombat(state, playerId)) {
+    return;
+  }
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+  // On-turn (this player's own fresh unit is active), the standard card pass
+  // offers every option, including these — skip to avoid offering them twice.
+  const activeUnit = combat.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+  const ownActivationOpen = Boolean(
+    activeUnit &&
+      activeUnit.controllerId === playerId &&
+      !activeUnit.activatedThisRound &&
+      !activeUnit.attackedThisActivation
+  );
+  if (ownActivationOpen) {
+    return;
+  }
+  for (const cardId of new Set(player.hand)) {
+    const card = cards[cardId];
+    if (
+      !card ||
+      card.kind !== "hero-specialty" ||
+      card.implementationStatus !== "implemented" ||
+      card.effect.type !== "CHOOSE_ONE" ||
+      !card.effect.options.some((option) => option.combatAnytime)
+    ) {
+      continue;
+    }
+    addOptionPlays(actions, state, playerId, card, cardId, "combat", cards, (option) =>
+      Boolean(option.combatAnytime)
+    );
+  }
 }
 
 /** Effects an "OR" option may resolve directly in the given context. */
@@ -2041,7 +2105,12 @@ function addOptionPlays(
   card: CardDefinition,
   cardId: string,
   context: "combat" | "map",
-  cards: CardLibrary
+  cards: CardLibrary,
+  // When given, only options matching the predicate are offered. Used to offer
+  // ONLY the `combatAnytime` instant sides off-turn (so a card's own-turn-only
+  // sides, e.g. Gerwulf IV's free 1 damage, are never offered during an enemy's
+  // activation window).
+  filter?: (option: CardOptionDefinition) => boolean
 ): void {
   if (card.effect.type !== "CHOOSE_ONE") {
     return;
@@ -2059,6 +2128,9 @@ function addOptionPlays(
 
   for (const [optionIndex, option] of card.effect.options.entries()) {
     if (option.trigger) {
+      continue;
+    }
+    if (filter && !filter(option)) {
       continue;
     }
     if (option.mapOnly && context !== "map") {
@@ -3289,11 +3361,14 @@ export function getLegalActions(
 
   if (state.activePlayerId !== playerId) {
     // Even while the opponent's unit is active you may still cast your one
-    // spell per combat round and slot in trigger-free instants.
+    // spell per combat round, slot in trigger-free instants, use the First Aid
+    // Tent, and play an instant damage specialty (Gerwulf/Adelaide/Deemer) —
+    // these are "Instant" and playable at any time during the Combat.
     const anytimeActions: LegalAction[] = [];
     addActiveEffectActions(anytimeActions, state, playerId);
     addSpellActions(anytimeActions, state, playerId, cards);
     addPlayableCardActions(anytimeActions, state, playerId, cards);
+    addCombatAnytimeSpecialtyPlays(anytimeActions, state, playerId, cards);
     return anytimeActions;
   }
 
@@ -5539,9 +5614,11 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     if (playerId === reactor) {
       if (pause.kind === "pre-activation") {
         // Cast Intelligence-enabled spells, trigger-free instant spells, play
-        // an instant ability, or use an active effect — all before the unit
-        // acts. (addSpellActions already gates activation spells on the
-        // Intelligence freedom, so only the right spells are offered off-turn.)
+        // an instant ability, use an active effect (First Aid Tent), or play an
+        // instant damage specialty (Gerwulf/Adelaide/Deemer's `combatAnytime`
+        // sides) — all before the unit acts. (addSpellActions already gates
+        // activation spells on the Intelligence freedom, so only the right
+        // spells are offered off-turn.)
         actions.push(...getOffTurnCombatReactions(state, playerId, cards));
       }
       actions.push({
@@ -5591,6 +5668,9 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     addTacticsCombatActions(actions, state, playerId);
     addSpellActions(actions, state, playerId, cards);
     addPlayableCardActions(actions, state, playerId, cards);
+    // Instant damage specialties are playable off-turn too (self-gates to the
+    // off-turn side, so the active player is not double-offered them).
+    addCombatAnytimeSpecialtyPlays(actions, state, playerId, cards);
     if (isCombatParticipant(state, playerId)) {
       addPermanentDiscardActions(actions, state, playerId);
       // A morale token (e.g. gained by playing Leadership mid-battle) may also
