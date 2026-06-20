@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions, getMainHero } from "./index";
+import {
+  applyAction,
+  createAdventureGameState,
+  createInitialGameState,
+  getLegalActions,
+  getMainHero,
+  NEUTRAL_PLAYER_ID
+} from "./index";
 import { getOffTurnCombatReactions } from "./legal-actions";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { adventureCards } from "@/data/cards/adventure";
@@ -68,6 +75,37 @@ function findPlay(state: GameState, playerId: "p1" | "p2", cardId: string, optio
       legal.action.cardId === cardId &&
       (optionIndex === undefined || legal.action.optionIndex === optionIndex)
   );
+}
+
+/**
+ * Opens a one-guard NEUTRAL fight (the default map's guarded mine at 9,1), with
+ * the player's unit frozen to act first so the guard's activation — and the
+ * pre-activation reaction pause it triggers — comes up next. Mirrors the setup
+ * in neutral-reaction-pause.test.ts. Neutral combat already pauses before each
+ * guard; this test only checks the listed instants are offered THERE.
+ */
+function neutralFightBeforeGuard(): GameState {
+  let state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false });
+  if (state.players.p1.needsHandRefresh) {
+    state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+  }
+  state = applyOk(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:9:1" });
+  const armyUnit = state.players.p1.army[0];
+  state = applyOk(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: armyUnit.id, position: 13 });
+  for (const unit of Object.values(state.combat!.units)) {
+    if (unit.controllerId !== NEUTRAL_PLAYER_ID) {
+      unit.initiative = 99;
+    }
+  }
+  state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+  for (const unit of Object.values(state.combat!.units)) {
+    if (unit.controllerId === NEUTRAL_PLAYER_ID) {
+      unit.initiative = 1;
+    }
+  }
+  // p1's unit defends; the guard is up next and the engine pauses for p1.
+  const active = state.combat!.units[state.combat!.activeUnitId!];
+  return applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: active.id });
 }
 
 // ===========================================================================
@@ -240,6 +278,19 @@ describe("interaction with Intelligence and reaction pauses", () => {
       (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.deemer.6"
     );
     expect(offered).toBe(true);
+  });
+
+  it("is offered in a Neutral combat's existing guard pause (Neutral kept as-is — no new pauses)", () => {
+    const state = neutralFightBeforeGuard();
+    // Neutral combat already pauses before each guard acts; we add nothing here.
+    expect(state.combat!.pendingNeutralStep?.kind).toBe("pre-activation");
+    expect(state.combat!.pendingNeutralStep?.reactingPlayerId).toBe("p1");
+    // With a Meteor Shower in hand and NO Intelligence, it is offered in that pause.
+    state.players.p1.hand = ["specialty.deemer.6"];
+    const offered = getLegalActions(state, "p1").some(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.deemer.6"
+    );
+    expect(offered, "the instant specialty should be playable in the neutral guard pause").toBe(true);
   });
 
   it("is offered off-turn in a real adventure-mode player-vs-player combat (not only the sandbox)", () => {
