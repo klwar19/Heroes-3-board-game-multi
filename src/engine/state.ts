@@ -835,6 +835,12 @@ export type EffectDefinition =
       type: "GAIN_RESOURCES";
       gain: ResourceCost;
       expertGain?: ResourceCost;
+      /**
+       * Sephinroth's Valuables I: "Pay `goldCost` gold to gain …". The player must
+       * have the gold; it is spent before `gain` is granted (gated in legal-actions
+       * so the option is hidden when unaffordable).
+       */
+      goldCost?: number;
     }
   | {
       /**

@@ -11,6 +11,7 @@ import {
 import { startWarMachineRound } from "./permanents";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { adventureCards } from "@/data/cards/adventure";
+import type { FactionId } from "@/data/factions/types";
 import type { GameAction, GameEvent, GameState, UnitId } from "./state";
 
 // ---------------------------------------------------------------------------
@@ -30,8 +31,32 @@ const assetPath = (src: string) => fileURLToPath(new URL(`../../public${src}`, i
 const BATCH5_HEROES: Array<[string, keyof typeof coreFactionDefinitions]> = [
   ["ash", "inferno"],
   ["gerwulf", "fortress"],
-  ["tarnum_dungeon", "dungeon"]
+  ["tarnum_dungeon", "dungeon"],
+  ["sephinroth", "dungeon"]
 ];
+
+function lastEventOfType<T extends GameEvent["type"]>(
+  state: GameState,
+  type: T
+): Extract<GameEvent, { type: T }> | undefined {
+  return [...state.eventLog].reverse().find((event): event is Extract<GameEvent, { type: T }> => event.type === type);
+}
+
+/** A two-player adventure (map) game with `heroDefId` controlling p1. */
+function adventureFor(seed: string, heroDefId: string, factionId: FactionId): GameState {
+  const state = createAdventureGameState({
+    seed,
+    rollFirstPlayer: false,
+    players: [
+      { id: "p1", name: "P1", factionId, heroDefId },
+      { id: "p2", name: "P2", factionId: "necropolis", heroDefId: "sandro" }
+    ]
+  });
+  state.activePlayerId = "p1";
+  state.pendingChoice = null;
+  state.reactionWindow = null;
+  return state;
+}
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -529,5 +554,86 @@ describe("Tarnum (Dungeon)'s Dragons specialty", () => {
     expect(reaction, "+2 attack option offered on the declared attack").toBeTruthy();
     const settled = passAllReactions(applyOk(declared, reaction!.action));
     expect(lastAttackRolled(settled, (e) => e.attackerId === "unit_p1_griffins" && !e.isRetaliation)?.attackBonus).toBe(2);
+  });
+});
+
+// ===========================================================================
+// Sephinroth (Dungeon) — Valuables: pay-gold / gain-valuables map economy
+// ===========================================================================
+
+describe("Sephinroth's Valuables specialty", () => {
+  it("I option A pays 2 gold to gain 1 valuables on the map; hidden when unaffordable", () => {
+    const state = adventureFor("seph-1", "sephinroth", "dungeon");
+    state.players.p1.hand = ["specialty.sephinroth.1"];
+    state.players.p1.resources.gold = 5;
+    state.players.p1.resources.valuables = 0;
+    const play = findPlay(state, "specialty.sephinroth.1", 0);
+    expect(play, "the pay-gold option is offered with enough gold").toBeTruthy();
+    const after = applyOk(state, play!.action);
+    expect(after.players.p1.resources.gold, "2 gold spent").toBe(3);
+    expect(after.players.p1.resources.valuables, "1 valuables gained").toBe(1);
+
+    const broke = adventureFor("seph-1-broke", "sephinroth", "dungeon");
+    broke.players.p1.hand = ["specialty.sephinroth.1"];
+    broke.players.p1.resources.gold = 1; // < 2
+    expect(findPlay(broke, "specialty.sephinroth.1", 0), "pay-gold hidden when too poor").toBeFalsy();
+  });
+
+  it("I option B draws 1 card", () => {
+    const state = adventureFor("seph-1b", "sephinroth", "dungeon");
+    state.players.p1.hand = ["specialty.sephinroth.1"];
+    state.players.p1.deck = ["stat.attack", "stat.defense"];
+    const before = state.players.p1.hand.length;
+    const play = findPlay(state, "specialty.sephinroth.1", 1);
+    expect(play, "draw option offered").toBeTruthy();
+    const after = applyOk(state, play!.action);
+    expect(after.players.p1.hand.length).toBe(before - 1 + 1); // -specialty +draw
+  });
+
+  it("IV option A gains 1 valuables; VI option A gains 2 valuables (map)", () => {
+    const four = adventureFor("seph-4", "sephinroth", "dungeon");
+    four.players.p1.hand = ["specialty.sephinroth.4"];
+    four.players.p1.resources.valuables = 0;
+    const afterFour = applyOk(four, findPlay(four, "specialty.sephinroth.4", 0)!.action);
+    expect(afterFour.players.p1.resources.valuables).toBe(1);
+
+    const six = adventureFor("seph-6", "sephinroth", "dungeon");
+    six.players.p1.hand = ["specialty.sephinroth.6"];
+    six.players.p1.resources.valuables = 0;
+    const afterSix = applyOk(six, findPlay(six, "specialty.sephinroth.6", 0)!.action);
+    expect(afterSix.players.p1.resources.valuables).toBe(2);
+  });
+
+  it("VI option B draws 2 cards", () => {
+    const state = adventureFor("seph-6b", "sephinroth", "dungeon");
+    state.players.p1.hand = ["specialty.sephinroth.6"];
+    state.players.p1.deck = ["stat.attack", "stat.defense", "stat.power"];
+    const before = state.players.p1.hand.length;
+    const after = applyOk(state, findPlay(state, "specialty.sephinroth.6", 1)!.action);
+    expect(after.players.p1.hand.length).toBe(before - 1 + 2);
+  });
+
+  it("IV option B adds +2 Power to a spell cast", () => {
+    let state = createInitialGameState("seph-4-power");
+    state.players.p1.hand = ["spell.magic_arrow", "specialty.sephinroth.4"];
+    state.players.p2.hand = [];
+    state = applyOk(state, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.magic_arrow",
+      target: { type: "unit", unitId: "unit_p2_vampires" }
+    });
+    expect(state.reactionWindow?.priorityPlayerId).toBe("p1");
+    const power = (state.reactionWindow?.legalReactions.p1 ?? []).find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "specialty.sephinroth.4" &&
+        legal.action.optionIndex === 1
+    );
+    expect(power, "the +2 Power option is offered into the caster's own spell window").toBeTruthy();
+    state = passAllReactions(applyOk(state, power!.action));
+    expect(lastEventOfType(state, "SPELL_CAST_RESOLVED"), "Magic Arrow resolves at +2 Power").toMatchObject({
+      power: 2
+    });
   });
 });
