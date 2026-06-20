@@ -28,7 +28,6 @@ import {
   hexNeighbors,
   hexSpaceId,
   parseHexSpaceId,
-  slotDirection,
   tileCentersAdjacent,
   tileCentersOverlap,
   tileFootprint,
@@ -585,19 +584,31 @@ export function canCrossEdge(
   return !isOuterEdgeSealed(adventure, fromField) && !isOuterEdgeSealed(adventure, toField);
 }
 
+/**
+ * THE single source of truth for "is this tile slot's outer edge sealed by a
+ * printed yellow border line". A ring slot (1–6) carries its border as one
+ * full outer arc — all three outward edges seal together — keyed by the slot's
+ * local direction in the tile definition (`outerImpassable[slot - 1]`); the
+ * centre slot (0) is never sealed. Rotation turns the arc with the tile, so the
+ * lookup stays in the tile's own frame.
+ *
+ * Every geometry decision about crossing/discovering/placing across a tile's
+ * outer border MUST go through this (directly, or via {@link isOuterEdgeSealed}
+ * for a placed field) so the ordinary-movement path, the discovery gate and the
+ * Far-tile placement reachability can never drift apart again. Do not re-derive
+ * `outerImpassable[...]` anywhere else.
+ */
+export function isTileSlotOuterSealed(tileDefId: string, slot: number): boolean {
+  if (slot === 0) {
+    return false;
+  }
+  const def = allTileDefinitions[tileDefId];
+  return def ? Boolean(def.outerImpassable[slot - 1]) : false;
+}
+
 export function isOuterEdgeSealed(adventure: AdventureState, field: MapFieldState): boolean {
-  if (field.slot === 0) {
-    return false;
-  }
-
   const tile = adventure.tiles[field.tileInstanceId];
-  const def = tile ? allTileDefinitions[tile.tileDefId] : undefined;
-  if (!tile || !def) {
-    return false;
-  }
-
-  const direction = slotDirection(field.slot, 0);
-  return direction === null ? false : Boolean(def.outerImpassable[direction]);
+  return tile ? isTileSlotOuterSealed(tile.tileDefId, field.slot) : false;
 }
 
 export function getAdjacentSpaceIds(spaceId: MapSpaceId): MapSpaceId[] {
@@ -848,8 +859,9 @@ export function canHeroReachPlacedTile(
         tileId: "__candidate__",
         slot: candidateSlot,
         blocked: locationDefinitions[fieldDef?.location]?.category === "blocked",
-        // A ring field's outer-arc seal travels with its slot; the center never seals.
-        sealed: candidateSlot !== 0 && Boolean(def.outerImpassable[candidateSlot - 1])
+        // A ring field's outer-arc seal travels with its slot; the center never
+        // seals. Same primitive the placed fields below use — one source of truth.
+        sealed: isTileSlotOuterSealed(tileDefId, candidateSlot)
       };
     }
     const field = adventure.fields[spaceId];
