@@ -3270,68 +3270,87 @@ export function startPlayerCombat(
 }
 
 /**
- * Player-vs-player pre-combat preparation window. When an enemy hero attacks,
- * a defender who still holds an unused town action this round (the build,
- * population or spell-book token) and owns a town may spend it before deploying
- * — recruited units join the army in time to be placed — then ACCEPT_COMBAT to
- * begin deployment. This is the fairness case the table asked for: a defender
- * who has not had their own turn yet (so their tokens are still fresh) gets to
- * recruit/build/buy spells before the fight instead of being caught flat-footed.
- *
- * Opened before placement (the defender takes priority while `setup` is already
- * built). Returns true when the window is opened. A defender with no town, or
- * one who already spent every town action this round, skips straight to
- * deployment as before.
+ * The two participants of a player-vs-player combat — the attacker and the
+ * defender — who each get a say in the pre-battle preparation window.
  */
-/**
- * True when the defender would be given a pre-combat prep window (and therefore
- * a chance to Surrender): they have a town and at least one unspent town token.
- * A defender who would not get prep cannot Surrender at all.
- */
-function defenderWouldGetPrep(state: GameState): boolean {
-  const combat = state.combat;
-  if (!combat || combat.context.kind !== "player" || combat.defenderPrep) {
-    return false;
-  }
-  const defenderId = combat.defenderPlayerId;
-  const player = state.players[defenderId];
-  if (!player || !getTownOfPlayer(state, defenderId)) {
-    return false;
-  }
-  return Boolean(player.townTokens.build || player.townTokens.population || player.townTokens.spellBook);
+function combatPrepParticipants(combat: CombatState): PlayerId[] {
+  return [combat.attackerPlayerId, combat.defenderPlayerId];
 }
 
-function maybeOpenDefenderPrep(state: GameState): boolean {
+/**
+ * Player-vs-player pre-battle preparation window. When an enemy hero attacks,
+ * BOTH the attacker and the defender get a window — presented on the adventure
+ * MAP, not the battlefield — to spend any town actions they still hold this
+ * round (build, recruit/reinforce, buy spells) before deploying. Recruited units
+ * join the army in time to be placed. Each side then presses ACCEPT_COMBAT, and
+ * deployment begins only once both have. This is the fairness case the table
+ * asked for: a defender caught on the enemy's turn (fresh tokens) — and the
+ * attacker too — get to prepare with their towns and resources in full view,
+ * instead of calculating blind on the combat screen.
+ *
+ * Opened for every player-vs-player combat (the combat shell and `setup` already
+ * built, but deployment held back). Returns true when the window is opened;
+ * neutral-guard fights never open it.
+ */
+function maybeOpenCombatPrep(state: GameState): boolean {
   const combat = state.combat;
-  if (!combat || !defenderWouldGetPrep(state)) {
+  if (!combat || combat.context.kind !== "player" || combat.prep) {
     return false;
   }
-  combat.defenderPrep = { playerId: combat.defenderPlayerId };
+
+  combat.prep = { accepted: [] };
   state.phase = "combat-setup";
-  state.priorityPlayerId = combat.defenderPlayerId;
+  // Both participants may act at once; neither holds exclusive priority. Each
+  // side's legal actions are gated by `inCombatPrep`, not by priorityPlayerId.
+  state.priorityPlayerId = null;
   return true;
 }
 
 /**
- * Ends the defender's pre-combat preparation window (ACCEPT_COMBAT): clears the
- * window and hands deployment priority to the first player still to place
- * (the attacker, per the setup order).
+ * True while `playerId` is a combat participant who is still preparing — i.e. the
+ * pre-battle window is open and they have not yet pressed ACCEPT_COMBAT. Such a
+ * player may still take town actions; a participant who has already accepted is
+ * locked in and waits for the other side.
  */
-/** True while `playerId` holds the open PvP pre-combat preparation window. */
-export function inDefenderPrep(state: GameState, playerId: PlayerId): boolean {
-  return Boolean(state.combat?.defenderPrep && state.combat.defenderPrep.playerId === playerId);
+export function inCombatPrep(state: GameState, playerId: PlayerId): boolean {
+  const combat = state.combat;
+  if (!combat?.prep) {
+    return false;
+  }
+  return combatPrepParticipants(combat).includes(playerId) && !combat.prep.accepted.includes(playerId);
 }
 
+/**
+ * Accept the battle (ACCEPT_COMBAT): a participant readies up after any town
+ * actions. While one side waits on the other the window stays open; once BOTH
+ * the attacker and defender have accepted the window clears and deployment
+ * priority passes to the first player still to place (the attacker).
+ */
 export function acceptCombat(state: GameState, action: Extract<GameAction, { type: "ACCEPT_COMBAT" }>): void {
   const combat = state.combat;
-  if (!combat || !combat.defenderPrep || combat.defenderPrep.playerId !== action.playerId) {
-    throw new Error("There is no combat preparation to accept right now.");
+  if (!combat || !combat.prep) {
+    throw new Error("There is no battle preparation to accept right now.");
+  }
+  if (!combatPrepParticipants(combat).includes(action.playerId)) {
+    throw new Error("Only a combat participant may accept the battle.");
+  }
+  if (combat.prep.accepted.includes(action.playerId)) {
+    throw new Error("You have already accepted — waiting for your opponent to ready up.");
   }
 
-  combat.defenderPrep = null;
+  combat.prep.accepted.push(action.playerId);
+  appendEvent(state, { type: "COMBAT_PREP_ACCEPTED", playerId: action.playerId });
+
+  if (!combatPrepParticipants(combat).every((id) => combat.prep!.accepted.includes(id))) {
+    // Still waiting on the other participant — keep the prep window open.
+    state.phase = "combat-setup";
+    state.priorityPlayerId = null;
+    return;
+  }
+
+  combat.prep = null;
   state.phase = "combat-setup";
   state.priorityPlayerId = combat.setup?.pendingPlayerIds[0] ?? combat.attackerPlayerId;
-  appendEvent(state, { type: "COMBAT_PREP_ACCEPTED", playerId: action.playerId });
 }
 
 /** Opens the next queued Cover of Darkness start-of-combat decision. */
@@ -3387,13 +3406,13 @@ export function resolveCoverOfDarknessChoice(state: GameState, playerId: PlayerI
 /**
  * Continue the start-of-combat sequence after any Cover of Darkness decisions:
  * offer the attacker the Shackles of War "block the enemy's Surrender" decision,
- * then open the defender's prep window (or go straight to deployment).
+ * then open the pre-battle prep window (or go straight to deployment).
  */
 function continueStartOfCombat(state: GameState): void {
   if (maybeOpenShacklesDecision(state)) {
     return;
   }
-  if (maybeOpenDefenderPrep(state)) {
+  if (maybeOpenCombatPrep(state)) {
     return;
   }
   const combat = state.combat;
@@ -3420,21 +3439,20 @@ function findShacklesInHand(state: GameState, playerId: PlayerId): CardId | null
  * Shackles of War, reworked to match "Surrender is a before-battle (defender
  * prep) decision". The attacker is offered a start-of-combat decision — before
  * the defender's prep opens — to play Shackles and lock the defender out of
- * Surrender (they may still Retreat). Only offered when the defender could
- * actually surrender (they would get a prep window) and the attacker holds the
- * card. Resolved like Cover of Darkness. Returns true when the decision opened.
+ * Surrender (they may still Retreat). Offered before the prep window opens, when
+ * the attacker holds the card and there is a defending hero who could surrender.
+ * Resolved like Cover of Darkness. Returns true when the decision opened.
  */
 function maybeOpenShacklesDecision(state: GameState): boolean {
   const combat = state.combat;
   if (!combat || combat.context.kind !== "player" || combat.pendingShackles || combat.shacklesOffered) {
     return false;
   }
-  // Only the defender can Surrender (in prep), so only the attacker can block it.
+  // The defender is who surrenders (in prep), so only the attacker can block it.
   const attackerId = combat.attackerPlayerId;
   const defenderId = combat.defenderPlayerId;
-  // No defending hero, or a defender who would not get a prep window, means there
-  // is no Surrender to block — do not prompt.
-  if (!combat.context.defenderHeroId || !defenderWouldGetPrep(state)) {
+  // No defending hero means there is no Surrender to block — do not prompt.
+  if (!combat.context.defenderHeroId) {
     return false;
   }
   if (playerCannotSurrenderCombat(state, defenderId)) {
@@ -3520,8 +3538,8 @@ export function placeCombatUnit(state: GameState, action: Extract<GameAction, { 
     throw new Error("No combat setup is in progress.");
   }
 
-  if (combat.defenderPrep) {
-    throw new Error("Deployment waits while the defender prepares for combat.");
+  if (combat.prep) {
+    throw new Error("Deployment waits until both sides accept the battle.");
   }
 
   if (setup.pendingPlayerIds[0] !== action.playerId) {
@@ -3593,8 +3611,8 @@ export function unplaceCombatUnit(state: GameState, action: Extract<GameAction, 
     throw new Error("No combat placement to undo.");
   }
 
-  if (combat.defenderPrep) {
-    throw new Error("Deployment waits while the defender prepares for combat.");
+  if (combat.prep) {
+    throw new Error("Deployment waits until both sides accept the battle.");
   }
 
   const placed = setup.placedUnitIds[action.playerId] ?? [];
@@ -3617,8 +3635,8 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
     throw new Error("No combat placement to finish.");
   }
 
-  if (combat.defenderPrep) {
-    throw new Error("Deployment waits while the defender prepares for combat.");
+  if (combat.prep) {
+    throw new Error("Deployment waits until both sides accept the battle.");
   }
 
   if ((setup.placedUnitIds[action.playerId] ?? []).length === 0) {
@@ -4066,18 +4084,19 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
   if (!heroId) {
     throw new Error("A hero must be present to retreat or surrender.");
   }
-  const inDefenderPrep = Boolean(combat.defenderPrep && combat.defenderPrep.playerId === playerId);
-  // Retreat is allowed any time before the fighting begins: the defender's prep
-  // window, while deploying (combat.setup, round 1), and the post-deployment
-  // pause (pvpEscapeWindowOpen). After the first unit acts it is closed.
+  const inPrep = inCombatPrep(state, playerId);
+  // Retreat is allowed any time before the fighting begins: a participant's
+  // pre-battle prep window, while deploying (combat.setup, round 1), and the
+  // post-deployment pause (pvpEscapeWindowOpen). After the first unit acts it is
+  // closed.
   const duringPlacement = Boolean(combat.setup) && combat.round === 1;
-  if (!inDefenderPrep && !duringPlacement && !pvpEscapeWindowOpen(combat)) {
+  if (!inPrep && !duringPlacement && !pvpEscapeWindowOpen(combat)) {
     throw new Error("Retreat is only possible before any unit acts.");
   }
   if (reason === "surrender") {
     // Surrender is a before-battle (prep) decision only — never once deployment
     // has begun.
-    if (!inDefenderPrep) {
+    if (!inPrep) {
       throw new Error("Surrender is only possible before the battle, during your prep.");
     }
     // Shackles of War (house rule) locks the enemy out of Surrender only.
@@ -4091,6 +4110,9 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
     }
   }
   const winnerPlayerId = playerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
+  // Escaping straight from the pre-battle prep window ends the fight before it
+  // begins: close the prep so the result is shown (the map no longer holds).
+  combat.prep = null;
   combat.outcome = { winnerPlayerId, defeatedPlayerId: playerId, reason };
   appendEvent(state, { type: "COMBAT_ENDED", winnerPlayerId, defeatedPlayerId: playerId, reason });
 }
@@ -4505,7 +4527,7 @@ export function buildStructureAdventure(
     throw new Error("That structure cannot be built right now.");
   }
 
-  if (state.combat && !inDefenderPrep(state, action.playerId)) {
+  if (state.combat && !inCombatPrep(state, action.playerId)) {
     throw new Error("Town actions cannot interrupt a combat.");
   }
 
@@ -4621,7 +4643,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
     throw new Error("Unknown player.");
   }
 
-  if (state.combat && !inDefenderPrep(state, action.playerId)) {
+  if (state.combat && !inCombatPrep(state, action.playerId)) {
     throw new Error("Town actions cannot interrupt a combat.");
   }
 
@@ -4756,7 +4778,7 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
     throw new Error("Unknown player.");
   }
 
-  if (state.combat && !inDefenderPrep(state, action.playerId)) {
+  if (state.combat && !inCombatPrep(state, action.playerId)) {
     throw new Error("Town actions cannot interrupt a combat.");
   }
 
@@ -6199,10 +6221,10 @@ export function pumpAdventureQueues(state: GameState): void {
     return;
   }
 
-  // A defender preparing for a PvP fight may buy spells / build a Mage Guild,
+  // A participant preparing for a PvP fight may buy spells / build a Mage Guild,
   // which queue a Spell-deck search to resolve — so the queue pumps during the
   // prep window even though a combat object exists. Every other combat blocks it.
-  const inPrep = Boolean(state.combat?.defenderPrep);
+  const inPrep = Boolean(state.combat?.prep);
   if ((state.combat && !inPrep) || state.pendingChoice || state.reactionWindow || state.stack.length > 0) {
     return;
   }

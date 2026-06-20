@@ -23,6 +23,7 @@ import {
   getUnitAbilityDefinitions,
   getUnitMoveRange,
   getUnitTokens,
+  inCombatPrep,
   isAdjacent,
   isArrowTowerUnit,
   isUnitAlive,
@@ -1633,10 +1634,11 @@ export function CommandDock({
   // is the single, clear control. "Keep positions" (FINISH_TACTICS) stays. The
   // rare expert mid-combat swap is not a setup window, so it keeps its buttons.
   const inTacticsSetup = tacticsSetupActiveFor(state, viewerPlayerId);
-  // The PvP pre-combat preparation panel owns every prep control (build /
-  // recruit / buy spells / Accept / Retreat), so the dock stays out of its way.
-  const inDefenderPrep = state.combat?.defenderPrep?.playerId === viewerPlayerId;
-  const commands = inDefenderPrep
+  // PvP pre-battle preparation runs on the adventure map (PreBattlePanel), which
+  // owns every prep control (build / recruit / buy spells / Accept / Retreat),
+  // so the battlefield dock stays out of its way while the window is open.
+  const inBattlePrep = inCombatPrep(state, viewerPlayerId);
+  const commands = inBattlePrep
     ? []
     : legalActions.filter(
         (legal) =>
@@ -1656,15 +1658,13 @@ export function CommandDock({
       !activeUnit.activatedThisRound &&
       activeUnit.type === "ranged"
   );
-  const prepDefenderName = state.combat?.defenderPrep
-    ? state.players[state.combat.defenderPrep.playerId]?.name ?? "the defender"
-    : null;
+  const prepOpen = Boolean(state.combat?.prep);
   const status = outcome
     ? `${state.players[outcome.winnerPlayerId]?.name ?? outcome.winnerPlayerId} wins`
-    : inDefenderPrep
-      ? "Prepare your defense"
-      : prepDefenderName
-        ? `${prepDefenderName} is preparing their defense…`
+    : inBattlePrep
+      ? "Prepare for battle on the map"
+      : prepOpen
+        ? "Both sides are preparing for battle on the map…"
         : waitingOn === viewerPlayerId
           ? activeUnit && activeUnit.controllerId === viewerPlayerId
             ? postShotMove

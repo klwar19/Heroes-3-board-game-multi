@@ -68,6 +68,7 @@ import {
   MarketPanel,
   PileModal,
   PlacementPanel,
+  PreBattlePanel,
   PromptTray,
   SetupLobbyScreen,
   TownPanel,
@@ -2326,7 +2327,9 @@ export default function Home() {
     ? null
     : state.mode === "adventure" && Boolean(state.setupLobby) && state.phase === "setup"
       ? "menu"
-      : state.mode === "adventure" && (!state.combat || combatTab === "map")
+      : // PvP pre-battle preparation happens on the map, so keep the map theme
+        // playing until the fight actually begins (deployment).
+        state.mode === "adventure" && (!state.combat || combatTab === "map" || Boolean(state.combat.prep))
         ? "map"
         : "combat";
   useBackgroundMusic(musicScene);
@@ -2354,6 +2357,10 @@ export default function Home() {
   const trayActive = Boolean(state.reactionWindow && state.reactionWindow.priorityPlayerId === viewerPlayerId);
   const seatIds = state.turnOrder.filter((playerId) => playerId !== NEUTRAL_PLAYER_ID);
   const combatVisible = Boolean(state.combat);
+  // PvP pre-battle preparation is done on the adventure map, not the battlefield.
+  // Once the fight is decided (e.g. a Retreat straight out of prep) the result
+  // belongs on the battle screen, so the forced-map override lifts.
+  const inBattlePrep = Boolean(state.combat?.prep) && !state.combat?.outcome;
   const adventureMode = state.mode === "adventure";
   const inLobby = Boolean(state.setupLobby) && state.phase === "setup";
 
@@ -2466,7 +2473,9 @@ export default function Home() {
   }
 
   // ---- Adventure map screen -------------------------------------------------
-  const showMapScreen = adventureMode && (!combatVisible || combatTab === "map");
+  // Force the map in front during pre-battle prep so both sides plan with their
+  // towns and resources in view, not on the empty battlefield.
+  const showMapScreen = adventureMode && (!combatVisible || combatTab === "map" || inBattlePrep);
 
   if (showMapScreen) {
     const viewer = isSeated ? state.players[viewerPlayerId] : null;
@@ -2559,7 +2568,14 @@ export default function Home() {
 
           {errorBanner}
 
-          {combatVisible ? (
+          {inBattlePrep ? (
+            <PreBattlePanel
+              legalActions={legalActions}
+              onAction={submitAction}
+              state={state}
+              viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
+            />
+          ) : combatVisible ? (
             <div className="combatContextBanner">
               <Swords aria-hidden="true" size={14} />
               <span>A combat is being fought on this map.</span>

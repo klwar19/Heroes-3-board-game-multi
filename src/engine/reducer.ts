@@ -1,4 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
+import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
 import { sampleBuildings } from "@/data/towns/buildings";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import {
@@ -89,8 +90,10 @@ import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTar
 import {
   activateBallistas,
   applyPermanentCombatEffectsForPlayer,
+  applyWarMachineDamage,
   buyWarMachine,
   countBallistas,
+  discardPermanentFromPlay,
   discardPermanentVoluntarily,
   discardSchoolPermanentForExpert,
   firstAidVolleyHeals,
@@ -2324,6 +2327,20 @@ function buildRerollSources(
       ? [{ name: "Positive morale token", morale: true, remaining: 1, used: 0 }]
       : [];
 
+  // Diplomat's Ring / Ambassador's Sash: their "Reroll a die" half is an instant
+  // played from hand in reaction to the Attack die — one offer per distinct held
+  // copy, blocked when the attacker cannot use their Deck this Combat. Taking the
+  // reroll discards the artifact (handled in rerollPendingChoice).
+  const artifactSources: AttackRerollSource[] =
+    player && !isHandLockedInCombat(state, attacker.controllerId)
+      ? REROLL_REACTION_ARTIFACT_IDS.filter((cardId) => player.hand.includes(cardId)).map((cardId) => ({
+          name: cardLibrary[cardId]?.name ?? cardId,
+          cardId,
+          remaining: 1,
+          used: 0
+        }))
+      : [];
+
   return [
     ...abilitySources,
     ...ammoCartSources,
@@ -2333,6 +2350,7 @@ function buildRerollSources(
       remaining: getRerollUsesForEffect(effect),
       used: 0
     })),
+    ...artifactSources,
     ...moraleSources
   ].filter((source) => source.remaining > 0);
 }
@@ -2893,6 +2911,11 @@ function finishResolvedAttack(
   } else {
     details.attacker.attackedThisActivation = true;
     details.attacker.attacksThisActivation = (details.attacker.attacksThisActivation ?? 0) + 1;
+    // Ash's Bloodlust "places a Black cube" on the buffed attacker: it spends its
+    // Retaliation for the round (it can no longer perform a Retaliation Attack).
+    if (stackItem.modifiers.setRetaliatedOnAttacker) {
+      details.attacker.retaliatedThisRound = true;
+    }
   }
 
   stackItem.status = "resolved";
@@ -2938,7 +2961,12 @@ function finishResolvedAttack(
       attackerId: details.attacker.id,
       defenderId: details.defender.id,
       attackKind: details.attackKind,
-      retaliationPending: shouldRetaliate(details.attacker, details.defender, details.attackKind),
+      retaliationPending: shouldRetaliate(
+        details.attacker,
+        details.defender,
+        details.attackKind,
+        stackItem.modifiers.ignoresRetaliationThisAttack
+      ),
       afterRetaliationAbilityAttack: getAfterRetaliationAttack(details.attacker, details.defender),
       // A Magic-Mirror-bounced Curse/Weakness on this attack carries to the
       // retaliation so it strikes the new target there too, then is gone.
@@ -5806,13 +5834,16 @@ function getCurrentSpellPower(state: GameState, stackItem: ResolutionStackItem, 
 function shouldRetaliate(
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  attackKind: "melee" | "ranged"
+  attackKind: "melee" | "ranged",
+  /** Ash's Bloodlust VI: this single attack ignores Retaliation Attacks. */
+  ignoreRetaliationOverride = false
 ): boolean {
   return (
     isUnitAlive(attacker) &&
     isUnitAlive(defender) &&
     attackKind === "melee" &&
     isAdjacent(attacker.position, defender.position) &&
+    !ignoreRetaliationOverride &&
     !hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") &&
     (!defender.retaliatedThisRound || hasUnitAbilityEffect(defender, "ALLOW_UNLIMITED_RETALIATION"))
   );
@@ -8014,6 +8045,17 @@ function applyReactionPlayCore(
       }
     }
 
+    // Ash's Bloodlust: the buffed attack "places a Black cube" on the attacker
+    // (it spends its Retaliation once the attack resolves) and, at level VI, the
+    // attack also "ignores Retaliation Attacks". Both ride the pending attack so
+    // they are applied when finishResolvedAttack settles this strike.
+    if (effect.placeBlackCube) {
+      stackItem.modifiers.setRetaliatedOnAttacker = true;
+    }
+    if (effect.ignoresRetaliation) {
+      stackItem.modifiers.ignoresRetaliationThisAttack = true;
+    }
+
     if (effect.drawCards) {
       drawCardsForPlayer(state, playerId, effect.drawCards);
     }
@@ -9065,6 +9107,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
     createActiveEffectFromCard(state, card, effect, action.playerId, mode, target);
+    // Ash's Bloodlust IV: the ongoing buff also "places a Black cube" on the
+    // selected unit — it spends its Retaliation for the round.
+    if (effect.placeBlackCube && state.combat && target?.type === "unit") {
+      const cubed = state.combat.units[target.unitId];
+      if (cubed && cubed.controllerId === action.playerId) {
+        cubed.retaliatedThisRound = true;
+      }
+    }
   }
 
   if (effect.type === "REMOVE_ACTIVE_EFFECT" && target) {
@@ -9232,6 +9282,69 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     finishCombatIfNeeded(state);
   }
 
+  // Gerwulf's Ballista IV/VI: "Discard your Ballista to inflict `amount` damage
+  // on the selected unit." Requires an in-play war-machine card matching the
+  // effect (gated in legal-actions); it is sent to the discard pile and the
+  // chosen enemy takes that much "effect" damage — a physical Ballista shot.
+  if (effect.type === "DISCARD_WAR_MACHINE_DAMAGE" && state.combat) {
+    const unit = target ? state.combat.units[target.unitId] : undefined;
+    if (!unit || !isUnitAlive(unit) || unit.controllerId === action.playerId) {
+      throw new Error(`${card.name} must hit a living enemy unit.`);
+    }
+    if (!getPermanentCardIds(state, action.playerId).includes(effect.warMachineCardId)) {
+      throw new Error(`${card.name} requires an in-play ${effect.warMachineCardId} to discard.`);
+    }
+    discardPermanentFromPlay(state, action.playerId, effect.warMachineCardId);
+    applyWarMachineDamage(
+      state,
+      action.playerId,
+      unit.id,
+      effect.amount,
+      `${card.name}: the discarded Ballista hits ${unit.cardName} for ${effect.amount} damage.`,
+      effect.warMachineCardId
+    );
+  }
+
+  // Tarnum (Dungeon)'s Dragons IV: damage every unit (friend or foe) in the
+  // chosen vertical line of 5 spaces — the column of the selected space, the
+  // only straight line of 5 on the 4×5 Combat board.
+  if (effect.type === "DAMAGE_BATTLEFIELD_LINE" && state.combat && action.target) {
+    const center =
+      action.target.type === "space"
+        ? action.target.position
+        : action.target.type === "unit"
+          ? state.combat.units[action.target.unitId]?.position
+          : undefined;
+    if (center !== undefined) {
+      const column = getBattlefieldCoordinates(center).column;
+      for (const unit of Object.values(state.combat.units)) {
+        if (isUnitAlive(unit) && getBattlefieldCoordinates(unit.position).column === column) {
+          dealAreaCardDamage(state, action.playerId, card, unit, effect.amount);
+        }
+      }
+      finishCombatIfNeeded(state);
+    }
+  }
+
+  // Tarnum (Dungeon)'s Dragons VI (option A): toggle the selected Dragons unit's
+  // Black cube — remove it if the unit has already spent its Retaliation this
+  // round (so it may retaliate again), otherwise place one (so it cannot).
+  if (effect.type === "TOGGLE_RETALIATION_MARKER" && state.combat && target?.type === "unit") {
+    const unit = state.combat.units[target.unitId];
+    if (unit && isUnitAlive(unit)) {
+      const removing = unit.retaliatedThisRound;
+      unit.retaliatedThisRound = !unit.retaliatedThisRound;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unit.id,
+        abilityId: "tarnum-dragons-cube",
+        message: removing
+          ? `${card.name} removes the Black cube from ${unit.cardName} — it may retaliate again.`
+          : `${card.name} places a Black cube on ${unit.cardName} — it cannot retaliate.`
+      });
+    }
+  }
+
   // Merist's Stone Skin IV: "All your units gain a Defense token." Every living
   // unit the caster controls gets the Defend shield for the rest of the combat.
   if (effect.type === "GRANT_DEFENSE_TOKENS" && state.combat) {
@@ -9315,6 +9428,20 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "GAIN_RESOURCES") {
+    // Sephinroth's Valuables I: "Pay N gold to gain …" — spend the gold first.
+    if (effect.goldCost) {
+      const payer = state.players[action.playerId];
+      if (!payer || payer.resources.gold < effect.goldCost) {
+        throw new Error(`${card.name} costs ${effect.goldCost} gold.`);
+      }
+      payer.resources.gold -= effect.goldCost;
+      appendEvent(state, {
+        type: "RESOURCES_SPENT",
+        playerId: action.playerId,
+        cost: { gold: effect.goldCost },
+        reason: `played ${card.name}`
+      });
+    }
     // BINH house rule: Estates is nerfed to 2 / 4 gold.
     const gain =
       card.id === "ability.estates"
@@ -10824,6 +10951,24 @@ function rerollPendingChoice(
         playerId: action.playerId,
         amount: -1,
         total: player.morale
+      });
+    }
+  }
+
+  // Diplomat's Ring / Ambassador's Sash: playing the reroll discards the artifact.
+  if (source.cardId && source.used === 1) {
+    const player = state.players[action.playerId];
+    const handIndex = player?.hand.indexOf(source.cardId) ?? -1;
+    if (player && handIndex !== -1) {
+      player.hand.splice(handIndex, 1);
+      player.discard.push(source.cardId);
+      appendEvent(state, {
+        type: "CARD_PLAYED",
+        playerId: action.playerId,
+        cardId: source.cardId,
+        timing: cardLibrary[source.cardId]?.timing ?? "instant",
+        mode: "basic",
+        optionLabel: "Reroll a die"
       });
     }
   }
@@ -12441,10 +12586,10 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       continue;
     }
 
-    // During a PvP defender-preparation window the only queued rewards are the
+    // During a PvP pre-battle preparation window the only queued rewards are the
     // Spell-deck searches from buying spells / building a Mage Guild, so pump the
     // queue then too (pumpAdventureQueues itself permits the prep exception).
-    const pumpDuringPrep = Boolean(state.combat?.defenderPrep);
+    const pumpDuringPrep = Boolean(state.combat?.prep);
     if ((!state.combat || pumpDuringPrep) && !state.pendingChoice && !state.reactionWindow) {
       const queueLength = state.adventure.rewardQueue.length;
       const hadVisit = Boolean(state.adventure.pendingVisit);

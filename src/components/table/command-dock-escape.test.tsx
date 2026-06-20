@@ -7,11 +7,11 @@ import { createInitialGameState, type GameState, type LegalAction } from "@/engi
 afterEach(cleanup);
 
 /**
- * A PvP combat past the defender's prep window (no defenderPrep panel). The board
- * command dock is the escape UI here, and per the house rule it shows ONLY
- * Retreat — never Surrender (a before-battle, prep-only option). Both the
- * no-casualties RETREAT_FROM_COMBAT and the in-fight GIVE_UP_COMBAT concede are
- * surfaced as a "Retreat" button.
+ * A PvP combat past the pre-battle prep window (no prep panel). The board command
+ * dock is the escape UI here, and per the house rule it shows ONLY Retreat —
+ * never Surrender (a before-battle, prep-only option). Both the no-casualties
+ * RETREAT_FROM_COMBAT and the in-fight GIVE_UP_COMBAT concede are surfaced as a
+ * "Retreat" button.
  */
 function pvpCombatState(seed: string): GameState {
   const state = createInitialGameState(seed);
@@ -21,7 +21,7 @@ function pvpCombatState(seed: string): GameState {
     defenderHeroId: "hero_p2",
     fieldId: "0,0"
   };
-  state.combat!.defenderPrep = null;
+  state.combat!.prep = null;
   state.combat!.outcome = null;
   state.combat!.setup = null;
   state.phase = "combat";

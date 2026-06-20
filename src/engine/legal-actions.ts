@@ -34,6 +34,7 @@ import {
   DEFENDER_FRONTLINE,
   getHeroMoveDestinations,
   hillFortCost,
+  inCombatPrep,
   isTileAdjacentToSpace,
   isTileRotationConnected,
   observatoryPlacementCenters,
@@ -969,8 +970,13 @@ function unitMatchesTarget(unit: CombatUnitState, target: UnitTargetDefinition):
     return false;
   }
 
-  // Ingham's Zealots VI: the ignore-Defense side lands only on his Zealots unit.
-  if (target.type === "friendly-unit" && target.unitName && !matchesUnitName(unit.name, target.unitName)) {
+  // Ingham's Zealots VI (friendly) / Tarnum (Dungeon)'s Dragons VI (any unit):
+  // the effect lands only on a unit whose name matches the named family.
+  if (
+    (target.type === "friendly-unit" || target.type === "any-unit") &&
+    target.unitName &&
+    !matchesUnitName(unit.name, target.unitName)
+  ) {
     return false;
   }
 
@@ -1722,8 +1728,11 @@ function isOptionEffectPlayable(
   context: "combat" | "map"
 ): boolean {
   switch (effect.type) {
-    case "DRAW_CARDS":
     case "GAIN_RESOURCES":
+      // Sephinroth's Valuables I: "Pay N gold to gain …" is only offered when the
+      // player can actually afford the gold cost.
+      return !effect.goldCost || (state.players[playerId]?.resources.gold ?? 0) >= effect.goldCost;
+    case "DRAW_CARDS":
     // Legion artifacts' discount side: banking the one-shot recruit discount is
     // always a valid choice (it is spent later, on the map, by a recruit/reinforce).
     case "GAIN_RECRUIT_DISCOUNT":
@@ -1839,6 +1848,13 @@ function isOptionEffectPlayable(
     // Septienna's Death Ripple: a targetless combat activation that sweeps every
     // enemy unit of a grade.
     case "DAMAGE_ENEMY_UNITS_BY_GRADE":
+    // Tarnum (Castle)'s Ballista VI / Gerwulf's Ballista IV: pick N enemy units
+    // to damage (a targetless combat activation; the pick choice handles the rest).
+    case "DAMAGE_CHOSEN_ENEMIES":
+    // Tarnum (Dungeon)'s Dragons IV (line damage) / VI (toggle a Dragons unit's
+    // Black cube) are combat plays.
+    case "DAMAGE_BATTLEFIELD_LINE":
+    case "TOGGLE_RETALIATION_MARKER":
       return context === "combat" && Boolean(state.combat);
     case "RESHUFFLE_DISCARD_THEN_DRAW": {
       // Deemer's Meteor Shower IV deck-cycle: useful whenever there is a card to
@@ -1944,6 +1960,14 @@ function isOptionEffectPlayable(
         return countBallistas(state, playerId) >= 1;
       }
       return true;
+    case "DISCARD_WAR_MACHINE_DAMAGE":
+      // Gerwulf's Ballista IV/VI discard: needs an in-play war-machine card to
+      // discard (a temporary Torosar grant is not a card and cannot be spent).
+      return (
+        context === "combat" &&
+        Boolean(state.combat) &&
+        getPermanentCardIds(state, playerId).includes(effect.warMachineCardId)
+      );
     case "REMOVE_ACTIVE_EFFECT":
       // Boots of Polarity (option B): only worth playing while at least one
       // removable, unit-scoped ongoing effect is on the table to strip.
@@ -1981,6 +2005,10 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
     effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
     effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" ||
+    // Gerwulf's Ballista discard: the player picks which enemy unit it hits.
+    effect.type === "DISCARD_WAR_MACHINE_DAMAGE" ||
+    // Tarnum (Dungeon)'s Dragons VI: toggle the Black cube on a chosen Dragons unit.
+    effect.type === "TOGGLE_RETALIATION_MARKER" ||
     effect.type === "PLACE_PARALYSIS" ||
     // Boots of Polarity (option B): the ongoing effect it strips lives on a
     // chosen unit (yours or the enemy's).
@@ -5055,9 +5083,9 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
   const player = state.players[playerId];
   const town = getTownOfPlayer(state, playerId);
   // Town actions are normally blocked during a combat, with one exception: a
-  // defender in their PvP pre-combat preparation window may still spend the
+  // participant in their PvP pre-battle preparation window may still spend the
   // round's town actions before the fight (build / recruit / buy spells).
-  const inPrep = Boolean(state.combat?.defenderPrep && state.combat.defenderPrep.playerId === playerId);
+  const inPrep = inCombatPrep(state, playerId);
   if (!player || !town || (state.combat && !inPrep)) {
     return;
   }
@@ -5283,15 +5311,14 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
   if (!combat || combat.context.kind !== "player") {
     return;
   }
-  // Retreat is offered in two spots here: the defender's pre-combat preparation
-  // window, and after deployment but before any unit has begun fighting
+  // Retreat is offered here in two spots: a participant's pre-battle prep window,
+  // and after deployment but before any unit has begun fighting
   // (pvpEscapeWindowOpen) while the combat card window is open. (It is also
   // offered DURING placement — see addPvpRetreatDuringSetup.) Once a unit acts
   // Retreat closes and the in-fight concede takes over (addGiveUpCombatActions,
   // labelled Retreat). Surrender, by contrast, is a "before battle" option only:
-  // it is offered solely in the defender's prep window, never once deployment has
-  // begun.
-  const inPrep = Boolean(combat.defenderPrep && combat.defenderPrep.playerId === playerId);
+  // it is offered solely in the prep window, never once deployment has begun.
+  const inPrep = inCombatPrep(state, playerId);
   if (!inPrep && (!pvpEscapeWindowOpen(combat) || !isCombatCardWindowOpen(state))) {
     return;
   }
@@ -5304,7 +5331,7 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
     label: "Retreat (lose the combat: pay 5 gold, -1 morale, fall back home)",
     action: { type: "RETREAT_FROM_COMBAT", playerId }
   });
-  // Surrender is a before-battle decision only (the defender's prep window).
+  // Surrender is a before-battle decision only (the prep window).
   const gold = state.players[playerId]?.resources.gold ?? 0;
   if (inPrep && gold >= SURRENDER_GOLD_COST && !playerCannotSurrenderCombat(state, playerId)) {
     actions.push({
@@ -5468,16 +5495,18 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
-  // PvP pre-combat preparation: before deployment, the defender may spend any
-  // town action they still hold this round (build / recruit / buy spells), then
-  // Accept to begin deployment — or Retreat / Surrender out of the fight. The
-  // town actions surface through addTownActions (allowed during this window).
-  if (state.combat?.defenderPrep) {
-    if (state.combat.defenderPrep.playerId === playerId) {
+  // PvP pre-battle preparation: before deployment, BOTH the attacker and the
+  // defender may spend any town action they still hold this round (build /
+  // recruit / buy spells), then Accept to ready up — or Retreat / Surrender out
+  // of the fight. Deployment begins only once both have accepted. The town
+  // actions surface through addTownActions (allowed during this window). A
+  // participant who has already accepted gets nothing here but waits.
+  if (state.combat?.prep) {
+    if (inCombatPrep(state, playerId)) {
       addTownActions(actions, state, playerId);
       addPvpEscapeActions(actions, state, playerId);
       actions.push({
-        label: "Accept the combat (begin deployment)",
+        label: "Accept the battle (ready up — deployment begins when both sides accept)",
         action: { type: "ACCEPT_COMBAT", playerId }
       });
     }
