@@ -1645,6 +1645,24 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     },
     portrait: "/assets/hero_portraits-gerwulf.webp",
     source: stretchGoalPcPortraitHeroSource("gerwulf", "Gerwulf")
+  },
+  // Tarnum (Dungeon): the Overlord variant of Tarnum, the Dragons specialist. Its
+  // own class portrait (heroes.thelazy.net Tarnum (Overlord)).
+  tarnum_dungeon: {
+    id: "tarnum_dungeon",
+    name: "Tarnum",
+    faction: "dungeon",
+    class: "Overlord",
+    type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.estates",
+    specialtyCardIds: {
+      1: "specialty.tarnum_dungeon.1",
+      4: "specialty.tarnum_dungeon.4",
+      6: "specialty.tarnum_dungeon.6"
+    },
+    portrait: "/assets/hero_portraits-tarnum_overlord.webp",
+    source: stretchGoalPcPortraitHeroSource("tarnum_dungeon", "Tarnum (Overlord)")
   }
 };
 
@@ -1722,7 +1740,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Dungeon",
     color: "#c0392b",
     startingTileId: "S2",
-    heroes: ["alamar", "deemer", "mutare", "jeddite", "lorelei"],
+    heroes: ["alamar", "deemer", "mutare", "jeddite", "lorelei", "tarnum_dungeon"],
     buildings: buildingsOfFaction("dungeon"),
     units: unitsOfFaction("dungeon"),
     townImage: "/assets/towns-dungeon-empty.webp",

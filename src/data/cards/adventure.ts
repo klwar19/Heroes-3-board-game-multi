@@ -3030,5 +3030,62 @@ export const adventureCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: heroSource("gerwulf")
+  }),
+
+  // Tarnum (Dungeon, Overlord): the Dragons specialist. I is the shared might
+  // specialty (doubles for Dragons, like Mutare). IV damages a whole vertical
+  // line of 5 spaces (NEW DAMAGE_BATTLEFIELD_LINE). VI toggles a Dragons unit's
+  // Black cube (NEW TOGGLE_RETALIATION_MARKER) or grants +2 attack on an attack.
+  "specialty.tarnum_dungeon.1": withoutArt(mightSpecialtyOne("tarnum_dungeon", "Dragons", "a Dragons unit")),
+  "specialty.tarnum_dungeon.4": withoutArt({
+    id: "specialty.tarnum_dungeon.4",
+    name: "Dragons IV",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "tarnum_dungeon",
+      "dragons",
+      "Choose a row (straight line of 5 consecutive spaces). Every unit in that row suffers 2 damage."
+    ],
+    target: { type: "any-space" },
+    effect: { type: "DAMAGE_BATTLEFIELD_LINE", amount: 2 },
+    implementationStatus: "implemented",
+    source: heroSource("tarnum_dungeon")
+  }),
+  "specialty.tarnum_dungeon.6": withoutArt({
+    id: "specialty.tarnum_dungeon.6",
+    name: "Dragons VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "tarnum_dungeon",
+      "dragons",
+      "Remove a Black cube from or place it on a Dragons unit. — OR — Your selected unit gains +2 attack."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Remove/place a Black cube on a Dragons unit",
+          combatOnly: true,
+          target: { type: "any-unit", unitName: "a Dragons unit" },
+          effect: { type: "TOGGLE_RETALIATION_MARKER" }
+        },
+        {
+          label: "+2 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("tarnum_dungeon")
   })
 };

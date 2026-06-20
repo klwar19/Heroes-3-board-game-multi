@@ -122,7 +122,17 @@ export type TargetDefinition =
        */
       unitName?: string;
     }
-  | { type: "any-unit"; unitTypes?: UnitType[]; damagedOnly?: boolean }
+  | {
+      type: "any-unit";
+      unitTypes?: UnitType[];
+      damagedOnly?: boolean;
+      /**
+       * Tarnum (Dungeon)'s Dragons VI: the effect lands only on a unit (friend or
+       * foe) whose name matches — his "a Dragons unit" — using the same family /
+       * "or" match the specialty-doubling uses.
+       */
+      unitName?: string;
+    }
   /** Summon spells: a chosen empty space on the combat board. */
   | { type: "empty-space" }
   /** Inferno: any space on the combat board (occupied or not). */
@@ -1344,6 +1354,29 @@ export type EffectDefinition =
       type: "DISCARD_WAR_MACHINE_DAMAGE";
       warMachineCardId: CardId;
       amount: number;
+    }
+  | {
+      /**
+       * Tarnum (Dungeon)'s Dragons IV: "Choose a row (straight line of 5
+       * consecutive spaces). Every unit in that row suffers `amount` damage."
+       * The Combat board is 4 columns × 5 rows, so the only 5-space straight line
+       * is a vertical column. Played on a chosen space (any-space target); every
+       * living unit sharing that space's column — friend or foe — takes `amount`
+       * "effect" damage (per-unit spell-damage reduction applies, like any card).
+       */
+      type: "DAMAGE_BATTLEFIELD_LINE";
+      amount: number;
+    }
+  | {
+      /**
+       * Tarnum (Dungeon)'s Dragons VI (option A): "Remove a Black cube from or
+       * place it on a Dragons unit." Toggles the selected unit's Retaliation
+       * marker — if it has already spent its Retaliation this round
+       * (`retaliatedThisRound`) the cube is removed (it may retaliate again);
+       * otherwise a cube is placed (it cannot). The card's target restricts this
+       * to a Dragons unit (friend or foe).
+       */
+      type: "TOGGLE_RETALIATION_MARKER";
     }
   | {
       /**

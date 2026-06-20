@@ -9285,6 +9285,46 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     );
   }
 
+  // Tarnum (Dungeon)'s Dragons IV: damage every unit (friend or foe) in the
+  // chosen vertical line of 5 spaces — the column of the selected space, the
+  // only straight line of 5 on the 4×5 Combat board.
+  if (effect.type === "DAMAGE_BATTLEFIELD_LINE" && state.combat && action.target) {
+    const center =
+      action.target.type === "space"
+        ? action.target.position
+        : action.target.type === "unit"
+          ? state.combat.units[action.target.unitId]?.position
+          : undefined;
+    if (center !== undefined) {
+      const column = getBattlefieldCoordinates(center).column;
+      for (const unit of Object.values(state.combat.units)) {
+        if (isUnitAlive(unit) && getBattlefieldCoordinates(unit.position).column === column) {
+          dealAreaCardDamage(state, action.playerId, card, unit, effect.amount);
+        }
+      }
+      finishCombatIfNeeded(state);
+    }
+  }
+
+  // Tarnum (Dungeon)'s Dragons VI (option A): toggle the selected Dragons unit's
+  // Black cube — remove it if the unit has already spent its Retaliation this
+  // round (so it may retaliate again), otherwise place one (so it cannot).
+  if (effect.type === "TOGGLE_RETALIATION_MARKER" && state.combat && target?.type === "unit") {
+    const unit = state.combat.units[target.unitId];
+    if (unit && isUnitAlive(unit)) {
+      const removing = unit.retaliatedThisRound;
+      unit.retaliatedThisRound = !unit.retaliatedThisRound;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unit.id,
+        abilityId: "tarnum-dragons-cube",
+        message: removing
+          ? `${card.name} removes the Black cube from ${unit.cardName} — it may retaliate again.`
+          : `${card.name} places a Black cube on ${unit.cardName} — it cannot retaliate.`
+      });
+    }
+  }
+
   // Merist's Stone Skin IV: "All your units gain a Defense token." Every living
   // unit the caster controls gets the Defend shield for the rest of the combat.
   if (effect.type === "GRANT_DEFENSE_TOKENS" && state.combat) {
