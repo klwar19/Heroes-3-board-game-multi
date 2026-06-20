@@ -92,31 +92,26 @@ function hasDieSetEffect(state: GameState): boolean {
 // ===========================================================================
 
 describe("Prophecy / Diplomacy artifacts — definitions", () => {
-  it("Cards of Prophecy: Major CHOOSE_ONE with a reroll instant and a map set-die", () => {
+  it("Cards of Prophecy: only the map set-die is a proactive option (reroll is a held reaction)", () => {
     const card = cardLibrary["artifact.cards_of_prophecy"];
     expect(card.implementationStatus).toBe("implemented");
     expect(card.artifactTier).toBe("major");
     expect(card.effect.type).toBe("CHOOSE_ONE");
     if (card.effect.type !== "CHOOSE_ONE") return;
 
-    const [reroll, setDie] = card.effect.options;
-    // Reroll side: a one-shot effect covering BOTH the combat Attack die and a
-    // map adventure die — playable anywhere (no map/combat restriction).
-    expect(reroll.mapOnly).toBeUndefined();
-    expect(reroll.combatOnly).toBeUndefined();
-    expect(reroll.effect.type).toBe("CREATE_ACTIVE_EFFECT");
-    if (reroll.effect.type === "CREATE_ACTIVE_EFFECT") {
-      const mods = reroll.effect.effect.modifiers.map((modifier) => modifier.type);
-      expect(mods).toContain("ATTACK_DIE_REROLL");
-      expect(mods).toContain("ADVENTURE_DIE_REROLL");
-    }
-    // Set-die side: a map-only ADVENTURE_DIE_SET effect.
+    expect(card.effect.options).toHaveLength(1);
+    const [setDie] = card.effect.options;
+    // Set-die side: the only proactive play — a map-only ADVENTURE_DIE_SET effect.
     expect(setDie.mapOnly).toBe(true);
     expect(setDie.effect.type).toBe("CREATE_ACTIVE_EFFECT");
     if (setDie.effect.type === "CREATE_ACTIVE_EFFECT") {
       const setMod = setDie.effect.effect.modifiers.find((modifier) => modifier.type === "ADVENTURE_DIE_SET");
       expect(setMod?.type === "ADVENTURE_DIE_SET" && setMod.dice).toBe("any");
     }
+    // No pre-armed reroll option — the reroll fires from hand after a die roll.
+    expect(card.effect.options.some((option) => option.effect.type === "CREATE_ACTIVE_EFFECT" &&
+      option.effect.effect.modifiers.some((modifier) => modifier.type === "ATTACK_DIE_REROLL"))).toBe(false);
+    expect(REROLL_REACTION_ARTIFACT_IDS).toContain("artifact.cards_of_prophecy");
   });
 
   it("Diplomat's Ring: only the map Dwelling recruit is a proactive option (reroll is a held reaction)", () => {
@@ -157,21 +152,9 @@ describe("Prophecy / Diplomacy artifacts — definitions", () => {
 // ===========================================================================
 
 describe("Reroll-any-die option (map adventure die)", () => {
-  // Cards of Prophecy still pre-arms its reroll (its companion half is a map
-  // die-set, so it is a deliberate up-front choice, not an after-the-roll one).
-  function playRerollThenVisit(cardId: string, optionIndex: number, location: string): GameState {
-    let state = mapState(`reroll-${cardId}`);
-    state.players.p1.hand = [cardId];
-    const play = findPlay(state, cardId, optionIndex);
-    expect(play, `${cardId} reroll option ${optionIndex} should be offered on the map`).toBeTruthy();
-    state = applyOk(state, play!);
-    injectField(state, location);
-    beginFieldVisit(state, getMainHero(state, "p1")!.id, SPACE, false);
-    return state;
-  }
-
-  // Diplomat's Ring / Ambassador's Sash reroll is an instant REACTION: hold the
-  // card, roll the die, THEN the reroll is offered — the card is never pre-played.
+  // All three reroll artifacts (Cards of Prophecy, Diplomat's Ring, Ambassador's
+  // Sash) expose their reroll as an instant REACTION: hold the card, roll the
+  // die, THEN the reroll is offered — the card is never pre-played for a reroll.
   function holdThenVisit(cardId: string, location: string): GameState {
     const state = mapState(`react-${cardId}`);
     state.players.p1.hand = [cardId];
@@ -180,17 +163,19 @@ describe("Reroll-any-die option (map adventure die)", () => {
     return state;
   }
 
-  it("Cards of Prophecy reroll lets you reroll the Resource die, then is spent", () => {
-    const state = playRerollThenVisit("artifact.cards_of_prophecy", 0, "resource_symbol");
-    expect(state.activeEffects.some((effect) => effect.name === "Cards of Prophecy")).toBe(true);
+  it("Cards of Prophecy reroll is offered after the Resource die is rolled, then discarded", () => {
+    const state = holdThenVisit("artifact.cards_of_prophecy", "resource_symbol");
+    expect(
+      visitChoice(state).options.some((option) => /Cards of Prophecy: reroll the Resource/i.test(option.label))
+    ).toBe(true);
 
     const before = countRolls(state, "resource");
-    resolveByLabel(state, (label) => /reroll the Resource/i.test(label));
+    resolveByLabel(state, (label) => /Cards of Prophecy: reroll the Resource/i.test(label));
 
-    // A second Resource roll happened, and the one-shot reroll effect is gone.
+    // A second Resource roll happened, and the artifact is spent to the discard.
     expect(countRolls(state, "resource")).toBe(before + 1);
-    expect(state.activeEffects.some((effect) => effect.name === "Cards of Prophecy")).toBe(false);
-    expect(state.adventure!.pendingVisit).toBeNull();
+    expect(state.players.p1.hand).not.toContain("artifact.cards_of_prophecy");
+    expect(state.players.p1.discard).toContain("artifact.cards_of_prophecy");
   });
 
   it("Diplomat's Ring is NOT a proactive reroll play — there is nothing to pre-select", () => {
@@ -252,7 +237,7 @@ describe("Cards of Prophecy — set a Resource/Treasure die", () => {
   function playSetThenVisit(seed: string, location: string): GameState {
     let state = mapState(seed);
     state.players.p1.hand = ["artifact.cards_of_prophecy"];
-    const play = findPlay(state, "artifact.cards_of_prophecy", 1);
+    const play = findPlay(state, "artifact.cards_of_prophecy", 0);
     expect(play, "the set-die map option should be offered").toBeTruthy();
     state = applyOk(state, play!);
     expect(hasDieSetEffect(state)).toBe(true);
