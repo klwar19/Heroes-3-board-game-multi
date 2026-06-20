@@ -32,6 +32,7 @@ import {
   startPlayerTurn,
   victoryModeCountsHeroDefeats
 } from "./adventure";
+import { pumpAdventureQueues } from "./adventure-reducer";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { createSeededRandom } from "./random";
 import { appendEvent } from "./events";
@@ -761,6 +762,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
 
   startAdventureRound(state);
   startPlayerTurn(state, state.activePlayerId);
+  // Drain the opening round-start / start-of-turn rewards — chiefly the
+  // start-of-turn hand snapshot — so the first player's hand step is live the
+  // instant the game state is handed back, before any action is dispatched.
+  pumpAdventureQueues(state);
 
   return state;
 }

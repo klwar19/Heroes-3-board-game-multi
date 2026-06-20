@@ -24,6 +24,7 @@ import {
   drawGuardArmy,
   effectiveHandLimit,
   eliminatePlayer,
+  finalizeStartOfTurnHand,
   fieldLayer,
   recomputeSubterraneanGates,
   tileLayer,
@@ -6406,6 +6407,24 @@ export function pumpAdventureQueues(state: GameState): void {
       if (openLearningLevelUpChoice(state, reward.playerId)) {
         return;
       }
+      continue;
+    }
+
+    if (reward.kind === "start-turn-hand") {
+      // Phase divider (queued last by startPlayerTurn). Take the hand-limit
+      // snapshot only once EVERY other start-of-turn reward has cleared —
+      // including follow-up rewards a round-start effect enqueues BEHIND it
+      // (e.g. Wall of Knowledge / Blood Obelisk turn a CHOOSE_ONE into a fresh
+      // discard-pick reward; the City Hall draw is just an option resolution).
+      // While anything else is still queued, send the snapshot to the back and
+      // let those resolve first; only take it when it stands alone. The queue is
+      // a finite, non-regenerating set of start-of-turn rewards, so this settles.
+      adventure.rewardQueue.shift();
+      if (adventure.rewardQueue.length > 0) {
+        adventure.rewardQueue.push(reward);
+        continue;
+      }
+      finalizeStartOfTurnHand(state, reward.playerId);
       continue;
     }
   }

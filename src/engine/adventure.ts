@@ -4683,11 +4683,17 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   // hand limit ("draw new" = discard nothing; "discard and draw new" = toss
   // some first). The hand is NEVER drawn automatically, so the player can never
   // both keep a fresh full hand AND swap on top of it — it is one either/or
-  // choice. Only an over-the-limit hand (from card effects) forces a discard
-  // before acting.
-  const limit = effectiveHandLimit(state, playerId);
-  player.needsHandRefresh = player.hand.length > limit;
-  player.canMulligan = true;
+  // choice. Only an over-the-limit hand forces a discard before acting.
+  //
+  // The snapshot (forced discard + optional draw) is NOT taken here. The first
+  // player of a Round starts their turn in the same engine step that just queued
+  // the "beginning of the round" building effects (City Hall income/draws,
+  // Wall of Knowledge, …) and the "beginning of your turn" effects queued just
+  // below — all of which can still change the hand. So the hand step is queued
+  // as the LAST start-of-turn reward and the snapshot is taken when it pumps,
+  // once every earlier phase has resolved (see "start-turn-hand").
+  player.canMulligan = false;
+  player.needsHandRefresh = false;
   // Army map abilities reset for the new turn (Nomads' step, Rogues' scout).
   player.nomadStepDoneThisTurn = false;
   player.rogueScoutUsedThisTurn = false;
@@ -4702,6 +4708,31 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   // Hero (Astrologers): the ongoing "pay 4 gold to empower a Statistic, twice
   // this turn" offer, if that proclamation is the one face up.
   queueTurnStartAstrologersChoices(state, playerId);
+
+  // Phase divider: the hand-limit snapshot runs after every effect queued above
+  // (this turn's start-of-turn effects) and every round-start effect queued
+  // before this call. A pure-combat fixture has no reward queue — take the
+  // snapshot inline there.
+  if (state.adventure) {
+    state.adventure.rewardQueue.push({ playerId, kind: "start-turn-hand" });
+  } else {
+    finalizeStartOfTurnHand(state, playerId);
+  }
+}
+
+/**
+ * Opens the start-of-turn hand step for `playerId`: the optional discard-and-draw
+ * (`canMulligan`) plus the forced discard-down (`needsHandRefresh`) when the hand
+ * sits over the effective limit. Called from the "start-turn-hand" reward so the
+ * snapshot reflects every round-start and start-of-turn effect that ran first.
+ */
+export function finalizeStartOfTurnHand(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+  player.canMulligan = true;
+  player.needsHandRefresh = player.hand.length > effectiveHandLimit(state, playerId);
 }
 
 /**
