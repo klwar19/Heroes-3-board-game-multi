@@ -3266,31 +3266,16 @@ function resolveSubterraneanGate(state: GameState, visit: PendingVisit): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Locations a Subterranean Gate Token may never be placed on. The rulebook
- * forbids covering Blocked Fields, other Location Tokens, and "Fields
- * containing Locations required to meet any of the Scenario's victory
- * conditions". We treat Towns, Settlements, Mines and the special objective
- * fields as off-limits so a gate never sacrifices something game-critical.
+ * Whether a materialized field may be sacrificed to a Subterranean Gate.
+ *
+ * The token covers whatever Field is closest to the far tile — a Blocked Field,
+ * a Mine, even a Town all give way to it (the gate IS the field now). The only
+ * thing it never lands on is another gate half: each of the token's two halves
+ * needs its own hex, and a Surface tile touching two underground tiles must
+ * carve a distinct gate per neighbour rather than stack them.
  */
-const GATE_FORBIDDEN_LOCATIONS = new Set<string>([
-  "town",
-  "random_town",
-  "settlement",
-  "mine",
-  "grail",
-  "dragon_utopia",
-  "subterranean_gate"
-]);
-
-/** Whether a materialized field may be sacrificed to a Subterranean Gate. */
 function gateMayCoverField(field: MapFieldState | undefined): boolean {
-  if (!field) {
-    return false;
-  }
-  if (GATE_FORBIDDEN_LOCATIONS.has(field.location)) {
-    return false;
-  }
-  return locationDefinitions[field.location]?.category !== "blocked";
+  return field !== undefined && field.location !== "subterranean_gate";
 }
 
 /** A tile is "materialized" once its rotation is locked and its 7 fields exist. */
@@ -3310,9 +3295,9 @@ function tileRingSpaceIds(tile: MapTileState): MapSpaceId[] {
 
 /**
  * Picks the gate hex on `tile` nearest to `towardCenter`: the ring field the
- * player must sacrifice. Only ring hexes that may be covered and that touch the
- * other tile's footprint are eligible (so the matching half can sit adjacent on
- * the other side). Ties break on the hex id for determinism.
+ * player sacrifices (whatever it is — Blocked Field, Mine, Town and all; only an
+ * existing gate half is skipped). It must touch the other tile's footprint, so
+ * the matching half can sit adjacent on the other side. Ties break on hex id.
  */
 function chooseAnchorGateHex(
   adventure: AdventureState,
@@ -3415,7 +3400,8 @@ function findGateHalf(adventure: AdventureState, tile: MapTileState, towardTileI
  * tiles allow:
  *
  *  - On the materialized tile, the gate is the ring field nearest the other
- *    tile that may be covered (the "1 slot closest to the [other] tile").
+ *    tile (the "1 slot closest to the [other] tile") — whatever sits there is
+ *    sacrificed, even a Blocked Field, Mine or Town.
  *  - The matching half on the second tile is the ring field nearest that gate
  *    once the second tile is revealed (so it is sacrificed "when open, … the
  *    nearest hex"). Materialization happens only after the player has locked
