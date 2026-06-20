@@ -5245,32 +5245,26 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
 }
 
 /**
- * Give up the combat (a concede, offered throughout the fight — not just at the
- * start like Retreat / Surrender). Always a defeat with the Retreat
- * consequences (5 gold, -1 morale, fall back home, the opponent wins). The
- * troop cost depends on the lobby's PvP casualty mode: in losing-troop mode —
- * and against Neutral guards, which always cost casualties — the whole battle
- * army is lost; in keep-troops mode the army is kept and the hand is discarded.
+ * Give up a player-vs-player combat (a concede, offered throughout the fight —
+ * not just at the start like Retreat / Surrender). Always a defeat with the
+ * Retreat consequences (5 gold, -1 morale, fall back home, the opponent wins).
+ * The troop cost depends on the lobby's PvP casualty mode: in losing-troop mode
+ * the whole battle army is lost; in keep-troops mode the army is kept and the
+ * hand is discarded instead. Neutral-guard fights have no Give up — only the
+ * end-of-round Retreat.
  */
 function addGiveUpCombatActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const combat = state.combat;
-  if (!combat || combat.outcome || combat.context.kind === "sandbox") {
+  if (!combat || combat.outcome || combat.context.kind !== "player") {
     return;
   }
-  if (combat.context.kind === "neutral") {
-    const hero = state.heroes[combat.context.heroId];
-    if (!hero || hero.controllerId !== playerId) {
-      return;
-    }
-  } else {
-    const isParticipant = combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId;
-    const heroId =
-      playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
-    if (!isParticipant || !heroId) {
-      return;
-    }
+  const isParticipant = combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId;
+  const heroId =
+    playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
+  if (!isParticipant || !heroId) {
+    return;
   }
-  const losesTroops = combat.context.kind === "neutral" || adventurePvpTroopLoss(state) === "normal";
+  const losesTroops = adventurePvpTroopLoss(state) === "normal";
   actions.push({
     label: losesTroops
       ? "Give up (concede: lose the combat and your whole battle army, fall back home)"
@@ -5440,7 +5434,6 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
           label: "Retreat to the last visited field",
           action: { type: "RETREAT_FROM_COMBAT", playerId }
         });
-        addGiveUpCombatActions(actions, state, playerId);
       }
     }
     return actions;

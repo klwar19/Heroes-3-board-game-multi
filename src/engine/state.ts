@@ -2333,14 +2333,14 @@ export type GameAction =
     }
   | {
       /**
-       * Give up the combat at any point once it is under way (a concede, not the
-       * start-of-combat Surrender). It is always a defeat — the same loss
-       * consequences as a Retreat (5-gold toll, -1 morale, fall back home, the
-       * opponent gains the win and its credit). The troop cost depends on the
-       * lobby's PvP casualty mode: in losing-troop mode (and against Neutral
-       * guards, which always cost casualties) the conceding hero loses its WHOLE
-       * battle army — every unit still on the board, survivors included; in
-       * keep-troops mode it keeps every unit but discards its entire hand.
+       * Give up a player-vs-player combat at any point once it is under way (a
+       * concede, not the start-of-combat Surrender; Neutral-guard fights have no
+       * Give up, only the end-of-round Retreat). It is always a defeat — the same
+       * loss consequences as a Retreat (5-gold toll, -1 morale, fall back home,
+       * the opponent gains the win and its credit). The troop cost depends on the
+       * lobby's PvP casualty mode: in losing-troop mode the conceding hero loses
+       * its WHOLE battle army — every unit still on the board, survivors included;
+       * in keep-troops mode it keeps every unit but discards its entire hand.
        * Offered to a participating hero throughout the fight. Validated in
        * giveUpCombat / finalizeAdventureCombat.
        */

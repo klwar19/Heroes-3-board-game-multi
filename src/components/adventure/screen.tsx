@@ -2038,10 +2038,7 @@ export function PromptTray({
   const abilityTargetActions = legalActions.filter((legal) => legal.action.type === "CHOOSE_ABILITY_TARGET");
   const combatDiscardActions = legalActions.filter((legal) => legal.action.type === "RESOLVE_COMBAT_DISCARD");
   const combatGate = legalActions.filter(
-    (legal) =>
-      legal.action.type === "CONTINUE_NEUTRAL_COMBAT" ||
-      legal.action.type === "RETREAT_FROM_COMBAT" ||
-      legal.action.type === "GIVE_UP_COMBAT"
+    (legal) => legal.action.type === "CONTINUE_NEUTRAL_COMBAT" || legal.action.type === "RETREAT_FROM_COMBAT"
   );
 
   let title: string | null = null;
