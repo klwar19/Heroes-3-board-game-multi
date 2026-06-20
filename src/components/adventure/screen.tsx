@@ -922,6 +922,137 @@ export function HexMapBoard({
     return null;
   })();
 
+  // --- Floating controls anchored at the relevant hex/tile ------------------
+  // Move-confirm and rotate controls live *on the map*, right at the clicked
+  // destination hex / the tile being rotated, instead of a bar pinned to the
+  // bottom of the board. They sit inside the camera-transformed group so they
+  // pan with the map, and counter-scale (scale(1/camera.scale)) so they keep a
+  // constant on-screen size at any zoom level.
+  const floatingControls: ReactNode[] = [];
+
+  // How much vertical room (in screen px) sits above an anchor before it would
+  // be clipped by the top of the viewBox — used to flip a card below its hex.
+  const screenRoomAbove = (mapY: number) => camera.y + camera.scale * mapY - minY;
+
+  if (selectedTarget && myHero && !readOnly) {
+    const coord = parseHexSpaceId(selectedTarget.spaceId);
+    if (coord) {
+      const { x, y } = hexToPixel(coord, HEX_SIZE);
+      const cardW = 230;
+      const cardH = 104;
+      const gap = HEX_SIZE * 0.62;
+      const above = screenRoomAbove(y) >= cardH + gap;
+      const cost = selectedTarget.cost;
+      floatingControls.push(
+        <g key="move-confirm-float" transform={`translate(${x} ${y}) scale(${1 / camera.scale})`}>
+          <foreignObject className="mapFloatFO" height={cardH} width={cardW} x={-cardW / 2} y={above ? -cardH - gap : gap}>
+            <div className={`mapFloatOuter ${above ? "above" : "below"}`}>
+              <div
+                aria-label="Confirm movement"
+                className="mapFloatCard moveConfirmFloat"
+                onPointerDown={(event) => event.stopPropagation()}
+                role="dialog"
+              >
+                <span className="mapFloatLabel">
+                  <span aria-hidden="true">🐎</span> Move {cost} field{cost === 1 ? "" : "s"} ({cost} MP)
+                </span>
+                <div className="mapFloatButtons">
+                  <button
+                    className="commandButton primary"
+                    onClick={() => {
+                      onAction({
+                        type: "MOVE_HERO_PATH",
+                        playerId: viewerPlayerId,
+                        heroId: myHero.id,
+                        path: selectedTarget.path
+                      });
+                      setSelectedTarget(null);
+                    }}
+                    type="button"
+                  >
+                    <Check size={13} /> Move there
+                  </button>
+                  <button className="commandButton ghost" onClick={() => setSelectedTarget(null)} type="button">
+                    <X size={13} /> Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </foreignObject>
+        </g>
+      );
+    }
+  }
+
+  if (pendingTileChoice && rotatingTile) {
+    const tileCenter = hexToPixel({ row: rotatingTile.centerRow, col: rotatingTile.centerCol }, HEX_SIZE);
+    const cardW = iAmRotating ? 272 : 230;
+    const cardH = iAmRotating ? 158 : 70;
+    // The rotating tile spans a 5-hex-tall flower; clear its top edge so the
+    // card never covers the art it is acting on.
+    const gap = HEX_SIZE * 2.9;
+    const above = screenRoomAbove(tileCenter.y) >= cardH + gap;
+    floatingControls.push(
+      <g key="rotate-float" transform={`translate(${tileCenter.x} ${tileCenter.y}) scale(${1 / camera.scale})`}>
+        <foreignObject className="mapFloatFO" height={cardH} width={cardW} x={-cardW / 2} y={above ? -cardH - gap : gap}>
+          <div className={`mapFloatOuter ${above ? "above" : "below"}`}>
+            {iAmRotating ? (
+              <div
+                aria-label="Rotate the new tile"
+                className="mapFloatCard rotateFloat"
+                onPointerDown={(event) => event.stopPropagation()}
+                role="dialog"
+              >
+                <span className="mapFloatTitle">
+                  Rotate the {pendingTileChoice.kind === "place" ? "placed" : "revealed"} tile
+                </span>
+                <div className="rotateFloatRow">
+                  <button
+                    className="commandButton"
+                    onClick={() => setPreviewRotation((value) => (value + 5) % 6)}
+                    title="Rotate counter-clockwise"
+                    type="button"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                  <span className="rotateDegrees">{previewRotation * 60}°</span>
+                  <button
+                    className="commandButton"
+                    onClick={() => setPreviewRotation((value) => (value + 1) % 6)}
+                    title="Rotate clockwise"
+                    type="button"
+                  >
+                    <RotateCw size={14} />
+                  </button>
+                  <button
+                    className="commandButton primary"
+                    disabled={!rotationConnected}
+                    onClick={() =>
+                      onAction({
+                        type: "SET_TILE_ROTATION",
+                        playerId: viewerPlayerId,
+                        tileInstanceId: rotatingTile.id,
+                        rotation: previewRotation
+                      })
+                    }
+                    type="button"
+                  >
+                    <Check size={13} /> Confirm
+                  </button>
+                </div>
+                {!rotationConnected ? <small className="mapFloatWarn">Border lines seal the tile off — keep rotating.</small> : null}
+              </div>
+            ) : (
+              <div className="mapFloatCard passive">
+                <small>{state.players[pendingTileChoice.playerId]?.name ?? "A player"} is rotating the new tile…</small>
+              </div>
+            )}
+          </div>
+        </foreignObject>
+      </g>
+    );
+  }
+
   return (
     <div className="hexMapWrap" aria-label="Adventure map">
       <svg
@@ -1005,6 +1136,7 @@ export function HexMapBoard({
           {overlays}
           {pathOverlay}
           {heroPawns}
+          {floatingControls}
         </g>
       </svg>
 
@@ -1055,79 +1187,6 @@ export function HexMapBoard({
         </div>
       ) : null}
 
-      {selectedTarget && myHero && !readOnly ? (
-        <div className="moveConfirmBar" role="dialog" aria-label="Confirm movement">
-          <span>
-            <span aria-hidden="true">🐎</span> Move {selectedTarget.cost} field{selectedTarget.cost === 1 ? "" : "s"} (
-            {selectedTarget.cost} movement point{selectedTarget.cost === 1 ? "" : "s"})
-          </span>
-          <button
-            className="commandButton primary"
-            onClick={() => {
-              onAction({
-                type: "MOVE_HERO_PATH",
-                playerId: viewerPlayerId,
-                heroId: myHero.id,
-                path: selectedTarget.path
-              });
-              setSelectedTarget(null);
-            }}
-            type="button"
-          >
-            <Check size={13} /> Move there
-          </button>
-          <button className="commandButton ghost" onClick={() => setSelectedTarget(null)} type="button">
-            <X size={13} /> Cancel
-          </button>
-        </div>
-      ) : null}
-
-      {iAmRotating && rotatingTile ? (
-        <div className="rotateBar" role="dialog" aria-label="Rotate the new tile">
-          <strong>
-            {rotatingTile.tileDefId}: rotate the {pendingTileChoice?.kind === "place" ? "placed" : "revealed"} tile
-          </strong>
-          <button
-            className="commandButton"
-            onClick={() => setPreviewRotation((value) => (value + 5) % 6)}
-            title="Rotate counter-clockwise"
-            type="button"
-          >
-            <RotateCcw size={14} />
-          </button>
-          <span className="rotateDegrees">{previewRotation * 60}°</span>
-          <button
-            className="commandButton"
-            onClick={() => setPreviewRotation((value) => (value + 1) % 6)}
-            title="Rotate clockwise"
-            type="button"
-          >
-            <RotateCw size={14} />
-          </button>
-          <button
-            className="commandButton primary"
-            disabled={!rotationConnected}
-            onClick={() =>
-              onAction({
-                type: "SET_TILE_ROTATION",
-                playerId: viewerPlayerId,
-                tileInstanceId: rotatingTile.id,
-                rotation: previewRotation
-              })
-            }
-            type="button"
-          >
-            <Check size={13} /> Confirm
-          </button>
-          {!rotationConnected ? <small>Border lines seal the tile off — keep rotating.</small> : null}
-        </div>
-      ) : pendingTileChoice && rotatingTile ? (
-        <div className="rotateBar passive">
-          <small>
-            {state.players[pendingTileChoice.playerId]?.name ?? "A player"} is rotating the new tile…
-          </small>
-        </div>
-      ) : null}
     </div>
   );
 }
