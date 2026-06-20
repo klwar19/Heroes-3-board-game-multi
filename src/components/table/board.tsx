@@ -1475,7 +1475,7 @@ function commandLabel(legal: LegalAction): string {
 
 // Combat test mode: every implemented hand-playable card, for the "Add card"
 // picker. Mirrors SANDBOX_ADDABLE_KINDS in the reducer.
-const SANDBOX_PICKER_KINDS = new Set(["spell", "ability", "artifact", "statistic", "hero-specialty"]);
+const SANDBOX_PICKER_KINDS = new Set(["spell", "ability", "artifact", "statistic", "hero-specialty", "war-machine"]);
 const SANDBOX_PICKER_CARDS = Object.values(cardLibrary)
   .filter((card) => card.implementationStatus === "implemented" && SANDBOX_PICKER_KINDS.has(card.kind))
   .sort((left, right) => left.kind.localeCompare(right.kind) || left.name.localeCompare(right.name));

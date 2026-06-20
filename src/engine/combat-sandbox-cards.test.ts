@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { cardLibrary } from "@/data/cards/library";
 import { STARTING_ONLY_SPELLS } from "@/data/cards/spells";
+import { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 import { applyAction, createInitialGameState, getLegalActions, getRuleset, SHARED_DECK_IDS } from "./index";
 import type { SharedDeckId } from "./index";
+import type { GameState } from "./state";
+
+function applyOk(state: GameState, action: Parameters<typeof applyAction>[1]): GameState {
+  const result = applyAction(state, action);
+  expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+  return result.state;
+}
 
 /**
  * The combat sandbox is the "combat test mode": it runs the BINH house rules and
@@ -148,5 +156,65 @@ describe("combat sandbox — add any card straight to hand (test mode)", () => {
     const result = applyAction(state, { type: "SANDBOX_ADD_CARD", playerId: "p1", cardId: "spell.magic_arrow" });
 
     expect(result.errors.length).toBeGreaterThan(0);
+  });
+});
+
+// ===========================================================================
+// War machines in the sandbox — the only place they can be obtained without a
+// market (Factory / Trading Post). They were unreachable in combat test mode
+// because the Add-card picker excluded the "war-machine" kind; these pin them
+// in so First Aid Tent, Ammo Cart, Ballista, Catapult and Cannon are testable.
+// ===========================================================================
+
+describe("combat sandbox — war machines are addable and actually fire", () => {
+  it("can add EVERY implemented war machine straight to hand", () => {
+    for (const cardId of WAR_MACHINE_CARD_IDS) {
+      expect(cardLibrary[cardId]?.implementationStatus, `${cardId} is implemented`).toBe("implemented");
+      const state = createInitialGameState(`sandbox-wm-${cardId}`);
+      const result = applyAction(state, { type: "SANDBOX_ADD_CARD", playerId: "p1", cardId });
+      expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+      expect(result.state.players.p1.hand).toContain(cardId);
+    }
+  });
+
+  it("First Aid Tent and Cannon — the two the report flagged — are addable", () => {
+    for (const cardId of ["war_machine.first_aid_tent", "war_machine.cannon"] as const) {
+      const state = createInitialGameState(`sandbox-flagged-${cardId}`);
+      expect(applyOk(state, { type: "SANDBOX_ADD_CARD", playerId: "p1", cardId }).players.p1.hand).toContain(cardId);
+    }
+  });
+
+  it("a sandbox-added Ballista can be put into play and then fires at the slowest enemy", () => {
+    let state = createInitialGameState("sandbox-ballista-flow");
+
+    // Make one enemy the uniquely slowest, tanky enough to read the hit.
+    const units = state.combat!.units;
+    let next = 8;
+    for (const id of Object.keys(units)) {
+      if (units[id].controllerId === "p2") {
+        units[id].initiative = id === "unit_p2_dread_knights" ? 1 : next--;
+      }
+    }
+    units.unit_p2_dread_knights.maxHealth = 12;
+    units.unit_p2_dread_knights.damage = 0;
+
+    // Add it from the picker (the fix), then it must be a legal play this turn.
+    state = applyOk(state, { type: "SANDBOX_ADD_CARD", playerId: "p1", cardId: "war_machine.ballista" });
+    expect(state.players.p1.hand).toContain("war_machine.ballista");
+
+    const putInPlay = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "war_machine.ballista"
+    );
+    expect(putInPlay, "the added Ballista should be playable into play this activation").toBeTruthy();
+    state = applyOk(state, putInPlay!.action);
+    expect(state.players.p1.permanents).toContain("war_machine.ballista");
+
+    // End the combat round: the Ballista's round-start shot lands on the slowest.
+    state.combat!.activeUnitId = null;
+    state.activePlayerId = "p1";
+    state = applyOk(state, { type: "END_COMBAT_ROUND", playerId: "p1" });
+    expect(state.combat!.units.unit_p2_dread_knights.damage).toBe(1);
   });
 });

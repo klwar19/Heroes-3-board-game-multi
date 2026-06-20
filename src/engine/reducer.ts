@@ -12065,7 +12065,12 @@ const SANDBOX_ADDABLE_KINDS = new Set<CardDefinition["kind"]>([
   "ability",
   "artifact",
   "statistic",
-  "hero-specialty"
+  "hero-specialty",
+  // War machines (First Aid Tent, Ammo Cart, Ballista, Catapult, Cannon) are
+  // permanents bought from the Factory/Trading Post in a real game. The sandbox
+  // has no market, so they must be addable here or their combat mechanics
+  // (round-start shots, the Tent heal) are untestable in combat test mode.
+  "war-machine"
 ]);
 
 /**
