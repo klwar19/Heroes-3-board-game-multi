@@ -930,8 +930,13 @@ function unitMatchesTarget(unit: CombatUnitState, target: UnitTargetDefinition):
     return false;
   }
 
-  // Ingham's Zealots VI: the ignore-Defense side lands only on his Zealots unit.
-  if (target.type === "friendly-unit" && target.unitName && !matchesUnitName(unit.name, target.unitName)) {
+  // Ingham's Zealots VI (friendly) / Tarnum (Dungeon)'s Dragons VI (any unit):
+  // the effect lands only on a unit whose name matches the named family.
+  if (
+    (target.type === "friendly-unit" || target.type === "any-unit") &&
+    target.unitName &&
+    !matchesUnitName(unit.name, target.unitName)
+  ) {
     return false;
   }
 
@@ -1803,6 +1808,10 @@ function isOptionEffectPlayable(
     // Tarnum (Castle)'s Ballista VI / Gerwulf's Ballista IV: pick N enemy units
     // to damage (a targetless combat activation; the pick choice handles the rest).
     case "DAMAGE_CHOSEN_ENEMIES":
+    // Tarnum (Dungeon)'s Dragons IV (line damage) / VI (toggle a Dragons unit's
+    // Black cube) are combat plays.
+    case "DAMAGE_BATTLEFIELD_LINE":
+    case "TOGGLE_RETALIATION_MARKER":
       return context === "combat" && Boolean(state.combat);
     case "RESHUFFLE_DISCARD_THEN_DRAW": {
       // Deemer's Meteor Shower IV deck-cycle: useful whenever there is a card to
@@ -1955,6 +1964,8 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" ||
     // Gerwulf's Ballista discard: the player picks which enemy unit it hits.
     effect.type === "DISCARD_WAR_MACHINE_DAMAGE" ||
+    // Tarnum (Dungeon)'s Dragons VI: toggle the Black cube on a chosen Dragons unit.
+    effect.type === "TOGGLE_RETALIATION_MARKER" ||
     effect.type === "PLACE_PARALYSIS" ||
     // Boots of Polarity (option B): the ongoing effect it strips lives on a
     // chosen unit (yours or the enemy's).

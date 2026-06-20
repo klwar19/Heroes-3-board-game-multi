@@ -29,7 +29,8 @@ const assetPath = (src: string) => fileURLToPath(new URL(`../../public${src}`, i
 /** Batch-5 heroes registered so far (grown as each is implemented + tested). */
 const BATCH5_HEROES: Array<[string, keyof typeof coreFactionDefinitions]> = [
   ["ash", "inferno"],
-  ["gerwulf", "fortress"]
+  ["gerwulf", "fortress"],
+  ["tarnum_dungeon", "dungeon"]
 ];
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -367,5 +368,166 @@ describe("Gerwulf's Ballista specialty", () => {
         : [];
     expect(candidates, "a faster (non-slowest) enemy is a legal aim").toContain("unit_p2_vampires");
     expect(candidates).toContain("unit_p2_dread_knights");
+  });
+});
+
+// ===========================================================================
+// Tarnum (Dungeon) — Dragons: might-spec doubling + line damage + cube toggle
+// ===========================================================================
+
+describe("Tarnum (Dungeon)'s Dragons specialty", () => {
+  it("is the Overlord variant of Tarnum, distinct from the other Tarnums", () => {
+    expect(coreHeroDefinitions.tarnum_dungeon.name).toBe("Tarnum");
+    expect(coreHeroDefinitions.tarnum_dungeon.class).toBe("Overlord");
+    expect(coreHeroDefinitions.tarnum_dungeon.faction).toBe("dungeon");
+    expect(coreHeroDefinitions.tarnum_dungeon.portrait).toBe("/assets/hero_portraits-tarnum_overlord.webp");
+  });
+
+  /** p1's attacker (renamed to `attackerName`) strikes skeletons; p1 plays option 0 (+1 attack). */
+  function attackPlusOne(seed: string, attackerName: string): number | undefined {
+    const state = createInitialGameState(seed);
+    state.players.p1.hand = ["specialty.tarnum_dungeon.1"];
+    state.players.p2.hand = [];
+    const attacker = state.combat!.units.unit_p1_griffins;
+    attacker.abilities = [];
+    attacker.name = attackerName;
+    attacker.type = "ground";
+    attacker.position = 9;
+    attacker.attack = 4;
+    const defender = state.combat!.units.unit_p2_skeletons;
+    defender.abilities = [];
+    defender.position = 13;
+    defender.defense = 0;
+    defender.maxHealth = 40;
+    defender.damage = 0;
+    state.combat!.dice.scriptedRolls = new Array(8).fill(0);
+    state.combat!.dice.rollCount = 0;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    const reaction = (declared.reactionWindow?.legalReactions.p1 ?? []).find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "specialty.tarnum_dungeon.1" &&
+        legal.action.optionIndex === 0
+    );
+    expect(reaction, "the +1 attack option should be offered").toBeTruthy();
+    const settled = passAllReactions(applyOk(declared, reaction!.action));
+    return lastAttackRolled(settled, (e) => e.attackerId === "unit_p1_griffins" && !e.isRetaliation)?.attackBonus;
+  }
+
+  it("I gives +1 attack, doubled to +2 for a Dragons unit", () => {
+    expect(attackPlusOne("tarnum-d-1-plain", "Griffins"), "non-Dragon → +1").toBe(1);
+    expect(attackPlusOne("tarnum-d-1-dragon", "Black Dragons"), "a Dragons unit → +2").toBe(2);
+  });
+
+  it("IV damages every unit (friend and foe) in the chosen vertical line of 5", () => {
+    const state = createInitialGameState("tarnum-d-4");
+    state.players.p1.hand = ["specialty.tarnum_dungeon.4"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    // Column 1 = positions 1, 5, 9, 13, 17. Put a friend and two foes in it,
+    // and one foe in column 2 (position 2) as the control.
+    const place = (id: string, position: number) => {
+      const unit = state.combat!.units[id];
+      unit.abilities = [];
+      unit.maxHealth = 40;
+      unit.damage = 0;
+      unit.position = position;
+    };
+    place("unit_p1_griffins", 9); // col 1, friendly
+    place("unit_p2_skeletons", 1); // col 1
+    place("unit_p2_vampires", 13); // col 1
+    place("unit_p2_dread_knights", 2); // col 2 (spared)
+    state.combat!.units.unit_p1_marksmen.position = 0; // col 0 (spared)
+    state.combat!.units.unit_p1_crusaders.position = 3; // col 3 (spared)
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "specialty.tarnum_dungeon.4" &&
+        legal.action.target?.type === "space" &&
+        legal.action.target.position === 5 // a space in column 1
+    );
+    expect(play, "a column-1 space target should be offered").toBeTruthy();
+    const after = applyOk(state, play!.action);
+    expect(after.combat!.units.unit_p1_griffins.damage, "friendly in the line is hit").toBe(2);
+    expect(after.combat!.units.unit_p2_skeletons.damage, "foe in the line is hit").toBe(2);
+    expect(after.combat!.units.unit_p2_vampires.damage, "foe in the line is hit").toBe(2);
+    expect(after.combat!.units.unit_p2_dread_knights.damage, "a different column is spared").toBe(0);
+    expect(after.combat!.units.unit_p1_marksmen.damage, "a different column is spared").toBe(0);
+  });
+
+  it("VI option A toggles the Black cube only on a Dragons unit", () => {
+    const state = createInitialGameState("tarnum-d-6a");
+    state.players.p1.hand = ["specialty.tarnum_dungeon.6"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const dragon = state.combat!.units.unit_p1_griffins;
+    dragon.name = "Black Dragons";
+    dragon.retaliatedThisRound = true; // already spent its Retaliation
+    // A non-Dragon friendly unit must NOT be a legal target for the toggle.
+    state.combat!.units.unit_p1_crusaders.name = "Crusaders";
+    const onDragon = findPlay(state, "specialty.tarnum_dungeon.6", 0, "unit_p1_griffins");
+    expect(onDragon, "the toggle targets the Dragons unit").toBeTruthy();
+    expect(
+      findPlay(state, "specialty.tarnum_dungeon.6", 0, "unit_p1_crusaders"),
+      "a non-Dragon unit is not a legal toggle target"
+    ).toBeFalsy();
+    const removed = applyOk(state, onDragon!.action);
+    expect(removed.combat!.units.unit_p1_griffins.retaliatedThisRound, "cube removed → may retaliate again").toBe(false);
+
+    // Placing: a Dragons unit that has NOT retaliated gains a cube (cannot retaliate).
+    const fresh = createInitialGameState("tarnum-d-6a-place");
+    fresh.players.p1.hand = ["specialty.tarnum_dungeon.6"];
+    fresh.players.p2.hand = [];
+    fresh.activePlayerId = "p1";
+    fresh.combat!.activeUnitId = "unit_p1_griffins";
+    fresh.combat!.units.unit_p1_griffins.name = "Gold Dragons";
+    fresh.combat!.units.unit_p1_griffins.retaliatedThisRound = false;
+    const placed = applyOk(fresh, findPlay(fresh, "specialty.tarnum_dungeon.6", 0, "unit_p1_griffins")!.action);
+    expect(placed.combat!.units.unit_p1_griffins.retaliatedThisRound, "cube placed → cannot retaliate").toBe(true);
+  });
+
+  it("VI option B adds +2 attack to a declared attack", () => {
+    const state = createInitialGameState("tarnum-d-6b");
+    state.players.p1.hand = ["specialty.tarnum_dungeon.6"];
+    state.players.p2.hand = [];
+    const attacker = state.combat!.units.unit_p1_griffins;
+    attacker.abilities = [];
+    attacker.type = "ground";
+    attacker.position = 9;
+    attacker.attack = 4;
+    const defender = state.combat!.units.unit_p2_skeletons;
+    defender.abilities = [];
+    defender.position = 13;
+    defender.defense = 0;
+    defender.maxHealth = 40;
+    defender.damage = 0;
+    state.combat!.dice.scriptedRolls = new Array(8).fill(0);
+    state.combat!.dice.rollCount = 0;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    const reaction = (declared.reactionWindow?.legalReactions.p1 ?? []).find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "specialty.tarnum_dungeon.6" &&
+        legal.action.optionIndex === 1
+    );
+    expect(reaction, "+2 attack option offered on the declared attack").toBeTruthy();
+    const settled = passAllReactions(applyOk(declared, reaction!.action));
+    expect(lastAttackRolled(settled, (e) => e.attackerId === "unit_p1_griffins" && !e.isRetaliation)?.attackBonus).toBe(2);
   });
 });
