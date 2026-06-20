@@ -2561,7 +2561,25 @@ function addActiveEffectActions(actions: LegalAction[], state: GameState, player
   if (!combat || state.phase !== "combat" || state.stack.length > 0 || state.reactionWindow || state.pendingChoice) {
     return;
   }
+  actions.push(...firstAidHealActions(state, playerId));
+}
 
+/**
+ * The First Aid Tent (and any HEAL_ONCE_PER_COMBAT_ROUND active effect) heal
+ * plays available to `playerId` right now — one per wounded friendly unit. This
+ * is the *content* of the heal offer with no timing gate of its own, so it can
+ * be surfaced both on the player's turn (addActiveEffectActions) and as an
+ * instant reaction the moment one of their units is attacked
+ * (getLegalReactionsForTrigger), letting the owner mend a wound BEFORE the
+ * incoming attack's damage is calculated.
+ */
+export function firstAidHealActions(state: GameState, playerId: PlayerId): LegalAction[] {
+  const combat = state.combat;
+  if (!combat) {
+    return [];
+  }
+
+  const out: LegalAction[] = [];
   for (const effect of state.activeEffects) {
     if (effect.controllerId !== playerId) {
       continue;
@@ -2594,25 +2612,26 @@ function addActiveEffectActions(actions: LegalAction[], state: GameState, player
       // Basic heal and expert continuations omit the mode (it defaults to
       // basic), so plays submitted without a mode still match.
       if (canBasic) {
-        actions.push({
+        out.push({
           label: `${effect.name} heal ${unit.name}`,
           action: { type: "USE_ACTIVE_EFFECT", playerId, effectId: effect.id, target }
         });
       }
       if (canExpertActivate) {
-        actions.push({
+        out.push({
           label: `${effect.name} expert: heal ${unit.name} (1/${expertMax}, spend 1 crown)`,
           action: { type: "USE_ACTIVE_EFFECT", playerId, effectId: effect.id, target, mode: "expert" }
         });
       }
       if (canExpertContinue) {
-        actions.push({
+        out.push({
           label: `${effect.name} heal ${unit.name} (${(usage?.count ?? 0) + 1}/${expertMax})`,
           action: { type: "USE_ACTIVE_EFFECT", playerId, effectId: effect.id, target }
         });
       }
     }
   }
+  return out;
 }
 
 function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerId: PlayerId, activeUnit: CombatUnitState): void {
@@ -4199,6 +4218,20 @@ export function getLegalReactionsForTrigger(
 
     if (reactions.length > 0) {
       result[player.id] = reactions;
+    }
+  }
+
+  // First Aid Tent (instant): the moment one of your units is attacked, its
+  // controller may mend an existing wound on one of their units BEFORE the
+  // incoming attack's damage is calculated — the Tent heal is "usable at any
+  // time during the round, like an instant". A healed unit therefore enters the
+  // hit with more health, which can let it survive a blow that would otherwise
+  // defeat it. Optional: the defender may simply pass and take the attack.
+  if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
+    const defenderId = state.combat?.units[triggerEvent.defenderId]?.controllerId;
+    const heals = defenderId ? firstAidHealActions(state, defenderId) : [];
+    if (defenderId && heals.length > 0) {
+      result[defenderId] = [...(result[defenderId] ?? []), ...heals];
     }
   }
 

@@ -42,3 +42,18 @@ test("combat sandbox: the Cannon war machine can be added to hand", async ({ pag
   await addCard(page, "cannon", /cannon/i);
   await expect(page.locator('.handFan .fanCard[title^="Cannon"]')).toBeVisible({ timeout: 15000 });
 });
+
+test("combat sandbox: the First Aid Tent can be played into play (its heal effect goes live)", async ({ page }) => {
+  await openCombatSandbox(page);
+  await addCard(page, "first aid tent", /first aid tent/i);
+
+  // Open the hand card's play menu and put the Tent into play.
+  await page.locator('.handFan .fanCard[title^="First Aid Tent"]').click();
+  const popover = page.getByRole("menu", { name: /First Aid Tent/i });
+  await expect(popover).toBeVisible();
+  await popover.getByRole("button", { name: /^Use$/ }).click();
+
+  // It is now an active table effect (the heal is live for the round). With no
+  // wounded unit there is no heal button yet — that appears once a unit is hurt.
+  await expect(page.locator(".effectsRail")).toContainText(/First Aid Tent/i, { timeout: 15000 });
+});

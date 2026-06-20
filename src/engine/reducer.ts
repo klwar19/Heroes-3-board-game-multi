@@ -10246,8 +10246,14 @@ function applyActiveEffectAction(
     target: action.target
   });
 
-  state.phase = "combat";
-  state.priorityPlayerId = null;
+  // Used as an instant inside an open reaction window (e.g. mending a wound the
+  // moment your unit is attacked, before the hit is calculated): leave the
+  // window's phase/priority intact so it can be refreshed and resumed by the
+  // caller. Only a heal taken on the player's own turn resets to plain combat.
+  if (!state.reactionWindow) {
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+  }
 }
 
 function applyUnitAbilityAction(
@@ -12725,6 +12731,13 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "USE_ACTIVE_EFFECT":
         applyActiveEffectAction(nextState, action);
+        // A First Aid Tent heal used as an instant during a reaction window
+        // (heal-when-attacked) keeps the window open: clear stale passes, re-derive
+        // the offers (the heal may now be spent) and hand priority back so the
+        // healer can heal again / pass, then the paused attack resumes.
+        if (nextState.reactionWindow) {
+          advanceReactionWindowAfterPlay(nextState, action.playerId, cards);
+        }
         break;
       case "DEFEND_UNIT":
         defendUnit(nextState, action);
