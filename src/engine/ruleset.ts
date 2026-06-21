@@ -520,6 +520,25 @@ export function expertUsesAvailable(player: PlayerState): number {
   );
 }
 
+/**
+ * Spell Book house rule on? Stored per adventure (`adventure.spellBook`, default
+ * ON). The combat sandbox has no adventure state, so the Book is available there
+ * too — sandbox tests seed `player.spellBook` directly. A `false` adventure flag
+ * (the lobby toggle) is the only thing that turns it off.
+ */
+export function spellBookRuleEnabled(state: GameState): boolean {
+  return state.adventure ? state.adventure.spellBook ?? true : true;
+}
+
+/**
+ * Whether this player may still spend a Spell Book Spell as a +1 Power source
+ * this turn. The Book is capped at ONE Power discard per turn (crown-style); the
+ * hand and every other Power source are unaffected.
+ */
+export function spellBookPowerAvailable(player: PlayerState): boolean {
+  return !player.combatStats.spellBookPowerUsedThisTurn;
+}
+
 /** Whether a card id is a spell in the given library. */
 export function isSpellCard(cards: CardLibrary, cardId: string): boolean {
   return cards[cardId]?.kind === "spell";

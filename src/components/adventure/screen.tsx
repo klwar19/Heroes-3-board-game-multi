@@ -3469,6 +3469,36 @@ function GameOptionsPanel({
       })()}
 
       {(() => {
+        const spellBookOn = options.spellBook ?? true;
+        return (
+          <div className="optionRow">
+            <small title="House rule: each player keeps a personal Spell Book to stash, cast and boost Spells from">
+              Spell Book
+            </small>
+            <div className="optionButtons">
+              {([true, false] as const).map((on) => (
+                <button
+                  aria-pressed={spellBookOn === on}
+                  className={spellBookOn === on ? "selected" : ""}
+                  key={String(on)}
+                  onClick={() => send({ spellBook: on })}
+                  title={on ? "Spell Book on (house rule)" : "Spell Book off"}
+                  type="button"
+                >
+                  {on ? "On" : "Off"}
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">
+              {spellBookOn
+                ? "Each player may set Spells aside in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
+                : "No Spell Book — Spells live only in hand, deck and discard."}
+            </small>
+          </div>
+        );
+      })()}
+
+      {(() => {
         const scenario = scenarioDefinitions[options.scenarioId];
         const min = scenario?.minPlayers ?? 2;
         const max = Math.min(scenario?.maxPlayers ?? 2, scenario?.layout.starts.length ?? 2);

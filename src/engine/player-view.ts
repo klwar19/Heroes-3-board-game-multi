@@ -138,6 +138,10 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
         deck: [],
         deckCount: player.deck.length,
         discard: [...player.discard],
+        // Spell Book (house rule): a face-down personal library — only the owner
+        // sees which Spells it holds; opponents learn just the count.
+        spellBook: playerId === viewerPlayerId ? [...player.spellBook] : [],
+        spellBookCount: player.spellBook.length,
         removed: [...player.removed],
         // Spell Scrolls show their symbol to everyone, but only the owner sees
         // which spells they hold (the cards sit face down near the hero).

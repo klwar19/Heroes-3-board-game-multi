@@ -140,8 +140,11 @@ describe("Helm of the Alabaster Unicorn — return a Spell (option A)", () => {
     const opened = applyOk(state, play!);
     expect(opened.pendingChoice?.type).toBe("OPTION_CHOICE");
     const labels = choiceLabels(opened);
-    expect(labels.length).toBe(1);
-    expect(labels[0]).toContain("Haste");
+    // Spell Book (house rule, default ON) adds a "→ Spell Book" route for the
+    // Spell candidate; optionIndex 0 is still the "to hand" one.
+    expect(labels.length).toBe(2);
+    expect(labels.every((label) => label.includes("Haste"))).toBe(true);
+    expect(labels.some((label) => label.includes("Spell Book"))).toBe(true);
 
     const took = applyOk(opened, {
       type: "CHOOSE_OPTION",

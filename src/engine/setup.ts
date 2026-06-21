@@ -94,6 +94,7 @@ function makeSimPlayer(config: SimPlayerConfig): PlayerState {
     deck: config.deck,
     hand: config.hand,
     discard: [],
+    spellBook: [],
     removed: [],
     army: [],
     startingArmy: [],

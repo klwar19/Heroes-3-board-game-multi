@@ -109,7 +109,14 @@ import {
   startWarMachineRound
 } from "./permanents";
 import { createSeededRandom } from "./random";
-import { activeSchoolFetches, estatesGold, getRuleset, spellLimitFor } from "./ruleset";
+import {
+  activeSchoolFetches,
+  estatesGold,
+  getRuleset,
+  spellBookPowerAvailable,
+  spellBookRuleEnabled,
+  spellLimitFor
+} from "./ruleset";
 import {
   destroyFortification,
   getDemolishAbility,
@@ -334,6 +341,7 @@ function normalizeActionForMatch(action: GameAction): GameAction {
       ...(action.optionIndex !== undefined ? { optionIndex: action.optionIndex } : {}),
       ...(action.target ? { target: action.target } : {}),
       ...(action.asPowerBoost ? { asPowerBoost: true } : {}),
+      ...(action.fromSpellBook ? { fromSpellBook: true } : {}),
       ...(action.fromScroll ? { fromScroll: action.fromScroll } : {})
     };
   }
@@ -345,7 +353,8 @@ function normalizeActionForMatch(action: GameAction): GameAction {
       cardId: action.cardId,
       mode: action.mode ?? "basic",
       ...(action.optionIndex !== undefined ? { optionIndex: action.optionIndex } : {}),
-      ...(action.target ? { target: action.target } : {})
+      ...(action.target ? { target: action.target } : {}),
+      ...(action.fromSpellBook ? { fromSpellBook: true } : {})
     };
   }
 
@@ -548,6 +557,74 @@ function moveCardFromHandToDiscard(
     player.discard.push(cardId);
   }
   return null;
+}
+
+/**
+ * Spell Book (house rule): move a Spell from the player's Spell Book to the
+ * discard pile (a Book cast/instant/Power discard always cycles to discard, never
+ * "removed"). Mirrors moveCardFromHandToDiscard but reads the Book zone, so every
+ * Book play has exactly one card-removal chokepoint.
+ */
+function moveSpellFromSpellBookToDiscard(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: string,
+  destination: "discard" | "removed" = "discard"
+): RulesError | null {
+  const player = state.players[playerId];
+  const cardIndex = player?.spellBook.indexOf(cardId) ?? -1;
+
+  if (!player || cardIndex === -1) {
+    return {
+      code: "CARD_NOT_IN_SPELL_BOOK",
+      message: "The selected Spell is not in that player's Spell Book.",
+      path: `players.${playerId}.spellBook`
+    };
+  }
+
+  player.spellBook.splice(cardIndex, 1);
+  if (destination === "removed") {
+    player.removed.push(cardId);
+  } else {
+    player.discard.push(cardId);
+  }
+  return null;
+}
+
+/**
+ * Spell Book (house rule): move a Spell from hand into the Spell Book, freeing
+ * the hand slot WITHOUT drawing a replacement. Legality (rule on, own map turn,
+ * Spell in hand) is enforced by getLegalActions; these throws are the resolution
+ * backstops so a fabricated action can never stash a non-Spell or empty card.
+ */
+function moveSpellToSpellBook(
+  state: GameState,
+  action: Extract<GameAction, { type: "MOVE_SPELL_TO_SPELL_BOOK" }>,
+  cards: CardLibrary
+): void {
+  if (!spellBookRuleEnabled(state)) {
+    throw new Error("The Spell Book house rule is off in this game.");
+  }
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+  const card = cards[action.cardId];
+  if (!card || card.kind !== "spell") {
+    throw new Error("Only Spell cards can go into the Spell Book.");
+  }
+  const index = player.hand.indexOf(action.cardId);
+  if (index === -1) {
+    throw new Error("That Spell is not in your hand.");
+  }
+  player.hand.splice(index, 1);
+  player.spellBook.push(action.cardId);
+  appendEvent(state, {
+    type: "SPELL_MOVED_TO_SPELL_BOOK",
+    playerId: action.playerId,
+    cardId: action.cardId,
+    message: `${player.name} sets ${card.name} aside in their Spell Book.`
+  });
 }
 
 /**
@@ -4253,7 +4330,8 @@ function resolveCombatHandDiscard(
           cardId: toll.cardId,
           target: toll.target,
           ...(toll.fromScroll ? { fromScroll: toll.fromScroll } : {}),
-          ...(toll.fromSpellDeck ? { fromSpellDeck: toll.fromSpellDeck } : {})
+          ...(toll.fromSpellDeck ? { fromSpellDeck: toll.fromSpellDeck } : {}),
+          ...(toll.fromSpellBook ? { fromSpellBook: true } : {})
         },
         cards
       );
@@ -7190,8 +7268,10 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
   // Spell cannot be cast at all. The cast is deferred until the toll resolves.
   if (combatEnemyImposesPowerTax(state, action.playerId)) {
     const caster = state.players[action.playerId];
+    // A Book cast (like a Scroll cast) leaves the hand intact — the cast Spell is
+    // not in hand — so it never excludes the cast card from the payable Power list.
     const payable = caster
-      ? payablePowerCardIds(caster.hand, cards, action.cardId, Boolean(action.fromScroll))
+      ? payablePowerCardIds(caster.hand, cards, action.cardId, Boolean(action.fromScroll || action.fromSpellBook))
       : [];
     if (payable.length === 0) {
       throw new Error("An enemy Pegasi blocks this Spell: you must discard a card with Power to cast, and have none to pay.");
@@ -7243,7 +7323,8 @@ function openPegasiTollChoice(
       cardId: action.cardId,
       target: action.target,
       ...(action.fromScroll ? { fromScroll: action.fromScroll } : {}),
-      ...(action.fromSpellDeck ? { fromSpellDeck: action.fromSpellDeck } : {})
+      ...(action.fromSpellDeck ? { fromSpellDeck: action.fromSpellDeck } : {}),
+      ...(action.fromSpellBook ? { fromSpellBook: true } : {})
     }
   };
   state.phase = "choice";
@@ -7284,6 +7365,16 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     const removeError = moveCardFromHandToDiscard(state, action.playerId, action.fromSpellDeck, "removed");
     if (removeError) {
       throw new Error(removeError.message);
+    }
+  } else if (action.fromSpellBook) {
+    // Spell Book (house rule): the Spell is cast from the Book — a non-hand zone,
+    // like a Scroll — so it cycles Book → discard pile and is NOT subject to the
+    // Familiars' hand tax ("each enemy Spell cast from hand"). It otherwise casts
+    // at the caster's full Power and counts toward the spell limit exactly like a
+    // hand cast (noteSpellCast below).
+    const moveError = moveSpellFromSpellBookToDiscard(state, action.playerId, action.cardId);
+    if (moveError) {
+      throw new Error(moveError.message);
     }
   } else {
     const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
@@ -7602,6 +7693,8 @@ function applyReactionPlayCore(
     asPowerBoost?: boolean;
     /** Spell Scroll reaction: power-locked to 0, consumed from the scroll. */
     fromScroll?: string;
+    /** Spell Book (house rule): the reaction Spell comes from the Book, not hand. */
+    fromSpellBook?: boolean;
     /** Bowstring of the Unicorn's Mane: the friendly ranged unit to activate. */
     target?: TargetRef;
   },
@@ -7628,9 +7721,25 @@ function applyReactionPlayCore(
     if (!stackItemForBoost) {
       throw new Error("There is nothing to empower.");
     }
-    const moveError = moveCardFromHandToDiscard(state, playerId, play.cardId);
-    if (moveError) {
-      throw new Error(moveError.message);
+    if (play.fromSpellBook) {
+      // Spell Book (house rule): only ONE Book Spell may be spent for Power per
+      // turn (a crown-style budget). Backstop the per-turn lock here so a forced
+      // play the legal-action filter never offered still fails, then mark it spent
+      // and cycle the Spell Book → discard pile (a non-hand zone, like a Scroll).
+      const player = state.players[playerId];
+      if (!player || !spellBookPowerAvailable(player)) {
+        throw new Error("You have already spent a Spell Book Spell for Power this turn.");
+      }
+      const moveError = moveSpellFromSpellBookToDiscard(state, playerId, play.cardId);
+      if (moveError) {
+        throw new Error(moveError.message);
+      }
+      player.combatStats.spellBookPowerUsedThisTurn = true;
+    } else {
+      const moveError = moveCardFromHandToDiscard(state, playerId, play.cardId);
+      if (moveError) {
+        throw new Error(moveError.message);
+      }
     }
     // Attack windows pool Power per caster; a spell cast on your own turn uses
     // the single spellPowerBonus.
@@ -7740,6 +7849,18 @@ function applyReactionPlayCore(
   if (play.fromScroll) {
     if (!consumeScrollSpell(state, playerId, play.fromScroll, play.cardId)) {
       throw new Error("That spell is not in the named Spell Scroll.");
+    }
+  } else if (play.fromSpellBook) {
+    // Spell Book (house rule): a Book Spell played as an instant cycles Book →
+    // discard pile (or → removed for a removeSelf option, mirroring the hand path).
+    const moveError = moveSpellFromSpellBookToDiscard(
+      state,
+      playerId,
+      play.cardId,
+      option?.cost?.removeSelf ? "removed" : "discard"
+    );
+    if (moveError) {
+      throw new Error(moveError.message);
     }
   } else {
     const moveError = moveCardFromHandToDiscard(
@@ -9224,12 +9345,21 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     noteSpellCast(state, playerForLimit);
   }
 
-  const moveError = moveCardFromHandToDiscard(
-    state,
-    action.playerId,
-    action.cardId,
-    option?.cost?.removeSelf ? "removed" : "discard"
-  );
+  const moveError = action.fromSpellBook
+    ? // Spell Book (house rule): a Map Spell played from the Book cycles Book →
+      // discard pile (or → removed for a removeSelf option), never touching hand.
+      moveSpellFromSpellBookToDiscard(
+        state,
+        action.playerId,
+        action.cardId,
+        option?.cost?.removeSelf ? "removed" : "discard"
+      )
+    : moveCardFromHandToDiscard(
+        state,
+        action.playerId,
+        action.cardId,
+        option?.cost?.removeSelf ? "removed" : "discard"
+      );
   if (moveError) {
     throw new Error(moveError.message);
   }
@@ -13037,6 +13167,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "REFRESH_HAND":
         refreshHand(nextState, action);
+        break;
+      case "MOVE_SPELL_TO_SPELL_BOOK":
+        moveSpellToSpellBook(nextState, action, cards);
         break;
       case "REVISIT_FIELD":
         revisitField(nextState, action);

@@ -168,7 +168,10 @@ export function ReactionTray({
     () =>
       legalActions
         .map((legal) => legal.action)
-        .filter((action): action is ReactionLegal => action.type === "PLAY_REACTION" && !action.fromScroll),
+        .filter(
+          (action): action is ReactionLegal =>
+            action.type === "PLAY_REACTION" && !action.fromScroll && !action.fromSpellBook
+        ),
     [legalActions]
   );
 
@@ -179,6 +182,17 @@ export function ReactionTray({
       legalActions
         .map((legal) => legal.action)
         .filter((action): action is ReactionLegal => action.type === "PLAY_REACTION" && Boolean(action.fromScroll)),
+    [legalActions]
+  );
+
+  // Spell Book instants (house rule): a Book Spell played for its effect or
+  // discarded for +1 Power. Like Scrolls they are single-card plays (never
+  // batched), so they get their own one-click tiles apart from the hand batch.
+  const spellBookReactions = useMemo(
+    () =>
+      legalActions
+        .map((legal) => legal.action)
+        .filter((action): action is ReactionLegal => action.type === "PLAY_REACTION" && Boolean(action.fromSpellBook)),
     [legalActions]
   );
 
@@ -495,6 +509,7 @@ export function ReactionTray({
         {tiles.length === 0 &&
         buildingBoosts.length === 0 &&
         scrollReactions.length === 0 &&
+        spellBookReactions.length === 0 &&
         resurrectionActions.length === 0 ? (
           <div className="trayEmpty">No playable instants — pass to continue.</div>
         ) : null}
@@ -527,6 +542,17 @@ export function ReactionTray({
               <strong>📜 {cardName(action.cardId)} (Scroll)</strong>
               <button className="trayInstant" onClick={() => onAction(action)} type="button">
                 Play at power 0
+              </button>
+            </div>
+          </div>
+        ))}
+        {spellBookReactions.map((action) => (
+          <div className="trayTile scrollTile" key={JSON.stringify(action)}>
+            <CardFrame cardId={action.cardId} className="trayCardImage" />
+            <div className="trayTileBody">
+              <strong>📖 {cardName(action.cardId)} (Spell Book)</strong>
+              <button className="trayInstant" onClick={() => onAction(action)} type="button">
+                {action.asPowerBoost ? "Discard for +1 Power" : "Play from Spell Book"}
               </button>
             </div>
           </div>

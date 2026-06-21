@@ -229,7 +229,10 @@ describe("Mystic Orb of Mana artifact", () => {
     const choice = opened.pendingChoice!;
     const labels = choice.type === "OPTION_CHOICE" ? choice.options.map((option) => option.label) : [];
     expect(labels.some((label) => label.includes("Haste"))).toBe(false);
-    expect(labels.length).toBe(4);
+    // Four candidates; the Spell among them (Bless) also gets a "→ Spell Book"
+    // route (house rule, default ON), so five options in all.
+    expect(labels.length).toBe(5);
+    expect(labels.some((label) => label.includes("Spell Book"))).toBe(true);
 
     const choiceId = choice.id;
     const took = applyOk(opened, { type: "CHOOSE_OPTION", playerId: "p1", choiceId, optionIndex: 0 });

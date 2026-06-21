@@ -248,6 +248,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} plays ${cardName(event.cardId)}${event.optionLabel ? ` (${event.optionLabel})` : ""}${event.mode === "expert" ? " as expert" : ""}${event.effectAmount ? ` for ${event.effectAmount}` : ""}.`;
     case "CARDS_DRAWN":
       return `${playerName(state, event.playerId)} draws ${event.count} card${event.count === 1 ? "" : "s"}${event.reshuffledDiscard ? " after reshuffling the discard" : ""}.`;
+    case "SPELL_MOVED_TO_SPELL_BOOK":
+      return event.message;
     case "DECK_SEARCH_STARTED":
       return `${playerName(state, event.playerId)} searches the ${event.deckId} deck (${event.revealedCount} revealed).`;
     case "DECK_SEARCH_RESOLVED":
