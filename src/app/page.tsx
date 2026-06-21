@@ -118,6 +118,7 @@ import {
 } from "@/data/map-sounds";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { playLibrarySound, playUnitSound } from "@/lib/sound";
+import { unitAttackFlourish } from "@/data/unit-sounds";
 import { useBackgroundMusic, type MusicScene } from "@/lib/music";
 import { MusicToggle } from "@/components/music-toggle";
 import { connectRoom, type GameRoomSnapshot, type RoomConnection } from "@/lib/realtime";
@@ -1239,8 +1240,14 @@ export default function Home() {
             attackKindForRoll(nextState.eventLog, roll.attackerId, roll.defenderId, roll.isRetaliation) ===
             "ranged";
           // The attacker's own H3 voice as it strikes (after the die, not on the
-          // declaration).
-          playUnitSound(unitVoice(roll.attackerId), ranged ? "shoot" : "attack", strikeAt);
+          // declaration). A magical striker (the Magic Elemental) layers a magic
+          // zap over its voice so its blow reads as raw magic, not a plain thwack.
+          const attackerVoice = unitVoice(roll.attackerId);
+          playUnitSound(attackerVoice, ranged ? "shoot" : "attack", strikeAt);
+          const attackFlourish = unitAttackFlourish(attackerVoice);
+          if (attackFlourish) {
+            window.setTimeout(() => playLibrarySound(attackFlourish, 0.4), strikeAt);
+          }
           cues.push({
             kind: "lunge",
             id: `${roll.id}-lunge`,
