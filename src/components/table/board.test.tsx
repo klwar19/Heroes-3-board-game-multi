@@ -8,12 +8,14 @@ import {
   assignCombatBoardArt,
   createInitialGameState,
   eligibleCombatBoardArtIds,
+  isCreatureBankCombat,
   SHIP_BATTLE_OBSTACLES,
   weightedCombatBoardArtIds,
   type GameAction,
   type GameState,
   type LegalAction
 } from "@/engine";
+import { CREATURE_BANK_IDS } from "@/data/map/creature-banks";
 import type { CardBoardAction } from "./utils";
 
 afterEach(cleanup);
@@ -41,12 +43,47 @@ describe("combat board art variants", () => {
     return state;
   }
 
+  // A real Creature Bank field: `location` is the literal "creature_bank" and the
+  // bank's identity lives in `bankId` (see fieldCreatureBankId). The neutral
+  // combat context carries the same `bankId`, which is the signal the board-art
+  // gate keys on. This mirrors how beginNeutralCombatPlacement builds the context.
+  function creatureBankCombatState(bankId: string, seed = `board-art-${bankId}`): GameState {
+    const state = createInitialGameState(seed);
+    state.adventure = {
+      fields: {
+        bank_1: {
+          spaceId: "bank_1",
+          tileInstanceId: "tile_1",
+          slot: 0,
+          location: "creature_bank",
+          bankId,
+          terrain: "subterranean",
+          blackCube: false,
+          flagOwnerId: null,
+          everFlagged: false,
+          settlementResource: null
+        }
+      },
+      tiles: {}
+    } as unknown as GameState["adventure"];
+    state.combat!.context = {
+      kind: "neutral",
+      heroId: "hero_p1",
+      fieldId: "bank_1",
+      difficulty: 7,
+      hasAzure: false,
+      bankId
+    };
+    return state;
+  }
+
   it("declares the classic board plus themed combat board variants", () => {
     expect(COMBAT_BOARD_ART_VARIANTS.map((variant) => variant.id)).toEqual([
       "classic",
       "frozen",
       "hell-necro",
       "jungle-fortress",
+      "creature-bank-dungeon",
       "castle-siege",
       "ship-battle"
     ]);
@@ -55,9 +92,42 @@ describe("combat board art variants", () => {
       "/assets/board/battlefield-4x5-frozen.webp",
       "/assets/board/battlefield-4x5-hell-necro.webp",
       "/assets/board/battlefield-4x5-jungle-fortress.webp",
+      "/assets/board/battlefield-4x5-creature-bank-dungeon.webp",
       "/assets/board/battlefield-4x5-castle-siege.webp",
       "/assets/board/battlefield-4x5-ship-battle.webp"
     ]);
+  });
+
+  it("fights EVERY Creature Bank on the dungeon board (all current and future banks)", () => {
+    // Iterate the real bank registry, not a hand-picked subset: a bank added to
+    // CREATURE_BANK_IDS later is covered automatically, so this fails if a future
+    // bank ever falls through to a random open-field battlefield.
+    expect(CREATURE_BANK_IDS.length).toBeGreaterThanOrEqual(12);
+    for (const bankId of CREATURE_BANK_IDS) {
+      const state = creatureBankCombatState(bankId);
+      expect(isCreatureBankCombat(state.combat)).toBe(true);
+      expect(eligibleCombatBoardArtIds(state, state.combat)).toEqual(["creature-bank-dungeon"]);
+      // Seed/combat-id must never matter: the dungeon board is forced, like a siege.
+      for (let index = 0; index < 8; index += 1) {
+        state.combat!.id = `combat_${index}`;
+        state.combat!.boardArtId = undefined;
+        expect(pickCombatBoardArt(state).id).toBe("creature-bank-dungeon");
+      }
+    }
+  });
+
+  it("never shows the dungeon board for an ordinary (non-bank) neutral fight", () => {
+    // A Field-Difficulty neutral fight has no bankId, so the gate must reject it —
+    // otherwise the dungeon board would leak onto every guard fight on the map.
+    const plain = createInitialGameState("board-art-plain-neutral");
+    plain.combat!.context = { kind: "neutral", heroId: "hero_p1", fieldId: "0,0", difficulty: 5, hasAzure: false };
+    expect(isCreatureBankCombat(plain.combat)).toBe(false);
+    expect(eligibleCombatBoardArtIds(plain, plain.combat)).not.toContain("creature-bank-dungeon");
+
+    // An unknown/garbage bankId is not a real bank either (isCreatureBankId guards it).
+    const bogus = creatureBankCombatState("not_a_real_bank", "board-art-bogus-bank");
+    expect(isCreatureBankCombat(bogus.combat)).toBe(false);
+    expect(eligibleCombatBoardArtIds(bogus, bogus.combat)).not.toContain("creature-bank-dungeon");
   });
 
   it("picks stable seeded art per combat id, while varying across combats", () => {

@@ -1,9 +1,11 @@
+import { isCreatureBankId } from "./adventure";
 import { createSeededRandom } from "./random";
 import { NEUTRAL_PLAYER_ID, type CombatBoardArtId, type CombatState, type GameState } from "./state";
 
 export const SHIP_BATTLE_OBSTACLES = [9, 10] as const;
 
 const BASE_BOARD_ART_IDS: readonly CombatBoardArtId[] = ["classic", "frozen", "hell-necro", "jungle-fortress"];
+const CREATURE_BANK_BOARD_ART_ID: CombatBoardArtId = "creature-bank-dungeon";
 
 export function isSeaCombat(state: GameState, combat: CombatState | null | undefined): boolean {
   if (!combat || combat.context.kind === "sandbox") {
@@ -15,6 +17,18 @@ export function isSeaCombat(state: GameState, combat: CombatState | null | undef
 
 export function isSiegeCombat(combat: CombatState | null | undefined): boolean {
   return Boolean(combat && (combat.siege || (combat.context.kind === "player" && combat.context.siege)));
+}
+
+/**
+ * A Creature Bank fight (Naval Battles optional rule). Gated on the bank id the
+ * neutral-combat context carries — set for EVERY bank in `beginNeutralCombatPlacement`
+ * from `fieldCreatureBankId(field)`, BEFORE the board art is assigned. Keying on
+ * `context.bankId` (rather than a hand-listed subset of banks) means all twelve
+ * current banks AND any future bank automatically fight on the dungeon board, and
+ * an ordinary Field-Difficulty neutral fight never does.
+ */
+export function isCreatureBankCombat(combat: CombatState | null | undefined): boolean {
+  return Boolean(combat && combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId));
 }
 
 function combatFactionIds(state: GameState, combat: CombatState): Set<string> {
@@ -34,6 +48,13 @@ function combatFactionIds(state: GameState, combat: CombatState): Set<string> {
 export function eligibleCombatBoardArtIds(state: GameState, combat: CombatState | null | undefined): CombatBoardArtId[] {
   if (!combat) {
     return ["classic"];
+  }
+
+  // A Creature Bank is ALWAYS fought on its dungeon board — never a random
+  // open-field battlefield — so it is the sole eligible art (mirrors the siege
+  // rule below).
+  if (isCreatureBankCombat(combat)) {
+    return [CREATURE_BANK_BOARD_ART_ID];
   }
 
   const siege = isSiegeCombat(combat);
@@ -92,6 +113,11 @@ export function pickCombatBoardArtId(state: GameState, combat: CombatState | nul
   // siege must show the fortifications, so it is never a random pick.
   if (isSiegeCombat(combat)) {
     return "castle-siege";
+  }
+
+  // A Creature Bank fight always shows the dungeon board (see isCreatureBankCombat).
+  if (isCreatureBankCombat(combat)) {
+    return CREATURE_BANK_BOARD_ART_ID;
   }
 
   return createSeededRandom(`${state.seed}:${combat.id}:combat-board-art`).pick(weightedCombatBoardArtIds(state, combat));

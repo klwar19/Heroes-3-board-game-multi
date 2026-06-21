@@ -50,6 +50,7 @@ export {
   applyCombatBoardArtObstacles,
   assignCombatBoardArt,
   eligibleCombatBoardArtIds,
+  isCreatureBankCombat,
   isSeaCombat,
   isSiegeCombat,
   pickCombatBoardArtId,

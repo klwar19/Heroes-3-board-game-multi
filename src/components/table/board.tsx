@@ -111,6 +111,12 @@ export const COMBAT_BOARD_ART_VARIANTS: readonly CombatBoardArtVariant[] = [
     scenery: "/assets/board/battlefield-4x5-jungle-fortress-scenery.webp"
   },
   {
+    id: "creature-bank-dungeon",
+    label: "Creature bank dungeon battlefield",
+    terrain: "/assets/board/battlefield-4x5-creature-bank-dungeon.webp",
+    scenery: "/assets/board/battlefield-4x5-creature-bank-dungeon-scenery.webp"
+  },
+  {
     id: "castle-siege",
     label: "Castle siege battlefield",
     terrain: "/assets/board/battlefield-4x5-castle-siege.webp",
