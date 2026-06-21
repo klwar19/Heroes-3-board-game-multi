@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import soundManifest from "../../public/sounds/manifest.json";
 import { coreUnitDefinitions } from "./factions/units";
-import { unitSoundKey, type UnitSoundAction } from "./unit-sounds";
+import { unitAttackFlourish, unitSoundKey, type UnitSoundAction } from "./unit-sounds";
 
 const soundLibrary = soundManifest as Record<string, { src?: string }>;
 const roster = Object.values(coreUnitDefinitions);
@@ -68,5 +68,20 @@ describe("unit combat voices", () => {
 
   it("stays silent for unknown units", () => {
     expect(unitSoundKey("castle.unknown", "attack")).toBeUndefined();
+  });
+
+  it("layers a magical strike flourish over the Magic Elemental's blow", () => {
+    // The Magic Elemental is made of raw magic: its strike carries an extra
+    // magic zap on top of its melee clip — on both the Conflux and Neutral
+    // rosters (the same creature).
+    for (const id of ["conflux.magic_elementals", "neutral.magic_elementals"]) {
+      const key = unitAttackFlourish(id);
+      expect(key, `${id} should carry a magical strike flourish`).toBeTruthy();
+      // It must point at a real manifest clip, never a missing file.
+      expect(soundLibrary[key!]?.src, `${key} should resolve to a real clip`).toBeTruthy();
+    }
+    // Ordinary melee creatures carry no flourish, and unknown ids are silent.
+    expect(unitAttackFlourish("stronghold.behemoths")).toBeUndefined();
+    expect(unitAttackFlourish(undefined)).toBeUndefined();
   });
 });

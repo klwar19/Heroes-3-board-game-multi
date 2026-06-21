@@ -162,3 +162,29 @@ export function unitSoundKey(unitDefId: string, action: UnitSoundAction): string
 
   return undefined;
 }
+
+/**
+ * A few creatures strike with an extra magical flourish layered OVER their
+ * melee voice clip. The Magic Elemental is a swirl of raw magic that deals
+ * elemental damage (and is itself immune to Magic Arrows), so its blow carries
+ * a magic zap on top of its grunt — its plain melee clip alone read as "not
+ * enough" for a being made of pure magic. Keyed by the bare name (the conflux
+ * and neutral twins are the same creature); undefined for ordinary creatures.
+ */
+const attackFlourishes: Record<string, string> = {
+  magic_elementals: "spells/magic-arrow"
+};
+
+/**
+ * The extra library clip (if any) to play alongside a unit's attack. Returns a
+ * key only when it resolves to a real manifest entry, so callers never request
+ * a missing file.
+ */
+export function unitAttackFlourish(unitDefId: string | undefined): string | undefined {
+  if (!unitDefId) {
+    return undefined;
+  }
+  const bareName = unitDefId.split(".")[1] ?? unitDefId;
+  const key = attackFlourishes[bareName];
+  return key && soundLibrary[key] ? key : undefined;
+}
