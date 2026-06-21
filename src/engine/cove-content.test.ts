@@ -45,8 +45,8 @@ describe("Cove faction wiring", () => {
       "cove.nix",
       "cove.haspids"
     ]);
-    // Only the two fully-wired heroes are registered (see the deferral note).
-    expect(faction.heroes).toEqual(["astra", "cassiopeia"]);
+    // Only the fully-wired heroes are registered (see the deferral note).
+    expect(faction.heroes).toEqual(["astra", "cassiopeia", "jeremy", "zilare", "miriam"]);
   });
 });
 
@@ -116,10 +116,13 @@ describe("Cove units", () => {
 });
 
 describe("Cove heroes", () => {
-  it("registers Astra and Cassiopeia with implemented starting abilities and specialties", () => {
+  it("registers Astra, Cassiopeia, Jeremy, Zilare and Miriam with implemented starting abilities and specialties", () => {
     for (const [heroId, klass, type, ability] of [
       ["astra", "Navigator", "magic", "ability.luck"],
-      ["cassiopeia", "Captain", "might", "ability.tactics"]
+      ["cassiopeia", "Captain", "might", "ability.tactics"],
+      ["jeremy", "Captain", "might", "ability.offense"],
+      ["zilare", "Navigator", "magic", "ability.interference"],
+      ["miriam", "Captain", "might", "ability.logistics"]
     ] as const) {
       const hero = coreHeroDefinitions[heroId];
       expect(hero, heroId).toBeDefined();
@@ -141,8 +144,8 @@ describe("Cove heroes", () => {
     }
   });
 
-  it("does NOT register the four deferred Cove heroes (kept out, not stubbed)", () => {
-    for (const heroId of ["casmetra", "jeremy", "miriam", "zilare"]) {
+  it("does NOT register the deferred Cove hero (Casmetra — kept out, not stubbed)", () => {
+    for (const heroId of ["casmetra"]) {
       expect(coreHeroDefinitions[heroId], heroId).toBeUndefined();
     }
   });

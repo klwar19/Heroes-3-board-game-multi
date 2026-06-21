@@ -1795,7 +1795,9 @@ function isOptionEffectPlayable(
   state: GameState,
   playerId: PlayerId,
   effect: ConcreteEffect,
-  context: "combat" | "map"
+  context: "combat" | "map",
+  /** The card being played, excluded from "is there a card to remove" counts. */
+  excludeCardId?: CardId
 ): boolean {
   switch (effect.type) {
     case "GAIN_RESOURCES":
@@ -1860,17 +1862,19 @@ function isOptionEffectPlayable(
     case "GAIN_HERO_MOVEMENT":
     case "DIMENSION_DOOR":
       return context === "map" && Boolean(state.adventure);
-    case "REMOVE_HAND_CARD_THEN_SEARCH":
-      // Spellbinder's Hat (option A): map play. The Hat discards itself, then a
-      // DIFFERENT removable card (ability / artifact / spell — the cards that
-      // have a deck to dig) is removed. The Hat is itself a removable card in
-      // hand at this point, so "another removable card exists" means the
-      // removable count is at least 2.
-      return (
-        context === "map" &&
-        Boolean(state.adventure) &&
-        removableHandCards(state, playerId, "removable").length >= 2
+    case "REMOVE_HAND_CARD_THEN_SEARCH": {
+      // Map play that removes a card matching the filter (default "removable" =
+      // ability / artifact / spell; Miriam's Scouting I narrows it to "ability"),
+      // then Searches that card's deck. There must be at least one matching card
+      // to remove OTHER than the card being played: the Hat is itself a removable
+      // artifact (so it needs a second removable), while Miriam's hero-specialty
+      // never matches the filter (so one matching card is enough).
+      const removeFilter = effect.filter ?? "removable";
+      const removable = removableHandCards(state, playerId, removeFilter).filter(
+        (candidate) => candidate.cardId !== excludeCardId
       );
+      return context === "map" && Boolean(state.adventure) && removable.length >= 1;
+    }
     case "REMOVE_ANOTHER_CARD_FROM_HAND_OR_DISCARD": {
       // Spellbinder's Hat (option B): map play; needs at least one OTHER card to
       // remove alongside the Hat (which is still in hand at this point).
@@ -1963,6 +1967,10 @@ function isOptionEffectPlayable(
     case "PLACE_PARALYSIS":
       // Ring of the Wayfarer's paralysis side is a combat play; the neutral /
       // opening-round gate lives on its `requiresNeutralCombatStart` flag.
+      return context === "combat" && Boolean(state.combat);
+    case "FORGETFULNESS":
+      // Zilare's Forgetfulness specialty: a combat play; the grade/type gate
+      // lives on the option's gradeByPower and target filters.
       return context === "combat" && Boolean(state.combat);
     case "BLOCK_ENEMY_SURRENDER":
       // Shackles of War (house rule): only at the start of a player-vs-player
@@ -2080,6 +2088,8 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     // Tarnum (Dungeon)'s Dragons VI: toggle the Black cube on a chosen Dragons unit.
     effect.type === "TOGGLE_RETALIATION_MARKER" ||
     effect.type === "PLACE_PARALYSIS" ||
+    // Zilare's Forgetfulness specialty (the chosen enemy cannot attack next activation).
+    effect.type === "FORGETFULNESS" ||
     // Boots of Polarity (option B): the ongoing effect it strips lives on a
     // chosen unit (yours or the enemy's).
     effect.type === "REMOVE_ACTIVE_EFFECT"
@@ -2171,7 +2181,12 @@ function addOptionPlays(
         continue;
       }
     }
-    if (!isOptionEffectPlayable(state, playerId, option.effect, context)) {
+    // Jeremy's Cannon IV/VI "use the Cannon" side: only while the player has the
+    // war-machine card in play (the same gate as Torosar's "if you have one").
+    if (option.requiresWarMachine && !getPermanentCardIds(state, playerId).includes(option.requiresWarMachine)) {
+      continue;
+    }
+    if (!isOptionEffectPlayable(state, playerId, option.effect, context, cardId)) {
       continue;
     }
     // Legion artifacts' discount side: hide it unless there is a unit to spend it
@@ -2217,7 +2232,10 @@ function addOptionPlays(
     // gradeByPower gate unlocks gold at Power 0, so units above that grade
     // (Azure) are never legal targets — keep the offered list in step with the
     // resolution gate rather than offering a no-op.
-    if (option.effect.type === "PLACE_PARALYSIS") {
+    // Zilare's Forgetfulness specialty shares the same grade gate: its option
+    // unlocks a fixed top grade (I -> silver, IV/VI -> gold), so units above it
+    // are never offered rather than offering a no-op.
+    if (option.effect.type === "PLACE_PARALYSIS" || option.effect.type === "FORGETFULNESS") {
       const gradeByPower = option.effect.gradeByPower;
       targets = targets.filter((candidate) => {
         if (candidate.type !== "unit") {
