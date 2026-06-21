@@ -704,9 +704,16 @@ export type UnitAbilityEffectDefinition =
        * cast this round." When this unit activates, its controller's first
        * Spell cast in the current combat round gains `amount` power; unused, it
        * lapses at the end of the combat round.
+       *
+       * Conflux Pack Elementals (Storm/Ice/Energy/Magma): the same bonus, but
+       * scoped to a single Spell `school` — "Add +N power to the first <school>
+       * Magic spell you cast during this Activation." When `school` is set the
+       * bonus only lands on a Spell whose school list includes it; when it is
+       * omitted (the Magi) the bonus lands on the first Spell of any school.
        */
       type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST";
       amount: number;
+      school?: SpellSchool;
     };
 
 /**
@@ -1604,6 +1611,36 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Mage's Insight",
     text: "[activation] Add +1 power to the first spell you cast this round.",
     effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Conflux Pack Elementals: "[activation] Add +1 power to the first <school>
+  // Magic spell you cast during this Activation." Scoped to one Spell school.
+  "storm-elemental-air-power": {
+    id: "storm-elemental-air-power",
+    name: "Storm Surge",
+    text: "[activation] Add +1 power to the first Air Magic spell you cast during this Activation.",
+    effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1, school: "air" },
+    implementationStatus: "implemented"
+  },
+  "ice-elemental-water-power": {
+    id: "ice-elemental-water-power",
+    name: "Frigid Focus",
+    text: "[activation] Add +1 power to the first Water Magic spell you cast during this Activation.",
+    effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1, school: "water" },
+    implementationStatus: "implemented"
+  },
+  "energy-elemental-fire-power": {
+    id: "energy-elemental-fire-power",
+    name: "Searing Focus",
+    text: "[activation] Add +1 power to the first Fire Magic spell you cast during this Activation.",
+    effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1, school: "fire" },
+    implementationStatus: "implemented"
+  },
+  "magma-elemental-earth-power": {
+    id: "magma-elemental-earth-power",
+    name: "Tectonic Focus",
+    text: "[activation] Add +1 power to the first Earth Magic spell you cast during this Activation.",
+    effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1, school: "earth" },
     implementationStatus: "implemented"
   },
   // Cove Nix (Pack): a hard cap on the damage any single attack can deal to it.

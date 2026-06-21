@@ -194,13 +194,13 @@ function unitHealthSpecialty(
 function unitInitiativeSpecialty(
   heroSlug: string,
   specialtyName: string,
-  level: 4 | 6,
+  level: 1 | 4 | 6,
   amount: number,
   doubledUnit: string
 ): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
-    name: `${specialtyName} ${level === 4 ? "IV" : "VI"}`,
+    name: `${specialtyName} ${towerRoman(level)}`,
     kind: "hero-specialty",
     timing: "combat",
     phaseLimit: ["combat"],
@@ -217,7 +217,7 @@ function unitInitiativeSpecialty(
     },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
-      imageAlt: `${specialtyName} level ${level} specialty card`
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
     },
     implementationStatus: "implemented",
     source: heroSource(heroSlug)
@@ -2247,6 +2247,98 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("torosar")
   },
+
+  // ---- Conflux heroes (unit-specialist Planeswalkers) --------------------
+  // Erdamon: every bonus doubles for ANY "… Elementals" unit (the "an
+  // Elementals unit" family descriptor). I = instant +1 attack OR +1 defence
+  // (doubled); IV = +1 initiative for the combat (doubled); VI = instant +2
+  // attack OR ongoing +3 initiative for the combat (no doubling).
+  "specialty.erdamon.1": towerAttackOrDefenseSpecialty("erdamon", "Elementals", 1, "an Elementals unit"),
+  "specialty.erdamon.4": unitInitiativeSpecialty("erdamon", "Elementals", 4, 1, "an Elementals unit"),
+  "specialty.erdamon.6": {
+    id: "specialty.erdamon.6",
+    name: "Elementals VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "erdamon",
+      "Your selected unit gains +2 attack. — OR — For this Combat, your selected unit's initiative is increased by 3."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          // Instant, one-shot: +2 attack on your unit's next attack (offered as
+          // an attack reaction, like the other might-hero VI specialties).
+          label: "+2 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+        },
+        {
+          // Ongoing: +3 initiative on a chosen friendly unit for the combat.
+          label: "+3 initiative for this Combat",
+          combatOnly: true,
+          target: { type: "friendly-unit" },
+          effect: {
+            type: "CREATE_INITIATIVE_BUFF",
+            name: "Elementals VI",
+            amount: 3,
+            duration: { type: "combat" },
+            polarity: "positive",
+            removable: false
+          }
+        }
+      ]
+    },
+    assets: { cardImage: specialtyCardImage("erdamon", 6), imageAlt: "Elementals level VI specialty card" },
+    implementationStatus: "implemented",
+    source: heroSource("erdamon")
+  },
+  // Monere (Magic Elementals): I = +1 attack/defence; IV = +1 initiative for
+  // the combat — both doubled for the Magic Elementals unit; VI = +2 attack OR
+  // +2 power (both one-shot instants, no doubling).
+  "specialty.monere.1": towerAttackOrDefenseSpecialty("monere", "Magic Elementals", 1, "Magic Elementals"),
+  "specialty.monere.4": unitInitiativeSpecialty("monere", "Magic Elementals", 4, 1, "Magic Elementals"),
+  "specialty.monere.6": {
+    id: "specialty.monere.6",
+    name: "Magic Elementals VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "monere",
+      "Your selected unit gains +2 attack. — OR — +2 power."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+2 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+        },
+        {
+          label: "+2 power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2 }
+        }
+      ]
+    },
+    assets: { cardImage: specialtyCardImage("monere", 6), imageAlt: "Magic Elementals level VI specialty card" },
+    implementationStatus: "implemented",
+    source: heroSource("monere")
+  },
+  // Pasis (Elementals generalist): every bonus doubles for any "… Elementals"
+  // unit (the "an Elementals unit" family descriptor). I = +1 initiative for
+  // the combat; IV = +1 attack/defence; VI = +1 HP for the combat.
+  "specialty.pasis.1": unitInitiativeSpecialty("pasis", "Elementals", 1, 1, "an Elementals unit"),
+  "specialty.pasis.4": towerAttackOrDefenseSpecialty("pasis", "Elementals", 4, "an Elementals unit"),
+  "specialty.pasis.6": towerHealthSpecialty("pasis", "Elementals", 6, 1, "an Elementals unit"),
 
   // ---- Additional heroes (fan-wiki "Regular Stretch Goals 2024") ---------
   // Fiona (Inferno, Demoniac): the Cerberi specialist — the standard might
