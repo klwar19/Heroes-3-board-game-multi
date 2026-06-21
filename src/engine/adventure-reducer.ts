@@ -118,6 +118,7 @@ import {
   expertUsesAvailable,
   getRuleset,
   isSpellDeck,
+  spellBookRuleEnabled,
   takeSearchRepeatEffect,
   wisdomGoldDiscount,
   wisdomSearchCount
@@ -5675,10 +5676,17 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       throw new Error("Pick one of the offered discard cards.");
     }
 
+    // Spell Book (house rule): a Spell may be routed straight into the Book on
+    // pickup; everything else (and every pick when the rule is off) goes to hand.
+    const destination = pick.destinations?.[action.optionIndex] ?? "hand";
     const index = player.discard.lastIndexOf(cardId);
     if (index !== -1) {
       player.discard.splice(index, 1);
-      player.hand.push(cardId);
+      if (destination === "spellBook") {
+        player.spellBook.push(cardId);
+      } else {
+        player.hand.push(cardId);
+      }
     }
 
     if (pick.shuffleRestIntoDeck && player.discard.length > 0) {
@@ -6515,15 +6523,35 @@ function openDiscardPickChoice(
     return false;
   }
 
+  // Spell Book (house rule): when the rule is on, a Spell candidate may be taken
+  // straight into the Spell Book instead of the hand — "put them to spell book
+  // again when you pick it up". Each Spell then appears as TWO index-aligned
+  // options (to hand, to Book); non-Spells appear once (to hand). `cardIds` and
+  // `destinations` stay parallel with `options`, so the pick reads the right card
+  // and routes it to the right zone.
+  const bookOn = spellBookRuleEnabled(state);
+  const entries: { cardId: CardId; destination: "hand" | "spellBook" }[] = [];
+  for (const cardId of candidates) {
+    entries.push({ cardId, destination: "hand" });
+    if (bookOn && cardLibrary[cardId]?.kind === "spell") {
+      entries.push({ cardId, destination: "spellBook" });
+    }
+  }
+
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
     prompt: `Take a card from your discard pile${pick.count > 1 ? ` (${pick.count} left)` : ""}`,
-    options: candidates.map((cardId) => ({ label: `Take ${cardLibrary[cardId]?.name ?? cardId}` })),
+    options: entries.map((entry) =>
+      entry.destination === "spellBook"
+        ? { label: `Take ${cardLibrary[entry.cardId]?.name ?? entry.cardId} → Spell Book` }
+        : { label: `Take ${cardLibrary[entry.cardId]?.name ?? entry.cardId}` }
+    ),
     context: "discard-pick",
     discardPick: {
-      cardIds: candidates,
+      cardIds: entries.map((entry) => entry.cardId),
+      destinations: entries.map((entry) => entry.destination),
       remaining: pick.count,
       filter: pick.filter,
       fromTop: pick.fromTop,

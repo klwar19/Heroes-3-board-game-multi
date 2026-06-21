@@ -74,6 +74,8 @@ export type AdventureSetupOptions = {
   pvpTroopLoss?: PvpTroopLoss;
   /** Naval Battles Creature Banks (default on): offer bank placement on Far/Near tile discovery. */
   creatureBanks?: boolean;
+  /** Spell Book house rule (default on): a personal Spell Book each player may stash, cast and boost from. */
+  spellBook?: boolean;
   difficulty?: GameDifficulty;
   scenarioId?: string;
   players?: AdventurePlayerConfig[];
@@ -130,6 +132,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     ruleset: "binh",
     victoryMode: "conquest",
     pvpTroopLoss: "normal",
+    spellBook: true,
     difficulty: "impossible",
     startingResources: { ...scenario.startingResources },
     startingProduction: { ...scenario.startingProduction },
@@ -248,6 +251,7 @@ function makePlayer(config: AdventurePlayerConfig, seed: string, options: GameSe
     deck,
     hand: [],
     discard: [],
+    spellBook: [],
     removed: [],
     army: [],
     startingArmy: [],
@@ -326,6 +330,7 @@ function makeNeutralSeatPlayer(): PlayerState {
     deck: [],
     hand: [],
     discard: [],
+    spellBook: [],
     removed: [],
     army: [],
     startingArmy: [],
@@ -512,6 +517,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.startingUnits !== undefined ? { startingUnits: options.startingUnits } : {}),
     ...(options.startingBuildings ? { startingBuildings: options.startingBuildings } : {}),
     ...(options.creatureBanks !== undefined ? { creatureBanks: options.creatureBanks } : {}),
+    ...(options.spellBook !== undefined ? { spellBook: options.spellBook } : {}),
     ...(options.customMap !== undefined ? { customMap: options.customMap } : {})
   };
   const difficulty = setupOptions.difficulty;
@@ -519,6 +525,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // Blocked Field offers the discovering player a bank token from the matching
   // pile. Off skips both the piles and the offer.
   const creatureBanksOn = setupOptions.creatureBanks ?? true;
+  // Spell Book house rule default ON: each player keeps a personal Spell Book.
+  const spellBookOn = setupOptions.spellBook ?? true;
   const ruleset: GameRuleset = setupOptions.ruleset;
   const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
@@ -556,6 +564,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     winnerPlayerId: null,
     victoryMode,
     pvpTroopLoss,
+    spellBook: spellBookOn,
     ...(victoryMode === "grail" ? { grail: { status: "uncollected" as const } } : {}),
     // Grail Hunt and Dragon Hunt both track the "defeat every enemy hero" path.
     ...(victoryModeCountsHeroDefeats(victoryMode) ? { heroDefeats: {} } : {}),
@@ -862,6 +871,7 @@ function makeLobbySeatPlayer(playerId: PlayerId, name: string, options: GameSetu
     deck: [],
     hand: [],
     discard: [],
+    spellBook: [],
     removed: [],
     army: [],
     startingArmy: [],
@@ -1033,6 +1043,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     }
     lobby.options.pvpTroopLoss = next.pvpTroopLoss;
     changes.push(`PvP combat ${next.pvpTroopLoss === "none" ? "keeps troops" : "loses troops"}`);
+  }
+
+  if (next.spellBook !== undefined) {
+    lobby.options.spellBook = Boolean(next.spellBook);
+    changes.push(`Spell Book ${next.spellBook ? "on" : "off"}`);
   }
 
   if (next.scenarioId !== undefined) {
@@ -1241,6 +1256,7 @@ export function startAdventureFromLobby(state: GameState, action: Extract<GameAc
     ruleset: lobby.options.ruleset,
     victoryMode: lobby.options.victoryMode,
     pvpTroopLoss: lobby.options.pvpTroopLoss,
+    spellBook: lobby.options.spellBook,
     difficulty: lobby.options.difficulty,
     startingResources: lobby.options.startingResources,
     startingProduction: lobby.options.startingProduction,

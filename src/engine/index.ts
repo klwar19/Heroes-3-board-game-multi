@@ -75,6 +75,8 @@ export {
   getRuleset,
   rulesetCardNote,
   specialtyTransformHealth,
+  spellBookPowerAvailable,
+  spellBookRuleEnabled,
   spellLimitFor,
   wisdomGoldDiscount,
   wisdomSearchCount

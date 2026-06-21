@@ -57,3 +57,46 @@ describe("HandFan — Schools of Magic offer the expert as a cast-time choice", 
     );
   });
 });
+
+describe("HandFan — Spell Book window (house rule)", () => {
+  it("the Spell Book icon opens a list of stored Spells and casting one routes to target picking", () => {
+    const state = createInitialGameState("book-window-ui");
+    state.players.p1.hand = [];
+    state.players.p1.spellBook = ["spell.magic_arrow"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
+          trayActive={false}
+          onSelectCardAction={() => {}}
+          onAction={onAction}
+        />
+      </CardZoomProvider>
+    );
+
+    // The window is closed until the Spell Book icon is clicked.
+    expect(screen.queryByRole("menu", { name: /Spell Book spells/i })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Spell Book/i }));
+
+    // The stored Spell is listed, with a concrete (pre-targeted) cast button.
+    const menu = screen.getByRole("menu", { name: /Spell Book spells/i });
+    expect(menu).toBeTruthy();
+    const castButtons = screen.getAllByRole("button", { name: /^Cast →/i });
+    expect(castButtons.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(castButtons[0]!);
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "CAST_SPELL", cardId: "spell.magic_arrow", fromSpellBook: true })
+    );
+  });
+});

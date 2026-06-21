@@ -85,9 +85,13 @@ describe("Crown of the Five Seas", () => {
     const opened = applyOk(state, play!);
     expect(opened.pendingChoice?.type).toBe("OPTION_CHOICE");
     const labels = choiceLabels(opened);
-    expect(labels.length).toBe(1);
-    expect(labels[0]).toContain("Haste");
+    // Spell Book (house rule, default ON) adds a second "→ Spell Book" option for
+    // the Spell candidate alongside the "to hand" one; both name Haste.
+    expect(labels.length).toBe(2);
+    expect(labels.every((label) => label.includes("Haste"))).toBe(true);
+    expect(labels.some((label) => label.includes("Spell Book"))).toBe(true);
 
+    // optionIndex 0 is the "to hand" route.
     const took = applyOk(opened, {
       type: "CHOOSE_OPTION",
       playerId: "p1",

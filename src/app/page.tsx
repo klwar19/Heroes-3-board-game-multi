@@ -29,6 +29,7 @@ import {
   LogDrawer
 } from "@/components/table/board";
 import { CardFrame, HandFan, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
+import { assetUrl } from "@/lib/asset-url";
 import { HeroBoard } from "@/components/hero-board";
 import {
   CombatResultModal,
@@ -537,6 +538,8 @@ export default function Home() {
   const [handDiscards, setHandDiscards] = useState<number[]>([]);
   /** Adventure hand: which card slot has its play menu open. */
   const [openHandIndex, setOpenHandIndex] = useState<number | null>(null);
+  /** Spell Book (house rule): whether the map Spell Book window is open. */
+  const [spellBookOpen, setSpellBookOpen] = useState(false);
   /** A chosen play waiting for its discard-cost payment (cost card picks). */
   const [pendingCostPlay, setPendingCostPlay] = useState<{
     action: Extract<GameAction, { type: "PLAY_CARD" }>;
@@ -2487,6 +2490,8 @@ export default function Home() {
   if (showMapScreen) {
     const viewer = isSeated ? state.players[viewerPlayerId] : null;
     const handCards = isSeated ? (playerView.players[viewerPlayerId]?.hand ?? []) : [];
+    // Spell Book (house rule): the seated player's stored Spells (owner-private).
+    const spellBookCards = isSeated ? (playerView.players[viewerPlayerId]?.spellBook ?? []) : [];
     const handLimit = viewer ? effectiveHandLimit(state, viewerPlayerId) : 0;
     // Over the hand limit at the start of the turn (only via card effects):
     // the player MUST discard down to the limit before acting.
@@ -2513,15 +2518,31 @@ export default function Home() {
     };
 
     // Card plays available from the hand right now (Estates, Luck, Scouting,
-    // Eagle Eye, Town Portal, artifact map sides…), grouped per hand card.
-    const playActionsByCard = new Map<string, (LegalAction & { action: Extract<GameAction, { type: "PLAY_CARD" }> })[]>();
+    // Eagle Eye, Town Portal, artifact map sides…), grouped per hand card. Map
+    // casts FROM the Spell Book (fromSpellBook) are kept in a SEPARATE map keyed
+    // by the Book Spell's id, so a Spell present in both hand and Book is never
+    // offered on the wrong card (the hand shows hand plays; the Book panel shows
+    // Book casts).
+    type PlayLegal = LegalAction & { action: Extract<GameAction, { type: "PLAY_CARD" }> };
+    const playActionsByCard = new Map<string, PlayLegal[]>();
+    const bookPlayActionsByCard = new Map<string, PlayLegal[]>();
     for (const legal of legalActions) {
       if (legal.action.type !== "PLAY_CARD") {
         continue;
       }
-      const list = playActionsByCard.get(legal.action.cardId) ?? [];
-      list.push(legal as LegalAction & { action: Extract<GameAction, { type: "PLAY_CARD" }> });
-      playActionsByCard.set(legal.action.cardId, list);
+      const target = legal.action.fromSpellBook ? bookPlayActionsByCard : playActionsByCard;
+      const list = target.get(legal.action.cardId) ?? [];
+      list.push(legal as PlayLegal);
+      target.set(legal.action.cardId, list);
+    }
+
+    // Spell Book (house rule): "Move <Spell> to your Spell Book" offers, keyed by
+    // the hand card they stash. Surfaced as a button on the hand card's menu.
+    const stashActionByCard = new Map<string, Extract<GameAction, { type: "MOVE_SPELL_TO_SPELL_BOOK" }>>();
+    for (const legal of legalActions) {
+      if (legal.action.type === "MOVE_SPELL_TO_SPELL_BOOK") {
+        stashActionByCard.set(legal.action.cardId, legal.action);
+      }
     }
 
     const optionCostOf = (action: Extract<GameAction, { type: "PLAY_CARD" }>) => {
@@ -2667,6 +2688,55 @@ export default function Home() {
                 view={playerView}
                 viewerPlayerId={viewerPlayerId}
               />
+              {spellBookCards.length > 0 ? (
+                <div className="spellBookPanel">
+                  <button
+                    aria-expanded={spellBookOpen}
+                    className={`spellBookToggle ${spellBookOpen ? "open" : ""}`}
+                    onClick={() => setSpellBookOpen((value) => !value)}
+                    title="Your Spell Book — stored Spells you can cast (normal Spell limit applies)"
+                    type="button"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- small pixelated game icon, not a content image */}
+                    <img alt="" aria-hidden="true" className="spellBookIcon" src={assetUrl("/assets/ui/spell-book-button.png")} />
+                    <span className="spellBookCount">{spellBookCards.length}</span>
+                    <small>Spell Book</small>
+                  </button>
+                  {spellBookOpen ? (
+                    <div className="spellBookWindow" role="menu" aria-label="Spell Book">
+                      <strong>Spell Book</strong>
+                      <small>Cast a stored Spell, or stash a hand Spell here with the 📖 button on its card.</small>
+                      {spellBookCards.map((spellId, bookIndex) => {
+                        const casts = bookPlayActionsByCard.get(spellId) ?? [];
+                        return (
+                          <div className="spellBookSpell" key={`${spellId}-${bookIndex}`}>
+                            <span className="spellBookSpellName">{cardName(spellId)}</span>
+                            <div className="spellBookSpellActions">
+                              {casts.map((legal) => (
+                                <button
+                                  className="commandButton"
+                                  key={actionKey(legal.action)}
+                                  onClick={() => {
+                                    startPlay(legal);
+                                    setSpellBookOpen(false);
+                                  }}
+                                  type="button"
+                                >
+                                  {legal.label}
+                                </button>
+                              ))}
+                              {casts.length === 0 ? (
+                                <small className="spellBookHint">Castable in combat — or as a Map Spell on your turn.</small>
+                              ) : null}
+                              <AdventureHandZoom cardId={spellId} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="handTopBar">
                 <small>
                   Hand {handCards.length}/{handLimit}
@@ -2785,6 +2855,11 @@ export default function Home() {
                 {handCards.length === 0 ? <small className="emptyHand">No cards in hand.</small> : null}
                 {handCards.map((cardId, index) => {
                   const plays = playActionsByCard.get(cardId) ?? [];
+                  // Spell Book (house rule): a Spell can be stashed into the Book.
+                  const stashAction = stashActionByCard.get(cardId);
+                  // A Spell with no map play is still actionable when it can be
+                  // stashed — clicking opens the menu instead of marking a discard.
+                  const actionable = plays.length > 0 || Boolean(stashAction);
                   const isPayingSource = pendingCostPlay !== null;
                   const pickedForCost = Boolean(pendingCostPlay?.picks.includes(index));
                   const eligibleForCost =
@@ -2801,7 +2876,7 @@ export default function Home() {
                       <button
                         className={`adventureHandCard ${handDiscards.includes(index) ? "discarding" : ""} ${
                           pickedForCost ? "discarding" : ""
-                        } ${!selecting && !isPayingSource && plays.length > 0 ? "playable" : ""}`}
+                        } ${!selecting && !isPayingSource && actionable ? "playable" : ""}`}
                         onClick={() => {
                           // Paying a card cost: clicks toggle the payment.
                           if (isPayingSource) {
@@ -2827,8 +2902,9 @@ export default function Home() {
                           // During the start-of-turn draw window, clicking a
                           // card that has no play marks it for the discard pile —
                           // the confirm button then discards them all and draws
-                          // back up to the hand limit in one go.
-                          if (!selecting && canDraw && plays.length === 0) {
+                          // back up to the hand limit in one go. A stashable Spell
+                          // is actionable, so it opens its menu instead.
+                          if (!selecting && canDraw && plays.length === 0 && !stashAction) {
                             setHandMode("mulligan");
                             setHandDiscards([index]);
                             return;
@@ -2841,8 +2917,9 @@ export default function Home() {
                             );
                             return;
                           }
-                          // Otherwise: open the play menu for this card.
-                          if (plays.length > 0) {
+                          // Otherwise: open the play menu for this card (plays
+                          // and/or the Spell Book stash).
+                          if (actionable) {
                             setOpenHandIndex((current) => (current === index ? null : index));
                           }
                         }}
@@ -2855,15 +2932,17 @@ export default function Home() {
                                 : cardName(cardId)
                               : plays.length > 0
                                 ? `Play ${cardName(cardId)}`
-                                : canDraw
-                                  ? `Click to mark ${cardName(cardId)} to discard, then draw`
-                                  : cardName(cardId)
+                                : stashAction
+                                  ? `Move ${cardName(cardId)} to your Spell Book`
+                                  : canDraw
+                                    ? `Click to mark ${cardName(cardId)} to discard, then draw`
+                                    : cardName(cardId)
                         }
                         type="button"
                       >
                         <CardFrame cardId={cardId} className="handCardImage" />
                       </button>
-                      {openHandIndex === index && !selecting && !isPayingSource && plays.length > 0 ? (
+                      {openHandIndex === index && !selecting && !isPayingSource && actionable ? (
                         <div className="handPlayMenu" role="menu" aria-label={`${cardName(cardId)} plays`}>
                           <strong>{cardName(cardId)}</strong>
                           {rulesetCardNote(getRuleset(state), cardId) ? (
@@ -2874,6 +2953,19 @@ export default function Home() {
                               {legal.label}
                             </button>
                           ))}
+                          {stashAction ? (
+                            <button
+                              className="spellBookStash"
+                              onClick={() => {
+                                submitAction(stashAction);
+                                setOpenHandIndex(null);
+                              }}
+                              title="Set this Spell aside in your Spell Book, freeing a hand slot (no new card drawn)"
+                              type="button"
+                            >
+                              📖 Move to Spell Book
+                            </button>
+                          ) : null}
                           {(() => {
                             // The card has an expert side, but no expert play is
                             // offered AND the player has no crowns left this

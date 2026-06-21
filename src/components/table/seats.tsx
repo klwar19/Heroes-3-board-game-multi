@@ -199,6 +199,92 @@ type HandCardEntry = {
   immediateActions: LegalAction[];
 };
 
+/**
+ * The pop-up window opened by the Spell Book / Spell Scroll icon: lists each
+ * stored Spell with the cast buttons the engine currently offers for it. The
+ * cast actions are already concrete (pre-targeted, carrying their own
+ * fromScroll/fromSpellBook source), so each is dispatched DIRECTLY — never
+ * routed through the board's card-selection key, which does not distinguish the
+ * source zone. Spells with no legal cast right now show why (the timing hint).
+ */
+function SpellShelfPopover({
+  title,
+  subtitle,
+  spellIds,
+  actions,
+  state,
+  trayActive,
+  onAction,
+  onClose,
+  zoomCard,
+  emptyHint
+}: {
+  title: string;
+  subtitle: string;
+  spellIds: string[];
+  actions: (LegalAction & { action: CardBoardAction })[];
+  state: GameState;
+  trayActive: boolean;
+  onAction: (action: GameAction) => void;
+  onClose: () => void;
+  zoomCard: (cardId: string) => void;
+  emptyHint?: (cardId: string) => string;
+}) {
+  return (
+    <div className="shelfPopover" role="menu" aria-label={`${title} spells`}>
+      <strong>{title}</strong>
+      <small>{subtitle}</small>
+      {spellIds.length === 0 ? <div className="shelfEmpty">No Spells here.</div> : null}
+      {[...new Set(spellIds)].map((spellId) => {
+        const card = cardLibrary[spellId];
+        const actionsForSpell = actions.filter((legal) => legal.action.cardId === spellId);
+        const castable = !trayActive && actionsForSpell.length > 0;
+        return (
+          <div className="shelfSpell" key={spellId}>
+            <button
+              className="shelfSpellName"
+              onClick={() => zoomCard(spellId)}
+              title={card ? describeCardEffect(card) : spellId}
+              type="button"
+            >
+              {card?.name ?? spellId}
+            </button>
+            {castable ? (
+              <div className="shelfSpellCasts">
+                {actionsForSpell.map((legal) => {
+                  const action = legal.action;
+                  const targetLabel =
+                    action.target?.type === "unit"
+                      ? ` → ${targetName(state, action.target)}`
+                      : action.target?.type === "space"
+                        ? " → space"
+                        : "";
+                  const expert = action.type === "CAST_SPELL" && action.useSchoolExpert ? " + School of Magic" : "";
+                  return (
+                    <button
+                      className="commandButton"
+                      key={actionKey(action)}
+                      onClick={() => {
+                        onAction(action);
+                        onClose();
+                      }}
+                      type="button"
+                    >
+                      {`Cast${expert}${targetLabel}`}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <small className="shelfSpellHint">{emptyHint ? emptyHint(spellId) : "Not castable right now."}</small>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function HandFan({
   view,
   state,
@@ -222,6 +308,7 @@ export function HandFan({
   onAction: (action: GameAction) => void;
 }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [shelfOpen, setShelfOpen] = useState<"book" | "scroll" | null>(null);
   const { zoomCard } = useCardZoom();
   const player = view.players[viewerPlayerId];
   if (!player) {
@@ -277,7 +364,17 @@ export function HandFan({
   };
 
   const entries: HandCardEntry[] = player.hand.map((cardId, handIndex) => {
-    const actionsForCard = cardActions.filter((legal) => legal.action.cardId === cardId);
+    // Only true hand casts belong on the hand card — Spell Scroll (fromScroll)
+    // and Spell Book (fromSpellBook) casts live on their own shelf icons, so a
+    // Spell present in several zones is never offered twice or routed to the
+    // wrong source (cardSelectionKey, which drives board targeting, ignores the
+    // source flag, so the hand must exclude the off-hand casts here).
+    const actionsForCard = cardActions.filter(
+      (legal) =>
+        legal.action.cardId === cardId &&
+        !("fromScroll" in legal.action && legal.action.fromScroll) &&
+        !legal.action.fromSpellBook
+    );
     const boardSelections = Array.from(
       new Map(
         actionsForCard
@@ -301,54 +398,71 @@ export function HandFan({
     (legal) => legal.action.type === "CAST_SPELL" && legal.action.fromScroll
   );
 
+  // Spell Book (house rule): the player's personal Spell library, not in hand.
+  // Its Spells cast like hand Spells (CAST_SPELL/PLAY_CARD with fromSpellBook);
+  // the icon opens a window listing them with their available cast buttons.
+  const spellBook = player.spellBook ?? [];
+  const bookCastActions = cardActions.filter((legal) => legal.action.fromSpellBook);
+
   return (
     <div className={`handFan ${trayActive ? "muted" : ""}`} aria-label="Your hand" data-fx-anchor={`hand:${viewerPlayerId}`}>
-      {scrolls.length > 0 ? (
-        <div className="scrollRail" aria-label="Spell Scrolls">
-          {scrolls.map((scroll) => (
-            <div className="scrollChip" key={scroll.id} title="Spell Scroll (cast in combat at power 0; not in hand)">
-              <span className="scrollGlyph" aria-hidden="true">📜</span>
-              <div className="scrollSpells">
-                {scroll.spellCardIds.map((spellId, spellIndex) => {
-                  const card = cardLibrary[spellId];
-                  const casts = scrollCastActions.filter(
-                    (legal) => legal.action.type === "CAST_SPELL" && legal.action.fromScroll === scroll.id && legal.action.cardId === spellId
-                  );
-                  return (
-                    <div className="scrollSpell" key={`${scroll.id}-${spellIndex}`}>
-                      <button
-                        className="scrollSpellName"
-                        onClick={() => zoomCard(spellId)}
-                        title={card ? describeCardEffect(card) : spellId}
-                        type="button"
-                      >
-                        {card?.name ?? spellId}
-                      </button>
-                      {!trayActive && casts.length > 0 ? (
-                        <div className="scrollSpellCasts">
-                          {casts.map((legal) => {
-                            const action = legal.action as CardBoardAction;
-                            const label =
-                              action.target?.type === "unit" ? `Cast → ${targetName(state, action.target)}` : "Cast";
-                            return (
-                              <button
-                                className="commandButton"
-                                key={actionKey(action)}
-                                onClick={() => onAction(action)}
-                                type="button"
-                              >
-                                {label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
+      {spellBook.length > 0 || scrolls.length > 0 ? (
+        <div className="spellShelf" aria-label="Spell Book and Spell Scrolls">
+          {spellBook.length > 0 ? (
+            <div className="shelfItem">
+              <button
+                aria-expanded={shelfOpen === "book"}
+                className={`shelfIcon ${shelfOpen === "book" ? "open" : ""}`}
+                onClick={() => setShelfOpen(shelfOpen === "book" ? null : "book")}
+                title="Spell Book — cast a stored Spell (normal Spell limit applies)"
+                type="button"
+              >
+                <img alt="Spell Book" className="shelfGlyph" src={assetUrl("/assets/ui/spell-book-button.png")} />
+                <span className="shelfCount">{spellBook.length}</span>
+              </button>
+              {shelfOpen === "book" ? (
+                <SpellShelfPopover
+                  actions={bookCastActions}
+                  emptyHint={(spellId) => timingHint(spellId)}
+                  onAction={onAction}
+                  onClose={() => setShelfOpen(null)}
+                  spellIds={spellBook}
+                  state={state}
+                  subtitle="Cast a stored Spell — Power boosts are played in the instant window."
+                  title="Spell Book"
+                  trayActive={trayActive}
+                  zoomCard={zoomCard}
+                />
+              ) : null}
             </div>
-          ))}
+          ) : null}
+          {scrolls.length > 0 ? (
+            <div className="shelfItem">
+              <button
+                aria-expanded={shelfOpen === "scroll"}
+                className={`shelfIcon ${shelfOpen === "scroll" ? "open" : ""}`}
+                onClick={() => setShelfOpen(shelfOpen === "scroll" ? null : "scroll")}
+                title="Spell Scrolls — cast in combat at power 0 (not in hand)"
+                type="button"
+              >
+                <span aria-hidden="true" className="shelfGlyph shelfGlyphEmoji">📜</span>
+                <span className="shelfCount">{scrolls.reduce((total, scroll) => total + scroll.spellCardIds.length, 0)}</span>
+              </button>
+              {shelfOpen === "scroll" ? (
+                <SpellShelfPopover
+                  actions={scrollCastActions}
+                  onAction={onAction}
+                  onClose={() => setShelfOpen(null)}
+                  spellIds={scrolls.flatMap((scroll) => scroll.spellCardIds)}
+                  state={state}
+                  subtitle="Cast at power 0 — Scroll Spells cannot be boosted."
+                  title="Spell Scrolls"
+                  trayActive={trayActive}
+                  zoomCard={zoomCard}
+                />
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
       {entries.length === 0 ? <div className="handEmpty">Empty hand</div> : null}

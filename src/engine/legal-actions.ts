@@ -76,6 +76,8 @@ import {
   activeSchoolFetches,
   expertUsesAvailable,
   getRuleset,
+  spellBookPowerAvailable,
+  spellBookRuleEnabled,
   spellLimitFor,
   wisdomGoldDiscount,
   wisdomSearchCount
@@ -1479,14 +1481,20 @@ function addSpellActions(
   // Hand spells plus every Spell Scroll spell (scroll spells are not in hand;
   // they cast at power 0 and are removed once used). Both share the timing and
   // targeting rules below, and both are blocked once the spell limit is reached.
-  const castCandidates: { cardId: string; fromScroll?: string; fromSpellDeck?: string }[] = spellLimitReached
-    ? []
-    : [
-        ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
-        ...(player.scrolls ?? []).flatMap((scroll) =>
-          [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
-        )
-      ];
+  const castCandidates: { cardId: string; fromScroll?: string; fromSpellDeck?: string; fromSpellBook?: boolean }[] =
+    spellLimitReached
+      ? []
+      : [
+          ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
+          // Spell Book (house rule): Book Spells cast like hand Spells — full
+          // Power, same one-Spell-per-round limit, same timing/targeting gates.
+          ...(spellBookRuleEnabled(state)
+            ? [...new Set(player.spellBook)].map((cardId) => ({ cardId, fromSpellBook: true }))
+            : []),
+          ...(player.scrolls ?? []).flatMap((scroll) =>
+            [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
+          )
+        ];
 
   // Helm of the Alabaster Unicorn (option B): cast the top card of the shared
   // Spell-deck discard pile. Offered like a scroll cast — the spell is sourced
@@ -1500,7 +1508,7 @@ function addSpellActions(
     castCandidates.push({ cardId: spellDeckTop, fromSpellDeck: helmId });
   }
 
-  for (const { cardId, fromScroll, fromSpellDeck } of castCandidates) {
+  for (const { cardId, fromScroll, fromSpellDeck, fromSpellBook } of castCandidates) {
     const card = cards[cardId];
     if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
       continue;
@@ -1588,6 +1596,8 @@ function addSpellActions(
     // with an expert use to spend: a normal hand cast may instead discard the
     // permanent for its expert power bonus. Offered as a separate cast option so
     // the choice is made up front — never as a prompt after the cast.
+    // A Scroll/Spell-deck cast can't pair a School of Magic permanent; a Book
+    // cast can (it casts like a hand cast), so it is offered the expert variant.
     const schoolExpert =
       !fromScroll && !fromSpellDeck && expertUsesAvailable(player) > 0
         ? getPermanentSchoolBonus(state, playerId, card)
@@ -1599,26 +1609,32 @@ function addSpellActions(
           ? `Cast ${card.name} (Scroll)`
           : fromSpellDeck
             ? `Cast ${card.name} (Helm of the Alabaster Unicorn)`
-            : `Cast ${card.name}`,
+            : fromSpellBook
+              ? `Cast ${card.name} (Spell Book)`
+              : `Cast ${card.name}`,
         action: {
           type: "CAST_SPELL",
           playerId,
           cardId,
           target,
           ...(fromScroll ? { fromScroll } : {}),
-          ...(fromSpellDeck ? { fromSpellDeck } : {})
+          ...(fromSpellDeck ? { fromSpellDeck } : {}),
+          ...(fromSpellBook ? { fromSpellBook: true } : {})
         }
       });
 
       if (schoolExpert) {
         actions.push({
-          label: `Cast ${card.name} + ${schoolExpert.card.name} (+${schoolExpert.expertPower} expert)`,
+          label: `Cast ${card.name} + ${schoolExpert.card.name} (+${schoolExpert.expertPower} expert)${
+            fromSpellBook ? " (Spell Book)" : ""
+          }`,
           action: {
             type: "CAST_SPELL",
             playerId,
             cardId,
             target,
-            useSchoolExpert: true
+            useSchoolExpert: true,
+            ...(fromSpellBook ? { fromSpellBook: true } : {})
           }
         });
       }
@@ -2180,7 +2196,10 @@ function addOptionPlays(
   // ONLY the `combatAnytime` instant sides off-turn (so a card's own-turn-only
   // sides, e.g. Gerwulf IV's free 1 damage, are never offered during an enemy's
   // activation window).
-  filter?: (option: CardOptionDefinition) => boolean
+  filter?: (option: CardOptionDefinition) => boolean,
+  // Spell Book (house rule): when true the card is an "OR" Map Spell played from
+  // the Book, so every PLAY_CARD offer here carries `fromSpellBook`.
+  fromSpellBook?: boolean
 ): void {
   if (card.effect.type !== "CHOOSE_ONE") {
     return;
@@ -2353,14 +2372,17 @@ function addOptionPlays(
     for (const mode of modes) {
       for (const target of targets) {
         actions.push({
-          label: `${card.name}: ${option.label}${mode === "expert" && !option.expertOnly ? " (expert)" : ""}`,
+          label: `${card.name}: ${option.label}${mode === "expert" && !option.expertOnly ? " (expert)" : ""}${
+            fromSpellBook ? " (Spell Book)" : ""
+          }`,
           action: {
             type: "PLAY_CARD",
             playerId,
             cardId,
             mode,
             optionIndex,
-            target
+            target,
+            ...(fromSpellBook ? { fromSpellBook: true } : {})
           }
         });
       }
@@ -2465,7 +2487,18 @@ function addTurnCardActions(
     return;
   }
 
-  for (const cardId of new Set(player.hand)) {
+  // Spell Book (house rule): a Map Spell in the Book may be cast on your turn
+  // exactly like a hand Spell, flagged `fromSpellBook` so it resolves from (and
+  // returns to the discard from) the Book. The Book holds only Spells; the gates
+  // below drop anything that is not a Map-playable Spell.
+  const turnCardSources: { cardId: CardId; fromSpellBook?: true }[] = [
+    ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
+    ...(spellBookRuleEnabled(state)
+      ? [...new Set(player.spellBook)].map((cardId) => ({ cardId, fromSpellBook: true as const }))
+      : [])
+  ];
+
+  for (const { cardId, fromSpellBook } of turnCardSources) {
     const card = cards[cardId];
     if (!card || card.implementationStatus !== "implemented") {
       continue;
@@ -2475,7 +2508,8 @@ function addTurnCardActions(
     // played the same way as map cards). A plain permanent offers a single
     // enter-play action; a hybrid permanent/instant artifact (income rings and
     // carts) exposes its enter-play side AND its one-shot instant side through
-    // the CHOOSE_ONE option machinery below instead.
+    // the CHOOSE_ONE option machinery below instead. (Book entries are Spells,
+    // never permanents, so this branch never fires for them.)
     if (card.permanent && card.effect.type !== "CHOOSE_ONE") {
       actions.push({
         label: `Put ${card.name} into play`,
@@ -2512,7 +2546,7 @@ function addTurnCardActions(
     }
 
     if (card.effect.type === "CHOOSE_ONE") {
-      addOptionPlays(actions, state, playerId, card, cardId, "map", cards);
+      addOptionPlays(actions, state, playerId, card, cardId, "map", cards, undefined, fromSpellBook);
       continue;
     }
 
@@ -2556,8 +2590,47 @@ function addTurnCardActions(
       effectSupportsExpertOption(effect) && expertUsesAvailable(player) > 0 ? ["basic", "expert"] : ["basic"];
     for (const mode of modes) {
       actions.push({
-        label: `Play ${card.name}${mode === "expert" ? " (expert)" : ""}`,
-        action: { type: "PLAY_CARD", playerId, cardId, mode, target: { type: "none" } }
+        label: `Play ${card.name}${mode === "expert" ? " (expert)" : ""}${fromSpellBook ? " (Spell Book)" : ""}`,
+        action: {
+          type: "PLAY_CARD",
+          playerId,
+          cardId,
+          mode,
+          target: { type: "none" },
+          ...(fromSpellBook ? { fromSpellBook: true } : {})
+        }
+      });
+    }
+  }
+}
+
+/**
+ * Spell Book (house rule): on your own map turn you may move any Spell from hand
+ * into your Spell Book, freeing the hand slot without drawing a replacement.
+ * Offered only outside combat / reaction windows / pending choices — the same
+ * "your map turn" gate addTurnCardActions uses.
+ */
+function addSpellBookStashActions(actions: LegalAction[], state: GameState, playerId: PlayerId, cards: CardLibrary): void {
+  if (!spellBookRuleEnabled(state)) {
+    return;
+  }
+  const player = state.players[playerId];
+  if (!player || state.combat || state.activePlayerId !== playerId || state.pendingChoice || state.reactionWindow) {
+    return;
+  }
+  // Over the hand limit at the start of the turn, the forced discard
+  // (REFRESH_HAND) must be resolved FIRST — you cannot dodge it by stashing a
+  // Spell into the Book. getAdventureLegalActions already returns before reaching
+  // here while needsHandRefresh is set; this guard states the rule explicitly.
+  if (player.needsHandRefresh) {
+    return;
+  }
+  for (const cardId of new Set(player.hand)) {
+    const card = cards[cardId];
+    if (card?.kind === "spell") {
+      actions.push({
+        label: `Move ${card.name} to your Spell Book`,
+        action: { type: "MOVE_SPELL_TO_SPELL_BOOK", playerId, cardId }
       });
     }
   }
@@ -3963,7 +4036,19 @@ export function getLegalReactionsForTrigger(
     // collected apart and only added when such a spell is available.
     const powerReactions: LegalAction[] = [];
 
-    for (const cardId of new Set(player.hand)) {
+    // Spell Book (house rule): a Book Spell may be played as a combat instant
+    // exactly like a hand Spell — full Power, expert side, same limit — so the
+    // Book entries run through the SAME offer logic, flagged `fromSpellBook` so
+    // the reaction resolves from the Book zone. (The Book holds only Spells; the
+    // card-kind/timing gates below drop anything that is not a playable instant.)
+    const reactionSources: { cardId: CardId; fromSpellBook?: true }[] = [
+      ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
+      ...(spellBookRuleEnabled(state)
+        ? [...new Set(player.spellBook)].map((cardId) => ({ cardId, fromSpellBook: true as const }))
+        : [])
+    ];
+
+    for (const { cardId, fromSpellBook } of reactionSources) {
       const card = cards[cardId];
       // Permanents join reaction windows only through their printed expert
       // side (School of Magic +3 power from hand); their basic side is the
@@ -4032,24 +4117,26 @@ export function getLegalReactionsForTrigger(
             )) {
               const targetUnit = state.combat?.units[unitId];
               push(
-                makeReactionAction(`${variantName} (${targetUnit?.cardName ?? unitId})`, {
+                makeReactionAction(`${variantName} (${targetUnit?.cardName ?? unitId})${fromSpellBook ? " (Spell Book)" : ""}`, {
                   type: "PLAY_REACTION",
                   playerId: player.id,
                   cardId,
                   mode: "basic",
                   ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
+                  ...(fromSpellBook ? { fromSpellBook: true } : {}),
                   target: { type: "unit", unitId }
                 })
               );
             }
           } else {
             push(
-              makeReactionAction(variantName, {
+              makeReactionAction(`${variantName}${fromSpellBook ? " (Spell Book)" : ""}`, {
                 type: "PLAY_REACTION",
                 playerId: player.id,
                 cardId,
                 mode: "basic",
-                ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
+                ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
+                ...(fromSpellBook ? { fromSpellBook: true } : {})
               })
             );
           }
@@ -4061,12 +4148,13 @@ export function getLegalReactionsForTrigger(
           isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "expert")
         ) {
           push(
-            makeReactionAction(`${variantName} expert`, {
+            makeReactionAction(`${variantName} expert${fromSpellBook ? " (Spell Book)" : ""}`, {
               type: "PLAY_REACTION",
               playerId: player.id,
               cardId,
               mode: "expert",
-              ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
+              ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
+              ...(fromSpellBook ? { fromSpellBook: true } : {})
             })
           );
         }
@@ -4286,6 +4374,31 @@ export function getLegalReactionsForTrigger(
             powerReactions.push(boost);
           } else {
             reactions.push(boost);
+          }
+        }
+      }
+
+      // Spell Book (house rule): a Book Spell may also be discarded for +1 Power,
+      // but only ONE Book Spell per turn (crown-style). Once the per-turn budget is
+      // spent (spellBookPowerUsedThisTurn) no Book Power boost is offered; hand
+      // boosts above are unaffected.
+      if (spellBookRuleEnabled(state) && spellBookPowerAvailable(player)) {
+        for (const cardId of new Set(player.spellBook)) {
+          const card = cards[cardId];
+          if (card?.kind === "spell") {
+            const boost = makeReactionAction(`Discard ${card.name}: +1 Power (Spell Book)`, {
+              type: "PLAY_REACTION",
+              playerId: player.id,
+              cardId,
+              mode: "basic",
+              asPowerBoost: true,
+              fromSpellBook: true
+            });
+            if (isAttackWindow) {
+              powerReactions.push(boost);
+            } else {
+              reactions.push(boost);
+            }
           }
         }
       }
@@ -5963,6 +6076,8 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
 
   // Instant, Ongoing and Map cards may be played during your own map turn.
   addTurnCardActions(actions, state, playerId, cards);
+  // Spell Book (house rule): stash hand Spells into the Book to free hand slots.
+  addSpellBookStashActions(actions, state, playerId, cards);
   addPermanentDiscardActions(actions, state, playerId);
 
   for (const hero of Object.values(state.heroes)) {

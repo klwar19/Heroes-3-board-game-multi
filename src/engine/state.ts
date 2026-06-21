@@ -2141,6 +2141,14 @@ export type GameAction =
        */
       fromSpellDeck?: CardId;
       /**
+       * Spell Book (house rule): the Spell is cast from the player's Spell Book
+       * (PlayerState.spellBook), not the hand. It casts at the caster's normal
+       * Power, counts toward the one-Spell-per-combat-round limit exactly like a
+       * hand cast, and moves Book → discard pile when it resolves. Mutually
+       * exclusive with fromScroll / fromSpellDeck (each names a distinct source).
+       */
+      fromSpellBook?: boolean;
+      /**
        * Schools of Magic (Air/Earth/Fire/Water Magic) in play: the caster may
        * decide AS PART OF the cast to discard the matching permanent for its
        * expert power bonus (+3 instead of the standing +1; costs one expert use).
@@ -2160,6 +2168,12 @@ export type GameAction =
       costCardIds?: CardId[];
       /** Map plays of specialty transforms: the army unit card to cover. */
       armyUnitId?: string;
+      /**
+       * Spell Book (house rule): a Map Spell played from the player's Spell Book
+       * (PlayerState.spellBook) rather than the hand. Resolves exactly like the
+       * hand play and moves Book → discard pile. Only ever set for Spell cards.
+       */
+      fromSpellBook?: boolean;
     }
   | {
       type: "ATTACK_UNIT";
@@ -2246,6 +2260,15 @@ export type GameAction =
       /** Discard this Spell card for its alternative "+1 Power" effect. */
       asPowerBoost?: boolean;
       /**
+       * Spell Book (house rule): the reaction Spell — whether played for its
+       * instant effect or discarded `asPowerBoost` for +1 Power — comes from the
+       * player's Spell Book (PlayerState.spellBook), not the hand, and moves Book →
+       * discard pile. An `asPowerBoost` play from the Book is capped at ONE per
+       * turn (combatStats.spellBookPowerUsedThisTurn). Book plays are single-card
+       * only: the batch path (PLAY_REACTIONS) never carries them.
+       */
+      fromSpellBook?: boolean;
+      /**
        * Spell Scroll reaction: the spell instant comes from this scroll, not
        * the hand. It resolves at power 0 (no boosts, no expert side) and is
        * removed from the game once played.
@@ -2302,6 +2325,17 @@ export type GameAction =
       type: "REFRESH_HAND";
       playerId: PlayerId;
       discardCardIds: CardId[];
+    }
+  | {
+      /**
+       * Spell Book (house rule): move a Spell card from hand into the player's
+       * Spell Book, freeing the hand slot WITHOUT drawing a replacement. Legal
+       * only on the player's own map turn (no combat / reaction / pending choice),
+       * for a Spell currently in hand, while the rule is on.
+       */
+      type: "MOVE_SPELL_TO_SPELL_BOOK";
+      playerId: PlayerId;
+      cardId: CardId;
     }
   | { type: "REVISIT_FIELD"; playerId: PlayerId; heroId: HeroId }
   | {
@@ -2667,6 +2701,7 @@ export type RulesError = {
     | "ACTION_NOT_LEGAL"
     | "CARD_NOT_FOUND"
     | "CARD_NOT_IN_HAND"
+    | "CARD_NOT_IN_SPELL_BOOK"
     | "INVALID_TARGET"
     | "NO_REACTION_WINDOW"
     | "NOT_PRIORITY_PLAYER";
@@ -3026,6 +3061,14 @@ export type GameEvent =
       count: number;
       requested: number;
       reshuffledDiscard: boolean;
+    }
+  | {
+      /** Spell Book (house rule): a Spell moved from hand into the Spell Book. */
+      id: string;
+      type: "SPELL_MOVED_TO_SPELL_BOOK";
+      playerId: PlayerId;
+      cardId: CardId;
+      message: string;
     }
   | {
       id: string;
@@ -3922,6 +3965,20 @@ export type PlayerState = {
   deck: CardId[];
   hand: CardId[];
   discard: CardId[];
+  /**
+   * Spell Book (house rule, default ON — `adventure.spellBook`). A personal,
+   * face-down library of Spell cards set aside next to the hero, NOT in hand and
+   * NOT counted against the hand limit. The owner may stash any Spell from hand
+   * here on their turn (MOVE_SPELL_TO_SPELL_BOOK) to free a hand slot without
+   * drawing a replacement. A Spell in the Book may be cast or played exactly like
+   * a hand Spell — it obeys the same one-Spell-per-combat-round limit — and, like
+   * a hand Spell, it may be discarded for +1 Power; but only ONE Book Spell may be
+   * spent for Power per turn (see combatStats.spellBookPowerUsedThisTurn). A used
+   * Book Spell goes to the discard pile, and when it is later picked up from the
+   * discard pile the owner may route it straight back into the Book. Held privately
+   * (player-view hides the contents from opponents, exposing only spellBookCount).
+   */
+  spellBook: CardId[];
   /** Cards removed from the game entirely (the "remove" keyword). */
   removed: CardId[];
   /**
@@ -4041,6 +4098,15 @@ export type PlayerState = {
      * spellsCastThisRound. Reset with the per-round spell counter.
      */
     anySpellCastThisRound?: boolean;
+    /**
+     * Spell Book (house rule): true once this player has spent ONE Book Spell as
+     * a +1 Power source this turn. Like a crown (expertUsesSpentThisRound) this is
+     * a per-game-round budget — it survives across combat rounds and the map→combat
+     * boundary, and refreshRoundTokens clears it at the start of the player's turn.
+     * Power boosts from the HAND (and every other source) are unaffected; only the
+     * Book is capped at one Power discard per turn. Absent = none spent yet.
+     */
+    spellBookPowerUsedThisTurn?: boolean;
   };
   /** Round the Blacksmith action was last used ("once per your turn"). */
   blacksmithUsedRound?: number;
@@ -5244,6 +5310,14 @@ export type AdventureState = {
    */
   pvpTroopLoss?: PvpTroopLoss;
   /**
+   * Spell Book house rule (default ON). When on, each player has a personal
+   * Spell Book zone (PlayerState.spellBook) they may stash hand Spells into, cast
+   * or boost from, and refill from the discard pile. Off hides the move-to-Book
+   * action and the discard→Book pickup option entirely, so the Book stays empty
+   * and inert. Absent on older snapshots; treated as ON (see spellBookRuleEnabled).
+   */
+  spellBook?: boolean;
+  /**
    * Grail Hunt: the single Grail Token's progress. Only one token exists in
    * the game even when several Grail fields are on the map.
    */
@@ -5286,6 +5360,12 @@ export type GameSetupOptions = {
    * token there. Off disables the offer and the token piles entirely.
    */
   creatureBanks?: boolean;
+  /**
+   * Spell Book house rule (default ON). Gives every player a personal Spell Book
+   * zone they may stash hand Spells into to free slots, then cast or boost from.
+   * Off disables the move-to-Book action and the discard→Book pickup entirely.
+   */
+  spellBook?: boolean;
   difficulty: GameDifficulty;
   startingResources: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };
@@ -5644,6 +5724,13 @@ export type PendingChoice =
       /** discard-pick: the candidate cards (index-aligned with options). */
       discardPick?: {
         cardIds: CardId[];
+        /**
+         * Spell Book (house rule): where each option routes the picked card —
+         * "hand" (default) or "spellBook". Index-aligned with `cardIds`/`options`,
+         * so a Spell candidate can appear twice (a "to hand" and a "to Book"
+         * option). Absent = every pick goes to hand.
+         */
+        destinations?: ("hand" | "spellBook")[];
         remaining: number;
         filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty";
         fromTop?: number;
@@ -5818,7 +5905,7 @@ export type PendingChoice =
       /** Cards in the chooser's hand that can contribute Power. */
       powerCardIds: CardId[];
       /** "pegasi-toll" only: the Spell cast deferred until the toll is paid. */
-      tollSpell?: { cardId: CardId; target: TargetRef; fromScroll?: string; fromSpellDeck?: CardId };
+      tollSpell?: { cardId: CardId; target: TargetRef; fromScroll?: string; fromSpellDeck?: CardId; fromSpellBook?: boolean };
     }
   | null;
 
@@ -5859,12 +5946,18 @@ export type GameState = {
 /** Reserved player id that controls neutral armies during map combats. */
 export const NEUTRAL_PLAYER_ID: PlayerId = "neutrals";
 
-export type PlayerVisiblePlayerState = Omit<PlayerState, "hand" | "deck"> & {
+export type PlayerVisiblePlayerState = Omit<PlayerState, "hand" | "deck" | "spellBook"> & {
   hand: CardId[];
   handCount: number;
   /** Deck order is hidden from every seat, including the owner. */
   deck: CardId[];
   deckCount: number;
+  /**
+   * Spell Book (house rule): the owner sees the Spell ids; opponents see an empty
+   * array and only the count (the Book sits face down next to the hero).
+   */
+  spellBook: CardId[];
+  spellBookCount: number;
 };
 
 export type PlayerVisibleDeckState = Omit<DeckState, "drawPile"> & {
