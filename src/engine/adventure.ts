@@ -1250,6 +1250,8 @@ function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
       return [{ type: "GAIN_MOVEMENT", amount: interaction.amount }];
     case "GAIN_MORALE":
       return [{ type: "GAIN_MORALE", amount: interaction.amount }];
+    case "GAIN_UNIT":
+      return [{ type: "RECRUIT_FREE", unitDefId: interaction.unitDefId, side: interaction.side }];
     case "ROLL_RESOURCE_DICE":
       return [{ type: "ROLL_RESOURCE_DICE", count: interaction.count }];
     case "ROLL_TREASURE_DICE":
@@ -2384,10 +2386,11 @@ export function processPendingVisit(state: GameState): void {
         reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, false, false, true);
         break;
       case "RECRUIT_FREE": {
-        // Garden of Life (Conflux): add a Few of the unit to the army for free.
+        // Add a unit to the army for free: a Few (Garden of Life) or a Pack
+        // (a Creature Bank "gain a Stacked unit" reward).
         const recruitPlayer = state.players[visit.playerId];
         if (recruitPlayer) {
-          addArmyUnit(recruitPlayer, step.unitDefId, "few");
+          addArmyUnit(recruitPlayer, step.unitDefId, step.side ?? "few");
           appendEvent(state, {
             type: "UNIT_RECRUITED",
             playerId: visit.playerId,

@@ -7,6 +7,7 @@ import {
   CREATURE_BANK_ATTACKER_CELLS,
   CREATURE_BANK_GUARD_CORNERS,
   placementCellsFor,
+  unitIsBerserk,
   type GameAction,
   type GameState
 } from "./index";
@@ -613,8 +614,8 @@ describe("Creature Bank combat lifecycle", () => {
     expect(state.combat?.outcome ?? null).toBeNull();
   });
 
-  it("still cubes the field on a win but grants no resources for a not-yet-implemented gain-a-unit reward", () => {
-    expect(CREATURE_BANKS.dragon_fly_hive.rewardStatus).toBe("not-implemented");
+  it("cubes the field and adds the gained Dragon Flies card to the army on a win", () => {
+    expect(CREATURE_BANKS.dragon_fly_hive.rewardStatus).toBe("implemented");
 
     let state = createAdventureGameState({ seed: "bank-hive", difficulty: "normal", rollFirstPlayer: false });
     state = state.players.p1.needsHandRefresh
@@ -628,7 +629,11 @@ describe("Creature Bank combat lifecycle", () => {
     state = apply(state, place!.action);
     state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
 
-    const before = { ...state.players.p1.resources };
+    // X (Stacked defenders) decides Few vs the Stacked Pack reward.
+    const stacked = state.combat?.context.kind === "neutral" ? (state.combat.context.bankStackCount ?? 0) : 0;
+    const resourcesBefore = { ...state.players.p1.resources };
+    const armyIdsBefore = new Set(state.players.p1.army.map((unit) => unit.id));
+
     for (const unit of Object.values(state.combat!.units)) {
       if (unit.controllerId === "neutrals") {
         unit.damage = unit.maxHealth;
@@ -637,9 +642,13 @@ describe("Creature Bank combat lifecycle", () => {
     finishCombatIfNeeded(state);
     finalizeAdventureCombat(state);
 
-    // The Hive's reward is "gain a Dragon Flies" (Gained Stacked Units, not yet
-    // implemented): no resources change, but the win is still recorded.
-    expect(state.players.p1.resources).toEqual(before);
+    // The reward grants a unit card, not resources.
+    expect(state.players.p1.resources).toEqual(resourcesBefore);
+    // Exactly one Dragon Flies card joined the army, a Pack iff 2+ defenders Stacked.
+    const gained = state.players.p1.army.filter((unit) => !armyIdsBefore.has(unit.id));
+    expect(gained).toHaveLength(1);
+    expect(gained[0].unitDefId).toBe("fortress.dragon_flies");
+    expect(gained[0].side).toBe(stacked >= 2 ? "pack" : "few");
     expect(state.adventure!.fields["bank-field"].blackCube).toBe(true);
     expect(state.combat).toBeNull();
   });
@@ -712,11 +721,11 @@ describe("Creature Bank guards are gradeless and target the nearest enemy", () =
   });
 
   // A ranged guard with a distant ranged enemy (pos 19) and a nearer melee enemy
-  // (pos 2 — two away, so NOT adjacent and therefore not "engaged"). A graded
-  // ranged neutral hunts the ranged enemy first; a gradeless bank guard drops
-  // that preference and simply shoots the nearest.
-  function rangedScenario(bankUnit: boolean): GameState {
-    const state = createInitialGameState(`bank-ranged-${bankUnit}`);
+  // (pos 2 — two away, so NOT adjacent and therefore not "engaged"). The ranged
+  // "hunt ranged first" rule is universal and is KEPT for bank guards, so even a
+  // gradeless guard shoots the far ranged unit over the near melee one.
+  function rangedPreferenceScenario(bankUnit: boolean): GameState {
+    const state = createInitialGameState(`bank-ranged-pref-${bankUnit}`);
     const guard = place(state, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ranged", 0);
     guard.bankUnit = bankUnit;
     place(state, "unit_p1_marksmen", "p1", "bronze", "ranged", 19);
@@ -729,13 +738,36 @@ describe("Creature Bank guards are gradeless and target the nearest enemy", () =
     return state;
   }
 
-  it("CONTROL: a graded ranged neutral hunts the (far) ranged enemy first", () => {
-    const state = rangedScenario(false);
+  it("a ranged bank guard KEEPS the ranged-prefers-ranged rule (far ranged over near melee)", () => {
+    const state = rangedPreferenceScenario(true);
     expect(pickNeutralTarget(state.combat!, state.combat!.units.unit_p2_skeletons)?.id).toBe("unit_p1_marksmen");
   });
 
-  it("a ranged bank guard drops the ranged-prefers-ranged rule and shoots the NEAREST enemy", () => {
-    const state = rangedScenario(true);
+  // Two RANGED enemies: a same-tier one far (pos 19) and a higher-tier one near
+  // (pos 2). Both are inside the ranged-preferred pool, so this isolates the tier
+  // ordering: a graded guard prefers its own tier (the far one); a gradeless bank
+  // guard ignores tier and takes the nearest ranged unit.
+  function rangedTierScenario(bankUnit: boolean): GameState {
+    const state = createInitialGameState(`bank-ranged-tier-${bankUnit}`);
+    const guard = place(state, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ranged", 0);
+    guard.bankUnit = bankUnit;
+    place(state, "unit_p1_marksmen", "p1", "bronze", "ranged", 19);
+    place(state, "unit_p1_crusaders", "p1", "azure", "ranged", 2);
+    onlyUnits(state, [
+      state.combat!.units.unit_p2_skeletons,
+      state.combat!.units.unit_p1_marksmen,
+      state.combat!.units.unit_p1_crusaders
+    ]);
+    return state;
+  }
+
+  it("CONTROL: a graded ranged neutral picks the same-tier ranged enemy (tier over distance)", () => {
+    const state = rangedTierScenario(false);
+    expect(pickNeutralTarget(state.combat!, state.combat!.units.unit_p2_skeletons)?.id).toBe("unit_p1_marksmen");
+  });
+
+  it("a ranged bank guard ignores tier and shoots the NEAREST ranged enemy", () => {
+    const state = rangedTierScenario(true);
     expect(pickNeutralTarget(state.combat!, state.combat!.units.unit_p2_skeletons)?.id).toBe("unit_p1_crusaders");
   });
 
@@ -766,5 +798,93 @@ describe("Creature Bank guards are gradeless and target the nearest enemy", () =
     const state = tieScenario(true);
     const ties = getNeutralTargetTies(state.combat!, state.combat!.units.unit_p2_skeletons);
     expect(ties.map((unit) => unit.id).sort()).toEqual(["unit_p1_crusaders", "unit_p1_griffins"]);
+  });
+});
+
+// ===========================================================================
+// Tier-gated spells/specialties cannot target a gradeless bank defender
+// ===========================================================================
+
+describe("Creature Bank defenders are exempt from tier-specific spells", () => {
+  function passAllReactions(state: GameState): GameState {
+    let current = state;
+    let safety = 40;
+    while (current.reactionWindow && safety > 0) {
+      safety -= 1;
+      current = apply(current, { type: "PASS_REACTION", playerId: current.reactionWindow.priorityPlayerId });
+    }
+    return current;
+  }
+
+  // p2 skeletons = the would-be Berserk target (bronze). Berserk is grade-gated
+  // (Power 0 already reaches bronze), so the ONLY thing standing between it and
+  // the skeletons is whether the skeletons are a tierless bank defender.
+  function berserkScene(bankDefender: boolean): GameState {
+    const state = createInitialGameState(`bank-berserk-${bankDefender}`);
+    const combat = state.combat!;
+    combat.obstacles = [];
+    combat.units.unit_p2_skeletons.grade = "bronze";
+    combat.units.unit_p2_skeletons.bankUnit = bankDefender;
+    combat.units.unit_p1_marksmen.position = 3;
+    state.players.p1.hand = ["spell.berserk", "stat.power", "stat.power", "stat.power", "stat.power"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    combat.activeUnitId = "unit_p1_marksmen";
+    combat.dice.scriptedRolls = [0, 0, 0, 0, 0, 0];
+    combat.dice.rollCount = 0;
+    return state;
+  }
+
+  function berserkTargetIds(state: GameState): string[] {
+    return getLegalActions(state, "p1")
+      .map((legal) => legal.action)
+      .filter(
+        (action): action is Extract<GameAction, { type: "CAST_SPELL" }> =>
+          action.type === "CAST_SPELL" && action.cardId === "spell.berserk" && action.target?.type === "unit"
+      )
+      .map((action) => (action.target as { type: "unit"; unitId: string }).unitId);
+  }
+
+  it("offers Berserk on a graded enemy but never on a bank defender of the same grade", () => {
+    const bank = berserkScene(true);
+    const bankTargets = berserkTargetIds(bank);
+    expect(bankTargets).not.toContain("unit_p2_skeletons"); // tierless bank guard: not targetable
+    expect(bankTargets).toContain("unit_p2_vampires"); // an ordinary graded enemy still is
+
+    // The SAME skeletons, when not a bank defender, is a perfectly legal target.
+    expect(berserkTargetIds(berserkScene(false))).toContain("unit_p2_skeletons");
+  });
+
+  it("never lands Berserk on a bank defender even if the cast is forced (resolution backstop)", () => {
+    // The reducer does not re-validate spell targets against the legal list, so a
+    // forced cast must still fizzle: the gradeless gate makes resolution a no-op.
+    const state = berserkScene(true);
+    const result = applyAction(state, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.berserk",
+      target: { type: "unit", unitId: "unit_p2_skeletons" }
+    });
+    let next = result.state;
+    if (result.errors.length === 0 && next.stack[0]) {
+      next.stack[0].modifiers.spellPowerBonus = 4; // enough Power to reach any real grade
+      next = passAllReactions(next);
+    }
+    expect(unitIsBerserk(next.activeEffects, next.combat!.units.unit_p2_skeletons)).toBe(false);
+  });
+
+  it("CONTROL: the same forced Berserk DOES land on a graded enemy", () => {
+    const state = berserkScene(false);
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.berserk" &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === "unit_p2_skeletons"
+    );
+    expect(cast, "Berserk should be castable on a graded enemy").toBeTruthy();
+    let next = apply(state, cast!.action);
+    next = passAllReactions(next); // Power 0 already reaches bronze
+    expect(unitIsBerserk(next.activeEffects, next.combat!.units.unit_p2_skeletons)).toBe(true);
   });
 });

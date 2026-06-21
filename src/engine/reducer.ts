@@ -746,6 +746,17 @@ function gradeRank(grade: CombatUnitState["grade"]): number {
   return grade === "bronze" ? 0 : grade === "silver" ? 1 : grade === "gold" ? 2 : 3;
 }
 
+/**
+ * Tier-gate rank of a UNIT. A Creature Bank defender has NO tier (rulebook
+ * p.66), so it ranks above every grade and fails every "grade ≤ reached" /
+ * "grade === X" gate — a tier-specific spell or specialty can never affect it.
+ * Every other unit ranks by its printed grade. Use this (never gradeRank on the
+ * raw grade) whenever the value being gated is a unit's own tier.
+ */
+function gradeRankOfUnit(unit: CombatUnitState): number {
+  return unit.bankUnit ? Number.POSITIVE_INFINITY : gradeRank(unit.grade);
+}
+
 /** Highest grade unlocked by the paid power (e.g. {0:bronze,2:silver,4:gold}). */
 function gradeAtPower(
   gradeByPower: Record<number, CombatUnitState["grade"]>,
@@ -863,7 +874,7 @@ function frenzyPierces(stackItem: ResolutionStackItem, defender: CombatUnitState
     table,
     attackPowerFor(stackItem, caster) + (stackItem.modifiers.ignoreDefenseSchoolPowerBonus ?? 0)
   );
-  return reached !== null && gradeRank(defender.grade) <= gradeRank(reached);
+  return reached !== null && gradeRankOfUnit(defender) <= gradeRank(reached);
 }
 
 /**
@@ -1925,7 +1936,7 @@ function applyAttackDamageFromCandidate(
     lethalCancel &&
     damage > 0 &&
     defender.damage + damage >= defender.maxHealth &&
-    gradeRank(defender.grade) <= gradeRank(lethalCancel.grade)
+    gradeRankOfUnit(defender) <= gradeRank(lethalCancel.grade)
   ) {
     appendEvent(state, {
       type: "ATTACK_ROLLED",
@@ -6428,7 +6439,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
-      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+      if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
         createActiveEffect(
           state,
           {
@@ -6479,7 +6490,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
-      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+      if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
         if (unitImmuneToParalysis(state, target)) {
           appendEvent(state, {
             type: "UNIT_ABILITY_TRIGGERED",
@@ -6545,7 +6556,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         const power = getCurrentSpellPower(state, stackItem, cards);
         const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
         const target = state.combat.units[stackItem.action.target.unitId];
-        if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+        if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
           removeEffectsFromTarget(state, dispelSource, stackItem.action.target, "any-removable");
           clearBattlefieldTokensAt(state, state.combat, target.position);
         }
@@ -6561,7 +6572,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
-      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+      if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
         createActiveEffect(
           state,
           {
@@ -6587,7 +6598,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
-      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+      if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
         createActiveEffect(
           state,
           {
@@ -6613,7 +6624,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
-      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+      if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
         openTeleportChoice(state, stackItem.action.playerId, target);
       }
     }
@@ -6630,7 +6641,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
-      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+      if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
         // Grade reached: if the unit somehow has no adjacent empty space left,
         // refund too (nothing was placed) rather than swallow the cast.
         if (!openCloneChoice(state, stackItem.action.playerId, target)) {
@@ -6665,7 +6676,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
-      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade)) {
+      if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
         createActiveEffect(
           state,
           {
@@ -6695,7 +6706,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const eligible =
         Boolean(healTarget) &&
         maxGrade !== null &&
-        gradeRank(healTarget!.grade) <= gradeRank(maxGrade) &&
+        gradeRankOfUnit(healTarget!) <= gradeRank(maxGrade) &&
         healTarget!.damage > 0;
       const candidates = eligible
         ? Object.values(state.combat.units).filter(
@@ -6735,7 +6746,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
-      if (target && maxGrade && gradeRank(target.grade) <= gradeRank(maxGrade) && target.retaliatedThisRound) {
+      if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade) && target.retaliatedThisRound) {
         target.retaliatedThisRound = false;
         appendEvent(state, {
           type: "UNIT_ABILITY_TRIGGERED",
@@ -7885,7 +7896,7 @@ function applyReactionPlayCore(
     const triggerEvent = state.reactionWindow?.triggerEvent;
     const unit =
       triggerEvent?.type === "UNIT_ACTIVATION_STARTED" ? state.combat?.units[triggerEvent.unitId] : undefined;
-    if (unit && isUnitAlive(unit) && effect.grade && gradeRank(unit.grade) <= gradeRank(effect.grade)) {
+    if (unit && isUnitAlive(unit) && effect.grade && gradeRankOfUnit(unit) <= gradeRank(effect.grade)) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: unit.id,
@@ -8260,7 +8271,7 @@ function applyReactionPlayCore(
         : getSchoolPowerBonus(state, playerId, card);
     } else if (effect.grade) {
       const defender = state.combat?.units[stackItem.action.defenderId];
-      if (defender && gradeRank(defender.grade) <= gradeRank(effect.grade)) {
+      if (defender && gradeRankOfUnit(defender) <= gradeRank(effect.grade)) {
         stackItem.modifiers.ignoreDefense = true;
       }
     }
@@ -9258,7 +9269,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "PLACE_PARALYSIS" && state.combat && target) {
     const maxGrade = gradeAtPower(effect.gradeByPower, card.power ?? 0);
     const unit = state.combat.units[target.unitId];
-    if (unit && maxGrade && gradeRank(unit.grade) <= gradeRank(maxGrade)) {
+    if (unit && maxGrade && gradeRankOfUnit(unit) <= gradeRank(maxGrade)) {
       placeCombatToken(state, unit, "paralysis", 0, card.name);
     }
   }
@@ -9271,7 +9282,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "FORGETFULNESS" && state.combat && target) {
     const maxGrade = gradeAtPower(effect.gradeByPower, card.power ?? 0);
     const unit = state.combat.units[target.unitId];
-    if (unit && maxGrade && gradeRank(unit.grade) <= gradeRank(maxGrade)) {
+    if (unit && maxGrade && gradeRankOfUnit(unit) <= gradeRank(maxGrade)) {
       createActiveEffect(
         state,
         {

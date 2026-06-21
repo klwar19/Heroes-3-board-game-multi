@@ -114,12 +114,26 @@ is NOT done:
   per-Stack bonus is a CHOICE of +3 gold OR +1 valuables (not both); both are
   pinned in `creature-banks.test.ts`.
 - Gradeless targeting: a bank card carries NO tier, so the neutral AI's same-tier
-  priority can't apply — a bank guard (the `bankUnit` flag) always attacks the
-  NEAREST enemy, dropping both the tier preference and the ranged-prefers-ranged
-  preference (the engaged-ranged "must hit an adjacent enemy" restriction still
-  binds it). Wired in `neutral-ai.ts` (`isGradelessNeutralAttacker`), tested in
+  priority can't apply — a bank guard (the `bankUnit` flag) ranks its candidate
+  targets purely by distance and attacks the NEAREST. It KEEPS the universal
+  ranged rules (a ranged guard still hunts ranged targets first; an engaged one
+  must hit an adjacent enemy) — only the tier ordering is dropped. Wired in
+  `neutral-ai.ts` (`isGradelessNeutralAttacker`), tested in
   `creature-bank-combat.test.ts` ("are gradeless and target the nearest enemy",
   each with a graded CONTROL that diverges).
+- Tier-specific spells/specialties cannot target a bank defender: with no tier it
+  fails every grade gate (Blind, Berserk, Frenzy, Disrupting Ray, Forgetfulness,
+  Sorrow/Skip-Activation, Slayer, …). Enforced both at targeting (a tier-gated
+  card never offers a bank guard — `effectIsTierGated` in `legal-actions.ts`) and
+  at resolution (`gradeRankOfUnit` ranks a bank unit above every grade in both
+  `legal-actions.ts` and `reducer.ts`, so a forced cast fizzles). Tested in
+  `creature-bank-combat.test.ts` ("exempt from tier-specific spells") with a
+  graded CONTROL.
+- "Gain a unit" rewards: the Dragon Fly Hive (Dragon Flies) and Griffin
+  Conservatory (Griffins) add the recruitable card to the army for free — a Few
+  normally, a Stacked Pack when X ≥ 2 (the `GAIN_UNIT` interaction → `RECRUIT_FREE`
+  step with a `side`). Tested in `creature-banks.test.ts` and end-to-end in
+  `creature-bank-combat.test.ts` ("adds the gained Dragon Flies card to the army").
 - Stack Tokens: the Scenario Difficulty (Easy 1 / Normal 2 / Hard 3 /
   Impossible 4) sets the number of token ROLLS, NOT a guaranteed count. Each roll
   targets a distinct candidate card and lands only `STACK_TOKEN_PLACEMENT_PERCENT`
@@ -168,12 +182,10 @@ is NOT done:
   ignore-retaliation half runs).
 
 **NOT implemented at all (deferred):**
-- "Gain a unit" rewards: Dragon Fly Hive and Griffin Conservatory grant nothing
-  (`rewardStatus: "not-implemented"`); the "Gained Stacked Units" mechanic does
-  not exist. The Pyramid's per-Stack "remove a card then Search(5)" extra is
-  also unimplemented (`rewardStatus: "partial"`; only base Search(5) runs).
+- The Pyramid's per-Stack "remove a card then Search(5)" extra is unimplemented
+  (`rewardStatus: "partial"`; only the base Search(5) runs).
 - Bank units still carry the underlying unit's `grade` field for placement and
-  display, so the "no tier" exemption from PLAYER-side tier-targeting effects
-  (e.g. Berserk, grade-gated spells) is NOT special-cased. The neutral AI's own
-  targeting, however, now treats them as gradeless (see "Gradeless targeting"
-  above) — that half of the "no tier" rule IS implemented.
+  display (it is the gradeless TARGETING/AI rules above, not the field itself,
+  that implement the "no tier" behaviour). The "gain a Stacked unit" reward is
+  modelled as gaining the recruitable card's Pack side — a HOUSE-RULE reading of
+  "Stacked", since army cards carry no Stack Token of their own.

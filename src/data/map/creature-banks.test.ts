@@ -225,11 +225,53 @@ describe("Creature Bank rewards", () => {
     expect(choices.every((step) => step.type === "CHOOSE_ONE")).toBe(true);
   });
 
-  it("marks the gain-a-unit banks not-implemented and the Pyramid extra partial", () => {
-    expect(CREATURE_BANKS.dragon_fly_hive.rewardStatus).toBe("not-implemented");
-    expect(CREATURE_BANKS.dragon_fly_hive.buildReward(4)).toEqual({ type: "NONE" });
-    expect(CREATURE_BANKS.griffin_conservatory.rewardStatus).toBe("not-implemented");
-    expect(CREATURE_BANKS.griffin_conservatory.buildReward(4)).toEqual({ type: "NONE" });
+  it("gains a Few normally and a Stacked Pack (2+ Stacked defenders) from the unit banks", () => {
+    // Dragon Fly Hive → Dragon Flies; Griffin Conservatory → Griffins. A Pack is
+    // the game's "Stacked" version, gained only when at least 2 defenders Stacked.
+    expect(CREATURE_BANKS.dragon_fly_hive.rewardStatus).toBe("implemented");
+    expect(CREATURE_BANKS.dragon_fly_hive.buildReward(0)).toEqual({
+      type: "GAIN_UNIT",
+      unitDefId: "fortress.dragon_flies",
+      side: "few"
+    });
+    expect(CREATURE_BANKS.dragon_fly_hive.buildReward(1)).toEqual({
+      type: "GAIN_UNIT",
+      unitDefId: "fortress.dragon_flies",
+      side: "few"
+    });
+    expect(CREATURE_BANKS.dragon_fly_hive.buildReward(2)).toEqual({
+      type: "GAIN_UNIT",
+      unitDefId: "fortress.dragon_flies",
+      side: "pack"
+    });
+
+    expect(CREATURE_BANKS.griffin_conservatory.rewardStatus).toBe("implemented");
+    expect(CREATURE_BANKS.griffin_conservatory.buildReward(1)).toEqual({
+      type: "GAIN_UNIT",
+      unitDefId: "castle.griffins",
+      side: "few"
+    });
+    expect(CREATURE_BANKS.griffin_conservatory.buildReward(3)).toEqual({
+      type: "GAIN_UNIT",
+      unitDefId: "castle.griffins",
+      side: "pack"
+    });
+  });
+
+  it("only fields units whose gained card exists with the Few/Pack side it grants", () => {
+    // The gain-a-unit reward hands out a recruitable card, which must have the side.
+    for (const id of ["dragon_fly_hive", "griffin_conservatory"] as const) {
+      const reward = CREATURE_BANKS[id].buildReward(2);
+      expect(reward.type).toBe("GAIN_UNIT");
+      if (reward.type !== "GAIN_UNIT") continue;
+      const def = coreUnitDefinitions[reward.unitDefId];
+      expect(def, reward.unitDefId).toBeTruthy();
+      expect(def.few, `${reward.unitDefId} few`).toBeTruthy();
+      expect(def.pack, `${reward.unitDefId} pack`).toBeTruthy();
+    }
+  });
+
+  it("marks the Pyramid extra partial (only the base Search runs)", () => {
     expect(CREATURE_BANKS.pyramid.rewardStatus).toBe("partial");
     expect(CREATURE_BANKS.pyramid.buildReward(3)).toEqual({ type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 });
   });

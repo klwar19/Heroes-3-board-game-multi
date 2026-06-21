@@ -247,6 +247,27 @@ export function gradeRank(grade: CombatUnitState["grade"]): number {
 }
 
 /**
+ * Tier-gate rank of a UNIT (mirrors the reducer): a Creature Bank defender has
+ * NO tier (rulebook p.66), so it ranks above every grade and fails every
+ * tier-specific spell/specialty gate — it can never be such an effect's target.
+ */
+function gradeRankOfUnit(unit: CombatUnitState): number {
+  return unit.bankUnit ? Number.POSITIVE_INFINITY : gradeRank(unit.grade);
+}
+
+/**
+ * Whether a card effect (or option effect) gates its target by tier — it carries
+ * a `grade` ceiling or a `gradeByPower` ladder. Such an effect can never reach a
+ * gradeless Creature Bank defender, so those are dropped from its target list.
+ */
+function effectIsTierGated(effect: EffectDefinition): boolean {
+  return (
+    ("gradeByPower" in effect && effect.gradeByPower !== undefined) ||
+    ("grade" in effect && effect.grade !== undefined)
+  );
+}
+
+/**
  * Orb of Vulnerability (option A): while its combat-wide effect is on the
  * table, every unit's innate spell-related ability is switched off. Read at
  * each such ability's site so a single grant covers both armies for the Combat.
@@ -1150,6 +1171,19 @@ function getTargetsForCard(
       // Vulnerability.
       const artifactImmune = unitImmuneToSpellSchoolsByEffect(state, unit, card.spellSchools);
       return !isUnitSpellImmune(state, unit) && !innateImmune && !artifactImmune;
+    });
+  }
+
+  // Creature Bank defenders have NO tier (rulebook p.66), so a tier-gated spell
+  // or specialty can never target one — drop them from a tier-gated card's target
+  // list (option-card tier gates are filtered per option in addOptionPlays).
+  if (card && effectIsTierGated(card.effect)) {
+    targets = targets.filter((candidate) => {
+      if (candidate.type !== "unit") {
+        return true;
+      }
+      const unit = state.combat?.units[candidate.unitId];
+      return !unit || !unit.bankUnit;
     });
   }
 
@@ -2243,7 +2277,7 @@ function addOptionPlays(
           return false;
         }
         const maxGrade = gradeAtPower(gradeByPower, card.power ?? 0);
-        return maxGrade !== null && gradeRank(unit.grade) <= gradeRank(maxGrade);
+        return maxGrade !== null && gradeRankOfUnit(unit) <= gradeRank(maxGrade);
       });
     }
     // Necklace of Swiftness's "Move one of your units 1 space": only offer a
@@ -3618,7 +3652,7 @@ function getMisfortunePreWindowReactions(
       if (
         option.effect.type !== "NEGATE_ATTACK" ||
         option.effect.grade === undefined ||
-        gradeRank(attacker.grade) !== gradeRank(option.effect.grade) ||
+        gradeRankOfUnit(attacker) !== gradeRank(option.effect.grade) ||
         !canAffordCardCost(state, playerId, cardId, option.cost)
       ) {
         continue;
@@ -3685,7 +3719,11 @@ function getLethalSaveReactions(
         continue;
       }
       for (const [optionIndex, option] of card.effect.options.entries()) {
-        if (option.effect.type !== "CANCEL_LETHAL_ATTACK" || option.effect.grade !== defender.grade) {
+        if (
+          option.effect.type !== "CANCEL_LETHAL_ATTACK" ||
+          defender.bankUnit ||
+          option.effect.grade !== defender.grade
+        ) {
           continue;
         }
         if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
@@ -4589,7 +4627,7 @@ export function isEffectLegalForTrigger(
       return false;
     }
     const unit = state.combat?.units[triggerEvent.unitId];
-    return Boolean(unit && isUnitAlive(unit) && gradeRank(unit.grade) === gradeRank(effect.grade));
+    return Boolean(unit && isUnitAlive(unit) && gradeRankOfUnit(unit) === gradeRank(effect.grade));
   }
 
   // Card draws are timing-free instants: they fit inside any open window.
@@ -4744,9 +4782,12 @@ export function isEffectLegalForTrigger(
     }
 
     // Slayer: only the attacker's controller, and only when striking a gold
-    // unit ("when attacking a golden unit"). Misfortune locks it out too.
+    // unit ("when attacking a golden unit"). A Creature Bank defender has no
+    // tier, so it never counts as golden. Misfortune locks it out too.
     if (effect.type === "SLAYER_ATTACK") {
-      return !attackBuffsNegated && attacker.controllerId === playerId && defender.grade === "gold";
+      return (
+        !attackBuffsNegated && attacker.controllerId === playerId && !defender.bankUnit && defender.grade === "gold"
+      );
     }
 
     // Frenzy: only the attacker's controller. The Power-scaled form (gradeByPower)
@@ -4755,13 +4796,18 @@ export function isEffectLegalForTrigger(
     // is always offered). The legacy fixed-grade form is offered only when its
     // grade reaches the defender, keeping a wasted pierce off the menu.
     if (effect.type === "IGNORE_DEFENSE") {
+      // A Creature Bank defender has no tier, so Frenzy can never pierce it —
+      // never offer it (the Power-scaled form would otherwise always appear).
+      if (defender.bankUnit) {
+        return false;
+      }
       if (effect.gradeByPower) {
         return attacker.controllerId === playerId;
       }
       return (
         attacker.controllerId === playerId &&
         effect.grade !== undefined &&
-        gradeRank(defender.grade) <= gradeRank(effect.grade)
+        gradeRankOfUnit(defender) <= gradeRank(effect.grade)
       );
     }
 

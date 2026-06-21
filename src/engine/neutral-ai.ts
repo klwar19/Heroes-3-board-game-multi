@@ -40,11 +40,11 @@ import { NEUTRAL_PLAYER_ID } from "./state";
  *   does not apply to them: they sort behind every graded enemy and are only
  *   targeted once no real unit is left.
  * - Creature Bank guards fight from gradeless bank cards (rulebook p.66: a bank
- *   unit card carries NO tier). With no tier, neither the same-tier priority NOR
- *   the ranged-prefers-ranged preference applies — a bank guard simply attacks
- *   the NEAREST enemy (ties still pause on a player choice). The engaged-ranged
- *   "must hit an adjacent enemy" restriction still binds them. Detected from the
- *   unit's `bankUnit` flag via {@link isGradelessNeutralAttacker}.
+ *   unit card carries NO tier). With no tier the same-tier priority cannot apply,
+ *   so a bank guard ranks its candidate targets by distance — the NEAREST first
+ *   (ties still pause on a player choice). It KEEPS the universal ranged rules: a
+ *   ranged guard still hunts ranged targets first, and an engaged one must hit an
+ *   adjacent enemy. Detected from the `bankUnit` flag via isGradelessNeutralAttacker.
  * - Neutral units never defend.
  */
 
@@ -81,19 +81,20 @@ function tierPriority(attackerTier: UnitGrade, targetTier: UnitGrade): number {
 /**
  * Creature Bank guards fight from gradeless bank cards (rulebook p.66: a bank
  * unit card has NO tier). With no tier the same-tier/lower-tier priority cannot
- * apply, so such a guard targets purely by distance — the NEAREST enemy. The
- * ranged-prefers-ranged preference is dropped too (it presupposes a tier the
- * card lacks); only the hard engaged-ranged restriction still binds it.
+ * apply, so among its candidate targets such a guard orders purely by distance —
+ * the NEAREST first. It still keeps the universal ranged rules: a ranged guard
+ * hunts ranged targets first, and an engaged one must strike an adjacent enemy.
  */
 function isGradelessNeutralAttacker(unit: CombatUnitState): boolean {
   return Boolean(unit.bankUnit);
 }
 
 /**
- * The ranked target pool of a neutral unit: graded ranged attackers prefer
- * ranged targets; everyone then ranks by {@link tierPriority} (same tier, lower
- * tiers descending, higher tiers by distance) with the closest breaking ties.
- * Gradeless Creature Bank guards skip both preferences and rank by distance.
+ * The ranked target pool of a neutral unit: ranged attackers prefer ranged
+ * targets; everyone then ranks by {@link tierPriority} (same tier, lower tiers
+ * descending, higher tiers by distance) with the closest breaking ties. A
+ * gradeless Creature Bank guard keeps the ranged preference but skips the tier
+ * ordering, ranking its chosen pool purely by distance.
  */
 function rankedTargetPool(combat: CombatState, attacker: CombatUnitState): CombatUnitState[] {
   const enemies = Object.values(combat.units).filter(
@@ -112,10 +113,10 @@ function rankedTargetPool(combat: CombatState, attacker: CombatUnitState): Comba
     }
   }
 
-  // A graded ranged unit hunts ranged targets first; a gradeless bank guard has
-  // no tier, so it drops that preference and simply takes the nearest enemy.
+  // Ranged units hunt ranged targets first — gradeless bank guards included
+  // (the tier ORDERING within the chosen pool is the only thing they drop).
   const pool =
-    attacker.type === "ranged" && !isGradelessNeutralAttacker(attacker)
+    attacker.type === "ranged"
       ? enemies.some((unit) => unit.type === "ranged")
         ? enemies.filter((unit) => unit.type === "ranged")
         : enemies

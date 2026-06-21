@@ -4776,9 +4776,14 @@ export type VisitStep =
       armyUnitId: string;
     }
   | {
-      /** Garden of Life (Conflux): add a Few of `unitDefId` to the army for free. */
+      /**
+       * Add a unit of `unitDefId` to the army for free. `side` defaults to "few"
+       * (Garden of Life, Conflux); a Creature Bank "gain a Stacked unit" reward
+       * passes "pack" for the bigger version.
+       */
       type: "RECRUIT_FREE";
       unitDefId: string;
+      side?: "few" | "pack";
     }
   | {
       /**
