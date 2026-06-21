@@ -57,7 +57,7 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
     case "ROUND_START_FREE_SPRITE":
       return "At the beginning of each round, you may recruit a Few of Sprites for free, or reinforce a Few of your Sprites to a Pack for free.";
     case "MAGIC_UNIVERSITY":
-      return "At the beginning of your turn, choose a School of Magic, then discard cards from the top of your deck until you reveal a Spell of that school and take it to your hand.";
+      return "Once per round during your turn (instead of buying spells normally), choose a School of Magic, then discard cards from the top of your deck until you reveal a Spell of that school and take it to your hand.";
     case "NOT_IMPLEMENTED":
       return effect.note;
     default:
@@ -78,8 +78,9 @@ export function buildingTimingLabel(building: TownBuildingDefinition): string | 
     case "TURN_START_NECROMANCY":
     case "TURN_START_PORTAL_SUMMON":
     case "TURN_START_MANA_VORTEX":
-    case "MAGIC_UNIVERSITY":
       return "start of your turn";
+    case "MAGIC_UNIVERSITY":
+      return "during your turn";
     case "ROUND_START_FREE_SPRITE":
       return "start of each round";
     case "COVER_OF_DARKNESS":

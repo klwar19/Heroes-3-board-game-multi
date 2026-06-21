@@ -71,6 +71,7 @@ import {
   queueSkeletonReinforce,
   reinforceArmyUnit,
   reinforceCostFor,
+  resolveMagicUniversityDig,
   restoreStartingArmyIfEmpty,
   SCHOLAR_STAT_CARDS,
   spendRecruitResources,
@@ -4983,6 +4984,36 @@ export function blacksmithAction(state: GameState, action: Extract<GameAction, {
   player.removed.push(cardId);
   player.blacksmithUsedRound = state.round;
   gainResources(state, action.playerId, { gold: smith.effect.sellGold }, `sold ${cardLibrary[cardId]?.name ?? cardId} at the Blacksmith`);
+}
+
+/**
+ * Magic University (Conflux): once per round, instead of buying spells normally,
+ * choose a School of Magic and dig the top of your deck for a Spell of that
+ * school, taking it to hand (the rejects stay discarded).
+ */
+export function magicUniversityAction(
+  state: GameState,
+  action: Extract<GameAction, { type: "MAGIC_UNIVERSITY_ACTION" }>
+): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+
+  if (state.combat) {
+    throw new Error("Town actions cannot interrupt a combat.");
+  }
+
+  if (!townHasBuildingEffect(state, action.playerId, "MAGIC_UNIVERSITY")) {
+    throw new Error("This action needs a Magic University.");
+  }
+
+  if (player.magicUniversityUsedRound === state.round) {
+    throw new Error("The Magic University was already used this round.");
+  }
+
+  player.magicUniversityUsedRound = state.round;
+  resolveMagicUniversityDig(state, action.playerId, action.school);
 }
 
 /**

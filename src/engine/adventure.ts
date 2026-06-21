@@ -2364,9 +2364,6 @@ export function processPendingVisit(state: GameState): void {
         }
         break;
       }
-      case "MAGIC_UNIVERSITY_DIG":
-        resolveMagicUniversityDig(state, visit.playerId, step.school);
-        break;
       case "BANK_RECRUIT_DISCOUNT":
         bankRecruitDiscountVoucher(state, visit.playerId, {
           cardId: step.cardId,
@@ -4208,7 +4205,7 @@ export function getBuildingDefinition(buildingId: string) {
 export function townHasBuildingEffect(
   state: GameState,
   playerId: PlayerId,
-  effectType: "UNLOCK_REINFORCE" | "MAGE_GUILD"
+  effectType: "UNLOCK_REINFORCE" | "MAGE_GUILD" | "MAGIC_UNIVERSITY"
 ): boolean {
   const town = getTownOfPlayer(state, playerId);
   if (!town) {
@@ -4861,22 +4858,6 @@ function queueTurnStartBuildingChoices(state: GameState, playerId: PlayerId): vo
           playerId,
           kind: "visit-steps",
           steps: [{ type: "CHOOSE_ONE", prompt: `${building.name}: draw a Neutral Unit card to recruit?`, options }]
-        });
-        break;
-      }
-      case "MAGIC_UNIVERSITY": {
-        // Once per round (at the start of your turn): choose a School of Magic
-        // and dig your deck for a Spell of that school. Offered with a Skip.
-        const schools: SpellSchool[] = ["air", "earth", "fire", "water"];
-        const options: { label: string; steps: VisitStep[] }[] = schools.map((school) => ({
-          label: `Dig your deck for a ${school[0].toUpperCase()}${school.slice(1)} Magic spell`,
-          steps: [{ type: "MAGIC_UNIVERSITY_DIG", school }]
-        }));
-        options.push({ label: "Skip", steps: [] });
-        adventure.rewardQueue.push({
-          playerId,
-          kind: "visit-steps",
-          steps: [{ type: "CHOOSE_ONE", prompt: `${building.name}: choose a School of Magic to search for`, options }]
         });
         break;
       }
@@ -5994,7 +5975,7 @@ function resolveNecromancyFetch(state: GameState, playerId: PlayerId): void {
  * is empty to start, the discard pile is shuffled back in first so the search
  * is not a dead no-op (mirrors how drawing reshuffles an empty deck).
  */
-function resolveMagicUniversityDig(state: GameState, playerId: PlayerId, school: SpellSchool): void {
+export function resolveMagicUniversityDig(state: GameState, playerId: PlayerId, school: SpellSchool): void {
   const player = state.players[playerId];
   if (!player) {
     return;

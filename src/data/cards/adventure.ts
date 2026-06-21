@@ -2200,44 +2200,42 @@ export const adventureCards: CardLibrary = {
   },
 
   // ---- Conflux heroes (unit-specialist Planeswalkers) --------------------
-  // Erdamon (Magma Elementals): I = +1 attack/defence; IV = +1 initiative for
-  // the combat — both doubled for the Magma Elementals unit; VI = +2 attack OR
-  // +3 initiative for the combat (no doubling). The VI "+2 attack" is modelled
-  // as a combat-long Attack buff, exactly like the Offense IV specialty.
-  "specialty.erdamon.1": towerAttackOrDefenseSpecialty("erdamon", "Magma Elementals", 1, "Magma Elementals"),
-  "specialty.erdamon.4": unitInitiativeSpecialty("erdamon", "Magma Elementals", 4, 1, "Magma Elementals"),
+  // Erdamon: every bonus doubles for ANY "… Elementals" unit (the "an
+  // Elementals unit" family descriptor). I = instant +1 attack OR +1 defence
+  // (doubled); IV = +1 initiative for the combat (doubled); VI = instant +2
+  // attack OR ongoing +3 initiative for the combat (no doubling).
+  "specialty.erdamon.1": towerAttackOrDefenseSpecialty("erdamon", "Elementals", 1, "an Elementals unit"),
+  "specialty.erdamon.4": unitInitiativeSpecialty("erdamon", "Elementals", 4, 1, "an Elementals unit"),
   "specialty.erdamon.6": {
     id: "specialty.erdamon.6",
-    name: "Magma Elementals VI",
+    name: "Elementals VI",
     kind: "hero-specialty",
-    timing: "combat",
-    phaseLimit: ["combat"],
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
     tags: [
       "hero-specialty",
-      "combat",
+      "instant",
       "erdamon",
       "Your selected unit gains +2 attack. — OR — For this Combat, your selected unit's initiative is increased by 3."
     ],
-    target: { type: "friendly-unit" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "+2 attack for this Combat",
-          effect: {
-            type: "CREATE_ATTACK_BUFF",
-            name: "Magma Elementals VI",
-            amount: 2,
-            duration: { type: "combat" },
-            polarity: "positive",
-            removable: false
-          }
+          // Instant, one-shot: +2 attack on your unit's next attack (offered as
+          // an attack reaction, like the other might-hero VI specialties).
+          label: "+2 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
         },
         {
+          // Ongoing: +3 initiative on a chosen friendly unit for the combat.
           label: "+3 initiative for this Combat",
+          combatOnly: true,
+          target: { type: "friendly-unit" },
           effect: {
             type: "CREATE_INITIATIVE_BUFF",
-            name: "Magma Elementals VI",
+            name: "Elementals VI",
             amount: 3,
             duration: { type: "combat" },
             polarity: "positive",
@@ -2246,7 +2244,7 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
-    assets: { cardImage: specialtyCardImage("erdamon", 6), imageAlt: "Magma Elementals level VI specialty card" },
+    assets: { cardImage: specialtyCardImage("erdamon", 6), imageAlt: "Elementals level VI specialty card" },
     implementationStatus: "implemented",
     source: heroSource("erdamon")
   },

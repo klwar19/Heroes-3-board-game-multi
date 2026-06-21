@@ -26,6 +26,7 @@ import {
 } from "./unit-transforms";
 import {
   blacksmithAction,
+  magicUniversityAction,
   buildStructureAdventure,
   chooseOption,
   continueNeutralCombat,
@@ -12900,6 +12901,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "BLACKSMITH_ACTION":
         blacksmithAction(nextState, action);
+        break;
+      case "MAGIC_UNIVERSITY_ACTION":
+        magicUniversityAction(nextState, action);
         break;
       case "USE_TOWN_BUILDING":
         activateTownBuilding(nextState, action);

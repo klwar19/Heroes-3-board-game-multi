@@ -2512,6 +2512,16 @@ export type GameAction =
     }
   | {
       /**
+       * Magic University (Conflux): once per round, instead of buying spells
+       * normally, choose a School of Magic and discard from the top of your deck
+       * until you reveal a Spell of that school, then take it to hand.
+       */
+      type: "MAGIC_UNIVERSITY_ACTION";
+      playerId: PlayerId;
+      school: SpellSchool;
+    }
+  | {
+      /**
        * "During your turn" town-building uses (Cover of Darkness, Castle
        * Gate): once per round per building. `optionIndex` picks the printed
        * option; `cardIds` pays discard costs; `targetPlayerId` aims a random
@@ -3987,6 +3997,8 @@ export type PlayerState = {
   };
   /** Round the Blacksmith action was last used ("once per your turn"). */
   blacksmithUsedRound?: number;
+  /** Round the Magic University deck-dig was last used ("once per round"). */
+  magicUniversityUsedRound?: number;
   /**
    * Round each "once per round/turn" town building was last used (Cover of
    * Darkness, Castle Gate, …), keyed by building id.
@@ -4673,15 +4685,6 @@ export type VisitStep =
       /** Garden of Life (Conflux): add a Few of `unitDefId` to the army for free. */
       type: "RECRUIT_FREE";
       unitDefId: string;
-    }
-  | {
-      /**
-       * Magic University (Conflux): discard from the top of your deck until you
-       * reveal a Spell of `school`, then take it to hand (Magic Arrow, school
-       * "any", counts as every school).
-       */
-      type: "MAGIC_UNIVERSITY_DIG";
-      school: SpellSchool;
     }
   | {
       /**

@@ -5366,6 +5366,22 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
     }
   }
 
+  // Magic University (Conflux): once per round, instead of buying spells at the
+  // Mage Guild, choose a School of Magic and dig your deck for that school's
+  // Spell. Offered as one action per school during your turn.
+  if (
+    townHasBuildingEffect(state, playerId, "MAGIC_UNIVERSITY") &&
+    player.magicUniversityUsedRound !== state.round
+  ) {
+    const schools: SpellSchool[] = ["air", "earth", "fire", "water"];
+    for (const school of schools) {
+      actions.push({
+        label: `Magic University: search your deck for a ${school[0].toUpperCase()}${school.slice(1)} Magic spell`,
+        action: { type: "MAGIC_UNIVERSITY_ACTION", playerId, school }
+      });
+    }
+  }
+
   // "During your turn" buildings, each once per round.
   if (state.activePlayerId === playerId) {
     for (const buildingId of town.buildings) {
