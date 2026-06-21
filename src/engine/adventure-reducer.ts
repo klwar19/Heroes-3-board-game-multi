@@ -1928,7 +1928,7 @@ function resolveRemoveHandCard(
     case "search-same-deck": {
       const kind = cardLibrary[chosen.cardId]?.kind;
       const deckId = kind === "spell" ? "spells" : kind === "artifact" ? "artifacts" : "abilities";
-      return { type: "SEARCH_SHARED_DECK", deckId, count: 2 };
+      return { type: "SEARCH_SHARED_DECK", deckId, count: step.searchCount ?? 2 };
     }
     case "choose-deck-search":
       return {

@@ -939,9 +939,14 @@ export type EffectDefinition =
        * search-same-deck flow (filter "removable" = only abilities, artifacts and
        * spells, which are the cards that have a corresponding deck to dig). The
        * deck searched is whichever deck the removed card belongs to.
+       *
+       * `filter` narrows which hand cards may be removed (Miriam's Scouting I is
+       * "ability" only; her IV/VI and the Hat default to "removable"). It must be
+       * a kind that maps to a searchable deck so "search-same-deck" has a target.
        */
       type: "REMOVE_HAND_CARD_THEN_SEARCH";
       count: number;
+      filter?: "ability" | "removable";
     }
   | {
       /**
@@ -2008,6 +2013,14 @@ export type CardOptionDefinition = {
    * Units.
    */
   requiresNeutralCombatStart?: boolean;
+  /**
+   * Jeremy's Cannon IV/VI ("use the Cannon once"): the option is offered only
+   * while the playing player has this war-machine card in play, mirroring
+   * Torosar's "Activate your Ballista (if you have one)". Gated in legal-actions
+   * and re-checked in the reducer so the free shot can never fire without the
+   * machine.
+   */
+  requiresWarMachine?: CardId;
   /**
    * Targ of the Rampaging Ogre's top side: "Then, instead of discarding, put
    * this card back into your hand." After the option's effect resolves the
@@ -4895,6 +4908,8 @@ export type VisitStep =
       prompt: string;
       filter: "any" | "ability" | "statistic" | "removable";
       then: "none" | "gain-valuables" | "search-same-deck" | "choose-deck-search";
+      /** Depth of the follow-up Search (Miriam's Scouting VI digs 4); defaults to 2. */
+      searchCount?: number;
     }
   | {
       /**
@@ -4993,6 +5008,12 @@ export type VisitStep =
       armyUnitId: string;
       /** Necromancy: "half the gold cost (rounded down)" instead of up. */
       roundDown?: boolean;
+    }
+  | {
+      /** Cove Pub: reinforce one unit with a flat gold discount (min 0). */
+      type: "REINFORCE_FLAT_GOLD";
+      armyUnitId: string;
+      discount: number;
     }
   | {
       /**

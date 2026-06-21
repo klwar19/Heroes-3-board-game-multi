@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fetch the PC hero portraits for the two wired Cove heroes, reusing the asset
+Fetch the PC hero portraits for the engine-wired Cove heroes, reusing the asset
 conventions of fetch-extra-heroes-art-batch5.py.
 
 The fan wiki Cove pages (https://en.homm3bg.wiki/towns/cove/) carry no printed
@@ -10,9 +10,12 @@ portrait from heroes.thelazy.net, hosted locally:
 
   PC portrait -> /assets/hero_portraits-<slug>.webp   (464x512)
 
-Only the two engine-wired Cove heroes ship art here (Astra = Cure, Cassiopeia =
-Oceanids); the other four Cove heroes are deferred (not registered) until their
-signature specialty mechanic is built, so they need no asset yet.
+Five of the six Cove heroes are engine-wired and ship art here (Astra = Cure,
+Cassiopeia = Oceanids, Jeremy = Cannon, Miriam = Scouting, Zilare =
+Forgetfulness). Only Casmetra stays deferred — her Sorceresses VI applies two
+targeted effects at once (a +attack buff AND a Weakness token), which needs a
+dual-target compound-effect primitive the engine does not have yet — so she
+needs no asset until that lands.
 
 Every download is validated (HTTP 200 + decodable image); the script aborts
 loudly on any miss so a broken asset can never slip through.
@@ -32,6 +35,9 @@ PORTRAIT_SIZE = (464, 512)  # classic PC portrait, matches existing files
 PORTRAIT_HEROES = [
     ("astra", "/images/d/dc/Hero_Astra.png"),
     ("cassiopeia", "/images/d/d9/Hero_Cassiopeia.png"),
+    ("jeremy", "/images/9/9d/Hero_Jeremy.png"),
+    ("miriam", "/images/1/14/Hero_Miriam.png"),
+    ("zilare", "/images/9/91/Hero_Zilare.png"),
 ]
 
 
