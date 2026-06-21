@@ -382,6 +382,28 @@ describe("printed tile borders", () => {
     expect(segments).toHaveLength(15);
   });
 
+  it("opens a Creature Bank's inner edges (walk in from within the tile) but keeps its outer arc", () => {
+    // S1's Blocked Field is slot 6 (NW). Carved into a Creature Bank it must
+    // stop looking sealed off: the three edges it shares with the centre/ring
+    // neighbours open up (you walk in from within the tile), while the outer arc
+    // that seals it from the adjacent tile (canCrossEdge forbids crossing in)
+    // stays. Without this the field is fully ringed and players cannot tell they
+    // may enter it.
+    const plainKeys = new Set(getTileBorderSegments(coreTileDefinitions.S1).map((s) => `${s.slot}:${s.edge}`));
+    const bankKeys = new Set(
+      getTileBorderSegments(coreTileDefinitions.S1, new Set([6])).map((s) => `${s.slot}:${s.edge}`)
+    );
+    // The inner walls are present for a plain blocked field, gone for a bank.
+    for (const inner of ["6:1", "6:2", "6:3"]) {
+      expect(plainKeys.has(inner)).toBe(true);
+      expect(bankKeys.has(inner)).toBe(false);
+    }
+    // The outer arc sealing it from the neighbouring tile remains.
+    for (const outer of ["6:4", "6:5", "6:0"]) {
+      expect(bankKeys.has(outer)).toBe(true);
+    }
+  });
+
   it("computes the shared hex edge of two slots", () => {
     expect(internalBorderSegment(0, 3)).toEqual({ slot: 0, edge: 2 });
     expect(internalBorderSegment(1, 2)).toEqual({ slot: 1, edge: 2 });

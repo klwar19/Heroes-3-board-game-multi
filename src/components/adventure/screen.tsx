@@ -595,8 +595,17 @@ export function HexMapBoard({
     // hide the built-in markers and keep only live game state (cubes, flags,
     // settlement production, movement) on top of the art.
     const artShown = showArt && Boolean(tileDef?.assets?.tileImage);
-    const borderSegments = tileDef ? getTileBorderSegments(tileDef) : [];
     const footprint = tileFootprint(center, tile.rotation);
+    // A Blocked Field carved into a Creature Bank is open inward (you walk in
+    // from within the Tile) — tell the border builder so it draws only the
+    // bank's outer arc, not a full ring that would look impassable.
+    const bankSlots = new Set<number>();
+    footprint.forEach((coord, slot) => {
+      if (adventure.fields[`h:${coord.row}:${coord.col}`]?.location === "creature_bank") {
+        bankSlots.add(slot);
+      }
+    });
+    const borderSegments = tileDef ? getTileBorderSegments(tileDef, bankSlots) : [];
     for (const [slot, coord] of footprint.entries()) {
       const spaceId = `h:${coord.row}:${coord.col}`;
       const field = adventure.fields[spaceId];
@@ -691,6 +700,10 @@ export function HexMapBoard({
                 height={2 * HEX_SIZE}
                 href={assetUrl(tokenImage)}
                 preserveAspectRatio="xMidYMid slice"
+                // Decorative art only: it must not eat the click meant for the
+                // hex beneath it, or the player cannot select the field to move
+                // in (e.g. walking into a Creature Bank to fight it).
+                style={{ pointerEvents: "none" }}
                 width={HEX_WIDTH}
                 x={x - HEX_WIDTH / 2}
                 y={y - HEX_SIZE}
@@ -706,6 +719,8 @@ export function HexMapBoard({
               href={assetUrl(tokenImage)}
               key={`${spaceId}-token`}
               preserveAspectRatio="none"
+              // Decorative art only — never intercept the hex's move click.
+              style={{ pointerEvents: "none" }}
               width={HEX_WIDTH}
               x={x - HEX_WIDTH / 2}
               y={y - HEX_SIZE}
