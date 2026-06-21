@@ -320,9 +320,26 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     name: "Medusa Stores",
     tier: "far",
     units: ["neutral.medusas", "neutral.medusas", "neutral.medusas", "neutral.medusas"],
-    rewardText: "6 gold, 1 valuables. Extra: +3X gold, +X valuables.",
+    // Wiki: "6 gold and 1 valuables. 3 gold OR 1 valuables for every Stacked
+    // unit." The per-Stack bonus is a CHOICE, not both (unlike the Naga Bank).
+    rewardText: "6 gold, 1 valuables. Extra: per Stacked defender, choose +3 gold or +1 valuables.",
     rewardStatus: "implemented",
-    buildReward: (x) => ({ type: "GAIN_RESOURCES", gold: 6 + 3 * x, valuables: 1 + x })
+    buildReward: (x) => ({
+      type: "SEQUENCE",
+      interactions: [
+        { type: "GAIN_RESOURCES", gold: 6, valuables: 1 },
+        ...Array.from(
+          { length: Math.max(0, x) },
+          (): LocationInteraction => ({
+            type: "CHOOSE_ONE",
+            options: [
+              { label: "Gain 3 gold", interaction: { type: "GAIN_RESOURCES", gold: 3 } },
+              { label: "Gain 1 valuables", interaction: { type: "GAIN_RESOURCES", valuables: 1 } }
+            ]
+          })
+        )
+      ]
+    })
   },
   dragon_fly_hive: {
     id: "dragon_fly_hive",
@@ -340,12 +357,13 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     name: "Shipwreck",
     tier: "far",
     units: ["neutral.wraiths", "neutral.wraiths", "neutral.wraiths", "neutral.wraiths"],
-    rewardText: "-1 morale and 5 gold. Extra: +2X gold and Search (X) the Artifact Deck.",
+    // Wiki: "<morale_positive> and 5 gold." — a POSITIVE morale token, not a penalty.
+    rewardText: "+1 morale and 5 gold. Extra: +2X gold and Search (X) the Artifact Deck.",
     rewardStatus: "implemented",
     buildReward: (x) => ({
       type: "SEQUENCE",
       interactions: [
-        { type: "GAIN_MORALE", amount: -1 },
+        { type: "GAIN_MORALE", amount: 1 },
         { type: "GAIN_RESOURCES", gold: 5 + 2 * x },
         search("artifacts", x)
       ]
@@ -362,12 +380,13 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
       "neutral.water_elementals",
       "neutral.water_elementals"
     ],
-    rewardText: "-1 morale and 7 gold. Extra: +2X gold and Search (X) the Spell Deck.",
+    // Wiki: "<morale_positive> and 7 gold." — a POSITIVE morale token, not a penalty.
+    rewardText: "+1 morale and 7 gold. Extra: +2X gold and Search (X) the Spell Deck.",
     rewardStatus: "implemented",
     buildReward: (x) => ({
       type: "SEQUENCE",
       interactions: [
-        { type: "GAIN_MORALE", amount: -1 },
+        { type: "GAIN_MORALE", amount: 1 },
         { type: "GAIN_RESOURCES", gold: 7 + 2 * x },
         search("spells", x)
       ]
@@ -460,7 +479,7 @@ export const STACK_TOKENS_BY_DIFFICULTY = {
  * Stacked count is NOT fixed: even Impossible (4 rolls) can come up with all
  * four Stacked (every roll hit) or none at all (every roll missed).
  */
-export const STACK_TOKEN_PLACEMENT_PERCENT = 85;
+export const STACK_TOKEN_PLACEMENT_PERCENT = 77;
 
 /** The four Stack Tokens, in their fixed pool order, with the stat delta each applies. */
 export const STACK_TOKEN_STATS: readonly StackTokenStat[] = ["attack", "defense", "health", "initiative"];

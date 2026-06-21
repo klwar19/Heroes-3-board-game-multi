@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyAction,
   createAdventureGameState,
+  createInitialGameState,
   getLegalActions,
   CREATURE_BANK_ATTACKER_CELLS,
   CREATURE_BANK_GUARD_CORNERS,
@@ -9,6 +10,7 @@ import {
   type GameAction,
   type GameState
 } from "./index";
+import { getNeutralTargetTies, pickNeutralTarget } from "./neutral-ai";
 import {
   buildCreatureBankCombatUnits,
   canCrossEdge,
@@ -35,7 +37,8 @@ import {
   stackTokenDelta,
   type CreatureBankId
 } from "@/data/map/creature-banks";
-import type { GameDifficulty } from "./state";
+import { NEUTRAL_PLAYER_ID } from "./state";
+import type { CombatUnitState, GameDifficulty, UnitGrade, UnitType } from "./state";
 
 function apply(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -332,7 +335,7 @@ describe("Creature Bank defenders", () => {
 
   it("never Stacks more defenders than the difficulty allows, each on a different card", () => {
     // The difficulty count is the number of token ROLLS (the cap), not a fixed
-    // number of Stacked defenders — each roll only lands 85% of the time.
+    // number of Stacked defenders — each roll only lands 77% of the time.
     for (const difficulty of ["easy", "normal", "hard", "impossible"] as GameDifficulty[]) {
       const cap = STACK_TOKENS_BY_DIFFICULTY[difficulty];
       for (let trial = 0; trial < 50; trial += 1) {
@@ -349,10 +352,10 @@ describe("Creature Bank defenders", () => {
     }
   });
 
-  it("rolls each token at ~85%, so even Impossible can Stack anywhere from 0 to 4 defenders", () => {
+  it("rolls each token at ~77%, so even Impossible can Stack anywhere from 0 to 4 defenders", () => {
     // Run a wide sample at Impossible (4 rolls). A fixed-count implementation
     // would always return 4; the probabilistic one spreads across 0..4 and
-    // averages near 4 * 0.85 = 3.4.
+    // averages near 4 * 0.77 = 3.08.
     const TRIALS = 600;
     const counts = [0, 0, 0, 0, 0];
     let total = 0;
@@ -368,10 +371,10 @@ describe("Creature Bank defenders", () => {
     expect(counts[0]).toBeGreaterThan(0);
     // And it is NOT pinned to the maximum: plenty of partial outcomes appear.
     expect(counts[4]).toBeLessThan(TRIALS);
-    // Empirical landing rate clusters around 85% per roll (4 rolls → ~3.4 mean).
+    // Empirical landing rate clusters around 77% per roll (4 rolls → ~3.08 mean).
     const meanPerRoll = total / TRIALS / 4;
-    expect(meanPerRoll).toBeGreaterThan(0.78);
-    expect(meanPerRoll).toBeLessThan(0.92);
+    expect(meanPerRoll).toBeGreaterThan(0.70);
+    expect(meanPerRoll).toBeLessThan(0.84);
   });
 
   it("bakes the Stack Token bonus into the right statistic (+1 stat, +2 initiative)", () => {
@@ -639,5 +642,129 @@ describe("Creature Bank combat lifecycle", () => {
     expect(state.players.p1.resources).toEqual(before);
     expect(state.adventure!.fields["bank-field"].blackCube).toBe(true);
     expect(state.combat).toBeNull();
+  });
+});
+
+// ===========================================================================
+// Gradeless targeting: a bank card has NO tier, so guards hit the NEAREST enemy
+// ===========================================================================
+
+describe("Creature Bank guards are gradeless and target the nearest enemy", () => {
+  // Board: 4 columns × 5 rows, position = row * 4 + column, Manhattan distance.
+  // Each scenario below is run twice — once as an ordinary graded neutral guard
+  // (the CONTROL) and once as a Creature Bank guard (bankUnit) — and the two
+  // diverge ONLY because of the gradeless rule, so removing it fails the test.
+  function place(
+    state: GameState,
+    id: string,
+    controllerId: string,
+    grade: UnitGrade,
+    type: UnitType,
+    position: number
+  ): CombatUnitState {
+    const unit = state.combat!.units[id];
+    if (!unit) {
+      throw new Error(`scenario expects unit ${id} in the initial combat`);
+    }
+    unit.controllerId = controllerId;
+    unit.grade = grade;
+    unit.type = type;
+    unit.position = position;
+    unit.activatedThisRound = false;
+    unit.attackedThisActivation = false;
+    return unit;
+  }
+
+  function onlyUnits(state: GameState, units: CombatUnitState[]): void {
+    const map: Record<string, CombatUnitState> = {};
+    for (const unit of units) {
+      map[unit.id] = unit;
+    }
+    state.combat!.units = map;
+    state.combat!.obstacles = [];
+  }
+
+  // A bronze melee guard in corner 0 with a same-tier enemy far away (pos 19)
+  // and a higher-tier enemy right beside it (pos 1). A graded neutral prefers
+  // the same tier (the far one); a gradeless bank guard takes the nearer one.
+  function meleeScenario(bankUnit: boolean): GameState {
+    const state = createInitialGameState(`bank-grade-${bankUnit}`);
+    const guard = place(state, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ground", 0);
+    guard.bankUnit = bankUnit;
+    place(state, "unit_p1_crusaders", "p1", "bronze", "ground", 19);
+    place(state, "unit_p1_griffins", "p1", "azure", "ground", 1);
+    onlyUnits(state, [
+      state.combat!.units.unit_p2_skeletons,
+      state.combat!.units.unit_p1_crusaders,
+      state.combat!.units.unit_p1_griffins
+    ]);
+    return state;
+  }
+
+  it("CONTROL: a graded neutral guard obeys the same-tier rule (the FAR same-tier unit)", () => {
+    const state = meleeScenario(false);
+    expect(pickNeutralTarget(state.combat!, state.combat!.units.unit_p2_skeletons)?.id).toBe("unit_p1_crusaders");
+  });
+
+  it("a bank guard ignores tier and hits the NEAREST enemy regardless of its tier", () => {
+    const state = meleeScenario(true);
+    expect(pickNeutralTarget(state.combat!, state.combat!.units.unit_p2_skeletons)?.id).toBe("unit_p1_griffins");
+  });
+
+  // A ranged guard with a distant ranged enemy (pos 19) and a nearer melee enemy
+  // (pos 2 — two away, so NOT adjacent and therefore not "engaged"). A graded
+  // ranged neutral hunts the ranged enemy first; a gradeless bank guard drops
+  // that preference and simply shoots the nearest.
+  function rangedScenario(bankUnit: boolean): GameState {
+    const state = createInitialGameState(`bank-ranged-${bankUnit}`);
+    const guard = place(state, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ranged", 0);
+    guard.bankUnit = bankUnit;
+    place(state, "unit_p1_marksmen", "p1", "bronze", "ranged", 19);
+    place(state, "unit_p1_crusaders", "p1", "azure", "ground", 2);
+    onlyUnits(state, [
+      state.combat!.units.unit_p2_skeletons,
+      state.combat!.units.unit_p1_marksmen,
+      state.combat!.units.unit_p1_crusaders
+    ]);
+    return state;
+  }
+
+  it("CONTROL: a graded ranged neutral hunts the (far) ranged enemy first", () => {
+    const state = rangedScenario(false);
+    expect(pickNeutralTarget(state.combat!, state.combat!.units.unit_p2_skeletons)?.id).toBe("unit_p1_marksmen");
+  });
+
+  it("a ranged bank guard drops the ranged-prefers-ranged rule and shoots the NEAREST enemy", () => {
+    const state = rangedScenario(true);
+    expect(pickNeutralTarget(state.combat!, state.combat!.units.unit_p2_skeletons)?.id).toBe("unit_p1_crusaders");
+  });
+
+  // Two enemies the SAME distance from the guard but different tiers. A graded
+  // attacker breaks the tie by tier (a single front-runner); a gradeless bank
+  // guard ties them on distance, so the rulebook hands the choice to the player.
+  function tieScenario(bankUnit: boolean): GameState {
+    const state = createInitialGameState(`bank-tie-${bankUnit}`);
+    const guard = place(state, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ground", 5);
+    guard.bankUnit = bankUnit;
+    place(state, "unit_p1_crusaders", "p1", "bronze", "ground", 1); // distance 1
+    place(state, "unit_p1_griffins", "p1", "azure", "ground", 9); // distance 1
+    onlyUnits(state, [
+      state.combat!.units.unit_p2_skeletons,
+      state.combat!.units.unit_p1_crusaders,
+      state.combat!.units.unit_p1_griffins
+    ]);
+    return state;
+  }
+
+  it("CONTROL: a graded neutral breaks an equal-distance tie by tier (one front-runner)", () => {
+    const state = tieScenario(false);
+    const ties = getNeutralTargetTies(state.combat!, state.combat!.units.unit_p2_skeletons);
+    expect(ties.map((unit) => unit.id)).toEqual(["unit_p1_crusaders"]);
+  });
+
+  it("a bank guard ties equal-distance enemies regardless of tier (player chooses)", () => {
+    const state = tieScenario(true);
+    const ties = getNeutralTargetTies(state.combat!, state.combat!.units.unit_p2_skeletons);
+    expect(ties.map((unit) => unit.id).sort()).toEqual(["unit_p1_crusaders", "unit_p1_griffins"]);
   });
 });

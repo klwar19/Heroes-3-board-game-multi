@@ -39,6 +39,12 @@ import { NEUTRAL_PLAYER_ID } from "./state";
  * - Summoned units (Summon Elemental) have no printed grade, so the tier rule
  *   does not apply to them: they sort behind every graded enemy and are only
  *   targeted once no real unit is left.
+ * - Creature Bank guards fight from gradeless bank cards (rulebook p.66: a bank
+ *   unit card carries NO tier). With no tier, neither the same-tier priority NOR
+ *   the ranged-prefers-ranged preference applies — a bank guard simply attacks
+ *   the NEAREST enemy (ties still pause on a player choice). The engaged-ranged
+ *   "must hit an adjacent enemy" restriction still binds them. Detected from the
+ *   unit's `bankUnit` flag via {@link isGradelessNeutralAttacker}.
  * - Neutral units never defend.
  */
 
@@ -73,9 +79,21 @@ function tierPriority(attackerTier: UnitGrade, targetTier: UnitGrade): number {
 }
 
 /**
- * The ranked target pool of a neutral unit: ranged attackers prefer ranged
- * targets; everyone then ranks by {@link tierPriority} (same tier, lower tiers
- * descending, higher tiers by distance) with the closest breaking ties.
+ * Creature Bank guards fight from gradeless bank cards (rulebook p.66: a bank
+ * unit card has NO tier). With no tier the same-tier/lower-tier priority cannot
+ * apply, so such a guard targets purely by distance — the NEAREST enemy. The
+ * ranged-prefers-ranged preference is dropped too (it presupposes a tier the
+ * card lacks); only the hard engaged-ranged restriction still binds it.
+ */
+function isGradelessNeutralAttacker(unit: CombatUnitState): boolean {
+  return Boolean(unit.bankUnit);
+}
+
+/**
+ * The ranked target pool of a neutral unit: graded ranged attackers prefer
+ * ranged targets; everyone then ranks by {@link tierPriority} (same tier, lower
+ * tiers descending, higher tiers by distance) with the closest breaking ties.
+ * Gradeless Creature Bank guards skip both preferences and rank by distance.
  */
 function rankedTargetPool(combat: CombatState, attacker: CombatUnitState): CombatUnitState[] {
   const enemies = Object.values(combat.units).filter(
@@ -85,7 +103,8 @@ function rankedTargetPool(combat: CombatState, attacker: CombatUnitState): Comba
     return [];
   }
 
-  // Engaged ranged units must attack an adjacent enemy.
+  // Engaged ranged units must attack an adjacent enemy. This is a hard
+  // restriction, not a tier preference, so it binds gradeless bank guards too.
   if (attacker.type === "ranged") {
     const adjacent = enemies.filter((unit) => isAdjacent(attacker.position, unit.position));
     if (adjacent.length > 0) {
@@ -93,8 +112,10 @@ function rankedTargetPool(combat: CombatState, attacker: CombatUnitState): Comba
     }
   }
 
+  // A graded ranged unit hunts ranged targets first; a gradeless bank guard has
+  // no tier, so it drops that preference and simply takes the nearest enemy.
   const pool =
-    attacker.type === "ranged"
+    attacker.type === "ranged" && !isGradelessNeutralAttacker(attacker)
       ? enemies.some((unit) => unit.type === "ranged")
         ? enemies.filter((unit) => unit.type === "ranged")
         : enemies
@@ -117,16 +138,17 @@ function leadingTieGroup(attacker: CombatUnitState, sortedPool: CombatUnitState[
     return sortedPool;
   }
 
+  // A gradeless attacker (a Creature Bank guard) or a summoned best target means
+  // grade plays no part, so the tie group is decided purely by distance.
+  const gradeless = isGradelessNeutralAttacker(attacker);
   const best = sortedPool[0];
   const bestSummoned = Boolean(best.summoned);
-  // A summoned best target means only summoned units remain — they share no
-  // grade, so the tie group is decided purely by distance.
-  const bestPriority = bestSummoned ? 0 : tierPriority(attacker.grade, best.grade);
+  const bestPriority = gradeless || bestSummoned ? 0 : tierPriority(attacker.grade, best.grade);
   const bestDistance = getBattlefieldDistance(attacker.position, best.position);
   return sortedPool.filter(
     (unit) =>
       Boolean(unit.summoned) === bestSummoned &&
-      (bestSummoned || tierPriority(attacker.grade, unit.grade) === bestPriority) &&
+      (gradeless || bestSummoned || tierPriority(attacker.grade, unit.grade) === bestPriority) &&
       getBattlefieldDistance(attacker.position, unit.position) === bestDistance
   );
 }
@@ -177,17 +199,22 @@ export function sortNeutralTargetCandidates(
   attacker: CombatUnitState,
   candidates: CombatUnitState[]
 ): CombatUnitState[] {
+  // A gradeless Creature Bank guard has no tier of its own, so it never applies
+  // the same-tier priority and ranks every target purely by distance.
+  const gradeless = isGradelessNeutralAttacker(attacker);
   return [...candidates].sort((left, right) => {
     // Gradeless summoned units always sort behind graded ones, whatever their
-    // tier or distance — the AI exhausts real targets first.
+    // tier or distance — the AI exhausts real targets first (true even for a
+    // bank guard: it hits real units before any conjured Elemental).
     const summonedDelta = (left.summoned ? 1 : 0) - (right.summoned ? 1 : 0);
     if (summonedDelta !== 0) {
       return summonedDelta;
     }
 
-    // Tier priority only applies between graded units; two summoned units have
-    // no grade to compare, so they fall straight through to distance.
-    if (!left.summoned) {
+    // Tier priority needs a graded attacker AND graded targets; a gradeless bank
+    // guard or a summoned target has no grade to compare, so it falls straight
+    // through to distance.
+    if (!gradeless && !left.summoned) {
       const priority = tierPriority(attacker.grade, left.grade) - tierPriority(attacker.grade, right.grade);
       if (priority !== 0) {
         return priority;
