@@ -14,6 +14,7 @@ import {
   canCrossEdge,
   canHeroReachPlacedTile,
   canPlaceTileAt,
+  creatureBankTierForGroup,
   applyBestRecruitDiscount,
   changeMorale,
   classifyHeroStep,
@@ -1391,15 +1392,17 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
 /**
  * Offers the discovering player the choice to place a Creature Bank token on a
  * just-revealed Far (II-III) or Near (IV-V) tile's Blocked Field (rulebook
- * p.66). Sea tiles have no Blocked Field, so they never trigger this. No-op
- * when the rule is off (no piles) or the matching pile is empty.
+ * p.66). Banks are placed only on Far/Near tiles, so sea, center, subterranean
+ * and starting tiles never trigger this — even a sea tile that carries a
+ * Blocked Field / impassable terrain (the gate is the tile group, not the
+ * Blocked Field). No-op when the rule is off (no piles) or the pile is empty.
  */
 function offerCreatureBankPlacement(state: GameState, tile: MapTileState, playerId: PlayerId): void {
   const adventure = state.adventure;
   if (!adventure) {
     return;
   }
-  const tier: "far" | "near" | null = tile.group === "far" ? "far" : tile.group === "near" ? "near" : null;
+  const tier = creatureBankTierForGroup(tile.group);
   if (!tier) {
     return;
   }

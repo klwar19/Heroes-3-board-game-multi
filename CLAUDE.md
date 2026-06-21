@@ -100,10 +100,12 @@ is NOT done:
   Far (II-III) or Near (IV-V) Map Tile with a Blocked Field offers the
   discovering player a Creature Bank token from the matching shuffled pile
   (`creatureBankTokensFar`/`Near`); accepting carves the Blocked Field into a
-  bank (`placeCreatureBank`). Sea tiles have no Blocked Field, so never trigger
-  it. A bank is reachable only from within its own Tile — you can walk in to
-  fight, but it is never a route across a Tile edge to the outside (enforced in
-  `canCrossEdge`, even for Pathfinding).
+  bank (`placeCreatureBank`). The offer is gated on the tile GROUP
+  (`creatureBankTierForGroup`), so sea/center/subterranean/starting tiles never
+  trigger it — including sea tiles that DO carry a Blocked Field / impassable
+  terrain (e.g. the Cove tile W1). A bank is reachable only from within its own
+  Tile — you can walk in to fight, but it is never a route across a Tile edge to
+  the outside (enforced in `canCrossEdge`, even for Pathfinding).
 - Bank-card abilities that map to a wired engine effect: Skeletons (rebirth),
   Zombies (resilience), Vampires (life drain), Medusas + Nagas (ignore
   retaliation), Dragon Flies (-2 retaliation attack), Water Elementals (Magic

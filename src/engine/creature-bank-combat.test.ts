@@ -9,14 +9,17 @@ import {
 import {
   buildCreatureBankCombatUnits,
   canCrossEdge,
+  creatureBankTierForGroup,
   fieldCreatureBankId,
   getMainHero,
+  getTileFootprintSpaceIds,
+  instantiateTile,
   isFieldGuarded,
   makeCombatUnitFromNeutral,
   placeCreatureBank,
   type NeutralDraw
 } from "./adventure";
-import { finalizeAdventureCombat, startNeutralEncounter } from "./adventure-reducer";
+import { finalizeAdventureCombat, setTileRotation, startNeutralEncounter } from "./adventure-reducer";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
@@ -188,6 +191,35 @@ describe("Creature Bank placement on tile discovery", () => {
 
   it("never offers a bank when the rule is disabled", () => {
     const state = discoverFarTile(false);
+    expect(state.pendingChoice).toBeNull();
+  });
+
+  it("only treats Far/Near tiles as bank tiers (the gate is the tile group)", () => {
+    expect(creatureBankTierForGroup("far")).toBe("far");
+    expect(creatureBankTierForGroup("near")).toBe("near");
+    expect(creatureBankTierForGroup("sea")).toBeNull();
+    expect(creatureBankTierForGroup("center")).toBeNull();
+    expect(creatureBankTierForGroup("subterranean")).toBeNull();
+    expect(creatureBankTierForGroup("starting")).toBeNull();
+    expect(creatureBankTierForGroup(undefined)).toBeNull();
+  });
+
+  it("never offers a bank on a sea tile, even one with a Blocked Field (Cove tile W1)", () => {
+    const state = createAdventureGameState({ seed: "sea-bank", difficulty: "normal", rollFirstPlayer: false });
+    const adventure = state.adventure!;
+    // W1 is a Cove sea tile that DOES carry a Blocked Field / impassable hex.
+    const tile = instantiateTile(adventure, "W1", { row: -8, col: -8 }, 0, true);
+    expect(tile.group).toBe("sea");
+    tile.awaitingRotation = true;
+    adventure.pendingTileChoice = { tileInstanceId: tile.id, playerId: "p1", kind: "place" };
+
+    setTileRotation(state, { type: "SET_TILE_ROTATION", playerId: "p1", tileInstanceId: tile.id, rotation: 0 });
+
+    // The sea tile materialized its Blocked Field, but no bank was offered.
+    const blocked = getTileFootprintSpaceIds(tile)
+      .map((spaceId) => adventure.fields[spaceId])
+      .find((field) => field?.location === "blocked_field");
+    expect(blocked, "W1 should carry a Blocked Field").toBeTruthy();
     expect(state.pendingChoice).toBeNull();
   });
 });

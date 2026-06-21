@@ -4026,6 +4026,18 @@ export function isCreatureBankId(bankId: string | undefined): bankId is Creature
   return Boolean(bankId) && bankId! in CREATURE_BANKS;
 }
 
+/**
+ * The Creature Bank token pile a freshly discovered tile may draw from: Far Map
+ * Tiles (II-III) → "far", Near (IV-V) → "near". Every other tile group
+ * (starting, center, sea, subterranean) returns null — banks are placed ONLY on
+ * Far/Near tiles (rulebook p.66). So a sea tile never offers a bank, even though
+ * some sea tiles (e.g. the Cove tile W1) DO carry a Blocked Field / impassable
+ * terrain. This is the gate, not the presence of a Blocked Field.
+ */
+export function creatureBankTierForGroup(group: string | undefined): "far" | "near" | null {
+  return group === "far" ? "far" : group === "near" ? "near" : null;
+}
+
 /** The Creature Bank a field hosts, if any. */
 export function fieldCreatureBankId(field: MapFieldState | null | undefined): CreatureBankId | undefined {
   if (field?.location === "creature_bank" && isCreatureBankId(field.bankId)) {
