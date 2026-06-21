@@ -11,6 +11,7 @@ import {
   canCrossEdge,
   creatureBankTierForGroup,
   fieldCreatureBankId,
+  getAdjacentSpaceIds,
   getMainHero,
   getTileFootprintSpaceIds,
   instantiateTile,
@@ -19,7 +20,9 @@ import {
   placeCreatureBank,
   type NeutralDraw
 } from "./adventure";
-import { finalizeAdventureCombat, setTileRotation, startNeutralEncounter } from "./adventure-reducer";
+import { coreTileDefinitions } from "@/data/map/tile-defs";
+import { hexSpaceId, tileFootprint } from "./hex";
+import { finalizeAdventureCombat, getHeroMoveDestinations, setTileRotation, startNeutralEncounter } from "./adventure-reducer";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
@@ -266,6 +269,35 @@ describe("Creature Bank movement", () => {
     expect(canCrossEdge(state, "C", "B")).toBe(false);
     expect(canCrossEdge(state, "B", "C")).toBe(false);
     expect(canCrossEdge(state, "B", "C", { moveThrough: true, crossSealedBorders: true } as never)).toBe(false);
+  });
+
+  it("offers a bank carved from a real tile's Blocked Field as a move destination", () => {
+    // End-to-end on real geometry: materialize a tile that has a Blocked Field,
+    // carve a bank into it, and confirm a hero on a same-tile neighbour is
+    // actually offered the step in (the user-visible "walk in to fight").
+    const state = createAdventureGameState({ seed: "bank-walk-in", difficulty: "normal", rollFirstPlayer: false });
+    const blockedSlot = coreTileDefinitions.S1.fields.findIndex((field) => field.location === "blocked_field");
+    expect(blockedSlot).toBeGreaterThanOrEqual(0);
+
+    const center = { row: 20, col: 20 };
+    const tile = instantiateTile(state.adventure!, "S1", center, 0, false);
+
+    const cells = tileFootprint(center, tile.rotation);
+    const bankSpaceId = hexSpaceId(cells[blockedSlot]);
+    expect(placeCreatureBank(state, bankSpaceId, "crypt")).not.toBeNull();
+    expect(state.adventure!.fields[bankSpaceId].location).toBe("creature_bank");
+
+    // Stand the hero on a same-tile neighbour of the bank and check the offer.
+    const sibling = cells
+      .map((coord) => hexSpaceId(coord))
+      .find((spaceId) => spaceId !== bankSpaceId && getAdjacentSpaceIds(bankSpaceId).includes(spaceId));
+    expect(sibling).toBeTruthy();
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = sibling!;
+    hero.movementPoints = 3;
+    hero.movementHaltedThisTurn = false;
+
+    expect(getHeroMoveDestinations(state, hero)).toContain(bankSpaceId);
   });
 });
 

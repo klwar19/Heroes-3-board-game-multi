@@ -21,8 +21,20 @@ export type TileBorderSegment = {
  *   the three edges shared with the center/ring neighbours),
  * - explicit `internalBorders` pairs add lines between two passable fields
  *   (none exist in the core box; expansion tiles may declare them).
+ *
+ * A Blocked Field carved into a Creature Bank (its slot listed in `bankSlots`)
+ * is the one exception: a bank can be walked INTO from within its own Tile and
+ * only seals OUTWARD (you cannot cross a Tile edge to it — enforced in
+ * canCrossEdge). So a bank slot draws just its OUTER arc, never the inner walls
+ * shared with the centre/ring neighbours, or the field would look completely
+ * sealed off and the player would think they could not get in.
  */
-export function getTileBorderSegments(def: TileDefinition): TileBorderSegment[] {
+const NO_BANK_SLOTS: ReadonlySet<number> = new Set();
+
+export function getTileBorderSegments(
+  def: TileDefinition,
+  bankSlots: ReadonlySet<number> = NO_BANK_SLOTS
+): TileBorderSegment[] {
   const segments = new Map<string, TileBorderSegment>();
   const add = (slot: number, edge: number) => {
     const normalized = ((edge % 6) + 6) % 6;
@@ -40,13 +52,18 @@ export function getTileBorderSegments(def: TileDefinition): TileBorderSegment[] 
     add(slot, direction + 1);
   });
 
-  // Blocked fields are ringed completely.
+  // Blocked fields are ringed completely — except a bank, which is open inward.
   def.fields.forEach((field, slot) => {
     if (field.location !== "blocked_field") {
       return;
     }
+    const isBank = bankSlots.has(slot);
 
     if (slot === 0) {
+      // A centre bank is reachable from every ring neighbour: no walls at all.
+      if (isBank) {
+        return;
+      }
       for (let edge = 0; edge < 6; edge += 1) {
         add(0, edge);
       }
@@ -57,7 +74,11 @@ export function getTileBorderSegments(def: TileDefinition): TileBorderSegment[] 
     add(slot, direction - 1);
     add(slot, direction);
     add(slot, direction + 1);
-    // Shared edges with the center and both ring neighbours.
+    // The three edges shared with the centre and both ring neighbours — drawn
+    // for a plain blocked field, but left OPEN for a bank you walk in through.
+    if (isBank) {
+      return;
+    }
     add(slot, direction + 3);
     add(slot, direction + 2);
     add(slot, direction + 4);

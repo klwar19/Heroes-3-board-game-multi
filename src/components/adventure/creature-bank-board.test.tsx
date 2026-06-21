@@ -87,4 +87,21 @@ describe("Creature Bank hex art — per-bank field tile on the board", () => {
     expect(token.getAttribute("preserveAspectRatio")).toBe("xMidYMid slice");
     expect(token.getAttribute("clip-path") ?? token.getAttribute("clipPath")).toMatch(/^url\(#bankClip-/);
   });
+
+  it("draws the bank art click-through so you can select the field to walk in", () => {
+    // The bank art is an overlay painted ON TOP of the clickable hex. If it
+    // captured pointer events it would swallow the move click and the player
+    // could never select the bank to enter it — the literal "can't get in" bug.
+    const { state, tile } = boardWithTile();
+    const [bankSpace] = getTileFootprintSpaceIds(tile);
+    const field = adv(state).fields[bankSpace]!;
+    field.location = "creature_bank";
+    field.bankId = "crypt";
+
+    const container = renderBoard(state);
+    const token = container.querySelector(`image.locationToken[data-space-id="${bankSpace}"]`) as SVGImageElement;
+    expect(token).toBeTruthy();
+    // Non-interactive: the click falls through to the hex cell beneath it.
+    expect(token.style.pointerEvents).toBe("none");
+  });
 });
