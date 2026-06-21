@@ -171,15 +171,29 @@ is NOT done:
   Arrow immunity), Gold/Diamond Golems (spell-damage reduction), Griffins
   (unlimited retaliation), Gold Dragons (line breath). Cyclops Stockpile prints
   no ability.
+- The former display-only hold-outs are now ALL engine-wired and covered by a
+  test that fails if the logic is removed
+  (`src/engine/creature-bank-abilities.test.ts`):
+  - Imp Cache Familiars — while Stacked, every enemy spell loses 1 Power
+    (`bank-familiar-power-drain`).
+  - Crypt/Shipwreck Wraiths — on their own attack, the enemy discards 1 card
+    (`bank-wraith-attack-discard`; not gated on Stacked).
+  - Dwarven Treasury Dwarves / Dragon Utopia Crystal Dragons — while Stacked,
+    roll the Defend die like a Defense token (`bank-stacked-defense-token`).
+  - Dragon Utopia Black Dragons — while Stacked, +3 Attack
+    (`bank-black-dragon-stacked-attack`).
+  - Dragon Utopia Faerie Dragons — while Stacked, the enemy cannot cast Spells
+    (`bank-faerie-dragon-spell-lock`; blocked at legal-actions AND backstopped at
+    resolution).
+  - Medusa Stores Medusas — while Stacked, the attack also Paralyzes
+    (`bank-medusa-paralyze-stacked`; the ignore-retaliation half always runs).
+  The "while Stacked" gate lives in ONE place — `getUnitAbilityDefinitions`
+  hides any ability flagged `requiresStacked` until the unit carries a Stack
+  Token — so the effect switches off the instant the token is discarded.
 
-**Display-only bank-card abilities (declared in `DISPLAY_ONLY_BANK_ABILITIES`,
-`src/data/units/abilities.ts`) — these do NOTHING mechanically:**
-- Imp Cache Familiars (while-Stacked enemy spell-Power drain), Crypt/Shipwreck
-  Wraiths (on-attack enemy discard), Dwarven Treasury Dwarves / Dragon Utopia
-  Crystal Dragons (while-Stacked Defense token), Dragon Utopia Black Dragons
-  (while-Stacked +3 Attack), Dragon Utopia Faerie Dragons (while-Stacked spell
-  lock), and the Medusa Stores "if Stacked, Paralyze" rider (only the
-  ignore-retaliation half runs).
+**Display-only bank-card abilities:** none. `DISPLAY_ONLY_BANK_ABILITIES`
+(`src/data/units/abilities.ts`) is now empty; it remains the explicit, reviewable
+home any FUTURE decorative bank clause must be declared in.
 
 **NOT implemented at all (deferred):**
 - The Pyramid's per-Stack "remove a card then Search(5)" extra is unimplemented

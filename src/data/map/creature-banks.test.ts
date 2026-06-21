@@ -143,7 +143,11 @@ describe("Creature Bank unit cards", () => {
     expect(CREATURE_BANK_UNIT_SIDES["neutral.skeletons"].abilities).toEqual(["phoenix-rebirth"]);
     expect(CREATURE_BANK_UNIT_SIDES["neutral.zombies"].abilities).toEqual(["zombie-resilience-weak"]);
     expect(CREATURE_BANK_UNIT_SIDES["neutral.vampires"].abilities).toEqual(["bank-vampire-life-drain"]);
-    expect(CREATURE_BANK_UNIT_SIDES["neutral.medusas"].abilities).toEqual(["ignores-retaliation"]);
+    // Medusa Stores: ignore-retaliation always + the while-Stacked paralysis.
+    expect(CREATURE_BANK_UNIT_SIDES["neutral.medusas"].abilities).toEqual([
+      "ignores-retaliation",
+      "bank-medusa-paralyze-stacked"
+    ]);
     expect(CREATURE_BANK_UNIT_SIDES["neutral.dragon_flies"].abilities).toEqual(["dragon-fly-retaliation-penalty-2"]);
     expect(CREATURE_BANK_UNIT_SIDES["neutral.water_elementals"].abilities).toEqual(["magic-elemental-immunity"]);
     expect(CREATURE_BANK_UNIT_SIDES["neutral.gold_golems"].abilities).toEqual(["reduce-spell-damage-2"]);
@@ -154,6 +158,18 @@ describe("Creature Bank unit cards", () => {
     // The Cyclops Stockpile card prints no ability at all.
     expect(CREATURE_BANK_UNIT_SIDES["neutral.cyclopes"].abilities).toEqual([]);
     expect(CREATURE_BANK_UNIT_SIDES["neutral.cyclopes"].abilityText).toBeUndefined();
+  });
+
+  it("wires the formerly display-only bank abilities (CLAUDE.md: no decorative features)", () => {
+    // Every one of these once sat in DISPLAY_ONLY_BANK_ABILITIES doing nothing.
+    expect(CREATURE_BANK_UNIT_SIDES["neutral.familiars"].abilities).toEqual(["bank-familiar-power-drain"]);
+    expect(CREATURE_BANK_UNIT_SIDES["neutral.wraiths"].abilities).toEqual(["bank-wraith-attack-discard"]);
+    expect(CREATURE_BANK_UNIT_SIDES["neutral.dwarves"].abilities).toEqual(["bank-stacked-defense-token"]);
+    expect(CREATURE_BANK_UNIT_SIDES["neutral.black_dragons"].abilities).toEqual(["bank-black-dragon-stacked-attack"]);
+    expect(CREATURE_BANK_UNIT_SIDES["neutral.faerie_dragons"].abilities).toEqual(["bank-faerie-dragon-spell-lock"]);
+    expect(CREATURE_BANK_UNIT_SIDES["neutral.crystal_dragons"].abilities).toEqual(["bank-stacked-defense-token"]);
+    // The registry is now empty: nothing decorative remains on a bank card.
+    expect(Object.keys(DISPLAY_ONLY_BANK_ABILITIES)).toHaveLength(0);
   });
 });
 

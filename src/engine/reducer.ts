@@ -177,6 +177,7 @@ import {
   getLegalMoveDestinations,
   getUnitMoveRange,
   combatEnemyImposesPowerTax,
+  combatEnemyLocksSpells,
   getActivationStep,
   getLegalReactionsForTrigger,
   getOffTurnCombatReactions,
@@ -213,6 +214,10 @@ import {
   getEnchanterActivationAbility,
   getEnemyDiscardAbility,
   getEnemySpellPowerReduction,
+  getFlatAttackBonus,
+  getOnAttackEnemyDiscard,
+  getOnAttackParalysis,
+  hasSelfDefenseToken,
   getFlatDamageFollowUps,
   getForcedAttackerDie,
   getIgnoreTargetCardDefenseAbility,
@@ -2272,6 +2277,11 @@ function getAttackStackDetails(
   // Hatred) it is added unclamped even for elemental attackers.
   const flippedAttackBonus = getAttackBonusIfFlipped(attacker);
 
+  // Creature Bank Dragon Utopia Black Dragons: "+3 Attack while Stacked". A
+  // flat innate bonus (added unclamped, like Hatred/Vengeance); the Stacked gate
+  // is enforced upstream, so it is 0 the moment the Stack Token is discarded.
+  const stackedAttackBonus = getFlatAttackBonus(attacker);
+
   // Retaliation-only modifiers keyed off the retaliation's defender — i.e. the
   // original attacker being struck back: Dread Knights gain Defense, Dragon
   // Flies sap the retaliator's Attack.
@@ -2302,7 +2312,8 @@ function getAttackStackDetails(
       effectiveTokenAttack +
       attackDieResultBonus +
       hatredAttackBonus +
-      flippedAttackBonus -
+      flippedAttackBonus +
+      stackedAttackBonus -
       retaliationAttackPenalty,
     defenseBonus: defenseBonusBeforeAbility - defenseReductionAmount + retaliationDefenseBonus,
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
@@ -2779,10 +2790,15 @@ function resolveDefendBonus(
   stackItem: ResolutionStackItem,
   details: NonNullable<ReturnType<typeof getAttackStackDetails>>
 ): { roll: number; bonus: number } | null {
-  // A real Defense token, or a virtual one from an adjacent Halberdier's
-  // "Phalanx" aura, lets the defender roll the Defend die (a "+1" face → +1
-  // Defense). The shield is moot when the attack ignores Defense (Elemental).
-  const hasShield = details.defender.defenseToken || hasAdjacentDefenseAura(state, details.defender);
+  // A real Defense token, a virtual one from an adjacent Halberdier's "Phalanx"
+  // aura, or a Creature Bank card's "treated as if it had a Defense token while
+  // Stacked" (Dwarven Treasury Dwarves, Dragon Utopia Crystal Dragons) lets the
+  // defender roll the Defend die (a "+1" face → +1 Defense). The shield is moot
+  // when the attack ignores Defense (Elemental).
+  const hasShield =
+    details.defender.defenseToken ||
+    hasAdjacentDefenseAura(state, details.defender) ||
+    hasSelfDefenseToken(details.defender);
   if (!hasShield || details.ignoreDefense) {
     return null;
   }
@@ -2955,6 +2971,11 @@ function finishResolvedAttack(
 
   applyOnAttackTokens(state, details.attacker, details.defender, details.isRetaliation);
   applyOnAttackPoisonCubes(state, details.attacker, details.defender, details.isRetaliation);
+  // Creature Bank Crypt/Shipwreck Wraiths: after their own attack, the enemy
+  // discards a card. Medusa Stores Medusas (while Stacked): the target is
+  // Paralyzed by their own attack.
+  applyOnAttackEnemyDiscard(state, details.attacker, details.isRetaliation);
+  applyOnAttackParalysis(state, details.attacker, details.defender, details.isRetaliation);
   applyDendroidBindFx(state, details.attacker, details.defender, details.isRetaliation);
   // Shield of the Dwarven Lords ignored the die "and any additional effects it
   // triggered": skip every die-face-conditioned follow-up — the Azure/Basilisk
@@ -3180,6 +3201,82 @@ function applyOnAttackPoisonCubes(
     abilityId: poison.abilityId,
     targetUnitId: defender.id,
     message: `${attacker.cardName} plants ${poison.count} poison cube${poison.count === 1 ? "" : "s"} on ${defender.cardName}.`
+  });
+}
+
+/**
+ * Creature Bank Crypt / Shipwreck Wraiths: "Whenever this unit attacks, the
+ * enemy must discard N cards from hand (if possible)." Fires after the Wraiths'
+ * own attack (never a Retaliation Attack); discards as many of the opposing
+ * player's cards as `count` and the hand allow.
+ */
+function applyOnAttackEnemyDiscard(state: GameState, attacker: CombatUnitState, isRetaliation: boolean): void {
+  const combat = state.combat;
+  if (isRetaliation || !combat) {
+    return;
+  }
+  const discard = getOnAttackEnemyDiscard(attacker);
+  if (!discard) {
+    return;
+  }
+  const enemyId =
+    attacker.controllerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
+
+  let discarded = 0;
+  for (let index = 0; index < discard.count; index += 1) {
+    if (!discardRandomCardFromHand(state, enemyId)) {
+      break;
+    }
+    discarded += 1;
+  }
+  if (discarded === 0) {
+    return;
+  }
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: discard.abilityId,
+    message: `${attacker.cardName} forces the enemy to discard ${discarded} card${discarded === 1 ? "" : "s"}.`
+  });
+}
+
+/**
+ * Creature Bank Medusa Stores Medusas (while Stacked): "If this unit is Stacked,
+ * the target gains Paralysis." Fires after the Medusas' own attack (never a
+ * Retaliation Attack) on a target still alive and not immune to Paralysis. The
+ * Stacked gate lives in the ability chokepoint, so this only triggers while the
+ * card keeps its Stack Token.
+ */
+function applyOnAttackParalysis(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  isRetaliation: boolean
+): void {
+  if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
+    return;
+  }
+  const ability = getOnAttackParalysis(attacker);
+  if (!ability) {
+    return;
+  }
+  if (unitImmuneToParalysis(state, defender)) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: defender.id,
+      abilityId: "ignore-paralysis",
+      targetUnitId: defender.id,
+      message: `${defender.cardName} is immune to Paralysis.`
+    });
+    return;
+  }
+  placeCombatToken(state, defender, "paralysis", 0, ability.abilityName);
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: ability.abilityId,
+    targetUnitId: defender.id,
+    message: `${attacker.cardName} paralyses ${defender.cardName} with ${ability.abilityName}.`
   });
 }
 
@@ -7078,6 +7175,13 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
   const card = cards[action.cardId];
   if (!card || card.kind !== "spell") {
     throw new Error(`Card ${action.cardId} is not a spell.`);
+  }
+
+  // Creature Bank Dragon Utopia Faerie Dragons (while Stacked): a living enemy
+  // Faerie Dragons forbids any Spell cast. Backstop at resolution so a forced
+  // cast (one the legal-action filter never offered) still fails.
+  if (combatEnemyLocksSpells(state, action.playerId)) {
+    throw new Error("An enemy Faerie Dragons (Stacked) prevents you from casting Spells.");
   }
 
   // Neutral Pegasi "Mystic Toll": a living enemy Pegasi gates this cast behind

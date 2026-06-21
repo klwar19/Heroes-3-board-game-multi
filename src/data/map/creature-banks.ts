@@ -55,9 +55,8 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 5,
     type: "ground",
     cost: {},
-    abilities: [],
-    // engine: nothing runs. The "while Stacked, the enemy's spells cost 1 Power"
-    // drain is display-only (registered in DISPLAY_ONLY_BANK_ABILITIES).
+    // engine: while Stacked, reduce every enemy spell's Power by 1 (min 0).
+    abilities: ["bank-familiar-power-drain"],
     abilityText:
       "[unit_passive] As long as this unit is Stacked, whenever the enemy casts a spell, reduce their [power] by 1 (to a minimum of 0)."
   },
@@ -89,9 +88,8 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 5,
     type: "flying",
     cost: {},
-    abilities: [],
-    // engine: nothing runs. The on-attack "enemy discards 1 card" is display-only
-    // (the only wired Wraith discard fires on activation, not on attack).
+    // engine: on this unit's own attack, the enemy discards 1 random card.
+    abilities: ["bank-wraith-attack-discard"],
     abilityText: "[unit_passive] Whenever this unit attacks, the enemy must discard 1 card from hand (if possible)."
   },
   "neutral.vampires": {
@@ -112,9 +110,8 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 3,
     type: "ground",
     cost: {},
-    abilities: [],
-    // engine: nothing runs. The "while Stacked, treated as if it had a Defense
-    // token" bonus is display-only.
+    // engine: while Stacked, this unit rolls the Defend die when attacked.
+    abilities: ["bank-stacked-defense-token"],
     abilityText: "[unit_passive] As long as this unit is Stacked, it is treated as if it had a Defense token on it."
   },
   // --- Medusa Stores ------------------------------------------------------
@@ -125,9 +122,8 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 6,
     type: "ranged",
     cost: {},
-    abilities: ["ignores-retaliation"],
-    // engine: ignore-retaliation only. The conditional "if Stacked, the target
-    // is Paralyzed" rider is display-only.
+    // engine: ignore-retaliation always; while Stacked, the attack also Paralyzes.
+    abilities: ["ignores-retaliation", "bank-medusa-paralyze-stacked"],
     abilityText: "[unit_attack] Ignore the Retaliation Attack. If this unit is Stacked, the target gains [paralysis]."
   },
   // --- Dragon Fly Hive ----------------------------------------------------
@@ -218,8 +214,8 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 9,
     type: "flying",
     cost: {},
-    abilities: [],
-    // engine: nothing runs. The "while Stacked, +3 Attack" bonus is display-only.
+    // engine: while Stacked, +3 Attack on every attack and Retaliation Attack.
+    abilities: ["bank-black-dragon-stacked-attack"],
     abilityText: "[unit_passive] As long as this unit is Stacked, its [attack] gains +3."
   },
   "neutral.gold_dragons": {
@@ -240,9 +236,8 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 15,
     type: "flying",
     cost: {},
-    abilities: [],
-    // engine: nothing runs. The "while Stacked, the enemy cannot cast spells"
-    // lock is display-only.
+    // engine: while Stacked, the enemy player cannot cast any spell.
+    abilities: ["bank-faerie-dragon-spell-lock"],
     abilityText: "[unit_passive] As long as this unit is Stacked, the enemy cannot cast spells."
   },
   "neutral.crystal_dragons": {
@@ -252,9 +247,8 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     initiative: 16,
     type: "ground",
     cost: {},
-    abilities: [],
-    // engine: nothing runs. The "while Stacked, treated as if it had a Defense
-    // token" bonus is display-only.
+    // engine: while Stacked, this unit rolls the Defend die when attacked.
+    abilities: ["bank-stacked-defense-token"],
     abilityText: "[unit_passive] As long as this unit is Stacked, it is treated as if it had a Defense token on it."
   }
 };

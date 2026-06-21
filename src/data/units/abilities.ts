@@ -714,6 +714,57 @@ export type UnitAbilityEffectDefinition =
       type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST";
       amount: number;
       school?: SpellSchool;
+    }
+  | {
+      /**
+       * Creature Bank Dragon Utopia Black Dragons: "As long as this unit is
+       * Stacked, its Attack gains +N." A flat, unclamped innate Attack bonus on
+       * every attack (and Retaliation Attack) the unit makes. Combined with the
+       * ability's `requiresStacked` gate, it applies only while the bank card
+       * still carries its Stack Token.
+       */
+      type: "FLAT_ATTACK_BONUS";
+      amount: number;
+    }
+  | {
+      /**
+       * Creature Bank Dwarven Treasury Dwarves and Dragon Utopia Crystal
+       * Dragons: "As long as this unit is Stacked, it is treated as if it had a
+       * Defense token on it." The unit rolls the Defend die when attacked (a
+       * "+1" face grants +1 Defense), exactly like a real Defense token, without
+       * spending an action. Paired with `requiresStacked` so it lasts only while
+       * the card is Stacked.
+       */
+      type: "SELF_DEFENSE_TOKEN";
+    }
+  | {
+      /**
+       * Creature Bank Medusa Stores Medusas: "If this unit is Stacked, the
+       * target gains Paralysis." After this unit's own attack (never a
+       * Retaliation Attack) the still-living target gains a Paralysis token.
+       * Paired with `requiresStacked` so it only fires while the card is Stacked.
+       */
+      type: "PARALYZE_TARGET_ON_ATTACK";
+    }
+  | {
+      /**
+       * Creature Bank Crypt / Shipwreck Wraiths: "Whenever this unit attacks,
+       * the enemy must discard N card(s) from hand (if possible)." Fires after
+       * this unit's own attack (never a Retaliation Attack); a random card is
+       * discarded from the defending player's hand, as many as `count` allows.
+       */
+      type: "ON_ATTACK_DISCARD_ENEMY_CARD";
+      count: number;
+    }
+  | {
+      /**
+       * Creature Bank Dragon Utopia Faerie Dragons: "As long as this unit is
+       * Stacked, the enemy cannot cast spells." While a living enemy unit with
+       * this ability is on the board, the opposing player may not cast any Spell
+       * (hand, Scroll or Helm). Paired with `requiresStacked` so the lock lasts
+       * only while the Faerie Dragons keep their Stack Token.
+       */
+      type: "SPELL_CAST_LOCK";
     };
 
 /**
@@ -758,6 +809,14 @@ export type UnitAbilityDefinition = {
   effect?: UnitAbilityEffectDefinition;
   /** Adventure-map ability granted while the unit is in a player's army. */
   mapEffect?: UnitMapAbilityEffect;
+  /**
+   * "As long as this unit is Stacked …": Creature Bank cards whose effect only
+   * applies while the card still carries its Stack Token. The engine's single
+   * ability chokepoint (`getUnitAbilityDefinitions`) hides such an ability — for
+   * every read, combat or display — whenever the unit is not Stacked, so the
+   * effect (and only it) switches off the instant the token is discarded.
+   */
+  requiresStacked?: boolean;
   implementationStatus: "implemented" | "not-implemented";
 };
 
@@ -1053,6 +1112,56 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Dazzling Flight",
     text: "Retaliation Attacks against this unit suffer -2 Attack.",
     effect: { type: "RETALIATION_AGAINST_ATTACK_PENALTY", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  // ---- Creature Bank "while Stacked" / on-attack bank-card abilities --------
+  // Each below is wired and engine-enforced; the `requiresStacked` ones apply
+  // only while the bank defender still carries its Stack Token.
+  "bank-familiar-power-drain": {
+    id: "bank-familiar-power-drain",
+    name: "Power Drain",
+    text: "As long as this unit is Stacked, the Power of every enemy spell is reduced by 1 (to a minimum of 0).",
+    effect: { type: "REDUCE_ENEMY_SPELL_POWER", amount: 1 },
+    requiresStacked: true,
+    implementationStatus: "implemented"
+  },
+  "bank-black-dragon-stacked-attack": {
+    id: "bank-black-dragon-stacked-attack",
+    name: "Stacked Fury",
+    text: "As long as this unit is Stacked, its Attack gains +3.",
+    effect: { type: "FLAT_ATTACK_BONUS", amount: 3 },
+    requiresStacked: true,
+    implementationStatus: "implemented"
+  },
+  "bank-stacked-defense-token": {
+    id: "bank-stacked-defense-token",
+    name: "Fortified Hoard",
+    text: "As long as this unit is Stacked, it is treated as if it had a Defense token on it (it rolls the Defend die when attacked).",
+    effect: { type: "SELF_DEFENSE_TOKEN" },
+    requiresStacked: true,
+    implementationStatus: "implemented"
+  },
+  "bank-medusa-paralyze-stacked": {
+    id: "bank-medusa-paralyze-stacked",
+    name: "Petrifying Gaze",
+    text: "If this unit is Stacked, after its attack the target gains Paralysis (it skips its next activation; any damage clears it).",
+    effect: { type: "PARALYZE_TARGET_ON_ATTACK" },
+    requiresStacked: true,
+    implementationStatus: "implemented"
+  },
+  "bank-wraith-attack-discard": {
+    id: "bank-wraith-attack-discard",
+    name: "Soul Siphon",
+    text: "Whenever this unit attacks, the enemy must discard 1 card from hand (if possible).",
+    effect: { type: "ON_ATTACK_DISCARD_ENEMY_CARD", count: 1 },
+    implementationStatus: "implemented"
+  },
+  "bank-faerie-dragon-spell-lock": {
+    id: "bank-faerie-dragon-spell-lock",
+    name: "Mind Veil",
+    text: "As long as this unit is Stacked, the enemy cannot cast spells.",
+    effect: { type: "SPELL_CAST_LOCK" },
+    requiresStacked: true,
     implementationStatus: "implemented"
   },
   "dragon-fly-dispel": {
@@ -1692,18 +1801,16 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
  * `abilities` array with no `abilityText` is not a stub.
  */
 export const DISPLAY_ONLY_BANK_ABILITIES: Record<string, string> = {
-  // Fully display-only (abilities: []):
-  "neutral.familiars":
-    "Imp Cache: the 'while Stacked, reduce the enemy's spell Power by 1' drain does nothing.",
-  "neutral.wraiths":
-    "Crypt/Shipwreck: the on-attack 'enemy discards 1 card' does nothing (the wired Wraith discard fires on activation, not on attack).",
-  "neutral.dwarves":
-    "Dwarven Treasury: the 'while Stacked, treated as if it had a Defense token' bonus does nothing.",
-  "neutral.black_dragons": "Dragon Utopia: the 'while Stacked, +3 Attack' bonus does nothing.",
-  "neutral.faerie_dragons": "Dragon Utopia: the 'while Stacked, the enemy cannot cast spells' lock does nothing.",
-  "neutral.crystal_dragons":
-    "Dragon Utopia: the 'while Stacked, treated as if it had a Defense token' bonus does nothing.",
-  // Partial (a wired ability plus a display-only clause):
-  "neutral.medusas":
-    "Medusa Stores: ignore-retaliation runs; the conditional 'if Stacked, the target is Paralyzed' rider does nothing."
+  // Empty: every Creature Bank card's printed ability is now engine-wired.
+  // The former hold-outs are all implemented and covered by a test that fails if
+  // the logic is removed (src/engine/creature-bank-abilities.test.ts):
+  //   - Imp Cache Familiars  -> bank-familiar-power-drain (while Stacked)
+  //   - Crypt/Shipwreck Wraiths -> bank-wraith-attack-discard (on attack)
+  //   - Dwarven Treasury Dwarves / Dragon Utopia Crystal Dragons
+  //       -> bank-stacked-defense-token (while Stacked)
+  //   - Dragon Utopia Black Dragons -> bank-black-dragon-stacked-attack (while Stacked)
+  //   - Dragon Utopia Faerie Dragons -> bank-faerie-dragon-spell-lock (while Stacked)
+  //   - Medusa Stores Medusas -> bank-medusa-paralyze-stacked (while Stacked, on attack)
+  // Keep this registry as the explicit home for any FUTURE display-only bank
+  // clause: a stub must be a conscious entry here, never undeclared text.
 };
