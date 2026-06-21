@@ -4449,6 +4449,11 @@ export function startAdventureRound(state: GameState): void {
         if (effect?.type === "ROUND_START_FREE_SPRITE") {
           queueGardenOfLife(state, playerId, buildingId, effect.unitDefId);
         }
+        if (effect?.type === "ASTROLOGERS_ROUND_CHOICE") {
+          // Cove City Hall: the same choice machinery as a Resource-round City
+          // Hall, but fired on the Astrologers' round.
+          state.adventure?.rewardQueue.push({ playerId, kind: "city-hall-choice", buildingId });
+        }
         if (effect?.type === "COMBAT_CUBES" && effect.gainOn === "astrologers" && town) {
           gainTownCube(state, town, buildingId, effect.max);
         }

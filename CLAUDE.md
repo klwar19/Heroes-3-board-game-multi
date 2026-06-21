@@ -64,16 +64,25 @@ folders; per-user `~/.claude/CLAUDE.md` does **not** persist on the web.
 
 ## Current known stubs (display-only, NOT implemented)
 
-Tracked honestly so they are not mistaken for working features:
-- `tower.genies` few & pack — "discard from deck, take a Spell" does nothing
-  (`abilities: []`).
-- `tower.magi` pack — "+1 Power to the first spell you cast this round" does
-  nothing (only `ignore-all-combat-penalties` is wired).
-- `tower.gargoyles`, `tower.titans`, `tower.iron_golems` — the ongoing-effect /
-  spell-damage-reduction lines are display-only.
-- Hero specialties in `PENDING_TOWER_SPECIALTIES`
-  (`src/engine/hero-specialty-levels.test.ts`): Solmyr I/IV/VI, Cyra IV/VI,
-  Torosar I/IV/VI.
+Most items this list previously named (the Tower hold-outs) have since been
+wired and are covered by a test that fails if the logic is removed:
+- `tower.genies` few & pack — "discard from deck, take a Spell" → `genie-spell-draw-few`
+  / `genie-spell-draw-pack` (`DECK_DISCARD_TAKE_SPELL`); see
+  `src/engine/expansion-creature-abilities.test.ts` ("Genie Wish").
+- `tower.magi` pack — "+1 Power to the first spell you cast this round" →
+  `magi-power-boost`; see `src/engine/decorative-faction-abilities.test.ts`.
+- `tower.gargoyles` / `tower.titans` — the ongoing-effect immunity →
+  `gargoyle-spell-ward` / `titan-ignore-ongoing`; see
+  `src/engine/expansion-creature-abilities.test.ts` ("Gargoyle / Titan
+  ongoing-effect immunity").
+- `tower.iron_golems` — spell-damage reduction → `reduce-spell-damage-1` /
+  `reduce-spell-damage-2`; see `src/engine/decorative-faction-abilities.test.ts`.
+- Solmyr I/IV/VI, Cyra IV/VI, Torosar I/IV/VI — now implemented;
+  `src/engine/hero-specialty-levels.test.ts` asserts "has no remaining
+  not-implemented hero specialty" and `src/engine/tower-hero-specialties.test.ts`
+  exercises each. (`PENDING_TOWER_SPECIALTIES` no longer exists.)
+
+Still display-only / not on the roster (Conflux):
 - `conflux.magic_elementals` (Few & Pack) — "Attack all adjacent (enemy) units"
   is display-only (the engine has no primary attack-every-adjacent action); the
   Pack's "Ignore any ongoing spell effects and Specialty damage" line is also
@@ -83,3 +92,7 @@ Tracked honestly so they are not mistaken for working features:
   their spell/obstacle/search specialties are not implemented. Only the three
   unit-specialist Planeswalkers (Erdamon, Monere, Pasis) ship, with all of
   their I/IV/VI specialties implemented and tested (`conflux-content.test.ts`).
+
+This section is maintained by hand — the rule #3 enforcement test still does
+**not** exist, so re-verify any "stub" claim against `src/data/factions/units.ts`
+and the tests before trusting it.

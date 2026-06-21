@@ -14,7 +14,8 @@ const townProducts: Record<string, string> = {
   stronghold: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
   fortress: "Heroes of Might and Magic III: The Board Game (Fortress Expansion)",
   tower: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
-  conflux: "Heroes of Might and Magic III: The Board Game (Conflux Expansion)"
+  conflux: "Heroes of Might and Magic III: The Board Game (Conflux Expansion)",
+  cove: "Heroes of Might and Magic III: The Board Game (Cove Expansion)"
 };
 
 function townSource(faction: string) {
@@ -117,6 +118,21 @@ function stretchGoalPcPortraitHeroSource(slug: string, pcName: string) {
     product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals 2024)",
     credit:
       `Hero roster, class, statistics, starting ability and specialty rules from the fan wiki hero page. The printed board is not on the wiki yet (placeholder art), so the portrait is the classic PC hero portrait from heroes.thelazy.net/index.php/${pcName} (upscaled, hosted locally). Verify against official components before final release.`,
+    url: `https://en.homm3bg.wiki/heroes/${slug}/`
+  };
+}
+
+/**
+ * Source for the Cove heroes. The fan wiki Cove pages carry the hero roster,
+ * class, statistics, starting ability and the I/IV/VI specialty rules, but no
+ * printed board art yet, so the portrait is the classic PC hero portrait from
+ * heroes.thelazy.net (hosted locally), exactly like the Tower PC-portrait heroes.
+ */
+function coveHeroSource(slug: string) {
+  return {
+    product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
+    credit:
+      "Hero roster, class, statistics, starting ability and specialty rules from the fan wiki Cove pages. The printed board is not on the wiki yet, so the portrait is the classic PC hero portrait from heroes.thelazy.net (hosted locally). Verify against official components before final release.",
     url: `https://en.homm3bg.wiki/heroes/${slug}/`
   };
 }
@@ -915,6 +931,111 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     effect: { type: "COMBAT_CUBES", max: 2, gainOn: "resource", spend: "attack-or-defense" },
     implementationStatus: "implemented",
     source: townSource("fortress")
+  },
+
+  // ---- Cove (expansion) --------------------------------------------------
+  "cove.city_hall": {
+    id: "cove.city_hall",
+    name: "City Hall",
+    faction: "cove",
+    cost: { gold: 10, buildingMaterials: 4 },
+    // "At the beginning of each Astrologers' round, choose: 4 gold — OR — remove
+    // 1 Artifact card from your hand to gain 1 experience." The artifact→XP
+    // option is only offered when the player actually holds an Artifact card.
+    effect: {
+      type: "ASTROLOGERS_ROUND_CHOICE",
+      options: [
+        { label: "Gain 4 gold", gold: 4 },
+        {
+          label: "Remove 1 Artifact card from your hand to gain 1 experience",
+          experience: 1,
+          removeArtifactFromHand: true
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: townSource("cove")
+  },
+  "cove.citadel": {
+    id: "cove.citadel",
+    name: "Citadel",
+    faction: "cove",
+    cost: { gold: 8, buildingMaterials: 4, valuables: 1 },
+    effect: { type: "UNLOCK_REINFORCE" },
+    implementationStatus: "implemented",
+    source: townSource("cove")
+  },
+  "cove.mage_guild": {
+    id: "cove.mage_guild",
+    name: "Mage Guild",
+    faction: "cove",
+    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
+    effect: { type: "MAGE_GUILD" },
+    spellBookCost: 5,
+    implementationStatus: "implemented",
+    source: townSource("cove")
+  },
+  "cove.dwelling_bronze": {
+    id: "cove.dwelling_bronze",
+    name: "Bay",
+    faction: "cove",
+    cost: { gold: 4, buildingMaterials: 3, valuables: 1 },
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" },
+    implementationStatus: "implemented",
+    source: townSource("cove")
+  },
+  "cove.dwelling_silver": {
+    id: "cove.dwelling_silver",
+    name: "Nests Towering the Seas",
+    faction: "cove",
+    cost: { gold: 8, buildingMaterials: 6, valuables: 3 },
+    prerequisites: ["cove.dwelling_bronze"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "silver" },
+    implementationStatus: "implemented",
+    source: townSource("cove")
+  },
+  "cove.dwelling_gold": {
+    id: "cove.dwelling_gold",
+    name: "Redoubled Vortex",
+    faction: "cove",
+    cost: { gold: 10, buildingMaterials: 8, valuables: 4 },
+    prerequisites: ["cove.dwelling_silver"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "gold" },
+    implementationStatus: "implemented",
+    source: townSource("cove")
+  },
+  "cove.thieves_guild": {
+    id: "cove.thieves_guild",
+    name: "Thieves' Guild",
+    faction: "cove",
+    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
+    // "Once during your turn, choose any one deck in the game (including another
+    // player's M&M deck), look at its top 2 cards, and put one of them on its
+    // discard pile and the other back on top of the deck." NOT YET WIRED — this
+    // needs a new once-per-turn cross-deck look-2/discard-1 turn action; the
+    // building can be built but currently has no engine effect.
+    effect: {
+      type: "NOT_IMPLEMENTED",
+      note: "Once per turn: look at the top 2 cards of any deck (incl. opponents'), discard one and put the other back on top. Needs a cross-deck top-2 manipulation turn action."
+    },
+    implementationStatus: "not-implemented",
+    source: townSource("cove")
+  },
+  "cove.pub": {
+    id: "cove.pub",
+    name: "Pub",
+    faction: "cove",
+    cost: { gold: 3, buildingMaterials: 2 },
+    // "Once during Astrologers' round, while Reinforcing a unit, reduce the
+    // reinforcement cost by 3 gold (to a minimum of 0)." NOT YET WIRED — needs a
+    // once-per-round flat reinforcement discount distinct from the Saplings'
+    // half-gold reinforce; the building builds but currently has no engine effect.
+    effect: {
+      type: "NOT_IMPLEMENTED",
+      note: "Once per Astrologers' round, a reinforcement costs 3 less gold (min 0). Needs a once-per-round flat reinforce discount."
+    },
+    implementationStatus: "not-implemented",
+    source: townSource("cove")
   }
 };
 
@@ -1839,7 +1960,52 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     },
     portrait: "/assets/hero_portraits-sephinroth.webp",
     source: stretchGoalPcPortraitHeroSource("sephinroth", "Sephinroth")
+  },
+
+  // ---- Cove (expansion) --------------------------------------------------
+  // Roster, classes, starting stats and specialties from the fan wiki Cove hero
+  // pages (Navigator = magic, Captain = might). No printed board art on the wiki
+  // yet, so each hero uses its classic PC portrait (added by the Cove art
+  // fetch script). Which specialties are engine-wired vs honestly deferred is
+  // tracked in cove-content.test.ts and the content tracker.
+  astra: {
+    id: "astra",
+    name: "Astra",
+    faction: "cove",
+    class: "Navigator",
+    type: "magic",
+    startingStats: { attack: 2, defense: 0, power: 1, knowledge: 2 },
+    startingAbilityCardId: "ability.luck",
+    specialtyCardIds: { 1: "specialty.astra.1", 4: "specialty.astra.4", 6: "specialty.astra.6" },
+    portrait: "/assets/hero_portraits-astra.webp",
+    source: coveHeroSource("astra")
+  },
+  cassiopeia: {
+    id: "cassiopeia",
+    name: "Cassiopeia",
+    faction: "cove",
+    class: "Captain",
+    type: "might",
+    startingStats: { attack: 3, defense: 0, power: 2, knowledge: 1 },
+    startingAbilityCardId: "ability.tactics",
+    specialtyCardIds: { 1: "specialty.cassiopeia.1", 4: "specialty.cassiopeia.4", 6: "specialty.cassiopeia.6" },
+    portrait: "/assets/hero_portraits-cassiopeia.webp",
+    source: coveHeroSource("cassiopeia")
   }
+  // The other four Cove heroes are deferred (NOT registered) — each has one
+  // signature specialty that needs an engine subsystem we have not built yet, so
+  // they are kept out rather than shipped with an inert specialty, exactly like
+  // the Octavia/Melodia/Tarnum hold-outs below. Their stats/classes/abilities are
+  // transcribed and ready to register the moment the mechanic lands:
+  //   - Casmetra (Navigator, magic, A2 D0 P1 K2, Wisdom): "Sorceresses" — I/IV are
+  //     the standard creature buffs, but VI also places a -2 Weakness token from
+  //     the specialty (no place-token-from-specialty effect yet).
+  //   - Jeremy (Captain, might, A3 D0 P2 K1, Offense): "Cannon" — needs the Cannon
+  //     war machine (not implemented).
+  //   - Miriam (Captain, might, A3 D0 P2 K1, Logistics): "Search" — remove a card
+  //     from hand to Search a matching deck (no remove-to-search turn action yet).
+  //   - Zilare (Navigator, magic, A2 D0 P1 K2, Interference): "Forgetfulness" — a
+  //     unit cannot attack during its next activation (no such debuff yet).
   // Four more wiki heroes complete the remaining rosters; their PC portraits are
   // already fetched and committed (scripts/fetch-extra-heroes-art-batch5.py:
   // octavia, melodia, tarnum_ranger, tarnum_beastmaster), but they are NOT yet
@@ -1970,6 +2136,20 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     units: unitsOfFaction("conflux"),
     townImage: "/assets/towns-conflux-empty.webp",
     source: townSource("conflux")
+  },
+  cove: {
+    id: "cove",
+    name: "Cove",
+    // Deep sea teal — distinct from Castle's blue and Tower's cyan.
+    color: "#0f8a99",
+    // S9 is the Cove starting tile, already defined in expansion-tiles.ts.
+    startingTileId: "S9",
+    // Only the two heroes whose specialties are fully engine-wired are registered;
+    // the other four Cove heroes are deferred (see coreHeroDefinitions).
+    heroes: ["astra", "cassiopeia"],
+    buildings: buildingsOfFaction("cove"),
+    units: unitsOfFaction("cove"),
+    source: townSource("cove")
   }
 };
 

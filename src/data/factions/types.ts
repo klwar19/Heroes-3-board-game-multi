@@ -9,7 +9,8 @@ export type FactionId =
   | "stronghold"
   | "fortress"
   | "tower"
-  | "conflux";
+  | "conflux"
+  | "cove";
 export type UnitTier = "bronze" | "silver" | "gold" | "azure";
 
 export type UnitSideDefinition = {
@@ -93,6 +94,13 @@ export type CityHallOption = {
   tradingPost?: boolean;
   /** Conflux City Hall: Search(N) the Spell deck and take 1 card to hand. */
   searchSpellDeck?: number;
+  /** Cove City Hall: gain Hero experience (paired with removeArtifactFromHand). */
+  experience?: number;
+  /**
+   * Cove City Hall: this option costs one Artifact card removed from hand. It is
+   * only offered when the player holds an Artifact card; choosing it removes one.
+   */
+  removeArtifactFromHand?: boolean;
 };
 
 export type TownBuildingEffect =
@@ -100,6 +108,14 @@ export type TownBuildingEffect =
   | { type: "UNLOCK_REINFORCE" }
   | { type: "MAGE_GUILD" }
   | { type: "RESOURCE_ROUND_CHOICE"; options: CityHallOption[] }
+  | {
+      /**
+       * Cove City Hall: like RESOURCE_ROUND_CHOICE, but the choice is offered at
+       * the beginning of each Astrologers' round instead of each Resource round.
+       */
+      type: "ASTROLOGERS_ROUND_CHOICE";
+      options: CityHallOption[];
+    }
   | { type: "RESOURCE_ROUND_MORALE" }
   | {
       /** Mystic Pond: each Resource round, roll a Resource die and gain it. */
