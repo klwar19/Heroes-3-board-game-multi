@@ -9,13 +9,9 @@ import { getFxSheet } from "@/data/fx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  ATTACKER_BACKLINE,
-  ATTACKER_FRONTLINE,
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
   BATTLEFIELD_ROWS,
-  DEFENDER_BACKLINE,
-  DEFENDER_FRONTLINE,
   effectiveInitiative,
   getActivationOrder,
   getBattlefieldLabel,
@@ -29,6 +25,7 @@ import {
   isUnitAlive,
   parseFortificationTargetId,
   pickCombatBoardArtId,
+  placementCellsFor,
   playerSpellCastsIgnoreLimit,
   type BattlefieldTokenState,
   type CombatBoardArtId,
@@ -720,11 +717,7 @@ export function BattlefieldBoard({
   // two own rows accept army-unit drops (fresh placements and repositions).
   const setup = combat?.setup;
   const placing = Boolean(setup && setup.pendingPlayerIds[0] === viewerPlayerId);
-  const ownRows = placing
-    ? combat!.attackerPlayerId === viewerPlayerId
-      ? new Set([...ATTACKER_FRONTLINE, ...ATTACKER_BACKLINE])
-      : new Set([...DEFENDER_FRONTLINE, ...DEFENDER_BACKLINE])
-    : new Set<number>();
+  const ownRows = placing ? new Set(placementCellsFor(state, viewerPlayerId)) : new Set<number>();
 
   // Tactics start-of-combat swap: a click-to-select board interaction. Only the
   // dedicated setup window is handled on the board (it has no other actions, so

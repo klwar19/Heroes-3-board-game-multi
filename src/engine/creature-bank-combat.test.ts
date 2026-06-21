@@ -3,6 +3,9 @@ import {
   applyAction,
   createAdventureGameState,
   getLegalActions,
+  CREATURE_BANK_ATTACKER_CELLS,
+  CREATURE_BANK_GUARD_CORNERS,
+  placementCellsFor,
   type GameAction,
   type GameState
 } from "./index";
@@ -327,19 +330,48 @@ describe("Creature Bank defenders", () => {
     }
   });
 
-  it("places the rulebook number of Stack Tokens by difficulty, each on a different card", () => {
-    const counts: Record<GameDifficulty, number> = { easy: 1, normal: 2, hard: 3, impossible: 4 };
+  it("never Stacks more defenders than the difficulty allows, each on a different card", () => {
+    // The difficulty count is the number of token ROLLS (the cap), not a fixed
+    // number of Stacked defenders — each roll only lands 85% of the time.
     for (const difficulty of ["easy", "normal", "hard", "impossible"] as GameDifficulty[]) {
-      const state = createAdventureGameState({ seed: `bank-${difficulty}`, difficulty, rollFirstPlayer: false });
-      const { units, stackedCount } = buildCreatureBankCombatUnits(state, "crypt");
-      expect(stackedCount).toBe(STACK_TOKENS_BY_DIFFICULTY[difficulty]);
-      expect(stackedCount).toBe(counts[difficulty]);
+      const cap = STACK_TOKENS_BY_DIFFICULTY[difficulty];
+      for (let trial = 0; trial < 50; trial += 1) {
+        const state = createAdventureGameState({ seed: `bank-${difficulty}-${trial}`, difficulty, rollFirstPlayer: false });
+        const { units, stackedCount } = buildCreatureBankCombatUnits(state, "crypt");
+        expect(stackedCount).toBeGreaterThanOrEqual(0);
+        expect(stackedCount).toBeLessThanOrEqual(cap);
 
-      const stacked = units.filter((unit) => unit.stackToken);
-      expect(stacked).toHaveLength(stackedCount);
-      // Tokens sit on distinct cards.
-      expect(new Set(stacked.map((unit) => unit.id)).size).toBe(stackedCount);
+        const stacked = units.filter((unit) => unit.stackToken);
+        expect(stacked).toHaveLength(stackedCount);
+        // Whatever lands, the tokens always sit on distinct cards.
+        expect(new Set(stacked.map((unit) => unit.id)).size).toBe(stackedCount);
+      }
     }
+  });
+
+  it("rolls each token at ~85%, so even Impossible can Stack anywhere from 0 to 4 defenders", () => {
+    // Run a wide sample at Impossible (4 rolls). A fixed-count implementation
+    // would always return 4; the probabilistic one spreads across 0..4 and
+    // averages near 4 * 0.85 = 3.4.
+    const TRIALS = 600;
+    const counts = [0, 0, 0, 0, 0];
+    let total = 0;
+    for (let trial = 0; trial < TRIALS; trial += 1) {
+      const state = createAdventureGameState({ seed: `bank-spread-${trial}`, difficulty: "impossible", rollFirstPlayer: false });
+      const { stackedCount } = buildCreatureBankCombatUnits(state, "crypt");
+      counts[stackedCount] += 1;
+      total += stackedCount;
+    }
+
+    // The "lucky, all four Stacked" and "unlucky, none Stacked" outcomes both occur.
+    expect(counts[4]).toBeGreaterThan(0);
+    expect(counts[0]).toBeGreaterThan(0);
+    // And it is NOT pinned to the maximum: plenty of partial outcomes appear.
+    expect(counts[4]).toBeLessThan(TRIALS);
+    // Empirical landing rate clusters around 85% per roll (4 rolls → ~3.4 mean).
+    const meanPerRoll = total / TRIALS / 4;
+    expect(meanPerRoll).toBeGreaterThan(0.78);
+    expect(meanPerRoll).toBeLessThan(0.92);
   });
 
   it("bakes the Stack Token bonus into the right statistic (+1 stat, +2 initiative)", () => {
@@ -352,6 +384,61 @@ describe("Creature Bank defenders", () => {
       expect(unit.defense).toBe(base.defense + (token === "defense" ? 1 : 0));
       expect(unit.maxHealth).toBe(base.health + (token === "health" ? 1 : 0));
       expect(unit.initiative).toBe(base.initiative + (token === "initiative" ? stackTokenDelta("initiative") : 0));
+    }
+  });
+});
+
+// ===========================================================================
+// Battlefield formation: guards in the corners, attacker in the center
+// ===========================================================================
+
+describe("Creature Bank battlefield formation", () => {
+  /** Runs the bank Combat Setup up to the point the guards have deployed. */
+  function startBankCombat(seed: string, bankId: CreatureBankId): GameState {
+    let state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+    state = state.players.p1.needsHandRefresh
+      ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      : state;
+    placeBankUnderHero(state, bankId, 7);
+    const hero = getMainHero(state, "p1")!;
+    startNeutralEncounter(state, hero, state.adventure!.fields["bank-field"]);
+    return state;
+  }
+
+  it("pins the four guardians to the four board corners (not a backline/frontline)", () => {
+    let state = startBankCombat("bank-corners", "naga_bank");
+
+    // Deploy one unit centrally, lock placement: the guards reveal at the corners.
+    const place = getLegalActions(state, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
+    state = apply(state, place!.action);
+    state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+
+    const guardPositions = Object.values(state.combat!.units)
+      .filter((unit) => unit.controllerId === "neutrals")
+      .map((unit) => unit.position)
+      .sort((left, right) => left - right);
+    expect(guardPositions).toEqual([...CREATURE_BANK_GUARD_CORNERS].sort((left, right) => left - right));
+  });
+
+  it("lets the attacker deploy only in the central six squares", () => {
+    const state = startBankCombat("bank-center", "naga_bank");
+
+    // The engine source of truth for legal deploy cells.
+    expect(placementCellsFor(state, "p1").sort((left, right) => left - right)).toEqual(
+      [...CREATURE_BANK_ATTACKER_CELLS].sort((left, right) => left - right)
+    );
+
+    // Every offered placement lands in the centre — never a corner or back row.
+    const placePositions = getLegalActions(state, "p1")
+      .filter((entry) => entry.action.type === "PLACE_COMBAT_UNIT")
+      .map((entry) => (entry.action as Extract<GameAction, { type: "PLACE_COMBAT_UNIT" }>).position);
+    expect(placePositions.length).toBeGreaterThan(0);
+    for (const position of placePositions) {
+      expect(CREATURE_BANK_ATTACKER_CELLS).toContain(position);
+    }
+    // Guards' corners are explicitly NOT offered to the attacker.
+    for (const corner of CREATURE_BANK_GUARD_CORNERS) {
+      expect(placePositions).not.toContain(corner);
     }
   });
 });
@@ -449,8 +536,11 @@ describe("Creature Bank combat lifecycle", () => {
     state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
     expect(state.phase).toBe("combat");
 
+    // X (the reward multiplier) is the number of Stacked defenders, now rolled
+    // per candidate, so it lands in 0..2 on Normal (2 token rolls).
     const stacked = state.combat?.context.kind === "neutral" ? (state.combat.context.bankStackCount ?? 0) : 0;
-    expect(stacked).toBe(STACK_TOKENS_BY_DIFFICULTY.normal); // 2 on Normal
+    expect(stacked).toBeGreaterThanOrEqual(0);
+    expect(stacked).toBeLessThanOrEqual(STACK_TOKENS_BY_DIFFICULTY.normal);
 
     const goldBefore = state.players.p1.resources.gold;
 
@@ -463,7 +553,7 @@ describe("Creature Bank combat lifecycle", () => {
     finishCombatIfNeeded(state);
     finalizeAdventureCombat(state);
 
-    // Crypt reward: 6 + 2 * X gold (X = 2 on Normal) = 10.
+    // Crypt reward: 6 + 2 * X gold, where X is however many defenders Stacked.
     expect(state.players.p1.resources.gold).toBe(goldBefore + 6 + 2 * stacked);
     expect(state.adventure!.fields["bank-field"].blackCube).toBe(true);
     // Creature Banks grant NO experience.
