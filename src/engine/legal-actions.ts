@@ -117,6 +117,7 @@ import {
   getLethalSaveUnitAbility,
   getUnitAbilityDefinitions,
   hasBindAdjacentEnemies,
+  hasSpellCastLock,
   hasSpellCastPowerTax,
   hasUnitAbilityEffect,
   unitImmuneToSpellSchools
@@ -1364,6 +1365,22 @@ export function combatEnemyImposesPowerTax(state: GameState, casterId: PlayerId)
 }
 
 /**
+ * Creature Bank Dragon Utopia Faerie Dragons (while Stacked): a living enemy
+ * unit with the spell-cast lock forbids this player from casting any Spell.
+ * Combat-only; the Stacked gate lives in `getUnitAbilityDefinitions`, so the
+ * lock lifts the moment the Faerie Dragons lose their Stack Token.
+ */
+export function combatEnemyLocksSpells(state: GameState, casterId: PlayerId): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+  return Object.values(combat.units).some(
+    (unit) => unit.controllerId !== casterId && isUnitAlive(unit) && hasSpellCastLock(unit)
+  );
+}
+
+/**
  * The Power cards the player could pay for the Pegasi toll. A hand cast spends
  * the spell itself first, so it cannot also pay the toll — the toll must come
  * from a *different* Power card; a Scroll cast leaves the hand intact.
@@ -1433,6 +1450,12 @@ function addSpellActions(
   // Power-0 floor is enforced at resolution, since the Power is only fixed once
   // the cast window closes; a cast can still be declared and then boosted.)
   if (getSpellCastRestriction(state).lockAll) {
+    return;
+  }
+
+  // Creature Bank Dragon Utopia Faerie Dragons (while Stacked): a living enemy
+  // Faerie Dragons locks this player out of casting any Spell — none is offered.
+  if (combatEnemyLocksSpells(state, playerId)) {
     return;
   }
 

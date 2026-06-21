@@ -41,7 +41,15 @@ export function getUnitAbilityDefinitions(unit: CombatUnitState): UnitAbilityDef
   if (unit.abilitiesSuppressed) {
     return [];
   }
-  return unit.abilities.map((abilityId) => unitAbilities[abilityId]).filter(Boolean);
+  const isStacked = Boolean(unit.stackToken);
+  return unit.abilities
+    .map((abilityId) => unitAbilities[abilityId])
+    .filter(Boolean)
+    // "As long as this unit is Stacked …": a Creature Bank card's Stacked-only
+    // ability vanishes — for every read, combat or display — the instant the
+    // unit is not Stacked (never given a token, or it was discarded on a lethal
+    // hit). Non-bank abilities never set the flag, so this is a no-op for them.
+    .filter((ability) => !ability.requiresStacked || isStacked);
 }
 
 export function hasUnitAbilityEffect(
@@ -767,6 +775,67 @@ export function getSelfRebirthAbility(
 /** Neutral Halberdiers: this unit grants adjacent allies a virtual Defense token. */
 export function hasDefenseTokenAura(unit: CombatUnitState): boolean {
   return hasUnitAbilityEffect(unit, "DEFENSE_TOKEN_AURA");
+}
+
+/**
+ * Creature Bank Dwarven Treasury Dwarves / Dragon Utopia Crystal Dragons: while
+ * Stacked, the card is treated as if it carried its own Defense token (it rolls
+ * the Defend die when attacked). The Stacked gate is enforced upstream by
+ * `getUnitAbilityDefinitions`, so this simply reports whether the ability is
+ * currently active on the unit.
+ */
+export function hasSelfDefenseToken(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "SELF_DEFENSE_TOKEN");
+}
+
+/**
+ * Creature Bank Dragon Utopia Black Dragons (while Stacked): the flat, unclamped
+ * Attack bonus added to every attack and Retaliation Attack this unit makes.
+ */
+export function getFlatAttackBonus(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "FLAT_ATTACK_BONUS").reduce(
+    (total, ability) => total + (ability.effect?.type === "FLAT_ATTACK_BONUS" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/**
+ * Creature Bank Medusa Stores Medusas (while Stacked): the on-attack paralysis
+ * inflicted by this unit's own attack, if any.
+ */
+export function getOnAttackParalysis(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "PARALYZE_TARGET_ON_ATTACK")) {
+    if (ability.effect?.type === "PARALYZE_TARGET_ON_ATTACK") {
+      return { abilityId: ability.id, abilityName: ability.name };
+    }
+  }
+  return null;
+}
+
+/**
+ * Creature Bank Crypt / Shipwreck Wraiths: the number of cards the enemy must
+ * discard from hand after this unit's own attack (0 if the unit has no such
+ * ability).
+ */
+export function getOnAttackEnemyDiscard(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; count: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ON_ATTACK_DISCARD_ENEMY_CARD")) {
+    if (ability.effect?.type === "ON_ATTACK_DISCARD_ENEMY_CARD" && ability.effect.count > 0) {
+      return { abilityId: ability.id, abilityName: ability.name, count: ability.effect.count };
+    }
+  }
+  return null;
+}
+
+/**
+ * Creature Bank Dragon Utopia Faerie Dragons (while Stacked): this unit locks
+ * the enemy out of casting any Spell while it lives.
+ */
+export function hasSpellCastLock(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "SPELL_CAST_LOCK");
 }
 
 /** Familiars: enemies pay one card whenever they cast a Spell from hand near this unit. */
