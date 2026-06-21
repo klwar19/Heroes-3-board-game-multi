@@ -202,6 +202,15 @@ export function ReactionTray({
     (legal) => legal.action.type === "SPEND_TOWN_CUBE" || legal.action.type === "HALL_OF_VALHALLA_BOOST"
   );
 
+  // Free unit "lethal save" reactions — the Archangels' once-per-combat
+  // Resurrection that cancels a killing blow on another friendly unit. It is a
+  // standalone legal action (no hand card behind it), so the card-tile path
+  // never surfaces it; render it as its own one-click tile, or the player can
+  // only ever choose "Let it die".
+  const resurrectionActions = legalActions.filter(
+    (legal) => legal.action.type === "USE_UNIT_RESURRECTION"
+  );
+
   if (!window) {
     return null;
   }
@@ -483,9 +492,24 @@ export function ReactionTray({
         <PendingPowerReadout state={state} />
       </header>
       <div className="trayTiles">
-        {tiles.length === 0 && buildingBoosts.length === 0 && scrollReactions.length === 0 ? (
+        {tiles.length === 0 &&
+        buildingBoosts.length === 0 &&
+        scrollReactions.length === 0 &&
+        resurrectionActions.length === 0 ? (
           <div className="trayEmpty">No playable instants — pass to continue.</div>
         ) : null}
+        {resurrectionActions.map((legal) => (
+          <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
+            <div className="trayTileBody">
+              <strong>
+                <Sunrise aria-hidden="true" size={15} /> Free save
+              </strong>
+              <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                {legal.label}
+              </button>
+            </div>
+          </div>
+        ))}
         {buildingBoosts.map((legal) => (
           <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
             <div className="trayTileBody">
