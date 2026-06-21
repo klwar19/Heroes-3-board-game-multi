@@ -4325,6 +4325,7 @@ export type CombatBoardArtId =
   | "frozen"
   | "hell-necro"
   | "jungle-fortress"
+  | "creature-bank-dungeon"
   | "castle-siege"
   | "ship-battle";
 
