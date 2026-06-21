@@ -346,11 +346,12 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     name: "Dragon Fly Hive",
     tier: "far",
     units: ["neutral.dragon_flies", "neutral.dragon_flies", "neutral.dragon_flies", "neutral.dragon_flies"],
-    rewardText: "Gain 1 Dragon Flies (Stacked if there were at least 2 Stacked defenders).",
-    rewardStatus: "not-implemented",
-    rewardNote:
-      "Reward is 'gain a Creature Bank unit card' — the Gained Stacked Units mechanic is not implemented yet, so no reward is granted.",
-    buildReward: () => ({ type: "NONE" })
+    rewardText: "Gain 1 Dragon Flies (a Stacked Pack if there were at least 2 Stacked defenders).",
+    rewardStatus: "implemented",
+    // Gain the recruitable Dragon Flies card: a Pack ("Stacked") when 2+ defenders
+    // were Stacked, otherwise a Few. (The wiki notes the Stacked version needs at
+    // least Normal difficulty — Easy rolls a single token, so X can never reach 2.)
+    buildReward: (x) => ({ type: "GAIN_UNIT", unitDefId: "fortress.dragon_flies", side: x >= 2 ? "pack" : "few" })
   },
   shipwreck: {
     id: "shipwreck",
@@ -409,11 +410,11 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     name: "Griffin Conservatory",
     tier: "near",
     units: ["neutral.griffins", "neutral.griffins", "neutral.griffins", "neutral.griffins"],
-    rewardText: "Gain 1 Griffins (Stacked if there were at least 2 Stacked defenders).",
-    rewardStatus: "not-implemented",
-    rewardNote:
-      "Reward is 'gain a Creature Bank unit card' — the Gained Stacked Units mechanic is not implemented yet, so no reward is granted.",
-    buildReward: () => ({ type: "NONE" })
+    rewardText: "Gain 1 Griffins (a Stacked Pack if there were at least 2 Stacked defenders).",
+    rewardStatus: "implemented",
+    // Gain the recruitable Griffins card: a Pack ("Stacked") when 2+ defenders were
+    // Stacked, otherwise a Few.
+    buildReward: (x) => ({ type: "GAIN_UNIT", unitDefId: "castle.griffins", side: x >= 2 ? "pack" : "few" })
   },
   naga_bank: {
     id: "naga_bank",

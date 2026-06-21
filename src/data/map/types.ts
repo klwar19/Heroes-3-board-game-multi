@@ -78,6 +78,16 @@ export type LocationInteraction =
   | { type: "GAIN_EXPERIENCE"; amount: number }
   | { type: "GAIN_MOVEMENT"; amount: number }
   | { type: "GAIN_MORALE"; amount: number }
+  | {
+      /**
+       * Add a unit card to the visiting player's army for free (Creature Bank
+       * "gain a unit" rewards). `side` is "pack" for a Stacked gain, "few"
+       * otherwise — a Pack is the game's "Stacked" (bigger) version of the card.
+       */
+      type: "GAIN_UNIT";
+      unitDefId: string;
+      side: "few" | "pack";
+    }
   | { type: "ROLL_RESOURCE_DICE"; count: number }
   | { type: "ROLL_TREASURE_DICE"; count: number }
   | { type: "SEARCH_SHARED_DECK"; deckId: "spells" | "abilities" | "artifacts"; count: number; times?: number }
