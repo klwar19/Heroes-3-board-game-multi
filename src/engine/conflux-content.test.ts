@@ -10,7 +10,8 @@ import {
   createAdventureGameState,
   createInitialGameState,
   getLegalActions,
-  makeCombatUnitFromArmy
+  makeCombatUnitFromArmy,
+  unitMatchesSpecialtyName
 } from "./index";
 import { startAdventureRound, startPlayerTurn } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
@@ -34,6 +35,12 @@ function passAllReactions(state: GameState): GameState {
 
 function unitWith(abilities: string[]): CombatUnitState {
   return { abilities } as CombatUnitState;
+}
+
+// Read pendingChoice through a function boundary so a prior `state.pendingChoice
+// = null` in the same test does not narrow the type to `never`.
+function pendingChoiceOf(state: GameState): GameState["pendingChoice"] {
+  return state.pendingChoice;
 }
 
 describe("Conflux content", () => {
@@ -93,6 +100,58 @@ describe("Conflux content", () => {
       options: [{ gold: 4 }, { searchSpellDeck: 3 }]
     });
     expect(coreBuildingDefinitions["conflux.city_hall"].cost).toEqual({ gold: 10, buildingMaterials: 3 });
+  });
+
+  it("City Hall Search runs at the start of the round; a card over the hand limit is discarded at your turn", () => {
+    const state = createAdventureGameState({
+      seed: "conflux-cityhall",
+      rollFirstPlayer: false,
+      players: [
+        { id: "p1", name: "Erdamon", factionId: "conflux", heroDefId: "erdamon" },
+        { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
+      ]
+    });
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1");
+    if (!town) {
+      throw new Error("no Conflux town");
+    }
+    if (!town.buildings.includes("conflux.city_hall")) {
+      town.buildings.push("conflux.city_hall");
+    }
+    // Sit exactly on the hand limit, so any card taken pushes over it.
+    const limit = 3;
+    state.players.p1.limits.hand = limit;
+    state.players.p1.hand = ["stat.attack", "stat.defense", "stat.power"];
+    state.pendingChoice = null;
+    if (state.adventure) {
+      state.adventure.rewardQueue = [];
+    }
+    state.round = 3; // a Resource round (odd > 1)
+    startAdventureRound(state);
+    pumpAdventureQueues(state);
+
+    // The City Hall choice is presented at the start of the round.
+    const choice = pendingChoiceOf(state);
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "city-hall") {
+      throw new Error("expected the Conflux City Hall choice at the start of the Resource round");
+    }
+    const search = getLegalActions(state, "p1").find((legal) => legal.label.includes("Search(3)"));
+    expect(search, "the Search(3) City Hall option should be offered at round start").toBeTruthy();
+    let next = applyOk(state, search!.action);
+    pumpAdventureQueues(next);
+
+    // Take the first revealed Spell — it lands in hand (the round-start gain),
+    // pushing the hand over the limit.
+    const keep = getLegalActions(next, "p1").find((legal) => legal.action.type === "RESOLVE_DECK_SEARCH");
+    expect(keep, "a revealed Spell to keep").toBeTruthy();
+    next = applyOk(next, keep!.action);
+    expect(next.players.p1.hand.length).toBe(limit + 1);
+
+    // At p1's turn the over-limit hand forces a discard before they can act
+    // (the hand-limit snapshot runs when the start-of-turn queue is pumped).
+    startPlayerTurn(next, "p1");
+    pumpAdventureQueues(next);
+    expect(next.players.p1.needsHandRefresh).toBe(true);
   });
 
   it("Garden of Life and Magic University are both implemented", () => {
@@ -211,6 +270,53 @@ describe("Conflux content", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Erdamon: every bonus doubles for ANY "… Elementals" unit; I = atk/def, IV =
+// +1 initiative, VI = instant +2 attack OR ongoing +3 initiative.
+// ---------------------------------------------------------------------------
+
+describe("Erdamon specialty (doubles for all Elementals)", () => {
+  it("doubles for every '… Elementals' unit, not just one", () => {
+    for (const name of ["Storm Elementals", "Ice Elementals", "Energy Elementals", "Magma Elementals", "Magic Elementals"]) {
+      expect(unitMatchesSpecialtyName(name, "an Elementals unit"), name).toBe(true);
+    }
+    // A non-elemental unit is not doubled.
+    expect(unitMatchesSpecialtyName("Sprites", "an Elementals unit")).toBe(false);
+  });
+
+  it("I/IV carry the all-Elementals doubling; VI is +2 attack (instant) OR +3 initiative (ongoing)", () => {
+    const one = cardLibrary["specialty.erdamon.1"];
+    expect(one?.effect.type).toBe("CHOOSE_ONE");
+    if (one?.effect.type === "CHOOSE_ONE") {
+      for (const option of one.effect.options) {
+        expect(option.effect.type).toBe("ADD_COMBAT_STAT");
+        if (option.effect.type === "ADD_COMBAT_STAT") {
+          expect(option.effect.doubleForUnitName).toBe("an Elementals unit");
+        }
+      }
+    }
+
+    const four = cardLibrary["specialty.erdamon.4"];
+    expect(four?.effect.type).toBe("CREATE_INITIATIVE_BUFF");
+    if (four?.effect.type === "CREATE_INITIATIVE_BUFF") {
+      expect(four.effect.amount).toBe(1);
+      expect(four.effect.doubleForUnitName).toBe("an Elementals unit");
+    }
+
+    const six = cardLibrary["specialty.erdamon.6"];
+    expect(six?.effect.type).toBe("CHOOSE_ONE");
+    if (six?.effect.type === "CHOOSE_ONE") {
+      const [attackOption, initiativeOption] = six.effect.options;
+      // +2 attack: an instant one-shot played as an attack reaction (trigger).
+      expect(attackOption.trigger?.event).toBe("UNIT_ATTACK_DECLARED");
+      expect(attackOption.effect).toMatchObject({ type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 });
+      // +3 initiative: an ongoing combat buff on a chosen friendly unit.
+      expect(initiativeOption.effect).toMatchObject({ type: "CREATE_INITIATIVE_BUFF", amount: 3 });
+      expect(initiativeOption.target?.type).toBe("friendly-unit");
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Conflux Pack Elementals: "+1 power to the first <school> Magic spell you cast
 // during this Activation" — school-scoped, only while that unit is active.
 // ---------------------------------------------------------------------------
@@ -285,9 +391,9 @@ describe("Conflux elemental school spell-power boost", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Magic University (Conflux): once per round, choose a School of Magic and
-// discard from the top of your deck until a Spell of that school is revealed,
-// then take it to hand.
+// Magic University (Conflux): a turn action you choose INSTEAD of buying spells
+// normally — once per round, pick a School of Magic and discard from the top of
+// your deck until a Spell of that school is revealed, then take it to hand.
 // ---------------------------------------------------------------------------
 
 describe("Conflux Magic University deck dig", () => {
@@ -317,24 +423,16 @@ describe("Conflux Magic University deck dig", () => {
     return state;
   }
 
-  /** Push the school dig directly (the choice's chosen option) and resolve it. */
-  function digFor(state: GameState, school: "air" | "earth" | "fire" | "water"): GameState {
-    state.adventure!.rewardQueue.push({
-      playerId: "p1",
-      kind: "visit-steps",
-      steps: [{ type: "MAGIC_UNIVERSITY_DIG", school }]
-    });
-    pumpAdventureQueues(state);
-    return state;
-  }
-
-  it("offers the school choice at the start of the Conflux player's turn", () => {
+  it("is offered as a per-school turn action (a choice besides buying spells), once per round", () => {
     const state = confluxGame("conflux-university-offer");
-    startPlayerTurn(state, "p1");
-    pumpAdventureQueues(state);
     const labels = getLegalActions(state, "p1").map((legal) => legal.label);
-    expect(labels.some((label) => label.includes("Air Magic spell"))).toBe(true);
-    expect(labels.some((label) => label.includes("Fire Magic spell"))).toBe(true);
+    expect(labels.some((label) => label.includes("Magic University") && label.includes("Air Magic spell"))).toBe(true);
+    expect(labels.some((label) => label.includes("Magic University") && label.includes("Fire Magic spell"))).toBe(true);
+
+    // After using it this round, it is no longer offered.
+    state.players.p1.magicUniversityUsedRound = state.round;
+    const after = getLegalActions(state, "p1").map((legal) => legal.label);
+    expect(after.some((label) => label.includes("Magic University"))).toBe(false);
   });
 
   it("discards down to — and takes — the first Spell of the chosen school, skipping a wrong-school spell", () => {
@@ -344,13 +442,19 @@ describe("Conflux Magic University deck dig", () => {
     // Top of deck (popped first) → bottom: a Statistic, then a Fire spell
     // (wrong school, must be skipped), then the Air spell we want.
     state.players.p1.deck = ["spell.lightning_bolt", "spell.curse", "stat.attack"];
-    digFor(state, "air");
+    const action = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "MAGIC_UNIVERSITY_ACTION" && legal.action.school === "air"
+    );
+    expect(action, "the Air-school Magic University action should be offered").toBeTruthy();
+    const next = applyOk(state, action!.action);
 
-    expect(state.players.p1.hand).toContain("spell.lightning_bolt");
+    expect(next.players.p1.hand).toContain("spell.lightning_bolt");
     // The skipped Fire spell and the Statistic were discarded, not taken.
-    expect(state.players.p1.discard).toContain("spell.curse");
-    expect(state.players.p1.discard).toContain("stat.attack");
-    expect(state.players.p1.deck).not.toContain("spell.lightning_bolt");
+    expect(next.players.p1.discard).toContain("spell.curse");
+    expect(next.players.p1.discard).toContain("stat.attack");
+    expect(next.players.p1.deck).not.toContain("spell.lightning_bolt");
+    // It is spent for the round.
+    expect(next.players.p1.magicUniversityUsedRound).toBe(next.round);
   });
 
   it("takes nothing (but still discards) when the deck holds no Spell of that school", () => {
@@ -359,10 +463,13 @@ describe("Conflux Magic University deck dig", () => {
     state.players.p1.discard = [];
     // Only a Fire spell + a Statistic; searching for Air finds nothing.
     state.players.p1.deck = ["spell.curse", "stat.defense"];
-    digFor(state, "air");
+    const action = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "MAGIC_UNIVERSITY_ACTION" && legal.action.school === "air"
+    );
+    const next = applyOk(state, action!.action);
 
-    expect(state.players.p1.hand).toEqual([]);
-    expect(state.players.p1.discard).toContain("spell.curse");
-    expect(state.players.p1.discard).toContain("stat.defense");
+    expect(next.players.p1.hand).toEqual([]);
+    expect(next.players.p1.discard).toContain("spell.curse");
+    expect(next.players.p1.discard).toContain("stat.defense");
   });
 });
