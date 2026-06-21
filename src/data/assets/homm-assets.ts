@@ -12,6 +12,10 @@
  * through `HeroDefinition.portrait` in src/data/factions/core.ts.
  */
 
+// Type-only import (erased at build/test time, so it adds no runtime coupling):
+// ties the Creature Bank art table below to the canonical bank-id union.
+import type { CreatureBankId } from "@/data/map/creature-banks";
+
 /**
  * Town-screen building renders per faction (heroes.thelazy.net town pages).
  * Dwellings map bronze/silver/gold to a fitting low/mid/high PC dwelling.
@@ -191,10 +195,43 @@ export function subterraneanGateTokenImage(layer: "surface" | "subterranean"): s
   return SUBTERRANEAN_GATE_TOKEN_IMAGES[layer];
 }
 
-/** Creature Bank field token art (Naval Battles), shown on a placed bank's hex. */
+/**
+ * Creature Bank field-tile art (Naval Battles), shown on a placed bank's hex.
+ *
+ * Each of the twelve banks has its OWN cropped field-tile scan (the Crypt
+ * mausoleum, the Pyramid, the sunken Shipwreck, etc.) so every bank hex shows
+ * the right structure instead of one shared placeholder. Keyed by CreatureBankId
+ * — the `Record<CreatureBankId, string>` type makes the compiler reject a
+ * missing or stray bank, keeping this table in lock-step with the bank roster.
+ * Downloaded by scripts/fetch-creature-bank-art.py.
+ */
+export const CREATURE_BANK_FIELD_IMAGES: Record<CreatureBankId, string> = {
+  imp_cache: "/assets/locations-imp_cache.webp",
+  crypt: "/assets/locations-crypt.webp",
+  dwarven_treasury: "/assets/locations-dwarven_treasury.webp",
+  medusa_stores: "/assets/locations-medusa_stores.webp",
+  dragon_fly_hive: "/assets/locations-dragon_fly_hive.webp",
+  shipwreck: "/assets/locations-shipwreck.webp",
+  derelict_ship: "/assets/locations-derelict_ship.webp",
+  pyramid: "/assets/locations-pyramid.webp",
+  griffin_conservatory: "/assets/locations-griffin_conservatory.webp",
+  naga_bank: "/assets/locations-naga_bank.webp",
+  cyclops_stockpile: "/assets/locations-cyclops_stockpile.webp",
+  dragon_utopia: "/assets/locations-dragon_utopia.webp"
+};
+
+/**
+ * Generic fallback used only when a bank id is missing/unknown — a placed bank
+ * always carries its `bankId`, so in practice every hex resolves to its own art
+ * above.
+ */
 export const CREATURE_BANK_FIELD_IMAGE = "/assets/locations-creature_bank.webp";
 
-export function creatureBankFieldImage(): string {
+/** Field-tile art for a specific Creature Bank, falling back to the generic token. */
+export function creatureBankFieldImage(bankId?: string): string {
+  if (bankId && bankId in CREATURE_BANK_FIELD_IMAGES) {
+    return CREATURE_BANK_FIELD_IMAGES[bankId as CreatureBankId];
+  }
   return CREATURE_BANK_FIELD_IMAGE;
 }
 

@@ -670,22 +670,48 @@ export function HexMapBoard({
         field.location === "subterranean_gate"
           ? subterraneanGateTokenImage(tile.group === "subterranean" ? "subterranean" : "surface")
           : field.location === "creature_bank"
-            ? creatureBankFieldImage()
+            ? creatureBankFieldImage(field.bankId)
             : undefined;
       if (tokenImage) {
-        overlays.push(
-          <image
-            className="locationToken"
-            data-space-id={spaceId}
-            height={2 * HEX_SIZE}
-            href={assetUrl(tokenImage)}
-            key={`${spaceId}-token`}
-            preserveAspectRatio="none"
-            width={HEX_WIDTH}
-            x={x - HEX_WIDTH / 2}
-            y={y - HEX_SIZE}
-          />
-        );
+        if (field.location === "creature_bank") {
+          // The bank's field-tile scan is landscape; clip it to the hex and use
+          // "slice" (cover) so the structure fills the cell centred and
+          // undistorted — the old "none" stretched it into the tall hex box,
+          // which squashed every building into an unrecognisable smear.
+          const clipId = `bankClip-${spaceId.replace(/:/g, "-")}`;
+          overlays.push(
+            <g key={`${spaceId}-token`}>
+              <clipPath id={clipId}>
+                <polygon points={hexCorners(x, y, HEX_SIZE - 1.2)} />
+              </clipPath>
+              <image
+                className="locationToken"
+                clipPath={`url(#${clipId})`}
+                data-space-id={spaceId}
+                height={2 * HEX_SIZE}
+                href={assetUrl(tokenImage)}
+                preserveAspectRatio="xMidYMid slice"
+                width={HEX_WIDTH}
+                x={x - HEX_WIDTH / 2}
+                y={y - HEX_SIZE}
+              />
+            </g>
+          );
+        } else {
+          overlays.push(
+            <image
+              className="locationToken"
+              data-space-id={spaceId}
+              height={2 * HEX_SIZE}
+              href={assetUrl(tokenImage)}
+              key={`${spaceId}-token`}
+              preserveAspectRatio="none"
+              width={HEX_WIDTH}
+              x={x - HEX_WIDTH / 2}
+              y={y - HEX_SIZE}
+            />
+          );
+        }
       }
       if (!artShown && glyph && field.location !== "empty_field" && !tokenImage) {
         overlays.push(
