@@ -139,6 +139,7 @@ import type {
   CardDefinition,
   CardId,
   CombatState,
+  CombatUnitState,
   GameAction,
   GameState,
   HeroId,
@@ -474,6 +475,21 @@ export const ATTACKER_BACKLINE = [16, 17, 18, 19];
 export const DEFENDER_FRONTLINE = [4, 5, 6, 7];
 export const DEFENDER_BACKLINE = [0, 1, 2, 3];
 export const COMBAT_UNIT_LIMIT = 5;
+
+/**
+ * Creature Bank battlefield (rulebook Creature Bank setup): unlike a normal
+ * neutral fight, the four guardians are fixed in the four CORNERS of the 4x5
+ * board, and the attacker forms up in the central SIX squares (the 2x3 block in
+ * the middle) rather than along the bottom rows.
+ *
+ *   0  .  .  3      corners (guards):    0  3  16  19
+ *   .  5  6  .      attacker cells:      5  6
+ *   .  9 10  .                           9 10
+ *   . 13 14  .                          13 14
+ *  16  .  . 19
+ */
+export const CREATURE_BANK_GUARD_CORNERS = [0, 3, 16, 19];
+export const CREATURE_BANK_ATTACKER_CELLS = [5, 6, 9, 10, 13, 14];
 
 function requireAdventure(state: GameState) {
   if (!state.adventure) {
@@ -3243,10 +3259,25 @@ function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void {
 }
 
 /**
+ * Pins the (always four) Creature Bank guardians to the four board corners,
+ * in their fixed party order. The attacker, by contrast, deploys in the central
+ * six squares (see CREATURE_BANK_ATTACKER_CELLS / placementCellsFor).
+ */
+function placeCreatureBankGuards(units: CombatUnitState[]): void {
+  units.forEach((unit, index) => {
+    const corner = CREATURE_BANK_GUARD_CORNERS[index];
+    if (corner !== undefined) {
+      unit.position = corner;
+    }
+  });
+}
+
+/**
  * Reveals a Creature Bank's defenders once placement is locked in (rulebook
  * p.66): build the fixed bank party, place its Stack Tokens by Scenario
- * Difficulty, then deploy them like any neutral guard line. Records X (the
- * number of Stacked defenders) on the combat context for the win reward.
+ * Difficulty, then pin them to the four corners (the bank battlefield, not a
+ * normal guard line). Records X (the number of Stacked defenders) on the combat
+ * context for the win reward.
  */
 function revealCreatureBankArmy(state: GameState, bankId: CreatureBankId): void {
   const combat = state.combat;
@@ -3271,7 +3302,7 @@ function revealCreatureBankArmy(state: GameState, bankId: CreatureBankId): void 
     return;
   }
 
-  placeNeutralUnits(units, DEFENDER_BACKLINE, DEFENDER_FRONTLINE);
+  placeCreatureBankGuards(units);
   for (const unit of units) {
     combat.units[unit.id] = unit;
   }
@@ -3675,15 +3706,27 @@ export function resolveShacklesChoice(state: GameState, playerId: PlayerId, opti
   continueStartOfCombat(state);
 }
 
-function placementCellsFor(state: GameState, playerId: PlayerId): number[] {
+/**
+ * The board cells a player may deploy into during Combat Setup. Normally the
+ * attacker takes the bottom two rows and the defender the top two. A Creature
+ * Bank is the exception: its guardians hold the four corners, so the attacker
+ * forms up in the central six squares instead.
+ */
+export function placementCellsFor(state: GameState, playerId: PlayerId): number[] {
   const combat = state.combat;
   if (!combat) {
     return [];
   }
 
-  return playerId === combat.attackerPlayerId
-    ? [...ATTACKER_FRONTLINE, ...ATTACKER_BACKLINE]
-    : [...DEFENDER_FRONTLINE, ...DEFENDER_BACKLINE];
+  if (playerId !== combat.attackerPlayerId) {
+    return [...DEFENDER_FRONTLINE, ...DEFENDER_BACKLINE];
+  }
+
+  if (combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId)) {
+    return [...CREATURE_BANK_ATTACKER_CELLS];
+  }
+
+  return [...ATTACKER_FRONTLINE, ...ATTACKER_BACKLINE];
 }
 
 export function placeCombatUnit(state: GameState, action: Extract<GameAction, { type: "PLACE_COMBAT_UNIT" }>): void {

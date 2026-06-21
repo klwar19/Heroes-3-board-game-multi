@@ -441,13 +441,26 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
   }
 };
 
-/** Stack Tokens placed on the bank by Scenario Difficulty (rulebook p.66). */
+/**
+ * Stack Tokens placed on the bank by Scenario Difficulty (rulebook p.66). This
+ * is the number of token ROLLS, not the guaranteed number of Stacked defenders:
+ * each candidate is only Stacked `STACK_TOKEN_PLACEMENT_PERCENT`% of the time
+ * (see `buildCreatureBankCombatUnits`).
+ */
 export const STACK_TOKENS_BY_DIFFICULTY = {
   easy: 1,
   normal: 2,
   hard: 3,
   impossible: 4
 } as const;
+
+/**
+ * Per-defender chance (percent) that a rolled Stack Token actually lands. A
+ * token is rolled once for each of the difficulty's candidate defenders, so the
+ * Stacked count is NOT fixed: even Impossible (4 rolls) can come up with all
+ * four Stacked (every roll hit) or none at all (every roll missed).
+ */
+export const STACK_TOKEN_PLACEMENT_PERCENT = 85;
 
 /** The four Stack Tokens, in their fixed pool order, with the stat delta each applies. */
 export const STACK_TOKEN_STATS: readonly StackTokenStat[] = ["attack", "defense", "health", "initiative"];

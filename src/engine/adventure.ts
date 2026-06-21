@@ -14,6 +14,7 @@ import { hasInternalBorder } from "@/data/map/borders";
 import {
   CREATURE_BANKS,
   CREATURE_BANK_UNIT_SIDES,
+  STACK_TOKEN_PLACEMENT_PERCENT,
   STACK_TOKEN_STATS,
   STACK_TOKENS_BY_DIFFICULTY,
   type CreatureBankId
@@ -4074,11 +4075,13 @@ export function buildCreatureBankDraws(bankId: CreatureBankId): NeutralDraw[] {
 
 /**
  * Builds the Creature Bank defenders for a combat and places the Stack Tokens
- * (rulebook p.66-67). The number of tokens follows the Scenario Difficulty
- * (Easy 1 / Normal 2 / Hard 3 / Impossible 4), each token going on a DIFFERENT
- * bank card and modifying one random statistic (+1 attack/defense/health or +2
- * initiative). Returns the deployed-but-not-positioned units and the number of
- * Stacked defenders (X, the reward multiplier).
+ * (rulebook p.66-67). The Scenario Difficulty (Easy 1 / Normal 2 / Hard 3 /
+ * Impossible 4) sets how many token ROLLS are made, NOT a guaranteed count:
+ * each roll lands on a DIFFERENT candidate card only `STACK_TOKEN_PLACEMENT_PERCENT`%
+ * of the time. A landed token modifies one random statistic (+1 attack/defense/
+ * health or +2 initiative). So even Impossible can deploy anywhere from 0 to 4
+ * Stacked defenders. Returns the deployed-but-not-positioned units and the
+ * number of Stacked defenders (X, the reward multiplier).
  */
 export function buildCreatureBankCombatUnits(
   state: GameState,
@@ -4092,24 +4095,31 @@ export function buildCreatureBankCombatUnits(
   });
 
   const difficulty = state.adventure?.difficulty ?? "normal";
-  // "place them randomly on up to four different Creature Bank unit cards"
-  const tokenCount = Math.min(STACK_TOKENS_BY_DIFFICULTY[difficulty], units.length, 4);
+  // The difficulty caps how many DISTINCT defenders are candidates for a token.
+  const tokenRolls = Math.min(STACK_TOKENS_BY_DIFFICULTY[difficulty], units.length, 4);
 
   const random = adventureRandom(state, `creature-bank-stack-${bankId}`);
-  // Partial Fisher-Yates: pick `tokenCount` DISTINCT defenders to stack.
+  // Partial Fisher-Yates: pick `tokenRolls` DISTINCT candidate defenders.
   const order = units.map((_, index) => index);
-  for (let i = 0; i < tokenCount; i += 1) {
+  for (let i = 0; i < tokenRolls; i += 1) {
     const j = random.nextInt(i, order.length - 1);
     [order[i], order[j]] = [order[j], order[i]];
   }
-  for (let i = 0; i < tokenCount; i += 1) {
+  let stackedCount = 0;
+  for (let i = 0; i < tokenRolls; i += 1) {
+    // Roll per candidate: the token only lands STACK_TOKEN_PLACEMENT_PERCENT% of
+    // the time, so the Stacked count varies run to run even at a fixed difficulty.
+    if (random.nextInt(1, 100) > STACK_TOKEN_PLACEMENT_PERCENT) {
+      continue;
+    }
     const unit = units[order[i]];
     unit.stackToken = STACK_TOKEN_STATS[random.nextInt(0, STACK_TOKEN_STATS.length - 1)];
     // Re-derive the fighting statistics so the token's bonus is baked in.
     applyUnitCurrentSide(unit, ruleset);
+    stackedCount += 1;
   }
 
-  return { units, stackedCount: tokenCount };
+  return { units, stackedCount };
 }
 
 /**

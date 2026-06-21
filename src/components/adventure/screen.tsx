@@ -3042,6 +3042,8 @@ export function PlacementPanel({
   const myTurn = setup.pendingPlayerIds[0] === viewerPlayerId;
   const placed = setup.placedUnitIds[viewerPlayerId] ?? [];
   const versusNeutrals = combat.context.kind === "neutral";
+  // Creature Bank battlefield: guardians hold the corners, you deploy centrally.
+  const versusBank = combat.context.kind === "neutral" && Boolean(combat.context.bankId);
 
   const placeActions = legalActions.filter(
     (legal): legal is LegalAction & { action: Extract<GameAction, { type: "PLACE_COMBAT_UNIT" }> } =>
@@ -3141,7 +3143,11 @@ export function PlacementPanel({
           {cellsForSelected.length === 0 ? <small>No free spaces.</small> : null}
         </div>
       ) : (
-        <small>Drag units onto your back and front lines — placed units can be dragged around freely until you lock in.</small>
+        <small>
+          {versusBank
+            ? "Drag units into the central six squares — the bank's four guardians hold the corners. Placed units can be dragged around freely until you lock in."
+            : "Drag units onto your back and front lines — placed units can be dragged around freely until you lock in."}
+        </small>
       )}
       {finish ? (
         <button className="commandButton primary combatReadyButton" onClick={() => onAction(finish.action)} type="button">

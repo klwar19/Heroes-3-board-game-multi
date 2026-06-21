@@ -27,10 +27,7 @@ import {
   unlockedRecruitTiers
 } from "./adventure";
 import {
-  ATTACKER_BACKLINE,
-  ATTACKER_FRONTLINE,
-  DEFENDER_BACKLINE,
-  DEFENDER_FRONTLINE,
+  placementCellsFor,
   getHeroMoveDestinations,
   hillFortCost,
   inCombatPrep,
@@ -5147,10 +5144,7 @@ function addCombatSetupActions(actions: LegalAction[], state: GameState, playerI
   }
 
   const placed = setup.placedUnitIds[playerId] ?? [];
-  const cells =
-    playerId === combat.attackerPlayerId
-      ? [...ATTACKER_FRONTLINE, ...ATTACKER_BACKLINE]
-      : [...DEFENDER_FRONTLINE, ...DEFENDER_BACKLINE];
+  const cells = placementCellsFor(state, playerId);
   const takenPositions = new Set(Object.values(combat.units).map((unit) => unit.position));
 
   if (placed.length < setup.unitLimit) {

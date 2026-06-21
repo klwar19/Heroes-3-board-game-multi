@@ -166,6 +166,8 @@ export {
   ATTACKER_BACKLINE,
   ATTACKER_FRONTLINE,
   COMBAT_UNIT_LIMIT,
+  CREATURE_BANK_ATTACKER_CELLS,
+  CREATURE_BANK_GUARD_CORNERS,
   DEFENDER_BACKLINE,
   DEFENDER_FRONTLINE,
   canHeroDiscoverAdjacentTile,
@@ -176,6 +178,7 @@ export {
   isTileRotationConnected,
   observatoryPlacementCenters,
   observatoryRevealTargets,
+  placementCellsFor,
   pumpAdventureQueues
 } from "./adventure-reducer";
 export {

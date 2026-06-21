@@ -110,15 +110,27 @@ is NOT done:
 - The 12 banks' defenders, bank-card stats (their OWN stats, no tier — distinct
   from Few/Pack/Neutral), and resource/morale/search rewards scaled by the
   number of Stacked defenders (X).
-- Stack Tokens: count by Scenario Difficulty (Easy 1 / Normal 2 / Hard 3 /
-  Impossible 4), placed on distinct cards, +1 attack/defense/health or +2
-  initiative; a Stacked defender absorbs one lethal blow by discarding its token
-  and carrying the leftover damage (`markUnitRemovedIfNeeded`). The board shows a
-  gold badge naming each token's stat.
+- Stack Tokens: the Scenario Difficulty (Easy 1 / Normal 2 / Hard 3 /
+  Impossible 4) sets the number of token ROLLS, NOT a guaranteed count. Each roll
+  targets a distinct candidate card and lands only `STACK_TOKEN_PLACEMENT_PERCENT`
+  (85)% of the time, so the Stacked count varies run-to-run — even Impossible can
+  come up anywhere from 0 to 4 Stacked defenders (HOUSE RULE; the rulebook places
+  a fixed count). A landed token gives +1 attack/defense/health or +2 initiative;
+  a Stacked defender absorbs one lethal blow by discarding its token and carrying
+  the leftover damage (`markUnitRemovedIfNeeded`). The board shows a gold badge
+  naming each token's stat. Tested in `creature-bank-combat.test.ts` ("never
+  Stacks more than the difficulty allows" and "rolls each token at ~85%").
 - Bank combat: no Quick Combat, no experience; win marks a Black Cube and grants
   the reward. HOUSE RULE (overrides the rulebook): a bank DOES obey the one-Round
   time limit and the spend-1-MP-to-extend rule, exactly like a normal neutral
   fight.
+- Battlefield formation (HOUSE RULE): a Creature Bank fight uses a special
+  layout — the four guardians are pinned to the four board CORNERS
+  (`CREATURE_BANK_GUARD_CORNERS` = 0/3/16/19) and the attacker deploys in the
+  central SIX squares (`CREATURE_BANK_ATTACKER_CELLS` = 5/6/9/10/13/14), not the
+  usual front/back rows. The shared `placementCellsFor` (engine, legal-actions,
+  and `board.tsx` all consume it) and `placeCreatureBankGuards` enforce it;
+  tested in `creature-bank-combat.test.ts` ("battlefield formation").
 - Placement: with the rule on (`creatureBanks`, default ON), discovering a
   Far (II-III) or Near (IV-V) Map Tile with a Blocked Field offers the
   discovering player a Creature Bank token from the matching shuffled pile
