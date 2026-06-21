@@ -394,10 +394,20 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     units: ["neutral.gold_golems", "neutral.gold_golems", "neutral.diamond_golems", "neutral.diamond_golems"],
     rewardText:
       "Search (5) the Spell Deck. Extra: up to X times, remove 1 Spell/Ability/Artifact card from your hand or discard pile, then Search (5) the appropriate Deck.",
-    rewardStatus: "partial",
-    rewardNote:
-      "Base Search (5) the Spell Deck is granted. The per-Stack 'remove a card then Search (5)' extra is not implemented yet.",
-    buildReward: () => ({ type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 })
+    rewardStatus: "implemented",
+    // Base Search (5) the Spell Deck, then the per-Stack extra: up to X times,
+    // remove a Spell/Ability/Artifact card (hand or discard) and Search (5) the
+    // deck matching the removed card. X = 0 collapses to just the base search.
+    buildReward: (x) =>
+      x > 0
+        ? {
+            type: "SEQUENCE",
+            interactions: [
+              { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 },
+              { type: "REMOVE_THEN_SEARCH_REPEAT", times: x, searchCount: 5 }
+            ]
+          }
+        : { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 }
   },
   griffin_conservatory: {
     id: "griffin_conservatory",

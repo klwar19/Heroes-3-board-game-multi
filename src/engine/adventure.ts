@@ -1324,6 +1324,10 @@ function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
       ];
     case "SEARCH_DISCARD":
       return [{ type: "SEARCH_DISCARD", deckId: interaction.deckId, count: interaction.count }];
+    case "REMOVE_THEN_SEARCH_REPEAT":
+      return interaction.times > 0
+        ? [{ type: "REMOVE_THEN_SEARCH_REPEAT", remaining: interaction.times, searchCount: interaction.searchCount }]
+        : [];
     case "HILL_FORT":
       return [{ type: "HILL_FORT" }];
     case "SUBTERRANEAN_GATE":
@@ -2861,6 +2865,66 @@ export function processPendingVisit(state: GameState): void {
         visit.steps.unshift({
           type: "CHOOSE_ONE",
           prompt: `Plane Between Planes: Remove up to ${step.remaining} card(s) from your hand or discard pile`,
+          options
+        });
+        break;
+      }
+      case "REMOVE_THEN_SEARCH_REPEAT": {
+        // Pyramid (Creature Bank) per-Stack extra: rebuild the menu each time so
+        // a later removal never re-offers a card an earlier one already took.
+        // Each pick removes one Spell/Ability/Artifact from hand or discard pile
+        // (out of the game) and Searches(searchCount) the matching deck. Optional
+        // — a Done exit lets the player stop early or remove nothing.
+        const player = state.players[visit.playerId];
+        if (!player || step.remaining <= 0) {
+          break;
+        }
+        const startingAbility = player.heroDefId
+          ? coreHeroDefinitions[player.heroDefId]?.startingAbilityCardId
+          : undefined;
+        const deckForKind = (cardId: CardId): "spells" | "artifacts" | "abilities" | undefined => {
+          const kind = cardLibrary[cardId]?.kind;
+          if (kind === "spell") return "spells";
+          if (kind === "artifact") return "artifacts";
+          if (kind === "ability") return "abilities";
+          return undefined;
+        };
+        const seen = new Set<string>();
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        const addSource = (cardId: CardId, source: "hand" | "discard") => {
+          const deckId = deckForKind(cardId);
+          // Only Spell/Ability/Artifact cards (the searchable decks) qualify, and
+          // never the hero's Starting Ability — matching the "removable" rule used
+          // by the Faerie Ring / Market of Time removals.
+          if (!deckId || cardId === startingAbility) {
+            return;
+          }
+          const key = `${source}:${cardId}`;
+          if (seen.has(key)) {
+            return;
+          }
+          seen.add(key);
+          const steps: VisitStep[] = [
+            { type: "REMOVE_CARD_FROM_PILE", cardId, source },
+            { type: "SEARCH_SHARED_DECK", deckId, count: step.searchCount }
+          ];
+          if (step.remaining - 1 > 0) {
+            steps.push({ type: "REMOVE_THEN_SEARCH_REPEAT", remaining: step.remaining - 1, searchCount: step.searchCount });
+          }
+          options.push({
+            label: `Remove ${cardLibrary[cardId]?.name ?? cardId} (${source}), Search (${step.searchCount}) the ${deckId} deck`,
+            steps
+          });
+        };
+        player.hand.forEach((cardId) => addSource(cardId, "hand"));
+        player.discard.forEach((cardId) => addSource(cardId, "discard"));
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Done", steps: [] });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `Pyramid: remove a card and Search (${step.searchCount}) its deck (up to ${step.remaining} more)`,
           options
         });
         break;
