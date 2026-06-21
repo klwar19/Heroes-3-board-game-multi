@@ -68,7 +68,8 @@ export type FactionId =
   | "dungeon"
   | "stronghold"
   | "fortress"
-  | "tower";
+  | "tower"
+  | "cove";
 
 export type TargetRef =
   | { type: "unit"; unitId: UnitId }
@@ -642,6 +643,8 @@ export type EffectDefinition =
        * clears the target's Paralysis token (a heal of 0 still clears it).
        */
       removeParalysis?: boolean;
+      /** Astra's Cure I: "… then draw N card(s)" after the cleanse. */
+      drawCards?: number;
     }
   | {
       type: "CANCEL_SPELL";
@@ -4147,6 +4150,19 @@ export type CombatUnitState = {
   usedLethalSaveThisCombat?: boolean;
   /** Phoenixes: set once this unit has spent its once-per-combat Rebirth self-save. */
   usedRebirthThisCombat?: boolean;
+  /**
+   * Cove Haspids (Few): set the moment this unit's Pack side is defeated and it
+   * flips down to its Few side during a combat. The Few side's "Vengeance"
+   * ability grants +2 Attack only while this is set, so a Few recruited fresh
+   * (never a Pack) gets no bonus. Reset implicitly per combat (units are rebuilt).
+   */
+  flippedDownThisCombat?: boolean;
+  /**
+   * Cove Seamen (Pack): set once this unit has banked its once-per-combat
+   * "gain 2 gold when it removes a unit from Combat" reward, so it never pays
+   * out twice in the same fight.
+   */
+  gainedKillGoldThisCombat?: boolean;
   retaliatedThisRound: boolean;
   defenseToken: boolean;
   /**
@@ -5470,6 +5486,10 @@ export type PendingChoice =
           drawCards?: number;
           reinforceBronzeFree?: boolean;
           tradingPost?: boolean;
+          /** Cove City Hall: gain Hero experience (paired with removeArtifactFromHand). */
+          experience?: number;
+          /** Cove City Hall: this option removes one Artifact card from hand as its cost. */
+          removeArtifactFromHand?: boolean;
         }[];
       };
       /** combat-reposition: Harpies' optional fly-back after their attack. */

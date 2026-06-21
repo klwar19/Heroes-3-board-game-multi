@@ -180,13 +180,22 @@ export function getAttackDieDamageFollowUps(unit: CombatUnitState): AttackDieDam
   );
 }
 
-/** Hydras: one more separate attack against an enemy adjacent to the Hydra. */
+/**
+ * Hydras: one more separate attack against an enemy adjacent to the Hydra.
+ * Cove Ayssids reuse this with `requiresTargetRemoved` so the caller only fires
+ * the follow-up when the primary attack removed the original target.
+ */
 export function getSelfAdjacentSecondAttackAbility(
   unit: CombatUnitState
-): { abilityId: string; abilityName: string; baseAttack?: number } | null {
+): { abilityId: string; abilityName: string; baseAttack?: number; requiresTargetRemoved: boolean } | null {
   for (const ability of getAbilitiesWithEffect(unit, "SECOND_ATTACK_ONE_ADJACENT_TO_SELF")) {
     if (ability.effect?.type === "SECOND_ATTACK_ONE_ADJACENT_TO_SELF") {
-      return { abilityId: ability.id, abilityName: ability.name, baseAttack: ability.effect.baseAttack };
+      return {
+        abilityId: ability.id,
+        abilityName: ability.name,
+        baseAttack: ability.effect.baseAttack,
+        requiresTargetRemoved: Boolean(ability.effect.requiresTargetRemoved)
+      };
     }
   }
 
@@ -844,6 +853,58 @@ export function getDeckDiscardTakeSpell(
   for (const ability of getAbilitiesWithEffect(unit, "DECK_DISCARD_TAKE_SPELL")) {
     if (ability.effect?.type === "DECK_DISCARD_TAKE_SPELL" && ability.effect.trigger === trigger) {
       return { abilityId: ability.id, abilityName: ability.name, count: ability.effect.count };
+    }
+  }
+  return null;
+}
+
+/**
+ * Cove Nix (Pack): the most restrictive per-attack damage cap this unit carries,
+ * or `null` when it has none. The caller clamps each individual attack's damage
+ * to `amount` (attacks only — Spell/ability damage is never capped) and uses the
+ * ability id/name to log the cap when it actually bites.
+ */
+export function getDamageCapPerAttack(
+  unit: CombatUnitState
+): { amount: number; abilityId: string; abilityName: string } | null {
+  let cap: { amount: number; abilityId: string; abilityName: string } | null = null;
+  for (const ability of getAbilitiesWithEffect(unit, "CAP_DAMAGE_PER_ATTACK")) {
+    if (ability.effect?.type === "CAP_DAMAGE_PER_ATTACK") {
+      if (cap === null || ability.effect.amount < cap.amount) {
+        cap = { amount: ability.effect.amount, abilityId: ability.id, abilityName: ability.name };
+      }
+    }
+  }
+  return cap;
+}
+
+/**
+ * Cove Haspids (Few): the flat Attack bonus this unit gets *after* it has been
+ * flipped down from its Pack side this combat. Returns 0 until the flip flag is
+ * set, so a freshly recruited Few never benefits.
+ */
+export function getAttackBonusIfFlipped(unit: CombatUnitState): number {
+  if (!unit.flippedDownThisCombat) {
+    return 0;
+  }
+  return getAbilitiesWithEffect(unit, "ATTACK_BONUS_IF_FLIPPED").reduce(
+    (total, ability) => total + (ability.effect?.type === "ATTACK_BONUS_IF_FLIPPED" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/** Cove Seamen (Pack): the once-per-combat "gain N resource on a kill" reward. */
+export function getOnKillResourceGain(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; resource: "gold" | "buildingMaterials" | "valuables"; amount: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ON_KILL_GAIN_RESOURCE")) {
+    if (ability.effect?.type === "ON_KILL_GAIN_RESOURCE") {
+      return {
+        abilityId: ability.id,
+        abilityName: ability.name,
+        resource: ability.effect.resource,
+        amount: ability.effect.amount
+      };
     }
   }
   return null;

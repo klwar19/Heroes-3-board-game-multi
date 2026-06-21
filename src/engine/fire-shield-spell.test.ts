@@ -214,3 +214,61 @@ describe("Fire Shield spell — burning the attacker", () => {
     expect(burns[0]).toMatchObject({ amount: 1 });
   });
 });
+
+describe("Fire Shield kill vs. Vampire Life Drain", () => {
+  // A Vampire that the defender's Fire Shield burns to death during its OWN
+  // melee attack must stay dead: its "remove up to 2 damage" Life Drain runs
+  // right after the burn, and must not heal the corpse back below max Health
+  // once UNIT_REMOVED has already fired (state vs. event-log divergence; the
+  // Pit Lords' "a unit was removed" trigger is also already armed).
+  function vampireBurnsToDeath(seed: string): GameState {
+    const state = createInitialGameState(seed);
+    state.combat!.obstacles = [];
+    const vampire = state.combat!.units.unit_p1_crusaders;
+    const defender = state.combat!.units.unit_p2_skeletons;
+    // Neutral Vampire kit: never provokes retaliation, drains life on its attack.
+    vampire.abilities = ["ignores-retaliation", "vampire-heal-on-attack"];
+    vampire.variant = "few"; // single-sided (like the neutral card): a kill removes it, no Pack→Few flip
+    vampire.attack = 1; // a light hit — the 40-HP defender survives
+    vampire.position = 9;
+    vampire.maxHealth = 10;
+    vampire.damage = 9; // one point from death
+    defender.abilities = [];
+    defender.position = 13; // vertically adjacent → a melee attack
+    defender.maxHealth = 40;
+    defender.damage = 0;
+    pushFireShield(state, "unit_p2_skeletons", 1); // 9 + 1 = exactly lethal
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_crusaders";
+    state.combat!.units.unit_p1_crusaders.activatedThisRound = false;
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    return state;
+  }
+
+  it("the burned-to-death Vampire stays removed — Life Drain does not revive it", () => {
+    const state = vampireBurnsToDeath("vampire-fireshield-death");
+    const attacked = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_crusaders",
+      defenderId: "unit_p2_skeletons"
+    });
+    const result = passAllReactions(attacked);
+    const vampire = result.combat!.units.unit_p1_crusaders;
+
+    // Dead and staying dead: at/over max Health, and removed once.
+    expect(vampire.damage).toBeGreaterThanOrEqual(vampire.maxHealth);
+    expect(
+      result.eventLog.some((event) => event.type === "UNIT_REMOVED" && event.unitId === "unit_p1_crusaders")
+    ).toBe(true);
+    // The Life Drain heal must NOT have fired on the corpse.
+    expect(
+      result.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "vampire-heal-on-attack"
+      )
+    ).toBe(false);
+  });
+});
