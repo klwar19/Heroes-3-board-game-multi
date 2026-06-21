@@ -4939,6 +4939,17 @@ export type VisitStep =
       count: number;
     }
   | {
+      /**
+       * Pyramid (Creature Bank): rebuild a remove-then-search menu up to
+       * `remaining` more times. Each pick removes one Spell/Ability/Artifact
+       * card from hand or discard pile and Searches (`searchCount`) the deck
+       * matching the removed card; a Done exit ends the loop early.
+       */
+      type: "REMOVE_THEN_SEARCH_REPEAT";
+      remaining: number;
+      searchCount: number;
+    }
+  | {
       /** Hill Fort: reinforce one Few unit, its cost reduced by 3 gold (min 0). */
       type: "HILL_FORT";
     }

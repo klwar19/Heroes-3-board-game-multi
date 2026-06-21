@@ -652,6 +652,69 @@ describe("Creature Bank combat lifecycle", () => {
     expect(state.adventure!.fields["bank-field"].blackCube).toBe(true);
     expect(state.combat).toBeNull();
   });
+
+  it("Pyramid: a Stacked win grants the base Search plus a remove-a-card-then-Search(5) per Stacked defender", () => {
+    expect(CREATURE_BANKS.pyramid.rewardStatus).toBe("implemented");
+
+    let state = createAdventureGameState({ seed: "bank-pyramid", difficulty: "normal", rollFirstPlayer: false });
+    state = state.players.p1.needsHandRefresh
+      ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      : state;
+    placeBankUnderHero(state, "pyramid", 7);
+    const hero = getMainHero(state, "p1")!;
+
+    startNeutralEncounter(state, hero, state.adventure!.fields["bank-field"]);
+    const place = getLegalActions(state, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
+    state = apply(state, place!.action);
+    state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+
+    // Force exactly one Stacked defender so the per-Stack extra runs once.
+    if (state.combat?.context.kind === "neutral") {
+      state.combat.context.bankStackCount = 1;
+    }
+    // Give the hero a removable Spell plus a Statistic, which must NOT be offered.
+    state.players.p1.hand = ["spell.magic_arrow", "stat.attack"];
+    state.players.p1.discard = [];
+
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.controllerId === "neutrals") {
+        unit.damage = unit.maxHealth;
+      }
+    }
+    // The force-kill shortcut can leave a moot activation-order tie open (the two
+    // Diamond Golems share initiative); real combat resolves it as it plays out.
+    state.pendingChoice = null;
+    finishCombatIfNeeded(state);
+    finalizeAdventureCombat(state);
+
+    // The win cubed the field and queued the base Search (5) of the Spell deck.
+    expect(state.adventure!.fields["bank-field"].blackCube).toBe(true);
+    expect(
+      state.adventure!.rewardQueue.some(
+        (reward) => reward.kind === "shared-deck-search" && reward.deckId === "spells" && reward.count === 5
+      )
+    ).toBe(true);
+
+    // The per-Stack extra is waiting for input: a remove-then-Search menu.
+    expect(state.adventure!.pendingVisit?.steps[0]?.type).toBe("CHOOSE_ONE");
+    const actions = getLegalActions(state, "p1");
+    const removeOptions = actions.filter((legal) => legal.label.startsWith("Remove "));
+    // Only the Spell qualifies (the Statistic is excluded); a Done exit is offered.
+    expect(removeOptions).toHaveLength(1);
+    expect(removeOptions[0].label).toContain("Magic Arrow");
+    expect(removeOptions[0].label).toContain("spells deck");
+    expect(actions.some((legal) => legal.label === "Done")).toBe(true);
+
+    state = apply(state, removeOptions[0].action);
+
+    // The Spell left the game and a matching Search (5) of the Spell deck fired.
+    expect(state.players.p1.removed).toContain("spell.magic_arrow");
+    const searched = state.adventure?.rewardQueue.some(
+      (reward) => reward.kind === "shared-deck-search" && reward.deckId === "spells" && reward.count === 5
+    );
+    const choosing = state.pendingChoice?.type === "DECK_SEARCH";
+    expect(searched || choosing).toBe(true);
+  });
 });
 
 // ===========================================================================

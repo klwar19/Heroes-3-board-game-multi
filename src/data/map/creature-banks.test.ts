@@ -287,9 +287,23 @@ describe("Creature Bank rewards", () => {
     }
   });
 
-  it("marks the Pyramid extra partial (only the base Search runs)", () => {
-    expect(CREATURE_BANKS.pyramid.rewardStatus).toBe("partial");
-    expect(CREATURE_BANKS.pyramid.buildReward(3)).toEqual({ type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 });
+  it("builds the Pyramid base Search plus a remove-then-Search(5) loop per Stacked defender", () => {
+    expect(CREATURE_BANKS.pyramid.rewardStatus).toBe("implemented");
+    // With no Stacked defenders the reward is just the base Search (5) Spells.
+    expect(CREATURE_BANKS.pyramid.buildReward(0)).toEqual({
+      type: "SEARCH_SHARED_DECK",
+      deckId: "spells",
+      count: 5
+    });
+    // With X Stacked defenders: base Search, then a single REMOVE_THEN_SEARCH_REPEAT
+    // that loops up to X times (each removal Searches (5) the matching deck).
+    expect(CREATURE_BANKS.pyramid.buildReward(3)).toEqual({
+      type: "SEQUENCE",
+      interactions: [
+        { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 },
+        { type: "REMOVE_THEN_SEARCH_REPEAT", times: 3, searchCount: 5 }
+      ]
+    });
   });
 });
 

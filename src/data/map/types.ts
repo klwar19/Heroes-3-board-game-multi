@@ -145,6 +145,17 @@ export type LocationInteraction =
       count: number;
     }
   | {
+      /**
+       * Pyramid (Creature Bank) per-Stack extra: up to `times`, remove one
+       * Spell/Ability/Artifact card from your hand OR discard pile (out of the
+       * game), then Search (`searchCount`) the deck that matches the removed
+       * card. Each removal is optional, so the player may stop early.
+       */
+      type: "REMOVE_THEN_SEARCH_REPEAT";
+      times: number;
+      searchCount: number;
+    }
+  | {
       /** Hill Fort: reinforce one Few unit, cost reduced by 3 gold (min 0). */
       type: "HILL_FORT";
     }

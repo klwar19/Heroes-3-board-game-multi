@@ -195,9 +195,15 @@ is NOT done:
 (`src/data/units/abilities.ts`) is now empty; it remains the explicit, reviewable
 home any FUTURE decorative bank clause must be declared in.
 
+All twelve bank rewards are now engine-resolved (`rewardStatus: "implemented"`).
+The Pyramid's per-Stack extra — "up to X times, remove 1 Spell/Ability/Artifact
+card from hand or discard pile, then Search (5) the matching deck" — runs via the
+`REMOVE_THEN_SEARCH_REPEAT` interaction/visit-step (an optional, Done-exitable
+loop built in `processPendingVisit`, mirroring `REMOVE_UP_TO`). It is covered by
+a test that fails if the logic is removed (`creature-banks.test.ts` for the data
+and `creature-bank-combat.test.ts` "Pyramid: a Stacked win …" end-to-end).
+
 **NOT implemented at all (deferred):**
-- The Pyramid's per-Stack "remove a card then Search(5)" extra is unimplemented
-  (`rewardStatus: "partial"`; only the base Search(5) runs).
 - Bank units still carry the underlying unit's `grade` field for placement and
   display (it is the gradeless TARGETING/AI rules above, not the field itself,
   that implement the "no tier" behaviour). The "gain a Stacked unit" reward is
