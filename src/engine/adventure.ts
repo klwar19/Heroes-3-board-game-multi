@@ -4636,6 +4636,11 @@ export function startAdventureRound(state: GameState): void {
         if (effect?.type === "ASTROLOGERS_HALF_GOLD_REINFORCE") {
           queueHalfGoldReinforce(state, playerId, buildingId, effect.tiers);
         }
+        if (effect?.type === "ASTROLOGERS_ROUND_CHOICE") {
+          // Cove City Hall: the same choice machinery as a Resource-round City
+          // Hall, but fired on the Astrologers' round.
+          state.adventure?.rewardQueue.push({ playerId, kind: "city-hall-choice", buildingId });
+        }
         if (effect?.type === "COMBAT_CUBES" && effect.gainOn === "astrologers" && town) {
           gainTownCube(state, town, buildingId, effect.max);
         }

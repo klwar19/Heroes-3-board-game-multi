@@ -113,7 +113,18 @@ const creatureVoices: Record<string, string> = {
   titans: "titan",
   hydras: "hydra",
   phoenixes: "phoenix",
-  rust_dragons: "rust-dragon"
+  rust_dragons: "rust-dragon",
+  // Cove (HotA): the converted Cove creature sound sets are already in the
+  // manifest. Board-game names map onto their HotA voices — Oceanids = Nymph,
+  // Seamen = Crew Mate, Sea Dogs = Pirate, Ayssids = Stormbird, Sorceresses =
+  // Sea Witch, Haspids = Sea Serpent (Nix keep their own).
+  oceanids: "nymph",
+  seamen: "crew-mate",
+  sea_dogs: "pirate",
+  ayssids: "stormbird",
+  sorceresses: "sea-witch",
+  nix: "nix",
+  haspids: "sea-serpent"
 };
 
 /**

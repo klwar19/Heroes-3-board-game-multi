@@ -79,6 +79,9 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
       unit.damage = 0;
       applyUnitCurrentSide(unit, getRuleset(state));
       unit.damage = Math.min(unit.maxHealth, Math.max(0, excess));
+      // Cove Haspids (Few): record that this unit was knocked down from its
+      // Pack side this combat, so the Few side's "Vengeance" +2 Attack turns on.
+      unit.flippedDownThisCombat = true;
 
       appendEvent(state, {
         type: "UNIT_FLIPPED",

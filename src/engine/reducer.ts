@@ -195,9 +195,12 @@ import {
   getActivationDamageSpellAbility,
   getActivationSpellPowerBoost,
   getAfterRetaliationAttackAbility,
+  getAttackBonusIfFlipped,
   getAttackBonusOnAttackDie,
   getAttackBonusVsDefenderName,
   getAttackDefenseReductionAbility,
+  getDamageCapPerAttack,
+  getOnKillResourceGain,
   getAttackDieDamageFollowUps,
   getAttackDieResultBonus,
   getDeathStareFollowUps,
@@ -1853,7 +1856,13 @@ function getAttackDamagePreview(
   const defenseValue = ignoreDefense ? 0 : defender.defense + defendBonus + defenseBonus + dieDefenseBonus;
   // Siege wall cover: "reduce the attack's damage by 1" comes off the damage,
   // not the defense.
-  const damage = Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
+  const rawDamage = Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
+  // Cove Nix (Pack): "cannot take more than N damage from a single attack." The
+  // cap clamps the resolved damage of this one attack and is reflected in the
+  // lethal-save preview too (both go through here), so a capped blow correctly
+  // reads as non-lethal.
+  const cap = getDamageCapPerAttack(defender);
+  const damage = cap ? Math.min(rawDamage, cap.amount) : rawDamage;
 
   return {
     attackValue,
@@ -1944,6 +1953,11 @@ function applyAttackDamageFromCandidate(
     return { damage: 0, roll: candidate.roll, cancelled: true };
   }
 
+  // Remember whether the defender was on the board before this hit, so Cove
+  // Seamen's "removes a unit from Combat" reward can tell a real kill from a
+  // Pack→Few flip (which leaves the unit alive) below.
+  const defenderWasAlive = isUnitAlive(defender);
+
   // Damage is not capped at the pack's health: the rulebook carries any
   // excess over onto the Few side when the pack flips.
   defender.damage += damage;
@@ -1966,6 +1980,21 @@ function applyAttackDamageFromCandidate(
     damage,
     isRetaliation
   });
+
+  // Cove Nix (Pack): announce when its per-attack damage cap actually softened
+  // this hit so the log/FX fire (the clamp itself happened in the preview).
+  const uncappedDamage = Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
+  if (uncappedDamage > damage) {
+    const cap = getDamageCapPerAttack(defender);
+    if (cap) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: defender.id,
+        abilityId: cap.abilityId,
+        message: `${defender.cardName} shrugs it off — ${cap.abilityName} caps the hit at ${cap.amount} damage.`
+      });
+    }
+  }
 
   // Dread Knights' "Death Blow": announce the die-triggered Attack bonus so the
   // log and the FX/sound fire (the bonus itself is already folded into damage).
@@ -2007,6 +2036,26 @@ function applyAttackDamageFromCandidate(
   if (defender.cloneOfUnitId && isUnitAlive(defender)) {
     defender.damage = defender.maxHealth;
     markUnitRemovedIfNeeded(state, defender);
+  }
+
+  // Cove Seamen (Pack): "Once per Combat, when this unit removes a unit from
+  // Combat, gain 2 gold." Paid only on a real removal (alive → off the board),
+  // never on a Pack→Few flip, and only once per fight per Seamen stack. Works on
+  // a Retaliation Attack kill too, since every attack funnels through here.
+  if (defenderWasAlive && !isUnitAlive(defender) && !attacker.gainedKillGoldThisCombat) {
+    const reward = getOnKillResourceGain(attacker);
+    const player = reward ? state.players[attacker.controllerId] : undefined;
+    if (reward && player) {
+      attacker.gainedKillGoldThisCombat = true;
+      player.resources[reward.resource] += reward.amount;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: attacker.id,
+        abilityId: reward.abilityId,
+        targetUnitId: defender.id,
+        message: `${attacker.cardName} plunders ${reward.amount} ${reward.resource} for removing ${defender.cardName}.`
+      });
+    }
   }
   return { damage, roll: candidate.roll, cancelled: false };
 }
@@ -2206,6 +2255,11 @@ function getAttackStackDetails(
   // Black Dragons): extra Attack when this unit attacks the named creature.
   const hatredAttackBonus = getAttackBonusVsDefenderName(attacker, defender.name);
 
+  // Cove Haspids (Few) "Vengeance": +2 Attack once this unit has been flipped
+  // down from its Pack side this combat. An innate ability bonus, so (like
+  // Hatred) it is added unclamped even for elemental attackers.
+  const flippedAttackBonus = getAttackBonusIfFlipped(attacker);
+
   // Retaliation-only modifiers keyed off the retaliation's defender — i.e. the
   // original attacker being struck back: Dread Knights gain Defense, Dragon
   // Flies sap the retaliator's Attack.
@@ -2235,7 +2289,8 @@ function getAttackStackDetails(
       effectiveCardAttackBonus +
       effectiveTokenAttack +
       attackDieResultBonus +
-      hatredAttackBonus -
+      hatredAttackBonus +
+      flippedAttackBonus -
       retaliationAttackPenalty,
     defenseBonus: defenseBonusBeforeAbility - defenseReductionAmount + retaliationDefenseBonus,
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
@@ -2749,7 +2804,12 @@ function applyOnAttackSelfHeal(state: GameState, attacker: CombatUnitState, isRe
     return;
   }
   const heal = getOnAttackSelfHeal(attacker);
-  if (!heal || attacker.damage <= 0) {
+  // A dead attacker must NOT Life-Drain itself back to life. By this point the
+  // defender's Fire Shield may already have burned the attacker down to 0
+  // Health — markUnitRemovedIfNeeded has fired UNIT_REMOVED and armed the Pit
+  // Lords' "a unit was removed" trigger — so healing here would leave it
+  // standing while the event log says it died. Bail unless it survived.
+  if (!heal || attacker.damage <= 0 || !isUnitAlive(attacker)) {
     return;
   }
   const healed = Math.min(heal.amount, attacker.damage);
@@ -3710,6 +3770,14 @@ function openHydraSecondAttack(
   }
   const ability = getSelfAdjacentSecondAttackAbility(attacker);
   if (!ability) {
+    return false;
+  }
+
+  // Cove Ayssids (Pack): the follow-up only fires "if the target is reduced to 0
+  // Health" — i.e. the primary attack removed the original target. A target that
+  // merely flipped a Pack down to its Few side is still alive and grants nothing.
+  // (Hydras leave this flag unset and always follow up.)
+  if (ability.requiresTargetRemoved && isUnitAlive(defender)) {
     return false;
   }
 
@@ -5364,7 +5432,15 @@ function applyActivationDamageSpell(
   target: CombatUnitState,
   ability: { abilityId: string; abilityName: string; amount: number }
 ): void {
-  // Golems et al. reduce Spell damage — the Faerie Bolt is explicitly a spell.
+  // The Faerie Bolt is spell DAMAGE, so the golems' / Unicorns' "reduce any
+  // damage from spells" passives soften it (reducedSpellDamage). It is NOT a
+  // Spell CARD, so — by deliberate design — spell-school IMMUNITY does not turn
+  // it aside: IMMUNE_TO_SPELL_SCHOOLS is scoped to "any Spell card whose school
+  // …", and the bolt has no card and no school. Hence a unit "Immune to all
+  // Spells" (Azure/Black Dragons) is still a legal target and still takes the
+  // bolt (only reduced if it also reduces spell damage), unlike a real cast,
+  // which excludes immune units at targeting. This split is intentional; do not
+  // add a unitImmuneToSpellSchools gate here without a confirmed ruling.
   const dealt = reducedSpellDamage(state, target, ability.amount);
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
@@ -5491,6 +5567,9 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
 
   const faerie = getActivationDamageSpellAbility(unit);
   if (faerie) {
+    // Any living enemy is a legal target — spell-school immunity is deliberately
+    // NOT filtered here (see applyActivationDamageSpell: the bolt is spell
+    // damage, not a Spell card).
     const targets = Object.values(combat.units).filter(
       (candidate) => candidate.controllerId !== unit.controllerId && isUnitAlive(candidate)
     );
@@ -9102,6 +9181,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       if (unit && hasToken(unit, "paralysis")) {
         removeToken(state, unit, "paralysis", "dispelled");
       }
+    }
+    // Astra's Cure I: "… then draw 1 card."
+    if (effect.drawCards) {
+      drawCardsForPlayer(state, action.playerId, effect.drawCards);
     }
   }
 
