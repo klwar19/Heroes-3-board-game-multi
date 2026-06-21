@@ -178,6 +178,13 @@ export function subterraneanGateTokenImage(layer: "surface" | "subterranean"): s
   return SUBTERRANEAN_GATE_TOKEN_IMAGES[layer];
 }
 
+/** Creature Bank field token art (Naval Battles), shown on a placed bank's hex. */
+export const CREATURE_BANK_FIELD_IMAGE = "/assets/locations-creature_bank.webp";
+
+export function creatureBankFieldImage(): string {
+  return CREATURE_BANK_FIELD_IMAGE;
+}
+
 /** Back image for a tile, from its group or its printed back label. */
 export function tileBackImage(group: string | undefined, backLabel: string | undefined): string {
   if (group && TILE_BACK_IMAGES[group]) {

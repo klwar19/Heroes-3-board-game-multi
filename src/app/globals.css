@@ -4352,6 +4352,27 @@ button.hbSlot:disabled { cursor: default; }
   white-space: nowrap;
 }
 
+/* Creature Bank Stack Token: a gold chip at the card's foot showing which
+   statistic the token boosts (the defender absorbs one lethal blow). */
+.stackTokenBadge {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  padding: 1px 7px;
+  background: rgb(120 84 8 / 94%);
+  border: 1px solid rgb(247 206 102 / 85%);
+  border-radius: 999px;
+  color: #ffe9b0;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 0 0 6px rgb(247 206 102 / 45%);
+}
+
 /* ---- Draw-card cinematic -------------------------------------------------- */
 .drawOverlay {
   position: fixed;

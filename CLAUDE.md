@@ -79,7 +79,9 @@ Tracked honestly so they are not mistaken for working features:
 
 Added in `src/data/map/creature-banks.ts` (data, tested in
 `creature-banks.test.ts`) and wired through the combat engine (tested in
-`src/engine/creature-bank-combat.test.ts`). Leading with what is NOT done:
+`src/engine/creature-bank-combat.test.ts`) with map/combat UI in
+`screen.tsx` / `board.tsx` (badge tested in `board.test.tsx`). Leading with what
+is NOT done:
 
 **Implemented and engine-enforced (a test fails if removed):**
 - The 12 banks' defenders, bank-card stats (their OWN stats, no tier — distinct
@@ -88,9 +90,20 @@ Added in `src/data/map/creature-banks.ts` (data, tested in
 - Stack Tokens: count by Scenario Difficulty (Easy 1 / Normal 2 / Hard 3 /
   Impossible 4), placed on distinct cards, +1 attack/defense/health or +2
   initiative; a Stacked defender absorbs one lethal blow by discarding its token
-  and carrying the leftover damage (`markUnitRemovedIfNeeded`).
+  and carrying the leftover damage (`markUnitRemovedIfNeeded`). The board shows a
+  gold badge naming each token's stat.
 - Bank combat: no Quick Combat, no experience; win marks a Black Cube and grants
-  the reward. `placeCreatureBank` converts a Blocked Field into a bank.
+  the reward. HOUSE RULE (overrides the rulebook): a bank DOES obey the one-Round
+  time limit and the spend-1-MP-to-extend rule, exactly like a normal neutral
+  fight.
+- Placement: with the rule on (`creatureBanks`, default ON), discovering a
+  Far (II-III) or Near (IV-V) Map Tile with a Blocked Field offers the
+  discovering player a Creature Bank token from the matching shuffled pile
+  (`creatureBankTokensFar`/`Near`); accepting carves the Blocked Field into a
+  bank (`placeCreatureBank`). Sea tiles have no Blocked Field, so never trigger
+  it. A bank is reachable only from within its own Tile — you can walk in to
+  fight, but it is never a route across a Tile edge to the outside (enforced in
+  `canCrossEdge`, even for Pathfinding).
 - Bank-card abilities that map to a wired engine effect: Skeletons (rebirth),
   Zombies (resilience), Vampires (life drain), Medusas + Nagas (ignore
   retaliation), Dragon Flies (-2 retaliation attack), Water Elementals (Magic
@@ -112,9 +125,6 @@ Added in `src/data/map/creature-banks.ts` (data, tested in
   (`rewardStatus: "not-implemented"`); the "Gained Stacked Units" mechanic does
   not exist. The Pyramid's per-Stack "remove a card then Search(5)" extra is
   also unimplemented (`rewardStatus: "partial"`; only base Search(5) runs).
-- The opt-in "draw a Creature Bank token when you discover a Near/Far Map Tile"
-  flow and any UI: only the `placeCreatureBank` engine primitive exists, so a
-  bank reaches the map via a scenario/test, not yet via player choice.
 - Bank units carry the underlying unit's `grade` for placement/display, so the
   "no tier" exemption from tier-targeting effects (e.g. Berserk) is NOT
   special-cased, and the rulebook's special AI-targeting rules for bank units

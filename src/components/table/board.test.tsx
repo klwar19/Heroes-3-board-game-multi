@@ -280,6 +280,57 @@ describe("BattlefieldBoard — area spells target occupied spaces", () => {
   });
 });
 
+describe("BattlefieldBoard — Creature Bank Stack Token badge", () => {
+  function renderWithToken(seed: string, stat: "attack" | "defense" | "health" | "initiative") {
+    const state = createInitialGameState(seed);
+    state.combat!.units.unit_p2_skeletons.stackToken = stat;
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it("shows exactly one gold badge naming the boosted statistic", () => {
+    renderWithToken("bank-badge-hp", "health");
+    const badges = document.querySelectorAll(".stackTokenBadge");
+    expect(badges).toHaveLength(1);
+    expect(badges[0].textContent).toBe("+1 HP");
+  });
+
+  it("uses +2 INI for an initiative token and +1 ATK for an attack token", () => {
+    renderWithToken("bank-badge-ini", "initiative");
+    expect(document.querySelector(".stackTokenBadge")?.textContent).toBe("+2 INI");
+    cleanup();
+    renderWithToken("bank-badge-atk", "attack");
+    expect(document.querySelector(".stackTokenBadge")?.textContent).toBe("+1 ATK");
+  });
+
+  it("shows no badge on an un-stacked board", () => {
+    const state = createInitialGameState("bank-badge-none");
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    expect(document.querySelectorAll(".stackTokenBadge")).toHaveLength(0);
+  });
+});
+
 describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
   function renderBoard(state: ReturnType<typeof createInitialGameState>, onAction = vi.fn()) {
     render(

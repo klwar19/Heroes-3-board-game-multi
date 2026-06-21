@@ -12,6 +12,7 @@ import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } 
 import { coreUnitDefinitions } from "@/data/factions/units";
 import type { TownBuildingDefinition } from "@/data/factions/types";
 import { locationDefinitions } from "@/data/map/locations";
+import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
   NEUTRAL_DECK_IDS,
@@ -57,7 +58,14 @@ import {
   type PlayerId,
   type PlayerVisibleState
 } from "@/engine";
-import { moraleIcon, RESOURCE_ICONS, subterraneanGateTokenImage, tileBackImage, TILE_BACK_IMAGES } from "@/data/assets/homm-assets";
+import {
+  creatureBankFieldImage,
+  moraleIcon,
+  RESOURCE_ICONS,
+  subterraneanGateTokenImage,
+  tileBackImage,
+  TILE_BACK_IMAGES
+} from "@/data/assets/homm-assets";
 import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
 import { actionKey, cardName, formatCost, setUnitDragImage, titleCase } from "@/components/table/utils";
 import { useCardZoom } from "@/components/table/zoom";
@@ -111,7 +119,8 @@ export const LOCATION_GLYPHS: Record<string, string> = {
   grail: "🏆",
   star_axis: "✴",
   blocked_field: "⛔",
-  subterranean_gate: "🕳"
+  subterranean_gate: "🕳",
+  creature_bank: "🏦"
 };
 
 const ROMAN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
@@ -640,7 +649,11 @@ export function HexMapBoard({
           points={hexCorners(x, y, HEX_SIZE - 1.2)}
         >
           <title>
-            {`${location?.name ?? field.location}${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${
+            {`${
+              field.location === "creature_bank" && field.bankId
+                ? `${CREATURE_BANKS[field.bankId as CreatureBankId]?.name ?? "Creature Bank"} (Creature Bank)`
+                : (location?.name ?? field.location)
+            }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${
               field.flagOwnerId ? ` — flagged by ${state.players[field.flagOwnerId]?.name}` : ""
             }${target ? ` — ${target.cost} movement point${target.cost === 1 ? "" : "s"}` : ""}${
               endTurnMove ? " — click to move your hero here" : ""
@@ -656,7 +669,9 @@ export function HexMapBoard({
       const tokenImage =
         field.location === "subterranean_gate"
           ? subterraneanGateTokenImage(tile.group === "subterranean" ? "subterranean" : "surface")
-          : undefined;
+          : field.location === "creature_bank"
+            ? creatureBankFieldImage()
+            : undefined;
       if (tokenImage) {
         overlays.push(
           <image

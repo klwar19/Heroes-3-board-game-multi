@@ -8,6 +8,7 @@ import {
 } from "./index";
 import {
   buildCreatureBankCombatUnits,
+  canCrossEdge,
   fieldCreatureBankId,
   getMainHero,
   isFieldGuarded,
@@ -99,6 +100,140 @@ describe("placeCreatureBank", () => {
       settlementResource: null
     };
     expect(placeCreatureBank(state, "x", "not_a_bank" as CreatureBankId)).toBeNull();
+  });
+});
+
+// ===========================================================================
+// Placement: opt-in when discovering a Far/Near tile with a Blocked Field
+// ===========================================================================
+
+describe("Creature Bank token piles", () => {
+  it("are set up shuffled and split by tier when enabled, and absent when disabled", () => {
+    const on = createAdventureGameState({ seed: "piles", difficulty: "normal", rollFirstPlayer: false });
+    expect(on.adventure!.creatureBankTokensFar).toHaveLength(6);
+    expect(on.adventure!.creatureBankTokensNear).toHaveLength(6);
+    for (const id of on.adventure!.creatureBankTokensFar!) {
+      expect(CREATURE_BANKS[id as CreatureBankId].tier).toBe("far");
+    }
+    for (const id of on.adventure!.creatureBankTokensNear!) {
+      expect(CREATURE_BANKS[id as CreatureBankId].tier).toBe("near");
+    }
+
+    const off = createAdventureGameState({
+      seed: "piles",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      creatureBanks: false
+    });
+    expect(off.adventure!.creatureBankTokensFar).toBeUndefined();
+    expect(off.adventure!.creatureBankTokensNear).toBeUndefined();
+  });
+});
+
+describe("Creature Bank placement on tile discovery", () => {
+  /** Places + reveals a Far tile from p1's supply (mirrors adventure.test.ts geometry). */
+  function discoverFarTile(creatureBanks = true): GameState {
+    let state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false, creatureBanks });
+    state.heroes.hero_p1.spaceId = "h:7:2";
+    state.heroes.hero_p1.movementPoints = 3;
+    state = apply(state, { type: "PLACE_TILE", playerId: "p1", heroId: "hero_p1", supplyIndex: 0, centerRow: 6, centerCol: 4 });
+    const rotation = getLegalActions(state, "p1").find((entry) => entry.action.type === "SET_TILE_ROTATION");
+    return apply(state, rotation!.action);
+  }
+
+  it("offers the discovering player a bank on a Far tile's Blocked Field", () => {
+    const state = discoverFarTile();
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    if (choice?.type !== "OPTION_CHOICE") return;
+    expect(choice.context).toBe("place-creature-bank");
+    expect(choice.playerId).toBe("p1");
+    expect(choice.creatureBank?.tier).toBe("far");
+    // The offered field is the tile's still-blocked field.
+    const fieldId = choice.creatureBank!.fieldId;
+    expect(state.adventure!.fields[fieldId].location).toBe("blocked_field");
+  });
+
+  it("converts the Blocked Field into a Far bank drawn from the pile when accepted", () => {
+    let state = discoverFarTile();
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE") throw new Error("expected a placement choice");
+    const fieldId = choice.creatureBank!.fieldId;
+    const pileBefore = state.adventure!.creatureBankTokensFar!.length;
+
+    state = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
+
+    const field = state.adventure!.fields[fieldId];
+    expect(field.location).toBe("creature_bank");
+    expect(field.bankId).toBeTruthy();
+    expect(CREATURE_BANKS[field.bankId as CreatureBankId].tier).toBe("far");
+    expect(state.adventure!.creatureBankTokensFar!.length).toBe(pileBefore - 1);
+    expect(state.pendingChoice).toBeNull();
+    expect(state.phase).toBe("player-turn");
+  });
+
+  it("leaves the field blocked and the pile intact when declined", () => {
+    let state = discoverFarTile();
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE") throw new Error("expected a placement choice");
+    const fieldId = choice.creatureBank!.fieldId;
+    const pileBefore = state.adventure!.creatureBankTokensFar!.length;
+
+    state = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 1 });
+
+    expect(state.adventure!.fields[fieldId].location).toBe("blocked_field");
+    expect(state.adventure!.creatureBankTokensFar!.length).toBe(pileBefore);
+    expect(state.pendingChoice).toBeNull();
+  });
+
+  it("never offers a bank when the rule is disabled", () => {
+    const state = discoverFarTile(false);
+    expect(state.pendingChoice).toBeNull();
+  });
+});
+
+// ===========================================================================
+// Movement: enter from inside the tile, never a route to/from the outside
+// ===========================================================================
+
+describe("Creature Bank movement", () => {
+  function twoTileState(): GameState {
+    const state = createAdventureGameState({ seed: "bank-move", difficulty: "normal", rollFirstPlayer: false });
+    const template = Object.values(state.adventure!.tiles)[0];
+    // Two surface tiles with unknown defs (no internal borders, no sealed edges).
+    state.adventure!.tiles["T1"] = { ...template, id: "T1", tileDefId: "fake-T1", group: "near" };
+    state.adventure!.tiles["T2"] = { ...template, id: "T2", tileDefId: "fake-T2", group: "near" };
+    const field = (spaceId: string, tileInstanceId: string, location: string, slot: number, bankId?: string) => ({
+      spaceId,
+      tileInstanceId,
+      slot,
+      location,
+      ...(bankId ? { bankId } : {}),
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    });
+    state.adventure!.fields["A"] = field("A", "T1", "empty_field", 1);
+    state.adventure!.fields["B"] = field("B", "T1", "creature_bank", 2, "crypt");
+    state.adventure!.fields["C"] = field("C", "T2", "empty_field", 1);
+    return state;
+  }
+
+  it("is reachable from a same-tile field but never across a tile edge", () => {
+    const state = twoTileState();
+    // Control: two ordinary fields on different tiles ARE crossable.
+    expect(canCrossEdge(state, "C", "A")).toBe(true);
+
+    // Same tile -> you can walk in to fight, and back out to a tile neighbour.
+    expect(canCrossEdge(state, "A", "B")).toBe(true);
+    expect(canCrossEdge(state, "B", "A")).toBe(true);
+
+    // Across a tile edge -> the bank is sealed off: no entry from outside, no
+    // exit to outside, even for a Pathfinding hero (crossSealedBorders).
+    expect(canCrossEdge(state, "C", "B")).toBe(false);
+    expect(canCrossEdge(state, "B", "C")).toBe(false);
+    expect(canCrossEdge(state, "B", "C", { moveThrough: true, crossSealedBorders: true } as never)).toBe(false);
   });
 });
 
@@ -275,7 +410,7 @@ describe("Creature Bank combat lifecycle", () => {
     expect(state.phase).toBe("player-turn");
   });
 
-  it("has no Round limit: a drawn-out bank combat rolls into round 2 instead of pausing for MP", () => {
+  it("obeys the Round limit (house rule): a drawn-out bank combat pauses, and 1 MP extends it", () => {
     let state = createAdventureGameState({ seed: "bank-rounds", difficulty: "easy", rollFirstPlayer: false });
     state = state.players.p1.needsHandRefresh
       ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
@@ -296,7 +431,7 @@ describe("Creature Bank combat lifecycle", () => {
     }
 
     let safety = 100;
-    while (state.combat && (state.combat.round ?? 1) < 2 && !state.combat.awaitingContinue && safety > 0) {
+    while (state.combat && !state.combat.awaitingContinue && !state.combat.outcome && safety > 0) {
       safety -= 1;
       const actions = getLegalActions(state, "p1");
       const defend = actions.find((legal) => legal.action.type === "DEFEND_UNIT");
@@ -307,10 +442,18 @@ describe("Creature Bank combat lifecycle", () => {
       state = apply(state, next.action);
     }
 
-    // A Creature Bank has no Round limit (rulebook p.66): the fight advanced into
-    // round 2 on its own and never paused to spend MP to continue.
+    // House rule: a Creature Bank obeys the one-round time limit like a normal
+    // neutral fight — round 1 ends paused, waiting for the hero to spend MP.
+    expect(state.combat?.awaitingContinue).toBe(true);
+    expect(state.combat?.round).toBe(1);
+    expect(getLegalActions(state, "p1").some((entry) => entry.action.type === "CONTINUE_NEUTRAL_COMBAT")).toBe(true);
+
+    // Spending 1 MP extends the combat (the pause clears and a point is spent).
+    getMainHero(state, "p1")!.movementPoints = 4;
+    state = apply(state, { type: "CONTINUE_NEUTRAL_COMBAT", playerId: "p1" });
     expect(state.combat?.awaitingContinue ?? false).toBe(false);
-    expect(state.combat?.round ?? 0).toBeGreaterThanOrEqual(2);
+    expect(getMainHero(state, "p1")!.movementPoints).toBe(3);
+    expect(state.combat?.outcome ?? null).toBeNull();
   });
 
   it("still cubes the field on a win but grants no resources for a not-yet-implemented gain-a-unit reward", () => {

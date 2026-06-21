@@ -18,6 +18,7 @@ import {
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { allTileDefinitions, ALL_TILE_CONTENT, DEFAULT_TILE_CONTENT, tilePoolIds } from "@/data/map/tiles";
+import { CREATURE_BANK_IDS, CREATURE_BANKS } from "@/data/map/creature-banks";
 import type { TileContent } from "@/data/map/types";
 import { DEFAULT_SCENARIO_ID, scenarioDefinitions, type ScenarioDefinition } from "@/data/map/scenarios";
 import {
@@ -71,6 +72,8 @@ export type AdventureSetupOptions = {
   victoryMode?: VictoryMode;
   /** PvP Combat casualties: "normal" (lose dead units) or "none" (keep troops). */
   pvpTroopLoss?: PvpTroopLoss;
+  /** Naval Battles Creature Banks (default on): offer bank placement on Far/Near tile discovery. */
+  creatureBanks?: boolean;
   difficulty?: GameDifficulty;
   scenarioId?: string;
   players?: AdventurePlayerConfig[];
@@ -508,9 +511,14 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.startingUnitTiers ? { startingUnitTiers: options.startingUnitTiers } : {}),
     ...(options.startingUnits !== undefined ? { startingUnits: options.startingUnits } : {}),
     ...(options.startingBuildings ? { startingBuildings: options.startingBuildings } : {}),
+    ...(options.creatureBanks !== undefined ? { creatureBanks: options.creatureBanks } : {}),
     ...(options.customMap !== undefined ? { customMap: options.customMap } : {})
   };
   const difficulty = setupOptions.difficulty;
+  // Naval Battles Creature Banks default ON: discovering a Far/Near tile with a
+  // Blocked Field offers the discovering player a bank token from the matching
+  // pile. Off skips both the piles and the offer.
+  const creatureBanksOn = setupOptions.creatureBanks ?? true;
   const ruleset: GameRuleset = setupOptions.ruleset;
   const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
@@ -529,6 +537,19 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     warMachineSupply: [...WAR_MACHINE_CARD_IDS],
     // Pandora's Box fields may draw from this deck instead of rolling dice.
     pandoraDeck: shuffleCards(pandoraDeckCardIds, `${seed}#pandora`),
+    // Creature Bank token piles, split by tile tier and shuffled (rulebook p.66).
+    ...(creatureBanksOn
+      ? {
+          creatureBankTokensFar: shuffleCards(
+            CREATURE_BANK_IDS.filter((id) => CREATURE_BANKS[id].tier === "far"),
+            `${seed}#creature-banks#far`
+          ),
+          creatureBankTokensNear: shuffleCards(
+            CREATURE_BANK_IDS.filter((id) => CREATURE_BANKS[id].tier === "near"),
+            `${seed}#creature-banks#near`
+          )
+        }
+      : {}),
     pendingVisit: null,
     rewardQueue: [],
     lastVisitedField: {},

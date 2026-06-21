@@ -55,6 +55,14 @@ import {
 } from "./utils";
 import { useCardZoom } from "./zoom";
 
+/** Short label for a Creature Bank defender's Stack Token (+1 stat, +2 initiative). */
+const STACK_TOKEN_LABELS: Record<NonNullable<CombatUnitState["stackToken"]>, string> = {
+  attack: "+1 ATK",
+  defense: "+1 DEF",
+  health: "+1 HP",
+  initiative: "+2 INI"
+};
+
 /**
  * Seat-relative orientation: your rows should sit nearest your hand. The
  * sandbox seats p1 in the top rows (flip for p1); adventure combats seat the
@@ -1043,6 +1051,14 @@ export function BattlefieldBoard({
               {isClone ? (
                 <span className="cloneBadge" title="Clone Token — a 1-Health copy; destroyed by any damage, by being attacked, or if its original leaves.">
                   Clone
+                </span>
+              ) : null}
+              {unit?.stackToken ? (
+                <span
+                  className="stackTokenBadge"
+                  title={`Stack Token: ${STACK_TOKEN_LABELS[unit.stackToken]}. A Stacked defender absorbs one lethal blow — it discards this token instead of being removed.`}
+                >
+                  {STACK_TOKEN_LABELS[unit.stackToken]}
                 </span>
               ) : null}
             </article>
