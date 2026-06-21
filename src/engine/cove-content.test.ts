@@ -6,7 +6,7 @@ import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions, s
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
 import { unitSoundKey, type UnitSoundAction } from "@/data/unit-sounds";
-import { applyAction, createAdventureGameState } from "./index";
+import { applyAction, createAdventureGameState, getLegalActions } from "./index";
 import { startAdventureRound } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
 import type { GameAction, GameState } from "./state";
@@ -178,11 +178,99 @@ describe("Cove buildings", () => {
     });
   });
 
-  it("marks the two not-yet-wired faction buildings honestly", () => {
-    for (const id of ["cove.thieves_guild", "cove.pub"]) {
+  it("gives the Pub its Astrologers'-round flat −3-gold reinforce discount", () => {
+    const pub = coreBuildingDefinitions["cove.pub"];
+    expect(pub.implementationStatus).toBe("implemented");
+    expect(pub.effect).toMatchObject({
+      type: "ASTROLOGERS_FLAT_GOLD_REINFORCE",
+      discount: 3,
+      tiers: ["bronze", "silver", "gold"]
+    });
+  });
+
+  it("marks the one not-yet-wired faction building (Thieves' Guild) honestly", () => {
+    for (const id of ["cove.thieves_guild"]) {
       expect(coreBuildingDefinitions[id].implementationStatus, id).toBe("not-implemented");
       expect(coreBuildingDefinitions[id].effect?.type, id).toBe("NOT_IMPLEMENTED");
     }
+  });
+});
+
+describe("Cove Pub — Astrologers'-round reinforce discount", () => {
+  function applyOk(state: GameState, action: GameAction): GameState {
+    const result = applyAction(state, action);
+    expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+    return result.state;
+  }
+
+  /** A Cove (p1) adventure on the Astrologers' round (round 2) with a Pub-only town. */
+  function pubRound(seed: string, army: { id: string; unitDefId: string; side: "few" | "pack" }[], gold: number): GameState {
+    const state = createAdventureGameState({
+      seed,
+      rollFirstPlayer: false,
+      players: [
+        { id: "p1", name: "Astra", factionId: "cove", heroDefId: "astra" },
+        { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
+      ]
+    });
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1");
+    if (!town) throw new Error("no Cove town");
+    town.buildings = ["cove.pub"];
+    state.players.p1.army = army;
+    state.players.p1.resources.gold = gold;
+    state.pendingChoice = null;
+    if (state.adventure) state.adventure.rewardQueue = [];
+    state.round = 2; // even rounds are Astrologers' rounds
+    startAdventureRound(state);
+    return state;
+  }
+
+  function reinforceAction(state: GameState, unitName: string) {
+    return getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.label.startsWith("Reinforce") && legal.label.includes(unitName)
+    );
+  }
+
+  it("queues a once-per-round offer and reinforces one Few unit for 3 less gold", () => {
+    // Sea Dogs pack costs 6 gold; the Pub knocks 3 off → 3 gold.
+    const state = pubRound("pub-discount", [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "few" }], 10);
+    const offer = state.adventure?.rewardQueue.some(
+      (reward) => reward.kind === "visit-steps" && reward.steps[0]?.type === "CHOOSE_ONE" && reward.steps[0].prompt.includes("Pub")
+    );
+    expect(offer, "the Pub reinforce offer should be queued at the Astrologers' round").toBe(true);
+
+    pumpAdventureQueues(state);
+    const reinforce = reinforceAction(state, "Sea Dogs");
+    expect(reinforce, "the Pub should offer to reinforce the Sea Dogs").toBeTruthy();
+    const after = applyOk(state, reinforce!.action);
+    expect(after.players.p1.army.find((unit) => unit.id === "army_sd")?.side).toBe("pack");
+    expect(after.players.p1.resources.gold).toBe(7); // 10 − (6 − 3)
+  });
+
+  it("never drops gold below 0 (Oceanids pack costs 3 → free)", () => {
+    const packGold = coreUnitDefinitions["cove.oceanids"].pack?.cost.gold ?? 0;
+    expect(packGold).toBeLessThanOrEqual(3); // the discount fully covers it
+    const state = pubRound("pub-min0", [{ id: "army_oc", unitDefId: "cove.oceanids", side: "few" }], 5);
+    pumpAdventureQueues(state);
+    const reinforce = reinforceAction(state, "Oceanids");
+    expect(reinforce).toBeTruthy();
+    const after = applyOk(state, reinforce!.action);
+    expect(after.players.p1.army.find((unit) => unit.id === "army_oc")?.side).toBe("pack");
+    expect(after.players.p1.resources.gold).toBe(5); // 5 − max(0, 3 − 3) = 5
+  });
+
+  it("control: no Pub building → no reinforce offer at the Astrologers' round", () => {
+    const state = pubRound("pub-control", [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "few" }], 10);
+    // pubRound already built the Pub; rebuild the town without it to prove the offer is the Pub's.
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1");
+    town!.buildings = [];
+    state.pendingChoice = null;
+    if (state.adventure) state.adventure.rewardQueue = [];
+    startAdventureRound(state);
+    const offer = state.adventure?.rewardQueue.some(
+      (reward) => reward.kind === "visit-steps" && reward.steps[0]?.type === "CHOOSE_ONE" && reward.steps[0].prompt.includes("Pub")
+    );
+    expect(offer ?? false).toBe(false);
   });
 });
 
