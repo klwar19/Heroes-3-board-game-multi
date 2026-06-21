@@ -147,6 +147,33 @@ describe("neutral combat — pre-activation reaction pause (Intelligence / insta
     expect(blocked.state.combat!.pendingNeutralStep?.kind).toBe("pre-activation");
   });
 
+  it("never pulls a bystander (non-participant) into the fight's reaction windows", () => {
+    // Regression: a trigger-free "Draw 1 card" instant (Offense I's second
+    // option) slots into ANY open timing window. The reaction-window builder
+    // used to scan every player, so an onlooker holding such a card was invited
+    // to react — and "asked to do something" — on every attack of someone
+    // else's Neutral fight. Only the two combatants may ever react.
+    let state = neutralFightWithGuard(rangedGuard);
+    // p1 (the attacker) AND p2 (an onlooker NOT in this fight) both hold
+    // Offense I (Tarnum, Stronghold). Giving it to p1 guarantees the window
+    // opens; p2 must be excluded from it.
+    state.players.p1.hand = ["specialty.tarnum_stronghold.1"];
+    state.players.p2.hand = ["specialty.tarnum_stronghold.1"];
+
+    // Let the guard take its turn; its shot at p1's unit opens an attack
+    // reaction window.
+    state = defendActivePlayerUnit(state);
+    state = apply(state, { type: "CONTINUE_NEUTRAL_STEP", playerId: "p1" });
+
+    const window = state.reactionWindow;
+    expect(window?.triggerEvent.type).toBe("UNIT_ATTACK_DECLARED");
+    // The participant is invited; the bystander never is.
+    expect(window!.allowedPlayerIds).toContain("p1");
+    expect(window!.allowedPlayerIds).not.toContain("p2");
+    // p2 is offered nothing in p1's fight — not even the trigger-free draw.
+    expect(getLegalActions(state, "p2")).toHaveLength(0);
+  });
+
   it("still pauses before every guard with nothing to react with, offering only the resume", () => {
     let state = neutralFightWithGuard(rangedGuard);
     // No Intelligence and an empty hand: nothing to react with — but neutral

@@ -3878,6 +3878,16 @@ export function getLegalReactionsForTrigger(
   }
 
   for (const player of Object.values(state.players)) {
+    // Only the two sides actually in the fight may react. A bystander (neither
+    // the attacker nor the defender — e.g. another player during someone else's
+    // Neutral combat) is never offered an instant/reaction, even a trigger-free
+    // "Draw a card" instant (Offense I's draw side) that variantMatchesTrigger
+    // would otherwise slot into any open window. Without this gate every attack
+    // or cast in a Neutral fight opened a reaction window for every onlooker
+    // holding such a card.
+    if (state.combat && !isCombatParticipant(state, player.id)) {
+      continue;
+    }
     // Garrison defense: "You cannot use your Deck during this Combat, as
     // your Main Hero is not present" — no card plays for that defender.
     if (isHandLockedInCombat(state, player.id)) {
