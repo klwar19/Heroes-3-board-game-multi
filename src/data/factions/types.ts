@@ -9,6 +9,7 @@ export type FactionId =
   | "stronghold"
   | "fortress"
   | "tower"
+  | "conflux"
   | "cove";
 export type UnitTier = "bronze" | "silver" | "gold" | "azure";
 
@@ -91,6 +92,8 @@ export type CityHallOption = {
   drawCards?: number;
   /** Fortress City Hall: open a Trading Post to exchange resources. */
   tradingPost?: boolean;
+  /** Conflux City Hall: Search(N) the Spell deck and take 1 card to hand. */
+  searchSpellDeck?: number;
   /** Cove City Hall: gain Hero experience (paired with removeArtifactFromHand). */
   experience?: number;
   /**
@@ -222,6 +225,22 @@ export type TownBuildingEffect =
       type: "ARTIFACT_SMITH";
       searchCost: number;
       sellGold: number;
+    }
+  | {
+      /**
+       * Garden of Life (Conflux): at the beginning of each round, recruit a Few
+       * of the listed unit, or reinforce a Few of it to a Pack — for free.
+       */
+      type: "ROUND_START_FREE_SPRITE";
+      unitDefId: string;
+    }
+  | {
+      /**
+       * Magic University (Conflux): once per turn, choose a School of Magic and
+       * discard cards from the top of your deck until you find a Spell of that
+       * school, then take it to hand (the discarded cards stay discarded).
+       */
+      type: "MAGIC_UNIVERSITY";
     }
   | { type: "NOT_IMPLEMENTED"; note: string };
 

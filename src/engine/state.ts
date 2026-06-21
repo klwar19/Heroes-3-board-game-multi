@@ -69,6 +69,7 @@ export type FactionId =
   | "stronghold"
   | "fortress"
   | "tower"
+  | "conflux"
   | "cove";
 
 export type TargetRef =
@@ -2514,6 +2515,16 @@ export type GameAction =
     }
   | {
       /**
+       * Magic University (Conflux): once per round, instead of buying spells
+       * normally, choose a School of Magic and discard from the top of your deck
+       * until you reveal a Spell of that school, then take it to hand.
+       */
+      type: "MAGIC_UNIVERSITY_ACTION";
+      playerId: PlayerId;
+      school: SpellSchool;
+    }
+  | {
+      /**
        * "During your turn" town-building uses (Cover of Darkness, Castle
        * Gate): once per round per building. `optionIndex` picks the printed
        * option; `cardIds` pays discard costs; `targetPlayerId` aims a random
@@ -4020,6 +4031,8 @@ export type PlayerState = {
   };
   /** Round the Blacksmith action was last used ("once per your turn"). */
   blacksmithUsedRound?: number;
+  /** Round the Magic University deck-dig was last used ("once per round"). */
+  magicUniversityUsedRound?: number;
   /**
    * Round each "once per round/turn" town building was last used (Cover of
    * Darkness, Castle Gate, …), keyed by building id.
@@ -4747,6 +4760,11 @@ export type VisitStep =
       /** Neutral Skeletons reward: reinforce one Few unit for free (Few→Pack). */
       type: "REINFORCE_FREE";
       armyUnitId: string;
+    }
+  | {
+      /** Garden of Life (Conflux): add a Few of `unitDefId` to the army for free. */
+      type: "RECRUIT_FREE";
+      unitDefId: string;
     }
   | {
       /**
@@ -5486,6 +5504,7 @@ export type PendingChoice =
           drawCards?: number;
           reinforceBronzeFree?: boolean;
           tradingPost?: boolean;
+          searchSpellDeck?: number;
           /** Cove City Hall: gain Hero experience (paired with removeArtifactFromHand). */
           experience?: number;
           /** Cove City Hall: this option removes one Artifact card from hand as its cost. */

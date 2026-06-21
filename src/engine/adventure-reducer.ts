@@ -78,6 +78,7 @@ import {
   queueSkeletonReinforce,
   reinforceArmyUnit,
   reinforceCostFor,
+  resolveMagicUniversityDig,
   restoreStartingArmyIfEmpty,
   SCHOLAR_STAT_CARDS,
   spendRecruitResources,
@@ -5114,6 +5115,36 @@ export function blacksmithAction(state: GameState, action: Extract<GameAction, {
 }
 
 /**
+ * Magic University (Conflux): once per round, instead of buying spells normally,
+ * choose a School of Magic and dig the top of your deck for a Spell of that
+ * school, taking it to hand (the rejects stay discarded).
+ */
+export function magicUniversityAction(
+  state: GameState,
+  action: Extract<GameAction, { type: "MAGIC_UNIVERSITY_ACTION" }>
+): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+
+  if (state.combat) {
+    throw new Error("Town actions cannot interrupt a combat.");
+  }
+
+  if (!townHasBuildingEffect(state, action.playerId, "MAGIC_UNIVERSITY")) {
+    throw new Error("This action needs a Magic University.");
+  }
+
+  if (player.magicUniversityUsedRound === state.round) {
+    throw new Error("The Magic University was already used this round.");
+  }
+
+  player.magicUniversityUsedRound = state.round;
+  resolveMagicUniversityDig(state, action.playerId, action.school);
+}
+
+/**
  * "During your turn" town buildings (once per round each): Cover of Darkness
  * option 1 (discard up to 2 cards, draw that many) and the Castle Gate
  * (pay gold for a random enemy discard, or teleport between owned
@@ -5894,6 +5925,16 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
         playerId: action.playerId,
         kind: "visit-steps",
         steps: [{ type: "TRADING_POST" }]
+      });
+    }
+    if (option.searchSpellDeck) {
+      // Conflux City Hall: Search(N) the Spell deck and take 1 card to hand,
+      // through the shared-deck-search pipeline (self-guards on an empty deck).
+      state.adventure?.rewardQueue.push({
+        playerId: action.playerId,
+        kind: "shared-deck-search",
+        deckId: "spells",
+        count: option.searchSpellDeck
       });
     }
     // Cove City Hall: pay an Artifact card from hand (this option is only offered

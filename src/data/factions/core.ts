@@ -14,6 +14,7 @@ const townProducts: Record<string, string> = {
   stronghold: "Heroes of Might and Magic III: The Board Game (Stronghold Expansion)",
   fortress: "Heroes of Might and Magic III: The Board Game (Fortress Expansion)",
   tower: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
+  conflux: "Heroes of Might and Magic III: The Board Game (Conflux Expansion)",
   cove: "Heroes of Might and Magic III: The Board Game (Cove Expansion)"
 };
 
@@ -86,6 +87,22 @@ function towerPcPortraitHeroSource(slug: string, pcName: string) {
     credit:
       "Hero roster, class and specialty from the fan wiki Tower town page. The printed board is not on the wiki yet, so the starting statistics follow the verified Wizard/Alchemist board pattern and the portrait is the classic PC hero portrait from heroes.thelazy.net (upscaled, hosted locally). Verify against official components before final release.",
     url: `https://heroes.thelazy.net/index.php/${pcName}`
+  };
+}
+
+/**
+ * Source for the Conflux heroes: the fan wiki Conflux hero pages carry the full
+ * printed board data (class, statistics, starting ability and the I/IV/VI
+ * specialty rules), but no card/board scan yet — only placeholder art — so the
+ * portrait is the classic PC hero portrait from heroes.thelazy.net (upscaled,
+ * hosted locally), exactly like Moandor and the two PC-portrait Tower heroes.
+ */
+function confluxHeroSource(slug: string) {
+  return {
+    product: "Heroes of Might and Magic III: The Board Game (Conflux Expansion)",
+    credit:
+      "Hero class, statistics, starting ability and the I/IV/VI specialty rules transcribed from the fan wiki Conflux hero page. The printed board is not on the wiki yet (placeholder art), so the portrait is the classic PC hero portrait from heroes.thelazy.net (upscaled, hosted locally). Verify against official components before final release.",
+    url: `https://en.homm3bg.wiki/heroes/${slug}/`
   };
 }
 
@@ -736,6 +753,95 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     implementationStatus: "implemented",
     source: townSource("tower")
   },
+  // ---- Conflux (expansion) -----------------------------------------------
+  "conflux.city_hall": {
+    id: "conflux.city_hall",
+    name: "City Hall",
+    faction: "conflux",
+    cost: { gold: 10, buildingMaterials: 3 },
+    // "At the beginning of each Resource round, choose: 4 gold — OR — Search(3)
+    // the Spell deck and take 1 Spell card to your hand."
+    effect: {
+      type: "RESOURCE_ROUND_CHOICE",
+      options: [
+        { label: "Gain 4 gold", gold: 4 },
+        { label: "Search(3) the Spell deck", searchSpellDeck: 3 }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: townSource("conflux")
+  },
+  "conflux.citadel": {
+    id: "conflux.citadel",
+    name: "Citadel",
+    faction: "conflux",
+    cost: { gold: 8, buildingMaterials: 4, valuables: 1 },
+    effect: { type: "UNLOCK_REINFORCE" },
+    implementationStatus: "implemented",
+    source: townSource("conflux")
+  },
+  "conflux.mage_guild": {
+    id: "conflux.mage_guild",
+    name: "Mage Guild",
+    faction: "conflux",
+    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
+    effect: { type: "MAGE_GUILD" },
+    spellBookCost: 5,
+    implementationStatus: "implemented",
+    source: townSource("conflux")
+  },
+  "conflux.dwelling_bronze": {
+    id: "conflux.dwelling_bronze",
+    name: "Altars of Air and Water",
+    faction: "conflux",
+    cost: { gold: 4, buildingMaterials: 3, valuables: 1 },
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" },
+    implementationStatus: "implemented",
+    source: townSource("conflux")
+  },
+  "conflux.dwelling_silver": {
+    id: "conflux.dwelling_silver",
+    name: "Altars of Fire and Earth",
+    faction: "conflux",
+    cost: { gold: 8, buildingMaterials: 6, valuables: 3 },
+    prerequisites: ["conflux.dwelling_bronze"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "silver" },
+    implementationStatus: "implemented",
+    source: townSource("conflux")
+  },
+  "conflux.dwelling_gold": {
+    id: "conflux.dwelling_gold",
+    name: "Magical Pyre",
+    faction: "conflux",
+    cost: { gold: 9, buildingMaterials: 8, valuables: 4 },
+    prerequisites: ["conflux.dwelling_silver"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "gold" },
+    implementationStatus: "implemented",
+    source: townSource("conflux")
+  },
+  "conflux.garden_of_life": {
+    id: "conflux.garden_of_life",
+    name: "Garden of Life",
+    faction: "conflux",
+    cost: { gold: 2, buildingMaterials: 1, valuables: 1 },
+    // "At the beginning of each round, Recruit or Reinforce Sprites for free."
+    effect: { type: "ROUND_START_FREE_SPRITE", unitDefId: "conflux.sprites" },
+    implementationStatus: "implemented",
+    source: townSource("conflux")
+  },
+  "conflux.magic_university": {
+    id: "conflux.magic_university",
+    name: "Magic University",
+    faction: "conflux",
+    cost: { gold: 6, buildingMaterials: 3 },
+    // "Once per round (at the start of your turn), choose a School of Magic and
+    // discard cards from the top of your deck until you reveal a Spell of that
+    // school, then take it to hand." (Magic Arrow, school 'any', matches every
+    // school — the engine's standing convention.)
+    effect: { type: "MAGIC_UNIVERSITY" },
+    implementationStatus: "implemented",
+    source: townSource("conflux")
+  },
   // ---- Fortress (expansion) ----------------------------------------------
   "fortress.city_hall": {
     id: "fortress.city_hall",
@@ -1378,6 +1484,60 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     portrait: "/assets/hero_portraits-torosar.webp",
     source: towerPcPortraitHeroSource("torosar", "Torosar")
   },
+
+  // ---- Conflux (expansion) -----------------------------------------------
+  // Three unit-specialist Planeswalkers are wired so far (Erdamon, Monere,
+  // Pasis). The three spell/obstacle/search specialists (Ciele, Luna, Tarnum)
+  // are not added yet — their specialty mechanics are not implemented, and the
+  // engine requires every shipped hero specialty to be implemented.
+  erdamon: {
+    id: "erdamon",
+    name: "Erdamon",
+    faction: "conflux",
+    class: "Planeswalker",
+    type: "might",
+    startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.estates",
+    specialtyCardIds: {
+      1: "specialty.erdamon.1",
+      4: "specialty.erdamon.4",
+      6: "specialty.erdamon.6"
+    },
+    portrait: "/assets/hero_portraits-erdamon.webp",
+    source: confluxHeroSource("erdamon")
+  },
+  monere: {
+    id: "monere",
+    name: "Monere",
+    faction: "conflux",
+    class: "Planeswalker",
+    type: "might",
+    startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.logistics",
+    specialtyCardIds: {
+      1: "specialty.monere.1",
+      4: "specialty.monere.4",
+      6: "specialty.monere.6"
+    },
+    portrait: "/assets/hero_portraits-monere.webp",
+    source: confluxHeroSource("monere")
+  },
+  pasis: {
+    id: "pasis",
+    name: "Pasis",
+    faction: "conflux",
+    class: "Planeswalker",
+    type: "might",
+    startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.artillery",
+    specialtyCardIds: {
+      1: "specialty.pasis.1",
+      4: "specialty.pasis.4",
+      6: "specialty.pasis.6"
+    },
+    portrait: "/assets/hero_portraits-pasis.webp",
+    source: confluxHeroSource("pasis")
+  },
   bron: {
     id: "bron",
     name: "Bron",
@@ -1963,6 +2123,19 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     buildings: buildingsOfFaction("fortress"),
     units: unitsOfFaction("fortress"),
     source: townSource("fortress")
+  },
+  conflux: {
+    id: "conflux",
+    name: "Conflux",
+    color: "#d24dae",
+    startingTileId: "S8",
+    // Only the three unit-specialist Planeswalkers are wired so far; Ciele,
+    // Luna and Tarnum follow once their specialties are implemented.
+    heroes: ["erdamon", "monere", "pasis"],
+    buildings: buildingsOfFaction("conflux"),
+    units: unitsOfFaction("conflux"),
+    townImage: "/assets/towns-conflux-empty.webp",
+    source: townSource("conflux")
   },
   cove: {
     id: "cove",
