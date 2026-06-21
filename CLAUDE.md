@@ -109,17 +109,27 @@ is NOT done:
 **Implemented and engine-enforced (a test fails if removed):**
 - The 12 banks' defenders, bank-card stats (their OWN stats, no tier — distinct
   from Few/Pack/Neutral), and resource/morale/search rewards scaled by the
-  number of Stacked defenders (X).
+  number of Stacked defenders (X). The two sea banks (Shipwreck, Derelict Ship)
+  grant POSITIVE morale (`morale_positive` on the wiki), and the Medusa Stores
+  per-Stack bonus is a CHOICE of +3 gold OR +1 valuables (not both); both are
+  pinned in `creature-banks.test.ts`.
+- Gradeless targeting: a bank card carries NO tier, so the neutral AI's same-tier
+  priority can't apply — a bank guard (the `bankUnit` flag) always attacks the
+  NEAREST enemy, dropping both the tier preference and the ranged-prefers-ranged
+  preference (the engaged-ranged "must hit an adjacent enemy" restriction still
+  binds it). Wired in `neutral-ai.ts` (`isGradelessNeutralAttacker`), tested in
+  `creature-bank-combat.test.ts` ("are gradeless and target the nearest enemy",
+  each with a graded CONTROL that diverges).
 - Stack Tokens: the Scenario Difficulty (Easy 1 / Normal 2 / Hard 3 /
   Impossible 4) sets the number of token ROLLS, NOT a guaranteed count. Each roll
   targets a distinct candidate card and lands only `STACK_TOKEN_PLACEMENT_PERCENT`
-  (85)% of the time, so the Stacked count varies run-to-run — even Impossible can
+  (77)% of the time, so the Stacked count varies run-to-run — even Impossible can
   come up anywhere from 0 to 4 Stacked defenders (HOUSE RULE; the rulebook places
   a fixed count). A landed token gives +1 attack/defense/health or +2 initiative;
   a Stacked defender absorbs one lethal blow by discarding its token and carrying
   the leftover damage (`markUnitRemovedIfNeeded`). The board shows a gold badge
   naming each token's stat. Tested in `creature-bank-combat.test.ts` ("never
-  Stacks more than the difficulty allows" and "rolls each token at ~85%").
+  Stacks more than the difficulty allows" and "rolls each token at ~77%").
 - Bank combat: no Quick Combat, no experience; win marks a Black Cube and grants
   the reward. HOUSE RULE (overrides the rulebook): a bank DOES obey the one-Round
   time limit and the spend-1-MP-to-extend rule, exactly like a normal neutral
@@ -162,7 +172,8 @@ is NOT done:
   (`rewardStatus: "not-implemented"`); the "Gained Stacked Units" mechanic does
   not exist. The Pyramid's per-Stack "remove a card then Search(5)" extra is
   also unimplemented (`rewardStatus: "partial"`; only base Search(5) runs).
-- Bank units carry the underlying unit's `grade` for placement/display, so the
-  "no tier" exemption from tier-targeting effects (e.g. Berserk) is NOT
-  special-cased, and the rulebook's special AI-targeting rules for bank units
-  are not implemented.
+- Bank units still carry the underlying unit's `grade` field for placement and
+  display, so the "no tier" exemption from PLAYER-side tier-targeting effects
+  (e.g. Berserk, grade-gated spells) is NOT special-cased. The neutral AI's own
+  targeting, however, now treats them as gradeless (see "Gradeless targeting"
+  above) — that half of the "no tier" rule IS implemented.

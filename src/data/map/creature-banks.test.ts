@@ -162,7 +162,6 @@ describe("Creature Bank rewards", () => {
     expect(CREATURE_BANKS.imp_cache.buildReward(2)).toEqual({ type: "GAIN_RESOURCES", gold: 5 });
     expect(CREATURE_BANKS.crypt.buildReward(3)).toEqual({ type: "GAIN_RESOURCES", gold: 12 });
     expect(CREATURE_BANKS.dwarven_treasury.buildReward(2)).toEqual({ type: "GAIN_RESOURCES", gold: 13 });
-    expect(CREATURE_BANKS.medusa_stores.buildReward(2)).toEqual({ type: "GAIN_RESOURCES", gold: 12, valuables: 3 });
     expect(CREATURE_BANKS.naga_bank.buildReward(1)).toEqual({ type: "GAIN_RESOURCES", gold: 12, valuables: 3 });
     expect(CREATURE_BANKS.cyclops_stockpile.buildReward(2)).toEqual({
       type: "GAIN_RESOURCES",
@@ -171,11 +170,36 @@ describe("Creature Bank rewards", () => {
     });
   });
 
-  it("grants negative morale, scaled gold, and a scaled search for the sea banks", () => {
+  it("gives the Medusa Stores base plus a gold-or-valuables CHOICE per Stacked defender", () => {
+    // Wiki: "6 gold and 1 valuables. 3 gold OR 1 valuables for every Stacked unit."
+    expect(CREATURE_BANKS.medusa_stores.buildReward(0)).toEqual({
+      type: "SEQUENCE",
+      interactions: [{ type: "GAIN_RESOURCES", gold: 6, valuables: 1 }]
+    });
+    const reward = CREATURE_BANKS.medusa_stores.buildReward(2);
+    expect(reward.type).toBe("SEQUENCE");
+    if (reward.type !== "SEQUENCE") return;
+    expect(reward.interactions[0]).toEqual({ type: "GAIN_RESOURCES", gold: 6, valuables: 1 });
+    const choices = reward.interactions.slice(1);
+    expect(choices).toHaveLength(2);
+    for (const choice of choices) {
+      expect(choice).toEqual({
+        type: "CHOOSE_ONE",
+        options: [
+          { label: "Gain 3 gold", interaction: { type: "GAIN_RESOURCES", gold: 3 } },
+          { label: "Gain 1 valuables", interaction: { type: "GAIN_RESOURCES", valuables: 1 } }
+        ]
+      });
+    }
+  });
+
+  it("grants POSITIVE morale, scaled gold, and a scaled search for the sea banks", () => {
+    // Wiki shows a <morale_positive> token for both the Shipwreck and the
+    // Derelict Ship — a morale bonus, not the penalty the code once granted.
     expect(CREATURE_BANKS.shipwreck.buildReward(2)).toEqual({
       type: "SEQUENCE",
       interactions: [
-        { type: "GAIN_MORALE", amount: -1 },
+        { type: "GAIN_MORALE", amount: 1 },
         { type: "GAIN_RESOURCES", gold: 9 },
         { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 2 }
       ]
@@ -183,7 +207,7 @@ describe("Creature Bank rewards", () => {
     expect(CREATURE_BANKS.derelict_ship.buildReward(1)).toEqual({
       type: "SEQUENCE",
       interactions: [
-        { type: "GAIN_MORALE", amount: -1 },
+        { type: "GAIN_MORALE", amount: 1 },
         { type: "GAIN_RESOURCES", gold: 9 },
         { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 1 }
       ]
