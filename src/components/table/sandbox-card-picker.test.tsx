@@ -56,8 +56,10 @@ describe("sandbox Add-card picker", () => {
       cardId: "war_machine.first_aid_tent"
     });
 
+    // "cannon" also matches Jeremy's "Cannon I/IV/VI" hero specialties, so pick
+    // the war-machine row by its kind-qualified accessible name ("war-machine Cannon").
     fireEvent.change(screen.getByPlaceholderText(/filter cards/i), { target: { value: "cannon" } });
-    fireEvent.click(screen.getByRole("button", { name: /cannon/i }));
+    fireEvent.click(screen.getByRole("button", { name: /war-machinecannon/i }));
     expect(onAction).toHaveBeenCalledWith({
       type: "SANDBOX_ADD_CARD",
       playerId: "p1",

@@ -1831,21 +1831,62 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     specialtyCardIds: { 1: "specialty.cassiopeia.1", 4: "specialty.cassiopeia.4", 6: "specialty.cassiopeia.6" },
     portrait: "/assets/hero_portraits-cassiopeia.webp",
     source: coveHeroSource("cassiopeia")
+  },
+  // Jeremy — the Cannon specialist. Buys the Cove Cannon war machine (already in
+  // permanents.ts) and fires its 2-damage shot from the specialty; all three
+  // levels are engine-wired (see specialty.jeremy.* and cove-content.test.ts).
+  jeremy: {
+    id: "jeremy",
+    name: "Jeremy",
+    faction: "cove",
+    class: "Captain",
+    type: "might",
+    startingStats: { attack: 3, defense: 0, power: 2, knowledge: 1 },
+    startingAbilityCardId: "ability.offense",
+    specialtyCardIds: { 1: "specialty.jeremy.1", 4: "specialty.jeremy.4", 6: "specialty.jeremy.6" },
+    portrait: "/assets/hero_portraits-jeremy.webp",
+    source: coveHeroSource("jeremy")
+  },
+  // Zilare — the Forgetfulness specialist. Reuses the engine's FORGETFULNESS
+  // effect (the chosen enemy cannot attack on its next activation, grade-gated)
+  // with a draw / +2-Power alternative; all three levels are engine-wired (see
+  // specialty.zilare.* and cove-content.test.ts).
+  zilare: {
+    id: "zilare",
+    name: "Zilare",
+    faction: "cove",
+    class: "Navigator",
+    type: "magic",
+    startingStats: { attack: 2, defense: 0, power: 1, knowledge: 2 },
+    startingAbilityCardId: "ability.interference",
+    specialtyCardIds: { 1: "specialty.zilare.1", 4: "specialty.zilare.4", 6: "specialty.zilare.6" },
+    portrait: "/assets/hero_portraits-zilare.webp",
+    source: coveHeroSource("zilare")
+  },
+  // Miriam — the Scouting specialist. Reuses REMOVE_HAND_CARD_THEN_SEARCH: remove
+  // a card from hand to Search its deck, with an optional "remove this Specialty"
+  // variant; all three levels are engine-wired (see specialty.miriam.* and
+  // cove-content.test.ts).
+  miriam: {
+    id: "miriam",
+    name: "Miriam",
+    faction: "cove",
+    class: "Captain",
+    type: "might",
+    startingStats: { attack: 3, defense: 0, power: 2, knowledge: 1 },
+    startingAbilityCardId: "ability.logistics",
+    specialtyCardIds: { 1: "specialty.miriam.1", 4: "specialty.miriam.4", 6: "specialty.miriam.6" },
+    portrait: "/assets/hero_portraits-miriam.webp",
+    source: coveHeroSource("miriam")
   }
-  // The other four Cove heroes are deferred (NOT registered) — each has one
-  // signature specialty that needs an engine subsystem we have not built yet, so
-  // they are kept out rather than shipped with an inert specialty, exactly like
-  // the Octavia/Melodia/Tarnum hold-outs below. Their stats/classes/abilities are
-  // transcribed and ready to register the moment the mechanic lands:
+  // One Cove hero remains deferred (NOT registered) until its signature mechanic
+  // is built — kept out rather than shipped with an inert specialty, exactly like
+  // the Octavia/Melodia/Tarnum hold-outs below. Stats/class/ability are
+  // transcribed and ready to register the moment it lands:
   //   - Casmetra (Navigator, magic, A2 D0 P1 K2, Wisdom): "Sorceresses" — I/IV are
-  //     the standard creature buffs, but VI also places a -2 Weakness token from
-  //     the specialty (no place-token-from-specialty effect yet).
-  //   - Jeremy (Captain, might, A3 D0 P2 K1, Offense): "Cannon" — needs the Cannon
-  //     war machine (not implemented).
-  //   - Miriam (Captain, might, A3 D0 P2 K1, Logistics): "Search" — remove a card
-  //     from hand to Search a matching deck (no remove-to-search turn action yet).
-  //   - Zilare (Navigator, magic, A2 D0 P1 K2, Interference): "Forgetfulness" — a
-  //     unit cannot attack during its next activation (no such debuff yet).
+  //     the standard creature buffs, but VI applies TWO targeted effects at once
+  //     (+2 attack to your unit AND a -2 Weakness token on any unit for 2 rounds);
+  //     the engine has no dual-target compound-effect primitive yet.
   // Four more wiki heroes complete the remaining rosters; their PC portraits are
   // already fetched and committed (scripts/fetch-extra-heroes-art-batch5.py:
   // octavia, melodia, tarnum_ranger, tarnum_beastmaster), but they are NOT yet
@@ -1971,9 +2012,9 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     color: "#0f8a99",
     // S9 is the Cove starting tile, already defined in expansion-tiles.ts.
     startingTileId: "S9",
-    // Only the two heroes whose specialties are fully engine-wired are registered;
-    // the other four Cove heroes are deferred (see coreHeroDefinitions).
-    heroes: ["astra", "cassiopeia"],
+    // Heroes whose specialties are fully engine-wired are registered; only
+    // Casmetra remains deferred (see coreHeroDefinitions).
+    heroes: ["astra", "cassiopeia", "jeremy", "zilare", "miriam"],
     buildings: buildingsOfFaction("cove"),
     units: unitsOfFaction("cove"),
     source: townSource("cove")
