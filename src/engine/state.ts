@@ -4928,6 +4928,12 @@ export type VisitStep =
       roundDown?: boolean;
     }
   | {
+      /** Cove Pub: reinforce one unit with a flat gold discount (min 0). */
+      type: "REINFORCE_FLAT_GOLD";
+      armyUnitId: string;
+      discount: number;
+    }
+  | {
       /**
        * Library of Enlightenment: open the swap menu — pick a Statistic card
        * (hand or discard) to remove for 3 gold. `remaining` swaps are left.

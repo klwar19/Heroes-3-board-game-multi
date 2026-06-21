@@ -129,6 +129,17 @@ export type TownBuildingEffect =
     }
   | {
       /**
+       * Cove Pub: at the beginning of each Astrologers' round, reinforce one
+       * unit of the listed tiers for `discount` less gold (min 0; other
+       * resources unchanged). The board game's "once per turn" — offered once
+       * per Astrologers' round, like the Saplings half-gold reinforce.
+       */
+      type: "ASTROLOGERS_FLAT_GOLD_REINFORCE";
+      discount: number;
+      tiers: UnitTier[];
+    }
+  | {
+      /**
        * Necromancy Amplifier: at the beginning of your turn, search the
        * Ability deck for a Necromancy card OR take a Specialty card from
        * your discard pile.
