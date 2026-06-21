@@ -576,6 +576,18 @@ export function canCrossEdge(
     return movement.moveThrough;
   }
 
+  // Creature Banks replace a Tile's Blocked Field. A hero may walk IN to fight
+  // from within the same Tile, but the bank is NEVER a route across a Tile edge:
+  // you cannot enter it from an adjacent Tile, nor leave it to the outside —
+  // not even with Pathfinding (checked before the crossSealedBorders override).
+  // It only connects to its own Tile's fields.
+  if (
+    (fromField.location === "creature_bank" || toField.location === "creature_bank") &&
+    fromField.tileInstanceId !== toField.tileInstanceId
+  ) {
+    return false;
+  }
+
   // A hero may always step from land onto an adjacent sea field. Without Water
   // Walk that step is a forced stop (classifyHeroStep returns "stop" and the
   // mover is halted for the turn); with Water Walk the sea is normal terrain.

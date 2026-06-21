@@ -5139,6 +5139,15 @@ export type AdventureState = {
   warMachineSupply?: CardId[];
   /** Pandora's Box deck: shuffled draw pile (top = last element). */
   pandoraDeck?: CardId[];
+  /**
+   * Creature Bank token piles (Naval Battles optional rule). Two shuffled piles
+   * of CreatureBankId — one for Far Map Tiles (II-III), one for Near (IV-V) —
+   * drawn from (top = last element) when a player places a bank on a discovered
+   * tile's Blocked Field. Present only when the rule is enabled; an empty pile
+   * means every token of that type has been placed.
+   */
+  creatureBankTokensFar?: string[];
+  creatureBankTokensNear?: string[];
   /** Field visit currently being resolved (choices pending). */
   pendingVisit: PendingVisit | null;
   /**
@@ -5210,6 +5219,12 @@ export type GameSetupOptions = {
   victoryMode?: VictoryMode;
   /** PvP Combat casualties: "normal" (lose dead units) or "none" (keep troops). */
   pvpTroopLoss?: PvpTroopLoss;
+  /**
+   * Naval Battles optional rule. When on (default), discovering a Far/Near Map
+   * Tile with a Blocked Field lets the discovering player place a Creature Bank
+   * token there. Off disables the offer and the token piles entirely.
+   */
+  creatureBanks?: boolean;
   difficulty: GameDifficulty;
   startingResources: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };
@@ -5435,7 +5450,8 @@ export type PendingChoice =
         | "fortune-boost"
         | "visions-boost"
         | "visions-deck"
-        | "visions-scry";
+        | "visions-scry"
+        | "place-creature-bank";
       /**
        * city-hall: the income options for the City Hall (Resource-round) choice
        * under resolution, index-aligned with `options`. Stored here in game
@@ -5636,6 +5652,12 @@ export type PendingChoice =
         remaining: CardId[];
         toReturn: CardId[];
       };
+      /**
+       * place-creature-bank: a discovered Far/Near tile's Blocked Field at
+       * `fieldId`, offered to the discovering player to convert into a Creature
+       * Bank drawn from the `tier` pile. Option 0 places it, option 1 declines.
+       */
+      creatureBank?: { fieldId: MapSpaceId; tier: "far" | "near" };
       returnPhase: GamePhase;
     }
   | {

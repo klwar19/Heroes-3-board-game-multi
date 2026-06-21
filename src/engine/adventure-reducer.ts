@@ -28,6 +28,7 @@ import {
   fieldCreatureBankId,
   grantCreatureBankReward,
   isCreatureBankId,
+  placeCreatureBank,
   eliminatePlayer,
   finalizeStartOfTurnHand,
   fieldLayer,
@@ -1381,6 +1382,53 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
     tileDefId: tile.tileDefId,
     rotation
   });
+
+  // Naval Battles optional rule: a freshly discovered Far/Near tile with a
+  // Blocked Field lets the discovering player place a Creature Bank token there.
+  offerCreatureBankPlacement(state, tile, action.playerId);
+}
+
+/**
+ * Offers the discovering player the choice to place a Creature Bank token on a
+ * just-revealed Far (II-III) or Near (IV-V) tile's Blocked Field (rulebook
+ * p.66). Sea tiles have no Blocked Field, so they never trigger this. No-op
+ * when the rule is off (no piles) or the matching pile is empty.
+ */
+function offerCreatureBankPlacement(state: GameState, tile: MapTileState, playerId: PlayerId): void {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return;
+  }
+  const tier: "far" | "near" | null = tile.group === "far" ? "far" : tile.group === "near" ? "near" : null;
+  if (!tier) {
+    return;
+  }
+  const pile = tier === "far" ? adventure.creatureBankTokensFar : adventure.creatureBankTokensNear;
+  if (!pile || pile.length === 0) {
+    return;
+  }
+  const blockedSpaceId = getTileFootprintSpaceIds(tile).find(
+    (spaceId) => adventure.fields[spaceId]?.location === "blocked_field"
+  );
+  if (!blockedSpaceId) {
+    return;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt:
+      tier === "far"
+        ? "This Far tile has a Blocked Field — place a Creature Bank token here?"
+        : "This Near tile has a Blocked Field — place a Creature Bank token here?",
+    options: [{ label: "Place a Creature Bank" }, { label: "Leave it blocked" }],
+    context: "place-creature-bank",
+    creatureBank: { fieldId: blockedSpaceId, tier },
+    returnPhase: state.phase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
 }
 
 export function isTileAdjacentToSpace(state: GameState, tileInstanceId: string, spaceId: MapSpaceId): boolean {
@@ -5417,6 +5465,24 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
   const choice = state.pendingChoice;
   if (!choice || choice.type !== "OPTION_CHOICE" || choice.id !== action.choiceId || choice.playerId !== action.playerId) {
     throw new Error("That choice cannot be resolved.");
+  }
+
+  if (choice.context === "place-creature-bank") {
+    const data = choice.creatureBank;
+    const adventure = state.adventure;
+    // Option 0 places a bank (draw the top token of the matching pile and carve
+    // it onto the Blocked Field); option 1 (or any other) leaves the field blocked.
+    if (data && adventure && action.optionIndex === 0) {
+      const pile = data.tier === "far" ? adventure.creatureBankTokensFar : adventure.creatureBankTokensNear;
+      const bankId = pile?.pop();
+      if (bankId && isCreatureBankId(bankId)) {
+        placeCreatureBank(state, data.fieldId, bankId);
+      }
+    }
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    return;
   }
 
   if (choice.context === "satyr-swap") {
