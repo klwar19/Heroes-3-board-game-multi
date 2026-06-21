@@ -676,3 +676,78 @@ describe("ReactionTray — Bowstring carries its chosen ranged unit through the 
     expect(applied.state.combat!.activeUnitId).toBe("unit_p1_marksmen");
   });
 });
+
+describe("ReactionTray — Archangels' free lethal save is reachable in the UI", () => {
+  /**
+   * A guaranteed-lethal p2 attack on p1's Griffins, paused in the UNIT_LETHAL_HIT
+   * window. p1 holds NO save cards — the only rescue is the Archangels' (here the
+   * Crusaders') once-per-combat free "Resurrection" unit ability. Before the fix
+   * the tray rendered no tile for it (USE_UNIT_RESURRECTION is not a PLAY_REACTION),
+   * so a human could only "Let it die".
+   */
+  function lethalWindowWithArchangelSave(): GameState {
+    const state = createInitialGameState("tray-resurrection-seed");
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    const defender = state.combat!.units.unit_p1_griffins;
+    defender.position = 9;
+    defender.defense = 0;
+    defender.damage = defender.maxHealth - 1; // one hit from death
+    const archangel = state.combat!.units.unit_p1_crusaders;
+    archangel.abilities = ["archangel-lethal-save"];
+    archangel.position = 6;
+    const attacker = state.combat!.units.unit_p2_skeletons;
+    attacker.abilities = [];
+    attacker.attack = 5; // clearly lethal
+    attacker.position = 13; // adjacent below the Griffins
+    state.combat!.dice.scriptedRolls = [0];
+    state.combat!.dice.rollCount = 0;
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    const result = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: "unit_p2_skeletons",
+      defenderId: "unit_p1_griffins"
+    });
+    expect(result.errors).toEqual([]);
+    return result.state;
+  }
+
+  it("renders a tile that fires USE_UNIT_RESURRECTION for the saving unit", () => {
+    const state = lethalWindowWithArchangelSave();
+    // Sanity: the engine paused in the lethal window with p1 holding the save.
+    expect(state.reactionWindow?.triggerEvent.type).toBe("UNIT_LETHAL_HIT");
+    expect(state.reactionWindow?.priorityPlayerId).toBe("p1");
+    expect(
+      getLegalActions(state, "p1").some((legal) => legal.action.type === "USE_UNIT_RESURRECTION")
+    ).toBe(true);
+
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    const saveButton = screen.getByRole("button", { name: /cancel the killing blow/i });
+    act(() => fireEvent.click(saveButton));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction.mock.calls[0][0]).toMatchObject({
+      type: "USE_UNIT_RESURRECTION",
+      playerId: "p1",
+      savingUnitId: "unit_p1_crusaders"
+    });
+
+    // The fired action resolves cleanly in the engine (end-to-end sanity).
+    const applied = applyAction(state, onAction.mock.calls[0][0] as GameAction);
+    expect(applied.errors).toEqual([]);
+    expect(applied.state.combat!.units.unit_p1_crusaders.usedLethalSaveThisCombat).toBe(true);
+  });
+});

@@ -657,6 +657,55 @@ function withoutArt(card: CardLibrary[string]): CardLibrary[string] {
   return next;
 }
 
+const ROMAN: Record<1 | 4 | 6, string> = { 1: "I", 4: "IV", 6: "VI" };
+
+/**
+ * Astra's Cure specialty (Cove). Reuses the implemented Cure cleanse
+ * (HEAL_DAMAGE_AND_REMOVE_EFFECTS): I removes any effect or paralysis then draws
+ * 1; IV removes any effect or paralysis and heals up to 2; VI heals up to 3 (no
+ * cleanse). Face-less — the wiki has no Cove specialty card art yet.
+ */
+function cureSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
+  const base = {
+    id: `specialty.astra.${level}`,
+    name: `Cure ${ROMAN[level]}`,
+    kind: "hero-specialty" as const,
+    timing: "instant" as const,
+    phaseLimit: ["combat" as const],
+    implementationStatus: "implemented" as const,
+    source: heroSource("astra")
+  };
+  if (level === 6) {
+    return {
+      ...base,
+      tags: ["hero-specialty", "instant", "astra", "heal", "Remove up to 3 damage from your selected unit."],
+      target: { type: "friendly-unit", damagedOnly: true },
+      effect: { type: "HEAL_DAMAGE", amount: 3 }
+    };
+  }
+  return {
+    ...base,
+    tags: [
+      "hero-specialty",
+      "instant",
+      "astra",
+      "heal",
+      level === 1
+        ? "Remove any effect or paralysis from your selected unit, then draw 1 card."
+        : "Remove any effect or paralysis as well as up to 2 damage from your selected unit."
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "HEAL_DAMAGE_AND_REMOVE_EFFECTS",
+      amount: level === 1 ? 0 : 2,
+      removePolarity: "any-removable",
+      removeParalysis: true,
+      ...(level === 1 ? { drawCards: 1 } : {})
+    }
+  };
+}
+
+
 /** "+N attack" instant on your own attack, doubled for the signature unit (Lorelei VI). */
 function attackInstantSpecialty(
   heroSlug: string,
@@ -3289,5 +3338,18 @@ export const adventureCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: heroSource("sephinroth")
-  })
+  }),
+
+  // ---- Cove (expansion) specialties --------------------------------------
+  // Only the two Cove heroes whose specialties are fully engine-wired are
+  // registered: Cassiopeia (Oceanids creature buffs) and Astra (Cure cleanse,
+  // reusing HEAL_DAMAGE_AND_REMOVE_EFFECTS). The other four Cove heroes are
+  // deferred (not registered) until their signature mechanic is built — see the
+  // deferral note in coreHeroDefinitions and cove-content.test.ts.
+  "specialty.cassiopeia.1": withoutArt(towerAttackOrDefenseSpecialty("cassiopeia", "Oceanids", 1, "Oceanids")),
+  "specialty.cassiopeia.4": withoutArt(unitInitiativeSpecialty("cassiopeia", "Oceanids", 4, 1, "Oceanids")),
+  "specialty.cassiopeia.6": withoutArt(towerStatBoostSpecialty("cassiopeia", "Oceanids", 6, "attack", 2, "Oceanids")),
+  "specialty.astra.1": cureSpecialty(1),
+  "specialty.astra.4": cureSpecialty(4),
+  "specialty.astra.6": cureSpecialty(6)
 };
