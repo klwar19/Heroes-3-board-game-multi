@@ -311,14 +311,21 @@ describe("Spell Book — stashing from hand (map turn)", () => {
 // ---------------------------------------------------------------------------
 
 describe("Spell Book — map Spells", () => {
-  it("offers a Book Map Spell (Town Portal) as a fromSpellBook play on the map", () => {
+  it("casts a Book Map Spell (Town Portal) from the map and cycles Book → discard", () => {
     const state = adventure("book-map-cast");
     state.players.p1.hand = [];
     state.players.p1.spellBook = ["spell.town_portal"];
-    const offered = legal(state, "p1").some(
+
+    const play = legal(state, "p1").find(
       (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "spell.town_portal" && l.action.fromSpellBook === true
     );
-    expect(offered, "a Book Town Portal should be playable from the map turn").toBe(true);
+    expect(play, "a Book Town Portal should be playable from the map turn").toBeTruthy();
+
+    // Resolving it pulls the Spell out of the Book (it never touches the hand)
+    // and resolves the cast — the playCard fromSpellBook branch, not the hand one.
+    const cast = applyOk(state, play!.action);
+    expect(cast.players.p1.spellBook).not.toContain("spell.town_portal");
+    expect(cast.players.p1.hand).not.toContain("spell.town_portal");
   });
 });
 
