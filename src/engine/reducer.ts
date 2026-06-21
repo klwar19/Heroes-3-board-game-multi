@@ -9091,6 +9091,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       throw new Error(`${option.label} is played at the start of a Combat with Neutral Units.`);
     }
   }
+  // Jeremy's Cannon IV/VI "use the Cannon" side: requires the war-machine card
+  // in play, so the free shot can never fire without a Cannon.
+  if (option?.requiresWarMachine && !getPermanentCardIds(state, action.playerId).includes(option.requiresWarMachine)) {
+    throw new Error(`${option.label} requires that war machine in play.`);
+  }
   if (mode === "expert" && !hasExpertUseAvailable(state, action.playerId)) {
     throw new Error("No expert uses are available this combat round.");
   }
@@ -9255,6 +9260,32 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     const unit = state.combat.units[target.unitId];
     if (unit && maxGrade && gradeRank(unit.grade) <= gradeRank(maxGrade)) {
       placeCombatToken(state, unit, "paralysis", 0, card.name);
+    }
+  }
+
+  // Zilare's Forgetfulness specialty: the chosen enemy unit cannot attack during
+  // its next activation, gated by grade (I -> silver, IV/VI -> gold) exactly like
+  // the Forgetfulness Spell. The Spell shares the FORGETFULNESS effect but
+  // resolves via the spell stack, so this branch only fires for directly-played
+  // cards (the specialty).
+  if (effect.type === "FORGETFULNESS" && state.combat && target) {
+    const maxGrade = gradeAtPower(effect.gradeByPower, card.power ?? 0);
+    const unit = state.combat.units[target.unitId];
+    if (unit && maxGrade && gradeRank(unit.grade) <= gradeRank(maxGrade)) {
+      createActiveEffect(
+        state,
+        {
+          name: card.name,
+          scope: "unit",
+          duration: { type: "next-activation" },
+          polarity: "negative",
+          removable: true,
+          modifiers: [{ type: "UNIT_CANNOT_ATTACK" }]
+        },
+        { type: "card", cardId: card.id, controllerId: action.playerId },
+        action.playerId,
+        target
+      );
     }
   }
 
@@ -9663,8 +9694,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         {
           type: "REMOVE_HAND_CARD",
           prompt: `${card.name}: remove a card to Search (${effect.count}) its deck`,
-          filter: "removable",
-          then: "search-same-deck"
+          filter: effect.filter ?? "removable",
+          then: "search-same-deck",
+          searchCount: effect.count
         }
       ]
     });

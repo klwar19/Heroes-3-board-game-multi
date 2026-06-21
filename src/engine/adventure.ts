@@ -2563,6 +2563,10 @@ export function processPendingVisit(state: GameState): void {
       case "REINFORCE_HALF_GOLD":
         reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, true, step.roundDown ?? false);
         break;
+      case "REINFORCE_FLAT_GOLD":
+        // Cove Pub: flat gold discount on one reinforcement (no halving).
+        reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, false, false, false, step.discount);
+        break;
       case "LIBRARY_SWAP": {
         const player = state.players[visit.playerId];
         if (!player || step.remaining <= 0 || !hasResources(player, { gold: 3 })) {
@@ -4655,6 +4659,9 @@ export function startAdventureRound(state: GameState): void {
         if (effect?.type === "ROUND_START_FREE_SPRITE") {
           queueGardenOfLife(state, playerId, buildingId, effect.unitDefId);
         }
+        if (effect?.type === "ASTROLOGERS_FLAT_GOLD_REINFORCE") {
+          queueFlatGoldReinforce(state, playerId, buildingId, effect.discount, effect.tiers);
+        }
         if (effect?.type === "ASTROLOGERS_ROUND_CHOICE") {
           // Cove City Hall: the same choice machinery as a Resource-round City
           // Hall, but fired on the Astrologers' round.
@@ -4910,6 +4917,71 @@ function queueHalfGoldReinforce(state: GameState, playerId: PlayerId, buildingId
       {
         type: "CHOOSE_ONE",
         prompt: `${coreBuildingDefinitions[buildingId]?.name ?? "Saplings"}: reinforce one unit for half the gold cost`,
+        options
+      }
+    ]
+  });
+}
+
+/**
+ * Cove Pub: "At the beginning of each Astrologers' round, reduce a reinforcement
+ * cost by `discount` gold (min 0), once per turn." Modelled like the Saplings
+ * half-gold reinforce — a once-per-round CHOOSE_ONE offered at round start to
+ * reinforce one eligible owned Few unit for `discount` less gold (or Skip). Only
+ * units the player can afford at the discounted price are offered.
+ */
+function queueFlatGoldReinforce(
+  state: GameState,
+  playerId: PlayerId,
+  buildingId: string,
+  discount: number,
+  tiers: string[]
+): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+
+  const options: { label: string; steps: VisitStep[] }[] = [];
+  for (const unit of player.army) {
+    if (unit.side !== "few") {
+      continue;
+    }
+
+    const def = coreUnitDefinitions[unit.unitDefId];
+    if (!def || !tiers.includes(def.tier)) {
+      continue;
+    }
+
+    // Price exactly as the reinforcement will be charged (the flat discount is
+    // non-stacking with any Legion voucher / Stables discount on this unit).
+    const cost = reinforceCostFor(state, playerId, unit.id, false, false, false, discount);
+    if (!cost || !hasRecruitResources(state, playerId, cost)) {
+      continue;
+    }
+
+    const costLabel = Object.entries(cost)
+      .filter(([, amount]) => amount)
+      .map(([resource, amount]) => `${amount} ${resource}`)
+      .join(" + ");
+    options.push({
+      label: `Reinforce ${def.name} (${costLabel || "free"})`,
+      steps: [{ type: "REINFORCE_FLAT_GOLD", armyUnitId: unit.id, discount }]
+    });
+  }
+
+  if (options.length === 0) {
+    return;
+  }
+
+  options.push({ label: "Skip", steps: [] });
+  state.adventure?.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt: `${coreBuildingDefinitions[buildingId]?.name ?? "Pub"}: reinforce one unit for ${discount} less gold`,
         options
       }
     ]
@@ -5940,7 +6012,13 @@ export function reinforceCostFor(
   armyUnitId: string,
   halfCost: boolean,
   halfGoldOnly: boolean,
-  roundDown: boolean
+  roundDown: boolean,
+  /**
+   * Cove Pub: a flat gold discount applied to THIS reinforcement (min 0). It is
+   * non-stacking with the other flat sources — the single largest wins — exactly
+   * like a Legion voucher or the Champions' Stables discount.
+   */
+  flatGoldDiscount = 0
 ): ResourceCost | null {
   const armyUnit = state.players[playerId]?.army.find((candidate) => candidate.id === armyUnitId);
   const packSide = armyUnit ? getUnitSide(armyUnit.unitDefId, "pack") : null;
@@ -5952,7 +6030,7 @@ export function reinforceCostFor(
   const halfApplies = halfCost || halfGoldOnly;
   const originalGold = packSide.cost.gold ?? 0;
   const halfGold = half(originalGold);
-  const flatDiscount = bestRecruitGoldDiscount(state, playerId, purchase);
+  const flatDiscount = Math.max(flatGoldDiscount, bestRecruitGoldDiscount(state, playerId, purchase));
   const flatGold = Math.max(0, originalGold - flatDiscount);
   // The flat source wins only when it actually beats the half on gold; a tie (or
   // no flat discount) keeps the half so its non-gold halving (Isra) still stands.
@@ -5979,7 +6057,9 @@ export function reinforceArmyUnit(
   halfGoldOnly = false,
   roundDown = false,
   /** Neutral Skeletons reward: a free Few→Pack flip (no resources spent). */
-  free = false
+  free = false,
+  /** Cove Pub: a flat gold discount on this reinforcement (min 0, non-stacking). */
+  flatGoldDiscount = 0
 ): void {
   const player = state.players[playerId];
   const armyUnit = player?.army.find((candidate) => candidate.id === armyUnitId);
@@ -5988,7 +6068,7 @@ export function reinforceArmyUnit(
   }
 
   const purchase: RecruitPurchaseRef = { kind: "reinforce", unitDefId: armyUnit.unitDefId, armyUnitId };
-  const finalCost = free ? {} : (reinforceCostFor(state, playerId, armyUnitId, halfCost, halfGoldOnly, roundDown) ?? {});
+  const finalCost = free ? {} : (reinforceCostFor(state, playerId, armyUnitId, halfCost, halfGoldOnly, roundDown, flatGoldDiscount) ?? {});
   if (!hasRecruitResources(state, playerId, finalCost)) {
     return;
   }

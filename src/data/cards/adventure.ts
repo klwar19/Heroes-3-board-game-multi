@@ -705,6 +705,51 @@ function cureSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
   };
 }
 
+/**
+ * Miriam's Scouting specialty (Cove): a map turn action that removes one card
+ * from hand to Search(count) that card's deck (REMOVE_HAND_CARD_THEN_SEARCH),
+ * then optionally removes the Specialty card itself ("Then, you may Remove this
+ * Specialty card" → the second CHOOSE_ONE option, cost.removeSelf, mirroring the
+ * Scholar). Level I narrows the removable card to an Ability (always digging the
+ * Ability deck); IV/VI allow any Ability/Artifact/Spell and dig that card's deck.
+ */
+function scoutingSpecialty(level: 1 | 4 | 6, filter: "ability" | "removable", count: number): CardLibrary[string] {
+  const what = filter === "ability" ? "an Ability card" : "an Ability, Artifact, or Spell card";
+  const deck = filter === "ability" ? "the Ability deck" : "its deck";
+  return withoutArt({
+    id: `specialty.miriam.${level}`,
+    name: `Scouting ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "miriam",
+      "scouting",
+      `Remove ${what} from your hand to Search (${count}) ${deck}. Then, you may Remove this Specialty card.`
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: `Remove ${what} to Search (${count}) ${deck}`,
+          mapOnly: true,
+          effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count, filter }
+        },
+        {
+          label: `Remove ${what} to Search (${count}) ${deck}; then Remove this Specialty card`,
+          mapOnly: true,
+          cost: { removeSelf: true },
+          effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count, filter }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("miriam")
+  });
+}
+
 
 /** "+N attack" instant on your own attack, doubled for the signature unit (Lorelei VI). */
 function attackInstantSpecialty(
@@ -3351,5 +3396,223 @@ export const adventureCards: CardLibrary = {
   "specialty.cassiopeia.6": withoutArt(towerStatBoostSpecialty("cassiopeia", "Oceanids", 6, "attack", 2, "Oceanids")),
   "specialty.astra.1": cureSpecialty(1),
   "specialty.astra.4": cureSpecialty(4),
-  "specialty.astra.6": cureSpecialty(6)
+  "specialty.astra.6": cureSpecialty(6),
+
+  // Jeremy (Captain, might, A3 D0 P2 K1, Offense): the Cannon specialist. He buys
+  // and fires the Cove Cannon war machine. The Cannon's shot is 2 damage to one
+  // chosen enemy, so the IV/VI "use the Cannon once for free" option reproduces
+  // exactly that (DAMAGE_CHOSEN_ENEMIES count 1, amount 2) — gated on owning a
+  // Cannon (requiresWarMachine) so it can never fire without one, and never
+  // spending an expert use because it is a separate specialty play (so it does
+  // not count against the Cannon's once-per-round limit).
+  "specialty.jeremy.1": withoutArt({
+    id: "specialty.jeremy.1",
+    name: "Cannon I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "jeremy",
+      "cannon",
+      "Pay 7 gold to gain a Cannon. — OR — Deal 1 damage to an enemy unit."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Pay 7 gold to gain a Cannon",
+          mapOnly: true,
+          effect: { type: "GAIN_WAR_MACHINE", warMachineCardId: "war_machine.cannon", goldCost: 7 }
+        },
+        {
+          label: "Deal 1 damage to an enemy unit",
+          combatOnly: true,
+          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("jeremy")
+  }),
+  "specialty.jeremy.4": withoutArt({
+    id: "specialty.jeremy.4",
+    name: "Cannon IV",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "jeremy",
+      "cannon",
+      "Use the Cannon once (2 damage to a chosen enemy) without spending the expert; it does not count against the Cannon's round limit. — OR — Draw 1 card."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Use the Cannon once for free (2 damage to a chosen enemy)",
+          combatOnly: true,
+          requiresWarMachine: "war_machine.cannon",
+          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 2 }
+        },
+        {
+          label: "Draw 1 card",
+          effect: { type: "DRAW_CARDS", amount: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("jeremy")
+  }),
+  "specialty.jeremy.6": withoutArt({
+    id: "specialty.jeremy.6",
+    name: "Cannon VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "jeremy",
+      "cannon",
+      "Use the Cannon once (2 damage to a chosen enemy) without spending the expert; it does not count against the Cannon's round limit. — OR — Draw 2 cards."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Use the Cannon once for free (2 damage to a chosen enemy)",
+          combatOnly: true,
+          requiresWarMachine: "war_machine.cannon",
+          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 2 }
+        },
+        {
+          label: "Draw 2 cards",
+          effect: { type: "DRAW_CARDS", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("jeremy")
+  }),
+
+  // Zilare (Navigator, magic, A2 D0 P1 K2, Interference): the Forgetfulness
+  // specialist. The "cannot attack next activation" option reuses the engine's
+  // FORGETFULNESS effect (the same one behind spell.forgetfulness): the chosen
+  // enemy cannot attack during its next activation, grade-gated (I -> silver,
+  // IV/VI -> gold) and type-gated by the option's target (ranged for I/IV, any
+  // unit for VI). The alternative draws a card (I) or, like Septienna's Death
+  // Ripple, adds +2 Power to a Spell you are casting (IV/VI).
+  "specialty.zilare.1": withoutArt({
+    id: "specialty.zilare.1",
+    name: "Forgetfulness I",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "zilare",
+      "forgetfulness",
+      "During its next activation, a ranged unit of bronze or silver tier cannot attack. — OR — Draw 1 card."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "A bronze/silver ranged enemy cannot attack on its next activation",
+          combatOnly: true,
+          target: { type: "enemy-unit", unitTypes: ["ranged"] },
+          effect: { type: "FORGETFULNESS", gradeByPower: { 0: "silver" } }
+        },
+        {
+          label: "Draw 1 card",
+          effect: { type: "DRAW_CARDS", amount: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("zilare")
+  }),
+  "specialty.zilare.4": withoutArt({
+    id: "specialty.zilare.4",
+    name: "Forgetfulness IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "zilare",
+      "forgetfulness",
+      "During its next activation, a ranged unit of bronze, silver, or golden tier cannot attack. — OR — +2 Power on a Spell you are casting."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "A bronze/silver/golden ranged enemy cannot attack on its next activation",
+          combatOnly: true,
+          target: { type: "enemy-unit", unitTypes: ["ranged"] },
+          effect: { type: "FORGETFULNESS", gradeByPower: { 0: "gold" } }
+        },
+        {
+          label: "+2 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("zilare")
+  }),
+  "specialty.zilare.6": withoutArt({
+    id: "specialty.zilare.6",
+    name: "Forgetfulness VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "zilare",
+      "forgetfulness",
+      "During its next activation, a bronze, silver, or golden unit cannot attack. — OR — +2 Power on a Spell you are casting."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Any bronze/silver/golden enemy cannot attack on its next activation",
+          combatOnly: true,
+          target: { type: "enemy-unit" },
+          effect: { type: "FORGETFULNESS", gradeByPower: { 0: "gold" } }
+        },
+        {
+          label: "+2 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("zilare")
+  }),
+
+  // Miriam (Captain, might, A3 D0 P2 K1, Logistics): the Scouting specialist —
+  // a map turn action reusing REMOVE_HAND_CARD_THEN_SEARCH (the Spellbinder's
+  // Hat machinery). I removes an Ability card to Search(2) the Ability deck;
+  // IV removes any Ability/Artifact/Spell to Search(2) its deck; VI the same to
+  // Search(4). Each offers a "then Remove this Specialty card" variant.
+  "specialty.miriam.1": scoutingSpecialty(1, "ability", 2),
+  "specialty.miriam.4": scoutingSpecialty(4, "removable", 2),
+  "specialty.miriam.6": scoutingSpecialty(6, "removable", 4)
 };
