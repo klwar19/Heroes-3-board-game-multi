@@ -103,6 +103,7 @@ export const implementedCardEffectTypes = [
   "SACRIFICE_TRANSFER",
   "PLACE_FORCE_FIELD",
   "PLACE_FIRE_WALL",
+  "PLACE_FIRE_WALL_FIXED",
   "PLACE_HIDDEN_TOKENS",
   "REMOVE_ACTIVE_EFFECT"
 ] satisfies EffectDefinition["type"][];

@@ -100,10 +100,23 @@ Conflux — now fully engine-wired (no display-only unit clauses left):
   the Magma Elementals unit"), NOT an all-Elementals generalist — the earlier
   all-Elementals doubling on I/IV was a deviation and has been corrected to match
   the card (`conflux-content.test.ts`, with the other Elementals as the control).
-- Conflux heroes Ciele, Luna and Tarnum (Conflux) are NOT on the roster yet —
-  their spell/obstacle/search specialties are not implemented. Only the three
-  unit-specialist Planeswalkers (Erdamon, Monere, Pasis) ship, with all of
-  their I/IV/VI specialties implemented and tested (`conflux-content.test.ts`).
+- Conflux heroes now shipped: the three unit-specialist Planeswalkers (Erdamon,
+  Monere, Pasis) AND **Luna** the Fire Wall Elementalist — I/VI place the shared
+  `fire_wall` battlefield token at a FIXED 1/3 damage (`PLACE_FIRE_WALL_FIXED`),
+  IV is the spell-economy choice (map discard recall OR a +2-Power spell-cast
+  reaction). All I/IV/VI implemented + tested (`conflux-content.test.ts`). Luna's
+  portrait asset is download-pending (the fetch script lists her; the UI falls
+  back to her initial), like other PC-portrait heroes.
+- Still deferred (NOT on the roster): **Ciele** (Magic Arrow) and **Tarnum
+  (Conflux)** (Enchanters). Both hinge on a subsystem the engine does NOT have:
+  casting a Spell *from your discard pile* as a free bonus cast (Ciele IV) and
+  casting Search(1)'d Spells immediately *over the one-per-round limit*, then
+  returning them to the deck/discard (Tarnum VI). A flat-damage shortcut for
+  Ciele would be unfaithful (it must respect Magic-Arrow spell immunity — e.g.
+  the Magic Elementals' own — and Power scaling), so they are left unimplemented
+  rather than stubbed. Tarnum I (Search(1) Spell) and IV (pay 10 gold for the
+  neutral Enchanters card, reusing `CONVERT_ARMY_UNIT`) are individually
+  feasible, but a hero ships only when ALL of I/IV/VI are engine-wired.
 
 This section is maintained by hand — the rule #3 enforcement test still does
 **not** exist, so re-verify any "stub" claim against `src/data/factions/units.ts`

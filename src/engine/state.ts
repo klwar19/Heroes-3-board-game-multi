@@ -1736,6 +1736,16 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Luna's Fire Wall specialty (I/VI): place a Fire Wall token on a chosen
+       * empty space for this Combat, dealing a FIXED amount of damage (1 at I,
+       * 3 at VI) — no Power scaling, unlike the Fire Wall spell. Reuses the same
+       * `fire_wall` battlefield token (damage on stop / pass-through).
+       */
+      type: "PLACE_FIRE_WALL_FIXED";
+      damage: number;
+    }
+  | {
+      /**
        * Quicksand (Basic Earth) / Land Mine (Expert Fire): take 2/4/6 tokens by
        * Power (half armed, half decoy "empty"), shuffle them face down and place
        * one on each chosen empty space. The caster picks the spaces one by one

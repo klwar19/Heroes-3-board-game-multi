@@ -2005,6 +2005,9 @@ function isOptionEffectPlayable(
     // Black cube) are combat plays.
     case "DAMAGE_BATTLEFIELD_LINE":
     case "TOGGLE_RETALIATION_MARKER":
+    // Luna's Fire Wall specialty (I/VI): place a Fire Wall token on an empty
+    // space — a combat play (its empty-space targets are generated generically).
+    case "PLACE_FIRE_WALL_FIXED":
       return context === "combat" && Boolean(state.combat);
     case "RESHUFFLE_DISCARD_THEN_DRAW": {
       // Deemer's Meteor Shower IV deck-cycle: useful whenever there is a card to

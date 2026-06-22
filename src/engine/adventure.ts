@@ -4328,16 +4328,13 @@ export function grantCreatureBankReward(
   processPendingVisit(state);
 }
 
-const PLAYABLE_FACTIONS = [
-  "castle",
-  "rampart",
-  "inferno",
-  "necropolis",
-  "dungeon",
-  "stronghold",
-  "fortress",
-  "tower"
-] as const;
+// Every faction with a unit roster is a first-class playable faction and thus a
+// valid Random Town defender — derived from the faction definitions so newer
+// expansions (Conflux, Cove, …) are included automatically rather than being
+// silently dropped by a stale hand-maintained list.
+export const PLAYABLE_FACTIONS: string[] = Object.values(coreFactionDefinitions)
+  .filter((faction) => faction.units.length > 0)
+  .map((faction) => faction.id);
 
 /**
  * Assigns (once) the unused faction defending a Random Town. The rulebook has

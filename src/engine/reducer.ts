@@ -10122,6 +10122,19 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
+  // Luna's Fire Wall specialty (I = 1 damage, VI = 3): place a Fire Wall token
+  // on the chosen empty space for this Combat. Reuses the spell's `fire_wall`
+  // battlefield token (bites a unit that stops on it or a ground/ranged unit
+  // passing through), but the damage is FIXED, not Power-scaled.
+  if (effect.type === "PLACE_FIRE_WALL_FIXED" && state.combat && action.target?.type === "space") {
+    addBattlefieldToken(state, {
+      kind: "fire_wall",
+      position: action.target.position,
+      controllerId: action.playerId,
+      damage: effect.damage
+    });
+  }
+
   // Deemer's Meteor Shower IV (one option): shuffle the discard pile back into
   // the deck FIRST, then draw — and the Meteor Shower IV card itself is discarded
   // AFTER the shuffle. It was moved to the discard before this effect ran, so it
