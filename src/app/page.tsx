@@ -79,6 +79,7 @@ import {
   type TilePlacementSelection
 } from "@/components/adventure/screen";
 import {
+  actionForfeitsStartOfTurnDraw,
   actionKey,
   cardName,
   costCardEligible,
@@ -510,6 +511,15 @@ export default function Home() {
     filter?: "spell" | "power-source";
     picks: number[];
   } | null>(null);
+  /**
+   * A card use (play / cast / spell-book stash) held at the start-of-turn draw
+   * gate: using it forfeits the unspent draw, so we confirm first. Stores the
+   * exact action to replay on "continue".
+   */
+  const [pendingDrawForfeit, setPendingDrawForfeit] = useState<GameAction | null>(null);
+  // Set true for the single submitAction call the forfeit confirmation replays,
+  // so the guard lets it through instead of re-opening the dialog.
+  const drawForfeitConfirmedRef = useRef(false);
   const [tilePlacement, setTilePlacement] = useState<TilePlacementSelection>(null);
   const [combatTab, setCombatTab] = useState<"battle" | "map">("battle");
   const [pile, setPile] = useState<{ title: string; cardIds: string[]; kind: "cards" | "units" | "astrologers" } | null>(null);
@@ -570,6 +580,8 @@ export default function Home() {
   const seenFlipIdsRef = useRef<Set<string>>(new Set());
   const seenMoveIdsRef = useRef<Set<string>>(new Set());
   const seenTileIdsRef = useRef<Set<string>>(new Set());
+  // Tile-instances we've already shown the "place the new tile" instruction for.
+  const seenTileNoticeIdsRef = useRef<Set<string>>(new Set());
   const seenFeedIdsRef = useRef<Set<string>>(new Set());
   const seenFxIdsRef = useRef<Set<string>>(new Set());
   // Unit id -> definition id, kept across snapshots: the death that ends a
@@ -865,6 +877,40 @@ export default function Home() {
         });
         setMapNotice((current) => {
           const queue = [...current.queue, ...cues];
+          return current.current ? { ...current, queue } : { current: queue[0], queue: queue.slice(1) };
+        });
+      }
+
+      // New-tile placement notice: when a freshly revealed/placed Map Tile (a
+      // Ⅱ–Ⅲ Far tile and every other tier) lands in front of the local player
+      // to rotate, pop a center-screen instruction telling them where it sits
+      // and how to seat it (rotate the on-tile arrows until its borders connect
+      // and the Confirm button lights up). Shown once per tile instance.
+      const tileChoice = nextState.adventure?.pendingTileChoice ?? null;
+      if (
+        tileChoice &&
+        tileChoice.playerId === viewerRef.current &&
+        !seenTileNoticeIdsRef.current.has(tileChoice.tileInstanceId)
+      ) {
+        seenTileNoticeIdsRef.current.add(tileChoice.tileInstanceId);
+        const tile = nextState.adventure?.tiles[tileChoice.tileInstanceId];
+        const tier = tile?.backLabel ? `${tile.backLabel} ` : "";
+        const reachLine = tileChoice.heroId
+          ? "Leave a border-line doorway your hero can step through onto it."
+          : "Make sure its open borders line up with the map.";
+        const cue: MapNoticeCue = {
+          id: `tileplace_${tileChoice.tileInstanceId}`,
+          icon: "🧭",
+          title: `Place the new ${tier}tile`,
+          subtitle: "It drops where it was revealed — you choose how it faces",
+          lines: [
+            "Use the ↺ / ↻ arrows on the tile to rotate it.",
+            reachLine,
+            "When the borders connect, the Confirm (✓) button lights up — press it to lock the tile in."
+          ]
+        };
+        setMapNotice((current) => {
+          const queue = [...current.queue, cue];
           return current.current ? { ...current, queue } : { current: queue[0], queue: queue.slice(1) };
         });
       }
@@ -2153,6 +2199,17 @@ export default function Home() {
       }
     }
 
+    // Start-of-turn draw gate: using a card (play / cast / spell-book stash) on
+    // your quiet map turn forfeits the unspent start-of-turn draw — you won't be
+    // able to draw up to your hand limit this turn. Confirm before committing,
+    // unless this is the replay the confirmation itself fired.
+    if (drawForfeitConfirmedRef.current) {
+      drawForfeitConfirmedRef.current = false;
+    } else if (state && actionForfeitsStartOfTurnDraw(state, viewerPlayerId, action)) {
+      setPendingDrawForfeit(action);
+      return;
+    }
+
     const connection = connectionRef.current;
     if (!connection) {
       return;
@@ -2480,6 +2537,10 @@ export default function Home() {
     const handCards = isSeated ? (playerView.players[viewerPlayerId]?.hand ?? []) : [];
     // Spell Book (house rule): the seated player's stored Spells (owner-private).
     const spellBookCards = isSeated ? (playerView.players[viewerPlayerId]?.spellBook ?? []) : [];
+    // The panel is shown from the very start of the game (even empty) whenever
+    // the house rule is on, so a player always knows the Book exists and can open
+    // it to see whether it holds any Spells.
+    const spellBookOn = isSeated && (state.adventure?.spellBook ?? true);
     const handLimit = viewer ? effectiveHandLimit(state, viewerPlayerId) : 0;
     // Over the hand limit at the start of the turn (only via card effects):
     // the player MUST discard down to the limit before acting.
@@ -2676,13 +2737,17 @@ export default function Home() {
                 view={playerView}
                 viewerPlayerId={viewerPlayerId}
               />
-              {spellBookCards.length > 0 ? (
-                <div className="spellBookPanel">
+              {spellBookOn ? (
+                <div className={`spellBookPanel ${spellBookCards.length === 0 ? "empty" : ""}`}>
                   <button
                     aria-expanded={spellBookOpen}
                     className={`spellBookToggle ${spellBookOpen ? "open" : ""}`}
                     onClick={() => setSpellBookOpen((value) => !value)}
-                    title="Your Spell Book — stored Spells you can cast (normal Spell limit applies)"
+                    title={
+                      spellBookCards.length === 0
+                        ? "Your Spell Book is empty — stash a hand Spell with its 📖 button to store it here"
+                        : "Your Spell Book — stored Spells you can cast (normal Spell limit applies)"
+                    }
                     type="button"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element -- small pixelated game icon, not a content image */}
@@ -2693,7 +2758,17 @@ export default function Home() {
                   {spellBookOpen ? (
                     <div className="spellBookWindow" role="menu" aria-label="Spell Book">
                       <strong>Spell Book</strong>
-                      <small>Cast a stored Spell, or stash a hand Spell here with the 📖 button on its card.</small>
+                      {spellBookCards.length === 0 ? (
+                        <>
+                          <small>Your Spell Book is empty.</small>
+                          <small className="spellBookHint">
+                            Stash a hand Spell here with the 📖 button on its card to free a hand slot (Magic Arrow
+                            cannot be stored).
+                          </small>
+                        </>
+                      ) : (
+                        <small>Cast a stored Spell, or stash a hand Spell here with the 📖 button on its card.</small>
+                      )}
                       {spellBookCards.map((spellId, bookIndex) => {
                         const casts = bookPlayActionsByCard.get(spellId) ?? [];
                         return (
@@ -2732,6 +2807,15 @@ export default function Home() {
                 {forcedDiscard ? (
                   <span className="handWarning">
                     Over the hand limit: discard down to {handLimit}.{overLimit > 0 ? ` Pick ${overLimit} more.` : ""}
+                  </span>
+                ) : null}
+                {/* Start-of-turn draw still unspent: warn that moving the hero or
+                    playing/casting/stashing a card forfeits it (the engine ends
+                    the draw window on the first such action), so the player draws
+                    or discards FIRST. */}
+                {canDraw && handMode === null ? (
+                  <span className="handWarning drawWarning">
+                    ⚠ Draw or discard first — moving your hero or using a card forfeits this turn&apos;s draw.
                   </span>
                 ) : null}
                 {/* The start-of-turn draw: one either/or — draw new, OR discard
@@ -3032,6 +3116,35 @@ export default function Home() {
             />
           ) : null}
           {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
+          {pendingDrawForfeit ? (
+            <div className="modalBackdrop" role="dialog" aria-modal="true" aria-label="Skip your start-of-turn draw?">
+              <div className="confirmModal">
+                <strong>Skip your start-of-turn draw?</strong>
+                <p>
+                  You haven&apos;t taken your start-of-turn draw yet. Using{" "}
+                  <b>{"cardId" in pendingDrawForfeit ? cardName(pendingDrawForfeit.cardId) : "this card"}</b> now
+                  forfeits it — you won&apos;t be able to draw or discard up to your hand limit this turn.
+                </p>
+                <div className="confirmModalButtons">
+                  <button
+                    className="commandButton primary"
+                    onClick={() => {
+                      const action = pendingDrawForfeit;
+                      setPendingDrawForfeit(null);
+                      drawForfeitConfirmedRef.current = true;
+                      void submitAction(action);
+                    }}
+                    type="button"
+                  >
+                    Use card &amp; skip draw
+                  </button>
+                  <button className="commandButton ghost" onClick={() => setPendingDrawForfeit(null)} type="button">
+                    Cancel — let me draw first
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
           {drawCue && !firstRoll ? <DrawOverlay cue={drawCue} key={drawCue.id} onDone={() => setDrawCue(null)} /> : null}
           {mapNotice.current && !mapDice.current ? (
             <MapNoticeOverlay cue={mapNotice.current} key={mapNotice.current.id} onDone={dismissMapNotice} />

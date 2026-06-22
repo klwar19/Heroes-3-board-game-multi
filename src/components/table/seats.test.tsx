@@ -62,7 +62,9 @@ describe("HandFan — Spell Book window (house rule)", () => {
   it("the Spell Book icon opens a list of stored Spells and casting one routes to target picking", () => {
     const state = createInitialGameState("book-window-ui");
     state.players.p1.hand = [];
-    state.players.p1.spellBook = ["spell.magic_arrow"];
+    // Lightning Bolt (not the starting-only Magic Arrow) is a Spell that can
+    // actually live in the Book; it casts at an enemy unit like a hand Spell.
+    state.players.p1.spellBook = ["spell.lightning_bolt"];
     state.players.p2.hand = [];
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_marksmen";
@@ -96,7 +98,39 @@ describe("HandFan — Spell Book window (house rule)", () => {
 
     expect(onAction).toHaveBeenCalledTimes(1);
     expect(onAction).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "CAST_SPELL", cardId: "spell.magic_arrow", fromSpellBook: true })
+      expect.objectContaining({ type: "CAST_SPELL", cardId: "spell.lightning_bolt", fromSpellBook: true })
     );
+  });
+
+  it("shows the Spell Book icon from the start even when empty, and says so when opened", () => {
+    const state = createInitialGameState("book-window-empty");
+    state.players.p1.hand = [];
+    state.players.p1.spellBook = [];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+
+    render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
+          trayActive={false}
+          onSelectCardAction={() => {}}
+          onAction={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    // The icon is present despite the empty Book…
+    const icon = screen.getByRole("button", { name: /Spell Book/i });
+    expect(icon).toBeTruthy();
+    fireEvent.click(icon);
+    // …and opening it shows the empty-state message.
+    const menu = screen.getByRole("menu", { name: /Spell Book spells/i });
+    expect(menu.textContent).toMatch(/No Spells here/i);
   });
 });

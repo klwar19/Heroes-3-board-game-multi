@@ -66,26 +66,28 @@ const SKELETONS = "unit_p2_skeletons";
 describe("Spell Book — casting in combat", () => {
   it("casts a Book Spell like a hand Spell: deals damage and cycles Book → discard", () => {
     const state = combat("book-cast");
-    state.players.p1.spellBook = ["spell.magic_arrow"];
+    // Lightning Bolt, not the starting-only Magic Arrow (which can never enter
+    // the Book — see the stash tests below).
+    state.players.p1.spellBook = ["spell.lightning_bolt"];
 
     const cast = legal(state, "p1").find(
       (l) =>
         l.action.type === "CAST_SPELL" &&
-        l.action.cardId === "spell.magic_arrow" &&
+        l.action.cardId === "spell.lightning_bolt" &&
         l.action.fromSpellBook === true &&
         l.action.target?.type === "unit" &&
         l.action.target.unitId === SKELETONS
     );
-    expect(cast, "a Book Magic Arrow should be castable at the skeletons").toBeTruthy();
+    expect(cast, "a Book Lightning Bolt should be castable at the skeletons").toBeTruthy();
 
     const resolved = passAll(applyOk(state, cast!.action));
-    // Magic Arrow at power 0 deals 1 damage.
-    expect(resolved.combat!.units[SKELETONS].damage).toBe(1);
+    // Lightning Bolt at power 0 deals 2 damage.
+    expect(resolved.combat!.units[SKELETONS].damage).toBe(2);
     // The cast counted toward the per-combat-round limit…
     expect(resolved.players.p1.combatStats.spellsCastThisRound).toBe(1);
     // …and the Spell left the Book for the discard pile.
-    expect(resolved.players.p1.spellBook).not.toContain("spell.magic_arrow");
-    expect(resolved.players.p1.discard).toContain("spell.magic_arrow");
+    expect(resolved.players.p1.spellBook).not.toContain("spell.lightning_bolt");
+    expect(resolved.players.p1.discard).toContain("spell.lightning_bolt");
   });
 
   it("a Book cast respects the one-Spell-per-combat-round limit", () => {
@@ -267,20 +269,69 @@ function adventure(seed: string, spellBook = true): GameState {
 describe("Spell Book — stashing from hand (map turn)", () => {
   it("moves a hand Spell into the Book, freeing the slot WITHOUT drawing", () => {
     const state = adventure("book-stash");
-    state.players.p1.hand = ["spell.magic_arrow", "stat.attack"];
+    state.players.p1.hand = ["spell.haste", "stat.attack"];
     const deckBefore = state.players.p1.deck.length;
 
     const stash = legal(state, "p1").find(
-      (l) => l.action.type === "MOVE_SPELL_TO_SPELL_BOOK" && l.action.cardId === "spell.magic_arrow"
+      (l) => l.action.type === "MOVE_SPELL_TO_SPELL_BOOK" && l.action.cardId === "spell.haste"
     );
     expect(stash, "stashing a hand Spell should be offered on your map turn").toBeTruthy();
 
     const moved = applyOk(state, stash!.action);
-    expect(moved.players.p1.spellBook).toContain("spell.magic_arrow");
-    expect(moved.players.p1.hand).not.toContain("spell.magic_arrow");
+    expect(moved.players.p1.spellBook).toContain("spell.haste");
+    expect(moved.players.p1.hand).not.toContain("spell.haste");
     // The other hand card stays; no replacement was drawn.
     expect(moved.players.p1.hand).toEqual(["stat.attack"]);
     expect(moved.players.p1.deck.length).toBe(deckBefore);
+  });
+
+  it("Magic Arrow can be held and cast, but NEVER stashed into the Book", () => {
+    const state = adventure("book-stash-magic-arrow");
+    // A normal Spell alongside the starting-only Magic Arrow.
+    state.players.p1.hand = ["spell.magic_arrow", "spell.haste"];
+
+    const offers = legal(state, "p1").filter((l) => l.action.type === "MOVE_SPELL_TO_SPELL_BOOK");
+    // Only the non-starting Spell is offered…
+    expect(offers.map((l) => (l.action as { cardId: string }).cardId)).toEqual(["spell.haste"]);
+    // …and no Book stash is offered for Magic Arrow.
+    expect(
+      offers.some((l) => (l.action as { cardId: string }).cardId === "spell.magic_arrow"),
+      "Magic Arrow must never be offered a Spell Book stash"
+    ).toBe(false);
+
+    // Forcing the stash anyway is rejected by the reducer, and the card stays.
+    const forced = applyAction(state, {
+      type: "MOVE_SPELL_TO_SPELL_BOOK",
+      playerId: "p1",
+      cardId: "spell.magic_arrow"
+    });
+    expect(forced.errors.length, "a forced Magic Arrow stash must be rejected").toBeGreaterThan(0);
+    expect(forced.state.players.p1.spellBook).not.toContain("spell.magic_arrow");
+    expect(forced.state.players.p1.hand).toContain("spell.magic_arrow");
+  });
+
+  it("stashing a Spell forfeits the start-of-turn draw, so it cannot refill the freed slot", () => {
+    const state = adventure("book-stash-no-refill");
+    state.players.p1.hand = ["spell.haste", "stat.attack"];
+    state.players.p1.canMulligan = true;
+    const handLimit = state.players.p1.hand.length; // act as if at the limit
+
+    // Drawing IS offered before any stash.
+    expect(legal(state, "p1").some((l) => l.action.type === "REFRESH_HAND")).toBe(true);
+
+    const moved = applyOk(state, {
+      type: "MOVE_SPELL_TO_SPELL_BOOK",
+      playerId: "p1",
+      cardId: "spell.haste"
+    });
+    // The stash spent the start-of-turn draw…
+    expect(moved.players.p1.canMulligan).toBe(false);
+    // …so REFRESH_HAND is no longer offered and is rejected if forced — the freed
+    // slot can never be drawn back up to the hand limit.
+    expect(legal(moved, "p1").some((l) => l.action.type === "REFRESH_HAND")).toBe(false);
+    const refilled = applyAction(moved, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    expect(refilled.errors.length, "drawing after a stash must be rejected").toBeGreaterThan(0);
+    expect(moved.players.p1.hand.length).toBeLessThan(handLimit);
   });
 
   it("only Spells may be stashed — a Statistic card is never offered", () => {
@@ -359,6 +410,30 @@ describe("Spell Book — refill from discard on pickup", () => {
     expect(took.players.p1.hand).not.toContain("spell.haste");
     expect(took.players.p1.discard).not.toContain("spell.haste");
   });
+
+  it("a picked-up Magic Arrow offers ONLY the hand route — never the Book", () => {
+    const state = adventure("book-refill-magic-arrow");
+    state.players.p1.hand = [];
+    state.players.p1.discard = ["spell.magic_arrow"];
+    state.adventure!.rewardQueue.push({ playerId: "p1", kind: "discard-pick", count: 1 });
+    pumpAdventureQueues(state);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    const options = choice && "options" in choice ? choice.options : [];
+    // One route only (to hand); no "→ Spell Book" option for the starting Spell.
+    expect(options.length).toBe(1);
+    expect(options.some((option) => option.label.includes("Spell Book"))).toBe(false);
+
+    const took = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice!.id,
+      optionIndex: 0
+    });
+    expect(took.players.p1.hand).toContain("spell.magic_arrow");
+    expect(took.players.p1.spellBook).not.toContain("spell.magic_arrow");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -385,14 +460,14 @@ describe("Spell Book — off-switch and privacy", () => {
 
   it("the Book is private: opponents see only the count, the owner sees the Spells", () => {
     const state = adventure("book-privacy");
-    state.players.p1.spellBook = ["spell.magic_arrow", "spell.haste"];
+    state.players.p1.spellBook = ["spell.implosion", "spell.haste"];
 
     const enemyView = getPlayerView(state, "p2");
     expect(enemyView.players.p1.spellBook).toEqual([]);
     expect(enemyView.players.p1.spellBookCount).toBe(2);
 
     const ownerView = getPlayerView(state, "p1");
-    expect(ownerView.players.p1.spellBook).toEqual(["spell.magic_arrow", "spell.haste"]);
+    expect(ownerView.players.p1.spellBook).toEqual(["spell.implosion", "spell.haste"]);
     expect(ownerView.players.p1.spellBookCount).toBe(2);
   });
 });
