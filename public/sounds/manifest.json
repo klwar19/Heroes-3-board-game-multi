@@ -1666,7 +1666,7 @@
   },
   "units/beholder-move": {
     "src": "/sounds/units/beholder-move.mp3",
-    "repeat": 2
+    "repeat": 1
   },
   "units/beholder-shoot": {
     "src": "/sounds/units/beholder-shoot.mp3"
@@ -2195,7 +2195,7 @@
   },
   "units/energy-elemental-move": {
     "src": "/sounds/units/energy-elemental-move.mp3",
-    "repeat": 2
+    "repeat": 1
   },
   "units/evil-eye-attack": {
     "src": "/sounds/units/evil-eye-attack.mp3"
@@ -2215,7 +2215,7 @@
   },
   "units/evil-eye-move": {
     "src": "/sounds/units/evil-eye-move.mp3",
-    "repeat": 2
+    "repeat": 1
   },
   "units/evil-eye-shoot": {
     "src": "/sounds/units/evil-eye-shoot.mp3"
@@ -3029,7 +3029,7 @@
   },
   "units/magic-elemental-move": {
     "src": "/sounds/units/magic-elemental-move.mp3",
-    "repeat": 2
+    "repeat": 1
   },
   "units/magma-elemental-attack": {
     "src": "/sounds/units/magma-elemental-attack.mp3"
@@ -3809,7 +3809,7 @@
   },
   "units/sea-serpent-move": {
     "src": "/sounds/units/sea-serpent-move.mp3",
-    "repeat": 2
+    "repeat": 1
   },
   "units/sea-witch-attack": {
     "src": "/sounds/units/sea-witch-attack.mp3"
