@@ -714,6 +714,9 @@ describe("Conflux Luna (Fire Wall specialist)", () => {
     state.activePlayerId = "p1";
     state.pendingChoice = null;
     state.reactionWindow = null;
+    // The start-of-turn draw is mandatory (house rule) before any map card play;
+    // mark it taken so the discard-recall play is offered.
+    state.players.p1.canMulligan = false;
     state.players.p1.hand = ["specialty.luna.4"];
     state.players.p1.discard = ["spell.lightning_bolt", "stat.attack"];
 
