@@ -570,6 +570,8 @@ export default function Home() {
   const seenFlipIdsRef = useRef<Set<string>>(new Set());
   const seenMoveIdsRef = useRef<Set<string>>(new Set());
   const seenTileIdsRef = useRef<Set<string>>(new Set());
+  // Tile-instances we've already shown the "place the new tile" instruction for.
+  const seenTileNoticeIdsRef = useRef<Set<string>>(new Set());
   const seenFeedIdsRef = useRef<Set<string>>(new Set());
   const seenFxIdsRef = useRef<Set<string>>(new Set());
   // Unit id -> definition id, kept across snapshots: the death that ends a
@@ -865,6 +867,40 @@ export default function Home() {
         });
         setMapNotice((current) => {
           const queue = [...current.queue, ...cues];
+          return current.current ? { ...current, queue } : { current: queue[0], queue: queue.slice(1) };
+        });
+      }
+
+      // New-tile placement notice: when a freshly revealed/placed Map Tile (a
+      // Ⅱ–Ⅲ Far tile and every other tier) lands in front of the local player
+      // to rotate, pop a center-screen instruction telling them where it sits
+      // and how to seat it (rotate the on-tile arrows until its borders connect
+      // and the Confirm button lights up). Shown once per tile instance.
+      const tileChoice = nextState.adventure?.pendingTileChoice ?? null;
+      if (
+        tileChoice &&
+        tileChoice.playerId === viewerRef.current &&
+        !seenTileNoticeIdsRef.current.has(tileChoice.tileInstanceId)
+      ) {
+        seenTileNoticeIdsRef.current.add(tileChoice.tileInstanceId);
+        const tile = nextState.adventure?.tiles[tileChoice.tileInstanceId];
+        const tier = tile?.backLabel ? `${tile.backLabel} ` : "";
+        const reachLine = tileChoice.heroId
+          ? "Leave a border-line doorway your hero can step through onto it."
+          : "Make sure its open borders line up with the map.";
+        const cue: MapNoticeCue = {
+          id: `tileplace_${tileChoice.tileInstanceId}`,
+          icon: "🧭",
+          title: `Place the new ${tier}tile`,
+          subtitle: "It drops where it was revealed — you choose how it faces",
+          lines: [
+            "Use the ↺ / ↻ arrows on the tile to rotate it.",
+            reachLine,
+            "When the borders connect, the Confirm (✓) button lights up — press it to lock the tile in."
+          ]
+        };
+        setMapNotice((current) => {
+          const queue = [...current.queue, cue];
           return current.current ? { ...current, queue } : { current: queue[0], queue: queue.slice(1) };
         });
       }
@@ -2730,6 +2766,15 @@ export default function Home() {
                 {forcedDiscard ? (
                   <span className="handWarning">
                     Over the hand limit: discard down to {handLimit}.{overLimit > 0 ? ` Pick ${overLimit} more.` : ""}
+                  </span>
+                ) : null}
+                {/* Start-of-turn draw still unspent: warn that moving the hero or
+                    playing/casting/stashing a card forfeits it (the engine ends
+                    the draw window on the first such action), so the player draws
+                    or discards FIRST. */}
+                {canDraw && handMode === null ? (
+                  <span className="handWarning drawWarning">
+                    ⚠ Draw or discard first — moving your hero or using a card forfeits this turn&apos;s draw.
                   </span>
                 ) : null}
                 {/* The start-of-turn draw: one either/or — draw new, OR discard
