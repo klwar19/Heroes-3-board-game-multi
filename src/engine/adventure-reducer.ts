@@ -6580,12 +6580,83 @@ function performSchoolFetch(state: GameState, playerId: PlayerId, deckId: string
  * `openSharedDeckSearch`), so a player can never both peek the deck and still
  * take the discard top or fetch.
  */
+const SCOUTING_CARD_ID = "ability.scouting" as CardId;
+/** Search size the basic Scouting card grants ("do Search (3) instead"). */
+const SCOUTING_BASIC_COUNT = 3;
+
+/**
+ * Auto-use Scouting. The rules card reads "Play this card before taking a Search
+ * action, then do Search (N) instead." Rather than make the player remember to
+ * pre-play it, the engine plays it FOR them the moment they reach a Search of
+ * any shared deck (Ability / Spell / Artifact) where the basic Search (3) would
+ * actually beat the deck's base count. The held card is moved to the discard and
+ * leaves a one-shot SEARCH_COUNT_OVERRIDE that applySearchCountEffects consumes
+ * for THIS reveal.
+ *
+ * Basic only: the Expert Search (5) costs a crown, so it is never auto-spent. A
+ * manual play (basic or Expert) leaves its own SEARCH_COUNT_OVERRIDE effect,
+ * which is detected here and suppresses the auto-use (so the card is never burnt
+ * twice, and a deliberate Expert play still wins).
+ */
+function maybeAutoUseScouting(state: GameState, playerId: PlayerId, baseCount: number): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+  // A Scouting already pre-played this turn left an override effect — honour it
+  // rather than burning a second held copy on top.
+  const hasOverride = state.activeEffects.some(
+    (effect) =>
+      effect.controllerId === playerId &&
+      effect.modifiers.some((modifier) => modifier.type === "SEARCH_COUNT_OVERRIDE")
+  );
+  if (hasOverride) {
+    return;
+  }
+  // Never waste the card on a Search already as big as (or bigger than) what
+  // basic Scouting grants — e.g. a Creature Bank's Search (5).
+  if (SCOUTING_BASIC_COUNT <= baseCount) {
+    return;
+  }
+  const index = player.hand.indexOf(SCOUTING_CARD_ID);
+  if (index === -1) {
+    return;
+  }
+
+  player.hand.splice(index, 1);
+  player.discard.push(SCOUTING_CARD_ID);
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      {
+        name: "Scouting",
+        scope: "player",
+        duration: { type: "current-turn" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "SEARCH_COUNT_OVERRIDE", count: SCOUTING_BASIC_COUNT }]
+      },
+      { type: "card", cardId: SCOUTING_CARD_ID, controllerId: playerId },
+      playerId
+    )
+  );
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId: SCOUTING_CARD_ID,
+    timing: "instant",
+    mode: "basic"
+  });
+}
+
 export function revealSharedDeckSearch(state: GameState, playerId: PlayerId, deckId: string, baseCount: number): void {
   const deck = state.decks[deckId];
   if (!deck) {
     return;
   }
 
+  // A held Scouting card is played automatically the instant a Search is taken.
+  maybeAutoUseScouting(state, playerId, baseCount);
   const count = applySearchCountEffects(state, playerId, baseCount);
   const revealedCardIds: string[] = [];
   // Redraw past any card this hero may not take — a duplicate of one it already
