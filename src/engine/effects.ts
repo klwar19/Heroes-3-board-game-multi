@@ -55,6 +55,7 @@ export const implementedCardEffectTypes = [
   "GAIN_WAR_MACHINE",
   "CHAIN_LIGHTNING",
   "PLACE_PARALYSIS",
+  "PLACE_WEAKNESS_TOKEN",
   "BLOCK_ENEMY_SURRENDER",
   "SKIP_ACTIVATION",
   "SLAYER_ATTACK",
@@ -103,6 +104,7 @@ export const implementedCardEffectTypes = [
   "SACRIFICE_TRANSFER",
   "PLACE_FORCE_FIELD",
   "PLACE_FIRE_WALL",
+  "PLACE_FIRE_WALL_FIXED",
   "PLACE_HIDDEN_TOKENS",
   "REMOVE_ACTIVE_EFFECT"
 ] satisfies EffectDefinition["type"][];

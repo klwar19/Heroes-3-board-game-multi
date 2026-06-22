@@ -253,6 +253,15 @@ export type TownBuildingEffect =
        */
       type: "MAGIC_UNIVERSITY";
     }
+  | {
+      /**
+       * Thieves' Guild (Cove): once during your turn, choose any one deck in the
+       * game — a shared deck OR any player's Might & Magic deck (your own or an
+       * opponent's) — look at its top 2 cards, put one of them on that deck's
+       * discard pile and the other back on top of the deck.
+       */
+      type: "THIEVES_GUILD";
+    }
   | { type: "NOT_IMPLEMENTED"; note: string };
 
 export type TownBuildingDefinition = {

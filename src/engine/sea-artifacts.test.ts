@@ -56,6 +56,7 @@ function hasParalysis(state: GameState, unitId: UnitId): boolean {
 describe("Crown of the Five Seas", () => {
   function crownState(seed: string): GameState {
     const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.activePlayerId = "p1";
     state.players.p1.hand = ["artifact.crown_of_the_five_seas"];
     return state;

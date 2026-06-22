@@ -45,8 +45,8 @@ describe("Cove faction wiring", () => {
       "cove.nix",
       "cove.haspids"
     ]);
-    // Only the fully-wired heroes are registered (see the deferral note).
-    expect(faction.heroes).toEqual(["astra", "cassiopeia", "jeremy", "zilare", "miriam"]);
+    // All six Cove heroes are registered (every specialty is engine-wired).
+    expect(faction.heroes).toEqual(["astra", "cassiopeia", "jeremy", "zilare", "miriam", "casmetra"]);
   });
 });
 
@@ -116,13 +116,14 @@ describe("Cove units", () => {
 });
 
 describe("Cove heroes", () => {
-  it("registers Astra, Cassiopeia, Jeremy, Zilare and Miriam with implemented starting abilities and specialties", () => {
+  it("registers Astra, Cassiopeia, Jeremy, Zilare, Miriam and Casmetra with implemented starting abilities and specialties", () => {
     for (const [heroId, klass, type, ability] of [
       ["astra", "Navigator", "magic", "ability.luck"],
       ["cassiopeia", "Captain", "might", "ability.tactics"],
       ["jeremy", "Captain", "might", "ability.offense"],
       ["zilare", "Navigator", "magic", "ability.interference"],
-      ["miriam", "Captain", "might", "ability.logistics"]
+      ["miriam", "Captain", "might", "ability.logistics"],
+      ["casmetra", "Navigator", "magic", "ability.wisdom"]
     ] as const) {
       const hero = coreHeroDefinitions[heroId];
       expect(hero, heroId).toBeDefined();
@@ -144,11 +145,6 @@ describe("Cove heroes", () => {
     }
   });
 
-  it("does NOT register the deferred Cove hero (Casmetra — kept out, not stubbed)", () => {
-    for (const heroId of ["casmetra"]) {
-      expect(coreHeroDefinitions[heroId], heroId).toBeUndefined();
-    }
-  });
 });
 
 describe("Cove buildings", () => {
@@ -188,11 +184,10 @@ describe("Cove buildings", () => {
     });
   });
 
-  it("marks the one not-yet-wired faction building (Thieves' Guild) honestly", () => {
-    for (const id of ["cove.thieves_guild"]) {
-      expect(coreBuildingDefinitions[id].implementationStatus, id).toBe("not-implemented");
-      expect(coreBuildingDefinitions[id].effect?.type, id).toBe("NOT_IMPLEMENTED");
-    }
+  it("wires the Thieves' Guild as an implemented once-per-turn deck-peek action", () => {
+    const guild = coreBuildingDefinitions["cove.thieves_guild"];
+    expect(guild.implementationStatus).toBe("implemented");
+    expect(guild.effect?.type).toBe("THIEVES_GUILD");
   });
 });
 

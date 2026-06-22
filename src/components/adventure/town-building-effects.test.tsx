@@ -134,6 +134,79 @@ describe("TownPanel — in-place special-building effect / use buttons", () => {
     expect(panel.textContent).toMatch(/Resource round/i);
   });
 
+  it("explains the Cove Thieves' Guild and dispatches a chosen deck peek", () => {
+    const { state } = townWith("cove", ["cove.thieves_guild"]);
+    const onAction = vi.fn();
+    render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={onAction} state={state} viewerPlayerId="p1" />);
+
+    // An available action shows the "Use" affordance.
+    fireEvent.click(within(tileFor("Thieves' Guild")).getByRole("button", { name: /Use/ }));
+    const panel = screen.getByLabelText("Thieves' Guild effect");
+    // The rules text matches the engine (was "No special effect." before wiring).
+    expect(panel.textContent).toMatch(/top 2 cards/i);
+    expect(panel.textContent).toMatch(/back on top/i);
+
+    // A button is offered per eligible deck; picking your own M&M deck dispatches
+    // the THIEVES_GUILD_ACTION for that deck (the deck-name label is stable).
+    fireEvent.click(within(panel).getByRole("button", { name: /top 2 of your own Might & Magic deck/i }));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction.mock.calls[0][0]).toMatchObject({
+      type: "THIEVES_GUILD_ACTION",
+      playerId: "p1",
+      buildingId: "cove.thieves_guild",
+      target: { kind: "player", ownerId: "p1" }
+    });
+  });
+
+  it("shows the Cove City Hall and Pub effect text (regression: not 'No special effect.')", () => {
+    const { state } = townWith("cove", ["cove.city_hall", "cove.pub"]);
+    render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
+
+    const cityHall = openPanel("City Hall");
+    expect(cityHall.textContent).toMatch(/Astrologers' round/i);
+    expect(cityHall.textContent).not.toMatch(/No special effect/i);
+
+    const pub = openPanel("Pub");
+    expect(pub.textContent).toMatch(/3 less gold/i);
+    expect(pub.textContent).not.toMatch(/No special effect/i);
+  });
+
+  it("lets a Conflux player run the Magic University in place and dispatches the per-school dig", () => {
+    const { state } = townWith("conflux", ["conflux.magic_university"]);
+    const onAction = vi.fn();
+    render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={onAction} state={state} viewerPlayerId="p1" />);
+
+    // With the once-per-round dig unused, the building reads as actionable ("Use"),
+    // not just a passive "Effect" — the engine offers one action per school.
+    fireEvent.click(within(tileFor("Magic University")).getByRole("button", { name: /Use/ }));
+    const panel = screen.getByLabelText("Magic University effect");
+
+    // All four schools are offered as clickable buttons.
+    for (const school of ["Air", "Earth", "Fire", "Water"]) {
+      expect(within(panel).getByRole("button", { name: new RegExp(`${school} Magic spell`, "i") })).toBeTruthy();
+    }
+
+    fireEvent.click(within(panel).getByRole("button", { name: /Fire Magic spell/i }));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction.mock.calls[0][0]).toMatchObject({
+      type: "MAGIC_UNIVERSITY_ACTION",
+      playerId: "p1",
+      school: "fire"
+    });
+  });
+
+  it("shows the Magic University as spent once used this round (no dig buttons)", () => {
+    const { state } = townWith("conflux", ["conflux.magic_university"]);
+    state.players.p1.magicUniversityUsedRound = state.round;
+    render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
+
+    // No school action is offered, so the tile is a passive "Effect" panel whose
+    // status line reports it is spent for the round.
+    const panel = openPanel("Magic University");
+    expect(within(panel).queryByRole("button", { name: /Magic spell/i })).toBeNull();
+    expect(panel.textContent).toMatch(/already used this round/i);
+  });
+
   it("offers no effect button for a plain dwelling", () => {
     const { state } = townWith("castle", ["castle.dwelling_bronze"]);
     render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);

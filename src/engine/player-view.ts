@@ -122,6 +122,24 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
     };
   }
 
+  // Thieves' Guild: the two peeked cards (and the option labels that name them)
+  // stay private to the thieving player — even when an opponent's deck is the
+  // one being looked at, the deck's owner does not learn which cards were on top.
+  if (
+    choice.type === "OPTION_CHOICE" &&
+    choice.context === "thieves-guild" &&
+    choice.playerId !== viewerPlayerId
+  ) {
+    return {
+      ...cloneSerializable(choice),
+      prompt: "A Thieves' Guild looks at the top of a deck.",
+      options: choice.options.map(() => ({ label: "Hidden card" })),
+      thievesGuild: choice.thievesGuild
+        ? { ...choice.thievesGuild, cardIds: choice.thievesGuild.cardIds.map(() => "hidden") }
+        : undefined
+    };
+  }
+
   return cloneSerializable(choice);
 }
 

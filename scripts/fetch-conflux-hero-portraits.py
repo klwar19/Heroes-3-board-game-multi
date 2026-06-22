@@ -24,6 +24,7 @@ PORTRAIT_HEROES = [
     ("erdamon", "Hero_Erdamon.png"),
     ("monere", "Hero_Monere.png"),
     ("pasis", "Hero_Pasis.png"),
+    ("luna", "Hero_Luna.png"),
 ]
 
 

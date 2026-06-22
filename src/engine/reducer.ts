@@ -64,6 +64,7 @@ import {
   surrenderFromCombat,
   revisitField,
   roguesScoutDeck,
+  thievesGuildAction,
   setTileRotation,
   skipNecromancy,
   spellBookAction,
@@ -618,19 +619,20 @@ function moveSpellFromSpellBookToDiscard(
 }
 
 /**
- * Using ANY card on your quiet map turn forfeits the start-of-turn draw, so a
- * card can never be played/cast/stashed and the freed hand slot then drawn back
- * up to the hand limit. (The player may still draw FIRST, then play — that ends
- * below the limit.) A no-op in combat and on anyone else's turn, where the
- * start-of-turn draw is not in play.
+ * The start-of-turn draw is MANDATORY (house rule): on your own quiet map turn
+ * you must take it (REFRESH_HAND — "draw new" or "discard and draw new") BEFORE
+ * playing, casting or stashing a card, so it can never be forgotten. This is the
+ * resolution backstop; legal-actions also withholds every card offer while the
+ * draw is unspent (so a UI submission is rejected as not-legal first). A no-op in
+ * combat and on anyone else's turn, where the start-of-turn draw is not in play.
  */
-function spendStartOfTurnDraw(state: GameState, playerId: PlayerId): void {
+function assertStartOfTurnDrawTaken(state: GameState, playerId: PlayerId): void {
   if (state.combat || state.activePlayerId !== playerId) {
     return;
   }
   const player = state.players[playerId];
-  if (player) {
-    player.canMulligan = false;
+  if (player?.canMulligan) {
+    throw new Error("Take your start-of-turn draw first (draw new, or discard and draw new).");
   }
 }
 
@@ -648,6 +650,9 @@ function moveSpellToSpellBook(
   if (!spellBookRuleEnabled(state)) {
     throw new Error("The Spell Book house rule is off in this game.");
   }
+  // Stashing is a card use: the mandatory start-of-turn draw must be taken first
+  // (the player draws, THEN stashes), so the freed slot is never drawn back up.
+  assertStartOfTurnDrawTaken(state, action.playerId);
   const player = state.players[action.playerId];
   if (!player) {
     throw new Error("Unknown player.");
@@ -667,9 +672,6 @@ function moveSpellToSpellBook(
   }
   player.hand.splice(index, 1);
   player.spellBook.push(action.cardId);
-  // Stashing is a card use: it spends the start-of-turn draw so the freed slot
-  // can never be drawn back up (the player may draw FIRST, then stash).
-  spendStartOfTurnDraw(state, action.playerId);
   appendEvent(state, {
     type: "SPELL_MOVED_TO_SPELL_BOOK",
     playerId: action.playerId,
@@ -3700,11 +3702,18 @@ function queueAttackAllFollowUps(
     return false;
   }
 
+  // Magic Elementals Few ("Attack all adjacent units") also strike friendly
+  // units; the Pack ("Attack all adjacent enemy units") and BINH Cerberi hit
+  // enemies only. A fixed baseAttack (Cerberi = 3) overrides; otherwise each
+  // follow-up uses the attacker's own (buffable) attack value.
+  const includeAllies = ability.effect.includeAllies === true;
+  const baseAttack = ability.effect.baseAttack ?? attacker.attack;
+
   const targets = Object.values(combat.units).filter(
     (unit) =>
       unit.id !== defender.id &&
       unit.id !== attacker.id &&
-      unit.controllerId !== attacker.controllerId &&
+      (includeAllies || unit.controllerId !== attacker.controllerId) &&
       isUnitAlive(unit) &&
       isAdjacent(unit.position, attacker.position)
   );
@@ -3716,7 +3725,7 @@ function queueAttackAllFollowUps(
     combat.attackSequence.queuedAbilityAttacks = targets.map((unit) => ({
       abilityId: ability.id,
       abilityName: ability.name,
-      baseAttack: ability.effect?.type === "SECOND_ATTACK_ALL_ADJACENT_TO_SELF" ? ability.effect.baseAttack : attacker.attack,
+      baseAttack,
       targetUnitId: unit.id
     }));
   }
@@ -9546,6 +9555,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
+  // Casmetra's Sorceresses VI (option A): place a Weakness token (−N attack for
+  // `rounds` rounds) on the chosen unit. Not tier-gated — reaches any unit, like
+  // the Cove Sorceresses' own token.
+  if (effect.type === "PLACE_WEAKNESS_TOKEN" && state.combat && target) {
+    const unit = state.combat.units[target.unitId];
+    if (unit) {
+      placeCombatToken(state, unit, "weakness", effect.amount, card.name, effect.rounds);
+    }
+  }
+
   // Zilare's Forgetfulness specialty: the chosen enemy unit cannot attack during
   // its next activation, gated by grade (I -> silver, IV/VI -> gold) exactly like
   // the Forgetfulness Spell. The Spell shares the FORGETFULNESS effect but
@@ -9979,7 +9998,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           prompt: `${card.name}: remove a card to Search (${effect.count}) its deck`,
           filter: effect.filter ?? "removable",
           then: "search-same-deck",
-          searchCount: effect.count
+          searchCount: effect.count,
+          tieredReach: effect.tieredReach
         }
       ]
     });
@@ -10136,6 +10156,19 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         effect.adjacentPicks
       );
     }
+  }
+
+  // Luna's Fire Wall specialty (I = 1 damage, VI = 3): place a Fire Wall token
+  // on the chosen empty space for this Combat. Reuses the spell's `fire_wall`
+  // battlefield token (bites a unit that stops on it or a ground/ranged unit
+  // passing through), but the damage is FIXED, not Power-scaled.
+  if (effect.type === "PLACE_FIRE_WALL_FIXED" && state.combat && action.target?.type === "space") {
+    addBattlefieldToken(state, {
+      kind: "fire_wall",
+      position: action.target.position,
+      controllerId: action.playerId,
+      damage: effect.damage
+    });
   }
 
   // Deemer's Meteor Shower IV (one option): shuffle the discard pile back into
@@ -13057,6 +13090,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "POPULATION_ACTION",
   "SPELL_BOOK_ACTION",
   "ROGUES_SCOUT_DECK",
+  "THIEVES_GUILD_ACTION",
   "BLACKSMITH_ACTION",
   "SPEND_MORALE",
   "CHOOSE_OPTION",
@@ -13134,15 +13168,16 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   try {
     switch (action.type) {
       case "CAST_SPELL":
+        // Mandatory start-of-turn draw: a Map Spell cast is blocked until the
+        // draw is taken (no-op in combat / off-turn). Checked before resolving so
+        // the cast never half-runs.
+        assertStartOfTurnDrawTaken(nextState, action.playerId);
         castSpell(nextState, action, cards);
-        // A Map Spell cast forfeits the player's start-of-turn draw (no-op in
-        // combat / off-turn) so a freed hand slot can't be drawn back up.
-        spendStartOfTurnDraw(nextState, action.playerId);
         break;
       case "PLAY_CARD":
-        playCard(nextState, action, cards);
         // Likewise for any other card played on the quiet map turn.
-        spendStartOfTurnDraw(nextState, action.playerId);
+        assertStartOfTurnDrawTaken(nextState, action.playerId);
+        playCard(nextState, action, cards);
         break;
       case "ATTACK_UNIT":
         attackUnit(nextState, action, cards);
@@ -13346,6 +13381,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "ROGUES_SCOUT_DECK":
         roguesScoutDeck(nextState, action);
+        break;
+      case "THIEVES_GUILD_ACTION":
+        thievesGuildAction(nextState, action);
         break;
       case "BLACKSMITH_ACTION":
         blacksmithAction(nextState, action);

@@ -79,7 +79,7 @@ import {
   type TilePlacementSelection
 } from "@/components/adventure/screen";
 import {
-  actionForfeitsStartOfTurnDraw,
+  moveIntoBattleWithTroopsToBuy,
   actionKey,
   cardName,
   costCardEligible,
@@ -519,14 +519,15 @@ export default function Home() {
     picks: number[];
   } | null>(null);
   /**
-   * A card use (play / cast / spell-book stash) held at the start-of-turn draw
-   * gate: using it forfeits the unspent draw, so we confirm first. Stores the
-   * exact action to replay on "continue".
+   * A hero move (MOVE_HERO / MOVE_HERO_PATH) held at the pre-battle gate: it
+   * walks into a Combat while the player can still buy troops, so we confirm
+   * first ("keep moving, or stop and recruit?"). Stores the exact move to replay
+   * on "keep moving".
    */
-  const [pendingDrawForfeit, setPendingDrawForfeit] = useState<GameAction | null>(null);
-  // Set true for the single submitAction call the forfeit confirmation replays,
-  // so the guard lets it through instead of re-opening the dialog.
-  const drawForfeitConfirmedRef = useRef(false);
+  const [pendingBattleTroopWarn, setPendingBattleTroopWarn] = useState<GameAction | null>(null);
+  // Set true for the single submitAction call the battle-troop confirmation
+  // replays, so the guard lets it through instead of re-opening the dialog.
+  const battleTroopConfirmedRef = useRef(false);
   const [tilePlacement, setTilePlacement] = useState<TilePlacementSelection>(null);
   const [combatTab, setCombatTab] = useState<"battle" | "map">("battle");
   const [pile, setPile] = useState<{ title: string; cardIds: string[]; kind: "cards" | "units" | "astrologers" } | null>(null);
@@ -587,8 +588,6 @@ export default function Home() {
   const seenFlipIdsRef = useRef<Set<string>>(new Set());
   const seenMoveIdsRef = useRef<Set<string>>(new Set());
   const seenTileIdsRef = useRef<Set<string>>(new Set());
-  // Tile-instances we've already shown the "place the new tile" instruction for.
-  const seenTileNoticeIdsRef = useRef<Set<string>>(new Set());
   const seenFeedIdsRef = useRef<Set<string>>(new Set());
   const seenFxIdsRef = useRef<Set<string>>(new Set());
   // Unit id -> definition id, kept across snapshots: the death that ends a
@@ -884,40 +883,6 @@ export default function Home() {
         });
         setMapNotice((current) => {
           const queue = [...current.queue, ...cues];
-          return current.current ? { ...current, queue } : { current: queue[0], queue: queue.slice(1) };
-        });
-      }
-
-      // New-tile placement notice: when a freshly revealed/placed Map Tile (a
-      // Ⅱ–Ⅲ Far tile and every other tier) lands in front of the local player
-      // to rotate, pop a center-screen instruction telling them where it sits
-      // and how to seat it (rotate the on-tile arrows until its borders connect
-      // and the Confirm button lights up). Shown once per tile instance.
-      const tileChoice = nextState.adventure?.pendingTileChoice ?? null;
-      if (
-        tileChoice &&
-        tileChoice.playerId === viewerRef.current &&
-        !seenTileNoticeIdsRef.current.has(tileChoice.tileInstanceId)
-      ) {
-        seenTileNoticeIdsRef.current.add(tileChoice.tileInstanceId);
-        const tile = nextState.adventure?.tiles[tileChoice.tileInstanceId];
-        const tier = tile?.backLabel ? `${tile.backLabel} ` : "";
-        const reachLine = tileChoice.heroId
-          ? "Leave a border-line doorway your hero can step through onto it."
-          : "Make sure its open borders line up with the map.";
-        const cue: MapNoticeCue = {
-          id: `tileplace_${tileChoice.tileInstanceId}`,
-          icon: "🧭",
-          title: `Place the new ${tier}tile`,
-          subtitle: "It drops where it was revealed — you choose how it faces",
-          lines: [
-            "Use the ↺ / ↻ arrows on the tile to rotate it.",
-            reachLine,
-            "When the borders connect, the Confirm (✓) button lights up — press it to lock the tile in."
-          ]
-        };
-        setMapNotice((current) => {
-          const queue = [...current.queue, cue];
           return current.current ? { ...current, queue } : { current: queue[0], queue: queue.slice(1) };
         });
       }
@@ -2210,15 +2175,19 @@ export default function Home() {
       }
     }
 
-    // Start-of-turn draw gate: using a card (play / cast / spell-book stash) on
-    // your quiet map turn forfeits the unspent start-of-turn draw — you won't be
-    // able to draw up to your hand limit this turn. Confirm before committing,
-    // unless this is the replay the confirmation itself fired.
-    if (drawForfeitConfirmedRef.current) {
-      drawForfeitConfirmedRef.current = false;
-    } else if (state && actionForfeitsStartOfTurnDraw(state, viewerPlayerId, action)) {
-      setPendingDrawForfeit(action);
-      return;
+    // Pre-battle troop gate: a hero move that walks straight into a Combat while
+    // the player can still buy troops pops a "keep moving, or stop and recruit?"
+    // confirmation so the fight is never entered under-strength by mistake.
+    // Skipped for the replay the confirmation itself fires. Legal actions are
+    // recomputed here (only for a move) so "can buy troops" reflects live rules.
+    if (battleTroopConfirmedRef.current) {
+      battleTroopConfirmedRef.current = false;
+    } else if (state && (action.type === "MOVE_HERO" || action.type === "MOVE_HERO_PATH")) {
+      const moveLegalActions = getLegalActions(state, viewerPlayerId);
+      if (moveIntoBattleWithTroopsToBuy(state, viewerPlayerId, action, moveLegalActions)) {
+        setPendingBattleTroopWarn(action);
+        return;
+      }
     }
 
     const connection = connectionRef.current;
@@ -2631,10 +2600,12 @@ export default function Home() {
     // Over the hand limit at the start of the turn (only via card effects):
     // the player MUST discard down to the limit before acting.
     const forcedDiscard = Boolean(viewer?.needsHandRefresh) && state.activePlayerId === viewerPlayerId;
-    // The optional start-of-turn draw is available this turn (every turn,
-    // including the first): one either/or — "draw new" (discard nothing, draw
-    // up to the limit) or "discard and draw new". Never both, since the hand is
-    // not auto-drawn. It does not block playing or moving.
+    // The MANDATORY start-of-turn draw is pending this turn (every turn, including
+    // the first): one either/or — "draw new" (discard nothing, draw up to the
+    // limit) or "discard and draw new". Never both, since the hand is not
+    // auto-drawn. Until it is taken, the engine blocks moving, exploring and
+    // using cards (legal-actions withholds those offers), so the player can never
+    // forget it.
     const canDraw =
       Boolean(viewer?.canMulligan) && state.activePlayerId === viewerPlayerId && !forcedDiscard;
     const hasMorale = (viewer?.morale ?? 0) > 0;
@@ -2895,18 +2866,18 @@ export default function Home() {
                     Over the hand limit: discard down to {handLimit}.{overLimit > 0 ? ` Pick ${overLimit} more.` : ""}
                   </span>
                 ) : null}
-                {/* Start-of-turn draw still unspent: warn that moving the hero or
-                    playing/casting/stashing a card forfeits it (the engine ends
-                    the draw window on the first such action), so the player draws
-                    or discards FIRST. */}
+                {/* Start-of-turn draw still pending: it is MANDATORY, so tell the
+                    player they must draw (or discard and draw) before they can
+                    move, explore or use a card. The engine withholds those
+                    actions until the draw is taken. */}
                 {canDraw && handMode === null ? (
                   <span className="handWarning drawWarning">
-                    ⚠ Draw or discard first — moving your hero or using a card forfeits this turn&apos;s draw.
+                    ⚠ Take your start-of-turn draw first — you must draw (or discard and draw) before moving or using a card.
                   </span>
                 ) : null}
-                {/* The start-of-turn draw: one either/or — draw new, OR discard
-                    and draw new. Available every turn (including the first), but
-                    optional, so playing and moving are still possible. */}
+                {/* The mandatory start-of-turn draw: one either/or — draw new, OR
+                    discard and draw new. Required every turn (including the first)
+                    before moving or using a card. */}
                 {!forcedDiscard && handMode === null ? (
                   <div className="handButtons">
                     {canDraw ? (
@@ -3202,30 +3173,29 @@ export default function Home() {
             />
           ) : null}
           {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
-          {pendingDrawForfeit ? (
-            <div className="modalBackdrop" role="dialog" aria-modal="true" aria-label="Skip your start-of-turn draw?">
+          {pendingBattleTroopWarn ? (
+            <div className="modalBackdrop" role="dialog" aria-modal="true" aria-label="Move into battle?">
               <div className="confirmModal">
-                <strong>Skip your start-of-turn draw?</strong>
+                <strong>Move into battle?</strong>
                 <p>
-                  You haven&apos;t taken your start-of-turn draw yet. Using{" "}
-                  <b>{"cardId" in pendingDrawForfeit ? cardName(pendingDrawForfeit.cardId) : "this card"}</b> now
-                  forfeits it — you won&apos;t be able to draw or discard up to your hand limit this turn.
+                  This move walks your hero straight into a Combat — and you can still buy troops at your town this
+                  turn. Keep moving into the fight, or stop and recruit first?
                 </p>
                 <div className="confirmModalButtons">
                   <button
                     className="commandButton primary"
                     onClick={() => {
-                      const action = pendingDrawForfeit;
-                      setPendingDrawForfeit(null);
-                      drawForfeitConfirmedRef.current = true;
+                      const action = pendingBattleTroopWarn;
+                      setPendingBattleTroopWarn(null);
+                      battleTroopConfirmedRef.current = true;
                       void submitAction(action);
                     }}
                     type="button"
                   >
-                    Use card &amp; skip draw
+                    Keep moving into battle
                   </button>
-                  <button className="commandButton ghost" onClick={() => setPendingDrawForfeit(null)} type="button">
-                    Cancel — let me draw first
+                  <button className="commandButton ghost" onClick={() => setPendingBattleTroopWarn(null)} type="button">
+                    Stop — let me buy troops
                   </button>
                 </div>
               </div>

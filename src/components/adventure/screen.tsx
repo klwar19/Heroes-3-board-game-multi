@@ -52,6 +52,7 @@ import {
   type GameSetupOptions,
   type GameState,
   type HeroPathTarget,
+  type HeroState,
   type LegalAction,
   type MapSpaceId,
   type MapTileState,
@@ -161,6 +162,60 @@ export type TilePlacementSelection = { supplyIndex: number } | null;
 
 export type HeroMoveCue = { id: string; heroId: string; path: MapSpaceId[] };
 
+/**
+ * Empty lattice slots where {@link hero} may drop the Far (Ⅱ–Ⅲ) tile `tileDefId`
+ * from their supply. Mirrors the engine's PLACE_TILE guard (`canPlaceTileAt` +
+ * `canHeroReachPlacedTile`): the slot must be a gapless neighbour of the tiling
+ * that nests against ≥2 existing tiles, sit next to the hero, not overlap, and
+ * the hero must be able to cross onto it in some rotation. Geometry only — the
+ * 1-MP cost and active-turn gate live with the caller. Uses the FULL game state
+ * (`state.adventure`), since the player-view masks Far-tile def ids to "hidden".
+ */
+export function farTilePlacementCenters(
+  state: GameState,
+  hero: HeroState,
+  tileDefId: string | undefined
+): { row: number; col: number }[] {
+  const rawAdventure = state.adventure;
+  if (!rawAdventure || !hero.spaceId || !tileDefId) {
+    return [];
+  }
+  const heroCoord = parseHexSpaceId(hero.spaceId);
+  if (!heroCoord) {
+    return [];
+  }
+  const existing = Object.values(rawAdventure.tiles).map((tile) => ({ row: tile.centerRow, col: tile.centerCol }));
+  const seen = new Map<string, { row: number; col: number }>();
+  const centers: { row: number; col: number }[] = [];
+  for (const center of existing) {
+    for (const candidate of tileLatticeNeighbors(center)) {
+      const key = `${candidate.row}:${candidate.col}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.set(key, candidate);
+      if (existing.some((tile) => tileCentersOverlap(tile, candidate))) {
+        continue;
+      }
+      if (existing.filter((tile) => tileCentersAdjacent(tile, candidate)).length < 2) {
+        continue;
+      }
+      const footprint = tileFootprint(candidate, 0);
+      const nextToHero = footprint.some((cell) => hexDistance(cell, heroCoord) === 1);
+      if (!nextToHero) {
+        continue;
+      }
+      if (
+        ![0, 1, 2, 3, 4, 5].some((rotation) => canHeroReachPlacedTile(state, hero, tileDefId, candidate, rotation))
+      ) {
+        continue;
+      }
+      centers.push(candidate);
+    }
+  }
+  return centers;
+}
+
 // ---------------------------------------------------------------------------
 // Hex map board: pan/zoom, click-to-move with path arrows, tile art layer,
 // reveal/place rotation overlay, printed border lines, hero sprites.
@@ -198,6 +253,28 @@ export function HexMapBoard({
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null);
   const suppressClickRef = useRef(false);
+
+  // A tap on a would-be move target while the MANDATORY start-of-turn draw is
+  // still pending shows a brief, single, auto-fading "draw first" note anchored
+  // at that hex — a gentle reminder, never a stacked or repeating toast (a fresh
+  // tap just re-anchors the one note and restarts its timer).
+  const [drawReminderAt, setDrawReminderAt] = useState<MapSpaceId | null>(null);
+  const drawReminderTimer = useRef<number | null>(null);
+  const remindToDraw = (spaceId: MapSpaceId) => {
+    setDrawReminderAt(spaceId);
+    if (drawReminderTimer.current) {
+      window.clearTimeout(drawReminderTimer.current);
+    }
+    drawReminderTimer.current = window.setTimeout(() => setDrawReminderAt(null), 2600);
+  };
+  useEffect(
+    () => () => {
+      if (drawReminderTimer.current) {
+        window.clearTimeout(drawReminderTimer.current);
+      }
+    },
+    []
+  );
 
   // Wheel-to-zoom is wired as a native non-passive listener (React routes wheel
   // through a passive root listener, so preventDefault from onWheel is ignored
@@ -244,16 +321,40 @@ export function HexMapBoard({
   const rotatingTile = pendingTileChoice ? rawAdventure?.tiles[pendingTileChoice.tileInstanceId] : null;
   const iAmRotating = Boolean(pendingTileChoice && pendingTileChoice.playerId === viewerPlayerId && !readOnly);
 
+  // The mandatory start-of-turn draw (or the forced over-limit discard) is still
+  // unspent on my own quiet map turn — movement is locked until I draw.
+  const drawPending = Boolean(
+    myTurn &&
+      !readOnly &&
+      !state.combat &&
+      !pendingTileChoice &&
+      !rawAdventure?.pendingVisit &&
+      (state.players[viewerPlayerId]?.needsHandRefresh || state.players[viewerPlayerId]?.canMulligan)
+  );
+
   // Reachable click-to-move targets, computed from the live rules.
   const reachable = useMemo(() => {
     if (!myHero || !myTurn || readOnly || pendingTileChoice || state.combat || rawAdventure?.pendingVisit) {
       return new Map<MapSpaceId, HeroPathTarget>();
     }
-    if (state.players[viewerPlayerId]?.needsHandRefresh) {
+    // The mandatory start-of-turn draw (and the forced over-limit discard) must be
+    // resolved before moving — withhold every click-to-move target until then so
+    // the board matches what the engine will allow.
+    if (state.players[viewerPlayerId]?.needsHandRefresh || state.players[viewerPlayerId]?.canMulligan) {
       return new Map<MapSpaceId, HeroPathTarget>();
     }
     return getReachableHeroPaths(state, myHero);
   }, [state, myHero, myTurn, readOnly, pendingTileChoice, rawAdventure?.pendingVisit, viewerPlayerId]);
+
+  // While the draw is unspent, the fields the hero COULD step onto once it draws.
+  // These render locked (dimmed) and a tap reminds the player to draw first
+  // instead of moving — so an attempted move never just silently does nothing.
+  const drawReminderTargets = useMemo(() => {
+    if (!drawPending || !myHero) {
+      return new Map<MapSpaceId, HeroPathTarget>();
+    }
+    return getReachableHeroPaths(state, myHero);
+  }, [drawPending, myHero, state]);
 
   const discoverByTile = useMemo(() => {
     const targets = new Map<string, GameAction>();
@@ -338,56 +439,12 @@ export function HexMapBoard({
     setMoveSelection({ key: moveSelectionKey, target });
 
   const placementCenters = useMemo(() => {
-    if (!placement || !rawAdventure || !myHeroSpaceId || !myHero) {
+    if (!placement || !rawAdventure || !myHero) {
       return [] as { row: number; col: number }[];
     }
-
-    const heroCoord = parseHexSpaceId(myHeroSpaceId);
-    if (!heroCoord) {
-      return [];
-    }
-
-    const placingHero = myHero;
     const tileDefId = rawAdventure.playerFarTiles?.[viewerPlayerId]?.[placement.supplyIndex];
-    const existing = Object.values(rawAdventure.tiles).map((tile) => ({ row: tile.centerRow, col: tile.centerCol }));
-    // Mirror the engine's canPlaceTileAt: a new tile may only land on a gapless
-    // slot of the tiling lattice that borders >=2 existing tiles (so it nests
-    // into a notch and leaves no hole) and sits next to the placing hero.
-    const seen = new Map<string, { row: number; col: number }>();
-    const centers: { row: number; col: number }[] = [];
-    for (const center of existing) {
-      for (const candidate of tileLatticeNeighbors(center)) {
-        const key = `${candidate.row}:${candidate.col}`;
-        if (seen.has(key)) {
-          continue;
-        }
-        seen.set(key, candidate);
-        if (existing.some((tile) => tileCentersOverlap(tile, candidate))) {
-          continue;
-        }
-        if (existing.filter((tile) => tileCentersAdjacent(tile, candidate)).length < 2) {
-          continue;
-        }
-        const footprint = tileFootprint(candidate, 0);
-        const nextToHero = footprint.some((cell) => hexDistance(cell, heroCoord) === 1);
-        if (!nextToHero) {
-          continue;
-        }
-        // Mirror the engine's placement guard: only highlight spots the hero can
-        // actually cross onto in some rotation (border lines must not seal it off).
-        if (
-          tileDefId &&
-          ![0, 1, 2, 3, 4, 5].some((rotation) =>
-            canHeroReachPlacedTile(state, placingHero, tileDefId, candidate, rotation)
-          )
-        ) {
-          continue;
-        }
-        centers.push(candidate);
-      }
-    }
-    return centers;
-  }, [placement, rawAdventure, myHeroSpaceId, myHero, state, viewerPlayerId]);
+    return farTilePlacementCenters(state, myHero, tileDefId);
+  }, [placement, rawAdventure, myHero, state, viewerPlayerId]);
 
   if (!adventure || !rawAdventure) {
     return null;
@@ -618,6 +675,7 @@ export function HexMapBoard({
 
       const location = locationDefinitions[field.location];
       const target = reachable.get(spaceId);
+      const remindMove = drawReminderTargets.get(spaceId);
       const endTurnMove = endTurnMoveTargets.get(spaceId);
       const guarded = Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
       const glyph = LOCATION_GLYPHS[field.location] ?? "";
@@ -629,6 +687,7 @@ export function HexMapBoard({
             "hexCell",
             field.location === "blocked_field" ? "blocked" : "",
             target ? "moveTarget" : "",
+            remindMove ? "moveTargetLocked" : "",
             endTurnMove ? "endTurnMoveTarget" : "",
             isSelected ? "selectedTarget" : "",
             artShown ? "withArt" : ""
@@ -653,7 +712,14 @@ export function HexMapBoard({
                       }
                       setSelectedTarget(selectedTarget?.spaceId === spaceId ? null : target);
                     }
-                  : undefined
+                  : remindMove
+                    ? () => {
+                        if (suppressClickRef.current) {
+                          return;
+                        }
+                        remindToDraw(spaceId);
+                      }
+                    : undefined
           }
           points={hexCorners(x, y, HEX_SIZE - 1.2)}
         >
@@ -980,6 +1046,9 @@ export function HexMapBoard({
     if (state.players[viewerPlayerId]?.needsHandRefresh) {
       return "Over the hand limit — discard down first (bottom of the screen)";
     }
+    if (state.players[viewerPlayerId]?.canMulligan) {
+      return "Take your start-of-turn draw first (bottom of the screen)";
+    }
     return null;
   })();
 
@@ -1037,6 +1106,30 @@ export function HexMapBoard({
                     <X size={13} /> Cancel
                   </button>
                 </div>
+              </div>
+            </div>
+          </foreignObject>
+        </g>
+      );
+    }
+  }
+
+  // The mandatory-draw reminder: a brief, auto-fading note anchored at the hex
+  // the player tried to move onto while the draw was still pending.
+  if (drawReminderAt && drawPending) {
+    const coord = parseHexSpaceId(drawReminderAt);
+    if (coord) {
+      const { x, y } = hexToPixel(coord, HEX_SIZE);
+      const cardW = 224;
+      const cardH = 60;
+      const gap = HEX_SIZE * 0.62;
+      const above = screenRoomAbove(y) >= cardH + gap;
+      floatingControls.push(
+        <g key="draw-reminder-float" transform={`translate(${x} ${y}) scale(${1 / camera.scale})`}>
+          <foreignObject className="mapFloatFO" height={cardH} width={cardW} x={-cardW / 2} y={above ? -cardH - gap : gap}>
+            <div className={`mapFloatOuter ${above ? "above" : "below"}`}>
+              <div className="mapFloatCard drawReminderFloat" role="status">
+                <span className="mapFloatLabel">⚠ Take your start-of-turn draw first</span>
               </div>
             </div>
           </foreignObject>
@@ -1717,12 +1810,14 @@ export function TownPanel({
     setReinforceIds([]);
   };
 
-  // Activated building actions (Blacksmith, Spell Book, Castle Gate, Cover of
-  // Darkness…) — everything the rules currently allow, as buttons.
+  // Activated building actions (Blacksmith, Spell Book, Magic University, Castle
+  // Gate, Cover of Darkness…) — everything the rules currently allow, as buttons.
   const buildingUseActions = legalActions.filter(
     (legal) =>
       legal.action.type === "SPELL_BOOK_ACTION" ||
       legal.action.type === "BLACKSMITH_ACTION" ||
+      legal.action.type === "THIEVES_GUILD_ACTION" ||
+      legal.action.type === "MAGIC_UNIVERSITY_ACTION" ||
       legal.action.type === "USE_TOWN_BUILDING"
   );
 
@@ -1762,7 +1857,7 @@ export function TownPanel({
     }
     return buildingUseActions.filter((legal) => {
       const action = legal.action;
-      if (action.type === "USE_TOWN_BUILDING") {
+      if (action.type === "USE_TOWN_BUILDING" || action.type === "THIEVES_GUILD_ACTION") {
         return action.buildingId === buildingId;
       }
       if (action.type === "SPELL_BOOK_ACTION") {
@@ -1770,6 +1865,9 @@ export function TownPanel({
       }
       if (action.type === "BLACKSMITH_ACTION") {
         return building.effect?.type === "ARTIFACT_SMITH";
+      }
+      if (action.type === "MAGIC_UNIVERSITY_ACTION") {
+        return building.effect?.type === "MAGIC_UNIVERSITY";
       }
       return false;
     });
@@ -1809,6 +1907,15 @@ export function TownPanel({
           : `Ready — offered in combat when one of your units attacks (+${effect.amount} attack, once per round).`;
       case "FREELANCERS_GUILD":
         return "Always on — the bonus applies automatically.";
+      case "MAGIC_UNIVERSITY":
+        // Tracked by its own once-per-round flag, not the generic
+        // buildingUsedRound token — read it directly for the status line.
+        if (hasActions) {
+          return null;
+        }
+        return player.magicUniversityUsedRound === state.round
+          ? "Already used this round — available again next round."
+          : "Pick a School of Magic to dig your deck for that spell.";
       case "MAGE_GUILD":
       case "ARTIFACT_SMITH":
       case "COVER_OF_DARKNESS":
@@ -2618,20 +2725,43 @@ export function FarTileTray({
     return null;
   }
 
+  // A Far tile is usable right now if one of this player's heroes still has a
+  // movement point AND has a legal slot to drop it (geometry from the full
+  // state, since the view masks the def ids). The supply def ids come from the
+  // full state for the same reason; the view only tells us how many remain.
+  const supplyDefIds = state.adventure?.playerFarTiles[viewerPlayerId] ?? [];
+  const myHeroes = Object.values(state.heroes).filter((hero) => hero.controllerId === viewerPlayerId);
+  const usableByIndex = tiles.map((_, index) => {
+    const tileDefId = supplyDefIds[index];
+    return myHeroes.some(
+      (hero) => hero.movementPoints > 0 && farTilePlacementCenters(state, hero, tileDefId).length > 0
+    );
+  });
+  const anyUsable = usableByIndex.some(Boolean);
+
   return (
-    <div className="farTileTray" aria-label="Your far tiles">
+    <div className={`farTileTray ${anyUsable ? "usable" : ""}`} aria-label="Your far tiles">
       <small>Far (Ⅱ–Ⅲ) tiles — 1 movement point 🐎 to place at the border, touching two tiles:</small>
-      {tiles.map((_, index) => (
-        <button
-          className={`farTileBack ${placement?.supplyIndex === index ? "selected" : ""}`}
-          key={index}
-          onClick={() => onTogglePlacement(placement?.supplyIndex === index ? null : { supplyIndex: index })}
-          title="Face-down Far tile — contents stay hidden until placed"
-          type="button"
-        >
-          <img alt="Far tile back (Ⅱ–Ⅲ)" src={assetUrl(TILE_BACK_IMAGES.far)} />
-        </button>
-      ))}
+      {tiles.map((_, index) => {
+        const usable = usableByIndex[index];
+        const selected = placement?.supplyIndex === index;
+        return (
+          <button
+            aria-disabled={!usable}
+            className={`farTileBack ${selected ? "selected" : ""} ${usable ? "usable" : "idle"}`}
+            key={index}
+            onClick={() => onTogglePlacement(selected ? null : { supplyIndex: index })}
+            title={
+              usable
+                ? "Far tile ready — select it, then click a glowing spot on the map border (1 movement point)"
+                : "Far tile — no legal spot right now (move a hero next to a border touching two tiles, with a movement point to spare)"
+            }
+            type="button"
+          >
+            <img alt="Far tile back (Ⅱ–Ⅲ)" src={assetUrl(TILE_BACK_IMAGES.far)} />
+          </button>
+        );
+      })}
       {placement ? <small className="farTileHint">Click a glowing spot on the map border.</small> : null}
     </div>
   );
@@ -3493,6 +3623,36 @@ function GameOptionsPanel({
               {spellBookOn
                 ? "Each player may set Spells aside in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
                 : "No Spell Book — Spells live only in hand, deck and discard."}
+            </small>
+          </div>
+        );
+      })()}
+
+      {(() => {
+        const farTileOpeningOn = options.farTileOpening ?? true;
+        return (
+          <div className="optionRow">
+            <small title="Whether players may open their own Ⅱ–Ⅲ Far tiles onto the map">
+              Ⅱ–Ⅲ tile opening
+            </small>
+            <div className="optionButtons">
+              {([true, false] as const).map((on) => (
+                <button
+                  aria-pressed={farTileOpeningOn === on}
+                  className={farTileOpeningOn === on ? "selected" : ""}
+                  key={String(on)}
+                  onClick={() => send({ farTileOpening: on })}
+                  title={on ? "Players may open Ⅱ–Ⅲ tiles" : "Players cannot open Ⅱ–Ⅲ tiles"}
+                  type="button"
+                >
+                  {on ? "On" : "Off"}
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">
+              {farTileOpeningOn
+                ? "Each player drafts two face-down Ⅱ–Ⅲ Far tiles they may place onto the map for 1 movement point."
+                : "No Ⅱ–Ⅲ supply — players cannot open Far tiles (use this when the map already includes its Ⅱ–Ⅲ tiles)."}
             </small>
           </div>
         );

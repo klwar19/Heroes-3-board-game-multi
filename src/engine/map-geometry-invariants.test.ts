@@ -99,6 +99,7 @@ describe("LOCKED: outer-border seal model (all tiles)", () => {
 
   it("a materialized field's seal equals the slot primitive (placed-field path stays in sync)", () => {
     const state = createAdventureGameState({ seed: "lock-seal", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure!;
     // S3 and F7 both carry sealed arcs; instantiate one of each in clear space.
     for (const [defId, center] of [
@@ -124,6 +125,7 @@ describe("LOCKED: outer-border seal model (all tiles)", () => {
 describe("LOCKED: ordinary movement crossing follows the seal primitive", () => {
   it("blocks a tile-to-tile step iff either field's outer arc is sealed", () => {
     const state = createAdventureGameState({ seed: "lock-cross", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure!;
     const O: HexCoord = { row: 40, col: 30 };
     const a = instantiateTile(adventure, "F7", O, 0, false);
@@ -167,6 +169,7 @@ describe("LOCKED: ordinary movement crossing follows the seal primitive", () => 
 describe("LOCKED: ordinary discovery is gated on an open border", () => {
   function freshHub() {
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const hub = Object.values(state.adventure!.tiles).find((t) => t.centerRow === 9 && t.centerCol === 4)!;
     expect(hub.faceDown).toBe(true);
     state.heroes.hero_p1.movementPoints = 3;
@@ -227,6 +230,7 @@ describe("LOCKED: ordinary discovery is gated on an open border", () => {
 describe("LOCKED: Far (Ⅱ–Ⅲ) placement needs a reachable (open-border) slot", () => {
   it("can reach the empty notch (6,4) from the open-border field (7,2)", () => {
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.heroes.hero_p1.spaceId = "h:7:2";
     const tileDefId = state.adventure!.playerFarTiles.p1[0];
     const reachable = [0, 1, 2, 3, 4, 5].some((rotation) =>
@@ -237,6 +241,7 @@ describe("LOCKED: Far (Ⅱ–Ⅲ) placement needs a reachable (open-border) slot
 
   it("cannot reach a placed tile from behind a sealed arc (8,3)", () => {
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.heroes.hero_p1.spaceId = "h:8:3";
     const tileDefId = state.adventure!.playerFarTiles.p1[0];
     // (9,4) is the slot the sealed (8,3) arc faces; the hero cannot step across.
@@ -265,6 +270,7 @@ function f7Rings(O: HexCoord) {
 describe("LOCKED: Redwood Observatory ignores edges and borders", () => {
   it("flips an adjacent face-down tile across a sealed border, standing on the sealed field", () => {
     const state = createAdventureGameState({ seed: "lock-obs", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure!;
     state.players.p1.needsHandRefresh = false;
     const O: HexCoord = { row: 40, col: 30 };
@@ -293,6 +299,7 @@ describe("LOCKED: Redwood Observatory ignores edges and borders", () => {
 describe("LOCKED: Speculum ignores edges and borders", () => {
   it("reveals an adjacent face-down tile across a sealed border, end-to-end", () => {
     const state = createAdventureGameState({ seed: "lock-spec", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure!;
     state.players.p1.needsHandRefresh = false;
     const O: HexCoord = { row: 40, col: 30 };
