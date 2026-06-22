@@ -83,6 +83,16 @@ wired and are covered by a test that fails if the logic is removed:
   exercises each. (`PENDING_TOWER_SPECIALTIES` no longer exists.)
 
 Conflux — now fully engine-wired (no display-only unit clauses left):
+- `conflux.{storm,ice,energy,magma}_elementals` (Few & Pack) — the FACTION
+  (recruitable) elementals do NOT carry the Magic-Arrow/school immunity or the
+  "deals elemental damage" trait: per the verbatim 3-column wiki card those
+  belong to the separate NEUTRAL guard (`neutral.*_elementals`) column ALONE.
+  The faction Few has no abilities; the faction Pack has ONLY its "[activation]
+  +1 Power to the first <School> spell" rider. The earlier wiring (which copied
+  the neutral guard's `elemental-damage` + `<school>-elemental-immunity` onto the
+  faction Few/Pack) was a transcription fabrication and has been removed —
+  enforced in `conflux-content.test.ts` (faction Few = [], Pack = activation only;
+  the neutral guard keeps the passives as the control).
 - `conflux.magic_elementals` (Few & Pack) — "Attack all adjacent [enemy] units"
   is now wired via the generic `SECOND_ATTACK_ALL_ADJACENT_TO_SELF` multi-attack
   queue: a full separate follow-up attack at the unit's OWN (buffable) Attack
