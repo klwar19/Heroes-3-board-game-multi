@@ -30,6 +30,32 @@ export function tacticsSetupActiveFor(state: GameState, viewerPlayerId: PlayerId
   return state.combat?.pendingTacticsSwaps?.[0] === viewerPlayerId;
 }
 
+/**
+ * Would submitting `action` spend the seated player's still-unspent start-of-turn
+ * draw? True only on the quiet map turn (never in combat / off-turn) for a card
+ * use by that seat — playing a card, casting, or stashing into the Spell Book —
+ * while it still holds its draw and is not in the forced over-limit discard. The
+ * UI uses this to pop a "this forfeits your draw — continue?" confirmation, and
+ * mirrors the engine's spendStartOfTurnDraw gate so the prompt and the rule agree.
+ */
+export function actionForfeitsStartOfTurnDraw(
+  state: GameState,
+  viewerPlayerId: PlayerId,
+  action: GameAction
+): boolean {
+  if (state.combat) {
+    return false;
+  }
+  if (action.type !== "PLAY_CARD" && action.type !== "CAST_SPELL" && action.type !== "MOVE_SPELL_TO_SPELL_BOOK") {
+    return false;
+  }
+  if (action.playerId !== viewerPlayerId || state.activePlayerId !== viewerPlayerId) {
+    return false;
+  }
+  const player = state.players[viewerPlayerId];
+  return Boolean(player?.canMulligan) && !player?.needsHandRefresh;
+}
+
 /** Unit ids that can be the FIRST pick of a swap (they appear in some pair). */
 export function swapSelectableUnitIds(swaps: SwapAction[]): Set<string> {
   const ids = new Set<string>();
