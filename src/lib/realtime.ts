@@ -58,9 +58,20 @@ export function getPartyKitHost(): string | null {
   return host && host.trim().length > 0 ? host.trim() : null;
 }
 
-export function connectRoom(roomId: string, handlers: RoomConnectionHandlers): RoomConnection {
+export function connectRoom(
+  roomId: string,
+  handlers: RoomConnectionHandlers,
+  /**
+   * Stable per-browser client id, attached to every action so a hosted room
+   * can enforce seat ownership (see roomActionGuard in the engine). Omitted on
+   * an open table — then the server applies no seat enforcement.
+   */
+  actorClientId?: string
+): RoomConnection {
   const host = getPartyKitHost();
-  return host ? connectPartyRoom(host, roomId, handlers) : connectApiRoom(roomId, handlers);
+  return host
+    ? connectPartyRoom(host, roomId, handlers, actorClientId)
+    : connectApiRoom(roomId, handlers, actorClientId);
 }
 
 // ---------------------------------------------------------------------------
@@ -84,7 +95,12 @@ function partyHttpUrl(host: string, roomId: string): string {
   return `${protocol}://${host}/parties/main/${encodeURIComponent(roomId)}`;
 }
 
-function connectPartyRoom(host: string, roomId: string, handlers: RoomConnectionHandlers): RoomConnection {
+function connectPartyRoom(
+  host: string,
+  roomId: string,
+  handlers: RoomConnectionHandlers,
+  actorClientId?: string
+): RoomConnection {
   const socket = new PartySocket({ host, room: roomId });
   const pending = new Map<
     string,
@@ -167,7 +183,9 @@ function connectPartyRoom(host: string, roomId: string, handlers: RoomConnection
           });
         });
 
-        socket.send(JSON.stringify({ type: "action", requestId, action }));
+        socket.send(
+          JSON.stringify({ type: "action", requestId, action, ...(actorClientId ? { actorClientId } : {}) })
+        );
       }),
     resetRoom: (options) =>
       new Promise<GameRoomSnapshot>((resolve, reject) => {
@@ -206,7 +224,11 @@ function connectPartyRoom(host: string, roomId: string, handlers: RoomConnection
 // Built-in Next.js API backend (in-memory store + SSE stream)
 // ---------------------------------------------------------------------------
 
-function connectApiRoom(roomId: string, handlers: RoomConnectionHandlers): RoomConnection {
+function connectApiRoom(
+  roomId: string,
+  handlers: RoomConnectionHandlers,
+  actorClientId?: string
+): RoomConnection {
   const source = new EventSource(`/api/rooms/${encodeURIComponent(roomId)}/stream`);
   // The server pings every 20s with a real data event. A stream that stayed
   // silent for much longer is half-dead (idle proxies, sleeping laptops) even
@@ -283,7 +305,7 @@ function connectApiRoom(roomId: string, handlers: RoomConnectionHandlers): RoomC
       const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/actions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action })
+        body: JSON.stringify({ action, ...(actorClientId ? { actorClientId } : {}) })
       });
       if (!response.ok) {
         throw new Error("Server rejected the action request.");
