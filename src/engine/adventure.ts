@@ -4700,13 +4700,32 @@ export function ensureUniqueArmyUnitIds(state: GameState): boolean {
   return changed;
 }
 
+/**
+ * Backfills player fields added by later releases onto a game serialized by an
+ * OLDER engine, so legacy saves don't crash the new code. The reported case:
+ * the Spell Book release added `PlayerState.spellBook`, and getPlayerView spreads
+ * it (`[...player.spellBook]`) on every render — an undefined spellBook throws
+ * "can't access property Symbol.iterator, spellBook is undefined" and strands
+ * the player on the crash screen for their whole in-progress game. Idempotent
+ * and cheap; returns true if it changed anything so callers can persist the heal.
+ */
+export function healLegacyPlayerFields(state: GameState): boolean {
+  let changed = false;
+  for (const player of Object.values(state.players)) {
+    if (player && !Array.isArray(player.spellBook)) {
+      player.spellBook = [];
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 /** Replaces an empty unit deck with the scenario starting units. */
 export function restoreStartingArmyIfEmpty(state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   if (!player || player.army.length > 0) {
     return;
   }
-
   for (const unit of player.startingArmy) {
     addArmyUnit(player, unit.unitDefId, unit.side);
   }

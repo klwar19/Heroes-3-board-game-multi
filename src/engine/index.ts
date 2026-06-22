@@ -140,6 +140,7 @@ export {
   gateFieldsLinked,
   getActiveAstrologersCard,
   getAdjacentSpaceIds,
+  healLegacyPlayerFields,
   getHeroMovementCapabilities,
   getMainHero,
   getReachableHeroPaths,

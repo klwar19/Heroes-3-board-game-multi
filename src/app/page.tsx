@@ -11,6 +11,7 @@ import {
   getLegalActions,
   getPlayerView,
   getRuleset,
+  healLegacyPlayerFields,
   rulesetCardNote,
   NEUTRAL_PLAYER_ID,
   type GameAction,
@@ -657,6 +658,12 @@ export default function Home() {
   // draws, hero walks and pack flips cue their animations on every seat. The
   // first snapshot only primes the seen-sets, so a reload replays nothing.
   const ingestServerState = useCallback((nextState: GameState) => {
+    // A game serialized before the Spell Book release has players with no
+    // `spellBook` array; getPlayerView spreads it on render and would throw
+    // ("can't access property Symbol.iterator, spellBook is undefined"),
+    // crashing the whole table. Backfill it before anything reads the state.
+    healLegacyPlayerFields(nextState);
+
     const rolls = nextState.eventLog.filter(
       (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> => event.type === "ATTACK_ROLLED"
     );
