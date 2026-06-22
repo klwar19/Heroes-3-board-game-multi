@@ -176,13 +176,19 @@ describe("Conflux content", () => {
   });
 
   it("carries the implemented elemental / phoenix / sprite ability tags on the right sides", () => {
-    // Elementals reuse the already-wired elemental passives on both sides.
-    expect(coreUnitDefinitions["conflux.storm_elementals"].few?.abilities).toEqual([
+    // Per the verbatim wiki card the FACTION elemental Few has NO abilities and
+    // the Pack only the spell-power activation — the Magic-Arrow/school immunity
+    // and "deals elemental damage" belong to the separate NEUTRAL guard card
+    // (neutral.storm_elementals), NOT the recruitable Conflux Few/Pack.
+    expect(coreUnitDefinitions["conflux.storm_elementals"].few?.abilities).toEqual([]);
+    expect(coreUnitDefinitions["conflux.storm_elementals"].pack?.abilities).toEqual(["storm-elemental-air-power"]);
+    expect(coreUnitDefinitions["conflux.magma_elementals"].few?.abilities).toEqual([]);
+    expect(coreUnitDefinitions["conflux.magma_elementals"].pack?.abilities).toEqual(["magma-elemental-earth-power"]);
+    // The neutral GUARD elementals keep the immunity + elemental-damage passives.
+    expect(coreUnitDefinitions["neutral.storm_elementals"].neutral?.abilities).toEqual([
       "elemental-damage",
       "air-elemental-immunity"
     ]);
-    expect(coreUnitDefinitions["conflux.storm_elementals"].pack?.abilities).toContain("storm-elemental-air-power");
-    expect(coreUnitDefinitions["conflux.magma_elementals"].pack?.abilities).toContain("magma-elemental-earth-power");
     // Sprites: only the Pack ignores retaliation.
     expect(coreUnitDefinitions["conflux.sprites"].few?.abilities).toEqual([]);
     expect(coreUnitDefinitions["conflux.sprites"].pack?.abilities).toEqual(["ignores-retaliation"]);
