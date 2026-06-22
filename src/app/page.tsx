@@ -2278,32 +2278,31 @@ export default function Home() {
     setDisplayNameState(name);
   }, []);
 
-  // Register (and keep fresh) this client's room membership. Re-sends only when
-  // the room changes or the name differs from what the snapshot shows, so it
-  // never loops. New clients always join as observers (see src/engine/room.ts).
-  const joinedKeyRef = useRef<string | null>(null);
+  // Register this client in the room once per (room, name): on first load, after
+  // a rename, or after switching rooms. Deliberately NOT re-sent on every
+  // snapshot, so a kicked player does not silently auto-rejoin.
+  const joinedRoomRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!state || !connectionRef.current) {
+    const connection = connectionRef.current;
+    if (!state || !connection) {
       return;
     }
     const desiredName = displayName.trim() || "Player";
+    const joinKey = `${roomId}:${desiredName}`;
+    if (joinedRoomRef.current === joinKey) {
+      return;
+    }
+    joinedRoomRef.current = joinKey;
     const me = state.room?.members.find((member) => member.clientId === clientId) ?? null;
+    // Already a member under this name (carried across a reset / reconnect)? Adopt it.
     if (me && me.name === desiredName) {
-      joinedKeyRef.current = `${roomId}:${desiredName}`;
       return;
     }
-    const key = `${roomId}:${desiredName}`;
-    // Already sent this exact join and a member now exists — just waiting for the
-    // name to propagate; do not spam the room.
-    if (joinedKeyRef.current === key && me) {
-      return;
-    }
-    joinedKeyRef.current = key;
-    void submitAction({ type: "JOIN_ROOM", clientId, name: desiredName });
-    // submitAction is intentionally omitted from deps (stable enough); we key off
-    // the synced room, the room id, and the chosen name.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.room, roomId, displayName, clientId]);
+    // Fire-and-forget through the connection directly: the live stream delivers
+    // the resulting snapshot. (Routing JOIN through the submitAction wrapper
+    // would be a setState during this effect.)
+    void connection.submitAction({ type: "JOIN_ROOM", clientId, name: desiredName }).catch(() => {});
+  }, [state, roomId, displayName, clientId]);
 
   // Hosted rooms drive the viewer's seat from their host assignment (seats are
   // locked); open tables keep the manual seat switcher untouched.
