@@ -12,6 +12,7 @@ import {
   getMainHero,
   getUnitSide,
   hasDuplicateArmyUnitIds,
+  healLegacyPlayerFields,
   isSeaField,
   makeCombatUnitFromArmy,
   NEUTRAL_DECK_IDS,
@@ -13070,6 +13071,13 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // runs against the original state untouched (a rejected action still returns
   // it unchanged). When we do repair, that copy is returned even on failure so
   // the stored room heals on the next action regardless of the outcome.
+  // Backfill any player fields a newer release added (e.g. the Spell Book's
+  // `spellBook`) so a game serialized by an older engine validates and runs —
+  // and getLegalActions / getPlayerView never trip over a missing array. Mutates
+  // the stored state in place (harmless: it only adds an empty array that was
+  // logically always there), so the room heals for every later read too.
+  healLegacyPlayerFields(state);
+
   let base = state;
   if (hasDuplicateArmyUnitIds(state)) {
     base = cloneState(state);

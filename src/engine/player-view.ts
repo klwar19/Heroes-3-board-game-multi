@@ -139,9 +139,12 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
         deckCount: player.deck.length,
         discard: [...player.discard],
         // Spell Book (house rule): a face-down personal library — only the owner
-        // sees which Spells it holds; opponents learn just the count.
-        spellBook: playerId === viewerPlayerId ? [...player.spellBook] : [],
-        spellBookCount: player.spellBook.length,
+        // sees which Spells it holds; opponents learn just the count. `?? []`
+        // guards a game serialized before the Spell Book release (no spellBook
+        // field): spreading undefined would throw on every render and strand the
+        // player on the crash screen. healLegacyPlayerFields backfills it too.
+        spellBook: playerId === viewerPlayerId ? [...(player.spellBook ?? [])] : [],
+        spellBookCount: (player.spellBook ?? []).length,
         removed: [...player.removed],
         // Spell Scrolls show their symbol to everyone, but only the owner sees
         // which spells they hold (the cards sit face down near the hero).
