@@ -80,6 +80,7 @@ import {
   getRuleset,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
+  spellCanEnterSpellBook,
   spellLimitFor,
   wisdomGoldDiscount,
   wisdomSearchCount
@@ -2634,7 +2635,9 @@ function addSpellBookStashActions(actions: LegalAction[], state: GameState, play
   }
   for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
-    if (card?.kind === "spell") {
+    // Magic Arrow (any starting-only Spell) may be held and cast, but never
+    // stashed — it has no Spell Book home (spellCanEnterSpellBook).
+    if (card?.kind === "spell" && spellCanEnterSpellBook(cardId)) {
       actions.push({
         label: `Move ${card.name} to your Spell Book`,
         action: { type: "MOVE_SPELL_TO_SPELL_BOOK", playerId, cardId }
@@ -6086,10 +6089,11 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     ];
   }
 
-  // Optional start-of-turn draw (every turn, including the first): discard any
-  // number of cards, then draw back up to the hand limit. It is the single
-  // either/or — "draw new" (no discards) or "discard and draw new" — and is
-  // available until the player draws or begins their turn with a map action.
+  // Start-of-turn draw/discard (every turn, including the first): discard any
+  // number of cards, then draw back up to the hand limit ("draw new" with no
+  // discards is the no-op pass). It must be resolved BEFORE using any card —
+  // using a card spends it (see spendStartOfTurnDraw) — so a card can never be
+  // played and the freed hand slot then drawn back up to the limit.
   if (player.canMulligan) {
     actions.push({
       label: "Draw new — or discard some and draw up to your hand limit (start of turn)",

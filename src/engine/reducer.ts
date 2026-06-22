@@ -117,6 +117,7 @@ import {
   getRuleset,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
+  spellCanEnterSpellBook,
   spellLimitFor
 } from "./ruleset";
 import {
@@ -595,6 +596,23 @@ function moveSpellFromSpellBookToDiscard(
 }
 
 /**
+ * Using ANY card on your quiet map turn forfeits the start-of-turn draw, so a
+ * card can never be played/cast/stashed and the freed hand slot then drawn back
+ * up to the hand limit. (The player may still draw FIRST, then play — that ends
+ * below the limit.) A no-op in combat and on anyone else's turn, where the
+ * start-of-turn draw is not in play.
+ */
+function spendStartOfTurnDraw(state: GameState, playerId: PlayerId): void {
+  if (state.combat || state.activePlayerId !== playerId) {
+    return;
+  }
+  const player = state.players[playerId];
+  if (player) {
+    player.canMulligan = false;
+  }
+}
+
+/**
  * Spell Book (house rule): move a Spell from hand into the Spell Book, freeing
  * the hand slot WITHOUT drawing a replacement. Legality (rule on, own map turn,
  * Spell in hand) is enforced by getLegalActions; these throws are the resolution
@@ -616,12 +634,20 @@ function moveSpellToSpellBook(
   if (!card || card.kind !== "spell") {
     throw new Error("Only Spell cards can go into the Spell Book.");
   }
+  // Magic Arrow (any starting-only Spell) is castable from hand but has no Spell
+  // Book home — reject a fabricated stash so the rule holds at resolution too.
+  if (!spellCanEnterSpellBook(action.cardId)) {
+    throw new Error(`${card.name} cannot be set aside in the Spell Book.`);
+  }
   const index = player.hand.indexOf(action.cardId);
   if (index === -1) {
     throw new Error("That Spell is not in your hand.");
   }
   player.hand.splice(index, 1);
   player.spellBook.push(action.cardId);
+  // Stashing is a card use: it spends the start-of-turn draw so the freed slot
+  // can never be drawn back up (the player may draw FIRST, then stash).
+  spendStartOfTurnDraw(state, action.playerId);
   appendEvent(state, {
     type: "SPELL_MOVED_TO_SPELL_BOOK",
     playerId: action.playerId,
@@ -13073,9 +13099,14 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
     switch (action.type) {
       case "CAST_SPELL":
         castSpell(nextState, action, cards);
+        // A Map Spell cast forfeits the player's start-of-turn draw (no-op in
+        // combat / off-turn) so a freed hand slot can't be drawn back up.
+        spendStartOfTurnDraw(nextState, action.playerId);
         break;
       case "PLAY_CARD":
         playCard(nextState, action, cards);
+        // Likewise for any other card played on the quiet map turn.
+        spendStartOfTurnDraw(nextState, action.playerId);
         break;
       case "ATTACK_UNIT":
         attackUnit(nextState, action, cards);

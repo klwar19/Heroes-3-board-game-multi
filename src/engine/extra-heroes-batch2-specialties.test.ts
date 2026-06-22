@@ -160,6 +160,50 @@ describe("Lord Haart's Estates specialty", () => {
 });
 
 // ===========================================================================
+// Start-of-turn draw — using a card forfeits it (no use-then-refill exploit).
+// The player must draw/discard FIRST, then use cards: using any card on the
+// quiet map turn spends the start-of-turn draw so a freed hand slot can never be
+// drawn back up to the hand limit. Movement does NOT spend it (it changes no
+// hand size), so moving before drawing stays allowed — the UI warns about it.
+// ===========================================================================
+
+describe("Start-of-turn draw is forfeited by using a card", () => {
+  it("playing a map card spends the draw, so the freed slot cannot be drawn back up", () => {
+    const state = adventureState("draw-forfeit-play", "lord_haart", "castle");
+    state.players.p1.hand = ["specialty.lord_haart.1", "stat.attack"];
+    state.players.p1.canMulligan = true;
+
+    // Before any card use the draw is offered.
+    expect(getLegalActions(state, "p1").some((l) => l.action.type === "REFRESH_HAND")).toBe(true);
+
+    const play = findPlay(state, "specialty.lord_haart.1", 0);
+    expect(play, "Estates should be a map play").toBeTruthy();
+    const after = applyOk(state, play!.action);
+
+    // Using the card spent the start-of-turn draw…
+    expect(after.players.p1.canMulligan).toBe(false);
+    // …so REFRESH_HAND is no longer offered and a forced draw is rejected.
+    expect(getLegalActions(after, "p1").some((l) => l.action.type === "REFRESH_HAND")).toBe(false);
+    const forced = applyAction(after, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    expect(forced.errors.length, "drawing after a card use must be rejected").toBeGreaterThan(0);
+  });
+
+  it("moving before drawing also forfeits the draw (why the UI warns on an early move)", () => {
+    const state = adventureState("draw-forfeit-move", "lord_haart", "castle");
+    state.players.p1.canMulligan = true;
+
+    const move = getLegalActions(state, "p1").find((l) => l.action.type === "MOVE_HERO");
+    expect(move, "a hero move should be available at turn start").toBeTruthy();
+    const after = applyOk(state, move!.action);
+
+    // Beginning the turn with a map action spends the start-of-turn draw, so the
+    // player can no longer draw — hence the UI warns before an undrawn move.
+    expect(after.players.p1.canMulligan).toBe(false);
+    expect(getLegalActions(after, "p1").some((l) => l.action.type === "REFRESH_HAND")).toBe(false);
+  });
+});
+
+// ===========================================================================
 // Jeddite (Dungeon) — Mysterious Warlock
 // ===========================================================================
 

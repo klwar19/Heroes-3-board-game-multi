@@ -1330,6 +1330,16 @@ button.battleCell {
   box-shadow: 0 0 0 1px rgba(213, 168, 79, 0.45);
 }
 
+/* An empty Spell Book is shown from the start, but dimmed until it holds Spells. */
+.shelfIcon.empty {
+  opacity: 0.65;
+}
+
+.shelfIcon.empty .shelfCount {
+  background: rgba(210, 180, 120, 0.4);
+  color: #2a2014;
+}
+
 .shelfGlyph {
   width: 34px;
   height: 26px;
@@ -1838,6 +1848,38 @@ button.battleCell {
   border-radius: 12px;
   background: rgb(24 21 15 / 98%);
   box-shadow: 0 24px 60px rgb(0 0 0 / 60%);
+}
+
+/* Confirm dialog: "using a card forfeits your start-of-turn draw — continue?" */
+.confirmModal {
+  display: grid;
+  gap: 12px;
+  width: min(440px, 92vw);
+  padding: 18px;
+  border: 2px solid var(--gold);
+  border-radius: 12px;
+  background: rgb(24 21 15 / 98%);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 60%);
+  text-align: center;
+}
+
+.confirmModal strong {
+  color: var(--gold);
+  font-size: 15px;
+}
+
+.confirmModal p {
+  margin: 0;
+  color: #e8d9b8;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.confirmModalButtons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
 .searchModal header {
@@ -5013,6 +5055,17 @@ button.hbSlot:disabled { cursor: default; }
   font-weight: 600;
 }
 
+/* The start-of-turn "draw first" reminder: a touch brighter, with a soft
+   warning chip so it reads before the player moves or plays a card. */
+.drawWarning {
+  display: inline-block;
+  padding: 2px 7px;
+  border: 1px solid rgba(255, 176, 77, 0.55);
+  border-radius: 7px;
+  background: rgba(255, 176, 77, 0.12);
+  color: #ffc879;
+}
+
 .handButtons {
   display: flex;
   align-items: center;
@@ -6199,6 +6252,16 @@ button.hbSlot:disabled { cursor: default; }
   font-weight: 800;
   line-height: 16px;
   text-align: center;
+}
+
+/* The Book panel appears from the start of the game; dim it while it is empty. */
+.spellBookPanel.empty .spellBookToggle {
+  opacity: 0.7;
+}
+
+.spellBookPanel.empty .spellBookCount {
+  background: rgba(210, 180, 120, 0.4);
+  color: #2a2014;
 }
 
 .spellBookWindow {

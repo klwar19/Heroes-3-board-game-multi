@@ -531,6 +531,17 @@ export function spellBookRuleEnabled(state: GameState): boolean {
 }
 
 /**
+ * Whether `cardId` is a Spell that may be set aside in a player's Spell Book.
+ * House rule: a starting-only Spell (Magic Arrow) may be drawn, held in hand and
+ * cast like any other, but it can NEVER enter the Spell Book — it has no Book
+ * home and is excluded from both the hand→Book stash and the discard→Book pickup.
+ * Every other Spell is eligible.
+ */
+export function spellCanEnterSpellBook(cardId: CardId): boolean {
+  return !STARTING_ONLY_SPELLS.includes(cardId);
+}
+
+/**
  * Whether this player may still spend a Spell Book Spell as a +1 Power source
  * this turn. The Book is capped at ONE Power discard per turn (crown-style); the
  * hand and every other Power source are unaffected.
