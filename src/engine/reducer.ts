@@ -110,6 +110,7 @@ import {
 } from "./permanents";
 import { createSeededRandom } from "./random";
 import {
+  abilityExpertIsCrownFree,
   activeSchoolFetches,
   estatesGold,
   getRuleset,
@@ -488,7 +489,9 @@ function assertBatchReactionLegal(
       powerOnlyPlays += 1;
     }
 
-    if ((play.mode ?? "basic") === "expert") {
+    // An Empowered ability's Expert side costs no crown, so it never counts
+    // against the batch's Expert-use budget.
+    if ((play.mode ?? "basic") === "expert" && !abilityExpertIsCrownFree(player, play.cardId)) {
       expertUsesNeeded += 1;
     }
   }
@@ -7781,7 +7784,8 @@ function applyReactionPlayCore(
       throw new Error(`${card.name} does not have an expert effect.`);
     }
 
-    if (!hasExpertUseAvailable(state, playerId)) {
+    // An Empowered ability may always use its Expert side without a crown.
+    if (!hasExpertUseAvailable(state, playerId) && !abilityExpertIsCrownFree(state.players[playerId], play.cardId)) {
       throw new Error("No expert uses are available this combat round.");
     }
   }
@@ -7879,7 +7883,8 @@ function applyReactionPlayCore(
     : payOptionCardCost(state, playerId, card, option?.cost, play.costCardIds, cards);
 
   let effectAmount = getEffectAmount(effect, mode);
-  if (mode === "expert") {
+  // An Empowered ability's Expert side spends no crown.
+  if (mode === "expert" && !abilityExpertIsCrownFree(state.players[playerId], play.cardId)) {
     state.players[playerId].combatStats.expertUsesSpentThisRound += 1;
   }
 
@@ -9332,7 +9337,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (option?.requiresWarMachine && !getPermanentCardIds(state, action.playerId).includes(option.requiresWarMachine)) {
     throw new Error(`${option.label} requires that war machine in play.`);
   }
-  if (mode === "expert" && !hasExpertUseAvailable(state, action.playerId)) {
+  // An Empowered ability may always use its Expert side without a crown.
+  if (
+    mode === "expert" &&
+    !hasExpertUseAvailable(state, action.playerId) &&
+    !abilityExpertIsCrownFree(state.players[action.playerId], action.cardId)
+  ) {
     throw new Error("No expert uses are available this combat round.");
   }
 
@@ -9366,7 +9376,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   payOptionCardCost(state, action.playerId, card, option?.cost, action.costCardIds, cards);
 
-  if (mode === "expert") {
+  // An Empowered ability's Expert side spends no crown.
+  if (mode === "expert" && !abilityExpertIsCrownFree(state.players[action.playerId], action.cardId)) {
     state.players[action.playerId].combatStats.expertUsesSpentThisRound += 1;
   }
 
