@@ -134,7 +134,8 @@ describe("Sandro's Cloak — defeat cascade", () => {
 
 describe("Necromancy ability — after-combat window", () => {
   function startSandroGame(): GameState {
-    return createAdventureGameState({
+    {
+      const _g = createAdventureGameState({
       seed: "necro-seed",
       ruleset: "binh",
       difficulty: "normal",
@@ -144,6 +145,9 @@ describe("Necromancy ability — after-combat window", () => {
       ],
       rollFirstPlayer: false
     });
+      for (const _pl of Object.values(_g.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
+      return _g;
+    }
   }
 
   it("only offers Necromancy while the after-combat window is open", () => {
@@ -222,7 +226,8 @@ describe("Necromancy ability — after-combat window", () => {
 
 describe("Necromancy ability — now-or-never timing (BINH house rule)", () => {
   function startSandroGame(): GameState {
-    return createAdventureGameState({
+    {
+      const _g = createAdventureGameState({
       seed: "necro-timing",
       ruleset: "binh",
       difficulty: "normal",
@@ -232,6 +237,9 @@ describe("Necromancy ability — now-or-never timing (BINH house rule)", () => {
       ],
       rollFirstPlayer: false
     });
+      for (const _pl of Object.values(_g.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
+      return _g;
+    }
   }
 
   /**
@@ -408,7 +416,8 @@ describe("Necromancy ability — now-or-never timing (BINH house rule)", () => {
 // ---------------------------------------------------------------------------
 describe("Legion voucher × Necromancy reinforce (real end-to-end, non-stacking)", () => {
   function startSandroGame(): GameState {
-    return createAdventureGameState({
+    {
+      const _g = createAdventureGameState({
       seed: "legion-necro",
       ruleset: "binh",
       difficulty: "normal",
@@ -418,6 +427,9 @@ describe("Legion voucher × Necromancy reinforce (real end-to-end, non-stacking)
       ],
       rollFirstPlayer: false
     });
+      for (const _pl of Object.values(_g.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
+      return _g;
+    }
   }
 
   /** Stages a just-won neutral combat for p1 on an already-collected field (no
@@ -448,7 +460,7 @@ describe("Legion voucher × Necromancy reinforce (real end-to-end, non-stacking)
   /** Plays a Legion piece on the map and picks `unitName`'s reinforce in the prompt. */
   function bankLegionOnReinforceViaPlay(state: GameState, cardId: string, unitName: string): GameState {
     state.activePlayerId = "p1";
-    let next = state.players.p1.needsHandRefresh
+    let next = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
       ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
       : state;
     next.players.p1.hand = [cardId];

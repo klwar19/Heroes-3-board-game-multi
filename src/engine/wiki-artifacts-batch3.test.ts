@@ -387,6 +387,7 @@ describe("Surcoat of Counterpoise", () => {
 
   it("option 1 removes the card and searches the Artifact deck (map)", () => {
     const state = createAdventureGameState({ seed: "surcoat-search", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.activePlayerId = "p1";
     state.players.p1.hand = [SURCOAT];
     state.players.p1.removed = [];
@@ -481,12 +482,14 @@ describe("Trident of Dominion", () => {
 
   it("the Sea side draws 2 cards only while the Hero stands on a Sea tile", () => {
     const offSea = createAdventureGameState({ seed: "trident-offsea", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(offSea.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     offSea.activePlayerId = "p1";
     offSea.players.p1.hand = [TRIDENT];
     setHeroSeaTile(offSea, false);
     expect(findPlay(offSea, TRIDENT, 1), "the Sea side must be hidden off a Sea tile").toBeFalsy();
 
     const onSea = createAdventureGameState({ seed: "trident-onsea", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(onSea.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     onSea.activePlayerId = "p1";
     onSea.players.p1.hand = [TRIDENT];
     onSea.players.p1.deck = ["stat.attack", "stat.defense", "stat.power"];
@@ -520,12 +523,14 @@ describe("Shield of Naval Glory", () => {
 
   it("the Sea side grants +1 Hero movement and draws 1 card, only on a Sea tile", () => {
     const offSea = createAdventureGameState({ seed: "naval-offsea", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(offSea.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     offSea.activePlayerId = "p1";
     offSea.players.p1.hand = [NAVAL];
     setHeroSeaTile(offSea, false);
     expect(findPlay(offSea, NAVAL, 1), "the Sea side must be hidden off a Sea tile").toBeFalsy();
 
     const onSea = createAdventureGameState({ seed: "naval-onsea", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(onSea.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     onSea.activePlayerId = "p1";
     onSea.players.p1.hand = [NAVAL];
     onSea.players.p1.deck = ["stat.power"];
@@ -570,12 +575,14 @@ describe("Royal Armor of Nix", () => {
 
   it("the Sea side searches the Spell deck only while on a Sea tile", () => {
     const offSea = createAdventureGameState({ seed: "nix-offsea", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(offSea.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     offSea.activePlayerId = "p1";
     offSea.players.p1.hand = [NIX];
     setHeroSeaTile(offSea, false);
     expect(findPlay(offSea, NIX, 1), "the Sea side must be hidden off a Sea tile").toBeFalsy();
 
     const onSea = createAdventureGameState({ seed: "nix-onsea", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(onSea.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     onSea.activePlayerId = "p1";
     onSea.players.p1.hand = [NIX];
     setHeroSeaTile(onSea, true);

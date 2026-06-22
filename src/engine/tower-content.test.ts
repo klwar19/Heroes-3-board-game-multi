@@ -130,6 +130,7 @@ describe("Tower content", () => {
         { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
       ]
     });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1");
     expect(town, "Tower player should own a town").toBeTruthy();
     expect(town?.factionId).toBe("tower");
@@ -147,6 +148,7 @@ describe("Tower content", () => {
           { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
         ]
       });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
       const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1");
       if (!town) {
         throw new Error("no Tower town");
@@ -206,6 +208,7 @@ describe("Tower content", () => {
         { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
       ]
     });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.activePlayerId = "p1";
     state.pendingChoice = null;
     state.reactionWindow = null;

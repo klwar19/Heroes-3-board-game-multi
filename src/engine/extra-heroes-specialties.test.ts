@@ -354,7 +354,7 @@ describe("Adelaide's Frost Ring specialty", () => {
         { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
       ]
     });
-    let state = game.players.p1.needsHandRefresh
+    let state = (game.players.p1.needsHandRefresh || game.players.p1.canMulligan)
       ? applyOk(game, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
       : game;
     state.activePlayerId = "p1";

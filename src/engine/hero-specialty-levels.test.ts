@@ -198,6 +198,7 @@ describe("Gelu IV — trade a Pack of Elves for the Sharpshooters", () => {
         { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
       ]
     });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.activePlayerId = "p1";
     state.pendingChoice = null;
     state.reactionWindow = null;

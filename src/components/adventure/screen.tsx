@@ -249,7 +249,10 @@ export function HexMapBoard({
     if (!myHero || !myTurn || readOnly || pendingTileChoice || state.combat || rawAdventure?.pendingVisit) {
       return new Map<MapSpaceId, HeroPathTarget>();
     }
-    if (state.players[viewerPlayerId]?.needsHandRefresh) {
+    // The mandatory start-of-turn draw (and the forced over-limit discard) must be
+    // resolved before moving — withhold every click-to-move target until then so
+    // the board matches what the engine will allow.
+    if (state.players[viewerPlayerId]?.needsHandRefresh || state.players[viewerPlayerId]?.canMulligan) {
       return new Map<MapSpaceId, HeroPathTarget>();
     }
     return getReachableHeroPaths(state, myHero);
@@ -979,6 +982,9 @@ export function HexMapBoard({
     }
     if (state.players[viewerPlayerId]?.needsHandRefresh) {
       return "Over the hand limit — discard down first (bottom of the screen)";
+    }
+    if (state.players[viewerPlayerId]?.canMulligan) {
+      return "Take your start-of-turn draw first (bottom of the screen)";
     }
     return null;
   })();
