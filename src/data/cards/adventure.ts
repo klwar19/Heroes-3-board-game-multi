@@ -2466,6 +2466,113 @@ export const adventureCards: CardLibrary = {
     source: heroSource("luna")
   },
 
+  // ---- Conflux Elementalist (Ciele — the Magic Arrow specialist) ---------
+  // Magic Arrow is a starting-only Spell (every hero owns one), so Ciele's whole
+  // specialty recurs it from the discard pile. Per the wiki:
+  //  I  — Instant: take a Magic Arrow from your discard pile into your hand.
+  //       — OR — Instant: +1 Power.
+  //  IV — Instant: take a Magic Arrow from your discard pile and cast it; it does
+  //       NOT count toward your per-Combat-round Spell limit. — OR — +1 Power.
+  //  VI — Instant: the selected (enemy) unit suffers 2 damage. — OR — +2 Power.
+  // I's recall is a map play (TAKE_FROM_DISCARD filtered to Magic Arrow, exactly
+  // like Luna IV's discard recall). IV's free cast reuses the Helm of the
+  // Alabaster Unicorn's CAST_FROM_SPELL_DISCARD pipeline (full Power scaling +
+  // Magic-Arrow / spell immunity, sourced from the discard, doesn't count toward
+  // the limit), but `spellId`-filtered to Magic Arrow and consuming the specialty
+  // to the discard (not removed). VI reuses DAMAGE_CHOSEN_ENEMIES (1 enemy, 2). The
+  // +Power sides are SPELL_CAST_STARTED reactions, like Monere VI / Luna IV.
+  "specialty.ciele.1": withoutArt({
+    id: "specialty.ciele.1",
+    name: "Magic Arrow I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "ciele",
+      "Instant: Take a Magic Arrow spell from your discard pile and put it into your hand. — OR — Instant: +1 Power."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Take a Magic Arrow from your discard pile",
+          mapOnly: true,
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "magic-arrow" }
+        },
+        {
+          label: "+1 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("ciele")
+  }),
+  "specialty.ciele.4": withoutArt({
+    id: "specialty.ciele.4",
+    name: "Magic Arrow IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "ciele",
+      "Instant: Take a Magic Arrow spell from your discard pile and cast it. This spell does not count toward your Spell limit per Combat round. — OR — Instant: +1 Power."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Cast a Magic Arrow from your discard pile (free)",
+          combatOnly: true,
+          effect: { type: "CAST_FROM_SPELL_DISCARD", spellId: "spell.magic_arrow" }
+        },
+        {
+          label: "+1 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("ciele")
+  }),
+  "specialty.ciele.6": withoutArt({
+    id: "specialty.ciele.6",
+    name: "Magic Arrow VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "ciele",
+      "Instant: The selected unit suffers 2 damage. — OR — Instant: +2 Power."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "An enemy unit suffers 2 damage",
+          combatOnly: true,
+          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 2 }
+        },
+        {
+          label: "+2 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("ciele")
+  }),
+
   // ---- Additional heroes (fan-wiki "Regular Stretch Goals 2024") ---------
   // Fiona (Inferno, Demoniac): the Cerberi specialist — the standard might
   // shape, each bonus doubled when it lands on a Cerberi unit. I = +1 A/D;

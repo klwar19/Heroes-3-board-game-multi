@@ -1514,10 +1514,26 @@ function addSpellActions(
   // the cast (its removal lives in performSpellCast). Only the public top card is
   // castable; the same timing/targeting rules below decide whether it can be cast
   // now (a map-only or untargetable top spell is simply not offered).
-  const helmId = [...new Set(player.hand)].find((handCardId) => cardEnablesSpellDeckCast(cards[handCardId]));
-  const spellDeckTop = state.decks.spells?.discardPile.at(-1);
-  if (helmId && spellDeckTop) {
-    castCandidates.push({ cardId: spellDeckTop, fromSpellDeck: helmId });
+  // Helm of the Alabaster Unicorn (option B) casts the discard TOP; Ciele's Magic
+  // Arrow IV — a hero-specialty enabler whose CAST_FROM_SPELL_DISCARD option sets
+  // `spellId` — instead casts that specific Spell found anywhere in the discard
+  // pile. Both are free bonus casts sourced from the Spell-deck discard pile and
+  // consume the enabling card (see performSpellCast).
+  for (const enablerId of [...new Set(player.hand)].filter((id) => cardEnablesSpellDeckCast(cards[id]))) {
+    const enabler = cards[enablerId];
+    const castOption =
+      enabler?.effect.type === "CHOOSE_ONE"
+        ? enabler.effect.options.find((o) => o.effect.type === "CAST_FROM_SPELL_DISCARD")
+        : undefined;
+    const spellIdFilter =
+      castOption?.effect.type === "CAST_FROM_SPELL_DISCARD" ? castOption.effect.spellId : undefined;
+    const discardPile = state.decks.spells?.discardPile ?? [];
+    const sourceSpell = spellIdFilter
+      ? [...discardPile].reverse().find((id) => id === spellIdFilter)
+      : discardPile.at(-1);
+    if (sourceSpell) {
+      castCandidates.push({ cardId: sourceSpell, fromSpellDeck: enablerId });
+    }
   }
 
   for (const { cardId, fromScroll, fromSpellDeck, fromSpellBook } of castCandidates) {
@@ -1918,6 +1934,9 @@ function isOptionEffectPlayable(
         }
         if (effect.filter === "spell-or-specialty") {
           return kind === "spell" || kind === "hero-specialty";
+        }
+        if (effect.filter === "magic-arrow") {
+          return cardId === "spell.magic_arrow";
         }
         return true;
       });
