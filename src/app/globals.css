@@ -1850,6 +1850,38 @@ button.battleCell {
   box-shadow: 0 24px 60px rgb(0 0 0 / 60%);
 }
 
+/* Confirm dialog: "using a card forfeits your start-of-turn draw — continue?" */
+.confirmModal {
+  display: grid;
+  gap: 12px;
+  width: min(440px, 92vw);
+  padding: 18px;
+  border: 2px solid var(--gold);
+  border-radius: 12px;
+  background: rgb(24 21 15 / 98%);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 60%);
+  text-align: center;
+}
+
+.confirmModal strong {
+  color: var(--gold);
+  font-size: 15px;
+}
+
+.confirmModal p {
+  margin: 0;
+  color: #e8d9b8;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.confirmModalButtons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
 .searchModal header {
   display: grid;
   gap: 4px;

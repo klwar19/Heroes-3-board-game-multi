@@ -79,6 +79,7 @@ import {
   type TilePlacementSelection
 } from "@/components/adventure/screen";
 import {
+  actionForfeitsStartOfTurnDraw,
   actionKey,
   cardName,
   costCardEligible,
@@ -510,6 +511,15 @@ export default function Home() {
     filter?: "spell" | "power-source";
     picks: number[];
   } | null>(null);
+  /**
+   * A card use (play / cast / spell-book stash) held at the start-of-turn draw
+   * gate: using it forfeits the unspent draw, so we confirm first. Stores the
+   * exact action to replay on "continue".
+   */
+  const [pendingDrawForfeit, setPendingDrawForfeit] = useState<GameAction | null>(null);
+  // Set true for the single submitAction call the forfeit confirmation replays,
+  // so the guard lets it through instead of re-opening the dialog.
+  const drawForfeitConfirmedRef = useRef(false);
   const [tilePlacement, setTilePlacement] = useState<TilePlacementSelection>(null);
   const [combatTab, setCombatTab] = useState<"battle" | "map">("battle");
   const [pile, setPile] = useState<{ title: string; cardIds: string[]; kind: "cards" | "units" | "astrologers" } | null>(null);
@@ -2169,6 +2179,17 @@ export default function Home() {
       }
     }
 
+    // Start-of-turn draw gate: using a card (play / cast / spell-book stash) on
+    // your quiet map turn forfeits the unspent start-of-turn draw — you won't be
+    // able to draw up to your hand limit this turn. Confirm before committing,
+    // unless this is the replay the confirmation itself fired.
+    if (drawForfeitConfirmedRef.current) {
+      drawForfeitConfirmedRef.current = false;
+    } else if (state && actionForfeitsStartOfTurnDraw(state, viewerPlayerId, action)) {
+      setPendingDrawForfeit(action);
+      return;
+    }
+
     const connection = connectionRef.current;
     if (!connection) {
       return;
@@ -3069,6 +3090,35 @@ export default function Home() {
             />
           ) : null}
           {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
+          {pendingDrawForfeit ? (
+            <div className="modalBackdrop" role="dialog" aria-modal="true" aria-label="Skip your start-of-turn draw?">
+              <div className="confirmModal">
+                <strong>Skip your start-of-turn draw?</strong>
+                <p>
+                  You haven&apos;t taken your start-of-turn draw yet. Using{" "}
+                  <b>{"cardId" in pendingDrawForfeit ? cardName(pendingDrawForfeit.cardId) : "this card"}</b> now
+                  forfeits it — you won&apos;t be able to draw or discard up to your hand limit this turn.
+                </p>
+                <div className="confirmModalButtons">
+                  <button
+                    className="commandButton primary"
+                    onClick={() => {
+                      const action = pendingDrawForfeit;
+                      setPendingDrawForfeit(null);
+                      drawForfeitConfirmedRef.current = true;
+                      void submitAction(action);
+                    }}
+                    type="button"
+                  >
+                    Use card &amp; skip draw
+                  </button>
+                  <button className="commandButton ghost" onClick={() => setPendingDrawForfeit(null)} type="button">
+                    Cancel — let me draw first
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
           {drawCue && !firstRoll ? <DrawOverlay cue={drawCue} key={drawCue.id} onDone={() => setDrawCue(null)} /> : null}
           {mapNotice.current && !mapDice.current ? (
             <MapNoticeOverlay cue={mapNotice.current} key={mapNotice.current.id} onDone={dismissMapNotice} />
