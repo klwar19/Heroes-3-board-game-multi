@@ -148,7 +148,6 @@ import {
   expireEffectsForTurnEnd,
   getActiveAttackBonus,
   getActiveDefenseBonus,
-  getActiveRetaliationDamageReduction,
   getAttackerTypeDefenseBonus,
   getAttackRerollEffects,
   getConditionalDefenseBonus,
@@ -1270,39 +1269,6 @@ function createDefenseBuffFromCard(
       cardId: card.id,
       controllerId: playerId
     },
-    playerId,
-    target
-  );
-}
-
-/**
- * Lord Haart (Necropolis) Dread Knights I/VI: place a lasting
- * RETALIATION_DAMAGE_REDUCTION on the chosen friendly unit. The base amount
- * doubles when the unit is his signature Dread Knights (folded in here so the
- * read-side helper just sums final amounts).
- */
-function createRetaliationReductionFromCard(
-  state: GameState,
-  card: CardDefinition,
-  playerId: PlayerId,
-  target: { type: "unit"; unitId: UnitId }
-): void {
-  if (card.effect.type !== "CREATE_RETALIATION_REDUCTION") {
-    return;
-  }
-  const targetUnit = state.combat?.units[target.unitId];
-  const amount = doubleAmountForUnitName(card.effect.amount, targetUnit, card.effect.doubleForUnitName);
-  createActiveEffect(
-    state,
-    {
-      name: card.effect.name,
-      scope: "unit",
-      duration: card.effect.duration,
-      polarity: "positive",
-      removable: card.effect.removable ?? false,
-      modifiers: [{ type: "RETALIATION_DAMAGE_REDUCTION", amount }]
-    },
-    { type: "card", cardId: card.id, controllerId: playerId },
     playerId,
     target
   );
@@ -2440,11 +2406,12 @@ function getAttackStackDetails(
       Boolean(stackItem.modifiers.ignoreDefense) ||
       frenzyPierces(stackItem, defender) ||
       hasActiveIgnoresDefense(state, attacker),
-    // Lord Haart (Necropolis) Dread Knights I/VI: the unit being retaliated
-    // against (the `defender` of a retaliation) soaks `amount` less damage.
+    // Lord Haart (Necropolis) Dread Knights I/VI: an instant the defender's
+    // controller played in this retaliation's window soaks `amount` less damage
+    // off the strike (the ×2 for his Dread Knights is folded in when played).
     damageReduction:
       siegeRangedDamageReduction(combat, attacker, defender, attackKind) +
-      (isRetaliation ? getActiveRetaliationDamageReduction(state, defender) : 0),
+      (isRetaliation ? (stackItem.modifiers.retaliationDamageReductionInstant ?? 0) : 0),
     defenseReductionAbility,
     abilityAttack
   };
@@ -6598,10 +6565,6 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       );
     }
 
-    if (card?.effect.type === "CREATE_RETALIATION_REDUCTION" && stackItem.action.target.type === "unit") {
-      createRetaliationReductionFromCard(state, card, stackItem.action.playerId, stackItem.action.target);
-    }
-
     if (card?.effect.type === "CREATE_ATTACK_DIE_REROLL") {
       createAttackRerollEffectFromCard(
         state,
@@ -8452,6 +8415,24 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
+  // Lord Haart (Necropolis) Dread Knights I/VI: played as an instant when an
+  // enemy declares a Retaliation Attack against one of your units. Knock the
+  // reduction off THIS retaliation's strike, doubled when the unit being
+  // retaliated against (the retaliation's defender) is his Dread Knights. The
+  // legal-action layer already restricted this to a retaliation aimed at the
+  // reacting player's own unit; the amount lands on the pending attack and is
+  // consumed when it resolves.
+  if (
+    effect.type === "REDUCE_RETALIATION_DAMAGE" &&
+    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    const defender = state.combat?.units[stackItem.action.defenderId];
+    const amount = doubleAmountForUnitName(effect.amount, defender, effect.doubleForUnitName);
+    stackItem.modifiers.retaliationDamageReductionInstant =
+      (stackItem.modifiers.retaliationDamageReductionInstant ?? 0) + amount;
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
   // Misfortune: played in its own pre-buff window. Lock the pending attack — the
   // attacker can no longer increase their attack from any source for this attack
   // (the legal-action layer refuses every attack-buff to them) and the Attack die
@@ -9527,10 +9508,6 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "CREATE_DEFENSE_BUFF" && target) {
     createDefenseBuffFromCard(state, card, action.playerId, card.power ?? 0, target);
-  }
-
-  if (effect.type === "CREATE_RETALIATION_REDUCTION" && target) {
-    createRetaliationReductionFromCard(state, card, action.playerId, target);
   }
 
   // Ring of the Wayfarer's paralysis side: place a Paralysis token on the

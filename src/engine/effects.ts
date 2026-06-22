@@ -76,7 +76,7 @@ export const implementedCardEffectTypes = [
   "GRANT_DEFENSE_TOKENS",
   "STONE_SKIN_AURA",
   "FORCE_ATTACK_ROLL",
-  "CREATE_RETALIATION_REDUCTION",
+  "REDUCE_RETALIATION_DAMAGE",
   "ARTILLERY_BALLISTA_VOLLEY",
   "FIRST_AID_TENT_VOLLEY",
   "DECK_DIG_KEEP_ONE",
@@ -653,11 +653,11 @@ export function describeCardEffect(card: CardDefinition): string {
     return `+${card.effect.amount} HP for this combat`;
   }
 
-  if (card.effect.type === "CREATE_RETALIATION_REDUCTION") {
+  if (card.effect.type === "REDUCE_RETALIATION_DAMAGE") {
     const doubled = card.effect.doubleForUnitName
       ? ` (doubled for the ${card.effect.doubleForUnitName} unit)`
       : "";
-    return `the selected unit takes ${card.effect.amount} less damage from enemy Retaliation Attacks this combat${doubled}`;
+    return `react to an enemy Retaliation Attack: that retaliation deals ${card.effect.amount} less damage${doubled}`;
   }
 
   if (card.effect.type === "AREA_DAMAGE_ADJACENT") {

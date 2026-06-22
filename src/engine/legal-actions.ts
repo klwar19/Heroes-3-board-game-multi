@@ -4932,6 +4932,15 @@ export function isEffectLegalForTrigger(
       return !attackBuffsNegated;
     }
 
+    // Lord Haart (Necropolis) Dread Knights I/VI: an instant that softens an
+    // enemy Retaliation Attack. Offered only on a genuine retaliation
+    // (`isRetaliation`) aimed at one of the reacting player's own units — the
+    // trigger controller "opponent" already kept it off the attacker's tray, so
+    // this just confirms the strike is a retaliation against your unit.
+    if (effect.type === "REDUCE_RETALIATION_DAMAGE") {
+      return triggerEvent.isRetaliation && defender.controllerId === playerId;
+    }
+
     // Slayer: only the attacker's controller, and only when striking a gold
     // unit ("when attacking a golden unit"). A Creature Bank defender has no
     // tier, so it never counts as golden. Misfortune locks it out too.

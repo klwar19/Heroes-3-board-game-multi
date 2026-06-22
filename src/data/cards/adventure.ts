@@ -938,9 +938,13 @@ function deathRippleSpecialty(
 }
 
 /**
- * Lord Haart (Necropolis) Dread Knights I/VI: a chosen friendly unit takes
- * `amount` less damage from enemy Retaliation Attacks this Combat, doubled for
- * his Dread Knights (CREATE_RETALIATION_REDUCTION).
+ * Lord Haart (Necropolis) Dread Knights I/VI: an INSTANT reaction. When an
+ * enemy declares a Retaliation Attack against one of your units, play this to
+ * reduce that retaliation's damage by `amount` (1 at I, 2 at VI), doubled when
+ * the unit being retaliated against is his Dread Knights
+ * (REDUCE_RETALIATION_DAMAGE). The window opens on the enemy's declaration
+ * (`UNIT_ATTACK_DECLARED`, controller "opponent"), so it only fires on a
+ * genuine retaliation against you — never proactively on a chosen unit.
  */
 function retaliationReductionSpecialty(
   heroSlug: string,
@@ -953,22 +957,19 @@ function retaliationReductionSpecialty(
     id: `specialty.${heroSlug}.${level}`,
     name: `${specialtyName} ${towerRoman(level)}`,
     kind: "hero-specialty",
-    timing: "combat",
-    phaseLimit: ["combat"],
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
     tags: [
       "hero-specialty",
-      "combat",
+      "instant",
       heroSlug,
-      `For this Combat, your selected unit takes ${amount} less damage from enemy Retaliation Attacks. The effect doubles for the ${doubledUnit} unit.`
+      `When an enemy performs a Retaliation Attack against one of your units, reduce that retaliation's damage by ${amount}. The effect doubles for the ${doubledUnit} unit.`
     ],
-    target: { type: "friendly-unit" },
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
     effect: {
-      type: "CREATE_RETALIATION_REDUCTION",
-      name: `${specialtyName} ${towerRoman(level)}`,
+      type: "REDUCE_RETALIATION_DAMAGE",
       amount,
-      duration: { type: "combat" },
-      doubleForUnitName: doubledUnit,
-      removable: false
+      doubleForUnitName: doubledUnit
     },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
