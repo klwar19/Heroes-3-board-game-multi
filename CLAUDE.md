@@ -17,6 +17,26 @@ it clearly marked not-implemented, and stop — do **not** paste the printed rul
 text into a display field and move on. Pasted-but-inert text is a stub, never a
 feature.
 
+### 1a. Test the EFFECT, not the artifact (how the "done" bar is actually met)
+
+A passing data check is not coverage. These five habits catch the bugs an
+"is it wired? is there a test?" audit greenlights anyway:
+
+1. **Assert the observable game outcome, not an intermediate value.** "Token
+   placed, amount X" is a data check; "defense went 3→1" / "damage rose by 2" is
+   the real one. A test must fail if the logic is *wrong*, not just *absent*.
+2. **A surprising test value is a lead, not noise.** If an assertion fails on a
+   number you were sure of, explain the discrepancy before changing the
+   expectation to match reality — that reconciliation is often where a bug hides.
+3. **Cross-check siblings that share a mechanic** (e.g. every Corrosion/Attack
+   token source). Divergence in how they encode the same thing (sign, magnitude,
+   code path) is a smell.
+4. **Audit the consumer, not just the producer.** Several producers can each look
+   fine while the single shared reader they feed is broken and untested.
+5. **Prefer an invariant over N one-offs** where one exists (e.g. "a Corrosion
+   token always *lowers* effective defense, never raises it") — it guards every
+   producer at once.
+
 ## 2. Every card/unit definition must state exactly what the engine implements
 
 A human must be able to read a definition and know precisely what runs.
