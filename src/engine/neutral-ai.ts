@@ -39,6 +39,12 @@ import { NEUTRAL_PLAYER_ID } from "./state";
  * - Summoned units (Summon Elemental) have no printed grade, so the tier rule
  *   does not apply to them: they sort behind every graded enemy and are only
  *   targeted once no real unit is left.
+ * - Creature Bank guard cards likewise carry NO tier (rulebook p.66 — a bank
+ *   unit card is gradeless, "grade 0"). As a TARGET a bank guard therefore sorts
+ *   behind every graded enemy exactly like a summoned unit: a graded attacker
+ *   hits it LAST, only once no graded enemy remains. (Bank guards also stay
+ *   exempt from tier-specific spells/abilities — see gradeRankOfUnit — which is
+ *   a separate axis from this AI target priority.)
  * - Creature Bank guards fight from gradeless bank cards (rulebook p.66: a bank
  *   unit card carries NO tier). With no tier the same-tier priority cannot apply,
  *   so a bank guard ranks its candidate targets by distance — the NEAREST first
@@ -87,6 +93,17 @@ function tierPriority(attackerTier: UnitGrade, targetTier: UnitGrade): number {
  */
 function isGradelessNeutralAttacker(unit: CombatUnitState): boolean {
   return Boolean(unit.bankUnit);
+}
+
+/**
+ * A TARGET with no printed tier — a summoned unit or a gradeless Creature Bank
+ * guard card ("grade 0"). The tier rule can't rank it, so it sorts behind every
+ * graded enemy: a graded attacker strikes it LAST, only once no graded enemy is
+ * left. (Whether the ATTACKER itself is gradeless is a separate question — see
+ * isGradelessNeutralAttacker.)
+ */
+function isNoTierTarget(unit: CombatUnitState): boolean {
+  return Boolean(unit.summoned || unit.bankUnit);
 }
 
 /**
@@ -139,17 +156,18 @@ function leadingTieGroup(attacker: CombatUnitState, sortedPool: CombatUnitState[
     return sortedPool;
   }
 
-  // A gradeless attacker (a Creature Bank guard) or a summoned best target means
-  // grade plays no part, so the tie group is decided purely by distance.
+  // A gradeless attacker (a Creature Bank guard) or a no-tier best target (a
+  // summoned unit or a bank-guard card) means grade plays no part, so the tie
+  // group is decided purely by distance.
   const gradeless = isGradelessNeutralAttacker(attacker);
   const best = sortedPool[0];
-  const bestSummoned = Boolean(best.summoned);
-  const bestPriority = gradeless || bestSummoned ? 0 : tierPriority(attacker.grade, best.grade);
+  const bestNoTier = isNoTierTarget(best);
+  const bestPriority = gradeless || bestNoTier ? 0 : tierPriority(attacker.grade, best.grade);
   const bestDistance = getBattlefieldDistance(attacker.position, best.position);
   return sortedPool.filter(
     (unit) =>
-      Boolean(unit.summoned) === bestSummoned &&
-      (gradeless || bestSummoned || tierPriority(attacker.grade, unit.grade) === bestPriority) &&
+      isNoTierTarget(unit) === bestNoTier &&
+      (gradeless || bestNoTier || tierPriority(attacker.grade, unit.grade) === bestPriority) &&
       getBattlefieldDistance(attacker.position, unit.position) === bestDistance
   );
 }
@@ -204,18 +222,19 @@ export function sortNeutralTargetCandidates(
   // the same-tier priority and ranks every target purely by distance.
   const gradeless = isGradelessNeutralAttacker(attacker);
   return [...candidates].sort((left, right) => {
-    // Gradeless summoned units always sort behind graded ones, whatever their
-    // tier or distance — the AI exhausts real targets first (true even for a
-    // bank guard: it hits real units before any conjured Elemental).
-    const summonedDelta = (left.summoned ? 1 : 0) - (right.summoned ? 1 : 0);
-    if (summonedDelta !== 0) {
-      return summonedDelta;
+    // No-tier targets (summoned units OR gradeless bank-guard cards) always sort
+    // behind graded ones, whatever their tier or distance — the AI exhausts real
+    // graded targets first (true even for a bank guard attacker: it hits real
+    // units before any conjured Elemental).
+    const noTierDelta = (isNoTierTarget(left) ? 1 : 0) - (isNoTierTarget(right) ? 1 : 0);
+    if (noTierDelta !== 0) {
+      return noTierDelta;
     }
 
     // Tier priority needs a graded attacker AND graded targets; a gradeless bank
-    // guard or a summoned target has no grade to compare, so it falls straight
-    // through to distance.
-    if (!gradeless && !left.summoned) {
+    // guard attacker or a no-tier target has no grade to compare, so it falls
+    // straight through to distance.
+    if (!gradeless && !isNoTierTarget(left)) {
       const priority = tierPriority(attacker.grade, left.grade) - tierPriority(attacker.grade, right.grade);
       if (priority !== 0) {
         return priority;

@@ -3350,6 +3350,16 @@ export type GameEvent =
     }
   | {
       /**
+       * A player Empowered an ability (Dragon Fly Hive / Griffin Conservatory
+       * bonus): its Expert side may henceforth be played without a crown.
+       */
+      id: string;
+      type: "ABILITY_EMPOWERED";
+      playerId: PlayerId;
+      cardId: CardId;
+    }
+  | {
+      /**
        * A Stacked Creature Bank defender took a lethal blow and discarded its
        * Stack Token instead of being removed, carrying the leftover damage to
        * its new Health.
@@ -3924,6 +3934,15 @@ export type PlayerState = {
   discard: CardId[];
   /** Cards removed from the game entirely (the "remove" keyword). */
   removed: CardId[];
+  /**
+   * Ability card ids this player has had "empowered" (e.g. the Dragon Fly Hive /
+   * Griffin Conservatory Creature Bank bonus). An empowered ability may be played
+   * on its Expert side without spending an Expert use (a crown) — the holder may
+   * always use either the basic or the expert function for free. Permanent for
+   * the rest of the game. Matched by card id, so it follows the card between
+   * hand and discard.
+   */
+  empoweredAbilities?: CardId[];
   /**
    * Deprecated single-permanent slot from older snapshots; live states use
    * `permanents`. Read through getPermanentCardIds, never directly.
@@ -4948,6 +4967,19 @@ export type VisitStep =
       type: "REMOVE_THEN_SEARCH_REPEAT";
       remaining: number;
       searchCount: number;
+    }
+  | {
+      /**
+       * Dragon Fly Hive / Griffin Conservatory bonus: build a menu of the
+       * player's own non-Empowered Ability cards (hand + discard); picking one
+       * Empowers it (a MARK_ABILITY_EMPOWERED leaf). No-op when none are owned.
+       */
+      type: "EMPOWER_ABILITY";
+    }
+  | {
+      /** Adds `cardId` to the player's permanent empoweredAbilities list. */
+      type: "MARK_ABILITY_EMPOWERED";
+      cardId: CardId;
     }
   | {
       /** Hill Fort: reinforce one Few unit, its cost reduced by 3 gold (min 0). */

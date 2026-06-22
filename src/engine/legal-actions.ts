@@ -73,7 +73,9 @@ import { pvpEscapeWindowOpen } from "./combat-units";
 import { canPlaceTransformOn } from "./unit-transforms";
 import { SHARED_DECK_IDS } from "./decks";
 import {
+  abilityExpertIsCrownFree,
   activeSchoolFetches,
+  canPlayExpertMode,
   expertUsesAvailable,
   getRuleset,
   spellLimitFor,
@@ -1254,7 +1256,10 @@ function getAttackRerollsForMode(card: CardDefinition, mode: CardPlayMode): numb
 }
 
 function getPlayableModesForCard(state: GameState, playerId: PlayerId, card: CardDefinition): CardPlayMode[] {
-  const expertCrownFree = expertUsesAvailable(state.players[playerId]) > 0;
+  // An Empowered ability may take its Expert side without a crown; otherwise a
+  // spare Expert use (crown) is required.
+  const player = state.players[playerId];
+  const expertCrownFree = Boolean(player) && canPlayExpertMode(player, card.id);
 
   if (card.effect.type === "CREATE_ATTACK_DIE_REROLL" && card.effect.basicRerolls <= 0) {
     return card.effect.expertRerolls && expertCrownFree ? ["expert"] : [];
@@ -2260,11 +2265,13 @@ function addOptionPlays(
       continue;
     }
 
+    // An Empowered ability may take its Expert side without a crown.
+    const expertOk = canPlayExpertMode(player, cardId);
     const modes: CardPlayMode[] = option.expertOnly
-      ? expertUsesAvailable(player) > 0
+      ? expertOk
         ? ["expert"]
         : []
-      : effectSupportsExpertOption(option.effect) && expertUsesAvailable(player) > 0
+      : effectSupportsExpertOption(option.effect) && expertOk
         ? ["basic", "expert"]
         : ["basic"];
 
@@ -2553,7 +2560,7 @@ function addTurnCardActions(
     }
 
     const modes: CardPlayMode[] =
-      effectSupportsExpertOption(effect) && expertUsesAvailable(player) > 0 ? ["basic", "expert"] : ["basic"];
+      effectSupportsExpertOption(effect) && canPlayExpertMode(player, cardId) ? ["basic", "expert"] : ["basic"];
     for (const mode of modes) {
       actions.push({
         label: `Play ${card.name}${mode === "expert" ? " (expert)" : ""}`,
@@ -2591,7 +2598,7 @@ function addNecromancyPlays(actions: LegalAction[], state: GameState, playerId: 
         action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
       });
     } else {
-      const modes: CardPlayMode[] = expertUsesAvailable(player) > 0 ? ["basic", "expert"] : ["basic"];
+      const modes: CardPlayMode[] = canPlayExpertMode(player, cardId) ? ["basic", "expert"] : ["basic"];
       for (const mode of modes) {
         actions.push({
           label: `Play ${card.name}${mode === "expert" ? " (expert)" : ""}`,
@@ -4057,7 +4064,8 @@ export function getLegalReactionsForTrigger(
 
         if (
           (effectHasExpertMode(variant.effect) || variant.expertOnly) &&
-          expertUsesLeft > 0 &&
+          // An Empowered ability may take its Expert side without a crown.
+          (expertUsesLeft > 0 || abilityExpertIsCrownFree(player, cardId)) &&
           isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "expert")
         ) {
           push(
@@ -4199,7 +4207,11 @@ export function getLegalReactionsForTrigger(
           if ((cancel.maxPower === undefined || spellPower <= cancel.maxPower) && matchesAt("basic")) {
             reactions.push(makeReactionAction(card.name, { type: "PLAY_REACTION", playerId: player.id, cardId, mode: "basic" }));
           }
-          if ((cancel.expertIgnoresMaxPower || cancel.expertIgnoresMaxSpellLevel) && expertUsesLeft > 0 && matchesAt("expert")) {
+          if (
+            (cancel.expertIgnoresMaxPower || cancel.expertIgnoresMaxSpellLevel) &&
+            (expertUsesLeft > 0 || abilityExpertIsCrownFree(player, cardId)) &&
+            matchesAt("expert")
+          ) {
             reactions.push(
               makeReactionAction(`${card.name} expert`, { type: "PLAY_REACTION", playerId: player.id, cardId, mode: "expert" })
             );
@@ -5292,7 +5304,8 @@ function addTacticsCombatActions(actions: LegalAction[], state: GameState, playe
     return;
   }
   const player = state.players[playerId];
-  if (!player || !player.hand.includes("ability.tactics") || expertUsesAvailable(player) <= 0) {
+  // Tactics is Expert-only; an Empowered Tactics may be used without a crown.
+  if (!player || !player.hand.includes("ability.tactics") || !canPlayExpertMode(player, "ability.tactics")) {
     return;
   }
   const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : null;
@@ -5426,7 +5439,8 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
         }
 
         const expertCost = Math.max(0, cost - wisdomGoldDiscount(ruleset, "expert"));
-        if (expertUsesAvailable(player) > 0 && player.resources.gold >= expertCost) {
+        // Empowered Wisdom skips the crown but still pays the gold.
+        if (canPlayExpertMode(player, wisdomCardId) && player.resources.gold >= expertCost) {
           actions.push({
             label: `Buy spells with expert Wisdom (${expertCost} gold, Search ${wisdomSearchCount("expert")})`,
             action: { type: "SPELL_BOOK_ACTION", playerId, wisdom: { cardId: wisdomCardId, mode: "expert" } }

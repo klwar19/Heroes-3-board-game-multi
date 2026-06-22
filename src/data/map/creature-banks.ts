@@ -340,12 +340,21 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     name: "Dragon Fly Hive",
     tier: "far",
     units: ["neutral.dragon_flies", "neutral.dragon_flies", "neutral.dragon_flies", "neutral.dragon_flies"],
-    rewardText: "Gain 1 Dragon Flies (a Stacked Pack if there were at least 2 Stacked defenders).",
+    rewardText:
+      "Gain 1 Dragon Flies (a Stacked Pack if there were at least 2 Stacked defenders), then Empower one ability you own (HOUSE RULE).",
     rewardStatus: "implemented",
     // Gain the recruitable Dragon Flies card: a Pack ("Stacked") when 2+ defenders
     // were Stacked, otherwise a Few. (The wiki notes the Stacked version needs at
     // least Normal difficulty — Easy rolls a single token, so X can never reach 2.)
-    buildReward: (x) => ({ type: "GAIN_UNIT", unitDefId: "fortress.dragon_flies", side: x >= 2 ? "pack" : "few" })
+    // HOUSE RULE bonus: also Empower one ability you own (its Expert side then
+    // costs no crown for the rest of the game).
+    buildReward: (x) => ({
+      type: "SEQUENCE",
+      interactions: [
+        { type: "GAIN_UNIT", unitDefId: "fortress.dragon_flies", side: x >= 2 ? "pack" : "few" },
+        { type: "EMPOWER_ABILITY" }
+      ]
+    })
   },
   shipwreck: {
     id: "shipwreck",
@@ -414,11 +423,19 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     name: "Griffin Conservatory",
     tier: "near",
     units: ["neutral.griffins", "neutral.griffins", "neutral.griffins", "neutral.griffins"],
-    rewardText: "Gain 1 Griffins (a Stacked Pack if there were at least 2 Stacked defenders).",
+    rewardText:
+      "Gain 1 Griffins (a Stacked Pack if there were at least 2 Stacked defenders), then Empower one ability you own (HOUSE RULE).",
     rewardStatus: "implemented",
     // Gain the recruitable Griffins card: a Pack ("Stacked") when 2+ defenders were
-    // Stacked, otherwise a Few.
-    buildReward: (x) => ({ type: "GAIN_UNIT", unitDefId: "castle.griffins", side: x >= 2 ? "pack" : "few" })
+    // Stacked, otherwise a Few. HOUSE RULE bonus: also Empower one ability you own
+    // (its Expert side then costs no crown for the rest of the game).
+    buildReward: (x) => ({
+      type: "SEQUENCE",
+      interactions: [
+        { type: "GAIN_UNIT", unitDefId: "castle.griffins", side: x >= 2 ? "pack" : "few" },
+        { type: "EMPOWER_ABILITY" }
+      ]
+    })
   },
   naga_bank: {
     id: "naga_bank",
