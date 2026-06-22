@@ -67,6 +67,7 @@ function findPlay(state: GameState, cardId: string, optionIndex: number, targetU
 describe("Endless Purse of Gold", () => {
   function purseState(seed: string): GameState {
     const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.activePlayerId = "p1";
     return state;
   }

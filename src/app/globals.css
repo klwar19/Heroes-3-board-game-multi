@@ -1850,7 +1850,7 @@ button.battleCell {
   box-shadow: 0 24px 60px rgb(0 0 0 / 60%);
 }
 
-/* Confirm dialog: "using a card forfeits your start-of-turn draw — continue?" */
+/* Confirm dialog: e.g. "you can still buy troops — move into battle anyway?" */
 .confirmModal {
   display: grid;
   gap: 12px;

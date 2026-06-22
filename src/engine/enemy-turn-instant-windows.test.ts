@@ -86,7 +86,7 @@ function findPlay(state: GameState, playerId: "p1" | "p2", cardId: string, optio
  */
 function neutralFightBeforeGuard(): GameState {
   let state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false });
-  if (state.players.p1.needsHandRefresh) {
+  if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
     state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
   }
   state = applyOk(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:9:1" });

@@ -195,6 +195,7 @@ describe("Stronghold City Hall resource-round choice", () => {
   // so resolution survives a full serialization round-trip.
   function openStrongholdCityHallChoice(): GameState {
     const state = createAdventureGameState({ seed: "stronghold-cityhall", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.towns.town_p1.factionId = "stronghold";
     state.towns.town_p1.buildings = ["stronghold.city_hall"];
     state.adventure!.rewardQueue = [];
@@ -300,6 +301,7 @@ describe("Fountain of Youth / Magic Spring effects", () => {
 
   it("Fountain of Youth grants a morale token and +1 movement", () => {
     const state = createAdventureGameState({ seed: "field-swap-fountain", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const field = injectVisitable(state, "fountain_of_youth");
     const hero = getMainHero(state, "p1")!;
     hero.spaceId = field.spaceId;
@@ -316,6 +318,7 @@ describe("Fountain of Youth / Magic Spring effects", () => {
 
   it("Magic Spring returns a card from the discard pile to hand", () => {
     const state = createAdventureGameState({ seed: "field-swap-spring", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const field = injectVisitable(state, "magic_spring");
     const hero = getMainHero(state, "p1")!;
     hero.spaceId = field.spaceId;
@@ -341,6 +344,7 @@ describe("Fountain of Youth / Magic Spring effects", () => {
 describe("rulebook conformance fixes", () => {
   it("lets friendly heroes pass through enemies standing in a Sanctuary", () => {
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     if (!adventure) {
       throw new Error("no adventure");
@@ -367,6 +371,7 @@ describe("rulebook conformance fixes", () => {
 
   it("only lets the Observatory flip tiles whose flowers actually touch", () => {
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     if (!adventure) {
       throw new Error("no adventure");
@@ -413,6 +418,7 @@ describe("rulebook conformance fixes", () => {
 
   function setupObservatory() {
     const state = createAdventureGameState({ seed: "obs-open", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     if (!adventure) {
       throw new Error("no adventure");
@@ -563,6 +569,7 @@ describe("rulebook conformance fixes", () => {
   // is the whole point of the card. The hero's CURRENT tile is the anchor.
   it("Speculum reveals an adjacent face-down tile across a sealed border (no edge/border gate)", () => {
     const state = createAdventureGameState({ seed: "speculum", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     if (!adventure) {
       throw new Error("no adventure");
@@ -622,6 +629,7 @@ describe("rulebook conformance fixes", () => {
 
   it("sells one Trading Post card for 1 gold, excluding statistics and Magic Arrow", () => {
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     const player = state.players.p1;
     const hero = Object.values(state.heroes).find((candidate) => candidate.controllerId === "p1");
@@ -654,6 +662,7 @@ describe("rulebook conformance fixes", () => {
 
   it("locks Trading Post selling and buying once resources were traded", () => {
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     const player = state.players.p1;
     const hero = Object.values(state.heroes).find((candidate) => candidate.controllerId === "p1");
@@ -688,6 +697,7 @@ describe("rulebook conformance fixes", () => {
 
   it("buys a war machine at the Trading Post price and ends the visit", () => {
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     const player = state.players.p1;
     const hero = Object.values(state.heroes).find((candidate) => candidate.controllerId === "p1");
@@ -719,6 +729,7 @@ describe("rulebook conformance fixes", () => {
 
   it("sells war machines cheaper at the War Machine Factory", () => {
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     const player = state.players.p1;
     const hero = Object.values(state.heroes).find((candidate) => candidate.controllerId === "p1");
@@ -748,6 +759,7 @@ describe("rulebook conformance fixes", () => {
 
   it("resolves the Faerie Ring by searching the removed card's own deck", () => {
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     const player = state.players.p1;
     const hero = Object.values(state.heroes).find((candidate) => candidate.controllerId === "p1");
@@ -791,6 +803,7 @@ describe("rulebook conformance fixes", () => {
 
   it("lets multiple players flag an Obelisk while keeping the first cube", () => {
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal" });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     if (!adventure) {
       throw new Error("no adventure");

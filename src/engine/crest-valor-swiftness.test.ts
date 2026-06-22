@@ -53,6 +53,7 @@ function choiceLabels(state: GameState): string[] {
 describe("Crest of Valor", () => {
   function valorAdventure(seed: string): GameState {
     const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.activePlayerId = "p1";
     // p1 is Castle (does not ignore morale); start neutral so changes show.
     state.players.p1.morale = 0;
@@ -264,6 +265,7 @@ describe("Necklace of Swiftness", () => {
 
   it("neither side is offered on the adventure map (both are combat-only)", () => {
     const adventure = createAdventureGameState({ seed: "swift-map", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(adventure.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     adventure.activePlayerId = "p1";
     adventure.players.p1.hand = ["artifact.necklace_of_swiftness"];
     expect(findPlay(adventure, "p1", "artifact.necklace_of_swiftness", 0)).toBeFalsy();

@@ -14,6 +14,7 @@ function applyOk(state: GameState, action: GameAction): GameState {
 /** A map-turn adventure state with p1 active and an empty economy. */
 function mapState(seed: string): GameState {
   const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
   state.activePlayerId = "p1";
   state.players.p1.production = { gold: 0, buildingMaterials: 0, valuables: 0 };
   state.players.p1.permanents = [];

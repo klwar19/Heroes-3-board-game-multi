@@ -279,6 +279,7 @@ describe("Torosar's Ballista specialty", () => {
         { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
       ]
     });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.activePlayerId = "p1";
     state.pendingChoice = null;
     state.reactionWindow = null;
@@ -357,6 +358,7 @@ describe("Torosar's Ballista specialty", () => {
         { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
       ]
     });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     // A grant gained during round 3 (a resource round).
     state.round = 3;
     state.activeEffects.push({

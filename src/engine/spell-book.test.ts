@@ -258,7 +258,7 @@ describe("Spell Book — instant Spells in combat", () => {
 /** A started 2-player adventure with p1 to act and no pending hand refresh. */
 function adventure(seed: string, spellBook = true): GameState {
   let state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false, spellBook });
-  if (state.players.p1.needsHandRefresh) {
+  if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
     state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
   }
   state.activePlayerId = "p1";
@@ -310,28 +310,24 @@ describe("Spell Book — stashing from hand (map turn)", () => {
     expect(forced.state.players.p1.hand).toContain("spell.magic_arrow");
   });
 
-  it("stashing a Spell forfeits the start-of-turn draw, so it cannot refill the freed slot", () => {
+  it("cannot stash a Spell until the mandatory start-of-turn draw is taken", () => {
     const state = adventure("book-stash-no-refill");
     state.players.p1.hand = ["spell.haste", "stat.attack"];
     state.players.p1.canMulligan = true;
-    const handLimit = state.players.p1.hand.length; // act as if at the limit
 
-    // Drawing IS offered before any stash.
+    // While the start-of-turn draw is unspent, stashing is NOT offered…
+    expect(legal(state, "p1").some((l) => l.action.type === "MOVE_SPELL_TO_SPELL_BOOK")).toBe(false);
+    // …and is rejected if forced (the draw must come first).
+    const forced = applyAction(state, { type: "MOVE_SPELL_TO_SPELL_BOOK", playerId: "p1", cardId: "spell.haste" });
+    expect(forced.errors.length, "a stash before the draw must be rejected").toBeGreaterThan(0);
+    expect(forced.state.players.p1.spellBook).not.toContain("spell.haste");
+
+    // Only the draw (and ending the turn) is offered; once taken, the stash opens.
     expect(legal(state, "p1").some((l) => l.action.type === "REFRESH_HAND")).toBe(true);
-
-    const moved = applyOk(state, {
-      type: "MOVE_SPELL_TO_SPELL_BOOK",
-      playerId: "p1",
-      cardId: "spell.haste"
-    });
-    // The stash spent the start-of-turn draw…
-    expect(moved.players.p1.canMulligan).toBe(false);
-    // …so REFRESH_HAND is no longer offered and is rejected if forced — the freed
-    // slot can never be drawn back up to the hand limit.
-    expect(legal(moved, "p1").some((l) => l.action.type === "REFRESH_HAND")).toBe(false);
-    const refilled = applyAction(moved, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
-    expect(refilled.errors.length, "drawing after a stash must be rejected").toBeGreaterThan(0);
-    expect(moved.players.p1.hand.length).toBeLessThan(handLimit);
+    const drawn = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    expect(drawn.players.p1.canMulligan).toBe(false);
+    const moved = applyOk(drawn, { type: "MOVE_SPELL_TO_SPELL_BOOK", playerId: "p1", cardId: "spell.haste" });
+    expect(moved.players.p1.spellBook).toContain("spell.haste");
   });
 
   it("only Spells may be stashed — a Statistic card is never offered", () => {
