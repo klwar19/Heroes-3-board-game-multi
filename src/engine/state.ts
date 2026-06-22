@@ -920,6 +920,12 @@ export type EffectDefinition =
       type: "CARD_DECK_SEARCH";
       deck: "spells" | "artifacts" | "abilities";
       count: number;
+      /**
+       * Tarnum (Conflux) I: "You can Remove this card instead of taking it into
+       * your hand." When set, each revealed card may be Removed from the game
+       * (it leaves the shared deck for good) rather than kept in hand.
+       */
+      allowRemove?: boolean;
     }
   | {
       /**
@@ -1809,13 +1815,35 @@ export type EffectDefinition =
        * army, then search the named Neutral tier deck for the `to` unit and add
        * it to your unit deck. `unique` enforces "you can control only 1 at a
        * time".
+       *
+       * Tarnum (Conflux) IV reuses this to "Pay 10 gold, then find the Enchanters
+       * card in the Neutral Unit deck and add it to your Unit deck" — there is no
+       * unit to trade in, so `fromUnitDefId`/`fromSide` are omitted and `goldCost`
+       * is paid instead. At least one of (a from-unit trade, a goldCost) must be
+       * present as the acquisition cost.
        */
       type: "CONVERT_ARMY_UNIT";
-      fromUnitDefId: string;
-      fromSide: "few" | "pack";
+      fromUnitDefId?: string;
+      fromSide?: "few" | "pack";
       toUnitDefId: string;
       toTier: "bronze" | "silver" | "gold" | "azure";
       unique?: boolean;
+      /** Tarnum (Conflux) IV: gold paid to acquire the unit (no unit traded in). */
+      goldCost?: number;
+    }
+  | {
+      /**
+       * Tarnum (Conflux) VI: "Search(1) Spell twice. … you can immediately cast
+       * one or both of these spells, even if you already cast a spell this round.
+       * Place each spell you use this way on the top of the Spell deck or on its
+       * discard pile in any order." Searches `count` spells into hand and flags
+       * them so they can be cast for free over the per-round limit; an uncast
+       * flagged spell simply stays in hand (the normal Search result). A cast
+       * flagged spell returns to the shared Spell deck (top or discard, the
+       * caster's choice) rather than the caster's own discard pile.
+       */
+      type: "TARNUM_OVERLIMIT_SEARCH";
+      count: number;
     }
   | {
       /**
@@ -2144,7 +2172,12 @@ export type ReactionPlay = {
   asPowerBoost?: boolean;
 };
 
-export type DeckSearchPick = { kind: "revealed"; index: number };
+export type DeckSearchPick = {
+  kind: "revealed";
+  index: number;
+  /** Tarnum (Conflux) I: Remove the picked card from the game instead of taking it to hand. */
+  remove?: boolean;
+};
 
 /**
  * Which deck a Thieves' Guild peek targets: a shared deck (keyed by its id) or a
@@ -2182,6 +2215,14 @@ export type GameAction =
        * exclusive with fromScroll / fromSpellDeck (each names a distinct source).
        */
       fromSpellBook?: boolean;
+      /**
+       * Tarnum (Conflux) VI: this hand spell is one of the just-Searched cards
+       * flagged for a free over-limit cast. It does not count toward the
+       * per-round Spell limit, and on resolution the card returns to the shared
+       * Spell deck — `tarnumReturn` says whether to its top ("deck-top") or its
+       * discard pile ("discard"), the caster's choice.
+       */
+      tarnumReturn?: "deck-top" | "discard";
       /**
        * Schools of Magic (Air/Earth/Fire/Water Magic) in play: the caster may
        * decide AS PART OF the cast to discard the matching permanent for its
@@ -3809,6 +3850,13 @@ export type ResolutionStackItem = {
      * pile — so finalizeSpellCardDestination leaves it untouched.
      */
     fromSpellDeck?: boolean;
+    /**
+     * Tarnum (Conflux) VI cast: a free over-limit cast of a just-Searched hand
+     * spell. On resolution the card is pulled out of the caster's discard and
+     * placed on the shared Spell deck top ("deck-top") or its discard pile
+     * ("discard"), rather than staying in the caster's own discard.
+     */
+    tarnumReturn?: "deck-top" | "discard";
     /** Bless: the Attack die is not rolled (counts as 0). */
     ignoreAttackDie?: boolean;
     /**
@@ -4311,6 +4359,13 @@ export type PlayerState = {
      * Book is capped at one Power discard per turn. Absent = none spent yet.
      */
     spellBookPowerUsedThisTurn?: boolean;
+    /**
+     * Tarnum (Conflux) VI: the spell cards just Searched into hand that may be
+     * cast OVER the one-Spell-per-combat-round limit (a free bonus cast), each
+     * returning to the shared Spell deck top or its discard pile when cast.
+     * Cleared at the start of each combat and each combat round.
+     */
+    tarnumOverlimitCards?: CardId[];
   };
   /** Round the Blacksmith action was last used ("once per your turn"). */
   blacksmithUsedRound?: number;
@@ -4936,7 +4991,7 @@ export type PendingVisit = {
 };
 
 export type AdventureReward =
-  | { playerId: PlayerId; kind: "shared-deck-search"; deckId: DeckId; count: number }
+  | { playerId: PlayerId; kind: "shared-deck-search"; deckId: DeckId; count: number; allowRemove?: boolean }
   | { playerId: PlayerId; kind: "city-hall-choice"; buildingId: BuildingId }
   | {
       /** Scholar / Rib Cage / Crown of Dragontooth: pick from the discard pile. */
@@ -5792,6 +5847,8 @@ export type PendingChoice =
       revealedCardIds: CardId[];
       /** Pendant of Courage: this search repeats once after it resolves. */
       repeatSearch?: { deckId: DeckId; count: number };
+      /** Tarnum (Conflux) I: each revealed card may be Removed instead of kept. */
+      allowRemove?: boolean;
       returnPhase: GamePhase;
     }
   | {
@@ -5922,7 +5979,7 @@ export type PendingChoice =
        */
       activationOrder?: { unitIds: UnitId[]; side: PlayerId };
       /** deck-pick: the shared-deck search waiting on the deck choice. */
-      deckPick?: { deckIds: DeckId[]; count: number };
+      deckPick?: { deckIds: DeckId[]; count: number; allowRemove?: boolean };
       /**
        * deck-search-mode: a "Search X" with a non-empty discard pile, waiting on
        * the up-front either/or — Search the deck (reveal the top X, keep one) OR
@@ -5936,6 +5993,8 @@ export type PendingChoice =
         schoolFetch?: SpellSchool[];
         /** Whether a "take the top discard" option is offered (index 1). */
         hasDiscardTop?: boolean;
+        /** Tarnum (Conflux) I: carry the "Remove instead of keep" privilege into the reveal. */
+        allowRemove?: boolean;
       };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */
       ownDeckPick?: {
@@ -6156,7 +6215,14 @@ export type PendingChoice =
       /** Cards in the chooser's hand that can contribute Power. */
       powerCardIds: CardId[];
       /** "pegasi-toll" only: the Spell cast deferred until the toll is paid. */
-      tollSpell?: { cardId: CardId; target: TargetRef; fromScroll?: string; fromSpellDeck?: CardId; fromSpellBook?: boolean };
+      tollSpell?: {
+        cardId: CardId;
+        target: TargetRef;
+        fromScroll?: string;
+        fromSpellDeck?: CardId;
+        fromSpellBook?: boolean;
+        tarnumReturn?: "deck-top" | "discard";
+      };
     }
   | null;
 

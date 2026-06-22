@@ -39,7 +39,9 @@ test("combat sandbox: the First Aid Tent war machine can be added to hand", asyn
 
 test("combat sandbox: the Cannon war machine can be added to hand", async ({ page }) => {
   await openCombatSandbox(page);
-  await addCard(page, "cannon", /cannon/i);
+  // "cannon" also matches the Cannon I/IV/VI hero specialties, so anchor to the
+  // picker row's "<kind><name>" accessible name to pick the war-machine Cannon.
+  await addCard(page, "cannon", /war-machine\s*cannon$/i);
   await expect(page.locator('.handFan .fanCard[title^="Cannon"]')).toBeVisible({ timeout: 15000 });
 });
 

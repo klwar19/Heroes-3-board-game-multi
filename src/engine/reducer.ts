@@ -123,6 +123,7 @@ import { createSeededRandom } from "./random";
 import {
   abilityExpertIsCrownFree,
   activeSchoolFetches,
+  canAcquireSharedDeckCard,
   estatesGold,
   getRuleset,
   spellBookPowerAvailable,
@@ -4359,7 +4360,8 @@ function resolveCombatHandDiscard(
           target: toll.target,
           ...(toll.fromScroll ? { fromScroll: toll.fromScroll } : {}),
           ...(toll.fromSpellDeck ? { fromSpellDeck: toll.fromSpellDeck } : {}),
-          ...(toll.fromSpellBook ? { fromSpellBook: true } : {})
+          ...(toll.fromSpellBook ? { fromSpellBook: true } : {}),
+          ...(toll.tarnumReturn ? { tarnumReturn: toll.tarnumReturn } : {})
         },
         cards
       );
@@ -6388,6 +6390,31 @@ function finalizeSpellCardDestination(
     return;
   }
 
+  // Tarnum (Conflux) VI: the spell was moved hand → caster's discard at cast
+  // time. Pull it back out and place it on the shared Spell deck (its top, so it
+  // is the next card searched/drawn, or its discard pile) per the caster's
+  // choice — never left in the caster's own discard. Any ongoing effect it made
+  // still lives in activeEffects (the card itself is gone from the player).
+  if (stackItem.modifiers.tarnumReturn) {
+    const caster = state.players[stackItem.action.playerId];
+    const cardId = stackItem.action.cardId;
+    const spellDeck = state.decks.spells;
+    if (caster) {
+      const idx = caster.discard.lastIndexOf(cardId);
+      if (idx >= 0) {
+        caster.discard.splice(idx, 1);
+      }
+    }
+    if (spellDeck) {
+      if (stackItem.modifiers.tarnumReturn === "deck-top") {
+        spellDeck.drawPile.push(cardId);
+      } else {
+        spellDeck.discardPile.push(cardId);
+      }
+    }
+    return;
+  }
+
   const playerId = stackItem.action.playerId;
   const cardId = stackItem.action.cardId;
   const recall = stackItem.modifiers.recallSpell;
@@ -7280,6 +7307,16 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     throw new Error(`Card ${action.cardId} is not a spell.`);
   }
 
+  // Tarnum (Conflux) VI: a free over-limit cast is only legal for a card the
+  // hero actually Searched and flagged this combat (guards against a forged
+  // tarnumReturn slipping a normal hand spell past the per-round limit).
+  if (action.tarnumReturn) {
+    const flagged = state.players[action.playerId]?.combatStats.tarnumOverlimitCards ?? [];
+    if (!flagged.includes(action.cardId)) {
+      throw new Error("That Spell was not Searched for a Tarnum over-limit cast.");
+    }
+  }
+
   // Creature Bank Dragon Utopia Faerie Dragons (while Stacked): a living enemy
   // Faerie Dragons forbids any Spell cast. Backstop at resolution so a forced
   // cast (one the legal-action filter never offered) still fails.
@@ -7349,7 +7386,8 @@ function openPegasiTollChoice(
       target: action.target,
       ...(action.fromScroll ? { fromScroll: action.fromScroll } : {}),
       ...(action.fromSpellDeck ? { fromSpellDeck: action.fromSpellDeck } : {}),
-      ...(action.fromSpellBook ? { fromSpellBook: true } : {})
+      ...(action.fromSpellBook ? { fromSpellBook: true } : {}),
+      ...(action.tarnumReturn ? { tarnumReturn: action.tarnumReturn } : {})
     }
   };
   state.phase = "choice";
@@ -7409,6 +7447,15 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     if (moveError) {
       throw new Error(moveError.message);
     }
+  } else if (action.tarnumReturn) {
+    // Tarnum (Conflux) VI free over-limit cast of a just-Searched hand spell:
+    // move hand → discard like a normal cast (finalizeSpellCardDestination then
+    // relocates the card to the shared Spell deck top/discard). As a bonus cast
+    // it skips the Familiars' hand tax, and the flag is consumed below.
+    const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
+    if (moveError) {
+      throw new Error(moveError.message);
+    }
   } else {
     const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
     if (moveError) {
@@ -7424,9 +7471,10 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   // Tower Magi Pack Power bonus lands on whichever spell is cast first — never on
   // both a free Helm cast and a later normal cast.
   const isFirstSpellThisRound = !caster.combatStats.anySpellCastThisRound;
-  // A Helm of the Alabaster Unicorn cast does not count toward the spell limit
-  // (noteSpellCast still closes the first-spell-this-round gate for it).
-  noteSpellCast(state, caster, !action.fromSpellDeck);
+  // Neither a Helm of the Alabaster Unicorn cast nor a Tarnum (Conflux) VI
+  // over-limit cast counts toward the spell limit (noteSpellCast still closes
+  // the first-spell-this-round gate for them).
+  noteSpellCast(state, caster, !action.fromSpellDeck && !action.tarnumReturn);
 
   const stackItem = makeStackItem(state, action);
 
@@ -7436,6 +7484,18 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   // through to the power hooks below.
   if (action.fromSpellDeck) {
     stackItem.modifiers.fromSpellDeck = true;
+  }
+
+  // Tarnum (Conflux) VI: flag the placement and spend the over-limit privilege
+  // for this card (remove a single flagged occurrence).
+  if (action.tarnumReturn) {
+    stackItem.modifiers.tarnumReturn = action.tarnumReturn;
+    const flagged = caster.combatStats.tarnumOverlimitCards ?? [];
+    const idx = flagged.indexOf(action.cardId);
+    if (idx >= 0) {
+      flagged.splice(idx, 1);
+      caster.combatStats.tarnumOverlimitCards = flagged;
+    }
   }
 
   // Scroll spells are locked to power 0 and cannot be boosted by any Power
@@ -9988,7 +10048,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       playerId: action.playerId,
       kind: "shared-deck-search",
       deckId: effect.deck,
-      count: effect.count
+      count: effect.count,
+      ...(effect.allowRemove ? { allowRemove: true } : {})
     });
   }
 
@@ -10417,22 +10478,39 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
-  // Gelu's Sharpshooters IV: discard a Pack of Elves, then fetch the single
-  // Sharpshooters card from the silver Neutral deck into your unit deck.
+  // Gelu's Sharpshooters IV / Dracon's Enchanters IV: discard a Pack of the
+  // `from` unit, then fetch the single `to` card from a Neutral tier deck into
+  // your unit deck. Tarnum (Conflux) IV reuses this with no unit to trade in —
+  // it pays `goldCost` (10) instead of discarding a from-unit.
   if (effect.type === "CONVERT_ARMY_UNIT") {
     const player = state.players[action.playerId];
     const deck = state.decks[NEUTRAL_DECK_IDS[effect.toTier]];
-    const fromIndex =
-      player?.army.findIndex(
-        (unit) => unit.unitDefId === effect.fromUnitDefId && unit.side === effect.fromSide
-      ) ?? -1;
+    const tradesUnit = Boolean(effect.fromUnitDefId);
+    const fromIndex = tradesUnit
+      ? (player?.army.findIndex(
+          (unit) => unit.unitDefId === effect.fromUnitDefId && unit.side === effect.fromSide
+        ) ?? -1)
+      : -1;
     const alreadyHas = effect.unique
       ? (player?.army.some((unit) => unit.unitDefId === effect.toUnitDefId) ?? false)
       : false;
     const inDraw = deck?.drawPile.indexOf(effect.toUnitDefId) ?? -1;
     const inDiscard = deck?.discardPile.indexOf(effect.toUnitDefId) ?? -1;
-    if (player && deck && fromIndex >= 0 && !alreadyHas && (inDraw >= 0 || inDiscard >= 0)) {
-      player.army.splice(fromIndex, 1);
+    const hasFrom = tradesUnit ? fromIndex >= 0 : true;
+    const canPayGold = effect.goldCost ? (player?.resources.gold ?? 0) >= effect.goldCost : true;
+    if (player && deck && hasFrom && canPayGold && !alreadyHas && (inDraw >= 0 || inDiscard >= 0)) {
+      if (tradesUnit) {
+        player.army.splice(fromIndex, 1);
+      }
+      if (effect.goldCost) {
+        player.resources.gold -= effect.goldCost;
+        appendEvent(state, {
+          type: "RESOURCES_SPENT",
+          playerId: action.playerId,
+          cost: { gold: effect.goldCost },
+          reason: `acquired the ${cards[effect.toUnitDefId]?.name ?? effect.toUnitDefId}`
+        });
+      }
       if (inDraw >= 0) {
         deck.drawPile.splice(inDraw, 1);
       } else {
@@ -10444,8 +10522,32 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         playerId: action.playerId,
         unitDefId: effect.toUnitDefId,
         kind: "recruit",
-        cost: {}
+        cost: effect.goldCost ? { gold: effect.goldCost } : {}
       });
+    }
+  }
+
+  // Tarnum (Conflux) VI: "Search(1) Spell twice." Take the top acquirable spell
+  // off the shared Spell deck into hand `count` times, flagging each so it can
+  // be cast for free over the per-round Spell limit and then returned to the
+  // shared Spell deck (top or discard) rather than the caster's own discard.
+  if (effect.type === "TARNUM_OVERLIMIT_SEARCH") {
+    const player = state.players[action.playerId];
+    if (player) {
+      const searched: CardId[] = [];
+      for (let i = 0; i < effect.count; i += 1) {
+        const taken = takeTopAcquirableSpellToHand(state, action.playerId);
+        if (!taken) {
+          break;
+        }
+        searched.push(taken);
+      }
+      if (searched.length > 0) {
+        player.combatStats.tarnumOverlimitCards = [
+          ...(player.combatStats.tarnumOverlimitCards ?? []),
+          ...searched
+        ];
+      }
     }
   }
 
@@ -12337,6 +12439,10 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     player.combatStats.spellsCastThisRound = 0;
     player.combatStats.spellLimitBonusThisRound = 0;
     player.combatStats.anySpellCastThisRound = false;
+    // Tarnum (Conflux) VI: "immediately cast" — the over-limit Search privilege
+    // does not survive into the next combat round (an uncast Searched spell just
+    // stays in hand as a normal card).
+    player.combatStats.tarnumOverlimitCards = [];
     // Expert uses (crowns) and the "+1 expert use this round" bonus (Pendant of
     // Courage / Helm of Heavenly Enlightenment) are a per-GAME-ROUND budget, not
     // a per-combat-round one. They are NOT reset here: a single battle's many
@@ -12589,6 +12695,44 @@ function recordDeckDrawnAbility(player: PlayerState, deckId: string, cardId: Car
   (player.deckDrawnAbilityCardIds ??= []).push(cardId);
 }
 
+/**
+ * A single non-interactive Search(1) of the shared Spell deck: take the top
+ * card the player may acquire into hand (redrawing past any they cannot take),
+ * leaving the skipped cards tucked back under the deck. Returns the taken card
+ * id, or null when the deck holds nothing acquirable. Used by Tarnum (Conflux)
+ * VI's "Search(1) Spell twice".
+ */
+function takeTopAcquirableSpellToHand(state: GameState, playerId: PlayerId): CardId | null {
+  const deck = state.decks.spells;
+  const player = state.players[playerId];
+  if (!deck || !player) {
+    return null;
+  }
+  const skipped: CardId[] = [];
+  let taken: CardId | null = null;
+  while (deck.drawPile.length > 0) {
+    const cardId = deck.drawPile.pop();
+    if (!cardId) {
+      break;
+    }
+    if (canAcquireSharedDeckCard(state, playerId, "spells", cardId)) {
+      taken = cardId;
+      break;
+    }
+    skipped.push(cardId);
+  }
+  if (skipped.length > 0) {
+    // Skipped cards never re-reach the top within this single pull, so tucking
+    // them under the deck (front of the array) cannot loop.
+    deck.drawPile.unshift(...skipped);
+  }
+  if (taken) {
+    player.hand.push(taken);
+    recordDeckDrawnAbility(player, "spells", taken);
+  }
+  return taken;
+}
+
 function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type: "RESOLVE_DECK_SEARCH" }>): void {
   const choice = state.pendingChoice;
   if (!choice || choice.type !== "DECK_SEARCH" || choice.id !== action.choiceId || choice.playerId !== action.playerId) {
@@ -12608,8 +12752,20 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
     throw new Error("That revealed card is not available.");
   }
 
-  player.hand.push(keptCardId);
-  recordDeckDrawnAbility(player, choice.deckId, keptCardId);
+  // Tarnum (Conflux) I: "You can Remove this card instead of taking it into your
+  // hand." The picked card is removed from the game (it never re-enters the
+  // shared deck), only offered when the choice was opened with allowRemove.
+  const removePicked = Boolean(action.pick.remove);
+  if (removePicked && !choice.allowRemove) {
+    throw new Error("That revealed card cannot be removed.");
+  }
+  if (!removePicked) {
+    player.hand.push(keptCardId);
+    recordDeckDrawnAbility(player, choice.deckId, keptCardId);
+  }
+  // Removing leaves the card out of both hand and the shared deck entirely: it
+  // was already lifted off the draw pile when revealed, so dropping it here is
+  // the whole "Remove from the game" — it never reaches the discard pile below.
   const keptIndex = action.pick.index;
   const discardedCardIds = choice.revealedCardIds.filter((_, index) => index !== keptIndex);
   deck.discardPile.push(...discardedCardIds);
