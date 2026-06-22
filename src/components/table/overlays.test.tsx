@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DICE_PRESENT_MS, DiceOverlay, NeutralStepOverlay, ReactionTray, type DiceCue } from "./overlays";
+import {
+  DICE_PRESENT_MS,
+  DICE_ROLL_MS,
+  DiceOverlay,
+  NeutralStepOverlay,
+  ReactionTray,
+  RerollModal,
+  type DiceCue
+} from "./overlays";
 import { CardZoomProvider } from "./zoom";
 import {
   applyAction,
@@ -749,5 +757,104 @@ describe("ReactionTray — Archangels' free lethal save is reachable in the UI",
     const applied = applyAction(state, onAction.mock.calls[0][0] as GameAction);
     expect(applied.errors).toEqual([]);
     expect(applied.state.combat!.units.unit_p1_crusaders.usedLethalSaveThisCombat).toBe(true);
+  });
+});
+
+describe("RerollModal — the die rolls before the keep/reroll choice", () => {
+  /** Minimal state carrying an open attack-die reroll choice for `playerId`. */
+  function rerollState(playerId: PlayerId = "p1"): GameState {
+    return {
+      players: { p1: { name: "You" }, p2: { name: "Rival" } },
+      pendingChoice: {
+        id: "choice_1",
+        type: "ATTACK_DIE_REROLL",
+        playerId,
+        stackItemId: "stack_1",
+        attackerId: "att1",
+        defenderId: "def1",
+        isRetaliation: false,
+        attackKind: "melee",
+        rollMode: "normal",
+        attackBonus: 0,
+        defenseBonus: 0,
+        candidates: [{ rolls: [1], roll: 1 }],
+        remainingRerolls: 1,
+        rerollSources: [],
+        sourceEffectIds: []
+      },
+      combat: { units: { att1: { id: "att1", name: "Crusaders" }, def1: { id: "def1", name: "Skeletons" } } }
+    } as unknown as GameState;
+  }
+
+  const keep: LegalAction = {
+    label: "Keep +1",
+    action: { type: "CHOOSE_PENDING_ROLL", playerId: "p1", candidateIndex: 0 } as unknown as GameAction
+  };
+  const reroll: LegalAction = {
+    label: "Reroll attack die (1 left)",
+    action: { type: "REROLL_PENDING_CHOICE", playerId: "p1" } as unknown as GameAction
+  };
+
+  it("tumbles the die first, hiding keep/reroll until it settles", () => {
+    vi.useFakeTimers();
+    const onAction = vi.fn();
+    const { container } = render(
+      <RerollModal legalActions={[keep, reroll]} onAction={onAction} state={rerollState()} viewerPlayerId="p1" />
+    );
+
+    // While the cube is mid-throw the choice is withheld and the die tumbles.
+    expect(container.querySelector(".dieCube.tumbling")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Keep/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Reroll/ })).toBeNull();
+
+    // Just before it settles, still rolling.
+    act(() => vi.advanceTimersByTime(DICE_ROLL_MS - 50));
+    expect(screen.queryByRole("button", { name: /^Keep/ })).toBeNull();
+
+    // Once the throw lands, the keep/reroll choice appears for the result.
+    act(() => vi.advanceTimersByTime(100));
+    expect(container.querySelector(".dieCube.tumbling")).toBeNull();
+    expect(screen.getByRole("button", { name: /^Keep/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Reroll/ })).toBeTruthy();
+  });
+
+  it("re-tumbles each fresh reroll candidate before re-offering the choice", () => {
+    vi.useFakeTimers();
+    const onAction = vi.fn();
+    const state = rerollState();
+    const { container, rerender } = render(
+      <RerollModal legalActions={[keep, reroll]} onAction={onAction} state={state} viewerPlayerId="p1" />
+    );
+    act(() => vi.advanceTimersByTime(DICE_ROLL_MS + 10));
+    expect(screen.getByRole("button", { name: /^Keep/ })).toBeTruthy();
+
+    // A reroll lands a second candidate: the modal must tumble again, not flash
+    // the new face straight into a keep button.
+    const rerolled = rerollState();
+    (rerolled.pendingChoice as { candidates: { rolls: number[]; roll: number }[] }).candidates = [
+      { rolls: [1], roll: 1 },
+      { rolls: [-1], roll: -1 }
+    ];
+    // The engine offers the keep against the NEW latest candidate (index 1).
+    const keepLatest: LegalAction = {
+      label: "Keep -1",
+      action: { type: "CHOOSE_PENDING_ROLL", playerId: "p1", candidateIndex: 1 } as unknown as GameAction
+    };
+    rerender(<RerollModal legalActions={[keepLatest, reroll]} onAction={onAction} state={rerolled} viewerPlayerId="p1" />);
+    expect(container.querySelector(".dieCube.tumbling")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Keep/ })).toBeNull();
+
+    act(() => vi.advanceTimersByTime(DICE_ROLL_MS + 10));
+    expect(screen.getByRole("button", { name: /^Keep/ })).toBeTruthy();
+  });
+
+  it("shows the waiting strip (no tumble, no buttons) to the non-choosing side", () => {
+    const onAction = vi.fn();
+    const { container } = render(
+      <RerollModal legalActions={[]} onAction={onAction} state={rerollState("p2")} viewerPlayerId="p1" />
+    );
+    expect(screen.getByText(/may reroll the attack die/i)).toBeTruthy();
+    expect(container.querySelector(".dieCube.tumbling")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Keep/ })).toBeNull();
   });
 });

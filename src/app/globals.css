@@ -1992,6 +1992,20 @@ button.battleCell {
   color: var(--muted);
 }
 
+/* The freshest die mid-throw: the cube tumbles here (its own .dieScene supplies
+   the perspective) before the keep/reroll choice is revealed. */
+.rerollDie.rolling {
+  cursor: default;
+  min-height: 92px;
+  align-content: center;
+}
+
+.rerollDieCube {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
 /* ---------- dice overlay ---------- */
 
 .diceOverlay {
