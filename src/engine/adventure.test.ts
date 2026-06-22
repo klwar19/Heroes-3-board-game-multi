@@ -39,8 +39,9 @@ function apply(state: GameState, action: GameAction): GameState {
 }
 
 function refreshP1(state: GameState): GameState {
-  // Resolve the required start-of-turn draw (every turn, including the first).
-  if (!state.players.p1.needsHandRefresh) {
+  // Resolve the mandatory start-of-turn draw (every turn, including the first):
+  // it must be taken before moving or using a card.
+  if (!state.players.p1.needsHandRefresh && !state.players.p1.canMulligan) {
     return state;
   }
   return apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
@@ -287,6 +288,33 @@ describe("adventure setup", () => {
     expect(drafted).toHaveLength(2);
     expect(drafted.some(hasSettlement)).toBe(true);
   });
+
+  it("gives every player no Ⅱ–Ⅲ supply when Far-tile opening is off, but two when on", () => {
+    // Off: the supply stays empty so there is nothing for players to open
+    // (use it when the map already includes its Ⅱ–Ⅲ tiles).
+    const off = createAdventureGameState({
+      seed: "test-seed",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      farTileOpening: false
+    });
+    for (const playerId of ["p1", "p2"]) {
+      expect(off.adventure?.playerFarTiles[playerId]).toEqual([]);
+    }
+
+    // On (explicit) and the default both draft the usual two tiles per player.
+    const on = createAdventureGameState({
+      seed: "test-seed",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      farTileOpening: true
+    });
+    const byDefault = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false });
+    for (const playerId of ["p1", "p2"]) {
+      expect(on.adventure?.playerFarTiles[playerId]).toHaveLength(2);
+      expect(byDefault.adventure?.playerFarTiles[playerId]).toHaveLength(2);
+    }
+  });
 });
 
 describe("turns and movement", () => {
@@ -332,15 +360,18 @@ describe("turns and movement", () => {
     expect(again.errors).toHaveLength(1);
   });
 
-  it("lets the first-turn player skip the draw and just act (the window then closes)", () => {
+  it("requires the first-turn player to take the draw before moving (it is mandatory)", () => {
     let state = makeGame();
     expect(state.players.p1.canMulligan).toBe(true);
-    // Acting without drawing is allowed; the start-of-turn draw window then closes.
+    // Acting without drawing is now BLOCKED — the draw must come first.
+    const blocked = applyAction(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:3" });
+    expect(blocked.errors.length).toBeGreaterThan(0);
+    expect(blocked.state.heroes.hero_p1.spaceId).not.toBe("h:8:3");
+    // Take the mandatory draw, and the move goes through.
+    state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    expect(state.players.p1.canMulligan).toBe(false);
     state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:3" });
     expect(state.heroes.hero_p1.spaceId).toBe("h:8:3");
-    expect(state.players.p1.canMulligan).toBe(false);
-    const tooLate = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
-    expect(tooLate.errors).toHaveLength(1);
   });
 
   it("offers the start-of-turn draw to BOTH players on their own turns", () => {
@@ -476,7 +507,7 @@ describe("turns and movement", () => {
   });
 
   it("walks a multi-step path with MOVE_HERO_PATH, stopping at the destination", () => {
-    let state = makeGame();
+    let state = refreshP1(makeGame());
     const before = state.players.p1.resources;
     const totalBefore = before.gold + before.buildingMaterials + before.valuables;
 
@@ -653,7 +684,7 @@ describe("morale actions", () => {
   });
 
   it("offers a morale reroll when an adventure die is rolled", () => {
-    let state = makeGame();
+    let state = refreshP1(makeGame());
     state.players.p1.morale = 1;
 
     // Walking onto the Resources field rolls the Resource die; with a morale
@@ -678,7 +709,7 @@ describe("morale actions", () => {
 
 describe("tile discovery and placement", () => {
   it("reveals a face-down tile, then the player rotates it before it lands", () => {
-    const state = makeGame();
+    const state = refreshP1(makeGame());
     // Stand on (10,6) — S1 slot 5, an OPEN-border ring field that touches the
     // face-down Center hub at (9,4) across an unsealed edge. Ordinary discovery
     // needs that open border; placing/standing is set directly so the reveal
@@ -711,7 +742,7 @@ describe("tile discovery and placement", () => {
   });
 
   it("refuses ordinary discovery across a sealed yellow border (edge/border gate)", () => {
-    const state = makeGame();
+    const state = refreshP1(makeGame());
     // (8,3) is S3 slot 2 — geometrically adjacent to the same face-down hub at
     // (9,4), but its outer arc toward the hub is a printed yellow line. A hero
     // standing behind that border cannot reveal across it on its own turn; only
@@ -744,7 +775,7 @@ describe("tile discovery and placement", () => {
   });
 
   it("places a far tile at the border for 1 MP, touching two tiles, then rotates it", () => {
-    const state = makeGame();
+    const state = refreshP1(makeGame());
     // Stand on the seat-0 town-flower hex (7,2), which borders the empty notch
     // at (6,4) — a gapless slot bordering the seat-0 town, the hub and a Near
     // tile (>=2 tiles), so it is a legal placement that leaves no hole.
@@ -788,7 +819,7 @@ describe("tile discovery and placement", () => {
   });
 
   it("only offers far-tile rotations the placing hero can cross onto", () => {
-    const state = makeGame();
+    const state = refreshP1(makeGame());
     // From h:9:1 the (10,0) notch has a rotation (2) whose border line seals the
     // tile off from the hero, while the others leave a doorway — so the gate has
     // both an allowed and a rejected rotation to exercise.
@@ -961,6 +992,28 @@ describe("map setup lobby", () => {
       options: { difficulty: "easy" }
     });
     expect(late.errors).toHaveLength(1);
+  });
+
+  it("carries the Ⅱ–Ⅲ tile-opening toggle from the lobby into the started game", () => {
+    let state = createAdventureLobbyState({ seed: "lobby-seed" });
+    // Default ON.
+    expect(state.setupLobby?.options.farTileOpening ?? true).toBe(true);
+
+    state = apply(state, {
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { farTileOpening: false }
+    });
+    expect(state.setupLobby?.options.farTileOpening).toBe(false);
+
+    state = apply(state, { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: "catherine" });
+    state = apply(state, { type: "CHOOSE_FACTION", playerId: "p2", factionId: "necropolis", heroDefId: "sandro" });
+    state = apply(state, { type: "START_ADVENTURE", playerId: "p1" });
+
+    // With opening off, no player receives a Ⅱ–Ⅲ supply to place.
+    for (const playerId of ["p1", "p2"]) {
+      expect(state.adventure?.playerFarTiles[playerId]).toEqual([]);
+    }
   });
 });
 

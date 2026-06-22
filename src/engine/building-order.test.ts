@@ -23,7 +23,7 @@ function apply(state: GameState, action: GameAction): GameState {
 }
 
 function refreshP1(state: GameState): GameState {
-  return state.players.p1.needsHandRefresh
+  return (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
     ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
     : state;
 }
