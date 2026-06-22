@@ -366,6 +366,10 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return event.hosted ? "The room is now hosted — seats are locked." : "The room is now an open table.";
     case "ROOM_HOST_CHANGED":
       return `${roomMemberName(state, event.clientId)} is now the host.`;
+    case "ROOM_NAMED":
+      return event.name
+        ? `${roomMemberName(state, event.byClientId)} named the room “${event.name}”.`
+        : `${roomMemberName(state, event.byClientId)} cleared the room name.`;
     case "ROUND_STARTED":
       return `Round ${event.round} begins${event.kind === "resource" ? " (resource round)" : event.kind === "astrologers" ? " (Astrologers' round)" : ""}.`;
     case "TURN_STARTED":

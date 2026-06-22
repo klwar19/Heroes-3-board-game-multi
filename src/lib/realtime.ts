@@ -26,7 +26,35 @@ export type GameRoomSnapshot = {
    * room-server deploy. Absent from very old servers that predate this field.
    */
   serverSignature?: string;
+  /** Set on the final frame a closed room sends, so the client returns to the lobby. */
+  closed?: boolean;
 };
+
+/** One row of the lobby room directory (mirrors the server's RoomDirectoryEntry). */
+export type RoomDirectoryEntry = {
+  roomId: string;
+  name: string;
+  phase: string;
+  inProgress: boolean;
+  memberCount: number;
+  seatedCount: number;
+  hosted: boolean;
+  hostName: string | null;
+  createdByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Whether the requesting client may close this room. */
+  canClose: boolean;
+};
+
+/**
+ * Result of asking for the room list. `supported` is false on the PartyKit edge
+ * backend, which has no central directory — the lobby then prompts for a room
+ * code / shared link instead of a browsable list.
+ */
+export type RoomListResult = { rooms: RoomDirectoryEntry[]; supported: boolean };
+
+export type CloseRoomResult = { closed: boolean; reason?: string };
 
 export type RoomResetOptions = {
   mode?: GameMode;
@@ -38,6 +66,8 @@ export type RoomResetOptions = {
 export type RoomConnectionHandlers = {
   onSnapshot: (snapshot: GameRoomSnapshot) => void;
   onStatus: (status: string) => void;
+  /** The room was closed (deleted) by its host — drop back to the lobby. */
+  onClosed?: () => void;
 };
 
 export type RoomConnection = {
@@ -133,6 +163,10 @@ function connectPartyRoom(
     }
 
     if (message.type === "snapshot") {
+      if (message.snapshot.closed) {
+        handlers.onClosed?.();
+        return;
+      }
       handlers.onSnapshot(message.snapshot);
       handlers.onStatus(`live (edge) v${message.snapshot.version}`);
       if (resolveReset) {
@@ -253,6 +287,10 @@ function connectApiRoom(
       if ("ping" in payload) {
         return;
       }
+      if (payload?.closed) {
+        handlers.onClosed?.();
+        return;
+      }
       if (payload && payload.state) {
         handlers.onSnapshot(payload);
         handlers.onStatus(`live v${payload.version}`);
@@ -336,4 +374,69 @@ function connectApiRoom(
     },
     fetchSnapshot
   };
+}
+
+// ---------------------------------------------------------------------------
+// Lobby directory (transport-aware standalone calls, not tied to one room)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetches the list of active rooms. On the PartyKit edge backend there is no
+ * central directory, so this resolves `supported: false` and the lobby falls
+ * back to joining by room code / shared link.
+ */
+export async function fetchRoomList(clientId?: string): Promise<RoomListResult> {
+  if (getPartyKitHost()) {
+    return { rooms: [], supported: false };
+  }
+  const query = clientId ? `?clientId=${encodeURIComponent(clientId)}` : "";
+  const response = await fetch(`/api/rooms${query}`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("Could not load the room list.");
+  }
+  const data = (await response.json()) as { rooms?: RoomDirectoryEntry[] };
+  return { rooms: data.rooms ?? [], supported: true };
+}
+
+/**
+ * Creates a new room and returns its id. On PartyKit (rooms are created
+ * implicitly on first connect) this mints an id locally; the chosen name is
+ * applied by the caller via a SET_ROOM_NAME action once connected.
+ */
+export async function createRoomOnServer(options: {
+  name?: string;
+  createdByName?: string;
+  roomId?: string;
+}): Promise<{ roomId: string }> {
+  if (getPartyKitHost()) {
+    return { roomId: options.roomId?.trim() || `room-${Math.random().toString(36).slice(2, 8)}` };
+  }
+  const response = await fetch("/api/rooms", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(options)
+  });
+  if (!response.ok) {
+    throw new Error("Could not create the room.");
+  }
+  const data = (await response.json()) as { roomId: string };
+  return { roomId: data.roomId };
+}
+
+/**
+ * Closes (deletes) a room. The server validates `actorClientId` against the
+ * room's host / membership, so a non-host cannot delete a hosted room.
+ */
+export async function requestCloseRoom(roomId: string, actorClientId?: string): Promise<CloseRoomResult> {
+  const host = getPartyKitHost();
+  const url = host
+    ? partyHttpUrl(host, roomId)
+    : `/api/rooms/${encodeURIComponent(roomId)}`;
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actorClientId })
+  });
+  const data = (await response.json().catch(() => ({}))) as CloseRoomResult;
+  return { closed: response.ok && data.closed !== false, reason: data.reason };
 }

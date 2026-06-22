@@ -84,6 +84,7 @@ import {
   leaveRoom,
   roomActionGuard,
   setRoomHosted,
+  setRoomName,
   transferHost
 } from "./room";
 import {
@@ -13118,7 +13119,8 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "SET_ROOM_HOSTED",
   "ASSIGN_SEAT",
   "KICK_MEMBER",
-  "TRANSFER_HOST"
+  "TRANSFER_HOST",
+  "SET_ROOM_NAME"
 ]);
 
 function isHandlerValidated(state: GameState, action: GameAction): boolean {
@@ -13318,6 +13320,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "TRANSFER_HOST":
         transferHost(nextState, action);
+        break;
+      case "SET_ROOM_NAME":
+        setRoomName(nextState, action);
         break;
       case "RESOLVE_VISIT_STEP":
         resolveVisitStep(nextState, action);

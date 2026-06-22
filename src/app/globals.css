@@ -598,6 +598,51 @@ button {
   justify-self: start;
 }
 
+.roomTitleRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.roomTitleLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.roomTitleRow input {
+  flex: 1;
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgb(13 15 16 / 50%);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.roomTitleRow input:disabled {
+  opacity: 0.6;
+}
+
+.roomFooterButtons {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.commandButton.danger {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.roomClose {
+  margin-left: auto;
+}
+
 .musicToggle {
   display: inline-flex;
   align-items: center;
@@ -8557,4 +8602,182 @@ img.cardBack {
 .newDayCaption span {
   font-size: 13px;
   color: #d9c08c;
+}
+
+/* ----------------------------------------------------------------------- */
+/* Multiplayer lobby / room browser                                        */
+/* ----------------------------------------------------------------------- */
+.lobbyRoot {
+  min-height: 100dvh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(16px, 4vw, 48px);
+  overflow-y: auto;
+}
+
+.lobbyCard {
+  width: min(760px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: clamp(16px, 3vw, 28px);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgb(13 15 16 / 72%);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 45%);
+}
+
+.lobbyHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.lobbyHeader h1 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: clamp(18px, 3vw, 24px);
+  color: var(--gold);
+}
+
+.lobbyIdentity,
+.lobbyCreate,
+.lobbyJoinCode {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.lobbyIdentity label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.lobbyActions {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 3%);
+}
+
+.lobbyIdentity input,
+.lobbyCreate input,
+.lobbyJoinCode input {
+  flex: 1;
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgb(13 15 16 / 55%);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.lobbyNote,
+.lobbyError {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  padding: 14px;
+}
+
+.lobbyError {
+  color: #f0a3a3;
+}
+
+.lobbyRooms {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  max-height: min(52dvh, 540px);
+  overflow-y: auto;
+}
+
+.lobbyRoom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.lobbyRoomMain {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0;
+}
+
+.lobbyRoomName {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.lobbyRoomLock {
+  color: var(--gold);
+}
+
+.lobbyRoomOpen {
+  color: var(--muted);
+}
+
+.lobbyRoomMeta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.lobbyRoomCount,
+.lobbyRoomHost {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lobbyRoomStatus {
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-weight: 700;
+}
+
+.lobbyRoomStatus.playing {
+  color: #9bd49b;
+  border-color: rgb(120 200 120 / 45%);
+}
+
+.lobbyRoomStatus.setup {
+  color: #d9c08c;
+  border-color: rgb(217 192 140 / 45%);
+}
+
+.lobbyRoomButtons {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }

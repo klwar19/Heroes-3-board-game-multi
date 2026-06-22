@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, Crown, Eye, Lock, LogOut, UserCog, UserX, Users } from "lucide-react";
-import { NEUTRAL_PLAYER_ID, type GameAction, type GameState, type RoomSeat } from "@/engine";
+import { Check, Copy, Crown, Eye, List, Lock, LogOut, Trash2, UserCog, UserX, Users } from "lucide-react";
+import { NEUTRAL_PLAYER_ID, roomDisplayName, type GameAction, type GameState, type RoomSeat } from "@/engine";
 
 /**
  * Room membership UI: shareable invite link, host controls (assign seats, kick,
@@ -18,7 +18,9 @@ export function RoomPanel({
   displayName,
   onAction,
   onCreateRoom,
-  onRename
+  onRename,
+  onCloseRoom,
+  onBrowseRooms
 }: {
   state: GameState;
   roomId: string;
@@ -27,6 +29,10 @@ export function RoomPanel({
   onAction: (action: GameAction) => void;
   onCreateRoom?: () => void;
   onRename: (name: string) => void;
+  /** Close (delete) this room for everyone — only offered when allowed. */
+  onCloseRoom?: () => void;
+  /** Leave this room and return to the lobby room browser. */
+  onBrowseRooms?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   // Seeded from the persisted name (already loaded by the time this panel
@@ -40,6 +46,13 @@ export function RoomPanel({
   const me = members.find((member) => member.clientId === clientId) ?? null;
   const isHost = Boolean(me?.isHost);
   const mySeat: RoomSeat = me?.seat ?? "observer";
+
+  // Room name: anyone may set it on an open table; host-only when hosted.
+  const [roomNameDraft, setRoomNameDraft] = useState(room?.name ?? "");
+  const canRename = Boolean(me) && (!hosted || isHost);
+  const currentRoomName = roomDisplayName(state, roomId);
+  // Closing mirrors the engine rule: host on a hosted room, any member on open.
+  const canClose = Boolean(me) && (hosted ? isHost : true);
 
   const seatIds = state.turnOrder.filter((id) => id !== NEUTRAL_PLAYER_ID);
   const seatLabel = (seat: RoomSeat) => (seat === "observer" ? "Observer" : state.players[seat]?.name ?? seat);
@@ -109,6 +122,26 @@ export function RoomPanel({
                 New room
               </button>
             ) : null}
+          </div>
+
+          <div className="roomTitleRow">
+            <span className="roomTitleLabel">Room name</span>
+            <input
+              aria-label="Room name"
+              disabled={!canRename}
+              maxLength={40}
+              onChange={(event) => setRoomNameDraft(event.target.value)}
+              placeholder={currentRoomName}
+              value={roomNameDraft}
+            />
+            <button
+              className="commandButton"
+              disabled={!canRename || roomNameDraft.trim() === (room?.name ?? "")}
+              onClick={() => onAction({ type: "SET_ROOM_NAME", clientId, name: roomNameDraft.trim() })}
+              type="button"
+            >
+              Save
+            </button>
           </div>
 
           <div className="roomNameRow">
@@ -234,15 +267,39 @@ export function RoomPanel({
             {members.length === 0 ? <li className="roomMemberEmpty">Connecting…</li> : null}
           </ul>
 
-          {me ? (
-            <button
-              className="commandButton ghost roomLeave"
-              onClick={() => onAction({ type: "LEAVE_ROOM", clientId })}
-              type="button"
-            >
-              <LogOut aria-hidden="true" size={13} /> Leave room
-            </button>
-          ) : null}
+          <div className="roomFooterButtons">
+            {onBrowseRooms ? (
+              <button className="commandButton ghost" onClick={onBrowseRooms} type="button">
+                <List aria-hidden="true" size={13} /> Browse rooms
+              </button>
+            ) : null}
+            {me ? (
+              <button
+                className="commandButton ghost roomLeave"
+                onClick={() => onAction({ type: "LEAVE_ROOM", clientId })}
+                type="button"
+              >
+                <LogOut aria-hidden="true" size={13} /> Leave room
+              </button>
+            ) : null}
+            {onCloseRoom && canClose ? (
+              <button
+                className="commandButton danger roomClose"
+                onClick={() => {
+                  if (
+                    typeof window === "undefined" ||
+                    window.confirm("Close this room for everyone? This deletes the game and cannot be undone.")
+                  ) {
+                    onCloseRoom();
+                  }
+                }}
+                title="Close (delete) this room for everyone"
+                type="button"
+              >
+                <Trash2 aria-hidden="true" size={13} /> Close room
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>

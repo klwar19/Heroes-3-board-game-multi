@@ -30,11 +30,27 @@ const ROOM_MEMBERSHIP_ACTION_TYPES = new Set<GameAction["type"]>([
   "SET_ROOM_HOSTED",
   "ASSIGN_SEAT",
   "KICK_MEMBER",
-  "TRANSFER_HOST"
+  "TRANSFER_HOST",
+  "SET_ROOM_NAME"
 ]);
 
 export function isRoomMembershipAction(action: GameAction): boolean {
   return ROOM_MEMBERSHIP_ACTION_TYPES.has(action.type);
+}
+
+/** Longest accepted room name; longer input is trimmed to this. */
+export const MAX_ROOM_NAME_LENGTH = 40;
+
+/** A short, stable fallback label when a room has no name of its own. */
+export function defaultRoomName(roomId: string): string {
+  const trimmed = roomId.trim();
+  return trimmed.length > 0 ? `Room ${trimmed}` : "Room";
+}
+
+/** The name to show for a room: its chosen name, else the id-derived default. */
+export function roomDisplayName(state: GameState, roomId: string): string {
+  const chosen = state.room?.name?.trim();
+  return chosen && chosen.length > 0 ? chosen : defaultRoomName(roomId);
 }
 
 /** Creates the membership record on first use (a fresh open table). */
@@ -289,6 +305,28 @@ export function transferHost(state: GameState, action: Extract<GameAction, { typ
     clientId: target.clientId,
     byClientId: action.clientId
   });
+}
+
+export function setRoomName(state: GameState, action: Extract<GameAction, { type: "SET_ROOM_NAME" }>): void {
+  const room = ensureRoom(state);
+  const member = findMember(room, action.clientId);
+  if (!member) {
+    throw new Error("Join the room before naming it.");
+  }
+  // Hosted rooms are host-controlled (like seats); open tables let any member
+  // set the name (the original free, single-browser test flow).
+  if (room.hosted && !isEffectiveHost(room, action.clientId)) {
+    throw new Error("Only the host can rename a hosted room.");
+  }
+
+  const name = action.name.trim().slice(0, MAX_ROOM_NAME_LENGTH);
+  // A blank name clears it back to the id-derived default rather than storing "".
+  if (name.length === 0) {
+    delete room.name;
+  } else {
+    room.name = name;
+  }
+  appendEvent(state, { type: "ROOM_NAMED", name, byClientId: action.clientId });
 }
 
 // ---------------------------------------------------------------------------

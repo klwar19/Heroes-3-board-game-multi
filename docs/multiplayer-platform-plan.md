@@ -35,11 +35,42 @@
 >   yet a defence against a client forging another's id. Authentication is the
 >   next milestone (Step 4 below).
 >
+> **Lobby / room directory (implemented on the built-in backend, tested).**
+> Opening the app with no `?room=` link now shows a **lobby** (`src/components/
+> lobby.tsx`) — a live list of rooms with names, member/seat counts, host, and
+> "setting up / in progress" status — plus create, join-by-code, and close. The
+> same controls (name, close, browse) are also in the in-table Room panel, so
+> both surfaces work. Backed by:
+> - **Room naming.** `SET_ROOM_NAME` (engine action, `state.room.name`) — open
+>   table: any member; hosted: host-only. `roomDisplayName()` falls back to a
+>   `Room <id>` default. Tested in `room-membership.test.ts` /
+>   `room-panel.test.tsx`.
+> - **Directory + creation + close + expiry** live in `src/server/
+>   game-room-store.ts`: `listRooms(viewerClientId?)` (merges in-memory + disk,
+>   computes a per-viewer `canClose`), `createRoom()` (named, attributed, never
+>   clobbers an existing id), `closeRoom()` (host on a hosted room, any member on
+>   an open one — broadcasts a `closed` frame so connected clients drop back to
+>   the lobby), and **auto-expiry** of empty rooms idle past `STALE_ROOM_TTL_MS`
+>   (6h), pruned (store + disk) as the directory is listed. REST surface:
+>   `GET/POST /api/rooms`, `DELETE /api/rooms/[roomId]`. All covered by
+>   `game-room-store.test.ts` (directory, create, close authorization, expiry).
+> - **Trust boundary (unchanged):** `actorClientId` for close is client-claimed,
+>   exactly like the seat lock — it enforces the rule *given* the identity, not
+>   against a forged one. Auth is still the next milestone.
+> - **PartyKit (edge backend) — partial / deferred.** Room naming and host-close
+>   work there (the action flows through synced state; the party answers a
+>   `DELETE` and broadcasts `closed`). Room **listing** has no central registry
+>   on PartyKit, so `fetchRoomList()` reports `supported:false` and the lobby
+>   prompts to join by code / shared link instead of browsing. A lobby Durable
+>   Object would close this gap; it is **not** built yet and is **not** covered
+>   by the vitest suite (which exercises the built-in store only).
+>
 > **Still future work:** simultaneous early-day turns in adventure mode (the
 > `TurnState.mode`/`simultaneousRoundLimit` scaffolding exists but is wired only
 > for combat-sandbox today), per-player concurrent map combats (today there is
-> one global combat slot), and auth/persistent identity. The notes below about
-> lobbies and the boardgame.io carrier remain as background.
+> one global combat slot), a PartyKit lobby Durable Object (room listing on the
+> edge backend), and auth/persistent identity. The notes below about lobbies and
+> the boardgame.io carrier remain as background.
 
 
 The current prototype already plays like a shared table: a server-authoritative rules engine, REST rooms with **Server-Sent Events push** (polling only as fallback), seat switching, observer seats, and player-view filtering. This document plans the jump to a real multiplayer platform.
