@@ -2075,7 +2075,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
       credit:
-        "Hero roster, class, statistics, starting ability and specialty rules from the fan wiki Cove pages. The real PC portrait could not be fetched in this environment (the art hosts block automated requests), so the portrait is a generated placeholder pending scripts/fetch-cove-art.py. Verify against official components before final release.",
+        "Hero roster, class, statistics, starting ability and specialty rules from the fan wiki Cove pages. Portrait is the classic PC hero portrait from heroes.thelazy.net (hosted locally via scripts/fetch-cove-art.py), like the other five Cove heroes. Verify against official components before final release.",
       url: "https://en.homm3bg.wiki/heroes/casmetra/"
     }
   }

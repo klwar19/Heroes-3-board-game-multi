@@ -414,14 +414,29 @@ describe("Astrologers — Unexpected Reinforcements (free associated-neutral rec
     expect(labels.some((label) => /Halberdiers|Archangels|Champions/.test(label))).toBe(false);
   });
 
-  it("handles factions with no units yet defined (e.g. Cove) — no offer", () => {
+  it("handles factions with no units yet defined (e.g. Forge) — no offer", () => {
     const state = unexpectedGame(["bronze", "gold"]);
     // A faction not yet in the game has no roster, so there is nothing to recruit
     // even with Dwellings built — the offer self-guards instead of crashing.
-    // (Conflux now ships a roster, so Cove stands in for the not-yet-defined case.)
-    state.players.p1.factionId = "cove" as typeof state.players.p1.factionId;
+    // (Conflux and Cove now ship full rosters with neutral counterparts, so the
+    // never-implemented Forge stands in for the not-yet-defined case.)
+    state.players.p1.factionId = "forge" as typeof state.players.p1.factionId;
     drawAstrologersCard(state);
     pumpAdventureQueues(state);
     expect(state.adventure?.pendingVisit).toBeNull();
+  });
+
+  it("offers a Cove player their neutral Cove counterparts (now that Cove has a roster)", () => {
+    const state = unexpectedGame([]);
+    state.players.p1.factionId = "cove";
+    setDwellingTiers(state, "p1", ["bronze"]); // Cove bronze: Oceanids / Seamen / Sea Dogs
+    drawAstrologersCard(state);
+    pumpAdventureQueues(state);
+
+    const labels = visitOptionLabels(state, "p1");
+    expect(labels.length).toBeGreaterThan(1); // some Cove bronze counterpart(s) + Skip
+    expect(labels.some((label) => /Oceanids|Seamen|Sea Dogs/.test(label))).toBe(true);
+    // No other faction's units leak in.
+    expect(labels.some((label) => /Halberdiers|Archangels|Skeletons/.test(label))).toBe(false);
   });
 });

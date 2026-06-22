@@ -2,9 +2,18 @@ import { describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { cardLibrary } from "@/data/cards/library";
-import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions, startingTileByFaction } from "@/data/factions/core";
+import {
+  coreBuildingDefinitions,
+  coreFactionDefinitions,
+  coreHeroDefinitions,
+  neutralCounterpartId,
+  neutralUnitIdsByFaction,
+  neutralUnitIdsByTier,
+  startingTileByFaction
+} from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
+import { TOWN_BUILDING_IMAGES } from "@/data/assets/homm-assets";
 import { unitSoundKey, type UnitSoundAction } from "@/data/unit-sounds";
 import { applyAction, createAdventureGameState, getLegalActions } from "./index";
 import { startAdventureRound } from "./adventure";
@@ -113,6 +122,92 @@ describe("Cove units", () => {
       }
     }
   });
+
+  it("ships real card art for every Few/Pack face (cropped from the Gamefound reveal, not the blank placeholder)", () => {
+    for (const unitId of coreFactionDefinitions.cove.units) {
+      const def = coreUnitDefinitions[unitId];
+      for (const side of ["few", "pack"] as const) {
+        const image = def[side]?.cardImage;
+        expect(image, `${unitId}.${side} cardImage`).toMatch(/^\/assets\/units-cove-(bronze|silver|golden)-[a-z_]+-(few|pack)\.webp$/);
+        expect(image, `${unitId}.${side} not blank`).not.toContain("units-blank");
+        const file = fileURLToPath(new URL(`../../public${image}`, import.meta.url));
+        expect(existsSync(file), `${unitId}.${side} art file ${image}`).toBe(true);
+      }
+    }
+  });
+});
+
+describe("Cove neutral guard units", () => {
+  // The wiki prints a single-sided Neutral Unit card for each Cove creature; the
+  // engine ships all seven as neutral.<slug> guards.
+  const NEUTRAL: Record<string, { tier: "bronze" | "silver" | "gold"; type: string; neutral: { attack: number; defense: number; health: number; initiative: number; gold: number }; abilities: string[]; counterpartOf: string }> = {
+    "neutral.oceanids": { tier: "bronze", type: "flying", neutral: { attack: 2, defense: 0, health: 3, initiative: 6, gold: 3 }, abilities: ["immune-all-spells"], counterpartOf: "cove.oceanids" },
+    "neutral.seamen": { tier: "bronze", type: "ground", neutral: { attack: 2, defense: 1, health: 3, initiative: 5, gold: 5 }, abilities: [], counterpartOf: "cove.seamen" },
+    "neutral.sea_dogs": { tier: "bronze", type: "ranged", neutral: { attack: 2, defense: 0, health: 4, initiative: 6, gold: 7 }, abilities: ["ignore-combat-penalties"], counterpartOf: "cove.sea_dogs" },
+    "neutral.ayssids": { tier: "silver", type: "flying", neutral: { attack: 3, defense: 1, health: 5, initiative: 9, gold: 9 }, abilities: ["ayssid-pounce"], counterpartOf: "cove.ayssids" },
+    "neutral.sorceresses": { tier: "silver", type: "ranged", neutral: { attack: 3, defense: 1, health: 5, initiative: 6, gold: 13 }, abilities: ["sorceress-weakness-on-attack"], counterpartOf: "cove.sorceresses" },
+    "neutral.nix": { tier: "gold", type: "ground", neutral: { attack: 5, defense: 1, health: 7, initiative: 6, gold: 20 }, abilities: ["nix-damage-cap-neutral"], counterpartOf: "cove.nix" },
+    "neutral.haspids": { tier: "gold", type: "ground", neutral: { attack: 5, defense: 2, health: 6, initiative: 9, gold: 25 }, abilities: ["wyvern-poison-cube-few"], counterpartOf: "cove.haspids" }
+  };
+
+  it("registers all seven with the wiki's Neutral-column stats and implemented abilities", () => {
+    for (const [unitId, spec] of Object.entries(NEUTRAL)) {
+      const def = coreUnitDefinitions[unitId];
+      expect(def, unitId).toBeDefined();
+      expect(def.faction).toBe("neutral");
+      expect(def.tier).toBe(spec.tier);
+      expect(def.type).toBe(spec.type);
+      expect(def.neutral, `${unitId} neutral side`).toMatchObject({
+        attack: spec.neutral.attack,
+        defense: spec.neutral.defense,
+        health: spec.neutral.health,
+        initiative: spec.neutral.initiative,
+        cost: { gold: spec.neutral.gold }
+      });
+      expect(def.neutral?.abilities ?? [], `${unitId} abilities`).toEqual(spec.abilities);
+      for (const abilityId of spec.abilities) {
+        const ability = unitAbilities[abilityId];
+        expect(ability, abilityId).toBeDefined();
+        expect(ability.implementationStatus, abilityId).toBe("implemented");
+        expect(ability.effect?.type, abilityId).toBeTruthy();
+      }
+      // The guard uses the faction Few-side art as its placeholder (no separate art).
+      expect(def.neutral?.cardImage).toBe(coreUnitDefinitions[spec.counterpartOf].few?.cardImage);
+    }
+  });
+
+  it("each guard joins its tier's Neutral Units deck (so it can appear as a map guard)", () => {
+    for (const [unitId, spec] of Object.entries(NEUTRAL)) {
+      expect(neutralUnitIdsByTier[spec.tier], `${unitId} in ${spec.tier} deck`).toContain(unitId);
+    }
+  });
+
+  it("each is matched as the Cove faction counterpart (Unexpected Reinforcements)", () => {
+    for (const [unitId, spec] of Object.entries(NEUTRAL)) {
+      expect(neutralCounterpartId(spec.counterpartOf), `${spec.counterpartOf} counterpart`).toBe(unitId);
+      expect(neutralUnitIdsByFaction.cove, `cove faction pool has ${unitId}`).toContain(unitId);
+    }
+    expect(neutralUnitIdsByFaction.cove).toHaveLength(7);
+  });
+
+  it("the Nix guard caps at 5 and the Haspid guard plants 1 cube — distinct from the Pack sides", () => {
+    expect(unitAbilities["nix-damage-cap-neutral"].effect).toMatchObject({ type: "CAP_DAMAGE_PER_ATTACK", amount: 5 });
+    expect(unitAbilities["nix-damage-cap"].effect).toMatchObject({ type: "CAP_DAMAGE_PER_ATTACK", amount: 4 });
+    expect(unitAbilities["wyvern-poison-cube-few"].effect).toMatchObject({ type: "ON_ATTACK_POISON_CUBES", count: 1 });
+    expect(unitAbilities["wyvern-poison-cube-pack"].effect).toMatchObject({ type: "ON_ATTACK_POISON_CUBES", count: 2 });
+  });
+
+  it("speaks with the same creature voice as its faction twin", () => {
+    for (const [unitId, spec] of Object.entries(NEUTRAL)) {
+      const actions: UnitSoundAction[] =
+        spec.type === "ranged"
+          ? ["attack", "shoot", "defend", "hurt", "death", "move"]
+          : ["attack", "defend", "hurt", "death", "move"];
+      for (const action of actions) {
+        expect(unitSoundKey(unitId, action), `${unitId}:${action}`).toBe(unitSoundKey(spec.counterpartOf, action));
+      }
+    }
+  });
 });
 
 describe("Cove heroes", () => {
@@ -188,6 +283,20 @@ describe("Cove buildings", () => {
     const guild = coreBuildingDefinitions["cove.thieves_guild"];
     expect(guild.implementationStatus).toBe("implemented");
     expect(guild.effect?.type).toBe("THIEVES_GUILD");
+  });
+
+  it("renders all eight buildings with a Cove town-screen image on disk", () => {
+    const images = TOWN_BUILDING_IMAGES.cove;
+    expect(Object.keys(images ?? {})).toHaveLength(8);
+    for (const buildingId of coreFactionDefinitions.cove.buildings) {
+      const key = buildingId.split(".")[1];
+      const image = images?.[key];
+      expect(image, `${buildingId} image mapping`).toBeTruthy();
+      // The faction loader copies the mapping onto building.assets.image.
+      expect(coreBuildingDefinitions[buildingId].assets?.image, `${buildingId} assets.image`).toBe(image);
+      const file = fileURLToPath(new URL(`../../public${image}`, import.meta.url));
+      expect(existsSync(file), `${buildingId} image file ${image}`).toBe(true);
+    }
   });
 });
 
