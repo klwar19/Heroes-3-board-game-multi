@@ -3678,11 +3678,18 @@ function queueAttackAllFollowUps(
     return false;
   }
 
+  // Magic Elementals Few ("Attack all adjacent units") also strike friendly
+  // units; the Pack ("Attack all adjacent enemy units") and BINH Cerberi hit
+  // enemies only. A fixed baseAttack (Cerberi = 3) overrides; otherwise each
+  // follow-up uses the attacker's own (buffable) attack value.
+  const includeAllies = ability.effect.includeAllies === true;
+  const baseAttack = ability.effect.baseAttack ?? attacker.attack;
+
   const targets = Object.values(combat.units).filter(
     (unit) =>
       unit.id !== defender.id &&
       unit.id !== attacker.id &&
-      unit.controllerId !== attacker.controllerId &&
+      (includeAllies || unit.controllerId !== attacker.controllerId) &&
       isUnitAlive(unit) &&
       isAdjacent(unit.position, attacker.position)
   );
@@ -3694,7 +3701,7 @@ function queueAttackAllFollowUps(
     combat.attackSequence.queuedAbilityAttacks = targets.map((unit) => ({
       abilityId: ability.id,
       abilityName: ability.name,
-      baseAttack: ability.effect?.type === "SECOND_ATTACK_ALL_ADJACENT_TO_SELF" ? ability.effect.baseAttack : attacker.attack,
+      baseAttack,
       targetUnitId: unit.id
     }));
   }

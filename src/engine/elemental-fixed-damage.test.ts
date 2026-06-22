@@ -158,9 +158,10 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
   it("covers every neutral guard AND both summon sides", () => {
     // Sanity on the inventory so a dropped side can't silently shrink coverage:
     // 9 neutral guards + Air/Earth/Water/Fire summon Few & Pack sides, plus the
-    // recruitable Conflux faction elementals (Storm/Ice/Energy/Magma Few & Pack
-    // and the Magic Elementals Pack — the Magic Few is not an elemental-damage
-    // dealer per the wiki).
+    // recruitable Conflux faction elementals (Storm/Ice/Energy/Magma Few & Pack).
+    // The faction Magic Elementals carry NO "deals elemental damage" line on
+    // either side per the verbatim wiki card (only the neutral guard does), so
+    // conflux.magic_elementals is intentionally absent here.
     const ids = new Set(elementalSides.map((entry) => entry.unitId));
     expect(ids).toEqual(
       new Set([
@@ -176,11 +177,10 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
         "conflux.storm_elementals",
         "conflux.ice_elementals",
         "conflux.energy_elementals",
-        "conflux.magma_elementals",
-        "conflux.magic_elementals"
+        "conflux.magma_elementals"
       ])
     );
-    expect(elementalSides.length).toBe(26);
+    expect(elementalSides.length).toBe(25);
   });
 
   for (const { unitId, sideKey, printedAttack, abilities } of elementalSides) {

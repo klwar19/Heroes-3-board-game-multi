@@ -955,14 +955,17 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "conflux",
     tier: "gold",
     type: "ground",
-    // engine (Few): ignores-retaliation only. The printed "Attack all adjacent
-    // units" is display-only — the engine has no primary attack-every-adjacent
-    // action yet, so it is intentionally NOT wired (no fake ability tag).
-    few: { attack: 4, defense: 2, health: 7, initiative: 7, cost: { gold: 13 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack. Attack all adjacent units.", cardImage: "/assets/units-blank-golden.webp" },
-    // engine (Pack): ignores-retaliation + Magic-Arrow immunity + elemental
-    // damage. The printed "Attack all adjacent enemy units" and "Ignore any
-    // spell effects and damage from Specialty" lines are display-only.
-    pack: { attack: 5, defense: 2, health: 7, initiative: 9, cost: { gold: 19, valuables: 1 }, abilities: ["ignores-retaliation", "magic-elemental-immunity", "elemental-damage"], abilityText: "[unit_attack] Ignore the Retaliation Attack. Attack all adjacent enemy units. [unit_passive] Immune to Magic Arrows. This unit deals elemental damage. Ignore any [ongoing] spell effects and [damage] from Specialty cards.", cardImage: "/assets/units-blank-golden.webp" },
+    // engine (Few): ignores-retaliation + "Attack all adjacent units" (a full
+    // separate follow-up attack on every other adjacent unit, friend or foe —
+    // `magic-elemental-attack-all`). The wiki card carries nothing else on the
+    // Few side (no immunity, no elemental damage).
+    few: { attack: 4, defense: 2, health: 7, initiative: 7, cost: { gold: 13 }, abilities: ["ignores-retaliation", "magic-elemental-attack-all"], abilityText: "[unit_attack] Ignore the Retaliation Attack. Attack all adjacent units.", cardImage: "/assets/units-blank-golden.webp" },
+    // engine (Pack): ignores-retaliation + "Attack all adjacent enemy units"
+    // (`magic-elemental-attack-all-enemies`) + "Ignore any spell effects"
+    // (`immune-all-spells`, which also covers Magic Arrows) + "damage from
+    // Specialty" (`immune-specialty-damage`). The wiki card has NO separate
+    // Magic-Arrow line and does NOT deal elemental damage.
+    pack: { attack: 5, defense: 2, health: 7, initiative: 9, cost: { gold: 19, valuables: 1 }, abilities: ["ignores-retaliation", "magic-elemental-attack-all-enemies", "immune-all-spells", "immune-specialty-damage"], abilityText: "[unit_attack] Ignore the Retaliation Attack. Attack all adjacent enemy units. [unit_passive] Ignore any [spell] effects and [damage] from Specialty.", cardImage: "/assets/units-blank-golden.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/magic_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Conflux Expansion)",
