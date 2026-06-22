@@ -201,6 +201,31 @@ describe("Start-of-turn draw is forfeited by using a card", () => {
     expect(after.players.p1.canMulligan).toBe(false);
     expect(getLegalActions(after, "p1").some((l) => l.action.type === "REFRESH_HAND")).toBe(false);
   });
+
+  it("over the hand limit, the forced discard is the ONLY action — it always starts the turn", () => {
+    const state = adventureState("forced-discard-first", "lord_haart", "castle");
+    state.players.p1.hand = ["spell.magic_arrow", "spell.haste", "stat.attack", "specialty.lord_haart.1"];
+    state.players.p1.canMulligan = true;
+    state.players.p1.morale = 2; // a morale draw would normally be offered
+
+    // Over the limit: the forced discard is offered to the exclusion of all else
+    // — no town/morale action, optional draw, card play or hero move sneaks in.
+    state.players.p1.needsHandRefresh = true;
+    const blocked = getLegalActions(state, "p1");
+    expect(blocked).toHaveLength(1);
+    expect(blocked[0]?.action.type).toBe("REFRESH_HAND");
+    expect(blocked.some((l) => l.action.type === "SPEND_MORALE")).toBe(false);
+    expect(blocked.some((l) => l.action.type === "MOVE_HERO")).toBe(false);
+    expect(blocked.some((l) => l.action.type === "PLAY_CARD")).toBe(false);
+
+    // CONTROL: once the over-limit state clears, the rest of the turn opens up
+    // (morale, moves, card plays …), proving the discard truly gated them.
+    state.players.p1.needsHandRefresh = false;
+    const opened = getLegalActions(state, "p1");
+    expect(opened.length).toBeGreaterThan(1);
+    expect(opened.some((l) => l.action.type === "SPEND_MORALE")).toBe(true);
+    expect(opened.some((l) => l.action.type === "MOVE_HERO")).toBe(true);
+  });
 });
 
 // ===========================================================================
