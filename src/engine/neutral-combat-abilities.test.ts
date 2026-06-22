@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import { abilityFxPlans } from "@/data/fx";
 import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -162,6 +163,34 @@ describe("paralysis-inflicting abilities", () => {
       })
     );
     expect(hasParalysis(next, "unit_p2_skeletons")).toBe(false);
+  });
+
+  it("the Azure Dragon paralysis fires an ability event the FX layer can animate (sprite + sound)", () => {
+    // The table draws a unit ability's animation/sound from
+    // abilityFxPlans[event.abilityId]. So the paralysis is only SEEN/HEARD when
+    // (a) the engine logs the paralysis under that exact ability id, and (b) a
+    // plan is keyed there. Assert both, on the same '-1' roll that lands the
+    // token — the link the user's "play animation and sound when paralyze" needs.
+    const next = settle(
+      applyOk(paralysisState(["azure-dragon-paralysis"], [-1, 0, 0]), {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: "unit_p1_marksmen",
+        defenderId: "unit_p2_skeletons"
+      })
+    );
+    expect(hasParalysis(next, "unit_p2_skeletons")).toBe(true);
+    const paralysisEvent = next.eventLog.find(
+      (event): event is Extract<GameEvent, { type: "UNIT_ABILITY_TRIGGERED" }> =>
+        event.type === "UNIT_ABILITY_TRIGGERED" &&
+        event.abilityId === "azure-dragon-paralysis" &&
+        event.targetUnitId === "unit_p2_skeletons"
+    );
+    expect(paralysisEvent, "azure dragon must log its paralysis under its ability id").toBeTruthy();
+    const plan = abilityFxPlans[paralysisEvent!.abilityId];
+    expect(plan, "abilityFxPlans must answer the azure-dragon-paralysis event").toBeTruthy();
+    expect(plan.affect?.[0]?.key).toBe("paralyze");
+    expect(plan.sound).toBe("spells/paralyze");
   });
 
   it("Basilisk rolls an extra die and paralyses on a '0'", () => {

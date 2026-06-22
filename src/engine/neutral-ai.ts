@@ -107,11 +107,52 @@ function isNoTierTarget(unit: CombatUnitState): boolean {
 }
 
 /**
+ * How far the attacker must actually MOVE to reach a target, counted along a
+ * real path that treats other unit cards and obstacle tokens as walls — except
+ * for flying units, which pass over them (getPathDistances keys "ignore
+ * obstacles" off the mover's type). This is the rulebook's movement count: a
+ * ground unit walls itself off the straight line must walk AROUND the blockers,
+ * so the nearest target by walking can differ from the nearest as the crow
+ * flies. A target with no walkable path sorts behind every reachable one but
+ * still prefers the closer of the unreachable lot (the straight-line fallback).
+ *
+ * Flooding from the target's own square (its occupant excepted) yields the
+ * distance to stand on it; standing ADJACENT to attack is one step less, but
+ * since that offset is uniform it never changes the target ordering.
+ */
+function neutralMoveDistanceToTarget(
+  combat: CombatState,
+  attacker: CombatUnitState,
+  target: CombatUnitState
+): number {
+  const field = getPathDistances(combat, attacker, target.position);
+  return (
+    field.get(attacker.position) ??
+    getBattlefieldDistance(attacker.position, target.position) + BATTLEFIELD_PATH_PENALTY
+  );
+}
+
+/** Walking distance from the attacker to each candidate, computed once. */
+function neutralTargetDistances(
+  combat: CombatState,
+  attacker: CombatUnitState,
+  candidates: CombatUnitState[]
+): Map<UnitId, number> {
+  const distances = new Map<UnitId, number>();
+  for (const target of candidates) {
+    distances.set(target.id, neutralMoveDistanceToTarget(combat, attacker, target));
+  }
+  return distances;
+}
+
+/**
  * The ranked target pool of a neutral unit: ranged attackers prefer ranged
  * targets; everyone then ranks by {@link tierPriority} (same tier, lower tiers
  * descending, higher tiers by distance) with the closest breaking ties. A
  * gradeless Creature Bank guard keeps the ranged preference but skips the tier
- * ordering, ranking its chosen pool purely by distance.
+ * ordering, ranking its chosen pool purely by distance. "Closest" is the
+ * walking distance ({@link neutralMoveDistanceToTarget}), so a unit boxed in by
+ * other cards counts as far even when it is near as the crow flies.
  */
 function rankedTargetPool(combat: CombatState, attacker: CombatUnitState): CombatUnitState[] {
   const enemies = Object.values(combat.units).filter(
@@ -126,7 +167,7 @@ function rankedTargetPool(combat: CombatState, attacker: CombatUnitState): Comba
   if (attacker.type === "ranged") {
     const adjacent = enemies.filter((unit) => isAdjacent(attacker.position, unit.position));
     if (adjacent.length > 0) {
-      return sortNeutralTargetCandidates(attacker, adjacent);
+      return sortNeutralTargetCandidates(combat, attacker, adjacent);
     }
   }
 
@@ -139,7 +180,7 @@ function rankedTargetPool(combat: CombatState, attacker: CombatUnitState): Comba
         : enemies
       : enemies;
 
-  return sortNeutralTargetCandidates(attacker, pool);
+  return sortNeutralTargetCandidates(combat, attacker, pool);
 }
 
 export function pickNeutralTarget(combat: CombatState, attacker: CombatUnitState): CombatUnitState | null {
@@ -151,24 +192,31 @@ export function pickNeutralTarget(combat: CombatState, attacker: CombatUnitState
  * table: entries that tie the front-runner on both priority class and distance.
  * Returns 2+ entries only when there is a real tie.
  */
-function leadingTieGroup(attacker: CombatUnitState, sortedPool: CombatUnitState[]): CombatUnitState[] {
+function leadingTieGroup(
+  combat: CombatState,
+  attacker: CombatUnitState,
+  sortedPool: CombatUnitState[]
+): CombatUnitState[] {
   if (sortedPool.length < 2) {
     return sortedPool;
   }
 
   // A gradeless attacker (a Creature Bank guard) or a no-tier best target (a
   // summoned unit or a bank-guard card) means grade plays no part, so the tie
-  // group is decided purely by distance.
+  // group is decided purely by distance. Distance is the same walking metric the
+  // sort uses ({@link neutralMoveDistanceToTarget}), so the tie group matches the
+  // order: two targets only tie when they are equally far to WALK to.
   const gradeless = isGradelessNeutralAttacker(attacker);
+  const distanceTo = neutralTargetDistances(combat, attacker, sortedPool);
   const best = sortedPool[0];
   const bestNoTier = isNoTierTarget(best);
   const bestPriority = gradeless || bestNoTier ? 0 : tierPriority(attacker.grade, best.grade);
-  const bestDistance = getBattlefieldDistance(attacker.position, best.position);
+  const bestDistance = distanceTo.get(best.id);
   return sortedPool.filter(
     (unit) =>
       isNoTierTarget(unit) === bestNoTier &&
       (gradeless || bestNoTier || tierPriority(attacker.grade, unit.grade) === bestPriority) &&
-      getBattlefieldDistance(attacker.position, unit.position) === bestDistance
+      distanceTo.get(unit.id) === bestDistance
   );
 }
 
@@ -179,7 +227,7 @@ function leadingTieGroup(attacker: CombatUnitState, sortedPool: CombatUnitState[
  * over enemies it can actually strike.
  */
 export function getNeutralTargetTies(combat: CombatState, attacker: CombatUnitState): CombatUnitState[] {
-  return leadingTieGroup(attacker, rankedTargetPool(combat, attacker));
+  return leadingTieGroup(combat, attacker, rankedTargetPool(combat, attacker));
 }
 
 /**
@@ -215,12 +263,16 @@ function attackableTargetPool(
 }
 
 export function sortNeutralTargetCandidates(
+  combat: CombatState,
   attacker: CombatUnitState,
   candidates: CombatUnitState[]
 ): CombatUnitState[] {
   // A gradeless Creature Bank guard has no tier of its own, so it never applies
   // the same-tier priority and ranks every target purely by distance.
   const gradeless = isGradelessNeutralAttacker(attacker);
+  // Walking distance to each candidate, computed once (path-aware: other units
+  // and obstacles wall a ground mover in; flyers pass over them).
+  const distanceTo = neutralTargetDistances(combat, attacker, candidates);
   return [...candidates].sort((left, right) => {
     // No-tier targets (summoned units OR gradeless bank-guard cards) always sort
     // behind graded ones, whatever their tier or distance — the AI exhausts real
@@ -241,9 +293,7 @@ export function sortNeutralTargetCandidates(
       }
     }
 
-    const distance =
-      getBattlefieldDistance(attacker.position, left.position) -
-      getBattlefieldDistance(attacker.position, right.position);
+    const distance = (distanceTo.get(left.id) ?? 0) - (distanceTo.get(right.id) ?? 0);
     if (distance !== 0) {
       return distance;
     }
@@ -301,7 +351,7 @@ export function planNeutralActivation(
   // wandering toward an out-of-reach favourite while an attackable enemy waits.
   const attackable = attackableTargetPool(state, combat, unit);
   if (attackable.length > 0) {
-    const ties = leadingTieGroup(unit, attackable);
+    const ties = leadingTieGroup(combat, unit, attackable);
     if (!forcedTargetId && ties.length > 1) {
       return { kind: "choose-target", candidateIds: ties.map((candidate) => candidate.id) };
     }

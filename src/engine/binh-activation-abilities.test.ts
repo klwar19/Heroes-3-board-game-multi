@@ -424,6 +424,48 @@ describe("neutral Faerie Dragons zap a target then act", () => {
     expect(target?.controllerId).toBe("p1");
     expect((target?.damage ?? 0)).toBeGreaterThanOrEqual(2);
   });
+
+  it("logs the Ice Bolt cast AND its damage BEFORE the dragon moves (the order the FX preamble needs)", () => {
+    // The FX layer presents the cast first and holds the glide behind it, relying
+    // on the engine logging cast -> spell damage -> move within the one pump. If
+    // the engine ever moved first, that preamble would animate a bolt the table
+    // should have seen already. A flying dragon two squares from its prey must
+    // step in to melee, so a real UNIT_MOVED is produced to order against.
+    let state = neutralFightWithGuard((guard) => {
+      guard.name = "Faerie Dragons";
+      guard.cardName = "Faerie Dragons";
+      guard.type = "flying";
+      guard.abilities = ["faerie-dragon-spell"];
+      guard.attack = 5;
+      guard.initiative = 1;
+      guard.position = 5; // two squares above the player unit at 13: it must move in
+    });
+    const guardId = Object.values(state.combat!.units).find(
+      (unit) => unit.controllerId === NEUTRAL_PLAYER_ID
+    )!.id;
+    // The player unit must survive the 2-damage bolt so the dragon then steps in
+    // to melee it — otherwise the bolt ends the fight and there is no move.
+    const prey = Object.values(state.combat!.units).find((unit) => unit.controllerId === "p1")!;
+    prey.maxHealth = 20;
+    prey.damage = 0;
+    script(state, [0, 0, 0, 0, 0, 0]);
+
+    state = defendThrough(state);
+
+    const log = state.eventLog;
+    const boltIndex = log.findIndex(
+      (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "faerie-dragon-spell"
+    );
+    const moveIndex = log.findIndex((event) => event.type === "UNIT_MOVED" && event.unitId === guardId);
+    expect(boltIndex, "the dragon should cast its bolt").toBeGreaterThanOrEqual(0);
+    expect(moveIndex, "the dragon should step in to melee").toBeGreaterThanOrEqual(0);
+    // The cast leads the glide.
+    expect(boltIndex).toBeLessThan(moveIndex);
+    // The bolt's damage is logged immediately after the cast (applyActivation-
+    // DamageSpell), so it too precedes the move.
+    expect(log[boltIndex + 1]?.type).toBe("DAMAGE_ASSIGNED");
+    expect(boltIndex + 1).toBeLessThan(moveIndex);
+  });
 });
 
 describe("neutral Harpies always fly back", () => {

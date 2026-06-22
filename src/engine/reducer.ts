@@ -11810,7 +11810,7 @@ function autoResolveNeutralAbilityChoice(state: GameState, cards: CardLibrary): 
 
   const enemies = candidates.filter((unit) => unit.controllerId !== source.controllerId);
   const pool = enemies.length > 0 ? enemies : candidates;
-  const sorted = sortNeutralTargetCandidates(source, pool);
+  const sorted = sortNeutralTargetCandidates(combat, source, pool);
   const target =
     enemies.length > 0
       ? sorted[0]
