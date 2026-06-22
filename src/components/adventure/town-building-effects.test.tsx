@@ -171,6 +171,42 @@ describe("TownPanel — in-place special-building effect / use buttons", () => {
     expect(pub.textContent).not.toMatch(/No special effect/i);
   });
 
+  it("lets a Conflux player run the Magic University in place and dispatches the per-school dig", () => {
+    const { state } = townWith("conflux", ["conflux.magic_university"]);
+    const onAction = vi.fn();
+    render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={onAction} state={state} viewerPlayerId="p1" />);
+
+    // With the once-per-round dig unused, the building reads as actionable ("Use"),
+    // not just a passive "Effect" — the engine offers one action per school.
+    fireEvent.click(within(tileFor("Magic University")).getByRole("button", { name: /Use/ }));
+    const panel = screen.getByLabelText("Magic University effect");
+
+    // All four schools are offered as clickable buttons.
+    for (const school of ["Air", "Earth", "Fire", "Water"]) {
+      expect(within(panel).getByRole("button", { name: new RegExp(`${school} Magic spell`, "i") })).toBeTruthy();
+    }
+
+    fireEvent.click(within(panel).getByRole("button", { name: /Fire Magic spell/i }));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction.mock.calls[0][0]).toMatchObject({
+      type: "MAGIC_UNIVERSITY_ACTION",
+      playerId: "p1",
+      school: "fire"
+    });
+  });
+
+  it("shows the Magic University as spent once used this round (no dig buttons)", () => {
+    const { state } = townWith("conflux", ["conflux.magic_university"]);
+    state.players.p1.magicUniversityUsedRound = state.round;
+    render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
+
+    // No school action is offered, so the tile is a passive "Effect" panel whose
+    // status line reports it is spent for the round.
+    const panel = openPanel("Magic University");
+    expect(within(panel).queryByRole("button", { name: /Magic spell/i })).toBeNull();
+    expect(panel.textContent).toMatch(/already used this round/i);
+  });
+
   it("offers no effect button for a plain dwelling", () => {
     const { state } = townWith("castle", ["castle.dwelling_bronze"]);
     render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
