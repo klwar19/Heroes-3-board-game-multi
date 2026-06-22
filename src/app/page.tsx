@@ -958,8 +958,18 @@ export default function Home() {
               event.type === "UNIT_MOVED" && !seenFxIdsRef.current.has(event.id)
           )
         : [];
-      const movedNeutralAttackerIds = new Set(
+      // Split a unit's moves into the approach (its slide toward the target,
+      // before its die) and the after-attack fly-back (a Harpy's "Strike and
+      // Return"). Done up front so the neutral pre-attack pause keys off the
+      // APPROACH only — a return move arriving in the post-reaction snapshot
+      // (when a reaction window split the roll off a frame later) must never be
+      // mistaken for an approach and stall the dice waiting for it.
+      const { approach: approachMoves, afterAttack: returnMoves } = partitionCombatMoves(
+        nextState.eventLog,
         freshCombatMoves
+      );
+      const movedNeutralAttackerIds = new Set(
+        approachMoves
           .filter((move) => move.playerId === NEUTRAL_PLAYER_ID && fresh.some((roll) => roll.attackerId === move.unitId))
           .map((move) => move.unitId)
       );
@@ -1159,11 +1169,9 @@ export default function Home() {
         // ranged unit's step after shooting — are held until the strike has
         // played out (queued after the attack loop below). A neutral guard
         // resolves move → attack → return in one snapshot, so without this the
-        // Harpy would teleport home before its die was ever thrown.
-        const { approach: approachMoves, afterAttack: returnMoves } = partitionCombatMoves(
-          nextState.eventLog,
-          freshCombatMoves
-        );
+        // Harpy would teleport home before its die was ever thrown. The
+        // approach/return split was computed up front (see above) so the dice
+        // pacing and this presentation share one source of truth.
         approachMoves.forEach((event, index) => {
           const unit = nextState.combat?.units[event.unitId];
           const moveDelay = index * 130;
@@ -1181,6 +1189,18 @@ export default function Home() {
           });
           playUnitSound(unitVoice(event.unitId), "move", moveDelay);
         });
+
+        // How long the slide-in takes (the last approach ghost reaching its
+        // cell). A neutral guard that moves in and then declares its attack lands
+        // its move + declaration in one snapshot, BEFORE its die is rolled (a
+        // reaction window can strand the roll a snapshot later). Holding the
+        // presentation for this long keeps the "react?" window / reaction tray
+        // off screen until the unit has finished arriving — so a Harpy reads as
+        // "fly in → attack window → (after the strike) fly back", never a window
+        // popping over a card still sliding across the board.
+        const approachMovesEnd =
+          approachMoves.length > 0 ? (approachMoves.length - 1) * 130 + COMBAT_MOVE_MS : 0;
+        combatPresentationEnd = Math.max(combatPresentationEnd, approachMovesEnd);
 
         // Attack strikes are driven off the rolls, not the declarations: an
         // ATTACK_ROLLED event always shares a snapshot with its dice and damage,
@@ -1936,7 +1956,7 @@ export default function Home() {
         // breather) and, on the killing blow, the victory/defeat modal.
         // combatPresentationEnd tracks the last effect's full tail; timeline
         // covers trailing cues.
-        if (fresh.length > 0 || combatFxActive) {
+        if (fresh.length > 0 || combatFxActive || approachMoves.length > 0) {
           const presentationMs = Math.max(timeline, combatPresentationEnd);
           if (combatPresentTimerRef.current) {
             window.clearTimeout(combatPresentTimerRef.current);
@@ -2993,7 +3013,13 @@ export default function Home() {
               viewerPlayerId={viewerPlayerId}
             />
           ) : null}
-          <PromptTray legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
+          {/* Hold any choice prompt (a Treasure die's "choose one result", the
+              Resource-die gains, …) until the dice it is asking about have
+              finished tumbling — so the calculation never reads out over a die
+              still in the air. */}
+          {!dice.current && !mapDice.current ? (
+            <PromptTray legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
+          ) : null}
           <LearningOfferModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
           <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
           <LogDrawer state={state} />
@@ -3209,12 +3235,19 @@ export default function Home() {
         items={feedItems}
         onDismiss={(id) => setFeedItems((current) => current.filter((item) => item.id !== id))}
       />
-      <PromptTray legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
+      {/* Same gate on the combat-table layout: a choice prompt waits out any
+          attack/map die animation before reading its result. */}
+      {!dice.current && !mapDice.current ? (
+        <PromptTray legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
+      ) : null}
       <LearningOfferModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
       {/* Hold the instant window back until the attack-die animation has fully
           played out, so a post-roll reaction prompt (e.g. a lethal-save window
-          in a neutral fight) never pops over the rolling dice. */}
-      {!dice.current ? (
+          in a neutral fight) never pops over the rolling dice. `combatPresenting`
+          also covers a guard's slide-in: the reaction window waits until the
+          attacker has finished moving into range (a Harpy flies in BEFORE its
+          attack window opens), never popping over the card still gliding. */}
+      {!dice.current && !combatPresenting ? (
         <ReactionTray
           key={`${state.reactionWindow?.id ?? "none"}:${state.reactionWindow?.priorityPlayerId ?? ""}`}
           legalActions={legalActions}
