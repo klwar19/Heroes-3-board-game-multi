@@ -135,7 +135,7 @@ describe("Tome artifact definitions", () => {
 describe("Tome option A: School Spell-deck dig", () => {
   it("Tome of Fire finds the first Fire spell, skipping a non-Fire one on top", () => {
     let state = createAdventureGameState({ seed: "tome-dig", difficulty: "normal", rollFirstPlayer: false });
-    state = state.players.p1.needsHandRefresh ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }) : state;
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }) : state;
     state.activePlayerId = "p1";
     state.players.p1.hand = [TOME_FIRE];
     // Draw pile top is the LAST element: Haste (air) sits on top, Curse (fire)
@@ -166,7 +166,7 @@ describe("Tome option A: School Spell-deck dig", () => {
 
   it("does nothing when the Spell deck holds no spell of that School", () => {
     let state = createAdventureGameState({ seed: "tome-dig-empty", difficulty: "normal", rollFirstPlayer: false });
-    state = state.players.p1.needsHandRefresh ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }) : state;
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }) : state;
     state.activePlayerId = "p1";
     state.players.p1.hand = [TOME_WATER];
     // Only Air/Fire spells present — a Water dig finds nothing.

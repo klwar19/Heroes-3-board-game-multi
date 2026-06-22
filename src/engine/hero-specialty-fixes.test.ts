@@ -58,6 +58,7 @@ describe("Inferno starting tile data", () => {
         { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
       ]
     });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const tiles = Object.values(state.adventure!.tiles);
     expect(tiles.some((tile) => tile.tileDefId === "S6")).toBe(true);
     expect(tiles.some((tile) => tile.tileDefId === "S5")).toBe(false);
@@ -188,6 +189,7 @@ describe("Gem's First Aid I", () => {
         { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
       ]
     });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.activePlayerId = "p1";
     state.pendingChoice = null;
     state.reactionWindow = null;

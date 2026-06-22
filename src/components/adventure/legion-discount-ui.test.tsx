@@ -13,6 +13,7 @@ afterEach(cleanup);
  */
 function castleTownState(buildings: string[]): GameState {
   const state = createAdventureGameState({ seed: "legion-ui", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
   state.activePlayerId = "p1";
   state.players.p1.factionId = "castle";
   state.players.p1.needsHandRefresh = false;
