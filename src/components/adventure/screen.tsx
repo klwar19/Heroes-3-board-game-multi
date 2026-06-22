@@ -254,6 +254,28 @@ export function HexMapBoard({
   const dragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null);
   const suppressClickRef = useRef(false);
 
+  // A tap on a would-be move target while the MANDATORY start-of-turn draw is
+  // still pending shows a brief, single, auto-fading "draw first" note anchored
+  // at that hex — a gentle reminder, never a stacked or repeating toast (a fresh
+  // tap just re-anchors the one note and restarts its timer).
+  const [drawReminderAt, setDrawReminderAt] = useState<MapSpaceId | null>(null);
+  const drawReminderTimer = useRef<number | null>(null);
+  const remindToDraw = (spaceId: MapSpaceId) => {
+    setDrawReminderAt(spaceId);
+    if (drawReminderTimer.current) {
+      window.clearTimeout(drawReminderTimer.current);
+    }
+    drawReminderTimer.current = window.setTimeout(() => setDrawReminderAt(null), 2600);
+  };
+  useEffect(
+    () => () => {
+      if (drawReminderTimer.current) {
+        window.clearTimeout(drawReminderTimer.current);
+      }
+    },
+    []
+  );
+
   // Wheel-to-zoom is wired as a native non-passive listener (React routes wheel
   // through a passive root listener, so preventDefault from onWheel is ignored
   // and the page would still scroll). The listener is only attached while the
@@ -299,6 +321,17 @@ export function HexMapBoard({
   const rotatingTile = pendingTileChoice ? rawAdventure?.tiles[pendingTileChoice.tileInstanceId] : null;
   const iAmRotating = Boolean(pendingTileChoice && pendingTileChoice.playerId === viewerPlayerId && !readOnly);
 
+  // The mandatory start-of-turn draw (or the forced over-limit discard) is still
+  // unspent on my own quiet map turn — movement is locked until I draw.
+  const drawPending = Boolean(
+    myTurn &&
+      !readOnly &&
+      !state.combat &&
+      !pendingTileChoice &&
+      !rawAdventure?.pendingVisit &&
+      (state.players[viewerPlayerId]?.needsHandRefresh || state.players[viewerPlayerId]?.canMulligan)
+  );
+
   // Reachable click-to-move targets, computed from the live rules.
   const reachable = useMemo(() => {
     if (!myHero || !myTurn || readOnly || pendingTileChoice || state.combat || rawAdventure?.pendingVisit) {
@@ -312,6 +345,16 @@ export function HexMapBoard({
     }
     return getReachableHeroPaths(state, myHero);
   }, [state, myHero, myTurn, readOnly, pendingTileChoice, rawAdventure?.pendingVisit, viewerPlayerId]);
+
+  // While the draw is unspent, the fields the hero COULD step onto once it draws.
+  // These render locked (dimmed) and a tap reminds the player to draw first
+  // instead of moving — so an attempted move never just silently does nothing.
+  const drawReminderTargets = useMemo(() => {
+    if (!drawPending || !myHero) {
+      return new Map<MapSpaceId, HeroPathTarget>();
+    }
+    return getReachableHeroPaths(state, myHero);
+  }, [drawPending, myHero, state]);
 
   const discoverByTile = useMemo(() => {
     const targets = new Map<string, GameAction>();
@@ -632,6 +675,7 @@ export function HexMapBoard({
 
       const location = locationDefinitions[field.location];
       const target = reachable.get(spaceId);
+      const remindMove = drawReminderTargets.get(spaceId);
       const endTurnMove = endTurnMoveTargets.get(spaceId);
       const guarded = Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
       const glyph = LOCATION_GLYPHS[field.location] ?? "";
@@ -643,6 +687,7 @@ export function HexMapBoard({
             "hexCell",
             field.location === "blocked_field" ? "blocked" : "",
             target ? "moveTarget" : "",
+            remindMove ? "moveTargetLocked" : "",
             endTurnMove ? "endTurnMoveTarget" : "",
             isSelected ? "selectedTarget" : "",
             artShown ? "withArt" : ""
@@ -667,7 +712,14 @@ export function HexMapBoard({
                       }
                       setSelectedTarget(selectedTarget?.spaceId === spaceId ? null : target);
                     }
-                  : undefined
+                  : remindMove
+                    ? () => {
+                        if (suppressClickRef.current) {
+                          return;
+                        }
+                        remindToDraw(spaceId);
+                      }
+                    : undefined
           }
           points={hexCorners(x, y, HEX_SIZE - 1.2)}
         >
@@ -1054,6 +1106,30 @@ export function HexMapBoard({
                     <X size={13} /> Cancel
                   </button>
                 </div>
+              </div>
+            </div>
+          </foreignObject>
+        </g>
+      );
+    }
+  }
+
+  // The mandatory-draw reminder: a brief, auto-fading note anchored at the hex
+  // the player tried to move onto while the draw was still pending.
+  if (drawReminderAt && drawPending) {
+    const coord = parseHexSpaceId(drawReminderAt);
+    if (coord) {
+      const { x, y } = hexToPixel(coord, HEX_SIZE);
+      const cardW = 224;
+      const cardH = 60;
+      const gap = HEX_SIZE * 0.62;
+      const above = screenRoomAbove(y) >= cardH + gap;
+      floatingControls.push(
+        <g key="draw-reminder-float" transform={`translate(${x} ${y}) scale(${1 / camera.scale})`}>
+          <foreignObject className="mapFloatFO" height={cardH} width={cardW} x={-cardW / 2} y={above ? -cardH - gap : gap}>
+            <div className={`mapFloatOuter ${above ? "above" : "below"}`}>
+              <div className="mapFloatCard drawReminderFloat" role="status">
+                <span className="mapFloatLabel">⚠ Take your start-of-turn draw first</span>
               </div>
             </div>
           </foreignObject>

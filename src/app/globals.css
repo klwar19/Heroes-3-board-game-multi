@@ -2810,6 +2810,45 @@ button.battleCell {
   }
 }
 
+/* Mandatory start-of-turn draw still pending: the fields the hero COULD step
+   onto are shown LOCKED — a dimmed, dashed golden outline — and a tap reminds
+   the player to draw first instead of moving. */
+.hexCell.moveTargetLocked {
+  cursor: not-allowed;
+  stroke: #ffd76a;
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+  stroke-opacity: 0.5;
+  filter: brightness(1.04);
+}
+
+.hexCell.moveTargetLocked:hover {
+  stroke-opacity: 0.85;
+}
+
+/* The brief "draw first" reminder note anchored at the tapped hex. */
+.mapFloatCard.drawReminderFloat {
+  border-color: rgba(255, 196, 90, 0.85);
+  background: rgba(40, 22, 8, 0.97);
+  color: #ffd9a0;
+  animation: drawReminderFade 2.6s ease-in-out forwards;
+}
+
+@keyframes drawReminderFade {
+  0% {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  10%,
+  80% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 .hexFaceDown {
   /* The printed starry back renders beneath; hexes stay as click targets. */
   fill: transparent;
