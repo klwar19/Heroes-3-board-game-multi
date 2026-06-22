@@ -91,6 +91,21 @@ incl. **Casmetra** (now the real thelazy.net portrait, no longer a placeholder).
 
 ## Caveats (read first)
 
+- **The card ART is a 2024 preview revision; the ENGINE follows the wiki.** The
+  Gamefound reveal predates the final wiki numbers, so a few printed card faces
+  disagree with what the engine plays. Per the user's instruction ("the image
+  stats and ability is incorrect, just follow wiki"), the engine uses the wiki on
+  every card (verified by `cove-content.test.ts`); treat the art as decoration.
+  Known face-vs-engine divergences:
+
+  | Card | Printed on the art | What the ENGINE plays (wiki) |
+  |---|---|---|
+  | Oceanids **Pack** | A2 / HP4, "ignore *Water-school* spells" | **A3 / HP3**, ignore **all** spells |
+  | Seamen **Pack** | "+1 movement if you start on a Sea tile" | **gain 2 gold** when it removes a unit |
+  | Sorceresses **Few** | Attack **4** | Attack **3** |
+
+  All other faces match the wiki. If you would rather not show the mismatched
+  faces, the alternative is the blank tier placeholder for those three.
 - **Unit card art is upscaled.** The fan wiki has no individual Cove cards yet, so
   each Few/Pack face is cropped from the 1200×1500 Gamefound reveal (~245 px wide
   per card) and scaled up to the repo's 743×1040 canvas. It is the real card art,
