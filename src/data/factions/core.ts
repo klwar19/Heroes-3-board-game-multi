@@ -1484,10 +1484,11 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
   },
 
   // ---- Conflux (expansion) -----------------------------------------------
-  // Three unit-specialist Planeswalkers are wired so far (Erdamon, Monere,
-  // Pasis). The three spell/obstacle/search specialists (Ciele, Luna, Tarnum)
-  // are not added yet — their specialty mechanics are not implemented, and the
-  // engine requires every shipped hero specialty to be implemented.
+  // Four heroes wired: the unit-specialist Planeswalkers (Erdamon, Monere,
+  // Pasis) and the Fire Wall Elementalist Luna. Still deferred: Ciele (Magic
+  // Arrow) and Tarnum (Conflux, Enchanters) — their specialties need a
+  // cast-a-Spell-from-discard / cast-over-the-one-per-round-limit subsystem the
+  // engine does not have, and every shipped hero specialty must be implemented.
   erdamon: {
     id: "erdamon",
     name: "Erdamon",

@@ -11,6 +11,7 @@ import {
   createInitialGameState,
   getLegalActions,
   makeCombatUnitFromArmy,
+  standingSpellPower,
   unitMatchesSpecialtyName
 } from "./index";
 import { PLAYABLE_FACTIONS, startAdventureRound, startPlayerTurn } from "./adventure";
@@ -246,9 +247,9 @@ describe("Conflux content", () => {
     expect(hero, "Conflux player should have a main hero").toBeTruthy();
   });
 
-  it("Garden of Life lets a Conflux player recruit a free Sprites Few each round", () => {
+  function confluxGardenGame(seed: string) {
     const state = createAdventureGameState({
-      seed: "conflux-garden",
+      seed,
       rollFirstPlayer: false,
       players: [
         { id: "p1", name: "Pasis", factionId: "conflux", heroDefId: "pasis" },
@@ -268,21 +269,56 @@ describe("Conflux content", () => {
     }
     // Round 3 is a Resource round (odd > 1).
     state.round = 3;
+    return state;
+  }
+
+  it("Garden of Life recruits a free Sprites Few when you don't own one yet (exactly one, no duplicate)", () => {
+    const state = confluxGardenGame("conflux-garden");
+    // A default Conflux army already holds a Sprites Few; strip it so this case
+    // exercises the recruit branch from an empty start.
+    state.players.p1.army = state.players.p1.army.filter((unit) => unit.unitDefId !== "conflux.sprites");
     const goldBefore = state.players.p1.resources.gold;
-    const spritesBefore = state.players.p1.army.filter((unit) => unit.unitDefId === "conflux.sprites").length;
     startAdventureRound(state);
     pumpAdventureQueues(state);
 
     const recruit = getLegalActions(state, "p1").find((legal) => legal.label.includes("Recruit Sprites"));
-    expect(recruit, "the free-Sprites recruit option should be offered").toBeTruthy();
+    expect(recruit, "the free-Sprites recruit option should be offered when none are owned").toBeTruthy();
     const next = applyOk(state, recruit!.action);
     pumpAdventureQueues(next);
 
-    const spritesAfter = next.players.p1.army.filter((unit) => unit.unitDefId === "conflux.sprites" && unit.side === "few").length;
-    expect(spritesAfter).toBe(spritesBefore + 1);
+    const sprites = next.players.p1.army.filter((unit) => unit.unitDefId === "conflux.sprites");
+    expect(sprites).toHaveLength(1);
+    expect(sprites[0].side).toBe("few");
     // It was free — gold is unchanged by the recruit itself (resource-round income
     // may have been gained, but no gold was spent on the unit).
     expect(next.players.p1.resources.gold).toBeGreaterThanOrEqual(goldBefore);
+  });
+
+  it("Garden of Life reinforces (never duplicate-recruits) the Sprites Few you already own", () => {
+    // Regression: a unit card exists once. A Conflux player starts WITH a Sprites
+    // Few, so the Garden must offer to reinforce it — not to recruit a second
+    // Sprites card that would stack a duplicate Few in the army every round.
+    const state = confluxGardenGame("conflux-garden-owned");
+    const spritesBefore = state.players.p1.army.filter((unit) => unit.unitDefId === "conflux.sprites");
+    expect(spritesBefore, "the default Conflux army holds exactly one Sprites Few").toHaveLength(1);
+    expect(spritesBefore[0].side).toBe("few");
+    startAdventureRound(state);
+    pumpAdventureQueues(state);
+
+    const labels = getLegalActions(state, "p1")
+      .filter((legal) => legal.label.includes("Sprites"))
+      .map((legal) => legal.label);
+    expect(labels.some((label) => label.includes("Recruit Sprites"))).toBe(false);
+    const reinforce = getLegalActions(state, "p1").find((legal) => legal.label.includes("Reinforce Sprites"));
+    expect(reinforce, "owning a Sprites Few should offer the free reinforce").toBeTruthy();
+
+    const next = applyOk(state, reinforce!.action);
+    pumpAdventureQueues(next);
+
+    // Still a single Sprites card — now a Pack, not a second Few.
+    const spritesAfter = next.players.p1.army.filter((unit) => unit.unitDefId === "conflux.sprites");
+    expect(spritesAfter).toHaveLength(1);
+    expect(spritesAfter[0].side).toBe("pack");
   });
 });
 
@@ -356,6 +392,35 @@ describe("Conflux elemental school spell-power boost", () => {
     // The Magi (school-less) boost still lands on any school.
     expect(getActivationSpellPowerBoost(unitWith(["magi-power-boost"]), ["fire"])).toBe(1);
     expect(getActivationSpellPowerBoost(unitWith(["magi-power-boost"]))).toBe(1);
+  });
+
+  it("standingSpellPower (UI/cost preview) counts the school-scoped boost so it agrees with the cast", () => {
+    // standingSpellPower drives the spell-power preview, the Sorrow power-cost
+    // affordability check and the pool-scaling attack power. It must include the
+    // SAME school-scoped Elemental boost performSpellCast applies, or the preview
+    // and the resolved cast disagree. (Regression: it dropped the school-scoped
+    // boost by calling getActivationSpellPowerBoost without the card's schools.)
+    const state = createInitialGameState("conflux-standing-power");
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.players.p1.combatStats.spellsCastThisRound = 0;
+    const airSpell = cardLibrary["spell.lightning_bolt"]; // school: air
+    const fireSpell = cardLibrary["spell.curse"]; // school: fire
+
+    // Storm Elemental (Air) active: its first Air spell previews +1; a Fire spell
+    // (wrong school) gets nothing.
+    state.combat!.units.unit_p1_griffins.abilities = ["storm-elemental-air-power"];
+    expect(standingSpellPower(state, "p1", airSpell)).toBe(1);
+    expect(standingSpellPower(state, "p1", fireSpell)).toBe(0);
+
+    // Control 1 — no Elemental ability: even the Air spell previews 0.
+    state.combat!.units.unit_p1_griffins.abilities = [];
+    expect(standingSpellPower(state, "p1", airSpell)).toBe(0);
+
+    // Control 2 — the school-less Magi boost still previews on any school.
+    state.combat!.units.unit_p1_griffins.abilities = ["magi-power-boost"];
+    expect(standingSpellPower(state, "p1", airSpell)).toBe(1);
+    expect(standingSpellPower(state, "p1", fireSpell)).toBe(1);
   });
 
   /**
