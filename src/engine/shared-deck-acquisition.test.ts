@@ -242,6 +242,127 @@ describe("openSharedDeckSearch — the take-the-top-discard branch", () => {
   });
 });
 
+describe("Scouting auto-use — a held Scouting boosts every shared-deck Search", () => {
+  function freshState(seed: string) {
+    const state = createInitialGameState(seed);
+    state.activePlayerId = "p1";
+    state.players.p1.hand = [];
+    state.players.p1.deck = [];
+    state.players.p1.discard = [];
+    return state;
+  }
+
+  // Five distinct, acquirable Castle abilities (p1's deck is empty, so it owns
+  // none of them and never redraws past one) — enough to reveal up to five.
+  const fiveAbilities = [
+    "ability.offense",
+    "ability.armorer",
+    "ability.archery",
+    "ability.resistance",
+    "ability.leadership"
+  ];
+
+  it("auto-plays a held Scouting so a Search (2) reveals THREE cards, spending the card", () => {
+    const state = freshState("scout-auto");
+    state.players.p1.hand = ["ability.scouting"];
+    state.decks.abilities.drawPile = [...fiveAbilities];
+    state.decks.abilities.discardPile = [];
+
+    revealSharedDeckSearch(state, "p1", "abilities", 2);
+
+    // The observable effect: Search (3) instead of (2) — three cards revealed.
+    expect(state.pendingChoice?.type).toBe("DECK_SEARCH");
+    if (state.pendingChoice?.type !== "DECK_SEARCH") {
+      throw new Error("expected a DECK_SEARCH choice");
+    }
+    expect(state.pendingChoice.revealedCardIds).toHaveLength(3);
+
+    // The Scouting card was played for free: out of hand, into the discard, and
+    // logged as a CARD_PLAYED.
+    expect(state.players.p1.hand).not.toContain("ability.scouting");
+    expect(state.players.p1.discard).toContain("ability.scouting");
+    expect(
+      state.eventLog.some((event) => event.type === "CARD_PLAYED" && event.cardId === "ability.scouting")
+    ).toBe(true);
+  });
+
+  it("reveals only the base count when no Scouting is held (control)", () => {
+    const state = freshState("scout-none");
+    state.decks.abilities.drawPile = [...fiveAbilities];
+    state.decks.abilities.discardPile = [];
+
+    revealSharedDeckSearch(state, "p1", "abilities", 2);
+
+    expect(state.pendingChoice?.type).toBe("DECK_SEARCH");
+    if (state.pendingChoice?.type !== "DECK_SEARCH") {
+      throw new Error("expected a DECK_SEARCH choice");
+    }
+    expect(state.pendingChoice.revealedCardIds).toHaveLength(2);
+  });
+
+  it("auto-uses on a Spell Search too (any shared deck), not just abilities", () => {
+    const state = freshState("scout-spell");
+    state.players.p1.hand = ["ability.scouting"];
+    state.decks.spells.drawPile = ["spell.haste", "spell.bloodlust", "spell.stone_skin", "spell.curse"];
+    state.decks.spells.discardPile = [];
+
+    revealSharedDeckSearch(state, "p1", "spells", 2);
+
+    expect(state.pendingChoice?.type).toBe("DECK_SEARCH");
+    if (state.pendingChoice?.type !== "DECK_SEARCH") {
+      throw new Error("expected a DECK_SEARCH choice");
+    }
+    expect(state.pendingChoice.revealedCardIds).toHaveLength(3);
+    expect(state.players.p1.discard).toContain("ability.scouting");
+  });
+
+  it("does NOT waste Scouting on a Search already as big as (or bigger than) 3", () => {
+    const state = freshState("scout-big");
+    state.players.p1.hand = ["ability.scouting"];
+    state.decks.abilities.drawPile = [...fiveAbilities];
+    state.decks.abilities.discardPile = [];
+
+    revealSharedDeckSearch(state, "p1", "abilities", 5);
+
+    // Basic Scouting (3) can't improve a Search (5): keep the card in hand.
+    expect(state.players.p1.hand).toContain("ability.scouting");
+    if (state.pendingChoice?.type === "DECK_SEARCH") {
+      expect(state.pendingChoice.revealedCardIds).toHaveLength(5);
+    }
+  });
+
+  it("does not burn a held Scouting when an Expert override was already played (manual Expert wins)", () => {
+    const state = freshState("scout-manual-expert");
+    state.players.p1.hand = ["ability.scouting"];
+    state.decks.abilities.drawPile = [...fiveAbilities];
+    state.decks.abilities.discardPile = [];
+    // A pre-played Expert Scouting (Search 5) already sits as an active effect.
+    state.activeEffects.push({
+      id: "effect_expert_scouting",
+      name: "Expert Scouting",
+      scope: "player",
+      duration: { type: "current-turn" },
+      polarity: "positive",
+      removable: false,
+      modifiers: [{ type: "SEARCH_COUNT_OVERRIDE", count: 5 }],
+      source: { type: "system" },
+      controllerId: "p1",
+      startedRound: state.round,
+      usedRollEventIds: [],
+      usedChoiceIds: [],
+      usedCombatRoundNumbers: []
+    });
+
+    revealSharedDeckSearch(state, "p1", "abilities", 2);
+
+    // The manual Expert override (5) is used; the held basic card is untouched.
+    expect(state.players.p1.hand).toContain("ability.scouting");
+    if (state.pendingChoice?.type === "DECK_SEARCH") {
+      expect(state.pendingChoice.revealedCardIds).toHaveLength(5);
+    }
+  });
+});
+
 describe("Witch Hut — hands out an Ability under the same rules", () => {
   function witchHutState(seed: string): GameState {
     const state = createAdventureGameState({
