@@ -2460,6 +2460,10 @@ export default function Home() {
     const handCards = isSeated ? (playerView.players[viewerPlayerId]?.hand ?? []) : [];
     // Spell Book (house rule): the seated player's stored Spells (owner-private).
     const spellBookCards = isSeated ? (playerView.players[viewerPlayerId]?.spellBook ?? []) : [];
+    // The panel is shown from the very start of the game (even empty) whenever
+    // the house rule is on, so a player always knows the Book exists and can open
+    // it to see whether it holds any Spells.
+    const spellBookOn = isSeated && (state.adventure?.spellBook ?? true);
     const handLimit = viewer ? effectiveHandLimit(state, viewerPlayerId) : 0;
     // Over the hand limit at the start of the turn (only via card effects):
     // the player MUST discard down to the limit before acting.
@@ -2656,13 +2660,17 @@ export default function Home() {
                 view={playerView}
                 viewerPlayerId={viewerPlayerId}
               />
-              {spellBookCards.length > 0 ? (
-                <div className="spellBookPanel">
+              {spellBookOn ? (
+                <div className={`spellBookPanel ${spellBookCards.length === 0 ? "empty" : ""}`}>
                   <button
                     aria-expanded={spellBookOpen}
                     className={`spellBookToggle ${spellBookOpen ? "open" : ""}`}
                     onClick={() => setSpellBookOpen((value) => !value)}
-                    title="Your Spell Book — stored Spells you can cast (normal Spell limit applies)"
+                    title={
+                      spellBookCards.length === 0
+                        ? "Your Spell Book is empty — stash a hand Spell with its 📖 button to store it here"
+                        : "Your Spell Book — stored Spells you can cast (normal Spell limit applies)"
+                    }
                     type="button"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element -- small pixelated game icon, not a content image */}
@@ -2673,7 +2681,17 @@ export default function Home() {
                   {spellBookOpen ? (
                     <div className="spellBookWindow" role="menu" aria-label="Spell Book">
                       <strong>Spell Book</strong>
-                      <small>Cast a stored Spell, or stash a hand Spell here with the 📖 button on its card.</small>
+                      {spellBookCards.length === 0 ? (
+                        <>
+                          <small>Your Spell Book is empty.</small>
+                          <small className="spellBookHint">
+                            Stash a hand Spell here with the 📖 button on its card to free a hand slot (Magic Arrow
+                            cannot be stored).
+                          </small>
+                        </>
+                      ) : (
+                        <small>Cast a stored Spell, or stash a hand Spell here with the 📖 button on its card.</small>
+                      )}
                       {spellBookCards.map((spellId, bookIndex) => {
                         const casts = bookPlayActionsByCard.get(spellId) ?? [];
                         return (

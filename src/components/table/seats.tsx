@@ -12,6 +12,7 @@ import {
   describePermanentEffect,
   getPermanentCardIds,
   playerSpellCastsIgnoreLimit,
+  spellBookRuleEnabled,
   type GameAction,
   type GameState,
   type LegalAction,
@@ -403,18 +404,25 @@ export function HandFan({
   // the icon opens a window listing them with their available cast buttons.
   const spellBook = player.spellBook ?? [];
   const bookCastActions = cardActions.filter((legal) => legal.action.fromSpellBook);
+  // The Book icon is shown from the start whenever the house rule is on (even
+  // empty), so the player can always open it to see what it holds.
+  const showSpellBook = spellBookRuleEnabled(state);
 
   return (
     <div className={`handFan ${trayActive ? "muted" : ""}`} aria-label="Your hand" data-fx-anchor={`hand:${viewerPlayerId}`}>
-      {spellBook.length > 0 || scrolls.length > 0 ? (
+      {showSpellBook || scrolls.length > 0 ? (
         <div className="spellShelf" aria-label="Spell Book and Spell Scrolls">
-          {spellBook.length > 0 ? (
+          {showSpellBook ? (
             <div className="shelfItem">
               <button
                 aria-expanded={shelfOpen === "book"}
-                className={`shelfIcon ${shelfOpen === "book" ? "open" : ""}`}
+                className={`shelfIcon ${shelfOpen === "book" ? "open" : ""} ${spellBook.length === 0 ? "empty" : ""}`}
                 onClick={() => setShelfOpen(shelfOpen === "book" ? null : "book")}
-                title="Spell Book — cast a stored Spell (normal Spell limit applies)"
+                title={
+                  spellBook.length === 0
+                    ? "Spell Book — empty (stash Spells on your map turn to store them here)"
+                    : "Spell Book — cast a stored Spell (normal Spell limit applies)"
+                }
                 type="button"
               >
                 <img alt="Spell Book" className="shelfGlyph" src={assetUrl("/assets/ui/spell-book-button.png")} />
