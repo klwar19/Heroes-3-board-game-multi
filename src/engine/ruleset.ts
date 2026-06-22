@@ -539,6 +539,25 @@ export function spellBookPowerAvailable(player: PlayerState): boolean {
   return !player.combatStats.spellBookPowerUsedThisTurn;
 }
 
+/**
+ * Whether playing `cardId` on its Expert side is free of a crown for this
+ * player — true only for an ability the player has had Empowered (the Dragon
+ * Fly Hive / Griffin Conservatory Creature Bank bonus). The `empoweredAbilities`
+ * list only ever holds ability card ids, so a plain id match is enough.
+ */
+export function abilityExpertIsCrownFree(player: PlayerState, cardId: string | undefined): boolean {
+  return Boolean(cardId && player.empoweredAbilities?.includes(cardId));
+}
+
+/**
+ * Whether this player may play `cardId` on its Expert side right now: either a
+ * crown (Expert use) is available, or the card is an Empowered ability whose
+ * Expert side costs no crown.
+ */
+export function canPlayExpertMode(player: PlayerState, cardId: string | undefined): boolean {
+  return expertUsesAvailable(player) > 0 || abilityExpertIsCrownFree(player, cardId);
+}
+
 /** Whether a card id is a spell in the given library. */
 export function isSpellCard(cards: CardLibrary, cardId: string): boolean {
   return cards[cardId]?.kind === "spell";

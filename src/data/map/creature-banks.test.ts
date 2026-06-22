@@ -241,45 +241,63 @@ describe("Creature Bank rewards", () => {
     expect(choices.every((step) => step.type === "CHOOSE_ONE")).toBe(true);
   });
 
+  // Pulls the GAIN_UNIT out of a unit bank's reward sequence (which now also
+  // carries the HOUSE-RULE EMPOWER_ABILITY bonus as its second interaction).
+  function unitGain(reward: ReturnType<(typeof CREATURE_BANKS)["dragon_fly_hive"]["buildReward"]>) {
+    expect(reward.type).toBe("SEQUENCE");
+    if (reward.type !== "SEQUENCE") return undefined;
+    expect(reward.interactions[1]).toEqual({ type: "EMPOWER_ABILITY" });
+    return reward.interactions[0];
+  }
+
   it("gains a Few normally and a Stacked Pack (2+ Stacked defenders) from the unit banks", () => {
     // Dragon Fly Hive → Dragon Flies; Griffin Conservatory → Griffins. A Pack is
     // the game's "Stacked" version, gained only when at least 2 defenders Stacked.
     expect(CREATURE_BANKS.dragon_fly_hive.rewardStatus).toBe("implemented");
-    expect(CREATURE_BANKS.dragon_fly_hive.buildReward(0)).toEqual({
+    expect(unitGain(CREATURE_BANKS.dragon_fly_hive.buildReward(0))).toEqual({
       type: "GAIN_UNIT",
       unitDefId: "fortress.dragon_flies",
       side: "few"
     });
-    expect(CREATURE_BANKS.dragon_fly_hive.buildReward(1)).toEqual({
+    expect(unitGain(CREATURE_BANKS.dragon_fly_hive.buildReward(1))).toEqual({
       type: "GAIN_UNIT",
       unitDefId: "fortress.dragon_flies",
       side: "few"
     });
-    expect(CREATURE_BANKS.dragon_fly_hive.buildReward(2)).toEqual({
+    expect(unitGain(CREATURE_BANKS.dragon_fly_hive.buildReward(2))).toEqual({
       type: "GAIN_UNIT",
       unitDefId: "fortress.dragon_flies",
       side: "pack"
     });
 
     expect(CREATURE_BANKS.griffin_conservatory.rewardStatus).toBe("implemented");
-    expect(CREATURE_BANKS.griffin_conservatory.buildReward(1)).toEqual({
+    expect(unitGain(CREATURE_BANKS.griffin_conservatory.buildReward(1))).toEqual({
       type: "GAIN_UNIT",
       unitDefId: "castle.griffins",
       side: "few"
     });
-    expect(CREATURE_BANKS.griffin_conservatory.buildReward(3)).toEqual({
+    expect(unitGain(CREATURE_BANKS.griffin_conservatory.buildReward(3))).toEqual({
       type: "GAIN_UNIT",
       unitDefId: "castle.griffins",
       side: "pack"
     });
   });
 
+  it("also Empowers an ability (HOUSE RULE) alongside the unit gain at both unit banks", () => {
+    for (const id of ["dragon_fly_hive", "griffin_conservatory"] as const) {
+      const reward = CREATURE_BANKS[id].buildReward(1);
+      expect(reward.type).toBe("SEQUENCE");
+      if (reward.type !== "SEQUENCE") continue;
+      expect(reward.interactions.some((step) => step.type === "EMPOWER_ABILITY")).toBe(true);
+    }
+  });
+
   it("only fields units whose gained card exists with the Few/Pack side it grants", () => {
     // The gain-a-unit reward hands out a recruitable card, which must have the side.
     for (const id of ["dragon_fly_hive", "griffin_conservatory"] as const) {
-      const reward = CREATURE_BANKS[id].buildReward(2);
-      expect(reward.type).toBe("GAIN_UNIT");
-      if (reward.type !== "GAIN_UNIT") continue;
+      const reward = unitGain(CREATURE_BANKS[id].buildReward(2));
+      expect(reward?.type).toBe("GAIN_UNIT");
+      if (!reward || reward.type !== "GAIN_UNIT") continue;
       const def = coreUnitDefinitions[reward.unitDefId];
       expect(def, reward.unitDefId).toBeTruthy();
       expect(def.few, `${reward.unitDefId} few`).toBeTruthy();
@@ -287,9 +305,23 @@ describe("Creature Bank rewards", () => {
     }
   });
 
-  it("marks the Pyramid extra partial (only the base Search runs)", () => {
-    expect(CREATURE_BANKS.pyramid.rewardStatus).toBe("partial");
-    expect(CREATURE_BANKS.pyramid.buildReward(3)).toEqual({ type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 });
+  it("builds the Pyramid base Search plus a remove-then-Search(5) loop per Stacked defender", () => {
+    expect(CREATURE_BANKS.pyramid.rewardStatus).toBe("implemented");
+    // With no Stacked defenders the reward is just the base Search (5) Spells.
+    expect(CREATURE_BANKS.pyramid.buildReward(0)).toEqual({
+      type: "SEARCH_SHARED_DECK",
+      deckId: "spells",
+      count: 5
+    });
+    // With X Stacked defenders: base Search, then a single REMOVE_THEN_SEARCH_REPEAT
+    // that loops up to X times (each removal Searches (5) the matching deck).
+    expect(CREATURE_BANKS.pyramid.buildReward(3)).toEqual({
+      type: "SEQUENCE",
+      interactions: [
+        { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 },
+        { type: "REMOVE_THEN_SEARCH_REPEAT", times: 3, searchCount: 5 }
+      ]
+    });
   });
 });
 

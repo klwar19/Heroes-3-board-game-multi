@@ -145,6 +145,27 @@ export type LocationInteraction =
       count: number;
     }
   | {
+      /**
+       * Pyramid (Creature Bank) per-Stack extra: up to `times`, remove one
+       * Spell/Ability/Artifact card from your hand OR discard pile (out of the
+       * game), then Search (`searchCount`) the deck that matches the removed
+       * card. Each removal is optional, so the player may stop early.
+       */
+      type: "REMOVE_THEN_SEARCH_REPEAT";
+      times: number;
+      searchCount: number;
+    }
+  | {
+      /**
+       * Dragon Fly Hive / Griffin Conservatory (Creature Bank) bonus reward
+       * (HOUSE RULE): choose one Ability card you own (hand or discard) and
+       * Empower it permanently — its Expert side may then be played without
+       * spending a crown for the rest of the game. No-op if you own no
+       * non-Empowered ability.
+       */
+      type: "EMPOWER_ABILITY";
+    }
+  | {
       /** Hill Fort: reinforce one Few unit, cost reduced by 3 gold (min 0). */
       type: "HILL_FORT";
     }

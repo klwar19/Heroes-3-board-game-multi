@@ -336,6 +336,10 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} raids the ${
         CREATURE_BANKS[event.bankId as keyof typeof CREATURE_BANKS]?.name ?? "Creature Bank"
       } (${event.stackedCount} Stacked defender${event.stackedCount === 1 ? "" : "s"}).`;
+    case "ABILITY_EMPOWERED":
+      return `${playerName(state, event.playerId)} empowers ${cardName(
+        event.cardId
+      )} — its expert side now costs no crown.`;
     case "STACK_TOKEN_DISCARDED":
       return `${event.unitName} discards a Stack Token and survives the blow${
         event.excessDamage > 0 ? ` (${event.excessDamage} damage carries over)` : ""
