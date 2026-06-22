@@ -63,7 +63,7 @@ function gateHalfTo(state: GameState, towardTileId: string): MapFieldState | und
 function gateBoardState(): { state: GameState; surface: MapTileState; underground: MapTileState } {
   let state = createAdventureGameState({ seed: "subt-gate-ui", difficulty: "normal", rollFirstPlayer: false });
   state.activePlayerId = "p1";
-  if (state.players.p1.needsHandRefresh) {
+  if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
     const result = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
     expect(result.errors).toHaveLength(0);
     state = result.state;
@@ -219,7 +219,7 @@ describe("Subterranean Gate — a covered Field is unusable (visual + click)", (
   it("draws the gate token over a covered Mine (not the Mine) and lets the hero walk through with no Mine effect", () => {
     let state = createAdventureGameState({ seed: "subt-gate-mine-ui", difficulty: "normal", rollFirstPlayer: false });
     state.activePlayerId = "p1";
-    if (state.players.p1.needsHandRefresh) {
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
       const refreshed = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
       expect(refreshed.errors).toHaveLength(0);
       state = refreshed.state;

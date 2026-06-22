@@ -82,16 +82,51 @@ wired and are covered by a test that fails if the logic is removed:
   not-implemented hero specialty" and `src/engine/tower-hero-specialties.test.ts`
   exercises each. (`PENDING_TOWER_SPECIALTIES` no longer exists.)
 
-Still display-only / not on the roster (Conflux):
-- `conflux.magic_elementals` (Few & Pack) — "Attack all adjacent (enemy) units"
-  is display-only (the engine has no primary attack-every-adjacent action); the
-  Pack's "Ignore any ongoing spell effects and Specialty damage" line is also
-  display-only. What IS wired: `ignores-retaliation` (both sides) and, on the
-  Pack, Magic-Arrow immunity + elemental damage.
-- Conflux heroes Ciele, Luna and Tarnum (Conflux) are NOT on the roster yet —
-  their spell/obstacle/search specialties are not implemented. Only the three
-  unit-specialist Planeswalkers (Erdamon, Monere, Pasis) ship, with all of
-  their I/IV/VI specialties implemented and tested (`conflux-content.test.ts`).
+Conflux — now fully engine-wired (no display-only unit clauses left):
+- `conflux.{storm,ice,energy,magma}_elementals` (Few & Pack) — the FACTION
+  (recruitable) elementals do NOT carry the Magic-Arrow/school immunity or the
+  "deals elemental damage" trait: per the verbatim 3-column wiki card those
+  belong to the separate NEUTRAL guard (`neutral.*_elementals`) column ALONE.
+  The faction Few has no abilities; the faction Pack has ONLY its "[activation]
+  +1 Power to the first <School> spell" rider. The earlier wiring (which copied
+  the neutral guard's `elemental-damage` + `<school>-elemental-immunity` onto the
+  faction Few/Pack) was a transcription fabrication and has been removed —
+  enforced in `conflux-content.test.ts` (faction Few = [], Pack = activation only;
+  the neutral guard keeps the passives as the control).
+- `conflux.magic_elementals` (Few & Pack) — "Attack all adjacent [enemy] units"
+  is now wired via the generic `SECOND_ATTACK_ALL_ADJACENT_TO_SELF` multi-attack
+  queue: a full separate follow-up attack at the unit's OWN (buffable) Attack
+  against every other adjacent unit — the Few hits friend AND foe
+  (`magic-elemental-attack-all`, `includeAllies`), the Pack enemies only
+  (`magic-elemental-attack-all-enemies`). The Pack's "Ignore any Spell effects"
+  is the shared full spell immunity (`immune-all-spells`, which also covers Magic
+  Arrows) and "damage from Specialty" is `immune-specialty-damage` (the Azure
+  Dragon combo). Per the verbatim wiki card the faction Magic Elementals carry NO
+  "deals elemental damage" line on EITHER side and no separate Magic-Arrow line —
+  the earlier `elemental-damage` + Magic-Arrow-only wiring was a fabrication and
+  has been removed. Engine-enforced in `conflux-content.test.ts` ("Conflux Magic
+  Elementals abilities", with the Few/Pack divergence as the mutation control).
+- Erdamon is the **Magma Elementals** specialist (wiki: "The effect doubles for
+  the Magma Elementals unit"), NOT an all-Elementals generalist — the earlier
+  all-Elementals doubling on I/IV was a deviation and has been corrected to match
+  the card (`conflux-content.test.ts`, with the other Elementals as the control).
+- Conflux heroes now shipped: the three unit-specialist Planeswalkers (Erdamon,
+  Monere, Pasis) AND **Luna** the Fire Wall Elementalist — I/VI place the shared
+  `fire_wall` battlefield token at a FIXED 1/3 damage (`PLACE_FIRE_WALL_FIXED`),
+  IV is the spell-economy choice (map discard recall OR a +2-Power spell-cast
+  reaction). All I/IV/VI implemented + tested (`conflux-content.test.ts`). Luna's
+  portrait asset is download-pending (the fetch script lists her; the UI falls
+  back to her initial), like other PC-portrait heroes.
+- Still deferred (NOT on the roster): **Ciele** (Magic Arrow) and **Tarnum
+  (Conflux)** (Enchanters). Both hinge on a subsystem the engine does NOT have:
+  casting a Spell *from your discard pile* as a free bonus cast (Ciele IV) and
+  casting Search(1)'d Spells immediately *over the one-per-round limit*, then
+  returning them to the deck/discard (Tarnum VI). A flat-damage shortcut for
+  Ciele would be unfaithful (it must respect Magic-Arrow spell immunity — e.g.
+  the Magic Elementals' own — and Power scaling), so they are left unimplemented
+  rather than stubbed. Tarnum I (Search(1) Spell) and IV (pay 10 gold for the
+  neutral Enchanters card, reusing `CONVERT_ARMY_UNIT`) are individually
+  feasible, but a hero ships only when ALL of I/IV/VI are engine-wired.
 
 This section is maintained by hand — the rule #3 enforcement test still does
 **not** exist, so re-verify any "stub" claim against `src/data/factions/units.ts`

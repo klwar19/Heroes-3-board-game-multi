@@ -129,6 +129,7 @@ describe("Unicorn artifacts — definitions", () => {
 describe("Helm of the Alabaster Unicorn — return a Spell (option A)", () => {
   it("returns a Spell from your discard pile to your hand and keeps the Helm in the discard", () => {
     const state = createAdventureGameState({ seed: "helm-return", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.activePlayerId = "p1";
     state.players.p1.hand = [HELM];
     // Only the Spell is a candidate; the two Statistic cards are filtered out.

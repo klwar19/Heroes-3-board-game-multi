@@ -748,6 +748,42 @@ export function classifyHeroStep(
   return "stop";
 }
 
+/**
+ * Whether a hero that ENDS its move on `to` this turn walks straight into a
+ * battle: an attackable enemy hero stands there (not Sanctuary-protected), or
+ * the field still has undefeated neutral guards the hero has not flagged. Mirrors
+ * the combat-starting branches of resolveHeroArrival (an enemy hero →
+ * startPlayerCombat, guards → startNeutralEncounter). The UI uses this to warn
+ * "you can still buy troops" before committing the move, so the player can keep
+ * walking into the fight or stop to recruit first. It deliberately does NOT count
+ * the optional enemy-town garrison defence (the owner may simply let it fall, so
+ * it is not a guaranteed battle) — only the two cases that always start Combat.
+ */
+export function heroMoveStartsBattle(state: GameState, heroId: HeroId, to: MapSpaceId): boolean {
+  const adventure = state.adventure;
+  const hero = state.heroes[heroId];
+  if (!adventure || !hero) {
+    return false;
+  }
+  const field = adventure.fields[to];
+
+  const occupant = heroAtSpace(state, to, hero.id);
+  if (occupant && occupant.controllerId !== hero.controllerId) {
+    const location = field ? locationDefinitions[field.location] : undefined;
+    // A hero inside a Sanctuary cannot be attacked — moving onto them is a
+    // pass-only step the move offer never allows, so it is not a battle here.
+    if (!location?.passive?.protectsFromAttack) {
+      return true;
+    }
+  }
+
+  if (field && isFieldGuarded(field) && field.flagOwnerId !== hero.controllerId) {
+    return true;
+  }
+
+  return false;
+}
+
 export type HeroPathTarget = { spaceId: MapSpaceId; path: MapSpaceId[]; cost: number };
 
 /**
@@ -4328,16 +4364,13 @@ export function grantCreatureBankReward(
   processPendingVisit(state);
 }
 
-const PLAYABLE_FACTIONS = [
-  "castle",
-  "rampart",
-  "inferno",
-  "necropolis",
-  "dungeon",
-  "stronghold",
-  "fortress",
-  "tower"
-] as const;
+// Every faction with a unit roster is a first-class playable faction and thus a
+// valid Random Town defender — derived from the faction definitions so newer
+// expansions (Conflux, Cove, …) are included automatically rather than being
+// silently dropped by a stale hand-maintained list.
+export const PLAYABLE_FACTIONS: string[] = Object.values(coreFactionDefinitions)
+  .filter((faction) => faction.units.length > 0)
+  .map((faction) => faction.id);
 
 /**
  * Assigns (once) the unused faction defending a Random Town. The rulebook has

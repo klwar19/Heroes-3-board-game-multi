@@ -1753,6 +1753,16 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Luna's Fire Wall specialty (I/VI): place a Fire Wall token on a chosen
+       * empty space for this Combat, dealing a FIXED amount of damage (1 at I,
+       * 3 at VI) — no Power scaling, unlike the Fire Wall spell. Reuses the same
+       * `fire_wall` battlefield token (damage on stop / pass-through).
+       */
+      type: "PLACE_FIRE_WALL_FIXED";
+      damage: number;
+    }
+  | {
+      /**
        * Quicksand (Basic Earth) / Land Mine (Expert Fire): take 2/4/6 tokens by
        * Power (half armed, half decoy "empty"), shuffle them face down and place
        * one on each chosen empty space. The caster picks the spaces one by one
@@ -5454,6 +5464,13 @@ export type GameSetupOptions = {
    * Off disables the move-to-Book action and the discard→Book pickup entirely.
    */
   spellBook?: boolean;
+  /**
+   * Whether players may open their own Ⅱ–Ⅲ Far tiles (default ON). When ON each
+   * player drafts a personal Far-tile supply they can place onto the map. Off
+   * gives no supply at all — use it for scenarios whose map already includes its
+   * Ⅱ–Ⅲ tiles, so there is nothing left for players to open.
+   */
+  farTileOpening?: boolean;
   difficulty: GameDifficulty;
   startingResources: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };

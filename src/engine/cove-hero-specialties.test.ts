@@ -59,6 +59,7 @@ function coveAdventure(seed: string): GameState {
       { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
     ]
   });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
   state.activePlayerId = "p1";
   state.pendingChoice = null;
   state.reactionWindow = null;
@@ -320,6 +321,7 @@ function miriamMap(seed: string, hand: string[]): GameState {
       { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
     ]
   });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
   state.activePlayerId = "p1";
   state.pendingChoice = null;
   state.reactionWindow = null;

@@ -200,6 +200,7 @@ describe("Greater Gnoll's Flail artifact", () => {
 describe("Mystic Orb of Mana artifact", () => {
   function orbState(seed: string): GameState {
     const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.activePlayerId = "p1";
     state.players.p1.hand = ["artifact.mystic_orb_of_mana"];
     return state;
@@ -272,6 +273,7 @@ describe("Mystic Orb of Mana artifact", () => {
 describe("Charm of Mana artifact", () => {
   function charmState(seed: string): GameState {
     const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.activePlayerId = "p1";
     return state;
   }
@@ -337,6 +339,7 @@ describe("Shackles of War + PvP retreat/surrender", () => {
     // PvP combats only happen in adventure mode; borrow the sim's fully-formed
     // battlefield into an adventure game and reframe it as player-vs-player.
     const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.combat = createInitialGameState(seed).combat;
     state.combat!.context = {
       kind: "player",
@@ -397,6 +400,7 @@ describe("Shackles of War + PvP retreat/surrender", () => {
   // actually on the table to block.
   function attack(seed: string, attackerHasShackles: boolean): GameState {
     const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.players.p2.townTokens = { build: true, population: true, spellBook: true };
     state.players.p2.resources = { gold: 50, buildingMaterials: 20, valuables: 20, magic: 20 } as never;
     if (attackerHasShackles) {
