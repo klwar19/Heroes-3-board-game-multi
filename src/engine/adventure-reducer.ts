@@ -155,6 +155,7 @@ import type {
   ResourceCost,
   ResourceKind,
   SpellSchool,
+  ThievesGuildTarget,
   VisitStep
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
@@ -5554,6 +5555,93 @@ export function roguesScoutDeck(state: GameState, action: Extract<GameAction, { 
   state.priorityPlayerId = action.playerId;
 }
 
+/**
+ * Resolves a Thieves' Guild target to the draw pile + discard pile it manipulates
+ * (a shared deck, or a player's personal Might & Magic deck). Returns null when
+ * the deck/player does not exist.
+ */
+export function thievesGuildPiles(
+  state: GameState,
+  target: ThievesGuildTarget
+): { drawPile: CardId[]; discardPile: CardId[] } | null {
+  if (target.kind === "shared") {
+    const deck = state.decks[target.deckId];
+    return deck ? { drawPile: deck.drawPile, discardPile: deck.discardPile } : null;
+  }
+  const owner = state.players[target.ownerId];
+  return owner ? { drawPile: owner.deck, discardPile: owner.discard } : null;
+}
+
+/** Human label for a Thieves' Guild target deck (used in the choice prompt). */
+function thievesGuildTargetName(state: GameState, target: ThievesGuildTarget): string {
+  if (target.kind === "shared") {
+    return `the ${deckDisplayName(state, target.deckId)} deck`;
+  }
+  const owner = state.players[target.ownerId];
+  return `${owner?.name ?? target.ownerId}'s Might & Magic deck`;
+}
+
+/**
+ * Thieves' Guild (Cove): "Once during your turn, choose any one deck in the game
+ * (including another player's M&M deck), look at its top 2 cards, and put one of
+ * them on its discard pile and the other back on top of the deck." Peeks the top
+ * two cards (private) and opens the discard-one choice; the building is marked
+ * used for this round (one use per turn).
+ */
+export function thievesGuildAction(
+  state: GameState,
+  action: Extract<GameAction, { type: "THIEVES_GUILD_ACTION" }>
+): void {
+  assertActiveTurn(state, action.playerId);
+  assertNoPendingInput(state);
+
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+
+  const building = coreBuildingDefinitions[action.buildingId];
+  const ownBuildingId = findTownBuildingWithEffect(state, action.playerId, "THIEVES_GUILD");
+  if (!building || building.effect?.type !== "THIEVES_GUILD" || ownBuildingId !== action.buildingId) {
+    throw new Error("You have no Thieves' Guild to use.");
+  }
+  if ((player.buildingUsedRound?.[action.buildingId] ?? 0) === state.round) {
+    throw new Error(`${building.name} was already used this turn.`);
+  }
+
+  const piles = thievesGuildPiles(state, action.target);
+  if (!piles) {
+    throw new Error("That deck cannot be looked at.");
+  }
+  if (piles.drawPile.length < 2) {
+    throw new Error("That deck has fewer than 2 cards to look at.");
+  }
+
+  // Top of a draw pile is the last element. Index 0 is the very top.
+  const topCardId = piles.drawPile[piles.drawPile.length - 1];
+  const secondCardId = piles.drawPile[piles.drawPile.length - 2];
+
+  player.buildingUsedRound = { ...player.buildingUsedRound, [action.buildingId]: state.round };
+
+  const topName = cardLibrary[topCardId]?.name ?? topCardId;
+  const secondName = cardLibrary[secondCardId]?.name ?? secondCardId;
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: action.playerId,
+    prompt: `Thieves' Guild — ${thievesGuildTargetName(state, action.target)}: top 2 are ${topName} (top) and ${secondName}. Discard one; the other goes back on top.`,
+    options: [
+      { label: `Discard ${topName} — keep ${secondName} on top` },
+      { label: `Discard ${secondName} — keep ${topName} on top` }
+    ],
+    context: "thieves-guild",
+    thievesGuild: { target: action.target, cardIds: [topCardId, secondCardId] },
+    returnPhase: "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = action.playerId;
+}
+
 export function chooseOption(state: GameState, action: Extract<GameAction, { type: "CHOOSE_OPTION" }>): void {
   const choice = state.pendingChoice;
   if (!choice || choice.type !== "OPTION_CHOICE" || choice.id !== action.choiceId || choice.playerId !== action.playerId) {
@@ -5855,6 +5943,34 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
         deck.drawPile.unshift(top);
       }
     }
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    return;
+  }
+
+  if (choice.context === "thieves-guild") {
+    const data = choice.thievesGuild;
+    const piles = data ? thievesGuildPiles(state, data.target) : null;
+    if (!data || !piles) {
+      throw new Error("There is no thieved deck to resolve.");
+    }
+    if (action.optionIndex !== 0 && action.optionIndex !== 1) {
+      throw new Error("Pick which of the two cards to discard.");
+    }
+    if (piles.drawPile.length < 2) {
+      throw new Error("That deck no longer has its top 2 cards.");
+    }
+    // Lift the two cards we peeked off the top (top = end of the array): the
+    // first pop is the very top (index 0), the second pop is the card beneath it.
+    const top = piles.drawPile.pop()!;
+    const second = piles.drawPile.pop()!;
+    const peeked = [top, second];
+    const discardCardId = peeked[action.optionIndex];
+    const keepCardId = peeked[1 - action.optionIndex];
+    // The chosen card goes to that deck's discard; the other returns on top.
+    piles.discardPile.push(discardCardId);
+    piles.drawPile.push(keepCardId);
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;

@@ -76,6 +76,7 @@ import {
   abilityExpertIsCrownFree,
   activeSchoolFetches,
   canPlayExpertMode,
+  deckDisplayName,
   expertUsesAvailable,
   getRuleset,
   spellBookPowerAvailable,
@@ -5625,6 +5626,33 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
           label: `${building.name}: discard up to 2 cards, draw that many`,
           action: { type: "USE_TOWN_BUILDING", playerId, buildingId, optionIndex: 0, cardIds: [] }
         });
+      }
+
+      // A clean map turn action only — never mid-combat (incl. the PvP prep
+      // window, where addTownActions also runs) or mid-reaction, matching
+      // thievesGuildAction's assertNoPendingInput so the offer can never be rejected.
+      if (building.effect?.type === "THIEVES_GUILD" && !state.combat && !state.reactionWindow) {
+        // "Any one deck in the game": every shared deck with at least 2 cards on
+        // top to look at...
+        for (const [deckId, deck] of Object.entries(state.decks)) {
+          if (deck.drawPile.length >= 2) {
+            actions.push({
+              label: `${building.name}: look at the top 2 of the ${deckDisplayName(state, deckId)} deck`,
+              action: { type: "THIEVES_GUILD_ACTION", playerId, buildingId, target: { kind: "shared", deckId } }
+            });
+          }
+        }
+        // ...plus every player's Might & Magic deck (your own and opponents').
+        for (const ownerId of state.turnOrder) {
+          const owner = state.players[ownerId];
+          if (ownerId === "neutrals" || !owner || owner.deck.length < 2) {
+            continue;
+          }
+          actions.push({
+            label: `${building.name}: look at the top 2 of ${ownerId === playerId ? "your own" : `${owner.name}'s`} Might & Magic deck`,
+            action: { type: "THIEVES_GUILD_ACTION", playerId, buildingId, target: { kind: "player", ownerId } }
+          });
+        }
       }
 
       if (building.effect?.type === "CASTLE_GATE") {

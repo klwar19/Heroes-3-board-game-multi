@@ -134,6 +134,43 @@ describe("TownPanel — in-place special-building effect / use buttons", () => {
     expect(panel.textContent).toMatch(/Resource round/i);
   });
 
+  it("explains the Cove Thieves' Guild and dispatches a chosen deck peek", () => {
+    const { state } = townWith("cove", ["cove.thieves_guild"]);
+    const onAction = vi.fn();
+    render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={onAction} state={state} viewerPlayerId="p1" />);
+
+    // An available action shows the "Use" affordance.
+    fireEvent.click(within(tileFor("Thieves' Guild")).getByRole("button", { name: /Use/ }));
+    const panel = screen.getByLabelText("Thieves' Guild effect");
+    // The rules text matches the engine (was "No special effect." before wiring).
+    expect(panel.textContent).toMatch(/top 2 cards/i);
+    expect(panel.textContent).toMatch(/back on top/i);
+
+    // A button is offered per eligible deck; picking your own M&M deck dispatches
+    // the THIEVES_GUILD_ACTION for that deck (the deck-name label is stable).
+    fireEvent.click(within(panel).getByRole("button", { name: /top 2 of your own Might & Magic deck/i }));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction.mock.calls[0][0]).toMatchObject({
+      type: "THIEVES_GUILD_ACTION",
+      playerId: "p1",
+      buildingId: "cove.thieves_guild",
+      target: { kind: "player", ownerId: "p1" }
+    });
+  });
+
+  it("shows the Cove City Hall and Pub effect text (regression: not 'No special effect.')", () => {
+    const { state } = townWith("cove", ["cove.city_hall", "cove.pub"]);
+    render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
+
+    const cityHall = openPanel("City Hall");
+    expect(cityHall.textContent).toMatch(/Astrologers' round/i);
+    expect(cityHall.textContent).not.toMatch(/No special effect/i);
+
+    const pub = openPanel("Pub");
+    expect(pub.textContent).toMatch(/3 less gold/i);
+    expect(pub.textContent).not.toMatch(/No special effect/i);
+  });
+
   it("offers no effect button for a plain dwelling", () => {
     const { state } = townWith("castle", ["castle.dwelling_bronze"]);
     render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);

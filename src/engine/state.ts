@@ -2111,6 +2111,15 @@ export type ReactionPlay = {
 
 export type DeckSearchPick = { kind: "revealed"; index: number };
 
+/**
+ * Which deck a Thieves' Guild peek targets: a shared deck (keyed by its id) or a
+ * player's personal Might & Magic deck (keyed by that player's id — own or
+ * opponent's).
+ */
+export type ThievesGuildTarget =
+  | { kind: "shared"; deckId: DeckId }
+  | { kind: "player"; ownerId: PlayerId };
+
 export type GameAction =
   | {
       type: "CAST_SPELL";
@@ -2539,6 +2548,18 @@ export type GameAction =
       type: "ROGUES_SCOUT_DECK";
       playerId: PlayerId;
       deckId: DeckId;
+    }
+  | {
+      /**
+       * Thieves' Guild (Cove building): once during your turn, choose one deck
+       * (a shared deck or any player's Might & Magic deck) and look at its top 2
+       * cards. Reveals them privately, then a "discard which one" choice opens
+       * (the other card goes back on top).
+       */
+      type: "THIEVES_GUILD_ACTION";
+      playerId: PlayerId;
+      buildingId: BuildingId;
+      target: ThievesGuildTarget;
     }
   | {
       /**
@@ -5614,6 +5635,7 @@ export type PendingChoice =
         | "remove-obstacle"
         | "skeleton-reinforce"
         | "rogues-scout"
+        | "thieves-guild"
         | "combat-reposition"
         | "genie-take-spell"
         | "combat-knockback"
@@ -5747,6 +5769,12 @@ export type PendingChoice =
       artifactDeckPick?: { deckIds: DeckId[] };
       /** rogues-scout: the deck being peeked and its revealed top card. */
       rogueScout?: { deckId: DeckId; cardId: CardId };
+      /**
+       * thieves-guild: the deck being peeked and its top 2 cards (index 0 is the
+       * very top). The chosen option's card is discarded; the other returns on
+       * top. Private to the peeking player (redacted in player-view).
+       */
+      thievesGuild?: { target: ThievesGuildTarget; cardIds: CardId[] };
       /** siege-demolish: intact fortification positions and removals left. */
       siegeDemolish?: { positions: number[]; remaining: number };
       /**

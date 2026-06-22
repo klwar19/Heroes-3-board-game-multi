@@ -1723,6 +1723,7 @@ export function TownPanel({
     (legal) =>
       legal.action.type === "SPELL_BOOK_ACTION" ||
       legal.action.type === "BLACKSMITH_ACTION" ||
+      legal.action.type === "THIEVES_GUILD_ACTION" ||
       legal.action.type === "USE_TOWN_BUILDING"
   );
 
@@ -1762,7 +1763,7 @@ export function TownPanel({
     }
     return buildingUseActions.filter((legal) => {
       const action = legal.action;
-      if (action.type === "USE_TOWN_BUILDING") {
+      if (action.type === "USE_TOWN_BUILDING" || action.type === "THIEVES_GUILD_ACTION") {
         return action.buildingId === buildingId;
       }
       if (action.type === "SPELL_BOOK_ACTION") {
