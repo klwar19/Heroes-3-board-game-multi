@@ -3732,9 +3732,6 @@ function consumeLuckReroll(state: GameState, effectId: string, dice: "treasure" 
   const budgetModifier = effect.modifiers.find(
     (modifier) => modifier.type === "ADVENTURE_DIE_REROLL" && modifier.rerolls !== undefined
   );
-  const isAnyDie = effect.modifiers.some(
-    (modifier) => modifier.type === "ADVENTURE_DIE_REROLL" && modifier.dice === "any"
-  );
 
   appendEvent(state, {
     type: "ACTIVE_EFFECT_USED",
@@ -3754,13 +3751,12 @@ function consumeLuckReroll(state: GameState, effectId: string, dice: "treasure" 
     return;
   }
 
-  // Expert Luck is one reroll of any die: spend the whole card. Basic Luck
-  // tracks the treasure and resource rerolls separately.
-  if (isAnyDie) {
-    state.activeEffects = state.activeEffects.filter((candidate) => candidate.id !== effectId);
-    return;
-  }
-
+  // Luck (basic AND expert) lasts the WHOLE player turn: it is never deleted on
+  // use here. Each map-die kind may be rerolled once per turn, tracked
+  // separately. Expert Luck ("any die") additionally keeps rerolling Attack
+  // dice across every fight this turn — handled on the combat side, where its
+  // reroll source is not consumed (consumeEffectOnUse: false). The effect only
+  // leaves play when the turn ends (expiresAtTurnEndPlayerId).
   effect.usedChoiceIds.push(`luck:${dice}`);
 }
 

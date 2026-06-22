@@ -5806,6 +5806,7 @@ export type PendingChoice =
         | "war-machine"
         | "deck-pick"
         | "deck-search-mode"
+        | "scouting-prompt"
         | "discard-pick"
         | "hand-discard"
         | "eagle-eye"
@@ -5936,6 +5937,19 @@ export type PendingChoice =
         schoolFetch?: SpellSchool[];
         /** Whether a "take the top discard" option is offered (index 1). */
         hasDiscardTop?: boolean;
+      };
+      /**
+       * scouting-prompt: a held Scouting card may be played before a Search. The
+       * pop-up offers, in option order: [decline], then "Search (3)" (basic) when
+       * `offerBasic`, then "Search (5)" (expert, spends a crown) when `offerExpert`.
+       * Resolving creates the SEARCH_COUNT_OVERRIDE and re-enters the Search; the
+       * deck + base count are kept here so the search can resume after the choice.
+       */
+      scoutingPrompt?: {
+        deckId: DeckId;
+        baseCount: number;
+        offerBasic: boolean;
+        offerExpert: boolean;
       };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */
       ownDeckPick?: {
