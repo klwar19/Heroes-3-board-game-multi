@@ -5029,7 +5029,13 @@ function queueGardenOfLife(state: GameState, playerId: PlayerId, buildingId: str
   }
 
   const options: { label: string; steps: VisitStep[] }[] = [];
-  if (getUnitSide(unitDefId, "few")) {
+  // Each unit card exists once: only offer "Recruit" when the player does NOT
+  // already own this unit — otherwise a free recruit each round would stack
+  // duplicate Few cards (a Conflux player starts with a Sprites Few, so the
+  // unconditional recruit duplicated it). When already owned, the only free
+  // action is reinforcing the Few you have to a Pack.
+  const owned = player.army.some((unit) => unit.unitDefId === unitDefId);
+  if (!owned && getUnitSide(unitDefId, "few")) {
     options.push({ label: `Recruit ${def.name} (free)`, steps: [{ type: "RECRUIT_FREE", unitDefId }] });
   }
   for (const unit of player.army) {

@@ -196,7 +196,12 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
     const combat = state.combat;
     const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
     if (activeUnit && activeUnit.controllerId === playerId) {
-      bonus += getActivationSpellPowerBoost(activeUnit);
+      // Pass the card's schools so the school-scoped Conflux Pack Elemental boost
+      // ("+1 Power to the first <School> Magic spell") is counted for a matching
+      // spell — not only the Magi's school-less boost. Without the schools the
+      // preview/affordability/pool-scaling paths silently dropped it, disagreeing
+      // with the actual cast in performSpellCast.
+      bonus += getActivationSpellPowerBoost(activeUnit, card.spellSchools);
     }
   }
   const school = getPermanentSchoolBonus(state, playerId, card);

@@ -1810,13 +1810,14 @@ export function TownPanel({
     setReinforceIds([]);
   };
 
-  // Activated building actions (Blacksmith, Spell Book, Castle Gate, Cover of
-  // Darkness…) — everything the rules currently allow, as buttons.
+  // Activated building actions (Blacksmith, Spell Book, Magic University, Castle
+  // Gate, Cover of Darkness…) — everything the rules currently allow, as buttons.
   const buildingUseActions = legalActions.filter(
     (legal) =>
       legal.action.type === "SPELL_BOOK_ACTION" ||
       legal.action.type === "BLACKSMITH_ACTION" ||
       legal.action.type === "THIEVES_GUILD_ACTION" ||
+      legal.action.type === "MAGIC_UNIVERSITY_ACTION" ||
       legal.action.type === "USE_TOWN_BUILDING"
   );
 
@@ -1865,6 +1866,9 @@ export function TownPanel({
       if (action.type === "BLACKSMITH_ACTION") {
         return building.effect?.type === "ARTIFACT_SMITH";
       }
+      if (action.type === "MAGIC_UNIVERSITY_ACTION") {
+        return building.effect?.type === "MAGIC_UNIVERSITY";
+      }
       return false;
     });
   };
@@ -1903,6 +1907,15 @@ export function TownPanel({
           : `Ready — offered in combat when one of your units attacks (+${effect.amount} attack, once per round).`;
       case "FREELANCERS_GUILD":
         return "Always on — the bonus applies automatically.";
+      case "MAGIC_UNIVERSITY":
+        // Tracked by its own once-per-round flag, not the generic
+        // buildingUsedRound token — read it directly for the status line.
+        if (hasActions) {
+          return null;
+        }
+        return player.magicUniversityUsedRound === state.round
+          ? "Already used this round — available again next round."
+          : "Pick a School of Magic to dig your deck for that spell.";
       case "MAGE_GUILD":
       case "ARTIFACT_SMITH":
       case "COVER_OF_DARKNESS":
