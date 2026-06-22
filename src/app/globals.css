@@ -1330,6 +1330,16 @@ button.battleCell {
   box-shadow: 0 0 0 1px rgba(213, 168, 79, 0.45);
 }
 
+/* An empty Spell Book is shown from the start, but dimmed until it holds Spells. */
+.shelfIcon.empty {
+  opacity: 0.65;
+}
+
+.shelfIcon.empty .shelfCount {
+  background: rgba(210, 180, 120, 0.4);
+  color: #2a2014;
+}
+
 .shelfGlyph {
   width: 34px;
   height: 26px;
@@ -6185,6 +6195,16 @@ button.hbSlot:disabled { cursor: default; }
   font-weight: 800;
   line-height: 16px;
   text-align: center;
+}
+
+/* The Book panel appears from the start of the game; dim it while it is empty. */
+.spellBookPanel.empty .spellBookToggle {
+  opacity: 0.7;
+}
+
+.spellBookPanel.empty .spellBookCount {
+  background: rgba(210, 180, 120, 0.4);
+  color: #2a2014;
 }
 
 .spellBookWindow {

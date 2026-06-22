@@ -80,6 +80,7 @@ import {
   getRuleset,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
+  spellCanEnterSpellBook,
   spellLimitFor,
   wisdomGoldDiscount,
   wisdomSearchCount
@@ -2634,7 +2635,9 @@ function addSpellBookStashActions(actions: LegalAction[], state: GameState, play
   }
   for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
-    if (card?.kind === "spell") {
+    // Magic Arrow (any starting-only Spell) may be held and cast, but never
+    // stashed — it has no Spell Book home (spellCanEnterSpellBook).
+    if (card?.kind === "spell" && spellCanEnterSpellBook(cardId)) {
       actions.push({
         label: `Move ${card.name} to your Spell Book`,
         action: { type: "MOVE_SPELL_TO_SPELL_BOOK", playerId, cardId }

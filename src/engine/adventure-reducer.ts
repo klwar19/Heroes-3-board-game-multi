@@ -120,6 +120,7 @@ import {
   getRuleset,
   isSpellDeck,
   spellBookRuleEnabled,
+  spellCanEnterSpellBook,
   takeSearchRepeatEffect,
   wisdomGoldDiscount,
   wisdomSearchCount
@@ -5692,11 +5693,13 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
     // Spell Book (house rule): a Spell may be routed straight into the Book on
     // pickup; everything else (and every pick when the rule is off) goes to hand.
+    // A starting-only Spell (Magic Arrow) has no Book home, so it always goes to
+    // hand even if a fabricated pick names the Book.
     const destination = pick.destinations?.[action.optionIndex] ?? "hand";
     const index = player.discard.lastIndexOf(cardId);
     if (index !== -1) {
       player.discard.splice(index, 1);
-      if (destination === "spellBook") {
+      if (destination === "spellBook" && spellCanEnterSpellBook(cardId)) {
         player.spellBook.push(cardId);
       } else {
         player.hand.push(cardId);
@@ -6547,7 +6550,9 @@ function openDiscardPickChoice(
   const entries: { cardId: CardId; destination: "hand" | "spellBook" }[] = [];
   for (const cardId of candidates) {
     entries.push({ cardId, destination: "hand" });
-    if (bookOn && cardLibrary[cardId]?.kind === "spell") {
+    // Magic Arrow (any starting-only Spell) goes only to hand — it has no Spell
+    // Book home, so no "→ Spell Book" route is offered for it.
+    if (bookOn && cardLibrary[cardId]?.kind === "spell" && spellCanEnterSpellBook(cardId)) {
       entries.push({ cardId, destination: "spellBook" });
     }
   }

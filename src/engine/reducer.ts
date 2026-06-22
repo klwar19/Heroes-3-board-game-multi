@@ -117,6 +117,7 @@ import {
   getRuleset,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
+  spellCanEnterSpellBook,
   spellLimitFor
 } from "./ruleset";
 import {
@@ -617,12 +618,22 @@ function moveSpellToSpellBook(
   if (!card || card.kind !== "spell") {
     throw new Error("Only Spell cards can go into the Spell Book.");
   }
+  // Magic Arrow (any starting-only Spell) is castable from hand but has no Spell
+  // Book home — reject a fabricated stash so the rule holds at resolution too.
+  if (!spellCanEnterSpellBook(action.cardId)) {
+    throw new Error(`${card.name} cannot be set aside in the Spell Book.`);
+  }
   const index = player.hand.indexOf(action.cardId);
   if (index === -1) {
     throw new Error("That Spell is not in your hand.");
   }
   player.hand.splice(index, 1);
   player.spellBook.push(action.cardId);
+  // Stashing is hand management, not a draw: it must not be combinable with the
+  // start-of-turn "draw up to the hand limit" to net-gain a card. Spending the
+  // optional draw here means a player may draw THEN stash (ending below the
+  // limit), but never stash THEN draw the freed slot back up.
+  player.canMulligan = false;
   appendEvent(state, {
     type: "SPELL_MOVED_TO_SPELL_BOOK",
     playerId: action.playerId,
