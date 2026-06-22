@@ -6069,14 +6069,15 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   }
 
   // Over the hand limit at the start of the turn: discarding down (then drawing
-  // back up) is required before anything else.
+  // back up) MUST come first — before town/morale actions, the optional draw,
+  // any card play, movement or exploration. Nothing else is offered until the
+  // forced discard is resolved, so the over-limit check always starts the turn.
   if (player.needsHandRefresh) {
     return [
       {
         label: "Discard down to your hand limit, then draw",
         action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
-      },
-      ...actions
+      }
     ];
   }
 
