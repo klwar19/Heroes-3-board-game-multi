@@ -188,11 +188,10 @@ describe("Cove buildings", () => {
     });
   });
 
-  it("marks the one not-yet-wired faction building (Thieves' Guild) honestly", () => {
-    for (const id of ["cove.thieves_guild"]) {
-      expect(coreBuildingDefinitions[id].implementationStatus, id).toBe("not-implemented");
-      expect(coreBuildingDefinitions[id].effect?.type, id).toBe("NOT_IMPLEMENTED");
-    }
+  it("wires the Thieves' Guild as an implemented once-per-turn deck-peek action", () => {
+    const guild = coreBuildingDefinitions["cove.thieves_guild"];
+    expect(guild.implementationStatus).toBe("implemented");
+    expect(guild.effect?.type).toBe("THIEVES_GUILD");
   });
 });
 

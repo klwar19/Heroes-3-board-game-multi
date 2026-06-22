@@ -26,12 +26,18 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
       return `When built: Search (2) the Spell deck twice. Afterwards, once per round (Spell Book token): pay ${building.spellBookCost ?? 5} gold to Search (2) the Spell deck.`;
     case "RESOURCE_ROUND_CHOICE":
       return `At the beginning of each Resource round, choose: ${effect.options.map((option) => option.label).join(" — OR — ")}.`;
+    case "ASTROLOGERS_ROUND_CHOICE":
+      return `At the beginning of each Astrologers' round, choose: ${effect.options.map((option) => option.label).join(" — OR — ")}.`;
     case "RESOURCE_ROUND_MORALE":
       return "At the beginning of each Resource round, gain a positive Morale token.";
     case "RESOURCE_ROUND_RESOURCE_DIE":
       return "At the beginning of each Resource round, roll 1 Resource die and gain the rolled resources.";
     case "ASTROLOGERS_HALF_GOLD_REINFORCE":
       return `At the beginning of each Astrologers' round, you may instantly reinforce one of your ${effect.tiers.join(" or ")} units for half of the gold cost.`;
+    case "ASTROLOGERS_FLAT_GOLD_REINFORCE":
+      return `At the beginning of each Astrologers' round, you may instantly reinforce one of your ${effect.tiers.join(" or ")} units for ${effect.discount} less gold (minimum 0).`;
+    case "RESOURCE_ROUND_SEARCH_DISCARD":
+      return `At the beginning of each Resource round, you may Search (${effect.count}) your own discard pile and take 1 card to your hand.`;
     case "ASTROLOGERS_TAKE_STATISTIC":
       return "At the beginning of each Astrologers' round, you may take 1 Knowledge or 1 Power Statistic card from your discard pile to your hand.";
     case "TURN_START_NECROMANCY":
@@ -58,6 +64,8 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
       return "At the beginning of each round, you may recruit a Few of Sprites for free, or reinforce a Few of your Sprites to a Pack for free.";
     case "MAGIC_UNIVERSITY":
       return "Once per round during your turn (instead of buying spells normally), choose a School of Magic, then discard cards from the top of your deck until you reveal a Spell of that school and take it to your hand.";
+    case "THIEVES_GUILD":
+      return "Once during your turn, choose any one deck in the game (a shared deck, or any player's Might & Magic deck — your own or an opponent's), look at its top 2 cards, then put one of them on that deck's discard pile and the other back on top.";
     case "NOT_IMPLEMENTED":
       return effect.note;
     default:
@@ -71,8 +79,11 @@ export function buildingTimingLabel(building: TownBuildingDefinition): string | 
     case "RESOURCE_ROUND_CHOICE":
     case "RESOURCE_ROUND_MORALE":
     case "RESOURCE_ROUND_RESOURCE_DIE":
+    case "RESOURCE_ROUND_SEARCH_DISCARD":
       return "start of Resource rounds";
     case "ASTROLOGERS_HALF_GOLD_REINFORCE":
+    case "ASTROLOGERS_FLAT_GOLD_REINFORCE":
+    case "ASTROLOGERS_ROUND_CHOICE":
     case "ASTROLOGERS_TAKE_STATISTIC":
       return "start of Astrologers' rounds";
     case "TURN_START_NECROMANCY":
@@ -86,6 +97,7 @@ export function buildingTimingLabel(building: TownBuildingDefinition): string | 
     case "COVER_OF_DARKNESS":
     case "CASTLE_GATE":
     case "ARTIFACT_SMITH":
+    case "THIEVES_GUILD":
       return "during your turn";
     case "COMBAT_CUBES":
     case "HALL_OF_VALHALLA":

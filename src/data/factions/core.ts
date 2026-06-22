@@ -1011,14 +1011,13 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
     // "Once during your turn, choose any one deck in the game (including another
     // player's M&M deck), look at its top 2 cards, and put one of them on its
-    // discard pile and the other back on top of the deck." NOT YET WIRED — this
-    // needs a new once-per-turn cross-deck look-2/discard-1 turn action; the
-    // building can be built but currently has no engine effect.
-    effect: {
-      type: "NOT_IMPLEMENTED",
-      note: "Once per turn: look at the top 2 cards of any deck (incl. opponents'), discard one and put the other back on top. Needs a cross-deck top-2 manipulation turn action."
-    },
-    implementationStatus: "not-implemented",
+    // discard pile and the other back on top of the deck." Wired as a
+    // once-per-turn THIEVES_GUILD turn action: the offer lists every eligible
+    // deck (each shared deck and each player's M&M deck with ≥2 cards), peeks the
+    // top 2 privately, and the player picks which one to discard (the other goes
+    // back on top). See thievesGuildAction / the "thieves-guild" OPTION_CHOICE.
+    effect: { type: "THIEVES_GUILD" },
+    implementationStatus: "implemented",
     source: townSource("cove")
   },
   "cove.pub": {
