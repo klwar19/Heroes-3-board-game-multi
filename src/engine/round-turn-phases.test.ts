@@ -391,7 +391,7 @@ describe("hand draw/discard and recurring events keep working for the whole game
 
     const endTurn = (s: GameState, playerId: "p1" | "p2"): GameState => {
       const p = s.players[playerId]!;
-      if (p.needsHandRefresh) {
+      if (p.needsHandRefresh || p.canMulligan) {
         s = apply(s, { type: "REFRESH_HAND", playerId, discardCardIds: p.hand.slice(0, p.hand.length - limit) });
       }
       return apply(s, { type: "END_TURN", playerId });

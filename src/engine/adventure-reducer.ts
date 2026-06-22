@@ -540,10 +540,14 @@ function assertHandRefreshed(state: GameState, playerId: PlayerId): void {
   if (player?.needsHandRefresh) {
     throw new Error("Discard down to your hand limit before acting.");
   }
-  // Taking a map/exploration action ends the start-of-turn draw window: the
-  // discard-and-draw choice only stands before the player begins their turn.
+  // The start-of-turn draw is MANDATORY (house rule): it must be taken — "draw
+  // new" (discard nothing) or "discard and draw new" — before the player moves
+  // or explores, so it can never be forgotten. The action is blocked until
+  // REFRESH_HAND resolves and clears `canMulligan`. (legal-actions also withholds
+  // movement/exploration offers while it is set; this is the resolution backstop
+  // for the handler-validated map actions that skip the legal-action check.)
   if (player?.canMulligan) {
-    player.canMulligan = false;
+    throw new Error("Take your start-of-turn draw first (draw new, or discard and draw new).");
   }
 }
 

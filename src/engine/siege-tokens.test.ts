@@ -64,6 +64,7 @@ describe("first-player roll", () => {
 
   it("keeps seat order in deterministic test setups that opt out", () => {
     const state = createAdventureGameState({ seed: "test-seed", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     expect(state.activePlayerId).toBe("p1");
     expect(state.adventure?.firstPlayerRoll).toBeUndefined();
   });
@@ -139,6 +140,7 @@ describe("siege combat", () => {
   /** Adventure with a hero standing next to the enemy's citadel town. */
   function makeSiegeReady(): GameState {
     const state = createAdventureGameState({ seed: "siege-seed", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure!;
     const enemyTown = state.towns.town_p2;
     enemyTown.buildings.push("necropolis.citadel");
@@ -505,6 +507,7 @@ describe("siege combat", () => {
 describe("turn-start town buildings", () => {
   it("offers the Necromancy Amplifier choice at the owner's turn start", () => {
     let state = createAdventureGameState({ seed: "necromancy-seed", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.towns.town_p2.buildings.push("necropolis.necromancy_amplifier");
 
     // End p1's turn: p2's turn starts and the amplifier prompt queues.
@@ -525,6 +528,7 @@ describe("turn-start town buildings", () => {
 
   it("runs the Mana Vortex discard-shuffle-search at turn start", () => {
     let state = createAdventureGameState({ seed: "vortex-seed", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.towns.town_p2.buildings.push("dungeon.mana_vortex");
     state.players.p2.discard = ["stat.attack"];
 
@@ -556,6 +560,7 @@ describe("turn-start town buildings", () => {
 describe("round-start town buildings", () => {
   it("rolls the Mystic Pond resource die on resource rounds", () => {
     let state = createAdventureGameState({ seed: "pond-seed", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.towns.town_p1.buildings.push("rampart.mystic_pond");
 
     // Rounds: 1 (first) -> 2 (astrologers) -> 3 (resource).
@@ -580,6 +585,7 @@ describe("round-start town buildings", () => {
 
   it("stores Brimstone cubes on build and spends one for +1 Power", () => {
     const state = createAdventureGameState({ seed: "cube-seed", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.towns.town_p1.factionId = "inferno";
     state.players.p1.resources = { gold: 20, buildingMaterials: 10, valuables: 5 };
     state.towns.town_p1.buildings.push("inferno.brimstone_stormclouds");
@@ -594,6 +600,7 @@ describe("round-start town buildings", () => {
 describe("freelancer's guild", () => {
   it("pays gold for neutral wins and lets resources cover gold costs", () => {
     const state = createAdventureGameState({ seed: "guild-seed", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.towns.town_p1.buildings.push("stronghold.freelancers_guild", "castle.dwelling_bronze", "castle.citadel");
     const player = state.players.p1;
     player.resources = { gold: 0, buildingMaterials: 5, valuables: 2 };
