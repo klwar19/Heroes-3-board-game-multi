@@ -1066,7 +1066,36 @@ export function RerollModal({
   onAction: (action: GameAction) => void;
 }) {
   const choice = state.pendingChoice;
-  if (!choice || choice.type !== "ATTACK_DIE_REROLL") {
+  const isReroll = choice?.type === "ATTACK_DIE_REROLL";
+  // The newest candidate is the die that just landed (the first roll, or the
+  // face a reroll replaced it with). We tumble it before offering keep/reroll.
+  const latestIndex = isReroll ? choice.candidates.length - 1 : -1;
+  const latestCandidate = isReroll ? choice.candidates[latestIndex] : undefined;
+  const isViewersChoice = isReroll && choice.playerId === viewerPlayerId;
+  // A stable key for "the throw we are currently showing" — the choice id plus
+  // the latest candidate index, so the initial roll AND every reroll each get a
+  // fresh key (and a new attack's choice never reuses a stale one).
+  const rollKey = isReroll ? `${choice.id}:${latestIndex}` : null;
+  const latestRollCount = latestCandidate?.rolls.length ?? 0;
+
+  // Roll the die FIRST, then reveal the choice: the cube tumbles for the same
+  // beat as the attack-die overlay, so the player watches the throw land before
+  // being asked to keep it or roll again — never the result flashing up first.
+  // `rolling` is derived (the latest throw has not been marked settled yet), so
+  // the effect only ever calls setState from inside the settle timer — never
+  // synchronously — and each fresh throw re-arms the tumble on its own.
+  const [settledKey, setSettledKey] = useState<string | null>(null);
+  const rolling = isViewersChoice && Boolean(latestCandidate) && settledKey !== rollKey;
+  useEffect(() => {
+    if (!rolling || !rollKey) {
+      return;
+    }
+    playDiceRoll(latestRollCount, DICE_ROLL_MS - 120);
+    const settle = setTimeout(() => setSettledKey(rollKey), DICE_ROLL_MS);
+    return () => clearTimeout(settle);
+  }, [rolling, rollKey, latestRollCount]);
+
+  if (!isReroll || !choice) {
     return null;
   }
 
@@ -1082,7 +1111,6 @@ export function RerollModal({
     );
   }
 
-  const latestIndex = choice.candidates.length - 1;
   const keepAction = legalActions.find(
     (legal) => legal.action.type === "CHOOSE_PENDING_ROLL" && legal.action.candidateIndex === latestIndex
   );
@@ -1098,32 +1126,52 @@ export function RerollModal({
             result, the latest roll counts.
           </span>
         </header>
-        <div className="rerollRow">
-          {choice.candidates.map((candidate, index) => {
-            const isLatest = index === latestIndex;
-            return (
-              <div className={`rerollDie ${isLatest ? "current" : "rerolledAway"}`} key={index}>
-                <span className="dieFaceBig">{formatDieFace(candidate.roll)}</span>
-                <small>{candidate.rolls.map(formatDieFace).join(" / ")}</small>
-                {isLatest ? (
-                  keepAction ? (
-                    <button className="commandButton primary" onClick={() => onAction(keepAction.action)} type="button">
-                      Keep {formatDieFace(candidate.roll)}
-                    </button>
-                  ) : null
-                ) : (
-                  <small className="rerolledNote">rerolled away</small>
-                )}
+        {rolling && latestCandidate ? (
+          // The throw in progress: the freshest die tumbles across the felt; the
+          // keep/reroll choice and any rerolled-away faces stay hidden until it
+          // settles, mounting the cube fresh (key) so it always animates.
+          <div className="rerollRow">
+            <div className="rerollDie current rolling" key={`rolling-${latestIndex}`}>
+              <div className="rerollDieCube">
+                {latestCandidate.rolls.map((roll, index) => (
+                  <DieCube
+                    dimmed={!rolling && latestCandidate.rolls.length > 1 && roll !== latestCandidate.roll}
+                    key={index}
+                    rolling={rolling}
+                    value={roll}
+                  />
+                ))}
               </div>
-            );
-          })}
-          {rerollAction ? (
-            <button className="rerollDie again" onClick={() => onAction(rerollAction.action)} type="button">
-              <Dices aria-hidden="true" size={22} />
-              <span>{rerollAction.label.replace(/^Reroll attack die /, "Reroll ")}</span>
-            </button>
-          ) : null}
-        </div>
+            </div>
+          </div>
+        ) : (
+          <div className="rerollRow">
+            {choice.candidates.map((candidate, index) => {
+              const isLatest = index === latestIndex;
+              return (
+                <div className={`rerollDie ${isLatest ? "current" : "rerolledAway"}`} key={index}>
+                  <span className="dieFaceBig">{formatDieFace(candidate.roll)}</span>
+                  <small>{candidate.rolls.map(formatDieFace).join(" / ")}</small>
+                  {isLatest ? (
+                    keepAction ? (
+                      <button className="commandButton primary" onClick={() => onAction(keepAction.action)} type="button">
+                        Keep {formatDieFace(candidate.roll)}
+                      </button>
+                    ) : null
+                  ) : (
+                    <small className="rerolledNote">rerolled away</small>
+                  )}
+                </div>
+              );
+            })}
+            {rerollAction ? (
+              <button className="rerollDie again" onClick={() => onAction(rerollAction.action)} type="button">
+                <Dices aria-hidden="true" size={22} />
+                <span>{rerollAction.label.replace(/^Reroll attack die /, "Reroll ")}</span>
+              </button>
+            ) : null}
+          </div>
+        )}
       </div>
     </div>
   );

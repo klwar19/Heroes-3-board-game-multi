@@ -587,17 +587,6 @@ export type ActiveEffectModifier =
     }
   | {
       /**
-       * Lord Haart (Necropolis) Dread Knights I/VI: while this (friendly) unit is
-       * the target of an enemy Retaliation Attack, reduce that retaliation's
-       * damage by `amount`. The Dread Knights ×2 is folded into `amount` when the
-       * effect is created (see CREATE_RETALIATION_REDUCTION), like the other
-       * doubled specialties, so this modifier just carries the final amount.
-       */
-      type: "RETALIATION_DAMAGE_REDUCTION";
-      amount: number;
-    }
-  | {
-      /**
        * Lord Haart (Necropolis) Dread Knights IV: while this (friendly) unit is
        * the target of an enemy Retaliation Attack, that Retaliation Attack rolls
        * two Attack dice and resolves the lower — the active-effect twin of the
@@ -1113,17 +1102,18 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Lord Haart (Necropolis) Dread Knights I/VI: place a lasting
-       * RETALIATION_DAMAGE_REDUCTION on the chosen friendly unit. `amount` is the
-       * base reduction (1 / 2); it doubles at creation when the unit's name
-       * matches `doubleForUnitName` (his Dread Knights).
+       * Lord Haart (Necropolis) Dread Knights I/VI: an INSTANT reaction, played
+       * when an enemy declares a Retaliation Attack against one of your units.
+       * Reduces THAT retaliation's damage by `amount` (1 at level I, 2 at VI),
+       * doubled when the unit being retaliated against is the named unit (his
+       * Dread Knights). It is written onto the pending retaliation's
+       * `retaliationDamageReductionInstant` and consumed when that attack
+       * resolves — it never lingers as an ongoing effect, so it fires only on
+       * the single retaliation whose window the player answered.
        */
-      type: "CREATE_RETALIATION_REDUCTION";
-      name: string;
+      type: "REDUCE_RETALIATION_DAMAGE";
       amount: number;
-      duration: EffectDurationDefinition;
       doubleForUnitName?: string;
-      removable?: boolean;
     }
   | {
       /** Vial of Lifeblood: +1 printed HP for this combat. */
@@ -3683,6 +3673,14 @@ export type ResolutionStackItem = {
      * dice to 0" (I); 1 = "set your roll to +1" (VI's chosen-value option).
      */
     forcedRoll?: number;
+    /**
+     * Lord Haart (Necropolis) Dread Knights I/VI: damage knocked off THIS
+     * retaliation by the instant the defender's controller played in the
+     * retaliation window (1/2, doubled for his Dread Knights). Only ever set on
+     * a retaliation attack; read into the attack's `damageReduction` at
+     * resolution, then discarded with the stack item.
+     */
+    retaliationDamageReductionInstant?: number;
     /** Frenzy: this attack ignores the defender's Defense (counts as 0). */
     ignoreDefense?: boolean;
     /**

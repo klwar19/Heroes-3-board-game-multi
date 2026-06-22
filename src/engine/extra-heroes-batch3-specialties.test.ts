@@ -23,10 +23,12 @@ import type { GameAction, GameEvent, GameState, UnitId } from "./state";
 //   Septienna (Necropolis)      — Death Ripple: damage every enemy unit of a grade
 //                                 (NEW: DAMAGE_ENEMY_UNITS_BY_GRADE) — I bronze,
 //                                 IV silver, VI gold+azure — or +Power on a cast.
-//   Lord Haart (Necropolis)     — Dread Knights: reduce enemy retaliation damage
-//                                 by 1/2 doubled for Dread Knights (NEW:
-//                                 RETALIATION_DAMAGE_REDUCTION), IV makes enemy
-//                                 retaliations roll at disadvantage. Real wiki art.
+//   Lord Haart (Necropolis)     — Dread Knights: I/VI are INSTANTS played in the
+//                                 enemy's retaliation window — reduce that
+//                                 retaliation's damage by 1/2, doubled for Dread
+//                                 Knights (NEW: REDUCE_RETALIATION_DAMAGE). IV is
+//                                 the ongoing one (enemy retaliations roll at
+//                                 disadvantage). Real wiki art.
 // ---------------------------------------------------------------------------
 
 const assetPath = (src: string) => fileURLToPath(new URL(`../../public${src}`, import.meta.url));
@@ -559,8 +561,18 @@ describe("Septienna's Death Ripple specialty", () => {
 // ===========================================================================
 
 describe("Lord Haart (Necropolis)'s Dread Knights specialty", () => {
-  /** griffins attack skeletons (which survive and retaliate). Returns griffins' retaliation damage. */
-  function retaliationDamage(seed: string, specialtyCardId: string | null, protectedName?: string): number {
+  /**
+   * griffins attack skeletons (which survive and retaliate). When `specialtyCardId`
+   * is set, p1 holds it and plays it as an INSTANT in the enemy's retaliation
+   * window — never up front. Returns griffins' retaliation damage. `expectOffered`
+   * asserts the instant actually appeared (or did NOT) in the retaliation window.
+   */
+  function retaliationDamage(
+    seed: string,
+    specialtyCardId: string | null,
+    protectedName?: string,
+    expectOffered = true
+  ): number {
     const state = createInitialGameState(seed);
     state.players.p1.hand = specialtyCardId ? [specialtyCardId] : [];
     state.players.p2.hand = [];
@@ -585,17 +597,50 @@ describe("Lord Haart (Necropolis)'s Dread Knights specialty", () => {
     state.combat!.dice.rollCount = 0;
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_griffins";
-    let current = state;
-    if (specialtyCardId) {
-      current = applyOk(current, findPlay(current, specialtyCardId, undefined, "unit_p1_griffins")!.action);
-    }
-    current = applyOk(current, {
+
+    let current = applyOk(state, {
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
       defenderId: "unit_p2_skeletons"
     });
-    return passAllReactions(current).combat!.units.unit_p1_griffins.damage;
+
+    // Step through every reaction window. The instant is NEVER offered before
+    // the enemy declares its retaliation — only in that retaliation's own
+    // window — so play it the first time it appears, then pass everything else.
+    let played = false;
+    let sawOffer = false;
+    let safety = 40;
+    while (current.reactionWindow && safety > 0) {
+      safety -= 1;
+      const priority = current.reactionWindow.priorityPlayerId;
+      const reaction =
+        specialtyCardId && priority === "p1"
+          ? (current.reactionWindow.legalReactions.p1 ?? []).find(
+              (legal) =>
+                legal.action.type === "PLAY_REACTION" && legal.action.cardId === specialtyCardId
+            )
+          : undefined;
+      if (reaction && !played) {
+        sawOffer = true;
+        // The instant is only ever offered against the enemy's retaliation.
+        const declared = [...current.eventLog]
+          .reverse()
+          .find((event): event is Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }> => event.type === "UNIT_ATTACK_DECLARED");
+        expect(declared?.isRetaliation, "the instant must answer a Retaliation Attack").toBe(true);
+        current = applyOk(current, reaction.action);
+        played = true;
+      } else {
+        current = applyOk(current, { type: "PASS_REACTION", playerId: priority });
+      }
+    }
+
+    if (specialtyCardId) {
+      expect(sawOffer, "the retaliation-reduction instant should be offered in the retaliation window").toBe(
+        expectOffered
+      );
+    }
+    return current.combat!.units.unit_p1_griffins.damage;
   }
 
   it("I reduces enemy retaliation damage by 1 (by 2 when protecting a Dread Knights unit)", () => {
@@ -613,6 +658,22 @@ describe("Lord Haart (Necropolis)'s Dread Knights specialty", () => {
       retaliationDamage("lhn-vi-dread", "specialty.lord_haart_necropolis.6", "Dread Knights"),
       "doubled to -4 for Dread Knights"
     ).toBe(4);
+  });
+
+  it("I and VI are instants — never an up-front targeted play before the attack", () => {
+    const state = createInitialGameState("lhn-instant-shape");
+    state.players.p1.hand = ["specialty.lord_haart_necropolis.1", "specialty.lord_haart_necropolis.6"];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    // A combat-timing card would surface as a PLAY_CARD on a friendly unit; an
+    // instant reaction never does (it only lives in a reaction window).
+    expect(findPlay(state, "specialty.lord_haart_necropolis.1", undefined, "unit_p1_griffins")).toBeUndefined();
+    expect(findPlay(state, "specialty.lord_haart_necropolis.6", undefined, "unit_p1_griffins")).toBeUndefined();
+    for (const level of [1, 6] as const) {
+      const card = adventureCards[`specialty.lord_haart_necropolis.${level}`];
+      expect(card.timing, `level ${level} is an instant`).toBe("instant");
+      expect(card.effect.type).toBe("REDUCE_RETALIATION_DAMAGE");
+    }
   });
 
   it("IV makes the enemy Retaliation Attack against the chosen unit roll at disadvantage", () => {
