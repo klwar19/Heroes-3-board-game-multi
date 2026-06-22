@@ -11,7 +11,7 @@ import {
   sampleCards
 } from "./index";
 import { makeActiveEffect } from "./active-effects";
-import type { GameAction, GameState, PlayerId } from "./state";
+import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 const castMagicArrow = {
   type: "CAST_SPELL",
@@ -1671,6 +1671,76 @@ describe("rules engine prototype", () => {
       damage: 7
     });
     expect(result.combat?.units.unit_p2_dread_knights.damage).toBe(7);
+  });
+
+  it("lets Wolf Raiders strike a second time after the target retaliates", () => {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    // The p1 Griffins stand in for a Pack of Wolf Raiders (their printed second
+    // strike). Fatten them so the Vampires' Retaliation can't fell them before
+    // the follow-up, and make the Vampires a soft, plain target.
+    Object.assign(state.combat.units.unit_p1_griffins, {
+      name: "Wolf Raiders",
+      cardName: "Pack of Wolf Raiders",
+      variant: "pack",
+      type: "ground",
+      attack: 2,
+      defense: 0,
+      maxHealth: 12,
+      damage: 0,
+      abilities: ["wolf-raiders-strike-twice"]
+    });
+    Object.assign(state.combat.units.unit_p2_vampires, {
+      attack: 1,
+      defense: 0,
+      maxHealth: 20,
+      damage: 0,
+      defenseToken: false,
+      abilities: []
+    });
+    scriptDice(state, [0, 0, 0, 0]);
+
+    const moved = applyOk(state, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+      destination: 10
+    });
+    const resolved = passAllReactions(
+      applyOk(moved, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: "unit_p1_griffins",
+        defenderId: "unit_p2_vampires"
+      })
+    );
+
+    // The engine announces the printed second strike exactly once...
+    const strikeTwice = resolved.eventLog.filter(
+      (event): event is Extract<GameEvent, { type: "UNIT_ABILITY_TRIGGERED" }> =>
+        event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "wolf-raiders-strike-twice"
+    );
+    expect(strikeTwice).toHaveLength(1);
+
+    // ...and the Wolf Raiders actually attack the Vampires TWICE.
+    const wolfHits = resolved.eventLog.filter(
+      (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> =>
+        event.type === "ATTACK_ROLLED" &&
+        event.attackerId === "unit_p1_griffins" &&
+        event.defenderId === "unit_p2_vampires"
+    );
+    expect(wolfHits).toHaveLength(2);
+
+    // The second strike provokes no further Retaliation (only one in the exchange).
+    const retaliations = resolved.eventLog.filter((event) => event.type === "RETALIATION_ATTACKED");
+    expect(retaliations).toHaveLength(1);
+
+    // Two hits of attack 2 against defense 0 → 4 damage on the Vampires.
+    expect(resolved.combat?.units.unit_p2_vampires.damage).toBe(4);
   });
 
   it("allows opening simultaneous town actions before ordered turns begin", () => {

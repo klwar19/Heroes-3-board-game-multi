@@ -349,3 +349,47 @@ describe("more spells wired with SFX + animation (no silent resolves)", () => {
     expect(spellPresentationMs(burn)).toBeGreaterThan(0);
   });
 });
+
+describe("Stronghold creature abilities carry their SFX + animation", () => {
+  // These three abilities fire a UNIT_ABILITY_TRIGGERED in combat but had no FX
+  // plan, so they resolved silently (a bare damage/buff number) despite their
+  // sprite sheets + sounds being on disk. The assertions fail if a plan — or its
+  // sprite/sound — is dropped again, so the wiring cannot regress to decorative.
+
+  it("strikes Thunderbirds' Lightning with the bolt + thunderclap (like Lightning Bolt)", () => {
+    const plan = abilityFxPlans["thunderbirds-lightning"];
+    expect(plan, "Thunderbirds' Lightning Strike needs an ability FX plan").toBeTruthy();
+    // Same bolt-flash + crackle pair the Lightning Bolt spell plays over the target.
+    expect(plan.affect?.[0]?.key).toBe("lightning-bolt");
+    expect(plan.affect?.[1]?.key).toBe("lightning-crackle");
+    expect(spriteDurationMs(plan.affect?.[1]?.key)).toBeGreaterThan(0);
+    expect(plan.sound).toBe("spells/lightning-bolt");
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+    // A real gate so the lightning's 1 damage waits for the thunderclap to land.
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  it.each(["ogres-attack-token-few", "ogres-attack-token-pack"])(
+    "washes the Ogres' %s buff red with the Bloodlust cry",
+    (abilityId) => {
+      const plan = abilityFxPlans[abilityId];
+      expect(plan, `${abilityId} needs an ability FX plan`).toBeTruthy();
+      // The token IS a Bloodlust buff: the red battle-rage tint + bloodlust sound.
+      expect(plan.tint).toBe("bloodlust");
+      expect(plan.sound).toBe("spells/bloodlust");
+      expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+      // Tints have no sprite; the gate is the held wash / the cry, never zero.
+      expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+    }
+  );
+
+  it("splashes Behemoths' Corrosion with the acid burst (like Rust Dragon acid)", () => {
+    const plan = abilityFxPlans["behemoth-corrosion"];
+    expect(plan, "Behemoths' Corrosion needs an ability FX plan").toBeTruthy();
+    expect(plan.hit).toBe("acid-breath");
+    expect(spriteDurationMs(plan.hit)).toBeGreaterThan(0);
+    expect(plan.hitSound).toBe("effects/acid-breath");
+    expect(soundDurationMs(plan.hitSound)).toBeGreaterThan(0);
+    expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+});

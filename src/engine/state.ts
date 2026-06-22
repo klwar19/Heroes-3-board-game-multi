@@ -2716,6 +2716,56 @@ export type GameAction =
       type: "START_ADVENTURE";
       playerId: PlayerId;
     }
+  | {
+      /**
+       * Register (or refresh) this client in the room as an observer. Carries a
+       * stable per-browser `clientId` and a display `name`. Idempotent: a
+       * re-join updates the name and keeps the existing seat/host. Membership
+       * actions are keyed by `clientId`, never a seat `playerId`.
+       */
+      type: "JOIN_ROOM";
+      clientId: string;
+      name: string;
+    }
+  | {
+      /** Remove this client from the room; frees its seat and hands off host. */
+      type: "LEAVE_ROOM";
+      clientId: string;
+    }
+  | {
+      /**
+       * Turn host control on or off. Turning it ON makes the caller the host
+       * (only a member of an open room may do this); turning it OFF (back to an
+       * open table) is host-only. Keyed by the caller's `clientId`.
+       */
+      type: "SET_ROOM_HOSTED";
+      clientId: string;
+      hosted: boolean;
+    }
+  | {
+      /**
+       * Host-only (hosted rooms): seat `targetClientId` at `seat` (a real seat
+       * id or "observer"). Seating a member at a seat another member holds bumps
+       * that other member to observer. The host may seat themselves (so the host
+       * can be Player 1).
+       */
+      type: "ASSIGN_SEAT";
+      clientId: string;
+      targetClientId: string;
+      seat: RoomSeat;
+    }
+  | {
+      /** Host-only (hosted rooms): remove `targetClientId` from the room. */
+      type: "KICK_MEMBER";
+      clientId: string;
+      targetClientId: string;
+    }
+  | {
+      /** Host-only (hosted rooms): hand host to another member. */
+      type: "TRANSFER_HOST";
+      clientId: string;
+      targetClientId: string;
+    }
   | { type: "END_TURN"; playerId: PlayerId }
   | {
       /**
@@ -3215,6 +3265,45 @@ export type GameEvent =
       id: string;
       type: "ORDERED_TURNS_STARTED";
       activePlayerId: PlayerId;
+    }
+  | {
+      id: string;
+      type: "ROOM_MEMBER_JOINED";
+      clientId: string;
+      name: string;
+      seat: RoomSeat;
+      isHost: boolean;
+    }
+  | {
+      id: string;
+      type: "ROOM_MEMBER_LEFT";
+      clientId: string;
+    }
+  | {
+      id: string;
+      type: "ROOM_SEAT_CHANGED";
+      clientId: string;
+      seat: RoomSeat;
+      /** The client who made the change (the host, or the member themselves). */
+      byClientId: string;
+    }
+  | {
+      id: string;
+      type: "ROOM_MEMBER_KICKED";
+      clientId: string;
+      byClientId: string;
+    }
+  | {
+      id: string;
+      type: "ROOM_HOSTED_CHANGED";
+      hosted: boolean;
+      byClientId: string;
+    }
+  | {
+      id: string;
+      type: "ROOM_HOST_CHANGED";
+      clientId: string;
+      byClientId: string;
     }
   | {
       id: string;
@@ -3936,6 +4025,48 @@ export type TurnState = {
   simultaneousRoundLimit: number;
   completedPlayerIds: PlayerId[];
   observingPlayerId: PlayerId | null;
+};
+
+/**
+ * Which player a connected client controls in a hosted room: a real seat id
+ * (a member of `turnOrder` / a lobby seat) or "observer" (watches with hidden
+ * information filtered, takes no actions).
+ */
+export type RoomSeat = PlayerId | "observer";
+
+/**
+ * One connected participant of a room, keyed by a stable per-browser
+ * `clientId` (stored client-side in localStorage). A member's `seat` is the
+ * player they control, or "observer". `isHost` mirrors `RoomMembershipState.
+ * hostClientId` for convenience in views.
+ */
+export type RoomMember = {
+  clientId: string;
+  name: string;
+  seat: RoomSeat;
+  isHost: boolean;
+};
+
+/**
+ * Room membership/seating, carried inside the synced GameState so it flows
+ * through `applyAction` (engine-validated) and both transport backends
+ * identically.
+ *
+ * Two modes:
+ *  - **open table** (`hosted: false`, or `state.room` absent on legacy
+ *    snapshots): no seat enforcement at all — any client may view/act as any
+ *    seat. This is the original "easy to test" behaviour (the local seat
+ *    switcher in the UI).
+ *  - **hosted** (`hosted: true`): seats are host-controlled. Only the host
+ *    (`hostClientId`) may assign/kick/transfer, players cannot move their own
+ *    seat, and a game action is only accepted from the client whose seat
+ *    matches the action's `playerId` (enforced in `applyAction` when the
+ *    transport passes `actorClientId`).
+ */
+export type RoomMembershipState = {
+  hosted: boolean;
+  hostClientId: string | null;
+  members: RoomMember[];
 };
 
 /**
@@ -6053,6 +6184,12 @@ export type GameState = {
   eventCounter?: number;
   pendingChoice: PendingChoice;
   turn: TurnState;
+  /**
+   * Room membership/seating (host, seats, observers). Absent on legacy
+   * snapshots and on rooms that never opted into hosting — treated as an
+   * "open table" with no seat enforcement (the original free-seat test mode).
+   */
+  room?: RoomMembershipState | null;
 };
 
 /** Reserved player id that controls neutral armies during map combats. */

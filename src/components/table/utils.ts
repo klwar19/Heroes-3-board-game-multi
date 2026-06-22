@@ -60,6 +60,10 @@ export function moveIntoBattleWithTroopsToBuy(
   if (state.combat) {
     return false;
   }
+  // Room membership actions (clientId-keyed) carry no seat playerId.
+  if (!("playerId" in action)) {
+    return false;
+  }
   if (action.playerId !== viewerPlayerId || state.activePlayerId !== viewerPlayerId) {
     return false;
   }
@@ -142,6 +146,11 @@ export function cardName(cardId: string): string {
 
 export function playerName(state: GameState, playerId: string): string {
   return state.players[playerId]?.name ?? playerId;
+}
+
+/** Display name of a room member by clientId (falls back if already gone). */
+export function roomMemberName(state: GameState, clientId: string): string {
+  return state.room?.members.find((member) => member.clientId === clientId)?.name ?? "A player";
 }
 
 export function titleCase(value: string): string {
@@ -345,6 +354,18 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} is ready.`;
     case "ORDERED_TURNS_STARTED":
       return `Ordered turns begin with ${playerName(state, event.activePlayerId)}.`;
+    case "ROOM_MEMBER_JOINED":
+      return `${event.name} joined${event.seat === "observer" ? " as an observer" : ` (seat ${playerName(state, event.seat)})`}.`;
+    case "ROOM_MEMBER_LEFT":
+      return `${roomMemberName(state, event.clientId)} left the room.`;
+    case "ROOM_SEAT_CHANGED":
+      return `${roomMemberName(state, event.clientId)} is now ${event.seat === "observer" ? "an observer" : `at ${playerName(state, event.seat)}`}.`;
+    case "ROOM_MEMBER_KICKED":
+      return `${roomMemberName(state, event.clientId)} was removed from the room.`;
+    case "ROOM_HOSTED_CHANGED":
+      return event.hosted ? "The room is now hosted — seats are locked." : "The room is now an open table.";
+    case "ROOM_HOST_CHANGED":
+      return `${roomMemberName(state, event.clientId)} is now the host.`;
     case "ROUND_STARTED":
       return `Round ${event.round} begins${event.kind === "resource" ? " (resource round)" : event.kind === "astrologers" ? " (Astrologers' round)" : ""}.`;
     case "TURN_STARTED":

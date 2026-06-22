@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { applyAction, createInitialGameState } from "./index";
+import { applyAction, createInitialGameState, tokenDefenseDelta } from "./index";
 import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 /**
@@ -373,6 +373,59 @@ describe("Wyvern sting (extra die, only on '0')", () => {
   });
 });
 
+describe("Thunderbirds lightning strike (extra die, on '0' OR '+1')", () => {
+  // The Thunderbirds share the extra-die follow-up code with the Wyvern, but
+  // their window is WIDER (minRoll 0, no maxRoll) so they also trigger on '+1'.
+  // The Wyvern tests only reach the '0' branch; these pin the Thunderbirds'
+  // own '+1' branch, which would otherwise drop silently if the lightning
+  // follow-up regressed.
+  it("deals +1 damage when the lightning die shows '0'", () => {
+    // attack die +1 → 4 damage, lightning die 0 → +1 → 5 total
+    expect(defenderDamage(rangedDuel({ attackerAbilities: ["thunderbirds-lightning"], rolls: [1, 0] }))).toBe(5);
+  });
+
+  it("ALSO deals +1 damage on a '+1' lightning die (unlike the Wyvern)", () => {
+    // attack die +1 → 4 damage, lightning die +1 → +1 → 5 total
+    expect(defenderDamage(rangedDuel({ attackerAbilities: ["thunderbirds-lightning"], rolls: [1, 1] }))).toBe(5);
+  });
+
+  it("does nothing on a '-1' lightning die", () => {
+    expect(defenderDamage(rangedDuel({ attackerAbilities: ["thunderbirds-lightning"], rolls: [1, -1] }))).toBe(4);
+  });
+
+  it("announces the strike on the target (drives the lightning FX cue)", () => {
+    const next = rangedDuel({ attackerAbilities: ["thunderbirds-lightning"], rolls: [1, 1] });
+    const fired = next.eventLog.find(
+      (event): event is Extract<GameEvent, { type: "UNIT_ABILITY_TRIGGERED" }> =>
+        event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "thunderbirds-lightning"
+    );
+    expect(fired, "Thunderbirds must emit their lightning ability event").toBeDefined();
+    expect(fired?.targetUnitId).toBe("unit_p2_skeletons");
+  });
+});
+
+describe("Behemoths crushing blow & corrosion", () => {
+  it("Crushing Blow (few) lowers the target's defense by 1 for the attack", () => {
+    // marksmen attack 3 vs defense 2: a plain hit deals 1; the −1 crush deals 2.
+    expect(defenderDamage(rangedDuel({ defenderDefense: 2, rolls: [0] }))).toBe(1);
+    expect(
+      defenderDamage(
+        rangedDuel({ attackerAbilities: ["behemoth-defense-crush-few"], defenderDefense: 2, rolls: [0] })
+      )
+    ).toBe(2);
+  });
+
+  it("Corrosion drops a Defense-reducing token on the target on ANY attack roll", () => {
+    // Unlike the Rust Dragon's acid (only on a '-1' roll), the Behemoth's
+    // Corrosion is an unconditional on-attack token — here it lands on a '0'.
+    const next = rangedDuel({ attackerAbilities: ["behemoth-corrosion"], defenderDefense: 3, rolls: [0] });
+    const defender = next.combat!.units.unit_p2_skeletons;
+    expect(defender.tokens?.some((token) => token.kind === "corrosion")).toBe(true);
+    // The token must actually SHAVE defense (corrosion never raises it): 3 → 2.
+    expect(tokenDefenseDelta(defender)).toBe(-1);
+  });
+});
+
 describe("Rust Dragon acid breath", () => {
   it("places a -2 Defense token on a '-1' attack roll", () => {
     const next = rangedDuel({ attackerAbilities: ["rust-dragon-acid"], defenderDefense: 3, rolls: [-1] });
@@ -382,6 +435,14 @@ describe("Rust Dragon acid breath", () => {
   it("places no token on any other roll", () => {
     const next = rangedDuel({ attackerAbilities: ["rust-dragon-acid"], defenderDefense: 3, rolls: [0] });
     expect(defenderTokens(next, "corrosion")).toEqual([]);
+  });
+
+  it("the acid actually LOWERS the target's defense (corrosion reduces, never raises)", () => {
+    // Regression guard: the acid token stores a +2 amount, but corrosion must
+    // SHAVE defense (3 → 1), not add to it. tokenDefenseDelta normalizes to the
+    // magnitude; the old `total - amount` wrongly returned +2 here.
+    const next = rangedDuel({ attackerAbilities: ["rust-dragon-acid"], defenderDefense: 3, rolls: [-1] });
+    expect(tokenDefenseDelta(next.combat!.units.unit_p2_skeletons)).toBe(-2);
   });
 });
 

@@ -257,6 +257,27 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // Slayer Spell: after its dice read out (they ride the attack-die overlay), the
   // slayer glyph flares over the gold target as the empowered blow lands.
   slayer: { affect: [{ key: "slayer" }], sound: "spells/slayer" },
+  // --- Stronghold expansion creature abilities -----------------------------
+  // Thunderbirds' Lightning Strike: the engine rolls one extra Attack die after
+  // the bird's blow (reducer.ts applyAttackDieDamageFollowUps) and emits a
+  // UNIT_ABILITY_TRIGGERED on the target. It crackles with the SAME lightning
+  // bolt + thunder-crack the Lightning Bolt spell uses, so the strike both LOOKS
+  // and SOUNDS like a thunderclap (its sibling Wyvern sting already animates this
+  // way). The 1-damage hit, when the die lands on "0"/"+1", floats after the bolt.
+  "thunderbirds-lightning": {
+    affect: [{ key: "lightning-bolt" }, { key: "lightning-crackle", delayMs: 220 }],
+    sound: "spells/lightning-bolt"
+  },
+  // Ogres' "Bloodlust Token" (few +1 / pack +2 Attack): a chosen friendly unit is
+  // whipped into a battle frenzy. It reuses the Bloodlust spell's presentation —
+  // the red battle-rage wash over the buffed unit + the H3 bloodlust cry — since
+  // the token IS a Bloodlust buff by another name.
+  "ogres-attack-token-few": { tint: "bloodlust", sound: "spells/bloodlust" },
+  "ogres-attack-token-pack": { tint: "bloodlust", sound: "spells/bloodlust" },
+  // Behemoths' Corrosion (pack): after the crushing blow, an acid token eats the
+  // target's armour. It splashes with the same acid burst the Rust Dragon's Acid
+  // Breath uses (the two share the Corrosion-token mechanic).
+  "behemoth-corrosion": { hit: "acid-breath", hitSound: "effects/acid-breath" },
   // Future abilities (cards not implemented yet, assets ready):
   poison: { affect: [{ key: "poison" }], sound: "spells/poison" },
   paralyze: { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
