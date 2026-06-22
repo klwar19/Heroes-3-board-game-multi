@@ -1,26 +1,25 @@
 "use client";
 
 import { useEffect } from "react";
-import { clearAllCachedRooms } from "@/lib/room-cache";
+import { escapeToFreshRoom } from "@/lib/recovery";
 
 /**
  * Route-level safety net: catches any render/hook crash in the table page that
  * the in-table boundary cannot (errors thrown in the component body before its
- * JSX mounts). Reloading re-mounts the page, which reconnects to the same room
- * and fetches the latest server snapshot — the game state is server-side, so
- * progress is never lost.
+ * JSX mounts).
  *
- * Recovery does a hard `window.location.reload()` rather than Next.js's
- * `reset()`: `reset()` only re-renders the same crashed segment, so when the
- * error recurs on render (a bad snapshot, a hook that throws on mount) the
- * screen just reappears and the click looks dead — the player is trapped with
- * no way back. A full reload always re-mounts the page and re-syncs from the
- * server.
+ * Recovery offers two paths, because reconnecting to the SAME room cannot
+ * escape a crash caused by that room's own state (a stale re-restored cache, or
+ * a bad snapshot from a server on older engine code) — a plain reload just
+ * re-loads the poison and the screen comes back, so the player "keeps staying
+ * there":
+ *   1. "Reload this table" — a hard reload, for a transient/one-off crash.
+ *   2. "Start a fresh table" — opens a brand-new room id the server creates
+ *      empty. This ALWAYS works (see src/lib/recovery.ts); it is the guaranteed
+ *      way out, at the cost of the already-broken game.
  *
- * "Return to the menu" goes further: it wipes the local recovery cache and
- * drops the room query. A render crash is most often a stale cached game (saved
- * by an older engine) being restored over and over — a plain reload would just
- * restore it again. Clearing the cache guarantees a clean, playable fresh lobby.
+ * The thrown error's text is shown so it can be reported — guessing blind is
+ * how this stayed unfixed.
  */
 export default function TableError({
   error,
@@ -47,32 +46,29 @@ export default function TableError({
     }
   };
 
-  const returnToMenu = () => {
-    if (typeof window !== "undefined") {
-      // Drop any poisoned recovery save, then drop ?room (and any other query)
-      // so the page reconnects to the default room and shows a clean lobby —
-      // a guaranteed escape from a room whose cached state keeps crashing.
-      clearAllCachedRooms();
-      window.location.href = window.location.pathname;
-    }
-  };
-
   return (
     <main className="tableRoot loadingRoot">
       <div className="errorRecovery" role="alert">
         <h2>The table hit a snag</h2>
         <p>
-          Your game is safe — it lives on the server, not in this window. Reload to rejoin the room from the
-          latest synced state; no progress is lost.
+          Your game is safe — it lives on the server, not in this window. Try reloading first. If the table
+          keeps crashing, start a fresh table — the broken game cannot be rejoined, but a new room always
+          opens cleanly.
         </p>
         <div className="handButtons">
-          <button className="commandButton primary" type="button" onClick={reload}>
-            Reload the table
+          <button className="commandButton" type="button" onClick={reload}>
+            Reload this table
           </button>
-          <button className="commandButton ghost" type="button" onClick={returnToMenu}>
-            Return to the menu
+          <button className="commandButton primary" type="button" onClick={escapeToFreshRoom}>
+            Start a fresh table
           </button>
         </div>
+        {error?.message ? (
+          <pre className="errorDetail" aria-label="Error detail">
+            {error.message}
+            {error.digest ? `\n(digest ${error.digest})` : ""}
+          </pre>
+        ) : null}
       </div>
     </main>
   );
