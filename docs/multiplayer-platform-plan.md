@@ -5,8 +5,41 @@
 > authoritative twin of `src/server/game-room-store.ts`), persists snapshots
 > in Durable Object storage, and broadcasts over WebSockets. The client picks
 > it up through `src/lib/realtime.ts` when `NEXT_PUBLIC_PARTYKIT_HOST` is set
-> and falls back to the built-in API + SSE store otherwise. Everything below
-> about lobbies, auth and seat claiming still applies as future work.
+> and falls back to the built-in API + SSE store otherwise.
+
+> **Rooms / host / seats (implemented, engine-enforced + tested).** Membership
+> now lives inside the synced `GameState` as `state.room`
+> (`RoomMembershipState`), so it flows through `applyAction` like any rule and
+> works identically on both transports. See `src/engine/room.ts` and the tests
+> in `src/engine/room-membership.test.ts` / `src/server/game-room-store.test.ts`
+> / `src/components/table/room-panel.test.tsx`.
+>
+> - **Two modes.** *Open table* (no `room`, or `hosted:false`) keeps the
+>   original free local seat-switch — the easy single-browser test mode, with
+>   no seat enforcement. *Hosted* (`hosted:true`) locks seats: only the host
+>   assigns/kicks/transfers, players cannot self-move, and a game action is
+>   accepted only from the client whose seat matches its `playerId`.
+> - **Actions** (all keyed by a stable per-browser `clientId` in localStorage,
+>   `src/lib/identity.ts`): `JOIN_ROOM`, `LEAVE_ROOM`, `SET_ROOM_HOSTED`,
+>   `ASSIGN_SEAT` (host; the host may seat themselves as Player 1, bumping a
+>   prior occupant to observer), `KICK_MEMBER` (host), `TRANSFER_HOST` (host).
+> - **Seat ownership** is enforced in `applyAction` via `roomActionGuard` when
+>   the transport supplies `actorClientId` (PartyKit message / API body). Room
+>   membership is **carried across a game reset** so a table need not re-host.
+> - **Observers** are unbounded (seat `"observer"`, hands filtered by the
+>   existing `getPlayerView`). The shareable invite link + "New room" / "Host
+>   this room" controls live in `src/components/table/room-panel.tsx`.
+> - **Trust boundary (declared, not hidden):** `actorClientId` is the value the
+>   client claims; there is no auth binding a socket to a clientId yet (guest
+>   play). The engine enforces the rule *given* the claimed identity — it is not
+>   yet a defence against a client forging another's id. Authentication is the
+>   next milestone (Step 4 below).
+>
+> **Still future work:** simultaneous early-day turns in adventure mode (the
+> `TurnState.mode`/`simultaneousRoundLimit` scaffolding exists but is wired only
+> for combat-sandbox today), per-player concurrent map combats (today there is
+> one global combat slot), and auth/persistent identity. The notes below about
+> lobbies and the boardgame.io carrier remain as background.
 
 
 The current prototype already plays like a shared table: a server-authoritative rules engine, REST rooms with **Server-Sent Events push** (polling only as fallback), seat switching, observer seats, and player-view filtering. This document plans the jump to a real multiplayer platform.

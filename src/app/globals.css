@@ -412,6 +412,192 @@ button {
   color: var(--text);
 }
 
+/* ------------------------------------------------------------------ */
+/* Room membership panel (host / seats / observers)                    */
+/* ------------------------------------------------------------------ */
+
+.seatLocked {
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.roomPanel {
+  display: grid;
+  gap: 6px;
+}
+
+.roomToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.roomToggle.open {
+  border-color: var(--gold);
+}
+
+.roomToggleMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.roomBody {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(13 15 16 / 55%);
+}
+
+.roomInvite,
+.roomNameRow,
+.roomModeRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.roomInvite input,
+.roomNameRow input {
+  flex: 1;
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgb(13 15 16 / 50%);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.roomModeNote {
+  flex: 1;
+  min-width: 140px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.roomMembers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.roomMember {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-size: 12px;
+}
+
+.roomMemberName {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.roomMemberName em {
+  color: var(--muted);
+  font-weight: 600;
+  font-style: normal;
+}
+
+.hostCrown {
+  color: var(--gold);
+}
+
+.roomSeatSelect {
+  margin-left: auto;
+  min-height: 28px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.roomSeatBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid rgb(213 168 79 / 45%);
+  border-radius: 999px;
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.roomSeatBadge.observer {
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.roomMemberActions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.iconButton {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.iconButton.danger {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.roomMemberEmpty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.roomLeave {
+  justify-self: start;
+}
+
 .musicToggle {
   display: inline-flex;
   align-items: center;

@@ -1,6 +1,6 @@
 "use client";
 
-import { Crosshair, Eye, Map as MapIcon, StepForward, Swords } from "lucide-react";
+import { Crosshair, Eye, Lock, Map as MapIcon, StepForward, Swords } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   astrologersCardDefinitions,
@@ -126,6 +126,8 @@ import { useBackgroundMusic, type MusicScene } from "@/lib/music";
 import { MusicToggle } from "@/components/music-toggle";
 import { connectRoom, type GameRoomSnapshot, type RoomConnection } from "@/lib/realtime";
 import { clearCachedRoom, loadCachedRoom, saveCachedRoom } from "@/lib/room-cache";
+import { getClientId, getDisplayName, setDisplayName as persistDisplayName } from "@/lib/identity";
+import { RoomPanel } from "@/components/table/room-panel";
 
 /** Events that move cards or play battle effects on the table. */
 const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
@@ -483,6 +485,11 @@ type HandMode = null | "mulligan" | "morale-redraw";
 export default function Home() {
   const [state, setState] = useState<GameState | null>(null);
   const [viewerPlayerId, setViewerPlayerId] = useState<PlayerId>("p1");
+  /** Stable per-browser identity for room membership (host/seat enforcement). */
+  const clientId = useMemo(() => getClientId(), []);
+  // Lazy-read the persisted name (SSR returns ""); the table that shows it only
+  // mounts after the room snapshot loads, well past hydration — no mismatch.
+  const [displayName, setDisplayNameState] = useState<string>(getDisplayName);
   const [errors, setErrors] = useState<string[]>([]);
   const [roomId, setRoomId] = useState(getInitialRoomId);
   const [roomInput, setRoomInput] = useState(getInitialRoomId);
@@ -2159,10 +2166,14 @@ export default function Home() {
     // Each room gets its own recovery attempt, even on the same server boot.
     restoredForBootRef.current = null;
 
-    const connection = connectRoom(roomId, {
-      onSnapshot: ingestSnapshot,
-      onStatus: setSyncStatus
-    });
+    const connection = connectRoom(
+      roomId,
+      {
+        onSnapshot: ingestSnapshot,
+        onStatus: setSyncStatus
+      },
+      clientId
+    );
     connectionRef.current = connection;
 
     connection
@@ -2174,7 +2185,7 @@ export default function Home() {
       connection.close();
       connectionRef.current = null;
     };
-  }, [roomId, ingestSnapshot]);
+  }, [roomId, ingestSnapshot, clientId]);
 
   const submitAction = async (action: GameAction) => {
     // A play with a printed discard cost (Xyron's Inferno, "discard N: …"
@@ -2261,6 +2272,54 @@ export default function Home() {
         });
     }
   };
+
+  const onRename = useCallback((name: string) => {
+    persistDisplayName(name);
+    setDisplayNameState(name);
+  }, []);
+
+  // Register (and keep fresh) this client's room membership. Re-sends only when
+  // the room changes or the name differs from what the snapshot shows, so it
+  // never loops. New clients always join as observers (see src/engine/room.ts).
+  const joinedKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!state || !connectionRef.current) {
+      return;
+    }
+    const desiredName = displayName.trim() || "Player";
+    const me = state.room?.members.find((member) => member.clientId === clientId) ?? null;
+    if (me && me.name === desiredName) {
+      joinedKeyRef.current = `${roomId}:${desiredName}`;
+      return;
+    }
+    const key = `${roomId}:${desiredName}`;
+    // Already sent this exact join and a member now exists — just waiting for the
+    // name to propagate; do not spam the room.
+    if (joinedKeyRef.current === key && me) {
+      return;
+    }
+    joinedKeyRef.current = key;
+    void submitAction({ type: "JOIN_ROOM", clientId, name: desiredName });
+    // submitAction is intentionally omitted from deps (stable enough); we key off
+    // the synced room, the room id, and the chosen name.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.room, roomId, displayName, clientId]);
+
+  // Hosted rooms drive the viewer's seat from their host assignment (seats are
+  // locked); open tables keep the manual seat switcher untouched.
+  const hostedSeat: PlayerId | typeof OBSERVER_SEAT | null = (() => {
+    if (!state?.room?.hosted) {
+      return null;
+    }
+    const seat = state.room.members.find((member) => member.clientId === clientId)?.seat ?? "observer";
+    return seat !== "observer" && state.players[seat] ? seat : OBSERVER_SEAT;
+  })();
+  // Adjust the locked seat during render (React's supported "derive state from
+  // props" pattern) rather than in an effect; it converges in one extra render
+  // once viewerPlayerId already equals the assignment.
+  if (hostedSeat && hostedSeat !== viewerPlayerId) {
+    setViewerPlayerId(hostedSeat);
+  }
 
   /** Toggle a hand card as payment for the pending discard-cost play. */
   const toggleCostPick = (index: number) => {
@@ -2349,8 +2408,7 @@ export default function Home() {
     setSyncStatus(`synced v${snapshot.version}`);
   };
 
-  const joinRoom = () => {
-    const nextRoomId = roomInput.trim() || "dev-room";
+  const switchToRoom = (nextRoomId: string) => {
     if (nextRoomId === roomId) {
       return;
     }
@@ -2361,8 +2419,14 @@ export default function Home() {
     setRoomVersion(0);
     setState(null);
     setFeedItems([]);
+    setRoomInput(nextRoomId);
     setRoomId(nextRoomId);
   };
+
+  const joinRoom = () => switchToRoom(roomInput.trim() || "dev-room");
+
+  /** Open a brand-new room with a random code (then Host it to lock seats). */
+  const createRoom = () => switchToRoom(`room-${Math.random().toString(36).slice(2, 8)}`);
 
   const isSeated = Boolean(state && viewerPlayerId !== OBSERVER_SEAT && state.players[viewerPlayerId]);
   const playerView = useMemo(
@@ -2419,33 +2483,56 @@ export default function Home() {
   const adventureMode = state.mode === "adventure";
   const inLobby = Boolean(state.setupLobby) && state.phase === "setup";
 
+  const roomHosted = Boolean(state.room?.hosted);
+  const lockedSeatLabel =
+    hostedSeat && hostedSeat !== OBSERVER_SEAT ? state.players[hostedSeat]?.name ?? hostedSeat : "Observer";
+
   const tableMenu = (
     <div className="tableMenu" aria-label="Table controls">
-      <div className="menuRow seatSwitch">
-        {seatIds.map((playerId) => (
+      {roomHosted ? (
+        // Hosted room: seats are locked — the host assigns them in the Room
+        // panel. Players cannot self-switch.
+        <div className="menuRow seatLocked" aria-label="Your seat (locked by host)">
+          <Lock aria-hidden="true" size={13} />
+          <span>You are {hostedSeat === OBSERVER_SEAT ? "an observer" : `at ${lockedSeatLabel}`}</span>
+        </div>
+      ) : (
+        // Open table: the original free local seat switcher (handy for testing).
+        <div className="menuRow seatSwitch">
+          {seatIds.map((playerId) => (
+            <button
+              aria-pressed={viewerPlayerId === playerId}
+              className={viewerPlayerId === playerId ? "selected" : ""}
+              key={playerId}
+              onClick={() => setViewerPlayerId(playerId)}
+              title={`Sit as ${state.players[playerId]?.name ?? playerId}`}
+              type="button"
+            >
+              <Eye aria-hidden="true" size={13} />
+              <span>{state.players[playerId]?.name ?? playerId}</span>
+            </button>
+          ))}
           <button
-            aria-pressed={viewerPlayerId === playerId}
-            className={viewerPlayerId === playerId ? "selected" : ""}
-            key={playerId}
-            onClick={() => setViewerPlayerId(playerId)}
-            title={`Sit as ${state.players[playerId]?.name ?? playerId}`}
+            aria-pressed={viewerPlayerId === OBSERVER_SEAT}
+            className={viewerPlayerId === OBSERVER_SEAT ? "selected" : ""}
+            onClick={() => setViewerPlayerId(OBSERVER_SEAT)}
+            title="Watch without a seat: hands stay hidden, every fight is visible"
             type="button"
           >
             <Eye aria-hidden="true" size={13} />
-            <span>{state.players[playerId]?.name ?? playerId}</span>
+            <span>Observer</span>
           </button>
-        ))}
-        <button
-          aria-pressed={viewerPlayerId === OBSERVER_SEAT}
-          className={viewerPlayerId === OBSERVER_SEAT ? "selected" : ""}
-          onClick={() => setViewerPlayerId(OBSERVER_SEAT)}
-          title="Watch without a seat: hands stay hidden, every fight is visible"
-          type="button"
-        >
-          <Eye aria-hidden="true" size={13} />
-          <span>Observer</span>
-        </button>
-      </div>
+        </div>
+      )}
+      <RoomPanel
+        clientId={clientId}
+        displayName={displayName}
+        onAction={(action) => void submitAction(action)}
+        onCreateRoom={createRoom}
+        onRename={onRename}
+        roomId={roomId}
+        state={state}
+      />
       <div className="menuRow roomRow">
         <input aria-label="Room ID" onChange={(event) => setRoomInput(event.target.value)} suppressHydrationWarning value={roomInput} />
         <button onClick={joinRoom} title="Join room" type="button">
