@@ -147,6 +147,11 @@ describe("Creature Bank placement on tile discovery", () => {
   /** Places + reveals a Far tile from p1's supply (mirrors adventure.test.ts geometry). */
   function discoverFarTile(creatureBanks = true): GameState {
     let state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false, creatureBanks });
+    // The mandatory start-of-turn draw isn't under test here — treat it as taken.
+    for (const _pl of Object.values(state.players)) {
+      _pl.canMulligan = false;
+      _pl.needsHandRefresh = false;
+    }
     state.heroes.hero_p1.spaceId = "h:7:2";
     state.heroes.hero_p1.movementPoints = 3;
     state = apply(state, { type: "PLACE_TILE", playerId: "p1", heroId: "hero_p1", supplyIndex: 0, centerRow: 6, centerCol: 4 });
@@ -400,7 +405,7 @@ describe("Creature Bank battlefield formation", () => {
   /** Runs the bank Combat Setup up to the point the guards have deployed. */
   function startBankCombat(seed: string, bankId: CreatureBankId): GameState {
     let state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
-    state = state.players.p1.needsHandRefresh
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
       ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
       : state;
     placeBankUnderHero(state, bankId, 7);
@@ -523,7 +528,7 @@ describe("Creature Bank combat lifecycle", () => {
 
   it("grants the scaled reward and a Black Cube on a win, but no experience", () => {
     let state = createAdventureGameState({ seed: "bank-win", difficulty: "normal", rollFirstPlayer: false });
-    state = state.players.p1.needsHandRefresh
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
       ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
       : state;
     placeBankUnderHero(state, "crypt", 7);
@@ -570,7 +575,7 @@ describe("Creature Bank combat lifecycle", () => {
 
   it("obeys the Round limit (house rule): a drawn-out bank combat pauses, and 1 MP extends it", () => {
     let state = createAdventureGameState({ seed: "bank-rounds", difficulty: "easy", rollFirstPlayer: false });
-    state = state.players.p1.needsHandRefresh
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
       ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
       : state;
     placeBankUnderHero(state, "crypt", 7);
@@ -618,7 +623,7 @@ describe("Creature Bank combat lifecycle", () => {
     expect(CREATURE_BANKS.dragon_fly_hive.rewardStatus).toBe("implemented");
 
     let state = createAdventureGameState({ seed: "bank-hive", difficulty: "normal", rollFirstPlayer: false });
-    state = state.players.p1.needsHandRefresh
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
       ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
       : state;
     placeBankUnderHero(state, "dragon_fly_hive", 7);
@@ -657,7 +662,7 @@ describe("Creature Bank combat lifecycle", () => {
     expect(CREATURE_BANKS.pyramid.rewardStatus).toBe("implemented");
 
     let state = createAdventureGameState({ seed: "bank-pyramid", difficulty: "normal", rollFirstPlayer: false });
-    state = state.players.p1.needsHandRefresh
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
       ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
       : state;
     placeBankUnderHero(state, "pyramid", 7);
@@ -718,7 +723,7 @@ describe("Creature Bank combat lifecycle", () => {
 
   it("Dragon Fly Hive: a win gains the unit AND lets the player Empower an ability (house rule)", () => {
     let state = createAdventureGameState({ seed: "bank-hive-empower", difficulty: "normal", rollFirstPlayer: false });
-    state = state.players.p1.needsHandRefresh
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
       ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
       : state;
     placeBankUnderHero(state, "dragon_fly_hive", 7);

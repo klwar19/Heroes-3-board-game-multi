@@ -10,6 +10,7 @@ afterEach(cleanup);
 /** Seed a real adventure, then stand a hero of `p1` on a freshly injected field. */
 function gameWithHeroOn(location: string, heroKind: "main" | "secondary" = "main") {
   const state = createAdventureGameState({ seed: "ui-market", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
   state.activePlayerId = "p1";
 
   const field: MapFieldState = {

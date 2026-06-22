@@ -26,7 +26,14 @@ import {
 // ---------------------------------------------------------------------------
 
 function makeGame(): GameState {
-  return createAdventureGameState({ seed: "map-spells", difficulty: "normal", rollFirstPlayer: false });
+  const state = createAdventureGameState({ seed: "map-spells", difficulty: "normal", rollFirstPlayer: false });
+  // The start-of-turn draw is mandatory before moving/casting; these fixtures
+  // don't exercise it, so treat it as already taken (a no-op draw at the limit).
+  for (const _pl of Object.values(state.players)) {
+    _pl.canMulligan = false;
+    _pl.needsHandRefresh = false;
+  }
+  return state;
 }
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -42,7 +49,7 @@ function expectError(state: GameState, action: GameAction): void {
 
 /** Refresh p1's opening hand, then replace it with exactly `cards`. */
 function withHand(state: GameState, cards: string[]): GameState {
-  const next = state.players.p1.needsHandRefresh ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }) : state;
+  const next = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }) : state;
   next.players.p1.hand = [...cards];
   return next;
 }

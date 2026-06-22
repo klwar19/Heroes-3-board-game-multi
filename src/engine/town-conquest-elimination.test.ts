@@ -30,6 +30,7 @@ function expectRejected(state: GameState, action: GameAction): void {
  *  rounds resolve without opening a choice. */
 function makeGame(seed = "conquest-seed"): GameState {
   const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
   for (let i = 0; i < 8; i += 1) {
     state.decks.astrologers.drawPile.push("astrologers.dead_silence");
   }
@@ -47,6 +48,7 @@ function makeThreePlayerGame(seed = "conquest-3p"): GameState {
       { id: "p3", name: "Alamar", factionId: "dungeon", heroDefId: "alamar" }
     ]
   });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
   for (let i = 0; i < 8; i += 1) {
     state.decks.astrologers.drawPile.push("astrologers.dead_silence");
   }

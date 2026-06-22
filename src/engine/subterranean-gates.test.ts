@@ -415,7 +415,7 @@ describe("subterranean tile discovery", () => {
     const heroStart = crossPairs(surface, underground)[0][0];
     const undergroundId = underground.id;
 
-    state = state.players.p1.needsHandRefresh
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
       ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
       : state;
     const hero = state.heroes.hero_p1;
@@ -441,7 +441,7 @@ describe("subterranean tile discovery", () => {
     setAllEmpty(state, here);
 
     const heroStart = crossPairs(here, target)[0][0];
-    state = state.players.p1.needsHandRefresh
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
       ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
       : state;
     const hero = state.heroes.hero_p1;
@@ -565,7 +565,7 @@ describe("subterranean gate: a covered Field becomes unusable — it is the gate
     expect(gate.flagOwnerId).toBeNull();
 
     // It is an open, walk-through step — not a guard stop.
-    state = state.players.p1.needsHandRefresh
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
       ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
       : state;
     const hero = state.heroes.hero_p1;
@@ -593,7 +593,7 @@ describe("subterranean gate: crossing it with the real move action", () => {
     recomputeSubterraneanGates(adv(state));
     const gate = gateHalfTo(state, underground.id)!;
 
-    state = state.players.p1.needsHandRefresh
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
       ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
       : state;
     const surfaceCenter = hexSpaceId({ row: surface.centerRow, col: surface.centerCol });

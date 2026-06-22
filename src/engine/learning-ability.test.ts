@@ -202,7 +202,7 @@ describe("Learning resolution", () => {
 
 /** Refresh p1's required start-of-turn draw, then plant a single Learning card. */
 function readyHeroWithLearning(state: GameState, experience: number): GameState {
-  const refreshed = state.players.p1.needsHandRefresh
+  const refreshed = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
     ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
     : state;
   const hero = getMainHero(refreshed, "p1")!;
@@ -271,7 +271,7 @@ describe("Learning offer surfaces from real map-object visits", () => {
 describe("Learning is never played from hand", () => {
   it("is not offered as a normal map play and rejects a direct PLAY_CARD", () => {
     const base = makeGame();
-    const state = base.players.p1.needsHandRefresh
+    const state = (base.players.p1.needsHandRefresh || base.players.p1.canMulligan)
       ? apply(base, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
       : base;
     state.players.p1.hand = ["ability.learning"];

@@ -6092,14 +6092,23 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
 
   // Start-of-turn draw/discard (every turn, including the first): discard any
   // number of cards, then draw back up to the hand limit ("draw new" with no
-  // discards is the no-op pass). It must be resolved BEFORE using any card —
-  // using a card spends it (see spendStartOfTurnDraw) — so a card can never be
-  // played and the freed hand slot then drawn back up to the limit.
+  // discards is the no-op pass). The draw is MANDATORY (house rule): it must be
+  // taken before the player MOVES, EXPLORES or USES A CARD, so it can never be
+  // forgotten. While it is unspent, the only turn actions offered are the draw
+  // itself, ending the turn, and the town/morale actions already added above —
+  // no movement, exploration, market or card play. (The engine backstops this in
+  // assertHandRefreshed / assertStartOfTurnDrawTaken for handler-validated map
+  // actions that skip this legal-action check.)
   if (player.canMulligan) {
     actions.push({
       label: "Draw new — or discard some and draw up to your hand limit (start of turn)",
       action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
     });
+    actions.push({
+      label: "End turn",
+      action: { type: "END_TURN", playerId }
+    });
+    return actions;
   }
 
   // Instant, Ongoing and Map cards may be played during your own map turn.
