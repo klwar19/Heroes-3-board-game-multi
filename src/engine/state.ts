@@ -5407,6 +5407,13 @@ export type GameSetupOptions = {
    * Off disables the move-to-Book action and the discard→Book pickup entirely.
    */
   spellBook?: boolean;
+  /**
+   * Whether players may open their own Ⅱ–Ⅲ Far tiles (default ON). When ON each
+   * player drafts a personal Far-tile supply they can place onto the map. Off
+   * gives no supply at all — use it for scenarios whose map already includes its
+   * Ⅱ–Ⅲ tiles, so there is nothing left for players to open.
+   */
+  farTileOpening?: boolean;
   difficulty: GameDifficulty;
   startingResources: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };

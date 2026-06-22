@@ -287,6 +287,33 @@ describe("adventure setup", () => {
     expect(drafted).toHaveLength(2);
     expect(drafted.some(hasSettlement)).toBe(true);
   });
+
+  it("gives every player no Ⅱ–Ⅲ supply when Far-tile opening is off, but two when on", () => {
+    // Off: the supply stays empty so there is nothing for players to open
+    // (use it when the map already includes its Ⅱ–Ⅲ tiles).
+    const off = createAdventureGameState({
+      seed: "test-seed",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      farTileOpening: false
+    });
+    for (const playerId of ["p1", "p2"]) {
+      expect(off.adventure?.playerFarTiles[playerId]).toEqual([]);
+    }
+
+    // On (explicit) and the default both draft the usual two tiles per player.
+    const on = createAdventureGameState({
+      seed: "test-seed",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      farTileOpening: true
+    });
+    const byDefault = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false });
+    for (const playerId of ["p1", "p2"]) {
+      expect(on.adventure?.playerFarTiles[playerId]).toHaveLength(2);
+      expect(byDefault.adventure?.playerFarTiles[playerId]).toHaveLength(2);
+    }
+  });
 });
 
 describe("turns and movement", () => {
@@ -961,6 +988,28 @@ describe("map setup lobby", () => {
       options: { difficulty: "easy" }
     });
     expect(late.errors).toHaveLength(1);
+  });
+
+  it("carries the Ⅱ–Ⅲ tile-opening toggle from the lobby into the started game", () => {
+    let state = createAdventureLobbyState({ seed: "lobby-seed" });
+    // Default ON.
+    expect(state.setupLobby?.options.farTileOpening ?? true).toBe(true);
+
+    state = apply(state, {
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { farTileOpening: false }
+    });
+    expect(state.setupLobby?.options.farTileOpening).toBe(false);
+
+    state = apply(state, { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: "catherine" });
+    state = apply(state, { type: "CHOOSE_FACTION", playerId: "p2", factionId: "necropolis", heroDefId: "sandro" });
+    state = apply(state, { type: "START_ADVENTURE", playerId: "p1" });
+
+    // With opening off, no player receives a Ⅱ–Ⅲ supply to place.
+    for (const playerId of ["p1", "p2"]) {
+      expect(state.adventure?.playerFarTiles[playerId]).toEqual([]);
+    }
   });
 });
 
