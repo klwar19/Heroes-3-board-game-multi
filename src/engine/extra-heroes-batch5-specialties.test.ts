@@ -52,6 +52,7 @@ function adventureFor(seed: string, heroDefId: string, factionId: FactionId): Ga
       { id: "p2", name: "P2", factionId: "necropolis", heroDefId: "sandro" }
     ]
   });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
   state.activePlayerId = "p1";
   state.pendingChoice = null;
   state.reactionWindow = null;
@@ -309,6 +310,7 @@ describe("Gerwulf's Ballista specialty", () => {
         { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
       ]
     });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.activePlayerId = "p1";
     state.pendingChoice = null;
     state.reactionWindow = null;

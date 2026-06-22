@@ -42,7 +42,7 @@ function isolateBronze(state: GameState, cards: string[]): void {
 /** A player on their map turn holding Visions plus two extra Spells. */
 function readyToScry(): GameState {
   const base = makeGame();
-  const state = base.players.p1.needsHandRefresh
+  const state = (base.players.p1.needsHandRefresh || base.players.p1.canMulligan)
     ? apply(base, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
     : base;
   state.players.p1.hand = ["spell.visions", "spell.haste", "spell.slow"];

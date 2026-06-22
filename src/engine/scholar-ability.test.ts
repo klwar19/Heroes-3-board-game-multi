@@ -24,7 +24,7 @@ function apply(state: GameState, action: GameAction): GameState {
 function ready(): GameState {
   const game = makeGame();
   // The start-of-turn draw only exists from a player's second turn on.
-  return game.players.p1.needsHandRefresh
+  return (game.players.p1.needsHandRefresh || game.players.p1.canMulligan)
     ? apply(game, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
     : game;
 }

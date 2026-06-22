@@ -36,13 +36,22 @@ async function clearMapNotices(page: Page): Promise<void> {
 
 /**
  * Sit at whichever seat actually holds the turn after the random first-player
- * roll, identified by it being the only seat with reachable move targets.
+ * roll. The start-of-turn draw is MANDATORY before moving, so the active seat is
+ * the one offered the "Draw new" button; taking it reveals the move targets.
  */
 async function sitActiveSeat(page: Page): Promise<void> {
   for (const title of [/Sit as Catherine/, /Sit as Sandro/]) {
     await page.getByTitle(title).click({ timeout: 8000 }).catch(() => {});
     await page.waitForTimeout(1200);
     await clearMapNotices(page);
+    // Take the mandatory start-of-turn draw — only the active seat is offered it,
+    // and movement stays locked until it is taken.
+    const drawNew = page.getByRole("button", { name: /Draw new/ }).first();
+    if (await drawNew.isVisible().catch(() => false)) {
+      await drawNew.click().catch(() => {});
+      await page.waitForTimeout(800);
+      await clearMapNotices(page);
+    }
     if ((await page.locator(".hexCell.moveTarget").count()) > 0) {
       return;
     }

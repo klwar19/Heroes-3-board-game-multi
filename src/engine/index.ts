@@ -148,6 +148,7 @@ export {
   getUnitDefinition,
   getUnitSide,
   heroMovementMax,
+  heroMoveStartsBattle,
   isFieldGuarded,
   isOuterEdgeSealed,
   isTileSlotOuterSealed,
