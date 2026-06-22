@@ -2295,15 +2295,15 @@ export const adventureCards: CardLibrary = {
   },
 
   // ---- Conflux heroes (unit-specialist Planeswalkers) --------------------
-  // Erdamon: every bonus doubles for ANY "… Elementals" unit (the "an
-  // Elementals unit" family descriptor). I = instant +1 attack OR +1 defence
-  // (doubled); IV = +1 initiative for the combat (doubled); VI = instant +2
-  // attack OR ongoing +3 initiative for the combat (no doubling).
-  "specialty.erdamon.1": towerAttackOrDefenseSpecialty("erdamon", "Elementals", 1, "an Elementals unit"),
-  "specialty.erdamon.4": unitInitiativeSpecialty("erdamon", "Elementals", 4, 1, "an Elementals unit"),
+  // Erdamon: the Magma Elementals specialist (wiki — "The effect doubles for
+  // the Magma Elementals unit"). I = instant +1 attack OR +1 defence (doubled
+  // for Magma Elementals); IV = +1 initiative for the combat (doubled for Magma
+  // Elementals); VI = instant +2 attack OR ongoing +3 initiative (no doubling).
+  "specialty.erdamon.1": towerAttackOrDefenseSpecialty("erdamon", "Magma Elementals", 1, "Magma Elementals"),
+  "specialty.erdamon.4": unitInitiativeSpecialty("erdamon", "Magma Elementals", 4, 1, "Magma Elementals"),
   "specialty.erdamon.6": {
     id: "specialty.erdamon.6",
-    name: "Elementals VI",
+    name: "Magma Elementals VI",
     kind: "hero-specialty",
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
@@ -2339,7 +2339,7 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
-    assets: { cardImage: specialtyCardImage("erdamon", 6), imageAlt: "Elementals level VI specialty card" },
+    assets: { cardImage: specialtyCardImage("erdamon", 6), imageAlt: "Magma Elementals level VI specialty card" },
     implementationStatus: "implemented",
     source: heroSource("erdamon")
   },

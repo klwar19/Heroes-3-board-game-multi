@@ -82,12 +82,24 @@ wired and are covered by a test that fails if the logic is removed:
   not-implemented hero specialty" and `src/engine/tower-hero-specialties.test.ts`
   exercises each. (`PENDING_TOWER_SPECIALTIES` no longer exists.)
 
-Still display-only / not on the roster (Conflux):
-- `conflux.magic_elementals` (Few & Pack) — "Attack all adjacent (enemy) units"
-  is display-only (the engine has no primary attack-every-adjacent action); the
-  Pack's "Ignore any ongoing spell effects and Specialty damage" line is also
-  display-only. What IS wired: `ignores-retaliation` (both sides) and, on the
-  Pack, Magic-Arrow immunity + elemental damage.
+Conflux — now fully engine-wired (no display-only unit clauses left):
+- `conflux.magic_elementals` (Few & Pack) — "Attack all adjacent [enemy] units"
+  is now wired via the generic `SECOND_ATTACK_ALL_ADJACENT_TO_SELF` multi-attack
+  queue: a full separate follow-up attack at the unit's OWN (buffable) Attack
+  against every other adjacent unit — the Few hits friend AND foe
+  (`magic-elemental-attack-all`, `includeAllies`), the Pack enemies only
+  (`magic-elemental-attack-all-enemies`). The Pack's "Ignore any Spell effects"
+  is the shared full spell immunity (`immune-all-spells`, which also covers Magic
+  Arrows) and "damage from Specialty" is `immune-specialty-damage` (the Azure
+  Dragon combo). Per the verbatim wiki card the faction Magic Elementals carry NO
+  "deals elemental damage" line on EITHER side and no separate Magic-Arrow line —
+  the earlier `elemental-damage` + Magic-Arrow-only wiring was a fabrication and
+  has been removed. Engine-enforced in `conflux-content.test.ts` ("Conflux Magic
+  Elementals abilities", with the Few/Pack divergence as the mutation control).
+- Erdamon is the **Magma Elementals** specialist (wiki: "The effect doubles for
+  the Magma Elementals unit"), NOT an all-Elementals generalist — the earlier
+  all-Elementals doubling on I/IV was a deviation and has been corrected to match
+  the card (`conflux-content.test.ts`, with the other Elementals as the control).
 - Conflux heroes Ciele, Luna and Tarnum (Conflux) are NOT on the roster yet —
   their spell/obstacle/search specialties are not implemented. Only the three
   unit-specialist Planeswalkers (Erdamon, Monere, Pasis) ship, with all of
