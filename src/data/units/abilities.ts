@@ -1786,6 +1786,15 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "CAP_DAMAGE_PER_ATTACK", amount: 4 },
     implementationStatus: "implemented"
   },
+  // Cove Nix (Neutral guard): the same Hardened Shell, but the single-sided
+  // Neutral Unit card caps a single attack at 5 instead of the Pack's 4.
+  "nix-damage-cap-neutral": {
+    id: "nix-damage-cap-neutral",
+    name: "Hardened Shell",
+    text: "[unit_passive] This unit cannot take more than 5 damage from a single attack (Spell and ability damage are not capped).",
+    effect: { type: "CAP_DAMAGE_PER_ATTACK", amount: 5 },
+    implementationStatus: "implemented"
+  },
   // Cove Haspids (Few): +2 Attack once it has been knocked down from its Pack side this combat.
   "haspid-vengeance": {
     id: "haspid-vengeance",

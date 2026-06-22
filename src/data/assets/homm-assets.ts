@@ -119,6 +119,21 @@ export const TOWN_BUILDING_IMAGES: Record<string, Record<string, string>> = {
     dwelling_gold: "/assets/town/conflux_pyre.webp",
     garden_of_life: "/assets/town/conflux_garden_of_life.webp",
     magic_university: "/assets/town/conflux_magic_university.webp"
+  },
+  cove: {
+    // Cove town-screen renders (heroes.thelazy.net Cove page, fetched verbatim by
+    // scripts/fetch-cove-town-art.py). Board dwellings map to the matching PC
+    // creature dwelling: Bay → Nymph Waterfall, Nests Towering the Seas → Nest,
+    // Redoubled Vortex → Maelstrom; the Thieves' Guild and Pub use their own
+    // Cove structures.
+    city_hall: "/assets/town/cove_city_hall_large.gif",
+    citadel: "/assets/town/cove_citadel_large.gif",
+    mage_guild: "/assets/town/cove_mage_guild_level_1_large.gif",
+    dwelling_bronze: "/assets/town/cove_nymph_waterfall.gif",
+    dwelling_silver: "/assets/town/cove_nest.gif",
+    dwelling_gold: "/assets/town/cove_maelstrom.gif",
+    thieves_guild: "/assets/town/cove_thieves_guild.gif",
+    pub: "/assets/town/cove_pub.gif"
   }
 };
 

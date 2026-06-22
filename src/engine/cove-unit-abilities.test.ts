@@ -147,6 +147,36 @@ describe("Nix Hardened Shell — per-attack damage cap", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Nix (Neutral guard) — the single-sided Neutral Unit caps a hit at 5, not 4.
+// ---------------------------------------------------------------------------
+
+describe("Nix Neutral Hardened Shell — per-attack damage cap of 5", () => {
+  it("getDamageCapPerAttack reports 5 for the neutral guard ability", () => {
+    expect(getDamageCapPerAttack(unitWith(["nix-damage-cap-neutral"]))?.amount).toBe(5);
+  });
+
+  it("clamps a single attack's damage to 5 (one more than the Pack allows)", () => {
+    // attack 10, roll 0, defense 0 → raw 10, capped to 5.
+    const next = rangedDuel({ attackerAttack: 10, defenderAbilities: ["nix-damage-cap-neutral"], rolls: [0] });
+    expect(next.combat!.units.unit_p2_skeletons.damage).toBe(5);
+    expect(abilityEvents(next).some((event) => event.abilityId === "nix-damage-cap-neutral")).toBe(true);
+  });
+
+  it("does not cap a hit of exactly 5", () => {
+    const next = rangedDuel({ attackerAttack: 5, defenderAbilities: ["nix-damage-cap-neutral"], rolls: [0] });
+    expect(next.combat!.units.unit_p2_skeletons.damage).toBe(5);
+    expect(abilityEvents(next).some((event) => event.abilityId === "nix-damage-cap-neutral")).toBe(false);
+  });
+
+  it("control: the Pack's 4-cap is strictly tighter than the neutral 5-cap", () => {
+    const pack = rangedDuel({ attackerAttack: 10, defenderAbilities: ["nix-damage-cap"], rolls: [0] });
+    const neutral = rangedDuel({ attackerAttack: 10, defenderAbilities: ["nix-damage-cap-neutral"], rolls: [0] });
+    expect(pack.combat!.units.unit_p2_skeletons.damage).toBe(4);
+    expect(neutral.combat!.units.unit_p2_skeletons.damage).toBe(5);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Haspids (Few) — "+2 attack if flipped from the Pack to the Few side."
 // ---------------------------------------------------------------------------
 

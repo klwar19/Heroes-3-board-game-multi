@@ -10,15 +10,11 @@ portrait from heroes.thelazy.net, hosted locally:
 
   PC portrait -> /assets/hero_portraits-<slug>.webp   (464x512)
 
-All six Cove heroes are now engine-wired. Five ship their real PC portrait here
+All six Cove heroes are now engine-wired and ship their real classic PC portrait
 (Astra = Cure, Cassiopeia = Oceanids, Jeremy = Cannon, Miriam = Scouting, Zilare
-= Forgetfulness). The sixth, Casmetra (Sorceresses), is also registered — her VI
-is a CHOICE (place a Weakness token OR a flat +2 attack), not the dual-target
-compound effect it was once thought to be — but her portrait ships as a generated
-placeholder (public/assets/hero_portraits-casmetra.webp): the portrait host
-blocked automated fetches in the build environment. Add her real thelazy.net image
-path below and re-run this script to replace the placeholder when the host is
-reachable.
+= Forgetfulness, Casmetra = Sorceresses). thelazy.net's Special:FilePath/<File>
+redirect resolves each portrait regardless of its hashed storage path, so the
+build environment can fetch all six (the earlier Casmetra placeholder is gone).
 
 Every download is validated (HTTP 200 + decodable image); the script aborts
 loudly on any miss so a broken asset can never slip through.
@@ -29,18 +25,19 @@ from pathlib import Path
 
 from PIL import Image
 
-LAZY = "https://heroes.thelazy.net"
+LAZY = "https://heroes.thelazy.net/index.php/Special:FilePath"
 OUT = Path(__file__).resolve().parent.parent / "public" / "assets"
 
 PORTRAIT_SIZE = (464, 512)  # classic PC portrait, matches existing files
 
-# (local slug, thelazy.net image path) — full-size classic HotA portraits.
+# (local slug, thelazy.net File name) — classic HotA portraits via Special:FilePath.
 PORTRAIT_HEROES = [
-    ("astra", "/images/d/dc/Hero_Astra.png"),
-    ("cassiopeia", "/images/d/d9/Hero_Cassiopeia.png"),
-    ("jeremy", "/images/9/9d/Hero_Jeremy.png"),
-    ("miriam", "/images/1/14/Hero_Miriam.png"),
-    ("zilare", "/images/9/91/Hero_Zilare.png"),
+    ("astra", "Hero_Astra.png"),
+    ("cassiopeia", "Hero_Cassiopeia.png"),
+    ("jeremy", "Hero_Jeremy.png"),
+    ("miriam", "Hero_Miriam.png"),
+    ("zilare", "Hero_Zilare.png"),
+    ("casmetra", "Hero_Casmetra.png"),
 ]
 
 
@@ -55,7 +52,7 @@ def fetch(url: str) -> bytes:
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     for slug, path in PORTRAIT_HEROES:
-        data = fetch(LAZY + path)
+        data = fetch(f"{LAZY}/{path}")
         try:
             image = Image.open(io.BytesIO(data)).convert("RGBA")
         except Exception as exc:  # pragma: no cover - guard against a bad download
