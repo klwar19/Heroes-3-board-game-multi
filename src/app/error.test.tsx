@@ -53,4 +53,16 @@ describe("TableError route boundary", () => {
 
     expect(window.location.href).toBe("/");
   });
+
+  it("wipes the recovery cache when returning to the menu", () => {
+    // A poisoned save is exactly what keeps the crash screen coming back; the
+    // escape hatch must clear it, not just navigate (a plain reload would
+    // restore it again).
+    window.localStorage.setItem("homm3bg-room:dev-room", JSON.stringify({ version: 1, state: {} }));
+
+    render(<TableError error={new Error("boom")} reset={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /return to the menu/i }));
+
+    expect(window.localStorage.getItem("homm3bg-room:dev-room")).toBeNull();
+  });
 });

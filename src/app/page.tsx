@@ -123,6 +123,7 @@ import { unitAttackFlourish } from "@/data/unit-sounds";
 import { useBackgroundMusic, type MusicScene } from "@/lib/music";
 import { MusicToggle } from "@/components/music-toggle";
 import { connectRoom, type GameRoomSnapshot, type RoomConnection } from "@/lib/realtime";
+import { clearCachedRoom, loadCachedRoom, saveCachedRoom } from "@/lib/room-cache";
 
 /** Events that move cards or play battle effects on the table. */
 const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
@@ -375,53 +376,13 @@ function getInitialRoomId(): string {
 // Local recovery cache: the latest in-progress game is mirrored to
 // localStorage so that if the (ephemeral) server recycles and comes back with
 // an empty setup lobby, we can push the saved game straight back instead of
-// dumping the player on the menu after a tab switch.
+// dumping the player on the menu after a tab switch. The cache is version-gated
+// by ENGINE_SIGNATURE (see src/lib/room-cache.ts) so a save from an older
+// engine is discarded rather than restored into a crash loop.
 // ---------------------------------------------------------------------------
-
-const ROOM_CACHE_PREFIX = "homm3bg-room:";
-
-type CachedRoom = { version: number; state: GameState };
 
 function isFreshLobbyState(state: GameState): boolean {
   return state.phase === "setup" && Boolean(state.setupLobby);
-}
-
-function saveCachedRoom(roomId: string, version: number, state: GameState): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-  try {
-    window.localStorage.setItem(ROOM_CACHE_PREFIX + roomId, JSON.stringify({ version, state }));
-  } catch {
-    // Storage full / disabled (private mode): recovery is best-effort.
-  }
-}
-
-function loadCachedRoom(roomId: string): CachedRoom | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  try {
-    const raw = window.localStorage.getItem(ROOM_CACHE_PREFIX + roomId);
-    if (!raw) {
-      return null;
-    }
-    const cached = JSON.parse(raw) as CachedRoom;
-    return cached?.state && typeof cached.version === "number" ? cached : null;
-  } catch {
-    return null;
-  }
-}
-
-function clearCachedRoom(roomId: string): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-  try {
-    window.localStorage.removeItem(ROOM_CACHE_PREFIX + roomId);
-  } catch {
-    // Ignore.
-  }
 }
 
 /**
