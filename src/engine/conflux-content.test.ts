@@ -4,18 +4,19 @@ import { cardLibrary } from "@/data/cards/library";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
-import { getActivationSpellPowerBoost } from "./unit-abilities";
+import { getActivationSpellPowerBoost, hasImmuneToSpecialtyDamage, unitImmuneToSpellSchools } from "./unit-abilities";
 import {
   applyAction,
   createAdventureGameState,
   createInitialGameState,
   getLegalActions,
   makeCombatUnitFromArmy,
+  standingSpellPower,
   unitMatchesSpecialtyName
 } from "./index";
-import { startAdventureRound, startPlayerTurn } from "./adventure";
+import { PLAYABLE_FACTIONS, startAdventureRound, startPlayerTurn } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
-import type { CombatUnitState, GameAction, GameState } from "./state";
+import type { CombatUnitState, GameAction, GameEvent, GameState } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -63,7 +64,7 @@ describe("Conflux content", () => {
       expect(coreBuildingDefinitions[building].assets?.image, `${building} art`).toContain("/assets/town/conflux_");
     }
 
-    expect(faction.heroes).toEqual(["erdamon", "monere", "pasis"]);
+    expect(faction.heroes).toEqual(["erdamon", "monere", "pasis", "luna"]);
     for (const heroId of faction.heroes) {
       const hero = coreHeroDefinitions[heroId];
       expect(hero, heroId).toBeDefined();
@@ -92,6 +93,17 @@ describe("Conflux content", () => {
       expect(unit.few?.cardImage, `${unit.id} few art`).toBeTruthy();
       expect(unit.pack?.cardImage, `${unit.id} pack art`).toBeTruthy();
     }
+  });
+
+  it("is a first-class playable faction — eligible as a Random Town defender", () => {
+    // The Random Town defender pool must cover every faction with a unit roster;
+    // Conflux and Cove were silently missing from the old hand-maintained list.
+    const factionsWithUnits = Object.values(coreFactionDefinitions)
+      .filter((faction) => faction.units.length > 0)
+      .map((faction) => faction.id);
+    expect(new Set(PLAYABLE_FACTIONS)).toEqual(new Set(factionsWithUnits));
+    expect(PLAYABLE_FACTIONS).toContain("conflux");
+    expect(PLAYABLE_FACTIONS).toContain("cove");
   });
 
   it("City Hall income is 4 gold OR Search(3) the Spell deck (wiki-verified)", () => {
@@ -165,13 +177,19 @@ describe("Conflux content", () => {
   });
 
   it("carries the implemented elemental / phoenix / sprite ability tags on the right sides", () => {
-    // Elementals reuse the already-wired elemental passives on both sides.
-    expect(coreUnitDefinitions["conflux.storm_elementals"].few?.abilities).toEqual([
+    // Per the verbatim wiki card the FACTION elemental Few has NO abilities and
+    // the Pack only the spell-power activation — the Magic-Arrow/school immunity
+    // and "deals elemental damage" belong to the separate NEUTRAL guard card
+    // (neutral.storm_elementals), NOT the recruitable Conflux Few/Pack.
+    expect(coreUnitDefinitions["conflux.storm_elementals"].few?.abilities).toEqual([]);
+    expect(coreUnitDefinitions["conflux.storm_elementals"].pack?.abilities).toEqual(["storm-elemental-air-power"]);
+    expect(coreUnitDefinitions["conflux.magma_elementals"].few?.abilities).toEqual([]);
+    expect(coreUnitDefinitions["conflux.magma_elementals"].pack?.abilities).toEqual(["magma-elemental-earth-power"]);
+    // The neutral GUARD elementals keep the immunity + elemental-damage passives.
+    expect(coreUnitDefinitions["neutral.storm_elementals"].neutral?.abilities).toEqual([
       "elemental-damage",
       "air-elemental-immunity"
     ]);
-    expect(coreUnitDefinitions["conflux.storm_elementals"].pack?.abilities).toContain("storm-elemental-air-power");
-    expect(coreUnitDefinitions["conflux.magma_elementals"].pack?.abilities).toContain("magma-elemental-earth-power");
     // Sprites: only the Pack ignores retaliation.
     expect(coreUnitDefinitions["conflux.sprites"].few?.abilities).toEqual([]);
     expect(coreUnitDefinitions["conflux.sprites"].pack?.abilities).toEqual(["ignores-retaliation"]);
@@ -229,9 +247,9 @@ describe("Conflux content", () => {
     expect(hero, "Conflux player should have a main hero").toBeTruthy();
   });
 
-  it("Garden of Life lets a Conflux player recruit a free Sprites Few each round", () => {
+  function confluxGardenGame(seed: string) {
     const state = createAdventureGameState({
-      seed: "conflux-garden",
+      seed,
       rollFirstPlayer: false,
       players: [
         { id: "p1", name: "Pasis", factionId: "conflux", heroDefId: "pasis" },
@@ -251,46 +269,86 @@ describe("Conflux content", () => {
     }
     // Round 3 is a Resource round (odd > 1).
     state.round = 3;
+    return state;
+  }
+
+  it("Garden of Life recruits a free Sprites Few when you don't own one yet (exactly one, no duplicate)", () => {
+    const state = confluxGardenGame("conflux-garden");
+    // A default Conflux army already holds a Sprites Few; strip it so this case
+    // exercises the recruit branch from an empty start.
+    state.players.p1.army = state.players.p1.army.filter((unit) => unit.unitDefId !== "conflux.sprites");
     const goldBefore = state.players.p1.resources.gold;
-    const spritesBefore = state.players.p1.army.filter((unit) => unit.unitDefId === "conflux.sprites").length;
     startAdventureRound(state);
     pumpAdventureQueues(state);
 
     const recruit = getLegalActions(state, "p1").find((legal) => legal.label.includes("Recruit Sprites"));
-    expect(recruit, "the free-Sprites recruit option should be offered").toBeTruthy();
+    expect(recruit, "the free-Sprites recruit option should be offered when none are owned").toBeTruthy();
     const next = applyOk(state, recruit!.action);
     pumpAdventureQueues(next);
 
-    const spritesAfter = next.players.p1.army.filter((unit) => unit.unitDefId === "conflux.sprites" && unit.side === "few").length;
-    expect(spritesAfter).toBe(spritesBefore + 1);
+    const sprites = next.players.p1.army.filter((unit) => unit.unitDefId === "conflux.sprites");
+    expect(sprites).toHaveLength(1);
+    expect(sprites[0].side).toBe("few");
     // It was free — gold is unchanged by the recruit itself (resource-round income
     // may have been gained, but no gold was spent on the unit).
     expect(next.players.p1.resources.gold).toBeGreaterThanOrEqual(goldBefore);
   });
+
+  it("Garden of Life reinforces (never duplicate-recruits) the Sprites Few you already own", () => {
+    // Regression: a unit card exists once. A Conflux player starts WITH a Sprites
+    // Few, so the Garden must offer to reinforce it — not to recruit a second
+    // Sprites card that would stack a duplicate Few in the army every round.
+    const state = confluxGardenGame("conflux-garden-owned");
+    const spritesBefore = state.players.p1.army.filter((unit) => unit.unitDefId === "conflux.sprites");
+    expect(spritesBefore, "the default Conflux army holds exactly one Sprites Few").toHaveLength(1);
+    expect(spritesBefore[0].side).toBe("few");
+    startAdventureRound(state);
+    pumpAdventureQueues(state);
+
+    const labels = getLegalActions(state, "p1")
+      .filter((legal) => legal.label.includes("Sprites"))
+      .map((legal) => legal.label);
+    expect(labels.some((label) => label.includes("Recruit Sprites"))).toBe(false);
+    const reinforce = getLegalActions(state, "p1").find((legal) => legal.label.includes("Reinforce Sprites"));
+    expect(reinforce, "owning a Sprites Few should offer the free reinforce").toBeTruthy();
+
+    const next = applyOk(state, reinforce!.action);
+    pumpAdventureQueues(next);
+
+    // Still a single Sprites card — now a Pack, not a second Few.
+    const spritesAfter = next.players.p1.army.filter((unit) => unit.unitDefId === "conflux.sprites");
+    expect(spritesAfter).toHaveLength(1);
+    expect(spritesAfter[0].side).toBe("pack");
+  });
 });
 
 // ---------------------------------------------------------------------------
-// Erdamon: every bonus doubles for ANY "… Elementals" unit; I = atk/def, IV =
-// +1 initiative, VI = instant +2 attack OR ongoing +3 initiative.
+// Erdamon: the Magma Elementals specialist (wiki — "The effect doubles for the
+// Magma Elementals unit"). I = atk/def, IV = +1 initiative — both doubled ONLY
+// for Magma Elementals; VI = instant +2 attack OR ongoing +3 initiative.
 // ---------------------------------------------------------------------------
 
-describe("Erdamon specialty (doubles for all Elementals)", () => {
-  it("doubles for every '… Elementals' unit, not just one", () => {
+describe("Erdamon specialty (Magma Elementals specialist)", () => {
+  it("doubles only for Magma Elementals, not for every '… Elementals' unit", () => {
+    expect(unitMatchesSpecialtyName("Magma Elementals", "Magma Elementals")).toBe(true);
+    // The other Elementals (and Sprites) are NOT doubled — Erdamon is Magma-only.
+    for (const name of ["Storm Elementals", "Ice Elementals", "Energy Elementals", "Magic Elementals", "Sprites"]) {
+      expect(unitMatchesSpecialtyName(name, "Magma Elementals"), name).toBe(false);
+    }
+    // The generic family descriptor (used by Pasis) still matches every Elemental.
     for (const name of ["Storm Elementals", "Ice Elementals", "Energy Elementals", "Magma Elementals", "Magic Elementals"]) {
       expect(unitMatchesSpecialtyName(name, "an Elementals unit"), name).toBe(true);
     }
-    // A non-elemental unit is not doubled.
-    expect(unitMatchesSpecialtyName("Sprites", "an Elementals unit")).toBe(false);
   });
 
-  it("I/IV carry the all-Elementals doubling; VI is +2 attack (instant) OR +3 initiative (ongoing)", () => {
+  it("I/IV double only for Magma Elementals; VI is +2 attack (instant) OR +3 initiative (ongoing)", () => {
     const one = cardLibrary["specialty.erdamon.1"];
     expect(one?.effect.type).toBe("CHOOSE_ONE");
     if (one?.effect.type === "CHOOSE_ONE") {
       for (const option of one.effect.options) {
         expect(option.effect.type).toBe("ADD_COMBAT_STAT");
         if (option.effect.type === "ADD_COMBAT_STAT") {
-          expect(option.effect.doubleForUnitName).toBe("an Elementals unit");
+          expect(option.effect.doubleForUnitName).toBe("Magma Elementals");
         }
       }
     }
@@ -299,7 +357,7 @@ describe("Erdamon specialty (doubles for all Elementals)", () => {
     expect(four?.effect.type).toBe("CREATE_INITIATIVE_BUFF");
     if (four?.effect.type === "CREATE_INITIATIVE_BUFF") {
       expect(four.effect.amount).toBe(1);
-      expect(four.effect.doubleForUnitName).toBe("an Elementals unit");
+      expect(four.effect.doubleForUnitName).toBe("Magma Elementals");
     }
 
     const six = cardLibrary["specialty.erdamon.6"];
@@ -334,6 +392,35 @@ describe("Conflux elemental school spell-power boost", () => {
     // The Magi (school-less) boost still lands on any school.
     expect(getActivationSpellPowerBoost(unitWith(["magi-power-boost"]), ["fire"])).toBe(1);
     expect(getActivationSpellPowerBoost(unitWith(["magi-power-boost"]))).toBe(1);
+  });
+
+  it("standingSpellPower (UI/cost preview) counts the school-scoped boost so it agrees with the cast", () => {
+    // standingSpellPower drives the spell-power preview, the Sorrow power-cost
+    // affordability check and the pool-scaling attack power. It must include the
+    // SAME school-scoped Elemental boost performSpellCast applies, or the preview
+    // and the resolved cast disagree. (Regression: it dropped the school-scoped
+    // boost by calling getActivationSpellPowerBoost without the card's schools.)
+    const state = createInitialGameState("conflux-standing-power");
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.players.p1.combatStats.spellsCastThisRound = 0;
+    const airSpell = cardLibrary["spell.lightning_bolt"]; // school: air
+    const fireSpell = cardLibrary["spell.curse"]; // school: fire
+
+    // Storm Elemental (Air) active: its first Air spell previews +1; a Fire spell
+    // (wrong school) gets nothing.
+    state.combat!.units.unit_p1_griffins.abilities = ["storm-elemental-air-power"];
+    expect(standingSpellPower(state, "p1", airSpell)).toBe(1);
+    expect(standingSpellPower(state, "p1", fireSpell)).toBe(0);
+
+    // Control 1 — no Elemental ability: even the Air spell previews 0.
+    state.combat!.units.unit_p1_griffins.abilities = [];
+    expect(standingSpellPower(state, "p1", airSpell)).toBe(0);
+
+    // Control 2 — the school-less Magi boost still previews on any school.
+    state.combat!.units.unit_p1_griffins.abilities = ["magi-power-boost"];
+    expect(standingSpellPower(state, "p1", airSpell)).toBe(1);
+    expect(standingSpellPower(state, "p1", fireSpell)).toBe(1);
   });
 
   /**
@@ -471,5 +558,259 @@ describe("Conflux Magic University deck dig", () => {
     expect(next.players.p1.hand).toEqual([]);
     expect(next.players.p1.discard).toContain("spell.curse");
     expect(next.players.p1.discard).toContain("stat.defense");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Magic Elementals — the gold unit's signature abilities, engine-enforced:
+//  • "Attack all adjacent [enemy] units": after its primary attack it makes a
+//    full separate attack at its OWN (buffable) Attack against every other
+//    adjacent unit — the Few hits friend AND foe, the Pack enemies only.
+//  • Pack only: "Ignore any Spell effects" (full spell immunity, incl. Magic
+//    Arrow) and "damage from Specialty". The card has NO elemental-damage line.
+// Each test fails if the wiring is removed (the Few/Pack divergence is the
+// built-in mutation control).
+// ---------------------------------------------------------------------------
+
+describe("Conflux Magic Elementals abilities", () => {
+  function elementalAttackState(side: "few" | "pack"): GameState {
+    const state = createInitialGameState("magic-elementals-attack-all");
+    const def = coreUnitDefinitions["conflux.magic_elementals"][side]!;
+    const me = state.combat!.units.unit_p1_griffins;
+    me.name = "Magic Elementals";
+    me.cardName = side === "pack" ? "Pack of Magic Elementals" : "Magic Elementals";
+    me.type = "ground";
+    me.abilities = [...(def.abilities ?? [])]; // straight from the shipped definition
+    me.attack = def.attack;
+    me.position = 9;
+
+    // Main enemy target + another adjacent enemy + an adjacent FRIENDLY unit.
+    const vampires = state.combat!.units.unit_p2_vampires;
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    const crusaders = state.combat!.units.unit_p1_crusaders;
+    vampires.position = 5; // main target (adjacent to 9)
+    skeletons.position = 10; // adjacent enemy
+    crusaders.position = 13; // adjacent friendly
+    for (const unit of [vampires, skeletons, crusaders]) {
+      unit.defense = 0;
+      unit.maxHealth = 50;
+      unit.damage = 0;
+    }
+
+    state.combat!.activeUnitId = me.id;
+    state.activePlayerId = "p1";
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0, 0, 0];
+    return state;
+  }
+
+  function resolveAttack(state: GameState): GameState {
+    let next = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_vampires"
+    });
+    for (let guard = 0; guard < 30 && next.reactionWindow; guard += 1) {
+      next = applyOk(next, { type: "PASS_REACTION", playerId: next.reactionWindow.priorityPlayerId });
+    }
+    return next;
+  }
+
+  function followUpsOf(state: GameState, abilityId: string) {
+    return state.eventLog.filter(
+      (event): event is Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }> =>
+        event.type === "UNIT_ATTACK_DECLARED" && event.abilityAttack?.abilityId === abilityId
+    );
+  }
+
+  it("Pack: attacks every OTHER adjacent ENEMY (sparing friendlies) at its own attack 5", () => {
+    const next = resolveAttack(elementalAttackState("pack"));
+    const followUps = followUpsOf(next, "magic-elemental-attack-all-enemies");
+    expect(followUps).toHaveLength(1);
+    expect(followUps[0].defenderId).toBe("unit_p2_skeletons");
+    // Its own (buffable) attack value — not a fixed Cerberi-style 3.
+    expect(followUps[0].abilityAttack?.baseAttack).toBe(5);
+    // The adjacent friendly Crusaders is never a follow-up target and takes no hit.
+    expect(followUps.some((event) => event.defenderId === "unit_p1_crusaders")).toBe(false);
+    expect(next.combat!.units.unit_p1_crusaders.damage).toBe(0);
+    // The adjacent enemy actually took the follow-up's damage (attack 5, roll 0).
+    expect(next.combat!.units.unit_p2_skeletons.damage).toBe(5);
+  });
+
+  it("Few: attacks every OTHER adjacent unit — friend AND foe — at its own attack 4", () => {
+    const next = resolveAttack(elementalAttackState("few"));
+    const followUps = followUpsOf(next, "magic-elemental-attack-all");
+    expect(followUps).toHaveLength(2);
+    expect(new Set(followUps.map((event) => event.defenderId))).toEqual(
+      new Set(["unit_p2_skeletons", "unit_p1_crusaders"])
+    );
+    for (const followUp of followUps) {
+      expect(followUp.abilityAttack?.baseAttack).toBe(4);
+    }
+    // The friendly Crusaders really took the follow-up damage (friendly-fire).
+    expect(next.combat!.units.unit_p1_crusaders.damage).toBe(4);
+  });
+
+  it("Pack ignores all Spells (incl. Magic Arrow) and Specialty damage; the Few does not", () => {
+    const few = makeCombatUnitFromArmy(
+      { id: "a-few", unitDefId: "conflux.magic_elementals", side: "few" },
+      "p1",
+      "u-me-few",
+      0
+    )!;
+    const pack = makeCombatUnitFromArmy(
+      { id: "a-pack", unitDefId: "conflux.magic_elementals", side: "pack" },
+      "p1",
+      "u-me-pack",
+      1
+    )!;
+
+    // Pack: immune to every school of Spell AND to Magic Arrow ("any").
+    for (const school of ["any", "air", "earth", "fire", "water"] as const) {
+      expect(unitImmuneToSpellSchools(pack, [school]), `pack vs ${school}`).toBe(true);
+    }
+    expect(hasImmuneToSpecialtyDamage(pack)).toBe(true);
+
+    // Few: no immunity at all — the control that proves the Pack lines are real
+    // wiring, not a blanket gold-unit default.
+    expect(unitImmuneToSpellSchools(few, ["fire"])).toBe(false);
+    expect(unitImmuneToSpellSchools(few, ["any"])).toBe(false);
+    expect(hasImmuneToSpecialtyDamage(few)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Luna — Conflux Elementalist, the Fire Wall specialist. I/VI place the SAME
+// engine `fire_wall` battlefield token as the Fire Wall spell (its bite-on-stop
+// / bite-on-pass-through is the shared, separately-tested token mechanic) but at
+// a FIXED 1 / 3 damage; IV is the spell-economy choice (map discard recall OR a
+// +2-Power spell-cast reaction). Each test fails if the wiring is removed.
+// ---------------------------------------------------------------------------
+
+describe("Conflux Luna (Fire Wall specialist)", () => {
+  function lunaCombat(seed: string, cardId: string): GameState {
+    const state = createInitialGameState(seed);
+    state.players.p1.hand = [cardId];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    // Pin all six units away from the centre so space 9 is a clean empty target.
+    const u = state.combat!.units;
+    u.unit_p1_griffins.position = 0;
+    u.unit_p1_crusaders.position = 1;
+    u.unit_p1_marksmen.position = 2;
+    u.unit_p2_vampires.position = 16;
+    u.unit_p2_skeletons.position = 17;
+    u.unit_p2_dread_knights.position = 18;
+    state.combat!.obstacles = [];
+    state.combat!.battlefieldTokens = [];
+    return state;
+  }
+
+  function placeWall(seed: string, cardId: string) {
+    const state = lunaCombat(seed, cardId);
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === cardId &&
+        legal.action.target?.type === "space" &&
+        legal.action.target.position === 9
+    );
+    expect(play, `${cardId} should be offered in combat on an empty space`).toBeTruthy();
+    const next = applyOk(state, play!.action);
+    return (next.combat!.battlefieldTokens ?? []).find((token) => token.kind === "fire_wall");
+  }
+
+  it("I places a Fire Wall token dealing a fixed 1 damage on the chosen empty space", () => {
+    const wall = placeWall("luna-i", "specialty.luna.1");
+    expect(wall).toBeTruthy();
+    expect(wall!.position).toBe(9);
+    expect(wall!.damage).toBe(1);
+    expect(wall!.controllerId).toBe("p1");
+  });
+
+  it("VI places a Fire Wall token dealing a fixed 3 damage (control vs I's 1)", () => {
+    const wall = placeWall("luna-vi", "specialty.luna.6");
+    expect(wall?.damage).toBe(3);
+  });
+
+  it("a placed Fire Wall actually bites a unit that stops on it", () => {
+    // End-to-end: drive an enemy onto the wall and confirm it takes the damage,
+    // so the placement is a live token, not an inert marker.
+    const state = lunaCombat("luna-bite", "specialty.luna.6");
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "specialty.luna.6" &&
+        legal.action.target?.type === "space" &&
+        legal.action.target.position === 9
+    );
+    let next = applyOk(state, play!.action);
+
+    // Hand the activation to the enemy Skeletons, parked next to the wall (9).
+    const skeletons = next.combat!.units.unit_p2_skeletons;
+    skeletons.position = 10; // adjacent to 9
+    skeletons.maxHealth = 20;
+    skeletons.damage = 0;
+    skeletons.type = "ground";
+    skeletons.activatedThisRound = false;
+    skeletons.movedThisActivation = false;
+    next.combat!.activeUnitId = "unit_p2_skeletons";
+    next.activePlayerId = "p2";
+
+    next = applyOk(next, { type: "MOVE_UNIT", playerId: "p2", unitId: "unit_p2_skeletons", destination: 9 });
+    expect(next.combat!.units.unit_p2_skeletons.position).toBe(9);
+    expect(next.combat!.units.unit_p2_skeletons.damage).toBe(3);
+  });
+
+  it("IV returns a card from the discard pile to hand (map play)", () => {
+    const game = createAdventureGameState({
+      seed: "luna-iv",
+      rollFirstPlayer: false,
+      players: [
+        { id: "p1", name: "Luna", factionId: "conflux", heroDefId: "luna" },
+        { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
+      ]
+    });
+    let state = game.players.p1.needsHandRefresh
+      ? applyOk(game, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      : game;
+    state.activePlayerId = "p1";
+    state.pendingChoice = null;
+    state.reactionWindow = null;
+    // The start-of-turn draw is mandatory (house rule) before any map card play;
+    // mark it taken so the discard-recall play is offered.
+    state.players.p1.canMulligan = false;
+    state.players.p1.hand = ["specialty.luna.4"];
+    state.players.p1.discard = ["spell.lightning_bolt", "stat.attack"];
+
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.luna.4"
+    );
+    expect(play, "Luna IV (take from discard) should be offered on the map").toBeTruthy();
+    state = applyOk(state, play!.action);
+
+    const choice = pendingChoiceOf(state);
+    expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("discard-pick");
+    const labels = choice?.type === "OPTION_CHOICE" ? choice.options.map((option) => option.label) : [];
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (choice as { id: string }).id,
+      optionIndex: labels.findIndex((label) => label.includes("Lightning Bolt"))
+    });
+    expect(state.players.p1.hand).toContain("spell.lightning_bolt");
+    expect(state.players.p1.discard).not.toContain("spell.lightning_bolt");
+  });
+
+  it("IV's other option is a +2-Power spell-cast reaction", () => {
+    const four = cardLibrary["specialty.luna.4"];
+    expect(four?.effect.type).toBe("CHOOSE_ONE");
+    if (four?.effect.type === "CHOOSE_ONE") {
+      const power = four.effect.options.find((option) => option.effect.type === "ADD_SPELL_POWER");
+      expect(power?.trigger?.event).toBe("SPELL_CAST_STARTED");
+      expect(power?.effect).toMatchObject({ type: "ADD_SPELL_POWER", amount: 2 });
+    }
   });
 });

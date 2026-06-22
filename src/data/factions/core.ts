@@ -1011,14 +1011,13 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
     // "Once during your turn, choose any one deck in the game (including another
     // player's M&M deck), look at its top 2 cards, and put one of them on its
-    // discard pile and the other back on top of the deck." NOT YET WIRED — this
-    // needs a new once-per-turn cross-deck look-2/discard-1 turn action; the
-    // building can be built but currently has no engine effect.
-    effect: {
-      type: "NOT_IMPLEMENTED",
-      note: "Once per turn: look at the top 2 cards of any deck (incl. opponents'), discard one and put the other back on top. Needs a cross-deck top-2 manipulation turn action."
-    },
-    implementationStatus: "not-implemented",
+    // discard pile and the other back on top of the deck." Wired as a
+    // once-per-turn THIEVES_GUILD turn action: the offer lists every eligible
+    // deck (each shared deck and each player's M&M deck with ≥2 cards), peeks the
+    // top 2 privately, and the player picks which one to discard (the other goes
+    // back on top). See thievesGuildAction / the "thieves-guild" OPTION_CHOICE.
+    effect: { type: "THIEVES_GUILD" },
+    implementationStatus: "implemented",
     source: townSource("cove")
   },
   "cove.pub": {
@@ -1484,10 +1483,11 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
   },
 
   // ---- Conflux (expansion) -----------------------------------------------
-  // Three unit-specialist Planeswalkers are wired so far (Erdamon, Monere,
-  // Pasis). The three spell/obstacle/search specialists (Ciele, Luna, Tarnum)
-  // are not added yet — their specialty mechanics are not implemented, and the
-  // engine requires every shipped hero specialty to be implemented.
+  // Four heroes wired: the unit-specialist Planeswalkers (Erdamon, Monere,
+  // Pasis) and the Fire Wall Elementalist Luna. Still deferred: Ciele (Magic
+  // Arrow) and Tarnum (Conflux, Enchanters) — their specialties need a
+  // cast-a-Spell-from-discard / cast-over-the-one-per-round-limit subsystem the
+  // engine does not have, and every shipped hero specialty must be implemented.
   erdamon: {
     id: "erdamon",
     name: "Erdamon",
@@ -1535,6 +1535,25 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     },
     portrait: "/assets/hero_portraits-pasis.webp",
     source: confluxHeroSource("pasis")
+  },
+  // Luna — Conflux Elementalist, the Fire Wall specialist (wiki: A0 D0 P2 K3,
+  // starting ability Basic Fire Magic). I/IV/VI all engine-wired (Fire Wall
+  // token placement + the spell-economy discard/Power choice).
+  luna: {
+    id: "luna",
+    name: "Luna",
+    faction: "conflux",
+    class: "Elementalist",
+    type: "magic",
+    startingStats: { attack: 0, defense: 0, power: 2, knowledge: 3 },
+    startingAbilityCardId: "ability.basic_fire_magic",
+    specialtyCardIds: {
+      1: "specialty.luna.1",
+      4: "specialty.luna.4",
+      6: "specialty.luna.6"
+    },
+    portrait: "/assets/hero_portraits-luna.webp",
+    source: confluxHeroSource("luna")
   },
   bron: {
     id: "bron",
@@ -2036,15 +2055,30 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     specialtyCardIds: { 1: "specialty.miriam.1", 4: "specialty.miriam.4", 6: "specialty.miriam.6" },
     portrait: "/assets/hero_portraits-miriam.webp",
     source: coveHeroSource("miriam")
+  },
+  // Casmetra (Navigator, magic, A2 D0 P1 K2, Wisdom): the Sorceresses specialist.
+  // I/IV are the standard creature buffs (doubled for Sorceresses, reusing the
+  // shared helpers like Cassiopeia). VI is a CHOICE — place the Cove Sorceresses'
+  // −2 Weakness token on any unit for 2 rounds (new PLACE_WEAKNESS_TOKEN effect)
+  // OR an instant FLAT +2 attack (no Sorceresses doubling). All three levels are
+  // engine-wired and tested (specialty.casmetra.* and casmetra-specialty.test.ts).
+  casmetra: {
+    id: "casmetra",
+    name: "Casmetra",
+    faction: "cove",
+    class: "Navigator",
+    type: "magic",
+    startingStats: { attack: 2, defense: 0, power: 1, knowledge: 2 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: { 1: "specialty.casmetra.1", 4: "specialty.casmetra.4", 6: "specialty.casmetra.6" },
+    portrait: "/assets/hero_portraits-casmetra.webp",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
+      credit:
+        "Hero roster, class, statistics, starting ability and specialty rules from the fan wiki Cove pages. The real PC portrait could not be fetched in this environment (the art hosts block automated requests), so the portrait is a generated placeholder pending scripts/fetch-cove-art.py. Verify against official components before final release.",
+      url: "https://en.homm3bg.wiki/heroes/casmetra/"
+    }
   }
-  // One Cove hero remains deferred (NOT registered) until its signature mechanic
-  // is built — kept out rather than shipped with an inert specialty, exactly like
-  // the Octavia/Melodia/Tarnum hold-outs below. Stats/class/ability are
-  // transcribed and ready to register the moment it lands:
-  //   - Casmetra (Navigator, magic, A2 D0 P1 K2, Wisdom): "Sorceresses" — I/IV are
-  //     the standard creature buffs, but VI applies TWO targeted effects at once
-  //     (+2 attack to your unit AND a -2 Weakness token on any unit for 2 rounds);
-  //     the engine has no dual-target compound-effect primitive yet.
   // Four more wiki heroes complete the remaining rosters; their PC portraits are
   // already fetched and committed (scripts/fetch-extra-heroes-art-batch5.py:
   // octavia, melodia, tarnum_ranger, tarnum_beastmaster), but they are NOT yet
@@ -2168,9 +2202,10 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Conflux",
     color: "#d24dae",
     startingTileId: "S8",
-    // Only the three unit-specialist Planeswalkers are wired so far; Ciele,
-    // Luna and Tarnum follow once their specialties are implemented.
-    heroes: ["erdamon", "monere", "pasis"],
+    // The three unit-specialist Planeswalkers + Luna (Fire Wall) are wired;
+    // Ciele and Tarnum (Conflux) follow once the cast-a-Spell-from-your-discard
+    // / cast-over-the-limit subsystem their specialties need is built.
+    heroes: ["erdamon", "monere", "pasis", "luna"],
     buildings: buildingsOfFaction("conflux"),
     units: unitsOfFaction("conflux"),
     townImage: "/assets/towns-conflux-empty.webp",
@@ -2183,9 +2218,9 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     color: "#0f8a99",
     // S9 is the Cove starting tile, already defined in expansion-tiles.ts.
     startingTileId: "S9",
-    // Heroes whose specialties are fully engine-wired are registered; only
-    // Casmetra remains deferred (see coreHeroDefinitions).
-    heroes: ["astra", "cassiopeia", "jeremy", "zilare", "miriam"],
+    // All six Cove heroes are now registered (their specialties are fully
+    // engine-wired and tested; see coreHeroDefinitions / cove-content.test.ts).
+    heroes: ["astra", "cassiopeia", "jeremy", "zilare", "miriam", "casmetra"],
     buildings: buildingsOfFaction("cove"),
     units: unitsOfFaction("cove"),
     source: townSource("cove")

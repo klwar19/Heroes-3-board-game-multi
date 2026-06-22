@@ -6,6 +6,7 @@ import { createAdventureGameState, getLegalActions } from "./index";
 
 function makeGame(): GameState {
   const state = createAdventureGameState({ seed: "market", difficulty: "normal", rollFirstPlayer: false });
+  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
   state.activePlayerId = "p1";
   return state;
 }

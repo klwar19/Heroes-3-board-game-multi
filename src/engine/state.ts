@@ -936,6 +936,12 @@ export type EffectDefinition =
       type: "REMOVE_HAND_CARD_THEN_SEARCH";
       count: number;
       filter?: "ability" | "removable";
+      /**
+       * Miriam IV/VI: grant a CHOICE of the higher split decks (Major artifacts,
+       * Expert spells) in the follow-up Search, beyond the player's usual
+       * eligibility. The Spellbinder's Hat leaves this unset (basic deck only).
+       */
+      tieredReach?: boolean;
     }
   | {
       /**
@@ -1200,6 +1206,17 @@ export type EffectDefinition =
        */
       type: "PLACE_PARALYSIS";
       gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
+       * Casmetra's Sorceresses VI (option A): place a Weakness combat token on a
+       * chosen unit for `rounds` Combat rounds (the same −N attack token the Cove
+       * Sorceresses place). Not tier-gated — it reaches any unit, like the unit
+       * ability — so a Creature Bank defender is a legal target too.
+       */
+      type: "PLACE_WEAKNESS_TOKEN";
+      amount: number;
+      rounds: number;
     }
   | {
       /**
@@ -1736,6 +1753,16 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Luna's Fire Wall specialty (I/VI): place a Fire Wall token on a chosen
+       * empty space for this Combat, dealing a FIXED amount of damage (1 at I,
+       * 3 at VI) — no Power scaling, unlike the Fire Wall spell. Reuses the same
+       * `fire_wall` battlefield token (damage on stop / pass-through).
+       */
+      type: "PLACE_FIRE_WALL_FIXED";
+      damage: number;
+    }
+  | {
+      /**
        * Quicksand (Basic Earth) / Land Mine (Expert Fire): take 2/4/6 tokens by
        * Power (half armed, half decoy "empty"), shuffle them face down and place
        * one on each chosen empty space. The caster picks the spaces one by one
@@ -2110,6 +2137,15 @@ export type ReactionPlay = {
 };
 
 export type DeckSearchPick = { kind: "revealed"; index: number };
+
+/**
+ * Which deck a Thieves' Guild peek targets: a shared deck (keyed by its id) or a
+ * player's personal Might & Magic deck (keyed by that player's id — own or
+ * opponent's).
+ */
+export type ThievesGuildTarget =
+  | { kind: "shared"; deckId: DeckId }
+  | { kind: "player"; ownerId: PlayerId };
 
 export type GameAction =
   | {
@@ -2539,6 +2575,18 @@ export type GameAction =
       type: "ROGUES_SCOUT_DECK";
       playerId: PlayerId;
       deckId: DeckId;
+    }
+  | {
+      /**
+       * Thieves' Guild (Cove building): once during your turn, choose one deck
+       * (a shared deck or any player's Might & Magic deck) and look at its top 2
+       * cards. Reveals them privately, then a "discard which one" choice opens
+       * (the other card goes back on top).
+       */
+      type: "THIEVES_GUILD_ACTION";
+      playerId: PlayerId;
+      buildingId: BuildingId;
+      target: ThievesGuildTarget;
     }
   | {
       /**
@@ -5130,6 +5178,15 @@ export type VisitStep =
       then: "none" | "gain-valuables" | "search-same-deck" | "choose-deck-search";
       /** Depth of the follow-up Search (Miriam's Scouting VI digs 4); defaults to 2. */
       searchCount?: number;
+      /**
+       * Miriam's Scouting IV/VI: when the follow-up is "search-same-deck" and the
+       * removed card is a Spell/Artifact, offer a CHOICE among the higher split
+       * decks too — Major artifacts and Expert spells — which the specialty's
+       * scouting reach grants regardless of the usual hero-level / artifact-source
+       * gate. Bronze "ability" (Scouting I) never sets this (the Ability deck has
+       * no tiers).
+       */
+      tieredReach?: boolean;
     }
   | {
       /**
@@ -5538,6 +5595,13 @@ export type GameSetupOptions = {
    * Off disables the move-to-Book action and the discard→Book pickup entirely.
    */
   spellBook?: boolean;
+  /**
+   * Whether players may open their own Ⅱ–Ⅲ Far tiles (default ON). When ON each
+   * player drafts a personal Far-tile supply they can place onto the map. Off
+   * gives no supply at all — use it for scenarios whose map already includes its
+   * Ⅱ–Ⅲ tiles, so there is nothing left for players to open.
+   */
+  farTileOpening?: boolean;
   difficulty: GameDifficulty;
   startingResources: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };
@@ -5745,6 +5809,7 @@ export type PendingChoice =
         | "remove-obstacle"
         | "skeleton-reinforce"
         | "rogues-scout"
+        | "thieves-guild"
         | "combat-reposition"
         | "genie-take-spell"
         | "combat-knockback"
@@ -5878,6 +5943,12 @@ export type PendingChoice =
       artifactDeckPick?: { deckIds: DeckId[] };
       /** rogues-scout: the deck being peeked and its revealed top card. */
       rogueScout?: { deckId: DeckId; cardId: CardId };
+      /**
+       * thieves-guild: the deck being peeked and its top 2 cards (index 0 is the
+       * very top). The chosen option's card is discarded; the other returns on
+       * top. Private to the peeking player (redacted in player-view).
+       */
+      thievesGuild?: { target: ThievesGuildTarget; cardIds: CardId[] };
       /** siege-demolish: intact fortification positions and removals left. */
       siegeDemolish?: { positions: number[]; remaining: number };
       /**

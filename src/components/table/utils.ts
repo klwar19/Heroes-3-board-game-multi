@@ -4,6 +4,7 @@ import { assetUrl } from "@/lib/asset-url";
 import {
   cardCanBoostPower,
   getBattlefieldLabel,
+  heroMoveStartsBattle,
   type BuildingEffectDefinition,
   type CardDefinition,
   type GameAction,
@@ -30,30 +31,60 @@ export function tacticsSetupActiveFor(state: GameState, viewerPlayerId: PlayerId
   return state.combat?.pendingTacticsSwaps?.[0] === viewerPlayerId;
 }
 
+/** Whether the player has at least one recruit/reinforce ("buy troops") on offer. */
+export function canBuyTroopsNow(legalActions: LegalAction[], playerId: PlayerId): boolean {
+  return legalActions.some(
+    (legal) =>
+      legal.action.type === "POPULATION_ACTION" &&
+      legal.action.playerId === playerId &&
+      legal.action.purchases.some((purchase) => purchase.kind === "recruit" || purchase.kind === "reinforce")
+  );
+}
+
 /**
- * Would submitting `action` spend the seated player's still-unspent start-of-turn
- * draw? True only on the quiet map turn (never in combat / off-turn) for a card
- * use by that seat — playing a card, casting, or stashing into the Spell Book —
- * while it still holds its draw and is not in the forced over-limit discard. The
- * UI uses this to pop a "this forfeits your draw — continue?" confirmation, and
- * mirrors the engine's spendStartOfTurnDraw gate so the prompt and the rule agree.
+ * Would submitting `action` walk the seated player's hero straight into a battle
+ * while they could still buy troops? True only on the quiet map turn (never in
+ * combat / off-turn) for a hero MOVE by that seat — MOVE_HERO (one step) or
+ * MOVE_HERO_PATH (its final field) — onto a field that starts a Combat (an enemy
+ * hero or undefeated guards), when at least one recruit/reinforce is legal right
+ * now. The UI uses this to pop a "you can still buy troops — keep moving into
+ * battle, or stop and recruit first?" confirmation so the player never wastes the
+ * fight under-strength by forgetting to reinforce.
  */
-export function actionForfeitsStartOfTurnDraw(
+export function moveIntoBattleWithTroopsToBuy(
   state: GameState,
   viewerPlayerId: PlayerId,
-  action: GameAction
+  action: GameAction,
+  legalActions: LegalAction[]
 ): boolean {
   if (state.combat) {
-    return false;
-  }
-  if (action.type !== "PLAY_CARD" && action.type !== "CAST_SPELL" && action.type !== "MOVE_SPELL_TO_SPELL_BOOK") {
     return false;
   }
   if (action.playerId !== viewerPlayerId || state.activePlayerId !== viewerPlayerId) {
     return false;
   }
-  const player = state.players[viewerPlayerId];
-  return Boolean(player?.canMulligan) && !player?.needsHandRefresh;
+
+  let heroId: string;
+  let destination: string;
+  if (action.type === "MOVE_HERO") {
+    heroId = action.heroId;
+    destination = action.to;
+  } else if (action.type === "MOVE_HERO_PATH") {
+    const last = action.path[action.path.length - 1];
+    if (!last) {
+      return false;
+    }
+    heroId = action.heroId;
+    destination = last;
+  } else {
+    return false;
+  }
+
+  if (!heroMoveStartsBattle(state, heroId, destination)) {
+    return false;
+  }
+
+  return canBuyTroopsNow(legalActions, viewerPlayerId);
 }
 
 /** Unit ids that can be the FIRST pick of a swap (they appear in some pair). */

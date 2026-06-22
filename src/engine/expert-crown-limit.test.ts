@@ -164,7 +164,7 @@ describe("expert-effect crown limit — crowns are shared between the map and th
   // budget shared across map abilities and combat, so the spend must carry in.
   it("a crown spent on the map this round leaves nothing for the battle it triggers", () => {
     let state = createAdventureGameState({ seed: "tactics-diplomacy", difficulty: "normal", rollFirstPlayer: false });
-    if (state.players.p1.needsHandRefresh) {
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
       state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
     }
 
@@ -188,7 +188,7 @@ describe("expert-effect crown limit — crowns are shared between the map and th
   // pool is not refilled just because the battle started on someone else's turn.
   it("a defender who already spent its crown this round gets none for the enemy-initiated battle", () => {
     let state = createAdventureGameState({ seed: "tactics-diplomacy", difficulty: "normal", rollFirstPlayer: false });
-    if (state.players.p1.needsHandRefresh) {
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
       state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
     }
     const heroP1 = getMainHero(state, "p1")!;

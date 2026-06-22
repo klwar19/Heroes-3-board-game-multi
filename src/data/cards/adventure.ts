@@ -735,13 +735,13 @@ function scoutingSpecialty(level: 1 | 4 | 6, filter: "ability" | "removable", co
         {
           label: `Remove ${what} to Search (${count}) ${deck}`,
           mapOnly: true,
-          effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count, filter }
+          effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count, filter, tieredReach: filter === "removable" }
         },
         {
           label: `Remove ${what} to Search (${count}) ${deck}; then Remove this Specialty card`,
           mapOnly: true,
           cost: { removeSelf: true },
-          effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count, filter }
+          effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count, filter, tieredReach: filter === "removable" }
         }
       ]
     },
@@ -2295,15 +2295,15 @@ export const adventureCards: CardLibrary = {
   },
 
   // ---- Conflux heroes (unit-specialist Planeswalkers) --------------------
-  // Erdamon: every bonus doubles for ANY "… Elementals" unit (the "an
-  // Elementals unit" family descriptor). I = instant +1 attack OR +1 defence
-  // (doubled); IV = +1 initiative for the combat (doubled); VI = instant +2
-  // attack OR ongoing +3 initiative for the combat (no doubling).
-  "specialty.erdamon.1": towerAttackOrDefenseSpecialty("erdamon", "Elementals", 1, "an Elementals unit"),
-  "specialty.erdamon.4": unitInitiativeSpecialty("erdamon", "Elementals", 4, 1, "an Elementals unit"),
+  // Erdamon: the Magma Elementals specialist (wiki — "The effect doubles for
+  // the Magma Elementals unit"). I = instant +1 attack OR +1 defence (doubled
+  // for Magma Elementals); IV = +1 initiative for the combat (doubled for Magma
+  // Elementals); VI = instant +2 attack OR ongoing +3 initiative (no doubling).
+  "specialty.erdamon.1": towerAttackOrDefenseSpecialty("erdamon", "Magma Elementals", 1, "Magma Elementals"),
+  "specialty.erdamon.4": unitInitiativeSpecialty("erdamon", "Magma Elementals", 4, 1, "Magma Elementals"),
   "specialty.erdamon.6": {
     id: "specialty.erdamon.6",
-    name: "Elementals VI",
+    name: "Magma Elementals VI",
     kind: "hero-specialty",
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
@@ -2339,7 +2339,7 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
-    assets: { cardImage: specialtyCardImage("erdamon", 6), imageAlt: "Elementals level VI specialty card" },
+    assets: { cardImage: specialtyCardImage("erdamon", 6), imageAlt: "Magma Elementals level VI specialty card" },
     implementationStatus: "implemented",
     source: heroSource("erdamon")
   },
@@ -2385,6 +2385,86 @@ export const adventureCards: CardLibrary = {
   "specialty.pasis.1": unitInitiativeSpecialty("pasis", "Elementals", 1, 1, "an Elementals unit"),
   "specialty.pasis.4": towerAttackOrDefenseSpecialty("pasis", "Elementals", 4, "an Elementals unit"),
   "specialty.pasis.6": towerHealthSpecialty("pasis", "Elementals", 6, 1, "an Elementals unit"),
+
+  // ---- Conflux Elementalist (Luna — the Fire Wall specialist) -------------
+  // I/VI place a Fire Wall token (this card or a token) on an empty space for
+  // the Combat, biting any unit that stops on it and any ground/ranged unit
+  // passing through for a FIXED 1 (I) / 3 (VI) damage — the SAME engine token as
+  // the Fire Wall spell (`PLACE_FIRE_WALL_FIXED`). IV is the spell-economy "OR":
+  // take a card from your discard pile (modelled as a map play, exactly like
+  // Adelaide IV — the engine's TAKE_FROM_DISCARD resolves through the map reward
+  // queue) — OR — +2 Power on a Spell you are casting (a SPELL_CAST_STARTED
+  // reaction, like Monere VI).
+  "specialty.luna.1": {
+    id: "specialty.luna.1",
+    name: "Fire Wall I",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "luna",
+      "fire-wall",
+      "For this Combat, place this card or a Fire Wall token on an empty space. Deal 1 damage to any unit starting its turn here or stopping here, and to any ground or ranged unit passing through."
+    ],
+    target: { type: "empty-space" },
+    effect: { type: "PLACE_FIRE_WALL_FIXED", damage: 1 },
+    assets: { cardImage: specialtyCardImage("luna", 1), imageAlt: "Fire Wall level I specialty card" },
+    implementationStatus: "implemented",
+    source: heroSource("luna")
+  },
+  "specialty.luna.4": {
+    id: "specialty.luna.4",
+    name: "Fire Wall IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "luna",
+      "fire-wall",
+      "Instant: Take one card from your discard pile into your hand. — OR — Instant: +2 Power."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Take a card from your discard pile",
+          mapOnly: true,
+          effect: { type: "TAKE_FROM_DISCARD", count: 1 }
+        },
+        {
+          label: "+2 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2 }
+        }
+      ]
+    },
+    assets: { cardImage: specialtyCardImage("luna", 4), imageAlt: "Fire Wall level IV specialty card" },
+    implementationStatus: "implemented",
+    source: heroSource("luna")
+  },
+  "specialty.luna.6": {
+    id: "specialty.luna.6",
+    name: "Fire Wall VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "luna",
+      "fire-wall",
+      "For this Combat, place this card or a Fire Wall token on an empty space. Deal 3 damage to any unit starting its turn here or stopping here, and to any ground or ranged unit passing through."
+    ],
+    target: { type: "empty-space" },
+    effect: { type: "PLACE_FIRE_WALL_FIXED", damage: 3 },
+    assets: { cardImage: specialtyCardImage("luna", 6), imageAlt: "Fire Wall level VI specialty card" },
+    implementationStatus: "implemented",
+    source: heroSource("luna")
+  },
 
   // ---- Additional heroes (fan-wiki "Regular Stretch Goals 2024") ---------
   // Fiona (Inferno, Demoniac): the Cerberi specialist — the standard might
@@ -3615,5 +3695,49 @@ export const adventureCards: CardLibrary = {
   // Search(4). Each offers a "then Remove this Specialty card" variant.
   "specialty.miriam.1": scoutingSpecialty(1, "ability", 2),
   "specialty.miriam.4": scoutingSpecialty(4, "removable", 2),
-  "specialty.miriam.6": scoutingSpecialty(6, "removable", 4)
+  "specialty.miriam.6": scoutingSpecialty(6, "removable", 4),
+
+  // Casmetra (Navigator, magic, A2 D0 P1 K2, Wisdom): the Sorceresses specialist.
+  // I and IV are the standard creature buffs (reusing the shared helpers, exactly
+  // like Cassiopeia's Oceanids), both doubling for a Sorceresses unit. VI is a
+  // CHOICE: place the Cove Sorceresses' −2 Weakness token on any unit for 2 rounds
+  // (new PLACE_WEAKNESS_TOKEN effect), OR an instant +2 attack on your unit's next
+  // attack — the +2 is FLAT (it does NOT double for Sorceresses).
+  "specialty.casmetra.1": withoutArt(towerAttackOrDefenseSpecialty("casmetra", "Sorceresses", 1, "Sorceresses")),
+  "specialty.casmetra.4": withoutArt(unitInitiativeSpecialty("casmetra", "Sorceresses", 4, 1, "Sorceresses")),
+  "specialty.casmetra.6": withoutArt({
+    id: "specialty.casmetra.6",
+    name: "Sorceresses VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "casmetra",
+      "sorceresses",
+      "Place a −2 Weakness token on any unit for 2 Combat rounds. — OR — Your selected unit gains +2 attack."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Place a −2 Weakness token on any unit (2 rounds)",
+          combatOnly: true,
+          target: { type: "any-unit" },
+          effect: { type: "PLACE_WEAKNESS_TOKEN", amount: -2, rounds: 2 }
+        },
+        {
+          // Instant, one-shot +2 attack on your unit's next attack (an attack
+          // reaction, like Erdamon VI). Flat — no Sorceresses doubling.
+          label: "+2 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("casmetra")
+  })
 };

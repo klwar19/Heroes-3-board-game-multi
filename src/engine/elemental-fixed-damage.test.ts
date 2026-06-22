@@ -156,11 +156,13 @@ function runAttack(state: GameState): GameState {
 
 describe("every Elemental deals die-proof, fixed damage (real unit data)", () => {
   it("covers every neutral guard AND both summon sides", () => {
-    // Sanity on the inventory so a dropped side can't silently shrink coverage:
-    // 9 neutral guards + Air/Earth/Water/Fire summon Few & Pack sides, plus the
-    // recruitable Conflux faction elementals (Storm/Ice/Energy/Magma Few & Pack
-    // and the Magic Elementals Pack — the Magic Few is not an elemental-damage
-    // dealer per the wiki).
+    // Sanity on the inventory so a dropped side can't silently shrink coverage.
+    // Per the verbatim wiki cards, "deals elemental damage" belongs ONLY to the
+    // NEUTRAL elementals: the 9 neutral guards, plus the Air/Earth/Water/Fire
+    // SUMMON units (which are `neutral.*` with Few/Pack/Neutral sides, all
+    // immune + elemental). The recruitable CONFLUX faction elementals
+    // (Storm/Ice/Energy/Magma/Magic Few & Pack) do NOT deal elemental damage —
+    // only their separate neutral guard card does — so no conflux.* id appears.
     const ids = new Set(elementalSides.map((entry) => entry.unitId));
     expect(ids).toEqual(
       new Set([
@@ -172,15 +174,11 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
         "neutral.energy_elementals",
         "neutral.fire_elementals",
         "neutral.magma_elementals",
-        "neutral.magic_elementals",
-        "conflux.storm_elementals",
-        "conflux.ice_elementals",
-        "conflux.energy_elementals",
-        "conflux.magma_elementals",
-        "conflux.magic_elementals"
+        "neutral.magic_elementals"
       ])
     );
-    expect(elementalSides.length).toBe(26);
+    expect([...ids].every((id) => id.startsWith("neutral."))).toBe(true);
+    expect(elementalSides.length).toBe(17);
   });
 
   for (const { unitId, sideKey, printedAttack, abilities } of elementalSides) {

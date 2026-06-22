@@ -895,8 +895,12 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "conflux",
     tier: "bronze",
     type: "ground",
-    few: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 3 }, abilities: ["elemental-damage", "air-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Air Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-blank-bronze.webp" },
-    pack: { attack: 2, defense: 0, health: 5, initiative: 8, cost: { gold: 5 }, abilities: ["elemental-damage", "air-elemental-immunity", "storm-elemental-air-power"], type: "ranged", abilityText: "[unit_passive] Immune to Magic Arrows and Air Magic spells. This unit deals elemental damage. [activation] Add +1 [power] to the first Air Magic spell you cast during this Activation.", cardImage: "/assets/units-blank-bronze.webp" },
+    // Per the verbatim wiki card the FACTION (recruitable) elemental Few has no
+    // abilities and the Pack only the spell-power activation — the Magic-Arrow /
+    // school immunity + "deals elemental damage" belong to the NEUTRAL guard
+    // (neutral.storm_elementals) card alone, NOT to the Conflux Few/Pack.
+    few: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 3 }, abilities: [], cardImage: "/assets/units-blank-bronze.webp" },
+    pack: { attack: 2, defense: 0, health: 5, initiative: 8, cost: { gold: 5 }, abilities: ["storm-elemental-air-power"], type: "ranged", abilityText: "[activation] Add +1 [power] to the first Air Magic spell you cast during this Activation.", cardImage: "/assets/units-blank-bronze.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/storm_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Conflux Expansion)",
@@ -910,8 +914,9 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "conflux",
     tier: "bronze",
     type: "ground",
-    few: { attack: 2, defense: 1, health: 4, initiative: 5, cost: { gold: 4 }, abilities: ["elemental-damage", "water-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Water Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-blank-bronze.webp" },
-    pack: { attack: 3, defense: 1, health: 5, initiative: 6, cost: { gold: 7 }, abilities: ["elemental-damage", "water-elemental-immunity", "ice-elemental-water-power"], type: "ranged", abilityText: "[unit_passive] Immune to Magic Arrows and Water Magic spells. This unit deals elemental damage. [activation] Add +1 [power] to the first Water Magic spell you cast during this Activation.", cardImage: "/assets/units-blank-bronze.webp" },
+    // Faction Few/Pack carry no immunity / elemental damage (neutral guard only).
+    few: { attack: 2, defense: 1, health: 4, initiative: 5, cost: { gold: 4 }, abilities: [], cardImage: "/assets/units-blank-bronze.webp" },
+    pack: { attack: 3, defense: 1, health: 5, initiative: 6, cost: { gold: 7 }, abilities: ["ice-elemental-water-power"], type: "ranged", abilityText: "[activation] Add +1 [power] to the first Water Magic spell you cast during this Activation.", cardImage: "/assets/units-blank-bronze.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/ice_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Conflux Expansion)",
@@ -925,8 +930,9 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "conflux",
     tier: "silver",
     type: "ground",
-    few: { attack: 3, defense: 1, health: 5, initiative: 5, cost: { gold: 6 }, abilities: ["elemental-damage", "fire-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Fire Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-blank-silver.webp" },
-    pack: { attack: 4, defense: 1, health: 5, initiative: 8, cost: { gold: 8 }, abilities: ["elemental-damage", "fire-elemental-immunity", "energy-elemental-fire-power"], type: "flying", abilityText: "[unit_passive] Immune to Magic Arrows and Fire Magic spells. This unit deals elemental damage. [activation] Add +1 [power] to the first Fire Magic spell you cast during this Activation.", cardImage: "/assets/units-blank-silver.webp" },
+    // Faction Few/Pack carry no immunity / elemental damage (neutral guard only).
+    few: { attack: 3, defense: 1, health: 5, initiative: 5, cost: { gold: 6 }, abilities: [], cardImage: "/assets/units-blank-silver.webp" },
+    pack: { attack: 4, defense: 1, health: 5, initiative: 8, cost: { gold: 8 }, abilities: ["energy-elemental-fire-power"], type: "flying", abilityText: "[activation] Add +1 [power] to the first Fire Magic spell you cast during this Activation.", cardImage: "/assets/units-blank-silver.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/energy_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Conflux Expansion)",
@@ -940,8 +946,9 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "conflux",
     tier: "silver",
     type: "ground",
-    few: { attack: 4, defense: 2, health: 5, initiative: 4, cost: { gold: 9 }, abilities: ["elemental-damage", "earth-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrows and Earth Magic spells. This unit deals elemental damage.", cardImage: "/assets/units-blank-silver.webp" },
-    pack: { attack: 5, defense: 2, health: 5, initiative: 6, cost: { gold: 13 }, abilities: ["elemental-damage", "earth-elemental-immunity", "magma-elemental-earth-power"], abilityText: "[unit_passive] Immune to Magic Arrows and Earth Magic spells. This unit deals elemental damage. [activation] Add +1 [power] to the first Earth Magic spell you cast during this Activation.", cardImage: "/assets/units-blank-silver.webp" },
+    // Faction Few/Pack carry no immunity / elemental damage (neutral guard only).
+    few: { attack: 4, defense: 2, health: 5, initiative: 4, cost: { gold: 9 }, abilities: [], cardImage: "/assets/units-blank-silver.webp" },
+    pack: { attack: 5, defense: 2, health: 5, initiative: 6, cost: { gold: 13 }, abilities: ["magma-elemental-earth-power"], abilityText: "[activation] Add +1 [power] to the first Earth Magic spell you cast during this Activation.", cardImage: "/assets/units-blank-silver.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/magma_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Conflux Expansion)",
@@ -955,14 +962,17 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "conflux",
     tier: "gold",
     type: "ground",
-    // engine (Few): ignores-retaliation only. The printed "Attack all adjacent
-    // units" is display-only — the engine has no primary attack-every-adjacent
-    // action yet, so it is intentionally NOT wired (no fake ability tag).
-    few: { attack: 4, defense: 2, health: 7, initiative: 7, cost: { gold: 13 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore the Retaliation Attack. Attack all adjacent units.", cardImage: "/assets/units-blank-golden.webp" },
-    // engine (Pack): ignores-retaliation + Magic-Arrow immunity + elemental
-    // damage. The printed "Attack all adjacent enemy units" and "Ignore any
-    // spell effects and damage from Specialty" lines are display-only.
-    pack: { attack: 5, defense: 2, health: 7, initiative: 9, cost: { gold: 19, valuables: 1 }, abilities: ["ignores-retaliation", "magic-elemental-immunity", "elemental-damage"], abilityText: "[unit_attack] Ignore the Retaliation Attack. Attack all adjacent enemy units. [unit_passive] Immune to Magic Arrows. This unit deals elemental damage. Ignore any [ongoing] spell effects and [damage] from Specialty cards.", cardImage: "/assets/units-blank-golden.webp" },
+    // engine (Few): ignores-retaliation + "Attack all adjacent units" (a full
+    // separate follow-up attack on every other adjacent unit, friend or foe —
+    // `magic-elemental-attack-all`). The wiki card carries nothing else on the
+    // Few side (no immunity, no elemental damage).
+    few: { attack: 4, defense: 2, health: 7, initiative: 7, cost: { gold: 13 }, abilities: ["ignores-retaliation", "magic-elemental-attack-all"], abilityText: "[unit_attack] Ignore the Retaliation Attack. Attack all adjacent units.", cardImage: "/assets/units-blank-golden.webp" },
+    // engine (Pack): ignores-retaliation + "Attack all adjacent enemy units"
+    // (`magic-elemental-attack-all-enemies`) + "Ignore any spell effects"
+    // (`immune-all-spells`, which also covers Magic Arrows) + "damage from
+    // Specialty" (`immune-specialty-damage`). The wiki card has NO separate
+    // Magic-Arrow line and does NOT deal elemental damage.
+    pack: { attack: 5, defense: 2, health: 7, initiative: 9, cost: { gold: 19, valuables: 1 }, abilities: ["ignores-retaliation", "magic-elemental-attack-all-enemies", "immune-all-spells", "immune-specialty-damage"], abilityText: "[unit_attack] Ignore the Retaliation Attack. Attack all adjacent enemy units. [unit_passive] Ignore any [spell] effects and [damage] from Specialty.", cardImage: "/assets/units-blank-golden.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/magic_elementals/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Conflux Expansion)",

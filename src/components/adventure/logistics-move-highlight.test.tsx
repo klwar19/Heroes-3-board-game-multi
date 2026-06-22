@@ -40,7 +40,7 @@ function setField(state: GameState, spaceId: string, location: string): void {
 function logisticsOfferState(): { state: GameState; destination: string } {
   let state = createAdventureGameState({ seed: "logi-ui", rollFirstPlayer: false });
   state.activePlayerId = "p1";
-  if (state.players.p1.needsHandRefresh) {
+  if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
     state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
   }
   state.players.p1.hand = ["ability.logistics"];
@@ -122,7 +122,7 @@ describe("Logistics end-of-turn move — board highlight", () => {
   it("shows no end-of-turn highlight when there is no pending move choice", () => {
     let state = createAdventureGameState({ seed: "logi-ui", rollFirstPlayer: false });
     state.activePlayerId = "p1";
-    if (state.players.p1.needsHandRefresh) {
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
       state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
     }
     const container = renderBoard(state, vi.fn());

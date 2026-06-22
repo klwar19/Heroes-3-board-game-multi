@@ -76,6 +76,7 @@ import {
   abilityExpertIsCrownFree,
   activeSchoolFetches,
   canPlayExpertMode,
+  deckDisplayName,
   expertUsesAvailable,
   getRuleset,
   spellBookPowerAvailable,
@@ -195,7 +196,12 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
     const combat = state.combat;
     const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
     if (activeUnit && activeUnit.controllerId === playerId) {
-      bonus += getActivationSpellPowerBoost(activeUnit);
+      // Pass the card's schools so the school-scoped Conflux Pack Elemental boost
+      // ("+1 Power to the first <School> Magic spell") is counted for a matching
+      // spell — not only the Magi's school-less boost. Without the schools the
+      // preview/affordability/pool-scaling paths silently dropped it, disagreeing
+      // with the actual cast in performSpellCast.
+      bonus += getActivationSpellPowerBoost(activeUnit, card.spellSchools);
     }
   }
   const school = getPermanentSchoolBonus(state, playerId, card);
@@ -2005,6 +2011,9 @@ function isOptionEffectPlayable(
     // Black cube) are combat plays.
     case "DAMAGE_BATTLEFIELD_LINE":
     case "TOGGLE_RETALIATION_MARKER":
+    // Luna's Fire Wall specialty (I/VI): place a Fire Wall token on an empty
+    // space — a combat play (its empty-space targets are generated generically).
+    case "PLACE_FIRE_WALL_FIXED":
       return context === "combat" && Boolean(state.combat);
     case "RESHUFFLE_DISCARD_THEN_DRAW": {
       // Deemer's Meteor Shower IV deck-cycle: useful whenever there is a card to
@@ -2047,6 +2056,10 @@ function isOptionEffectPlayable(
     case "FORGETFULNESS":
       // Zilare's Forgetfulness specialty: a combat play; the grade/type gate
       // lives on the option's gradeByPower and target filters.
+      return context === "combat" && Boolean(state.combat);
+    case "PLACE_WEAKNESS_TOKEN":
+      // Casmetra's Sorceresses VI (option A): a combat play that drops a
+      // −2 Weakness token on a chosen unit.
       return context === "combat" && Boolean(state.combat);
     case "BLOCK_ENEMY_SURRENDER":
       // Shackles of War (house rule): only at the start of a player-vs-player
@@ -2166,6 +2179,8 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "PLACE_PARALYSIS" ||
     // Zilare's Forgetfulness specialty (the chosen enemy cannot attack next activation).
     effect.type === "FORGETFULNESS" ||
+    // Casmetra's Sorceresses VI (option A) drops a Weakness token on a chosen unit.
+    effect.type === "PLACE_WEAKNESS_TOKEN" ||
     // Boots of Polarity (option B): the ongoing effect it strips lives on a
     // chosen unit (yours or the enemy's).
     effect.type === "REMOVE_ACTIVE_EFFECT"
@@ -5627,6 +5642,33 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
         });
       }
 
+      // A clean map turn action only — never mid-combat (incl. the PvP prep
+      // window, where addTownActions also runs) or mid-reaction, matching
+      // thievesGuildAction's assertNoPendingInput so the offer can never be rejected.
+      if (building.effect?.type === "THIEVES_GUILD" && !state.combat && !state.reactionWindow) {
+        // "Any one deck in the game": every shared deck with at least 2 cards on
+        // top to look at...
+        for (const [deckId, deck] of Object.entries(state.decks)) {
+          if (deck.drawPile.length >= 2) {
+            actions.push({
+              label: `${building.name}: look at the top 2 of the ${deckDisplayName(state, deckId)} deck`,
+              action: { type: "THIEVES_GUILD_ACTION", playerId, buildingId, target: { kind: "shared", deckId } }
+            });
+          }
+        }
+        // ...plus every player's Might & Magic deck (your own and opponents').
+        for (const ownerId of state.turnOrder) {
+          const owner = state.players[ownerId];
+          if (ownerId === "neutrals" || !owner || owner.deck.length < 2) {
+            continue;
+          }
+          actions.push({
+            label: `${building.name}: look at the top 2 of ${ownerId === playerId ? "your own" : `${owner.name}'s`} Might & Magic deck`,
+            action: { type: "THIEVES_GUILD_ACTION", playerId, buildingId, target: { kind: "player", ownerId } }
+          });
+        }
+      }
+
       if (building.effect?.type === "CASTLE_GATE") {
         if (player.resources.gold >= building.effect.discardCost) {
           for (const opponentId of state.turnOrder) {
@@ -6092,14 +6134,23 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
 
   // Start-of-turn draw/discard (every turn, including the first): discard any
   // number of cards, then draw back up to the hand limit ("draw new" with no
-  // discards is the no-op pass). It must be resolved BEFORE using any card —
-  // using a card spends it (see spendStartOfTurnDraw) — so a card can never be
-  // played and the freed hand slot then drawn back up to the limit.
+  // discards is the no-op pass). The draw is MANDATORY (house rule): it must be
+  // taken before the player MOVES, EXPLORES or USES A CARD, so it can never be
+  // forgotten. While it is unspent, the only turn actions offered are the draw
+  // itself, ending the turn, and the town/morale actions already added above —
+  // no movement, exploration, market or card play. (The engine backstops this in
+  // assertHandRefreshed / assertStartOfTurnDrawTaken for handler-validated map
+  // actions that skip this legal-action check.)
   if (player.canMulligan) {
     actions.push({
       label: "Draw new — or discard some and draw up to your hand limit (start of turn)",
       action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
     });
+    actions.push({
+      label: "End turn",
+      action: { type: "END_TURN", playerId }
+    });
+    return actions;
   }
 
   // Instant, Ongoing and Map cards may be played during your own map turn.

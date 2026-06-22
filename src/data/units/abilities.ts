@@ -107,13 +107,20 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
-       * BINH Cerberi: after the original attack, every other enemy unit
-       * adjacent to this unit is attacked with a full separate attack at the
-       * printed base attack. Each follow-up opens instant windows and rolls
-       * the die; none of them retaliates or chains further follow-ups.
+       * After the original attack, every other unit adjacent to this unit is
+       * attacked with a full separate attack. Each follow-up opens instant
+       * windows and rolls the die; none of them retaliates or chains further
+       * follow-ups. Used by BINH Cerberi (fixed `baseAttack` 3, enemies only)
+       * and the Conflux Magic Elementals ("Attack all adjacent [enemy] units":
+       * the attacker's own buffable attack, `includeAllies` on the Few side).
        */
       type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF";
-      baseAttack: number;
+      /** Fixed attack for each follow-up; when omitted the attacker's own
+       *  (possibly buffed) attack value is used. */
+      baseAttack?: number;
+      /** When true the follow-up also strikes adjacent FRIENDLY units (Magic
+       *  Elementals Few "Attack all adjacent units"); otherwise enemies only. */
+      includeAllies?: boolean;
     }
   | {
       /**
@@ -900,6 +907,25 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Three-Headed Assault",
     text: "BINH: after its attack, this unit performs a full separate attack (attack 3) against every other enemy unit adjacent to it. Each follow-up can be answered with instants and defense; none retaliates.",
     effect: { type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF", baseAttack: 3 },
+    implementationStatus: "implemented"
+  },
+  // Conflux Magic Elementals (Few): "Attack all adjacent units." After its
+  // primary attack it makes a full separate attack — at its OWN (buffable)
+  // attack — against every other adjacent unit, FRIEND OR FOE. None retaliates.
+  "magic-elemental-attack-all": {
+    id: "magic-elemental-attack-all",
+    name: "Attack All Adjacent",
+    text: "[unit_attack] After its attack, this unit makes a full separate attack against every other unit adjacent to it — friend or foe. None of these follow-ups retaliates or chains.",
+    effect: { type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF", includeAllies: true },
+    implementationStatus: "implemented"
+  },
+  // Conflux Magic Elementals (Pack): "Attack all adjacent enemy units." Same
+  // multi-attack at its OWN (buffable) attack, but enemies only.
+  "magic-elemental-attack-all-enemies": {
+    id: "magic-elemental-attack-all-enemies",
+    name: "Attack All Adjacent Enemies",
+    text: "[unit_attack] After its attack, this unit makes a full separate attack against every other enemy unit adjacent to it. None of these follow-ups retaliates or chains.",
+    effect: { type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF" },
     implementationStatus: "implemented"
   },
   "lich-death-cloud": {
