@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { clearAllCachedRooms } from "@/lib/room-cache";
 
 /**
  * Route-level safety net: catches any render/hook crash in the table page that
@@ -14,8 +15,12 @@ import { useEffect } from "react";
  * error recurs on render (a bad snapshot, a hook that throws on mount) the
  * screen just reappears and the click looks dead — the player is trapped with
  * no way back. A full reload always re-mounts the page and re-syncs from the
- * server. "Return to the menu" drops the room query as a last-resort escape
- * from a room whose state is what crashes.
+ * server.
+ *
+ * "Return to the menu" goes further: it wipes the local recovery cache and
+ * drops the room query. A render crash is most often a stale cached game (saved
+ * by an older engine) being restored over and over — a plain reload would just
+ * restore it again. Clearing the cache guarantees a clean, playable fresh lobby.
  */
 export default function TableError({
   error,
@@ -44,8 +49,10 @@ export default function TableError({
 
   const returnToMenu = () => {
     if (typeof window !== "undefined") {
-      // Drop ?room (and any other query) so the page reconnects to the default
-      // room and shows the setup lobby — an escape from a broken room.
+      // Drop any poisoned recovery save, then drop ?room (and any other query)
+      // so the page reconnects to the default room and shows a clean lobby —
+      // a guaranteed escape from a room whose cached state keeps crashing.
+      clearAllCachedRooms();
       window.location.href = window.location.pathname;
     }
   };
