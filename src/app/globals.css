@@ -5009,6 +5009,17 @@ button.hbSlot:disabled { cursor: default; }
   font-weight: 600;
 }
 
+/* The start-of-turn "draw first" reminder: a touch brighter, with a soft
+   warning chip so it reads before the player moves or plays a card. */
+.drawWarning {
+  display: inline-block;
+  padding: 2px 7px;
+  border: 1px solid rgba(255, 176, 77, 0.55);
+  border-radius: 7px;
+  background: rgba(255, 176, 77, 0.12);
+  color: #ffc879;
+}
+
 .handButtons {
   display: flex;
   align-items: center;

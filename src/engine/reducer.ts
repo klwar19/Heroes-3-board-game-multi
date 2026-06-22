@@ -597,6 +597,23 @@ function moveSpellFromSpellBookToDiscard(
 }
 
 /**
+ * Using ANY card on your quiet map turn forfeits the start-of-turn draw, so a
+ * card can never be played/cast/stashed and the freed hand slot then drawn back
+ * up to the hand limit. (The player may still draw FIRST, then play — that ends
+ * below the limit.) A no-op in combat and on anyone else's turn, where the
+ * start-of-turn draw is not in play.
+ */
+function spendStartOfTurnDraw(state: GameState, playerId: PlayerId): void {
+  if (state.combat || state.activePlayerId !== playerId) {
+    return;
+  }
+  const player = state.players[playerId];
+  if (player) {
+    player.canMulligan = false;
+  }
+}
+
+/**
  * Spell Book (house rule): move a Spell from hand into the Spell Book, freeing
  * the hand slot WITHOUT drawing a replacement. Legality (rule on, own map turn,
  * Spell in hand) is enforced by getLegalActions; these throws are the resolution
@@ -629,11 +646,9 @@ function moveSpellToSpellBook(
   }
   player.hand.splice(index, 1);
   player.spellBook.push(action.cardId);
-  // Stashing is hand management, not a draw: it must not be combinable with the
-  // start-of-turn "draw up to the hand limit" to net-gain a card. Spending the
-  // optional draw here means a player may draw THEN stash (ending below the
-  // limit), but never stash THEN draw the freed slot back up.
-  player.canMulligan = false;
+  // Stashing is a card use: it spends the start-of-turn draw so the freed slot
+  // can never be drawn back up (the player may draw FIRST, then stash).
+  spendStartOfTurnDraw(state, action.playerId);
   appendEvent(state, {
     type: "SPELL_MOVED_TO_SPELL_BOOK",
     playerId: action.playerId,
@@ -13107,9 +13122,14 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
     switch (action.type) {
       case "CAST_SPELL":
         castSpell(nextState, action, cards);
+        // A Map Spell cast forfeits the player's start-of-turn draw (no-op in
+        // combat / off-turn) so a freed hand slot can't be drawn back up.
+        spendStartOfTurnDraw(nextState, action.playerId);
         break;
       case "PLAY_CARD":
         playCard(nextState, action, cards);
+        // Likewise for any other card played on the quiet map turn.
+        spendStartOfTurnDraw(nextState, action.playerId);
         break;
       case "ATTACK_UNIT":
         attackUnit(nextState, action, cards);

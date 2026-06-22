@@ -6080,10 +6080,11 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     ];
   }
 
-  // Optional start-of-turn draw (every turn, including the first): discard any
-  // number of cards, then draw back up to the hand limit. It is the single
-  // either/or — "draw new" (no discards) or "discard and draw new" — and is
-  // available until the player draws or begins their turn with a map action.
+  // Start-of-turn draw/discard (every turn, including the first): discard any
+  // number of cards, then draw back up to the hand limit ("draw new" with no
+  // discards is the no-op pass). It must be resolved BEFORE using any card —
+  // using a card spends it (see spendStartOfTurnDraw) — so a card can never be
+  // played and the freed hand slot then drawn back up to the limit.
   if (player.canMulligan) {
     actions.push({
       label: "Draw new — or discard some and draw up to your hand limit (start of turn)",
