@@ -1947,8 +1947,40 @@ function resolveRemoveHandCard(
       return null;
     case "search-same-deck": {
       const kind = cardLibrary[chosen.cardId]?.kind;
-      const deckId = kind === "spell" ? "spells" : kind === "artifact" ? "artifacts" : "abilities";
-      return { type: "SEARCH_SHARED_DECK", deckId, count: step.searchCount ?? 2 };
+      const baseDeckId = kind === "spell" ? "spells" : kind === "artifact" ? "artifacts" : "abilities";
+      const count = step.searchCount ?? 2;
+
+      // Miriam's Scouting IV/VI (tieredReach): her scouting reach digs the higher
+      // split decks too — Major artifacts and Expert spells — granted regardless of
+      // the usual hero-level / artifact-source gate. Offer a CHOICE among every
+      // matching deck that exists and still has cards. With only one (the Ability
+      // deck, or Legacy's single Spell/Artifact deck) it digs that one directly.
+      // Returning explicit split-deck ids bypasses the gated expansion the reward
+      // pump applies to the "spells"/"artifacts" deck families.
+      if (step.tieredReach && (kind === "spell" || kind === "artifact")) {
+        const family =
+          kind === "spell" ? ["spells", "spells-expert"] : ["artifacts", "artifacts-minor", "artifacts-major"];
+        const decks = family.filter((deckId) => {
+          const deck = state.decks[deckId];
+          return deck && deck.drawPile.length + deck.discardPile.length > 0;
+        });
+        if (decks.length > 1) {
+          return {
+            type: "CHOOSE_ONE",
+            prompt: `Scouting: Search (${count}) which deck?`,
+            options: decks.map((deckId) => ({
+              label: `Search (${count}) the ${deckDisplayName(state, deckId)} deck`,
+              steps: [{ type: "SEARCH_SHARED_DECK", deckId, count }]
+            }))
+          };
+        }
+        if (decks.length === 1) {
+          return { type: "SEARCH_SHARED_DECK", deckId: decks[0], count };
+        }
+        // No matching deck has cards — fall through to the base family deck.
+      }
+
+      return { type: "SEARCH_SHARED_DECK", deckId: baseDeckId, count };
     }
     case "choose-deck-search":
       return {

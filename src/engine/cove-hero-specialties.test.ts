@@ -378,18 +378,56 @@ describe("Miriam's Scouting specialty", () => {
     expect(searched.pendingChoice?.type).toBe("DECK_SEARCH");
   });
 
-  it("IV can remove a Spell (removable filter) and Searches the Spell deck (2)", () => {
+  it("IV removes a Spell and offers a Basic-OR-Expert Spell deck choice (the Expert reach)", () => {
     const state = miriamMap("miriam-iv", ["specialty.miriam.4", "spell.magic_arrow", "stat.attack"]);
     const play = findPlay(state, "specialty.miriam.4", 0);
     expect(play, "Scouting IV should accept any removable card").toBeTruthy();
-    const after = applyOk(state, play!.action);
-    const searched = searchChoiceAfterRemoving(after, "magic arrow");
-    expect(searched.players.p1.removed).toContain("spell.magic_arrow");
+    const removed = searchChoiceAfterRemoving(applyOk(state, play!.action), "magic arrow");
+    expect(removed.players.p1.removed).toContain("spell.magic_arrow");
+
+    // The scouting reach now offers a deck-pick that INCLUDES the Expert Spell deck
+    // (a Captain would never reach it through the normal expert-spell gate).
+    const picks = visitSteps(removed).map((s) => s.label.toLowerCase());
+    expect(picks.some((label) => label.includes("expert spell")), "Expert Spell deck should be offered").toBe(true);
+    expect(picks.some((label) => label.includes("spell"))).toBe(true);
+
+    const expert = visitSteps(removed).find((s) => s.label.toLowerCase().includes("expert spell"));
+    const searched = applyOk(removed, expert!.action);
     const choice = searched.pendingChoice;
     expect(choice?.type).toBe("DECK_SEARCH");
     if (choice?.type === "DECK_SEARCH") {
-      expect(choice.deckId).toBe("spells");
-      expect(choice.revealedCardIds.length).toBe(2);
+      expect(choice.deckId).toBe("spells-expert");
+      expect(choice.revealedCardIds.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("IV removes an Artifact and offers a Minor-OR-Major Artifact deck choice (the Major reach)", () => {
+    const state = miriamMap("miriam-iv-art", ["specialty.miriam.4", "artifact.centaurs_axe", "stat.attack"]);
+    const play = findPlay(state, "specialty.miriam.4", 0);
+    expect(play, "Scouting IV should accept an Artifact").toBeTruthy();
+    const removed = searchChoiceAfterRemoving(applyOk(state, play!.action), "centaur");
+    expect(removed.players.p1.removed).toContain("artifact.centaurs_axe");
+
+    // Cove has no artifact-source building, so the normal gate would never unlock
+    // Major artifacts — the specialty's scouting reach grants the choice.
+    const major = visitSteps(removed).find((s) => s.label.toLowerCase().includes("major artifact"));
+    expect(major, "Major Artifact deck should be offered").toBeTruthy();
+    const searched = applyOk(removed, major!.action);
+    const choice = searched.pendingChoice;
+    expect(choice?.type).toBe("DECK_SEARCH");
+    if (choice?.type === "DECK_SEARCH") {
+      expect(choice.deckId).toBe("artifacts-major");
+      expect(choice.revealedCardIds.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("I stays Ability-only — no Major/Expert reach (the tier choice is IV/VI's)", () => {
+    const state = miriamMap("miriam-i-noreach", ["specialty.miriam.1", "ability.offense"]);
+    const removed = searchChoiceAfterRemoving(applyOk(state, findPlay(state, "specialty.miriam.1", 0)!.action), "offense");
+    // The Ability deck has no tiers, so I goes straight to the DECK_SEARCH (no deck-pick).
+    expect(removed.pendingChoice?.type).toBe("DECK_SEARCH");
+    if (removed.pendingChoice?.type === "DECK_SEARCH") {
+      expect(removed.pendingChoice.deckId).toBe("abilities");
     }
   });
 

@@ -2035,15 +2035,30 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     specialtyCardIds: { 1: "specialty.miriam.1", 4: "specialty.miriam.4", 6: "specialty.miriam.6" },
     portrait: "/assets/hero_portraits-miriam.webp",
     source: coveHeroSource("miriam")
+  },
+  // Casmetra (Navigator, magic, A2 D0 P1 K2, Wisdom): the Sorceresses specialist.
+  // I/IV are the standard creature buffs (doubled for Sorceresses, reusing the
+  // shared helpers like Cassiopeia). VI is a CHOICE — place the Cove Sorceresses'
+  // −2 Weakness token on any unit for 2 rounds (new PLACE_WEAKNESS_TOKEN effect)
+  // OR an instant FLAT +2 attack (no Sorceresses doubling). All three levels are
+  // engine-wired and tested (specialty.casmetra.* and casmetra-specialty.test.ts).
+  casmetra: {
+    id: "casmetra",
+    name: "Casmetra",
+    faction: "cove",
+    class: "Navigator",
+    type: "magic",
+    startingStats: { attack: 2, defense: 0, power: 1, knowledge: 2 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: { 1: "specialty.casmetra.1", 4: "specialty.casmetra.4", 6: "specialty.casmetra.6" },
+    portrait: "/assets/hero_portraits-casmetra.webp",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
+      credit:
+        "Hero roster, class, statistics, starting ability and specialty rules from the fan wiki Cove pages. The real PC portrait could not be fetched in this environment (the art hosts block automated requests), so the portrait is a generated placeholder pending scripts/fetch-cove-art.py. Verify against official components before final release.",
+      url: "https://en.homm3bg.wiki/heroes/casmetra/"
+    }
   }
-  // One Cove hero remains deferred (NOT registered) until its signature mechanic
-  // is built — kept out rather than shipped with an inert specialty, exactly like
-  // the Octavia/Melodia/Tarnum hold-outs below. Stats/class/ability are
-  // transcribed and ready to register the moment it lands:
-  //   - Casmetra (Navigator, magic, A2 D0 P1 K2, Wisdom): "Sorceresses" — I/IV are
-  //     the standard creature buffs, but VI applies TWO targeted effects at once
-  //     (+2 attack to your unit AND a -2 Weakness token on any unit for 2 rounds);
-  //     the engine has no dual-target compound-effect primitive yet.
   // Four more wiki heroes complete the remaining rosters; their PC portraits are
   // already fetched and committed (scripts/fetch-extra-heroes-art-batch5.py:
   // octavia, melodia, tarnum_ranger, tarnum_beastmaster), but they are NOT yet
@@ -2182,9 +2197,9 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     color: "#0f8a99",
     // S9 is the Cove starting tile, already defined in expansion-tiles.ts.
     startingTileId: "S9",
-    // Heroes whose specialties are fully engine-wired are registered; only
-    // Casmetra remains deferred (see coreHeroDefinitions).
-    heroes: ["astra", "cassiopeia", "jeremy", "zilare", "miriam"],
+    // All six Cove heroes are now registered (their specialties are fully
+    // engine-wired and tested; see coreHeroDefinitions / cove-content.test.ts).
+    heroes: ["astra", "cassiopeia", "jeremy", "zilare", "miriam", "casmetra"],
     buildings: buildingsOfFaction("cove"),
     units: unitsOfFaction("cove"),
     source: townSource("cove")

@@ -9524,6 +9524,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
+  // Casmetra's Sorceresses VI (option A): place a Weakness token (−N attack for
+  // `rounds` rounds) on the chosen unit. Not tier-gated — reaches any unit, like
+  // the Cove Sorceresses' own token.
+  if (effect.type === "PLACE_WEAKNESS_TOKEN" && state.combat && target) {
+    const unit = state.combat.units[target.unitId];
+    if (unit) {
+      placeCombatToken(state, unit, "weakness", effect.amount, card.name, effect.rounds);
+    }
+  }
+
   // Zilare's Forgetfulness specialty: the chosen enemy unit cannot attack during
   // its next activation, gated by grade (I -> silver, IV/VI -> gold) exactly like
   // the Forgetfulness Spell. The Spell shares the FORGETFULNESS effect but
@@ -9957,7 +9967,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           prompt: `${card.name}: remove a card to Search (${effect.count}) its deck`,
           filter: effect.filter ?? "removable",
           then: "search-same-deck",
-          searchCount: effect.count
+          searchCount: effect.count,
+          tieredReach: effect.tieredReach
         }
       ]
     });

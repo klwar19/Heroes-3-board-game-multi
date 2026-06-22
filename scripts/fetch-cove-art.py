@@ -10,12 +10,15 @@ portrait from heroes.thelazy.net, hosted locally:
 
   PC portrait -> /assets/hero_portraits-<slug>.webp   (464x512)
 
-Five of the six Cove heroes are engine-wired and ship art here (Astra = Cure,
-Cassiopeia = Oceanids, Jeremy = Cannon, Miriam = Scouting, Zilare =
-Forgetfulness). Only Casmetra stays deferred — her Sorceresses VI applies two
-targeted effects at once (a +attack buff AND a Weakness token), which needs a
-dual-target compound-effect primitive the engine does not have yet — so she
-needs no asset until that lands.
+All six Cove heroes are now engine-wired. Five ship their real PC portrait here
+(Astra = Cure, Cassiopeia = Oceanids, Jeremy = Cannon, Miriam = Scouting, Zilare
+= Forgetfulness). The sixth, Casmetra (Sorceresses), is also registered — her VI
+is a CHOICE (place a Weakness token OR a flat +2 attack), not the dual-target
+compound effect it was once thought to be — but her portrait ships as a generated
+placeholder (public/assets/hero_portraits-casmetra.webp): the portrait host
+blocked automated fetches in the build environment. Add her real thelazy.net image
+path below and re-run this script to replace the placeholder when the host is
+reachable.
 
 Every download is validated (HTTP 200 + decodable image); the script aborts
 loudly on any miss so a broken asset can never slip through.
