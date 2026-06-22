@@ -2726,6 +2726,8 @@ button.battleCell {
   flex-direction: column;
   gap: 8px;
   min-height: 0;
+  /* Anchor the Far-tile tray, which overlays the map's top-left corner. */
+  position: relative;
 }
 
 .hexMapWrap {
@@ -2889,18 +2891,36 @@ button.battleCell {
   fill: rgba(255, 215, 106, 0.35);
 }
 
+/* The Ⅱ–Ⅲ Far-tile supply sits as a compact pile in the map's TOP-LEFT corner
+   (it used to be a strip below the map). It glows when at least one tile can be
+   opened this turn so the player notices the option without a pop-up notice. */
 .farTileTray {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 6;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  max-width: 232px;
   padding: 6px 10px;
-  background: rgba(33, 25, 15, 0.9);
+  background: rgba(33, 25, 15, 0.92);
   border: 1px solid rgba(170, 130, 70, 0.3);
   border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+
+.farTileTray.usable {
+  border-color: rgba(255, 215, 106, 0.85);
+  box-shadow:
+    0 0 14px rgba(255, 215, 106, 0.55),
+    0 4px 14px rgba(0, 0, 0, 0.5);
 }
 
 .farTileTray small {
   color: #b89f78;
+  flex-basis: 100%;
 }
 
 .commandButton.selected {
@@ -5029,6 +5049,18 @@ button.hbSlot:disabled { cursor: default; }
 .farTileBack.selected {
   outline: 2px solid #ffd76a;
   transform: translateY(-3px);
+}
+
+/* A tile that has a legal slot this turn glows; one that does not is dimmed so
+   the highlight reads as "you can open this now". */
+.farTileBack.usable {
+  border-color: rgba(255, 215, 106, 0.95);
+  box-shadow: 0 0 10px rgba(255, 215, 106, 0.6);
+}
+
+.farTileBack.idle {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .farTileHint {

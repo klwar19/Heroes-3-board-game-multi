@@ -76,6 +76,8 @@ export type AdventureSetupOptions = {
   creatureBanks?: boolean;
   /** Spell Book house rule (default on): a personal Spell Book each player may stash, cast and boost from. */
   spellBook?: boolean;
+  /** Whether players may open their own Ⅱ–Ⅲ Far tiles (default on). Off gives no Far-tile supply. */
+  farTileOpening?: boolean;
   difficulty?: GameDifficulty;
   scenarioId?: string;
   players?: AdventurePlayerConfig[];
@@ -133,6 +135,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     victoryMode: "conquest",
     pvpTroopLoss: "normal",
     spellBook: true,
+    farTileOpening: true,
     difficulty: "impossible",
     startingResources: { ...scenario.startingResources },
     startingProduction: { ...scenario.startingProduction },
@@ -518,6 +521,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.startingBuildings ? { startingBuildings: options.startingBuildings } : {}),
     ...(options.creatureBanks !== undefined ? { creatureBanks: options.creatureBanks } : {}),
     ...(options.spellBook !== undefined ? { spellBook: options.spellBook } : {}),
+    ...(options.farTileOpening !== undefined ? { farTileOpening: options.farTileOpening } : {}),
     ...(options.customMap !== undefined ? { customMap: options.customMap } : {})
   };
   const difficulty = setupOptions.difficulty;
@@ -527,6 +531,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const creatureBanksOn = setupOptions.creatureBanks ?? true;
   // Spell Book house rule default ON: each player keeps a personal Spell Book.
   const spellBookOn = setupOptions.spellBook ?? true;
+  // Far-tile opening default ON: each player drafts a Ⅱ–Ⅲ Far-tile supply they
+  // may place. Off gives no supply (the map already provides its Ⅱ–Ⅲ tiles).
+  const farTileOpeningOn = setupOptions.farTileOpening ?? true;
   const ruleset: GameRuleset = setupOptions.ruleset;
   const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
@@ -770,9 +777,11 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // discovered during play).
   recomputeSubterraneanGates(adventure);
 
-  // Far (II–III) tile supplies, with the settlement draft guarantee.
+  // Far (II–III) tile supplies, with the settlement draft guarantee. When
+  // Far-tile opening is off, every player's supply stays empty so there is
+  // nothing to place (the map already provides its Ⅱ–Ⅲ tiles).
   for (const config of playerConfigs) {
-    adventure.playerFarTiles[config.id] = draftFarTiles(farPool, scenario);
+    adventure.playerFarTiles[config.id] = farTileOpeningOn ? draftFarTiles(farPool, scenario) : [];
   }
 
   // Roll for the starting player FIRST — before a single card is dealt — so
@@ -1050,6 +1059,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     changes.push(`Spell Book ${next.spellBook ? "on" : "off"}`);
   }
 
+  if (next.farTileOpening !== undefined) {
+    lobby.options.farTileOpening = Boolean(next.farTileOpening);
+    changes.push(`Ⅱ–Ⅲ tile opening ${next.farTileOpening ? "on" : "off"}`);
+  }
+
   if (next.scenarioId !== undefined) {
     if (!scenarioDefinitions[next.scenarioId]) {
       throw new Error("Unknown scenario.");
@@ -1257,6 +1271,7 @@ export function startAdventureFromLobby(state: GameState, action: Extract<GameAc
     victoryMode: lobby.options.victoryMode,
     pvpTroopLoss: lobby.options.pvpTroopLoss,
     spellBook: lobby.options.spellBook,
+    farTileOpening: lobby.options.farTileOpening,
     difficulty: lobby.options.difficulty,
     startingResources: lobby.options.startingResources,
     startingProduction: lobby.options.startingProduction,
