@@ -5,6 +5,7 @@ import {
   getAdjacentSpaceIds,
   getLegalActions,
   getPlayerView,
+  getReachableHeroPaths,
   heroMoveStartsBattle,
   type GameAction,
   type GameState,
@@ -106,6 +107,33 @@ describe("Mandatory start-of-turn draw — six rounds, two players", () => {
     state = apply(state, { type: "END_TURN", playerId: "p1" });
     expect(state.activePlayerId).toBe("p2");
     expect(state.players.p2.canMulligan).toBe(true);
+  });
+
+  it("gates TURN 1 exactly like later turns, even with the real first-player roll", () => {
+    // The real game default rolls for the first player (rollFirstPlayer omitted);
+    // turn 1 must still arm the mandatory draw, withhold movement, and keep
+    // reachable paths to show as locked targets + the on-tap reminder.
+    const state = createAdventureGameState({ seed: "turn1-gate", difficulty: "normal" });
+    const active = state.activePlayerId;
+    expect(state.round).toBe(1);
+    expect(state.players[active]?.canMulligan, "turn-1 draw is armed").toBe(true);
+    expect(state.players[active]?.needsHandRefresh).toBe(false);
+    expect(state.pendingChoice).toBeNull();
+
+    const gated = typesOf(state, active);
+    expect(gated.has("REFRESH_HAND")).toBe(true);
+    expect(gated.has("MOVE_HERO"), "turn-1 movement is withheld until the draw").toBe(false);
+
+    // The hero has reachable fields (so the board renders LOCKED targets + the
+    // reminder) — turn 1 is not a special, ungated case.
+    const hero = state.heroes[`hero_${active}`];
+    expect(hero).toBeTruthy();
+    expect(getReachableHeroPaths(state, hero!).size).toBeGreaterThan(0);
+
+    // Taking the turn-1 draw opens movement, exactly like every other turn.
+    const drawn = apply(state, { type: "REFRESH_HAND", playerId: active, discardCardIds: [] });
+    expect(drawn.players[active]?.canMulligan).toBe(false);
+    expect(typesOf(drawn, active).has("MOVE_HERO")).toBe(true);
   });
 });
 
