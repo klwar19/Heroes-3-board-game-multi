@@ -2049,6 +2049,10 @@ function isOptionEffectPlayable(
       // Zilare's Forgetfulness specialty: a combat play; the grade/type gate
       // lives on the option's gradeByPower and target filters.
       return context === "combat" && Boolean(state.combat);
+    case "PLACE_WEAKNESS_TOKEN":
+      // Casmetra's Sorceresses VI (option A): a combat play that drops a
+      // −2 Weakness token on a chosen unit.
+      return context === "combat" && Boolean(state.combat);
     case "BLOCK_ENEMY_SURRENDER":
       // Shackles of War (house rule): only at the start of a player-vs-player
       // combat, where there is an enemy hero who could otherwise surrender.
@@ -2167,6 +2171,8 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "PLACE_PARALYSIS" ||
     // Zilare's Forgetfulness specialty (the chosen enemy cannot attack next activation).
     effect.type === "FORGETFULNESS" ||
+    // Casmetra's Sorceresses VI (option A) drops a Weakness token on a chosen unit.
+    effect.type === "PLACE_WEAKNESS_TOKEN" ||
     // Boots of Polarity (option B): the ongoing effect it strips lives on a
     // chosen unit (yours or the enemy's).
     effect.type === "REMOVE_ACTIVE_EFFECT"

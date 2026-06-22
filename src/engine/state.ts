@@ -936,6 +936,12 @@ export type EffectDefinition =
       type: "REMOVE_HAND_CARD_THEN_SEARCH";
       count: number;
       filter?: "ability" | "removable";
+      /**
+       * Miriam IV/VI: grant a CHOICE of the higher split decks (Major artifacts,
+       * Expert spells) in the follow-up Search, beyond the player's usual
+       * eligibility. The Spellbinder's Hat leaves this unset (basic deck only).
+       */
+      tieredReach?: boolean;
     }
   | {
       /**
@@ -1200,6 +1206,17 @@ export type EffectDefinition =
        */
       type: "PLACE_PARALYSIS";
       gradeByPower: Record<number, UnitGrade>;
+    }
+  | {
+      /**
+       * Casmetra's Sorceresses VI (option A): place a Weakness combat token on a
+       * chosen unit for `rounds` Combat rounds (the same −N attack token the Cove
+       * Sorceresses place). Not tier-gated — it reaches any unit, like the unit
+       * ability — so a Creature Bank defender is a legal target too.
+       */
+      type: "PLACE_WEAKNESS_TOKEN";
+      amount: number;
+      rounds: number;
     }
   | {
       /**
@@ -5020,6 +5037,15 @@ export type VisitStep =
       then: "none" | "gain-valuables" | "search-same-deck" | "choose-deck-search";
       /** Depth of the follow-up Search (Miriam's Scouting VI digs 4); defaults to 2. */
       searchCount?: number;
+      /**
+       * Miriam's Scouting IV/VI: when the follow-up is "search-same-deck" and the
+       * removed card is a Spell/Artifact, offer a CHOICE among the higher split
+       * decks too — Major artifacts and Expert spells — which the specialty's
+       * scouting reach grants regardless of the usual hero-level / artifact-source
+       * gate. Bronze "ability" (Scouting I) never sets this (the Ability deck has
+       * no tiers).
+       */
+      tieredReach?: boolean;
     }
   | {
       /**

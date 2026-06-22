@@ -735,13 +735,13 @@ function scoutingSpecialty(level: 1 | 4 | 6, filter: "ability" | "removable", co
         {
           label: `Remove ${what} to Search (${count}) ${deck}`,
           mapOnly: true,
-          effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count, filter }
+          effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count, filter, tieredReach: filter === "removable" }
         },
         {
           label: `Remove ${what} to Search (${count}) ${deck}; then Remove this Specialty card`,
           mapOnly: true,
           cost: { removeSelf: true },
-          effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count, filter }
+          effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count, filter, tieredReach: filter === "removable" }
         }
       ]
     },
@@ -3615,5 +3615,49 @@ export const adventureCards: CardLibrary = {
   // Search(4). Each offers a "then Remove this Specialty card" variant.
   "specialty.miriam.1": scoutingSpecialty(1, "ability", 2),
   "specialty.miriam.4": scoutingSpecialty(4, "removable", 2),
-  "specialty.miriam.6": scoutingSpecialty(6, "removable", 4)
+  "specialty.miriam.6": scoutingSpecialty(6, "removable", 4),
+
+  // Casmetra (Navigator, magic, A2 D0 P1 K2, Wisdom): the Sorceresses specialist.
+  // I and IV are the standard creature buffs (reusing the shared helpers, exactly
+  // like Cassiopeia's Oceanids), both doubling for a Sorceresses unit. VI is a
+  // CHOICE: place the Cove Sorceresses' −2 Weakness token on any unit for 2 rounds
+  // (new PLACE_WEAKNESS_TOKEN effect), OR an instant +2 attack on your unit's next
+  // attack — the +2 is FLAT (it does NOT double for Sorceresses).
+  "specialty.casmetra.1": withoutArt(towerAttackOrDefenseSpecialty("casmetra", "Sorceresses", 1, "Sorceresses")),
+  "specialty.casmetra.4": withoutArt(unitInitiativeSpecialty("casmetra", "Sorceresses", 4, 1, "Sorceresses")),
+  "specialty.casmetra.6": withoutArt({
+    id: "specialty.casmetra.6",
+    name: "Sorceresses VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "casmetra",
+      "sorceresses",
+      "Place a −2 Weakness token on any unit for 2 Combat rounds. — OR — Your selected unit gains +2 attack."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Place a −2 Weakness token on any unit (2 rounds)",
+          combatOnly: true,
+          target: { type: "any-unit" },
+          effect: { type: "PLACE_WEAKNESS_TOKEN", amount: -2, rounds: 2 }
+        },
+        {
+          // Instant, one-shot +2 attack on your unit's next attack (an attack
+          // reaction, like Erdamon VI). Flat — no Sorceresses doubling.
+          label: "+2 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("casmetra")
+  })
 };
