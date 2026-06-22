@@ -142,6 +142,17 @@ const actionCandidates: Record<UnitSoundAction, string[]> = {
 };
 
 /**
+ * Creatures that do not walk: their `move` action plays a dedicated clip
+ * instead of the generic `-move` footstep loop. The Arch Devil teleports, so
+ * its movement is its teleport sound — EXT1 (vanish) then EXT2 (reappear),
+ * sequenced in that order by `units/arch-devil-teleport`. Keyed by bare name,
+ * so the Inferno and any neutral twin share it.
+ */
+const moveSoundOverrides: Record<string, string> = {
+  arch_devils: "units/arch-devil-teleport"
+};
+
+/**
  * Manifest key of a creature action clip, e.g. ("castle.marksmen", "shoot")
  * -> "units/archer-shoot". Undefined when the unit or clip is unknown so
  * callers degrade to silence instead of requesting a missing file.
@@ -151,6 +162,13 @@ export function unitSoundKey(unitDefId: string, action: UnitSoundAction): string
   const voice = creatureVoices[bareName];
   if (!voice) {
     return undefined;
+  }
+
+  if (action === "move") {
+    const override = moveSoundOverrides[bareName];
+    if (override && soundLibrary[override]) {
+      return override;
+    }
   }
 
   for (const candidate of actionCandidates[action]) {

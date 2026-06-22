@@ -45,8 +45,14 @@ VCMI engine's data files** (the open-source H3 engine) — see
 
 - `"repeat": 2` → plays the clip twice back-to-back (movement sounds). Wired.
 - `"random": [<ids>]` → virtual entry, picks one member at random:
-  `music/battle` (8 tracks, per combat) and `adventure/pickup` (7 versions).
+  `music/battle` (the 8 battle-start stings, played one-shot when a fight
+  begins — see "Battle-start sting" below) and `adventure/pickup` (7 versions).
   Wired.
+- `"sequence": [<ids>]` → virtual entry, plays its members strictly in order,
+  each starting only after the previous one finishes. Used by
+  `units/arch-devil-teleport` (EXT1 vanish, then EXT2 reappear). Wired in
+  `playLibrarySound`; `src/lib/sound.test.ts` proves the second member starts
+  only after the first ends.
 - `"loop": true` → loop until stopped (ambience, battle music, horse
   riding). Not wired yet.
 - `"then": <id>` → chain the second sound right after the first finishes
@@ -67,6 +73,24 @@ and movement (`-move`), melee strike (`-attack`), ranged strike (`-shoot`),
 taking damage (`-hurt`), taking the defense action (`-defend`) and dying
 (`-death`). `src/data/unit-sounds.test.ts` proves the whole roster resolves
 to clips that exist on disk.
+
+**Movement overrides** (`moveSoundOverrides` in `unit-sounds.ts`): a creature
+that does not walk plays a dedicated clip for `move` instead of its `-move`
+footstep loop. The Arch Devil teleports, so `inferno.arch_devils` `move` →
+`units/arch-devil-teleport`, the EXT1-then-EXT2 `sequence` above (vanish, then
+reappear). Tested in `unit-sounds.test.ts` ("plays the Arch Devil's teleport as
+its movement, EXT1 then EXT2 in order"), which also asserts it is NOT the old
+`units/arch-devil-move`.
+
+**Battle-start sting**: when a fight begins (`NEUTRAL_COMBAT_STARTED` /
+`PLAYER_COMBAT_STARTED`) the `battle-begin` feed cue plays `music/battle` — the
+`random` pool of the eight H3 combat-start tracks (`music/battle-00..07`), one
+picked per battle. This is separate from the looping in-combat theme
+(`music/combat-02`, set by the combat music scene). The non-start combat events
+(war machine, fortification destroyed) keep their own `combat-start` cue.
+Wired in `src/data/map-sounds.ts` + `src/components/adventure/screen.tsx`;
+`src/data/map-sounds.test.ts` proves the cue, the pool and that it does not
+hijack the other combat events or the in-combat theme.
 
 ## Creature ability cues
 
@@ -229,5 +253,10 @@ and `effects/horn-1..5`, `effects/horn-altar`, `effects/roger-1..4`,
 `ffmpeg -codec:a libmp3lame -q:a 5`, original 22 kHz sample rate kept
 (~55% smaller than the source ADPCM WAVs and browser-playable everywhere).
 Uploaded and converted in four batches (100 + 100 + 100 + 714 files,
-2026-06). Byte-identical `EXT2` duplicates dropped (Arch Devil, Devil);
-all other duplication kept so every id resolves.
+2026-06). Byte-identical `EXT2` duplicates were originally dropped (Arch Devil,
+Devil). The Arch Devil's `EXT2` is now restored as
+`units/arch-devil-special-2.mp3` (still byte-identical to `EXT1` in the H3
+archive — verified by md5) so its teleport movement can play both halves in
+order via the `sequence` above. The Devil's `EXT2` remains dropped (it does not
+use the teleport-move override). All other duplication kept so every id
+resolves.

@@ -1467,7 +1467,16 @@
     "repeat": 2
   },
   "units/arch-devil-special": {
-    "src": "/sounds/units/arch-devil-special.mp3"
+    "src": "/sounds/units/arch-devil-special.mp3",
+    "note": "ADVLEXT1 — Arch Devil teleport-out (move-out) half"
+  },
+  "units/arch-devil-special-2": {
+    "src": "/sounds/units/arch-devil-special-2.mp3",
+    "note": "ADVLEXT2 — Arch Devil teleport-in (move-in) half; byte-identical to EXT1 in the H3 archive, restored so the teleport plays both halves in order"
+  },
+  "units/arch-devil-teleport": {
+    "sequence": ["units/arch-devil-special", "units/arch-devil-special-2"],
+    "note": "Arch Devil move = teleport: EXT1 (move-out) then EXT2 (move-in), played in that order"
   },
   "units/arch-mage-attack": {
     "src": "/sounds/units/arch-mage-attack.mp3"

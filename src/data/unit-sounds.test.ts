@@ -5,9 +5,25 @@ import soundManifest from "../../public/sounds/manifest.json";
 import { coreUnitDefinitions } from "./factions/units";
 import { unitAttackFlourish, unitSoundKey, type UnitSoundAction } from "./unit-sounds";
 
-const soundLibrary = soundManifest as Record<string, { src?: string }>;
+const soundLibrary = soundManifest as Record<string, { src?: string; sequence?: string[] }>;
 const roster = Object.values(coreUnitDefinitions);
 const coreActions: UnitSoundAction[] = ["attack", "defend", "hurt", "death", "move"];
+
+/**
+ * The concrete clip `src`s a manifest key resolves to: a plain clip is its own
+ * `src`; a `sequence` (e.g. the Arch Devil teleport) expands to its members'
+ * srcs in order. Returns [] when nothing resolves.
+ */
+function clipSrcs(key: string | undefined): string[] {
+  if (!key) {
+    return [];
+  }
+  const entry = soundLibrary[key];
+  if (entry?.sequence?.length) {
+    return entry.sequence.flatMap((member) => clipSrcs(member));
+  }
+  return entry?.src ? [entry.src] : [];
+}
 
 describe("unit combat voices", () => {
   it("knows the full roster", () => {
@@ -25,7 +41,7 @@ describe("unit combat voices", () => {
         unit.type === "ranged" ? [...coreActions, "shoot"] : coreActions;
       for (const action of actions) {
         const key = unitSoundKey(unit.id, action);
-        if (!key || !soundLibrary[key]?.src) {
+        if (!key || clipSrcs(key).length === 0) {
           missing.push(`${unit.id}: ${action}`);
         }
       }
@@ -38,13 +54,11 @@ describe("unit combat voices", () => {
     for (const unit of roster) {
       for (const action of [...coreActions, "shoot"] as UnitSoundAction[]) {
         const key = unitSoundKey(unit.id, action);
-        const src = key ? soundLibrary[key]?.src : undefined;
-        if (!src) {
-          continue;
-        }
-        const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
-        if (!existsSync(file)) {
-          lost.add(src);
+        for (const src of clipSrcs(key)) {
+          const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
+          if (!existsSync(file)) {
+            lost.add(src);
+          }
         }
       }
     }
@@ -64,6 +78,31 @@ describe("unit combat voices", () => {
   it("lets melee-voiced creatures cover a missing strike variant", () => {
     // Griffins have no ranged clip: a (hypothetical) shoot falls back to attack.
     expect(unitSoundKey("castle.griffins", "shoot")).toBe("units/griffin-attack");
+  });
+
+  it("plays the Arch Devil's teleport as its movement, EXT1 then EXT2 in order", () => {
+    // The Arch Devil does not walk: its `move` is the teleport, not the generic
+    // -move footstep loop.
+    const key = unitSoundKey("inferno.arch_devils", "move");
+    expect(key).toBe("units/arch-devil-teleport");
+    expect(unitSoundKey("inferno.arch_devils", "move")).not.toBe("units/arch-devil-move");
+
+    // The teleport is a strict sequence: vanish (EXT1) first, reappear (EXT2)
+    // after it finishes — order matters.
+    const entry = soundManifest["units/arch-devil-teleport" as keyof typeof soundManifest] as {
+      sequence?: string[];
+    };
+    expect(entry.sequence).toEqual(["units/arch-devil-special", "units/arch-devil-special-2"]);
+
+    // Both halves resolve to real clips on disk.
+    expect(clipSrcs(key)).toEqual([
+      "/sounds/units/arch-devil-special.mp3",
+      "/sounds/units/arch-devil-special-2.mp3"
+    ]);
+    for (const src of clipSrcs(key)) {
+      const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
+      expect(existsSync(file), `${src} should exist on disk`).toBe(true);
+    }
   });
 
   it("stays silent for unknown units", () => {

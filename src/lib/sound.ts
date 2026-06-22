@@ -30,6 +30,12 @@ type SoundManifestEntry = {
   then?: string;
   /** Virtual entry: play one member at random. */
   random?: string[];
+  /**
+   * Virtual entry: play these member clips strictly in order, each starting
+   * only after the previous one finishes (the Arch Devil's teleport plays its
+   * move-out half EXT1, then its move-in half EXT2).
+   */
+  sequence?: string[];
   note?: string;
 };
 
@@ -87,6 +93,36 @@ function playAudioElement(audio: HTMLAudioElement): void {
   result?.catch(() => undefined);
 }
 
+/**
+ * Play one concrete manifest clip (a real `src`, honouring its `repeat`),
+ * invoking `onDone` once every play has finished. The building block under
+ * playLibrarySound's virtual entries.
+ */
+function playClip(key: string, volume: number, onDone?: () => void): void {
+  const entry = soundLibrary[key];
+  const audio = new Audio(assetUrl(entry?.src ?? `/sounds/${key}.mp3`));
+  audio.volume = volume;
+  let remainingPlays = Math.max(1, entry?.repeat ?? 1);
+  audio.addEventListener("ended", () => {
+    remainingPlays -= 1;
+    if (remainingPlays > 0) {
+      audio.currentTime = 0;
+      playAudioElement(audio);
+    } else {
+      onDone?.();
+    }
+  });
+  playAudioElement(audio);
+}
+
+/** Play the members of a `sequence` entry one after another, in order. */
+function playSequence(keys: string[], volume: number, index = 0): void {
+  if (index >= keys.length) {
+    return;
+  }
+  playClip(keys[index], volume, () => playSequence(keys, volume, index + 1));
+}
+
 /** Play a converted H3 sound by manifest key ("spells/fireball"). */
 export function playLibrarySound(key: string, volume = 0.55): void {
   if (muted || typeof window === "undefined") {
@@ -97,19 +133,11 @@ export function playLibrarySound(key: string, volume = 0.55): void {
     playLibrarySound(entry.random[Math.floor(Math.random() * entry.random.length)], volume);
     return;
   }
-  const audio = new Audio(assetUrl(entry?.src ?? `/sounds/${key}.mp3`));
-  audio.volume = volume;
-  let extraPlays = Math.max(0, (entry?.repeat ?? 1) - 1);
-  if (extraPlays > 0) {
-    audio.addEventListener("ended", () => {
-      if (extraPlays > 0) {
-        extraPlays -= 1;
-        audio.currentTime = 0;
-        playAudioElement(audio);
-      }
-    });
+  if (entry?.sequence?.length) {
+    playSequence(entry.sequence, volume);
+    return;
   }
-  playAudioElement(audio);
+  playClip(key, volume);
 }
 
 /**

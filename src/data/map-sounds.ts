@@ -19,6 +19,10 @@ export const MAP_CUE_SOUNDS: Record<string, string | null> = {
   morale: "adventure/morale",
   "quick-combat": "adventure/military",
   "combat-start": "adventure/military",
+  // A battle starting picks one of the eight H3 combat-start stings at random
+  // (music/battle is a `random` pool of battle-00..07). The looping in-combat
+  // theme (music/combat-02) is separate, set by the combat music scene.
+  "battle-begin": "music/battle",
   reveal: "adventure/mystery",
   "combat-end": null, // the combat screen carries its own audio
   retreat: "adventure/hero-defeated",
