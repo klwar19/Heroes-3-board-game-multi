@@ -113,6 +113,7 @@ import {
   applySearchCountEffects,
   canAcquireSharedDeckCard,
   deckDisplayName,
+  abilityExpertIsCrownFree,
   eligibleArtifactDecks,
   eligibleSpellDecks,
   expertUsesAvailable,
@@ -2648,10 +2649,11 @@ function openLearningLevelUpChoice(state: GameState, playerId: PlayerId): boolea
   }
 
   const effect = card.effect;
-  // The Expert side spends an expert use, exactly like every other expert play,
-  // so it is only offered when one is available.
+  // The Expert side spends an expert use (crown), so it is only offered when one
+  // is available — unless Learning has been Empowered, which makes its Expert
+  // side free of a crown.
   const modes: ("basic" | "expert")[] = ["basic"];
-  if (expertUsesAvailable(player) > 0) {
+  if (expertUsesAvailable(player) > 0 || abilityExpertIsCrownFree(player, "ability.learning")) {
     modes.push("expert");
   }
 
@@ -2708,7 +2710,9 @@ export function resolveLearningLevelUpChoice(state: GameState, playerId: PlayerI
     player &&
     handIndex !== -1 &&
     card?.effect.type === "ADVANCE_EXPERIENCE" &&
-    (mode === "basic" || expertUsesAvailable(player) > 0);
+    (mode === "basic" ||
+      expertUsesAvailable(player) > 0 ||
+      abilityExpertIsCrownFree(player, "ability.learning"));
 
   if (!canPlay || !player || card?.effect.type !== "ADVANCE_EXPERIENCE") {
     pumpAdventureQueues(state);
@@ -2720,7 +2724,10 @@ export function resolveLearningLevelUpChoice(state: GameState, playerId: PlayerI
   player.hand.splice(handIndex, 1);
   if (mode === "expert") {
     player.removed.push("ability.learning");
-    player.combatStats.expertUsesSpentThisRound += 1;
+    // An Empowered Learning spends no crown for its Expert side.
+    if (!abilityExpertIsCrownFree(player, "ability.learning")) {
+      player.combatStats.expertUsesSpentThisRound += 1;
+    }
   } else {
     player.discard.push("ability.learning");
   }
@@ -4059,7 +4066,8 @@ export function swapCombatUnits(state: GameState, action: Extract<GameAction, { 
     if (active.movedThisActivation || active.attackedThisActivation) {
       throw new Error("Tactics must be used before your active unit moves or attacks.");
     }
-    if (expertUsesAvailable(player) <= 0) {
+    // An Empowered Tactics may be used without a crown.
+    if (expertUsesAvailable(player) <= 0 && !abilityExpertIsCrownFree(player, "ability.tactics")) {
       throw new Error("No expert uses are available this combat round.");
     }
     mode = "expert";
@@ -4072,7 +4080,8 @@ export function swapCombatUnits(state: GameState, action: Extract<GameAction, { 
   unitB.position = positionA;
 
   spendTacticsCard(state, action.playerId);
-  if (mode === "expert") {
+  // An Empowered Tactics spends no crown for its Expert use.
+  if (mode === "expert" && !abilityExpertIsCrownFree(player, "ability.tactics")) {
     player.combatStats.expertUsesSpentThisRound += 1;
   }
 
@@ -5056,7 +5065,12 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
     if (card?.name !== "Wisdom" || !player.hand.includes(wisdom.cardId)) {
       throw new Error("Playing Wisdom here needs a Wisdom card in hand.");
     }
-    if (wisdom.mode === "expert" && expertUsesAvailable(player) <= 0) {
+    // An Empowered Wisdom skips the crown (it still pays the gold).
+    if (
+      wisdom.mode === "expert" &&
+      expertUsesAvailable(player) <= 0 &&
+      !abilityExpertIsCrownFree(player, wisdom.cardId)
+    ) {
       throw new Error("No expert uses are available for expert Wisdom.");
     }
 
@@ -5073,7 +5087,7 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
     const index = player.hand.indexOf(wisdom.cardId);
     player.hand.splice(index, 1);
     player.discard.push(wisdom.cardId);
-    if (wisdom.mode === "expert") {
+    if (wisdom.mode === "expert" && !abilityExpertIsCrownFree(player, wisdom.cardId)) {
       player.combatStats.expertUsesSpentThisRound += 1;
     }
     appendEvent(state, {

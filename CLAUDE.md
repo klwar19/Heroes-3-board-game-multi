@@ -113,14 +113,18 @@ is NOT done:
   grant POSITIVE morale (`morale_positive` on the wiki), and the Medusa Stores
   per-Stack bonus is a CHOICE of +3 gold OR +1 valuables (not both); both are
   pinned in `creature-banks.test.ts`.
-- Gradeless targeting: a bank card carries NO tier, so the neutral AI's same-tier
-  priority can't apply — a bank guard (the `bankUnit` flag) ranks its candidate
-  targets purely by distance and attacks the NEAREST. It KEEPS the universal
-  ranged rules (a ranged guard still hunts ranged targets first; an engaged one
-  must hit an adjacent enemy) — only the tier ordering is dropped. Wired in
-  `neutral-ai.ts` (`isGradelessNeutralAttacker`), tested in
-  `creature-bank-combat.test.ts` ("are gradeless and target the nearest enemy",
-  each with a graded CONTROL that diverges).
+- Gradeless targeting: a bank card carries NO tier ("grade 0"), so the neutral
+  AI's same-tier priority can't apply — a bank guard (the `bankUnit` flag) ranks
+  its candidate targets purely by distance and attacks the NEAREST. It KEEPS the
+  universal ranged rules (a ranged guard still hunts ranged targets first; an
+  engaged one must hit an adjacent enemy) — only the tier ordering is dropped.
+  Conversely, a bank guard card AS A TARGET is no-tier too, so a graded neutral
+  attacker hits it LAST (behind every graded enemy, exactly like a summoned
+  unit) — `isNoTierTarget` in `neutral-ai.ts`. Wired in `neutral-ai.ts`
+  (`isGradelessNeutralAttacker` / `isNoTierTarget`), tested in
+  `creature-bank-combat.test.ts` ("are gradeless and target the nearest enemy"
+  and "a gradeless bank-guard card is targeted LAST"), each with a graded
+  CONTROL that diverges.
 - Tier-specific spells/specialties cannot target a bank defender: with no tier it
   fails every grade gate (Blind, Berserk, Frenzy, Disrupting Ray, Forgetfulness,
   Sorrow/Skip-Activation, Slayer, …). Enforced both at targeting (a tier-gated
@@ -134,6 +138,16 @@ is NOT done:
   normally, a Stacked Pack when X ≥ 2 (the `GAIN_UNIT` interaction → `RECRUIT_FREE`
   step with a `side`). Tested in `creature-banks.test.ts` and end-to-end in
   `creature-bank-combat.test.ts` ("adds the gained Dragon Flies card to the army").
+  HOUSE-RULE bonus: each of these two banks ALSO Empowers one ability the winner
+  owns (the `EMPOWER_ABILITY` interaction, additive in the reward `SEQUENCE`).
+  Empowering an ability adds its card id to `player.empoweredAbilities`, which
+  lets its Expert side be played WITHOUT spending a crown for the rest of the
+  game — `abilityExpertIsCrownFree` / `canPlayExpertMode` (`ruleset.ts`) are
+  honoured at every Expert-use gate (legal-actions offers + reducer guards/spends
+  for reactions, map plays, Tactics, Wisdom and Learning). Tested in
+  `empowered-ability.test.ts` (the crown-free Expert play, with a graded CONTROL)
+  and `creature-bank-combat.test.ts` ("a win gains the unit AND lets the player
+  Empower an ability").
 - Stack Tokens: the Scenario Difficulty (Easy 1 / Normal 2 / Hard 3 /
   Impossible 4) sets the number of token ROLLS, NOT a guaranteed count. Each roll
   targets a distinct candidate card and lands only `STACK_TOKEN_PLACEMENT_PERCENT`
@@ -205,7 +219,9 @@ and `creature-bank-combat.test.ts` "Pyramid: a Stacked win …" end-to-end).
 
 **NOT implemented at all (deferred):**
 - Bank units still carry the underlying unit's `grade` field for placement and
-  display (it is the gradeless TARGETING/AI rules above, not the field itself,
-  that implement the "no tier" behaviour). The "gain a Stacked unit" reward is
-  modelled as gaining the recruitable card's Pack side — a HOUSE-RULE reading of
-  "Stacked", since army cards carry no Stack Token of their own.
+  display, but it never grants them a tier in play: the gradeless TARGETING/AI
+  rules above treat a bank card as no-tier ("grade 0") on BOTH axes — its guard
+  targets the nearest, and as a target it is hit LAST — and tier gates exempt it
+  via `gradeRankOfUnit`. The "gain a Stacked unit" reward is modelled as gaining
+  the recruitable card's Pack side — a HOUSE-RULE reading of "Stacked", since
+  army cards carry no Stack Token of their own.

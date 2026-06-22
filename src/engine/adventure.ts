@@ -1328,6 +1328,8 @@ function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
       return interaction.times > 0
         ? [{ type: "REMOVE_THEN_SEARCH_REPEAT", remaining: interaction.times, searchCount: interaction.searchCount }]
         : [];
+    case "EMPOWER_ABILITY":
+      return [{ type: "EMPOWER_ABILITY" }];
     case "HILL_FORT":
       return [{ type: "HILL_FORT" }];
     case "SUBTERRANEAN_GATE":
@@ -2927,6 +2929,59 @@ export function processPendingVisit(state: GameState): void {
           prompt: `Pyramid: remove a card and Search (${step.searchCount}) its deck (up to ${step.remaining} more)`,
           options
         });
+        break;
+      }
+      case "EMPOWER_ABILITY": {
+        // Dragon Fly Hive / Griffin Conservatory bonus: offer to Empower one of
+        // the player's own Ability cards (hand or discard) that is not already
+        // Empowered. Empowering is by card id, so a card owned in either pile
+        // qualifies once. No-op when the player owns no eligible ability.
+        const player = state.players[visit.playerId];
+        if (!player) {
+          break;
+        }
+        const seen = new Set<CardId>();
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        for (const cardId of [...player.hand, ...player.discard]) {
+          if (seen.has(cardId) || cardLibrary[cardId]?.kind !== "ability") {
+            continue;
+          }
+          if (player.empoweredAbilities?.includes(cardId)) {
+            continue;
+          }
+          seen.add(cardId);
+          options.push({
+            label: `Empower ${cardLibrary[cardId]?.name ?? cardId} (use basic or expert with no crown)`,
+            steps: [{ type: "MARK_ABILITY_EMPOWERED", cardId }]
+          });
+        }
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Skip empowering an ability", steps: [] });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: "Empower one ability you own — its Expert side then costs no crown",
+          options
+        });
+        break;
+      }
+      case "MARK_ABILITY_EMPOWERED": {
+        const player = state.players[visit.playerId];
+        if (!player) {
+          break;
+        }
+        if (!player.empoweredAbilities) {
+          player.empoweredAbilities = [];
+        }
+        if (!player.empoweredAbilities.includes(step.cardId)) {
+          player.empoweredAbilities.push(step.cardId);
+          appendEvent(state, {
+            type: "ABILITY_EMPOWERED",
+            playerId: visit.playerId,
+            cardId: step.cardId
+          });
+        }
         break;
       }
       case "WAR_MACHINE_GRANT_OFFER": {

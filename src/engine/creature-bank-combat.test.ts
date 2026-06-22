@@ -715,6 +715,53 @@ describe("Creature Bank combat lifecycle", () => {
     const choosing = state.pendingChoice?.type === "DECK_SEARCH";
     expect(searched || choosing).toBe(true);
   });
+
+  it("Dragon Fly Hive: a win gains the unit AND lets the player Empower an ability (house rule)", () => {
+    let state = createAdventureGameState({ seed: "bank-hive-empower", difficulty: "normal", rollFirstPlayer: false });
+    state = state.players.p1.needsHandRefresh
+      ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      : state;
+    placeBankUnderHero(state, "dragon_fly_hive", 7);
+    const hero = getMainHero(state, "p1")!;
+
+    startNeutralEncounter(state, hero, state.adventure!.fields["bank-field"]);
+    const place = getLegalActions(state, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
+    state = apply(state, place!.action);
+    state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+
+    // Give the hero an ability to Empower, and make sure it is not already empowered.
+    state.players.p1.hand = ["ability.archery"];
+    state.players.p1.empoweredAbilities = [];
+    const armyIdsBefore = new Set(state.players.p1.army.map((unit) => unit.id));
+
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.controllerId === "neutrals") {
+        unit.damage = unit.maxHealth;
+      }
+    }
+    // Clear the moot activation-order tie left by the force-kill shortcut (the
+    // four identical Dragon Flies guards share initiative).
+    state.pendingChoice = null;
+    finishCombatIfNeeded(state);
+    finalizeAdventureCombat(state);
+
+    // The unit reward resolved first (a Dragon Flies card joined the army)...
+    const gained = state.players.p1.army.filter((unit) => !armyIdsBefore.has(unit.id));
+    expect(gained).toHaveLength(1);
+    expect(gained[0].unitDefId).toBe("fortress.dragon_flies");
+
+    // ...then the Empower bonus opened a menu offering the owned ability.
+    expect(state.adventure!.pendingVisit?.steps[0]?.type).toBe("CHOOSE_ONE");
+    const actions = getLegalActions(state, "p1");
+    const empowerOption = actions.find((legal) => legal.label.includes("Empower Archery"));
+    expect(empowerOption, "Archery should be offered for empowering").toBeTruthy();
+
+    state = apply(state, empowerOption!.action);
+
+    // Archery is now permanently Empowered for this player.
+    expect(state.players.p1.empoweredAbilities).toContain("ability.archery");
+    expect(state.eventLog.some((event) => event.type === "ABILITY_EMPOWERED")).toBe(true);
+  });
 });
 
 // ===========================================================================
@@ -781,6 +828,36 @@ describe("Creature Bank guards are gradeless and target the nearest enemy", () =
   it("a bank guard ignores tier and hits the NEAREST enemy regardless of its tier", () => {
     const state = meleeScenario(true);
     expect(pickNeutralTarget(state.combat!, state.combat!.units.unit_p2_skeletons)?.id).toBe("unit_p1_griffins");
+  });
+
+  // A GRADED neutral attacker (bronze melee) facing two bronze melee enemies: a
+  // graded one far away (pos 19) and a bank-guard card adjacent (pos 1). Same
+  // tier and same type, so only distance and the no-tier rule differ. A bank
+  // guard card carries NO tier ("grade 0"), so as a TARGET it sorts behind every
+  // graded enemy — the attacker takes the FAR graded unit, not the adjacent bank
+  // guard. The CONTROL (the adjacent unit graded, not a bank card) takes it.
+  function targetedLastScenario(adjacentIsBankCard: boolean): GameState {
+    const state = createInitialGameState(`bank-target-last-${adjacentIsBankCard}`);
+    place(state, "unit_p2_skeletons", NEUTRAL_PLAYER_ID, "bronze", "ground", 0);
+    place(state, "unit_p1_crusaders", "p1", "bronze", "ground", 19);
+    const adjacent = place(state, "unit_p1_griffins", "p1", "bronze", "ground", 1);
+    adjacent.bankUnit = adjacentIsBankCard;
+    onlyUnits(state, [
+      state.combat!.units.unit_p2_skeletons,
+      state.combat!.units.unit_p1_crusaders,
+      state.combat!.units.unit_p1_griffins
+    ]);
+    return state;
+  }
+
+  it("CONTROL: a graded attacker takes the adjacent same-tier unit (nearest wins the tie)", () => {
+    const state = targetedLastScenario(false);
+    expect(pickNeutralTarget(state.combat!, state.combat!.units.unit_p2_skeletons)?.id).toBe("unit_p1_griffins");
+  });
+
+  it("a gradeless bank-guard card is targeted LAST — the attacker takes the far graded unit instead", () => {
+    const state = targetedLastScenario(true);
+    expect(pickNeutralTarget(state.combat!, state.combat!.units.unit_p2_skeletons)?.id).toBe("unit_p1_crusaders");
   });
 
   // A ranged guard with a distant ranged enemy (pos 19) and a nearer melee enemy
