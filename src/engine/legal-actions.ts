@@ -1490,23 +1490,44 @@ function addSpellActions(
         !activeUnit.attackedThisActivation
     ) || playerHasSpellTimingFreedom(state, playerId);
 
+  // Tarnum (Conflux) VI: spells Searched this combat are cast for free OVER the
+  // per-round limit (a bonus), and they never go to the caster's own discard —
+  // they are offered separately from normal hand casts (which they are excluded
+  // from) so the limit-reached gate cannot block them.
+  const tarnumFlagged = new Set(player.combatStats.tarnumOverlimitCards ?? []);
+
   // Hand spells plus every Spell Scroll spell (scroll spells are not in hand;
   // they cast at power 0 and are removed once used). Both share the timing and
   // targeting rules below, and both are blocked once the spell limit is reached.
-  const castCandidates: { cardId: string; fromScroll?: string; fromSpellDeck?: string; fromSpellBook?: boolean }[] =
-    spellLimitReached
-      ? []
-      : [
-          ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
-          // Spell Book (house rule): Book Spells cast like hand Spells — full
-          // Power, same one-Spell-per-round limit, same timing/targeting gates.
-          ...(spellBookRuleEnabled(state)
-            ? [...new Set(player.spellBook)].map((cardId) => ({ cardId, fromSpellBook: true }))
-            : []),
-          ...(player.scrolls ?? []).flatMap((scroll) =>
-            [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
-          )
-        ];
+  const castCandidates: {
+    cardId: string;
+    fromScroll?: string;
+    fromSpellDeck?: string;
+    fromSpellBook?: boolean;
+    tarnumReturn?: "deck-top" | "discard";
+  }[] = spellLimitReached
+    ? []
+    : [
+        ...[...new Set(player.hand)].filter((cardId) => !tarnumFlagged.has(cardId)).map((cardId) => ({ cardId })),
+        // Spell Book (house rule): Book Spells cast like hand Spells — full
+        // Power, same one-Spell-per-round limit, same timing/targeting gates.
+        ...(spellBookRuleEnabled(state)
+          ? [...new Set(player.spellBook)].map((cardId) => ({ cardId, fromSpellBook: true }))
+          : []),
+        ...(player.scrolls ?? []).flatMap((scroll) =>
+          [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
+        )
+      ];
+
+  // Tarnum over-limit casts: each flagged hand spell, offered with both
+  // placements ("on the top of the Spell deck or on its discard pile").
+  for (const cardId of tarnumFlagged) {
+    if (!player.hand.includes(cardId)) {
+      continue;
+    }
+    castCandidates.push({ cardId, tarnumReturn: "deck-top" });
+    castCandidates.push({ cardId, tarnumReturn: "discard" });
+  }
 
   // Helm of the Alabaster Unicorn (option B): cast the top card of the shared
   // Spell-deck discard pile. Offered like a scroll cast — the spell is sourced
@@ -1536,7 +1557,7 @@ function addSpellActions(
     }
   }
 
-  for (const { cardId, fromScroll, fromSpellDeck, fromSpellBook } of castCandidates) {
+  for (const { cardId, fromScroll, fromSpellDeck, fromSpellBook, tarnumReturn } of castCandidates) {
     const card = cards[cardId];
     if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
       continue;
@@ -1627,7 +1648,7 @@ function addSpellActions(
     // A Scroll/Spell-deck cast can't pair a School of Magic permanent; a Book
     // cast can (it casts like a hand cast), so it is offered the expert variant.
     const schoolExpert =
-      !fromScroll && !fromSpellDeck && expertUsesAvailable(player) > 0
+      !fromScroll && !fromSpellDeck && !tarnumReturn && expertUsesAvailable(player) > 0
         ? getPermanentSchoolBonus(state, playerId, card)
         : null;
 
@@ -1639,7 +1660,9 @@ function addSpellActions(
             ? `Cast ${card.name} (Helm of the Alabaster Unicorn)`
             : fromSpellBook
               ? `Cast ${card.name} (Spell Book)`
-              : `Cast ${card.name}`,
+              : tarnumReturn
+                ? `Cast ${card.name} (free; ${tarnumReturn === "deck-top" ? "to Spell deck top" : "to Spell discard"})`
+                : `Cast ${card.name}`,
         action: {
           type: "CAST_SPELL",
           playerId,
@@ -1647,7 +1670,8 @@ function addSpellActions(
           target,
           ...(fromScroll ? { fromScroll } : {}),
           ...(fromSpellDeck ? { fromSpellDeck } : {}),
-          ...(fromSpellBook ? { fromSpellBook: true } : {})
+          ...(fromSpellBook ? { fromSpellBook: true } : {}),
+          ...(tarnumReturn ? { tarnumReturn } : {})
         }
       });
 
@@ -2106,14 +2130,19 @@ function isOptionEffectPlayable(
       if (!player || !deck) {
         return false;
       }
-      const hasFrom = player.army.some(
-        (unit) => unit.unitDefId === effect.fromUnitDefId && unit.side === effect.fromSide
-      );
+      // Tarnum (Conflux) IV pays gold instead of trading in a unit, so the
+      // from-unit requirement only applies when fromUnitDefId is set.
+      const hasFrom = effect.fromUnitDefId
+        ? player.army.some(
+            (unit) => unit.unitDefId === effect.fromUnitDefId && unit.side === effect.fromSide
+          )
+        : true;
+      const canPayGold = !effect.goldCost || player.resources.gold >= effect.goldCost;
       const blockedByUnique =
         Boolean(effect.unique) && player.army.some((unit) => unit.unitDefId === effect.toUnitDefId);
       const deckHasTarget =
         deck.drawPile.includes(effect.toUnitDefId) || deck.discardPile.includes(effect.toUnitDefId);
-      return hasFrom && !blockedByUnique && deckHasTarget;
+      return hasFrom && canPayGold && !blockedByUnique && deckHasTarget;
     }
     case "SIEGE_DEMOLISH": {
       const siege = state.combat?.siege;
@@ -3447,6 +3476,22 @@ export function getLegalActions(
           pick: { kind: "revealed", index }
         }
       }));
+
+      // Tarnum (Conflux) I: each revealed card may instead be Removed from the
+      // game rather than kept in hand.
+      if (choice.allowRemove) {
+        for (const [index, cardId] of choice.revealedCardIds.entries()) {
+          actions.push({
+            label: `Remove ${cards[cardId]?.name ?? cardId}`,
+            action: {
+              type: "RESOLVE_DECK_SEARCH",
+              playerId,
+              choiceId: choice.id,
+              pick: { kind: "revealed", index, remove: true }
+            }
+          });
+        }
+      }
 
       return actions;
     }

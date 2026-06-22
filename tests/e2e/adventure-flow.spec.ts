@@ -154,8 +154,12 @@ test("discovering a face-down tile opens the rotation card on the tile", async (
       break;
     }
     await targets.nth(bestIndex).click();
-    await page.getByRole("button", { name: /Move there/ }).click();
-    await page.waitForTimeout(1000);
+    const moveThere = page.getByRole("button", { name: /Move there/ });
+    await moveThere.click();
+    // Wait for the move to actually commit (round-tripped through the room
+    // server) instead of a fixed sleep: the planned-route control detaches once
+    // the walk resolves and the board re-renders with the new reachable hexes.
+    await expect(moveThere).toBeHidden({ timeout: 15000 });
   }
 
   await clearMapNotices(page);

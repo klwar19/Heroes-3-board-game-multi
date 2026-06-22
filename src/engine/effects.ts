@@ -106,7 +106,8 @@ export const implementedCardEffectTypes = [
   "PLACE_FIRE_WALL",
   "PLACE_FIRE_WALL_FIXED",
   "PLACE_HIDDEN_TOKENS",
-  "REMOVE_ACTIVE_EFFECT"
+  "REMOVE_ACTIVE_EFFECT",
+  "TARNUM_OVERLIMIT_SEARCH"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {
@@ -836,9 +837,15 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "CONVERT_ARMY_UNIT") {
-    const from = card.effect.fromUnitDefId.split(".").pop()?.replace(/_/g, " ");
     const to = card.effect.toUnitDefId.split(".").pop()?.replace(/_/g, " ");
-    return `discard a ${card.effect.fromSide} of ${from} to fetch the ${to} from the ${card.effect.toTier} Neutral deck`;
+    const acquire = card.effect.fromUnitDefId
+      ? `discard a ${card.effect.fromSide} of ${card.effect.fromUnitDefId.split(".").pop()?.replace(/_/g, " ")}`
+      : `pay ${card.effect.goldCost ?? 0} gold`;
+    return `${acquire} to fetch the ${to} from the ${card.effect.toTier} Neutral deck`;
+  }
+
+  if (card.effect.type === "TARNUM_OVERLIMIT_SEARCH") {
+    return `Search(1) the Spell deck ${card.effect.count} times into hand; cast any of those spells for free over the per-round limit, returning each to the Spell deck top or discard`;
   }
 
   if (card.effect.type === "ADVANCE_EXPERIENCE") {

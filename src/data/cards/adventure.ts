@@ -2573,6 +2573,90 @@ export const adventureCards: CardLibrary = {
     source: heroSource("ciele")
   }),
 
+  // ---- Conflux Elementalist (Tarnum — the Enchanters specialist) ---------
+  // Wiki (en.homm3bg.wiki/heroes/tarnum_conflux): Elementalist, A0 D0 P2 K3,
+  // starting ability Wisdom, specialty Enchanters.
+  //  I  — Search(1) Spell; keep the found Spell OR Remove it from the game.
+  //  IV — Pay 10 gold to fetch the unique neutral Enchanters card (only 1 at a
+  //       time) — OR — Draw a card.
+  //  VI — Search(1) the Spell deck twice into hand; you may immediately cast
+  //       one/both for free OVER the per-Combat-round Spell limit, returning each
+  //       cast Spell to the Spell deck top or its discard pile (your choice).
+  // I reuses CARD_DECK_SEARCH with the new allowRemove flag; IV reuses
+  // CONVERT_ARMY_UNIT with goldCost (no unit traded in); VI is the dedicated
+  // TARNUM_OVERLIMIT_SEARCH over-limit multi-cast effect.
+  "specialty.tarnum_conflux.1": withoutArt({
+    id: "specialty.tarnum_conflux.1",
+    name: "Enchanters I",
+    kind: "hero-specialty",
+    timing: "map",
+    tags: [
+      "hero-specialty",
+      "map",
+      "tarnum_conflux",
+      "enchanters",
+      "Search(1) Spell. You can Remove this card instead of taking it into your hand."
+    ],
+    target: { type: "none" },
+    effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 1, allowRemove: true },
+    implementationStatus: "implemented",
+    source: heroSource("tarnum_conflux")
+  }),
+  "specialty.tarnum_conflux.4": withoutArt({
+    id: "specialty.tarnum_conflux.4",
+    name: "Enchanters IV",
+    kind: "hero-specialty",
+    timing: "map",
+    tags: [
+      "hero-specialty",
+      "map",
+      "tarnum_conflux",
+      "enchanters",
+      "Pay 10 gold, then find the Enchanters card in the Neutral Unit deck and add it to your Unit deck. You can control only 1 Enchanters unit at a time. — OR — Draw a card."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Pay 10 gold → take the Enchanters",
+          mapOnly: true,
+          effect: {
+            type: "CONVERT_ARMY_UNIT",
+            toUnitDefId: "neutral.enchanters",
+            toTier: "gold",
+            unique: true,
+            goldCost: 10
+          }
+        },
+        {
+          label: "Draw a card",
+          effect: { type: "DRAW_CARDS", amount: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("tarnum_conflux")
+  }),
+  "specialty.tarnum_conflux.6": withoutArt({
+    id: "specialty.tarnum_conflux.6",
+    name: "Enchanters VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "tarnum_conflux",
+      "enchanters",
+      "Search(1) Spell twice. If their type allows it, and you have enough power available, you can immediately cast one or both of these spells, even if you already cast a spell this round. Place each spell you use this way on the top of the Spell deck or on its discard pile in any order."
+    ],
+    target: { type: "none" },
+    effect: { type: "TARNUM_OVERLIMIT_SEARCH", count: 2 },
+    implementationStatus: "implemented",
+    source: heroSource("tarnum_conflux")
+  }),
+
   // ---- Additional heroes (fan-wiki "Regular Stretch Goals 2024") ---------
   // Fiona (Inferno, Demoniac): the Cerberi specialist — the standard might
   // shape, each bonus doubled when it lands on a Cerberi unit. I = +1 A/D;

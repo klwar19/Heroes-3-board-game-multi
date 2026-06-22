@@ -2347,6 +2347,9 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       player.combatStats.spellsCastThisRound = 0;
       player.combatStats.spellLimitBonusThisRound = 0;
       player.combatStats.anySpellCastThisRound = false;
+      // Tarnum (Conflux) VI: the over-limit Search privilege never carries into a
+      // fresh combat.
+      player.combatStats.tarnumOverlimitCards = [];
     }
   }
 
@@ -5723,7 +5726,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     }
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
-    openSharedDeckSearch(state, action.playerId, deckId, choice.deckPick?.count ?? 2);
+    openSharedDeckSearch(state, action.playerId, deckId, choice.deckPick?.count ?? 2, Boolean(choice.deckPick?.allowRemove));
     return;
   }
 
@@ -5739,7 +5742,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     // choice (revealSharedDeckSearch fires its own Pendant repeat).
     if (action.optionIndex === 0) {
       state.phase = choice.returnPhase;
-      revealSharedDeckSearch(state, action.playerId, mode.deckId, mode.count);
+      revealSharedDeckSearch(state, action.playerId, mode.deckId, mode.count, Boolean(mode.allowRemove));
       return;
     }
 
@@ -6480,7 +6483,13 @@ export function resolveSearchDeckCandidates(state: GameState, playerId: PlayerId
  * "Search" branch. With an empty discard pile there is nothing to take, so it
  * reveals and opens the DECK_SEARCH straight away.
  */
-export function openSharedDeckSearch(state: GameState, playerId: PlayerId, deckId: string, baseCount: number): void {
+export function openSharedDeckSearch(
+  state: GameState,
+  playerId: PlayerId,
+  deckId: string,
+  baseCount: number,
+  allowRemove = false
+): void {
   const deck = state.decks[deckId];
   if (!deck) {
     return;
@@ -6524,7 +6533,8 @@ export function openSharedDeckSearch(state: GameState, playerId: PlayerId, deckI
         deckId,
         count: baseCount,
         ...(schoolFetch.length > 0 ? { schoolFetch } : {}),
-        hasDiscardTop: Boolean(discardTopId)
+        hasDiscardTop: Boolean(discardTopId),
+        ...(allowRemove ? { allowRemove: true } : {})
       },
       returnPhase: state.combat ? "combat" : "player-turn"
     };
@@ -6533,7 +6543,7 @@ export function openSharedDeckSearch(state: GameState, playerId: PlayerId, deckI
     return;
   }
 
-  revealSharedDeckSearch(state, playerId, deckId, baseCount);
+  revealSharedDeckSearch(state, playerId, deckId, baseCount, allowRemove);
 }
 
 /**
@@ -6580,7 +6590,13 @@ function performSchoolFetch(state: GameState, playerId: PlayerId, deckId: string
  * `openSharedDeckSearch`), so a player can never both peek the deck and still
  * take the discard top or fetch.
  */
-export function revealSharedDeckSearch(state: GameState, playerId: PlayerId, deckId: string, baseCount: number): void {
+export function revealSharedDeckSearch(
+  state: GameState,
+  playerId: PlayerId,
+  deckId: string,
+  baseCount: number,
+  allowRemove = false
+): void {
   const deck = state.decks[deckId];
   if (!deck) {
     return;
@@ -6625,6 +6641,7 @@ export function revealSharedDeckSearch(state: GameState, playerId: PlayerId, dec
     deckId,
     revealedCardIds,
     ...(repeats ? { repeatSearch: { deckId, count: baseCount } } : {}),
+    ...(allowRemove ? { allowRemove: true } : {}),
     returnPhase: state.combat ? "combat" : "player-turn"
   };
   state.phase = "choice";
@@ -6823,7 +6840,7 @@ export function pumpAdventureQueues(state: GameState): void {
             label: `${deckDisplayName(state, deckId)} (${(state.decks[deckId]?.drawPile.length ?? 0) + (state.decks[deckId]?.discardPile.length ?? 0)} cards)`
           })),
           context: "deck-pick",
-          deckPick: { deckIds: candidates, count: reward.count },
+          deckPick: { deckIds: candidates, count: reward.count, ...(reward.allowRemove ? { allowRemove: true } : {}) },
           returnPhase: "player-turn"
         };
         state.phase = "choice";
@@ -6831,7 +6848,7 @@ export function pumpAdventureQueues(state: GameState): void {
         return;
       }
 
-      openSharedDeckSearch(state, reward.playerId, candidates[0], reward.count);
+      openSharedDeckSearch(state, reward.playerId, candidates[0], reward.count, Boolean(reward.allowRemove));
       return;
     }
 

@@ -26,6 +26,10 @@ PORTRAIT_HEROES = [
     ("pasis", "Hero_Pasis.png"),
     ("luna", "Hero_Luna.png"),
     ("ciele", "Hero_Ciele.png"),
+    # Conflux Tarnum is an Elementalist (a magic hero). thelazy.net has no
+    # Elementalist render, so use the magic-class Wizard Tarnum portrait — the
+    # closest classic PC match for a spellcasting Tarnum.
+    ("tarnum_conflux", "Hero_Tarnum_(Wizard).png"),
 ]
 
 

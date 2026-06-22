@@ -134,19 +134,32 @@ Conflux — now fully engine-wired (no display-only unit clauses left):
   Monere, Pasis) AND **Luna** the Fire Wall Elementalist — I/VI place the shared
   `fire_wall` battlefield token at a FIXED 1/3 damage (`PLACE_FIRE_WALL_FIXED`),
   IV is the spell-economy choice (map discard recall OR a +2-Power spell-cast
-  reaction). All I/IV/VI implemented + tested (`conflux-content.test.ts`). Luna's
-  portrait asset is download-pending (the fetch script lists her; the UI falls
-  back to her initial), like other PC-portrait heroes.
-- Still deferred (NOT on the roster): **Ciele** (Magic Arrow) and **Tarnum
-  (Conflux)** (Enchanters). Both hinge on a subsystem the engine does NOT have:
-  casting a Spell *from your discard pile* as a free bonus cast (Ciele IV) and
-  casting Search(1)'d Spells immediately *over the one-per-round limit*, then
-  returning them to the deck/discard (Tarnum VI). A flat-damage shortcut for
-  Ciele would be unfaithful (it must respect Magic-Arrow spell immunity — e.g.
-  the Magic Elementals' own — and Power scaling), so they are left unimplemented
-  rather than stubbed. Tarnum I (Search(1) Spell) and IV (pay 10 gold for the
-  neutral Enchanters card, reusing `CONVERT_ARMY_UNIT`) are individually
-  feasible, but a hero ships only when ALL of I/IV/VI are engine-wired.
+  reaction). All I/IV/VI implemented + tested (`conflux-content.test.ts`). Conflux
+  PC portraits (incl. Luna and Tarnum) are now downloaded to `/public/assets`.
+- **Ciele** (Magic Arrow Elementalist) is now shipped — I recalls a Magic Arrow
+  from the discard, IV casts one from the Spell-deck discard for FREE over the
+  limit (the `CAST_FROM_SPELL_DISCARD` pipeline, `spellId`-filtered), VI deals 2
+  damage; each with a +Power reaction alternative. See
+  `conflux-ciele-specialty.test.ts`.
+- **Tarnum (Conflux)** (Enchanters Elementalist) is now shipped — all I/IV/VI
+  engine-wired and covered by `conflux-tarnum-specialty.test.ts` (each level fails
+  if its wiring is removed):
+  - I — `Search(1) Spell` with the new `CARD_DECK_SEARCH.allowRemove` flag: the
+    revealed Spell can be KEPT into hand OR REMOVED from the game (the deck-search
+    pipeline now carries `allowRemove` through `openSharedDeckSearch` /
+    `revealSharedDeckSearch` / the DECK_SEARCH choice and offers a "Remove …"
+    pick). The control proves a normal Search offers no Remove.
+  - IV — `CONVERT_ARMY_UNIT` extended with a `goldCost` and an optional from-unit:
+    "Pay 10 gold → the unique neutral Enchanters card" (or draw). Gated on gold
+    and the `unique` one-Enchanters limit.
+  - VI — the over-limit multi-cast subsystem (`TARNUM_OVERLIMIT_SEARCH`): Search(1)
+    the Spell deck twice into hand and flag both (`combatStats.tarnumOverlimitCards`);
+    a flagged hand Spell is cast for FREE over the per-round limit (does not bump
+    `spellsCastThisRound`, validated against forgery in `castSpell`) and on
+    resolution returns to the shared Spell deck — top OR discard, the caster's
+    choice via `CAST_SPELL.tarnumReturn` — instead of the caster's own discard. An
+    uncast flagged Spell just stays in hand; the flag clears at combat start and
+    each combat round.
 
 This section is maintained by hand — the rule #3 enforcement test still does
 **not** exist, so re-verify any "stub" claim against `src/data/factions/units.ts`

@@ -1483,13 +1483,13 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
   },
 
   // ---- Conflux (expansion) -----------------------------------------------
-  // Five heroes wired: the unit-specialist Planeswalkers (Erdamon, Monere,
-  // Pasis), the Fire Wall Elementalist Luna, and the Magic Arrow Elementalist
-  // Ciele. Still deferred: Tarnum (Conflux, Enchanters) — his VI (Search(1)
-  // twice, then cast one/both OVER the per-round Spell limit and return them to
-  // the deck top or its discard pile in any order) needs a multi-Spell
-  // over-limit cast-and-return subsystem the engine does not have, and every
-  // shipped hero specialty must be fully implemented.
+  // Six heroes wired: the unit-specialist Planeswalkers (Erdamon, Monere,
+  // Pasis), the Fire Wall Elementalist Luna, the Magic Arrow Elementalist Ciele,
+  // and the Enchanters Elementalist Tarnum. Tarnum's VI ("Search(1) twice, then
+  // cast one/both OVER the per-round Spell limit and return them to the Spell
+  // deck top or its discard pile") is engine-wired via the
+  // TARNUM_OVERLIMIT_SEARCH effect; see specialty.tarnum_conflux.* in
+  // cards/adventure.ts and conflux-tarnum-specialty.test.ts.
   erdamon: {
     id: "erdamon",
     name: "Erdamon",
@@ -1576,6 +1576,28 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     },
     portrait: "/assets/hero_portraits-ciele.webp",
     source: confluxHeroSource("ciele")
+  },
+  // Tarnum — Conflux Elementalist, the Enchanters specialist (wiki: A0 D0 P2 K3,
+  // starting ability Wisdom). I/IV/VI all engine-wired: I Search(1) Spell (keep
+  // or Remove), IV pay 10 gold for the unique neutral Enchanters card (or draw),
+  // VI Search(1) the Spell deck twice and cast for free over the per-round limit
+  // (returning each cast Spell to the Spell deck top/discard). See
+  // specialty.tarnum_conflux.* in cards/adventure.ts.
+  tarnum_conflux: {
+    id: "tarnum_conflux",
+    name: "Tarnum",
+    faction: "conflux",
+    class: "Elementalist",
+    type: "magic",
+    startingStats: { attack: 0, defense: 0, power: 2, knowledge: 3 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: {
+      1: "specialty.tarnum_conflux.1",
+      4: "specialty.tarnum_conflux.4",
+      6: "specialty.tarnum_conflux.6"
+    },
+    portrait: "/assets/hero_portraits-tarnum_conflux.webp",
+    source: confluxHeroSource("tarnum_conflux")
   },
   bron: {
     id: "bron",
@@ -2227,7 +2249,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     // The three unit-specialist Planeswalkers + Luna (Fire Wall) + Ciele (Magic
     // Arrow) are wired; Tarnum (Conflux) follows once the multi-Spell
     // cast-over-the-limit-and-return subsystem his VI needs is built.
-    heroes: ["erdamon", "monere", "pasis", "luna", "ciele"],
+    heroes: ["erdamon", "monere", "pasis", "luna", "ciele", "tarnum_conflux"],
     buildings: buildingsOfFaction("conflux"),
     units: unitsOfFaction("conflux"),
     townImage: "/assets/towns-conflux-empty.webp",
