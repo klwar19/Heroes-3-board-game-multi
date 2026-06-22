@@ -204,6 +204,43 @@ describe("seat-ownership on game actions (hosted)", () => {
   });
 });
 
+describe("naming a room", () => {
+  it("lets any member name an open table and clears back to default when blank", () => {
+    let state = makeGame();
+    state = expectOk(state, { type: "JOIN_ROOM", clientId: "c1", name: "Alice" });
+
+    state = expectOk(state, { type: "SET_ROOM_NAME", clientId: "c1", name: "  Friday Night  " });
+    expect(state.room?.name).toBe("Friday Night"); // trimmed
+
+    // A blank name removes it (falls back to the id-derived default in the UI).
+    state = expectOk(state, { type: "SET_ROOM_NAME", clientId: "c1", name: "   " });
+    expect(state.room?.name).toBeUndefined();
+  });
+
+  it("caps the name length", () => {
+    let state = makeGame();
+    state = expectOk(state, { type: "JOIN_ROOM", clientId: "c1", name: "Alice" });
+    state = expectOk(state, { type: "SET_ROOM_NAME", clientId: "c1", name: "x".repeat(200) });
+    expect(state.room?.name?.length).toBe(40);
+  });
+
+  it("requires membership and, when hosted, restricts renaming to the host", () => {
+    // A stranger who never joined cannot name the room.
+    expectRejected(makeGame(), { type: "SET_ROOM_NAME", clientId: "ghost", name: "Nope" });
+
+    let state = hostedRoomWithThree();
+    // The host can rename a hosted room.
+    state = expectOk(state, { type: "SET_ROOM_NAME", clientId: "c1", name: "Hosted Table" });
+    expect(state.room?.name).toBe("Hosted Table");
+    // A non-host member cannot.
+    expect(expectRejected(state, { type: "SET_ROOM_NAME", clientId: "c2", name: "Hijack" })).toContain(
+      "Only the host"
+    );
+    // The name is unchanged after the rejected rename.
+    expect(state.room?.name).toBe("Hosted Table");
+  });
+});
+
 describe("open table preserves the free-seat test mode", () => {
   it("ignores seat ownership when the room is not hosted", () => {
     // No JOIN/host at all: legacy/open snapshot, room is undefined.

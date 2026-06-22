@@ -2774,6 +2774,16 @@ export type GameAction =
       clientId: string;
       targetClientId: string;
     }
+  | {
+      /**
+       * Rename the room so it is identifiable in the lobby. Open table: any
+       * member may set it; hosted: host-only (mirrors `SET_ROOM_HOSTED`). Keyed
+       * by the caller's `clientId`. A blank name clears it back to the default.
+       */
+      type: "SET_ROOM_NAME";
+      clientId: string;
+      name: string;
+    }
   | { type: "END_TURN"; playerId: PlayerId }
   | {
       /**
@@ -3311,6 +3321,12 @@ export type GameEvent =
       id: string;
       type: "ROOM_HOST_CHANGED";
       clientId: string;
+      byClientId: string;
+    }
+  | {
+      id: string;
+      type: "ROOM_NAMED";
+      name: string;
       byClientId: string;
     }
   | {
@@ -4075,6 +4091,14 @@ export type RoomMembershipState = {
   hosted: boolean;
   hostClientId: string | null;
   members: RoomMember[];
+  /**
+   * Human-readable room name shown in the lobby and the room panel, so players
+   * can tell rooms apart instead of reading the opaque room id. Optional: a room
+   * that was never named falls back to a default label derived from its id.
+   * Set via the `SET_ROOM_NAME` action (open table: any member; hosted: host
+   * only), and seeded by the explicit "create room" flow.
+   */
+  name?: string;
 };
 
 /**

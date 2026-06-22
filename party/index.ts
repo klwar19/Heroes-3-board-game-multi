@@ -35,7 +35,11 @@ export type RoomSnapshot = {
    * running older engine code than the frontend.
    */
   serverSignature?: string;
+  /** Set on the final frame a closed room sends, so clients return to the lobby. */
+  closed?: boolean;
 };
+
+type CloseRoomResult = { closed: boolean; reason?: string };
 
 export type RoomResetOptions = {
   mode?: GameMode;
@@ -118,6 +122,23 @@ export default class GameRoomServer implements Party.Server {
    */
   private signed(snapshot: RoomSnapshot): RoomSnapshot {
     return { ...snapshot, serverSignature: ENGINE_SIGNATURE };
+  }
+
+  /**
+   * Mirrors the store's closeRoom rule: a hosted room can only be closed by its
+   * host; an open table by any current member (or anyone when it is empty).
+   */
+  private authorizeClose(actorClientId: string | undefined): CloseRoomResult {
+    const room = this.snapshot?.state.room ?? null;
+    const members = room?.members ?? [];
+    if (room?.hosted) {
+      if (!actorClientId || room.hostClientId !== actorClientId) {
+        return { closed: false, reason: "Only the host can close this room." };
+      }
+    } else if (members.length > 0 && actorClientId && !members.some((m) => m.clientId === actorClientId)) {
+      return { closed: false, reason: "Join the room before closing it." };
+    }
+    return { closed: true };
   }
 
   private broadcastSnapshot(): void {
@@ -211,6 +232,23 @@ export default class GameRoomServer implements Party.Server {
       return jsonWithCors(this.signed(this.ensureSnapshot()));
     }
 
+    if (request.method === "DELETE") {
+      const body = (await request.json().catch(() => null)) as { actorClientId?: string } | null;
+      const result = this.authorizeClose(body?.actorClientId);
+      if (!result.closed) {
+        return jsonWithCors(result, 403);
+      }
+      // Tell everyone still connected the room is gone, then wipe its storage.
+      const closing = this.snapshot;
+      if (closing) {
+        const message: ServerMessage = { type: "snapshot", snapshot: this.signed({ ...closing, closed: true }) };
+        this.room.broadcast(JSON.stringify(message));
+      }
+      this.snapshot = null;
+      await this.room.storage.delete(SNAPSHOT_KEY);
+      return jsonWithCors(result);
+    }
+
     if (request.method === "POST") {
       const body = (await request.json().catch(() => null)) as
         | ({ reset?: boolean } & RoomResetOptions)
@@ -267,13 +305,13 @@ export default class GameRoomServer implements Party.Server {
  */
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
   "Access-Control-Max-Age": "86400"
 };
 
-function jsonWithCors(data: unknown): Response {
-  return Response.json(data, { headers: CORS_HEADERS });
+function jsonWithCors(data: unknown, status = 200): Response {
+  return Response.json(data, { status, headers: CORS_HEADERS });
 }
 
 GameRoomServer satisfies Party.Worker;
