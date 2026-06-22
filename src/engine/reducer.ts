@@ -7360,11 +7360,19 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
       throw new Error("That spell is not in the named Spell Scroll.");
     }
   } else if (action.fromSpellDeck) {
-    // Helm of the Alabaster Unicorn (option B): the spell is cast from the top of
-    // the shared Spell-deck discard pile and stays there (it is never moved to a
-    // hand/discard). The Helm named on the action pays the "Remove this card"
-    // cost: it leaves the game. No enemy-spell hand tax — nothing left the hand.
-    const removeError = moveCardFromHandToDiscard(state, action.playerId, action.fromSpellDeck, "removed");
+    // The spell is cast from the shared Spell-deck discard pile and stays there
+    // (it is never moved to a hand/discard). The enabling card named on the action
+    // is consumed: the Helm of the Alabaster Unicorn pays its "Remove this card"
+    // cost (it leaves the game), while Ciele's Magic Arrow IV is a hero-specialty,
+    // so it cycles to the discard pile to be redrawn. No enemy-spell hand tax —
+    // nothing left the hand as a normal cast.
+    const enablerIsSpecialty = cardLibrary[action.fromSpellDeck]?.kind === "hero-specialty";
+    const removeError = moveCardFromHandToDiscard(
+      state,
+      action.playerId,
+      action.fromSpellDeck,
+      enablerIsSpecialty ? "discard" : "removed"
+    );
     if (removeError) {
       throw new Error(removeError.message);
     }

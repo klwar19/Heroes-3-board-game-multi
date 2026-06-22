@@ -45,7 +45,7 @@ function pendingChoiceOf(state: GameState): GameState["pendingChoice"] {
 }
 
 describe("Conflux content", () => {
-  it("wires the faction to its eight town buildings, three heroes, seven units, cards, and art slots", () => {
+  it("wires the faction to its eight town buildings, five heroes, seven units, cards, and art slots", () => {
     const faction = coreFactionDefinitions.conflux;
     expect(faction).toBeDefined();
     expect(faction.startingTileId).toBe("S8");
@@ -64,7 +64,7 @@ describe("Conflux content", () => {
       expect(coreBuildingDefinitions[building].assets?.image, `${building} art`).toContain("/assets/town/conflux_");
     }
 
-    expect(faction.heroes).toEqual(["erdamon", "monere", "pasis", "luna"]);
+    expect(faction.heroes).toEqual(["erdamon", "monere", "pasis", "luna", "ciele"]);
     for (const heroId of faction.heroes) {
       const hero = coreHeroDefinitions[heroId];
       expect(hero, heroId).toBeDefined();

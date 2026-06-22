@@ -897,7 +897,7 @@ export type EffectDefinition =
        */
       type: "TAKE_FROM_DISCARD";
       count: number;
-      filter?: "spell" | "non-artifact" | "spell-or-specialty";
+      filter?: "spell" | "non-artifact" | "spell-or-specialty" | "magic-arrow";
       /** Only the top N discard cards qualify (Mystic Orb of Mana). */
       fromTop?: number;
       /** Rib Cage: shuffle the rest of the discard pile into the deck. */
@@ -1043,8 +1043,16 @@ export type EffectDefinition =
        * ranged unit that has already acted this round (the printed "even if that
        * unit has already been activated"). The Bowstring leaves it unset, so it
        * keeps targeting only not-yet-activated ranged units.
+       *
+       * Ciele's Magic Arrow IV (Conflux) reuses this marker with `spellId` set:
+       * instead of the discard top, the offer layer finds that specific Spell in
+       * the Spell-deck discard pile (any copy) and casts it for free. The enabling
+       * card is a hero-specialty, so the cast sends it to the discard pile (to be
+       * redrawn) rather than removing it like the Helm.
        */
       type: "CAST_FROM_SPELL_DISCARD";
+      /** Ciele IV: only a Spell with this id may be cast (e.g. spell.magic_arrow). */
+      spellId?: string;
     }
   | {
       /**
@@ -4804,7 +4812,7 @@ export type AdventureReward =
       playerId: PlayerId;
       kind: "discard-pick";
       count: number;
-      filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty";
+      filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty" | "magic-arrow";
       fromTop?: number;
       shuffleRestIntoDeck?: boolean;
     }
@@ -5844,7 +5852,7 @@ export type PendingChoice =
          */
         destinations?: ("hand" | "spellBook")[];
         remaining: number;
-        filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty";
+        filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty" | "magic-arrow";
         fromTop?: number;
         shuffleRestIntoDeck?: boolean;
       };
