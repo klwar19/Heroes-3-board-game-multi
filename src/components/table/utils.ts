@@ -60,6 +60,10 @@ export function moveIntoBattleWithTroopsToBuy(
   if (state.combat) {
     return false;
   }
+  // Room membership actions (clientId-keyed) carry no seat playerId.
+  if (!("playerId" in action)) {
+    return false;
+  }
   if (action.playerId !== viewerPlayerId || state.activePlayerId !== viewerPlayerId) {
     return false;
   }
