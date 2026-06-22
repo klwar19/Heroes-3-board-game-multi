@@ -45,7 +45,7 @@ export type RoomResetOptions = {
 };
 
 type ClientMessage =
-  | { type: "action"; requestId?: string; action: GameAction }
+  | { type: "action"; requestId?: string; action: GameAction; actorClientId?: string }
   | ({ type: "reset"; requestId?: string } & RoomResetOptions)
   | { type: "sync" };
 
@@ -150,11 +150,14 @@ export default class GameRoomServer implements Party.Server {
 
     if (message.type === "reset") {
       const previous = this.ensureSnapshot();
+      const state = this.makeState(message);
+      // Carry room membership (host, seats, observers) across a game reset.
+      state.room = previous.state.room ?? null;
       this.snapshot = {
         roomId: this.room.id,
         version: previous.version + 1,
         updatedAt: new Date().toISOString(),
-        state: this.makeState(message)
+        state
       };
       await this.persist();
       this.broadcastSnapshot();
@@ -163,7 +166,11 @@ export default class GameRoomServer implements Party.Server {
 
     if (message.type === "action") {
       const current = this.ensureSnapshot();
-      const result = applyAction(current.state, message.action);
+      const result = applyAction(
+        current.state,
+        message.action,
+        message.actorClientId ? { actorClientId: message.actorClientId } : {}
+      );
 
       if (result.errors.length === 0) {
         this.snapshot = {
@@ -207,16 +214,19 @@ export default class GameRoomServer implements Party.Server {
     if (request.method === "POST") {
       const body = (await request.json().catch(() => null)) as
         | ({ reset?: boolean } & RoomResetOptions)
-        | { action?: GameAction }
+        | { action?: GameAction; actorClientId?: string }
         | null;
 
       if (body && "reset" in body && body.reset) {
         const previous = this.ensureSnapshot();
+        const state = this.makeState(body);
+        // Carry room membership (host, seats, observers) across a game reset.
+        state.room = previous.state.room ?? null;
         this.snapshot = {
           roomId: this.room.id,
           version: previous.version + 1,
           updatedAt: new Date().toISOString(),
-          state: this.makeState(body)
+          state
         };
         await this.persist();
         this.broadcastSnapshot();
@@ -225,7 +235,11 @@ export default class GameRoomServer implements Party.Server {
 
       if (body && "action" in body && body.action) {
         const current = this.ensureSnapshot();
-        const result = applyAction(current.state, body.action);
+        const result = applyAction(
+          current.state,
+          body.action,
+          "actorClientId" in body && body.actorClientId ? { actorClientId: body.actorClientId } : {}
+        );
         if (result.errors.length === 0) {
           this.snapshot = {
             roomId: this.room.id,

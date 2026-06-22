@@ -376,6 +376,60 @@ describe("siege combat", () => {
     expect(towerDown.combat?.siege?.arrowTowerUnitId).toBeNull();
   });
 
+  it("lets a Few Cyclops level a Wall but NOT the Arrow Tower (cyclops-demolish)", () => {
+    // The Few Cyclops (cyclops-demolish, canTargetArrowTower: false) can tear
+    // down a Wall/Gate at range like its Pack, but — unlike cyclops-demolish-full
+    // — it must be refused the Arrow Tower. This pins the few-only flag the Pack's
+    // test never reaches.
+    let state = makeSiegeReady();
+    state = applyOk(state, {
+      type: "MOVE_HERO",
+      playerId: "p1",
+      heroId: "hero_p1",
+      to: state.towns.town_p2.fieldId ?? ""
+    });
+    state = placeArmies(state);
+    if (state.pendingChoice?.type === "OPTION_CHOICE") {
+      state = applyOk(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p2",
+        choiceId: state.pendingChoice.id,
+        optionIndex: 0
+      });
+    }
+
+    const combat = state.combat!;
+    combat.units.test_cyclops_few = makeUnit({
+      id: "test_cyclops_few",
+      controllerId: "p1",
+      position: 18,
+      type: "ranged",
+      abilities: ["cyclops-demolish"]
+    });
+    combat.activeUnitId = "test_cyclops_few";
+    state.activePlayerId = "p1";
+
+    // The Arrow Tower is OFF-LIMITS for the Few (it errors, state untouched).
+    const towerAttempt = applyAction(state, {
+      type: "ATTACK_FORTIFICATION",
+      playerId: "p1",
+      attackerId: "test_cyclops_few",
+      target: { kind: "arrow-tower" }
+    });
+    expect(towerAttempt.errors).toHaveLength(1);
+    expect(state.combat?.siege?.arrowTowerUnitId).not.toBeNull();
+
+    // But it CAN level a Wall column from range (the demolish exception).
+    const targetWall = combat.siege!.walls[0];
+    const wallDown = applyOk(state, {
+      type: "ATTACK_FORTIFICATION",
+      playerId: "p1",
+      attackerId: "test_cyclops_few",
+      target: { kind: "wall", position: targetWall }
+    });
+    expect(wallDown.combat?.siege?.walls).not.toContain(targetWall);
+  });
+
   it("reduces ranged damage by 1 behind an intact wall column", () => {
     let state = makeSiegeReady();
     state = applyOk(state, {

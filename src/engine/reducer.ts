@@ -78,6 +78,15 @@ import {
 } from "./adventure-reducer";
 import { chooseFaction, setGameOptions, startAdventureFromLobby } from "./adventure-setup";
 import {
+  assignSeat,
+  joinRoom,
+  kickMember,
+  leaveRoom,
+  roomActionGuard,
+  setRoomHosted,
+  transferHost
+} from "./room";
+import {
   ATTACK_DIE_FACES,
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
@@ -305,6 +314,12 @@ import { NEUTRAL_PLAYER_ID } from "./state";
 type ReducerOptions = {
   cards?: CardLibrary;
   buildings?: BuildingLibrary;
+  /**
+   * Stable id of the client submitting this action (attached by the transport
+   * layer). Used only to enforce seat ownership in a hosted room — see
+   * `roomActionGuard`. Omitted by engine tests and the open-table path.
+   */
+  actorClientId?: string;
 };
 
 type ConcreteEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
@@ -383,6 +398,13 @@ function assertLegal(
 ): RulesError | null {
   if (action.type === "PLAY_REACTIONS") {
     return assertBatchReactionLegal(state, action, cards, buildings);
+  }
+
+  // Membership actions are keyed by clientId (no seat playerId) and validate
+  // themselves in their handlers (HANDLER_VALIDATED_ACTIONS), so they never
+  // reach this getLegalActions check.
+  if (!("playerId" in action)) {
+    return null;
   }
 
   const legalActions = getLegalActions(state, action.playerId, cards, buildings);
@@ -6885,12 +6907,13 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         maxGrade !== null &&
         gradeRankOfUnit(healTarget!) <= gradeRank(maxGrade) &&
         healTarget!.damage > 0;
+      // Capture the caster outside the closure: inside the .filter callback TS
+      // widens stackItem.action back to GameAction (which now includes the
+      // clientId-keyed room actions that carry no playerId).
+      const casterId = stackItem.action.playerId;
       const candidates = eligible
         ? Object.values(state.combat.units).filter(
-            (unit) =>
-              unit.id !== healTarget!.id &&
-              unit.controllerId === stackItem.action.playerId &&
-              isUnitAlive(unit)
+            (unit) => unit.id !== healTarget!.id && unit.controllerId === casterId && isUnitAlive(unit)
           )
         : [];
       if (healTarget && candidates.length > 0) {
@@ -13081,7 +13104,13 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "SPEND_TOWN_CUBE",
   "HALL_OF_VALHALLA_BOOST",
   "ATTACK_FORTIFICATION",
-  "GIVE_UP"
+  "GIVE_UP",
+  "JOIN_ROOM",
+  "LEAVE_ROOM",
+  "SET_ROOM_HOSTED",
+  "ASSIGN_SEAT",
+  "KICK_MEMBER",
+  "TRANSFER_HOST"
 ]);
 
 function isHandlerValidated(state: GameState, action: GameAction): boolean {
@@ -13114,6 +13143,13 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // the stored state in place (harmless: it only adds an empty array that was
   // logically always there), so the room heals for every later read too.
   healLegacyPlayerFields(state);
+
+  // Hosted-room seat ownership: a client may only act for its own seat. No-op
+  // on an open table or when the transport supplied no actorClientId.
+  const seatError = roomActionGuard(state, action, options.actorClientId);
+  if (seatError) {
+    return fail(state, { code: "ACTION_NOT_LEGAL", message: seatError });
+  }
 
   let base = state;
   if (hasDuplicateArmyUnitIds(state)) {
@@ -13256,6 +13292,24 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "START_ADVENTURE":
         startAdventureFromLobby(nextState, action);
+        break;
+      case "JOIN_ROOM":
+        joinRoom(nextState, action);
+        break;
+      case "LEAVE_ROOM":
+        leaveRoom(nextState, action);
+        break;
+      case "SET_ROOM_HOSTED":
+        setRoomHosted(nextState, action);
+        break;
+      case "ASSIGN_SEAT":
+        assignSeat(nextState, action);
+        break;
+      case "KICK_MEMBER":
+        kickMember(nextState, action);
+        break;
+      case "TRANSFER_HOST":
+        transferHost(nextState, action);
         break;
       case "RESOLVE_VISIT_STEP":
         resolveVisitStep(nextState, action);

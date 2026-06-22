@@ -210,6 +210,9 @@ export function resetRoom(roomId: string, options: RoomResetOptions = {}): GameR
   const existing = roomStore.get(roomId) ?? loadPersistedRoom(roomId);
   const reset = makeRoom(roomId, options);
   reset.version = (existing?.version ?? 0) + 1;
+  // Carry room membership (host, seats, observers) across a game reset so the
+  // table does not have to re-host and re-seat after "New adventure".
+  reset.state.room = existing?.state.room ?? null;
   roomStore.set(roomId, reset);
   persistRoom(reset);
   const snapshot = withBootId(cloneSerializable(reset));
@@ -239,6 +242,9 @@ export function restoreRoom(roomId: string, state: GameState): GameRoomSnapshot 
     return withBootId(cloneSerializable(current));
   }
 
+  // Recovery restores the GAME, never the live room membership: keep whoever
+  // is currently seated/hosting rather than the (stale) cached membership.
+  state.room = current.state.room ?? state.room ?? null;
   const next: GameRoomRecord = {
     roomId,
     version: current.version + 1,
@@ -254,10 +260,11 @@ export function restoreRoom(roomId: string, state: GameState): GameRoomSnapshot 
 
 export function submitRoomAction(
   roomId: string,
-  action: GameAction
+  action: GameAction,
+  actorClientId?: string
 ): { snapshot: GameRoomSnapshot; result: EngineResult } {
   const current = getRoomRecord(roomId);
-  const result = applyAction(current.state, action);
+  const result = applyAction(current.state, action, actorClientId ? { actorClientId } : {});
 
   if (result.errors.length > 0) {
     roomStore.set(roomId, current);
