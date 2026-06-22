@@ -1483,11 +1483,13 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
   },
 
   // ---- Conflux (expansion) -----------------------------------------------
-  // Four heroes wired: the unit-specialist Planeswalkers (Erdamon, Monere,
-  // Pasis) and the Fire Wall Elementalist Luna. Still deferred: Ciele (Magic
-  // Arrow) and Tarnum (Conflux, Enchanters) — their specialties need a
-  // cast-a-Spell-from-discard / cast-over-the-one-per-round-limit subsystem the
-  // engine does not have, and every shipped hero specialty must be implemented.
+  // Five heroes wired: the unit-specialist Planeswalkers (Erdamon, Monere,
+  // Pasis), the Fire Wall Elementalist Luna, and the Magic Arrow Elementalist
+  // Ciele. Still deferred: Tarnum (Conflux, Enchanters) — his VI (Search(1)
+  // twice, then cast one/both OVER the per-round Spell limit and return them to
+  // the deck top or its discard pile in any order) needs a multi-Spell
+  // over-limit cast-and-return subsystem the engine does not have, and every
+  // shipped hero specialty must be fully implemented.
   erdamon: {
     id: "erdamon",
     name: "Erdamon",
@@ -1554,6 +1556,26 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     },
     portrait: "/assets/hero_portraits-luna.webp",
     source: confluxHeroSource("luna")
+  },
+  // Ciele — Conflux Elementalist, the Magic Arrow specialist (wiki: A0 D0 P2 K3,
+  // starting ability Water Magic). I/IV/VI all engine-wired (recur a Magic Arrow
+  // from the discard / free cast-from-discard / 2 damage, each with a +Power
+  // reaction alternative); see specialty.ciele.* in cards/adventure.ts.
+  ciele: {
+    id: "ciele",
+    name: "Ciele",
+    faction: "conflux",
+    class: "Elementalist",
+    type: "magic",
+    startingStats: { attack: 0, defense: 0, power: 2, knowledge: 3 },
+    startingAbilityCardId: "ability.water_magic",
+    specialtyCardIds: {
+      1: "specialty.ciele.1",
+      4: "specialty.ciele.4",
+      6: "specialty.ciele.6"
+    },
+    portrait: "/assets/hero_portraits-ciele.webp",
+    source: confluxHeroSource("ciele")
   },
   bron: {
     id: "bron",
@@ -2202,10 +2224,10 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Conflux",
     color: "#d24dae",
     startingTileId: "S8",
-    // The three unit-specialist Planeswalkers + Luna (Fire Wall) are wired;
-    // Ciele and Tarnum (Conflux) follow once the cast-a-Spell-from-your-discard
-    // / cast-over-the-limit subsystem their specialties need is built.
-    heroes: ["erdamon", "monere", "pasis", "luna"],
+    // The three unit-specialist Planeswalkers + Luna (Fire Wall) + Ciele (Magic
+    // Arrow) are wired; Tarnum (Conflux) follows once the multi-Spell
+    // cast-over-the-limit-and-return subsystem his VI needs is built.
+    heroes: ["erdamon", "monere", "pasis", "luna", "ciele"],
     buildings: buildingsOfFaction("conflux"),
     units: unitsOfFaction("conflux"),
     townImage: "/assets/towns-conflux-empty.webp",

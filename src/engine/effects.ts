@@ -569,7 +569,9 @@ export function describeCardEffect(card: CardDefinition): string {
           ? " non-Artifact"
           : card.effect.filter === "spell-or-specialty"
             ? " Spell or Specialty"
-            : "";
+            : card.effect.filter === "magic-arrow"
+              ? " Magic Arrow"
+              : "";
     const top = card.effect.fromTop ? ` (top ${card.effect.fromTop})` : "";
     return `take ${card.effect.count}${filter} card${card.effect.count === 1 ? "" : "s"} from your discard pile${top}`;
   }
@@ -626,6 +628,13 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "CAST_FROM_SPELL_DISCARD") {
+    if (card.effect.spellId) {
+      const name = card.effect.spellId
+        .replace(/^spell\./, "")
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+      return `cast a ${name} from your discard pile for free (it does not count toward your Spell limit)`;
+    }
     return "cast the top spell of the Spell-deck discard pile, then remove this card";
   }
 
