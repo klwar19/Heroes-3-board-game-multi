@@ -13,7 +13,7 @@ import {
   makeCombatUnitFromArmy,
   unitMatchesSpecialtyName
 } from "./index";
-import { startAdventureRound, startPlayerTurn } from "./adventure";
+import { PLAYABLE_FACTIONS, startAdventureRound, startPlayerTurn } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
 import type { CombatUnitState, GameAction, GameEvent, GameState } from "./state";
 
@@ -63,7 +63,7 @@ describe("Conflux content", () => {
       expect(coreBuildingDefinitions[building].assets?.image, `${building} art`).toContain("/assets/town/conflux_");
     }
 
-    expect(faction.heroes).toEqual(["erdamon", "monere", "pasis"]);
+    expect(faction.heroes).toEqual(["erdamon", "monere", "pasis", "luna"]);
     for (const heroId of faction.heroes) {
       const hero = coreHeroDefinitions[heroId];
       expect(hero, heroId).toBeDefined();
@@ -92,6 +92,17 @@ describe("Conflux content", () => {
       expect(unit.few?.cardImage, `${unit.id} few art`).toBeTruthy();
       expect(unit.pack?.cardImage, `${unit.id} pack art`).toBeTruthy();
     }
+  });
+
+  it("is a first-class playable faction — eligible as a Random Town defender", () => {
+    // The Random Town defender pool must cover every faction with a unit roster;
+    // Conflux and Cove were silently missing from the old hand-maintained list.
+    const factionsWithUnits = Object.values(coreFactionDefinitions)
+      .filter((faction) => faction.units.length > 0)
+      .map((faction) => faction.id);
+    expect(new Set(PLAYABLE_FACTIONS)).toEqual(new Set(factionsWithUnits));
+    expect(PLAYABLE_FACTIONS).toContain("conflux");
+    expect(PLAYABLE_FACTIONS).toContain("cove");
   });
 
   it("City Hall income is 4 gold OR Search(3) the Spell deck (wiki-verified)", () => {
@@ -596,5 +607,136 @@ describe("Conflux Magic Elementals abilities", () => {
     expect(unitImmuneToSpellSchools(few, ["fire"])).toBe(false);
     expect(unitImmuneToSpellSchools(few, ["any"])).toBe(false);
     expect(hasImmuneToSpecialtyDamage(few)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Luna — Conflux Elementalist, the Fire Wall specialist. I/VI place the SAME
+// engine `fire_wall` battlefield token as the Fire Wall spell (its bite-on-stop
+// / bite-on-pass-through is the shared, separately-tested token mechanic) but at
+// a FIXED 1 / 3 damage; IV is the spell-economy choice (map discard recall OR a
+// +2-Power spell-cast reaction). Each test fails if the wiring is removed.
+// ---------------------------------------------------------------------------
+
+describe("Conflux Luna (Fire Wall specialist)", () => {
+  function lunaCombat(seed: string, cardId: string): GameState {
+    const state = createInitialGameState(seed);
+    state.players.p1.hand = [cardId];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    // Pin all six units away from the centre so space 9 is a clean empty target.
+    const u = state.combat!.units;
+    u.unit_p1_griffins.position = 0;
+    u.unit_p1_crusaders.position = 1;
+    u.unit_p1_marksmen.position = 2;
+    u.unit_p2_vampires.position = 16;
+    u.unit_p2_skeletons.position = 17;
+    u.unit_p2_dread_knights.position = 18;
+    state.combat!.obstacles = [];
+    state.combat!.battlefieldTokens = [];
+    return state;
+  }
+
+  function placeWall(seed: string, cardId: string) {
+    const state = lunaCombat(seed, cardId);
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === cardId &&
+        legal.action.target?.type === "space" &&
+        legal.action.target.position === 9
+    );
+    expect(play, `${cardId} should be offered in combat on an empty space`).toBeTruthy();
+    const next = applyOk(state, play!.action);
+    return (next.combat!.battlefieldTokens ?? []).find((token) => token.kind === "fire_wall");
+  }
+
+  it("I places a Fire Wall token dealing a fixed 1 damage on the chosen empty space", () => {
+    const wall = placeWall("luna-i", "specialty.luna.1");
+    expect(wall).toBeTruthy();
+    expect(wall!.position).toBe(9);
+    expect(wall!.damage).toBe(1);
+    expect(wall!.controllerId).toBe("p1");
+  });
+
+  it("VI places a Fire Wall token dealing a fixed 3 damage (control vs I's 1)", () => {
+    const wall = placeWall("luna-vi", "specialty.luna.6");
+    expect(wall?.damage).toBe(3);
+  });
+
+  it("a placed Fire Wall actually bites a unit that stops on it", () => {
+    // End-to-end: drive an enemy onto the wall and confirm it takes the damage,
+    // so the placement is a live token, not an inert marker.
+    const state = lunaCombat("luna-bite", "specialty.luna.6");
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "specialty.luna.6" &&
+        legal.action.target?.type === "space" &&
+        legal.action.target.position === 9
+    );
+    let next = applyOk(state, play!.action);
+
+    // Hand the activation to the enemy Skeletons, parked next to the wall (9).
+    const skeletons = next.combat!.units.unit_p2_skeletons;
+    skeletons.position = 10; // adjacent to 9
+    skeletons.maxHealth = 20;
+    skeletons.damage = 0;
+    skeletons.type = "ground";
+    skeletons.activatedThisRound = false;
+    skeletons.movedThisActivation = false;
+    next.combat!.activeUnitId = "unit_p2_skeletons";
+    next.activePlayerId = "p2";
+
+    next = applyOk(next, { type: "MOVE_UNIT", playerId: "p2", unitId: "unit_p2_skeletons", destination: 9 });
+    expect(next.combat!.units.unit_p2_skeletons.position).toBe(9);
+    expect(next.combat!.units.unit_p2_skeletons.damage).toBe(3);
+  });
+
+  it("IV returns a card from the discard pile to hand (map play)", () => {
+    const game = createAdventureGameState({
+      seed: "luna-iv",
+      rollFirstPlayer: false,
+      players: [
+        { id: "p1", name: "Luna", factionId: "conflux", heroDefId: "luna" },
+        { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
+      ]
+    });
+    let state = game.players.p1.needsHandRefresh
+      ? applyOk(game, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      : game;
+    state.activePlayerId = "p1";
+    state.pendingChoice = null;
+    state.reactionWindow = null;
+    state.players.p1.hand = ["specialty.luna.4"];
+    state.players.p1.discard = ["spell.lightning_bolt", "stat.attack"];
+
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.luna.4"
+    );
+    expect(play, "Luna IV (take from discard) should be offered on the map").toBeTruthy();
+    state = applyOk(state, play!.action);
+
+    const choice = pendingChoiceOf(state);
+    expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("discard-pick");
+    const labels = choice?.type === "OPTION_CHOICE" ? choice.options.map((option) => option.label) : [];
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (choice as { id: string }).id,
+      optionIndex: labels.findIndex((label) => label.includes("Lightning Bolt"))
+    });
+    expect(state.players.p1.hand).toContain("spell.lightning_bolt");
+    expect(state.players.p1.discard).not.toContain("spell.lightning_bolt");
+  });
+
+  it("IV's other option is a +2-Power spell-cast reaction", () => {
+    const four = cardLibrary["specialty.luna.4"];
+    expect(four?.effect.type).toBe("CHOOSE_ONE");
+    if (four?.effect.type === "CHOOSE_ONE") {
+      const power = four.effect.options.find((option) => option.effect.type === "ADD_SPELL_POWER");
+      expect(power?.trigger?.event).toBe("SPELL_CAST_STARTED");
+      expect(power?.effect).toMatchObject({ type: "ADD_SPELL_POWER", amount: 2 });
+    }
   });
 });

@@ -1536,6 +1536,25 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     portrait: "/assets/hero_portraits-pasis.webp",
     source: confluxHeroSource("pasis")
   },
+  // Luna — Conflux Elementalist, the Fire Wall specialist (wiki: A0 D0 P2 K3,
+  // starting ability Basic Fire Magic). I/IV/VI all engine-wired (Fire Wall
+  // token placement + the spell-economy discard/Power choice).
+  luna: {
+    id: "luna",
+    name: "Luna",
+    faction: "conflux",
+    class: "Elementalist",
+    type: "magic",
+    startingStats: { attack: 0, defense: 0, power: 2, knowledge: 3 },
+    startingAbilityCardId: "ability.basic_fire_magic",
+    specialtyCardIds: {
+      1: "specialty.luna.1",
+      4: "specialty.luna.4",
+      6: "specialty.luna.6"
+    },
+    portrait: "/assets/hero_portraits-luna.webp",
+    source: confluxHeroSource("luna")
+  },
   bron: {
     id: "bron",
     name: "Bron",
@@ -2168,9 +2187,10 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Conflux",
     color: "#d24dae",
     startingTileId: "S8",
-    // Only the three unit-specialist Planeswalkers are wired so far; Ciele,
-    // Luna and Tarnum follow once their specialties are implemented.
-    heroes: ["erdamon", "monere", "pasis"],
+    // The three unit-specialist Planeswalkers + Luna (Fire Wall) are wired;
+    // Ciele and Tarnum (Conflux) follow once the cast-a-Spell-from-your-discard
+    // / cast-over-the-limit subsystem their specialties need is built.
+    heroes: ["erdamon", "monere", "pasis", "luna"],
     buildings: buildingsOfFaction("conflux"),
     units: unitsOfFaction("conflux"),
     townImage: "/assets/towns-conflux-empty.webp",

@@ -2386,6 +2386,86 @@ export const adventureCards: CardLibrary = {
   "specialty.pasis.4": towerAttackOrDefenseSpecialty("pasis", "Elementals", 4, "an Elementals unit"),
   "specialty.pasis.6": towerHealthSpecialty("pasis", "Elementals", 6, 1, "an Elementals unit"),
 
+  // ---- Conflux Elementalist (Luna — the Fire Wall specialist) -------------
+  // I/VI place a Fire Wall token (this card or a token) on an empty space for
+  // the Combat, biting any unit that stops on it and any ground/ranged unit
+  // passing through for a FIXED 1 (I) / 3 (VI) damage — the SAME engine token as
+  // the Fire Wall spell (`PLACE_FIRE_WALL_FIXED`). IV is the spell-economy "OR":
+  // take a card from your discard pile (modelled as a map play, exactly like
+  // Adelaide IV — the engine's TAKE_FROM_DISCARD resolves through the map reward
+  // queue) — OR — +2 Power on a Spell you are casting (a SPELL_CAST_STARTED
+  // reaction, like Monere VI).
+  "specialty.luna.1": {
+    id: "specialty.luna.1",
+    name: "Fire Wall I",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "luna",
+      "fire-wall",
+      "For this Combat, place this card or a Fire Wall token on an empty space. Deal 1 damage to any unit starting its turn here or stopping here, and to any ground or ranged unit passing through."
+    ],
+    target: { type: "empty-space" },
+    effect: { type: "PLACE_FIRE_WALL_FIXED", damage: 1 },
+    assets: { cardImage: specialtyCardImage("luna", 1), imageAlt: "Fire Wall level I specialty card" },
+    implementationStatus: "implemented",
+    source: heroSource("luna")
+  },
+  "specialty.luna.4": {
+    id: "specialty.luna.4",
+    name: "Fire Wall IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "luna",
+      "fire-wall",
+      "Instant: Take one card from your discard pile into your hand. — OR — Instant: +2 Power."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Take a card from your discard pile",
+          mapOnly: true,
+          effect: { type: "TAKE_FROM_DISCARD", count: 1 }
+        },
+        {
+          label: "+2 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2 }
+        }
+      ]
+    },
+    assets: { cardImage: specialtyCardImage("luna", 4), imageAlt: "Fire Wall level IV specialty card" },
+    implementationStatus: "implemented",
+    source: heroSource("luna")
+  },
+  "specialty.luna.6": {
+    id: "specialty.luna.6",
+    name: "Fire Wall VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "luna",
+      "fire-wall",
+      "For this Combat, place this card or a Fire Wall token on an empty space. Deal 3 damage to any unit starting its turn here or stopping here, and to any ground or ranged unit passing through."
+    ],
+    target: { type: "empty-space" },
+    effect: { type: "PLACE_FIRE_WALL_FIXED", damage: 3 },
+    assets: { cardImage: specialtyCardImage("luna", 6), imageAlt: "Fire Wall level VI specialty card" },
+    implementationStatus: "implemented",
+    source: heroSource("luna")
+  },
+
   // ---- Additional heroes (fan-wiki "Regular Stretch Goals 2024") ---------
   // Fiona (Inferno, Demoniac): the Cerberi specialist — the standard might
   // shape, each bonus doubled when it lands on a Cerberi unit. I = +1 A/D;
