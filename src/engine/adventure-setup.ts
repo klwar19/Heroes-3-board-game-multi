@@ -477,6 +477,23 @@ export function validateCustomMapPlan(
   return { accepted, problems };
 }
 
+/**
+ * Pops the topmost sea tile of a given wave band (Ⅳ–Ⅴ or Ⅵ–Ⅶ) from a single
+ * shared, shuffled sea pool. The Cove sea tiles ship behind one wave back, so
+ * the band is read from each tile's strongest guard (see {@link seaTileBand});
+ * both the map designer and the symmetric sea scenarios draw their face-down
+ * waves through here.
+ */
+function popSeaBandTile(pool: string[], band: "iv-v" | "vi-vii"): string | undefined {
+  for (let index = pool.length - 1; index >= 0; index -= 1) {
+    const def = allTileDefinitions[pool[index]];
+    if (def && seaTileBand(def) === band) {
+      return pool.splice(index, 1)[0];
+    }
+  }
+  return undefined;
+}
+
 /** Removes and returns a Center tile from the pool that carries `location`. */
 function takeCenterTileWith(pool: string[], location: string): string | undefined {
   const index = pool.findIndex((tileDefId) =>
@@ -713,17 +730,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     };
 
     // A face-down sea slot draws only from its own guard band (Ⅳ–Ⅴ or Ⅵ–Ⅶ):
-    // both bands share one shuffled wave pool, so pop the topmost match.
-    // An undefined band (older saved maps) takes any sea tile.
-    const popSeaTile = (band?: "iv-v" | "vi-vii"): string | undefined => {
-      for (let index = seaPool.length - 1; index >= 0; index -= 1) {
-        const def = allTileDefinitions[seaPool[index]];
-        if (!band || (def && seaTileBand(def) === band)) {
-          return seaPool.splice(index, 1)[0];
-        }
-      }
-      return undefined;
-    };
+    // both bands share one shuffled wave pool, so pop the topmost match (via the
+    // shared popSeaBandTile). An undefined band (older saved maps) takes any.
+    const popSeaTile = (band?: "iv-v" | "vi-vii"): string | undefined =>
+      band ? popSeaBandTile(seaPool, band) : seaPool.pop();
 
     // Designed face-up tiles never also hide in a face-down pool draw.
     for (const plan of customMap) {
@@ -754,6 +764,14 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       }
     }
   } else {
+    // Face-down Far (II–III) tiles fixed in the layout (symmetric clash maps use
+    // these as the outer ring between the starts and the Ⅳ–Ⅴ ring).
+    for (const center of scenario.layout.far ?? []) {
+      const tileDefId = farPool.pop();
+      if (tileDefId) {
+        instantiateTile(adventure, tileDefId, center, 0, true);
+      }
+    }
     // Face-down Near (IV–V) and Center (VI–VII) tiles per the scenario layout.
     for (const center of scenario.layout.near) {
       const tileDefId = nearPool.pop();
@@ -770,6 +788,23 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         instantiateTile(adventure, tileDefId, center, 0, true);
       }
     });
+    // Face-down sea tiles (symmetric sea maps): each slot draws the top tile of
+    // its own Ⅳ–Ⅴ or Ⅵ–Ⅶ wave band from the shared, shuffled sea pool.
+    for (const slot of scenario.layout.sea ?? []) {
+      const tileDefId = popSeaBandTile(seaPool, slot.band);
+      if (tileDefId) {
+        instantiateTile(adventure, tileDefId, { row: slot.row, col: slot.col }, 0, true);
+      }
+    }
+    // Face-down Subterranean tiles (symmetric underground maps). The gates that
+    // bridge them to the adjacent Surface seats are carved by
+    // recomputeSubterraneanGates below, so every seat can descend.
+    for (const center of scenario.layout.subterranean ?? []) {
+      const tileDefId = subterraneanPool.pop();
+      if (tileDefId) {
+        instantiateTile(adventure, tileDefId, center, 0, true);
+      }
+    }
   }
 
   // Carve the Subterranean Gate Tokens for any Surface/Subterranean tiles the
