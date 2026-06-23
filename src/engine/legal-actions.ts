@@ -4075,6 +4075,11 @@ function getMagicMirrorReactions(
   return offers;
 }
 
+/** Whether either shared Spell deck still holds a card for Tarnum VI to Search. */
+function tarnumSearchableDeckExists(state: GameState): boolean {
+  return [SPELL_DECK_BASIC, SPELL_DECK_EXPERT].some((deckId) => (state.decks[deckId]?.drawPile.length ?? 0) > 0);
+}
+
 export function getLegalReactionsForTrigger(
   state: GameState,
   triggerEvent: GameEvent,
@@ -4551,6 +4556,31 @@ export function getLegalReactionsForTrigger(
       attackStackItem?.modifiers.ignoreDefenseCasterId === player.id;
     if (!isAttackWindow || hasPairableSpell || hasEmpowerablePlayed) {
       reactions.push(...powerReactions);
+    }
+
+    // Tarnum (Conflux) VI used AS a reaction: in an attack window the holder may
+    // play the specialty to Search 2 Spells (the per-search deck choice opens),
+    // then — once the window re-derives its offers — immediately cast an
+    // applicable Searched instant into the SAME window. Offered to either side
+    // (the attacker's buffs, the defender's debuffs).
+    if (triggerEvent.type === "UNIT_ATTACK_DECLARED" && tarnumSearchableDeckExists(state)) {
+      for (const cardId of new Set(player.hand)) {
+        const card = cards[cardId];
+        if (
+          card?.kind === "hero-specialty" &&
+          card.implementationStatus === "implemented" &&
+          card.effect.type === "TARNUM_OVERLIMIT_SEARCH"
+        ) {
+          reactions.push(
+            makeReactionAction(`${card.name}: Search 2 Spells`, {
+              type: "PLAY_REACTION",
+              playerId: player.id,
+              cardId,
+              mode: "basic"
+            })
+          );
+        }
+      }
     }
 
     // Tarnum (Conflux) VI: a just-Searched, flagged trigger-instant Spell (Bless,

@@ -521,4 +521,77 @@ describe("Tarnum VI — instant-window (reaction) casting of attack/defense chan
     });
     expect(result.errors.length).toBeGreaterThan(0);
   });
+
+  it("VI used AS a reaction: play it in the attack window, Search, then cast an applicable instant into the SAME window", () => {
+    function attackHoldingVI(): GameState {
+      const state = createInitialGameState("tarnum-react-vi");
+      state.players.p1.hand = [T6];
+      state.players.p2.hand = [];
+      state.players.p1.combatStats.spellsCastThisRound = 1; // limit already spent
+      // Bloodlust on top (Searched first), then a combat Fireball.
+      state.decks.spells.drawPile = ["spell.fireball", BLOODLUST];
+      state.decks.spells.discardPile = [];
+      if (state.decks["spells-expert"]) {
+        state.decks["spells-expert"].drawPile = [];
+        state.decks["spells-expert"].discardPile = [];
+      }
+      const skeletons = state.combat!.units.unit_p2_skeletons;
+      skeletons.maxHealth = 50;
+      skeletons.damage = 0;
+      state.combat!.units.unit_p1_griffins.position = 9;
+      skeletons.position = 13;
+      let s = applyOk(state, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: "unit_p1_griffins",
+        defenderId: "unit_p2_skeletons"
+      });
+
+      const viReaction = getLegalActions(s, "p1").find(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === T6
+      );
+      expect(viReaction, "VI should be usable as a reaction in the attack window").toBeTruthy();
+      s = applyOk(s, viReaction!.action);
+
+      // The per-search deck choice opens inside the window; pick the basic deck twice.
+      expect(s.pendingChoice?.type).toBe("TARNUM_SEARCH");
+      let guard = 4;
+      while (s.pendingChoice?.type === "TARNUM_SEARCH" && guard-- > 0) {
+        const pick = getLegalActions(s, "p1").find((legal) => legal.action.type === "CHOOSE_OPTION");
+        s = applyOk(s, pick!.action);
+      }
+      return s;
+    }
+
+    const searched = attackHoldingVI();
+    // The attack window is still open and refreshed.
+    expect(searched.reactionWindow, "the attack window stays open through the Search").toBeTruthy();
+    expect(searched.players.p1.discard).toContain(T6); // the specialty cycled to discard
+    // The just-Searched Bloodlust is now castable as a free over-limit reaction…
+    const bloodlustCast = getLegalActions(searched, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" && legal.action.cardId === BLOODLUST && legal.action.tarnumReturn === "deck-top"
+    );
+    expect(bloodlustCast, "the Searched Bloodlust can be cast into the same window").toBeTruthy();
+    // …but the Searched combat Fireball is NOT castable here and just stays in hand.
+    expect(
+      getLegalActions(searched, "p1").some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.fireball"
+      )
+    ).toBe(false);
+    expect(searched.players.p1.hand).toContain("spell.fireball");
+
+    // Baseline: pass instead of casting Bloodlust — the attack resolves unbuffed.
+    const baseline = passAllReactions(applyOk(searched, { type: "PASS_REACTION", playerId: "p1" }));
+    const baseDamage = baseline.combat!.units.unit_p2_skeletons.damage;
+
+    const after = passAllReactions(applyOk(searched, bloodlustCast!.action));
+    // Observable: the +1 attack buff landed.
+    expect(after.combat!.units.unit_p2_skeletons.damage).toBeGreaterThan(baseDamage);
+    // Free over-limit, returned to the Spell deck top, flag spent.
+    expect(after.players.p1.combatStats.spellsCastThisRound).toBe(1);
+    expect(after.decks.spells.drawPile.at(-1)).toBe(BLOODLUST);
+    expect(after.players.p1.discard).not.toContain(BLOODLUST);
+    expect(after.players.p1.combatStats.tarnumOverlimitCards ?? []).not.toContain(BLOODLUST);
+  });
 });
