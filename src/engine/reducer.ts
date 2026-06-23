@@ -8812,6 +8812,33 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
+  // First Aid (basic) played as an instant reaction the moment your unit is
+  // attacked (firstAidCardHealReactions): mend `amount` existing damage on the
+  // chosen friendly unit BEFORE the hit is calculated, then leave the window
+  // open so the paused attack resumes — the healed unit may now survive a blow
+  // that would otherwise defeat it. The chosen unit rides on play.target (one
+  // offer per wounded friendly). The card's expert side never reaches here — it
+  // rides the First Aid Tent (USE_ACTIVE_EFFECT, mode "expert"), not a card play.
+  // Naming the card as the heal's source keeps the cure FX/sound firing.
+  if (effect.type === "HEAL_DAMAGE" && play.target?.type === "unit") {
+    const unit = state.combat?.units[play.target.unitId];
+    if (unit && unit.controllerId === playerId && isUnitAlive(unit)) {
+      healUnitDamage(
+        state,
+        { type: "card", cardId: card.id, controllerId: playerId },
+        play.target,
+        getEffectDamageAmount(effect, card.power ?? 0)
+      );
+      // Rion's Battlefield Medic shares this effect: also clear paralysis / draw.
+      if (effect.removeParalysis && hasToken(unit, "paralysis")) {
+        removeToken(state, unit, "paralysis", "dispelled");
+      }
+      if (effect.drawCards) {
+        drawCardsForPlayer(state, playerId, effect.drawCards);
+      }
+    }
+  }
+
   // Targ of the Rampaging Ogre (top side): "instead of discarding, put this card
   // back into your hand." The card was moved to the discard pile above; now that
   // its effect has applied, pull it back to hand. The cost cards it discarded
@@ -10919,10 +10946,16 @@ function applyActiveEffectAction(
       throw new Error("First Aid's expert side needs the First Aid card and a free expert use this round.");
     }
     spendFirstAidExpert(state, action.playerId);
-    effect.healRound = { round: combat.round, count: 1, expert: true };
+    // Pin the volley to this first target: the card heals "the same target 3
+    // times", so the follow-up heals below can only land on this unit.
+    effect.healRound = { round: combat.round, count: 1, expert: true, targetUnitId: action.target.unitId };
   } else if (!usage) {
     effect.healRound = { round: combat.round, count: 1, expert: false };
   } else if (usage.expert && usage.count < expertMax) {
+    // The expert volley resolves against the SAME target every time.
+    if (usage.targetUnitId && usage.targetUnitId !== action.target.unitId) {
+      throw new Error("First Aid's expert volley must heal the same target each time.");
+    }
     usage.count += 1;
   } else {
     throw new Error("That active effect has already been used this combat round.");
