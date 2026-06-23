@@ -9,6 +9,7 @@ import {
   NEUTRAL_DECK_IDS
 } from "./index";
 import { openSharedDeckSearch } from "./adventure-reducer";
+import { getOffTurnCombatReactions } from "./legal-actions";
 import type { GameAction, GameState } from "./state";
 
 /**
@@ -209,6 +210,12 @@ describe("Tarnum VI — Search twice, cast over the per-round limit", () => {
     state.players.p2.hand = [];
     state.decks.spells.drawPile = drawPile;
     state.decks.spells.discardPile = [];
+    // Empty the expert deck by default so the single-deck cases are deterministic
+    // (the both-decks test repopulates it). createInitialGameState ships one.
+    if (state.decks["spells-expert"]) {
+      state.decks["spells-expert"].drawPile = [];
+      state.decks["spells-expert"].discardPile = [];
+    }
     const target = state.combat!.units.unit_p2_skeletons;
     target.maxHealth = 30;
     target.damage = 0;
@@ -304,5 +311,69 @@ describe("Tarnum VI — Search twice, cast over the per-round limit", () => {
       tarnumReturn: "deck-top"
     });
     expect(result.errors.length).toBeGreaterThan(0);
+  });
+
+  it("Searches BOTH the basic and the expert Spell deck (round-robin)", () => {
+    // Basic deck top is lightning_bolt; the expert deck holds bless.
+    const state = tarnumCombat("tarnum-vi-bothdecks", ["spell.lightning_bolt"]);
+    state.decks["spells-expert"] = { id: "spells-expert", drawPile: ["spell.bless"], discardPile: [] };
+    const after = playSpecialty(state);
+    // One Spell came off each deck.
+    expect(after.players.p1.hand).toContain("spell.lightning_bolt"); // from the basic deck
+    expect(after.players.p1.hand).toContain("spell.bless"); // from the expert deck
+    expect(after.decks.spells.drawPile).not.toContain("spell.lightning_bolt");
+    expect(after.decks["spells-expert"].drawPile).not.toContain("spell.bless");
+    expect(after.players.p1.combatStats.tarnumOverlimitCards).toEqual(
+      expect.arrayContaining(["spell.lightning_bolt", "spell.bless"])
+    );
+  });
+
+  it("INSTANT WINDOW: can be played off-turn (during an enemy unit's activation)", () => {
+    const state = tarnumCombat("tarnum-vi-offturn", ["spell.bless", "spell.lightning_bolt"]);
+    state.phase = "combat";
+    // It is NOT p1's activation — an enemy unit is active.
+    state.combat!.units.unit_p1_griffins.activatedThisRound = true;
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    const offTurn = getOffTurnCombatReactions(state, "p1");
+    expect(
+      offTurn.some((legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === T6),
+      "Tarnum VI is an Instant, playable off-turn in the instant window"
+    ).toBe(true);
+  });
+
+  it("RISK: off-turn, a Searched instant Spell can be cast over-limit but a combat-timed one cannot", () => {
+    // Play VI on-turn to Search counterstrike (a trigger-free instant) +
+    // lightning_bolt (combat), then flip to an off-turn instant window and see
+    // what can actually be cast. lightning_bolt is searched first (deck top).
+    const state = tarnumCombat("tarnum-vi-risk", ["spell.counterstrike", "spell.lightning_bolt"]);
+    state.players.p1.combatStats.spellsCastThisRound = 1; // limit already spent
+    const searched = playSpecialty(state);
+    expect(searched.players.p1.hand).toEqual(
+      expect.arrayContaining(["spell.counterstrike", "spell.lightning_bolt"])
+    );
+
+    // Off-turn: an enemy unit is active, p1 has no active unit of its own.
+    searched.phase = "combat";
+    searched.combat!.units.unit_p1_griffins.activatedThisRound = true;
+    searched.combat!.activeUnitId = "unit_p2_skeletons";
+    const offTurn = getOffTurnCombatReactions(searched, "p1");
+
+    const instantCast = offTurn.find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.counterstrike" &&
+        legal.action.tarnumReturn
+    );
+    const boltCast = offTurn.find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.lightning_bolt" &&
+        legal.action.tarnumReturn
+    );
+    // The trigger-free instant "type allows it" off-turn; the combat-timed one
+    // does not (it needs your own active unit) — so playing VI off-turn risks
+    // Searching spells you cannot cast right then.
+    expect(instantCast, "an instant Searched Spell can be cast off-turn").toBeTruthy();
+    expect(boltCast, "a combat-timed Searched Spell cannot be cast off-turn").toBeFalsy();
   });
 });

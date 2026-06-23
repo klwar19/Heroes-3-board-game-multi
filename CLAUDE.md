@@ -153,13 +153,18 @@ Conflux — now fully engine-wired (no display-only unit clauses left):
     "Pay 10 gold → the unique neutral Enchanters card" (or draw). Gated on gold
     and the `unique` one-Enchanters limit.
   - VI — the over-limit multi-cast subsystem (`TARNUM_OVERLIMIT_SEARCH`): Search(1)
-    the Spell deck twice into hand and flag both (`combatStats.tarnumOverlimitCards`);
-    a flagged hand Spell is cast for FREE over the per-round limit (does not bump
-    `spellsCastThisRound`, validated against forgery in `castSpell`) and on
+    twice into hand and flag both (`combatStats.tarnumOverlimitCards`); the search
+    round-robins BOTH spell decks (basic AND the BINH expert deck) when both hold
+    cards. A flagged hand Spell is cast for FREE over the per-round limit (does not
+    bump `spellsCastThisRound`, validated against forgery in `castSpell`) and on
     resolution returns to the shared Spell deck — top OR discard, the caster's
     choice via `CAST_SPELL.tarnumReturn` — instead of the caster's own discard. An
     uncast flagged Spell just stays in hand; the flag clears at combat start and
-    each combat round.
+    each combat round. VI is an **Instant**, so it may be played off-turn in the
+    instant window too — but the Searched spells then cast only if "their type
+    allows it": a trigger-free instant casts off-turn, while a combat-/action-timed
+    spell needs your own active unit, so playing VI off-turn risks Searching spells
+    you cannot cast right then (covered in `conflux-tarnum-specialty.test.ts`).
 
 This section is maintained by hand — the rule #3 enforcement test still does
 **not** exist, so re-verify any "stub" claim against `src/data/factions/units.ts`

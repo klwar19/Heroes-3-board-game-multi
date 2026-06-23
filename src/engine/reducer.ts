@@ -129,7 +129,9 @@ import {
   spellBookPowerAvailable,
   spellBookRuleEnabled,
   spellCanEnterSpellBook,
-  spellLimitFor
+  spellLimitFor,
+  SPELL_DECK_BASIC,
+  SPELL_DECK_EXPERT
 } from "./ruleset";
 import {
   destroyFortification,
@@ -10528,19 +10530,24 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   // Tarnum (Conflux) VI: "Search(1) Spell twice." Take the top acquirable spell
-  // off the shared Spell deck into hand `count` times, flagging each so it can
-  // be cast for free over the per-round Spell limit and then returned to the
-  // shared Spell deck (top or discard) rather than the caster's own discard.
+  // into hand `count` times, flagging each so it can be cast for free over the
+  // per-round Spell limit and then returned to the shared Spell deck (top or
+  // discard) rather than the caster's own discard. The search spans BOTH spell
+  // decks — the basic AND the expert (BINH) deck — round-robining across the
+  // ones that still hold cards, so an expert Spell is reachable too.
   if (effect.type === "TARNUM_OVERLIMIT_SEARCH") {
     const player = state.players[action.playerId];
     if (player) {
+      const withCards = [SPELL_DECK_BASIC, SPELL_DECK_EXPERT].filter(
+        (deckId) => (state.decks[deckId]?.drawPile.length ?? 0) > 0
+      );
+      const decks = withCards.length > 0 ? withCards : [SPELL_DECK_BASIC];
       const searched: CardId[] = [];
       for (let i = 0; i < effect.count; i += 1) {
-        const taken = takeTopAcquirableSpellToHand(state, action.playerId);
-        if (!taken) {
-          break;
+        const taken = takeTopAcquirableSpellToHand(state, action.playerId, decks[i % decks.length]);
+        if (taken) {
+          searched.push(taken);
         }
-        searched.push(taken);
       }
       if (searched.length > 0) {
         player.combatStats.tarnumOverlimitCards = [
@@ -12696,14 +12703,14 @@ function recordDeckDrawnAbility(player: PlayerState, deckId: string, cardId: Car
 }
 
 /**
- * A single non-interactive Search(1) of the shared Spell deck: take the top
- * card the player may acquire into hand (redrawing past any they cannot take),
- * leaving the skipped cards tucked back under the deck. Returns the taken card
- * id, or null when the deck holds nothing acquirable. Used by Tarnum (Conflux)
- * VI's "Search(1) Spell twice".
+ * A single non-interactive Search(1) of the named shared Spell deck: take the
+ * top card the player may acquire into hand (redrawing past any they cannot
+ * take), leaving the skipped cards tucked back under the deck. Returns the taken
+ * card id, or null when the deck holds nothing acquirable. Used by Tarnum
+ * (Conflux) VI's "Search(1) Spell twice" across the basic and expert decks.
  */
-function takeTopAcquirableSpellToHand(state: GameState, playerId: PlayerId): CardId | null {
-  const deck = state.decks.spells;
+function takeTopAcquirableSpellToHand(state: GameState, playerId: PlayerId, deckId: string): CardId | null {
+  const deck = state.decks[deckId];
   const player = state.players[playerId];
   if (!deck || !player) {
     return null;
@@ -12715,7 +12722,7 @@ function takeTopAcquirableSpellToHand(state: GameState, playerId: PlayerId): Car
     if (!cardId) {
       break;
     }
-    if (canAcquireSharedDeckCard(state, playerId, "spells", cardId)) {
+    if (canAcquireSharedDeckCard(state, playerId, deckId, cardId)) {
       taken = cardId;
       break;
     }
@@ -12728,7 +12735,7 @@ function takeTopAcquirableSpellToHand(state: GameState, playerId: PlayerId): Car
   }
   if (taken) {
     player.hand.push(taken);
-    recordDeckDrawnAbility(player, "spells", taken);
+    recordDeckDrawnAbility(player, deckId, taken);
   }
   return taken;
 }
