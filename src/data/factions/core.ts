@@ -2039,6 +2039,24 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     portrait: "/assets/hero_portraits-melodia.webp",
     source: stretchGoalPcPortraitHeroSource("melodia", "Melodia")
   },
+  // Tarnum (Rampart): the Ranger variant — the Sharpshooters specialist. Its own
+  // class portrait (heroes.thelazy.net Tarnum (Ranger)).
+  tarnum_rampart: {
+    id: "tarnum_rampart",
+    name: "Tarnum",
+    faction: "rampart",
+    class: "Ranger",
+    type: "might",
+    startingStats: { attack: 1, defense: 3, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.leadership",
+    specialtyCardIds: {
+      1: "specialty.tarnum_rampart.1",
+      4: "specialty.tarnum_rampart.4",
+      6: "specialty.tarnum_rampart.6"
+    },
+    portrait: "/assets/hero_portraits-tarnum_ranger.webp",
+    source: stretchGoalPcPortraitHeroSource("tarnum_rampart", "Tarnum (Ranger)")
+  },
   // Tarnum (Fortress): the Beastmaster variant — the Basilisks specialist. Its own
   // class portrait (heroes.thelazy.net Tarnum (Beastmaster)).
   tarnum_fortress: {
@@ -2204,7 +2222,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Rampart",
     color: "#2e9e57",
     startingTileId: "S4",
-    heroes: ["gelu", "gem", "clancy", "mephala", "ivor", "melodia"],
+    heroes: ["gelu", "gem", "clancy", "mephala", "ivor", "melodia", "tarnum_rampart"],
     buildings: buildingsOfFaction("rampart"),
     units: unitsOfFaction("rampart"),
     townImage: "/assets/towns-rampart-empty.webp",

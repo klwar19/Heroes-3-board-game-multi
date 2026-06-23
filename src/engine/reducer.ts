@@ -9782,6 +9782,21 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
+  // Tarnum (Rampart) Sharpshooters VI (option A): borrow a Neutral-deck unit for
+  // this Combat only — placed on an empty cell on the player's side; the card
+  // returns to the Neutral discard pile when the Combat ends.
+  if (effect.type === "BORROW_NEUTRAL_UNIT" && state.combat) {
+    const borrowed = borrowNeutralUnit(state, action.playerId, effect.unitDefId, effect.tier);
+    if (borrowed) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: borrowed.id,
+        abilityId: card.id,
+        message: `${state.players[action.playerId]?.name ?? "A hero"} plays ${card.name}: ${borrowed.cardName} joins the Combat at ${getBattlefieldLabel(borrowed.position)}.`
+      });
+    }
+  }
+
   // Tarnum (Dungeon)'s Dragons VI (option A): toggle the selected Dragons unit's
   // Black cube — remove it if the unit has already spent its Retaliation this
   // round (so it may retaliate again), otherwise place one (so it cannot).
@@ -10995,6 +11010,80 @@ function placeCloneUnit(
   delete clone.armyUnitId;
   combat.units[clone.id] = clone;
   return clone;
+}
+
+/**
+ * First empty cell on the player's side of the board (back row first, so a
+ * borrowed ranged unit lands in the back), falling back to any free cell.
+ */
+function findBorrowDeploymentCell(combat: CombatState, playerId: PlayerId): number | undefined {
+  const region =
+    playerId === combat.attackerPlayerId ? [16, 17, 18, 19, 12, 13, 14, 15] : [0, 1, 2, 3, 4, 5, 6, 7];
+  const inRegion = region.find((position) => !isSpaceBlockedForSummon(combat, position));
+  if (inRegion !== undefined) {
+    return inRegion;
+  }
+  for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+    if (!isSpaceBlockedForSummon(combat, position)) {
+      return position;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Tarnum (Rampart) Sharpshooters VI: pull `unitDefId` out of the `tier` Neutral
+ * deck (draw pile first, else its discard pile) and place a TEMPORARY combat unit
+ * on an empty cell on the player's side. The unit carries no army card, so it is
+ * never written back to the army; finalizeAdventureCombat returns its card to the
+ * Neutral discard pile when the Combat ends. Returns the new unit, or null when
+ * it could not be borrowed (card not in the deck, or no room on the board).
+ */
+function borrowNeutralUnit(
+  state: GameState,
+  playerId: PlayerId,
+  unitDefId: string,
+  tier: "bronze" | "silver" | "gold" | "azure"
+): CombatUnitState | null {
+  const combat = state.combat;
+  const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+  if (!combat || !deck) {
+    return null;
+  }
+  const fromDraw = deck.drawPile.indexOf(unitDefId);
+  const fromDiscard = fromDraw >= 0 ? -1 : deck.discardPile.indexOf(unitDefId);
+  if (fromDraw >= 0) {
+    deck.drawPile.splice(fromDraw, 1);
+  } else if (fromDiscard >= 0) {
+    deck.discardPile.splice(fromDiscard, 1);
+  } else {
+    return null;
+  }
+
+  const position = findBorrowDeploymentCell(combat, playerId);
+  const unit =
+    position === undefined
+      ? null
+      : makeCombatUnitFromArmy(
+          { id: `borrow_${nextEventNumber(state)}`, unitDefId, side: "neutral" },
+          playerId,
+          `unit_${playerId}_borrow_${nextEventNumber(state)}`,
+          position,
+          getRuleset(state)
+        );
+  if (!unit) {
+    // Could not place it: return the borrowed card to the discard pile and bail.
+    deck.discardPile.push(unitDefId);
+    return null;
+  }
+  // Borrowed: gradeless to the neutral AI (like a summon), no army card (never
+  // written back), and it acts on its own initiative this round.
+  unit.summoned = true;
+  unit.temporary = true;
+  unit.activatedThisRound = false;
+  delete unit.armyUnitId;
+  combat.units[unit.id] = unit;
+  return unit;
 }
 
 /**

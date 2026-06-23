@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
-import { beginFieldVisit, getMainHero } from "./adventure";
-import { resolveVisitStep } from "./adventure-reducer";
+import {
+  applyAction,
+  createAdventureGameState,
+  createInitialGameState,
+  effectiveInitiative,
+  getLegalActions
+} from "./index";
+import { beginFieldVisit, getMainHero, placeCreatureBank } from "./adventure";
+import { finalizeAdventureCombat, resolveVisitStep, startNeutralEncounter } from "./adventure-reducer";
+import { finishCombatIfNeeded } from "./combat-units";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { adventureCards } from "@/data/cards/adventure";
 import type { FactionId } from "@/data/factions/types";
@@ -30,7 +37,8 @@ const assetPath = (src: string) => fileURLToPath(new URL(`../../public${src}`, i
 const BATCH6_HEROES: Array<[string, keyof typeof coreFactionDefinitions]> = [
   ["octavia", "inferno"],
   ["melodia", "rampart"],
-  ["tarnum_fortress", "fortress"]
+  ["tarnum_fortress", "fortress"],
+  ["tarnum_rampart", "rampart"]
 ];
 
 const SPACE = "50,50";
@@ -487,5 +495,204 @@ describe("Tarnum (Fortress)'s Basilisks specialty", () => {
       lastAttackRolled(forced, (e) => e.attackerId === "unit_p1_griffins" && !e.isRetaliation)?.attackBonus,
       "+2 attack still applies"
     ).toBe(2);
+  });
+});
+
+// ===========================================================================
+// Tarnum (Rampart) — "Sharpshooters": creature buffs + borrow-a-unit VI
+// ===========================================================================
+
+const SILVER_DECK = "neutral-silver";
+
+function injectSilverSharpshooters(state: GameState, present = true): void {
+  state.decks[SILVER_DECK] = {
+    id: SILVER_DECK,
+    drawPile: present ? ["neutral.sharpshooters"] : [],
+    discardPile: []
+  };
+}
+
+function borrowedSharpshooter(state: GameState) {
+  return Object.values(state.combat!.units).find(
+    (unit) => unit.name === "Sharpshooters" && unit.controllerId === "p1"
+  );
+}
+
+describe("Tarnum (Rampart)'s Sharpshooters specialty", () => {
+  it("is the Ranger variant, distinct from the other Tarnums", () => {
+    expect(coreHeroDefinitions.tarnum_rampart.name).toBe("Tarnum");
+    expect(coreHeroDefinitions.tarnum_rampart.class).toBe("Ranger");
+    expect(coreHeroDefinitions.tarnum_rampart.faction).toBe("rampart");
+    expect(coreHeroDefinitions.tarnum_rampart.portrait).toBe("/assets/hero_portraits-tarnum_ranger.webp");
+  });
+
+  it("I gives +1 attack, doubled to +2 for an Elves OR Sharpshooters unit", () => {
+    function attackPlusOne(seed: string, attackerName: string): number | undefined {
+      const state = createInitialGameState(seed);
+      state.players.p1.hand = ["specialty.tarnum_rampart.1"];
+      state.players.p2.hand = [];
+      const attacker = state.combat!.units.unit_p1_griffins;
+      attacker.abilities = [];
+      attacker.name = attackerName;
+      attacker.type = "ground";
+      attacker.position = 9;
+      attacker.attack = 4;
+      const defender = state.combat!.units.unit_p2_skeletons;
+      defender.abilities = [];
+      defender.position = 13;
+      defender.defense = 0;
+      defender.maxHealth = 40;
+      defender.damage = 0;
+      state.combat!.dice.scriptedRolls = new Array(8).fill(0);
+      state.combat!.dice.rollCount = 0;
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = "unit_p1_griffins";
+      const declared = applyOk(state, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: "unit_p1_griffins",
+        defenderId: "unit_p2_skeletons"
+      });
+      const reaction = (declared.reactionWindow?.legalReactions.p1 ?? []).find(
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" &&
+          legal.action.cardId === "specialty.tarnum_rampart.1" &&
+          legal.action.optionIndex === 0
+      );
+      expect(reaction, "the +1 attack option should be offered").toBeTruthy();
+      const settled = passAllReactions(applyOk(declared, reaction!.action));
+      return lastAttackRolled(settled, (e) => e.attackerId === "unit_p1_griffins" && !e.isRetaliation)?.attackBonus;
+    }
+    expect(attackPlusOne("tr-1-plain", "Griffins"), "non-signature → +1").toBe(1);
+    expect(attackPlusOne("tr-1-elves", "Elves"), "Elves → +2").toBe(2);
+    expect(attackPlusOne("tr-1-ss", "Sharpshooters"), "Sharpshooters → +2").toBe(2);
+  });
+
+  it("IV grants +1 initiative for the Combat, doubled for a Sharpshooters unit", () => {
+    function initBuff(seed: string, name: string): number {
+      const state = createInitialGameState(seed);
+      state.players.p1.hand = ["specialty.tarnum_rampart.4"];
+      const unit = state.combat!.units.unit_p1_griffins;
+      unit.name = name;
+      unit.abilities = [];
+      const before = effectiveInitiative(unit, state.activeEffects);
+      const play = findPlay(state, "specialty.tarnum_rampart.4", undefined, "unit_p1_griffins");
+      expect(play, "IV targets a friendly unit").toBeTruthy();
+      const after = applyOk(state, play!.action);
+      return effectiveInitiative(after.combat!.units.unit_p1_griffins, after.activeEffects) - before;
+    }
+    expect(initBuff("tr-4-plain", "Griffins"), "non-signature → +1 initiative").toBe(1);
+    expect(initBuff("tr-4-ss", "Sharpshooters"), "Sharpshooters → +2 initiative").toBe(2);
+  });
+
+  it("VI option A borrows a Sharpshooters onto the board and removes it from the silver deck", () => {
+    const state = createInitialGameState("tr-6-borrow");
+    injectSilverSharpshooters(state);
+    state.players.p1.hand = ["specialty.tarnum_rampart.6"];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    expect(borrowedSharpshooter(state), "no Sharpshooters before the borrow").toBeUndefined();
+    const play = findPlay(state, "specialty.tarnum_rampart.6", 0);
+    expect(play, "the borrow option is offered at the start of Combat").toBeTruthy();
+    const after = applyOk(state, play!.action);
+    const borrowed = borrowedSharpshooter(after);
+    expect(borrowed, "a Sharpshooters joins the Combat").toBeTruthy();
+    // A temporary unit: it carries no army card (never written back) and is
+    // gradeless to the neutral AI, and it deploys on p1's side (attacker region).
+    expect(borrowed!.temporary, "marked temporary").toBe(true);
+    expect(borrowed!.armyUnitId, "carries no army card").toBeUndefined();
+    expect(borrowed!.summoned, "gradeless to the AI").toBe(true);
+    expect(borrowed!.position, "deploys on p1's (attacker) side").toBeGreaterThanOrEqual(12);
+    // The card was pulled out of the silver Neutral deck.
+    expect(after.decks[SILVER_DECK].drawPile, "card pulled from the silver deck").not.toContain(
+      "neutral.sharpshooters"
+    );
+    // It never joins p1's permanent army.
+    expect(after.players.p1.army.some((a) => a.unitDefId === "neutral.sharpshooters"), "not in the army").toBe(false);
+  });
+
+  it("VI option A is gated: not on a later round, and not when the deck has none", () => {
+    const round2 = createInitialGameState("tr-6-round2");
+    injectSilverSharpshooters(round2);
+    round2.players.p1.hand = ["specialty.tarnum_rampart.6"];
+    round2.activePlayerId = "p1";
+    round2.combat!.activeUnitId = "unit_p1_griffins";
+    round2.combat!.round = 2;
+    expect(findPlay(round2, "specialty.tarnum_rampart.6", 0), "not offered after round 1").toBeFalsy();
+
+    const empty = createInitialGameState("tr-6-empty");
+    injectSilverSharpshooters(empty, false);
+    empty.players.p1.hand = ["specialty.tarnum_rampart.6"];
+    empty.activePlayerId = "p1";
+    empty.combat!.activeUnitId = "unit_p1_griffins";
+    expect(findPlay(empty, "specialty.tarnum_rampart.6", 0), "not offered with no card to borrow").toBeFalsy();
+  });
+
+  it("VI option B draws a card", () => {
+    const state = mapFor("tr-6-draw", "tarnum_rampart", "rampart");
+    state.players.p1.hand = ["specialty.tarnum_rampart.6"];
+    state.players.p1.deck = ["stat.attack", "stat.defense"];
+    const before = state.players.p1.hand.length;
+    const play = findPlay(state, "specialty.tarnum_rampart.6", 1);
+    expect(play, "the draw option is offered (anytime)").toBeTruthy();
+    const after = applyOk(state, play!.action);
+    expect(after.players.p1.hand.length, "-specialty +1 draw").toBe(before - 1 + 1);
+  });
+
+  it("the borrowed unit is discarded back to the silver Neutral pile after the Combat (not kept)", () => {
+    let state = createAdventureGameState({ seed: "tr-6-e2e", difficulty: "normal", rollFirstPlayer: false });
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    // A Creature Bank gives the simplest real adventure Neutral combat to drive.
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = "bank-field";
+    state.adventure!.fields["bank-field"] = {
+      spaceId: "bank-field",
+      tileInstanceId: "t",
+      slot: 0,
+      location: "blocked_field",
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    };
+    placeCreatureBank(state, "bank-field", "crypt");
+    injectSilverSharpshooters(state);
+    startNeutralEncounter(state, hero, state.adventure!.fields["bank-field"]);
+
+    // Deploy one unit and lock placement → combat round 1.
+    const place = getLegalActions(state, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
+    state = applyOk(state, place!.action);
+    state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+    expect(state.combat?.round, "round 1").toBe(1);
+
+    // Borrow a Sharpshooters into this fight.
+    state.players.p1.hand = ["specialty.tarnum_rampart.6"];
+    const borrow = findPlay(state, "specialty.tarnum_rampart.6", 0);
+    expect(borrow, "the borrow option is offered in the bank fight").toBeTruthy();
+    state = applyOk(state, borrow!.action);
+    const borrowed = borrowedSharpshooter(state);
+    expect(borrowed, "a Sharpshooters joined the fight").toBeTruthy();
+
+    // Force the win and finalize.
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.controllerId === "neutrals") {
+        unit.damage = unit.maxHealth;
+      }
+    }
+    finishCombatIfNeeded(state);
+    finalizeAdventureCombat(state);
+
+    expect(state.combat, "the combat ended").toBeNull();
+    // "Discard it afterwards": the borrowed card is back in the silver Neutral
+    // discard pile, and it never entered p1's permanent army.
+    expect(state.decks[SILVER_DECK].discardPile, "borrowed card returned to the silver discard").toContain(
+      "neutral.sharpshooters"
+    );
+    expect(
+      state.players.p1.army.some((entry) => entry.unitDefId === "neutral.sharpshooters"),
+      "the borrowed unit is NOT kept in the army"
+    ).toBe(false);
   });
 });

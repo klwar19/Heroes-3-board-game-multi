@@ -2087,6 +2087,18 @@ function isOptionEffectPlayable(
       // Shackles of War (house rule): only at the start of a player-vs-player
       // combat, where there is an enemy hero who could otherwise surrender.
       return context === "combat" && state.combat?.context.kind === "player" && state.combat.round === 1;
+    case "BORROW_NEUTRAL_UNIT": {
+      // Tarnum (Rampart) Sharpshooters VI: "Play at the start of Combat" — only on
+      // combat round 1, and only while the unit is still available to borrow from
+      // its tier's Neutral deck (draw or discard pile).
+      if (context !== "combat" || !state.combat || state.combat.round !== 1) {
+        return false;
+      }
+      const deck = state.decks[NEUTRAL_DECK_IDS[effect.tier]];
+      return Boolean(
+        deck && (deck.drawPile.includes(effect.unitDefId) || deck.discardPile.includes(effect.unitDefId))
+      );
+    }
     case "DOUBLE_FIRST_AID_TENT":
       // Gem's First Aid VI only does something with a First Aid Tent in play.
       return (
