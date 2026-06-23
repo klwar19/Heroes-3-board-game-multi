@@ -6,9 +6,11 @@ import type { CardPlayMode, GameAction, GameState, UnitId, UnitType } from "./st
  * Engine tests for the Tower-expansion / stretch-goal defensive spells. Each
  * rule is engine-enforced; every test fails if the wiring is removed.
  *
- *  - Shield      (Basic Earth) — Ongoing +Defense vs a GROUND or FLYING attacker
- *                                until the end of the Combat (Power 0/1/2 →
- *                                +1/+2/+3); a ranged attacker is unaffected.
+ *  - Shield      (Basic Earth) — INSTANT +Defense for ONE attack, played in
+ *                                reaction to your unit being attacked by a GROUND
+ *                                or FLYING attacker (Power 0/1/2 → +1/+2/+3); a
+ *                                ranged attacker slips past it (Air Shield's job).
+ *                                NOT an Ongoing combat-long buff.
  *  - Air Shield  (Basic Air)   — Ongoing +Defense vs a RANGED attacker until the
  *                                end of the Combat (Power 0/1/2 → +1/+2/+3); a
  *                                ground/flying attacker is unaffected.
@@ -77,10 +79,11 @@ function reactionOffered(
 }
 
 // ===========================================================================
-// Shield / Air Shield — cast wiring: the conditional-defense effect created.
+// Air Shield — cast wiring: the combat-long conditional-defense effect created.
+// (Shield is now an INSTANT — see the "Shield instant reaction" block below.)
 // ===========================================================================
 
-describe("Shield / Air Shield cast", () => {
+describe("Air Shield cast", () => {
   /** Casts the spell on a friendly unit at the given Power; returns the effect. */
   function castOnCrusaders(cardId: string, power: number) {
     const state = createInitialGameState(`${cardId}-${power}`);
@@ -104,14 +107,6 @@ describe("Shield / Air Shield cast", () => {
     );
   }
 
-  it("Shield creates a combat-long Defense buff vs ground/flying attackers (Power 0 → +1)", () => {
-    const effect = castOnCrusaders("spell.shield", 0);
-    expect(effect, "Shield should create a conditional defense effect").toBeTruthy();
-    expect(effect!.duration.type).toBe("combat");
-    const modifier = effect!.modifiers.find((m) => m.type === "DEFENSE_VS_ATTACKER_TYPE");
-    expect(modifier).toMatchObject({ type: "DEFENSE_VS_ATTACKER_TYPE", attackerType: "ground-or-flying", amount: 1 });
-  });
-
   it("Air Shield creates a combat-long Defense buff vs ranged attackers (Power 0 → +1)", () => {
     const effect = castOnCrusaders("spell.air_shield", 0);
     expect(effect, "Air Shield should create a conditional defense effect").toBeTruthy();
@@ -120,12 +115,110 @@ describe("Shield / Air Shield cast", () => {
     expect(modifier).toMatchObject({ type: "DEFENSE_VS_ATTACKER_TYPE", attackerType: "ranged", amount: 1 });
   });
 
-  it("the Defense bonus scales with Power (0/1/2 → +1/+2/+3) for both spells", () => {
-    for (const cardId of ["spell.shield", "spell.air_shield"]) {
-      expect(castOnCrusaders(cardId, 0)!.modifiers.find((m) => m.type === "DEFENSE_VS_ATTACKER_TYPE")).toMatchObject({ amount: 1 });
-      expect(castOnCrusaders(cardId, 1)!.modifiers.find((m) => m.type === "DEFENSE_VS_ATTACKER_TYPE")).toMatchObject({ amount: 2 });
-      expect(castOnCrusaders(cardId, 2)!.modifiers.find((m) => m.type === "DEFENSE_VS_ATTACKER_TYPE")).toMatchObject({ amount: 3 });
-    }
+  it("the Air Shield Defense bonus scales with Power (0/1/2 → +1/+2/+3)", () => {
+    expect(
+      castOnCrusaders("spell.air_shield", 0)!.modifiers.find((m) => m.type === "DEFENSE_VS_ATTACKER_TYPE")
+    ).toMatchObject({ amount: 1 });
+    expect(
+      castOnCrusaders("spell.air_shield", 1)!.modifiers.find((m) => m.type === "DEFENSE_VS_ATTACKER_TYPE")
+    ).toMatchObject({ amount: 2 });
+    expect(
+      castOnCrusaders("spell.air_shield", 2)!.modifiers.find((m) => m.type === "DEFENSE_VS_ATTACKER_TYPE")
+    ).toMatchObject({ amount: 3 });
+  });
+
+  it("Shield is NOT an Ongoing friendly-unit cast (it is an instant reaction, not a combat-long buff)", () => {
+    // The OLD (wrong) Ongoing Shield surfaced as a CAST_SPELL on a friendly unit
+    // creating a DEFENSE_VS_ATTACKER_TYPE effect. As an instant it is a triggered
+    // reaction, so there is no such friendly-unit cast offered at all.
+    const state = createInitialGameState("shield-not-ongoing");
+    state.players.p1.hand = ["spell.shield"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    expect(findCast(state, "p1", "spell.shield", "unit_p1_crusaders")).toBeFalsy();
+  });
+});
+
+// ===========================================================================
+// Shield (instant) — played in reaction to YOUR unit being attacked by a
+// ground/flying attacker: +Defense for THAT attack only; a ranged shot slips
+// past, and nothing lingers afterwards (it is not Ongoing).
+// ===========================================================================
+
+describe("Shield instant reaction", () => {
+  /**
+   * p2's attacker (of `attackerType`) hits p1's crusaders; p1 holds Shield and
+   * may answer once priority reaches them in the attack window. Returns whether
+   * Shield was offered to p1, the damage dealt, and whether any combat-long
+   * defense effect lingered (it must not — Shield is a one-attack instant).
+   */
+  function fight(attackerType: UnitType, play: boolean): { offered: boolean; damage: number; ongoing: boolean } {
+    const state = createInitialGameState(`shield-instant-${attackerType}-${play}`);
+    state.players.p1.hand = ["spell.shield"];
+    state.players.p2.hand = [];
+    const attacker = state.combat!.units.unit_p2_skeletons;
+    const defender = state.combat!.units.unit_p1_crusaders;
+    attacker.abilities = [];
+    defender.abilities = [];
+    attacker.type = attackerType;
+    attacker.position = 9;
+    defender.position = 13; // adjacent → a melee-range strike whatever the type
+    attacker.attack = 6;
+    defender.defense = 2;
+    attacker.maxHealth = 40;
+    defender.maxHealth = 40;
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    attacker.activatedThisRound = false;
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: "unit_p2_skeletons",
+      defenderId: "unit_p1_crusaders"
+    });
+    // The attacker (p2) gets the window first; pass priority to the defender p1.
+    const onP1 = passUntil(declared, "p1");
+    const offered = reactionOffered(onP1, "p1", "spell.shield", "basic");
+    const after =
+      play && offered
+        ? applyOk(onP1, { type: "PLAY_REACTION", playerId: "p1", cardId: "spell.shield", mode: "basic" })
+        : onP1;
+    const resolved = passAllReactions(after);
+    const ongoing = resolved.activeEffects.some(
+      (effect) =>
+        effect.target?.type === "unit" &&
+        effect.target.unitId === "unit_p1_crusaders" &&
+        effect.modifiers.some((m) => m.type === "DEFENSE_VS_ATTACKER_TYPE")
+    );
+    return { offered, damage: resolved.combat!.units.unit_p1_crusaders.damage, ongoing };
+  }
+
+  it("is offered to the defender vs a ground attacker and cuts that attack (6−2 = 4 → +1 def → 3)", () => {
+    const result = fight("ground", true);
+    expect(result.offered, "Shield should be offered vs a ground attacker").toBe(true);
+    expect(result.damage).toBe(3);
+  });
+
+  it("also applies vs a flying attacker", () => {
+    expect(fight("flying", true)).toMatchObject({ offered: true, damage: 3 });
+  });
+
+  it("is NOT offered vs a ranged attacker (Air Shield's job) — the full 4 damage stands", () => {
+    const result = fight("ranged", true);
+    expect(result.offered, "Shield must not be offered vs a ranged attacker").toBe(false);
+    expect(result.damage).toBe(4);
+  });
+
+  it("leaves NO lingering combat-long effect (one-attack instant, not Ongoing)", () => {
+    expect(fight("ground", true).ongoing).toBe(false);
+  });
+
+  it("baseline without playing Shield: the ground attack deals the full 4", () => {
+    expect(fight("ground", false).damage).toBe(4);
   });
 });
 

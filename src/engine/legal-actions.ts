@@ -5336,6 +5336,16 @@ export function isEffectLegalForTrigger(
       return false;
     }
 
+    // Shield (instant): +Defense only against a ground/flying attacker. Gate on
+    // the ATTACKER's type, not the buffed defender's (the unitTypes check above).
+    // A ranged shot slips past Shield — that is Air Shield's (Ongoing) job.
+    if (effect.vsAttackerType === "ground-or-flying" && attacker.type === "ranged") {
+      return false;
+    }
+    if (effect.vsAttackerType === "ranged" && attacker.type !== "ranged") {
+      return false;
+    }
+
     // Precision: only on a ranged (non-adjacent) shot.
     if (effect.ignoreRangedPenalty && triggerEvent.attackKind !== "ranged") {
       return false;
