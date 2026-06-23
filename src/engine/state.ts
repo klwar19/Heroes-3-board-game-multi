@@ -4197,9 +4197,11 @@ export type ActiveEffectState = ActiveEffectDefinition & {
   /**
    * First Aid Tent: heals performed this combat round and whether the expert
    * (multiple heals for 1 expert use) was activated, so basic and expert heals
-   * stay mutually exclusive within a round.
+   * stay mutually exclusive within a round. `targetUnitId` pins the expert
+   * volley to the unit its first heal mended — the card resolves "against the
+   * same target 3 times", so the follow-up heals can only land on that unit.
    */
-  healRound?: { round: number; count: number; expert: boolean };
+  healRound?: { round: number; count: number; expert: boolean; targetUnitId?: UnitId };
 };
 
 export type TurnState = {
