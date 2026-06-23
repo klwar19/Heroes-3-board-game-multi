@@ -240,6 +240,21 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "wyvern-sting": { affect: [{ key: "poison" }], sound: "spells/poison" },
   "rust-dragon-acid": { hit: "acid-breath", hitSound: "effects/acid-breath" },
   "gorgon-death-stare": { affect: [{ key: "death-stare" }], sound: "spells/death-stare" },
+  // Paralysis: the H3 "paralyze" freeze glyph + paralyze sound flash over the
+  // unit that gains the Paralysis token (the same sheet the Blind spell uses).
+  // Keyed by every paralysis ability whose id is emitted ONLY when the token
+  // actually lands (a single event): the Azure Dragon's Paralyzing Breath (the
+  // requested one), the identical Fortress Basilisk Stone Gaze, the Medusas'
+  // Paralyzing Gaze on retaliation, and the Stacked Medusa Stores bank guard.
+  // The extra-die variants (basilisk-paralysis, medusa-paralyze-retaliation-die)
+  // are deliberately NOT keyed here: each reuses the SAME ability id for a
+  // "rolls X" announce event that fires whether or not the target is paralysed,
+  // so mapping it would flash the freeze before any paralysis lands. Wiring
+  // those needs an engine change that splits the announce onto its own id.
+  "azure-dragon-paralysis": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
+  "fortress-basilisk-paralysis": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
+  "medusa-paralyze-retaliation": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
+  "bank-medusa-paralyze-stacked": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
   "dread-knight-death-blow": { affect: [{ key: "death-ripple" }], sound: "effects/death-blow" },
   // Fortress Wyverns' poison cubes: the poison cloud both when the cubes are
   // planted (on the attack) and when one bleeds the unit at its activation.
@@ -298,7 +313,13 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
 export const healFxPlans: Record<string, SpellFxPlan> = {
   // The First Aid Tent mends a stack: the green Cure shimmer + heal chime, the
   // same cue Heroes III plays when the tent patches a unit up.
-  "war_machine.first_aid_tent": { affect: [{ key: "cure" }], sound: "spells/cure" }
+  "war_machine.first_aid_tent": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  // The First Aid ability card (basic side) removes 1 damage from a chosen
+  // unit. It heals outside the spell flow too — its DAMAGE_HEALED carries the
+  // card id as the source — so it would otherwise float a bare "+1" in silence.
+  // Reuse the Tent's cure shimmer + chime so the played card actually sounds
+  // like a heal.
+  "ability.first_aid": { affect: [{ key: "cure" }], sound: "spells/cure" }
 };
 
 /**
@@ -315,6 +336,19 @@ export const warMachineFxPlans: Record<string, SpellFxPlan> = {
   "war_machine.ballista": { sound: "units/ballista-shoot" },
   "war_machine.catapult": { sound: "units/catapult-shoot" },
   "war_machine.cannon": { sound: "units/cannon-shoot" }
+};
+
+/**
+ * Ability/permanent cards that deal damage as a fired SHOT rather than a Spell:
+ * the Artillery ability directs a Ballista-style volley at the lowest-initiative
+ * enemy. Its DAMAGE_ASSIGNED (source = the card) carries the shot sound — the
+ * same H3 Ballista report the war-machine Ballista uses — played just before the
+ * struck unit's hurt cry + damage number (see page.tsx), so the shot is heard
+ * first. Sound-only, like the war-machine shots: the floating damage is the
+ * visual. Keyed by source card id, mirroring `healFxPlans`.
+ */
+export const cardShotFxPlans: Record<string, SpellFxPlan> = {
+  "ability.artillery": { sound: "units/ballista-shoot" }
 };
 
 // ---------------------------------------------------------------------------

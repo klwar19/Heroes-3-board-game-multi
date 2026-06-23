@@ -490,12 +490,26 @@ export { isAdjacent } from "./battlefield";
  * Printed movement values: ground and flying units move up to 3 spaces,
  * ranged units up to 1 space (after shooting or instead of attacking).
  */
-export function getUnitMoveRange(unit: CombatUnitState): number {
-  if (unit.type === "ranged") {
-    return 1;
-  }
+export function getUnitMoveRange(unit: CombatUnitState, state?: GameState): number {
+  const base = unit.type === "ranged" ? 1 : 3;
 
-  return 3;
+  // House rule (BINH only): Haste / Slow (and Cyra / Gundula's specialties) also
+  // shift Combat movement by ±1 (MOVEMENT_BONUS). Legacy keeps the fixed range.
+  if (!state || getRuleset(state) !== "binh") {
+    return base;
+  }
+  let bonus = 0;
+  for (const effect of state.activeEffects) {
+    if (!effectAppliesToUnit(effect, unit)) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "MOVEMENT_BONUS") {
+        bonus += modifier.amount;
+      }
+    }
+  }
+  return Math.max(1, base + bonus);
 }
 
 export function getCombatObstacles(combat: CombatState): number[] {
@@ -636,7 +650,7 @@ export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitSt
 
   return getReachableDestinations(
     unit.position,
-    getUnitMoveRange(unit),
+    getUnitMoveRange(unit, state),
     blocked,
     unit.type === "flying"
   ).filter(isBattlefieldPosition);
@@ -1988,6 +2002,9 @@ function isOptionEffectPlayable(
     case "DISCOVER_TILE_CARD":
     case "GAIN_HERO_MOVEMENT":
     case "DIMENSION_DOOR":
+    // Octavia "Gold" / Melodia "Fortune": Resource-die roll, morale/gold gain,
+    // and the location-dice buff are all resolved through a queued map visit.
+    case "RESOURCE_FORTUNE_PLAY":
       return context === "map" && Boolean(state.adventure);
     case "REMOVE_HAND_CARD_THEN_SEARCH": {
       // Map play that removes a card matching the filter (default "removable" =
@@ -2110,6 +2127,18 @@ function isOptionEffectPlayable(
       // Shackles of War (house rule): only at the start of a player-vs-player
       // combat, where there is an enemy hero who could otherwise surrender.
       return context === "combat" && state.combat?.context.kind === "player" && state.combat.round === 1;
+    case "BORROW_NEUTRAL_UNIT": {
+      // Tarnum (Rampart) Sharpshooters VI: "Play at the start of Combat" — only on
+      // combat round 1, and only while the unit is still available to borrow from
+      // its tier's Neutral deck (draw or discard pile).
+      if (context !== "combat" || !state.combat || state.combat.round !== 1) {
+        return false;
+      }
+      const deck = state.decks[NEUTRAL_DECK_IDS[effect.tier]];
+      return Boolean(
+        deck && (deck.drawPile.includes(effect.unitDefId) || deck.discardPile.includes(effect.unitDefId))
+      );
+    }
     case "DOUBLE_FIRST_AID_TENT":
       // Gem's First Aid VI only does something with a First Aid Tent in play.
       return (
@@ -2506,6 +2535,9 @@ function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDef
 
   if (
     effect.type === "GAIN_RESOURCES" ||
+    // Octavia's "Gold" / Melodia's "Fortune": roll Resource dice, gain morale /
+    // gold, or raise the location-dice count — all map-only economy plays.
+    effect.type === "RESOURCE_FORTUNE_PLAY" ||
     // Legion artifacts' discount side: banked on the map for the next recruit.
     effect.type === "GAIN_RECRUIT_DISCOUNT" ||
     effect.type === "ENEMY_MORALE_STRIP" ||
@@ -4440,6 +4472,29 @@ export function getLegalReactionsForTrigger(
               action: { type: "HALL_OF_VALHALLA_BOOST", playerId: player.id, buildingId }
             });
           }
+        }
+      }
+    }
+
+    // Crag Hack's Offense VI: while its aura is up, discard any held card during
+    // your own unit's attack for +1 attack ("every card you play can grant +1
+    // attack instead of its effect"). One offer per distinct held card; the window
+    // reopens after each conversion, so several cards can stack on one attack.
+    if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
+      const attacker = state.combat?.units[triggerEvent.attackerId];
+      const attackLocked = Boolean(state.stack.at(-1)?.modifiers.negateAttackBuffs);
+      const auraAmount = state.activeEffects.reduce((sum, effect) => {
+        if (effect.scope !== "player" || effect.controllerId !== player.id) {
+          return sum;
+        }
+        return sum + effect.modifiers.reduce((inner, modifier) => inner + (modifier.type === "CARDS_AS_ATTACK_BONUS" ? modifier.amount : 0), 0);
+      }, 0);
+      if (attacker && attacker.controllerId === player.id && !attackLocked && auraAmount > 0) {
+        for (const cardId of [...new Set(player.hand)]) {
+          reactions.push({
+            label: `Offense VI: discard ${cardLibrary[cardId]?.name ?? cardId} for +${auraAmount} attack`,
+            action: { type: "CONVERT_CARD_TO_ATTACK", playerId: player.id, cardId }
+          });
         }
       }
     }

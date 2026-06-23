@@ -295,8 +295,28 @@ const ENTITY_FIXES = {
   fairieDragon: "faerieDragon", // VCMI typo
 };
 
+// Most -move clips are a short footstep/flap meant to LOOP for a full move
+// (repeat: 2 = play twice back-to-back). A handful of creatures instead have a
+// long, self-contained move clip — a continuous magical crackle / whoosh, an
+// eye drone, a serpent slither — that already reads as the whole move; playing
+// THOSE twice is a jarring echo, so they play exactly ONCE. This is curated by
+// sound CHARACTER, not a duration cutoff: some equally-long clips (the Mammoth's
+// ~1.85s footfalls, the Jotunn's ~1.8s tread) are genuine footstep loops and
+// stay at repeat: 2. Keyed by the move-sound id.
+const MOVE_PLAY_ONCE = new Set([
+  "units/energy-elemental-move",
+  "units/magic-elemental-move",
+  "units/evil-eye-move",
+  // The Evil Eye shares its exact move clip with the base Beholder (byte-for-byte
+  // identical); flip both so the same sound is never doubled, whichever voice
+  // ever plays it.
+  "units/beholder-move",
+  "units/sea-serpent-move" // Haspids speak with the Sea Serpent voice
+]);
+
 // Manifest annotations. "repeat: 2" on every -move sound implements the rule
-// that the movement sound is looped once for a full movement.
+// that the movement sound is looped once for a full movement (except the
+// MOVE_PLAY_ONCE clips above, which are long enough to play once).
 const NOTES = {
   "units/centaur-shoot": "unused: centaurs are melee-only in the original game",
   "units/gremlin-shoot": "used by the Master Gremlin upgrade (base gremlin is melee)",
@@ -488,7 +508,9 @@ function buildManifest() {
       if (!f.endsWith(".mp3")) continue;
       const id = `${dir}/${f.replace(/\.mp3$/, "")}`;
       const entry = { src: `/sounds/${dir}/${f}` };
-      if (id.endsWith("-move")) entry.repeat = 2; // loop once = play twice for a full move
+      // loop once = play twice for a full move; the long self-contained clips
+      // in MOVE_PLAY_ONCE play a single time so they don't echo.
+      if (id.endsWith("-move")) entry.repeat = MOVE_PLAY_ONCE.has(id) ? 1 : 2;
       // ambience, battle music and map riding loop until stopped
       if (dir === "ambient" || dir === "music" || id.startsWith("adventure/horse-"))
         entry.loop = true;

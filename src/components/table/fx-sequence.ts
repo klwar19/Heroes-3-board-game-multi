@@ -56,6 +56,72 @@ export function orderFxEventsForPresentation<T extends { type: GameEvent["type"]
   return ordered;
 }
 
+/** One leading-activation-spell cast, with the beats the FX timeline pins to. */
+export type ActivationSpellCast = {
+  eventId: string;
+  abilityId: string;
+  unitId: string;
+  targetUnitId: string;
+  /** When this cast's projectile/sprite begins, measured from the snapshot start. */
+  castStart: number;
+  /** When its damage lands (the bolt's burst, end of the cast) — held to here. */
+  damageAt: number;
+};
+
+/** Where every leading cast sits, and the total time the rest of the timeline shifts by. */
+export type ActivationSpellPreamble = { leadMs: number; casts: ActivationSpellCast[] };
+
+/**
+ * Plan the "leading activation spell" preamble for a combat snapshot.
+ *
+ * A neutral Faerie Dragon resolves its activation Ice Bolt and THEN moves /
+ * attacks in the SAME pump, so the cast, its damage and the unit's glide all
+ * arrive in one snapshot — the cast logged first. Played back in raw log order
+ * the move animates at t=0 while the cast waits behind the attack dice, so the
+ * dragon glides before it ever casts. To read "cast → damage → move → attack"
+ * the cast must lead and everything else trail it.
+ *
+ * Given the snapshot's unit-ability events (in log order), the set of ability
+ * ids that are such leading casts, and how long each takes to present
+ * (`castMs`) plus how long after that its damage is held back (`holdMs`), this
+ * lays the casts out back-to-back from t=0 and returns each cast's start +
+ * damage beat and the total `leadMs` the move + dice clock must shift by.
+ * Non-leading abilities are ignored, so a snapshot with none returns
+ * `{ leadMs: 0, casts: [] }` — i.e. no shift, the path every ordinary combat
+ * takes.
+ */
+export function planActivationSpellPreamble<
+  E extends { id: string; type: GameEvent["type"]; abilityId?: string; unitId?: string; targetUnitId?: string }
+>(
+  events: readonly E[],
+  leadingAbilityIds: ReadonlySet<string>,
+  timingFor: (abilityId: string) => { castMs: number; holdMs: number }
+): ActivationSpellPreamble {
+  let clock = 0;
+  const casts: ActivationSpellCast[] = [];
+  for (const event of events) {
+    if (
+      event.type !== "UNIT_ABILITY_TRIGGERED" ||
+      event.abilityId === undefined ||
+      !leadingAbilityIds.has(event.abilityId)
+    ) {
+      continue;
+    }
+    const { castMs, holdMs } = timingFor(event.abilityId);
+    const castStart = clock;
+    casts.push({
+      eventId: event.id,
+      abilityId: event.abilityId,
+      unitId: event.unitId ?? "",
+      targetUnitId: event.targetUnitId ?? event.unitId ?? "",
+      castStart,
+      damageAt: castStart + castMs
+    });
+    clock += castMs + holdMs;
+  }
+  return { leadMs: clock, casts };
+}
+
 /**
  * Split this snapshot's combat-unit moves into the ones that happen BEFORE a
  * unit's own attack (its approach to the target) and the ones that happen AFTER

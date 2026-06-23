@@ -280,6 +280,16 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Melodia's Fortune VI ("During this turn, the number of dice you roll and
+       * resolve at locations is increased by 1"): a current-turn, player-scoped
+       * effect read in interactionToSteps — every Treasure/Resource die a location
+       * makes the controller roll this turn is increased by `amount`.
+       */
+      type: "LOCATION_DICE_BONUS";
+      amount: number;
+    }
+  | {
+      /**
        * Ammo Cart: the affected ranged units ignore every ranged-attack
        * penalty (adjacent shots and opposite-back-row shots roll normally).
        */
@@ -288,6 +298,16 @@ export type ActiveEffectModifier =
   | {
       /** Haste / Slow / Cape of Velocity: shifts a unit's activation order. */
       type: "INITIATIVE_BONUS";
+      amount: number;
+    }
+  | {
+      /**
+       * House rule (BINH only): Haste / Slow effects also shift a unit's Combat
+       * movement range by `amount` (Haste +1, Slow −1; floored so a unit always
+       * moves at least 1). Read in getUnitMoveRange under the BINH ruleset only,
+       * so Legacy stays rulebook-faithful (movement is a fixed 3 / ranged 1).
+       */
+      type: "MOVEMENT_BONUS";
       amount: number;
     }
   | {
@@ -325,6 +345,16 @@ export type ActiveEffectModifier =
        * candidate — instead of being forced onto the lowest-initiative enemy.
        */
       type: "BALLISTA_CHOOSE_TARGET";
+    }
+  | {
+      /**
+       * Crag Hack's Offense VI: "For this Combat, every card you play can grant
+       * +1 attack instead of its regular effect." While this player-scoped, combat
+       * aura is up, the controller may discard any held card during one of their
+       * unit's attacks to add `amount` to that attack (CONVERT_CARD_TO_ATTACK).
+       */
+      type: "CARDS_AS_ATTACK_BONUS";
+      amount: number;
     }
   | {
       /** Anti-Magic: the unit cannot be targeted by spells (up to a tier). */
@@ -742,6 +772,12 @@ export type EffectDefinition =
        */
       doubleIfDefenderInitiativeHigher?: boolean;
       /**
+       * Gundula IV: the inverse — the bonus doubles when YOUR (attacking) unit has
+       * strictly higher (effective) Initiative than the attacked unit ("doubles if
+       * the unit's Initiative is higher than the attacked unit's").
+       */
+      doubleIfAttackerInitiativeHigher?: boolean;
+      /**
        * Ash's Bloodlust I/VI: "Place a Black cube on that unit." A Black cube on
        * a unit's card means it has spent its Retaliation — it can no longer
        * perform a Retaliation Attack this round (Counterstrike's CLEAR_RETALIATION
@@ -756,6 +792,13 @@ export type EffectDefinition =
        * the `ignores-retaliation` unit ability).
        */
       ignoresRetaliation?: boolean;
+      /**
+       * Tarnum (Fortress) Basilisks VI: "your selected unit uses its special
+       * ability regardless of the required roll's result." On the buffed attack
+       * (UNIT_ATTACK_DECLARED, self) every die-gated after-attack ability fires as
+       * if its face was rolled — wired through stackItem.forceAbilityRollsThisAttack.
+       */
+      forceAbilityRolls?: boolean;
     }
   | {
       /** Centaur's Axe: the attack die's outcome counts three times. */
@@ -834,6 +877,26 @@ export type EffectDefinition =
        * so the option is hidden when unaffordable).
        */
       goldCost?: number;
+    }
+  | {
+      /**
+       * Octavia's "Gold" (IV/VI) and Melodia's "Fortune" (I/IV/VI) economic map
+       * specialties — a compound, map-only play resolved in this order:
+       *  1. gain `morale` positive-morale token(s) (Melodia I),
+       *  2. if `locationDiceBonusTurn`, create a current-turn player effect adding
+       *     +1 to the dice rolled & resolved at locations this turn (Melodia VI),
+       *  3. roll `rollResourceDice` Resource dice — resolving exactly ONE when >1,
+       *     through the existing CHOOSE_ONE in rollResourceDice (Octavia IV/VI,
+       *     Melodia IV),
+       *  4. gain `gold` (lands after the chosen die).
+       * The interactive dice roll (and the trailing gold) run through a queued
+       * map visit, so this option is map-only.
+       */
+      type: "RESOURCE_FORTUNE_PLAY";
+      morale?: number;
+      gold?: number;
+      rollResourceDice?: number;
+      locationDiceBonusTurn?: boolean;
     }
   | {
       /**
@@ -1119,6 +1182,12 @@ export type EffectDefinition =
       removable?: boolean;
       /** Hero specialties: the bonus doubles when placed on the named unit. */
       doubleForUnitName?: string;
+      /**
+       * House rule (BINH): the created effect also carries a MOVEMENT_BONUS of
+       * this much (Haste/Cyra +1, Slow/Gundula −1) — a flat ±1 Combat-movement
+       * shift independent of the power-scaled Initiative change.
+       */
+      movementBonus?: number;
     }
   | {
       /**
@@ -1393,6 +1462,20 @@ export type EffectDefinition =
       type: "DISCARD_WAR_MACHINE_DAMAGE";
       warMachineCardId: CardId;
       amount: number;
+    }
+  | {
+      /**
+       * Tarnum (Rampart) Sharpshooters VI: "Play at the start of Combat. Find a
+       * `unitDefId` unit in the `tier` Neutral deck (or its discard pile) and add
+       * it to your army for THIS Combat (discard it afterwards)." On play the card
+       * is pulled from that Neutral deck and a TEMPORARY combat unit (no army card)
+       * is placed on an empty cell on the player's side; when the Combat ends the
+       * borrowed card returns to the Neutral discard pile. Gated to combat round 1
+       * with the card available (legal-actions).
+       */
+      type: "BORROW_NEUTRAL_UNIT";
+      unitDefId: string;
+      tier: "bronze" | "silver" | "gold" | "azure";
     }
   | {
       /**
@@ -2706,6 +2789,17 @@ export type GameAction =
     }
   | {
       /**
+       * Crag Hack's Offense VI aura: while it is active, discard a card from hand
+       * to give the attack waiting to resolve +1 attack ("every card you play can
+       * grant +1 attack instead of its regular effect"). Offered once per held
+       * card during your own unit's attack; repeatable while cards remain.
+       */
+      type: "CONVERT_CARD_TO_ATTACK";
+      playerId: PlayerId;
+      cardId: CardId;
+    }
+  | {
+      /**
        * Siege: destroy a fortification. Adjacent ground/flying units demolish
        * a Wall or the Gate as their attack — automatically successful, no die,
        * no cards. Cyclops' printed ability does the same at any range, the
@@ -2821,6 +2915,16 @@ export type GameAction =
       type: "TRANSFER_HOST";
       clientId: string;
       targetClientId: string;
+    }
+  | {
+      /**
+       * Rename the room so it is identifiable in the lobby. Open table: any
+       * member may set it; hosted: host-only (mirrors `SET_ROOM_HOSTED`). Keyed
+       * by the caller's `clientId`. A blank name clears it back to the default.
+       */
+      type: "SET_ROOM_NAME";
+      clientId: string;
+      name: string;
     }
   | { type: "END_TURN"; playerId: PlayerId }
   | {
@@ -3359,6 +3463,12 @@ export type GameEvent =
       id: string;
       type: "ROOM_HOST_CHANGED";
       clientId: string;
+      byClientId: string;
+    }
+  | {
+      id: string;
+      type: "ROOM_NAMED";
+      name: string;
       byClientId: string;
     }
   | {
@@ -4015,6 +4125,15 @@ export type ResolutionStackItem = {
      * the `ignores-retaliation` ability. Set from ADD_COMBAT_STAT.ignoresRetaliation.
      */
     ignoresRetaliationThisAttack?: boolean;
+    /**
+     * Tarnum (Fortress) Basilisks VI: "your selected unit uses its special
+     * ability regardless of the required roll's result". For this single attack
+     * every die-GATED after-attack ability of the attacker triggers as if its
+     * required face was rolled — the Basilisk/Azure Paralysis, the Gorgon Death
+     * Stare, the Wyvern/Thunderbird flat-damage sting, the Rust Dragon Acid
+     * token and the Minotaur draw. Set from ADD_COMBAT_STAT.forceAbilityRolls.
+     */
+    forceAbilityRollsThisAttack?: boolean;
     playedCardIds: CardId[];
   };
 };
@@ -4130,6 +4249,14 @@ export type RoomMembershipState = {
   hosted: boolean;
   hostClientId: string | null;
   members: RoomMember[];
+  /**
+   * Human-readable room name shown in the lobby and the room panel, so players
+   * can tell rooms apart instead of reading the opaque room id. Optional: a room
+   * that was never named falls back to a default label derived from its id.
+   * Set via the `SET_ROOM_NAME` action (open table: any member; hosted: host
+   * only), and seeded by the explicit "create room" flow.
+   */
+  name?: string;
 };
 
 /**
@@ -4599,6 +4726,14 @@ export type CombatUnitState = {
    * bookkeeping, and never count as one of your units leaving for Pit Lords.
    */
   cloneOfUnitId?: UnitId;
+  /**
+   * Tarnum (Rampart) Sharpshooters VI: a Neutral-deck unit borrowed "for this
+   * Combat (discard it afterwards)". It carries no army card (no armyUnitId), so
+   * it is never written back to the army; instead, when the Combat ends its
+   * `unitDefId` is returned to its tier's Neutral discard pile (finalizeAdventure-
+   * Combat). Whether it survived or died, the borrowed card is discarded.
+   */
+  temporary?: boolean;
   assets?: {
     cardImage?: string;
     imageAlt?: string;
@@ -5090,6 +5225,17 @@ export type VisitStep =
        */
       type: "CONSUME_REROLL_ARTIFACT";
       cardId: CardId;
+    }
+  | {
+      /**
+       * Octavia's Gold I reaction: discard a specific held card from hand the
+       * moment a Resource die is rolled (offered inside rollResourceDice, mirroring
+       * the Diplomat's Ring reroll reaction). The die-set that follows overrides
+       * the rolled face.
+       */
+      type: "CONSUME_HELD_CARD";
+      cardId: CardId;
+      optionLabel: string;
     }
   | {
       /** Terrible Plague: flip one army card from Pack back to Few. */
@@ -5882,6 +6028,7 @@ export type PendingChoice =
         | "war-machine"
         | "deck-pick"
         | "deck-search-mode"
+        | "scouting-prompt"
         | "discard-pick"
         | "hand-discard"
         | "eagle-eye"
@@ -6013,6 +6160,21 @@ export type PendingChoice =
         /** Whether a "take the top discard" option is offered (index 1). */
         hasDiscardTop?: boolean;
         /** Tarnum (Conflux) I: carry the "Remove instead of keep" privilege into the reveal. */
+        allowRemove?: boolean;
+      };
+      /**
+       * scouting-prompt: a held Scouting card may be played before a Search. The
+       * pop-up offers, in option order: [decline], then "Search (3)" (basic) when
+       * `offerBasic`, then "Search (5)" (expert, spends a crown) when `offerExpert`.
+       * Resolving creates the SEARCH_COUNT_OVERRIDE and re-enters the Search; the
+       * deck + base count are kept here so the search can resume after the choice.
+       */
+      scoutingPrompt?: {
+        deckId: DeckId;
+        baseCount: number;
+        offerBasic: boolean;
+        offerExpert: boolean;
+        /** Tarnum (Conflux) I: carry the "Remove instead of keep" privilege through the Scouting prompt. */
         allowRemove?: boolean;
       };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */

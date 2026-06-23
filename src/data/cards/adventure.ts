@@ -136,7 +136,12 @@ function offenseSpecialtySix(heroSlug: string): CardLibrary[string] {
   };
 }
 
-function slowSpecialty(heroSlug: string, level: 1 | 4 | 6, amount: number): CardLibrary[string] {
+function slowSpecialty(
+  heroSlug: string,
+  level: 1 | 4 | 6,
+  amount: number,
+  movementBonus?: number
+): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
     name: `Slow ${level === 1 ? "I" : level === 4 ? "IV" : "VI"}`,
@@ -151,7 +156,8 @@ function slowSpecialty(heroSlug: string, level: 1 | 4 | 6, amount: number): Card
       amount: -amount,
       duration: { type: "combat" },
       polarity: "negative",
-      removable: true
+      removable: true,
+      ...(movementBonus !== undefined ? { movementBonus } : {})
     },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
@@ -1481,6 +1487,9 @@ export const adventureCards: CardLibrary = {
   // make the Liches deal elemental damage, OR a flat +2 attack.
   "specialty.moandor.1": mightSpecialtyOne("moandor", "Liches", "Liches"),
   "specialty.moandor.4": unitHealthSpecialty("moandor", "Liches", 4, 1, "Liches"),
+  // Moandor VI is a CHOICE (— OR —), re-confirmed against the owner's physical
+  // card 2026-06: the fan wiki renders the two clauses with no "OR" (looking like
+  // a combined AND), but the printed card is choose-one. Do not "fix" it to AND.
   "specialty.moandor.6": {
     id: "specialty.moandor.6",
     name: "Liches VI",
@@ -1935,9 +1944,108 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("zydar")
   },
-  "specialty.crag_hack.1": offenseSpecialtyOne("crag_hack"),
-  "specialty.crag_hack.4": offenseSpecialtyFour("crag_hack"),
-  "specialty.crag_hack.6": offenseSpecialtySix("crag_hack"),
+  // Crag Hack (Barbarian), specialty "Offense". The wiki cards differ from the
+  // generic Offense helper (which fits Tarnum Stronghold, not Crag Hack):
+  //  - I is an ONGOING "For this Combat, +1 attack" (not the instant +1/draw OR).
+  //  - IV is "+1 attack for the Combat; you MAY discard a card for +1 more" →
+  //    a CHOOSE_ONE of +1 (free) vs +2 (discard 1), both combat-duration.
+  // (VI — "every card you play this Combat can grant +1 attack instead of its
+  // regular effect" — is a distinct, unbuilt mechanic; still pending.)
+  "specialty.crag_hack.1": {
+    id: "specialty.crag_hack.1",
+    name: "Offense I",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: ["hero-specialty", "combat", "crag_hack", "offense", "For this Combat, your selected unit gains +1 attack."],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_ATTACK_BUFF",
+      name: "Offense I",
+      amount: 1,
+      duration: { type: "combat" },
+      polarity: "positive",
+      removable: false
+    },
+    assets: {
+      cardImage: specialtyCardImage("crag_hack", 1),
+      imageAlt: "Offense level I specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("crag_hack")
+  },
+  "specialty.crag_hack.4": {
+    id: "specialty.crag_hack.4",
+    name: "Offense IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "crag_hack",
+      "offense",
+      "Your selected unit gains +1 attack. You may discard a card to gain another +1 attack."
+    ],
+    // Instant (one-shot, on a single attack): +1, or discard a card for +2.
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+1 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
+        },
+        {
+          label: "Discard a card: +2 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          cost: { discardCards: 1 },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("crag_hack", 4),
+      imageAlt: "Offense level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("crag_hack")
+  },
+  "specialty.crag_hack.6": {
+    id: "specialty.crag_hack.6",
+    name: "Offense VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "crag_hack",
+      "offense",
+      "For this Combat, every card you play can grant +1 attack instead of its regular effect.",
+      // engine: a player-scoped combat aura (CARDS_AS_ATTACK_BONUS). While it is
+      // up, during one of your unit's attacks you may discard ANY held card to add
+      // +1 to that attack (CONVERT_CARD_TO_ATTACK), repeatable while cards remain.
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: "Offense VI",
+        scope: "player",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "CARDS_AS_ATTACK_BONUS", amount: 1 }]
+      }
+    },
+    assets: {
+      cardImage: specialtyCardImage("crag_hack", 6),
+      imageAlt: "Offense level VI specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("crag_hack")
+  },
   "specialty.dessa.1": {
     id: "specialty.dessa.1",
     name: "Logistics I",
@@ -1956,9 +2064,35 @@ export const adventureCards: CardLibrary = {
   },
   "specialty.dessa.4": dessaSpecialtyFour(),
   "specialty.dessa.6": dessaSpecialtySix(),
-  "specialty.gundula.1": slowSpecialty("gundula", 1, 1),
-  "specialty.gundula.4": slowSpecialty("gundula", 4, 2),
-  "specialty.gundula.6": slowSpecialty("gundula", 6, 3),
+  // Gundula (Battle Mage), specialty "Slow": I/VI decrease an enemy unit's
+  // Initiative by 2 / 4 for the Combat (wiki magnitudes — the earlier −1/−3 from a
+  // mis-scaled helper was wrong). IV is the odd one out per the wiki: an INSTANT
+  // +1 attack that doubles when YOUR unit is faster than the attacked unit
+  // (doubleIfAttackerInitiativeHigher), NOT another Slow.
+  "specialty.gundula.1": slowSpecialty("gundula", 1, 2, -1),
+  "specialty.gundula.4": {
+    id: "specialty.gundula.4",
+    name: "Slow IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "gundula",
+      "slow",
+      "Your selected unit gains +1 attack. The effect doubles if its initiative is higher than the attacked unit's."
+    ],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, doubleIfAttackerInitiativeHigher: true },
+    assets: {
+      cardImage: specialtyCardImage("gundula", 4),
+      imageAlt: "Slow level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("gundula")
+  },
+  "specialty.gundula.6": slowSpecialty("gundula", 6, 4, -1),
   "specialty.shiva.1": mightSpecialtyOne("shiva", "Thunderbirds", "Thunderbirds"),
   "specialty.shiva.4": unitHealthSpecialty("shiva", "Thunderbirds", 4, 1, "Thunderbirds"),
   "specialty.shiva.6": unitInitiativeSpecialty("shiva", "Thunderbirds", 6, 2, "Thunderbirds"),
@@ -2101,7 +2235,9 @@ export const adventureCards: CardLibrary = {
       amount: 3,
       duration: { type: "combat" },
       polarity: "positive",
-      removable: false
+      removable: false,
+      // House rule (BINH): Cyra's Haste also gives +1 Combat movement (3 → 4).
+      movementBonus: 1
     },
     implementationStatus: "implemented",
     source: heroSource("cyra")
@@ -2151,7 +2287,9 @@ export const adventureCards: CardLibrary = {
         removable: false,
         modifiers: [
           { type: "INITIATIVE_BONUS", amount: 3 },
-          { type: "DEFENSE_VS_LOWER_INITIATIVE", amount: 1 }
+          { type: "DEFENSE_VS_LOWER_INITIATIVE", amount: 1 },
+          // House rule (BINH): Cyra's Haste also gives +1 Combat movement.
+          { type: "MOVEMENT_BONUS", amount: 1 }
         ]
       }
     },
@@ -3668,6 +3806,259 @@ export const adventureCards: CardLibrary = {
     source: heroSource("sephinroth")
   }),
 
+  // ---- Additional heroes, batch 6 ---------------------------------------
+  // The four remaining fan-wiki heroes (minus Tarnum Conflux) that complete every
+  // playable Town's roster: Octavia (Inferno) & Melodia (Rampart) — economic
+  // Resource-die / Fortune specialists — plus the Rampart & Fortress Tarnum
+  // variants. Placeholder-art wiki heroes → PC portraits + face-less specialty
+  // cards (withoutArt), like batches 4–5. Every specialty runs in the engine
+  // (extra-heroes-batch6-specialties.test.ts).
+
+  // Octavia (Inferno, Demoniac, A2 D2 P1 K1, Scholar): the "Gold" Resource-die
+  // specialist. I's signature half is a REACTION offered the moment a Resource
+  // die is rolled (octaviaGoldReactionOption) — discard this card to set a rolled
+  // die to "6 gold"; the card itself encodes only its OR alternative "Draw 1
+  // card". IV/VI roll Resource dice on the map (RESOURCE_FORTUNE_PLAY) — VI rolls
+  // 2 and resolves one through the existing roll-resource CHOOSE_ONE — each with a
+  // combat / draw alternative.
+  "specialty.octavia.1": withoutArt({
+    id: "specialty.octavia.1",
+    name: "Gold I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "octavia",
+      "gold",
+      "Play after rolling a Resource die to set 1 Resource die to 6 gold. — OR — Draw 1 card.",
+      // engine: the "set a die to 6 gold" half is a held-card reaction inside the
+      // Resource-die roll (octaviaGoldReactionOption); this card object encodes
+      // only the OR alternative, "Draw 1 card".
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [{ label: "Draw 1 card", effect: { type: "DRAW_CARDS", amount: 1 } }]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("octavia")
+  }),
+  "specialty.octavia.4": withoutArt({
+    id: "specialty.octavia.4",
+    name: "Gold IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "octavia",
+      "gold",
+      "Roll and resolve 1 Resource die. — OR — Your selected unit gains +1 attack."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Roll and resolve 1 Resource die",
+          mapOnly: true,
+          effect: { type: "RESOURCE_FORTUNE_PLAY", rollResourceDice: 1 }
+        },
+        {
+          label: "+1 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("octavia")
+  }),
+  "specialty.octavia.6": withoutArt({
+    id: "specialty.octavia.6",
+    name: "Gold VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "octavia",
+      "gold",
+      "Roll 2 Resource dice and resolve one of them. — OR — Draw 2 cards."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Roll 2 Resource dice and resolve one",
+          mapOnly: true,
+          effect: { type: "RESOURCE_FORTUNE_PLAY", rollResourceDice: 2 }
+        },
+        {
+          label: "Draw 2 cards",
+          effect: { type: "DRAW_CARDS", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("octavia")
+  }),
+
+  // Melodia (Rampart, Druid, A0 D2 P1 K2, Luck): the "Fortune" specialist —
+  // single-option (no OR) economic map plays. I grants a positive morale token +
+  // 1 gold; IV rolls 2 Resource dice and resolves one + 1 gold; VI is a
+  // current-turn buff (LOCATION_DICE_BONUS) raising the dice rolled & resolved at
+  // locations by 1 + 1 gold. All routed through RESOURCE_FORTUNE_PLAY.
+  "specialty.melodia.1": withoutArt({
+    id: "specialty.melodia.1",
+    name: "Fortune I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: ["hero-specialty", "instant", "melodia", "fortune", "Gain a positive morale token and 1 gold."],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Gain a positive morale token and 1 gold",
+          mapOnly: true,
+          effect: { type: "RESOURCE_FORTUNE_PLAY", morale: 1, gold: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("melodia")
+  }),
+  "specialty.melodia.4": withoutArt({
+    id: "specialty.melodia.4",
+    name: "Fortune IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "melodia",
+      "fortune",
+      "Roll 2 Resource dice and resolve one of them. Gain 1 gold."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Roll 2 Resource dice (resolve one) and gain 1 gold",
+          mapOnly: true,
+          effect: { type: "RESOURCE_FORTUNE_PLAY", rollResourceDice: 2, gold: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("melodia")
+  }),
+  "specialty.melodia.6": withoutArt({
+    id: "specialty.melodia.6",
+    name: "Fortune VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "melodia",
+      "fortune",
+      "During this turn, +1 die rolled and resolved at locations. Gain 1 gold."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This turn, +1 die at locations; gain 1 gold",
+          mapOnly: true,
+          effect: { type: "RESOURCE_FORTUNE_PLAY", locationDiceBonusTurn: true, gold: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("melodia")
+  }),
+
+  // Tarnum (Fortress, Beastmaster, A0 D4 P1 K1, Armorer): the Basilisks specialist
+  // — I/IV are the standard creature buffs (doubled for Basilisks), identical to
+  // Bron's. VI is a single combined instant (NO "OR"): the buffed attack gains +2
+  // attack AND fires the unit's die-gated after-attack ability regardless of the
+  // roll (forceAbilityRolls → forceAbilityRollsThisAttack).
+  "specialty.tarnum_fortress.1": withoutArt(mightSpecialtyOne("tarnum_fortress", "Basilisks", "Basilisks")),
+  "specialty.tarnum_fortress.4": withoutArt(unitHealthSpecialty("tarnum_fortress", "Basilisks", 4, 1, "Basilisks")),
+  "specialty.tarnum_fortress.6": withoutArt({
+    id: "specialty.tarnum_fortress.6",
+    name: "Basilisks VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "tarnum_fortress",
+      "basilisks",
+      "Your selected unit uses its special ability regardless of the required roll's result, and gains +2 attack.",
+      // engine: on this attack the unit gains +2 attack AND every die-GATED
+      // after-attack ability fires regardless of the roll — the Basilisk/Azure
+      // Paralysis, Gorgon Death Stare, Wyvern/Thunderbird flat-damage Sting, Rust
+      // Dragon Acid token and Minotaur draw (forceAbilityRolls). The passive
+      // attack/defense-on-die riders (Dread Knight Death Blow, Zombie/Manticore
+      // Resilience) are attack-maths modifiers, NOT triggered abilities, so they
+      // are not affected.
+    ],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, forceAbilityRolls: true },
+    implementationStatus: "implemented",
+    source: heroSource("tarnum_fortress")
+  }),
+
+  // Tarnum (Rampart, Ranger, A1 D3 P1 K1, Leadership): the Sharpshooters specialist.
+  // I/IV are the standard creature buffs, doubled for the Elves OR Sharpshooters
+  // unit (the multi-unit descriptor unitMatchesSpecialtyName splits on "or"). VI is
+  // a CHOOSE_ONE: borrow a Sharpshooters from the silver Neutral deck for this
+  // Combat (BORROW_NEUTRAL_UNIT, gated to combat round 1) — OR — draw a card.
+  "specialty.tarnum_rampart.1": withoutArt(
+    mightSpecialtyOne("tarnum_rampart", "Sharpshooters", "Elves or Sharpshooters")
+  ),
+  "specialty.tarnum_rampart.4": withoutArt(
+    unitInitiativeSpecialty("tarnum_rampart", "Sharpshooters", 4, 1, "Elves or Sharpshooters")
+  ),
+  "specialty.tarnum_rampart.6": withoutArt({
+    id: "specialty.tarnum_rampart.6",
+    name: "Sharpshooters VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "tarnum_rampart",
+      "sharpshooters",
+      "Play at the start of Combat. Borrow a Sharpshooters from the silver Neutral deck for this Combat (discard it afterwards). — OR — Draw a card."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Borrow a Sharpshooters for this Combat",
+          combatOnly: true,
+          effect: { type: "BORROW_NEUTRAL_UNIT", unitDefId: "neutral.sharpshooters", tier: "silver" }
+        },
+        {
+          label: "Draw a card",
+          effect: { type: "DRAW_CARDS", amount: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("tarnum_rampart")
+  }),
+
   // ---- Cove (expansion) specialties --------------------------------------
   // Only the two Cove heroes whose specialties are fully engine-wired are
   // registered: Cassiopeia (Oceanids creature buffs) and Astra (Cure cleanse,
@@ -3907,6 +4298,9 @@ export const adventureCards: CardLibrary = {
   // attack — the +2 is FLAT (it does NOT double for Sorceresses).
   "specialty.casmetra.1": withoutArt(towerAttackOrDefenseSpecialty("casmetra", "Sorceresses", 1, "Sorceresses")),
   "specialty.casmetra.4": withoutArt(unitInitiativeSpecialty("casmetra", "Sorceresses", 4, 1, "Sorceresses")),
+  // Casmetra VI is a CHOICE (— OR —), re-confirmed against the owner's physical
+  // card 2026-06 (like Moandor VI): the fan wiki renders the two clauses with no
+  // "OR" (looking like a combined AND), but the printed card is choose-one.
   "specialty.casmetra.6": withoutArt({
     id: "specialty.casmetra.6",
     name: "Sorceresses VI",

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import soundManifest from "../../public/sounds/manifest.json";
-import { playLibrarySound, setSoundMuted } from "./sound";
+import { playLibrarySound, playUnitSound, setSoundMuted } from "./sound";
 
 /**
  * Records every <audio> the foley layer creates so a test asserts real
@@ -105,5 +105,53 @@ describe("playLibrarySound", () => {
     setSoundMuted(true);
     playLibrarySound("units/arch-devil-teleport");
     expect(FakeAudio.instances).toHaveLength(0);
+  });
+});
+
+describe("creature movement sound repeats", () => {
+  // Most creatures loop a short footstep/flap clip for a full move (repeat:2 =
+  // play twice). Four creatures instead have a long, self-contained move clip
+  // (a 1.4-2.8s whoosh / slither / drone) that must play exactly ONCE so it does
+  // not echo. Driving it through playUnitSound proves the whole chain — unit id
+  // -> voice -> move clip -> repeat count — yields a single play.
+  it.each([
+    ["conflux.energy_elementals", "energy-elemental"],
+    ["conflux.magic_elementals", "magic-elemental"],
+    ["dungeon.evil_eyes", "evil-eye"],
+    ["cove.haspids", "sea-serpent"] // Haspids speak with the Sea Serpent voice
+  ])("plays %s's move clip exactly once (no loop)", (unitDefId, voice) => {
+    playUnitSound(unitDefId, "move");
+    expect(FakeAudio.instances).toHaveLength(1);
+    const audio = FakeAudio.instances[0];
+    expect(audio.src).toContain(`/sounds/units/${voice}-move.mp3`);
+    expect(audio.playCount).toBe(1);
+    audio.fireEnded();
+    // A looped (repeat:2) clip would replay here; these must not.
+    expect(audio.playCount).toBe(1);
+  });
+
+  it("plays the base Beholder's move clip once too (it is byte-identical to the Evil Eye's)", () => {
+    // No roster unit speaks with the Beholder voice today, but its -move clip is
+    // the same file as the Evil Eye's, so it must not double-echo either —
+    // keeping the identical sound consistent however it is ever played.
+    playLibrarySound("units/beholder-move");
+    const audio = FakeAudio.instances[0];
+    expect(audio.src).toContain("/sounds/units/beholder-move.mp3");
+    expect(audio.playCount).toBe(1);
+    audio.fireEnded();
+    expect(audio.playCount).toBe(1);
+  });
+
+  it("still loops an ordinary footstep move clip twice (control)", () => {
+    // The Griffin keeps the default repeat:2 — its short flap loops for the move,
+    // so the play-once change above is a real divergence, not a global flip.
+    playUnitSound("castle.griffins", "move");
+    const audio = FakeAudio.instances[0];
+    expect(audio.src).toContain("/sounds/units/griffin-move.mp3");
+    expect(audio.playCount).toBe(1);
+    audio.fireEnded();
+    expect(audio.playCount).toBe(2);
+    audio.fireEnded();
+    expect(audio.playCount).toBe(2);
   });
 });

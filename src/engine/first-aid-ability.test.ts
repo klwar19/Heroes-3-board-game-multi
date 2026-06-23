@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
 import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra";
 import { cardLibrary } from "@/data/cards/library";
-import type { GameAction, GameState } from "./state";
+import { healFxPlans } from "@/data/fx";
+import type { GameAction, GameEvent, GameState } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -62,6 +63,49 @@ describe("First Aid card definition", () => {
       target: { type: "none" }
     });
     expect(result.errors.length).toBeGreaterThan(0);
+  });
+});
+
+// ===========================================================================
+// Basic side — heal 1 from hand, and the FX hook the user's "proper sound" needs
+// ===========================================================================
+
+describe("First Aid (basic) — heal from hand", () => {
+  it("heals 1 from the card, so the FX layer can play the cure shimmer + chime", () => {
+    // The table plays a non-spell heal off healFxPlans[source.cardId] on the
+    // DAMAGE_HEALED it logs. So the heal is only SEEN/HEARD when (a) it names the
+    // card as its source, and (b) a plan is keyed there. Assert both — without
+    // the plan the played card floats a bare "+1" in silence.
+    const state = createInitialGameState("first-aid-basic-seed");
+    state.players.p1.hand = ["ability.first_aid"];
+    state.players.p2.hand = [];
+    const wounded = state.combat!.units.unit_p1_crusaders;
+    wounded.maxHealth = 6;
+    wounded.damage = 3;
+
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "ability.first_aid" &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === "unit_p1_crusaders"
+    );
+    expect(play, "First Aid basic should be playable on a wounded friendly").toBeTruthy();
+
+    const after = applyOk(state, play!.action);
+    expect(after.combat!.units.unit_p1_crusaders.damage).toBe(2); // 1 damage removed
+
+    const heal = after.eventLog.find(
+      (event): event is Extract<GameEvent, { type: "DAMAGE_HEALED" }> =>
+        event.type === "DAMAGE_HEALED" &&
+        event.source.type === "card" &&
+        event.source.cardId === "ability.first_aid"
+    );
+    expect(heal, "First Aid heal must name the card as its source").toBeTruthy();
+    const plan = heal!.source.type === "card" ? healFxPlans[heal!.source.cardId] : undefined;
+    expect(plan, "healFxPlans must answer the First Aid heal").toBeTruthy();
+    expect(plan!.sound).toBe("spells/cure");
+    expect(plan!.affect?.[0]?.key).toBe("cure");
   });
 });
 
