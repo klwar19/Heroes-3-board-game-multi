@@ -112,6 +112,7 @@ import {
   activeSchoolFetches,
   applySearchCountEffects,
   canAcquireSharedDeckCard,
+  canPlayExpertMode,
   deckDisplayName,
   abilityExpertIsCrownFree,
   eligibleArtifactDecks,
@@ -5727,6 +5728,37 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
+  if (choice.context === "scouting-prompt") {
+    const prompt = choice.scoutingPrompt;
+    if (!prompt) {
+      throw new Error("That Scouting prompt cannot be resolved.");
+    }
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+
+    // Option 0 declines; the basic / expert plays follow in the order they were
+    // offered (mirroring openScoutingPrompt).
+    if (action.optionIndex > 0) {
+      const tiers: ("basic" | "expert")[] = [];
+      if (prompt.offerBasic) {
+        tiers.push("basic");
+      }
+      if (prompt.offerExpert) {
+        tiers.push("expert");
+      }
+      const tier = tiers[action.optionIndex - 1];
+      if (!tier) {
+        throw new Error("That Scouting option is not available.");
+      }
+      playScoutingCard(state, action.playerId, tier);
+    }
+
+    // Resume the Search (the override, if any, is consumed on the reveal).
+    openSharedDeckSearch(state, action.playerId, prompt.deckId, prompt.baseCount, true);
+    return;
+  }
+
   if (choice.context === "deck-search-mode") {
     const mode = choice.deckSearchMode;
     const player = state.players[action.playerId];
@@ -6480,10 +6512,28 @@ export function resolveSearchDeckCandidates(state: GameState, playerId: PlayerId
  * "Search" branch. With an empty discard pile there is nothing to take, so it
  * reveals and opens the DECK_SEARCH straight away.
  */
-export function openSharedDeckSearch(state: GameState, playerId: PlayerId, deckId: string, baseCount: number): void {
+export function openSharedDeckSearch(
+  state: GameState,
+  playerId: PlayerId,
+  deckId: string,
+  baseCount: number,
+  scoutingResolved = false
+): void {
   const deck = state.decks[deckId];
   if (!deck) {
     return;
+  }
+
+  // First, every shared-deck Search asks whether to play a held Scouting card —
+  // an instant pop-up offering the tiers that would actually grow this Search.
+  // The choice (`chooseOption` → "scouting-prompt") plays the chosen tier and
+  // re-enters this Search with scoutingResolved = true.
+  if (!scoutingResolved) {
+    const offer = scoutingPromptFor(state, playerId, baseCount);
+    if (offer) {
+      openScoutingPrompt(state, playerId, deckId, baseCount, offer);
+      return;
+    }
   }
 
   // Basic X Magic: "Instead of Searching the Spell deck, find the first <School>
@@ -6580,6 +6630,128 @@ function performSchoolFetch(state: GameState, playerId: PlayerId, deckId: string
  * `openSharedDeckSearch`), so a player can never both peek the deck and still
  * take the discard top or fetch.
  */
+const SCOUTING_CARD_ID = "ability.scouting" as CardId;
+/** Search sizes the Scouting card grants ("do Search (N) instead"). */
+const SCOUTING_BASIC_COUNT = 3;
+const SCOUTING_EXPERT_COUNT = 5;
+
+/** Whether the player already holds a Search-size override (a pre-played Scouting). */
+function hasSearchCountOverride(state: GameState, playerId: PlayerId): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effect.controllerId === playerId &&
+      effect.modifiers.some((modifier) => modifier.type === "SEARCH_COUNT_OVERRIDE")
+  );
+}
+
+/**
+ * The Scouting pop-up to show before a Search, or null when none applies. The
+ * card reads "Play this card before taking a Search action, then do Search (N)
+ * instead." Rather than make the player remember to pre-play it, every Search of
+ * a shared deck (Ability / Spell / Artifact) first asks whether to use a held
+ * Scouting — but only the tiers that would actually beat the deck's base count
+ * are offered (and Expert only when a crown is affordable), so the prompt never
+ * appears when it could not help. A Scouting already pre-played this turn (its
+ * own SEARCH_COUNT_OVERRIDE effect) suppresses the prompt entirely.
+ */
+function scoutingPromptFor(
+  state: GameState,
+  playerId: PlayerId,
+  baseCount: number
+): { offerBasic: boolean; offerExpert: boolean } | null {
+  const player = state.players[playerId];
+  if (!player || !player.hand.includes(SCOUTING_CARD_ID) || hasSearchCountOverride(state, playerId)) {
+    return null;
+  }
+  const offerBasic = SCOUTING_BASIC_COUNT > baseCount;
+  const offerExpert = SCOUTING_EXPERT_COUNT > baseCount && canPlayExpertMode(player, SCOUTING_CARD_ID);
+  if (!offerBasic && !offerExpert) {
+    return null;
+  }
+  return { offerBasic, offerExpert };
+}
+
+/**
+ * Opens the "use Scouting?" pop-up before a Search resumes. Option 0 always
+ * declines; the basic / expert plays follow in that order (only the offered
+ * ones). `chooseOption` ("scouting-prompt") plays the picked tier and re-enters
+ * the Search.
+ */
+function openScoutingPrompt(
+  state: GameState,
+  playerId: PlayerId,
+  deckId: string,
+  baseCount: number,
+  offer: { offerBasic: boolean; offerExpert: boolean }
+): void {
+  const options: { label: string }[] = [{ label: `Search (${baseCount}) — don't use Scouting` }];
+  if (offer.offerBasic) {
+    options.push({ label: `Play Scouting — Search (${SCOUTING_BASIC_COUNT})` });
+  }
+  if (offer.offerExpert) {
+    options.push({ label: `Play Expert Scouting — Search (${SCOUTING_EXPERT_COUNT}) (spend a crown)` });
+  }
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Use Scouting before this ${deckDisplayName(state, deckId)} Search?`,
+    options,
+    context: "scouting-prompt",
+    scoutingPrompt: { deckId, baseCount, offerBasic: offer.offerBasic, offerExpert: offer.offerExpert },
+    returnPhase: state.combat ? "combat" : "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/**
+ * Plays a held Scouting card at the chosen tier: discards the card, spends a
+ * crown for Expert (unless the ability is Empowered), and leaves the one-shot
+ * SEARCH_COUNT_OVERRIDE that applySearchCountEffects consumes on the next reveal.
+ */
+export function playScoutingCard(state: GameState, playerId: PlayerId, mode: "basic" | "expert"): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+  const index = player.hand.indexOf(SCOUTING_CARD_ID);
+  if (index === -1) {
+    return;
+  }
+  player.hand.splice(index, 1);
+  player.discard.push(SCOUTING_CARD_ID);
+
+  if (mode === "expert" && !abilityExpertIsCrownFree(player, SCOUTING_CARD_ID)) {
+    player.combatStats.expertUsesSpentThisRound += 1;
+  }
+
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      {
+        name: mode === "expert" ? "Expert Scouting" : "Scouting",
+        scope: "player",
+        duration: { type: "current-turn" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [
+          { type: "SEARCH_COUNT_OVERRIDE", count: mode === "expert" ? SCOUTING_EXPERT_COUNT : SCOUTING_BASIC_COUNT }
+        ]
+      },
+      { type: "card", cardId: SCOUTING_CARD_ID, controllerId: playerId },
+      playerId
+    )
+  );
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId: SCOUTING_CARD_ID,
+    timing: "instant",
+    mode
+  });
+}
+
 export function revealSharedDeckSearch(state: GameState, playerId: PlayerId, deckId: string, baseCount: number): void {
   const deck = state.decks[deckId];
   if (!deck) {

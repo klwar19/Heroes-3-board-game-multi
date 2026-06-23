@@ -619,6 +619,15 @@ export const sampleCards: CardLibrary = {
     // Resource die once during this turn"; expert "You can reroll any die
     // once during this turn". Ongoing cards are played during your own turn
     // on the map or while activating one of your units in combat.
+    //
+    // engine: BOTH sides last the WHOLE player turn (duration current-turn),
+    // NOT a single combat round. Basic offers one Treasure + one Resource map-
+    // die reroll for the turn (no attack-die reroll). Expert ALSO rerolls any
+    // Attack die — once per attack roll — across EVERY fight and combat round
+    // in that turn, so the reroll source is NOT consumed on first use
+    // (consumeEffectOnUse: false); it persists until the turn ends. See the
+    // wiki note: "rerolling any die … including attack dice in all fights that
+    // occur during that turn".
     timing: "ongoing",
     abilityClass: "adventure",
     tags: ["ability", "ongoing", "reroll", "wiki-reference"],
@@ -640,7 +649,7 @@ export const sampleCards: CardLibrary = {
         polarity: "positive",
         removable: false,
         modifiers: [
-          { type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: true },
+          { type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: false },
           { type: "ADVENTURE_DIE_REROLL", dice: "any" }
         ]
       }

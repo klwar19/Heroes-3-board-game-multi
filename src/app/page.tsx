@@ -104,13 +104,18 @@ import {
 import {
   abilityFxPlans,
   cancelFx,
+  cardShotFxPlans,
   healFxPlans,
   spellFxPlans,
   spellPresentationMs,
   warMachineFxPlans,
   type SpellFxPlan
 } from "@/data/fx";
-import { orderFxEventsForPresentation, partitionCombatMoves } from "@/components/table/fx-sequence";
+import {
+  orderFxEventsForPresentation,
+  partitionCombatMoves,
+  planActivationSpellPreamble
+} from "@/components/table/fx-sequence";
 import {
   LOCATION_VISIT_SOUNDS,
   MAP_CUE_SOUNDS,
@@ -164,6 +169,17 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   "COMBAT_OBSTACLE_REMOVED",
   "FORTIFICATION_DESTROYED"
 ]);
+
+/**
+ * "[activation]" abilities that resolve as a damage SPELL the unit casts BEFORE
+ * it then moves/attacks in the same neutral pump — today only the Faerie
+ * Dragon's Ice Bolt. Because the whole activation lands in one snapshot, the
+ * cast/damage and the unit's glide arrive together; played back in log order the
+ * dragon would slide before it ever casts. The FX builder presents these first
+ * (a preamble) and shifts the move + dice past them, so the table reads
+ * "cast → damage → move → attack". Keyed by the UNIT_ABILITY_TRIGGERED abilityId.
+ */
+const LEADING_ACTIVATION_SPELL_ABILITIES = new Set<string>(["faerie-dragon-spell"]);
 
 const OBSERVER_SEAT = "observer";
 
@@ -1040,17 +1056,47 @@ export default function Home() {
       );
       const neutralPreDelayMs = movedNeutralAttackerIds.size > 0 ? COMBAT_MOVE_MS + NEUTRAL_ATTACK_PAUSE_MS : 0;
 
+      // A leading activation spell (the neutral Faerie Dragon's Ice Bolt) is cast
+      // BEFORE its caster then moves/attacks, all in one snapshot. Its cast +
+      // damage are presented first as a preamble (see the cue block below), so
+      // everything that follows — the approach move and the attack dice — is held
+      // back by `activationSpellLeadMs` to keep the order "cast → damage → move →
+      // attack". `leadMs` is 0 (no shift) for every combat without such a spell.
+      const freshAbilityEvents = nextState.combat
+        ? nextState.eventLog.filter(
+            (event): event is Extract<GameEvent, { type: "UNIT_ABILITY_TRIGGERED" }> =>
+              event.type === "UNIT_ABILITY_TRIGGERED" && !seenFxIdsRef.current.has(event.id)
+          )
+        : [];
+      const activationSpellPreamble = planActivationSpellPreamble(
+        freshAbilityEvents,
+        LEADING_ACTIVATION_SPELL_ABILITIES,
+        (abilityId) => {
+          const plan = abilityFxPlans[abilityId];
+          return {
+            castMs: plan ? spellPresentationMs(plan) : 0,
+            holdMs: plan ? DAMAGE_REVEAL_DELAY_MS : 0
+          };
+        }
+      );
+      const activationSpellLeadMs = activationSpellPreamble.leadMs;
+
       // Each attack die is its own beat: the cube rolls and reads, then the
       // table holds (ATTACK_ANIM_MS) so the striking unit's lunge / slash / shot
       // plays in the gap before the next die is thrown. `diceDismissAt[k]` is
       // when the k-th die finishes reading (the moment its strike begins),
       // measured from this snapshot; the FX timeline below pins its strikes to
-      // those beats, and the total drives the post-action pause.
+      // those beats, and the total drives the post-action pause. Each die's
+      // `preDelay` is carried into its overlay cue, so the cube and its strike
+      // always share a clock — the lead below shifts BOTH together.
       const pendingPreDelay = new Set(movedNeutralAttackerIds);
       const diceDismissAt: number[] = [];
       let diceClock = 0;
       const freshDiceCues = fresh.map((event, index) => {
-        let preDelay = 0;
+        // The first cube waits out any leading-activation-spell preamble (the
+        // Faerie Dragon's cast), so the dice — and the strikes pinned to them —
+        // trail the cast rather than rolling on top of it.
+        let preDelay = index === 0 ? activationSpellLeadMs : 0;
         // The guard that just slid into range waits out its move + the
         // pre-attack pause before its first die.
         if (neutralPreDelayMs > 0 && pendingPreDelay.has(event.attackerId)) {
@@ -1185,7 +1231,8 @@ export default function Home() {
         // attack die is in this batch the timeline starts after the dice finish,
         // so damage numbers, ability splashes and heals never pre-empt the roll.
         // Each attack's own strike is pinned to its die more precisely below.
-        let timeline = fresh.length > 0 ? diceClock + ATTACK_IMPACT_MS : 0;
+        // With no dice the timeline still starts after any leading-spell preamble.
+        let timeline = fresh.length > 0 ? diceClock + ATTACK_IMPACT_MS : activationSpellLeadMs;
         let viewerDraws = 0;
         // defender unitId -> when its blow lands (its die's dismiss + the strike).
         const impactByTarget = new Map<string, number>();
@@ -1207,6 +1254,13 @@ export default function Home() {
         // number/health land after the animation and never on the unrelated
         // retaliation strike beat the attacker may also carry.
         const fireShieldBurnAt = new Map<string, number>();
+        // Leading activation spells (Faerie Dragon Ice Bolt) presented in the
+        // preamble below: their UNIT_ABILITY_TRIGGERED ids (skipped in the main
+        // loop) and the beat each one's damage lands on (consumed once by that
+        // target's first DAMAGE_ASSIGNED, so the bolt's damage holds back to the
+        // cast while a later same-target strike still pins to its own beat).
+        const leadingSpellEventIds = new Set<string>();
+        const leadingSpellDamageAt = new Map<string, number>();
         // True once any spell/ability has queued damage, a heal or a death in
         // combat — holds the victory notice and the next guard's prompt until the
         // effect (and the death it caused) has played out, exactly like a strike.
@@ -1225,6 +1279,51 @@ export default function Home() {
         const unitVoice = (unitId: string) =>
           nextState.combat?.units[unitId]?.unitDefId ?? unitDefIdsRef.current.get(unitId);
 
+        // Leading activation-spell preamble: present the cast(s) FIRST — at the
+        // very front of the timeline — so a neutral Faerie Dragon's Ice Bolt
+        // flies and bursts (and its damage lands) BEFORE the dragon glides toward
+        // its melee target. The move pre-pass and the dice clock were already
+        // shifted past this by `activationSpellLeadMs`. Each cast's damage beat is
+        // recorded so its DAMAGE_ASSIGNED, processed normally in the loop, pins to
+        // the bolt's landing instead of the (post-dice) timeline; the cast event
+        // itself is skipped there. Empty — and a no-op — for every other combat.
+        for (const cast of activationSpellPreamble.casts) {
+          const plan = abilityFxPlans[cast.abilityId];
+          if (!plan) {
+            continue;
+          }
+          leadingSpellEventIds.add(cast.eventId);
+          if (plan.projectile) {
+            cues.push({
+              kind: "projectile",
+              id: `${cast.eventId}-lead`,
+              fxKey: plan.projectile,
+              from: `unit:${cast.unitId}`,
+              to: `unit:${cast.targetUnitId}`,
+              hitFxKey: plan.hit,
+              sound: plan.sound,
+              hitSound: plan.hitSound,
+              delayMs: cast.castStart
+            });
+          } else if (plan.affect?.length) {
+            plan.affect.forEach((entry, index) => {
+              cues.push({
+                kind: "sprite",
+                id: `${cast.eventId}-lead-${index}`,
+                fxKey: entry.key,
+                at: `unit:${cast.targetUnitId}`,
+                sound: index === 0 ? plan.sound : undefined,
+                delayMs: cast.castStart + (entry.delayMs ?? 0)
+              });
+            });
+          }
+          // The bolt's damage lands as it bursts (end of the cast presentation),
+          // pinned so the number never pre-empts the sprite.
+          leadingSpellDamageAt.set(cast.targetUnitId, cast.damageAt);
+          combatFxActive = true;
+        }
+        combatPresentationEnd = Math.max(combatPresentationEnd, activationSpellLeadMs);
+
         // Combat steps: a unit's card visibly glides from its old cell to its
         // new one instead of teleporting, trailing a couple of after-images and
         // its footstep sound. The board has already re-rendered the unit at its
@@ -1239,7 +1338,9 @@ export default function Home() {
         // pacing and this presentation share one source of truth.
         approachMoves.forEach((event, index) => {
           const unit = nextState.combat?.units[event.unitId];
-          const moveDelay = index * 130;
+          // Held behind any leading-spell preamble so the cast + its damage are
+          // seen before the unit glides (the Faerie Dragon casts, then moves).
+          const moveDelay = activationSpellLeadMs + index * 130;
           cues.push({
             kind: "move",
             id: `${event.id}-move`,
@@ -1264,7 +1365,9 @@ export default function Home() {
         // "fly in → attack window → (after the strike) fly back", never a window
         // popping over a card still sliding across the board.
         const approachMovesEnd =
-          approachMoves.length > 0 ? (approachMoves.length - 1) * 130 + COMBAT_MOVE_MS : 0;
+          approachMoves.length > 0
+            ? activationSpellLeadMs + (approachMoves.length - 1) * 130 + COMBAT_MOVE_MS
+            : 0;
         combatPresentationEnd = Math.max(combatPresentationEnd, approachMovesEnd);
 
         // Attack strikes are driven off the rolls, not the declarations: an
@@ -1684,20 +1787,53 @@ export default function Home() {
               break;
             }
             case "DAMAGE_ASSIGNED": {
+              // Leading activation spell (Faerie Dragon Ice Bolt) presented in the
+              // preamble: its damage lands on the recorded cast beat. Consume the
+              // entry on the spell's OWN damage event — looked up and cleared even
+              // for a 0-damage bolt (one a spell-damage reducer fully absorbed),
+              // which the amount guard below skips — so a later same-target strike
+              // is never mispinned back to the (earlier) cast beat.
+              const leadTargetId = event.target.type === "unit" ? event.target.unitId : undefined;
+              const leadAt = leadTargetId !== undefined ? leadingSpellDamageAt.get(leadTargetId) : undefined;
+              if (leadTargetId !== undefined && leadAt !== undefined) {
+                leadingSpellDamageAt.delete(leadTargetId);
+              }
               if (event.target.type === "unit" && event.amount > 0) {
                 const targetId = event.target.unitId;
                 // Fire Shield burn: its cue queued a reveal beat for this attacker
                 // (after the flare). Consume it once so the burn number/health
                 // land after the animation, and the attacker's later retaliation
                 // strike still pins to its own beat below.
-                const burnAt = fireShieldBurnAt.get(targetId);
+                const burnAt = leadAt === undefined ? fireShieldBurnAt.get(targetId) : undefined;
                 // Attack damage lands on its strike beat; spell/ability damage
                 // lands only once its sprite + sound have finished (the timeline
                 // was just advanced past them by queueBoardFx / the ability cue).
-                const attackBeat = burnAt === undefined ? impactByTarget.get(targetId) : undefined;
-                const at = burnAt ?? attackBeat ?? timeline;
+                const attackBeat =
+                  leadAt === undefined && burnAt === undefined ? impactByTarget.get(targetId) : undefined;
+                let at = leadAt ?? burnAt ?? attackBeat ?? timeline;
                 if (burnAt !== undefined) {
                   fireShieldBurnAt.delete(targetId);
+                }
+                // A card that fires a SHOT rather than a Spell (the Artillery
+                // ability's Ballista-style volley) reports here, on the same beat
+                // its damage would otherwise show, and pushes the struck unit's
+                // hurt cry + number out behind the shot so the report is heard
+                // first — exactly like a war machine's WAR_MACHINE_TRIGGERED shot.
+                // Only on non-attack card damage: an attack already carries its
+                // own strike sfx pinned to the impact beat.
+                const shotPlan =
+                  attackBeat === undefined && event.source.type === "card"
+                    ? cardShotFxPlans[event.source.cardId]
+                    : undefined;
+                if (shotPlan?.sound) {
+                  const shotSound = shotPlan.sound;
+                  const shotAt = at;
+                  window.setTimeout(() => playLibrarySound(shotSound), shotAt);
+                  at = shotAt + spellPresentationMs(shotPlan);
+                  timeline = at;
+                  if (inCombat) {
+                    combatFxActive = true;
+                  }
                 }
                 playUnitSound(unitVoice(targetId), "hurt", at);
                 cues.push({
@@ -1774,6 +1910,12 @@ export default function Home() {
               break;
             }
             case "UNIT_ABILITY_TRIGGERED": {
+              // A leading activation spell (Faerie Dragon Ice Bolt) was already
+              // presented up front in the preamble; its damage pins to that beat
+              // below. Skip it here so the cast is not queued a second time.
+              if (leadingSpellEventIds.has(event.id)) {
+                break;
+              }
               const plan = abilityFxPlans[event.abilityId];
               if (!plan) {
                 break;
