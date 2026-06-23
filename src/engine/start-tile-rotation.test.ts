@@ -200,4 +200,27 @@ describe("opening home-tile rotation is forced before the first move", () => {
       expect(player.startTileRotated).toBeUndefined();
     }
   });
+
+  it("is owner-gated in multiplayer: the other player cannot act through or steal the rotation", () => {
+    const state = ceremonyGame();
+    const active = state.activePlayerId;
+    const other = Object.values(state.players).find((p) => p.id !== active && p.startTileRotated === false)!;
+    const tileId = state.adventure!.pendingTileChoice!.tileInstanceId;
+
+    // The waiting opponent is offered nothing while the active player's gate is up
+    // — in particular they cannot rotate anyone's tile.
+    expect(getLegalActions(state, other.id).some((l) => l.action.type === "SET_TILE_ROTATION")).toBe(false);
+
+    // …and a forged confirm on the active player's behalf is rejected, leaving the
+    // gate untouched (no desync between clients).
+    const stolen = applyAction(state, {
+      type: "SET_TILE_ROTATION",
+      playerId: other.id,
+      tileInstanceId: tileId,
+      rotation: 2
+    });
+    expect(stolen.errors.length).toBeGreaterThan(0);
+    expect(stolen.state.adventure!.pendingTileChoice?.playerId).toBe(active);
+    expect(stolen.state.adventure!.tiles[tileId].awaitingRotation).toBe(true);
+  });
 });
