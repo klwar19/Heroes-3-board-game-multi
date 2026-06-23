@@ -228,12 +228,28 @@ describe("Tarnum VI — Search twice, cast over the per-round limit", () => {
     return state;
   }
 
-  function playSpecialty(state: GameState): GameState {
+  // Drive the per-search deck choice: pick `picks[i]` (default "basic") for each
+  // TARNUM_SEARCH step until the choice closes.
+  function drivePicks(state: GameState, picks: ("basic" | "expert")[] = []): GameState {
+    let cur = state;
+    let i = 0;
+    let safety = 6;
+    while (cur.pendingChoice?.type === "TARNUM_SEARCH" && safety-- > 0) {
+      const want = picks[i++] ?? "basic";
+      const choices = getLegalActions(cur, "p1").filter((legal) => legal.action.type === "CHOOSE_OPTION");
+      const pick = choices.find((legal) => legal.label.toLowerCase().includes(want)) ?? choices[0];
+      expect(pick, `a ${want} deck Search should be offered`).toBeTruthy();
+      cur = applyOk(cur, pick!.action);
+    }
+    return cur;
+  }
+
+  function playSpecialty(state: GameState, picks: ("basic" | "expert")[] = []): GameState {
     const play = getLegalActions(state, "p1").find(
       (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === T6
     );
     expect(play, "Tarnum VI should be playable in combat").toBeTruthy();
-    return passAllReactions(applyOk(state, play!.action));
+    return passAllReactions(drivePicks(applyOk(state, play!.action), picks));
   }
 
   it("Searches two Spells into hand and flags them for an over-limit cast", () => {
@@ -313,12 +329,22 @@ describe("Tarnum VI — Search twice, cast over the per-round limit", () => {
     expect(result.errors.length).toBeGreaterThan(0);
   });
 
-  it("Searches BOTH the basic and the expert Spell deck (round-robin)", () => {
+  it("PER-SEARCH DECK CHOICE: the caster Searches the basic deck then the expert deck", () => {
     // Basic deck top is lightning_bolt; the expert deck holds bless.
     const state = tarnumCombat("tarnum-vi-bothdecks", ["spell.lightning_bolt"]);
     state.decks["spells-expert"] = { id: "spells-expert", drawPile: ["spell.bless"], discardPile: [] };
-    const after = playSpecialty(state);
-    // One Spell came off each deck.
+    // Both decks are offered as distinct Search picks.
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === T6
+    );
+    const searching = applyOk(state, play!.action);
+    expect(searching.pendingChoice?.type).toBe("TARNUM_SEARCH");
+    const labels = getLegalActions(searching, "p1").map((legal) => legal.label);
+    expect(labels.some((l) => /basic Spell deck/i.test(l))).toBe(true);
+    expect(labels.some((l) => /expert Spell deck/i.test(l))).toBe(true);
+
+    // Pick basic first, expert second.
+    const after = passAllReactions(drivePicks(searching, ["basic", "expert"]));
     expect(after.players.p1.hand).toContain("spell.lightning_bolt"); // from the basic deck
     expect(after.players.p1.hand).toContain("spell.bless"); // from the expert deck
     expect(after.decks.spells.drawPile).not.toContain("spell.lightning_bolt");
@@ -326,6 +352,22 @@ describe("Tarnum VI — Search twice, cast over the per-round limit", () => {
     expect(after.players.p1.combatStats.tarnumOverlimitCards).toEqual(
       expect.arrayContaining(["spell.lightning_bolt", "spell.bless"])
     );
+  });
+
+  it("PER-SEARCH DECK CHOICE: both searches can target the SAME (expert) deck", () => {
+    const state = tarnumCombat("tarnum-vi-expert-twice", ["spell.fireball"]);
+    state.decks["spells-expert"] = {
+      id: "spells-expert",
+      drawPile: ["spell.bless", "spell.lightning_bolt"],
+      discardPile: []
+    };
+    const after = playSpecialty(state, ["expert", "expert"]);
+    // Both came from the expert deck; the basic Fireball was untouched.
+    expect(after.players.p1.hand).toEqual(
+      expect.arrayContaining(["spell.lightning_bolt", "spell.bless"])
+    );
+    expect(after.players.p1.hand).not.toContain("spell.fireball");
+    expect(after.decks.spells.drawPile).toContain("spell.fireball");
   });
 
   it("INSTANT WINDOW: can be played off-turn (during an enemy unit's activation)", () => {

@@ -10529,33 +10529,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
-  // Tarnum (Conflux) VI: "Search(1) Spell twice." Take the top acquirable spell
-  // into hand `count` times, flagging each so it can be cast for free over the
-  // per-round Spell limit and then returned to the shared Spell deck (top or
-  // discard) rather than the caster's own discard. The search spans BOTH spell
-  // decks — the basic AND the expert (BINH) deck — round-robining across the
-  // ones that still hold cards, so an expert Spell is reachable too.
+  // Tarnum (Conflux) VI: "Search(1) Spell twice." Open the per-search deck
+  // choice — the caster picks ONE Spell deck (basic or expert) to Search 1 card
+  // from, `count` times. Each taken card is flagged for a free over-limit cast
+  // that returns to the shared Spell deck (top or discard) rather than the
+  // caster's own discard. Opens nothing when no Spell deck holds a card.
   if (effect.type === "TARNUM_OVERLIMIT_SEARCH") {
-    const player = state.players[action.playerId];
-    if (player) {
-      const withCards = [SPELL_DECK_BASIC, SPELL_DECK_EXPERT].filter(
-        (deckId) => (state.decks[deckId]?.drawPile.length ?? 0) > 0
-      );
-      const decks = withCards.length > 0 ? withCards : [SPELL_DECK_BASIC];
-      const searched: CardId[] = [];
-      for (let i = 0; i < effect.count; i += 1) {
-        const taken = takeTopAcquirableSpellToHand(state, action.playerId, decks[i % decks.length]);
-        if (taken) {
-          searched.push(taken);
-        }
-      }
-      if (searched.length > 0) {
-        player.combatStats.tarnumOverlimitCards = [
-          ...(player.combatStats.tarnumOverlimitCards ?? []),
-          ...searched
-        ];
-      }
-    }
+    openTarnumSearch(state, action.playerId, effect.count);
   }
 
   if (playedToDiscard) {
@@ -12740,6 +12720,79 @@ function takeTopAcquirableSpellToHand(state: GameState, playerId: PlayerId, deck
   return taken;
 }
 
+/** Spell decks with at least one card, basic first, that Tarnum VI may Search. */
+function tarnumSearchableDecks(state: GameState): string[] {
+  return [SPELL_DECK_BASIC, SPELL_DECK_EXPERT].filter(
+    (deckId) => (state.decks[deckId]?.drawPile.length ?? 0) > 0
+  );
+}
+
+/**
+ * Tarnum (Conflux) VI: open (or re-open) the "which Spell deck to Search?" step.
+ * The caster picks one deck (basic or expert) per search; with `remaining`
+ * searches left, the choice re-opens after each pick. When no deck holds a card,
+ * the step closes (nothing left to Search).
+ */
+function openTarnumSearch(state: GameState, playerId: PlayerId, remaining: number): void {
+  if (remaining <= 0 || tarnumSearchableDecks(state).length === 0) {
+    return;
+  }
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "TARNUM_SEARCH",
+    playerId,
+    remaining,
+    returnPhase: state.combat ? "combat" : "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "TARNUM_SEARCH",
+    playerId,
+    sourceEffectIds: [],
+    message: `${state.players[playerId]?.name ?? playerId} Searches a Spell deck.`
+  });
+}
+
+function resolveTarnumSearch(state: GameState, action: Extract<GameAction, { type: "CHOOSE_OPTION" }>): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "TARNUM_SEARCH" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId
+  ) {
+    throw new Error("There is no Tarnum Search to resolve.");
+  }
+  const decks = tarnumSearchableDecks(state);
+  const deckId = decks[action.optionIndex];
+  if (!deckId) {
+    throw new Error("Pick one of the offered Spell decks.");
+  }
+
+  const player = state.players[action.playerId];
+  const taken = takeTopAcquirableSpellToHand(state, action.playerId, deckId);
+  if (player && taken) {
+    player.combatStats.tarnumOverlimitCards = [...(player.combatStats.tarnumOverlimitCards ?? []), taken];
+  }
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
+
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+  // Re-open for the next search; closes itself when no deck has cards left.
+  openTarnumSearch(state, action.playerId, choice.remaining - 1);
+}
+
 function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type: "RESOLVE_DECK_SEARCH" }>): void {
   const choice = state.pendingChoice;
   if (!choice || choice.type !== "DECK_SEARCH" || choice.id !== action.choiceId || choice.playerId !== action.playerId) {
@@ -13584,7 +13637,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         // pick, Ghost Dragon knock-back) live in the combat reducer; every other
         // option choice is
         // handled by the adventure reducer.
-        if (
+        if (nextState.pendingChoice?.type === "TARNUM_SEARCH") {
+          resolveTarnumSearch(nextState, action);
+        } else if (
           nextState.pendingChoice?.type === "OPTION_CHOICE" &&
           nextState.pendingChoice.context === "combat-reposition"
         ) {
