@@ -57,6 +57,7 @@ import {
   placeObservatoryTile,
   populationAction,
   pumpAdventureQueues,
+  openDiscardPickChoice,
   giveUpCombat,
   refreshHand,
   resolveVisitStep,
@@ -7781,6 +7782,23 @@ function payOptionCardCost(
 ): number {
   const cardName = playedCard.name;
   const paying = costCardIds ?? [];
+
+  // Resource price (Ballistics' expert bombardment): spend it up front. Charged
+  // before any early return so a resource-only cost still resolves.
+  if (cost?.resources) {
+    const payer = state.players[playerId];
+    if (!payer) {
+      throw new Error("Unknown player.");
+    }
+    for (const [resource, amount] of Object.entries(cost.resources) as [ResourceKind, number][]) {
+      if (payer.resources[resource] < amount) {
+        throw new Error(`${cardName} needs ${amount} ${resource} to play.`);
+      }
+    }
+    spendResources(payer.resources, cost.resources);
+    appendEvent(state, { type: "RESOURCES_SPENT", playerId, cost: cost.resources, reason: cardName });
+  }
+
   if (
     !cost ||
     (cost.discardCards === undefined && cost.discardCardsUpTo === undefined && cost.powerCost === undefined)
@@ -9956,6 +9974,66 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
+  // Ballistics' expert bombardment (house rule): the building-material price and
+  // the crown were already paid above. Deal `amount` flat "effect" damage to the
+  // chosen enemy unit, then offer the same damage to one enemy adjacent to it —
+  // "1 damage to 2 adjacent units". War-machine damage, so spell-damage
+  // reduction never applies.
+  if (effect.type === "BALLISTICS_BOMBARD" && state.combat) {
+    const primary = target ? state.combat.units[target.unitId] : undefined;
+    if (!primary || !isUnitAlive(primary) || primary.controllerId === action.playerId) {
+      throw new Error("Ballistics must bombard a living enemy unit.");
+    }
+    primary.damage += effect.amount;
+    noteUnitDamagedForTokens(state, primary, effect.amount);
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source: { type: "card", cardId: card.id, controllerId: action.playerId },
+      target: { type: "unit", unitId: primary.id },
+      amount: effect.amount,
+      damageKind: "effect"
+    });
+    markUnitRemovedIfNeeded(state, primary);
+
+    if (!finishCombatIfNeeded(state)) {
+      // Enemy units adjacent to the primary may also be bombarded — the caster
+      // picks one (or skips when none qualify / none is wanted).
+      const splashCandidates = Object.values(state.combat.units).filter(
+        (unit) =>
+          unit.id !== primary.id &&
+          isUnitAlive(unit) &&
+          unit.controllerId !== action.playerId &&
+          isAdjacent(unit.position, primary.position)
+      );
+      if (splashCandidates.length > 0) {
+        const choiceId = `choice_${nextEventNumber(state)}`;
+        state.pendingChoice = {
+          id: choiceId,
+          type: "ABILITY_TARGET_CHOICE",
+          playerId: action.playerId,
+          kind: "ballistics-splash",
+          abilityId: card.id,
+          abilityName: card.name,
+          prompt: `${card.name}: deal ${effect.amount} damage to an enemy adjacent to ${primary.cardName}, or skip.`,
+          sourceUnitId: null,
+          anchorUnitId: primary.id,
+          candidateUnitIds: splashCandidates.map((unit) => unit.id),
+          amount: effect.amount,
+          optional: true,
+          skipLabel: "Skip (no second target)"
+        };
+        appendEvent(state, {
+          type: "PENDING_CHOICE_CREATED",
+          choiceId,
+          choiceType: "ABILITY_TARGET_CHOICE",
+          playerId: action.playerId,
+          sourceEffectIds: [],
+          message: `${card.name} may strike a second enemy.`
+        });
+      }
+    }
+  }
+
   // Artillery (basic): the slowest enemy takes `amount` "effect" damage — the
   // same shot a Ballista makes. The card only offered the lowest-initiative
   // enemy/enemies as targets; re-checked here so removing that filter is caught
@@ -10312,14 +10390,26 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "TAKE_FROM_DISCARD") {
-    state.adventure?.rewardQueue.unshift({
-      playerId: action.playerId,
-      kind: "discard-pick",
+    const pick = {
       count: effect.count,
       filter: effect.filter,
       fromTop: effect.fromTop,
       shuffleRestIntoDeck: effect.shuffleRestIntoDeck
-    });
+    };
+    // The adventure reward queue is parked while a live (non-prep) combat runs —
+    // a queued discard-pick would not surface until the fight ended. Scholar's
+    // basic side is usable mid-Combat (allowInCombat), so open the pick straight
+    // away there; on the map (or a prep window, where the queue still pumps) it
+    // keeps queuing as a reward.
+    if (effect.allowInCombat && state.combat && !state.combat.prep) {
+      openDiscardPickChoice(state, action.playerId, pick);
+    } else {
+      state.adventure?.rewardQueue.unshift({
+        playerId: action.playerId,
+        kind: "discard-pick",
+        ...pick
+      });
+    }
   }
 
   // Scholar (expert): open the interactive Empowered-Statistic swap (up to
@@ -12058,6 +12148,30 @@ function chooseAbilityTarget(
           target: { type: "unit", unitId: target.id },
           amount: dealt,
           damageKind: "spell"
+        });
+        markUnitRemovedIfNeeded(state, target);
+      }
+    }
+    finishCombatIfNeeded(state);
+    return;
+  }
+
+  // Ballistics' expert bombardment: the chosen adjacent enemy takes the same
+  // flat "effect" damage as the primary (war-machine damage — no spell-damage
+  // reduction). A skip leaves the splash empty.
+  if (choice.kind === "ballistics-splash") {
+    if (!isSkip) {
+      const target = combat.units[action.targetUnitId];
+      if (target && isUnitAlive(target)) {
+        const dealt = choice.amount ?? 1;
+        target.damage += dealt;
+        noteUnitDamagedForTokens(state, target, dealt);
+        appendEvent(state, {
+          type: "DAMAGE_ASSIGNED",
+          source: { type: "card", cardId: choice.abilityId ?? "", controllerId: action.playerId },
+          target: { type: "unit", unitId: target.id },
+          amount: dealt,
+          damageKind: "effect"
         });
         markUnitRemovedIfNeeded(state, target);
       }

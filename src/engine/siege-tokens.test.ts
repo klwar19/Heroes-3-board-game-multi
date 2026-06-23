@@ -522,6 +522,50 @@ describe("siege combat", () => {
     expect(siege.walls.length + (siege.gatePosition !== null ? 1 : 0)).toBe(wallsBefore);
   });
 
+  it("destroys the Arrow Tower with Ballistics as a BASIC side (house rule — no crown)", () => {
+    let state = makeSiegeReady();
+    state = applyOk(state, {
+      type: "MOVE_HERO",
+      playerId: "p1",
+      heroId: "hero_p1",
+      to: state.towns.town_p2.fieldId ?? ""
+    });
+    state = placeArmies(state);
+    if (state.pendingChoice?.type === "OPTION_CHOICE") {
+      state = applyOk(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p2",
+        choiceId: state.pendingChoice.id,
+        optionIndex: 0
+      });
+    }
+
+    state.players.p1.hand = ["ability.ballistics"];
+    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
+    const tower = state.combat!.siege!.arrowTowerUnitId;
+    expect(tower, "the besieged town should have an Arrow Tower").toBeTruthy();
+
+    // Option 1 is the Arrow-Tower demolition, now a basic side (mode "basic").
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "ability.ballistics",
+      mode: "basic",
+      optionIndex: 1,
+      target: { type: "none" }
+    });
+
+    expect(state.combat!.siege!.arrowTowerUnitId).toBeNull();
+    expect(
+      state.eventLog.some(
+        (event) => event.type === "FORTIFICATION_DESTROYED" && event.kind === "arrow-tower"
+      )
+    ).toBe(true);
+    // Control: it cost no crown — proof this is a basic side, not the expert one.
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+    expect(state.players.p1.discard).toContain("ability.ballistics");
+  });
+
   it("locks the garrison defender out of card plays and pays the 8 gold fee", () => {
     let state = makeSiegeReady();
     // The defending hero is away; the owner can pay 8 gold to garrison.

@@ -484,13 +484,21 @@ export const extraAbilityCards: CardLibrary = {
     implementationStatus: "implemented",
     source: abilitySource("artillery")
   },
-  // engine: basic = destroy 1 Wall or the Gate; expert (crown) = destroy the
-  // Arrow Tower. Both run via SIEGE_DEMOLISH (see reducer playAbilityCard →
-  // openSiegeDemolishChoice / removeArrowTower; siege-tokens.test.ts).
+  // engine (HOUSE RULE buff): both demolition sides are now BASIC (no crown) —
+  // destroy 1 Wall or the Gate, OR the Arrow Tower (the Arrow-Tower demolition
+  // used to be the expert side). Both run via SIEGE_DEMOLISH (see reducer
+  // playAbilityCard → openSiegeDemolishChoice / removeArrowTower;
+  // siege-tokens.test.ts / ballistics-ability.test.ts).
+  // The new EXPERT side (crown + pay 1 building material) bombards: it deals 1
+  // damage to a chosen enemy unit AND, when one is adjacent to it, an enemy the
+  // caster picks next to it ("1 damage to 2 adjacent units"), via
+  // BALLISTICS_BOMBARD + the ballistics-splash target choice (war-machine
+  // damage; spell-damage reduction does not apply). Covered in
+  // ballistics-ability.test.ts.
   // NOT implemented: the card's "Empowered" printing ("Destroy 3 Walls and the
   // Gate"). This game models no general empower-an-ability action — the only
   // "empowered" ability (Diplomacy) is a hardcoded tag, not a player choice —
-  // so there is no path to reach an Empowered Ballistics, and a third option
+  // so there is no path to reach an Empowered Ballistics, and another option
   // would be unreachable/decorative. Left out deliberately.
   "ability.ballistics": {
     id: "ability.ballistics",
@@ -508,9 +516,18 @@ export const extraAbilityCards: CardLibrary = {
           effect: { type: "SIEGE_DEMOLISH", target: "wall-or-gate" }
         },
         {
-          label: "Destroy the Arrow Tower (expert)",
-          expertOnly: true,
+          // House-rule buff: the Arrow-Tower demolition is now a basic side too.
+          label: "Destroy the Arrow Tower",
           effect: { type: "SIEGE_DEMOLISH", target: "arrow-tower" }
+        },
+        {
+          // House-rule expert: spend a crown AND pay 1 building material to deal
+          // 1 damage to an enemy unit and an enemy adjacent to it.
+          label: "Pay 1 building material: 1 damage to an enemy unit and an enemy adjacent to it",
+          expertOnly: true,
+          cost: { resources: { buildingMaterials: 1 } },
+          target: { type: "enemy-unit" },
+          effect: { type: "BALLISTICS_BOMBARD", amount: 1 }
         }
       ]
     },

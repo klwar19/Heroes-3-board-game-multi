@@ -93,6 +93,7 @@ export const implementedCardEffectTypes = [
   "EARTHQUAKE",
   "REMOVE_OBSTACLE",
   "SIEGE_DEMOLISH",
+  "BALLISTICS_BOMBARD",
   "SUMMON_ELEMENTAL",
   "GRANT_ELEMENTAL_DAMAGE",
   "DOUBLE_FIRST_AID_TENT",
@@ -680,6 +681,10 @@ export function describeCardEffect(card: CardDefinition): string {
       .map(([power, amount]) => `${power}:${amount}`)
       .join(", ");
     return `spell damage to the target and an adjacent unit (by power ${breakpoints})`;
+  }
+
+  if (card.effect.type === "BALLISTICS_BOMBARD") {
+    return `pay 1 building material to deal ${card.effect.amount} damage to an enemy unit and an enemy adjacent to it`;
   }
 
   if (card.effect.type === "AREA_DAMAGE_ALL_ADJACENT") {

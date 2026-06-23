@@ -975,6 +975,14 @@ export type EffectDefinition =
       fromTop?: number;
       /** Rib Cage: shuffle the rest of the discard pile into the deck. */
       shuffleRestIntoDeck?: boolean;
+      /**
+       * Scholar (basic) house rule: the pick may also be made mid-Combat. The
+       * adventure reward queue is parked while a fight is live, so the reducer
+       * opens the discard-pick choice immediately instead of queuing it (and
+       * legal-actions offers the option in the combat context). Every other
+       * TAKE_FROM_DISCARD card leaves this off and stays a map-only play.
+       */
+      allowInCombat?: boolean;
     }
   | {
       /**
@@ -1826,11 +1834,25 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Ballistics: siege only — destroy 1 Wall or the Gate (basic), or the
-       * Arrow Tower (expert side).
+       * Ballistics: siege only — destroy 1 Wall or the Gate, or the Arrow Tower.
+       * Both are basic sides under the house rule (the arrow-tower demolition no
+       * longer costs a crown).
        */
       type: "SIEGE_DEMOLISH";
       target: "wall-or-gate" | "arrow-tower";
+    }
+  | {
+      /**
+       * Ballistics' expert bombardment (house rule): the played option pays its
+       * `cost.resources` (1 building material) and spends a crown, then deals
+       * `amount` flat "effect" damage to a chosen enemy unit AND, when one is
+       * adjacent to it, an enemy unit the caster picks next to it — "1 damage to
+       * 2 adjacent units". The adjacent splash is resolved through the
+       * `ballistics-splash` ABILITY_TARGET_CHOICE (skippable when none qualify).
+       * War-machine damage, so spell-damage reduction does not apply.
+       */
+      type: "BALLISTICS_BOMBARD";
+      amount: number;
     }
   | {
       /**
@@ -2034,6 +2056,14 @@ export type EffectDefinition =
 export type CardPlayCost = {
   /** The played card is removed from the game instead of discarded. */
   removeSelf?: boolean;
+  /**
+   * Printed resource price of this option, paid from the player's stockpile when
+   * the option is played (Ballistics' expert bombardment: "pay 1 building
+   * material"). Affordability is checked in legal-actions (the option is not
+   * offered when the player cannot pay) and the resources are spent in
+   * payOptionCardCost.
+   */
+  resources?: ResourceCost;
   /** Discard exactly this many other cards from hand. */
   discardCards?: number;
   /** Discard any number up to this many (effects may scale per card). */
@@ -6377,6 +6407,7 @@ export type PendingChoice =
         | "neutral-target"
         | "war-machine"
         | "spell-splash"
+        | "ballistics-splash"
         | "area-pick"
         | "spell-redirect"
         | "enchanter-activation"

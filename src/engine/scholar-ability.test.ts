@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { cardLibrary } from "@/data/cards/library";
-import { applyAction, createAdventureGameState, getLegalActions, type GameAction, type GameState } from "./index";
+import {
+  applyAction,
+  createAdventureGameState,
+  createInitialGameState,
+  getLegalActions,
+  type GameAction,
+  type GameState
+} from "./index";
 import { resolveVisitStep } from "./adventure-reducer";
 import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra";
 import type { PlayerId, VisitStep } from "./state";
@@ -70,7 +77,12 @@ describe("Scholar card definition", () => {
 
     const basic = card.effect.options[0];
     expect(basic.effect.type).toBe("TAKE_FROM_DISCARD");
-    expect(basic.mapOnly).toBe(true);
+    // House rule: the basic side is usable on the map AND during Combat, so it
+    // is no longer map-only and carries the allowInCombat flag.
+    expect(basic.mapOnly).toBeFalsy();
+    if (basic.effect.type === "TAKE_FROM_DISCARD") {
+      expect(basic.effect.allowInCombat).toBe(true);
+    }
 
     const expert = card.effect.options[1];
     expect(expert.expertOnly).toBe(true);
@@ -115,6 +127,65 @@ describe("Scholar basic — take a card from the discard pile", () => {
     expect(state.players.p1.discard).not.toContain("spell.magic_arrow");
     // The Scholar card itself went to the discard (basic side does not remove it).
     expect(state.players.p1.discard).toContain("ability.scholar");
+  });
+});
+
+// ===========================================================================
+// Basic side — HOUSE RULE: usable during Combat too
+// ===========================================================================
+
+describe("Scholar basic — usable during Combat", () => {
+  it("opens the discard pick mid-fight and pulls the card into hand, combat still live", () => {
+    const state = createInitialGameState("scholar-combat");
+    state.players.p1.hand = ["ability.scholar"];
+    state.players.p1.discard = ["spell.magic_arrow"];
+
+    // It is p1's combat turn; the basic side is offered in the combat context.
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "ability.scholar" &&
+        legal.action.optionIndex === 0
+    );
+    expect(play, "Scholar basic should be offered during combat").toBeTruthy();
+
+    // The reward queue is parked during combat — playing it must open the pick
+    // immediately (not silently queue it for after the battle).
+    const afterPlay = apply(state, play!.action);
+    const choice = afterPlay.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("discard-pick");
+    expect(afterPlay.combat, "combat must still be live").toBeTruthy();
+
+    const afterPick = apply(afterPlay, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (choice as { id: string }).id,
+      optionIndex: 0
+    });
+
+    expect(afterPick.players.p1.hand).toContain("spell.magic_arrow");
+    expect(afterPick.players.p1.discard).not.toContain("spell.magic_arrow");
+    // The Scholar itself is spent to the discard (basic side does not remove it).
+    expect(afterPick.players.p1.discard).toContain("ability.scholar");
+    // Control: the resolution returned to combat, not the map.
+    expect(afterPick.combat).toBeTruthy();
+    expect(afterPick.phase).toBe("combat");
+  });
+
+  it("is NOT silently lost — without the combat path the card would be unreachable", () => {
+    // A sibling TAKE_FROM_DISCARD card WITHOUT allowInCombat is still map-only:
+    // it is never offered in combat (the control proving allowInCombat is the
+    // switch that lifts the gate).
+    const state = createInitialGameState("scholar-combat-control");
+    state.players.p1.hand = ["artifact.crown_of_dragontooth"]; // option 0 = TAKE_FROM_DISCARD, no allowInCombat
+    state.players.p1.discard = ["spell.magic_arrow", "spell.bloodlust"];
+    const offered = getLegalActions(state, "p1").some(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "artifact.crown_of_dragontooth" &&
+        legal.action.optionIndex === 0
+    );
+    expect(offered).toBe(false);
   });
 });
 

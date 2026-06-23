@@ -1183,9 +1183,12 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: abilitySource("first_aid")
   },
-  // engine: Scholar is a CHOOSE_ONE, both sides map-only. Basic: take 1 card
-  // from your discard pile into hand (TAKE_FROM_DISCARD, resolved through the
-  // discard-pick reward). Expert: "Remove up to 2 Statistic cards from your hand
+  // engine: Scholar is a CHOOSE_ONE. Basic: take 1 card from your discard pile
+  // into hand (TAKE_FROM_DISCARD). HOUSE RULE — the basic side is usable during
+  // Combat too (`allowInCombat`): the reducer opens the discard-pick choice
+  // immediately mid-fight instead of queuing it on the parked adventure reward
+  // queue, and legal-actions offers it in the combat context. Expert is still
+  // map-only: "Remove up to 2 Statistic cards from your hand
   // or discard pile, take up to 2 different Empowered Statistic cards on top of
   // your discard pile, then Remove the Scholar." The expert spends one expert
   // use and removes this card (cost.removeSelf). The swap is interactive
@@ -1209,9 +1212,10 @@ export const adventureCards: CardLibrary = {
       type: "CHOOSE_ONE",
       options: [
         {
+          // House rule: usable on the map AND during Combat (allowInCombat) —
+          // recover a card from your discard pile into hand mid-fight.
           label: "Choose 1 card from your discard pile and add it to your hand",
-          mapOnly: true,
-          effect: { type: "TAKE_FROM_DISCARD", count: 1 }
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, allowInCombat: true }
         },
         {
           label: "Swap up to 2 Statistic cards for their Empowered versions (on top of your discard); Remove this card",
