@@ -337,6 +337,16 @@ export type ActiveEffectModifier =
       type: "BALLISTA_CHOOSE_TARGET";
     }
   | {
+      /**
+       * Crag Hack's Offense VI: "For this Combat, every card you play can grant
+       * +1 attack instead of its regular effect." While this player-scoped, combat
+       * aura is up, the controller may discard any held card during one of their
+       * unit's attacks to add `amount` to that attack (CONVERT_CARD_TO_ATTACK).
+       */
+      type: "CARDS_AS_ATTACK_BONUS";
+      amount: number;
+    }
+  | {
       /** Anti-Magic: the unit cannot be targeted by spells (up to a tier). */
       type: "UNIT_SPELL_IMMUNE";
       maxGrade: UnitGrade;
@@ -2712,6 +2722,17 @@ export type GameAction =
       type: "HALL_OF_VALHALLA_BOOST";
       playerId: PlayerId;
       buildingId: BuildingId;
+    }
+  | {
+      /**
+       * Crag Hack's Offense VI aura: while it is active, discard a card from hand
+       * to give the attack waiting to resolve +1 attack ("every card you play can
+       * grant +1 attack instead of its regular effect"). Offered once per held
+       * card during your own unit's attack; repeatable while cards remain.
+       */
+      type: "CONVERT_CARD_TO_ATTACK";
+      playerId: PlayerId;
+      cardId: CardId;
     }
   | {
       /**

@@ -1481,6 +1481,9 @@ export const adventureCards: CardLibrary = {
   // make the Liches deal elemental damage, OR a flat +2 attack.
   "specialty.moandor.1": mightSpecialtyOne("moandor", "Liches", "Liches"),
   "specialty.moandor.4": unitHealthSpecialty("moandor", "Liches", 4, 1, "Liches"),
+  // Moandor VI is a CHOICE (— OR —), re-confirmed against the owner's physical
+  // card 2026-06: the fan wiki renders the two clauses with no "OR" (looking like
+  // a combined AND), but the printed card is choose-one. Do not "fix" it to AND.
   "specialty.moandor.6": {
     id: "specialty.moandor.6",
     name: "Liches VI",
@@ -2016,7 +2019,41 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("crag_hack")
   },
-  "specialty.crag_hack.6": offenseSpecialtySix("crag_hack"),
+  "specialty.crag_hack.6": {
+    id: "specialty.crag_hack.6",
+    name: "Offense VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "crag_hack",
+      "offense",
+      "For this Combat, every card you play can grant +1 attack instead of its regular effect.",
+      // engine: a player-scoped combat aura (CARDS_AS_ATTACK_BONUS). While it is
+      // up, during one of your unit's attacks you may discard ANY held card to add
+      // +1 to that attack (CONVERT_CARD_TO_ATTACK), repeatable while cards remain.
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: "Offense VI",
+        scope: "player",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "CARDS_AS_ATTACK_BONUS", amount: 1 }]
+      }
+    },
+    assets: {
+      cardImage: specialtyCardImage("crag_hack", 6),
+      imageAlt: "Offense level VI specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("crag_hack")
+  },
   "specialty.dessa.1": {
     id: "specialty.dessa.1",
     name: "Logistics I",
@@ -4170,6 +4207,9 @@ export const adventureCards: CardLibrary = {
   // attack — the +2 is FLAT (it does NOT double for Sorceresses).
   "specialty.casmetra.1": withoutArt(towerAttackOrDefenseSpecialty("casmetra", "Sorceresses", 1, "Sorceresses")),
   "specialty.casmetra.4": withoutArt(unitInitiativeSpecialty("casmetra", "Sorceresses", 4, 1, "Sorceresses")),
+  // Casmetra VI is a CHOICE (— OR —), re-confirmed against the owner's physical
+  // card 2026-06 (like Moandor VI): the fan wiki renders the two clauses with no
+  // "OR" (looking like a combined AND), but the printed card is choose-one.
   "specialty.casmetra.6": withoutArt({
     id: "specialty.casmetra.6",
     name: "Sorceresses VI",

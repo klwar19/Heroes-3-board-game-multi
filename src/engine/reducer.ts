@@ -11096,6 +11096,67 @@ function borrowNeutralUnit(
   return unit;
 }
 
+/** Crag Hack's Offense VI aura, if the player has it up this Combat. */
+function cardsAsAttackBonusFor(state: GameState, playerId: PlayerId): number {
+  let amount = 0;
+  for (const effect of state.activeEffects) {
+    if (effect.scope !== "player" || effect.controllerId !== playerId) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "CARDS_AS_ATTACK_BONUS") {
+        amount += modifier.amount;
+      }
+    }
+  }
+  return amount;
+}
+
+/**
+ * Crag Hack's Offense VI: discard a held card during one of your unit's attacks
+ * to add the aura's bonus to that attack ("every card you play can grant +1
+ * attack instead of its regular effect"). The card is discarded for its converted
+ * effect, never its printed one.
+ */
+function convertCardToAttack(
+  state: GameState,
+  action: Extract<GameAction, { type: "CONVERT_CARD_TO_ATTACK" }>
+): void {
+  const player = state.players[action.playerId];
+  const amount = cardsAsAttackBonusFor(state, action.playerId);
+  if (!player || amount <= 0) {
+    throw new Error("Offense VI is not active.");
+  }
+  const handIndex = player.hand.indexOf(action.cardId);
+  if (handIndex === -1) {
+    throw new Error("That card is not in your hand.");
+  }
+  const stackItem = state.stack.at(-1);
+  const attackerId =
+    stackItem && (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT")
+      ? stackItem.action.attackerId
+      : null;
+  const attacker = attackerId ? state.combat?.units[attackerId] : undefined;
+  if (!stackItem || !attacker || attacker.controllerId !== action.playerId) {
+    throw new Error("Convert a card while one of your units' attacks waits to resolve.");
+  }
+  if (stackItem.modifiers.negateAttackBuffs) {
+    throw new Error("This attack cannot be buffed.");
+  }
+
+  player.hand.splice(handIndex, 1);
+  player.discard.push(action.cardId);
+  stackItem.modifiers.attackBonus += amount;
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId: action.playerId,
+    cardId: action.cardId,
+    timing: cardLibrary[action.cardId]?.timing ?? "instant",
+    mode: "basic",
+    optionLabel: `Offense VI: +${amount} attack instead`
+  });
+}
+
 /**
  * Pit Lords' "Summon Demons" other action: instead of moving or attacking, the
  * active Pit Lords either summon a Few of Demons onto an empty adjacent space
@@ -13274,6 +13335,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
   "HALL_OF_VALHALLA_BOOST",
+  "CONVERT_CARD_TO_ATTACK",
   "ATTACK_FORTIFICATION",
   "GIVE_UP",
   "JOIN_ROOM",
@@ -13575,6 +13637,10 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "HALL_OF_VALHALLA_BOOST":
         hallOfValhallaBoost(nextState, action);
+        refreshReactionWindowLegalReactions(nextState, cards);
+        break;
+      case "CONVERT_CARD_TO_ATTACK":
+        convertCardToAttack(nextState, action);
         refreshReactionWindowLegalReactions(nextState, cards);
         break;
       case "ATTACK_FORTIFICATION":
