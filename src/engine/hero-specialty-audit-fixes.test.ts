@@ -111,6 +111,90 @@ describe("Crag Hack's Offense specialty (audit fix)", () => {
   });
 });
 
+describe("Crag Hack's Offense VI aura (audit fix, new mechanic)", () => {
+  /** A combat where p1 holds Offense VI plus two spare cards, and p1's griffins
+   * are set up to attack p2's skeletons. Returns the state right after VI is played
+   * (its aura active), before the attack is declared. */
+  function withAura(seed: string): GameState {
+    const state = createInitialGameState(seed);
+    state.players.p1.hand = ["specialty.crag_hack.6", "stat.attack", "stat.defense"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const play = findPlay(state, "specialty.crag_hack.6");
+    expect(play, "Offense VI is a combat play").toBeTruthy();
+    const after = applyOk(state, play!.action);
+    expect(
+      after.activeEffects.some(
+        (eff) =>
+          eff.scope === "player" &&
+          eff.controllerId === "p1" &&
+          eff.modifiers.some((m) => m.type === "CARDS_AS_ATTACK_BONUS")
+      ),
+      "playing VI creates the combat-long aura"
+    ).toBe(true);
+    return after;
+  }
+
+  function declareGriffinAttack(state: GameState): GameState {
+    const attacker = state.combat!.units.unit_p1_griffins;
+    attacker.abilities = [];
+    attacker.type = "ground";
+    attacker.position = 9;
+    attacker.attack = 4;
+    const defender = state.combat!.units.unit_p2_skeletons;
+    defender.abilities = [];
+    defender.position = 13;
+    defender.defense = 0;
+    defender.maxHealth = 40;
+    defender.damage = 0;
+    state.combat!.dice.scriptedRolls = new Array(8).fill(0);
+    state.combat!.dice.rollCount = 0;
+    return applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+  }
+
+  function convertReaction(state: GameState, cardId: string) {
+    return (state.reactionWindow?.legalReactions.p1 ?? []).find(
+      (legal) =>
+        legal.action.type === "CONVERT_CARD_TO_ATTACK" &&
+        "cardId" in legal.action &&
+        legal.action.cardId === cardId
+    );
+  }
+
+  it("lets you discard a held card during your attack for +1, stacking per card", () => {
+    let state = declareGriffinAttack(withAura("crag-6"));
+    // Each held card is offered as a "+1 attack instead" conversion.
+    const first = convertReaction(state, "stat.attack");
+    expect(first, "stat.attack is offered as a +1-attack conversion").toBeTruthy();
+    state = applyOk(state, first!.action);
+    expect(state.players.p1.discard, "the converted card is discarded").toContain("stat.attack");
+
+    // The window reopens: convert a second card to stack to +2 on this attack.
+    const second = convertReaction(state, "stat.defense");
+    expect(second, "a second card is offered after the first conversion").toBeTruthy();
+    state = applyOk(state, second!.action);
+    state = passAllReactions(state);
+    expect(lastAttackBonus(state, "unit_p1_griffins"), "two converted cards → +2 attack").toBe(2);
+  });
+
+  it("is NOT offered without the Offense VI aura", () => {
+    const state = createInitialGameState("crag-6-none");
+    state.players.p1.hand = ["stat.attack"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const declared = declareGriffinAttack(state);
+    expect(convertReaction(declared, "stat.attack"), "no conversion without the aura").toBeFalsy();
+    expect(lastAttackBonus(passAllReactions(declared), "unit_p1_griffins"), "plain attack, no bonus").toBe(0);
+  });
+});
+
 // ===========================================================================
 // Gundula — "Slow"
 // ===========================================================================

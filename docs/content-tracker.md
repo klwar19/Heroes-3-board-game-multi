@@ -148,6 +148,22 @@ Citadel siege bonuses (3 Walls, 1 Gate, Arrow Tower) 🔴 — siege combat not i
 
 Additional fan-wiki heroes **not yet shipped** (deferred honestly — their specialty hinges on a subsystem the engine does not have, or on a token the wiki never defines): **Ciele** (Magic Arrow) and **Tarnum (Conflux)** (Enchanters) — both need casting a Spell from your discard / over the per-round limit as a free bonus cast (see the CLAUDE.md Conflux note). EVERYTHING ELSE NOW SHIPS: all six Cove heroes, and the former "needs a subsystem" hold-outs — **Octavia**, **Melodia**, **Tarnum (Rampart)** and **Tarnum (Fortress)** (batch 6, `extra-heroes-batch6-specialties.test.ts`); **Sephinroth**, **Gerwulf**, **Tarnum (Dungeon)** and **Ash** (batch 5; the "Black cube" turned out to mean spending the unit's Retaliation, already wired). Shipped earlier: Valeska, Ingham, Lorelei, Septienna and the Necropolis Lord Haart (batch 3); Ivor, Tarnum (Castle) and Merist (batch 4). Conflux is in the game (Erdamon/Monere/Pasis/Luna); only Ciele + Tarnum (Conflux) remain.
 
+**Specialty wiki audit (2026-06):** every hero's I/IV/VI was re-checked against the
+fan-wiki text (OR-vs-AND structure, instant/ongoing/map timing, duration, magnitude,
+doubled unit). Found + fixed (each mutation-tested in `hero-specialty-audit-fixes.test.ts`):
+**Crag Hack "Offense"** — I is an ONGOING "+1 attack for this Combat" (was the generic
+instant +1/draw OR); IV adds "discard a card for +1 more" (a +1/+2 CHOOSE_ONE); VI is the
+NEW combat aura `CARDS_AS_ATTACK_BONUS` — discard any held card during your attack for +1
+(`CONVERT_CARD_TO_ATTACK`), repeatable (was a flat instant +3). **Gundula "Slow"** — I/VI
+slow by 2/4 Initiative (were 1/3); IV is an instant +1 attack doubled when YOUR unit is
+faster (new `doubleIfAttackerInitiativeHigher`, the mirror of Cyra IV) — was wired as a
+third Slow. **Moandor VI** and **Casmetra VI** were flagged because the wiki renders their
+two clauses with no "— OR —" (looking like AND), but BOTH are CHOICE cards on the owner's
+physical cards (re-confirmed 2026-06) — left as `CHOOSE_ONE`, with a code comment so they
+are not re-flagged. Everything else matched. (Lord Haart Castle's gold gain and Adelaide
+IV's discard-recall are wiki-`<instant>` but coded `mapOnly`; both are economy/map plays
+with no in-combat use, so the restriction stands.)
+
 Hero board level track (verified against the wiki board scan): 2 XP per level; hand limit 4→5(III)→6(V)→7(VII); expert effects +1 at II/IV/VI; ability Search (2) at II/III/V/VII; specialties at I/IV/VI. Secondary Heroes ✅ — gained at the Tavern (7 gold), the Prison, or hired at your town for 10 gold (wearing another town hero's portrait). One per player; base 2 MP (still buffed by movement events/artifacts/abilities like any hero); play no cards in Combat; never gain experience (fights, map locations, level-ups).
 
 ## Units (`src/data/factions/units.ts`)

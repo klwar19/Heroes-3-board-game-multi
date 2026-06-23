@@ -4385,6 +4385,29 @@ export function getLegalReactionsForTrigger(
       }
     }
 
+    // Crag Hack's Offense VI: while its aura is up, discard any held card during
+    // your own unit's attack for +1 attack ("every card you play can grant +1
+    // attack instead of its effect"). One offer per distinct held card; the window
+    // reopens after each conversion, so several cards can stack on one attack.
+    if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
+      const attacker = state.combat?.units[triggerEvent.attackerId];
+      const attackLocked = Boolean(state.stack.at(-1)?.modifiers.negateAttackBuffs);
+      const auraAmount = state.activeEffects.reduce((sum, effect) => {
+        if (effect.scope !== "player" || effect.controllerId !== player.id) {
+          return sum;
+        }
+        return sum + effect.modifiers.reduce((inner, modifier) => inner + (modifier.type === "CARDS_AS_ATTACK_BONUS" ? modifier.amount : 0), 0);
+      }, 0);
+      if (attacker && attacker.controllerId === player.id && !attackLocked && auraAmount > 0) {
+        for (const cardId of [...new Set(player.hand)]) {
+          reactions.push({
+            label: `Offense VI: discard ${cardLibrary[cardId]?.name ?? cardId} for +${auraAmount} attack`,
+            action: { type: "CONVERT_CARD_TO_ATTACK", playerId: player.id, cardId }
+          });
+        }
+      }
+    }
+
     // Cage of Warlords: while an attack waits to resolve, remove a faction
     // cube for +1 attack (you are the attacker) or +1 defense (your unit is
     // the target). One per cube — offered again while cubes remain.
