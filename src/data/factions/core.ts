@@ -2039,6 +2039,24 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     portrait: "/assets/hero_portraits-melodia.webp",
     source: stretchGoalPcPortraitHeroSource("melodia", "Melodia")
   },
+  // Tarnum (Fortress): the Beastmaster variant — the Basilisks specialist. Its own
+  // class portrait (heroes.thelazy.net Tarnum (Beastmaster)).
+  tarnum_fortress: {
+    id: "tarnum_fortress",
+    name: "Tarnum",
+    faction: "fortress",
+    class: "Beastmaster",
+    type: "might",
+    startingStats: { attack: 0, defense: 4, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.armorer",
+    specialtyCardIds: {
+      1: "specialty.tarnum_fortress.1",
+      4: "specialty.tarnum_fortress.4",
+      6: "specialty.tarnum_fortress.6"
+    },
+    portrait: "/assets/hero_portraits-tarnum_beastmaster.webp",
+    source: stretchGoalPcPortraitHeroSource("tarnum_fortress", "Tarnum (Beastmaster)")
+  },
 
   // ---- Cove (expansion) --------------------------------------------------
   // Roster, classes, starting stats and specialties from the fan wiki Cove hero
@@ -2253,7 +2271,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Fortress",
     color: "#6b8e23",
     startingTileId: "S5",
-    heroes: ["bron", "wystan", "tazar", "adrienne", "merist", "gerwulf"],
+    heroes: ["bron", "wystan", "tazar", "adrienne", "merist", "gerwulf", "tarnum_fortress"],
     buildings: buildingsOfFaction("fortress"),
     units: unitsOfFaction("fortress"),
     source: townSource("fortress")

@@ -3751,6 +3751,39 @@ export const adventureCards: CardLibrary = {
     source: heroSource("melodia")
   }),
 
+  // Tarnum (Fortress, Beastmaster, A0 D4 P1 K1, Armorer): the Basilisks specialist
+  // — I/IV are the standard creature buffs (doubled for Basilisks), identical to
+  // Bron's. VI is a single combined instant (NO "OR"): the buffed attack gains +2
+  // attack AND fires the unit's die-gated after-attack ability regardless of the
+  // roll (forceAbilityRolls → forceAbilityRollsThisAttack).
+  "specialty.tarnum_fortress.1": withoutArt(mightSpecialtyOne("tarnum_fortress", "Basilisks", "Basilisks")),
+  "specialty.tarnum_fortress.4": withoutArt(unitHealthSpecialty("tarnum_fortress", "Basilisks", 4, 1, "Basilisks")),
+  "specialty.tarnum_fortress.6": withoutArt({
+    id: "specialty.tarnum_fortress.6",
+    name: "Basilisks VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "tarnum_fortress",
+      "basilisks",
+      "Your selected unit uses its special ability regardless of the required roll's result, and gains +2 attack.",
+      // engine: on this attack the unit gains +2 attack AND every die-GATED
+      // after-attack ability fires regardless of the roll — the Basilisk/Azure
+      // Paralysis, Gorgon Death Stare, Wyvern/Thunderbird flat-damage Sting, Rust
+      // Dragon Acid token and Minotaur draw (forceAbilityRolls). The passive
+      // attack/defense-on-die riders (Dread Knight Death Blow, Zombie/Manticore
+      // Resilience) are attack-maths modifiers, NOT triggered abilities, so they
+      // are not affected.
+    ],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, forceAbilityRolls: true },
+    implementationStatus: "implemented",
+    source: heroSource("tarnum_fortress")
+  }),
+
   // ---- Cove (expansion) specialties --------------------------------------
   // Only the two Cove heroes whose specialties are fully engine-wired are
   // registered: Cassiopeia (Oceanids creature buffs) and Astra (Cure cleanse,
