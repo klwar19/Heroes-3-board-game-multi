@@ -83,6 +83,8 @@ import {
   spellBookRuleEnabled,
   spellCanEnterSpellBook,
   spellLimitFor,
+  SPELL_DECK_BASIC,
+  SPELL_DECK_EXPERT,
   wisdomGoldDiscount,
   wisdomSearchCount
 } from "./ruleset";
@@ -3456,6 +3458,23 @@ export function getLegalActions(
             choiceId: choice.id,
             cardId: "random"
           }
+        });
+      }
+      return actions;
+    }
+
+    if (state.pendingChoice.type === "TARNUM_SEARCH") {
+      const choice = state.pendingChoice;
+      // Tarnum (Conflux) VI: pick ONE Spell deck (basic or expert) to Search 1
+      // card from — only decks that still hold a card are offered.
+      const actions: LegalAction[] = [];
+      const decks = [SPELL_DECK_BASIC, SPELL_DECK_EXPERT].filter(
+        (deckId) => (state.decks[deckId]?.drawPile.length ?? 0) > 0
+      );
+      for (const [optionIndex, deckId] of decks.entries()) {
+        actions.push({
+          label: `Search the ${deckId === SPELL_DECK_EXPERT ? "expert" : "basic"} Spell deck`,
+          action: { type: "CHOOSE_OPTION", playerId, choiceId: choice.id, optionIndex }
         });
       }
       return actions;

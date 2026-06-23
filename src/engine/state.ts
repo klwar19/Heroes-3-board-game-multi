@@ -2952,7 +2952,7 @@ export type GameEvent =
       id: string;
       type: "PENDING_CHOICE_CREATED";
       choiceId: string;
-      choiceType: "ATTACK_DIE_REROLL" | "ABILITY_TARGET_CHOICE" | "COMBAT_HAND_DISCARD";
+      choiceType: "ATTACK_DIE_REROLL" | "ABILITY_TARGET_CHOICE" | "COMBAT_HAND_DISCARD" | "TARNUM_SEARCH";
       playerId: PlayerId;
       sourceEffectIds: string[];
       message: string;
@@ -5849,6 +5849,18 @@ export type PendingChoice =
       repeatSearch?: { deckId: DeckId; count: number };
       /** Tarnum (Conflux) I: each revealed card may be Removed instead of kept. */
       allowRemove?: boolean;
+      returnPhase: GamePhase;
+    }
+  | {
+      /**
+       * Tarnum (Conflux) VI: "Search(1) Spell twice." Each step the caster picks
+       * ONE Spell deck (basic or expert) to Search 1 card from; the taken card is
+       * flagged for a free over-limit cast. `remaining` counts the searches left.
+       */
+      id: string;
+      type: "TARNUM_SEARCH";
+      playerId: PlayerId;
+      remaining: number;
       returnPhase: GamePhase;
     }
   | {
