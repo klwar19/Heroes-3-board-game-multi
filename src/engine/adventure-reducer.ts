@@ -1393,10 +1393,21 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
     }
   }
 
+  const isStartTile = pending.kind === "starting";
   tile.rotation = rotation;
   tile.awaitingRotation = false;
   adventure.pendingTileChoice = null;
-  materializeTileFields(adventure, tile);
+  // The opening home-tile rotation RE-materializes only the six ring fields: the
+  // centre already holds the town and main hero (placed at setup) and never
+  // turns, so it is preserved. A discovered/placed tile materializes all seven
+  // for the first time.
+  materializeTileFields(adventure, tile, { onlyRing: isStartTile });
+  if (isStartTile) {
+    const player = state.players[action.playerId];
+    if (player) {
+      player.startTileRotated = true;
+    }
+  }
   // With this tile's fields now on the board, carve any Subterranean Gate it
   // shares with an adjacent tile on the other layer (the surface gate, and the
   // entrance once the underground tile is revealed). Runs after rotation is
@@ -1413,7 +1424,10 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
 
   // Naval Battles optional rule: a freshly discovered Far/Near tile with a
   // Blocked Field lets the discovering player place a Creature Bank token there.
-  offerCreatureBankPlacement(state, tile, action.playerId);
+  // The home (Ⅰ) tile never offers a bank (it is not a Far/Near discovery).
+  if (!isStartTile) {
+    offerCreatureBankPlacement(state, tile, action.playerId);
+  }
 }
 
 /**
@@ -2349,6 +2363,9 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       player.combatStats.spellsCastThisRound = 0;
       player.combatStats.spellLimitBonusThisRound = 0;
       player.combatStats.anySpellCastThisRound = false;
+      // Tarnum (Conflux) VI: the over-limit Search privilege never carries into a
+      // fresh combat.
+      player.combatStats.tarnumOverlimitCards = [];
     }
   }
 
@@ -4525,6 +4542,16 @@ export function finalizeAdventureCombat(state: GameState): void {
       continue;
     }
 
+    // Tarnum (Rampart) Sharpshooters VI: a borrowed Neutral unit is "discarded
+    // afterwards" — return its card to its tier's Neutral discard pile (whether it
+    // lived or died) and never write it back to the army (it carries no army card).
+    if (unit.temporary && unit.unitDefId) {
+      const def = unit.grade === "gold" ? "gold" : unit.grade;
+      const deck = state.decks[NEUTRAL_DECK_IDS[def as "bronze" | "silver" | "gold" | "azure"]];
+      deck?.discardPile.push(unit.unitDefId);
+      continue;
+    }
+
     // The army card is left untouched: dead units survive and Packs are not
     // flipped to Few (a defeated Sandro's Cloak still peeled to the discard
     // pile mid-combat — that recyclable card is not a "troop").
@@ -5729,7 +5756,14 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     }
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
-    openSharedDeckSearch(state, action.playerId, deckId, choice.deckPick?.count ?? 2);
+    openSharedDeckSearch(
+      state,
+      action.playerId,
+      deckId,
+      choice.deckPick?.count ?? 2,
+      false,
+      Boolean(choice.deckPick?.allowRemove)
+    );
     return;
   }
 
@@ -5760,7 +5794,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     }
 
     // Resume the Search (the override, if any, is consumed on the reveal).
-    openSharedDeckSearch(state, action.playerId, prompt.deckId, prompt.baseCount, true);
+    openSharedDeckSearch(state, action.playerId, prompt.deckId, prompt.baseCount, true, Boolean(prompt.allowRemove));
     return;
   }
 
@@ -5776,7 +5810,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     // choice (revealSharedDeckSearch fires its own Pendant repeat).
     if (action.optionIndex === 0) {
       state.phase = choice.returnPhase;
-      revealSharedDeckSearch(state, action.playerId, mode.deckId, mode.count);
+      revealSharedDeckSearch(state, action.playerId, mode.deckId, mode.count, Boolean(mode.allowRemove));
       return;
     }
 
@@ -6537,7 +6571,8 @@ export function openSharedDeckSearch(
   playerId: PlayerId,
   deckId: string,
   baseCount: number,
-  scoutingResolved = false
+  scoutingResolved = false,
+  allowRemove = false
 ): void {
   const deck = state.decks[deckId];
   if (!deck) {
@@ -6551,7 +6586,7 @@ export function openSharedDeckSearch(
   if (!scoutingResolved) {
     const offer = scoutingPromptFor(state, playerId, baseCount);
     if (offer) {
-      openScoutingPrompt(state, playerId, deckId, baseCount, offer);
+      openScoutingPrompt(state, playerId, deckId, baseCount, offer, allowRemove);
       return;
     }
   }
@@ -6594,7 +6629,8 @@ export function openSharedDeckSearch(
         deckId,
         count: baseCount,
         ...(schoolFetch.length > 0 ? { schoolFetch } : {}),
-        hasDiscardTop: Boolean(discardTopId)
+        hasDiscardTop: Boolean(discardTopId),
+        ...(allowRemove ? { allowRemove: true } : {})
       },
       returnPhase: state.combat ? "combat" : "player-turn"
     };
@@ -6603,7 +6639,7 @@ export function openSharedDeckSearch(
     return;
   }
 
-  revealSharedDeckSearch(state, playerId, deckId, baseCount);
+  revealSharedDeckSearch(state, playerId, deckId, baseCount, allowRemove);
 }
 
 /**
@@ -6702,7 +6738,8 @@ function openScoutingPrompt(
   playerId: PlayerId,
   deckId: string,
   baseCount: number,
-  offer: { offerBasic: boolean; offerExpert: boolean }
+  offer: { offerBasic: boolean; offerExpert: boolean },
+  allowRemove = false
 ): void {
   const options: { label: string }[] = [{ label: `Search (${baseCount}) — don't use Scouting` }];
   if (offer.offerBasic) {
@@ -6718,7 +6755,13 @@ function openScoutingPrompt(
     prompt: `Use Scouting before this ${deckDisplayName(state, deckId)} Search?`,
     options,
     context: "scouting-prompt",
-    scoutingPrompt: { deckId, baseCount, offerBasic: offer.offerBasic, offerExpert: offer.offerExpert },
+    scoutingPrompt: {
+      deckId,
+      baseCount,
+      offerBasic: offer.offerBasic,
+      offerExpert: offer.offerExpert,
+      ...(allowRemove ? { allowRemove: true } : {})
+    },
     returnPhase: state.combat ? "combat" : "player-turn"
   };
   state.phase = "choice";
@@ -6772,7 +6815,13 @@ export function playScoutingCard(state: GameState, playerId: PlayerId, mode: "ba
   });
 }
 
-export function revealSharedDeckSearch(state: GameState, playerId: PlayerId, deckId: string, baseCount: number): void {
+export function revealSharedDeckSearch(
+  state: GameState,
+  playerId: PlayerId,
+  deckId: string,
+  baseCount: number,
+  allowRemove = false
+): void {
   const deck = state.decks[deckId];
   if (!deck) {
     return;
@@ -6817,6 +6866,7 @@ export function revealSharedDeckSearch(state: GameState, playerId: PlayerId, dec
     deckId,
     revealedCardIds,
     ...(repeats ? { repeatSearch: { deckId, count: baseCount } } : {}),
+    ...(allowRemove ? { allowRemove: true } : {}),
     returnPhase: state.combat ? "combat" : "player-turn"
   };
   state.phase = "choice";
@@ -6949,6 +6999,13 @@ export function pumpAdventureQueues(state: GameState): void {
     return;
   }
 
+  // A pending tile rotation (a discovery, a Far placement, or the opening
+  // home-tile rotation) is a hard now-or-never gate: nothing else — not even a
+  // queued start-of-turn reward — resolves until the player locks the rotation.
+  if (adventure.pendingTileChoice) {
+    return;
+  }
+
   if (adventure.pendingVisit) {
     processPendingVisit(state);
     if (state.pendingChoice || adventure.pendingVisit) {
@@ -7015,7 +7072,7 @@ export function pumpAdventureQueues(state: GameState): void {
             label: `${deckDisplayName(state, deckId)} (${(state.decks[deckId]?.drawPile.length ?? 0) + (state.decks[deckId]?.discardPile.length ?? 0)} cards)`
           })),
           context: "deck-pick",
-          deckPick: { deckIds: candidates, count: reward.count },
+          deckPick: { deckIds: candidates, count: reward.count, ...(reward.allowRemove ? { allowRemove: true } : {}) },
           returnPhase: "player-turn"
         };
         state.phase = "choice";
@@ -7023,7 +7080,7 @@ export function pumpAdventureQueues(state: GameState): void {
         return;
       }
 
-      openSharedDeckSearch(state, reward.playerId, candidates[0], reward.count);
+      openSharedDeckSearch(state, reward.playerId, candidates[0], reward.count, false, Boolean(reward.allowRemove));
       return;
     }
 

@@ -635,3 +635,75 @@ describe("subterranean gate: crossing it with the real move action", () => {
     expect(fieldLayer(state, dest)).toBe("subterranean");
   });
 });
+
+// ---------------------------------------------------------------------------
+// One gate per tile (BINH house rule): a single map tile hosts AT MOST one
+// Subterranean Gate Token half. A tile that already opened a gate to one
+// neighbour never accepts a second to another — the extra gate is simply never
+// carved (and no orphan half is left on the other side either).
+// ---------------------------------------------------------------------------
+describe("one gate per tile", () => {
+  const gatesOn = (state: GameState, tile: MapTileState): MapFieldState[] =>
+    getTileFootprintSpaceIds(tile)
+      .map((id) => adv(state).fields[id])
+      .filter((f): f is MapFieldState => f?.location === "subterranean_gate");
+
+  it("a Surface tile touching TWO caverns still hosts only ONE gate; the second neighbour stays sealed", () => {
+    const state = makeGame();
+    const a = adv(state);
+    const surfaceCenter = { row: 24, col: 12 };
+    const [n0, n1] = tileLatticeNeighbors(surfaceCenter);
+    const surface = instantiateTile(a, "F1", surfaceCenter, 0, false);
+    const cavernA = instantiateTile(a, "U1", n0, 0, false);
+    const cavernB = instantiateTile(a, "U2", n1, 0, false);
+    setAllEmpty(state, surface);
+    setAllEmpty(state, cavernA);
+    setAllEmpty(state, cavernB);
+
+    recomputeSubterraneanGates(a);
+
+    // The rule caps the surface tile at one gate even with two cavern neighbours
+    // (without it, a distinct gate would carve per neighbour — this would be 2).
+    expect(gatesOn(state, surface).length, "surface tile hosts exactly one gate").toBe(1);
+    // Exactly one cavern received the matching entrance; the other is left sealed
+    // — no orphan half-gate that crosses to nowhere.
+    const withEntrance = [cavernA, cavernB].filter((c) => gatesOn(state, c).length > 0);
+    const sealed = [cavernA, cavernB].filter((c) => gatesOn(state, c).length === 0);
+    expect(withEntrance.length, "one cavern gets the entrance").toBe(1);
+    expect(sealed.length, "the other cavern stays sealed").toBe(1);
+
+    // The single carved pair is a real, crossable link both ways; the sealed
+    // cavern cannot be entered from the surface tile at all.
+    const sGate = gatesOn(state, surface)[0];
+    const uGate = gatesOn(state, withEntrance[0])[0];
+    expect(gateFieldsLinked(sGate, uGate)).toBe(true);
+    expect(canCrossEdge(state, sGate.spaceId, uGate.spaceId)).toBe(true);
+    expect(canCrossEdge(state, uGate.spaceId, sGate.spaceId)).toBe(true);
+    for (const surfId of getTileFootprintSpaceIds(surface)) {
+      for (const cavId of getTileFootprintSpaceIds(sealed[0])) {
+        if (hexDistance(parseHexSpaceId(surfId)!, parseHexSpaceId(cavId)!) === 1) {
+          expect(canCrossEdge(state, surfId, cavId), "sealed cavern is unreachable").toBe(false);
+        }
+      }
+    }
+  });
+
+  it("a cavern touching TWO Surface tiles still hosts only ONE entrance", () => {
+    const state = makeGame();
+    const a = adv(state);
+    const cavernCenter = { row: 24, col: 12 };
+    const [n0, n1] = tileLatticeNeighbors(cavernCenter);
+    const cavern = instantiateTile(a, "U1", cavernCenter, 0, false);
+    const surfaceA = instantiateTile(a, "F1", n0, 0, false);
+    const surfaceB = instantiateTile(a, "F2", n1, 0, false);
+    setAllEmpty(state, cavern);
+    setAllEmpty(state, surfaceA);
+    setAllEmpty(state, surfaceB);
+
+    recomputeSubterraneanGates(a);
+
+    expect(gatesOn(state, cavern).length, "cavern hosts exactly one entrance").toBe(1);
+    const gatedSurfaces = [surfaceA, surfaceB].filter((s) => gatesOn(state, s).length > 0);
+    expect(gatedSurfaces.length, "only one surface tile receives a gate").toBe(1);
+  });
+});
