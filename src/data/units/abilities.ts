@@ -64,6 +64,41 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
+       * Mammoths' Thick Hide: +N Defense while this unit is defending (it holds
+       * a Defense token). Added on top of the Defend die in resolveDefendBonus.
+       */
+      type: "DEFEND_BONUS";
+      amount: number;
+    }
+  | {
+      /**
+       * Shamans' Air Shield: +N Defense against an attacker of a given unit type
+       * ("ranged" = Air Shield, "ground-or-flying" = Shield). The unit-ability
+       * twin of the DEFENSE_VS_ATTACKER_TYPE active-effect modifier; read in
+       * getSelfAttackerTypeDefenseBonus during the attack maths.
+       */
+      type: "DEFENSE_VS_ATTACKER_TYPE";
+      attackerType: "ground-or-flying" | "ranged";
+      amount: number;
+    }
+  | {
+      /**
+       * Great Shamans' Freezing Shot: after this unit's attack, the target's
+       * Initiative drops by `amount` (negative) through its next combat round.
+       */
+      type: "ON_ATTACK_INITIATIVE_DEBUFF";
+      amount: number;
+    }
+  | {
+      /**
+       * Yetis ("recover from negative effects"): at the start of its activation
+       * the unit shakes off every negative ongoing effect on it and its
+       * Weakness/Corrosion tokens. Resolved in clearOwnDebuffsAtActivation.
+       */
+      type: "CLEAR_OWN_DEBUFFS_ON_ACTIVATION";
+    }
+  | {
+      /**
        * Cyclops siege ability ("other action"): destroy the Gate or a Wall —
        * the pack/neutral versions may also destroy the Arrow Tower. Works at
        * any range; automatically successful.
@@ -882,6 +917,42 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Teleport",
     text: "As a regular movement, this unit can move to any empty space.",
     effect: { type: "MOVE_ANYWHERE" },
+    implementationStatus: "implemented"
+  },
+  // --- Bulwark faction abilities (heroes.thelazy.net/Bulwark, rescaled) ---
+  "bulwark-kobold-gold": {
+    id: "bulwark-kobold-gold",
+    name: "Gold Generation",
+    text: "[map] At the beginning of each Resource round, this unit's controller gains 1 gold.",
+    mapEffect: { type: "MAP_RESOURCE_ROUND_GAIN", resource: "gold", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "bulwark-yeti-recover": {
+    id: "bulwark-yeti-recover",
+    name: "Recovery",
+    text: "[unit_passive] At the start of its activation, this unit recovers from all negative effects (negative ongoing effects and Weakness/Corrosion tokens).",
+    effect: { type: "CLEAR_OWN_DEBUFFS_ON_ACTIVATION" },
+    implementationStatus: "implemented"
+  },
+  "bulwark-air-shield": {
+    id: "bulwark-air-shield",
+    name: "Air Shield",
+    text: "[unit_passive] +1 Defense against attacks from ranged units.",
+    effect: { type: "DEFENSE_VS_ATTACKER_TYPE", attackerType: "ranged", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "bulwark-freezing-shot": {
+    id: "bulwark-freezing-shot",
+    name: "Freezing Shot",
+    text: "[unit_attack] After the attack, reduce the target's Initiative by 2 through its next combat round.",
+    effect: { type: "ON_ATTACK_INITIATIVE_DEBUFF", amount: -2 },
+    implementationStatus: "implemented"
+  },
+  "bulwark-thick-hide": {
+    id: "bulwark-thick-hide",
+    name: "Thick Hide",
+    text: "[unit_passive] +2 Defense while this unit is defending.",
+    effect: { type: "DEFEND_BONUS", amount: 2 },
     implementationStatus: "implemented"
   },
   "magog-fireball-splash": {

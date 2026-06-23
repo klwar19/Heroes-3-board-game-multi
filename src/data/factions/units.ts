@@ -1119,6 +1119,123 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     }
   },
 
+  // ==== Bulwark faction units (expansion) ================================
+  // Fan-faction roster (heroes.thelazy.net/Bulwark) rescaled to the board
+  // game's stat band (calibrated against Tower/Cove). The `abilities` array is
+  // the COMPLETE list of engine-wired effects for each side; `abilityText` is
+  // display flavour. Art is download-pending (paths follow the convention).
+  "bulwark.kobolds": {
+    id: "bulwark.kobolds",
+    name: "Kobolds",
+    faction: "bulwark",
+    tier: "bronze",
+    type: "ground",
+    few: { attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 0 }, abilities: ["bulwark-kobold-gold"], abilityText: "[map] At the beginning of each Resource round, gain 1 [gold].", cardImage: "/assets/units-bulwark-bronze-kobolds-few.webp" },
+    pack: { attack: 2, defense: 1, health: 3, initiative: 5, cost: { gold: 2 }, abilities: ["bulwark-kobold-gold"], abilityText: "[map] At the beginning of each Resource round, gain 1 [gold].", cardImage: "/assets/units-bulwark-bronze-kobolds-pack.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Kobold",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
+      credit: "Fan-faction stats/abilities from heroes.thelazy.net/Bulwark, rescaled to the board game; placeholder art. Verify before final release.",
+      url: "https://heroes.thelazy.net/index.php/Bulwark"
+    }
+  },
+  "bulwark.mountain_rams": {
+    id: "bulwark.mountain_rams",
+    name: "Mountain Rams",
+    faction: "bulwark",
+    tier: "bronze",
+    type: "ground",
+    // engine: Few (Mountain Ram) has no wired ability; Pack (Argali) carries the
+    // magic-resistance translation only (reduce-spell-damage-1).
+    few: { attack: 2, defense: 2, health: 3, initiative: 4, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-bulwark-bronze-mountain_rams-few.webp" },
+    pack: { attack: 3, defense: 2, health: 4, initiative: 5, cost: { gold: 4 }, abilities: ["reduce-spell-damage-1"], abilityText: "[unit_passive] Reduce any [damage] from [spell] by 1 (Argali).", cardImage: "/assets/units-bulwark-bronze-mountain_rams-pack.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Mountain_Ram",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
+      credit: "Fan-faction stats/abilities from heroes.thelazy.net/Bulwark, rescaled to the board game; placeholder art. Verify before final release.",
+      url: "https://heroes.thelazy.net/index.php/Bulwark"
+    }
+  },
+  "bulwark.snow_elves": {
+    id: "bulwark.snow_elves",
+    name: "Snow Elves",
+    faction: "bulwark",
+    tier: "bronze",
+    type: "ranged",
+    few: { attack: 3, defense: 0, health: 2, initiative: 4, cost: { gold: 3 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit.", cardImage: "/assets/units-bulwark-bronze-snow_elves-few.webp" },
+    pack: { attack: 4, defense: 1, health: 3, initiative: 5, cost: { gold: 5 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit (Steel Elf).", cardImage: "/assets/units-bulwark-bronze-snow_elves-pack.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Snow_Elf",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
+      credit: "Fan-faction stats/abilities from heroes.thelazy.net/Bulwark, rescaled to the board game; placeholder art. Verify before final release.",
+      url: "https://heroes.thelazy.net/index.php/Bulwark"
+    }
+  },
+  "bulwark.yetis": {
+    id: "bulwark.yetis",
+    name: "Yetis",
+    faction: "bulwark",
+    tier: "silver",
+    type: "ground",
+    few: { attack: 4, defense: 2, health: 5, initiative: 5, cost: { gold: 6 }, abilities: ["bulwark-yeti-recover"], abilityText: "[unit_passive] At the start of its activation, this unit recovers from all negative effects.", cardImage: "/assets/units-bulwark-silver-yetis-few.webp" },
+    pack: { attack: 4, defense: 3, health: 6, initiative: 6, cost: { gold: 10 }, abilities: ["bulwark-yeti-recover"], abilityText: "[unit_passive] At the start of its activation, this unit recovers from all negative effects.", cardImage: "/assets/units-bulwark-silver-yetis-pack.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Yeti",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
+      credit: "Fan-faction stats/abilities from heroes.thelazy.net/Bulwark, rescaled to the board game; placeholder art. Verify before final release.",
+      url: "https://heroes.thelazy.net/index.php/Bulwark"
+    }
+  },
+  "bulwark.shamans": {
+    id: "bulwark.shamans",
+    name: "Shamans",
+    faction: "bulwark",
+    tier: "silver",
+    type: "ranged",
+    // engine: Few carries Air Shield only; Pack (Great Shaman) adds Freezing Shot.
+    few: { attack: 3, defense: 1, health: 5, initiative: 5, cost: { gold: 7 }, abilities: ["bulwark-air-shield"], abilityText: "[unit_passive] +1 Defense against ranged attackers (Air Shield).", cardImage: "/assets/units-bulwark-silver-shamans-few.webp" },
+    pack: { attack: 4, defense: 1, health: 5, initiative: 6, cost: { gold: 11 }, abilities: ["bulwark-air-shield", "bulwark-freezing-shot"], abilityText: "[unit_passive] +1 Defense against ranged attackers (Air Shield). [unit_attack] After the attack, reduce the target's Initiative by 2 next round (Freezing Shot).", cardImage: "/assets/units-bulwark-silver-shamans-pack.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Shaman_(Bulwark)",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
+      credit: "Fan-faction stats/abilities from heroes.thelazy.net/Bulwark, rescaled to the board game; placeholder art. Verify before final release.",
+      url: "https://heroes.thelazy.net/index.php/Bulwark"
+    }
+  },
+  "bulwark.mammoths": {
+    id: "bulwark.mammoths",
+    name: "Mammoths",
+    faction: "bulwark",
+    tier: "gold",
+    type: "ground",
+    // engine: Few (Mammoth) has no wired ability; Pack (War Mammoth) adds Thick Hide.
+    few: { attack: 5, defense: 3, health: 8, initiative: 5, cost: { gold: 12 }, abilities: [], cardImage: "/assets/units-bulwark-golden-mammoths-few.webp" },
+    pack: { attack: 6, defense: 3, health: 8, initiative: 6, cost: { gold: 20, valuables: 1 }, abilities: ["bulwark-thick-hide"], abilityText: "[unit_passive] +2 Defense while this unit is defending (War Mammoth).", cardImage: "/assets/units-bulwark-golden-mammoths-pack.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Mammoth",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
+      credit: "Fan-faction stats/abilities from heroes.thelazy.net/Bulwark, rescaled to the board game; placeholder art. Verify before final release.",
+      url: "https://heroes.thelazy.net/index.php/Bulwark"
+    }
+  },
+  "bulwark.jotunns": {
+    id: "bulwark.jotunns",
+    name: "Jotunns",
+    faction: "bulwark",
+    tier: "gold",
+    type: "ground",
+    // engine: both sides teleport at the start of their turn (MOVE_ANYWHERE);
+    // the printed "teleport an ally" / enemy-flying-slow riders are NOT wired.
+    few: { attack: 6, defense: 3, health: 8, initiative: 6, cost: { gold: 18, valuables: 1 }, abilities: ["teleport-move"], abilityText: "As a regular movement, this unit can move to any empty space (Teleport).", cardImage: "/assets/units-bulwark-golden-jotunns-few.webp" },
+    pack: { attack: 7, defense: 3, health: 8, initiative: 8, cost: { gold: 32, valuables: 2 }, abilities: ["teleport-move"], abilityText: "As a regular movement, this unit can move to any empty space (Teleport).", cardImage: "/assets/units-bulwark-golden-jotunns-pack.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Jotunn",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
+      credit: "Fan-faction stats/abilities from heroes.thelazy.net/Bulwark, rescaled to the board game; placeholder art. Verify before final release.",
+      url: "https://heroes.thelazy.net/index.php/Bulwark"
+    }
+  },
+
   // ---- Cove neutral guards (expansion) ----------------------------------
   // The single-sided Neutral Unit card the wiki prints for each Cove creature
   // (https://en.homm3bg.wiki/units/<slug>/, "Neutral" column). Auto-joins its

@@ -124,7 +124,16 @@ const creatureVoices: Record<string, string> = {
   ayssids: "stormbird",
   sorceresses: "sea-witch",
   nix: "nix",
-  haspids: "sea-serpent"
+  haspids: "sea-serpent",
+  // Bulwark (fan faction): the board-game creatures reuse base-game voice sets
+  // until dedicated audio is converted (heroes.thelazy.net/Bulwark, placeholder).
+  kobolds: "goblin",
+  mountain_rams: "boar",
+  snow_elves: "wood-elf",
+  yetis: "ogre",
+  shamans: "mage",
+  mammoths: "behemoth",
+  jotunns: "titan"
 };
 
 /**
