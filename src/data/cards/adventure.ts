@@ -2639,11 +2639,15 @@ export const adventureCards: CardLibrary = {
     source: heroSource("tarnum_conflux")
   }),
   // VI is an Instant: it may be played on your own turn OR off-turn in an instant
-  // window. The Searched spells then cast only if "their type allows it" — an
-  // instant spell can be cast off-turn, but a combat-/action-timed one needs your
-  // own active unit, so playing VI off-turn risks Searching spells you cannot cast
-  // right then (they just stay in hand). The Search spans the basic AND expert
-  // (BINH) Spell decks.
+  // window. Each of the two Searches picks ONE Spell deck — basic or expert — to
+  // draw 1 card from (the TARNUM_SEARCH per-search deck choice). A Searched spell
+  // then casts over the limit only when "their type allows it" in the current
+  // window: a combat spell (Fireball) on your own turn, a trigger-free instant
+  // anytime, and an attack/defense-changing reaction instant (Bless, Curse,
+  // Bloodlust…) in the instant/reaction window when an attack is declared. One
+  // that does not fit the open window just stays in hand. Each cast spell returns
+  // to the shared Spell deck top OR its discard pile (the caster's choice, so the
+  // order is yours).
   "specialty.tarnum_conflux.6": withoutArt({
     id: "specialty.tarnum_conflux.6",
     name: "Enchanters VI",

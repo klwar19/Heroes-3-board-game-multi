@@ -4137,6 +4137,10 @@ export function getLegalReactionsForTrigger(
       (player.combatStats.expertUseBonusThisRound ?? 0) -
       player.combatStats.expertUsesSpentThisRound;
     const spellLimitLeft = spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
+    // Tarnum (Conflux) VI: just-Searched flagged Spells are offered as free
+    // over-limit reactions through a dedicated pass below, so the normal
+    // (limit-counting, own-discard) reaction path skips them here.
+    const tarnumFlagged = new Set(player.combatStats.tarnumOverlimitCards ?? []);
 
     const reactions: LegalAction[] = [];
     // Power has no effect of its own during an attack: it may only be paid
@@ -4158,6 +4162,10 @@ export function getLegalReactionsForTrigger(
 
     for (const { cardId, fromSpellBook } of reactionSources) {
       const card = cards[cardId];
+      // Tarnum-flagged Spells run through the dedicated free over-limit pass.
+      if (!fromSpellBook && tarnumFlagged.has(cardId)) {
+        continue;
+      }
       // Permanents join reaction windows only through their printed expert
       // side (School of Magic +3 power from hand); their basic side is the
       // enter-play action outside reaction windows.
@@ -4543,6 +4551,52 @@ export function getLegalReactionsForTrigger(
       attackStackItem?.modifiers.ignoreDefenseCasterId === player.id;
     if (!isAttackWindow || hasPairableSpell || hasEmpowerablePlayed) {
       reactions.push(...powerReactions);
+    }
+
+    // Tarnum (Conflux) VI: a just-Searched, flagged trigger-instant Spell (Bless,
+    // Curse, Stone Skin… — the attack/defense changers) is castable here in the
+    // instant window for FREE, OVER the per-round limit, returning to the shared
+    // Spell deck top or its discard pile (the caster's choice). Offered as a
+    // dedicated pass so it bypasses the spell-limit gate the normal path applies.
+    if (!castLocked) {
+      for (const cardId of tarnumFlagged) {
+        if (!player.hand.includes(cardId)) {
+          continue;
+        }
+        const card = cards[cardId];
+        if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
+          continue;
+        }
+        for (const variant of getCardPlayVariants(card)) {
+          if (
+            variant.mapOnly ||
+            variant.expertOnly ||
+            Boolean(card.permanent) ||
+            variant.effect.type === "ADD_SPELL_POWER" ||
+            variant.effect.type === "REDIRECT_SPELL" ||
+            !variantMatchesTrigger(variant, triggerEvent, player.id) ||
+            !isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic")
+          ) {
+            continue;
+          }
+          const base = variant.optionLabel ? `${card.name}: ${variant.optionLabel}` : card.name;
+          for (const tarnumReturn of ["deck-top", "discard"] as const) {
+            reactions.push(
+              makeReactionAction(
+                `${base} (free; ${tarnumReturn === "deck-top" ? "to Spell deck top" : "to Spell discard"})`,
+                {
+                  type: "PLAY_REACTION",
+                  playerId: player.id,
+                  cardId,
+                  mode: "basic",
+                  ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
+                  tarnumReturn
+                }
+              )
+            );
+          }
+        }
+      }
     }
 
     if (reactions.length > 0) {
