@@ -1123,7 +1123,9 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
   // Fan-faction roster (heroes.thelazy.net/Bulwark) rescaled to the board
   // game's stat band (calibrated against Tower/Cove). The `abilities` array is
   // the COMPLETE list of engine-wired effects for each side; `abilityText` is
-  // display flavour. Art is download-pending (paths follow the convention).
+  // display flavour. Card art is the creature's wiki portrait composed onto a
+  // card canvas by scripts/fetch-bulwark-art.py (placeholder; replace before
+  // any wider release).
   "bulwark.kobolds": {
     id: "bulwark.kobolds",
     name: "Kobolds",

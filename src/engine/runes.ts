@@ -17,15 +17,24 @@ import type { ActiveEffectModifier, CombatUnitState, GameState, PlayerId } from 
  *      Level 2 (needs Sieidi) -> +1 Defense  (on top of L1)
  *      Level 3 (needs Altar)  -> +3 Initiative (on top of L1+L2)
  *  - Runes RESET every battle (collected again from scratch). Every Bulwark army
- *    starts each battle with a base of RUNE_STARTING_BASE Runes; the City Hall
- *    combat-focus choice and the Sieidi/Altar buildings raise that starting
- *    number further (and the buildings raise the level cap).
+ *    BEGINS each battle with RUNE_STARTING_BASE Runes — enough to clear the first
+ *    threshold, so Bulwark is attuned at Level 1 from the opening (the user spec:
+ *    "begin: 4, reach 4 and activate the first threshold").
+ *  - The Sieidi/Altar buildings do NOT pre-charge Runes; they raise the level
+ *    CAP only (Sieidi -> Level 2, Altar -> Level 3). The next threshold is +3
+ *    Runes away and you must EARN the climb in battle by acting (the user spec:
+ *    "then +3 then +3 (2 buildings)"). The City Hall combat-focus choice and
+ *    Kriv's specialty add starting/banked Runes to accelerate that climb. This is
+ *    deliberate: pre-charging straight to the cap (the previous behaviour) made
+ *    the entire earn-by-acting loop, Kriv's specialty and the City Hall option
+ *    inert in real combat — a decorative mechanic. They are load-bearing now.
  *
- * What the dev note leaves open (designed here, tunable in ONE place, mirroring
- * the PC skill's 9-rune Expert cap):
- *  - the per-level Rune THRESHOLDS (3 / 6 / 9) and the starting-rune amounts
- *    granted by Sieidi / Altar / the City Hall flag (see core.ts RUNE_ALTAR
- *    buildings + the bulwark.city_hall option).
+ * What the dev note leaves open (designed here, tunable in ONE place):
+ *  - the per-level Rune THRESHOLDS (4 / 7 / 10 — first rung at 4, then +3, +3)
+ *    and the starting-rune amount (RUNE_STARTING_BASE). The Sieidi/Altar
+ *    buildings carry startingRunes: 0 (cap-raisers, not pre-chargers); the City
+ *    Hall flag is the head-start path (see core.ts RUNE_ALTAR buildings + the
+ *    bulwark.city_hall option).
  *
  * Implementation note: the army-wide buff reuses the engine's existing
  * player-scoped active-effect machinery (exactly how Necklace of Swiftness /
@@ -37,10 +46,12 @@ import type { ActiveEffectModifier, CombatUnitState, GameState, PlayerId } from 
  */
 
 /**
- * Rune totals required to reach Rune Levels 1, 2 and 3. Not given in the dev
- * note; chosen to land the cap at the PC skill's 9-rune Expert maximum.
+ * Rune totals required to reach Rune Levels 1, 2 and 3. Per the user spec the
+ * first rung is at 4 and each further level is +3 Runes away (4 / 7 / 10): a
+ * Bulwark army begins at 4 (Level 1) and earns the +3-Rune climbs to Levels 2/3
+ * once the Sieidi/Altar raise the cap.
  */
-export const RUNE_LEVEL_THRESHOLDS = [3, 6, 9] as const;
+export const RUNE_LEVEL_THRESHOLDS = [4, 7, 10] as const;
 /** No point banking past Level 3 — Runes cap at the top threshold. */
 export const RUNE_MAX = RUNE_LEVEL_THRESHOLDS[RUNE_LEVEL_THRESHOLDS.length - 1];
 
@@ -70,11 +81,13 @@ export function isBulwarkPlayer(state: GameState, playerId: PlayerId | undefined
 }
 
 /**
- * The Sieidi/Altar baseline for a player: the extra Runes their Hero starts each
- * combat with, and the Rune Level cap their rune building unlocks. Without any
- * rune building a Bulwark player still reaches Level 1 (the base faction
- * mechanic), so the cap floor is 1. The Altar supersedes the Sieidi (same tile),
- * so the strongest rune building present wins.
+ * The Sieidi/Altar baseline for a player: the Rune Level CAP their rune building
+ * unlocks (Sieidi -> 2, Altar -> 3) and any starting Runes it pre-charges. The
+ * board's rune buildings are cap-raisers, not pre-chargers, so startingRunes is
+ * 0 — the player must EARN the climb to the unlocked level by acting in battle.
+ * Without any rune building a Bulwark player is capped at Level 1 (the base
+ * faction mechanic), so the cap floor is 1. The Altar supersedes the Sieidi
+ * (same tile), so the strongest rune building present wins.
  */
 export function runeBuildingInfo(
   state: GameState,
@@ -156,9 +169,11 @@ function syncRuneEffects(state: GameState, playerId: PlayerId): void {
 /**
  * Seeds the per-combat Rune pools for both participants at the start of a battle
  * (called from finalizeCombatStart). Only Bulwark players get a pool; the
- * starting amount is the Sieidi/Altar baseline plus any City Hall "Rune-Empowered"
- * bonus, capped at RUNE_MAX. The seed immediately applies whatever Rune Level it
- * already qualifies for.
+ * starting amount is RUNE_STARTING_BASE (4 -> Level 1) plus the rune building's
+ * startingRunes (0 today — cap-raisers, not pre-chargers) plus any City Hall
+ * "Rune-Empowered" bonus, capped at RUNE_MAX. The seed immediately applies
+ * whatever Rune Level it already qualifies for; further levels are EARNED via
+ * gainRunes during the fight.
  */
 export function seedRunesForCombat(state: GameState): void {
   const combat = state.combat;
@@ -219,4 +234,45 @@ export function getRuneSummary(
   const level = Math.min(runeLevelForCount(count), levelCap);
   const nextThreshold = level < levelCap ? RUNE_LEVEL_THRESHOLDS[level] : null;
   return { count, level, levelCap, nextThreshold };
+}
+
+/** The per-level cumulative buff label shown on the Rune track (kept in sync with RUNE_LEVEL_BONUS). */
+export const RUNE_LEVEL_LABELS = [
+  `+${RUNE_LEVEL_BONUS.attack} Attack`,
+  `+${RUNE_LEVEL_BONUS.defense} Defense`,
+  `+${RUNE_LEVEL_BONUS.initiative} Initiative`
+] as const;
+
+/**
+ * Per-level status for one rung of the Rune track:
+ *  - "active":  the army-wide buff is live (the level is reached AND within cap),
+ *  - "pending": the building unlocks this level but the player hasn't EARNED the
+ *               Runes for it yet (the climb the buildings open up),
+ *  - "locked":  no rune building unlocks this level (build the Sieidi/Altar).
+ */
+export type RuneLevelStatus = "active" | "pending" | "locked";
+
+export type RuneTrackView = {
+  count: number;
+  level: number;
+  levelCap: number;
+  max: number;
+  nextThreshold: number | null;
+  levels: { level: number; threshold: number; bonusLabel: string; status: RuneLevelStatus }[];
+};
+
+/**
+ * Everything the combat UI needs to draw a Bulwark player's Rune track in one
+ * tested place: the live count, the effective level/cap, the cap (RUNE_MAX) and
+ * each level's threshold, bonus label and active/pending/locked status.
+ */
+export function getRuneTrack(state: GameState, playerId: PlayerId): RuneTrackView {
+  const { count, level, levelCap, nextThreshold } = getRuneSummary(state, playerId);
+  const levels = RUNE_LEVEL_THRESHOLDS.map((threshold, index) => {
+    const rung = index + 1;
+    const status: RuneLevelStatus =
+      rung > levelCap ? "locked" : level >= rung ? "active" : "pending";
+    return { level: rung, threshold, bonusLabel: RUNE_LEVEL_LABELS[index], status };
+  });
+  return { count, level, levelCap, max: RUNE_MAX, nextThreshold, levels };
 }
