@@ -6647,7 +6647,12 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
           duration: card.effect.duration,
           polarity: card.effect.polarity ?? (amount >= 0 ? "positive" : "negative"),
           removable: card.effect.removable ?? true,
-          modifiers: [{ type: "INITIATIVE_BONUS", amount }]
+          modifiers: [
+            { type: "INITIATIVE_BONUS", amount },
+            ...(card.effect.movementBonus
+              ? [{ type: "MOVEMENT_BONUS" as const, amount: card.effect.movementBonus }]
+              : [])
+          ]
         },
         { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
         stackItem.action.playerId,
@@ -10179,7 +10184,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         duration: effect.duration,
         polarity: effect.polarity ?? (amount >= 0 ? "positive" : "negative"),
         removable: effect.removable ?? true,
-        modifiers: [{ type: "INITIATIVE_BONUS", amount }]
+        modifiers: [
+          { type: "INITIATIVE_BONUS", amount },
+          ...(effect.movementBonus
+            ? [{ type: "MOVEMENT_BONUS" as const, amount: effect.movementBonus }]
+            : [])
+        ]
       },
       { type: "card", cardId: card.id, controllerId: action.playerId },
       action.playerId,
@@ -12147,7 +12157,7 @@ function moveAndAttackUnit(
         : (planMovePath(
             from,
             destination,
-            getUnitMoveRange(attacker),
+            getUnitMoveRange(attacker, state),
             getBlockedSpaces(combat, attacker),
             getKnownHazardSpaces(combat, attacker)
           ) ?? [destination]);
@@ -12400,13 +12410,14 @@ function walkMoveThroughTokens(
  * point of letting the player pick the path.
  */
 function isLegalExplicitMovePath(
+  state: GameState,
   combat: CombatState,
   unit: CombatUnitState,
   start: number,
   path: number[],
   destination: number
 ): boolean {
-  if (path.length === 0 || path.length > getUnitMoveRange(unit)) {
+  if (path.length === 0 || path.length > getUnitMoveRange(unit, state)) {
     return false;
   }
   if (path[path.length - 1] !== destination) {
@@ -12446,7 +12457,7 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
   // tokens and no chosen path, the walk is skipped and movement is unchanged.
   let enteredSpaces: number[] | null = null;
   if (action.path && unit.type !== "flying") {
-    if (!isLegalExplicitMovePath(combat, unit, from, action.path, destination)) {
+    if (!isLegalExplicitMovePath(state, combat, unit, from, action.path, destination)) {
       throw new Error("That movement path is not legal.");
     }
     enteredSpaces = action.path;
@@ -12457,7 +12468,7 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
         : (planMovePath(
             from,
             destination,
-            getUnitMoveRange(unit),
+            getUnitMoveRange(unit, state),
             getBlockedSpaces(combat, unit),
             getKnownHazardSpaces(combat, unit)
           ) ?? [destination]);

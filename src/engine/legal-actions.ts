@@ -488,12 +488,26 @@ export { isAdjacent } from "./battlefield";
  * Printed movement values: ground and flying units move up to 3 spaces,
  * ranged units up to 1 space (after shooting or instead of attacking).
  */
-export function getUnitMoveRange(unit: CombatUnitState): number {
-  if (unit.type === "ranged") {
-    return 1;
-  }
+export function getUnitMoveRange(unit: CombatUnitState, state?: GameState): number {
+  const base = unit.type === "ranged" ? 1 : 3;
 
-  return 3;
+  // House rule (BINH only): Haste / Slow (and Cyra / Gundula's specialties) also
+  // shift Combat movement by ±1 (MOVEMENT_BONUS). Legacy keeps the fixed range.
+  if (!state || getRuleset(state) !== "binh") {
+    return base;
+  }
+  let bonus = 0;
+  for (const effect of state.activeEffects) {
+    if (!effectAppliesToUnit(effect, unit)) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "MOVEMENT_BONUS") {
+        bonus += modifier.amount;
+      }
+    }
+  }
+  return Math.max(1, base + bonus);
 }
 
 export function getCombatObstacles(combat: CombatState): number[] {
@@ -634,7 +648,7 @@ export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitSt
 
   return getReachableDestinations(
     unit.position,
-    getUnitMoveRange(unit),
+    getUnitMoveRange(unit, state),
     blocked,
     unit.type === "flying"
   ).filter(isBattlefieldPosition);

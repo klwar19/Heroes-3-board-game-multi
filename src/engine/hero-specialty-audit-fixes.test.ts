@@ -74,40 +74,55 @@ describe("Crag Hack's Offense specialty (audit fix)", () => {
     expect(effect!.modifiers.find((m) => m.type === "ATTACK_BONUS")?.["amount" as never], "+1 attack").toBe(1);
   });
 
-  it("IV gives +1 free OR +2 for discarding a card, both ongoing for the Combat", () => {
+  it("IV is an INSTANT +1 on a single attack, or discard a card for +2", () => {
     const card = adventureCards["specialty.crag_hack.4"];
     expect(card.effect.type).toBe("CHOOSE_ONE");
+    expect(card.timing, "IV is instant, not an ongoing buff").toBe("instant");
+    // One-shot, not a combat-duration buff.
+    expect(JSON.stringify(card)).not.toMatch(/CREATE_ATTACK_BUFF/);
 
-    // Option 0: +1, no cost.
-    const free = createInitialGameState("crag-4-free");
-    free.players.p1.hand = ["specialty.crag_hack.4"];
-    free.players.p1.deck = ["stat.attack"];
-    free.combat!.units.unit_p1_griffins.abilities = [];
-    const handBefore = free.players.p1.hand.length;
-    const playFree = findPlay(free, "specialty.crag_hack.4", 0, "unit_p1_griffins");
-    expect(playFree, "the free +1 option targets a friendly unit").toBeTruthy();
-    const afterFree = applyOk(free, playFree!.action);
-    const freeEffect = afterFree.activeEffects.find(
-      (eff) => eff.target?.type === "unit" && eff.target.unitId === "unit_p1_griffins" && eff.name === "Offense IV"
-    );
-    expect(freeEffect!.modifiers.find((m) => m.type === "ATTACK_BONUS")?.["amount" as never], "+1 attack").toBe(1);
-    expect(afterFree.players.p1.hand.length, "no card discarded for the free option").toBe(handBefore - 1);
+    /** p1's griffins attack p2's skeletons; p1 reacts with Offense IV option
+     * `optionIndex`, paying `costCardIds`. Returns the attack's +attack bonus. */
+    function attackWith(seed: string, optionIndex: number, costCardIds: string[] = []): number | undefined {
+      const state = createInitialGameState(seed);
+      state.players.p1.hand = ["specialty.crag_hack.4", "stat.attack"];
+      state.players.p2.hand = [];
+      const attacker = state.combat!.units.unit_p1_griffins;
+      attacker.abilities = [];
+      attacker.type = "ground";
+      attacker.position = 9;
+      attacker.attack = 4;
+      const defender = state.combat!.units.unit_p2_skeletons;
+      defender.abilities = [];
+      defender.position = 13;
+      defender.defense = 0;
+      defender.maxHealth = 40;
+      defender.damage = 0;
+      state.combat!.dice.scriptedRolls = new Array(8).fill(0);
+      state.combat!.dice.rollCount = 0;
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = "unit_p1_griffins";
+      const declared = applyOk(state, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: "unit_p1_griffins",
+        defenderId: "unit_p2_skeletons"
+      });
+      const reaction = (declared.reactionWindow?.legalReactions.p1 ?? []).find(
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" &&
+          legal.action.cardId === "specialty.crag_hack.4" &&
+          legal.action.optionIndex === optionIndex
+      );
+      expect(reaction, `Offense IV option ${optionIndex} is offered on the declared attack`).toBeTruthy();
+      const action = reaction!.action;
+      if (action.type !== "PLAY_REACTION") throw new Error("expected PLAY_REACTION");
+      const settled = passAllReactions(applyOk(declared, { ...action, costCardIds }));
+      return lastAttackBonus(settled, "unit_p1_griffins");
+    }
 
-    // Option 1: discard a card → +2.
-    const paid = createInitialGameState("crag-4-paid");
-    paid.players.p1.hand = ["specialty.crag_hack.4", "stat.attack"];
-    paid.combat!.units.unit_p1_griffins.abilities = [];
-    const playPaid = findPlay(paid, "specialty.crag_hack.4", 1, "unit_p1_griffins");
-    expect(playPaid, "the discard-for-+2 option targets a friendly unit").toBeTruthy();
-    const paidAction = playPaid!.action;
-    if (paidAction.type !== "PLAY_CARD") throw new Error("expected a PLAY_CARD action");
-    // The discard cost is the player's chosen payment — name the card to discard.
-    const afterPaid = applyOk(paid, { ...paidAction, costCardIds: ["stat.attack"] });
-    const paidEffect = afterPaid.activeEffects.find(
-      (eff) => eff.target?.type === "unit" && eff.target.unitId === "unit_p1_griffins" && eff.name === "Offense IV"
-    );
-    expect(paidEffect!.modifiers.find((m) => m.type === "ATTACK_BONUS")?.["amount" as never], "+2 attack").toBe(2);
-    expect(afterPaid.players.p1.hand, "a card was discarded as the cost").not.toContain("stat.attack");
+    expect(attackWith("crag-4-free", 0), "option 0 → +1 attack").toBe(1);
+    expect(attackWith("crag-4-paid", 1, ["stat.attack"]), "option 1 (discard a card) → +2 attack").toBe(2);
   });
 });
 
