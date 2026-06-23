@@ -268,16 +268,19 @@ export const extraAbilityCards: CardLibrary = {
     implementationStatus: "implemented",
     source: abilitySource("intelligence")
   },
-  // Interference is the spell-defense counterpart to Armorer. It is played as a
-  // reaction to an enemy damaging Spell aimed at one of your units; the bonus
-  // lands on that targeted unit.
-  // engine: INTERFERE_SPELL grants the targeted unit a Combat-long Defense
-  // bonus carrying BOTH a DEFENSE_BONUS modifier (vs attacks) and a
-  // SPELL_DAMAGE_REDUCTION modifier (vs spells) — +1 basic / +2 expert — so the
-  // bonus softens the triggering Spell and any later Spell or attack on that
-  // unit. The "can be applied to damage from spells" line is the real,
-  // engine-enforced point of the card; the gate only opens it against an enemy
-  // Spell that deals Spell damage to one of your units.
+  // Interference shares Armorer's identical "+X defense" base, so it is BOTH a
+  // normal defense reaction to a physical attack AND a spell-damage reduction:
+  //   • Played as one of your units is attacked → that unit gains +X Defense,
+  //     softening the hit exactly like Armorer.
+  //   • Played as an enemy casts a damaging Spell at your unit → the same +X
+  //     Defense also reduces that Spell's damage.
+  // engine: INTERFERE_SPELL grants the attacked/targeted unit a Combat-long
+  // effect carrying BOTH a DEFENSE_BONUS (vs attacks) and a SPELL_DAMAGE_REDUCTION
+  // (vs spells) — +1 basic / +2 expert. The printed `trigger` is the SPELL_CAST
+  // window; legal-actions ALSO cross-offers it to the DEFENDER in the
+  // UNIT_ATTACK_DECLARED window (variantMatchesTrigger + isEffectLegalForTrigger),
+  // and the reducer applies the same effect to the unit being attacked — so the
+  // bonus softens the triggering hit/Spell and every later one on that unit.
   "ability.interference": {
     id: "ability.interference",
     name: "Interference",
@@ -293,7 +296,7 @@ export const extraAbilityCards: CardLibrary = {
       "ability",
       "magic",
       "defense",
-      "Basic: React to an enemy damaging Spell aimed at your unit — that unit gains +1 defense for the Combat, which can also reduce damage from spells. Expert: +2 defense."
+      "Basic: +1 defense — a reaction to an attack on your unit OR to an enemy damaging Spell on your unit, where the same +1 defense also reduces the Spell's damage (lasts the Combat). Expert: +2 defense."
     ],
     effect: { type: "INTERFERE_SPELL", amount: 1, expertAmount: 2 },
     assets: abilityAssets("interference", "Interference", true),
