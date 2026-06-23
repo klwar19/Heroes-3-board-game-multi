@@ -5,6 +5,7 @@ import {
   DICE_PRESENT_MS,
   DICE_ROLL_MS,
   DiceOverlay,
+  MapNoticeOverlay,
   NeutralStepOverlay,
   ReactionTray,
   RerollModal,
@@ -133,6 +134,48 @@ describe("DiceOverlay — summed (Slayer/Inferno) and spell-roll modes", () => {
     expect(container.querySelector(".formula")).toBeNull();
     // Every die stays lit.
     expect(container.querySelectorAll(".dieScene.dimmed").length).toBe(0);
+  });
+});
+
+describe("MapNoticeOverlay location art", () => {
+  function renderNotice(location: string, icon = "X") {
+    vi.useFakeTimers();
+    return render(
+      <MapNoticeOverlay
+        cue={{
+          id: `notice-${location}`,
+          icon,
+          title: location,
+          subtitle: "p1 visits",
+          lines: [],
+          location
+        }}
+        onDone={vi.fn()}
+      />
+    );
+  }
+
+  it("uses HD notice art for resource, treasure and creature-bank visits", () => {
+    const expected: Record<string, string> = {
+      creature_bank: "/assets/ui/notice-creature-bank.webp",
+      resource_symbol: "/assets/ui/notice-resource.webp",
+      treasure_symbol: "/assets/ui/notice-treasure-chest.webp"
+    };
+
+    for (const [location, src] of Object.entries(expected)) {
+      const { container, unmount } = renderNotice(location);
+      const image = container.querySelector<HTMLImageElement>(".mapNoticeArt");
+      expect(image?.getAttribute("src")).toBe(src);
+      expect(container.querySelector(".mapNoticeIcon.withArt")).toBeTruthy();
+      unmount();
+    }
+  });
+
+  it("falls back to the cue glyph when a location has no dedicated art", () => {
+    renderNotice("windmill", "W");
+
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.getByText("W")).toBeTruthy();
   });
 });
 
