@@ -2194,6 +2194,59 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
         "Hero roster, class, statistics, starting ability and specialty rules from the fan wiki Cove pages. Portrait is the classic PC hero portrait from heroes.thelazy.net (hosted locally via scripts/fetch-cove-art.py), like the other five Cove heroes. Verify against official components before final release.",
       url: "https://en.homm3bg.wiki/heroes/casmetra/"
     }
+  },
+  // ---- Bulwark heroes (expansion; fan faction, placeholder portraits) -----
+  // Two Chieftains (Might) and two Elders (Magic). Dhuin/Creyle are unit
+  // specialists (Snow Elves / Mammoths); Glacius is the Frost Ring caster; Kriv
+  // is the Rune-synergy hero. Portraits are download-pending (UI falls back to
+  // the initial), like Cyra/Torosar/Luna.
+  dhuin: {
+    id: "dhuin",
+    name: "Dhuin",
+    faction: "bulwark",
+    class: "Chieftain",
+    type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.leadership",
+    specialtyCardIds: { 1: "specialty.dhuin.1", 4: "specialty.dhuin.4", 6: "specialty.dhuin.6" },
+    portrait: "/assets/hero_portraits-dhuin.webp",
+    source: heroSource("dhuin")
+  },
+  creyle: {
+    id: "creyle",
+    name: "Creyle",
+    faction: "bulwark",
+    class: "Chieftain",
+    type: "might",
+    startingStats: { attack: 1, defense: 3, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.tactics",
+    specialtyCardIds: { 1: "specialty.creyle.1", 4: "specialty.creyle.4", 6: "specialty.creyle.6" },
+    portrait: "/assets/hero_portraits-creyle.webp",
+    source: heroSource("creyle")
+  },
+  glacius: {
+    id: "glacius",
+    name: "Glacius",
+    faction: "bulwark",
+    class: "Elder",
+    type: "magic",
+    startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: { 1: "specialty.glacius.1", 4: "specialty.glacius.4", 6: "specialty.glacius.6" },
+    portrait: "/assets/hero_portraits-glacius.webp",
+    source: heroSource("glacius")
+  },
+  kriv: {
+    id: "kriv",
+    name: "Kriv",
+    faction: "bulwark",
+    class: "Elder",
+    type: "magic",
+    startingStats: { attack: 1, defense: 0, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.sorcery",
+    specialtyCardIds: { 1: "specialty.kriv.1", 4: "specialty.kriv.4", 6: "specialty.kriv.6" },
+    portrait: "/assets/hero_portraits-kriv.webp",
+    source: heroSource("kriv")
   }
   // Four more wiki heroes complete the remaining rosters; their PC portraits are
   // already fetched and committed (scripts/fetch-extra-heroes-art-batch5.py:
