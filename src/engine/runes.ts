@@ -10,15 +10,16 @@ import type { ActiveEffectModifier, CombatUnitState, GameState, PlayerId } from 
  *
  * What the dev note fixes (verbatim mechanic):
  *  - During a battle, whenever a Bulwark player's unit ACTS it earns that player
- *    Runes: Attack -> +1, Retaliate -> +2, Defend -> +3.
+ *    Runes: Attack -> +1, Retaliate -> +1, Defend -> +2.
  *  - The accumulated Rune total pushes the player up Rune LEVELS, each granting a
  *    CUMULATIVE army-wide passive buff to ALL of that player's units:
  *      Level 1                -> +1 Attack
  *      Level 2 (needs Sieidi) -> +1 Defense  (on top of L1)
  *      Level 3 (needs Altar)  -> +3 Initiative (on top of L1+L2)
- *  - Runes RESET every battle (collected again from scratch). The City Hall
- *    combat-focus choice and the Sieidi/Altar buildings raise the number of
- *    Runes you START a battle with (and the buildings raise the level cap).
+ *  - Runes RESET every battle (collected again from scratch). Every Bulwark army
+ *    starts each battle with a base of RUNE_STARTING_BASE Runes; the City Hall
+ *    combat-focus choice and the Sieidi/Altar buildings raise that starting
+ *    number further (and the buildings raise the level cap).
  *
  * What the dev note leaves open (designed here, tunable in ONE place, mirroring
  * the PC skill's 9-rune Expert cap):
@@ -45,8 +46,14 @@ export const RUNE_MAX = RUNE_LEVEL_THRESHOLDS[RUNE_LEVEL_THRESHOLDS.length - 1];
 
 /** Runes a Bulwark unit's action earns its controller (Gamefound Update #3). */
 export const RUNE_GAIN_ATTACK = 1;
-export const RUNE_GAIN_RETALIATION = 2;
-export const RUNE_GAIN_DEFEND = 3;
+export const RUNE_GAIN_RETALIATION = 1;
+export const RUNE_GAIN_DEFEND = 2;
+
+/**
+ * Baseline Runes every Bulwark army starts a battle with, before any Sieidi /
+ * Altar building or City Hall "Rune-Empowered" bonus. Tunable here in one place.
+ */
+export const RUNE_STARTING_BASE = 4;
 
 /** The cumulative army-wide bonus added at each Rune Level (Gamefound Update #3). */
 export const RUNE_LEVEL_BONUS = { attack: 1, defense: 1, initiative: 3 } as const;
@@ -165,7 +172,7 @@ export function seedRunesForCombat(state: GameState): void {
     }
     const { startingRunes } = runeBuildingInfo(state, playerId);
     const flagBonus = state.players[playerId]?.runeEmpoweredNextCombats ?? 0;
-    const count = Math.min(RUNE_MAX, startingRunes + flagBonus);
+    const count = Math.min(RUNE_MAX, RUNE_STARTING_BASE + startingRunes + flagBonus);
     combat.runes[playerId] = { count, appliedLevel: 0 };
     // Any Rune Level the starting pool already qualifies for is applied (and
     // logged via a real ACTIVE_EFFECT_CREATED event) by syncRuneEffects.
@@ -192,12 +199,12 @@ export function gainRunes(state: GameState, playerId: PlayerId | undefined, amou
   }
 }
 
-/** Rune gain for a resolved attack (Attack +1) or Retaliation Attack (+2). */
+/** Rune gain for a resolved attack (Attack +1) or Retaliation Attack (+1). */
 export function gainRunesForAttack(state: GameState, attacker: CombatUnitState, isRetaliation: boolean): void {
   gainRunes(state, attacker.controllerId, isRetaliation ? RUNE_GAIN_RETALIATION : RUNE_GAIN_ATTACK);
 }
 
-/** Rune gain for taking the Defend action (+3). */
+/** Rune gain for taking the Defend action (+2). */
 export function gainRunesForDefend(state: GameState, unit: CombatUnitState): void {
   gainRunes(state, unit.controllerId, RUNE_GAIN_DEFEND);
 }
