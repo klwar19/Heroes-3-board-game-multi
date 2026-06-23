@@ -5051,8 +5051,9 @@ export type CombatState = {
   /**
    * Bulwark "Runes" (Gamefound Update #3), per Bulwark player, for THIS combat
    * only — discarded when the combat state is torn down, so it resets every
-   * battle. `count` is the accumulated Rune total (Attack +1 / Retaliate +2 /
-   * Defend +3, seeded from the Sieidi/Altar baseline + the City Hall flag);
+   * battle. `count` is the accumulated Rune total, earned in battle (Attack +1 /
+   * Retaliate +1 / Defend +2; opens at 0 plus any City Hall flag head-start; the
+   * Sieidi/Altar raise the max Rune Level rather than pre-charging Runes);
    * `appliedLevel` is the highest Rune Level whose army-wide buff has already
    * been created as a player-scoped active effect, so the add-only sync never
    * double-applies. See src/engine/runes.ts.

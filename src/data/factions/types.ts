@@ -274,11 +274,12 @@ export type TownBuildingEffect =
   | {
       /**
        * Bulwark Sieidi / Altar of the Runes (Gamefound Update #3). The Altar is
-       * a same-tile upgrade of the Sieidi (prerequisite). Two effects, both read
+       * a same-tile upgrade of the Sieidi (prerequisite). Two fields, both read
        * by the Runes engine (src/engine/runes.ts):
-       *  - `startingRunes`: Runes this player's Hero starts each combat with (the
-       *    "increases starting runes" benefit). Sieidi pre-charges Rune Level 1,
-       *    the Altar pre-charges Level 2.
+       *  - `startingRunes`: extra Runes this player's Hero starts each combat
+       *    with. The board's rune buildings are cap-raisers, not pre-chargers, so
+       *    this is 0 — the climb to the unlocked level is EARNED by acting (the
+       *    City Hall flag is the head-start path).
        *  - `levelCap`: the highest Rune Level reachable in combat while this
        *    building stands. Without any rune building a Bulwark player can still
        *    reach Level 1 (the base faction mechanic); Sieidi unlocks Level 2,

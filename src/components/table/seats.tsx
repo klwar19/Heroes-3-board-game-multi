@@ -11,6 +11,8 @@ import {
   describeCardEffect,
   describePermanentEffect,
   getPermanentCardIds,
+  getRuneTrack,
+  isBulwarkPlayer,
   playerSpellCastsIgnoreLimit,
   spellBookRuleEnabled,
   type GameAction,
@@ -568,6 +570,87 @@ export function HandFan({
   );
 }
 
+// The Runes skill graphic shown on the track scales with the player's cap:
+// no rune building (cap 1) -> Basic, Sieidi (cap 2) -> Advanced, Altar (cap 3)
+// -> Expert (heroes.thelazy.net Runes art, fetched by fetch-bulwark-art.py).
+const RUNE_SKILL_ICONS = [
+  "/assets/runes-basic.webp",
+  "/assets/runes-advanced.webp",
+  "/assets/runes-expert.webp"
+] as const;
+
+function runeLevelHint(status: string, bonusLabel: string, threshold: number, level: number): string {
+  const base = `Rune Level ${level} (${threshold} Runes): ${bonusLabel}`;
+  if (status === "active") return `${base} — active`;
+  if (status === "pending") return `${base} — earn ${threshold} Runes to activate`;
+  return `${base} — locked (build the Sieidi/Altar)`;
+}
+
+/**
+ * Bulwark's Rune track for the combat HUD. Renders only for a Bulwark player in
+ * combat; everything it shows comes from the tested engine `getRuneTrack`. The
+ * compact form (opponent seats) shows the icon, count/level and three status
+ * pips; the full form (your dock) adds the labelled level chips.
+ */
+export function RuneTrack({
+  state,
+  playerId,
+  compact
+}: {
+  state: GameState;
+  playerId: PlayerId;
+  compact?: boolean;
+}) {
+  if (!state.combat || !isBulwarkPlayer(state, playerId)) {
+    return null;
+  }
+  const track = getRuneTrack(state, playerId);
+  const icon = RUNE_SKILL_ICONS[Math.min(RUNE_SKILL_ICONS.length - 1, Math.max(0, track.levelCap - 1))];
+
+  return (
+    <div
+      className={`runeTrack${compact ? " compact" : ""}`}
+      aria-label={`Runes for ${state.players[playerId]?.name ?? playerId}: ${track.count} of ${track.max}, Level ${track.level} of ${track.levelCap}`}
+    >
+      <div className="runeTrackHead">
+        <img className="runeSkillIcon" src={assetUrl(icon)} alt="" aria-hidden="true" loading="lazy" />
+        <span className="runeTitle">Runes</span>
+        <span className="runeCount">
+          {track.count}
+          <small>/{track.max}</small>
+        </span>
+        <span className="runeLevelTag" title={`Rune Level ${track.level} (cap ${track.levelCap})`}>
+          Lv&nbsp;{track.level}
+        </span>
+      </div>
+      {compact ? (
+        <div className="runePips" role="presentation">
+          {track.levels.map((lvl) => (
+            <span
+              key={lvl.level}
+              className={`runePip ${lvl.status}`}
+              title={runeLevelHint(lvl.status, lvl.bonusLabel, lvl.threshold, lvl.level)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="runeLevels">
+          {track.levels.map((lvl) => (
+            <div
+              key={lvl.level}
+              className={`runeLevel ${lvl.status}`}
+              title={runeLevelHint(lvl.status, lvl.bonusLabel, lvl.threshold, lvl.level)}
+            >
+              <span className="runeLevelThreshold">{lvl.threshold}</span>
+              <span className="runeLevelBonus">{lvl.bonusLabel}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function OpponentBar({
   view,
   state,
@@ -602,6 +685,7 @@ export function OpponentBar({
                   <Sparkles aria-hidden="true" size={12} /> {player.combatStats.spellsCastThisRound}/{spellLimitLabel}
                 </span>
               </span>
+              <RuneTrack state={state} playerId={playerId} compact />
             </div>
             <div
               className="opponentHand"
@@ -685,6 +769,7 @@ export function PlayerDock({
           {player.resources.gold}g · {player.resources.buildingMaterials}m · {player.resources.valuables}v
         </span>
       </div>
+      <RuneTrack state={state} playerId={viewerPlayerId} />
     </div>
   );
 }

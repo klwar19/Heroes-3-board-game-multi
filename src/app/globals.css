@@ -1444,6 +1444,141 @@ button.battleCell {
   gap: 5px;
 }
 
+/* Bulwark "Runes" combat track (frosty palette to match the faction colour). */
+.runeTrack {
+  display: grid;
+  gap: 4px;
+  padding: 5px 7px;
+  border: 1px solid rgb(127 178 217 / 35%);
+  border-radius: 7px;
+  background: linear-gradient(180deg, rgb(20 34 50 / 80%), rgb(12 22 34 / 90%));
+}
+
+.runeTrack.compact {
+  gap: 3px;
+  padding: 3px 5px;
+}
+
+.runeTrackHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.runeSkillIcon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 55%));
+}
+
+.runeTitle {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #bfe0ff;
+}
+
+.runeCount {
+  font-weight: 800;
+  color: #eaf6ff;
+}
+
+.runeCount small {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.runeLevelTag {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid rgb(127 178 217 / 45%);
+  background: rgb(127 178 217 / 22%);
+  color: #d7eeff;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.runeLevels {
+  display: flex;
+  gap: 4px;
+}
+
+.runeLevel {
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  min-width: 52px;
+  padding: 3px 5px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: rgb(255 255 255 / 4%);
+  font-size: 10px;
+  line-height: 1.1;
+}
+
+.runeLevelThreshold {
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.runeLevelBonus {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.runeLevel.active {
+  border-color: rgb(127 210 255 / 70%);
+  background: linear-gradient(180deg, rgb(60 140 200 / 40%), rgb(30 90 150 / 30%));
+  color: #eaf6ff;
+  box-shadow: 0 0 8px rgb(127 200 255 / 28%);
+}
+
+.runeLevel.active .runeLevelBonus {
+  color: #cdeaff;
+}
+
+.runeLevel.pending {
+  border-style: dashed;
+  opacity: 0.85;
+}
+
+.runeLevel.locked {
+  opacity: 0.45;
+  filter: grayscale(0.7);
+}
+
+.runePips {
+  display: flex;
+  gap: 3px;
+}
+
+.runePip {
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgb(255 255 255 / 8%);
+}
+
+.runePip.active {
+  border-color: rgb(127 210 255 / 80%);
+  background: radial-gradient(circle at 40% 35%, #bfe6ff, #3f8fcf);
+  box-shadow: 0 0 6px rgb(127 200 255 / 55%);
+}
+
+.runePip.pending {
+  border-style: dashed;
+  background: rgb(127 178 217 / 25%);
+}
+
+.runePip.locked {
+  opacity: 0.4;
+}
+
 .handFan {
   display: flex;
   align-items: end;
