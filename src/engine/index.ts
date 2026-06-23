@@ -39,6 +39,14 @@ export {
   unitIsBerserk
 } from "./active-effects";
 export {
+  getRuneSummary,
+  getRuneTrack,
+  isBulwarkPlayer,
+  RUNE_LEVEL_LABELS,
+  RUNE_LEVEL_THRESHOLDS
+} from "./runes";
+export type { RuneLevelStatus, RuneTrackView } from "./runes";
+export {
   cardCanBoostPower,
   describeCardEffect,
   getCardEffectAmount,
