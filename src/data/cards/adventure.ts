@@ -2638,15 +2638,21 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("tarnum_conflux")
   }),
+  // VI is an Instant: it may be played on your own turn OR off-turn in an instant
+  // window. The Searched spells then cast only if "their type allows it" — an
+  // instant spell can be cast off-turn, but a combat-/action-timed one needs your
+  // own active unit, so playing VI off-turn risks Searching spells you cannot cast
+  // right then (they just stay in hand). The Search spans the basic AND expert
+  // (BINH) Spell decks.
   "specialty.tarnum_conflux.6": withoutArt({
     id: "specialty.tarnum_conflux.6",
     name: "Enchanters VI",
     kind: "hero-specialty",
-    timing: "combat",
-    phaseLimit: ["combat"],
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
     tags: [
       "hero-specialty",
-      "combat",
+      "instant",
       "tarnum_conflux",
       "enchanters",
       "Search(1) Spell twice. If their type allows it, and you have enough power available, you can immediately cast one or both of these spells, even if you already cast a spell this round. Place each spell you use this way on the top of the Spell deck or on its discard pile in any order."
