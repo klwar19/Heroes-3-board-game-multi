@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createInitialGameState, getLegalActions, getUnitMoveRange } from "./index";
+import {
+  applyAction,
+  createInitialGameState,
+  getLegalActions,
+  getLegalMoveDestinations,
+  getUnitMoveRange
+} from "./index";
 import type { GameAction, GameState, UnitId } from "./state";
 
 // ---------------------------------------------------------------------------
@@ -147,5 +153,28 @@ describe("Haste effects raise Combat movement by 1 (BINH house rule)", () => {
       })
     );
     expect(getUnitMoveRange(state.combat!.units.unit_p1_griffins, state)).toBe(4);
+  });
+
+  it("actually reaches further on the board: a Hasted unit's reachable cells grow", () => {
+    const state = createInitialGameState("haste-reach");
+    state.players.p1.hand = ["specialty.cyra.1"];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const griffin = ground(state, "unit_p1_griffins");
+    griffin.position = 0; // top-left corner
+    griffin.activatedThisRound = false;
+    griffin.movedThisActivation = false;
+    // Park every other unit far in the opposite corner so they don't block the lane.
+    let far = 19;
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.id !== "unit_p1_griffins") {
+        unit.position = far;
+        far -= 1;
+      }
+    }
+    const base = getLegalMoveDestinations(state.combat!, griffin, state).length; // range 3
+    const after = applyOk(state, findPlay(state, "specialty.cyra.1", "unit_p1_griffins")!.action);
+    const hasted = getLegalMoveDestinations(after.combat!, after.combat!.units.unit_p1_griffins, after).length; // range 4
+    expect(hasted, "Haste's +1 range reaches strictly more cells").toBeGreaterThan(base);
   });
 });
