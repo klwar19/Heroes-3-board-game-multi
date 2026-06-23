@@ -2,6 +2,9 @@
 
 import PartySocket from "partysocket";
 import type { AdventurePlayerConfig, EngineResult, GameAction, GameDifficulty, GameMode, GameState } from "@/engine";
+import { LOBBY_SINGLETON_ID, type RoomDirectoryEntry } from "@/server/lobby-registry";
+
+export type { RoomDirectoryEntry };
 
 /**
  * Room transport layer. Two backends share one interface:
@@ -30,27 +33,11 @@ export type GameRoomSnapshot = {
   closed?: boolean;
 };
 
-/** One row of the lobby room directory (mirrors the server's RoomDirectoryEntry). */
-export type RoomDirectoryEntry = {
-  roomId: string;
-  name: string;
-  phase: string;
-  inProgress: boolean;
-  memberCount: number;
-  seatedCount: number;
-  hosted: boolean;
-  hostName: string | null;
-  createdByName: string | null;
-  createdAt: string;
-  updatedAt: string;
-  /** Whether the requesting client may close this room. */
-  canClose: boolean;
-};
-
 /**
- * Result of asking for the room list. `supported` is false on the PartyKit edge
- * backend, which has no central directory — the lobby then prompts for a room
- * code / shared link instead of a browsable list.
+ * Result of asking for the room list. `supported` is true on both backends now
+ * that the PartyKit edge has a lobby Durable Object directory; it is reported
+ * false only when that directory can't be reached (e.g. a PartyKit deploy that
+ * predates the lobby party), in which case the lobby falls back to join-by-code.
  */
 export type RoomListResult = { rooms: RoomDirectoryEntry[]; supported: boolean };
 
@@ -117,12 +104,23 @@ type PartyServerMessage =
       snapshot: GameRoomSnapshot;
     };
 
+function partyProtocol(host: string): string {
+  return host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
+}
+
 function partyHttpUrl(host: string, roomId: string): string {
-  const protocol = host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
   // PartyKit serves the default ("main") party at /parties/main/<room> — the
   // same path PartySocket uses for the WebSocket. (The room server adds CORS
   // headers so these cross-origin GETs are not blocked by the browser.)
-  return `${protocol}://${host}/parties/main/${encodeURIComponent(roomId)}`;
+  return `${partyProtocol(host)}://${host}/parties/main/${encodeURIComponent(roomId)}`;
+}
+
+/**
+ * The lobby/registry Durable Object's HTTP endpoint — one fixed object in the
+ * `lobby` party that holds the directory of live rooms (see party/lobby.ts).
+ */
+function partyLobbyUrl(host: string): string {
+  return `${partyProtocol(host)}://${host}/parties/lobby/${encodeURIComponent(LOBBY_SINGLETON_ID)}`;
 }
 
 function connectPartyRoom(
@@ -381,15 +379,28 @@ function connectApiRoom(
 // ---------------------------------------------------------------------------
 
 /**
- * Fetches the list of active rooms. On the PartyKit edge backend there is no
- * central directory, so this resolves `supported: false` and the lobby falls
- * back to joining by room code / shared link.
+ * Fetches the list of active rooms. On the built-in backend this hits
+ * `/api/rooms`; on the PartyKit edge it hits the lobby Durable Object's
+ * directory (party/lobby.ts). If that lobby object can't be reached (a PartyKit
+ * deploy that predates it), it resolves `supported: false` so the lobby falls
+ * back to joining by room code / shared link, exactly as before.
  */
 export async function fetchRoomList(clientId?: string): Promise<RoomListResult> {
-  if (getPartyKitHost()) {
-    return { rooms: [], supported: false };
-  }
   const query = clientId ? `?clientId=${encodeURIComponent(clientId)}` : "";
+  const host = getPartyKitHost();
+  if (host) {
+    try {
+      const response = await fetch(`${partyLobbyUrl(host)}${query}`, { cache: "no-store" });
+      if (!response.ok) {
+        return { rooms: [], supported: false };
+      }
+      const data = (await response.json()) as { rooms?: RoomDirectoryEntry[] };
+      return { rooms: data.rooms ?? [], supported: true };
+    } catch {
+      // The lobby party isn't reachable — fall back to join-by-code.
+      return { rooms: [], supported: false };
+    }
+  }
   const response = await fetch(`/api/rooms${query}`, { cache: "no-store" });
   if (!response.ok) {
     throw new Error("Could not load the room list.");

@@ -2,5 +2,8 @@
   "$schema": "https://www.partykit.io/schema.json",
   "name": "heroes3bg-rooms",
   "main": "party/index.ts",
+  "parties": {
+    "lobby": "party/lobby.ts"
+  },
   "compatibilityDate": "2025-06-01"
 }

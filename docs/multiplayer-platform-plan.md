@@ -57,13 +57,29 @@
 > - **Trust boundary (unchanged):** `actorClientId` for close is client-claimed,
 >   exactly like the seat lock — it enforces the rule *given* the identity, not
 >   against a forged one. Auth is still the next milestone.
-> - **PartyKit (edge backend) — partial / deferred.** Room naming and host-close
->   work there (the action flows through synced state; the party answers a
->   `DELETE` and broadcasts `closed`). Room **listing** has no central registry
->   on PartyKit, so `fetchRoomList()` reports `supported:false` and the lobby
->   prompts to join by code / shared link instead of browsing. A lobby Durable
->   Object would close this gap; it is **not** built yet and is **not** covered
->   by the vitest suite (which exercises the built-in store only).
+> - **PartyKit (edge backend) — now lists rooms too.** Room naming and host-close
+>   already worked there (the action flows through synced state; the party answers
+>   a `DELETE` and broadcasts `closed`). Room **listing** is now closed: a single
+>   **lobby Durable Object** (`party/lobby.ts`, addressed at the fixed singleton
+>   `/parties/lobby/directory`) holds the registry of live rooms. Each room party
+>   reports its directory record to it whenever a browser-visible field changes
+>   (name / members / host / phase) and deregisters on close (`reportToLobby` /
+>   `deregisterFromLobby` in `party/index.ts`); the browser's `fetchRoomList()`
+>   GETs the lobby object, so `supported:true` on the edge and the room browser
+>   works. It still reports `supported:false` (falling back to join-by-code) only
+>   when that object can't be reached — e.g. a PartyKit deploy made before the
+>   lobby party existed.
+>   - **What is tested vs. not (no dressing up).** The directory *logic* —
+>     derivation, per-viewer `canClose`, stale-room expiry, dedup, sort — lives in
+>     the shared, isomorphic `src/server/lobby-registry.ts` and is covered by
+>     `lobby-registry.test.ts` (each rule with a mutation control) plus
+>     `lobby-party.test.ts`, which drives the Durable Object's GET/POST/DELETE +
+>     storage round-trip through a fake room. The **built-in store and the edge
+>     now derive the directory from the same module**, so they can't diverge. What
+>     vitest does **not** exercise is the cross-party network plumbing itself (the
+>     room party's `fetch` to the lobby object, and real Durable Object storage):
+>     that needs the PartyKit/Workers runtime and is verified only by `tsc` +
+>     `partykit deploy`, exactly like the rest of `party/index.ts`.
 >
 > **Still future work:** simultaneous early-day turns in adventure mode (the
 > `TurnState.mode`/`simultaneousRoundLimit` scaffolding exists but is wired only
