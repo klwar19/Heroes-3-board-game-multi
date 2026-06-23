@@ -1935,8 +1935,87 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("zydar")
   },
-  "specialty.crag_hack.1": offenseSpecialtyOne("crag_hack"),
-  "specialty.crag_hack.4": offenseSpecialtyFour("crag_hack"),
+  // Crag Hack (Barbarian), specialty "Offense". The wiki cards differ from the
+  // generic Offense helper (which fits Tarnum Stronghold, not Crag Hack):
+  //  - I is an ONGOING "For this Combat, +1 attack" (not the instant +1/draw OR).
+  //  - IV is "+1 attack for the Combat; you MAY discard a card for +1 more" →
+  //    a CHOOSE_ONE of +1 (free) vs +2 (discard 1), both combat-duration.
+  // (VI — "every card you play this Combat can grant +1 attack instead of its
+  // regular effect" — is a distinct, unbuilt mechanic; still pending.)
+  "specialty.crag_hack.1": {
+    id: "specialty.crag_hack.1",
+    name: "Offense I",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: ["hero-specialty", "combat", "crag_hack", "offense", "For this Combat, your selected unit gains +1 attack."],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_ATTACK_BUFF",
+      name: "Offense I",
+      amount: 1,
+      duration: { type: "combat" },
+      polarity: "positive",
+      removable: false
+    },
+    assets: {
+      cardImage: specialtyCardImage("crag_hack", 1),
+      imageAlt: "Offense level I specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("crag_hack")
+  },
+  "specialty.crag_hack.4": {
+    id: "specialty.crag_hack.4",
+    name: "Offense IV",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "crag_hack",
+      "offense",
+      "For this Combat, your selected unit gains +1 attack. You may discard a card to make it +2 instead."
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+1 attack for this Combat",
+          combatOnly: true,
+          effect: {
+            type: "CREATE_ATTACK_BUFF",
+            name: "Offense IV",
+            amount: 1,
+            duration: { type: "combat" },
+            polarity: "positive",
+            removable: false
+          }
+        },
+        {
+          label: "Discard a card: +2 attack for this Combat",
+          combatOnly: true,
+          cost: { discardCards: 1 },
+          effect: {
+            type: "CREATE_ATTACK_BUFF",
+            name: "Offense IV",
+            amount: 2,
+            duration: { type: "combat" },
+            polarity: "positive",
+            removable: false
+          }
+        }
+      ]
+    },
+    assets: {
+      cardImage: specialtyCardImage("crag_hack", 4),
+      imageAlt: "Offense level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("crag_hack")
+  },
   "specialty.crag_hack.6": offenseSpecialtySix("crag_hack"),
   "specialty.dessa.1": {
     id: "specialty.dessa.1",
@@ -1956,9 +2035,35 @@ export const adventureCards: CardLibrary = {
   },
   "specialty.dessa.4": dessaSpecialtyFour(),
   "specialty.dessa.6": dessaSpecialtySix(),
-  "specialty.gundula.1": slowSpecialty("gundula", 1, 1),
-  "specialty.gundula.4": slowSpecialty("gundula", 4, 2),
-  "specialty.gundula.6": slowSpecialty("gundula", 6, 3),
+  // Gundula (Battle Mage), specialty "Slow": I/VI decrease an enemy unit's
+  // Initiative by 2 / 4 for the Combat (wiki magnitudes — the earlier −1/−3 from a
+  // mis-scaled helper was wrong). IV is the odd one out per the wiki: an INSTANT
+  // +1 attack that doubles when YOUR unit is faster than the attacked unit
+  // (doubleIfAttackerInitiativeHigher), NOT another Slow.
+  "specialty.gundula.1": slowSpecialty("gundula", 1, 2),
+  "specialty.gundula.4": {
+    id: "specialty.gundula.4",
+    name: "Slow IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "gundula",
+      "slow",
+      "Your selected unit gains +1 attack. The effect doubles if its initiative is higher than the attacked unit's."
+    ],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, doubleIfAttackerInitiativeHigher: true },
+    assets: {
+      cardImage: specialtyCardImage("gundula", 4),
+      imageAlt: "Slow level IV specialty card"
+    },
+    implementationStatus: "implemented",
+    source: heroSource("gundula")
+  },
+  "specialty.gundula.6": slowSpecialty("gundula", 6, 4),
   "specialty.shiva.1": mightSpecialtyOne("shiva", "Thunderbirds", "Thunderbirds"),
   "specialty.shiva.4": unitHealthSpecialty("shiva", "Thunderbirds", 4, 1, "Thunderbirds"),
   "specialty.shiva.6": unitInitiativeSpecialty("shiva", "Thunderbirds", 6, 2, "Thunderbirds"),

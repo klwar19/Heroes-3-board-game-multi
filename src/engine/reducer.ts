@@ -8346,9 +8346,19 @@ function applyReactionPlayCore(
       Boolean(attacker) &&
       Boolean(defender) &&
       effectiveInitiative(defender!, state.activeEffects) > effectiveInitiative(attacker!, state.activeEffects);
+    // Gundula IV: doubles when YOUR (attacking) unit is strictly faster than the
+    // attacked unit — the mirror of Cyra's defender-faster condition.
+    const attackerIsFaster =
+      Boolean(effect.doubleIfAttackerInitiativeHigher) &&
+      Boolean(attacker) &&
+      Boolean(defender) &&
+      effectiveInitiative(attacker!, state.activeEffects) > effectiveInitiative(defender!, state.activeEffects);
     const matchesDoubledType = Boolean(effect.doubleForUnitType) && affectedUnit?.type === effect.doubleForUnitType;
     const doubleFactor =
-      unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName) || matchesDoubledType || defenderIsFaster
+      unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName) ||
+      matchesDoubledType ||
+      defenderIsFaster ||
+      attackerIsFaster
         ? 2
         : 1;
     // Merist's Stone Skin I: a defense reaction grants extra Defense when the

@@ -752,6 +752,12 @@ export type EffectDefinition =
        */
       doubleIfDefenderInitiativeHigher?: boolean;
       /**
+       * Gundula IV: the inverse — the bonus doubles when YOUR (attacking) unit has
+       * strictly higher (effective) Initiative than the attacked unit ("doubles if
+       * the unit's Initiative is higher than the attacked unit's").
+       */
+      doubleIfAttackerInitiativeHigher?: boolean;
+      /**
        * Ash's Bloodlust I/VI: "Place a Black cube on that unit." A Black cube on
        * a unit's card means it has spent its Retaliation — it can no longer
        * perform a Retaliation Attack this round (Counterstrike's CLEAR_RETALIATION
