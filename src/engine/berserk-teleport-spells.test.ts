@@ -249,6 +249,54 @@ describe("Berserk spell", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Berserk — never reaches an azure-tier or Creature Bank unit (no spell grade
+// ladder climbs above gold, and a bank defender is gradeless). Even though
+// Berserk's per-Power grade gate is deferred to resolution, these two are above
+// the ladder's ceiling at ANY Power, so they are dropped from the target list.
+// ---------------------------------------------------------------------------
+
+describe("Berserk cannot target azure or Creature Bank units", () => {
+  function berserkState(seed: string): GameState {
+    const state = createInitialGameState(seed);
+    state.players.p1.hand = ["spell.berserk", "stat.power", "stat.power", "stat.power", "stat.power"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    state.combat!.units.unit_p1_marksmen.activatedThisRound = false;
+    return state;
+  }
+
+  function berserkTargetUnitIds(state: GameState): Set<string> {
+    const ids = new Set<string>();
+    for (const legal of getLegalActions(state, "p1")) {
+      const action = legal.action;
+      if (action.type === "CAST_SPELL" && action.cardId === "spell.berserk" && action.target?.type === "unit") {
+        ids.add(action.target.unitId);
+      }
+    }
+    return ids;
+  }
+
+  it("offers a gold enemy unit but NOT an azure-tier one", () => {
+    const state = berserkState("berserk-azure");
+    state.combat!.units.unit_p2_dread_knights.grade = "gold"; // control: gold is reachable
+    state.combat!.units.unit_p2_skeletons.grade = "azure"; // azure sits above the ladder
+    const targets = berserkTargetUnitIds(state);
+    expect(targets.has("unit_p2_dread_knights"), "a gold unit is a legal Berserk target").toBe(true);
+    expect(targets.has("unit_p2_skeletons"), "an azure unit must NOT be a Berserk target").toBe(false);
+  });
+
+  it("does not offer a Creature Bank defender", () => {
+    const state = berserkState("berserk-bank");
+    state.combat!.units.unit_p2_skeletons.bankUnit = true;
+    const targets = berserkTargetUnitIds(state);
+    // The control gold/silver units are still offered; only the bank unit is gone.
+    expect(targets.size).toBeGreaterThan(0);
+    expect(targets.has("unit_p2_skeletons"), "a Creature Bank unit must NOT be a Berserk target").toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Berserk — neutral AI targets the nearest unit (friend or foe)
 // ---------------------------------------------------------------------------
 

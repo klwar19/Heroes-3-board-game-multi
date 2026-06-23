@@ -371,11 +371,20 @@ export const sampleCards: CardLibrary = {
     id: "spell.cure",
     name: "Cure",
     kind: "spell",
-    timing: "combat",
-    phaseLimit: ["combat"],
+    // Per the verbatim wiki card Cure is an INSTANT (instant speed — castable
+    // off-turn / between actions, e.g. right after your unit takes damage), not an
+    // Activation cast. timing "instant" matches Stone Skin / Counterstrike.
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
     spellLevel: "basic",
     spellSchools: ["water"],
-    tags: ["spell", "heal", "effect-removal", "wiki-reference"],
+    tags: [
+      "spell",
+      "heal",
+      "effect-removal",
+      "wiki-reference",
+      "Instant: Remove any effect or paralysis from the selected unit, and remove from this unit up to: Power 0: 1 damage; Power 1: 2 damage; Power 2: 3 damage. — OR — Instant: +1 Power."
+    ],
     // Power comes from the Hero's Power statistic / Power cards like every other
     // spell (base 0). The card used to carry power: 1, which silently healed 2
     // and removed effects at Power 0 — one breakpoint too strong.
