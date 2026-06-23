@@ -265,6 +265,8 @@ import {
   getUnitAbilityDefinitions,
   getUnitAttackRerollSources,
   hasBindAdjacentEnemies,
+  getDefendBonus,
+  getSelfAttackerTypeDefenseBonus,
   hasDefenseTokenAura,
   hasIgnoreOwnAttackDie,
   hasImmuneToSpecialtyDamage,
@@ -2311,7 +2313,10 @@ function getAttackStackDetails(
   // Cyra's Haste VI: +Defense only against an attacker slower than the defender.
   const conditionalDefenseBonus = getConditionalDefenseBonus(state, defender, attacker);
   // Shield / Air Shield: +Defense only against a ground-or-flying / ranged attacker.
-  const attackerTypeDefenseBonus = getAttackerTypeDefenseBonus(state, defender, attacker);
+  const attackerTypeDefenseBonus =
+    getAttackerTypeDefenseBonus(state, defender, attacker) +
+    // Shamans' innate Air Shield is a unit passive, not an active effect.
+    getSelfAttackerTypeDefenseBonus(defender, attacker);
   const activeDefenseBonus =
     getActiveDefenseBonus(state, defender) + conditionalDefenseBonus + attackerTypeDefenseBonus;
   const abilityAttack = stackItem.action.type === "ATTACK_UNIT" ? stackItem.action.abilityAttack : undefined;
@@ -2919,7 +2924,10 @@ function resolveDefendBonus(
       effect.modifiers.some((modifier) => modifier.type === "DEFENSE_TOKEN_ON_ZERO")
   );
   const grantsBonus = shieldOnZero ? roll >= 0 : roll === 1;
-  return { roll, bonus: grantsBonus ? 1 : 0 };
+  // Mammoths' Thick Hide: a flat extra Defense the unit gets while it is
+  // defending (holding a Defense token), on top of the Defend die.
+  const defendAbilityBonus = getDefendBonus(details.defender);
+  return { roll, bonus: (grantsBonus ? 1 : 0) + defendAbilityBonus };
 }
 
 /**
@@ -3070,6 +3078,8 @@ function finishResolvedAttack(
   }
 
   applyOnAttackTokens(state, details.attacker, details.defender, details.isRetaliation);
+  // Great Shamans' Freezing Shot: their attack also slows the target next round.
+  applyOnAttackInitiativeDebuff(state, details.attacker, details.defender, details.isRetaliation);
   applyOnAttackPoisonCubes(state, details.attacker, details.defender, details.isRetaliation);
   // Bulwark "Runes" (Gamefound Update #3): a Bulwark unit's resolved attack earns
   // its controller +1 Rune, a Retaliation Attack +2. Placed after the cancelled-
@@ -3251,6 +3261,43 @@ function finishResolvedAttack(
  * Corrosion): after this unit's own attack — never a retaliation — the
  * original target gains the printed token, even if the attack dealt 0 damage.
  */
+function applyOnAttackInitiativeDebuff(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  isRetaliation: boolean
+): void {
+  if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
+    return;
+  }
+  for (const ability of getUnitAbilityDefinitions(attacker)) {
+    if (ability.implementationStatus !== "implemented" || ability.effect?.type !== "ON_ATTACK_INITIATIVE_DEBUFF") {
+      continue;
+    }
+    createActiveEffect(
+      state,
+      {
+        name: ability.name,
+        scope: "unit",
+        modifiers: [{ type: "INITIATIVE_BONUS", amount: ability.effect.amount }],
+        duration: { type: "next-combat-round" },
+        polarity: "negative",
+        removable: true
+      },
+      { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+      attacker.controllerId,
+      { type: "unit", unitId: defender.id }
+    );
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: attacker.id,
+      abilityId: ability.id,
+      targetUnitId: defender.id,
+      message: `${attacker.cardName}'s ${ability.name} slows ${defender.cardName}.`
+    });
+  }
+}
+
 function applyOnAttackTokens(
   state: GameState,
   attacker: CombatUnitState,
@@ -5331,6 +5378,9 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
     return;
   }
 
+  // Yetis ("recover from negative effects in one round"): shake off negative
+  // ongoing effects and Weakness/Corrosion tokens as the unit's turn opens.
+  clearOwnDebuffsAtActivation(state, activeUnit);
   // Auto-resolving "[activation]" abilities fire as the unit's turn opens:
   // Wraith/Troll regeneration, Ghost Dragon morale drain and the Wraith-pack
   // enemy hand discard. A paralysed unit (handled above) never reaches here.
@@ -5342,6 +5392,25 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
  * just began: self-regeneration, discarding the enemy's positive morale token,
  * and the random enemy-hand discard. All resolve without player input.
  */
+function clearOwnDebuffsAtActivation(state: GameState, unit: CombatUnitState): void {
+  if (!hasUnitAbilityEffect(unit, "CLEAR_OWN_DEBUFFS_ON_ACTIVATION")) {
+    return;
+  }
+  // Recover from every negative ongoing effect placed on this unit...
+  removeEffectsFromTarget(
+    state,
+    { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+    { type: "unit", unitId: unit.id },
+    "negative"
+  );
+  // ...and shake off the negative combat tokens (Weakness / Corrosion).
+  for (const kind of ["weakness", "corrosion"] as const) {
+    while (hasToken(unit, kind)) {
+      removeToken(state, unit, kind, "dispelled");
+    }
+  }
+}
+
 function applyActivationStartAbilities(state: GameState, unit: CombatUnitState): void {
   const combat = state.combat;
   if (!combat) {

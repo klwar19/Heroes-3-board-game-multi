@@ -701,6 +701,34 @@ export function getSpellDamageReduction(unit: CombatUnitState): number {
 }
 
 /**
+ * Mammoths' Thick Hide: extra Defense the unit gets while it is defending (it
+ * holds a Defense token). Added on top of the Defend die in resolveDefendBonus.
+ */
+export function getDefendBonus(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "DEFEND_BONUS").reduce(
+    (total, ability) => total + (ability.effect?.type === "DEFEND_BONUS" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/**
+ * Shamans' innate Air Shield: extra Defense the unit gets only against an
+ * attacker of a matching unit type ("ranged" = Air Shield, "ground-or-flying" =
+ * Shield) — the unit-ability twin of the DEFENSE_VS_ATTACKER_TYPE active-effect
+ * modifier (the Air Shield spell), read straight off the printed card.
+ */
+export function getSelfAttackerTypeDefenseBonus(defender: CombatUnitState, attacker: CombatUnitState): number {
+  const attackerIsRanged = attacker.type === "ranged";
+  return getAbilitiesWithEffect(defender, "DEFENSE_VS_ATTACKER_TYPE").reduce((total, ability) => {
+    if (ability.effect?.type !== "DEFENSE_VS_ATTACKER_TYPE") {
+      return total;
+    }
+    const matches = ability.effect.attackerType === "ranged" ? attackerIsRanged : !attackerIsRanged;
+    return matches ? total + ability.effect.amount : total;
+  }, 0);
+}
+
+/**
  * Steel Golems: total reduction applied to each instance of Hero-Specialty
  * damage this unit takes (Xyron's Inferno, Solmyr's Chain Lightning). Ordinary
  * spell-reducing golems have none — their passive only softens Spell damage.

@@ -1,0 +1,275 @@
+import { describe, expect, it } from "vitest";
+import { applyAction, createInitialGameState } from "./index";
+import { effectiveInitiative, makeActiveEffect } from "./active-effects";
+import { getSelfAttackerTypeDefenseBonus } from "./unit-abilities";
+import { hasToken, placeCombatToken } from "./tokens";
+import { coreUnitDefinitions } from "@/data/factions/units";
+import { unitAbilities } from "@/data/units/abilities";
+import type { GameAction, GameState } from "./state";
+
+function applyOk(state: GameState, action: GameAction): GameState {
+  const result = applyAction(state, action);
+  expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+  return result.state;
+}
+
+/** Pass reactions / decline rerolls until an attack settles. */
+function settle(state: GameState): GameState {
+  let current = state;
+  let safety = 40;
+  while (safety > 0 && (current.reactionWindow || current.pendingChoice?.type === "ATTACK_DIE_REROLL")) {
+    safety -= 1;
+    if (current.reactionWindow) {
+      current = applyOk(current, { type: "PASS_REACTION", playerId: current.reactionWindow.priorityPlayerId });
+      continue;
+    }
+    const choice = current.pendingChoice;
+    if (choice?.type === "ATTACK_DIE_REROLL") {
+      current = applyOk(current, {
+        type: "CHOOSE_PENDING_ROLL",
+        playerId: choice.playerId,
+        choiceId: choice.id,
+        candidateIndex: choice.candidates.length - 1
+      });
+    }
+  }
+  return current;
+}
+
+/**
+ * A clean ranged duel for unit-ability tests: p1 Marksmen (ranged, die 0) shoot
+ * a beefy p2 Skeletons that cannot die or retaliate. NOT a Bulwark faction
+ * (so Runes never interfere) — the Bulwark ABILITY tags are placed directly.
+ */
+function rangedDuel(): GameState {
+  const state = createInitialGameState();
+  const attacker = state.combat!.units.unit_p1_marksmen; // type "ranged"
+  attacker.abilities = [];
+  attacker.attack = 3;
+  attacker.position = 1;
+  const defender = state.combat!.units.unit_p2_skeletons;
+  defender.abilities = [];
+  defender.position = 13; // non-adjacent → ranged shot, no retaliation
+  defender.defense = 0;
+  defender.maxHealth = 20;
+  defender.damage = 0;
+  state.players.p1.hand = [];
+  state.players.p2.hand = [];
+  state.combat!.dice.scriptedRolls = [0, 0, 0, 0, 0, 0];
+  state.combat!.dice.rollCount = 0;
+  state.activePlayerId = "p1";
+  state.combat!.activeUnitId = "unit_p1_marksmen";
+  return state;
+}
+
+const ATTACK: Extract<GameAction, { type: "ATTACK_UNIT" }> = {
+  type: "ATTACK_UNIT",
+  playerId: "p1",
+  attackerId: "unit_p1_marksmen",
+  defenderId: "unit_p2_skeletons"
+};
+
+describe("Bulwark units — Air Shield (Shamans)", () => {
+  it("takes 1 less damage from a ranged attacker", () => {
+    // Control: no Air Shield → the full 3 damage (attack 3 − defense 0).
+    let control = rangedDuel();
+    control = settle(applyOk(control, ATTACK));
+    expect(control.combat!.units.unit_p2_skeletons.damage).toBe(3);
+
+    // With Air Shield → +1 Defense against the ranged Marksmen → 2 damage.
+    let shielded = rangedDuel();
+    shielded.combat!.units.unit_p2_skeletons.abilities = ["bulwark-air-shield"];
+    shielded = settle(applyOk(shielded, ATTACK));
+    expect(shielded.combat!.units.unit_p2_skeletons.damage).toBe(2);
+  });
+
+  it("applies only against ranged attackers, never melee (type gate)", () => {
+    const state = rangedDuel();
+    const defender = state.combat!.units.unit_p2_skeletons;
+    defender.abilities = ["bulwark-air-shield"];
+    const rangedAttacker = state.combat!.units.unit_p1_marksmen; // ranged
+    const groundAttacker = state.combat!.units.unit_p1_crusaders; // ground
+    expect(getSelfAttackerTypeDefenseBonus(defender, rangedAttacker)).toBe(1);
+    expect(getSelfAttackerTypeDefenseBonus(defender, groundAttacker)).toBe(0);
+  });
+});
+
+describe("Bulwark units — Thick Hide (War Mammoths)", () => {
+  function defendThenAttack(defenderAbilities: string[], doDefend: boolean): GameState {
+    const state = rangedDuel();
+    state.combat!.units.unit_p1_marksmen.attack = 5;
+    const defender = state.combat!.units.unit_p2_skeletons;
+    defender.abilities = defenderAbilities;
+    if (!doDefend) {
+      return settle(applyOk(state, ATTACK));
+    }
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    const defended = applyOk(state, { type: "DEFEND_UNIT", playerId: "p2", unitId: "unit_p2_skeletons" });
+    defended.activePlayerId = "p1";
+    defended.combat!.activeUnitId = "unit_p1_marksmen";
+    defended.combat!.dice.scriptedRolls = [0, 0, 0, 0, 0, 0];
+    defended.combat!.dice.rollCount = 0;
+    return settle(applyOk(defended, ATTACK));
+  }
+
+  it("+2 Defense while the unit is defending — but only while defending", () => {
+    // Defended, no Thick Hide: defense 0 + Defend die 0 → full 5 damage.
+    expect(defendThenAttack([], true).combat!.units.unit_p2_skeletons.damage).toBe(5);
+    // Defended WITH Thick Hide: +2 Defense on top of the die → 3 damage.
+    expect(defendThenAttack(["bulwark-thick-hide"], true).combat!.units.unit_p2_skeletons.damage).toBe(3);
+    // Thick Hide but NOT defending (no Defense token) → no bonus → 5 damage.
+    expect(defendThenAttack(["bulwark-thick-hide"], false).combat!.units.unit_p2_skeletons.damage).toBe(5);
+  });
+});
+
+describe("Bulwark units — Freezing Shot (Great Shamans)", () => {
+  it("the attack drops the target's Initiative by 2", () => {
+    const base = rangedDuel().combat!.units.unit_p2_skeletons.initiative;
+
+    // Control: a plain attack leaves the target's Initiative untouched.
+    let control = rangedDuel();
+    control = settle(applyOk(control, ATTACK));
+    expect(effectiveInitiative(control.combat!.units.unit_p2_skeletons, control.activeEffects)).toBe(base);
+
+    // Freezing Shot: an INITIATIVE_BONUS −2 lands on the target.
+    let state = rangedDuel();
+    state.combat!.units.unit_p1_marksmen.abilities = ["bulwark-freezing-shot"];
+    state = settle(applyOk(state, ATTACK));
+    const target = state.combat!.units.unit_p2_skeletons;
+    expect(effectiveInitiative(target, state.activeEffects)).toBe(base - 2);
+    expect(
+      state.activeEffects.some(
+        (effect) =>
+          effect.target?.type === "unit" &&
+          effect.target.unitId === target.id &&
+          effect.modifiers.some((modifier) => modifier.type === "INITIATIVE_BONUS" && modifier.amount === -2)
+      )
+    ).toBe(true);
+  });
+});
+
+describe("Bulwark units — Recovery (Yetis)", () => {
+  /**
+   * Puts a Weakness token and a Slow effect on the Marksmen (our stand-in Yeti),
+   * then advances activation onto it (every other unit is done; the active
+   * Griffins defends to advance). When the Yeti activates, Recovery should fire.
+   */
+  function activateYeti(abilities: string[]): GameState {
+    const state = createInitialGameState();
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    const yeti = state.combat!.units.unit_p1_marksmen;
+    yeti.abilities = abilities;
+    yeti.initiative = 20;
+    placeCombatToken(state, yeti, "weakness", -1, "Test");
+    state.activeEffects.push(
+      makeActiveEffect(
+        state,
+        {
+          name: "Slow",
+          scope: "unit",
+          modifiers: [{ type: "INITIATIVE_BONUS", amount: -2 }],
+          duration: { type: "combat" },
+          polarity: "negative",
+          removable: true
+        },
+        { type: "system" },
+        "p2",
+        { type: "unit", unitId: yeti.id }
+      )
+    );
+    // Everyone has acted except the Yeti and the currently-active Griffins; the
+    // Griffins defends to advance activation straight onto the Yeti.
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.activatedThisRound = true;
+    }
+    yeti.activatedThisRound = false;
+    state.combat!.units.unit_p1_griffins.activatedThisRound = false;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    return applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+  }
+
+  it("shakes off negative effects and tokens the moment it activates", () => {
+    const after = activateYeti(["bulwark-yeti-recover"]);
+    const yeti = after.combat!.units.unit_p1_marksmen;
+    expect(after.combat!.activeUnitId).toBe("unit_p1_marksmen"); // it really did activate
+    expect(hasToken(yeti, "weakness")).toBe(false);
+    expect(
+      after.activeEffects.some(
+        (effect) => effect.name === "Slow" && effect.target?.type === "unit" && effect.target.unitId === yeti.id
+      )
+    ).toBe(false);
+    expect(effectiveInitiative(yeti, after.activeEffects)).toBe(yeti.initiative);
+  });
+
+  it("control: a unit WITHOUT Recovery keeps its debuffs after activating", () => {
+    const after = activateYeti([]);
+    const unit = after.combat!.units.unit_p1_marksmen;
+    expect(after.combat!.activeUnitId).toBe("unit_p1_marksmen");
+    expect(hasToken(unit, "weakness")).toBe(true);
+    expect(
+      after.activeEffects.some(
+        (effect) => effect.name === "Slow" && effect.target?.type === "unit" && effect.target.unitId === unit.id
+      )
+    ).toBe(true);
+  });
+});
+
+describe("Bulwark units — roster & ability wiring", () => {
+  const ids = [
+    "bulwark.kobolds",
+    "bulwark.mountain_rams",
+    "bulwark.snow_elves",
+    "bulwark.yetis",
+    "bulwark.shamans",
+    "bulwark.mammoths",
+    "bulwark.jotunns"
+  ];
+
+  it("ships exactly seven Bulwark units across the bronze/silver/gold tiers", () => {
+    const units = Object.values(coreUnitDefinitions).filter((unit) => unit.faction === "bulwark");
+    expect(units.map((unit) => unit.id).sort()).toEqual([...ids].sort());
+    const tiers = units.reduce<Record<string, number>>((acc, unit) => {
+      acc[unit.tier] = (acc[unit.tier] ?? 0) + 1;
+      return acc;
+    }, {});
+    expect(tiers).toEqual({ bronze: 3, silver: 2, gold: 2 });
+  });
+
+  it("every ability tag on a Bulwark unit is a real, implemented engine ability", () => {
+    for (const id of ids) {
+      const unit = coreUnitDefinitions[id];
+      for (const side of [unit.few, unit.pack]) {
+        for (const abilityId of side?.abilities ?? []) {
+          const ability = unitAbilities[abilityId];
+          expect(ability, `${id}: ability ${abilityId} must exist`).toBeTruthy();
+          expect(ability.implementationStatus, `${abilityId} must be implemented`).toBe("implemented");
+        }
+      }
+    }
+  });
+
+  it("wires each signature ability to the side the wiki gives it", () => {
+    expect(coreUnitDefinitions["bulwark.kobolds"].few?.abilities).toContain("bulwark-kobold-gold");
+    expect(coreUnitDefinitions["bulwark.kobolds"].pack?.abilities).toContain("bulwark-kobold-gold");
+    // Magic resistance and Thick Hide are upgrade-only (Argali / War Mammoth).
+    expect(coreUnitDefinitions["bulwark.mountain_rams"].few?.abilities).toEqual([]);
+    expect(coreUnitDefinitions["bulwark.mountain_rams"].pack?.abilities).toContain("reduce-spell-damage-1");
+    expect(coreUnitDefinitions["bulwark.mammoths"].few?.abilities).toEqual([]);
+    expect(coreUnitDefinitions["bulwark.mammoths"].pack?.abilities).toContain("bulwark-thick-hide");
+    // Freezing Shot is the Great Shaman (Pack) only; Air Shield is on both.
+    expect(coreUnitDefinitions["bulwark.shamans"].few?.abilities).toEqual(["bulwark-air-shield"]);
+    expect(coreUnitDefinitions["bulwark.shamans"].pack?.abilities).toEqual(["bulwark-air-shield", "bulwark-freezing-shot"]);
+    expect(coreUnitDefinitions["bulwark.jotunns"].few?.abilities).toContain("teleport-move");
+  });
+
+  it("Kobold gold income is a Resource-round map gain of 1 gold", () => {
+    expect(unitAbilities["bulwark-kobold-gold"].mapEffect).toEqual({
+      type: "MAP_RESOURCE_ROUND_GAIN",
+      resource: "gold",
+      amount: 1
+    });
+  });
+});
