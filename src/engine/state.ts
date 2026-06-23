@@ -280,6 +280,16 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Melodia's Fortune VI ("During this turn, the number of dice you roll and
+       * resolve at locations is increased by 1"): a current-turn, player-scoped
+       * effect read in interactionToSteps — every Treasure/Resource die a location
+       * makes the controller roll this turn is increased by `amount`.
+       */
+      type: "LOCATION_DICE_BONUS";
+      amount: number;
+    }
+  | {
+      /**
        * Ammo Cart: the affected ranged units ignore every ranged-attack
        * penalty (adjacent shots and opposite-back-row shots roll normally).
        */
@@ -834,6 +844,26 @@ export type EffectDefinition =
        * so the option is hidden when unaffordable).
        */
       goldCost?: number;
+    }
+  | {
+      /**
+       * Octavia's "Gold" (IV/VI) and Melodia's "Fortune" (I/IV/VI) economic map
+       * specialties — a compound, map-only play resolved in this order:
+       *  1. gain `morale` positive-morale token(s) (Melodia I),
+       *  2. if `locationDiceBonusTurn`, create a current-turn player effect adding
+       *     +1 to the dice rolled & resolved at locations this turn (Melodia VI),
+       *  3. roll `rollResourceDice` Resource dice — resolving exactly ONE when >1,
+       *     through the existing CHOOSE_ONE in rollResourceDice (Octavia IV/VI,
+       *     Melodia IV),
+       *  4. gain `gold` (lands after the chosen die).
+       * The interactive dice roll (and the trailing gold) run through a queued
+       * map visit, so this option is map-only.
+       */
+      type: "RESOURCE_FORTUNE_PLAY";
+      morale?: number;
+      gold?: number;
+      rollResourceDice?: number;
+      locationDiceBonusTurn?: boolean;
     }
   | {
       /**
@@ -5052,6 +5082,17 @@ export type VisitStep =
        */
       type: "CONSUME_REROLL_ARTIFACT";
       cardId: CardId;
+    }
+  | {
+      /**
+       * Octavia's Gold I reaction: discard a specific held card from hand the
+       * moment a Resource die is rolled (offered inside rollResourceDice, mirroring
+       * the Diplomat's Ring reroll reaction). The die-set that follows overrides
+       * the rolled face.
+       */
+      type: "CONSUME_HELD_CARD";
+      cardId: CardId;
+      optionLabel: string;
     }
   | {
       /** Terrible Plague: flip one army card from Pack back to Few. */

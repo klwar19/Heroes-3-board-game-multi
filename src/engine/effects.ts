@@ -21,6 +21,7 @@ export const implementedCardEffectTypes = [
   "RECALL_SPELL",
   "ENTER_PLAY",
   "GAIN_RESOURCES",
+  "RESOURCE_FORTUNE_PLAY",
   "GAIN_RECRUIT_DISCOUNT",
   "GAIN_HERO_MOVEMENT",
   "GAIN_EXPERT_USE",

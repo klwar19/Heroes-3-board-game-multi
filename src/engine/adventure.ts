@@ -1266,7 +1266,26 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
 // Visits
 // ---------------------------------------------------------------------------
 
-function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
+/**
+ * Sums the visiting player's Melodia Fortune VI location-dice bonus — added to
+ * every Treasure/Resource die a location makes them roll this turn.
+ */
+function locationDiceBonusFor(state: GameState, playerId: PlayerId): number {
+  let bonus = 0;
+  for (const effect of state.activeEffects) {
+    if (effect.scope !== "player" || effect.controllerId !== playerId) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "LOCATION_DICE_BONUS") {
+        bonus += modifier.amount;
+      }
+    }
+  }
+  return bonus;
+}
+
+function interactionToSteps(interaction: LocationInteraction, extraLocationDice = 0): VisitStep[] {
   switch (interaction.type) {
     case "NONE":
     case "NOT_IMPLEMENTED":
@@ -1289,9 +1308,10 @@ function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
     case "GAIN_UNIT":
       return [{ type: "RECRUIT_FREE", unitDefId: interaction.unitDefId, side: interaction.side }];
     case "ROLL_RESOURCE_DICE":
-      return [{ type: "ROLL_RESOURCE_DICE", count: interaction.count }];
+      // Melodia's Fortune VI: +1 to the dice rolled & resolved at this location.
+      return [{ type: "ROLL_RESOURCE_DICE", count: interaction.count + extraLocationDice }];
     case "ROLL_TREASURE_DICE":
-      return [{ type: "ROLL_TREASURE_DICE", count: interaction.count }];
+      return [{ type: "ROLL_TREASURE_DICE", count: interaction.count + extraLocationDice }];
     case "SEARCH_SHARED_DECK": {
       const times = interaction.times ?? 1;
       return Array.from({ length: times }, () => ({
@@ -1313,7 +1333,7 @@ function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
           prompt: "Choose one",
           options: interaction.options.map((option) => ({
             label: option.label,
-            steps: interactionToSteps(option.interaction)
+            steps: interactionToSteps(option.interaction, extraLocationDice)
           }))
         }
       ];
@@ -1323,11 +1343,11 @@ function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
           type: "PAY_TO",
           prompt: "Pay to use this field?",
           costOptions: interaction.costOptions,
-          steps: interactionToSteps(interaction.interaction)
+          steps: interactionToSteps(interaction.interaction, extraLocationDice)
         }
       ];
     case "SEQUENCE":
-      return interaction.interactions.flatMap((inner) => interactionToSteps(inner));
+      return interaction.interactions.flatMap((inner) => interactionToSteps(inner, extraLocationDice));
     case "DISCOVER_ADJACENT_TILE":
       return [{ type: "DISCOVER_ADJACENT_TILE" }];
     case "MAGIC_SPRING":
@@ -1344,9 +1364,9 @@ function interactionToSteps(interaction: LocationInteraction): VisitStep[] {
       return [
         {
           type: "ATTACK_DIE_TABLE",
-          plus: interactionToSteps(interaction.plus),
-          zero: interactionToSteps(interaction.zero),
-          minus: interactionToSteps(interaction.minus)
+          plus: interactionToSteps(interaction.plus, extraLocationDice),
+          zero: interactionToSteps(interaction.zero, extraLocationDice),
+          minus: interactionToSteps(interaction.minus, extraLocationDice)
         }
       ];
     case "REMOVE_HAND_CARD":
@@ -2240,7 +2260,10 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     return;
   }
 
-  const steps = location.implementationStatus === "implemented" ? interactionToSteps(location.interaction) : [];
+  const steps =
+    location.implementationStatus === "implemented"
+      ? interactionToSteps(location.interaction, locationDiceBonusFor(state, playerId))
+      : [];
 
   if (steps.length === 0) {
     return;
@@ -2403,6 +2426,23 @@ export function processPendingVisit(state: GameState): void {
             timing: cardLibrary[step.cardId]?.timing ?? "instant",
             mode: "basic",
             optionLabel: "Reroll a die"
+          });
+        }
+        break;
+      }
+      case "CONSUME_HELD_CARD": {
+        const player = state.players[visit.playerId];
+        const handIndex = player?.hand.indexOf(step.cardId) ?? -1;
+        if (player && handIndex !== -1) {
+          player.hand.splice(handIndex, 1);
+          player.discard.push(step.cardId);
+          appendEvent(state, {
+            type: "CARD_PLAYED",
+            playerId: visit.playerId,
+            cardId: step.cardId,
+            timing: cardLibrary[step.cardId]?.timing ?? "instant",
+            mode: "basic",
+            optionLabel: step.optionLabel
           });
         }
         break;
@@ -3868,6 +3908,33 @@ function extraDieRerollOptions(
   return options;
 }
 
+/**
+ * Octavia's Gold I ("Play this card after rolling at least 1 Resource die to set
+ * 1 Resource die to '6 gold'"): a held-card reaction offered the moment a
+ * Resource die is rolled, mirroring the Diplomat's Ring reroll reaction. Taking
+ * it discards Octavia's Gold I from hand, then gains 6 gold — overriding the
+ * rolled face. (The card's other half — "Draw 1 card" — is its normal play, so
+ * the card itself encodes only that option.)
+ */
+const OCTAVIA_GOLD_REACTION_CARD_ID = "specialty.octavia.1";
+function octaviaGoldReactionOption(
+  state: GameState,
+  visit: PendingVisit
+): { label: string; steps: VisitStep[] } | null {
+  const hand = state.players[visit.playerId]?.hand ?? [];
+  if (!hand.includes(OCTAVIA_GOLD_REACTION_CARD_ID)) {
+    return null;
+  }
+  const label = "Gold I: set this Resource die to 6 gold";
+  return {
+    label,
+    steps: [
+      { type: "CONSUME_HELD_CARD", cardId: OCTAVIA_GOLD_REACTION_CARD_ID, optionLabel: label },
+      { type: "GAIN_RESOURCES", gold: 6 }
+    ]
+  };
+}
+
 function resourceDieLabel(roll: { resource: ResourceKind; amount: number }): string {
   const name =
     roll.resource === "buildingMaterials" ? "materials" : roll.resource === "valuables" ? "valuables" : "gold";
@@ -3889,8 +3956,9 @@ function rollResourceDice(state: GameState, visit: PendingVisit, count: number):
   const luck = getLuckRerollEffect(state, visit.playerId, "resource");
   const extraOptions = extraDieRerollOptions(state, visit, "resource", count);
   const setEffect = getDieSetEffect(state, visit.playerId, "resource");
+  const octaviaOption = octaviaGoldReactionOption(state, visit);
 
-  if (rolls.length === 1 && !luck && extraOptions.length === 0 && !setEffect) {
+  if (rolls.length === 1 && !luck && extraOptions.length === 0 && !setEffect && !octaviaOption) {
     gainResources(state, visit.playerId, { [rolls[0].resource]: rolls[0].amount }, "resource die");
     return;
   }
@@ -3914,6 +3982,10 @@ function rollResourceDice(state: GameState, visit: PendingVisit, count: number):
   // your choice (the whole die-set effect is spent on the chosen option).
   if (setEffect) {
     options.push(...setResourceDieOptions(setEffect));
+  }
+  // Octavia's Gold I: discard it to set one rolled Resource die to "6 gold".
+  if (octaviaOption) {
+    options.push(octaviaOption);
   }
 
   visit.steps.unshift({
@@ -4352,7 +4424,7 @@ export function grantCreatureBankReward(
   field.blackCube = true;
 
   const reward = bank.buildReward(stackedCount);
-  const steps = interactionToSteps(reward);
+  const steps = interactionToSteps(reward, locationDiceBonusFor(state, playerId));
   if (steps.length === 0) {
     return;
   }
