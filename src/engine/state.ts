@@ -1177,6 +1177,14 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Kriv (Bulwark)'s rune-synergy specialty: the Bulwark player immediately
+       * banks `amount` Runes (a combat play). No-op for a non-Bulwark caster.
+       */
+      type: "GAIN_RUNES";
+      amount: number;
+    }
+  | {
+      /**
        * Gem's First Aid: take the named war machine card from the shared
        * supply into hand at no cost. When the supply has none left (already
        * taken — the player "already has" it), draw `fallbackDrawCards` instead.

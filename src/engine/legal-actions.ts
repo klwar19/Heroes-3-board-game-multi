@@ -2034,6 +2034,9 @@ function isOptionEffectPlayable(
     // space — a combat play (its empty-space targets are generated generically).
     case "PLACE_FIRE_WALL_FIXED":
       return context === "combat" && Boolean(state.combat);
+    case "GAIN_RUNES":
+      // Kriv (Bulwark): bank Runes mid-combat — only a Bulwark caster benefits.
+      return context === "combat" && Boolean(state.combat) && state.players[playerId]?.factionId === "bulwark";
     case "RESHUFFLE_DISCARD_THEN_DRAW": {
       // Deemer's Meteor Shower IV deck-cycle: useful whenever there is a card to
       // shuffle back or draw (map or combat).

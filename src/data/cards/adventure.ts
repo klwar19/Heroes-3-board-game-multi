@@ -2734,6 +2734,170 @@ export const adventureCards: CardLibrary = {
     source: heroSource("adelaide")
   },
 
+  // ---- Bulwark heroes (expansion; fan faction, placeholder art) ----------
+  // Dhuin (Chieftain): Snow Elves specialist — the standard might unit-buff trio
+  // (Catherine pattern). Creyle (Chieftain): the same for Mammoths.
+  "specialty.dhuin.1": withoutArt(mightSpecialtyOne("dhuin", "Snow Elves", "Snow Elves")),
+  "specialty.dhuin.4": withoutArt(unitHealthSpecialty("dhuin", "Snow Elves", 4, 1, "Snow Elves")),
+  "specialty.dhuin.6": withoutArt(unitInitiativeSpecialty("dhuin", "Snow Elves", 6, 1, "Snow Elves")),
+  "specialty.creyle.1": withoutArt(mightSpecialtyOne("creyle", "Mammoths", "Mammoths")),
+  "specialty.creyle.4": withoutArt(unitHealthSpecialty("creyle", "Mammoths", 4, 1, "Mammoths")),
+  "specialty.creyle.6": withoutArt(unitInitiativeSpecialty("creyle", "Mammoths", 6, 1, "Mammoths")),
+
+  // Glacius (Elder): the Frost Ring Elementalist — Adelaide's Frost-Ring
+  // machinery (AREA_DAMAGE_PICK_ADJACENT, includeCenter:false). IV is a
+  // spell-economy choice (recall a Spell/Specialty OR +2 Power on the next cast).
+  "specialty.glacius.1": {
+    id: "specialty.glacius.1",
+    name: "Frost Ring I",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "glacius",
+      "frost-ring",
+      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 1 card, then target a space; every unit adjacent to it (not the space itself, friend or foe) takes 1 damage."
+    ],
+    target: { type: "any-space" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Discard 1 card: 1 damage to every unit adjacent to a space",
+          combatAnytime: true,
+          cost: { discardCards: 1 },
+          effect: { type: "AREA_DAMAGE_PICK_ADJACENT", amount: 1, includeCenter: false, adjacentPicks: 4 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("glacius")
+  },
+  "specialty.glacius.4": {
+    id: "specialty.glacius.4",
+    name: "Frost Ring IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "glacius",
+      "frost-ring",
+      "Instant: take a Spell or Specialty card from your discard pile. — OR — Instant: +2 Power on your next spell this Combat."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Take a Spell or Specialty card from your discard pile",
+          mapOnly: true,
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell-or-specialty" }
+        },
+        {
+          label: "+2 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("glacius")
+  },
+  "specialty.glacius.6": {
+    id: "specialty.glacius.6",
+    name: "Frost Ring VI",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "glacius",
+      "frost-ring",
+      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 2 cards, then target a space; every unit adjacent to it (not the space itself, friend or foe) takes 2 damage."
+    ],
+    target: { type: "any-space" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Discard 2 cards: 2 damage to every unit adjacent to a space",
+          combatAnytime: true,
+          cost: { discardCards: 2 },
+          effect: { type: "AREA_DAMAGE_PICK_ADJACENT", amount: 2, includeCenter: false, adjacentPicks: 4 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("glacius")
+  },
+
+  // Kriv (Elder): the Rune-synergy hero — each level banks Runes mid-combat
+  // (GAIN_RUNES) to rush the army up the Bulwark Rune track, or takes a map/spell
+  // fallback. The rune option is offered only to a Bulwark caster.
+  "specialty.kriv.1": {
+    id: "specialty.kriv.1",
+    name: "Runes I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: ["hero-specialty", "kriv", "runes", "Instant (Combat): gain 2 Runes. — OR — draw a card."],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        { label: "Gain 2 Runes", combatOnly: true, effect: { type: "GAIN_RUNES", amount: 2 } },
+        { label: "Draw a card", mapOnly: true, effect: { type: "DRAW_CARDS", amount: 1 } }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("kriv")
+  },
+  "specialty.kriv.4": {
+    id: "specialty.kriv.4",
+    name: "Runes IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: ["hero-specialty", "kriv", "runes", "Instant (Combat): gain 3 Runes. — OR — take a Spell or Specialty card from your discard pile."],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        { label: "Gain 3 Runes", combatOnly: true, effect: { type: "GAIN_RUNES", amount: 3 } },
+        {
+          label: "Take a Spell or Specialty card from your discard pile",
+          mapOnly: true,
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell-or-specialty" }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("kriv")
+  },
+  "specialty.kriv.6": {
+    id: "specialty.kriv.6",
+    name: "Runes VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: ["hero-specialty", "kriv", "runes", "Instant (Combat): gain 4 Runes. — OR — +2 Power on your next spell this Combat."],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        { label: "Gain 4 Runes", combatOnly: true, effect: { type: "GAIN_RUNES", amount: 4 } },
+        {
+          label: "+2 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("kriv")
+  },
+
   // ---- Additional heroes, batch 2 (fan-wiki, real board art) -------------
   // Lord Haart (Castle, Knight): the Estates / gold-economy specialist. Every
   // level is a map play that gains a flat amount of gold (GAIN_RESOURCES).

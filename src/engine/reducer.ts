@@ -174,7 +174,7 @@ import {
   unitImmuneToParalysis
 } from "./active-effects";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
-import { gainRunesForAttack, gainRunesForDefend } from "./runes";
+import { gainRunes, gainRunesForAttack, gainRunesForDefend } from "./runes";
 import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
 import {
   cancelSpellAllowsSchoolAndLevel,
@@ -10279,6 +10279,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       player.discard = playedCard;
       drawCardsForPlayer(state, action.playerId, effect.drawCards);
     }
+  }
+
+  // Kriv (Bulwark)'s rune-synergy specialty: bank Runes immediately. gainRunes
+  // is a no-op for a non-Bulwark caster, so the option is harmless if mis-played.
+  if (effect.type === "GAIN_RUNES") {
+    gainRunes(state, action.playerId, effect.amount);
   }
 
   // Solmyr's Chain Lightning (I/VI): the selected unit takes the leftmost bolt,

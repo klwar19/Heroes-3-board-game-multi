@@ -52,6 +52,7 @@ export const implementedCardEffectTypes = [
   "AREA_DAMAGE_ALL_ADJACENT",
   "AREA_DAMAGE_PICK_ADJACENT",
   "RESHUFFLE_DISCARD_THEN_DRAW",
+  "GAIN_RUNES",
   "GAIN_WAR_MACHINE",
   "CHAIN_LIGHTNING",
   "PLACE_PARALYSIS",
@@ -694,6 +695,10 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "RESHUFFLE_DISCARD_THEN_DRAW") {
     return `shuffle your discard pile into your deck, then draw ${card.effect.drawCards}`;
+  }
+
+  if (card.effect.type === "GAIN_RUNES") {
+    return `gain ${card.effect.amount} Rune(s)`;
   }
 
   if (card.effect.type === "GAIN_WAR_MACHINE") {
