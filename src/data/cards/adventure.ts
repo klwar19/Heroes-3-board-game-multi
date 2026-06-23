@@ -3131,6 +3131,20 @@ export const adventureCards: CardLibrary = {
     source: heroSource("kriv")
   },
 
+  // Eikthurn (Chieftain): Yetis specialist — the standard might unit-buff trio
+  // (Catherine/Dhuin pattern): I is the +1 attack/defense rider doubled for Yetis,
+  // IV adds +1 max HP (×2 Yetis), VI a +1 initiative buff (×2 Yetis).
+  "specialty.eikthurn.1": withoutArt(mightSpecialtyOne("eikthurn", "Yetis", "Yetis")),
+  "specialty.eikthurn.4": withoutArt(unitHealthSpecialty("eikthurn", "Yetis", 4, 1, "Yetis")),
+  "specialty.eikthurn.6": withoutArt(unitInitiativeSpecialty("eikthurn", "Yetis", 6, 1, "Yetis")),
+
+  // Oidana (Elder): the frost "Slow" caster — each level targets an enemy unit and
+  // lowers its Initiative (and movement) via the shared CREATE_INITIATIVE_BUFF
+  // (negative) machinery (Gundula's Slow factory): −2 at I, −3 at IV, −4 at VI.
+  "specialty.oidana.1": withoutArt(slowSpecialty("oidana", 1, 2, -1)),
+  "specialty.oidana.4": withoutArt(slowSpecialty("oidana", 4, 3, -1)),
+  "specialty.oidana.6": withoutArt(slowSpecialty("oidana", 6, 4, -1)),
+
   // ---- Additional heroes, batch 2 (fan-wiki, real board art) -------------
   // Lord Haart (Castle, Knight): the Estates / gold-economy specialist. Every
   // level is a map play that gains a flat amount of gold (GAIN_RESOURCES).

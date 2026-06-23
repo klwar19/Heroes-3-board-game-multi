@@ -1132,8 +1132,11 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "bulwark",
     tier: "bronze",
     type: "ground",
-    few: { attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 0 }, abilities: ["bulwark-kobold-gold"], abilityText: "[map] At the beginning of each Resource round, gain 1 [gold].", cardImage: "/assets/units-bulwark-bronze-kobolds-few.webp" },
-    pack: { attack: 2, defense: 1, health: 3, initiative: 5, cost: { gold: 2 }, abilities: ["bulwark-kobold-gold"], abilityText: "[map] At the beginning of each Resource round, gain 1 [gold].", cardImage: "/assets/units-bulwark-bronze-kobolds-pack.webp" },
+    // engine: the gold income is the Pack (Kobold Foreman) ONLY; the Few (Kobold)
+    // has no wired ability and intentionally carries no abilityText, so it stays a
+    // true no-op rather than a decorative gold-income claim.
+    few: { attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 0 }, abilities: [], cardImage: "/assets/units-bulwark-bronze-kobolds-few.webp" },
+    pack: { attack: 2, defense: 1, health: 3, initiative: 5, cost: { gold: 2 }, abilities: ["bulwark-kobold-gold"], abilityText: "[map] At the beginning of each Resource round, gain 1 [gold] (Kobold Foreman).", cardImage: "/assets/units-bulwark-bronze-kobolds-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Kobold",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1149,8 +1152,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     type: "ground",
     // engine: Few (Mountain Ram) has no wired ability; Pack (Argali) carries the
     // magic-resistance translation only (reduce-spell-damage-1).
-    few: { attack: 2, defense: 2, health: 3, initiative: 4, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-bulwark-bronze-mountain_rams-few.webp" },
-    pack: { attack: 3, defense: 2, health: 4, initiative: 5, cost: { gold: 4 }, abilities: ["reduce-spell-damage-1"], abilityText: "[unit_passive] Reduce any [damage] from [spell] by 1 (Argali).", cardImage: "/assets/units-bulwark-bronze-mountain_rams-pack.webp" },
+    few: { attack: 2, defense: 1, health: 3, initiative: 4, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-bulwark-bronze-mountain_rams-few.webp" },
+    pack: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 4 }, abilities: ["reduce-spell-damage-1"], abilityText: "[unit_passive] Reduce any [damage] from [spell] by 1 (Argali).", cardImage: "/assets/units-bulwark-bronze-mountain_rams-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Mountain_Ram",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1164,8 +1167,11 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "bulwark",
     tier: "bronze",
     type: "ranged",
-    few: { attack: 3, defense: 0, health: 2, initiative: 4, cost: { gold: 3 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit.", cardImage: "/assets/units-bulwark-bronze-snow_elves-few.webp" },
-    pack: { attack: 4, defense: 1, health: 3, initiative: 5, cost: { gold: 5 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit (Steel Elf).", cardImage: "/assets/units-bulwark-bronze-snow_elves-pack.webp" },
+    // engine: Few (Snow Elf) ignores the melee penalty only. Pack (Steel Elf) adds
+    // a ranged double-shot (`double-attack`: a second attack against a non-adjacent
+    // target) — the board translation of the wiki Steel Elf's repeated volley.
+    few: { attack: 3, defense: 0, health: 3, initiative: 4, cost: { gold: 3 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit.", cardImage: "/assets/units-bulwark-bronze-snow_elves-few.webp" },
+    pack: { attack: 4, defense: 1, health: 3, initiative: 5, cost: { gold: 5 }, abilities: ["ignore-combat-penalties", "double-attack"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit. [unit_attack] Attacks a non-adjacent target a second time (Steel Elf).", cardImage: "/assets/units-bulwark-bronze-snow_elves-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Snow_Elf",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",

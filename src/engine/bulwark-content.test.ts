@@ -16,7 +16,7 @@ import { createAdventureGameState } from "./index";
  * together and actually playable.
  */
 describe("Bulwark faction wiring", () => {
-  it("registers the faction with its S10 starting tile, eight buildings, four heroes and seven units", () => {
+  it("registers the faction with its S10 starting tile, eight buildings, six heroes and seven units", () => {
     const faction = coreFactionDefinitions.bulwark;
     expect(faction).toBeDefined();
     expect(faction.id).toBe("bulwark");
@@ -24,7 +24,7 @@ describe("Bulwark faction wiring", () => {
     expect(faction.startingTileId).toBe("S10");
     expect(startingTileByFaction.bulwark).toBe("S10");
 
-    expect(faction.heroes).toEqual(["dhuin", "creyle", "glacius", "kriv"]);
+    expect(faction.heroes).toEqual(["dhuin", "creyle", "glacius", "kriv", "eikthurn", "oidana"]);
     expect(faction.units).toEqual([
       "bulwark.kobolds",
       "bulwark.mountain_rams",
@@ -58,7 +58,7 @@ describe("Bulwark faction wiring", () => {
     }
   });
 
-  it("registers all four heroes under the bulwark faction with a portrait", () => {
+  it("registers all six heroes under the bulwark faction with a portrait", () => {
     for (const id of coreFactionDefinitions.bulwark.heroes) {
       const hero = coreHeroDefinitions[id];
       expect(hero?.faction, id).toBe("bulwark");
