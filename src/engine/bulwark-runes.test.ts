@@ -205,11 +205,11 @@ describe("Bulwark Runes — gained by combat actions (Gamefound Update #3)", () 
   });
 
   it("EARNING Runes in a seeded combat climbs the level and raises a real stat (Sieidi: L1→L2 Defense)", () => {
-    // The load-bearing anti-decorative case: a Sieidi player (cap 2) is seeded at
-    // the base 4 (Level 1), then EARNS the +3 climb to Level 2 by acting, which
-    // turns on the army-wide +1 Defense. Fails if the seed pre-charges to the cap
-    // (no climb to make) OR if the attack's Rune gain is removed (climb never
-    // happens) — testing the OUTCOME (defense 0 → 1), not the rune counter.
+    // The load-bearing anti-decorative case: a Sieidi player (max level 2) opens
+    // the battle at 0 Runes (Level 0) and EARNS its way up; reaching the Level 2
+    // threshold (7) turns on the army-wide +1 Defense. Fails if the seed
+    // pre-charges to the cap (no climb to make) OR if the attack's Rune gain is
+    // removed (climb never happens) — testing the OUTCOME (defense 0 → 1).
     const state = rangedBulwarkState();
     state.towns.town_p1.buildings.push("bulwark.sieidi");
     state.combat!.attackerPlayerId = "p1";
@@ -218,10 +218,12 @@ describe("Bulwark Runes — gained by combat actions (Gamefound Update #3)", () 
     const unitId = state.combat!.units.unit_p1_marksmen.id;
     const defenseBonus = (s: GameState) => getActiveDefenseBonus(s, s.combat!.units[unitId]);
 
-    expect(state.combat!.runes!.p1.count).toBe(RUNE_STARTING_BASE); // 4 = Level 1, not pre-charged
+    expect(state.combat!.runes!.p1.count).toBe(0); // opens at 0, not pre-charged
+    expect(effectiveRuneLevel(state, "p1")).toBe(0);
     expect(defenseBonus(state)).toBe(0);
-    // Two Runes already earned this fight (6, still Level 1: no Defense yet)…
-    gainRunes(state, "p1", 2);
+    // Six Runes earned so far this fight: past Level 1 (4) but one short of the
+    // Level 2 threshold (7), so the Defense buff is not on yet.
+    gainRunes(state, "p1", 6);
     expect(getRuneSummary(state, "p1")).toMatchObject({ count: 6, level: 1 });
     expect(defenseBonus(state)).toBe(0);
 
@@ -271,63 +273,55 @@ describe("Bulwark Runes — gained by combat actions (Gamefound Update #3)", () 
   });
 });
 
-describe("Bulwark Runes — starting pool (base + City Hall flag; buildings raise the cap)", () => {
-  it("seeds the base Runes and the City Hall Rune-Empowered bonus at combat start", () => {
-    // Base 4 + City Hall combat focus (+3) = 7 starting Runes; with no rune
-    // building the level cap is 1, so it still starts at Level 1.
+describe("Bulwark Runes — starting pool (earned in battle; City Hall flag head-start)", () => {
+  it("opens every combat at 0 Runes / Level 0 with no building or flag", () => {
+    const base = bulwarkState();
+    base.combat!.attackerPlayerId = "p1";
+    base.combat!.defenderPlayerId = "p2";
+    seedRunesForCombat(base);
+    expect(base.combat!.runes?.p1?.count).toBe(RUNE_STARTING_BASE);
+    expect(RUNE_STARTING_BASE).toBe(0);
+    // No buff at the opening — Runes are earned, and Level 1 needs 4 of them.
+    expect(effectiveRuneLevel(base, "p1")).toBe(0);
+    expect(getActiveAttackBonus(base, {
+      attacker: base.combat!.units.unit_p1_marksmen,
+      defender: base.combat!.units.unit_p2_skeletons,
+      attackKind: "ranged"
+    })).toBe(0);
+  });
+
+  it("the City Hall Rune-Empowered flag is a +3 head-start toward the first threshold", () => {
+    // Base 0 + City Hall combat focus (+3) = 3 starting Runes: a head-start that
+    // still falls short of Level 1 (4), so earning ONE more Rune now reaches it.
     const flagged = bulwarkState();
     flagged.combat!.attackerPlayerId = "p1";
     flagged.combat!.defenderPlayerId = "p2";
     flagged.players.p1.runeEmpoweredNextCombats = 3;
     seedRunesForCombat(flagged);
-    expect(flagged.combat!.runes?.p1?.count).toBe(RUNE_STARTING_BASE + 3);
+    expect(flagged.combat!.runes?.p1?.count).toBe(3);
+    expect(effectiveRuneLevel(flagged, "p1")).toBe(0);
+    gainRunes(flagged, "p1", 1); // one earned Rune → 4 → Level 1 (vs 4 without the flag)
     expect(effectiveRuneLevel(flagged, "p1")).toBe(1);
-
-    // With the Sieidi+Altar (cap 3) the SAME City Hall flag now matters: base 4 +
-    // flag 3 = 7 = Level 2 at the opening (it would be a wasted no-op if the
-    // buildings had already pre-charged the player to the cap).
-    const flaggedAltar = bulwarkState();
-    flaggedAltar.combat!.attackerPlayerId = "p1";
-    flaggedAltar.combat!.defenderPlayerId = "p2";
-    flaggedAltar.towns.town_p1.buildings.push("bulwark.sieidi", "bulwark.altar");
-    flaggedAltar.players.p1.runeEmpoweredNextCombats = 3;
-    seedRunesForCombat(flaggedAltar);
-    expect(flaggedAltar.combat!.runes?.p1?.count).toBe(RUNE_STARTING_BASE + 3); // 7
-    expect(effectiveRuneLevel(flaggedAltar, "p1")).toBe(2);
-    // Level 3 (+3 Initiative) is still NOT pre-charged — it must be earned.
-    const u = flaggedAltar.combat!.units.unit_p1_marksmen;
-    expect(effectiveInitiative(u, flaggedAltar.activeEffects)).toBe(u.initiative);
   });
 
-  it("the Sieidi/Altar buildings RAISE THE CAP but do NOT pre-charge to it (anti-decorative)", () => {
-    // The previous design seeded base 4 + Altar baseline 6 = 10 → started at the
+  it("the Sieidi/Altar buildings RAISE THE MAX LEVEL but do NOT pre-charge Runes (anti-decorative)", () => {
+    // The original design seeded base 4 + Altar baseline 6 = 10 → started at the
     // Level 3 cap, making the earn-by-acting loop, Kriv and the City Hall option
-    // inert. The buildings must now leave the player at the base Level 1, with the
-    // higher levels reachable only by EARNING Runes in battle.
+    // inert. The buildings must leave the player at 0 Runes / Level 0, with every
+    // level reached only by EARNING Runes in battle.
     for (const built of [["bulwark.sieidi"], ["bulwark.sieidi", "bulwark.altar"]]) {
       const state = bulwarkState();
       state.combat!.attackerPlayerId = "p1";
       state.combat!.defenderPlayerId = "p2";
       state.towns.town_p1.buildings.push(...built);
       seedRunesForCombat(state);
-      // Seeded at the base 4 = Level 1 only — NOT pre-charged to the unlocked cap.
-      expect(state.combat!.runes?.p1?.count, built.join("+")).toBe(RUNE_STARTING_BASE);
-      expect(effectiveRuneLevel(state, "p1"), built.join("+")).toBe(1);
+      // Opens at 0 / Level 0 — NOT pre-charged to the unlocked max level.
+      expect(state.combat!.runes?.p1?.count, built.join("+")).toBe(0);
+      expect(effectiveRuneLevel(state, "p1"), built.join("+")).toBe(0);
       const unit = state.combat!.units.unit_p1_marksmen;
       expect(getActiveDefenseBonus(state, unit), built.join("+")).toBe(0);
       expect(effectiveInitiative(unit, state.activeEffects), built.join("+")).toBe(unit.initiative);
     }
-  });
-
-  it("a Bulwark army starts every combat at the base Runes even with no building or flag", () => {
-    const base = bulwarkState();
-    base.combat!.attackerPlayerId = "p1";
-    base.combat!.defenderPlayerId = "p2";
-    seedRunesForCombat(base);
-    expect(base.combat!.runes?.p1?.count).toBe(RUNE_STARTING_BASE);
-    expect(RUNE_STARTING_BASE).toBe(4);
-    // The base 4 exactly clears the Level 1 threshold (4) → Bulwark starts attuned.
-    expect(effectiveRuneLevel(base, "p1")).toBe(1);
   });
 });
 
@@ -340,15 +334,16 @@ describe("Bulwark Runes — PvP / multiplayer", () => {
     state.towns.town_p2.factionId = "bulwark";
     state.combat!.attackerPlayerId = "p1";
     state.combat!.defenderPlayerId = "p2";
-    // p1 builds the Sieidi (cap 2); p2 has no rune building (cap 1).
+    // p1 builds the Sieidi (max level 2); p2 has no rune building (max level 1).
     state.towns.town_p1.buildings.push("bulwark.sieidi");
     seedRunesForCombat(state);
-    // Both seeded to the base 4 = Level 1.
+    // Both open at 0 / Level 0.
     expect(state.combat!.runes?.p1?.count).toBe(RUNE_STARTING_BASE);
     expect(state.combat!.runes?.p2?.count).toBe(RUNE_STARTING_BASE);
 
-    // p1 EARNS the climb to Level 2; p2 stays at Level 1.
-    gainRunes(state, "p1", 3); // 4 → 7 = Level 2
+    // p1 EARNS up to Level 2; p2 earns only to Level 1.
+    gainRunes(state, "p1", 7); // 0 → 7 = Level 2
+    gainRunes(state, "p2", 4); // 0 → 4 = Level 1
     expect(effectiveRuneLevel(state, "p1")).toBe(2);
     expect(effectiveRuneLevel(state, "p2")).toBe(1);
 
@@ -370,7 +365,7 @@ describe("Bulwark Runes — PvP / multiplayer", () => {
     state.combat!.attackerPlayerId = "p1";
     state.combat!.defenderPlayerId = "p2";
     seedRunesForCombat(state);
-    gainRunes(state, "p1", 6); // 4 → 10 = Level 3 with the Altar
+    gainRunes(state, "p1", 10); // 0 → 10 = Level 3 with the Altar
 
     // p2 (the opponent) sees p1's Rune count AND p1's town buildings in their
     // redacted view — the two inputs getRuneTrack needs — so the HUD draws p1's
@@ -385,19 +380,19 @@ describe("Bulwark Runes — PvP / multiplayer", () => {
 
 describe("Bulwark Runes — getRuneTrack (combat UI readout)", () => {
   it("marks each level active / pending / locked from the count and the building cap", () => {
-    // No rune building: capped at Level 1. Base 4 -> L1 active; L2/L3 locked.
+    // No rune building: max level 1. 4 Runes earned -> L1 active; L2/L3 locked.
     const base = bulwarkState();
-    gainRunes(base, "p1", RUNE_STARTING_BASE); // 4
+    gainRunes(base, "p1", RUNE_LEVEL_THRESHOLDS[0]); // 4
     const baseTrack = getRuneTrack(base, "p1");
     expect(baseTrack).toMatchObject({ count: 4, level: 1, levelCap: 1, max: 10, nextThreshold: null });
     expect(baseTrack.levels.map((l) => l.status)).toEqual(["active", "locked", "locked"]);
     expect(baseTrack.levels.map((l) => l.threshold)).toEqual([4, 7, 10]);
     expect(baseTrack.levels.map((l) => l.bonusLabel)).toEqual(["+1 Attack", "+1 Defense", "+3 Initiative"]);
 
-    // Sieidi built, still at base 4: L2 is now PENDING (unlocked, not yet earned).
+    // Sieidi built, only 4 Runes earned: L2 is PENDING (unlocked, not yet earned).
     const sieidi = bulwarkState();
     sieidi.towns.town_p1.buildings.push("bulwark.sieidi");
-    gainRunes(sieidi, "p1", RUNE_STARTING_BASE); // 4
+    gainRunes(sieidi, "p1", RUNE_LEVEL_THRESHOLDS[0]); // 4
     const sieidiTrack = getRuneTrack(sieidi, "p1");
     expect(sieidiTrack).toMatchObject({ level: 1, levelCap: 2, nextThreshold: 7 });
     expect(sieidiTrack.levels.map((l) => l.status)).toEqual(["active", "pending", "locked"]);

@@ -17,24 +17,25 @@ import type { ActiveEffectModifier, CombatUnitState, GameState, PlayerId } from 
  *      Level 2 (needs Sieidi) -> +1 Defense  (on top of L1)
  *      Level 3 (needs Altar)  -> +3 Initiative (on top of L1+L2)
  *  - Runes RESET every battle (collected again from scratch). Every Bulwark army
- *    BEGINS each battle with RUNE_STARTING_BASE Runes — enough to clear the first
- *    threshold, so Bulwark is attuned at Level 1 from the opening (the user spec:
- *    "begin: 4, reach 4 and activate the first threshold").
- *  - The Sieidi/Altar buildings do NOT pre-charge Runes; they raise the level
- *    CAP only (Sieidi -> Level 2, Altar -> Level 3). The next threshold is +3
- *    Runes away and you must EARN the climb in battle by acting (the user spec:
- *    "then +3 then +3 (2 buildings)"). The City Hall combat-focus choice and
- *    Kriv's specialty add starting/banked Runes to accelerate that climb. This is
- *    deliberate: pre-charging straight to the cap (the previous behaviour) made
- *    the entire earn-by-acting loop, Kriv's specialty and the City Hall option
- *    inert in real combat — a decorative mechanic. They are load-bearing now.
+ *    BEGINS each battle with RUNE_STARTING_BASE Runes (0) and GRADUALLY earns
+ *    more by acting; the army gets a level's buff the moment its Rune total
+ *    REACHES that level's threshold (the user spec: "each battle gradually get
+ *    rune, and get buff when reach threshold (4, 7, 10)").
+ *  - The Sieidi/Altar buildings do NOT pre-charge Runes; they raise the MAX
+ *    LEVEL only (Sieidi -> Level 2, Altar -> Level 3 — "building will raise the
+ *    max level"). Without a rune building a Bulwark army can still earn up to
+ *    Level 1. The City Hall combat-focus choice and Kriv's specialty add
+ *    starting/banked Runes to reach the thresholds sooner. This is deliberate:
+ *    pre-charging straight to the cap (the original behaviour) made the entire
+ *    earn-by-acting loop, Kriv's specialty and the City Hall option inert in real
+ *    combat — a decorative mechanic. They are load-bearing now.
  *
  * What the dev note leaves open (designed here, tunable in ONE place):
  *  - the per-level Rune THRESHOLDS (4 / 7 / 10 — first rung at 4, then +3, +3)
- *    and the starting-rune amount (RUNE_STARTING_BASE). The Sieidi/Altar
- *    buildings carry startingRunes: 0 (cap-raisers, not pre-chargers); the City
- *    Hall flag is the head-start path (see core.ts RUNE_ALTAR buildings + the
- *    bulwark.city_hall option).
+ *    and the starting-rune amount (RUNE_STARTING_BASE = 0; you earn the runes).
+ *    The Sieidi/Altar buildings carry startingRunes: 0 (max-level raisers, not
+ *    pre-chargers); the City Hall flag is the head-start path (see core.ts
+ *    RUNE_ALTAR buildings + the bulwark.city_hall option).
  *
  * Implementation note: the army-wide buff reuses the engine's existing
  * player-scoped active-effect machinery (exactly how Necklace of Swiftness /
@@ -48,8 +49,8 @@ import type { ActiveEffectModifier, CombatUnitState, GameState, PlayerId } from 
 /**
  * Rune totals required to reach Rune Levels 1, 2 and 3. Per the user spec the
  * first rung is at 4 and each further level is +3 Runes away (4 / 7 / 10): a
- * Bulwark army begins at 4 (Level 1) and earns the +3-Rune climbs to Levels 2/3
- * once the Sieidi/Altar raise the cap.
+ * Bulwark army begins at 0 and earns its way up, getting each level's buff when
+ * its Rune total reaches that threshold, as far as the Sieidi/Altar max level.
  */
 export const RUNE_LEVEL_THRESHOLDS = [4, 7, 10] as const;
 /** No point banking past Level 3 — Runes cap at the top threshold. */
@@ -61,10 +62,11 @@ export const RUNE_GAIN_RETALIATION = 1;
 export const RUNE_GAIN_DEFEND = 2;
 
 /**
- * Baseline Runes every Bulwark army starts a battle with, before any Sieidi /
- * Altar building or City Hall "Rune-Empowered" bonus. Tunable here in one place.
+ * Baseline Runes every Bulwark army starts a battle with, before any City Hall
+ * "Rune-Empowered" bonus. 0 — Runes are EARNED gradually in battle, not granted
+ * up front (the user spec: "each battle gradually get rune"). Tunable here.
  */
-export const RUNE_STARTING_BASE = 4;
+export const RUNE_STARTING_BASE = 0;
 
 /** The cumulative army-wide bonus added at each Rune Level (Gamefound Update #3). */
 export const RUNE_LEVEL_BONUS = { attack: 1, defense: 1, initiative: 3 } as const;
@@ -169,11 +171,11 @@ function syncRuneEffects(state: GameState, playerId: PlayerId): void {
 /**
  * Seeds the per-combat Rune pools for both participants at the start of a battle
  * (called from finalizeCombatStart). Only Bulwark players get a pool; the
- * starting amount is RUNE_STARTING_BASE (4 -> Level 1) plus the rune building's
- * startingRunes (0 today — cap-raisers, not pre-chargers) plus any City Hall
- * "Rune-Empowered" bonus, capped at RUNE_MAX. The seed immediately applies
- * whatever Rune Level it already qualifies for; further levels are EARNED via
- * gainRunes during the fight.
+ * starting amount is RUNE_STARTING_BASE (0) plus the rune building's startingRunes
+ * (0 — max-level raisers, not pre-chargers) plus any City Hall "Rune-Empowered"
+ * bonus, capped at RUNE_MAX. So a normal Bulwark army opens at 0 Runes / Level 0
+ * and earns its buffs by acting; further levels are reached via gainRunes during
+ * the fight as far as the building max level allows.
  */
 export function seedRunesForCombat(state: GameState): void {
   const combat = state.combat;
