@@ -308,7 +308,8 @@ import type {
   SpellSchool,
   TargetRef,
   UnitGrade,
-  UnitId
+  UnitId,
+  VisitStep
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 
@@ -9881,6 +9882,44 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           ? effect.expertGain
           : effect.gain;
     gainResources(state, action.playerId, gain, `played ${card.name}`);
+  }
+
+  // Octavia's "Gold" and Melodia's "Fortune" economic map plays. Morale and the
+  // location-dice buff land at once; the Resource-die roll (and the trailing
+  // gold, so it follows the chosen die) run through a queued map visit.
+  if (effect.type === "RESOURCE_FORTUNE_PLAY") {
+    if (effect.morale) {
+      changeMorale(state, action.playerId, effect.morale);
+    }
+    if (effect.locationDiceBonusTurn) {
+      createActiveEffect(
+        state,
+        {
+          name: card.name,
+          scope: "player",
+          duration: { type: "current-turn" },
+          polarity: "positive",
+          removable: false,
+          modifiers: [{ type: "LOCATION_DICE_BONUS", amount: 1 }]
+        },
+        { type: "card", cardId: card.id, controllerId: action.playerId },
+        action.playerId
+      );
+    }
+    const fortuneSteps: VisitStep[] = [];
+    if (effect.rollResourceDice) {
+      fortuneSteps.push({ type: "ROLL_RESOURCE_DICE", count: effect.rollResourceDice });
+    }
+    if (effect.gold) {
+      fortuneSteps.push({ type: "GAIN_RESOURCES", gold: effect.gold });
+    }
+    if (fortuneSteps.length > 0) {
+      state.adventure?.rewardQueue.unshift({
+        playerId: action.playerId,
+        kind: "visit-steps",
+        steps: fortuneSteps
+      });
+    }
   }
 
   // Legion artifacts' discount side (map-only): open a blocking prompt to pick

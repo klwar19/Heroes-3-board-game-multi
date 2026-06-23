@@ -3573,6 +3573,184 @@ export const adventureCards: CardLibrary = {
     source: heroSource("sephinroth")
   }),
 
+  // ---- Additional heroes, batch 6 ---------------------------------------
+  // The four remaining fan-wiki heroes (minus Tarnum Conflux) that complete every
+  // playable Town's roster: Octavia (Inferno) & Melodia (Rampart) — economic
+  // Resource-die / Fortune specialists — plus the Rampart & Fortress Tarnum
+  // variants. Placeholder-art wiki heroes → PC portraits + face-less specialty
+  // cards (withoutArt), like batches 4–5. Every specialty runs in the engine
+  // (extra-heroes-batch6-specialties.test.ts).
+
+  // Octavia (Inferno, Demoniac, A2 D2 P1 K1, Scholar): the "Gold" Resource-die
+  // specialist. I's signature half is a REACTION offered the moment a Resource
+  // die is rolled (octaviaGoldReactionOption) — discard this card to set a rolled
+  // die to "6 gold"; the card itself encodes only its OR alternative "Draw 1
+  // card". IV/VI roll Resource dice on the map (RESOURCE_FORTUNE_PLAY) — VI rolls
+  // 2 and resolves one through the existing roll-resource CHOOSE_ONE — each with a
+  // combat / draw alternative.
+  "specialty.octavia.1": withoutArt({
+    id: "specialty.octavia.1",
+    name: "Gold I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "octavia",
+      "gold",
+      "Play after rolling a Resource die to set 1 Resource die to 6 gold. — OR — Draw 1 card.",
+      // engine: the "set a die to 6 gold" half is a held-card reaction inside the
+      // Resource-die roll (octaviaGoldReactionOption); this card object encodes
+      // only the OR alternative, "Draw 1 card".
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [{ label: "Draw 1 card", effect: { type: "DRAW_CARDS", amount: 1 } }]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("octavia")
+  }),
+  "specialty.octavia.4": withoutArt({
+    id: "specialty.octavia.4",
+    name: "Gold IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "octavia",
+      "gold",
+      "Roll and resolve 1 Resource die. — OR — Your selected unit gains +1 attack."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Roll and resolve 1 Resource die",
+          mapOnly: true,
+          effect: { type: "RESOURCE_FORTUNE_PLAY", rollResourceDice: 1 }
+        },
+        {
+          label: "+1 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("octavia")
+  }),
+  "specialty.octavia.6": withoutArt({
+    id: "specialty.octavia.6",
+    name: "Gold VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "octavia",
+      "gold",
+      "Roll 2 Resource dice and resolve one of them. — OR — Draw 2 cards."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Roll 2 Resource dice and resolve one",
+          mapOnly: true,
+          effect: { type: "RESOURCE_FORTUNE_PLAY", rollResourceDice: 2 }
+        },
+        {
+          label: "Draw 2 cards",
+          effect: { type: "DRAW_CARDS", amount: 2 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("octavia")
+  }),
+
+  // Melodia (Rampart, Druid, A0 D2 P1 K2, Luck): the "Fortune" specialist —
+  // single-option (no OR) economic map plays. I grants a positive morale token +
+  // 1 gold; IV rolls 2 Resource dice and resolves one + 1 gold; VI is a
+  // current-turn buff (LOCATION_DICE_BONUS) raising the dice rolled & resolved at
+  // locations by 1 + 1 gold. All routed through RESOURCE_FORTUNE_PLAY.
+  "specialty.melodia.1": withoutArt({
+    id: "specialty.melodia.1",
+    name: "Fortune I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: ["hero-specialty", "instant", "melodia", "fortune", "Gain a positive morale token and 1 gold."],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Gain a positive morale token and 1 gold",
+          mapOnly: true,
+          effect: { type: "RESOURCE_FORTUNE_PLAY", morale: 1, gold: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("melodia")
+  }),
+  "specialty.melodia.4": withoutArt({
+    id: "specialty.melodia.4",
+    name: "Fortune IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "melodia",
+      "fortune",
+      "Roll 2 Resource dice and resolve one of them. Gain 1 gold."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Roll 2 Resource dice (resolve one) and gain 1 gold",
+          mapOnly: true,
+          effect: { type: "RESOURCE_FORTUNE_PLAY", rollResourceDice: 2, gold: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("melodia")
+  }),
+  "specialty.melodia.6": withoutArt({
+    id: "specialty.melodia.6",
+    name: "Fortune VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "melodia",
+      "fortune",
+      "During this turn, +1 die rolled and resolved at locations. Gain 1 gold."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "This turn, +1 die at locations; gain 1 gold",
+          mapOnly: true,
+          effect: { type: "RESOURCE_FORTUNE_PLAY", locationDiceBonusTurn: true, gold: 1 }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("melodia")
+  }),
+
   // ---- Cove (expansion) specialties --------------------------------------
   // Only the two Cove heroes whose specialties are fully engine-wired are
   // registered: Cassiopeia (Oceanids creature buffs) and Astra (Cure cleanse,

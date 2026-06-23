@@ -1962,6 +1962,9 @@ function isOptionEffectPlayable(
     case "DISCOVER_TILE_CARD":
     case "GAIN_HERO_MOVEMENT":
     case "DIMENSION_DOOR":
+    // Octavia "Gold" / Melodia "Fortune": Resource-die roll, morale/gold gain,
+    // and the location-dice buff are all resolved through a queued map visit.
+    case "RESOURCE_FORTUNE_PLAY":
       return context === "map" && Boolean(state.adventure);
     case "REMOVE_HAND_CARD_THEN_SEARCH": {
       // Map play that removes a card matching the filter (default "removable" =
@@ -2475,6 +2478,9 @@ function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDef
 
   if (
     effect.type === "GAIN_RESOURCES" ||
+    // Octavia's "Gold" / Melodia's "Fortune": roll Resource dice, gain morale /
+    // gold, or raise the location-dice count — all map-only economy plays.
+    effect.type === "RESOURCE_FORTUNE_PLAY" ||
     // Legion artifacts' discount side: banked on the map for the next recruit.
     effect.type === "GAIN_RECRUIT_DISCOUNT" ||
     effect.type === "ENEMY_MORALE_STRIP" ||
