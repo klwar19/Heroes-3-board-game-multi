@@ -11,6 +11,7 @@ import {
   type GameMode,
   type GameState
 } from "@/engine";
+import { deriveLobbyRecord, lobbyRecordSignature, LOBBY_SINGLETON_ID } from "@/server/lobby-registry";
 
 /**
  * One PartyKit room per game table — PartyKit runs every room as its own
@@ -28,6 +29,10 @@ export type RoomSnapshot = {
   roomId: string;
   version: number;
   updatedAt: string;
+  /** When the room was first created (ISO) — for lobby sort/age, mirrors the store. */
+  createdAt?: string;
+  /** Display name of whoever created the room (the first member to join). */
+  createdByName?: string;
   state: GameState;
   /**
    * This server's ENGINE_SIGNATURE, stamped onto every snapshot at send time
@@ -97,10 +102,12 @@ export default class GameRoomServer implements Party.Server {
 
   private ensureSnapshot(): RoomSnapshot {
     if (!this.snapshot) {
+      const now = new Date().toISOString();
       this.snapshot = {
         roomId: this.room.id,
         version: 1,
-        updatedAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
         state: this.makeState()
       };
       void this.persist();
@@ -112,6 +119,86 @@ export default class GameRoomServer implements Party.Server {
   private async persist(): Promise<void> {
     if (this.snapshot) {
       await this.room.storage.put(SNAPSHOT_KEY, this.snapshot);
+    }
+  }
+
+  /**
+   * Creation identity carried across every new snapshot version: the original
+   * `createdAt`, plus `createdByName` captured the first time the room has a
+   * member (the lobby's creator attribution, since the edge has no separate
+   * "create" call that could pass it). Read from the CURRENT snapshot, which is
+   * still the previous version while a new one is being built.
+   */
+  private creationMeta(state: GameState): { createdAt?: string; createdByName?: string } {
+    const createdAt = this.snapshot?.createdAt;
+    let createdByName = this.snapshot?.createdByName;
+    if (!createdByName) {
+      const firstMember = state.room?.members[0];
+      if (firstMember?.name) {
+        createdByName = firstMember.name;
+      }
+    }
+    return {
+      ...(createdAt ? { createdAt } : {}),
+      ...(createdByName ? { createdByName } : {})
+    };
+  }
+
+  /** Directory-record signature last reported to the lobby (skip-if-unchanged). */
+  private lastReportedSignature: string | null = null;
+
+  /**
+   * Report this room to the lobby Durable Object so it shows up in (and updates
+   * within) the room browser. Only fires when a directory-relevant field
+   * changed since the last report, so ordinary game actions don't spam the
+   * lobby. Best-effort: a failed report is retried on the next change, and a
+   * missing lobby party (e.g. local single-room dev) is simply a no-op.
+   */
+  private async reportToLobby(): Promise<void> {
+    const snapshot = this.snapshot;
+    const lobby = this.room.context?.parties?.lobby;
+    if (!snapshot || !lobby) {
+      return;
+    }
+    const record = deriveLobbyRecord({
+      roomId: this.room.id,
+      state: snapshot.state,
+      createdAt: snapshot.createdAt ?? snapshot.updatedAt,
+      updatedAt: snapshot.updatedAt,
+      createdByName: snapshot.createdByName ?? null
+    });
+    const signature = lobbyRecordSignature(record);
+    if (signature === this.lastReportedSignature) {
+      return;
+    }
+    this.lastReportedSignature = signature;
+    try {
+      await lobby.get(LOBBY_SINGLETON_ID).fetch({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(record)
+      });
+    } catch {
+      // Let the next change retry rather than going permanently silent.
+      this.lastReportedSignature = null;
+    }
+  }
+
+  /** Remove this room from the lobby directory when it is closed. */
+  private async deregisterFromLobby(): Promise<void> {
+    const lobby = this.room.context?.parties?.lobby;
+    this.lastReportedSignature = null;
+    if (!lobby) {
+      return;
+    }
+    try {
+      await lobby.get(LOBBY_SINGLETON_ID).fetch({
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomId: this.room.id })
+      });
+    } catch {
+      // Best effort; the lobby also expires empty rooms after the TTL.
     }
   }
 
@@ -153,6 +240,9 @@ export default class GameRoomServer implements Party.Server {
   onConnect(connection: Party.Connection): void {
     const message: ServerMessage = { type: "snapshot", snapshot: this.signed(this.ensureSnapshot()) };
     connection.send(JSON.stringify(message));
+    // A connection means the room exists — surface it in the lobby. The
+    // JOIN_ROOM that follows re-reports reliably (awaited) once it has a member.
+    void this.reportToLobby();
   }
 
   async onMessage(raw: string | ArrayBuffer | ArrayBufferView, sender: Party.Connection): Promise<void> {
@@ -178,10 +268,12 @@ export default class GameRoomServer implements Party.Server {
         roomId: this.room.id,
         version: previous.version + 1,
         updatedAt: new Date().toISOString(),
+        ...this.creationMeta(state),
         state
       };
       await this.persist();
       this.broadcastSnapshot();
+      await this.reportToLobby();
       return;
     }
 
@@ -198,10 +290,12 @@ export default class GameRoomServer implements Party.Server {
           roomId: this.room.id,
           version: current.version + 1,
           updatedAt: new Date().toISOString(),
+          ...this.creationMeta(result.state),
           state: result.state
         };
         await this.persist();
         this.broadcastSnapshot();
+        await this.reportToLobby();
       }
 
       const reply: ServerMessage = {
@@ -229,7 +323,9 @@ export default class GameRoomServer implements Party.Server {
     }
 
     if (request.method === "GET") {
-      return jsonWithCors(this.signed(this.ensureSnapshot()));
+      const snapshot = this.signed(this.ensureSnapshot());
+      void this.reportToLobby();
+      return jsonWithCors(snapshot);
     }
 
     if (request.method === "DELETE") {
@@ -246,6 +342,8 @@ export default class GameRoomServer implements Party.Server {
       }
       this.snapshot = null;
       await this.room.storage.delete(SNAPSHOT_KEY);
+      // Drop it from the lobby directory too, so the room browser stops listing it.
+      await this.deregisterFromLobby();
       return jsonWithCors(result);
     }
 
@@ -264,10 +362,12 @@ export default class GameRoomServer implements Party.Server {
           roomId: this.room.id,
           version: previous.version + 1,
           updatedAt: new Date().toISOString(),
+          ...this.creationMeta(state),
           state
         };
         await this.persist();
         this.broadcastSnapshot();
+        await this.reportToLobby();
         return jsonWithCors(this.signed(this.snapshot));
       }
 
@@ -283,10 +383,12 @@ export default class GameRoomServer implements Party.Server {
             roomId: this.room.id,
             version: current.version + 1,
             updatedAt: new Date().toISOString(),
+            ...this.creationMeta(result.state),
             state: result.state
           };
           await this.persist();
           this.broadcastSnapshot();
+          await this.reportToLobby();
         }
         return jsonWithCors({ snapshot: this.signed(this.snapshot ?? current), result });
       }

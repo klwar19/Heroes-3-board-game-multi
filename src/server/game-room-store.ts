@@ -9,7 +9,6 @@ import {
   ENGINE_SIGNATURE,
   ensureUniqueArmyUnitIds,
   MAX_ROOM_NAME_LENGTH,
-  roomDisplayName,
   type AdventurePlayerConfig,
   type EngineResult,
   type GameAction,
@@ -17,6 +16,20 @@ import {
   type GameMode,
   type GameState
 } from "@/engine";
+import {
+  deriveLobbyRecord,
+  isStaleRecord,
+  toDirectoryEntry as toLobbyDirectoryEntry,
+  type LobbyRoomRecord,
+  type RoomDirectoryEntry
+} from "@/server/lobby-registry";
+
+// The lobby directory's derivation, per-viewer canClose, stale-room TTL, and
+// directory-entry shape live in the shared, isomorphic lobby-registry so the
+// built-in store and the PartyKit edge present an IDENTICAL lobby. Re-exported
+// here for back-compat with existing importers/tests.
+export { STALE_ROOM_TTL_MS } from "@/server/lobby-registry";
+export type { RoomDirectoryEntry };
 
 export type GameRoomSnapshot = {
   roomId: string;
@@ -57,32 +70,6 @@ export type RoomCreateOptions = RoomResetOptions & {
   /** Display name of the creator (lobby attribution only). */
   createdByName?: string;
 };
-
-/**
- * One row of the lobby's room directory: enough to tell rooms apart and decide
- * whether to join without connecting to each one. Derived from each room's
- * stored snapshot (see listRooms).
- */
-export type RoomDirectoryEntry = {
-  roomId: string;
-  name: string;
-  /** Engine phase ("setup", "playing", "combat", …). */
-  phase: string;
-  /** False while the room is still a fresh setup lobby (nothing started yet). */
-  inProgress: boolean;
-  memberCount: number;
-  seatedCount: number;
-  hosted: boolean;
-  hostName: string | null;
-  createdByName: string | null;
-  createdAt: string;
-  updatedAt: string;
-  /** Whether the viewer (the clientId passed to listRooms) may close this room. */
-  canClose: boolean;
-};
-
-/** Empty rooms older than this are pruned from the directory and disk. */
-export const STALE_ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 
 type GameRoomRecord = GameRoomSnapshot;
 type RoomListener = (snapshot: GameRoomSnapshot) => void;
@@ -402,49 +389,24 @@ function deletePersistedRoom(roomId: string): void {
   }
 }
 
-/** True when nobody is a member AND the room has been idle past the TTL. */
-function isStaleRoom(record: GameRoomRecord): boolean {
-  const memberCount = record.state.room?.members.length ?? 0;
-  if (memberCount > 0) {
-    return false;
-  }
-  const updatedMs = Date.parse(record.updatedAt);
-  if (Number.isNaN(updatedMs)) {
-    return false;
-  }
-  return Date.now() - updatedMs > STALE_ROOM_TTL_MS;
+/** Summarises a stored room into the shared lobby record (one per backend). */
+function lobbyRecordOf(record: GameRoomRecord): LobbyRoomRecord {
+  return deriveLobbyRecord({
+    roomId: record.roomId,
+    state: record.state,
+    createdAt: record.createdAt ?? record.updatedAt,
+    updatedAt: record.updatedAt,
+    createdByName: record.createdByName ?? null
+  });
 }
 
-/** Whether `viewerClientId` is allowed to close this room (mirrors closeRoom). */
-function viewerCanClose(record: GameRoomRecord, viewerClientId?: string): boolean {
-  const room = record.state.room ?? null;
-  const members = room?.members ?? [];
-  if (room?.hosted) {
-    return Boolean(viewerClientId) && room.hostClientId === viewerClientId;
-  }
-  // Open table: an empty room is cleanup-able by anyone; otherwise only a member.
-  return members.length === 0 || Boolean(viewerClientId && members.some((m) => m.clientId === viewerClientId));
+/** True when nobody is a member AND the room has been idle past the TTL. */
+function isStaleRoom(record: GameRoomRecord): boolean {
+  return isStaleRecord(lobbyRecordOf(record));
 }
 
 function toDirectoryEntry(record: GameRoomRecord, viewerClientId?: string): RoomDirectoryEntry {
-  const room = record.state.room ?? null;
-  const members = room?.members ?? [];
-  const host = room?.hostClientId ? members.find((member) => member.clientId === room.hostClientId) : null;
-  const isFreshLobby = record.state.phase === "setup" && Boolean(record.state.setupLobby);
-  return {
-    roomId: record.roomId,
-    name: roomDisplayName(record.state, record.roomId),
-    phase: record.state.phase,
-    inProgress: !isFreshLobby,
-    memberCount: members.length,
-    seatedCount: members.filter((member) => member.seat !== "observer").length,
-    hosted: Boolean(room?.hosted),
-    hostName: host?.name ?? null,
-    createdByName: record.createdByName ?? null,
-    createdAt: record.createdAt ?? record.updatedAt,
-    updatedAt: record.updatedAt,
-    canClose: viewerCanClose(record, viewerClientId)
-  };
+  return toLobbyDirectoryEntry(lobbyRecordOf(record), viewerClientId);
 }
 
 /**
