@@ -27,11 +27,11 @@ function apply(state: GameState, action: GameAction): GameState {
 }
 
 function makeBinhGame(): GameState {
-  return createAdventureGameState({ seed: "ruleset-seed", difficulty: "normal", ruleset: "binh" });
+  return createAdventureGameState({ seed: "ruleset-seed", difficulty: "normal", ruleset: "binh", rotateStartTiles: false });
 }
 
 function makeLegacyGame(): GameState {
-  return createAdventureGameState({ seed: "ruleset-seed", difficulty: "normal", ruleset: "legacy" });
+  return createAdventureGameState({ seed: "ruleset-seed", difficulty: "normal", ruleset: "legacy", rotateStartTiles: false });
 }
 
 describe("ruleset numbers", () => {

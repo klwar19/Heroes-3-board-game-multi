@@ -1158,7 +1158,10 @@ export function HexMapBoard({
                 role="dialog"
               >
                 <span className="mapFloatTitle">
-                  Rotate the {pendingTileChoice.kind === "place" ? "placed" : "revealed"} tile
+                  Rotate your{" "}
+                  {pendingTileChoice.kind === "starting"
+                    ? "home tile (free, before you move)"
+                    : `${pendingTileChoice.kind === "place" ? "placed" : "revealed"} tile`}
                 </span>
                 <div className="rotateFloatRow">
                   <button
