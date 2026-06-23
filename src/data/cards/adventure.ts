@@ -136,7 +136,12 @@ function offenseSpecialtySix(heroSlug: string): CardLibrary[string] {
   };
 }
 
-function slowSpecialty(heroSlug: string, level: 1 | 4 | 6, amount: number): CardLibrary[string] {
+function slowSpecialty(
+  heroSlug: string,
+  level: 1 | 4 | 6,
+  amount: number,
+  movementBonus?: number
+): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
     name: `Slow ${level === 1 ? "I" : level === 4 ? "IV" : "VI"}`,
@@ -151,7 +156,8 @@ function slowSpecialty(heroSlug: string, level: 1 | 4 | 6, amount: number): Card
       amount: -amount,
       duration: { type: "combat" },
       polarity: "negative",
-      removable: true
+      removable: true,
+      ...(movementBonus !== undefined ? { movementBonus } : {})
     },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
@@ -1972,43 +1978,29 @@ export const adventureCards: CardLibrary = {
     id: "specialty.crag_hack.4",
     name: "Offense IV",
     kind: "hero-specialty",
-    timing: "combat",
-    phaseLimit: ["combat"],
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
     tags: [
       "hero-specialty",
-      "combat",
+      "instant",
       "crag_hack",
       "offense",
-      "For this Combat, your selected unit gains +1 attack. You may discard a card to make it +2 instead."
+      "Your selected unit gains +1 attack. You may discard a card to gain another +1 attack."
     ],
-    target: { type: "friendly-unit" },
+    // Instant (one-shot, on a single attack): +1, or discard a card for +2.
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "+1 attack for this Combat",
-          combatOnly: true,
-          effect: {
-            type: "CREATE_ATTACK_BUFF",
-            name: "Offense IV",
-            amount: 1,
-            duration: { type: "combat" },
-            polarity: "positive",
-            removable: false
-          }
+          label: "+1 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
         },
         {
-          label: "Discard a card: +2 attack for this Combat",
-          combatOnly: true,
+          label: "Discard a card: +2 attack",
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
           cost: { discardCards: 1 },
-          effect: {
-            type: "CREATE_ATTACK_BUFF",
-            name: "Offense IV",
-            amount: 2,
-            duration: { type: "combat" },
-            polarity: "positive",
-            removable: false
-          }
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
         }
       ]
     },
@@ -2077,7 +2069,7 @@ export const adventureCards: CardLibrary = {
   // mis-scaled helper was wrong). IV is the odd one out per the wiki: an INSTANT
   // +1 attack that doubles when YOUR unit is faster than the attacked unit
   // (doubleIfAttackerInitiativeHigher), NOT another Slow.
-  "specialty.gundula.1": slowSpecialty("gundula", 1, 2),
+  "specialty.gundula.1": slowSpecialty("gundula", 1, 2, -1),
   "specialty.gundula.4": {
     id: "specialty.gundula.4",
     name: "Slow IV",
@@ -2100,7 +2092,7 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("gundula")
   },
-  "specialty.gundula.6": slowSpecialty("gundula", 6, 4),
+  "specialty.gundula.6": slowSpecialty("gundula", 6, 4, -1),
   "specialty.shiva.1": mightSpecialtyOne("shiva", "Thunderbirds", "Thunderbirds"),
   "specialty.shiva.4": unitHealthSpecialty("shiva", "Thunderbirds", 4, 1, "Thunderbirds"),
   "specialty.shiva.6": unitInitiativeSpecialty("shiva", "Thunderbirds", 6, 2, "Thunderbirds"),
@@ -2243,7 +2235,9 @@ export const adventureCards: CardLibrary = {
       amount: 3,
       duration: { type: "combat" },
       polarity: "positive",
-      removable: false
+      removable: false,
+      // House rule (BINH): Cyra's Haste also gives +1 Combat movement (3 → 4).
+      movementBonus: 1
     },
     implementationStatus: "implemented",
     source: heroSource("cyra")
@@ -2293,7 +2287,9 @@ export const adventureCards: CardLibrary = {
         removable: false,
         modifiers: [
           { type: "INITIATIVE_BONUS", amount: 3 },
-          { type: "DEFENSE_VS_LOWER_INITIATIVE", amount: 1 }
+          { type: "DEFENSE_VS_LOWER_INITIATIVE", amount: 1 },
+          // House rule (BINH): Cyra's Haste also gives +1 Combat movement.
+          { type: "MOVEMENT_BONUS", amount: 1 }
         ]
       }
     },

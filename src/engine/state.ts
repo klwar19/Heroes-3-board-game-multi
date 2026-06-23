@@ -302,6 +302,16 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * House rule (BINH only): Haste / Slow effects also shift a unit's Combat
+       * movement range by `amount` (Haste +1, Slow −1; floored so a unit always
+       * moves at least 1). Read in getUnitMoveRange under the BINH ruleset only,
+       * so Legacy stays rulebook-faithful (movement is a fixed 3 / ranged 1).
+       */
+      type: "MOVEMENT_BONUS";
+      amount: number;
+    }
+  | {
+      /**
        * Cyra's Haste VI: the unit gains this much Defense, but only against
        * attacks made by a unit with strictly lower (effective) Initiative.
        */
@@ -1166,6 +1176,12 @@ export type EffectDefinition =
       removable?: boolean;
       /** Hero specialties: the bonus doubles when placed on the named unit. */
       doubleForUnitName?: string;
+      /**
+       * House rule (BINH): the created effect also carries a MOVEMENT_BONUS of
+       * this much (Haste/Cyra +1, Slow/Gundula −1) — a flat ±1 Combat-movement
+       * shift independent of the power-scaled Initiative change.
+       */
+      movementBonus?: number;
     }
   | {
       /**
