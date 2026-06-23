@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
-import { effectiveInitiative } from "./active-effects";
 import { coreHeroDefinitions } from "@/data/factions/core";
 import { adventureCards } from "@/data/cards/adventure";
+import { cardLibrary } from "@/data/cards/library";
 import type { FactionId } from "@/data/factions/types";
 import type { ActiveEffectModifier, GameAction, GameState, UnitId } from "./state";
 
@@ -103,7 +103,7 @@ describe("Bulwark heroes — roster & specialty wiring", () => {
     expect(coreHeroDefinitions.glacius.class).toBe("Elder");
     expect(coreHeroDefinitions.glacius.type).toBe("magic");
     expect(coreHeroDefinitions.kriv.class).toBe("Elder");
-    // batch 2: Eikthurn (Chieftain/Might, Yetis) and Oidana (Elder/Magic, Slow).
+    // batch 2: Eikthurn (Chieftain/Might, Yetis) and Oidana (Elder/Magic, Diplomacy).
     expect(coreHeroDefinitions.eikthurn.class).toBe("Chieftain");
     expect(coreHeroDefinitions.eikthurn.type).toBe("might");
     expect(coreHeroDefinitions.oidana.class).toBe("Elder");
@@ -113,7 +113,9 @@ describe("Bulwark heroes — roster & specialty wiring", () => {
   it("each hero's starting ability and three specialties are real, implemented cards", () => {
     for (const id of heroIds) {
       const hero = coreHeroDefinitions[id];
-      expect(adventureCards[hero.startingAbilityCardId]?.kind, `${id} ability`).toBe("ability");
+      // cardLibrary is the runtime registry the engine/UI use; it includes the
+      // extra ability cards (e.g. ability.diplomacy) that adventureCards omits.
+      expect(cardLibrary[hero.startingAbilityCardId]?.kind, `${id} ability`).toBe("ability");
       for (const specialtyId of Object.values(hero.specialtyCardIds)) {
         const card = adventureCards[specialtyId];
         expect(card, specialtyId).toBeTruthy();
@@ -210,48 +212,67 @@ describe("Bulwark hero — Eikthurn's Yetis specialty (Yetis doubled)", () => {
   });
 });
 
-describe("Bulwark hero — Oidana's frost Slow specialty", () => {
-  it("level I drops the targeted enemy unit's Initiative by 2", () => {
-    const state = createInitialGameState("oidana-i");
-    state.players.p1.hand = ["specialty.oidana.1"];
-    state.players.p2.hand = [];
-    const target = state.combat!.units.unit_p2_skeletons;
-    const before = effectiveInitiative(target, state.activeEffects);
-    const play = findUnitPlay(state, "specialty.oidana.1", "unit_p2_skeletons");
-    expect(play, "Oidana I should target an enemy unit").toBeTruthy();
-    const next = applyOk(state, play!.action);
-    expect(modifierTotalOn(next, "unit_p2_skeletons", "INITIATIVE_BONUS")).toBe(-2);
-    expect(effectiveInitiative(next.combat!.units.unit_p2_skeletons, next.activeEffects)).toBe(before - 2);
+describe("Bulwark hero — Oidana the diplomat (Diplomacy + card draw)", () => {
+  it("each level offers a scaling card draw (1 / 2 / 3) AND the map Diplomacy recruit", () => {
+    for (const [id, amount] of [
+      ["specialty.oidana.1", 1],
+      ["specialty.oidana.4", 2],
+      ["specialty.oidana.6", 3]
+    ] as const) {
+      const effect = adventureCards[id].effect as {
+        type: string;
+        options: { mapOnly?: boolean; effect: { type: string; amount?: number } }[];
+      };
+      expect(effect.type).toBe("CHOOSE_ONE");
+      const draw = effect.options.find((option) => option.effect.type === "DRAW_CARDS");
+      const diplomacy = effect.options.find((option) => option.effect.type === "DIPLOMACY_RECRUIT");
+      expect(draw, `${id} draw option`).toBeTruthy();
+      expect(draw!.effect.amount).toBe(amount);
+      expect(diplomacy, `${id} diplomacy option`).toBeTruthy();
+      expect(diplomacy!.mapOnly).toBe(true); // recruiting is a map play
+    }
   });
 
-  it("each level deepens the Slow (−2 / −3 / −4) as a negative, removable Initiative debuff", () => {
-    for (const [id, amount] of [
-      ["specialty.oidana.1", -2],
-      ["specialty.oidana.4", -3],
-      ["specialty.oidana.6", -4]
-    ] as const) {
-      expect(adventureCards[id].effect).toMatchObject({
-        type: "CREATE_INITIATIVE_BUFF",
-        amount,
-        polarity: "negative",
-        removable: true
-      });
-    }
+  it("the card-draw option actually moves cards from deck to hand (IV draws 2)", () => {
+    const state = createInitialGameState("oidana-draw");
+    state.players.p1.hand = ["specialty.oidana.4"];
+    state.players.p1.deck = ["spell.magic_arrow", "spell.magic_arrow", "spell.magic_arrow"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    const play = findPlay(state, "specialty.oidana.4", 0); // option 0 = Draw 2 cards
+    expect(play, "Oidana IV's draw option should be playable as an instant").toBeTruthy();
+    const after = applyOk(state, play!.action);
+    // Two cards drawn deck -> hand; the played specialty leaves the hand.
+    expect(after.players.p1.deck).toHaveLength(1);
+    expect(after.players.p1.hand).toHaveLength(2);
+  });
+
+  it("her starting ability is the real, implemented Diplomacy ability", () => {
+    expect(coreHeroDefinitions.oidana.startingAbilityCardId).toBe("ability.diplomacy");
+    expect(cardLibrary["ability.diplomacy"]?.implementationStatus).toBe("implemented");
   });
 });
 
 describe("Bulwark heroes — PvP / multiplayer", () => {
-  it("Oidana's Slow lands only on the targeted enemy unit, never the caster's own army", () => {
+  it("Oidana's card draw goes only to the casting player, never the opponent", () => {
     const state = createInitialGameState("oidana-pvp");
-    state.players.p1.hand = ["specialty.oidana.4"];
+    state.players.p1.factionId = "bulwark";
+    state.players.p2.factionId = "bulwark";
+    state.players.p1.hand = ["specialty.oidana.6"];
+    state.players.p1.deck = ["spell.magic_arrow", "spell.magic_arrow", "spell.magic_arrow", "spell.magic_arrow"];
     state.players.p2.hand = [];
-    const play = findUnitPlay(state, "specialty.oidana.4", "unit_p2_skeletons");
-    expect(play, "Oidana IV should target the enemy unit").toBeTruthy();
-    const next = applyOk(state, play!.action);
-    // The targeted p2 unit is slowed by 3…
-    expect(modifierTotalOn(next, "unit_p2_skeletons", "INITIATIVE_BONUS")).toBe(-3);
-    // …while the caster's own units are untouched (no leak across the p1/p2 line).
-    expect(modifierTotalOn(next, "unit_p1_marksmen", "INITIATIVE_BONUS")).toBe(0);
-    expect(modifierTotalOn(next, "unit_p1_crusaders", "INITIATIVE_BONUS")).toBe(0);
+    state.players.p2.deck = ["spell.magic_arrow", "spell.magic_arrow"];
+    const p2HandBefore = state.players.p2.hand.length;
+    const p2DeckBefore = state.players.p2.deck.length;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    const play = findPlay(state, "specialty.oidana.6", 0); // option 0 = Draw 3 cards
+    expect(play, "Oidana VI's draw option should be playable").toBeTruthy();
+    const after = applyOk(state, play!.action);
+    // p1 drew 3 (the played specialty left hand); p2 is completely untouched.
+    expect(after.players.p1.hand).toHaveLength(3);
+    expect(after.players.p2.hand).toHaveLength(p2HandBefore);
+    expect(after.players.p2.deck).toHaveLength(p2DeckBefore);
   });
 });

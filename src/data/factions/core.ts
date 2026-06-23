@@ -2352,9 +2352,10 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
   // ---- Bulwark heroes, batch 2 (expansion; fan faction, placeholder portraits) --
   // Eikthurn (Chieftain, Might): the Yetis unit-specialist — the SAME might trio
   // Dhuin/Creyle use (ADD_COMBAT_STAT / ADD_UNIT_MAX_HEALTH / CREATE_INITIATIVE_BUFF,
-  // doubled for the signature unit). Oidana (Elder, Magic): the frost "Slow" caster
-  // — each level drops a chosen enemy unit's Initiative (and movement) via the
-  // shared, tested CREATE_INITIATIVE_BUFF machinery (Gundula's Slow factory).
+  // doubled for the signature unit). Oidana (Elder, Magic): the diplomat — her
+  // starting ability is Diplomacy (DIPLOMACY_RECRUIT / skip-combat), and each
+  // specialty is a scaling card draw (DRAW_CARDS 1/2/3) OR the same map Diplomacy
+  // recruit (draw 1 Neutral Unit card per Dwelling, recruit one).
   eikthurn: {
     id: "eikthurn",
     name: "Eikthurn",
@@ -2374,7 +2375,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     class: "Elder",
     type: "magic",
     startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
-    startingAbilityCardId: "ability.wisdom",
+    startingAbilityCardId: "ability.diplomacy",
     specialtyCardIds: { 1: "specialty.oidana.1", 4: "specialty.oidana.4", 6: "specialty.oidana.6" },
     portrait: "/assets/hero_portraits-oidana.webp",
     source: heroSource("oidana")

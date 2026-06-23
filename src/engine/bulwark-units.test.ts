@@ -114,11 +114,11 @@ describe("Bulwark units — Thick Hide (War Mammoths)", () => {
     return settle(applyOk(defended, ATTACK));
   }
 
-  it("+2 Defense while the unit is defending — but only while defending", () => {
+  it("+1 Defense while the unit is defending — but only while defending", () => {
     // Defended, no Thick Hide: defense 0 + Defend die 0 → full 5 damage.
     expect(defendThenAttack([], true).combat!.units.unit_p2_skeletons.damage).toBe(5);
-    // Defended WITH Thick Hide: +2 Defense on top of the die → 3 damage.
-    expect(defendThenAttack(["bulwark-thick-hide"], true).combat!.units.unit_p2_skeletons.damage).toBe(3);
+    // Defended WITH Thick Hide: +1 Defense on top of the die → 4 damage.
+    expect(defendThenAttack(["bulwark-thick-hide"], true).combat!.units.unit_p2_skeletons.damage).toBe(4);
     // Thick Hide but NOT defending (no Defense token) → no bonus → 5 damage.
     expect(defendThenAttack(["bulwark-thick-hide"], false).combat!.units.unit_p2_skeletons.damage).toBe(5);
   });
@@ -264,19 +264,33 @@ describe("Bulwark units — roster & ability wiring", () => {
     // Freezing Shot is the Great Shaman (Pack) only; Air Shield is on both.
     expect(coreUnitDefinitions["bulwark.shamans"].few?.abilities).toEqual(["bulwark-air-shield"]);
     expect(coreUnitDefinitions["bulwark.shamans"].pack?.abilities).toEqual(["bulwark-air-shield", "bulwark-freezing-shot"]);
-    // The Steel Elf (Pack) adds the ranged double-shot; the Snow Elf (Few) does not.
+    // The Steel Elf (Pack) ignores enemy Retaliation; both sides keep no-melee-penalty.
     expect(coreUnitDefinitions["bulwark.snow_elves"].few?.abilities).toEqual(["ignore-combat-penalties"]);
-    expect(coreUnitDefinitions["bulwark.snow_elves"].pack?.abilities).toEqual(["ignore-combat-penalties", "double-attack"]);
+    expect(coreUnitDefinitions["bulwark.snow_elves"].pack?.abilities).toEqual(["ignore-combat-penalties", "ignores-retaliation"]);
     expect(coreUnitDefinitions["bulwark.jotunns"].few?.abilities).toContain("teleport-move");
   });
 
-  it("carries the revised printed stats: Mountain Ram Defense 1 (both), Snow Elf 3 HP (both)", () => {
+  it("carries the revised printed stats across every affected unit", () => {
     const rams = coreUnitDefinitions["bulwark.mountain_rams"];
     expect(rams.few?.defense).toBe(1);
     expect(rams.pack?.defense).toBe(1);
+    expect(rams.pack?.attack).toBe(2); // Argali attack lowered to 2
     const elves = coreUnitDefinitions["bulwark.snow_elves"];
     expect(elves.few?.health).toBe(3);
     expect(elves.pack?.health).toBe(3);
+    expect(elves.pack?.attack).toBe(3); // Steel Elf attack lowered to 3
+    const yetis = coreUnitDefinitions["bulwark.yetis"];
+    expect({ attack: yetis.few?.attack, health: yetis.few?.health }).toEqual({ attack: 3, health: 4 });
+    expect({ attack: yetis.pack?.attack, defense: yetis.pack?.defense, health: yetis.pack?.health }).toEqual({
+      attack: 4,
+      defense: 2,
+      health: 5
+    });
+    const mammoths = coreUnitDefinitions["bulwark.mammoths"];
+    expect(mammoths.few?.defense).toBe(2);
+    expect(mammoths.pack?.defense).toBe(2);
+    expect(mammoths.few?.health).toBe(7);
+    expect(mammoths.pack?.health).toBe(7);
   });
 
   it("Kobold gold income is a Resource-round map gain of 1 gold", () => {
@@ -288,25 +302,47 @@ describe("Bulwark units — roster & ability wiring", () => {
   });
 });
 
-describe("Bulwark units — Steel Elf double-shot (Snow Elves Pack)", () => {
-  it("a ranged attacker with the Steel Elf volley strikes a non-adjacent target twice", () => {
-    // Control: a single ranged shot deals 3 (attack 3 − defense 0).
-    let single = rangedDuel();
-    single = settle(applyOk(single, ATTACK));
-    expect(single.combat!.units.unit_p2_skeletons.damage).toBe(3);
+describe("Bulwark units — Steel Elf ignores enemy Retaliation (Snow Elves Pack)", () => {
+  /** p1 melee-attacks an adjacent p2 defender that would otherwise retaliate for 3. */
+  function retaliationDamageTaken(attackerAbilities: string[]): number {
+    const state = createInitialGameState();
+    const attacker = state.combat!.units.unit_p1_marksmen;
+    attacker.abilities = attackerAbilities;
+    attacker.attack = 1;
+    attacker.defense = 0;
+    attacker.position = 1;
+    attacker.maxHealth = 20;
+    attacker.damage = 0;
+    const defender = state.combat!.units.unit_p2_skeletons;
+    defender.abilities = [];
+    defender.attack = 3; // retaliation strength
+    defender.defense = 0;
+    defender.position = 2; // adjacent → melee → retaliation possible
+    defender.maxHealth = 20;
+    defender.damage = 0;
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = attacker.id;
+    const after = settle(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: attacker.id, defenderId: defender.id })
+    );
+    return after.combat!.units.unit_p1_marksmen.damage;
+  }
 
-    // With `double-attack` (the Steel Elf's repeated volley) the SAME target is
-    // struck a second time → 6 cumulative damage. Fails if the second shot never
-    // fires — i.e. if the Pack stops carrying the double-shot.
-    let doubled = rangedDuel();
-    doubled.combat!.units.unit_p1_marksmen.abilities = ["double-attack"];
-    doubled = settle(applyOk(doubled, ATTACK));
-    expect(doubled.combat!.units.unit_p2_skeletons.damage).toBe(6);
+  it("the attacker provokes no Retaliation when it ignores it (control: it takes 3)", () => {
+    expect(retaliationDamageTaken([])).toBe(3); // control: the full retaliation lands
+    expect(retaliationDamageTaken(["ignores-retaliation"])).toBe(0); // Steel Elf: none provoked
   });
 
-  it("only the Steel Elf (Pack) carries the double-shot, not the Snow Elf (Few)", () => {
-    expect(coreUnitDefinitions["bulwark.snow_elves"].pack?.abilities).toContain("double-attack");
-    expect(coreUnitDefinitions["bulwark.snow_elves"].few?.abilities ?? []).not.toContain("double-attack");
+  it("wires no-retaliation onto the Steel Elf (Pack) while keeping the Few's no-melee-penalty", () => {
+    expect(coreUnitDefinitions["bulwark.snow_elves"].pack?.abilities).toEqual([
+      "ignore-combat-penalties",
+      "ignores-retaliation"
+    ]);
+    expect(coreUnitDefinitions["bulwark.snow_elves"].few?.abilities).toEqual(["ignore-combat-penalties"]);
   });
 });
 

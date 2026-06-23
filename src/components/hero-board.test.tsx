@@ -38,12 +38,12 @@ describe("HeroBoard — new Bulwark heroes render on the table", () => {
     expect(screen.getByTitle("Defense 2")).toBeTruthy();
   });
 
-  it("draws Oidana (Elder) — the frost Slow caster", () => {
+  it("draws Oidana (Elder) — the diplomat / card-draw hero", () => {
     renderHeroBoard("oidana");
     expect(screen.getByLabelText("Oidana hero board")).toBeTruthy();
     expect(screen.getByText("Oidana")).toBeTruthy();
     expect(screen.getByText("Elder")).toBeTruthy();
-    // A caster's loadout: Power 2 / Knowledge 2.
+    // An Elder's loadout: Power 2 / Knowledge 2.
     expect(screen.getByTitle("Power 2")).toBeTruthy();
     expect(screen.getByTitle("Knowledge 2")).toBeTruthy();
   });
