@@ -4898,6 +4898,12 @@ export function startAdventureRound(state: GameState): void {
       continue;
     }
 
+    // Bulwark "Rune-Empowered" City Hall flag lasts "until the next Resource
+    // round" (Gamefound Update #3): clear it here at the Resource round; if this
+    // player picks the combat-focus option again this round, the City Hall
+    // resolver re-sets it.
+    player.runeEmpoweredNextCombats = undefined;
+
     const income = {
       gold: Math.max(0, player.production.gold + modifiers.gold),
       buildingMaterials: player.production.buildingMaterials,

@@ -66,6 +66,8 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
       return "Once per round during your turn (instead of buying spells normally), choose a School of Magic, then discard cards from the top of your deck until you reveal a Spell of that school and take it to your hand.";
     case "THIEVES_GUILD":
       return "Once during your turn, choose any one deck in the game (a shared deck, or any player's Might & Magic deck — your own or an opponent's), look at its top 2 cards, then put one of them on that deck's discard pile and the other back on top.";
+    case "RUNE_ALTAR":
+      return `Bulwark Runes: your Hero starts every combat with ${effect.startingRunes} Rune${effect.startingRunes === 1 ? "" : "s"}, and you may reach up to Rune Level ${effect.levelCap} (Level 1 = +1 Attack, Level 2 = +1 Defense, Level 3 = +3 Initiative to all your units). Earn more Runes in battle: Attack +1, Retaliate +2, Defend +3.`;
     case "NOT_IMPLEMENTED":
       return effect.note;
     default:
@@ -102,6 +104,8 @@ export function buildingTimingLabel(building: TownBuildingDefinition): string | 
     case "COMBAT_CUBES":
     case "HALL_OF_VALHALLA":
       return "during combat";
+    case "RUNE_ALTAR":
+      return "combat (Runes)";
     case "FREELANCERS_GUILD":
       return "always on";
     case "MAGE_GUILD":

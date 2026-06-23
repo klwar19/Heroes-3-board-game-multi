@@ -108,6 +108,7 @@ import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { getCombatStartDraws } from "./unit-abilities";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { applyPermanentCombatEffects, resolveWarMachineOption, startWarMachineRound } from "./permanents";
+import { seedRunesForCombat } from "./runes";
 import {
   activeSchoolFetches,
   applySearchCountEffects,
@@ -3968,6 +3969,10 @@ function finalizeCombatStart(state: GameState): void {
     activeUnitId: null
   });
 
+  // Bulwark "Runes" (Gamefound Update #3): seed each Bulwark player's per-combat
+  // Rune pool from their Sieidi/Altar baseline + City Hall flag, applying any
+  // Rune Level the starting pool already qualifies for.
+  seedRunesForCombat(state);
   // In-play permanents join the fight and round-start war machines fire.
   applyPermanentCombatEffects(state);
   applyCombatStartUnitAbilities(state);
@@ -6207,6 +6212,21 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     }
     if (option.experience) {
       gainExperience(state, action.playerId, option.experience);
+    }
+    // Bulwark City Hall combat focus (Gamefound Update #3): forgo the gold to be
+    // Rune-Empowered until the next Resource round — every combat then starts
+    // with this many extra Runes. Cleared in the Resource-round loop (adventure.ts).
+    if (option.runesNextCombats) {
+      const player = state.players[action.playerId];
+      if (player) {
+        player.runeEmpoweredNextCombats = option.runesNextCombats;
+        appendEvent(state, {
+          type: "TOWN_BUILDING_USED",
+          playerId: action.playerId,
+          buildingId: "bulwark.city_hall",
+          message: `City Hall: Rune-Empowered — +${option.runesNextCombats} starting Runes each combat until the next Resource round.`
+        });
+      }
     }
   }
 

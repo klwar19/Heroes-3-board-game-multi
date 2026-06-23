@@ -15,7 +15,8 @@ const townProducts: Record<string, string> = {
   fortress: "Heroes of Might and Magic III: The Board Game (Fortress Expansion)",
   tower: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
   conflux: "Heroes of Might and Magic III: The Board Game (Conflux Expansion)",
-  cove: "Heroes of Might and Magic III: The Board Game (Cove Expansion)"
+  cove: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
+  bulwark: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)"
 };
 
 function townSource(faction: string) {
@@ -1033,6 +1034,99 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     effect: { type: "ASTROLOGERS_FLAT_GOLD_REINFORCE", discount: 3, tiers: ["bronze", "silver", "gold"] },
     implementationStatus: "implemented",
     source: townSource("cove")
+  },
+
+  // ---- Bulwark (expansion) -----------------------------------------------
+  // Economy mirrors the Tower board (Gamefound Update #3: "Bulwark has building
+  // costs similar to those you can see in the other towns"). The faction-defining
+  // tiles are the Sieidi and its Altar upgrade, which drive the Runes mechanic.
+  "bulwark.city_hall": {
+    id: "bulwark.city_hall",
+    name: "City Hall",
+    faction: "bulwark",
+    cost: { gold: 10, buildingMaterials: 4 },
+    // Gamefound Update #3: "choose gold income — OR — start battles with a higher
+    // number of Runes at the beginning of each fight until the next Resource round."
+    effect: {
+      type: "RESOURCE_ROUND_CHOICE",
+      options: [
+        { label: "Gain 4 gold", gold: 4 },
+        { label: "Rune-Empowered: +3 starting Runes each combat (until next Resource round)", runesNextCombats: 3 }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: townSource("bulwark")
+  },
+  "bulwark.citadel": {
+    id: "bulwark.citadel",
+    name: "Citadel",
+    faction: "bulwark",
+    cost: { gold: 8, buildingMaterials: 5, valuables: 1 },
+    effect: { type: "UNLOCK_REINFORCE" },
+    implementationStatus: "implemented",
+    source: townSource("bulwark")
+  },
+  "bulwark.mage_guild": {
+    id: "bulwark.mage_guild",
+    name: "Mage Guild",
+    faction: "bulwark",
+    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
+    effect: { type: "MAGE_GUILD" },
+    spellBookCost: 5,
+    implementationStatus: "implemented",
+    source: townSource("bulwark")
+  },
+  "bulwark.dwelling_bronze": {
+    id: "bulwark.dwelling_bronze",
+    name: "Collieries & Camps",
+    faction: "bulwark",
+    cost: { gold: 5, buildingMaterials: 3, valuables: 1 },
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" },
+    implementationStatus: "implemented",
+    source: townSource("bulwark")
+  },
+  "bulwark.dwelling_silver": {
+    id: "bulwark.dwelling_silver",
+    name: "Frost Peaks",
+    faction: "bulwark",
+    cost: { gold: 8, buildingMaterials: 6, valuables: 3 },
+    prerequisites: ["bulwark.dwelling_bronze"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "silver" },
+    implementationStatus: "implemented",
+    source: townSource("bulwark")
+  },
+  "bulwark.dwelling_gold": {
+    id: "bulwark.dwelling_gold",
+    name: "Glacial Halls",
+    faction: "bulwark",
+    cost: { gold: 10, buildingMaterials: 9, valuables: 4 },
+    prerequisites: ["bulwark.dwelling_silver"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "gold" },
+    implementationStatus: "implemented",
+    source: townSource("bulwark")
+  },
+  // Sieidi of the Runes (Gamefound Update #3): pre-charges Rune Level 1 each
+  // combat (+3 starting Runes) and unlocks the Level 2 cap.
+  "bulwark.sieidi": {
+    id: "bulwark.sieidi",
+    name: "Sieidi of the Runes",
+    faction: "bulwark",
+    cost: { gold: 6, buildingMaterials: 4, valuables: 1 },
+    effect: { type: "RUNE_ALTAR", startingRunes: 3, levelCap: 2 },
+    implementationStatus: "implemented",
+    source: townSource("bulwark")
+  },
+  // Altar of the Runes (Gamefound Update #3): the same-tile upgrade of the Sieidi.
+  // Pre-charges Rune Level 2 each combat (+6 starting Runes) and unlocks Level 3.
+  "bulwark.altar": {
+    id: "bulwark.altar",
+    name: "Altar of the Runes",
+    faction: "bulwark",
+    cost: { gold: 6, buildingMaterials: 4, valuables: 2 },
+    prerequisites: ["bulwark.sieidi"],
+    effect: { type: "RUNE_ALTAR", startingRunes: 6, levelCap: 3 },
+    implementationStatus: "implemented",
+    source: townSource("bulwark")
   }
 };
 
