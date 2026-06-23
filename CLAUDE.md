@@ -153,23 +153,27 @@ Conflux — now fully engine-wired (no display-only unit clauses left):
     "Pay 10 gold → the unique neutral Enchanters card" (or draw). Gated on gold
     and the `unique` one-Enchanters limit.
   - VI — the over-limit multi-cast subsystem (`TARNUM_OVERLIMIT_SEARCH`): an
-    **Instant** (playable on your turn OR off-turn in the instant window) that
-    opens a per-search deck choice (`TARNUM_SEARCH` pendingChoice): twice, the
-    caster picks ONE Spell deck — basic or expert — to Search 1 card from. Each
-    taken card is flagged (`combatStats.tarnumOverlimitCards`) for a FREE cast
-    over the per-round limit (never bumps `spellsCastThisRound`; forgery-validated
-    in `castSpell` AND `applyReactionPlayCore`), returning to the shared Spell deck
-    top OR discard — the caster's choice via `CAST_SPELL.tarnumReturn` /
-    `PLAY_REACTION.tarnumReturn` — instead of the caster's own discard. A flagged
-    spell casts only when "their type allows it" in the open window: a combat spell
-    (Fireball) during your own activation, a trigger-free instant anytime (both via
-    `addSpellActions`), and an attack/defense-changing reaction instant (Bless,
-    Curse, Bloodlust…) in the reaction/instant window via a dedicated free
-    over-limit pass in `getLegalReactionsForTrigger`. One that does not fit just
-    stays in hand; the flag clears at combat start and each combat round. All
-    covered in `conflux-tarnum-specialty.test.ts` (per-search choice, both/same
-    deck, the on-turn vs off-turn castability split, and the reaction-window cast
-    with a graded CONTROL that the flag is what lifts the limit).
+    **Instant** playable on your turn, off-turn in the instant window, OR as a
+    reaction inside an open attack window. It opens a per-search deck choice
+    (`TARNUM_SEARCH` pendingChoice): twice, the caster picks ONE Spell deck —
+    basic or expert — to Search 1 card from. Each taken card is flagged
+    (`combatStats.tarnumOverlimitCards`) for a FREE cast over the per-round limit
+    (never bumps `spellsCastThisRound`; forgery-validated in `castSpell` AND
+    `applyReactionPlayCore`), returning to the shared Spell deck top OR discard —
+    the caster's choice via `CAST_SPELL.tarnumReturn` / `PLAY_REACTION.tarnumReturn`
+    — instead of the caster's own discard. A flagged spell casts only when "their
+    type allows it" in the open window: a combat spell (Fireball) during your own
+    activation, a trigger-free instant anytime (both via `addSpellActions`), and an
+    attack/defense-changing reaction instant (Bless, Curse, Bloodlust…) in the
+    reaction/instant window via a dedicated free over-limit pass in
+    `getLegalReactionsForTrigger`. Used AS a reaction in an attack window, playing
+    VI runs the Search inside the still-open window and then re-derives its offers
+    (`refreshReactionWindowLegalReactions`) so a just-Searched applicable instant
+    can be cast into the SAME window; a Searched spell that does not fit just stays
+    in hand. The flag clears at combat start and each combat round. All covered in
+    `conflux-tarnum-specialty.test.ts` (per-search choice, both/same deck, the
+    on-turn vs off-turn split, the reaction-window cast with a graded CONTROL that
+    the flag is what lifts the limit, AND the in-window search-and-cast flow).
 
 This section is maintained by hand — the rule #3 enforcement test still does
 **not** exist, so re-verify any "stub" claim against `src/data/factions/units.ts`

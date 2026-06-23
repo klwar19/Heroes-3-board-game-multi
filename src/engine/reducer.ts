@@ -8918,6 +8918,27 @@ function playReaction(
   action: Extract<GameAction, { type: "PLAY_REACTION" }>,
   cards: CardLibrary
 ): void {
+  // Tarnum (Conflux) VI played AS a reaction: consume the specialty (it cycles to
+  // the caster's discard) and open the per-search deck choice. The Search runs
+  // inside the still-open reaction window; once it finishes, resolveTarnumSearch
+  // re-derives the window's offers (so a just-Searched applicable instant can be
+  // cast into the SAME window) and hands priority back to the caster. The window
+  // is not advanced/closed here — that happens after the Search resolves.
+  const reactionCardEffect = cards[action.cardId]?.effect;
+  if (reactionCardEffect?.type === "TARNUM_OVERLIMIT_SEARCH") {
+    if (!state.reactionWindow) {
+      throw new Error("No reaction window is open.");
+    }
+    const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId, "discard");
+    if (moveError) {
+      throw new Error(moveError.message);
+    }
+    // A fresh reaction clears everyone's prior pass so opponents get a new look.
+    state.reactionWindow.passedPlayerIds = [];
+    openTarnumSearch(state, action.playerId, reactionCardEffect.count);
+    return;
+  }
+
   // Power has no standalone effect during an attack UNLESS a Power-scaling
   // spell instant has already been played into this window: the caster keeps
   // priority and may keep empowering it (Bloodlust cast, then a Power card to
@@ -12794,7 +12815,11 @@ function openTarnumSearch(state: GameState, playerId: PlayerId, remaining: numbe
   });
 }
 
-function resolveTarnumSearch(state: GameState, action: Extract<GameAction, { type: "CHOOSE_OPTION" }>): void {
+function resolveTarnumSearch(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
+  cards: CardLibrary
+): void {
   const choice = state.pendingChoice;
   if (
     !choice ||
@@ -12824,10 +12849,22 @@ function resolveTarnumSearch(state: GameState, action: Extract<GameAction, { typ
   });
 
   state.pendingChoice = null;
-  state.phase = choice.returnPhase;
-  state.priorityPlayerId = null;
-  // Re-open for the next search; closes itself when no deck has cards left.
+  // Re-open the next search; leaves pendingChoice null once all are done.
   openTarnumSearch(state, action.playerId, choice.remaining - 1);
+  if (state.pendingChoice) {
+    return;
+  }
+  // All searches resolved. When the Search ran inside a still-open reaction
+  // window (Tarnum VI used as a reaction), re-derive that window's offers so a
+  // just-Searched applicable instant can be cast into it, and return priority to
+  // the caster. Otherwise just return to the prior phase.
+  if (state.reactionWindow) {
+    state.phase = "reaction";
+    refreshReactionWindowLegalReactions(state, cards);
+  } else {
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+  }
 }
 
 function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type: "RESOLVE_DECK_SEARCH" }>): void {
@@ -13675,7 +13712,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         // option choice is
         // handled by the adventure reducer.
         if (nextState.pendingChoice?.type === "TARNUM_SEARCH") {
-          resolveTarnumSearch(nextState, action);
+          resolveTarnumSearch(nextState, action, cards);
         } else if (
           nextState.pendingChoice?.type === "OPTION_CHOICE" &&
           nextState.pendingChoice.context === "combat-reposition"
