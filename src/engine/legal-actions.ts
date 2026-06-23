@@ -4863,11 +4863,27 @@ function variantMatchesTrigger(
   if (variant.trigger.event !== triggerEvent.type) {
     // Power plays declared on a SPELL_CAST trigger may also be paid into an
     // attack window, fueling a spell instant in the same declaration.
-    return (
+    if (
       triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
       variant.trigger.event === "SPELL_CAST_STARTED" &&
       variant.effect.type === "ADD_SPELL_POWER"
-    );
+    ) {
+      return true;
+    }
+    // Interference / Plate of the Dying Light: their "+X defense" base is the
+    // same as Armorer's, i.e. a plain defense reaction usable against a physical
+    // attack too (the spell-damage-reduction rider is simply inert vs an attack).
+    // Their printed trigger is the SPELL_CAST window, so cross them into the
+    // attack window for the DEFENDER — the side whose unit is being attacked.
+    // isEffectLegalForTrigger re-checks the exact defender match.
+    if (
+      triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
+      variant.trigger.event === "SPELL_CAST_STARTED" &&
+      variant.effect.type === "INTERFERE_SPELL"
+    ) {
+      return triggerEvent.playerId !== playerId;
+    }
+    return false;
   }
 
   const isSelf = triggerEvent.playerId === playerId;
@@ -5283,6 +5299,14 @@ export function isEffectLegalForTrigger(
         return attackStackHasSpellOfSchool(getPendingStackItem(state, triggerEvent), effect.schoolOnly);
       }
       return true;
+    }
+
+    // Interference / Plate of the Dying Light: the "+X defense" base is a plain
+    // defense reaction, so it is offered to the controller of the unit being
+    // attacked. Only the DEFENSE_BONUS half applies to an attack; the paired
+    // SPELL_DAMAGE_REDUCTION rider is inert here. (basic +X / expert +X.)
+    if (effect.type === "INTERFERE_SPELL") {
+      return defender.controllerId === playerId;
     }
 
     if (effect.type !== "ADD_COMBAT_STAT") {
