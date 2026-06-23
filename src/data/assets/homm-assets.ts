@@ -134,6 +134,20 @@ export const TOWN_BUILDING_IMAGES: Record<string, Record<string, string>> = {
     dwelling_gold: "/assets/town/cove_maelstrom.gif",
     thieves_guild: "/assets/town/cove_thieves_guild.gif",
     pub: "/assets/town/cove_pub.gif"
+  },
+  bulwark: {
+    // Bulwark (HotA fan-faction) town-screen renders, fetched from
+    // heroes.thelazy.net by scripts/fetch-bulwark-art.py. Board dwellings map
+    // bronze/silver/gold to the Colliery / Mountain Embassy / Frosthome PC
+    // dwellings; the Sieidi and its Altar upgrade drive the Runes mechanic.
+    city_hall: "/assets/town/bulwark_city_hall.webp",
+    citadel: "/assets/town/bulwark_citadel.webp",
+    mage_guild: "/assets/town/bulwark_mage_guild.webp",
+    dwelling_bronze: "/assets/town/bulwark_dwelling_bronze.webp",
+    dwelling_silver: "/assets/town/bulwark_dwelling_silver.webp",
+    dwelling_gold: "/assets/town/bulwark_dwelling_gold.webp",
+    sieidi: "/assets/town/bulwark_sieidi.webp",
+    altar: "/assets/town/bulwark_altar.webp"
   }
 };
 

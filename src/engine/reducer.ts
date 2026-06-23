@@ -3086,8 +3086,9 @@ function finishResolvedAttack(
   applyOnAttackInitiativeDebuff(state, details.attacker, details.defender, details.isRetaliation);
   applyOnAttackPoisonCubes(state, details.attacker, details.defender, details.isRetaliation);
   // Bulwark "Runes" (Gamefound Update #3): a Bulwark unit's resolved attack earns
-  // its controller +1 Rune, a Retaliation Attack +2. Placed after the cancelled-
-  // attack early return above, so a fizzled strike grants nothing.
+  // its controller +1 Rune; a Retaliation Attack also +1 (RUNE_GAIN_*). Placed
+  // after the cancelled-attack early return above, so a fizzled strike grants
+  // nothing.
   gainRunesForAttack(state, details.attacker, details.isRetaliation);
   // Creature Bank Crypt/Shipwreck Wraiths: after their own attack, the enemy
   // discards a card. Medusa Stores Medusas (while Stacked): the target is
@@ -12819,7 +12820,8 @@ function defendUnit(state: GameState, action: Extract<GameAction, { type: "DEFEN
   unit.defenseToken = true;
   unit.activatedThisRound = true;
   // Bulwark "Runes" (Gamefound Update #3): taking the Defend action earns a
-  // Bulwark unit's controller +3 Runes — the richest Rune source.
+  // Bulwark unit's controller +2 Runes (RUNE_GAIN_DEFEND) — the richest Rune
+  // source.
   gainRunesForDefend(state, unit);
   appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
 

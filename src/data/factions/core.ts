@@ -1105,26 +1105,30 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     implementationStatus: "implemented",
     source: townSource("bulwark")
   },
-  // Sieidi of the Runes (Gamefound Update #3): pre-charges Rune Level 1 each
-  // combat (+3 starting Runes) and unlocks the Level 2 cap.
+  // Sieidi of the Runes (Gamefound Update #3): raises the MAX Rune Level, NOT a
+  // pre-charger. It unlocks Level 2; the army still opens each battle at 0 Runes
+  // and EARNS its way to the Level 2 threshold (7) by acting (startingRunes: 0).
+  // See src/engine/runes.ts — pre-charging to the cap made the earn-by-acting
+  // loop decorative, so the building now grants the potential to climb higher.
   "bulwark.sieidi": {
     id: "bulwark.sieidi",
     name: "Sieidi of the Runes",
     faction: "bulwark",
     cost: { gold: 6, buildingMaterials: 4, valuables: 1 },
-    effect: { type: "RUNE_ALTAR", startingRunes: 3, levelCap: 2 },
+    effect: { type: "RUNE_ALTAR", startingRunes: 0, levelCap: 2 },
     implementationStatus: "implemented",
     source: townSource("bulwark")
   },
   // Altar of the Runes (Gamefound Update #3): the same-tile upgrade of the Sieidi.
-  // Pre-charges Rune Level 2 each combat (+6 starting Runes) and unlocks Level 3.
+  // Raises the max one more step to Level 3 (the third threshold, at 10 Runes);
+  // again no pre-charge — every Rune up to that threshold is earned in battle.
   "bulwark.altar": {
     id: "bulwark.altar",
     name: "Altar of the Runes",
     faction: "bulwark",
     cost: { gold: 6, buildingMaterials: 4, valuables: 2 },
     prerequisites: ["bulwark.sieidi"],
-    effect: { type: "RUNE_ALTAR", startingRunes: 6, levelCap: 3 },
+    effect: { type: "RUNE_ALTAR", startingRunes: 0, levelCap: 3 },
     implementationStatus: "implemented",
     source: townSource("bulwark")
   }
