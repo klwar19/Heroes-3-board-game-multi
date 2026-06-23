@@ -10,7 +10,8 @@ export type FactionId =
   | "fortress"
   | "tower"
   | "conflux"
-  | "cove";
+  | "cove"
+  | "bulwark";
 export type UnitTier = "bronze" | "silver" | "gold" | "azure";
 
 export type UnitSideDefinition = {
@@ -101,6 +102,14 @@ export type CityHallOption = {
    * only offered when the player holds an Artifact card; choosing it removes one.
    */
   removeArtifactFromHand?: boolean;
+  /**
+   * Bulwark City Hall ("combat focus", per Gamefound Update #3): forgo the gold
+   * income to become Rune-Empowered. Until this player's next Resource round,
+   * they start EVERY combat with this many extra Runes (added on top of the
+   * Sieidi/Altar baseline). Stored on PlayerState.runeEmpoweredNextCombats and
+   * cleared at the next Resource round.
+   */
+  runesNextCombats?: number;
 };
 
 export type TownBuildingEffect =
@@ -261,6 +270,23 @@ export type TownBuildingEffect =
        * discard pile and the other back on top of the deck.
        */
       type: "THIEVES_GUILD";
+    }
+  | {
+      /**
+       * Bulwark Sieidi / Altar of the Runes (Gamefound Update #3). The Altar is
+       * a same-tile upgrade of the Sieidi (prerequisite). Two effects, both read
+       * by the Runes engine (src/engine/runes.ts):
+       *  - `startingRunes`: Runes this player's Hero starts each combat with (the
+       *    "increases starting runes" benefit). Sieidi pre-charges Rune Level 1,
+       *    the Altar pre-charges Level 2.
+       *  - `levelCap`: the highest Rune Level reachable in combat while this
+       *    building stands. Without any rune building a Bulwark player can still
+       *    reach Level 1 (the base faction mechanic); Sieidi unlocks Level 2,
+       *    the Altar unlocks Level 3.
+       */
+      type: "RUNE_ALTAR";
+      startingRunes: number;
+      levelCap: number;
     }
   | { type: "NOT_IMPLEMENTED"; note: string };
 

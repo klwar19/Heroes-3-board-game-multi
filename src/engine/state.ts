@@ -70,7 +70,8 @@ export type FactionId =
   | "fortress"
   | "tower"
   | "conflux"
-  | "cove";
+  | "cove"
+  | "bulwark";
 
 export type TargetRef =
   | { type: "unit"; unitId: UnitId }
@@ -4360,6 +4361,13 @@ export type PlayerState = {
    */
   necromancyWindow?: boolean;
   /**
+   * Bulwark "Rune-Empowered" flag (Gamefound Update #3): set when this player
+   * picks the City Hall combat-focus option (forgoing gold income), giving them
+   * this many EXTRA starting Runes in every combat until their next Resource
+   * round, where it is cleared. Read at combat start by seedRunesForCombat.
+   */
+  runeEmpoweredNextCombats?: number;
+  /**
    * Ability cards this player acquired by drawing them out of the shared
    * Ability deck (the level-up "Search (2) the Ability deck" reward). A
    * Necromancy gained this way may be kept but never played — it is only a
@@ -4839,6 +4847,16 @@ export type CombatState = {
   skeletonGuardDefeated?: boolean;
   /** Set once the Skeletons reinforce has been offered (mid-combat or after). */
   skeletonReinforceGranted?: boolean;
+  /**
+   * Bulwark "Runes" (Gamefound Update #3), per Bulwark player, for THIS combat
+   * only — discarded when the combat state is torn down, so it resets every
+   * battle. `count` is the accumulated Rune total (Attack +1 / Retaliate +2 /
+   * Defend +3, seeded from the Sieidi/Altar baseline + the City Hall flag);
+   * `appliedLevel` is the highest Rune Level whose army-wide buff has already
+   * been created as a player-scoped active effect, so the add-only sync never
+   * double-applies. See src/engine/runes.ts.
+   */
+  runes?: Record<PlayerId, { count: number; appliedLevel: number }>;
   dice: CombatDice;
   units: Record<UnitId, CombatUnitState>;
   /**
@@ -5886,6 +5904,8 @@ export type PendingChoice =
           experience?: number;
           /** Cove City Hall: this option removes one Artifact card from hand as its cost. */
           removeArtifactFromHand?: boolean;
+          /** Bulwark City Hall: extra starting Runes per combat until the next Resource round. */
+          runesNextCombats?: number;
         }[];
       };
       /** combat-reposition: Harpies' optional fly-back after their attack. */
