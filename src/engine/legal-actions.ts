@@ -282,6 +282,23 @@ function effectIsTierGated(effect: EffectDefinition): boolean {
 }
 
 /**
+ * The highest grade a tier-gated effect's ladder can EVER reach, independent of
+ * the Power paid — its grade ceiling. No spell ladder climbs above "gold", so an
+ * azure-tier unit (gradeRank 3) sits above every ceiling and can never be
+ * affected by a tier-gated spell whatever Power is poured in.
+ */
+function maxTierGateRank(effect: EffectDefinition): number {
+  if ("gradeByPower" in effect && effect.gradeByPower) {
+    const ranks = Object.values(effect.gradeByPower).map((grade) => gradeRank(grade));
+    return ranks.length > 0 ? Math.max(...ranks) : gradeRank("gold");
+  }
+  if ("grade" in effect && effect.grade !== undefined) {
+    return gradeRank(effect.grade);
+  }
+  return gradeRank("gold");
+}
+
+/**
  * Orb of Vulnerability (option A): while its combat-wide effect is on the
  * table, every unit's innate spell-related ability is switched off. Read at
  * each such ability's site so a single grant covers both armies for the Combat.
@@ -1202,16 +1219,23 @@ function getTargetsForCard(
     });
   }
 
-  // Creature Bank defenders have NO tier (rulebook p.66), so a tier-gated spell
-  // or specialty can never target one — drop them from a tier-gated card's target
-  // list (option-card tier gates are filtered per option in addOptionPlays).
+  // A tier-gated spell/specialty (a `grade` ceiling or `gradeByPower` ladder) can
+  // never reach a unit whose grade sits above its ladder's TOP grade, whatever
+  // Power is paid — and no spell ladder climbs above "gold". So drop the two kinds
+  // of forever-unreachable unit from a tier-gated card's target list: a gradeless
+  // Creature Bank defender (rulebook p.66 — gradeRank ∞) AND any AZURE-tier unit
+  // (gradeRank above gold). This keeps Berserk / Teleport / Clone — whose per-Power
+  // grade gate is otherwise deferred to resolution (Power can be added after the
+  // cast is declared) — from ever OFFERING (then silently fizzling on) an azure or
+  // bank unit. Option-card tier gates are filtered per option in addOptionPlays.
   if (card && effectIsTierGated(card.effect)) {
+    const ceiling = maxTierGateRank(card.effect);
     targets = targets.filter((candidate) => {
       if (candidate.type !== "unit") {
         return true;
       }
       const unit = state.combat?.units[candidate.unitId];
-      return !unit || !unit.bankUnit;
+      return !unit || gradeRankOfUnit(unit) <= ceiling;
     });
   }
 
