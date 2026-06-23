@@ -419,3 +419,106 @@ describe("Tarnum VI — Search twice, cast over the per-round limit", () => {
     expect(boltCast, "a combat-timed Searched Spell cannot be cast off-turn").toBeFalsy();
   });
 });
+
+describe("Tarnum VI — instant-window (reaction) casting of attack/defense changers", () => {
+  /** Declare a p1 griffins → p2 skeletons melee attack, opening a reaction window. */
+  function declareAttack(opts: { hand: string[]; flagged?: string[]; spellsCast?: number }): GameState {
+    const state = createInitialGameState("tarnum-react");
+    state.players.p1.hand = opts.hand;
+    state.players.p2.hand = [];
+    state.players.p1.combatStats.tarnumOverlimitCards = opts.flagged ?? [];
+    state.players.p1.combatStats.spellsCastThisRound = opts.spellsCast ?? 0;
+    state.decks.spells.drawPile = [];
+    state.decks.spells.discardPile = [];
+    if (state.decks["spells-expert"]) {
+      state.decks["spells-expert"].drawPile = [];
+      state.decks["spells-expert"].discardPile = [];
+    }
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    skeletons.maxHealth = 50;
+    skeletons.damage = 0;
+    state.combat!.units.unit_p1_griffins.position = 9;
+    skeletons.position = 13;
+    return applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+  }
+
+  const BLOODLUST = "spell.bloodlust"; // instant, attack-trigger, +1 attack at Power 0
+
+  it("offers a flagged attack/defense-changing instant as a free over-limit reaction (both placements), even at the limit", () => {
+    const state = declareAttack({ hand: [BLOODLUST], flagged: [BLOODLUST], spellsCast: 1 });
+    const offers = state.reactionWindow?.legalReactions.p1 ?? [];
+    const tarnumOffers = offers.filter(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === BLOODLUST && legal.action.tarnumReturn
+    );
+    expect(tarnumOffers.map((o) => o.action.type === "PLAY_REACTION" && o.action.tarnumReturn).sort()).toEqual([
+      "deck-top",
+      "discard"
+    ]);
+    // The normal (limit-counting, own-discard) Bloodlust reaction is NOT offered
+    // for a flagged card.
+    expect(
+      offers.some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === BLOODLUST && !legal.action.tarnumReturn
+      )
+    ).toBe(false);
+  });
+
+  it("CONTROL: an unflagged Bloodlust is blocked at the spell limit (only the flag lifts it)", () => {
+    const state = declareAttack({ hand: [BLOODLUST], spellsCast: 1 });
+    const offers = state.reactionWindow?.legalReactions.p1 ?? [];
+    expect(offers.some((legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === BLOODLUST)).toBe(false);
+  });
+
+  it("casts the flagged instant for FREE, applies its buff, and returns it to the Spell deck top", () => {
+    // Baseline damage with no Bloodlust.
+    const baseline = passAllReactions(declareAttack({ hand: [] }));
+    const baseDamage = baseline.combat!.units.unit_p2_skeletons.damage;
+
+    const state = declareAttack({ hand: [BLOODLUST], flagged: [BLOODLUST], spellsCast: 1 });
+    const cast = (state.reactionWindow?.legalReactions.p1 ?? []).find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" && legal.action.cardId === BLOODLUST && legal.action.tarnumReturn === "deck-top"
+    );
+    expect(cast, "the free over-limit Bloodlust reaction should be offered").toBeTruthy();
+    const after = passAllReactions(applyOk(state, cast!.action));
+
+    // Observable: the +1 attack buff landed — more damage than the no-Bloodlust baseline.
+    expect(after.combat!.units.unit_p2_skeletons.damage).toBeGreaterThan(baseDamage);
+    // Free over-limit: the per-round limit did not advance past the spent 1.
+    expect(after.players.p1.combatStats.spellsCastThisRound).toBe(1);
+    // The cast Spell returned to the shared Spell deck TOP — not the caster's discard.
+    expect(after.decks.spells.drawPile.at(-1)).toBe(BLOODLUST);
+    expect(after.players.p1.discard).not.toContain(BLOODLUST);
+    expect(after.players.p1.hand).not.toContain(BLOODLUST);
+    // The over-limit flag is spent.
+    expect(after.players.p1.combatStats.tarnumOverlimitCards ?? []).not.toContain(BLOODLUST);
+  });
+
+  it("the 'to Spell discard' placement returns the cast reaction Spell to the Spell discard pile", () => {
+    const state = declareAttack({ hand: [BLOODLUST], flagged: [BLOODLUST], spellsCast: 1 });
+    const cast = (state.reactionWindow?.legalReactions.p1 ?? []).find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" && legal.action.cardId === BLOODLUST && legal.action.tarnumReturn === "discard"
+    );
+    const after = passAllReactions(applyOk(state, cast!.action));
+    expect(after.decks.spells.discardPile).toContain(BLOODLUST);
+    expect(after.players.p1.discard).not.toContain(BLOODLUST);
+  });
+
+  it("CONTROL: a forged tarnumReturn reaction on an unflagged Spell is rejected", () => {
+    const state = declareAttack({ hand: [BLOODLUST], spellsCast: 1 });
+    const result = applyAction(state, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: BLOODLUST,
+      mode: "basic",
+      tarnumReturn: "deck-top"
+    });
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+});

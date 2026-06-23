@@ -2349,6 +2349,13 @@ export type GameAction =
        * removed from the game once played.
        */
       fromScroll?: string;
+      /**
+       * Tarnum (Conflux) VI: this reaction Spell is a just-Searched, flagged card
+       * cast for FREE over the per-round limit. It does not count toward the limit
+       * and, instead of the caster's discard, returns to the shared Spell deck —
+       * its top ("deck-top") or its discard pile ("discard"), the caster's choice.
+       */
+      tarnumReturn?: "deck-top" | "discard";
     }
   | {
       /**

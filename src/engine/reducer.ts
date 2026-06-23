@@ -7792,6 +7792,8 @@ function applyReactionPlayCore(
     fromSpellBook?: boolean;
     /** Bowstring of the Unicorn's Mane: the friendly ranged unit to activate. */
     target?: TargetRef;
+    /** Tarnum (Conflux) VI: free over-limit reaction; returns to the shared Spell deck. */
+    tarnumReturn?: "deck-top" | "discard";
   },
   cards: CardLibrary
 ): { windowEnded: boolean } {
@@ -7885,9 +7887,16 @@ function applyReactionPlayCore(
   const stackItem = state.stack.at(-1);
   const player = state.players[playerId];
 
+  // Tarnum (Conflux) VI: a free over-limit reaction is only legal for a card the
+  // hero actually Searched and flagged this combat (guards a forged tarnumReturn).
+  if (play.tarnumReturn && !(player?.combatStats.tarnumOverlimitCards ?? []).includes(play.cardId)) {
+    throw new Error("That Spell was not Searched for a Tarnum over-limit cast.");
+  }
+
   // Spell cards played as instants count toward the printed limit of one
-  // Spell card per combat round (Knowledge/Necklace raise it).
-  if (card.kind === "spell" && state.combat && player) {
+  // Spell card per combat round (Knowledge/Necklace raise it). A Tarnum VI
+  // over-limit reaction is a free bonus — it ignores the limit.
+  if (card.kind === "spell" && state.combat && player && !play.tarnumReturn) {
     if (player.combatStats.spellsCastThisRound >= spellLimitFor(state, player)) {
       throw new Error("Spell limit reached for this combat round.");
     }
@@ -7958,6 +7967,32 @@ function applyReactionPlayCore(
     if (moveError) {
       throw new Error(moveError.message);
     }
+  } else if (play.tarnumReturn) {
+    // Tarnum (Conflux) VI: pull the flagged Spell out of hand and return it to the
+    // shared Spell deck — its top or its discard pile (the caster's choice) —
+    // never the caster's own discard. Consume the over-limit flag.
+    const hand = state.players[playerId]?.hand;
+    const handIndex = hand?.indexOf(play.cardId) ?? -1;
+    if (!hand || handIndex < 0) {
+      throw new Error("That Spell is not in your hand.");
+    }
+    hand.splice(handIndex, 1);
+    const spellDeck = state.decks.spells;
+    if (spellDeck) {
+      if (play.tarnumReturn === "deck-top") {
+        spellDeck.drawPile.push(play.cardId);
+      } else {
+        spellDeck.discardPile.push(play.cardId);
+      }
+    }
+    if (player) {
+      const flagged = player.combatStats.tarnumOverlimitCards ?? [];
+      const idx = flagged.indexOf(play.cardId);
+      if (idx >= 0) {
+        flagged.splice(idx, 1);
+        player.combatStats.tarnumOverlimitCards = flagged;
+      }
+    }
   } else {
     const moveError = moveCardFromHandToDiscard(
       state,
@@ -8008,7 +8043,9 @@ function applyReactionPlayCore(
   }
 
   if (card.kind === "spell" && state.combat && player) {
-    noteSpellCast(state, player);
+    // A Tarnum VI over-limit reaction is free: it does not bump the per-round
+    // limit (noteSpellCast still closes the first-spell-this-round gate for it).
+    noteSpellCast(state, player, !play.tarnumReturn);
   }
 
   const optionLabel =

@@ -152,19 +152,24 @@ Conflux — now fully engine-wired (no display-only unit clauses left):
   - IV — `CONVERT_ARMY_UNIT` extended with a `goldCost` and an optional from-unit:
     "Pay 10 gold → the unique neutral Enchanters card" (or draw). Gated on gold
     and the `unique` one-Enchanters limit.
-  - VI — the over-limit multi-cast subsystem (`TARNUM_OVERLIMIT_SEARCH`): Search(1)
-    twice into hand and flag both (`combatStats.tarnumOverlimitCards`); the search
-    round-robins BOTH spell decks (basic AND the BINH expert deck) when both hold
-    cards. A flagged hand Spell is cast for FREE over the per-round limit (does not
-    bump `spellsCastThisRound`, validated against forgery in `castSpell`) and on
-    resolution returns to the shared Spell deck — top OR discard, the caster's
-    choice via `CAST_SPELL.tarnumReturn` — instead of the caster's own discard. An
-    uncast flagged Spell just stays in hand; the flag clears at combat start and
-    each combat round. VI is an **Instant**, so it may be played off-turn in the
-    instant window too — but the Searched spells then cast only if "their type
-    allows it": a trigger-free instant casts off-turn, while a combat-/action-timed
-    spell needs your own active unit, so playing VI off-turn risks Searching spells
-    you cannot cast right then (covered in `conflux-tarnum-specialty.test.ts`).
+  - VI — the over-limit multi-cast subsystem (`TARNUM_OVERLIMIT_SEARCH`): an
+    **Instant** (playable on your turn OR off-turn in the instant window) that
+    opens a per-search deck choice (`TARNUM_SEARCH` pendingChoice): twice, the
+    caster picks ONE Spell deck — basic or expert — to Search 1 card from. Each
+    taken card is flagged (`combatStats.tarnumOverlimitCards`) for a FREE cast
+    over the per-round limit (never bumps `spellsCastThisRound`; forgery-validated
+    in `castSpell` AND `applyReactionPlayCore`), returning to the shared Spell deck
+    top OR discard — the caster's choice via `CAST_SPELL.tarnumReturn` /
+    `PLAY_REACTION.tarnumReturn` — instead of the caster's own discard. A flagged
+    spell casts only when "their type allows it" in the open window: a combat spell
+    (Fireball) during your own activation, a trigger-free instant anytime (both via
+    `addSpellActions`), and an attack/defense-changing reaction instant (Bless,
+    Curse, Bloodlust…) in the reaction/instant window via a dedicated free
+    over-limit pass in `getLegalReactionsForTrigger`. One that does not fit just
+    stays in hand; the flag clears at combat start and each combat round. All
+    covered in `conflux-tarnum-specialty.test.ts` (per-search choice, both/same
+    deck, the on-turn vs off-turn castability split, and the reaction-window cast
+    with a graded CONTROL that the flag is what lifts the limit).
 
 This section is maintained by hand — the rule #3 enforcement test still does
 **not** exist, so re-verify any "stub" claim against `src/data/factions/units.ts`
