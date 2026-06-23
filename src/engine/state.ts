@@ -766,6 +766,13 @@ export type EffectDefinition =
        * the `ignores-retaliation` unit ability).
        */
       ignoresRetaliation?: boolean;
+      /**
+       * Tarnum (Fortress) Basilisks VI: "your selected unit uses its special
+       * ability regardless of the required roll's result." On the buffed attack
+       * (UNIT_ATTACK_DECLARED, self) every die-gated after-attack ability fires as
+       * if its face was rolled — wired through stackItem.forceAbilityRollsThisAttack.
+       */
+      forceAbilityRolls?: boolean;
     }
   | {
       /** Centaur's Axe: the attack die's outcome counts three times. */
@@ -4006,6 +4013,15 @@ export type ResolutionStackItem = {
      * the `ignores-retaliation` ability. Set from ADD_COMBAT_STAT.ignoresRetaliation.
      */
     ignoresRetaliationThisAttack?: boolean;
+    /**
+     * Tarnum (Fortress) Basilisks VI: "your selected unit uses its special
+     * ability regardless of the required roll's result". For this single attack
+     * every die-GATED after-attack ability of the attacker triggers as if its
+     * required face was rolled — the Basilisk/Azure Paralysis, the Gorgon Death
+     * Stare, the Wyvern/Thunderbird flat-damage sting, the Rust Dragon Acid
+     * token and the Minotaur draw. Set from ADD_COMBAT_STAT.forceAbilityRolls.
+     */
+    forceAbilityRollsThisAttack?: boolean;
     playedCardIds: CardId[];
   };
 };

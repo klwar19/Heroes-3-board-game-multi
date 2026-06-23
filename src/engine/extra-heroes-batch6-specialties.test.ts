@@ -27,9 +27,10 @@ import type { GameAction, GameEvent, GameState, UnitId, VisitStep } from "./stat
 
 const assetPath = (src: string) => fileURLToPath(new URL(`../../public${src}`, import.meta.url));
 
-const BATCH6_ECONOMY_HEROES: Array<[string, keyof typeof coreFactionDefinitions]> = [
+const BATCH6_HEROES: Array<[string, keyof typeof coreFactionDefinitions]> = [
   ["octavia", "inferno"],
-  ["melodia", "rampart"]
+  ["melodia", "rampart"],
+  ["tarnum_fortress", "fortress"]
 ];
 
 const SPACE = "50,50";
@@ -155,9 +156,9 @@ const RESOURCE_FACE_AMOUNTS = new Set([1, 2, 3, 4, 6]);
 // Roster + art wiring
 // ===========================================================================
 
-describe("batch-6 economy heroes are registered with PC-portrait art and implemented specialties", () => {
-  it("Octavia and Melodia carry a real PC portrait, NO board scan, and 3 implemented face-less specialties", () => {
-    for (const [heroId, factionId] of BATCH6_ECONOMY_HEROES) {
+describe("batch-6 heroes are registered with PC-portrait art and implemented specialties", () => {
+  it("each carries a real PC portrait, NO board scan, and 3 implemented face-less specialties", () => {
+    for (const [heroId, factionId] of BATCH6_HEROES) {
       const hero = coreHeroDefinitions[heroId];
       expect(hero, `${heroId} should be defined`).toBeTruthy();
       expect(coreFactionDefinitions[factionId].heroes, `${factionId} roster`).toContain(heroId);
@@ -363,5 +364,128 @@ describe("Melodia's Fortune specialty", () => {
 
     visitField(after, "resource_symbol");
     expect(lastDiceRolled(after, "resource")!.results.length, "Fortune VI rolls +1 die at the location").toBe(2);
+  });
+});
+
+// ===========================================================================
+// Tarnum (Fortress) — "Basilisks": creature buffs + force-ability VI
+// ===========================================================================
+
+function hasParalysis(state: GameState, unitId: UnitId): boolean {
+  return (state.combat?.units[unitId].tokens ?? []).some((token) => token.kind === "paralysis");
+}
+
+describe("Tarnum (Fortress)'s Basilisks specialty", () => {
+  it("is the Beastmaster variant, distinct from the other Tarnums", () => {
+    expect(coreHeroDefinitions.tarnum_fortress.name).toBe("Tarnum");
+    expect(coreHeroDefinitions.tarnum_fortress.class).toBe("Beastmaster");
+    expect(coreHeroDefinitions.tarnum_fortress.faction).toBe("fortress");
+    expect(coreHeroDefinitions.tarnum_fortress.portrait).toBe("/assets/hero_portraits-tarnum_beastmaster.webp");
+  });
+
+  /**
+   * p1's attacker (renamed `attackerName`, abilities `attackerAbilities`) strikes
+   * p2's skeletons; the Attack die is scripted to `scriptedFace`. p1 may play
+   * `cardId` (a reaction) into the declared attack. Both survive (40 HP).
+   */
+  function basiliskAttack(
+    seed: string,
+    cardId: string | null,
+    opts: { attackerName?: string; attackerAbilities?: string[]; scriptedFace?: number } = {}
+  ) {
+    const state = createInitialGameState(seed);
+    state.players.p1.hand = cardId ? [cardId] : [];
+    state.players.p2.hand = [];
+    const attacker = state.combat!.units.unit_p1_griffins;
+    attacker.abilities = opts.attackerAbilities ?? ["fortress-basilisk-paralysis"];
+    attacker.name = opts.attackerName ?? "Basilisks";
+    attacker.type = "ground";
+    attacker.position = 9;
+    attacker.attack = 4;
+    const defender = state.combat!.units.unit_p2_skeletons;
+    defender.abilities = [];
+    defender.position = 13;
+    defender.defense = 0;
+    defender.attack = 3;
+    defender.maxHealth = 40;
+    defender.damage = 0;
+    state.combat!.dice.scriptedRolls = new Array(8).fill(opts.scriptedFace ?? 0);
+    state.combat!.dice.rollCount = 0;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    if (!cardId) {
+      return passAllReactions(declared);
+    }
+    const reaction = (declared.reactionWindow?.legalReactions.p1 ?? []).find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === cardId
+    );
+    expect(reaction, `${cardId} should be offered on the declared attack`).toBeTruthy();
+    return passAllReactions(applyOk(declared, reaction!.action));
+  }
+
+  it("I gives +1 attack, doubled to +2 for a Basilisks unit", () => {
+    const plain = basiliskAttack("tf-1-plain", "specialty.tarnum_fortress.1", {
+      attackerName: "Griffins",
+      attackerAbilities: []
+    });
+    expect(
+      lastAttackRolled(plain, (e) => e.attackerId === "unit_p1_griffins" && !e.isRetaliation)?.attackBonus,
+      "non-Basilisk → +1"
+    ).toBe(1);
+    const basilisk = basiliskAttack("tf-1-basilisk", "specialty.tarnum_fortress.1", { attackerName: "Basilisks" });
+    expect(
+      lastAttackRolled(basilisk, (e) => e.attackerId === "unit_p1_griffins" && !e.isRetaliation)?.attackBonus,
+      "a Basilisks unit → +2"
+    ).toBe(2);
+  });
+
+  it("IV grants +1 health for the Combat, doubled for a Basilisks unit", () => {
+    const state = createInitialGameState("tf-4");
+    state.players.p1.hand = ["specialty.tarnum_fortress.4"];
+    const unit = state.combat!.units.unit_p1_griffins;
+    unit.name = "Basilisks";
+    unit.abilities = [];
+    const beforeMax = unit.maxHealth;
+    const play = findPlay(state, "specialty.tarnum_fortress.4", undefined, "unit_p1_griffins");
+    expect(play, "IV targets a friendly unit").toBeTruthy();
+    const after = applyOk(state, play!.action);
+    expect(after.combat!.units.unit_p1_griffins.maxHealth, "+2 HP for a Basilisks unit").toBe(beforeMax + 2);
+  });
+
+  it("VI forces the Basilisk Paralysis regardless of the roll AND adds +2 attack", () => {
+    // Control: a Basilisk attack with the die scripted to "0" (not "-1") does NOT
+    // paralyse on its own.
+    const control = basiliskAttack("tf-6-control", null, { scriptedFace: 0 });
+    expect(hasParalysis(control, "unit_p2_skeletons"), "no paralysis on a '0' roll").toBe(false);
+
+    // With Tarnum (Fortress) VI played into the same attack, the Stone Gaze fires
+    // regardless of the rolled face, and the attack gains +2 attack.
+    const forced = basiliskAttack("tf-6-forced", "specialty.tarnum_fortress.6", { scriptedFace: 0 });
+    expect(hasParalysis(forced, "unit_p2_skeletons"), "Basilisks VI forces the Paralysis on a '0'").toBe(true);
+    expect(
+      lastAttackRolled(forced, (e) => e.attackerId === "unit_p1_griffins" && !e.isRetaliation)?.attackBonus,
+      "+2 attack"
+    ).toBe(2);
+  });
+
+  it("VI's force does nothing extra for a unit with no die-gated ability (just +2 attack)", () => {
+    // A plain Griffins (no Stone Gaze) gets only the +2 attack — the force flag has
+    // no ability to trigger, so no paralysis appears.
+    const forced = basiliskAttack("tf-6-noability", "specialty.tarnum_fortress.6", {
+      attackerName: "Griffins",
+      attackerAbilities: [],
+      scriptedFace: 0
+    });
+    expect(hasParalysis(forced, "unit_p2_skeletons"), "nothing to force without a die-gated ability").toBe(false);
+    expect(
+      lastAttackRolled(forced, (e) => e.attackerId === "unit_p1_griffins" && !e.isRetaliation)?.attackBonus,
+      "+2 attack still applies"
+    ).toBe(2);
   });
 });

@@ -3080,10 +3080,13 @@ function finishResolvedAttack(
   // Shield of the Dwarven Lords ignored the die "and any additional effects it
   // triggered": skip every die-face-conditioned follow-up — the Azure/Basilisk
   // paralysis and die tokens, the Minotaurs' draw, and the ranged low-roll bolt.
+  // Tarnum (Fortress) Basilisks VI: the buffed (non-retaliation) attack fires
+  // every die-gated after-attack ability regardless of the rolled face.
+  const forceAbilityRoll = !details.isRetaliation && Boolean(stackItem.modifiers.forceAbilityRollsThisAttack);
   if (!dieCancelled) {
-    applyOnAttackDieTokens(state, details.attacker, details.defender, attackResult.roll, details.isRetaliation);
+    applyOnAttackDieTokens(state, details.attacker, details.defender, attackResult.roll, details.isRetaliation, forceAbilityRoll);
     // Dungeon Minotaurs: draw a card when this unit's Attack die resolves "-1".
-    applyOnAttackDieDraw(state, details.attacker, attackResult.roll);
+    applyOnAttackDieDraw(state, details.attacker, attackResult.roll, forceAbilityRoll);
     applyPostAttackAbilityDamage(
       state,
       details.attacker,
@@ -3175,18 +3178,18 @@ function finishResolvedAttack(
     return;
   }
 
-  if (applyAttackDieDamageFollowUps(state, details.attacker, details.defender)) {
+  if (applyAttackDieDamageFollowUps(state, details.attacker, details.defender, forceAbilityRoll)) {
     return;
   }
 
   // Gorgons' Death Stare: roll the extra dice and possibly reduce the target to
   // 0 Health before retaliation.
-  if (applyDeathStareFollowUps(state, details.attacker, details.defender)) {
+  if (applyDeathStareFollowUps(state, details.attacker, details.defender, forceAbilityRoll)) {
     return;
   }
 
   // Azure Dragons / Basilisks: paralyse the target on a matching Attack die.
-  applyParalysisFollowUps(state, details.attacker, details.defender, attackResult.roll);
+  applyParalysisFollowUps(state, details.attacker, details.defender, attackResult.roll, forceAbilityRoll);
 
   // Dragon Flies: dispel the enemy's ongoing buffs on the target.
   applyDispelFollowUps(state, details.attacker, details.defender);
@@ -3504,7 +3507,8 @@ function applyFireShieldDamage(
 function applyAttackDieDamageFollowUps(
   state: GameState,
   attacker: CombatUnitState,
-  defender: CombatUnitState
+  defender: CombatUnitState,
+  forceRoll = false
 ): boolean {
   const combat = state.combat;
   if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
@@ -3523,10 +3527,13 @@ function applyAttackDieDamageFollowUps(
       unitId: attacker.id,
       abilityId: followUp.abilityId,
       targetUnitId: defender.id,
-      message: `${attacker.name} rolls ${candidate.roll} for ${followUp.abilityName}.`
+      message: forceRoll
+        ? `${attacker.name} uses ${followUp.abilityName} regardless of the roll (Basilisks VI).`
+        : `${attacker.name} rolls ${candidate.roll} for ${followUp.abilityName}.`
     });
 
-    if (candidate.roll < followUp.minRoll || (followUp.maxRoll !== undefined && candidate.roll > followUp.maxRoll)) {
+    // Tarnum (Fortress) Basilisks VI forces the ability regardless of the face.
+    if (!forceRoll && (candidate.roll < followUp.minRoll || (followUp.maxRoll !== undefined && candidate.roll > followUp.maxRoll))) {
       continue;
     }
 
@@ -3559,13 +3566,15 @@ function applyOnAttackDieTokens(
   attacker: CombatUnitState,
   defender: CombatUnitState,
   attackRoll: number,
-  isRetaliation: boolean
+  isRetaliation: boolean,
+  forceRoll = false
 ): void {
   if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
     return;
   }
   for (const token of getOnAttackDieTokens(attacker)) {
-    if (attackRoll !== token.onRoll) {
+    // Tarnum (Fortress) Basilisks VI forces the token regardless of the face.
+    if (!forceRoll && attackRoll !== token.onRoll) {
       continue;
     }
     placeCombatToken(state, defender, token.token, token.amount, token.abilityName);
@@ -3585,9 +3594,15 @@ function applyOnAttackDieTokens(
  * matching face; the controller draws the printed number of cards. (The neutral
  * Minotaur rerolls the "-1" instead — it never carries this ability.)
  */
-function applyOnAttackDieDraw(state: GameState, attacker: CombatUnitState, attackRoll: number): void {
+function applyOnAttackDieDraw(
+  state: GameState,
+  attacker: CombatUnitState,
+  attackRoll: number,
+  forceRoll = false
+): void {
   for (const draw of getOnAttackDieDraw(attacker)) {
-    if (attackRoll !== draw.onRoll) {
+    // Tarnum (Fortress) Basilisks VI forces the draw regardless of the face.
+    if (!forceRoll && attackRoll !== draw.onRoll) {
       continue;
     }
     drawCardsForPlayer(state, attacker.controllerId, draw.amount);
@@ -3609,7 +3624,8 @@ function applyOnAttackDieDraw(state: GameState, attacker: CombatUnitState, attac
 function applyDeathStareFollowUps(
   state: GameState,
   attacker: CombatUnitState,
-  defender: CombatUnitState
+  defender: CombatUnitState,
+  forceRoll = false
 ): boolean {
   const combat = state.combat;
   if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
@@ -3621,7 +3637,8 @@ function applyDeathStareFollowUps(
       break;
     }
     const rolls = Array.from({ length: Math.max(1, followUp.diceCount) }, () => rollAttackDie(combat));
-    const petrifies = rolls.every((roll) => roll === followUp.onRoll);
+    // Tarnum (Fortress) Basilisks VI forces the Death Stare regardless of the dice.
+    const petrifies = forceRoll || rolls.every((roll) => roll === followUp.onRoll);
     // One ability event per stare (drives the FX/sound once): its message
     // carries the outcome so the log reads correctly and tests can assert it.
     appendEvent(state, {
@@ -4058,7 +4075,8 @@ function applyParalysisFollowUps(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  attackRoll: number
+  attackRoll: number,
+  forceRoll = false
 ): void {
   const combat = state.combat;
   if (!combat) {
@@ -4080,7 +4098,8 @@ function applyParalysisFollowUps(
         message: `${attacker.name} rolls ${roll} for ${followUp.abilityName}.`
       });
     }
-    if (roll !== followUp.onRoll) {
+    // Tarnum (Fortress) Basilisks VI forces the Paralysis regardless of the face.
+    if (!forceRoll && roll !== followUp.onRoll) {
       continue;
     }
     if (unitImmuneToParalysis(state, defender)) {
@@ -8412,6 +8431,11 @@ function applyReactionPlayCore(
     }
     if (effect.ignoresRetaliation) {
       stackItem.modifiers.ignoresRetaliationThisAttack = true;
+    }
+    // Tarnum (Fortress) Basilisks VI: this buffed attack also fires every
+    // die-gated after-attack ability of the attacker regardless of the roll.
+    if (effect.forceAbilityRolls) {
+      stackItem.modifiers.forceAbilityRollsThisAttack = true;
     }
 
     if (effect.drawCards) {
