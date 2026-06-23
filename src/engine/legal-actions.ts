@@ -2876,13 +2876,62 @@ export function firstAidHealActions(state: GameState, playerId: PlayerId): Legal
           action: { type: "USE_ACTIVE_EFFECT", playerId, effectId: effect.id, target, mode: "expert" }
         });
       }
-      if (canExpertContinue) {
+      // The expert volley resolves against the SAME target each time, so only
+      // the unit pinned by the first expert heal is offered the continuation.
+      if (canExpertContinue && (!usage?.targetUnitId || usage.targetUnitId === unit.id)) {
         out.push({
           label: `${effect.name} heal ${unit.name} (${(usage?.count ?? 0) + 1}/${expertMax})`,
           action: { type: "USE_ACTIVE_EFFECT", playerId, effectId: effect.id, target }
         });
       }
     }
+  }
+  return out;
+}
+
+const FIRST_AID_ABILITY_CARD_ID = "ability.first_aid" as CardId;
+
+/**
+ * The First Aid ability card's BASIC heal played as an instant reaction the
+ * moment one of `playerId`'s units is attacked — one offer per wounded friendly
+ * unit, the chosen target travelling on the reaction's `target` (mirroring the
+ * Bowstring ranged-activation reaction). This is the card held in hand mending 1
+ * damage BEFORE the incoming hit is calculated, so a healed unit can survive a
+ * blow that would otherwise defeat it. It is available even WITHOUT a First Aid
+ * Tent in play (the Tent's own per-round heal is surfaced separately by
+ * firstAidHealActions). The card's EXPERT side is never played from hand — it
+ * rides the Tent's heal (USE_ACTIVE_EFFECT, mode "expert"), so only the basic
+ * side (option 0) is offered here.
+ */
+export function firstAidCardHealReactions(state: GameState, playerId: PlayerId): LegalAction[] {
+  const combat = state.combat;
+  const player = state.players[playerId];
+  if (!combat || !player || isHandLockedInCombat(state, playerId)) {
+    return [];
+  }
+  if (!player.hand.includes(FIRST_AID_ABILITY_CARD_ID)) {
+    return [];
+  }
+  const card = cardLibrary[FIRST_AID_ABILITY_CARD_ID];
+  if (!card || card.implementationStatus !== "implemented") {
+    return [];
+  }
+
+  const out: LegalAction[] = [];
+  for (const unit of Object.values(combat.units)) {
+    if (unit.controllerId !== playerId || !isUnitAlive(unit) || unit.damage <= 0) {
+      continue;
+    }
+    out.push(
+      makeReactionAction(`${card.name} heal ${unit.name}`, {
+        type: "PLAY_REACTION",
+        playerId,
+        cardId: FIRST_AID_ABILITY_CARD_ID,
+        mode: "basic",
+        optionIndex: 0,
+        target: { type: "unit", unitId: unit.id }
+      })
+    );
   }
   return out;
 }
@@ -4689,15 +4738,21 @@ export function getLegalReactionsForTrigger(
     }
   }
 
-  // First Aid Tent (instant): the moment one of your units is attacked, its
+  // First Aid (instant): the moment one of your units is attacked, its
   // controller may mend an existing wound on one of their units BEFORE the
-  // incoming attack's damage is calculated — the Tent heal is "usable at any
-  // time during the round, like an instant". A healed unit therefore enters the
-  // hit with more health, which can let it survive a blow that would otherwise
-  // defeat it. Optional: the defender may simply pass and take the attack.
+  // incoming attack's damage is calculated — First Aid is "usable at any time
+  // during the round, like an instant". A healed unit therefore enters the hit
+  // with more health, which can let it survive a blow that would otherwise
+  // defeat it. Optional: the defender may simply pass and take the attack. Two
+  // sources are offered to the defender: the First Aid Tent's per-round heal
+  // (and its expert volley — both via firstAidHealActions), and the First Aid
+  // ability card's basic heal played straight from hand (firstAidCardHealReactions,
+  // which needs no Tent).
   if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
     const defenderId = state.combat?.units[triggerEvent.defenderId]?.controllerId;
-    const heals = defenderId ? firstAidHealActions(state, defenderId) : [];
+    const heals = defenderId
+      ? [...firstAidHealActions(state, defenderId), ...firstAidCardHealReactions(state, defenderId)]
+      : [];
     if (defenderId && heals.length > 0) {
       result[defenderId] = [...(result[defenderId] ?? []), ...heals];
     }
