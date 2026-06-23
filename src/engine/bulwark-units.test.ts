@@ -3,6 +3,7 @@ import { applyAction, createInitialGameState } from "./index";
 import { effectiveInitiative, makeActiveEffect } from "./active-effects";
 import { getSelfAttackerTypeDefenseBonus } from "./unit-abilities";
 import { hasToken, placeCombatToken } from "./tokens";
+import { gainResources, getArmyMapAbilities } from "./adventure";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
 import type { GameAction, GameState } from "./state";
@@ -113,11 +114,11 @@ describe("Bulwark units — Thick Hide (War Mammoths)", () => {
     return settle(applyOk(defended, ATTACK));
   }
 
-  it("+2 Defense while the unit is defending — but only while defending", () => {
+  it("+1 Defense while the unit is defending — but only while defending", () => {
     // Defended, no Thick Hide: defense 0 + Defend die 0 → full 5 damage.
     expect(defendThenAttack([], true).combat!.units.unit_p2_skeletons.damage).toBe(5);
-    // Defended WITH Thick Hide: +2 Defense on top of the die → 3 damage.
-    expect(defendThenAttack(["bulwark-thick-hide"], true).combat!.units.unit_p2_skeletons.damage).toBe(3);
+    // Defended WITH Thick Hide: +1 Defense on top of the die → 4 damage.
+    expect(defendThenAttack(["bulwark-thick-hide"], true).combat!.units.unit_p2_skeletons.damage).toBe(4);
     // Thick Hide but NOT defending (no Defense token) → no bonus → 5 damage.
     expect(defendThenAttack(["bulwark-thick-hide"], false).combat!.units.unit_p2_skeletons.damage).toBe(5);
   });
@@ -252,7 +253,8 @@ describe("Bulwark units — roster & ability wiring", () => {
   });
 
   it("wires each signature ability to the side the wiki gives it", () => {
-    expect(coreUnitDefinitions["bulwark.kobolds"].few?.abilities).toContain("bulwark-kobold-gold");
+    // Gold income is the Kobold Foreman (Pack) only; the Kobold (Few) is a no-op.
+    expect(coreUnitDefinitions["bulwark.kobolds"].few?.abilities).toEqual([]);
     expect(coreUnitDefinitions["bulwark.kobolds"].pack?.abilities).toContain("bulwark-kobold-gold");
     // Magic resistance and Thick Hide are upgrade-only (Argali / War Mammoth).
     expect(coreUnitDefinitions["bulwark.mountain_rams"].few?.abilities).toEqual([]);
@@ -262,7 +264,33 @@ describe("Bulwark units — roster & ability wiring", () => {
     // Freezing Shot is the Great Shaman (Pack) only; Air Shield is on both.
     expect(coreUnitDefinitions["bulwark.shamans"].few?.abilities).toEqual(["bulwark-air-shield"]);
     expect(coreUnitDefinitions["bulwark.shamans"].pack?.abilities).toEqual(["bulwark-air-shield", "bulwark-freezing-shot"]);
+    // The Steel Elf (Pack) ignores enemy Retaliation; both sides keep no-melee-penalty.
+    expect(coreUnitDefinitions["bulwark.snow_elves"].few?.abilities).toEqual(["ignore-combat-penalties"]);
+    expect(coreUnitDefinitions["bulwark.snow_elves"].pack?.abilities).toEqual(["ignore-combat-penalties", "ignores-retaliation"]);
     expect(coreUnitDefinitions["bulwark.jotunns"].few?.abilities).toContain("teleport-move");
+  });
+
+  it("carries the revised printed stats across every affected unit", () => {
+    const rams = coreUnitDefinitions["bulwark.mountain_rams"];
+    expect(rams.few?.defense).toBe(1);
+    expect(rams.pack?.defense).toBe(1);
+    expect(rams.pack?.attack).toBe(2); // Argali attack lowered to 2
+    const elves = coreUnitDefinitions["bulwark.snow_elves"];
+    expect(elves.few?.health).toBe(3);
+    expect(elves.pack?.health).toBe(3);
+    expect(elves.pack?.attack).toBe(3); // Steel Elf attack lowered to 3
+    const yetis = coreUnitDefinitions["bulwark.yetis"];
+    expect({ attack: yetis.few?.attack, health: yetis.few?.health }).toEqual({ attack: 3, health: 4 });
+    expect({ attack: yetis.pack?.attack, defense: yetis.pack?.defense, health: yetis.pack?.health }).toEqual({
+      attack: 4,
+      defense: 2,
+      health: 5
+    });
+    const mammoths = coreUnitDefinitions["bulwark.mammoths"];
+    expect(mammoths.few?.defense).toBe(2);
+    expect(mammoths.pack?.defense).toBe(2);
+    expect(mammoths.few?.health).toBe(7);
+    expect(mammoths.pack?.health).toBe(7);
   });
 
   it("Kobold gold income is a Resource-round map gain of 1 gold", () => {
@@ -271,5 +299,96 @@ describe("Bulwark units — roster & ability wiring", () => {
       resource: "gold",
       amount: 1
     });
+  });
+});
+
+describe("Bulwark units — Steel Elf ignores enemy Retaliation (Snow Elves Pack)", () => {
+  /** p1 melee-attacks an adjacent p2 defender that would otherwise retaliate for 3. */
+  function retaliationDamageTaken(attackerAbilities: string[]): number {
+    const state = createInitialGameState();
+    const attacker = state.combat!.units.unit_p1_marksmen;
+    attacker.abilities = attackerAbilities;
+    attacker.attack = 1;
+    attacker.defense = 0;
+    attacker.position = 1;
+    attacker.maxHealth = 20;
+    attacker.damage = 0;
+    const defender = state.combat!.units.unit_p2_skeletons;
+    defender.abilities = [];
+    defender.attack = 3; // retaliation strength
+    defender.defense = 0;
+    defender.position = 2; // adjacent → melee → retaliation possible
+    defender.maxHealth = 20;
+    defender.damage = 0;
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = attacker.id;
+    const after = settle(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: attacker.id, defenderId: defender.id })
+    );
+    return after.combat!.units.unit_p1_marksmen.damage;
+  }
+
+  it("the attacker provokes no Retaliation when it ignores it (control: it takes 3)", () => {
+    expect(retaliationDamageTaken([])).toBe(3); // control: the full retaliation lands
+    expect(retaliationDamageTaken(["ignores-retaliation"])).toBe(0); // Steel Elf: none provoked
+  });
+
+  it("wires no-retaliation onto the Steel Elf (Pack) while keeping the Few's no-melee-penalty", () => {
+    expect(coreUnitDefinitions["bulwark.snow_elves"].pack?.abilities).toEqual([
+      "ignore-combat-penalties",
+      "ignores-retaliation"
+    ]);
+    expect(coreUnitDefinitions["bulwark.snow_elves"].few?.abilities).toEqual(["ignore-combat-penalties"]);
+  });
+});
+
+describe("Bulwark units — Kobold gold income (Pack / Kobold Foreman only)", () => {
+  /**
+   * Mirrors the Resource-round income loop (engine/adventure.ts startAdventureRound):
+   * each army map ability of type MAP_RESOURCE_ROUND_GAIN grants its resource. Tests
+   * the OUTCOME (gold actually gained), via the real getArmyMapAbilities consumer,
+   * for a player whose only army card is a Kobold of the given side.
+   */
+  function resourceRoundGold(side: "few" | "pack"): number {
+    const state = createInitialGameState();
+    state.players.p1.factionId = "bulwark";
+    state.players.p1.army = [{ id: "kob", unitDefId: "bulwark.kobolds", side }];
+    const before = state.players.p1.resources.gold;
+    for (const ability of getArmyMapAbilities(state, "p1")) {
+      if (ability.effect.type === "MAP_RESOURCE_ROUND_GAIN") {
+        gainResources(state, "p1", { [ability.effect.resource]: ability.effect.amount }, ability.abilityName);
+      }
+    }
+    return state.players.p1.resources.gold - before;
+  }
+
+  it("a Kobold Pack earns 1 gold per Resource round; a Kobold Few earns nothing", () => {
+    expect(resourceRoundGold("pack")).toBe(1); // Kobold Foreman generates gold
+    expect(resourceRoundGold("few")).toBe(0); // Kobold (Few) is a no-op now
+  });
+});
+
+describe("Bulwark units — Kobold gold PvP / multiplayer scoping", () => {
+  it("scopes Kobold gold to its owner: p1 (Pack) earns, p2 (Few) earns nothing", () => {
+    const state = createInitialGameState();
+    state.players.p1.factionId = "bulwark";
+    state.players.p2.factionId = "bulwark";
+    state.players.p1.army = [{ id: "kob1", unitDefId: "bulwark.kobolds", side: "pack" }];
+    state.players.p2.army = [{ id: "kob2", unitDefId: "bulwark.kobolds", side: "few" }];
+    const p1Before = state.players.p1.resources.gold;
+    const p2Before = state.players.p2.resources.gold;
+    for (const pid of ["p1", "p2"] as const) {
+      for (const ability of getArmyMapAbilities(state, pid)) {
+        if (ability.effect.type === "MAP_RESOURCE_ROUND_GAIN") {
+          gainResources(state, pid, { [ability.effect.resource]: ability.effect.amount }, ability.abilityName);
+        }
+      }
+    }
+    expect(state.players.p1.resources.gold - p1Before).toBe(1); // Pack owner earns
+    expect(state.players.p2.resources.gold - p2Before).toBe(0); // Few owner earns nothing
   });
 });
