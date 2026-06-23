@@ -951,8 +951,8 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "bulwark-thick-hide": {
     id: "bulwark-thick-hide",
     name: "Thick Hide",
-    text: "[unit_passive] +2 Defense while this unit is defending.",
-    effect: { type: "DEFEND_BONUS", amount: 2 },
+    text: "[unit_passive] +1 Defense while this unit is defending.",
+    effect: { type: "DEFEND_BONUS", amount: 1 },
     implementationStatus: "implemented"
   },
   "magog-fireball-splash": {
