@@ -2348,6 +2348,36 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     specialtyCardIds: { 1: "specialty.kriv.1", 4: "specialty.kriv.4", 6: "specialty.kriv.6" },
     portrait: "/assets/hero_portraits-kriv.webp",
     source: heroSource("kriv")
+  },
+  // ---- Bulwark heroes, batch 2 (expansion; fan faction, placeholder portraits) --
+  // Eikthurn (Chieftain, Might): the Yetis unit-specialist — the SAME might trio
+  // Dhuin/Creyle use (ADD_COMBAT_STAT / ADD_UNIT_MAX_HEALTH / CREATE_INITIATIVE_BUFF,
+  // doubled for the signature unit). Oidana (Elder, Magic): the frost "Slow" caster
+  // — each level drops a chosen enemy unit's Initiative (and movement) via the
+  // shared, tested CREATE_INITIATIVE_BUFF machinery (Gundula's Slow factory).
+  eikthurn: {
+    id: "eikthurn",
+    name: "Eikthurn",
+    faction: "bulwark",
+    class: "Chieftain",
+    type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.tactics",
+    specialtyCardIds: { 1: "specialty.eikthurn.1", 4: "specialty.eikthurn.4", 6: "specialty.eikthurn.6" },
+    portrait: "/assets/hero_portraits-eikthurn.webp",
+    source: heroSource("eikthurn")
+  },
+  oidana: {
+    id: "oidana",
+    name: "Oidana",
+    faction: "bulwark",
+    class: "Elder",
+    type: "magic",
+    startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: { 1: "specialty.oidana.1", 4: "specialty.oidana.4", 6: "specialty.oidana.6" },
+    portrait: "/assets/hero_portraits-oidana.webp",
+    source: heroSource("oidana")
   }
   // Four more wiki heroes complete the remaining rosters; their PC portraits are
   // already fetched and committed (scripts/fetch-extra-heroes-art-batch5.py:
@@ -2501,7 +2531,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     // Glacial blue-white — distinct from Castle/Tower/Cove blues.
     color: "#7fb2d9",
     startingTileId: "S10",
-    heroes: ["dhuin", "creyle", "glacius", "kriv"],
+    heroes: ["dhuin", "creyle", "glacius", "kriv", "eikthurn", "oidana"],
     buildings: buildingsOfFaction("bulwark"),
     units: unitsOfFaction("bulwark"),
     source: {

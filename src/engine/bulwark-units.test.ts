@@ -3,6 +3,7 @@ import { applyAction, createInitialGameState } from "./index";
 import { effectiveInitiative, makeActiveEffect } from "./active-effects";
 import { getSelfAttackerTypeDefenseBonus } from "./unit-abilities";
 import { hasToken, placeCombatToken } from "./tokens";
+import { gainResources, getArmyMapAbilities } from "./adventure";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
 import type { GameAction, GameState } from "./state";
@@ -252,7 +253,8 @@ describe("Bulwark units — roster & ability wiring", () => {
   });
 
   it("wires each signature ability to the side the wiki gives it", () => {
-    expect(coreUnitDefinitions["bulwark.kobolds"].few?.abilities).toContain("bulwark-kobold-gold");
+    // Gold income is the Kobold Foreman (Pack) only; the Kobold (Few) is a no-op.
+    expect(coreUnitDefinitions["bulwark.kobolds"].few?.abilities).toEqual([]);
     expect(coreUnitDefinitions["bulwark.kobolds"].pack?.abilities).toContain("bulwark-kobold-gold");
     // Magic resistance and Thick Hide are upgrade-only (Argali / War Mammoth).
     expect(coreUnitDefinitions["bulwark.mountain_rams"].few?.abilities).toEqual([]);
@@ -262,7 +264,19 @@ describe("Bulwark units — roster & ability wiring", () => {
     // Freezing Shot is the Great Shaman (Pack) only; Air Shield is on both.
     expect(coreUnitDefinitions["bulwark.shamans"].few?.abilities).toEqual(["bulwark-air-shield"]);
     expect(coreUnitDefinitions["bulwark.shamans"].pack?.abilities).toEqual(["bulwark-air-shield", "bulwark-freezing-shot"]);
+    // The Steel Elf (Pack) adds the ranged double-shot; the Snow Elf (Few) does not.
+    expect(coreUnitDefinitions["bulwark.snow_elves"].few?.abilities).toEqual(["ignore-combat-penalties"]);
+    expect(coreUnitDefinitions["bulwark.snow_elves"].pack?.abilities).toEqual(["ignore-combat-penalties", "double-attack"]);
     expect(coreUnitDefinitions["bulwark.jotunns"].few?.abilities).toContain("teleport-move");
+  });
+
+  it("carries the revised printed stats: Mountain Ram Defense 1 (both), Snow Elf 3 HP (both)", () => {
+    const rams = coreUnitDefinitions["bulwark.mountain_rams"];
+    expect(rams.few?.defense).toBe(1);
+    expect(rams.pack?.defense).toBe(1);
+    const elves = coreUnitDefinitions["bulwark.snow_elves"];
+    expect(elves.few?.health).toBe(3);
+    expect(elves.pack?.health).toBe(3);
   });
 
   it("Kobold gold income is a Resource-round map gain of 1 gold", () => {
@@ -271,5 +285,74 @@ describe("Bulwark units — roster & ability wiring", () => {
       resource: "gold",
       amount: 1
     });
+  });
+});
+
+describe("Bulwark units — Steel Elf double-shot (Snow Elves Pack)", () => {
+  it("a ranged attacker with the Steel Elf volley strikes a non-adjacent target twice", () => {
+    // Control: a single ranged shot deals 3 (attack 3 − defense 0).
+    let single = rangedDuel();
+    single = settle(applyOk(single, ATTACK));
+    expect(single.combat!.units.unit_p2_skeletons.damage).toBe(3);
+
+    // With `double-attack` (the Steel Elf's repeated volley) the SAME target is
+    // struck a second time → 6 cumulative damage. Fails if the second shot never
+    // fires — i.e. if the Pack stops carrying the double-shot.
+    let doubled = rangedDuel();
+    doubled.combat!.units.unit_p1_marksmen.abilities = ["double-attack"];
+    doubled = settle(applyOk(doubled, ATTACK));
+    expect(doubled.combat!.units.unit_p2_skeletons.damage).toBe(6);
+  });
+
+  it("only the Steel Elf (Pack) carries the double-shot, not the Snow Elf (Few)", () => {
+    expect(coreUnitDefinitions["bulwark.snow_elves"].pack?.abilities).toContain("double-attack");
+    expect(coreUnitDefinitions["bulwark.snow_elves"].few?.abilities ?? []).not.toContain("double-attack");
+  });
+});
+
+describe("Bulwark units — Kobold gold income (Pack / Kobold Foreman only)", () => {
+  /**
+   * Mirrors the Resource-round income loop (engine/adventure.ts startAdventureRound):
+   * each army map ability of type MAP_RESOURCE_ROUND_GAIN grants its resource. Tests
+   * the OUTCOME (gold actually gained), via the real getArmyMapAbilities consumer,
+   * for a player whose only army card is a Kobold of the given side.
+   */
+  function resourceRoundGold(side: "few" | "pack"): number {
+    const state = createInitialGameState();
+    state.players.p1.factionId = "bulwark";
+    state.players.p1.army = [{ id: "kob", unitDefId: "bulwark.kobolds", side }];
+    const before = state.players.p1.resources.gold;
+    for (const ability of getArmyMapAbilities(state, "p1")) {
+      if (ability.effect.type === "MAP_RESOURCE_ROUND_GAIN") {
+        gainResources(state, "p1", { [ability.effect.resource]: ability.effect.amount }, ability.abilityName);
+      }
+    }
+    return state.players.p1.resources.gold - before;
+  }
+
+  it("a Kobold Pack earns 1 gold per Resource round; a Kobold Few earns nothing", () => {
+    expect(resourceRoundGold("pack")).toBe(1); // Kobold Foreman generates gold
+    expect(resourceRoundGold("few")).toBe(0); // Kobold (Few) is a no-op now
+  });
+});
+
+describe("Bulwark units — Kobold gold PvP / multiplayer scoping", () => {
+  it("scopes Kobold gold to its owner: p1 (Pack) earns, p2 (Few) earns nothing", () => {
+    const state = createInitialGameState();
+    state.players.p1.factionId = "bulwark";
+    state.players.p2.factionId = "bulwark";
+    state.players.p1.army = [{ id: "kob1", unitDefId: "bulwark.kobolds", side: "pack" }];
+    state.players.p2.army = [{ id: "kob2", unitDefId: "bulwark.kobolds", side: "few" }];
+    const p1Before = state.players.p1.resources.gold;
+    const p2Before = state.players.p2.resources.gold;
+    for (const pid of ["p1", "p2"] as const) {
+      for (const ability of getArmyMapAbilities(state, pid)) {
+        if (ability.effect.type === "MAP_RESOURCE_ROUND_GAIN") {
+          gainResources(state, pid, { [ability.effect.resource]: ability.effect.amount }, ability.abilityName);
+        }
+      }
+    }
+    expect(state.players.p1.resources.gold - p1Before).toBe(1); // Pack owner earns
+    expect(state.players.p2.resources.gold - p2Before).toBe(0); // Few owner earns nothing
   });
 });
