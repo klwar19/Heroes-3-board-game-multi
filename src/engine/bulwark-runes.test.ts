@@ -12,6 +12,7 @@ import {
   RUNE_GAIN_DEFEND,
   RUNE_GAIN_RETALIATION,
   RUNE_LEVEL_THRESHOLDS,
+  RUNE_STARTING_BASE,
   effectiveRuneLevel,
   gainRunes,
   getRuneSummary,
@@ -183,16 +184,17 @@ describe("Bulwark Runes — gained by combat actions (Gamefound Update #3)", () 
     expect(RUNE_GAIN_ATTACK).toBe(1);
   });
 
-  it("the Defend action banks +3 Runes and immediately reaches Rune Level 1", () => {
+  it("the Defend action banks +2 Runes — enough to cross into Level 1 with one prior Rune", () => {
     const state = bulwarkState();
     const unit = state.combat!.units.unit_p1_marksmen;
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = unit.id;
+    gainRunes(state, "p1", 1); // 1 banked already; Defend's +2 should reach the 3-Rune Level 1
 
     const after = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: unit.id });
-    expect(after.combat!.runes?.p1?.count).toBe(RUNE_GAIN_DEFEND);
-    expect(RUNE_GAIN_DEFEND).toBe(3);
-    // 3 Runes = Level 1 → the army-wide +1 Attack is live.
+    expect(after.combat!.runes?.p1?.count).toBe(1 + RUNE_GAIN_DEFEND); // 3
+    expect(RUNE_GAIN_DEFEND).toBe(2);
+    // 1 + 2 = 3 Runes = Level 1 → the army-wide +1 Attack is live.
     expect(getActiveAttackBonus(after, {
       attacker: after.combat!.units.unit_p1_marksmen,
       defender: after.combat!.units.unit_p2_skeletons,
@@ -200,7 +202,7 @@ describe("Bulwark Runes — gained by combat actions (Gamefound Update #3)", () 
     })).toBe(1);
   });
 
-  it("a Retaliation Attack banks +2 Runes for the retaliating Bulwark player", () => {
+  it("a Retaliation Attack banks +1 Rune for the retaliating Bulwark player", () => {
     const state = createInitialGameState();
     // p2 is the Bulwark side here; p1 melee-attacks so p2 retaliates.
     state.players.p2.factionId = "bulwark";
@@ -232,25 +234,27 @@ describe("Bulwark Runes — gained by combat actions (Gamefound Update #3)", () 
       defenderId: defender.id
     }));
 
-    // p2 retaliated once → +2 Runes; p1 (not Bulwark) banks nothing.
+    // p2 retaliated once → +1 Rune; p1 (not Bulwark) banks nothing.
     expect(after.combat!.runes?.p2?.count).toBe(RUNE_GAIN_RETALIATION);
     expect(after.combat!.runes?.p1).toBeUndefined();
-    expect(RUNE_GAIN_RETALIATION).toBe(2);
+    expect(RUNE_GAIN_RETALIATION).toBe(1);
   });
 });
 
 describe("Bulwark Runes — starting pool (City Hall flag + Sieidi/Altar baseline)", () => {
   it("seeds the Sieidi/Altar baseline and the City Hall Rune-Empowered bonus at combat start", () => {
-    // City Hall combat focus alone: +3 starting Runes → start at Level 1.
+    // Base 4 + City Hall combat focus (+3) = 7 starting Runes; with no rune
+    // building the level cap is 1, so it still starts at Level 1.
     const flagged = bulwarkState();
     flagged.combat!.attackerPlayerId = "p1";
     flagged.combat!.defenderPlayerId = "p2";
     flagged.players.p1.runeEmpoweredNextCombats = 3;
     seedRunesForCombat(flagged);
-    expect(flagged.combat!.runes?.p1?.count).toBe(3);
+    expect(flagged.combat!.runes?.p1?.count).toBe(RUNE_STARTING_BASE + 3);
     expect(effectiveRuneLevel(flagged, "p1")).toBe(1);
 
-    // Altar baseline (6) + the flag (3) = 9, capped at the max → start at Level 3.
+    // Base 4 + Altar baseline (6) + the flag (3) = 13, capped at the max (9) →
+    // start at Level 3.
     const maxed = bulwarkState();
     maxed.combat!.attackerPlayerId = "p1";
     maxed.combat!.defenderPlayerId = "p2";
@@ -262,6 +266,17 @@ describe("Bulwark Runes — starting pool (City Hall flag + Sieidi/Altar baselin
     const unit = maxed.combat!.units.unit_p1_marksmen;
     expect(getActiveDefenseBonus(maxed, unit)).toBe(1);
     expect(effectiveInitiative(unit, maxed.activeEffects)).toBe(unit.initiative + 3);
+  });
+
+  it("a Bulwark army starts every combat at the base Runes even with no building or flag", () => {
+    const base = bulwarkState();
+    base.combat!.attackerPlayerId = "p1";
+    base.combat!.defenderPlayerId = "p2";
+    seedRunesForCombat(base);
+    expect(base.combat!.runes?.p1?.count).toBe(RUNE_STARTING_BASE);
+    expect(RUNE_STARTING_BASE).toBe(4);
+    // The base 4 already clears the Level 1 threshold (3) → Bulwark starts attuned.
+    expect(effectiveRuneLevel(base, "p1")).toBe(1);
   });
 });
 
