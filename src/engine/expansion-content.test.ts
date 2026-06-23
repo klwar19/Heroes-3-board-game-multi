@@ -66,8 +66,8 @@ describe("expansion tile data", () => {
     for (const id of Object.keys(expansionTileDefinitions)) {
       expect(coreIds.has(id), `${id} duplicated`).toBe(false);
     }
-    // 41 boxed tiles + 66 expansion tiles = every tile the wiki documents.
-    expect(Object.keys(allTileDefinitions)).toHaveLength(107);
+    // 41 boxed tiles + 66 wiki expansion tiles + the Bulwark S10 starting tile.
+    expect(Object.keys(allTileDefinitions)).toHaveLength(108);
   });
 
   it("keeps the default pools exactly as before the expansion data landed", () => {

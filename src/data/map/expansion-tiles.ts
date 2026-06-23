@@ -117,6 +117,28 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
       tileImage: "/assets/board/tiles/sx1.webp"
     }
   },
+  S10: {
+    id: "S10",
+    group: "starting",
+    content: "bulwark_expansion",
+    terrain: "snow",
+    fields: [
+      { location: "town", faction: "bulwark" },
+      { location: "empty_field" },
+      { location: "resource_symbol" },
+      { location: "empty_field" },
+      { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
+      { location: "blocked_field" },
+      { location: "treasure_symbol", difficulty: 1 },
+    ],
+    outerImpassable: [true, true, true, false, true, false],
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
+      credit: "Fan-faction starting tile; snow terrain, layout mirrors the other starting tiles. Placeholder art; verify against physical tiles before final release.",
+      url: "https://heroes.thelazy.net/index.php/Bulwark"
+    }
+    // Art pending (placeholder): like the other art-less tiles, no `assets` yet.
+  },
   F19: {
     id: "F19",
     group: "far",

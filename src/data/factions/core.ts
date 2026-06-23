@@ -2393,6 +2393,21 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     buildings: buildingsOfFaction("cove"),
     units: unitsOfFaction("cove"),
     source: townSource("cove")
+  },
+  bulwark: {
+    id: "bulwark",
+    name: "Bulwark",
+    // Glacial blue-white — distinct from Castle/Tower/Cove blues.
+    color: "#7fb2d9",
+    startingTileId: "S10",
+    heroes: ["dhuin", "creyle", "glacius", "kriv"],
+    buildings: buildingsOfFaction("bulwark"),
+    units: unitsOfFaction("bulwark"),
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
+      credit: "Fan faction (heroes.thelazy.net/Bulwark); rescaled to the board game, placeholder art. Verify before final release.",
+      url: "https://heroes.thelazy.net/index.php/Bulwark"
+    }
   }
 };
 
